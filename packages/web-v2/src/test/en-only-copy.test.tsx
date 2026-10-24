@@ -9,11 +9,11 @@ import { unreadIn } from "./unread";
 import { SCREENS } from "./vi-chrome-dashboard";
 
 // Forge is not multilingual (the owner's ruling of 2026-10-08): a new copy key is written in English
-// only. Here three keys the Dashboard draws lose their vi word, as a key written after the ruling
-// never has one: a feature's own word, core's sentence and a contract enum's label. On a vi page each
+// only. Here keys the Dashboard draws lose their vi word, as a key written after the ruling never has
+// one: a feature's own word, core's sentence (with the role it names) and a contract enum's label. On a vi page each
 // reads its English, with no throw, no raw key and no blank.
 
-const EN_ONLY = vi.hoisted(() => ["dash.fbUntriaged", "standing.who.holderOf", "label.requirementState.in_delivery"]);
+const EN_ONLY = vi.hoisted(() => ["dash.fbUntriaged", "standing.who.holderOf", "label.permissionRole.releases.approve", "label.requirementState.in_delivery"]);
 
 vi.mock("@/lib/i18n/copy-files", async (load) => {
   const { COPY_FILES } = await load<typeof import("@/lib/i18n/copy-files")>();
@@ -30,7 +30,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 describe("a copy key written in English only", () => {
   it("reads its English in vi through every reader", () => {
     expect(productCopy("vi")("dash.fbUntriaged")).toBe("untriaged");
-    expect(said(say("standing.who.holderOf", { perm: "releases.approve" }), "vi")).toBe("A holder of releases.approve");
+    expect(said(say("standing.who.holderOf", { perm: "releases.approve" }), "vi")).toBe("Release approver");
     expect(labelCopy("vi")("requirementState", "in_delivery")).toBe("In delivery");
   });
 
@@ -40,7 +40,7 @@ describe("a copy key written in English only", () => {
     const { baseElement } = renderWithQuery(<InterfaceLanguageScope language="vi">{dashboard.render()}</InterfaceLanguageScope>);
     const text = baseElement.textContent ?? "";
     expect(text).toContain("untriaged");
-    expect(text).toContain("A holder of releases.approve");
+    expect(text).toContain("Release approver");
     expect(text).toContain("In delivery");
     expect(unreadIn(baseElement)).toBeNull();
   });

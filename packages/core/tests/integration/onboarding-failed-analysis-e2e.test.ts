@@ -4,11 +4,13 @@
  * attempts with `cc-startup-death` (judge K10 on 0.4.0-dev.268), so nobody was told the round-2
  * answers may never have reached the designs. Here the real routes read that shape: the failure is
  * shown, it names who acts and what they do, and it waits on no answer — an unanswered question stays
- * open on its own item.
+ * open on its own item. Who acts reads as the role that holds onboarding.request, and You to a reader
+ * who holds it; the runner's failure tag stays off the line (ISS-605 round 2, judge K71).
  *
  * @direct-test-of packages/core/src/onboarding/read.ts
  * @direct-test-of packages/core/src/onboarding/hint.ts
  * @direct-test-of packages/core/src/onboarding/rules.ts
+ * @direct-test-of packages/core/src/onboarding/routes.ts
  */
 
 import { readFileSync } from 'node:fs';
@@ -27,7 +29,7 @@ import {
 import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
-type Who = 'owner' | 'master';
+type Who = 'owner' | 'master' | 'viewer';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 /** Forge's shape: done on its assumptions, then the revise job after a partial answer fails. */
 let doneProject = '';
@@ -38,7 +40,8 @@ let openRoom = '';
 
 const at = (project: string, path: string) => `/api/projects/${project}${path}`;
 const codesOf = (r: Reply) => (r.json.error?.refusals ?? []).map((x: Doc) => x.code as string);
-const state = async (project: string) => ok(await say('owner', 'GET', at(project, '/onboarding')));
+const state = async (project: string, as: Who = 'owner') =>
+  ok(await say(as, 'GET', at(project, '/onboarding')));
 const roomStatus = async (room: string) =>
   ok(await say('owner', 'GET', `/api/conversations/${room}`)).threadStatus as string;
 
@@ -140,12 +143,15 @@ beforeAll(async () => {
   doneProject = (await createTestProject(ownerId)).id;
   openProject = (await createTestProject(ownerId)).id;
   const agentId = (await createTestUser({ kind: 'agent' })).id;
+  const viewerId = (await createTestUser({ verified: true })).id;
   for (const p of [doneProject, openProject]) {
     await seedProjectDocument(p, ownerId, { environments: {}, source: { type: 'none' } });
     await addProjectMember(p, agentId, 'admin');
+    await addProjectMember(p, viewerId, 'viewer');
   }
   say = requester(app, {
     owner: await signUserToken(ownerId),
+    viewer: await signUserToken(viewerId),
     master: (
       await mintPat({
         permissions: ['*'],
@@ -227,7 +233,9 @@ describe('c1: a failed analysis never reads done, and says it failed', () => {
     expect(s.hint).not.toBeNull();
     expect(s.hint.tone).toBe('err');
     expect(s.hint.says.lead.key).toBe('onboarding.hint.failed');
-    expect(s.hint.text).toContain('Attempt 10 failed: cc-startup-death');
+    expect(s.hint.text).toContain('Attempt 10 failed');
+    // the runner's failure tag is agent text: the view carries it for the Developer view, never the line
+    expect(s.hint.text).not.toContain('cc-startup-death');
     expect(await roomStatus(doneRoom)).toBe('failed');
   });
 });
@@ -236,18 +244,36 @@ describe('c2: the failed state names who acts and what they do', () => {
   // its probe runs it alone (-t c2), so it brings its own failure rather than c1's
   beforeAll(() => failedAtTen(doneProject));
 
-  it('names a holder of onboarding.request, whose act is a re-analysis', async () => {
-    const { hint } = await state(doneProject);
-    expect(hint.says.text.vars.who).toEqual({
-      key: 'standing.who.holderOf',
-      vars: { perm: 'onboarding.request' },
-    });
-    expect(hint.text).toContain('Waits on: A holder of onboarding.request');
+  it('names You to a person holding onboarding.request, whose act is a re-analysis', async () => {
+    const { hint } = await state(doneProject, 'owner');
+    expect(hint.says.text.vars.who).toEqual({ key: 'standing.who.you' });
+    expect(hint.text).toBe('Attempt 10 failed · Waits on: You');
     expect(hint).toMatchObject({
       action: 'reanalyze',
       actionLabel: 'Ask for a re-analysis',
       mayReanalyze: true,
     });
+  });
+
+  it('names the role holding onboarding.request to a reader who does not hold it, never the permission id', async () => {
+    const { hint } = await state(doneProject, 'viewer');
+    expect(hint.says.text.vars.who).toEqual({
+      key: 'standing.who.holderOf',
+      vars: { perm: 'onboarding.request' },
+    });
+    expect(hint.text).toBe('Attempt 10 failed · Waits on: Member');
+    expect(hint.text).not.toContain('onboarding.request');
+    expect(hint).toMatchObject({ action: 'reanalyze', mayReanalyze: false });
+    const r = await say('viewer', 'POST', at(doneProject, '/onboarding/reanalyze'), {});
+    expect(r.status).toBe(403);
+    expect((await state(doneProject)).onboarding.status).toBe('failed');
+  });
+
+  it('names the role to the master too: an agent is not who asks, so it is not offered the act', async () => {
+    const { hint } = await state(doneProject, 'master');
+    expect(hint.says.text.vars.who.key).toBe('standing.who.holderOf');
+    expect(hint.text).toBe('Attempt 10 failed · Waits on: Member');
+    expect(hint.mayReanalyze).toBe(false);
   });
 
   it('is a person’s act: the agent is refused the re-analysis by name, and the failure stands', async () => {
@@ -267,7 +293,7 @@ describe('c3: a failed analysis waits on no answer; an open question stays open 
     expect(s.onboarding.status).toBe('failed');
     expect(s.onboarding.openBatch).toMatchObject({ open: 1 });
     expect(s.hint.action).toBe('reanalyze');
-    expect(s.hint.says.text.vars.who.key).toBe('standing.who.holderOf');
+    expect(s.hint.says.text.vars.who.key).toBe('standing.who.you');
     expect(await roomStatus(openRoom)).toBe('failed');
   });
 

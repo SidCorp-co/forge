@@ -948,8 +948,8 @@ export const SAID = {
 	"standing.who.signerAdmitter": { en: "a BA or owner who can admit issues" },
 	"standing.who.currentRevision": { en: "The current revision" },
 	"standing.who.holderOf": {
-		en: "A holder of {perm}",
-		vars: { perm: "permission" },
+		en: "{perm}",
+		vars: { perm: "role" },
 	},
 	"standing.who.independentJudge": { en: "Independent judge" },
 	"standing.who.issues": { en: "Issues" },
@@ -2395,14 +2395,13 @@ export const SAID = {
 	"onboarding.hint.reading": { en: "Reading the code." },
 	"onboarding.hint.failed": { en: "Onboarding analysis failed." },
 	"onboarding.hint.failedWaits": {
-		en: "Attempt {n} failed{why} · Waits on: {who}",
-		vars: { n: "count", why: "said?", who: "said" },
+		en: "Attempt {n} failed · Waits on: {who}",
+		vars: { n: "count", who: "said" },
 	},
 	"onboarding.hint.drewNothing": {
-		en: "Attempt {n} drew nothing{why}",
-		vars: { n: "count", why: "said?" },
+		en: "Attempt {n} drew nothing",
+		vars: { n: "count" },
 	},
-	"onboarding.hint.endedWith": { en: ": {why}", vars: { why: "text" } },
 	"onboarding.hint.retrying": {
 		en: "Attempt {n}: {line}",
 		vars: { n: "count", line: "said" },

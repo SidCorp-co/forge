@@ -31,6 +31,7 @@ import {
   WORK_STEP_LABELS,
 } from "@forge/contracts/issue-vocabulary";
 import { NEEDS_YOU_AREA_LABELS } from "@forge/contracts/needs-you";
+import { PERMISSION_ROLE_LABELS } from "@forge/contracts/permissions";
 import { RELEASE_ATTENTION_LABELS, RELEASE_PROOF_LABELS, RELEASE_STATE_HINTS, RELEASE_STATE_LABELS } from "@forge/contracts/releases";
 import {
   BC_VERDICT_HINTS,
@@ -111,6 +112,7 @@ export const LABEL_GROUPS = {
   mockupKind: MOCKUP_KIND_LABELS,
   notificationType: NOTIFICATION_TYPE_LABELS,
   role: ENUM_LABELS.role,
+  permissionRole: PERMISSION_ROLE_LABELS,
   templateTitle: Object.fromEntries(BUILTIN_WORKFLOW_TEMPLATES.map((t) => [t.id, t.title])),
   templateNode: builtin((t) => t.nodeTypes, (n) => n.label),
   templateNodeHint: builtin((t) => t.nodeTypes, (n) => n.tooltip),

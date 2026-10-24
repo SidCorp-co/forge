@@ -1,0 +1,73 @@
+{
+  "source": "GET /api/projects/<forge>/onboarding on forge-dev 0.4.0-dev.306, read 2026-10-24; hints from onboarding/hint.ts:hintOf at this change",
+  "onboarding": {
+    "status": "failed",
+    "openBatch": null,
+    "job": {
+      "id": "1779f21f-8097-421f-ab28-1faaae1875af",
+      "phase": "revise",
+      "status": "failed",
+      "queuedAt": "2026-10-04T15:17:34.416Z",
+      "dispatchedAt": "2026-10-04T15:18:44.076Z",
+      "finishedAt": "2026-10-04T15:36:33.877Z",
+      "waitingOn": null,
+      "attempt": 10,
+      "endedWith": "cc-startup-death (≤3 msgs, no tool use)"
+    }
+  },
+  "hints": {
+    "member": {
+      "tone": "err",
+      "lead": "Onboarding analysis failed.",
+      "text": "Attempt 10 failed · Waits on: Member",
+      "action": "reanalyze",
+      "actionLabel": "Ask for a re-analysis",
+      "mayReanalyze": false,
+      "says": {
+        "lead": {
+          "key": "onboarding.hint.failed"
+        },
+        "text": {
+          "key": "onboarding.hint.failedWaits",
+          "vars": {
+            "n": 10,
+            "who": {
+              "key": "standing.who.holderOf",
+              "vars": {
+                "perm": "onboarding.request"
+              }
+            }
+          }
+        },
+        "actionLabel": {
+          "key": "onboarding.hint.askReanalysis"
+        }
+      }
+    },
+    "you": {
+      "tone": "err",
+      "lead": "Onboarding analysis failed.",
+      "text": "Attempt 10 failed · Waits on: You",
+      "action": "reanalyze",
+      "actionLabel": "Ask for a re-analysis",
+      "mayReanalyze": true,
+      "says": {
+        "lead": {
+          "key": "onboarding.hint.failed"
+        },
+        "text": {
+          "key": "onboarding.hint.failedWaits",
+          "vars": {
+            "n": 10,
+            "who": {
+              "key": "standing.who.you"
+            }
+          }
+        },
+        "actionLabel": {
+          "key": "onboarding.hint.askReanalysis"
+        }
+      }
+    }
+  }
+}

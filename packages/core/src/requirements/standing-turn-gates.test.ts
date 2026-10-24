@@ -126,7 +126,7 @@ describe('a person’s Needs you lists only the acts that person must do (BC-22)
     const on = asEach({ ...agreed, approvals: { breakdown: true } });
     expect(on.signer.attentionGroup).toBe('needs_you');
     expect(on.owner.attentionGroup).toBe('waiting');
-    expect(on.owner.waitingOn.who).toBe('A holder of suggestions.approve');
+    expect(on.owner.waitingOn.who).toBe('Suggestion approver');
   });
 });
 

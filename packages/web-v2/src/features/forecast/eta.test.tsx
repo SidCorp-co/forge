@@ -152,8 +152,8 @@ describe("a release a person still cuts", () => {
 
   it("names who triages an untriaged feedback item, with no date", () => {
     const eta = etaOfFeedback({ key: "FB-1", triage: { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "feedback.approve" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null }, vi);
-    expect(eta && etaLines(eta, vi).line).toBe("Chờ Người có quyền feedback…"); // i18n-allow: asserts the vi ETA copy
-    expect(eta?.detail).toBe("Người có quyền feedback.approve — phân loại. new: người có quyền feedback.approve phân loại nó"); // i18n-allow: asserts the vi ETA copy
+    expect(eta && etaLines(eta, vi).line).toBe("Chờ Người phân loại phản hồi"); // i18n-allow: asserts the vi ETA copy
+    expect(eta?.detail).toBe("Người phân loại phản hồi — phân loại. new: người có quyền feedback.approve phân loại nó"); // i18n-allow: asserts the vi ETA copy
   });
 });
 

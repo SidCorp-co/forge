@@ -26,6 +26,8 @@ function valueIn(language: string) {
         return label("issueStatus", v);
       case "step":
         return label("workStep", v.toLowerCase());
+      case "role":
+        return label("permissionRole", v);
       case "health":
         return copyOr(language, `common.state.connection.${v}`, v);
       default:
@@ -41,6 +43,7 @@ const ENGLISH_VALUE = (kind: SaidKind, value: string | number): string => {
   const v = String(value);
   if (kind === "step") return v.charAt(0).toUpperCase() + v.slice(1);
   if (kind === "statusLabel") return labelCopy("en")("issueStatus", v);
+  if (kind === "role") return labelCopy("en")("permissionRole", v);
   return v;
 };
 

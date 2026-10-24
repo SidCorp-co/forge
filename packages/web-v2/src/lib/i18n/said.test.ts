@@ -21,6 +21,7 @@ const SAMPLE: Record<SaidKind, SaidValue> = {
   version: "0.1.0",
   key: "ISS-1",
   permission: "project.write",
+  role: "releases.approve",
   date: "2026-10-05",
   instant: "2026-10-05T08:00:00.000Z",
   status: "in_progress",

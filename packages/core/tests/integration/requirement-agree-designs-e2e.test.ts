@@ -83,7 +83,7 @@ describe('a draft requirement linked to a design that is only proposed', () => {
     expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({
       kind: 'person',
-      who: 'A holder of workflow-designs.approve',
+      who: 'Design approver',
       act: 'approve design Post-discharge follow-up',
     });
     expect((s.facts as Body).unapprovedDesigns).toEqual([

@@ -27,6 +27,7 @@ import {
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
+import { ROLE_WHO } from '../helpers/role-who.js';
 
 const BETA_SHA = 'e7af41887a0e90ed541bb0dbfb34d4f9cb4f8510';
 
@@ -212,7 +213,7 @@ describe('a draft release reads its gate as words', () => {
       attentionGroup: 'waiting',
       waitingOn: {
         kind: 'person',
-        who: expect.not.stringMatching(/^(A project (writer|admin)|A holder of .+|Nobody)$/),
+        who: expect.not.stringMatching(ROLE_WHO),
       },
       can: { cut: false },
     });

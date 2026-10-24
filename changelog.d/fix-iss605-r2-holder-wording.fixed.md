@@ -1,0 +1,1 @@
+**A wait names a role, not a permission id.** "Waits on" reads Member, Release approver or Feedback triager, never "A holder of onboarding.request", and You where you hold it. The runner's failure tag moves to the Developer view.

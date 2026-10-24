@@ -16,6 +16,7 @@ import {
   QUESTIONNAIRE_MAX_ROUNDS,
   type QuestionnaireItem,
 } from '@forge/contracts/onboarding';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, count, desc, eq, gte, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs } from '../db/schema.js';
@@ -25,11 +26,11 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { linkItems, type SeriesItem } from './design-items.js';
 import { batchDue, hintOf, type SystemContextState } from './hint.js';
 import { runWaitingOf } from './ports.js';
-import { type LiveJob, onboardingStatusOf } from './rules.js';
+import { type LiveJob, onboardingStatusOf, personActRefusal } from './rules.js';
 
 type Executor = typeof db | Tx;
 export type OnboardingRow = typeof onboardings.$inferSelect;
@@ -391,16 +392,22 @@ export async function onboardingView(
   };
 }
 
+/**
+ * The onboarding as `reader` reads it. The hint offers a re-analysis, and names them as who acts,
+ * only where the ask would take theirs: the same rule (rules.ts:personActRefusal) the ask is held to.
+ */
 export async function readOnboardingState(
   projectId: string,
-  userId: string,
+  reader: { userId: string; agency: ActorAgency },
 ): Promise<Omit<OnboardingStateResponse, 'firstRequirements'>> {
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+  await requireCan(actorFor(reader.userId), 'project.read', projectResource(projectId));
   const row = await onboardingOf(db, projectId);
   const view = row ? await onboardingView(db, row) : null;
+  const facts = await permissionFactsOf(reader.userId, projectId);
+  const canRequest = personActRefusal(reader.agency, facts, 'asking for a re-analysis') === null;
   return {
     onboarding: view,
-    hint: hintOf(view, view ? 'none' : await systemContextOf(projectId)),
+    hint: hintOf(view, view ? 'none' : await systemContextOf(projectId), { canRequest }),
   };
 }
 

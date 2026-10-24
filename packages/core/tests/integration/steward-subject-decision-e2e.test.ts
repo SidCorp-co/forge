@@ -67,7 +67,7 @@ function personWait(item: Item, basis: string): ItemStanding {
     group: 'stuck',
     waitingOn: {
       kind: 'person',
-      who: 'A holder of feedback.approve',
+      who: 'Feedback triager',
       act: 'triage it',
       rule: 'a person decides what happens to it',
       ref: null,

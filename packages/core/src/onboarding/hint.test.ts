@@ -5,14 +5,22 @@ import { waitingOn } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
 import { liveOf } from '../runs/standing-live.js';
 import type { RunFacts, StandingContext } from '../runs/standing-types.js';
-import { batchDue, hintOf as hintOf_ } from './hint.js';
+import { batchDue, type HintViewer, hintOf as hintOf_ } from './hint.js';
 
-/** Every hint's words are the sentences it says (`saidDisagreements`). */
-const hintOf = ((...a: Parameters<typeof hintOf_>) => {
-  const h = hintOf_(...a);
+/** A reader holding onboarding.request (a member), and one who does not (a viewer). */
+const HOLDER: HintViewer = { canRequest: true };
+const VIEWER: HintViewer = { canRequest: false };
+
+/** Every hint's words are the sentences it says (`saidDisagreements`); the reader holds onboarding.request unless named. */
+const hintOf = (
+  v: Parameters<typeof hintOf_>[0],
+  ctx: Parameters<typeof hintOf_>[1],
+  viewer: HintViewer = HOLDER,
+) => {
+  const h = hintOf_(v, ctx, viewer);
   expect(saidDisagreements(h)).toEqual([]);
   return h;
-}) as typeof hintOf_;
+};
 
 const T0 = new Date('2026-10-01T00:00:00Z');
 const day = (n: number) => new Date(T0.getTime() + n * 86_400_000);
@@ -49,27 +57,35 @@ const job = (over: Partial<NonNullable<OnboardingView['job']>> = {}) => ({
 });
 
 describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis', () => {
-  it('makes re-analysis the action of a failed analysis, and names who asks for it (ISS-605)', () => {
-    const h = hintOf(view({ status: 'failed', job: job({ status: 'failed' }) }), 'none');
-    expect(h).toMatchObject({ tone: 'err', action: 'reanalyze', mayReanalyze: true });
+  it('makes re-analysis the action of a failed analysis, and names the role who asks for it (ISS-605)', () => {
+    const h = hintOf(view({ status: 'failed', job: job({ status: 'failed' }) }), 'none', VIEWER);
+    expect(h).toMatchObject({ tone: 'err', action: 'reanalyze', mayReanalyze: false });
     expect(h?.lead).toBe('Onboarding analysis failed.');
-    expect(h?.text).toBe('Attempt 1 failed · Waits on: A holder of onboarding.request');
+    expect(h?.text).toBe('Attempt 1 failed · Waits on: Member');
+    expect(h?.text).not.toContain('onboarding.request');
     expect(h?.says.text.vars?.who).toEqual(
       say('standing.who.holderOf', { perm: 'onboarding.request' }),
     );
   });
 
-  it('names the attempt that failed and why it ended, where the job recorded why (ISS-268)', () => {
+  it('reads You to the reader who holds onboarding.request, and offers them the act (ISS-605)', () => {
+    const h = hintOf(view({ status: 'failed', job: job({ status: 'failed' }) }), 'none', HOLDER);
+    expect(h).toMatchObject({ action: 'reanalyze', mayReanalyze: true });
+    expect(h?.text).toBe('Attempt 1 failed · Waits on: You');
+    expect(h?.says.text.vars?.who).toEqual(say('standing.who.you'));
+  });
+
+  it("names the attempt that failed, and leaves the runner's failure tag off the line (ISS-268, ISS-605)", () => {
     const h = hintOf(
       view({
         status: 'failed',
         job: job({ status: 'failed', attempt: 3, endedWith: 'the runner went offline' }),
       }),
       'none',
+      VIEWER,
     );
-    expect(h?.text).toBe(
-      'Attempt 3 failed: the runner went offline · Waits on: A holder of onboarding.request',
-    );
+    expect(h?.text).toBe('Attempt 3 failed · Waits on: Member');
+    expect(h?.text).not.toContain('the runner went offline');
   });
 
   it('says a failure before done, and before every design approved hides the line (ISS-605)', () => {
@@ -93,10 +109,9 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
         job: job({ phase: 'revise', status: 'failed', attempt: 10, endedWith: 'cc-startup-death' }),
       },
       'none',
+      VIEWER,
     );
-    expect(failed?.text).toBe(
-      'Attempt 10 failed: cc-startup-death · Waits on: A holder of onboarding.request',
-    );
+    expect(failed?.text).toBe('Attempt 10 failed · Waits on: Member');
   });
 
   it('names the re-analysis, not an answer, while a round still holds a question open (ISS-605)', () => {
@@ -138,6 +153,20 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
     expect(hintOf(view({ status: 'done', doneAt: T0.toISOString() }), 'none')?.mayReanalyze).toBe(
       true,
     );
+  });
+
+  it('is not offered to a reader who does not hold onboarding.request, whom the ask would refuse', () => {
+    expect(
+      hintOf(view({ status: 'done', doneAt: T0.toISOString() }), 'none', VIEWER)?.mayReanalyze,
+    ).toBe(false);
+  });
+
+  it("says an attempt that drew nothing without the runner's failure tag (ISS-605)", () => {
+    const h = hintOf(
+      view({ job: job({ status: 'failed', attempt: 2, endedWith: 'cc-startup-death' }) }),
+      'none',
+    );
+    expect(h?.text).toBe('Attempt 2 drew nothing');
   });
 
   it('is not offered before an onboarding exists', () => {

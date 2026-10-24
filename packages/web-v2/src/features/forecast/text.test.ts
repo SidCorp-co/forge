@@ -40,8 +40,8 @@ describe("forecast text", () => {
 
   it("names who owes the move instead of a date when paused", () => {
     const f: Forecast = { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "project.write" }), say("issues.standing.act.answer"), say("issues.rule.needsInfo")), ref: null, since: null, late: null };
-    expect(forecastText(f, CLOCK).line).toBe("Paused — waiting on A holder of project.write to answer a question");
-    expect(forecastText(f, { ...CLOCK, lang: "vi" }).line).toContain("Người có quyền project.write"); // i18n-allow: the vi of what core said
+    expect(forecastText(f, CLOCK).line).toBe("Paused — waiting on Member to answer a question");
+    expect(forecastText(f, { ...CLOCK, lang: "vi" }).line).toContain("Thành viên"); // i18n-allow: the vi of what core said
   });
 
   it("gives no number below the floor", () => {
@@ -64,7 +64,7 @@ describe("forecast text", () => {
       },
       CLOCK,
     ).line;
-    expect(line).toMatch(/^All 2 landed by .+ · then waiting on A holder of releases.approve to cut the next version/);
+    expect(line).toMatch(/^All 2 landed by .+ · then waiting on Release approver to cut the next version/);
   });
 
   it("spans minutes, hours and days", () => {
@@ -88,12 +88,12 @@ describe("delivery text: in people's hands, not merged", () => {
 
   it("names the person and the act, with no date for it, where a person cuts the release", () => {
     const { line } = deliveryText(delivery({ release: manual, inHands: null }), CLOCK);
-    expect(line).toBe("Forecast lands 14:00 – 17:00 today · then waits on A holder of project.admin to cut 0.2.0");
+    expect(line).toBe("Forecast lands 14:00 – 17:00 today · then waits on Admin to cut 0.2.0");
   });
 
   it("reads a fixed change still unreleased as waiting on the release", () => {
     const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-30) };
-    expect(deliveryText(delivery({ landing: landed, release: manual, inHands: null }), CLOCK).line).toBe("Fixed · waits on A holder of project.admin to cut 0.2.0");
+    expect(deliveryText(delivery({ landing: landed, release: manual, inHands: null }), CLOCK).line).toBe("Fixed · waits on Admin to cut 0.2.0");
     expect(deliveryText(delivery({ landing: landed, inHands: span(10, 60) }), CLOCK).line).toBe("Fixed · forecast live 12:10 – 13:00 today");
   });
 
@@ -112,7 +112,7 @@ describe("delivery text: in people's hands, not merged", () => {
 describe("feedback and requirement lines", () => {
   it("says an untriaged item waits on triage and who, with no date", () => {
     const line = feedbackForecastText({ key: "FB-1", triage: { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "feedback.approve" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null }, CLOCK)?.line;
-    expect(line).toBe("Waiting on triage — A holder of feedback.approve to triage it");
+    expect(line).toBe("Waiting on triage — Feedback triager to triage it");
   });
 
   it("draws nothing for an item that carries no work that ships", () => {

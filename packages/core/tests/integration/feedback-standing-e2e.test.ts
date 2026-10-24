@@ -28,6 +28,7 @@ import {
   createTestUser,
   seedIssueStatus,
 } from '../helpers/factories.js';
+import { ROLE_WHO } from '../helpers/role-who.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'member' | 'viewer' | 'box';
@@ -148,7 +149,7 @@ describe('with no live master, an untriaged item waits on a holder of feedback.a
         attentionGroup: 'waiting',
         waitingOn: expect.objectContaining({
           kind: 'person',
-          who: 'A holder of feedback.approve',
+          who: 'Feedback triager',
           act: 'triage it',
         }),
       });
@@ -244,7 +245,7 @@ describe('a carrier at the release gate waits on whoever makes that release', ()
       attentionGroup: 'moving',
       waitingOn: expect.objectContaining({
         kind: 'person',
-        who: expect.not.stringMatching(/^(A project (writer|admin)|A holder of .+|Nobody)$/),
+        who: expect.not.stringMatching(ROLE_WHO),
         act,
       }),
     });

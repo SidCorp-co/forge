@@ -17,6 +17,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
+import { ROLE_WHO } from '../helpers/role-who.js';
 
 let projectId: string;
 let ownerId: string;
@@ -196,7 +197,7 @@ describe('a gate reason no issue act clears', () => {
     const release = await draft();
     expect(release.gates.find((g: Doc) => g.code === 'RELEASE_POOL_EMPTY')?.owner).toMatchObject({
       kind: 'person',
-      who: expect.not.stringMatching(/^(A project (writer|admin)|A holder of .+|Nobody)$/),
+      who: expect.not.stringMatching(ROLE_WHO),
     });
     // the admin's act is no decision, so it waits on them off Needs you (REQ-48 BC-11)
     expect(release).toMatchObject({ attentionGroup: 'waiting', waitingOn: { kind: 'you' } });

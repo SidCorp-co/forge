@@ -15,7 +15,7 @@ describe("the dashboard's plan sections", () => {
       row({ key, title: `Title ${key}`, release: { version: "0.1.0", who: say("standing.who.holderOf", { perm: "releases.approve" }) }, eta: { kind: "range", p50At: "2026-10-08T10:00:00Z", p85At: "2026-10-08T12:00:00Z", tail: null, detail: "d" } });
     render(<LandsThisWeek slug="hop" rows={[waiting("REQ-1"), waiting("REQ-2"), waiting("REQ-3"), row({ key: "REQ-9" })]} clock={clock} />);
     const group = screen.getByTestId("lands-when-cut");
-    expect(group).toHaveTextContent("3 land when 0.1.0 is cut — waits on A holder of releases.approve");
+    expect(group).toHaveTextContent("3 land when 0.1.0 is cut — waits on Release approver");
     expect(within(group).getByRole("link", { name: "0.1.0" })).toHaveAttribute("href", "/projects/hop/releases/0.1.0");
     expect(within(group).getAllByTestId("plan-row")).toHaveLength(3);
     expect(screen.getAllByTestId("plan-row")).toHaveLength(4);

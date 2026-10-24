@@ -20,6 +20,7 @@ import {
   world,
 } from '../helpers/forecast-world.js';
 import { seedProductionDeployTrigger } from '../helpers/release-world.js';
+import { ROLE_WHO } from '../helpers/role-who.js';
 
 // "Done" as a person means it: in their hands. Feedback, requirements and Releases read the landing
 // forecast plus the release that follows it — a sampled lag where production releases on its own,
@@ -123,7 +124,7 @@ describe('a release a person cuts is named, never dated', () => {
     expect(d.release).toMatchObject({
       kind: 'person',
       mode: 'manual',
-      who: expect.not.stringMatching(/^(A project (writer|admin)|A holder of .+|Nobody)$/),
+      who: expect.not.stringMatching(ROLE_WHO),
     });
     expect((d.release as Body).act).toMatch(/^cut \d+\.\d+\.\d+/);
     expect(d.inHands).toBeNull();

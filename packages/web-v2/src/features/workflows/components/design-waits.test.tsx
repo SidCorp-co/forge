@@ -18,7 +18,7 @@ describe("whom a design on the list waits on", () => {
     );
     const cell = screen.getByTestId("waiting-on");
     expect(cell).toHaveAttribute("data-kind", "person");
-    expect(cell).toHaveTextContent("A holder of workflow-designs.approve · approve or return the design");
+    expect(cell).toHaveTextContent("Design approver · approve or return the design");
     // REQ-43 BC-7: a revision number is agent text, so the act a person reads names none
     expect(cell.textContent, "the act names a revision number").not.toMatch(/revision|\d/);
   });

@@ -220,7 +220,7 @@ describe('a draft requirement whose linked designs are not all approved', () => 
     expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({
       kind: 'person',
-      who: 'A holder of workflow-designs.approve',
+      who: 'Design approver',
       act: 'approve design Checkout',
     });
     expect(s.waitingOn.rule).toContain('REQUIREMENT_DESIGN_UNAPPROVED');

@@ -40,7 +40,7 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
       AT,
     );
     expect(s.waitingOn.kind).toBe('person');
-    expect(s.waitingOn.who).toBe('A holder of feedback.approve');
+    expect(s.waitingOn.who).toBe('Feedback triager');
     expect(s.attentionGroup).toBe('waiting');
   });
 

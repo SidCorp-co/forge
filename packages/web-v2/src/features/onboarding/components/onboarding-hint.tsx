@@ -1,10 +1,13 @@
 
 // The dashboard's one line about onboarding (workflow project-onboarding, BC-1): never a blocker,
 // derived by core from the onboarding's own rows, gone once every onboarding design is approved.
-// Its link opens the onboarding thread in the chat panel, starting onboarding first when asked.
+// Its link opens the onboarding thread in the chat panel, starting onboarding first when asked. Why
+// the last attempt ended is the runner's own tag, agent text drawn only in the Developer view
+// (`?view=developer`, ui-copy-rule 6). A re-analysis the reader may not ask for is said, not offered:
+// its words stand where the control would, so the line still states the act its holder owes.
 
 import type { OnboardingHint as Hint, OnboardingStateResponse } from "@forge/contracts/onboarding";
-import { LEGEND } from "@/design";
+import { LEGEND, useRecordView } from "@/design";
 import { useChatDock } from "@/features/chat-dock";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
@@ -44,24 +47,34 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
   const { ask, dialog, pending, error } = useAskForDesigns(projectId);
   const copy = useCopy();
   const language = useInterfaceLanguage();
+  const [view] = useRecordView();
   const hint = q.data?.hint;
   if (!hint) return <FirstRequirementsLine projectId={projectId} first={q.data?.firstRequirements ?? null} />;
   const t = TONE[hint.tone];
+  const endedWith = view === "developer" ? (q.data?.onboarding?.job?.endedWith ?? null) : null;
+  const offersAction = hint.action !== "reanalyze" || hint.mayReanalyze;
   return (
     <div className="px-4 py-2.5 sm:px-6" style={{ background: t.bg }} data-testid="onboarding-hint">
       <div className="flex items-baseline gap-2 text-14 text-fg">
         <span aria-hidden className="size-2 flex-none -translate-y-px rounded-full" style={{ background: t.dot }} />
         <p className="min-w-0">
-          <span className="font-bold">{said(hint.says.lead, language)}</span> {said(hint.says.text, language)} ·{" "}
-          <button
-            type="button"
-            className="font-medium text-link hover:underline disabled:opacity-60"
-            disabled={pending}
-            onClick={() => ask(hint.action)}
-            data-testid="onboarding-hint-action"
-          >
-            {said(hint.says.actionLabel, language)}
-          </button>
+          <span className="font-bold">{said(hint.says.lead, language)}</span> {said(hint.says.text, language)}
+          {" · "}
+          {offersAction ? (
+            <button
+              type="button"
+              className="font-medium text-link hover:underline disabled:opacity-60"
+              disabled={pending}
+              onClick={() => ask(hint.action)}
+              data-testid="onboarding-hint-action"
+            >
+              {said(hint.says.actionLabel, language)}
+            </button>
+          ) : (
+            <span className="font-medium" data-testid="onboarding-hint-act">
+              {said(hint.says.actionLabel, language)}
+            </span>
+          )}
           {hint.mayReanalyze && hint.action !== "reanalyze" && (
             <>
               {" · "}
@@ -77,6 +90,11 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
           )}
         </p>
       </div>
+      {endedWith && (
+        <p className="mt-1 pl-4 font-mono text-12 text-subtle" data-testid="onboarding-hint-ended">
+          {endedWith}
+        </p>
+      )}
       <p className="mt-1 flex items-center gap-1.5 pl-4 text-12 text-subtle">
         <span aria-hidden className="text-ai-9">
           ✦

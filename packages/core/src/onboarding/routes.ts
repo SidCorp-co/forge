@@ -61,7 +61,7 @@ const emptyBody = strictBody(z.strictObject({}), 'this action takes an empty obj
 
 onboardingRoutes.get('/:id/onboarding', projectParam, async (c) => {
   const { id } = c.req.valid('param');
-  const state = await readOnboardingState(id, c.get('userId'));
+  const state = await readOnboardingState(id, actorOf(c));
   const body: OnboardingStateResponse = {
     ...state,
     firstRequirements: await readFirstRequirements(id),

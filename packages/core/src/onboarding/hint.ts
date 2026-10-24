@@ -125,29 +125,41 @@ function liveJobText(job: NonNullable<OnboardingView['job']>): Said {
 const attemptLine = (job: NonNullable<OnboardingView['job']>, line: Said): Said =>
   job.attempt > 1 ? say('onboarding.hint.retrying', { n: job.attempt, line }) : line;
 
-const endedWith = (job: NonNullable<OnboardingView['job']>): Said | null =>
-  job.endedWith ? say('onboarding.hint.endedWith', { why: job.endedWith }) : null;
-
-/** An attempt that is over and drew nothing says so, and why it ended when the job recorded why. */
+/**
+ * An attempt that is over and drew nothing says so. Why it ended is the runner's own tag, agent
+ * text the view carries as `job.endedWith` for the Developer view, never this line (ISS-605).
+ */
 const drewNothing = (job: NonNullable<OnboardingView['job']>): Said =>
-  say('onboarding.hint.drewNothing', { n: job.attempt, why: endedWith(job) });
+  say('onboarding.hint.drewNothing', { n: job.attempt });
+
+/** What the reader holds that the hint reads: whether they may ask for a re-analysis (onboarding.request). */
+export interface HintViewer {
+  canRequest: boolean;
+}
 
 /**
  * Who acts on a failed analysis: a re-analysis is a person's ask, held by onboarding.request
- * (rules.ts:personActRefusal), named the way a standing names a permission's holder.
+ * (rules.ts:personActRefusal). The reader who holds it reads You, as a standing names its viewer's
+ * own act; anyone else reads the role that holds it.
  */
-const REANALYSIS_ASKER = say('standing.who.holderOf', { perm: 'onboarding.request' });
+const reanalysisAsker = (viewer: HintViewer): Said =>
+  viewer.canRequest
+    ? say('standing.who.you')
+    : say('standing.who.holderOf', { perm: 'onboarding.request' });
 
-/** A failed onboarding's line (ISS-605): the attempt that failed, why, and who acts; the action is the act. */
-function failedHint(view: OnboardingView, mayReanalyze: boolean): OnboardingHint {
+/** A failed onboarding's line (ISS-605): the attempt that failed and who acts; the action is the act. */
+function failedHint(
+  view: OnboardingView,
+  viewer: HintViewer,
+  mayReanalyze: boolean,
+): OnboardingHint {
   const job = view.job;
   return hint(
     'err',
     say('onboarding.hint.failed'),
     say('onboarding.hint.failedWaits', {
       n: job?.attempt ?? 1,
-      why: job ? endedWith(job) : null,
-      who: REANALYSIS_ASKER,
+      who: reanalysisAsker(viewer),
     }),
     'reanalyze',
     say('onboarding.hint.askReanalysis'),
@@ -160,18 +172,20 @@ function failedHint(view: OnboardingView, mayReanalyze: boolean): OnboardingHint
 // last analysis failed, which is said before anything else and never reads done (ISS-605). With no
 // onboarding it reads the project's system-context design, so a project that has one approved is
 // never told it has no system context (e2e D9). A re-analysis is offered whenever no job is live,
-// the same rule reanalyzeRefusal holds (ONBOARDING_ALREADY_RUNNING)
+// the same rule reanalyzeRefusal holds (ONBOARDING_ALREADY_RUNNING), and only to a reader holding
+// onboarding.request, whom the ask would not refuse
 export function hintOf(
   view: OnboardingView | null,
   systemContext: SystemContextState,
+  viewer: HintViewer,
 ): OnboardingHint | null {
   if (!view) return noOnboardingHint(systemContext);
   const drafted = view.designs.length;
   const approved = view.designs.filter((d) => d.designStatus === 'approved').length;
   const live = view.job !== null && LIVE.has(view.job.status);
-  const mayReanalyze = !live;
+  const mayReanalyze = !live && viewer.canRequest;
   const open = say('onboarding.hint.openOnboarding');
-  if (view.status === 'failed') return failedHint(view, mayReanalyze);
+  if (view.status === 'failed') return failedHint(view, viewer, mayReanalyze);
   if (view.status === 'done') {
     if (drafted > 0 && approved === drafted) return null;
     return hint(

@@ -129,7 +129,7 @@
     "standing.who.baOrOwner": "BA hoặc chủ sở hữu",
     "standing.who.currentRevision": "Bản sửa hiện hành",
     "standing.who.dash": "—",
-    "standing.who.holderOf": "Người có quyền {perm}",
+    "standing.who.holderOf": "{perm}",
     "standing.who.independentJudge": "Người chấm độc lập",
     "standing.who.issues": "Issue",
     "standing.who.itsAuthor": "Tác giả của nó",

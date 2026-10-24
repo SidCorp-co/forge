@@ -72,7 +72,7 @@ describe("the feedback item's progress block", () => {
   it("names who triages an untriaged item", async () => {
     await shown(CASE("FB-11"));
     expect(screen.getByTestId("feedback-progress").dataset.work).toBe("untriaged");
-    expect(screen.getByTestId("feedback-forecast-line").textContent).toContain("A holder of feedback.approve");
+    expect(screen.getByTestId("feedback-forecast-line").textContent).toContain("Feedback triager");
   });
 
   it("a fixed item still unreleased waits on whoever cuts the release, linked", async () => {

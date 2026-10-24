@@ -9,6 +9,7 @@
 import { z } from "zod";
 import type { IssueStatus } from "./issue-machine.js";
 import { ISSUE_STATUS_LABELS } from "./issue-vocabulary.js";
+import { PERMISSION_ROLE_LABELS } from "./permissions.js";
 import { SAID } from "./said-keys.js";
 
 /**
@@ -19,6 +20,7 @@ import { SAID } from "./said-keys.js";
  * - `version`: a release version
  * - `key`: an entity's key, or several joined by ", " (`ISS-4, ISS-5`, `BC-1`)
  * - `permission`: a project permission id (`project.write`)
+ * - `role`: a permission id, read as the role that holds it (`PERMISSION_ROLE_LABELS`: `Release approver`); an id with no role is refused
  * - `date`: an ISO calendar date (`2026-10-05`)
  * - `instant`: an ISO timestamp (`2026-10-05T08:00:00.000Z`)
  * - `status` / `statusLabel`: an issue status id; English writes the id, or its label
@@ -38,6 +40,7 @@ export const SAID_KINDS = [
 	"version",
 	"key",
 	"permission",
+	"role",
 	"date",
 	"instant",
 	"status",
@@ -137,6 +140,11 @@ function checked(
 				"SAID_VAR_KIND",
 				`"${key}" {${name}} must be ${kind}, got ${JSON.stringify(v)}`,
 			);
+		if (kind === "role" && !Object.hasOwn(PERMISSION_ROLE_LABELS, v as string))
+			throw new SaidRefused(
+				"SAID_VAR_KIND",
+				`"${key}" {${name}} must be a permission with a role in PERMISSION_ROLE_LABELS, got ${JSON.stringify(v)}`,
+			);
 		if (isSaid(v)) checked(v.key, v.vars);
 		if (Array.isArray(v))
 			for (const x of v as readonly Said[]) checked(x.key, x.vars);
@@ -203,6 +211,17 @@ const STEP_WORD: Record<string, string> = {
 	release: "Release",
 };
 
+/** The role a permission's holder reads as; checked() refuses an id without one before it is read. */
+const roleOf = (permission: string): string => {
+	const role = (PERMISSION_ROLE_LABELS as Readonly<Record<string, string>>)[permission];
+	if (role === undefined)
+		throw new SaidRefused(
+			"SAID_VAR_KIND",
+			`${JSON.stringify(permission)} has no role in PERMISSION_ROLE_LABELS`,
+		);
+	return role;
+};
+
 const ENGLISH: SaidReader = {
 	template: (key) => ENTRIES[key]?.en,
 	value: (kind, v) =>
@@ -211,7 +230,9 @@ const ENGLISH: SaidReader = {
 				`${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}`)
 			: kind === "statusLabel"
 				? (ISSUE_STATUS_LABELS[v as IssueStatus] ?? String(v))
-				: String(v),
+				: kind === "role"
+					? roleOf(String(v))
+					: String(v),
 	unknown: (key) => {
 		throw new SaidRefused(
 			"SAID_KEY_UNKNOWN",

@@ -136,6 +136,50 @@ export const ROLE_PERMISSIONS: Readonly<
 	],
 };
 
+/**
+ * Who a person reads as holding each permission: the project role that holds it by default
+ * (`ROLE_PERMISSIONS`), or, for an approve act a grant may hand a member, the approver it makes.
+ * A standing that waits on a permission's holder names this, never the id (ISS-605); a permission
+ * added above without a label here does not typecheck.
+ */
+export const PERMISSION_ROLE_LABELS: Readonly<Record<Permission, string>> = {
+	"project.read": "Viewer",
+	"project.write": "Member",
+	"workflow-designs.write": "Member",
+	"workflow-observations.write": "Member",
+	"questionnaires.write": "Member",
+	"onboarding.write": "Member",
+	"ecosystem-links.write": "Member",
+	"contracts.write": "Member",
+	"suggestions.write": "Member",
+	"shares.write": "Member",
+	"questionnaires.answer": "Member",
+	"onboarding.request": "Member",
+	"charter.write": "Member",
+	"commitments.write": "Member",
+	"requirements.approve": "Requirement approver",
+	"mockups.approve": "Mockup approver",
+	"suggestions.approve": "Suggestion approver",
+	"workflow-designs.approve": "Design approver",
+	"contracts.approve": "Contract approver",
+	"feedback.approve": "Feedback triager",
+	"releases.approve": "Release approver",
+	"plans.approve": "Plan approver",
+	"patterns.approve": "Pattern reviewer",
+	"previews.approve": "Preview approver",
+	"deploys.run": "Deployer",
+	"shares.public": "Admin",
+	"assistant.exec": "Admin",
+	"project.admin": "Admin",
+	"members.admin": "Admin",
+	"issues.admit": "Admin",
+	"feedback.redact": "Admin",
+	"comments.moderate": "Admin",
+	"org.read": "Org member",
+	"org.admin": "Org admin",
+	"org.own": "Org owner",
+};
+
 const ORG_ROLES = ["member", "admin", "owner"] as const;
 type OrgRole = (typeof ORG_ROLES)[number];
 
