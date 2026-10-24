@@ -387,14 +387,17 @@ mod tests {
 
     #[test]
     fn a_runner_config_dir_named_outside_the_home_is_emptied_too() {
-        let root = std::env::temp_dir().join(format!(
-            "confine-cfg-{}-{}",
+        // not under the temp dir: /tmp is emptied whole, so a dir inside it is never listed alone
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "../../target/confine-cfg-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos()
         ));
+        std::fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
         let home = root.join("home");
         let daemon = root.join("srv/forge-runner");
         std::fs::create_dir_all(&home).unwrap();

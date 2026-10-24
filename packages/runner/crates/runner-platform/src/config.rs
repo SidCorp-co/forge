@@ -433,10 +433,11 @@ mod tests {
 
     #[test]
     fn the_runner_variable_names_the_config_dir_over_the_xdg_rule() {
-        let named = Some(OsString::from("/srv/daemon/forge-runner"));
+        // absolute on every platform: "/srv/..." is relative on Windows, and refused there
+        let dir = std::env::temp_dir().join("srv/daemon/forge-runner");
         assert_eq!(
-            base_dir_from(named, xdg_rule).unwrap(),
-            PathBuf::from("/srv/daemon/forge-runner"),
+            base_dir_from(Some(dir.clone().into_os_string()), xdg_rule).unwrap(),
+            dir,
             "{CONFIG_DIR_ENV} set: forge-runner resolved its config from XDG_CONFIG_HOME instead"
         );
     }
