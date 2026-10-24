@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.308] - 2026-10-24
+
+MCP tools name the missing field or mistyped key they refuse
+
+### Fixed
+
+- **An MCP tool now names a missing field or a mistyped key.** A field an action needs, or an issue, requirement, feedback or mockup key of the wrong shape, answers BAD_REQUEST at its path with the valid shape.
+
 ## [0.4.0-dev.307] - 2026-10-24
 
 Shipped requirements are judged on the running build instead of awaiting a breakdown

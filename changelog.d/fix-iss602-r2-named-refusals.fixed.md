@@ -1,1 +1,0 @@
-**An MCP tool now names a missing field or a mistyped key.** A field an action needs, or an issue, requirement, feedback or mockup key of the wrong shape, answers BAD_REQUEST at its path with the valid shape.
