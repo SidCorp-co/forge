@@ -215,7 +215,9 @@ describe('the gate', () => {
 
   it('answers a validator error from Forge’s own data as Forge’s fault, not the caller’s, and dumps nothing', async () => {
     const gated = gatedTool(tool(async () => z.object({ row: z.string() }).parse({ row: 1 })));
-    const err = await gated.handler({ id: '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b' }).catch((e) => e);
+    const err = (await gated
+      .handler({ id: '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b' })
+      .catch((e: unknown) => e)) as Error;
     expect(err).toBeInstanceOf(Error);
     expect(String(err.message)).toMatch(/probe_tool could not read its own data: a fault in Forge/);
     expect(String(err.message)).not.toContain('invalid_type');

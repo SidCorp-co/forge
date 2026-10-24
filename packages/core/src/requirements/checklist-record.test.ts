@@ -145,7 +145,9 @@ describe('the acceptance checklist, read from the delivery', () => {
     });
 
   it('is complete when every issue shipped, every BC passes and each verdict cites evidence', () => {
-    expect(accept({ liveIssues: 2, unshipped: [], unproven: [] }, []).complete).toBe(true);
+    expect(
+      accept({ liveIssues: 2, unshipped: [], shipped: false, unproven: [] }, []).complete,
+    ).toBe(true);
   });
 
   it('names an unshipped issue, an unproven BC with its reason, and an uncited verdict', () => {
@@ -153,6 +155,7 @@ describe('the acceptance checklist, read from the delivery', () => {
       {
         liveIssues: 2,
         unshipped: ['ISS-9'],
+        shipped: false,
         unproven: [
           { code: 'BC-2', verdict: 'not_judged', why: 'the live build could not be read' },
           { code: 'BC-4', verdict: 'gap', why: null },
@@ -169,7 +172,7 @@ describe('the acceptance checklist, read from the delivery', () => {
   });
 
   it('refuses a requirement no live issue delivers', () => {
-    const e = accept({ liveIssues: 0, unshipped: [], unproven: [] }, []);
+    const e = accept({ liveIssues: 0, unshipped: [], shipped: false, unproven: [] }, []);
     expect(checklistRefusals(e).map((r) => r.question)).toEqual(['shipped']);
   });
 });

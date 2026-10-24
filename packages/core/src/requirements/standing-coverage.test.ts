@@ -142,7 +142,7 @@ describe('the verdict a business criterion counts', () => {
       row(3, 'skipped', '2026-10-07T00:00:00Z'),
     ]);
     expect(c?.verdict).toBe('failing');
-    expect(c?.counts?.displayId).toBe('ISS-2');
+    expect(c?.counts).toMatchObject({ displayId: 'ISS-2' });
   });
 
   it('a verdict at a commit the live build lacks never counts: the newest one it holds does', () => {
