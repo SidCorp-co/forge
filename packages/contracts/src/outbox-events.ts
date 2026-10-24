@@ -12,6 +12,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"issue.updated",
 	"issue.transitioned",
 	"issue.dependency.changed",
+	"issue.landedWorkLeft",
 	"job.transitioned",
 	"run.transitioned",
 	"comment.created",
@@ -236,6 +237,19 @@ export interface OutboxEventPayloads
 		via?: MergeStampVia;
 	};
 	"issue.transitioned": TransitionEvent<"issue">;
+	/**
+	 * The reconciler's wedge pass left an `in_progress` issue nothing holds because its merge stands
+	 * (ISS-564): no status moves by itself, so the master is woken to move it to `awaiting_release`.
+	 * Written once per mark, beside the notice that says so on the issue.
+	 */
+	"issue.landedWorkLeft": {
+		issueId: string;
+		projectId: string;
+		/** ISO 8601: when the mark the work stands on was recorded. */
+		mergedAt: string;
+		commit: string | null;
+		landing: string | null;
+	};
 	"job.transitioned": TransitionEvent<"job">;
 	"run.transitioned": TransitionEvent<"run">;
 	"question.transitioned": TransitionEvent<"question">;

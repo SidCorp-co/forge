@@ -23,6 +23,7 @@ export const OUTBOX_CONSUMERS = {
 		"steward",
 	],
 	"issue.dependency.changed": ["ws-broadcast", "dependency-health"],
+	"issue.landedWorkLeft": ["master-wake"],
 	"job.transitioned": ["phase-journal-close", "memory-extraction", "steward"],
 	"run.transitioned": [
 		"paused-run-wedge-resolve",

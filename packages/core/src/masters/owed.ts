@@ -42,6 +42,8 @@ interface Owed {
   answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
   /** What the steward asked the master to act on, each standing until its item's standing moves. */
   stewardAsks: StewardAsk[];
+  /** `in_progress` issues the wedge pass left because their work landed, owed their move to `awaiting_release` (ISS-564). */
+  landedWork: { issueId: string; key: string; commit: string | null; mergedAt: string }[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -122,9 +124,20 @@ function answersLine(answers: Owed['answers']): string {
   return ` ${answers.length} park question${plural(answers.length, ' was', 's were')} answered since your last pass (${keys.join('; ')}): an answered question is no longer owed by a person, so read each answer (\`forge-runner api questions/<questionId>\`, or the \`answer\` record on \`forge-runner api issues/<id>/events\`) and act on what it says.`;
 }
 
+/** Landed work nothing holds: no status moves by itself, so the master makes the move its run did not. */
+function landedWorkLine(landed: Owed['landedWork']): string {
+  if (landed.length === 0) return '';
+  const keys = landed.map((l) => `${l.key} ${l.issueId}${l.commit ? ` at ${l.commit}` : ''}`);
+  return ` ${landed.length} issue${plural(landed.length, ' sits', 's sit')} at \`in_progress\` with ${plural(landed.length, 'its', 'their')} work landed and nothing holding ${plural(landed.length, 'it', 'them')} (${keys.join('; ')}): the reconciler left each there rather than hand it back. Check that the mark is this work, then move it on (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"awaiting_release","reason":"<the commit it landed>"}'\`), as ${method('issue-flow')} (Land, mark, move) says; a mark that is not this work is cleared (\`forge-runner api issues/<id>/merge -X DELETE\`), and the next reconciler pass hands the issue back.`;
+}
+
 /** The sentence a nudge or a first brief carries for what is owed besides issues; empty when nothing is. */
 export function owedLine(owed: Owed): string {
-  let line = returnedLine(owed) + answersLine(owed.answers) + stewardAsksLine(owed.stewardAsks);
+  let line =
+    returnedLine(owed) +
+    answersLine(owed.answers) +
+    stewardAsksLine(owed.stewardAsks) +
+    landedWorkLine(owed.landedWork);
   const {
     breakdowns,
     triages,
@@ -212,6 +225,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.comments.map((c) => `comment:${c.commentId}`),
     ...owed.answers.map((a) => `answer:${a.questionId}|${a.outcome?.kind ?? ''}`),
     ...owed.stewardAsks.map((a) => `steward-ask:${a.actId}`),
+    ...owed.landedWork.map((l) => `landed-work:${l.issueId}|${l.mergedAt}`),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
@@ -277,6 +291,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     stewardAsks,
     releaseMerges,
     releaseApprovals,
+    landedWork,
   ] = await Promise.all([
     readAdmissibleIssues({ deviceId, projectId }),
     readOwedComments(projectId),
@@ -291,6 +306,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.stewardAsks(projectId),
     ports.releaseMergesOwed(projectId),
     ports.releaseApprovalsOwed(projectId),
+    ports.landedWorkOwed(projectId),
   ]);
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
   const breakdownsDue = breakdowns.filter((b) => !held.has(b.key));
@@ -312,6 +328,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     releaseApprovals,
     answers,
     stewardAsks,
+    landedWork,
     contentLanguage,
   });
 }

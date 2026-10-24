@@ -1,0 +1,1 @@
+**Landed work left at in progress reaches its master.** When the reconciler leaves an in-progress issue whose work already landed, it says so once per landing and wakes the project's master, whose next pass names the move to awaiting release.

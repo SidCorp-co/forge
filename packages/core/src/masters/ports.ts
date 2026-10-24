@@ -66,6 +66,13 @@ interface MastersPorts {
    * (REQ-48 BC-5), each with the item whose decision answers it (ISS-654).
    */
   stewardAsks(projectId: string): Promise<StewardAsk[]>;
+  /**
+   * `in_progress` issues the wedge pass left because their work landed and nothing has taken up
+   * since, each owed its move to `awaiting_release` (ISS-564).
+   */
+  landedWorkOwed(
+    projectId: string,
+  ): Promise<{ issueId: string; key: string; commit: string | null; mergedAt: string }[]>;
   /** Agreed requirements whose steward intake question nobody has answered yet, held out of the breakdowns owed (REQ-48 BC-2). */
   breakdownsHeldBySteward(projectId: string): Promise<string[]>;
 }

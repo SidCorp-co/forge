@@ -73,6 +73,7 @@ const none = {
   releaseApprovals: [] as Parameters<typeof owedLine>[0]['releaseApprovals'],
   answers: [],
   stewardAsks: [] as Parameters<typeof owedLine>[0]['stewardAsks'],
+  landedWork: [] as Parameters<typeof owedLine>[0]['landedWork'],
   contentLanguage: 'vi',
 };
 
@@ -91,6 +92,10 @@ const OWED_KINDS = {
   releaseNotes: { item: { issueId: 'u6', key: 'ISS-6' }, guide: 'issue-flow' },
   warnedNotes: {
     item: { issueId: 'u7', key: 'ISS-7', problems: ['not in Vietnamese'] },
+    guide: 'issue-flow',
+  },
+  landedWork: {
+    item: { issueId: 'u8', key: 'ISS-8', commit: null, mergedAt: '2026-10-24T20:00:00.000Z' },
     guide: 'issue-flow',
   },
 } as const satisfies Record<string, { item: object; guide: GuideSlug }>;

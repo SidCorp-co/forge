@@ -46,6 +46,7 @@ import { formatIssueRef } from './lib/issue-ref.js';
 import { provideMastersPorts } from './masters/index.js';
 import { foreignScriptChars } from './memory/index.js';
 import { emitNotification } from './notifications/index.js';
+import { landedWorkOwed } from './pipeline/index.js';
 import { registerRoomBridge } from './previews/index.js';
 import {
   dispatchStateOf,
@@ -234,6 +235,7 @@ export function provideExecutionPorts(): void {
     contentLanguageOf: async (projectId) => (await readContentLanguage(projectId)).contentLanguage,
     stewardAsks: openStewardAsks,
     breakdownsHeldBySteward,
+    landedWorkOwed,
   });
 
   registerConversationAgentBridge();

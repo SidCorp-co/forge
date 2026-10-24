@@ -190,6 +190,19 @@ export function registerMasterWakeSubscribers(): void {
     },
   });
 
+  // landed work the wedge pass left moves no status, so no transition wakes anyone: the master owes
+  // its move to awaiting_release, and `masters/owed.ts` names it on the sweep this wake brings
+  consume('issue.landedWorkLeft', {
+    name: 'master-wake',
+    handle: async (p) => {
+      await wakeMastersForProject({
+        projectId: p.projectId,
+        issueId: p.issueId,
+        status: 'in_progress',
+      });
+    },
+  });
+
   consume('issue.created', {
     name: 'master-wake',
     handle: async (p) => {

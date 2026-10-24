@@ -66,26 +66,37 @@ export function buildWedgeResetBody(args: {
   ].join('\n');
 }
 
+const LEFT_LANDED_HEADING = '**Left at `in_progress` by the reconciler: its work landed**';
+
 function markSentence(landed: LandedWork): string {
   const where = landed.commit
     ? `commit \`${landed.commit}\``
     : landed.landing
       ? `landing \`${landed.landing}\``
       : 'a mark naming no commit';
-  return `its merge is recorded: ${where}, marked at ${landed.mergedAt.toISOString()}`;
+  return `Its merge is recorded: ${where}, marked at ${landed.mergedAt.toISOString()}.`;
 }
 
-/** The notice on landed work the pass leaves. Posted once per mark, so its body names the mark. */
+/**
+ * What makes the notice once per mark: its heading and the mark, which a pass over the same mark
+ * writes the same and a new mark (a new commit or a new time) writes anew. Nothing a pass reads off
+ * the lease is in it, since a silent heartbeat's seconds differ every pass (ISS-564 round 2).
+ */
+export function wedgeLeftLandedMarker(landed: LandedWork): string {
+  return `${LEFT_LANDED_HEADING}\n\n${markSentence(landed)}`;
+}
+
+/** The notice on landed work the pass leaves, opening on its {@link wedgeLeftLandedMarker}. */
 export function buildWedgeLeftLandedBody(args: {
   grace: string;
   reading: LeaseReading;
   landed: LandedWork;
 }): string {
   return [
-    '**Left at `in_progress` by the reconciler: its work landed**',
+    `${wedgeLeftLandedMarker(args.landed)} Landed work is not handed back to be dispatched again.`,
     '',
-    `Nothing has written to this issue for ${args.grace} and ${leaseSentence(args.reading)}, but ${markSentence(args.landed)}. Landed work is not handed back to be dispatched again.`,
+    `Nothing has written to this issue for ${args.grace}, and ${leaseSentence(args.reading)}.`,
     '',
-    'The agent working it moves it to `awaiting_release`. If this mark is not this work, clear it with `DELETE /api/issues/:id/merge`; the next pass then hands the issue back.',
+    'Its master is woken to move it to `awaiting_release`. If this mark is not this work, clear it with `DELETE /api/issues/:id/merge`; the next pass then hands the issue back.',
   ].join('\n');
 }

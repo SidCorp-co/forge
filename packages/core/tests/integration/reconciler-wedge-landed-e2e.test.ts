@@ -5,6 +5,9 @@
  * `awaiting_release` (REQ-45 BC-1, BC-7): no status moves by itself. The reset still runs for an
  * issue with no mark, for a mark the issue was reopened after, and for a design approval's stamp,
  * which no release carries. Against real Postgres, through the reconciler's own pass.
+ *
+ * Round 2 (judge K78): left landed work is told once per mark, whatever the lease's heartbeat reads,
+ * and the telling wakes the project's master through the outbox and names the move it owes.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -14,6 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { db } from '../../src/db/client.js';
 import { transitionIssueStatus } from '../../src/issues/apply-transition.js';
 import { runReconcilerOnce } from '../../src/pipeline/reconciler.js';
+import { landedWorkOwed } from '../../src/pipeline/wedge-landed.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   createTestIssue,
@@ -93,6 +97,29 @@ const thread = async (id: string) =>
 
 const tick = async () => (await runReconcilerOnce()).autonomousReset;
 
+/** The wakes written for an issue's landed work, oldest first. */
+const wakes = async (id: string) =>
+  rows<{ payload: { commit: string | null; mergedAt: string; projectId: string } }>(
+    sql`SELECT payload FROM pipeline_outbox
+         WHERE issue_id = ${id} AND type = 'issue.landedWorkLeft' ORDER BY seq`,
+  );
+
+const outboxTypes = async (id: string) =>
+  (
+    await rows<{ type: string }>(
+      sql`SELECT type FROM pipeline_outbox WHERE issue_id = ${id} ORDER BY seq`,
+    )
+  ).map((r) => r.type);
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function leased(id: string, lease: Record<string, unknown>): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO issue_work_state (issue_id, lease) VALUES (${id}, ${JSON.stringify(lease)}::jsonb)
+    ON CONFLICT (issue_id) DO UPDATE SET lease = EXCLUDED.lease
+  `);
+}
+
 describe('the wedge reset leaves landed work for its agent', () => {
   it('leaves an in_progress issue whose commit is marked, and says so once', async () => {
     const id = await wedged({ mergedAt: minutesAgo(20), commit: COMMIT });
@@ -152,6 +179,120 @@ describe('the wedge reset leaves landed work for its agent', () => {
   });
 });
 
+describe('left landed work is told once per mark, and wakes its master', () => {
+  it('posts one notice and one wake per mark under an abandoned lease, however long it stays silent', async () => {
+    const id = await wedged({ mergedAt: minutesAgo(20), commit: COMMIT });
+    // unexpired, but its heartbeat silent past what it tolerates: the silent seconds grow each pass
+    await leased(id, {
+      holder: 'box:run-gone',
+      renewedAt: new Date().toISOString(),
+      minutes: 60,
+      heartbeat: { at: minutesAgo(30).toISOString(), everySeconds: 60 },
+    });
+
+    expect(await tick()).toBe(0);
+    await pause(1_100);
+    expect(await tick()).toBe(0);
+    await pause(1_100);
+    expect(await tick()).toBe(0);
+
+    expect(await statusOf(id)).toBe('in_progress');
+    const said = await thread(id);
+    expect(said, 'one notice per mark, not one per pass').toHaveLength(1);
+    expect(said[0]).toContain('heartbeat has been silent');
+    const woke = await wakes(id);
+    expect(woke, 'one wake per mark, not one per pass').toHaveLength(1);
+    expect(woke[0]?.payload.commit).toBe(COMMIT);
+    expect(woke[0]?.payload.projectId).toBe(projectId);
+  });
+
+  it('wakes its master through the outbox, as a reset does', async () => {
+    const landed = await wedged({ mergedAt: minutesAgo(20), commit: COMMIT });
+    const unmarked = await wedged({});
+
+    await tick();
+
+    expect(await outboxTypes(landed)).toEqual(['issue.landedWorkLeft']);
+    expect(await outboxTypes(unmarked)).toContain('issue.transitioned');
+  });
+
+  it('posts one notice and one wake per mark under a lapsed lease', async () => {
+    const id = await wedged({ mergedAt: minutesAgo(20), commit: COMMIT });
+    await leased(id, {
+      holder: 'box:run-old',
+      renewedAt: minutesAgo(120).toISOString(),
+      minutes: 60,
+    });
+
+    expect(await tick()).toBe(0);
+    expect(await tick()).toBe(0);
+
+    expect(await statusOf(id)).toBe('in_progress');
+    const said = await thread(id);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('lapsed at');
+    expect(await wakes(id)).toHaveLength(1);
+  });
+
+  it('tells a new mark anew: the round landed again after a reopen', async () => {
+    const first = minutesAgo(20);
+    const id = await wedged({ mergedAt: first, commit: COMMIT });
+    await tick();
+    expect(await thread(id)).toHaveLength(1);
+
+    // reopened after that mark, worked again, and landed again: a second mark at the same commit
+    await db.execute(sql`
+      INSERT INTO kernel_transitions (id, entity, entity_id, from_status, to_status, actor_type, actor_agency, source, created_at)
+      VALUES (${randomUUID()}, 'issue', ${id}, 'awaiting_release', 'reopen', 'user', 'human', 'test', ${minutesAgo(15).toISOString()})
+    `);
+    const second = minutesAgo(5);
+    await db.execute(sql`
+      UPDATE issues SET merged_at = ${second.toISOString()}::timestamptz,
+                        updated_at = now() - interval '30 minutes'
+       WHERE id = ${id}
+    `);
+
+    expect(await tick()).toBe(0);
+    expect(await tick()).toBe(0);
+
+    expect(await statusOf(id)).toBe('in_progress');
+    const said = await thread(id);
+    expect(said, 'a new mark is told once').toHaveLength(2);
+    expect(said[1]).toContain(second.toISOString());
+    const woke = await wakes(id);
+    expect(woke).toHaveLength(2);
+    expect(woke.map((w) => w.payload.mergedAt)).toEqual([
+      first.toISOString(),
+      second.toISOString(),
+    ]);
+  });
+
+  it('names it to its master as owed until it moves, and not while a lease holds it', async () => {
+    const id = await wedged({ mergedAt: minutesAgo(20), commit: COMMIT });
+    expect(await landedWorkOwed(projectId), 'not left yet: nothing told').toEqual([]);
+
+    await tick();
+    const owed = await landedWorkOwed(projectId);
+    expect(owed).toHaveLength(1);
+    expect(owed[0]).toMatchObject({ issueId: id, commit: COMMIT });
+    expect(owed[0]?.key).toContain(String(seq));
+
+    await leased(id, { holder: 'box:run-2', renewedAt: new Date().toISOString(), minutes: 60 });
+    expect(await landedWorkOwed(projectId), 'a run holds it again').toEqual([]);
+    await db.execute(sql`DELETE FROM issue_work_state WHERE issue_id = ${id}`);
+    expect(await landedWorkOwed(projectId)).toHaveLength(1);
+
+    const agent = { type: 'user' as const, id: ownerId, agency: 'human' as const };
+    await transitionIssueStatus(
+      { id, projectId, status: 'in_progress', reopenCount: 0 },
+      'awaiting_release',
+      agent,
+      {},
+    );
+    expect(await landedWorkOwed(projectId), 'moved: owed no more').toEqual([]);
+  });
+});
+
 describe('the wedge reset still hands back what did not land', () => {
   it('resets an in_progress issue with no mark to open, as before', async () => {
     const id = await wedged({});
@@ -200,5 +341,7 @@ describe('the wedge reset still hands back what did not land', () => {
     expect(await tick()).toBe(0);
     expect(await statusOf(id)).toBe('in_progress');
     expect(await thread(id)).toHaveLength(0);
+    expect(await wakes(id), 'a held issue wakes nobody').toHaveLength(0);
+    expect(await landedWorkOwed(projectId)).toEqual([]);
   });
 });

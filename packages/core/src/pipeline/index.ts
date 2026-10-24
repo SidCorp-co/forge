@@ -125,3 +125,4 @@ export {
   resolvePipelineWedge,
   type WedgeHop,
 } from './wedge.js';
+export { type LandedWorkOwed, landedWorkOwed } from './wedge-landed.js';

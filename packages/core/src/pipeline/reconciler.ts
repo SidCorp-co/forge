@@ -13,7 +13,7 @@ import {
 } from '../issues/index.js';
 import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
-import { countOverdueDeliveries } from '../outbox/index.js';
+import { countOverdueDeliveries, emitEvent } from '../outbox/index.js';
 import { AUTONOMOUS_ENTRY_STATUS } from './autonomous-mode.js';
 import { checkAutonomousRescueCap } from './autonomous-rescue-cap.js';
 import {
@@ -36,6 +36,7 @@ import {
   readWedgeLease,
   wedgeLeaseHoldsTheIssue,
   wedgeLeaseUnderLock,
+  wedgeLeftLandedMarker,
 } from './wedge-lease.js';
 
 const STALE_OUTBOX_MS = 5 * 60_000;
@@ -349,8 +350,10 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
 
 /**
  * Landed work nothing holds stays at `in_progress` (ISS-564): no status moves by itself, so the
- * agent working it moves it to `awaiting_release` (REQ-45 BC-1, BC-7). One notice per mark says so
- * on the issue; a later pass over the same mark posts nothing.
+ * agent owing it moves it to `awaiting_release` (REQ-45 BC-1, BC-7). Once per mark, one notice says
+ * so on the issue and one `issue.landedWorkLeft` wakes the project's master, which the sweep then
+ * names the move to (`masters/owed.ts`); both commit together, and a later pass over the same mark
+ * writes neither. A new mark (a round landed again after a reopen) is told anew.
  */
 async function leaveLandedWork(row: WedgeCandidate, landed: LandedWork): Promise<void> {
   const actor = await reconcilerActorFor(row.project_id);
@@ -364,16 +367,25 @@ async function leaveLandedWork(row: WedgeCandidate, landed: LandedWork): Promise
     reading: readWedgeLease(row.lease, new Date()),
     landed,
   });
-  const posted = await postIssueNoticeOnce({
-    issueId: row.id,
-    authorId: actor.id,
-    body,
-    marker: body,
+  const told = await db.transaction(async (tx) => {
+    const posted = await postIssueNoticeOnce(
+      { issueId: row.id, authorId: actor.id, body, marker: wedgeLeftLandedMarker(landed) },
+      tx,
+    );
+    if (posted === null) return false;
+    await emitEvent(tx, 'issue.landedWorkLeft', {
+      issueId: row.id,
+      projectId: row.project_id,
+      mergedAt: landed.mergedAt.toISOString(),
+      commit: landed.commit,
+      landing: landed.landing,
+    });
+    return true;
   });
-  if (posted === null) return;
+  if (!told) return;
   logger.warn(
     { issueId: row.id, mergedAt: landed.mergedAt, commit: landed.commit },
-    'reconciler: left landed work at in_progress for its agent to move to awaiting_release',
+    'reconciler: left landed work at in_progress and woke its master to move it to awaiting_release',
   );
   traceStep({
     category: 'pipeline.reconciler.autonomous_wedge_left_landed',

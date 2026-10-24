@@ -132,7 +132,7 @@ interface PipelinePorts {
   retryRescuesSince: (projectIds: readonly string[] | null, since: SQL) => SQL;
 
   postIssueNotice: (notice: IssueNoticeInput, tx?: Tx) => Promise<unknown>;
-  postIssueNoticeOnce: (notice: IssueNoticeInput & { marker: string }) => Promise<unknown>;
+  postIssueNoticeOnce: (notice: IssueNoticeInput & { marker: string }, tx?: Tx) => Promise<unknown>;
   holdsOpenHumanQuestion: (issueId: SQLWrapper) => SQL;
   voidCancelledRunQuestions: (
     tx: Tx,

@@ -20,6 +20,7 @@ const none = {
   releaseApprovals: [] as { runId: string; version: string | null }[],
   answers: [],
   stewardAsks: [] as StewardAsk[],
+  landedWork: [] as { issueId: string; key: string; commit: string | null; mergedAt: string }[],
   contentLanguage: 'en',
 };
 
@@ -133,6 +134,31 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(mixed).toContain('on an issue (ISS-9), `forge-runner api issues/<id>/events -X POST`');
     expect(mixed).toContain('on a feedback item (FB-36)');
     expect(mixed).not.toContain('on a requirement');
+  });
+
+  // ISS-564 round 2: landed work the wedge pass leaves moves no status, so the master is told the
+  // move it owes on the sweep, or nothing ever makes it
+  it('names landed work left at in_progress with the move it owes, counts it, and moves the digest', () => {
+    const left = {
+      issueId: 'u1',
+      key: 'ISS-564',
+      commit: `${'a'.repeat(39)}1`,
+      mergedAt: '2026-10-24T20:00:00.000Z',
+    };
+    const line = owedLine({ ...none, landedWork: [left] });
+    expect(line).toContain(
+      '1 issue sits at `in_progress` with its work landed and nothing holding it',
+    );
+    expect(line).toContain(`ISS-564 u1 at ${left.commit}`);
+    expect(line).toContain('"toStatus":"awaiting_release"');
+    expect(line).toContain('issues/<id>/merge -X DELETE');
+    expect(owedLine(none)).not.toContain('in_progress');
+    expect(masterWork([], { ...none, landedWork: [left] }).owed).toBe(1);
+    const once = workDigest([], { ...none, landedWork: [left] });
+    expect(once).not.toBe(workDigest([], none));
+    // a new mark on the same issue is new work: landed again after a reopen
+    const again = { ...left, mergedAt: '2026-10-25T09:00:00.000Z' };
+    expect(workDigest([], { ...none, landedWork: [again] })).not.toBe(once);
   });
 
   it('names an owed triage by its key, and its method', () => {
