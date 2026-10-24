@@ -69,6 +69,8 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"CHECKLIST_INCOMPLETE",
 	"CHECKLIST_ANSWER_INVALID",
 	"ISSUE_REOPEN_RELEASING",
+	/** A body key the move does not take, `note` among them: named, with the keys it does (ISS-566). */
+	"TRANSITION_FIELD_UNKNOWN",
 ] as const;
 export type IssueTransitionRefusalCode = (typeof ISSUE_TRANSITION_REFUSAL_CODES)[number];
 export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
@@ -77,6 +79,7 @@ export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
 	STALE_TRANSITION: 409,
 	CHECKLIST_ANSWER_INVALID: 400,
 	ISSUE_REOPEN_RELEASING: 409,
+	TRANSITION_FIELD_UNKNOWN: 400,
 } as const satisfies RefusalStatuses<IssueTransitionRefusalCode>;
 
 type IssueStatusLegacyRefusal = Refusal & {

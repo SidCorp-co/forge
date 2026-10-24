@@ -254,7 +254,7 @@ Write it as the ask, not as the reason again. *"Choose: (a) accept the landed pa
 **The mint is gated on agency, not on the field.** A park by a person mints nothing — they stopped their own work and own their own resume. Only an agent-held credential (an agent account or a paired device) mints, so a \`needs\` sent by a human-owned token reaches no reader.
 
 ### Stopping the pipeline costs you a written reason
-\`needs_info\`, \`on_hold\`, \`reopen\` and \`dropped\` are **rejected without a \`reason\`** (422). Pass it in the \`POST /api/issues/:id/transition\` body (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waitingKind\` is REFUSED on every target but \`needs_info\` (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other target takes it, so put the ask in \`reason\`.
+\`needs_info\`, \`on_hold\`, \`reopen\` and \`dropped\` are **rejected without a \`reason\`** (422). Pass it as \`reason\` in the \`POST /api/issues/:id/transition\` body; it is posted as a comment before the status flips, so it cannot go missing afterwards. \`reason\` is the only field that carries it: \`note\` is not a transition field, and like every key the body does not take it is refused \`TRANSITION_FIELD_UNKNOWN\`, naming it and the fields the body takes. \`waitingKind\` is REFUSED on every target but \`needs_info\` (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other target takes it, so put the ask in \`reason\`.
 
 Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate.
 

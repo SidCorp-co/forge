@@ -6,10 +6,12 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
+import { getGuide } from '../../src/guides/registry.js';
 import { type ApiResponse, api, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
@@ -200,6 +202,77 @@ describe('a move that is not an edge is refused by name, with nothing written', 
     const res = await move(id, { status: 'open' });
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(JSON.stringify(res.body)).toContain('toStatus');
+  });
+});
+
+// The lifecycle guide is what a person or a run reads before parking: the field it names as the
+// reason is the one the body takes, and the field it says is refused is refused by name (ISS-566).
+describe('the reason field the lifecycle guide names', () => {
+  const guide = getGuide('pipeline-and-issue-lifecycle')?.body ?? '';
+  const named = (pattern: RegExp) => pattern.exec(guide)?.[1] ?? '<the guide names none>';
+  const reasonField = named(/Pass it as `(\w+)` in the `POST \/api\/issues\/:id\/transition` body/);
+  const refusedField = named(/`(\w+)` is not a transition field/);
+
+  async function comments(id: string) {
+    return rows<{ body: string }>(sql`SELECT body FROM comments WHERE issue_id = ${id}`);
+  }
+
+  it('parks with the reason sent in that field, posting it and auditing it', async () => {
+    expect(reasonField).toBe('reason');
+    const id = await issueAt('open');
+
+    const res = await move(id, {
+      toStatus: 'on_hold',
+      [reasonField]: 'waiting on the vendor sandbox',
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(id)).toBe('on_hold');
+    expect(await audit(id)).toEqual([
+      expect.objectContaining({ to_status: 'on_hold', reason: 'waiting on the vendor sandbox' }),
+    ]);
+    expect((await comments(id)).map((c) => c.body).join('\n')).toContain(
+      'waiting on the vendor sandbox',
+    );
+  });
+
+  it('refuses the field the guide says is not one by name, listing the field that is, with nothing written', async () => {
+    expect(refusedField).toBe('note');
+    const id = await issueAt('open');
+
+    const res = await move(id, { toStatus: 'on_hold', [refusedField]: 'paused' });
+
+    expect(res.status).toBe(400);
+    expect(refusalCodes(res)).toEqual(['TRANSITION_FIELD_UNKNOWN']);
+    const [row] = (res.body.error as { refusals: Array<{ path: string; detail: string }> })
+      .refusals;
+    expect(row?.path).toBe(`/${refusedField}`);
+    expect(row?.detail).toMatch(/not a field of the transition body, which takes [^;]*\breason\b/);
+    expect(row?.detail).toContain("a move's reason goes in `reason`");
+    expect(await statusOf(id)).toBe('open');
+    expect(await audit(id)).toEqual([]);
+  });
+
+  it('takes a reason at its longest and refuses one a character longer or blank', async () => {
+    const atMost = await issueAt('open');
+    const longest = await move(atMost, {
+      toStatus: 'on_hold',
+      reason: 'r'.repeat(REASON_PARAGRAPH_MAX),
+    });
+    expect(longest.status, JSON.stringify(longest.body)).toBe(200);
+
+    const over = await issueAt('open');
+    const tooLong = await move(over, {
+      toStatus: 'on_hold',
+      reason: 'r'.repeat(REASON_PARAGRAPH_MAX + 1),
+    });
+    expect(tooLong.status).toBe(400);
+    expect(JSON.stringify(tooLong.body)).toContain('/reason');
+
+    const blank = await move(over, { toStatus: 'on_hold', reason: '   ' });
+    expect(blank.status).toBe(400);
+    expect(JSON.stringify(blank.body)).toContain('/reason');
+    expect(await statusOf(over)).toBe('open');
   });
 });
 

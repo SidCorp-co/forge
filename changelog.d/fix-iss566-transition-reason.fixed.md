@@ -1,0 +1,1 @@
+**The lifecycle guide names `reason` as a move's only reason field.** It no longer says `note` counts; a transition sending `note` is refused `TRANSITION_FIELD_UNKNOWN`, naming the fields the body takes.

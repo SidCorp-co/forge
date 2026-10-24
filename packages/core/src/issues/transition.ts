@@ -1,15 +1,7 @@
-import { checklistsOn } from '@forge/contracts/checklist-registry';
-import { moveAnswersInputOf } from '@forge/contracts/checklists';
-import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
-import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
-import {
-  QUESTION_ABOUT_SHAPE_SENTENCE,
-  questionAboutRequestSchema,
-} from '@forge/contracts/questions';
+import { QUESTION_ABOUT_SHAPE_SENTENCE } from '@forge/contracts/questions';
 import { Hono } from 'hono';
-import { z } from 'zod';
 import { db } from '../db/client.js';
-import { type IssueStatus, issueStatuses, waitingKinds } from '../db/schema.js';
+import type { IssueStatus } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { reportFailure } from '../lib/error-tracking.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -22,7 +14,7 @@ import { refuseFieldShape, zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { type StatusTransitionResult, transitionIssueStatus } from './apply-transition.js';
-import { awaitsDesignSchema, refuseAwaitsDesignShape } from './awaits-design-input.js';
+import { refuseAwaitsDesignShape } from './awaits-design-input.js';
 import { issueChecklistRoutes } from './checklist-routes.js';
 import { liveBlockedDependentsOf } from './dependency-read.js';
 import type { UnblockedDependent } from './drop-cascade.js';
@@ -32,28 +24,7 @@ import { transitionIssueRow } from './read-service.js';
 import { recordEventRoutes } from './record-events/routes.js';
 import { withRecoveryHint } from './recovery-move.js';
 import { refuseLegacyStatusFields } from './status-input.js';
-
-const transitionBodySchema = z
-  .object({
-    toStatus: z.enum(issueStatuses),
-    reason: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX).optional(),
-    waitingKind: z.enum(waitingKinds).optional(),
-    needs: z.string().trim().min(1).max(2000).optional(),
-    awaitsDesign: awaitsDesignSchema.optional(),
-    awaitsMerge: z.object({ issueId: z.uuid() }).strict().optional(),
-    // what the park's question is about, in the shapes and under the refusal POST /api/questions has
-    about: questionAboutRequestSchema.optional(),
-    voidQuestions: z.string().max(2000).optional(),
-    recovery: z.literal(true).optional(),
-    // handed to the kernel as sent: it parses them by the checklist of the edge the move takes,
-    // and refuses and records a wrong one exactly as it does a lane move's; the contract publishes
-    // the shape that checklist derives
-    answers: z
-      .unknown()
-      .meta(moveAnswersInputOf(checklistsOn(ISSUE_MACHINE)))
-      .optional(),
-  })
-  .strict();
+import { refuseUnknownTransitionKeys, transitionBodySchema } from './transition-body.js';
 
 /** Cap on the number of dependents named in a single `issue.unblockCascade`
  *  event payload. Anything above is summarised as `+N more` on the toast. */
@@ -203,6 +174,7 @@ transitionRoutes.post(
         'QUESTION_ABOUT_SHAPE',
         QUESTION_ABOUT_SHAPE_SENTENCE,
       );
+      refuseUnknownTransitionKeys(result.error.issues);
     }
   }),
   // a chat's status move (draft to open dispatches) waits for the person's press (REQ-30 BC-4)
