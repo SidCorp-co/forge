@@ -33,10 +33,7 @@ async function resolveLiveThemes(
 ): Promise<Awaited<ReturnType<typeof fetchStorefrontThemes>>> {
   if (!config.storeId) return null;
   try {
-    const secrets = decryptConnectionSecrets<EpodsystemSecrets>(
-      pair.connection,
-      pair.binding.id,
-    );
+    const secrets = decryptConnectionSecrets<EpodsystemSecrets>(pair.connection, pair.binding.id);
     if (!secrets?.apiKey) return null;
     return await fetchStorefrontThemes(secrets.apiKey, config.storeId);
   } catch (err) {

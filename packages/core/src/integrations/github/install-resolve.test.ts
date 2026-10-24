@@ -241,7 +241,11 @@ describe('an App whose stored credential cannot be decrypted', () => {
     listConnections.mockResolvedValue([connection('b', { appId: '2', privateKey: 'k2' })]);
 
     expect(
-      await findBindingOwningInstallation({ userId: 'u1', installationId: 42, fetchImpl: owns('9') }),
+      await findBindingOwningInstallation({
+        userId: 'u1',
+        installationId: 42,
+        fetchImpl: owns('9'),
+      }),
     ).toBeNull();
   });
 });
