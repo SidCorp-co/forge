@@ -47,12 +47,9 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
 const ABSENT_AFTER =
   /^[*_`"')\]]*\s+(?:(?:is not|isn't|is no longer|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w'-]+\s+){0,5}?(?:tracker|project)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
 
-/**
- * The conjunctions a clause stating an absence may open with. "or" and "nor" are not among them: an
- * alternative asserts nothing (ISS-1229 r39).
- */
+/** The conjunctions an absence clause may open with; never "or", since an alternative asserts nothing. */
 const CONJ = String.raw`(?:(?:and|but|so|yet|while|whereas|although|though|because|since)\s+)?`;
-const MARKS = "[*_`\"'([]*$";
+const MARKS = '[*_`"\'([]*$';
 
 /** A clause's opening up to its key: the key itself, or "there is no" / "I couldn't find" before it. */
 const OPENS_ON_KEY = new RegExp(String.raw`^\s*${CONJ}${MARKS}`, 'i');
@@ -61,11 +58,7 @@ const OPENS_ON_ABSENCE = new RegExp(
   'i',
 );
 
-/**
- * A clause denying a key's identity: "it is not ISS-9", "and not ISS-9". It says the project does not
- * hold the key only after the project's whole set has been stated (`STATES_WHOLE_SET`); "this one is
- * not ISS-7" alone says nothing of the project (ISS-1229 r39, judge-107; consult F1).
- */
+/** "it is not ISS-9": an absence only just after the project's whole set was stated (ISS-1229 r39). */
 const DENIES_IDENTITY = new RegExp(
   String.raw`^\s*${CONJ}(?:(?:it|this|that|which|this one|that one|they|the (?:only |one |single )?(?:issue|one))\s+(?:is not|isn't|are not|aren't)\s+|(?:none|neither)(?: of them)?\s+(?:is|are)\s+|not\s+)${MARKS}`,
   'i',
@@ -74,11 +67,7 @@ const DENIES_IDENTITY = new RegExp(
 const STATES_WHOLE_SET =
   /\b(?:(?:this|the) project|it|here)\s+(?:currently\s+|only\s+)*(?:has|holds|contains)\s+(?:only\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+issues?\b|\b(?:the|this project's|the project's) only issues?\b(?:\s+(?:here|(?:on|in) (?:this|the) project))?(?:\s+(?:is|are)\s+[*_`"'([]*[a-z][a-z0-9]*-\d+)?/gi;
 
-/**
- * Whether the project's whole set was stated in the denial's own sentence or the one before it, with no
- * other key named after it: "ISS-8 is the invoice issue. This one is not ISS-7." is about ISS-8, whatever
- * was said of the set before (consult F1 on the round-39 whole set).
- */
+/** The set stated in this sentence or the last, no key after it: "ISS-8 is X. This one is not ISS-7." is not. */
 function setStatedJustBefore(context: string, prefixes: readonly string[]): boolean {
   const ends = [...context.matchAll(STATES_WHOLE_SET)].map((m) => (m.index ?? 0) + m[0].length);
   if (ends.length === 0) return false;
@@ -96,11 +85,7 @@ const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case|assuming|p
 const NOT_NOW_OR_NARROWER =
   /\b(?:(?:in|on|from|of)\s+(?:[\w'-]+\s+){0,3}?(?:sprint|milestone|board|column|release|filter|search|page|list|view)|yesterday|earlier|previously|last|ago|until|anymore|any longer|used to|at the time)\b/i;
 
-/**
- * A plain, present, unconditional absence: its clause opens on the key or "there is no", or denies the
- * key's identity just after the project's whole set was stated (`previous` is the sentence before), in
- * no question.
- */
+/** A plain, present, unconditional absence: its clause opens on the key or "there is no", in no question. */
 function assertsAbsence(
   sentence: string,
   at: number,

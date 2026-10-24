@@ -281,11 +281,7 @@ const PERSON_KINDS: readonly { says: RegExp; wrong?: string; remedy: string }[] 
 export const PUT_IT_RIGHT = "Ask the assistant to put it right and try again.";
 export const TOOK_ANOTHER_WAY = "The assistant tried another way below, and its answer says how it went.";
 
-/**
- * The CLI verb each tool the room holds is another door to. One act has one identity whichever door it
- * came through, read off this table and never off how a tool's name is spelled (ISS-1229 r39, judge-107:
- * a guide read refused on the CLI and made through `forge_guide` still asked the person to put it right).
- */
+/** The CLI verb each tool is another door to: one act, one identity, never matched by spelling (ISS-1229 r39). */
 export const DOOR_OF_TOOL: Readonly<Record<string, string>> = {
   forge_guide: "guide",
   forge_knowledge: "knowledge",
@@ -351,11 +347,7 @@ const leadClause = (sentence: string) => {
   return cut === sentence ? sentence : `${cut.replace(/[,;:]$/, "")}.`;
 };
 
-/**
- * A tool's own failure prefix, as in "forge issue failed: " or "forge_guide refused: ": the technical
- * view's, never the card's, and never reworded into one (ISS-1229 r39, judge-107 read "The tracker
- * issue failed: …").
- */
+/** A tool's own failure prefix ("forge issue failed: "): the technical view's, never reworded (ISS-1229 r39). */
 const TOOL_PREFIX = /^(?:forge(?:_\w+)?)(?:\s+[\w-]+)?\s+(?:failed|refused)\s*:\s*/i;
 const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -378,10 +370,8 @@ function gapsOf(text: string): Gap[] {
 }
 
 /**
- * What a refusal that lists its gaps (the CLI's `- read:`, `wants:` and `clear:` lines) says was wrong,
- * a whole sentence each: the missing sections as one, then each other gap with what it wants instead
- * (ISS-1229 r35, judge-95; r39, judge-107 read "No What happened, … Ou…"). Putting them right is the
- * assistant's, as for any call of its own (r38).
+ * What a refusal listing its gaps (`- read:`, `wants:`, `clear:`) says was wrong, a whole sentence each:
+ * the missing sections as one, then each other gap with what it wants (ISS-1229 r35, r39).
  */
 function gapsReason(text: string): string[] {
   const gaps = gapsOf(text);
@@ -395,9 +385,8 @@ function gapsReason(text: string): string[] {
 }
 
 /**
- * As many of the wrong's whole sentences as fit beside the way out, at least one; where the first alone
- * does not, its leading whole clause, and where that does not either, the first whole. A sentence is
- * never cut at a character count (ISS-1229 r39): the rest stays under the card's technical details.
+ * As many whole sentences as fit beside the way out, at least one: else the first's leading clause, else
+ * the first whole. Never cut at a character count (ISS-1229 r39); the rest is under technical details.
  */
 function fitting(wrong: readonly string[], room: number): string {
   const [first = ""] = wrong;
