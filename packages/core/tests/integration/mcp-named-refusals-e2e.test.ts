@@ -121,6 +121,9 @@ describe('every /mcp tool names what is wrong with a call it refuses (c2)', () =
         userId: w.userId,
         name: 'iss-602',
         grantEpoch: PAT_GRANT_EPOCH,
+        // the sweep below makes hundreds of calls on this one token; on a fast host they land
+        // inside one window of the default write limit and come back RATE_LIMITED, not judged
+        rateLimitMax: 10_000,
       })
     ).plaintext;
     tools = ((await rpc(token, 'tools/list', {})) as { tools: Listed[] }).tools;
