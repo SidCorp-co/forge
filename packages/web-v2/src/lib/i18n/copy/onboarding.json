@@ -82,7 +82,7 @@
     "onboarding.hint.inProgress": "Đang làm quen project.",
     "onboarding.hint.jobQueued": "Job phân tích đang chờ một runner; trong lúc đó project vẫn hoạt động.",
     "onboarding.hint.jobRunning": "Một job phân tích đang chạy; trong lúc đó project vẫn hoạt động.",
-    "onboarding.hint.mapStays": "Bản đồ code gần nhất vẫn được giữ.",
+    "onboarding.hint.failedWaits": "Lần thử {n} thất bại{why} · Đang chờ: {who}",
     "onboarding.hint.master": "Master {name}",
     "onboarding.hint.noContext": "Thiếu ngữ cảnh hệ thống.",
     "onboarding.hint.onboardingLead": "Làm quen project:",

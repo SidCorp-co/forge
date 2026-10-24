@@ -5,7 +5,12 @@
 import type { QuestionnaireItem } from '@forge/contracts/onboarding';
 import { describe, expect, it } from 'vitest';
 import { itemRefusals } from '../questionnaires/rules.js';
-import { designsUnproposedRefusal, onboardingItemRefusals, personActRefusal } from './rules.js';
+import {
+  designsUnproposedRefusal,
+  onboardingItemRefusals,
+  onboardingStatusOf,
+  personActRefusal,
+} from './rules.js';
 
 const item = (id: string, over: Partial<QuestionnaireItem> = {}): QuestionnaireItem => ({
   id,
@@ -128,5 +133,25 @@ describe('designsUnproposedRefusal', () => {
     const r = designsUnproposedRefusal([d('a', 'proposed'), d('b', 'draft'), d('c', null)]);
     expect(r?.code).toBe('ONBOARDING_DESIGNS_UNPROPOSED');
     expect(r?.detail).toContain('b (w-b), c (w-c) still stand at draft');
+  });
+});
+
+describe('onboardingStatusOf: a failed analysis never reads done and waits on no answer (BC-11, ISS-605)', () => {
+  const done = { doneAt: new Date('2026-10-01T00:00:00Z') };
+  const open = { doneAt: null };
+
+  it('reads failed when the newest attempt failed, done or not, open question or not', () => {
+    expect(onboardingStatusOf(done, false, 'failed')).toBe('failed');
+    expect(onboardingStatusOf(done, true, 'failed')).toBe('failed');
+    expect(onboardingStatusOf(open, true, 'failed')).toBe('failed');
+    expect(onboardingStatusOf(open, false, 'failed')).toBe('failed');
+  });
+
+  it('reads a live retry, a settled or a cancelled job as before: only a failure with nothing after it is one', () => {
+    for (const s of ['queued', 'dispatched', 'held', 'done', 'cancelled', null]) {
+      expect(onboardingStatusOf(done, true, s)).toBe('done');
+      expect(onboardingStatusOf(open, true, s)).toBe('waiting_on_you');
+      expect(onboardingStatusOf(open, false, s)).toBe('in_progress');
+    }
   });
 });

@@ -8,6 +8,7 @@ import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import {
   ONBOARDING_MAX_QUESTIONS,
   type OnboardingRefusal,
+  type OnboardingStatus,
   type QuestionnaireItem,
 } from '@forge/contracts/onboarding';
 import type { ActorAgency } from '@forge/contracts/permissions';
@@ -166,6 +167,22 @@ export function designsUnproposedRefusal(
     path: '/designs',
     detail: `${drafts.map((d) => `${d.flow} (${d.workflowId})`).join(', ')} still stand${drafts.length === 1 ? 's' : ''} at draft; propose each (POST …/workflows/<workflowId>/design/propose { revision }) before marking onboarding done.`,
   };
+}
+
+// The status is read, never stored (REQ-10 BC-11). Failed first: the newest attempt of the last
+// analysis job failed with no retry after it (a queued retry is live), so onboarding is not done,
+// done or not before, and waits on no answer (ISS-605). Then done once marked done (until a
+// re-analysis clears the mark); then waiting on a person while an answerable batch holds a question
+// open — an assumption never waits on anyone, and an open question keeps only its own item open
+// once onboarding is done; else with the agent
+export function onboardingStatusOf(
+  row: { doneAt: Date | null },
+  questionOpen: boolean,
+  newestAttempt: string | null,
+): OnboardingStatus {
+  if (newestAttempt === 'failed') return 'failed';
+  if (row.doneAt) return 'done';
+  return questionOpen ? 'waiting_on_you' : 'in_progress';
 }
 
 // a phase's last act is the agent's mark_done (REQ-10 BC-11: every phase ends with onboarding done

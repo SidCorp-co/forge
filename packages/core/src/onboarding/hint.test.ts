@@ -49,19 +49,70 @@ const job = (over: Partial<NonNullable<OnboardingView['job']>> = {}) => ({
 });
 
 describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis', () => {
-  it('makes re-analysis the action of a failed analysis', () => {
-    const h = hintOf(view({ job: job({ status: 'failed' }) }), 'none');
-    expect(h?.action).toBe('reanalyze');
-    expect(h?.mayReanalyze).toBe(true);
-    expect(h?.text).toBe('Attempt 1 drew nothing');
+  it('makes re-analysis the action of a failed analysis, and names who asks for it (ISS-605)', () => {
+    const h = hintOf(view({ status: 'failed', job: job({ status: 'failed' }) }), 'none');
+    expect(h).toMatchObject({ tone: 'err', action: 'reanalyze', mayReanalyze: true });
+    expect(h?.lead).toBe('Onboarding analysis failed.');
+    expect(h?.text).toBe('Attempt 1 failed · Waits on: A holder of onboarding.request');
+    expect(h?.says.text.vars?.who).toEqual(
+      say('standing.who.holderOf', { perm: 'onboarding.request' }),
+    );
   });
 
   it('names the attempt that failed and why it ended, where the job recorded why (ISS-268)', () => {
     const h = hintOf(
-      view({ job: job({ status: 'failed', attempt: 3, endedWith: 'the runner went offline' }) }),
+      view({
+        status: 'failed',
+        job: job({ status: 'failed', attempt: 3, endedWith: 'the runner went offline' }),
+      }),
       'none',
     );
-    expect(h?.text).toBe('Attempt 3 drew nothing: the runner went offline');
+    expect(h?.text).toBe(
+      'Attempt 3 failed: the runner went offline · Waits on: A holder of onboarding.request',
+    );
+  });
+
+  it('says a failure before done, and before every design approved hides the line (ISS-605)', () => {
+    const approved = {
+      workflowId: 'w1',
+      flow: 'f',
+      title: 'F',
+      template: null,
+      designStatus: 'approved',
+      revision: 1,
+      approvedRevision: 1,
+      linkedItems: [],
+      openQuestions: [],
+    };
+    const done = view({ doneAt: T0.toISOString(), designs: [approved] });
+    expect(hintOf({ ...done, status: 'done' }, 'none')).toBeNull();
+    const failed = hintOf(
+      {
+        ...done,
+        status: 'failed',
+        job: job({ phase: 'revise', status: 'failed', attempt: 10, endedWith: 'cc-startup-death' }),
+      },
+      'none',
+    );
+    expect(failed?.text).toBe(
+      'Attempt 10 failed: cc-startup-death · Waits on: A holder of onboarding.request',
+    );
+  });
+
+  it('names the re-analysis, not an answer, while a round still holds a question open (ISS-605)', () => {
+    const batch = {
+      id: 'b1',
+      round: 1,
+      open: 2,
+      postedAt: T0.toISOString(),
+      ...batchDue(T0, day(1)),
+    };
+    const h = hintOf(
+      view({ status: 'failed', openBatch: batch, job: job({ status: 'failed' }) }),
+      'none',
+    );
+    expect(h?.action).toBe('reanalyze');
+    expect(h?.tone).toBe('err');
   });
 
   it('heads a live retry with its attempt number, and leaves a first attempt unnumbered', () => {

@@ -29,7 +29,7 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { linkItems, type SeriesItem } from './design-items.js';
 import { batchDue, hintOf, type SystemContextState } from './hint.js';
 import { runWaitingOf } from './ports.js';
-import type { LiveJob } from './rules.js';
+import { type LiveJob, onboardingStatusOf } from './rules.js';
 
 type Executor = typeof db | Tx;
 export type OnboardingRow = typeof onboardings.$inferSelect;
@@ -44,15 +44,6 @@ export async function onboardingOf(
   return row ?? null;
 }
 
-// The status is read, never stored: done once it was marked done (until a re-analysis clears the
-// mark), waiting on a person while an answerable batch holds a question still open — an assumption
-// never waits on anyone, and an open question keeps only its own item open once onboarding is done
-// (REQ-10 BC-11) — else with the agent
-const onboardingStatusOf = (
-  row: Pick<OnboardingRow, 'doneAt'>,
-  questionOpen: boolean,
-): OnboardingStatus => (row.doneAt ? 'done' : questionOpen ? 'waiting_on_you' : 'in_progress');
-
 const ANSWERABLE = ['open', 'skipped'] as const;
 
 /** The status of each onboarding whose thread is in `conversationIds`, keyed by conversation. */
@@ -66,6 +57,7 @@ export async function onboardingStatusesOf(
         id: onboardings.id,
         conversationId: onboardings.conversationId,
         doneAt: onboardings.doneAt,
+        lastJobId: onboardings.lastJobId,
       })
       .from(onboardings)
       .where(inArray(onboardings.conversationId, [...conversationIds])),
@@ -82,7 +74,20 @@ export async function onboardingStatusesOf(
       ),
   ]);
   const waiting = new Set(answerable.map((a) => a.onboardingId));
-  return new Map(rows.map((r) => [r.conversationId, onboardingStatusOf(r, waiting.has(r.id))]));
+  const newest = await newestAttemptsOf(
+    db,
+    rows.flatMap((r) => (r.lastJobId ? [r.lastJobId] : [])),
+  );
+  return new Map(
+    rows.map((r) => [
+      r.conversationId,
+      onboardingStatusOf(
+        r,
+        waiting.has(r.id),
+        r.lastJobId ? (newest.get(r.lastJobId)?.status ?? null) : null,
+      ),
+    ]),
+  );
 }
 
 /** The onboarding job not yet over for this project, if any: one runs at a time. */
@@ -281,20 +286,41 @@ export async function openBatchView(
 }
 
 /**
- * The newest attempt of the job onboarding queued: core's retries (`jobs.retry_of`) are new jobs, so
- * `last_job_id` names the first attempt and the record follows the chain to the one that runs now
- * (ISS-268). `attempt` counts the chain, 1 for the job onboarding queued itself.
+ * The newest attempt of each job onboarding queued, keyed by that first job: core's retries
+ * (`jobs.retry_of`) are new jobs, so `last_job_id` names the first attempt and the record follows
+ * the chain to the one that runs now (ISS-268). `attempt` counts the chain, 1 for the job onboarding
+ * queued itself; `status` is the newest attempt's, so a failed one with no retry after it is over.
  */
-async function latestAttemptOf(tx: Executor, firstJobId: string) {
-  const chain = await tx.execute<{ id: string; attempt: number }>(sql`
+async function newestAttemptsOf(
+  tx: Executor,
+  firstJobIds: readonly string[],
+): Promise<Map<string, { id: string; attempt: number; status: string }>> {
+  if (firstJobIds.length === 0) return new Map();
+  const chain = await tx.execute<{
+    first: string;
+    id: string;
+    attempt: number;
+    status: string;
+  }>(sql`
     WITH RECURSIVE chain AS (
-      SELECT id, 1 AS attempt FROM ${jobs} WHERE id = ${firstJobId}
+      SELECT id AS first, id, 1 AS attempt FROM ${jobs}
+      WHERE id IN (${sql.join(
+        firstJobIds.map((id) => sql`${id}`),
+        sql`, `,
+      )})
       UNION ALL
-      SELECT j.id, c.attempt + 1 FROM ${jobs} j JOIN chain c ON j.retry_of = c.id
+      SELECT c.first, j.id, c.attempt + 1 FROM ${jobs} j JOIN chain c ON j.retry_of = c.id
     )
-    SELECT chain.id, chain.attempt FROM chain JOIN ${jobs} x ON x.id = chain.id
-    ORDER BY chain.attempt DESC, x.queued_at DESC LIMIT 1`);
-  const newest = chain[0];
+    SELECT DISTINCT ON (chain.first) chain.first, chain.id, chain.attempt, x.status
+    FROM chain JOIN ${jobs} x ON x.id = chain.id
+    ORDER BY chain.first, chain.attempt DESC, x.queued_at DESC`);
+  return new Map(
+    chain.map((c) => [c.first, { id: c.id, attempt: Number(c.attempt), status: c.status }]),
+  );
+}
+
+async function latestAttemptOf(tx: Executor, firstJobId: string) {
+  const newest = (await newestAttemptsOf(tx, [firstJobId])).get(firstJobId);
   if (!newest) return [];
   const rows = await tx
     .select({
@@ -338,7 +364,7 @@ export async function onboardingView(
     id: row.id,
     projectId: row.projectId,
     conversationId: row.conversationId,
-    status: onboardingStatusOf(row, (open?.open ?? 0) > 0),
+    status: onboardingStatusOf(row, (open?.open ?? 0) > 0, j?.status ?? null),
     roundsSent: row.roundsSent,
     maxRounds: QUESTIONNAIRE_MAX_ROUNDS,
     startedBy: row.startedBy,

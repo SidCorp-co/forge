@@ -125,15 +125,39 @@ function liveJobText(job: NonNullable<OnboardingView['job']>): Said {
 const attemptLine = (job: NonNullable<OnboardingView['job']>, line: Said): Said =>
   job.attempt > 1 ? say('onboarding.hint.retrying', { n: job.attempt, line }) : line;
 
+const endedWith = (job: NonNullable<OnboardingView['job']>): Said | null =>
+  job.endedWith ? say('onboarding.hint.endedWith', { why: job.endedWith }) : null;
+
 /** An attempt that is over and drew nothing says so, and why it ended when the job recorded why. */
 const drewNothing = (job: NonNullable<OnboardingView['job']>): Said =>
-  say('onboarding.hint.drewNothing', {
-    n: job.attempt,
-    why: job.endedWith ? say('onboarding.hint.endedWith', { why: job.endedWith }) : null,
-  });
+  say('onboarding.hint.drewNothing', { n: job.attempt, why: endedWith(job) });
+
+/**
+ * Who acts on a failed analysis: a re-analysis is a person's ask, held by onboarding.request
+ * (rules.ts:personActRefusal), named the way a standing names a permission's holder.
+ */
+const REANALYSIS_ASKER = say('standing.who.holderOf', { perm: 'onboarding.request' });
+
+/** A failed onboarding's line (ISS-605): the attempt that failed, why, and who acts; the action is the act. */
+function failedHint(view: OnboardingView, mayReanalyze: boolean): OnboardingHint {
+  const job = view.job;
+  return hint(
+    'err',
+    say('onboarding.hint.failed'),
+    say('onboarding.hint.failedWaits', {
+      n: job?.attempt ?? 1,
+      why: job ? endedWith(job) : null,
+      who: REANALYSIS_ASKER,
+    }),
+    'reanalyze',
+    say('onboarding.hint.askReanalysis'),
+    mayReanalyze,
+  );
+}
 
 // the hint is derived, never stored: it says what the onboarding's own rows say now, and it
-// leaves the dashboard once every onboarding design is approved (state `onboarded`). With no
+// leaves the dashboard once every onboarding design is approved (state `onboarded`) — unless its
+// last analysis failed, which is said before anything else and never reads done (ISS-605). With no
 // onboarding it reads the project's system-context design, so a project that has one approved is
 // never told it has no system context (e2e D9). A re-analysis is offered whenever no job is live,
 // the same rule reanalyzeRefusal holds (ONBOARDING_ALREADY_RUNNING)
@@ -147,6 +171,7 @@ export function hintOf(
   const live = view.job !== null && LIVE.has(view.job.status);
   const mayReanalyze = !live;
   const open = say('onboarding.hint.openOnboarding');
+  if (view.status === 'failed') return failedHint(view, mayReanalyze);
   if (view.status === 'done') {
     if (drafted > 0 && approved === drafted) return null;
     return hint(
@@ -171,16 +196,6 @@ export function hintOf(
   // a batch holding only assumptions asks the person nothing (REQ-10 BC-6)
   if (view.openBatch && view.openBatch.open > 0)
     return openBatchHint(view.openBatch, drafted, mayReanalyze);
-  if (view.job?.status === 'failed') {
-    return hint(
-      'err',
-      say('onboarding.hint.failed'),
-      drafted ? say('onboarding.hint.mapStays') : drewNothing(view.job),
-      'reanalyze',
-      say('onboarding.hint.askReanalysis'),
-      mayReanalyze,
-    );
-  }
   return hint(
     'run',
     say('onboarding.hint.inProgress'),

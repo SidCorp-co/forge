@@ -190,11 +190,11 @@ const CONTRACT_FAMILIES = {
   contractState: { labels: CONTRACT_STATE_LABELS, tones: CONTRACT_STATE_TONES, glyphs: CONTRACT_STATE_GLYPHS, hints: CONTRACT_STATE_HINTS },
   contractAdoption: { labels: CONTRACT_ADOPTION_LABELS, tones: CONTRACT_ADOPTION_TONES, glyphs: CONTRACT_ADOPTION_GLYPHS, hints: CONTRACT_ADOPTION_HINTS },
   contractApproval: { labels: CONTRACT_APPROVAL_LABELS, tones: CONTRACT_APPROVAL_TONES, glyphs: { proposed: "●", approved: "✓", returned: "↺" } },
-  onboarding: { labels: ONBOARDING_STATUS_LABELS, tones: ONBOARDING_STATUS_TONES, glyphs: { in_progress: "•", waiting_on_you: "?", done: "✓" } },
+  onboarding: { labels: ONBOARDING_STATUS_LABELS, tones: ONBOARDING_STATUS_TONES, glyphs: { in_progress: "•", waiting_on_you: "?", failed: "×", done: "✓" } },
   thread: {
     labels: ONBOARDING_STATUS_LABELS,
     tones: ONBOARDING_STATUS_TONES,
-    glyphs: { in_progress: "•", waiting_on_you: "?", done: "✓" },
+    glyphs: { in_progress: "•", waiting_on_you: "?", failed: "×", done: "✓" },
     hints: THREAD_STATUS_HINTS,
   },
   dataPolicy: {

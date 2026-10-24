@@ -2378,7 +2378,10 @@ export const SAID = {
 	"onboarding.hint.updating": { en: "Onboarding: updating designs." },
 	"onboarding.hint.reading": { en: "Reading the code." },
 	"onboarding.hint.failed": { en: "Onboarding analysis failed." },
-	"onboarding.hint.mapStays": { en: "The last code map stays." },
+	"onboarding.hint.failedWaits": {
+		en: "Attempt {n} failed{why} · Waits on: {who}",
+		vars: { n: "count", why: "said?", who: "said" },
+	},
 	"onboarding.hint.drewNothing": {
 		en: "Attempt {n} drew nothing{why}",
 		vars: { n: "count", why: "said?" },

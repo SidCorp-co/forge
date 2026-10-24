@@ -14,10 +14,15 @@ import type { PermissionRefusalCode } from "./permissions.js";
 import type { RunWaitingOn } from "./run-standing.js";
 import type { Said } from "./said.js";
 
-/** The onboarding thread's status, as the conversation list and the dashboard hint show it. */
+/**
+ * The onboarding thread's status, as the conversation list and the dashboard hint show it. `failed`:
+ * the newest attempt of its last analysis job failed with no retry after it, whether or not it was
+ * done before (REQ-10 BC-11, ISS-605); a person's re-analysis lifts it.
+ */
 export const ONBOARDING_STATUSES = [
 	"in_progress",
 	"waiting_on_you",
+	"failed",
 	"done",
 ] as const;
 export type OnboardingStatus = (typeof ONBOARDING_STATUSES)[number];
@@ -28,20 +33,24 @@ export const ONBOARDING_STATUS_TONES: Record<
 > = {
 	in_progress: "run",
 	waiting_on_you: "you",
+	failed: "err",
 	done: "done",
 };
 
 export const ONBOARDING_STATUS_LABELS: Record<OnboardingStatus, string> = {
 	in_progress: "In progress",
 	waiting_on_you: "Waiting on you",
+	failed: "Failed",
 	done: "Done",
 };
 
-/** The same three values read as any conversation's status (`assistant/thread-marks.ts:threadMarks`). */
+/** The same values read as any conversation's status (`assistant/thread-marks.ts:threadMarks`); only an onboarding thread reads `failed`. */
 export const THREAD_STATUS_HINTS: Record<OnboardingStatus, string> = {
 	in_progress: "in_progress: the agent is working on the last message",
 	waiting_on_you:
 		"waiting_on_you: the agent's last reply, or a batch, awaits your answer",
+	failed:
+		"failed: the last analysis job failed after its retries; a person asks for a re-analysis",
 	done: "done: nothing in this thread waits on you or on the agent",
 };
 
