@@ -3361,6 +3361,13 @@
       "when": 1828224000000,
       "tag": "0524_a_declared_run_holds_from_its_box",
       "breakpoints": true
+    },
+    {
+      "idx": 525,
+      "version": "7",
+      "when": 1828310400000,
+      "tag": "0525_a_requirement_criterion_holds_its_own_verdict",
+      "breakpoints": true
     }
   ]
 }

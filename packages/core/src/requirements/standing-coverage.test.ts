@@ -123,6 +123,7 @@ describe('the verdict a business criterion counts', () => {
     ]);
     expect(c?.verdict).toBe('passing');
     expect(c?.counts).toEqual({
+      source: 'issue',
       issueId: 'i2',
       displayId: 'ISS-2',
       criterion: 1,

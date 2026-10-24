@@ -126,3 +126,26 @@ export function ownerWait(input: StandingInput, act: Said, rule: Said, due: stri
   const named = owner?.name ? say('standing.who.named', { name: owner.name }) : SIGNER;
   return { group: 'waiting' as const, waitingOn: wait('person', named, act, rule, due) };
 }
+
+/**
+ * A master's wait on a project no runner is bound to: no master can take it, so the signer owes it
+ * (the viewer, where they can sign off), under the rule that says why, still about what it was about
+ * (FB-77).
+ */
+export function signerInsteadOfMaster(
+  viewer: StandingInput['viewer'],
+  was: RequirementWaitingOn,
+): { group: 'needs_you' | 'waiting'; waitingOn: RequirementWaitingOn } {
+  const signer = signerWait(viewer, was.says.act, say('requirements.rule.noRunner'));
+  return {
+    group: signer.group,
+    waitingOn: {
+      ...waitingOn(
+        signer.waitingOn.kind,
+        { ...signer.waitingOn.says, ...(was.says.effect ? { effect: was.says.effect } : {}) },
+        { ref: was.ref, dueAt: was.dueAt },
+      ),
+      ...(was.refers ? { refers: was.refers } : {}),
+    },
+  };
+}

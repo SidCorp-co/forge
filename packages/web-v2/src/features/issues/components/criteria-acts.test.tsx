@@ -248,8 +248,8 @@ describe("recording a verdict from a criterion row", () => {
 
 const coverage = [
   { code: "BC-1", body: "The report names its source", verdict: "pass", issues: [{ issueId: "i1" }], uncoveredReason: null },
-  { code: "BC-7", body: "A template run can be saved", verdict: "gap", issues: [], uncoveredReason: null },
-  { code: "BC-8", body: "A template can be scheduled", verdict: "gap", issues: [{ issueId: "other" }], uncoveredReason: null },
+  { code: "BC-7", body: "A template run can be saved", verdict: "gap", verdicts: [], issues: [], uncoveredReason: null },
+  { code: "BC-8", body: "A template can be scheduled", verdict: "gap", verdicts: [], issues: [{ issueId: "other" }], uncoveredReason: null },
 ];
 
 describe("recording a clip as a verdict's evidence (REQ-40 BC-4)", () => {
@@ -324,7 +324,7 @@ describe("tying a closed issue to its requirement's criteria", () => {
   // coverage-truth: ISS-412's BC-13 trace sat on r1 after r6 reworded it; the dialog matched by code
   // and showed it "already tied", so the current wording could never be tied on the issue delivering it
   it("offers a BC tied only at an earlier wording, saying a tie refreshes it, and sends it", async () => {
-    const reworded = [{ code: "BC-13", body: "A new report or share destination is a port", verdict: "stale", issues: [{ issueId: "i1", stale: true }], uncoveredReason: null }];
+    const reworded = [{ code: "BC-13", body: "A new report or share destination is a port", verdict: "stale", verdicts: [], issues: [{ issueId: "i1", stale: true }], uncoveredReason: null }];
     const calls = fakeCore((c) => {
       if (c.method === "GET" && c.path === "/issues/i1/criteria") return { body: { criteria: [] } };
       if (c.method === "GET" && c.path === "/projects/p1/requirements/REQ-32") return { body: { standing: { coverage: reworded } } };

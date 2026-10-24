@@ -7,14 +7,15 @@
 import type { ChecklistAnswer } from '@forge/contracts/checklists';
 import type { CoverageFile, RequirementAcceptanceDecision } from '@forge/contracts/requirements';
 import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
-import { inArray, sql } from 'drizzle-orm';
+import { desc, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
+import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.js';
 import { reopenedAtOf, verdictByBuilderSql } from '../issues/index.js';
 import { waivedOf } from './acceptance-waived.js';
 import { requirementDependents } from './dependents.js';
 import type { LiveBuildHolds, StandingIssueCriterion, StandingVerdict } from './standing.js';
-import type { CoverageIdentity } from './standing-coverage.js';
+import type { CoverageIdentity, StandingRequirementVerdict } from './standing-coverage.js';
 
 type CriterionVerdictRow = {
   criterion_id: string;
@@ -204,16 +205,21 @@ export async function issueCriteriaOf(
 
 /**
  * What the live build holds of the commits `rows`' judgements name, directly or through the runtime
- * that served them; null where none names either.
+ * that served them, and of the commits the verdicts recorded at the requirement itself name
+ * (`own`, ISS-588); null where none names either.
  */
 export async function liveBuildOf(
   projectId: string,
   rows: readonly StandingIssueCriterion[],
+  own: readonly Pick<StandingRequirementVerdict, 'commit'>[] = [],
 ): Promise<LiveBuildHolds | null> {
   const judged = rows
     .flatMap((r) => [r, ...(r.earlier ?? [])])
     .filter((r) => r.verdict !== null && r.verdict !== 'skipped');
-  const commits = judged.flatMap((r) => (r.identity?.kind === 'commit' ? [r.identity.sha] : []));
+  const commits = [
+    ...judged.flatMap((r) => (r.identity?.kind === 'commit' ? [r.identity.sha] : [])),
+    ...own.flatMap((v) => (v.commit ? [v.commit] : [])),
+  ];
   const runtimes = judged.flatMap((r) => (r.identity?.kind === 'runtime' ? [r.identity.ref] : []));
   const voidedAtCommit = rows.some((r) => r.beforeReopen?.identity?.kind === 'commit');
   if (commits.length === 0 && runtimes.length === 0 && !voidedAtCommit) return null;
@@ -415,5 +421,38 @@ export async function unapprovedDesignsOf(ids: readonly string[]) {
     flow: r.flow,
     title: r.title ?? r.flow,
     designStatus: r.design_status,
+  }));
+}
+
+/** One requirement-level verdict as coverage reads it, with the requirement it belongs to and its author. */
+export type RequirementVerdictRead = StandingRequirementVerdict & {
+  requirementId: string;
+  authorUserId: string | null;
+  authorAgency: 'human' | 'agent';
+};
+
+/** Every verdict recorded at the requirement on `ids`, newest first. */
+export async function requirementVerdictsOf(
+  ids: readonly string[],
+  ex: Pick<Tx, 'select'> = db,
+): Promise<RequirementVerdictRead[]> {
+  if (ids.length === 0) return [];
+  const rows = await ex
+    .select()
+    .from(requirementCriterionVerdicts)
+    .where(inArray(requirementCriterionVerdicts.requirementId, [...ids]))
+    .orderBy(desc(requirementCriterionVerdicts.createdAt));
+  return rows.map((r) => ({
+    id: r.id,
+    requirementId: r.requirementId,
+    requirementCriterionId: r.requirementCriterionId,
+    verdict: r.verdict,
+    verdictAt: r.createdAt,
+    note: r.reason,
+    evidence: r.evidence,
+    commit: r.commitSha,
+    authored: r.authorUserId !== null || r.authorDeviceId !== null,
+    authorUserId: r.authorUserId,
+    authorAgency: r.authorAgency,
   }));
 }

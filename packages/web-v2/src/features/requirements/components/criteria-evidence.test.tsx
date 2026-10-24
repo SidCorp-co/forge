@@ -1,5 +1,6 @@
 // A criterion's evidence reads in a BA's terms first (what was judged, when, which work), with the
 // issue key as a secondary link; the inline issue link leads with the title.
+// @direct-test-of packages/web-v2/src/features/requirements/components/requirement-own-verdicts.tsx
 
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -29,7 +30,7 @@ const d = {
       {
         code: "BC-1",
         body: "Checkout totals include tax.",
-        verdict: "passing",
+        verdict: "passing", verdicts: [],
         issues: [
           { issueId: "i1", displayId: "ISS-12", title: "Add tax to checkout", status: "closed", tone: "done", note: null, files: [], criterion: 2, verdict: "pass", verdictAt: "2026-10-05T09:30:00Z", stale: false },
         ],
@@ -47,7 +48,7 @@ const kept = {
       {
         code: "BC-1",
         body: "Each release has a page.",
-        verdict: "passing",
+        verdict: "passing", verdicts: [],
         issues: [
           {
             issueId: "i1",
@@ -80,7 +81,7 @@ const earlierAndOther = {
       {
         code: "BC-10",
         body: "One.",
-        verdict: "stale",
+        verdict: "stale", verdicts: [],
         counts: null,
         why: "ISS-7 trace only an earlier wording of this criterion, so no verdict on them counts: tie it again from the issue's Criteria tab, then judge it",
         issues: [{ issueId: "i7", displayId: "ISS-7", title: "Seven", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit aaaaaaaaaaaa", commit: "a".repeat(40), inLiveBuild: null, notCounted: null, stale: true }],
@@ -88,7 +89,7 @@ const earlierAndOther = {
       {
         code: "BC-11",
         body: "Two.",
-        verdict: "not_live",
+        verdict: "not_live", verdicts: [],
         counts: null,
         why: "judged only at builds the live one does not hold (ISS-8 criterion 1: commit bbbbbbbbbbbb): judge it again on the live build",
         issues: [{ issueId: "i8", displayId: "ISS-8", title: "Eight", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit bbbbbbbbbbbb", commit: "b".repeat(40), inLiveBuild: false, notCounted: "judged at commit bbbbbbbbbbbb, which the live build does not hold", stale: false }],
@@ -96,6 +97,45 @@ const earlierAndOther = {
     ],
   },
 } as unknown as RequirementDetail;
+
+// ISS-588: a capability that already shipped is judged at the requirement itself, with no issue
+const shipped = {
+  criteria: [{ code: "BC-1", form: "plain", sinceRevision: 1 }],
+  standing: {
+    shownRevision: 1,
+    facts: { issuesTotal: 0 },
+    coverage: [
+      {
+        code: "BC-1",
+        body: "A site lists its catalog.",
+        verdict: "passing",
+        issues: [],
+        counts: { source: "requirement", verdictId: "v1", verdict: "pass", at: "2026-10-20T09:30:00Z", identity: "commit 111111111111", commit: "1".repeat(40), inLiveBuild: true },
+        why: null,
+        uncoveredReason: null,
+        verdicts: [
+          { verdictId: "v1", verdict: "pass", verdictAt: "2026-10-20T09:30:00Z", identity: "commit 111111111111", note: "Listed on the live site.", evidence: ["https://example.test/catalog.webm", "docs/catalog.md"], commit: "1".repeat(40), inLiveBuild: true, notCounted: null, stale: false },
+        ],
+      },
+    ],
+  },
+} as unknown as RequirementDetail;
+
+describe("a criterion judged at the requirement", () => {
+  it("reads as the shipped capability, with the verdict and what it cites in its evidence", async () => {
+    render(<CriteriaChecklist d={shipped} slug="epod" developer />);
+    expect(screen.getByTestId("criterion-shipped")).toHaveTextContent("Shipped capability");
+    expect(screen.queryByText("No issues")).toBeNull();
+    expect(screen.getByTestId("criterion-counts")).toHaveTextContent("Counts: Pass at the requirement, the newest verdict");
+    await userEvent.click(screen.getByText(/^Evidence$/));
+    const row = screen.getByTestId("criterion-own-verdict");
+    expect(row).toHaveTextContent("Pass");
+    expect(row).toHaveTextContent("commit 111111111111");
+    expect(row).toHaveTextContent("Listed on the live site.");
+    expect(within(row).getByRole("link", { name: "https://example.test/catalog.webm" })).toHaveAttribute("href", "https://example.test/catalog.webm");
+    expect(row).toHaveTextContent("docs/catalog.md");
+  });
+});
 
 describe("a criterion's evidence", () => {
   it("says what passed and when, with the issue key secondary", async () => {
@@ -151,8 +191,8 @@ describe("a criterion's evidence", () => {
           {
             code: "BC-1",
             body: "Checkout totals include tax.",
-            verdict: "passing",
-            counts: { issueId: "i2", displayId: "ISS-31", note: null, files: [], criterion: 4, verdict: "short", at: "2026-10-08T16:17:36Z", identity: `runtime ${NEW.slice(0, 12)}`, commit: NEW, inLiveBuild: true },
+            verdict: "passing", verdicts: [],
+            counts: { source: "issue", issueId: "i2", displayId: "ISS-31", note: null, files: [], criterion: 4, verdict: "short", at: "2026-10-08T16:17:36Z", identity: `runtime ${NEW.slice(0, 12)}`, commit: NEW, inLiveBuild: true },
             why: null,
             issues: [
               { issueId: "i1", displayId: "ISS-12", title: "Add tax", status: "closed", tone: "done", note: null, files: [], criterion: 2, verdict: "fail", verdictAt: "2026-10-01T09:30:00Z", identity: `commit ${OLD.slice(0, 12)}`, commit: OLD, inLiveBuild: false, notCounted: `judged at commit ${OLD.slice(0, 12)}, which the live build does not hold`, stale: false },
@@ -202,7 +242,7 @@ describe("a criterion's evidence", () => {
         shownRevision: 1,
         facts: { issuesTotal: 1 },
         coverage: [
-          { code: "BC-2", body: "Refunds post the same day.", verdict: "gap", issues: [], uncoveredReason: "the bank's batch decides this" },
+          { code: "BC-2", body: "Refunds post the same day.", verdict: "gap", verdicts: [], issues: [], uncoveredReason: "the bank's batch decides this" },
         ],
       },
     } as unknown as RequirementDetail;

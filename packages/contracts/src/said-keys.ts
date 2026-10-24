@@ -633,6 +633,15 @@ export const SAID = {
 	"standing.act.breakDown": { en: "break down" },
 	"standing.act.startDelivery": { en: "move it into delivery" },
 	"standing.act.markDelivered": { en: "mark it delivered" },
+	"standing.act.acceptShipped": { en: "accept it on the shipped capability" },
+	"standing.act.judgeShipped": {
+		en: "judge {codes} on the running build",
+		vars: { codes: "key" },
+	},
+	"standing.act.breakDownFailing": {
+		en: "break down {codes}, failing on the running build",
+		vars: { codes: "key" },
+	},
 	"standing.act.breakDownBy": {
 		en: "break down, {when}",
 		vars: { when: "said" },
@@ -1460,6 +1469,13 @@ export const SAID = {
 		vars: { date: "date", days: "count" },
 	},
 	"requirements.rule.noIssue": { en: "agreed with no linked issue" },
+	"requirements.rule.shippedProven": {
+		en: "no issue carries it and every criterion passes on the running build",
+	},
+	"requirements.rule.shippedNotProven": {
+		en: "no issue carries it; it rests on shipped capability, but {parts}{undeclared}",
+		vars: { parts: "saidList", undeclared: "said?" },
+	},
 	"requirements.rule.startDelivery": {
 		en: "every issue closed and every criterion passes; an act moves it",
 	},

@@ -18,7 +18,7 @@ it lives in numbered revisions, and each revision carries business criteria unde
 line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The door is
 \`/api/projects/:id/requirements\`: each act below is a route under \`…/requirements/:req\`
 (\`revisions\`, \`revisions/:n/propose|accept|return\`, \`agree\`, \`repin\`, \`defer\`, \`undefer\`,
-\`start-delivery\`, \`mark-delivered\`, \`accept\`, \`drop\`, \`issues\`, \`promote\`, \`workflows\`, \`contracts\`).
+\`start-delivery\`, \`mark-delivered\`, \`accept\`, \`drop\`, \`issues\`, \`promote\`, \`workflows\`, \`contracts\`, \`verdicts\`).
 
 ### Three things move, and they are not one field
 - **The requirement's status**: \`draft\` (being written; nothing is built against it), \`agreed\` (a
@@ -176,6 +176,21 @@ proven. A correction after it comes in as feedback; a new revision accepted re-a
 \`{ reason }\` ends a draft, agreed, in-delivery or deferred requirement that is not going to
 be built (\`REQUIREMENT_NOT_DROPPABLE\` once accepted, \`REQUIREMENT_DROP_REASON_REQUIRED\` without a
 reason), refused while any live issue links to it (\`REQUIREMENT_HAS_LIVE_ISSUES\`, naming each).
+
+### A capability that already shipped
+A requirement agreed over a capability that already shipped owes no issue whose only work is verifying
+it (REQ-45 r3 BC-8). Judge each criterion on the running build at the requirement itself instead:
+**verdicts** \`{ criterion: 'BC-n', verdict, reason?, identity: { kind: 'commit', sha }, evidence }\`
+(\`project.write\`), the commit the live build serves and what the verdict was taken from (a link, or a
+repository path at that commit). Refused by name: \`REQUIREMENT_VERDICT_NOT_DELIVERING\` (not agreed, in
+delivery or delivered), \`REQUIREMENT_VERDICT_CRITERION_UNKNOWN\` (no live wording of that code, naming
+each one), \`REQUIREMENT_VERDICT_UNCITED\` (a pass, short or fail citing nothing) and the \`VERDICT_*\`
+rules every verdict meets. The answer is the criterion's coverage, so you see at once whether it counts:
+only where the live build holds the commit, and a short never does. Each verdict reads on its BC in the
+standing's \`coverage[].verdicts\`; \`GET …/verdicts\` lists them, newest first. With no live issue and one
+such verdict the requirement rests on its shipped capability and owes no breakdown: every BC passing, it
+waits on its accept, which its checklist takes; a BC with no counted pass waits on the project's judge;
+a BC failing waits on the master to break that BC down, the one breakdown it then owes.
 
 ### Who may act
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,

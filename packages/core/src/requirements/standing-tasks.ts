@@ -7,10 +7,12 @@ import {
   BREAKDOWN_SLA_WORKING_DAYS,
   CHECK_SLA_WORKING_DAYS,
   isDeliveringStatus,
+  type RequirementCoverage,
   type RequirementTask,
 } from '@forge/contracts/requirements';
 import { addWorkingDays } from '../lib/working-days.js';
 import type { StandingInput, StandingIssue } from './standing.js';
+import { failingOf, restsOnShipped } from './standing-shipped.js';
 
 type SlaTask = Extract<RequirementTask, { kind: 'breakdown' | 'check' }>;
 type ReplanTask = Extract<RequirementTask, { kind: 're-plan' }>;
@@ -59,15 +61,19 @@ export function replanTasksOf(input: StandingInput, live: readonly StandingIssue
 
 // workflow requirement-to-delivery step `breakdown`: the project master proposes the breakdown of
 // an agreed revision within 2 working days; the task is open while the revision has no live issue
-// and no open breakdown suggestion
+// and no open breakdown suggestion. A requirement resting on its shipped capability
+// (`standing-shipped.ts:restsOnShipped`) owes one only for a criterion failing on the running build:
+// REQ-45 r3 BC-8 forbids an issue whose only work is verifying what shipped (ISS-588)
 export function breakdownTaskOf(
   input: StandingInput,
   live: readonly StandingIssue[],
+  coverage: readonly RequirementCoverage[],
 ): SlaTask | null {
   if (!isDeliveringStatus(input.status) || input.currentRevision === null || !input.agreedAt) {
     return null;
   }
   if (live.length > 0 || input.openSuggestionKinds.includes('breakdown')) return null;
+  if (restsOnShipped(live, coverage) && failingOf(coverage).length === 0) return null;
   return taskOf(
     'breakdown',
     'Project master',
@@ -97,9 +103,13 @@ export function checkTaskOf(input: StandingInput, live: readonly StandingIssue[]
 }
 
 /** Every task the standing opens: the breakdown and the check where they are due, then each re-plan. */
-export function tasksOf(input: StandingInput, live: readonly StandingIssue[]): RequirementTask[] {
+export function tasksOf(
+  input: StandingInput,
+  live: readonly StandingIssue[],
+  coverage: readonly RequirementCoverage[],
+): RequirementTask[] {
   return [
-    ...[breakdownTaskOf(input, live), checkTaskOf(input, live)].filter(
+    ...[breakdownTaskOf(input, live, coverage), checkTaskOf(input, live)].filter(
       (t): t is SlaTask => t !== null,
     ),
     ...replanTasksOf(input, live),

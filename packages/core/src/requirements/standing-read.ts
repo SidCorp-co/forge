@@ -47,6 +47,7 @@ import {
   latestContractPinsOf,
   latestPinsOf,
   liveBuildOf,
+  requirementVerdictsOf,
   statusFactsOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
@@ -380,16 +381,19 @@ export async function standingsOf(
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
-  const [people, issueCriteria, feedbackLinks, times, changedTraced, work] = await Promise.all([
-    peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
-    issueCriteriaOf(linkedIds),
-    feedbackLinksOf(projectId, ids),
-    issueTimesOf(linked),
-    changedTracedOf(db, linkedIds),
-    workFactsOf(projectId, rows, linked, viewer, now),
-  ]);
+  const [people, issueCriteria, feedbackLinks, times, changedTraced, work, own] = await Promise.all(
+    [
+      peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
+      issueCriteriaOf(linkedIds),
+      feedbackLinksOf(projectId, ids),
+      issueTimesOf(linked),
+      changedTracedOf(db, linkedIds),
+      workFactsOf(projectId, rows, linked, viewer, now),
+      requirementVerdictsOf(ids),
+    ],
+  );
   const { issueWaits, release } = work;
-  const liveBuild = await liveBuildOf(projectId, issueCriteria);
+  const liveBuild = await liveBuildOf(projectId, issueCriteria, own);
   const feedbackBy = feedbackCountsOf(feedbackLinks);
   const out = new Map<string, RequirementStanding>();
   for (const row of rows) {
@@ -426,6 +430,7 @@ export async function standingsOf(
         criteria: by(criteria, row.id),
         issues: mine,
         issueCriteria: issueCriteria.filter((c) => issueIds.has(c.issueId)),
+        requirementVerdicts: by(own, row.id),
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
         ...beside(row.id),
         liveBuild,

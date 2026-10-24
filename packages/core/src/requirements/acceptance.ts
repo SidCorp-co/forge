@@ -43,7 +43,8 @@ import { acceptanceAnswersOf, uncitedVerdictsIn } from './checklist-record.js';
 import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
 import { deliveryAt, type LiveBuildHolds, type ProofIssue } from './standing.js';
-import { issueCriteriaOf, liveBuildOf } from './standing-facts.js';
+import { issueCriteriaOf, liveBuildOf, requirementVerdictsOf } from './standing-facts.js';
+import { restsOnShipped } from './standing-shipped.js';
 import {
   answer,
   inTx,
@@ -55,7 +56,8 @@ import {
 const DROPPABLE = entriesOf(REQUIREMENT_MACHINE, 'dropped') as RequirementStatus[];
 
 /**
- * What the live build holds of the verdict commits on `requirementId`'s issues, read apart from any
+ * What the live build holds of the verdict commits on `requirementId`'s issues and on its criteria at
+ * the requirement itself, read apart from any
  * transaction since it asks production and the source host (`standing-facts.ts:liveBuildOf`).
  */
 export async function liveBuildOfRequirement(
@@ -66,7 +68,11 @@ export async function liveBuildOfRequirement(
     .select({ id: issues.id })
     .from(issues)
     .where(eq(issues.requirementId, requirementId));
-  return liveBuildOf(projectId, await issueCriteriaOf(linked.map((i) => i.id)));
+  return liveBuildOf(
+    projectId,
+    await issueCriteriaOf(linked.map((i) => i.id)),
+    await requirementVerdictsOf([requirementId]),
+  );
 }
 
 /**
@@ -123,6 +129,7 @@ export async function deliveryIn(
       criteria,
       issues: standingIssues,
       issueCriteria,
+      requirementVerdicts: await requirementVerdictsOf([row.id], ex),
       liveBuild,
       judge: policy?.document.qa ?? null,
     },
@@ -130,6 +137,7 @@ export async function deliveryIn(
   );
   const proof: DeliveryProof = {
     liveIssues: read.live.length,
+    shipped: restsOnShipped(read.live, read.coverage),
     unshipped: read.live.filter((i) => i.status !== 'closed').map((i) => i.displayId),
     unproven: read.coverage
       .filter((c) => c.verdict !== 'passing')

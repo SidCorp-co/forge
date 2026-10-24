@@ -9,6 +9,7 @@
 import { Link } from "@/lib/navigation/router";
 import {
   type BcVerdict,
+  type CoverageIssue,
   criteriaCoverageOf,
   REQUIREMENT_LIFECYCLE,
   type RequirementStanding,
@@ -19,7 +20,7 @@ import {
 import { type BannerTone, LEGEND, StepBar, statusReading, WaitBanner } from "@/design";
 import { StewardNoteLines, useStewardNote } from "@/features/standing";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
-import type { Copy } from "@/lib/i18n/product-copy";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said, saidView } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
@@ -178,3 +179,11 @@ export function RequirementStandingHead({ projectId, reqKey, standing, slug, ins
     </>
   );
 }
+
+/** A verdict's word, on an issue criterion or at the requirement. */
+export const VERDICT_WORD: Record<NonNullable<CoverageIssue["verdict"]>, ProductCopyKey> = {
+  pass: "requirements.verdict.pass",
+  short: "requirements.verdict.short",
+  fail: "requirements.verdict.fail",
+  skipped: "requirements.verdict.skipped",
+};

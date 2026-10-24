@@ -14,7 +14,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 
 afterEach(() => vi.unstubAllGlobals());
 
-const criterion = (n: number, verdict: BcVerdict = "not_judged") => ({ code: `BC-${n}`, body: `Criterion ${n} words`, verdict, issues: [], counts: null, why: null, uncoveredReason: null });
+const criterion = (n: number, verdict: BcVerdict = "not_judged") => ({ code: `BC-${n}`, body: `Criterion ${n} words`, verdict, issues: [], verdicts: [], counts: null, why: null, uncoveredReason: null });
 const withCoverage = (coverage: ReturnType<typeof criterion>[]) => ({ ...reqDetail, standing: { ...reqDetail.standing, coverage } }) as RequirementDetail;
 const withoutWords = {
   ...reqDetail,

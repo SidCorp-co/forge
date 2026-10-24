@@ -11,6 +11,8 @@ export interface DeliveryProof {
   /** Live linked issues not yet closed, by key. */
   unshipped: readonly string[];
   liveIssues: number;
+  /** It has no live issue and rests on its shipped capability (`standing-shipped.ts:restsOnShipped`, ISS-588). */
+  shipped: boolean;
   /** Current business criteria whose coverage is not passing, each with its verdict and the reason
    *  coverage gives for it (`RequirementCoverage.why`), null where it gives none. */
   unproven: readonly { code: string; verdict: string; why: string | null }[];

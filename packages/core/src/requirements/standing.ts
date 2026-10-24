@@ -31,6 +31,7 @@ import {
   coverageOf,
   type LiveBuildHolds,
   type StandingIssueCriterion,
+  type StandingRequirementVerdict,
 } from './standing-coverage.js';
 import { designTurn, draftTurn, type StandingRevision } from './standing-draft.js';
 import {
@@ -39,14 +40,22 @@ import {
   updateToApprovedAct,
   updateToApprovedEffect,
 } from './standing-follow.js';
-import { actWait, nextStepOf, ownerWait, signerWait } from './standing-gates.js';
+import {
+  actWait,
+  nextStepOf,
+  ownerWait,
+  signerInsteadOfMaster,
+  signerWait,
+} from './standing-gates.js';
 import { proofTurn } from './standing-proof.js';
+import { restsOnShipped, shippedTurn } from './standing-shipped.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, type WorkTurn, workTurn } from './standing-work.js';
 
 export type {
   LiveBuildHolds,
   StandingIssueCriterion,
+  StandingRequirementVerdict,
   StandingVerdict,
 } from './standing-coverage.js';
 
@@ -100,6 +109,8 @@ export interface StandingInput {
   criteria: readonly StandingCriterion[];
   issues: readonly StandingIssue[];
   issueCriteria: readonly StandingIssueCriterion[];
+  /** Its criteria's verdicts recorded at the requirement itself (ISS-588); absent reads as none. */
+  requirementVerdicts?: readonly StandingRequirementVerdict[];
   /** Kinds of the suggestions still `proposed` on this requirement. */
   openSuggestionKinds: readonly string[];
   /** Per BC code, why the newest accepted breakdown naming it left it uncovered. */
@@ -152,7 +163,13 @@ export type ProofIssue = Omit<StandingIssue, 'parkedOn'>;
 /** What the delivery counts and coverage read, and nothing else. */
 type ProofInput<I extends ProofIssue = ProofIssue> = Pick<
   StandingInput,
-  'status' | 'criteria' | 'issueCriteria' | 'uncovered' | 'liveBuild' | 'judge'
+  | 'status'
+  | 'criteria'
+  | 'issueCriteria'
+  | 'requirementVerdicts'
+  | 'uncovered'
+  | 'liveBuild'
+  | 'judge'
 > & { issues: readonly I[] };
 
 const SIGNER = say('standing.who.baOrOwner');
@@ -201,7 +218,9 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // revision is suggested a signer reviews it; 6. every
 // issue closed and every BC proven → the BA's check task, a BC unproven → whoever owes its proof
 // (`proofTurn`); 7. an open breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
-// re-plans it (its re-plan tasks); 9. no issue → the master breaks it down; 10. only drafts → a signer who can
+// re-plans it (its re-plan tasks); 9a. no issue and a verdict recorded at the requirement → it rests on
+// its shipped capability (`standing-shipped.ts:shippedTurn`, ISS-588): its accept, its judge or, for a
+// failing criterion, the master; 9. no issue → the master breaks it down; 10. only drafts → a signer who can
 // admit promotes them (only they are asked: question 3b8292dc);
 // 11. else whom the work waits on (`standing-work.ts:workTurn`): a parked issue's own wait, the release
 // cut once every issue has landed, the issues while one runs, else the master. Then
@@ -352,8 +371,11 @@ function turnOf(
       ),
     };
   }
+  if (restsOnShipped(live, coverage)) {
+    return shippedTurn(input, coverage, breakdownTaskOf(input, live, coverage)?.dueAt ?? null);
+  }
   if (live.length === 0) {
-    const task = breakdownTaskOf(input, live);
+    const task = breakdownTaskOf(input, live, coverage);
     return {
       group: 'waiting',
       waitingOn: wait(
@@ -435,29 +457,6 @@ export function deliveryAt<I extends ProofIssue>(input: ProofInput<I>, revision:
   return { live, coverage, delivery: deliveryOf(live, coverage) };
 }
 
-/**
- * A master's wait on a project no runner is bound to: no master can take it, so the signer owes it
- * (the viewer, where they can sign off), under the rule that says why, still about what it was about
- * (FB-77).
- */
-function signerInsteadOfMaster(
-  viewer: StandingInput['viewer'],
-  was: RequirementWaitingOn,
-): { group: 'needs_you' | 'waiting'; waitingOn: RequirementWaitingOn } {
-  const signer = signerWait(viewer, was.says.act, say('requirements.rule.noRunner'));
-  return {
-    group: signer.group,
-    waitingOn: {
-      ...waitingOn(
-        signer.waitingOn.kind,
-        { ...signer.waitingOn.says, ...(was.says.effect ? { effect: was.says.effect } : {}) },
-        { ref: was.ref, dueAt: was.dueAt },
-      ),
-      ...(was.refers ? { refers: was.refers } : {}),
-    },
-  };
-}
-
 export function deriveStanding(raw: StandingInput): RequirementStanding {
   const shownRevision = raw.currentRevision ?? raw.revisions[0]?.revision ?? null;
   const { live, coverage, delivery } = deliveryAt(raw, shownRevision);
@@ -492,7 +491,12 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
   const state = input.status;
   return {
     state,
-    next: nextStepOf(state, input.agreedAt),
+    // a requirement resting on its shipped capability has no issue to move it into delivery
+    // (REQUIREMENT_NO_LIVE_ISSUE): its next step is its accept
+    next:
+      state === 'agreed' && restsOnShipped(live, coverage)
+        ? 'accepted'
+        : nextStepOf(state, input.agreedAt),
     delivery,
     attentionGroup: timed.group,
     waitingOn,
@@ -509,7 +513,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       feedbackOpen: input.feedback.open,
       feedbackUntriaged: input.feedback.untriaged.length,
     },
-    tasks: tasksOf(input, live),
+    tasks: tasksOf(input, live, coverage),
     shownRevision,
     coverage,
     owner: input.owner,

@@ -16,7 +16,8 @@ interface Turn {
 const wait = (who: Said, act: Said, rule: Said): WaitingOn<RequirementWaitingKind> =>
   waitingOn('agent', { who, act, rule });
 
-const JUDGE_WHO: Record<PolicyQaMode, Said> = {
+/** Who judges a criterion on the running build, by the policy's `qa`. */
+export const JUDGE_WHO: Record<PolicyQaMode, Said> = {
   self: say('standing.who.master'),
   independent: say('standing.who.independentJudge'),
 };
@@ -37,9 +38,14 @@ const unjudgedKeys = (rows: readonly RequirementCoverage[]) =>
 /** The issues whose trace sits on an earlier wording, where no verdict can count until it is tied again. */
 const staleKeys = (rows: readonly RequirementCoverage[]) =>
   keysOf(rows.flatMap((c) => c.issues.filter((l) => l.stale).map((l) => l.displayId)));
-/** The issue whose fail is the newest verdict, the one that counts. */
+/** The issue whose fail is the newest verdict, the one that counts, or the requirement where its own
+ *  verdict is (ISS-588). */
 const failingKeys = (rows: readonly RequirementCoverage[]) =>
-  keysOf(rows.flatMap((c) => (c.counts ? [c.counts.displayId] : [])));
+  keysOf(
+    rows.flatMap((c) =>
+      c.counts ? [c.counts.source === 'issue' ? c.counts.displayId : 'the requirement'] : [],
+    ),
+  );
 
 const codesOf = (rows: readonly RequirementCoverage[]) => rows.map((c) => c.code).join(', ');
 

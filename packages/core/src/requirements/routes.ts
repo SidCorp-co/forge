@@ -63,6 +63,7 @@ import {
   revisionFields,
   viewQuery,
 } from './route-kit.js';
+import { requirementVerdictRoutes } from './verdict-routes.js';
 
 export const requirementRoutes = new Hono<RequirementEnv>();
 
@@ -405,3 +406,4 @@ requirementRoutes.post(
 
 requirementRoutes.route('/', requirementLinkRoutes);
 requirementRoutes.route('/', requirementChecklistRoutes);
+requirementRoutes.route('/', requirementVerdictRoutes);

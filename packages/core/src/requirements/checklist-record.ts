@@ -320,20 +320,24 @@ export function acceptanceAnswersOf(
   uncited: readonly UncitedVerdict[],
 ): RecordAnswers {
   return {
+    // a requirement resting on its shipped capability has no issue to ship (ISS-588): whether that
+    // capability holds is the verdicts question's, read on the running build
     shipped:
-      proof.liveIssues === 0
-        ? {
-            gap: 'No live issue delivers it, so nothing was delivered.',
-            fix: 'Break it down into issues first.',
-          }
-        : proof.unshipped.length > 0
+      proof.liveIssues === 0 && proof.shipped
+        ? { value: 'No issue carries it: it rests on the capability already shipped.' }
+        : proof.liveIssues === 0
           ? {
-              gap: `${proof.unshipped.join(', ')} ${proof.unshipped.length === 1 ? 'has' : 'have'} not shipped.`,
-              fix: 'Wait for each to ship, or drop those not being built.',
+              gap: 'No live issue delivers it, so nothing was delivered.',
+              fix: 'Break it down into issues, or judge each criterion where it already shipped.',
             }
-          : {
-              value: `All ${proof.liveIssues} live ${proof.liveIssues === 1 ? 'issue' : 'issues'} shipped.`,
-            },
+          : proof.unshipped.length > 0
+            ? {
+                gap: `${proof.unshipped.join(', ')} ${proof.unshipped.length === 1 ? 'has' : 'have'} not shipped.`,
+                fix: 'Wait for each to ship, or drop those not being built.',
+              }
+            : {
+                value: `All ${proof.liveIssues} live ${proof.liveIssues === 1 ? 'issue' : 'issues'} shipped.`,
+              },
     verdicts:
       proof.unproven.length > 0
         ? {

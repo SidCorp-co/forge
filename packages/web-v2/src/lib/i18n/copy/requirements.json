@@ -98,6 +98,8 @@
     "requirements.banner.waitingOnYou": "Waiting on you:",
     "requirements.criteria.changedIn": "Changed in r{r}",
     "requirements.criteria.counts": "Counts: {verdict} on {issue} criterion {n}, the newest verdict",
+    "requirements.criteria.countsOwn": "Counts: {verdict} at the requirement, the newest verdict",
+    "requirements.criteria.shipped": "Shipped capability",
     "requirements.criteria.earlierWording": "Earlier wording",
     "requirements.criteria.empty": "No criteria",
     "requirements.criteria.evidence": "Evidence",

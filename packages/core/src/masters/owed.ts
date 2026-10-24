@@ -133,7 +133,7 @@ export function owedLine(owed: Owed): string {
   } = owed;
   if (breakdowns.length > 0) {
     const keys = breakdowns.map((b) => (b.overdue ? `${b.key} overdue` : b.key));
-    line += ` ${breakdowns.length} agreed requirement${plural(breakdowns.length, ' has', 's have')} no breakdown yet (${keys.join(', ')}): read each (\`forge-runner api projects/<id>/requirements/<key>\`) and propose its breakdown as a suggestion, as ${method('suggestions')} says; an overdue one is past its breakdown SLA.`;
+    line += ` ${breakdowns.length} agreed requirement${plural(breakdowns.length, ' has', 's have')} no breakdown yet (${keys.join(', ')}): read each (\`forge-runner api projects/<id>/requirements/<key>\`) and propose its breakdown as a suggestion, as ${method('suggestions')} says; an overdue one is past its breakdown SLA. One whose capability already shipped owes no verifying issue: judge each criterion at the requirement instead (\`forge-runner api projects/<id>/requirements/<key>/verdicts -X POST\`).`;
   }
   if (triages.length > 0) {
     line += ` ${triages.length} feedback item${plural(triages.length, ' owes', 's owe')} a triage (${triages.map((t) => t.key).join(', ')}): read each (\`forge-runner api projects/<projectId>/feedback/<key>\`, and \`/similar\` for its nearest), then route it (\`forge-runner api projects/<projectId>/feedback/<key>/triage -X POST\`) or propose a \`feedback_triage\` suggestion (\`forge-runner api projects/<projectId>/suggestions -X POST\`); ${method('feedback-triage')} is how, and the forge-master skill's feedback section is when a master routes and when it proposes.`;

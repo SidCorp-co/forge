@@ -1,7 +1,8 @@
 /**
- * Each business criterion's coverage by the verdicts on the issue criteria tracing it, read at the
- * shown revision: the one computation `standing.ts:deliveryAt` hands the standing, the accept and a
- * release's requirement bar. Pure, so every rule below is a unit test (`standing.test.ts`).
+ * Each business criterion's coverage by the verdicts on the issue criteria tracing it and by those
+ * recorded on the criterion itself (ISS-588), read at the shown revision: the one computation
+ * `standing.ts:deliveryAt` hands the standing, the accept and a release's requirement bar. Pure, so
+ * every rule below is a unit test (`standing.test.ts`, `standing-shipped.test.ts`).
  */
 
 import type { PolicyQaMode } from '@forge/contracts/project-config';
@@ -10,29 +11,24 @@ import type {
   CoverageCount,
   CoverageFile,
   CoverageIssue,
+  CoverageRequirementVerdict,
   RequirementCoverage,
 } from '@forge/contracts/requirements';
-import {
-  landedIdentityWhy,
-  type StorefrontDraftPart,
-  storefrontDraftsPhrase,
-  verdictExercised,
-} from '@forge/contracts/verdict-identity';
+import { verdictExercised } from '@forge/contracts/verdict-identity';
 import { judgesVerdict, unverifiedWhy } from '@forge/contracts/verified-rule';
 import { liveAt } from './rules.js';
+import {
+  atLiveCommit,
+  type CoverageIdentity,
+  identityWords,
+  type LandedHolds,
+  type LiveBuildHolds,
+  type Resolved,
+  resolve,
+  short,
+} from './standing-identity.js';
 
-/**
- * What a verdict names as the thing it was judged against, with what coverage checks it by: a design
- * or contract carries the revision or version the traced requirement's latest baseline pins for it
- * (null where that baseline pins none), the anchor both sides built against.
- */
-export type CoverageIdentity =
-  | { kind: 'commit'; sha: string }
-  | { kind: 'commit_unresolved'; sha: string }
-  | { kind: 'runtime'; ref: string }
-  | { kind: 'design'; workflow: string; revision: number; pinned: number | null }
-  | { kind: 'contract'; ref: string; version: string; pinned: string | null }
-  | { kind: 'storefront_draft'; drafts: readonly StorefrontDraftPart[]; environment: string };
+export type { CoverageIdentity, LandedHolds, LiveBuildHolds } from './standing-identity.js';
 
 /** One verdict on an issue criterion, as coverage reads it. */
 export interface StandingVerdict {
@@ -62,30 +58,21 @@ export interface StandingIssueCriterion extends StandingVerdict {
 }
 
 /**
- * What the live build holds of the verdict commits asked about (`dependents.ts:liveBuildHolds`):
- * the commit production serves (null where it could not be read), per verdict commit (lower case)
- * whether it is that commit or an ancestor of it, or why nobody could answer that, and per runtime
- * ref (lower case) the commit that build served, or null where nothing resolves it. A commit absent
- * from `holds` was not checked and does not count, `unanswered` naming why; a runtime absent from
- * `runtimes` was not resolved and does not count.
+ * One verdict recorded on a business criterion at the requirement itself
+ * (`requirement_criterion_verdicts`): the proof of a capability that already shipped, which no issue
+ * carries. Its wording is the one it judged, so a reworded criterion's verdicts read stale.
  */
-export interface LiveBuildHolds {
-  sha: string | null;
-  holds: ReadonlyMap<string, boolean>;
-  runtimes: ReadonlyMap<string, string | null>;
-  unanswered: ReadonlyMap<string, string>;
-  /**
-   * On a project with no production environment (`release-batch/landed-build.ts:landedBuildHolds`),
-   * per issue id the landed build its verdicts count on, or why it has none. Present, it replaces the
-   * live build for every commit and runtime verdict.
-   */
-  landed?: ReadonlyMap<string, LandedHolds>;
-}
-
-/** One issue's landed build, or why it has none. */
-export interface LandedHolds {
-  sha: string | null;
-  why: string | null;
+export interface StandingRequirementVerdict {
+  id: string;
+  requirementCriterionId: string;
+  verdict: CoverageRequirementVerdict['verdict'];
+  verdictAt: Date;
+  note: string | null;
+  evidence: readonly string[];
+  /** The whole commit it was judged at; null for a skip. */
+  commit: string | null;
+  /** Whether it names who recorded it, an account or a box. */
+  authored: boolean;
 }
 
 /** What coverage reads: the requirement's wordings, its issues, their traced criteria and verdicts. */
@@ -101,167 +88,14 @@ interface CoverageInput {
     id: string;
   })[];
   issueCriteria: readonly StandingIssueCriterion[];
+  /** The verdicts recorded on its criteria at the requirement itself; absent reads as none. */
+  requirementVerdicts?: readonly StandingRequirementVerdict[] | undefined;
   /** Per BC code, why the newest accepted breakdown naming it left it uncovered. */
   uncovered?: ReadonlyMap<string, string> | undefined;
   /** What the live build holds of the verdict commits; null or absent where it was not read. */
   liveBuild?: LiveBuildHolds | null | undefined;
   /** Who judges an issue's criteria, the policy's `qa` (`StandingInput.judge`); null where no policy is declared. */
   judge: PolicyQaMode | null;
-}
-
-const short = (sha: string) => sha.slice(0, 12);
-
-/** What the identity names, as the record door spells it (`issues/criteria-verdicts.ts`). */
-function identityValue(identity: CoverageIdentity): string {
-  switch (identity.kind) {
-    case 'commit':
-    case 'commit_unresolved':
-      return identity.sha;
-    case 'runtime':
-      return identity.ref;
-    case 'design':
-      return `${identity.workflow} rev ${identity.revision}`;
-    case 'contract':
-      return `${identity.ref}@${identity.version}`;
-    case 'storefront_draft':
-      return `${storefrontDraftsPhrase(identity.drafts)} on ${identity.environment}`;
-  }
-}
-
-/** The identity in the words a reader sees beside the verdict. */
-function identityWords(identity: CoverageIdentity | null): string | null {
-  if (!identity) return null;
-  switch (identity.kind) {
-    case 'commit':
-      return `commit ${short(identity.sha)}`;
-    case 'commit_unresolved':
-      return `abbreviated commit ${identity.sha}`;
-    case 'runtime':
-      return `runtime ${short(identity.ref)}`;
-    case 'design':
-      return `design ${identity.workflow} rev ${identity.revision}`;
-    case 'contract':
-      return `contract ${identity.ref}@${identity.version}`;
-    case 'storefront_draft':
-      return `storefront draft ${storefrontDraftsPhrase(identity.drafts)} on ${identity.environment}`;
-  }
-}
-
-/** What a judgement is checked against the live build by, and why it does not count where it cannot be. */
-interface Resolved {
-  commit: string | null;
-  inLiveBuild: boolean | null;
-  notCounted: string | null;
-}
-
-// Kernel input (`VISION: kernel-hard-policy-soft`): every identity a verdict can name is either
-// resolved to something a rule checks or does not count, saying why. A commit and the commit a
-// runtime served are held to the live build (`liveBuildHolds`) and count only where it is read to
-// hold them: one the live build lacks, and one whose hold nobody could answer (production unread,
-// ancestry unanswered), do not count (`VISION: state-never-lies`: an outage reads as unchecked,
-// named, never as passing). A design or contract is held to the revision or version the
-// requirement's latest baseline pins (requirement-to-delivery `verdict-result`). A storefront draft
-// is judged on a non-production environment and a backfilled abbreviation names no whole commit, so
-// neither is evidence about the live build.
-function resolve(
-  identity: CoverageIdentity | null,
-  live: LiveBuildHolds | null,
-  issueId: string,
-): Resolved {
-  const atCommit = (commit: string, judged: string): Resolved => {
-    const key = commit.toLowerCase();
-    const inLiveBuild = live?.holds.get(key) ?? null;
-    const build = `the live build${live?.sha ? ` (${short(live.sha)})` : ''}`;
-    if (inLiveBuild === true) return { commit, inLiveBuild, notCounted: null };
-    if (inLiveBuild === false) {
-      return {
-        commit,
-        inLiveBuild,
-        notCounted: `judged at ${judged}, which ${build} does not hold`,
-      };
-    }
-    const why = live
-      ? (live.unanswered.get(key) ?? 'nothing answered it')
-      : 'the live build was not read';
-    return {
-      commit,
-      inLiveBuild,
-      notCounted: `judged at ${judged}, and whether ${build} holds it could not be checked: ${why}`,
-    };
-  };
-  const none = (why: string): Resolved => ({ commit: null, inLiveBuild: null, notCounted: why });
-  if (!identity) return none('it names nothing it was judged against');
-  const landed = live?.landed;
-  if (landed) {
-    if (identity.kind === 'commit') {
-      return atLanding(identity.sha, landed.get(issueId.toLowerCase()) ?? null);
-    }
-    return none(landedIdentityWhy(identity.kind, identityValue(identity)) as string);
-  }
-  switch (identity.kind) {
-    case 'commit':
-      return atCommit(identity.sha, `commit ${short(identity.sha)}`);
-    case 'runtime': {
-      const ref = identity.ref.toLowerCase();
-      const served = live?.runtimes.get(ref);
-      if (served)
-        return atCommit(served, `runtime ${short(ref)}, which served commit ${short(served)}`);
-      return none(
-        served === null
-          ? `runtime ${short(ref)} is not a commit and no release Forge verified served it, so nothing says which build it was`
-          : `runtime ${short(ref)} could not be resolved to the build it served`,
-      );
-    }
-    case 'design':
-      if (identity.pinned === identity.revision)
-        return { commit: null, inLiveBuild: null, notCounted: null };
-      return none(
-        identity.pinned === null
-          ? `judged against design ${identity.workflow} rev ${identity.revision}, which the requirement's latest baseline does not pin`
-          : `judged against design ${identity.workflow} rev ${identity.revision}, and the requirement's latest baseline pins rev ${identity.pinned}`,
-      );
-    case 'contract':
-      if (identity.pinned === identity.version)
-        return { commit: null, inLiveBuild: null, notCounted: null };
-      return none(
-        identity.pinned === null
-          ? `judged against contract ${identity.ref}@${identity.version}, which the requirement's latest baseline does not pin`
-          : `judged against contract ${identity.ref}@${identity.version}, and the requirement's latest baseline pins ${identity.pinned}`,
-      );
-    case 'storefront_draft':
-      return none(
-        `judged on storefront draft ${identity.drafts.map((p) => p.workflowId).join(', ')} in ${identity.environment}, a non-production environment, not on the live build`,
-      );
-    case 'commit_unresolved':
-      return none(
-        `judged at abbreviated commit ${identity.sha}, a backfilled identity that never resolved to a whole commit`,
-      );
-  }
-}
-
-// With no production environment the build a verdict counts on is its issue's landing
-// (`release-batch/landed-build.ts`), and only a verdict at that very commit counts: one at an earlier
-// commit, such as the branch's head before the merge, judged another build, and one at a later head
-// counts once a landing is recorded there, or before any record where every live criterion of the
-// issue passes at that one head and it holds the landing (`release-batch/landed-build.ts:aheadBuildsOf`).
-function atLanding(commit: string, landed: LandedHolds | null): Resolved {
-  const judged = `judged at commit ${short(commit)}`;
-  if (!landed) {
-    return {
-      commit,
-      inLiveBuild: null,
-      notCounted: `${judged}, and its issue's landing was not read`,
-    };
-  }
-  if (landed.sha === null) {
-    return { commit, inLiveBuild: null, notCounted: `${judged}, and ${landed.why}` };
-  }
-  if (commit.toLowerCase() === landed.sha) return { commit, inLiveBuild: true, notCounted: null };
-  return {
-    commit,
-    inLiveBuild: false,
-    notCounted: `${judged}, not at its issue's landing ${short(landed.sha)}: judge it again at ${short(landed.sha)}`,
-  };
 }
 
 // A business criterion is proven by the issue criteria that trace to it
@@ -275,6 +109,8 @@ function atLanding(commit: string, landed: LandedHolds | null): Resolved {
 // None counts → not live where a judgement sits on a build the live one does not hold, else not
 // judged. No live link but an earlier one → stale; no link at all → gap, carrying the reason an
 // accepted breakdown gave for leaving it uncovered. A dropped issue proves nothing and is left out.
+// A verdict recorded on the criterion at the requirement (ISS-588, `requirementVerdictsOn`) is one
+// more judgement under the same rule: the newest that counts, from an issue or from it, decides.
 export function coverageOf(
   input: CoverageInput,
   shownRevision: number | null,
@@ -314,18 +150,75 @@ export function coverageOf(
         } satisfies CoverageIssue,
       ];
     });
-    const counts = countedOf(links);
-    const verdict = verdictOf(links, counts);
-    const why = whyOf(verdict, links, input.liveBuild?.landed !== undefined);
+    const verdicts = requirementVerdictsOn(bc, input, byId);
+    const counts = countedOf(links, verdicts);
+    const verdict = verdictOf(links, verdicts, counts);
+    const why = whyOf(verdict, links, verdicts, input.liveBuild?.landed !== undefined);
     const uncovered = verdict === 'gap' ? (input.uncovered?.get(bc.code) ?? null) : null;
     return {
       code: bc.code,
       body: bc.body,
       verdict,
       issues: links,
+      verdicts,
       counts,
       why,
       uncoveredReason: uncovered,
+    };
+  });
+}
+
+// A verdict recorded on the criterion at the requirement (ISS-588) is judged against the running
+// build as a commit verdict on an issue is: it counts only where the live build is read to hold its
+// commit. A project with no production environment has no running build to hold it (its issues count
+// on their own landings), so there it never counts, saying why. Of those on the current wording the
+// one it stands on is read as an issue criterion's is (`judgesOf`): the newest, under an independent
+// judge the judge's; every other is kept on the line, naming the one that replaced it. One on an
+// earlier wording is stale and never counts for this one.
+function requirementVerdictsOn(
+  bc: { id: string; code: string },
+  input: CoverageInput,
+  byId: ReadonlyMap<string, { id: string; code: string }>,
+): CoverageRequirementVerdict[] {
+  const mine = (input.requirementVerdicts ?? [])
+    .filter((v) => byId.get(v.requirementCriterionId)?.code === bc.code)
+    .sort((a, b) => b.verdictAt.getTime() - a.verdictAt.getTime());
+  const current = mine.filter((v) => v.requirementCriterionId === bc.id);
+  const stands = judgesVerdict(
+    current.map((v) => ({ ...v, byBuilder: false })),
+    input.judge,
+  );
+  const live = input.liveBuild ?? null;
+  return mine.map((v) => {
+    const stale = v.requirementCriterionId !== bc.id;
+    const judged = verdictExercised(v.verdict);
+    const r: Resolved | null =
+      !judged || v.commit === null
+        ? null
+        : live?.landed
+          ? {
+              commit: v.commit,
+              inLiveBuild: null,
+              notCounted: `judged at commit ${short(v.commit)}, and with no production environment no running build is read to hold it`,
+            }
+          : atLiveCommit(v.commit, `commit ${short(v.commit)}`, live);
+    const replaced =
+      !stale && stands !== undefined && stands.id !== v.id
+        ? `replaced by the newer verdict recorded at ${stands.verdictAt.toISOString()}`
+        : null;
+    return {
+      verdictId: v.id,
+      verdict: v.verdict,
+      verdictAt: v.verdictAt.toISOString(),
+      identity: v.commit === null ? null : `commit ${short(v.commit)}`,
+      note: v.note,
+      evidence: [...v.evidence],
+      commit: r?.commit ?? null,
+      inLiveBuild: r?.inLiveBuild ?? null,
+      notCounted: judged
+        ? (replaced ?? r?.notCounted ?? unverifiedWhy({ ...v, byBuilder: false }, input.judge))
+        : null,
+      stale,
     };
   });
 }
@@ -356,57 +249,114 @@ function judgesOf(ic: StandingIssueCriterion, judge: PolicyQaMode | null): Stand
   return judgesVerdict<StandingVerdict>([ic, ...(ic.earlier ?? [])], judge) ?? ic;
 }
 
-/** Of the live links' judgements that count, the newest. */
-function countedOf(links: readonly CoverageIssue[]): CoverageCount | null {
-  let newest: CoverageIssue | null = null;
-  for (const l of links) {
-    if (l.stale || !verdictExercised(l.verdict) || l.verdictAt === null || l.notCounted !== null) {
-      continue;
-    }
-    if (!newest || (newest.verdictAt as string) < l.verdictAt) newest = l;
+/** Whether a judgement on an issue criterion or at the requirement counts toward its criterion. */
+const counted = (l: {
+  stale: boolean;
+  verdict: CoverageIssue['verdict'];
+  verdictAt: string | null;
+  notCounted: string | null;
+}) => !l.stale && verdictExercised(l.verdict) && l.verdictAt !== null && l.notCounted === null;
+
+/** Of the live links' and the requirement's own judgements that count, the newest. */
+function countedOf(
+  links: readonly CoverageIssue[],
+  verdicts: readonly CoverageRequirementVerdict[],
+): CoverageCount | null {
+  const issue = links
+    .filter(counted)
+    .reduce<CoverageIssue | null>(
+      (m, l) => (!m || (m.verdictAt as string) < (l.verdictAt as string) ? l : m),
+      null,
+    );
+  const own = verdicts
+    .filter(counted)
+    .reduce<CoverageRequirementVerdict | null>(
+      (m, v) => (!m || m.verdictAt < v.verdictAt ? v : m),
+      null,
+    );
+  if (own && (!issue || (issue.verdictAt as string) < own.verdictAt)) {
+    return {
+      source: 'requirement',
+      verdictId: own.verdictId,
+      verdict: own.verdict as CoverageCount['verdict'],
+      at: own.verdictAt,
+      identity: own.identity as string,
+      commit: own.commit,
+      inLiveBuild: own.inLiveBuild,
+    };
   }
-  if (!newest) return null;
+  if (!issue) return null;
   return {
-    issueId: newest.issueId,
-    displayId: newest.displayId,
-    criterion: newest.criterion,
-    verdict: newest.verdict as CoverageCount['verdict'],
-    at: newest.verdictAt as string,
-    identity: newest.identity as string,
-    commit: newest.commit,
-    inLiveBuild: newest.inLiveBuild,
+    source: 'issue',
+    issueId: issue.issueId,
+    displayId: issue.displayId,
+    criterion: issue.criterion,
+    verdict: issue.verdict as CoverageCount['verdict'],
+    at: issue.verdictAt as string,
+    identity: issue.identity as string,
+    commit: issue.commit,
+    inLiveBuild: issue.inLiveBuild,
   };
 }
 
-function verdictOf(links: readonly CoverageIssue[], counts: CoverageCount | null): BcVerdict {
-  if (links.length === 0) return 'gap';
-  const current = links.filter((l) => !l.stale);
+function verdictOf(
+  links: readonly CoverageIssue[],
+  verdicts: readonly CoverageRequirementVerdict[],
+  counts: CoverageCount | null,
+): BcVerdict {
+  if (links.length === 0 && verdicts.length === 0) return 'gap';
+  const current = [...links, ...verdicts].filter((l) => !l.stale);
   if (current.length === 0) return 'stale';
   if (counts) return counts.verdict === 'fail' ? 'failing' : 'passing';
   const otherBuild = current.some((l) => verdictExercised(l.verdict) && l.inLiveBuild === false);
   return otherBuild ? 'not_live' : 'not_judged';
 }
 
+/** One judgement that does not count, as the sentence beside its criterion names it. */
+interface Uncounted {
+  label: string;
+  identity: string | null;
+  inLiveBuild: boolean | null;
+  notCounted: string;
+}
+
+const REQUIREMENT_LABEL = "the requirement's own verdict";
+
 /** The criterion's state in one sentence, where no verdict counts and something says why. */
 function whyOf(
   verdict: BcVerdict,
   links: readonly CoverageIssue[],
+  verdicts: readonly CoverageRequirementVerdict[],
   landed: boolean,
 ): string | null {
   const keys = (ls: readonly CoverageIssue[]) =>
     [...new Set(ls.map((l) => l.displayId))].join(', ');
   if (verdict === 'stale') {
+    if (links.length === 0) {
+      return 'it was judged only on an earlier wording of this criterion, so no verdict counts: judge it again on the running build';
+    }
     const one = new Set(links.map((l) => l.displayId)).size === 1;
     return `${keys(links)} ${one ? 'traces' : 'trace'} only an earlier wording of this criterion, so no verdict on ${one ? 'it' : 'them'} counts: tie it again from the issue's Criteria tab, then judge it`;
   }
-  const uncounted = links.filter((l) => !l.stale && l.notCounted !== null);
-  const named = (ls: readonly CoverageIssue[]) =>
-    ls.map((l) => `${l.displayId} criterion ${l.criterion}: ${l.notCounted}`).join('; ');
+  const uncounted: Uncounted[] = [
+    ...links.flatMap((l) =>
+      !l.stale && l.notCounted !== null
+        ? [{ ...l, label: `${l.displayId} criterion ${l.criterion}`, notCounted: l.notCounted }]
+        : [],
+    ),
+    ...verdicts.flatMap((v) =>
+      !v.stale && v.notCounted !== null
+        ? [{ ...v, label: REQUIREMENT_LABEL, notCounted: v.notCounted }]
+        : [],
+    ),
+  ];
+  const named = (ls: readonly Uncounted[]) =>
+    ls.map((l) => `${l.label}: ${l.notCounted}`).join('; ');
   if (verdict === 'not_live') {
     const off = uncounted.filter((l) => l.inLiveBuild === false);
     const rest = uncounted.filter((l) => l.inLiveBuild !== false);
     const also = rest.length > 0 ? `; not counted either: ${named(rest)}` : '';
-    const at = off.map((l) => `${l.displayId} criterion ${l.criterion}: ${l.identity}`).join('; ');
+    const at = off.map((l) => `${l.label}: ${l.identity}`).join('; ');
     if (landed) {
       return `judged only at commits other than their issue's landing (${at}): judge it again at the landing${also}`;
     }

@@ -1,0 +1,1 @@
+**A requirement whose capability already shipped no longer owes a breakdown.** Its criteria are judged on the running build at the requirement itself; it then waits on its accept, or names the criterion and who acts next.

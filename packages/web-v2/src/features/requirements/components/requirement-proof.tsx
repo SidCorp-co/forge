@@ -14,7 +14,8 @@ import { said } from "@/lib/i18n/said";
 import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
-import { agreedTitle, diffColours, VerdictDot } from "./standing-bits";
+import { OwnVerdictRows } from "./requirement-own-verdicts";
+import { agreedTitle, diffColours, VERDICT_WORD, VerdictDot } from "./standing-bits";
 
 const Ins = ({ children }: { children: ReactNode }) => (
   <ins className="rounded-3 px-0.75 no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
@@ -138,12 +139,6 @@ export function CriteriaChanges({ changes }: { changes: RequirementCriteriaChang
   );
 }
 
-const VERDICT_WORD: Record<NonNullable<CoverageIssue["verdict"]>, ProductCopyKey> = {
-  pass: "requirements.verdict.pass",
-  short: "requirements.verdict.short",
-  fail: "requirements.verdict.fail",
-  skipped: "requirements.verdict.skipped",
-};
 
 /** One line per issue, however many of its criteria trace here, with each criterion's evidence. */
 function byIssue(links: CoverageIssue[]) {
@@ -243,7 +238,9 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
               )}
               {developer && c.counts ? (
                 <p className="mt-1 text-13 text-muted" data-testid="criterion-counts">
-                  {t("requirements.criteria.counts", { verdict: t(VERDICT_WORD[c.counts.verdict]), issue: c.counts.displayId, n: c.counts.criterion })}
+                  {c.counts.source === "issue"
+                    ? t("requirements.criteria.counts", { verdict: t(VERDICT_WORD[c.counts.verdict]), issue: c.counts.displayId, n: c.counts.criterion })
+                    : t("requirements.criteria.countsOwn", { verdict: t(VERDICT_WORD[c.counts.verdict]) })}
                   <span className="font-mono text-12"> · {c.counts.identity}</span>
                   <span title={time.dateTime(c.counts.at)}> · {time.relative(c.counts.at)}</span>
                 </p>
@@ -259,6 +256,8 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-13">
                 {issues.length === 0 && c.uncoveredReason ? (
                   <span className="text-subtle" data-testid="criterion-uncovered">{t("requirements.criteria.leftUncovered", { reason: c.uncoveredReason })}</span>
+                ) : issues.length === 0 && c.verdicts.length > 0 ? (
+                  <span className="text-subtle" data-testid="criterion-shipped">{t("requirements.criteria.shipped")}</span>
                 ) : issues.length === 0 ? (
                   <span className="text-subtle">{t(d.standing.facts.issuesTotal === 0 ? "requirements.criteria.notBrokenDown" : "requirements.criteria.noTrace")}</span>
                 ) : (
@@ -274,7 +273,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                   ))
                 )}
               </div>
-              {c.issues.length > 0 ? (
+              {c.issues.length > 0 || c.verdicts.length > 0 ? (
                 <details className="mt-1.5 text-13" data-testid="criterion-evidence">
                   <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">{t("requirements.criteria.evidence")}</summary>
                   <ul className="mt-1 grid gap-0.5 pl-3">
@@ -297,6 +296,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                         </li>
                       )),
                     )}
+                    <OwnVerdictRows verdicts={c.verdicts} developer={developer} />
                   </ul>
                 </details>
               ) : null}

@@ -321,9 +321,8 @@ export const BC_VERDICT_HINTS: Record<BcVerdict, string> = {
 	stale: "stale: traces only an earlier wording; tie it again, then judge it",
 	not_live:
 		"not_live: judged only on builds the live one lacks; judge it on live",
-	not_judged:
-		"not_judged: no verdict on an issue criterion tracing to this wording counts yet",
-	gap: "gap: no issue criterion traces to this criterion",
+	not_judged: "not_judged: no verdict on this wording counts yet",
+	gap: "gap: no issue criterion traces to it and no verdict judged it",
 };
 
 export interface RequirementFacts {
@@ -423,13 +422,42 @@ export interface CoverageIssue {
 	stale: boolean;
 }
 
+/**
+ * A business criterion judged on the running build at the requirement itself (ISS-588): the proof of
+ * a capability that already shipped, which no issue carries (REQ-45 r3 BC-8). Read on the criterion
+ * it judged, newest first, held to the live build as a commit verdict on an issue is.
+ */
+export interface CoverageRequirementVerdict {
+	verdictId: string;
+	verdict: "pass" | "short" | "fail" | "skipped";
+	/** When it was recorded (ISO). */
+	verdictAt: string;
+	/** What it was judged against, in words (`commit 1a2b…`); null for a skip, which names nothing. */
+	identity: string | null;
+	/** Its own reason; null where none was written. */
+	note: string | null;
+	/** What it cites: links or repository paths at its commit. */
+	evidence: string[];
+	commit: string | null;
+	/** Whether the live build holds that commit (`CoverageIssue.inLiveBuild`). */
+	inLiveBuild: boolean | null;
+	/** Why it does not count toward the criterion (`CoverageIssue.notCounted`); null where it counts or is a skip. */
+	notCounted: string | null;
+	/** It judged an earlier wording of the criterion, so it does not count for this one. */
+	stale: boolean;
+}
+
 /** The one verdict a business criterion's coverage reads: the newest pass, short or fail recorded on
- *  an issue criterion tracing its current wording whose identity coverage could check (a commit the
- *  live build is read to hold, or the pinned design revision or contract version). */
-export interface CoverageCount {
-	issueId: string;
-	displayId: string;
-	criterion: number;
+ *  an issue criterion tracing its current wording, or on the criterion itself, whose identity coverage
+ *  could check (a commit the live build is read to hold, or the pinned design revision or contract
+ *  version). `source` says which of the two it was. */
+export type CoverageCount = CoverageCountCommon &
+	(
+		| { source: "issue"; issueId: string; displayId: string; criterion: number }
+		| { source: "requirement"; verdictId: string }
+	);
+
+interface CoverageCountCommon {
 	/** A pass or a fail: a short never counts on coverage (REQ-35 decision 7b261fca). */
 	verdict: "pass" | "fail";
 	/** When it was recorded (ISO). */
@@ -445,6 +473,8 @@ export interface RequirementCoverage {
 	body: string;
 	verdict: BcVerdict;
 	issues: CoverageIssue[];
+	/** Its verdicts recorded at the requirement itself (`CoverageRequirementVerdict`), newest first. */
+	verdicts: CoverageRequirementVerdict[];
 	/** The verdict the coverage reads, so a person sees why it reads as it does; null where none counts. */
 	counts: CoverageCount | null;
 	/** Why the criterion reads as it does where no verdict counts (stale, not live, not judged with
@@ -604,6 +634,44 @@ export const acceptRequirementRequestSchema = z.strictObject({
 export const ACCEPT_REQUIREMENT_SHAPE =
 	"{ revision, reason?, byDecision? } — names the head revision whose delivery is accepted; byDecision: true accepts over an incomplete acceptance checklist, recording each item it waives, and needs a reason";
 
+/**
+ * A business criterion judged on the running build at the requirement itself (ISS-588): a capability
+ * that already shipped is proven here, never by an issue whose only work is verifying it (REQ-45 r3
+ * BC-8). A pass, short or fail names the whole commit it was judged at and cites what it was taken
+ * from; a skip says why.
+ */
+export const recordRequirementVerdictRequestSchema = z.strictObject({
+	criterion: z.string().trim().min(1).max(16),
+	verdict: z.string().trim().min(1).max(32),
+	reason: z.string().trim().max(REASON_TEXT_MAX).nullable().optional(),
+	identity: z
+		.strictObject({
+			kind: z.literal("commit"),
+			sha: z.string().trim().min(1).max(64),
+		})
+		.nullable()
+		.optional(),
+	evidence: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
+});
+export type RecordRequirementVerdictRequest = z.infer<
+	typeof recordRequirementVerdictRequestSchema
+>;
+export const RECORD_REQUIREMENT_VERDICT_SHAPE =
+	"{ criterion: 'BC-n', verdict: pass | short | fail | skipped, reason?, identity?: { kind: 'commit', sha: <40 hex> }, evidence?: [link or repository path] } — a pass, short or fail names the commit judged and cites evidence; a skip gives its reason";
+
+/** One requirement-level verdict as its list answers it, the criterion it judged by code. */
+export interface RequirementVerdictRow {
+	id: string;
+	criterion: string;
+	verdict: "pass" | "short" | "fail" | "skipped";
+	reason: string | null;
+	evidence: string[];
+	commit: string | null;
+	/** Who wrote it: a person or an agent account; null where the account is gone. */
+	by: { id: string; name: string | null; agency: "human" | "agent" } | null;
+	at: string;
+}
+
 /** The explicit moves into delivery and delivered (REQ-74 BC-8): why, kept on the move. */
 export const moveRequirementRequestSchema = z.strictObject({
 	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
@@ -745,6 +813,18 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_DECISION_REASON_REQUIRED",
 	/** An accept by decision: a linked issue is neither closed nor dropped. */
 	"REQUIREMENT_HAS_UNFINISHED_ISSUES",
+	/** A requirement-level verdict names a criterion code with no wording live at the head. */
+	"REQUIREMENT_VERDICT_CRITERION_UNKNOWN",
+	/** A requirement-level verdict on a requirement that is not agreed, in delivery or delivered. */
+	"REQUIREMENT_VERDICT_NOT_DELIVERING",
+	/** A requirement-level pass, short or fail that cites nothing. */
+	"REQUIREMENT_VERDICT_UNCITED",
+	// the rules every verdict meets, whichever door writes it (`issues/criteria/verdict-input.ts`)
+	"VERDICT_VALUE_UNKNOWN",
+	"VERDICT_SKIP_REASON_REQUIRED",
+	"VERDICT_IDENTITY_REQUIRED",
+	"VERDICT_COMMIT_NOT_FULL",
+	"VERDICT_SECRET",
 	"REQUIREMENT_PINS_CURRENT",
 	"REQUIREMENT_CONTRACT_UNKNOWN",
 	"REQUIREMENT_SIGNOFF_FORBIDDEN",
