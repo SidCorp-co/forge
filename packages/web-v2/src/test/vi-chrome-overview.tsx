@@ -37,13 +37,14 @@ const RUN = say("issues.standing.who.run");
 const LEASE = say("issues.rule.leaseHeld", { holder: "box-1" });
 const waitRun = waitingOn("run", { who: RUN, act: say("issues.standing.act.stepFor", { step: "build", n: 12 }), rule: LEASE });
 
-const HOLD_CAUSE = say("overview.hold.cause.failed", { cause: "provider_usage_limit" });
+const HOLD_CAUSE = say("overview.hold.cause.failure.providerUsageLimit");
 const HOLD = {
   kind: "failed" as const,
   runId: "r9",
   issues: ["ISS-5"],
   release: "0.3.0",
   cause: sentence(HOLD_CAUSE),
+  code: "provider_usage_limit",
   waitingOn: waitingOn("master", { who: say("standing.who.master"), act: say("overview.hold.act.nextPass"), rule: LEASE }),
   since: AT,
   says: { cause: HOLD_CAUSE },

@@ -1,4 +1,5 @@
 import type { OverviewHold, OverviewHolds } from "@forge/contracts/development-overview";
+import type { Said } from "@forge/contracts/said";
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/render";
@@ -12,21 +13,22 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 
 const AT = "2026-10-07T08:00:00.000Z";
 
-function holdOf(kind: OverviewHold["kind"], issue: string, release: string | null, cause = say("overview.hold.cause.failed", { cause: "provider_usage_limit" })): OverviewHold {
+function holdOf(kind: OverviewHold["kind"], issue: string, release: string | null, code: string, cause: Said): OverviewHold {
   return {
     kind,
     runId: `run-${issue}`,
     issues: [issue],
     release,
     cause: sentence(cause),
+    code,
     waitingOn: waitingOn("gate", { who: say("overview.hold.who.forge"), act: say("overview.hold.act.resumesWhenClear"), rule: verbatim("r") }),
     since: AT,
     says: { cause },
   };
 }
 
-const JOB = holdOf("job", "ISS-1", null, say("runs.rule.dispatchGate", { gate: "all_devices_exhausted", why: verbatim("every box refused it") }));
-const REL = holdOf("release", "ISS-2", "0.3.0", say("issues.rule.releaseHeld", { code: "NO_RUNNER_ONLINE", reason: "no runner is online" }));
+const JOB = holdOf("job", "ISS-1", null, "all_devices_exhausted", say("overview.hold.cause.gate.allDevicesExhausted"));
+const REL = holdOf("release", "ISS-2", "0.3.0", "NO_RUNNER_ONLINE", say("issues.releaseHold.cause.noRunnerOnline"));
 const HOLDS: OverviewHolds = {
   count: 2,
   issues: [
@@ -43,10 +45,17 @@ describe("the Delivery page's held list", () => {
     expect(holds.map((h) => h.dataset.kind)).toEqual(["job", "release"]);
     expect(screen.getAllByTestId("hold-group").map((g) => g.dataset.key)).toEqual(["ISS-1", "ISS-2"]);
     expect(holds[0]?.textContent).toContain("Job hold");
-    expect(holds[0]?.textContent).toContain("all_devices_exhausted");
+    expect(holds[0]?.textContent).toContain("Every runner was busy; it retries by itself");
     expect(holds[0]?.textContent).toContain("Forge");
-    expect(holds[0]?.textContent).toContain("resumes it once the gate clears");
-    expect(holds[1]?.textContent).toContain("NO_RUNNER_ONLINE: no runner is online");
+    expect(holds[0]?.textContent).toContain("resume it once the gate clears");
+    expect(holds[1]?.textContent).toContain("No runner serving this project is online");
+  });
+
+  it("keeps each cause's code off the line, in its title for the technical reader", () => {
+    renderWithQuery(<DeliveryHolds holds={HOLDS} slug="hop" />);
+    const causes = screen.getAllByTestId("hold-cause");
+    expect(causes.map((c) => c.getAttribute("title"))).toEqual(["all_devices_exhausted", "NO_RUNNER_ONLINE"]);
+    for (const c of causes) expect(c.textContent).not.toMatch(/[a-z]+_[a-z_]+|[A-Z]{3,}_[A-Z_]+/);
   });
 
   it("regroups by release, leaving out a hold no release carries", () => {

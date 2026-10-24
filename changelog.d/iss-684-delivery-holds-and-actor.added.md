@@ -1,1 +1,1 @@
-**The Delivery page lists what holds delivery back.** Release holds, job holds, blocked and failed runs show per issue and per release, each naming its cause and who acts next; stuck cards and run details name the actor too.
+**The Delivery page lists what holds delivery back.** Release holds, job holds, blocked and failed runs show per issue and per release, each with a plain cause and who acts next; a release hold names who clears it.

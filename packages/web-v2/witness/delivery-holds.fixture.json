@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-24T20:41:44.138Z",
+  "generatedAt": "2026-10-24T21:35:09.803Z",
   "signals": {
     "ci": {
       "available": false,
@@ -70,7 +70,7 @@
         "count": 1,
         "parts": [
           {
-            "group": "queued",
+            "group": "stuck",
             "count": 1
           }
         ]
@@ -85,9 +85,9 @@
   "moving": {
     "count": 3,
     "window": {
-      "from": "2026-10-24T20:30:00.000Z",
-      "to": "2026-10-24T21:00:00.000Z",
-      "now": "2026-10-24T20:41:44.138Z"
+      "from": "2026-10-24T21:30:00.000Z",
+      "to": "2026-10-24T22:00:00.000Z",
+      "now": "2026-10-24T21:35:09.803Z"
     },
     "lanes": [
       {
@@ -186,7 +186,7 @@
     ]
   },
   "stuck": {
-    "count": 1,
+    "count": 2,
     "chains": [
       {
         "id": "ISS-3",
@@ -223,6 +223,46 @@
           ]
         ],
         "held": 1
+      },
+      {
+        "id": "ISS-6",
+        "levels": [
+          [
+            {
+              "kind": "issue",
+              "key": "ISS-6",
+              "title": "Login remembers the last workspace",
+              "status": "awaiting_release",
+              "step": null,
+              "tone": "ready",
+              "waitingOn": {
+                "kind": "person",
+                "who": "The runner's owner",
+                "act": "bring a runner online",
+                "rule": "NO_RUNNER_ONLINE: The automatic release was refused: no runner serving this project is online.",
+                "ref": null,
+                "dueAt": null,
+                "says": {
+                  "who": {
+                    "key": "standing.who.runnerOwner"
+                  },
+                  "act": {
+                    "key": "issues.releaseHold.act.noRunnerOnline"
+                  },
+                  "rule": {
+                    "key": "issues.rule.releaseHeld",
+                    "vars": {
+                      "code": "NO_RUNNER_ONLINE",
+                      "reason": "The automatic release was refused: no runner serving this project is online."
+                    }
+                  }
+                }
+              },
+              "held": true
+            }
+          ]
+        ],
+        "held": 1
       }
     ]
   },
@@ -235,11 +275,12 @@
         "holds": [
           {
             "kind": "failed",
-            "runId": "5bcc5ef2-e71c-4031-a615-6f593b2645cf",
+            "runId": "e129be3d-0a38-4fd2-89d5-b37147559b86",
             "issues": [
               "ISS-3"
             ],
             "release": null,
+            "code": "provider_usage_limit",
             "waitingOn": {
               "kind": "master",
               "who": "Master",
@@ -259,14 +300,11 @@
                 }
               }
             },
-            "since": "2026-10-24T19:41:44.004Z",
-            "cause": "it failed: provider_usage_limit",
+            "since": "2026-10-24T20:35:09.726Z",
+            "cause": "Hit the model provider's usage limit",
             "says": {
               "cause": {
-                "key": "overview.hold.cause.failed",
-                "vars": {
-                  "cause": "provider_usage_limit"
-                }
+                "key": "overview.hold.cause.failure.providerUsageLimit"
               }
             }
           }
@@ -278,21 +316,22 @@
         "holds": [
           {
             "kind": "blocked",
-            "runId": "3fb56cb7-f2f4-4460-ba92-6a32b1154017",
+            "runId": "30df061e-3f2f-4c8e-b64d-537d29c015f9",
             "issues": [
               "ISS-7"
             ],
             "release": null,
+            "code": "runner_stale",
             "waitingOn": {
               "kind": "machine",
               "who": "The runner's owner",
-              "act": "brings a runner back online",
+              "act": "bring a runner online",
               "rule": "pipeline health reads runner_stale: no box serving this project has beaten recently, which has no deadline",
               "ref": null,
               "dueAt": null,
               "says": {
                 "who": {
-                  "key": "overview.hold.who.runnerOwner"
+                  "key": "standing.who.runnerOwner"
                 },
                 "act": {
                   "key": "overview.hold.act.reviveRunner"
@@ -308,17 +347,11 @@
                 }
               }
             },
-            "since": "2026-10-24T20:21:44.017Z",
-            "cause": "pipeline health reads runner_stale: no box serving this project has beaten recently, which has no deadline",
+            "since": "2026-10-24T21:15:09.743Z",
+            "cause": "No runner has checked in recently",
             "says": {
               "cause": {
-                "key": "runs.rule.dispatchGate",
-                "vars": {
-                  "gate": "runner_stale",
-                  "why": {
-                    "key": "runs.gate.runnerStale"
-                  }
-                }
+                "key": "overview.hold.cause.gate.runnerStale"
               }
             }
           }
@@ -330,18 +363,19 @@
         "holds": [
           {
             "kind": "job",
-            "runId": "6c37e725-2737-4b8b-81c8-aa1b01cc3242",
+            "runId": "05323833-e3d7-4672-be53-8b03c817935f",
             "issues": [
               "ISS-1"
             ],
             "release": null,
+            "code": "all_devices_exhausted",
             "waitingOn": {
               "kind": "gate",
               "who": "Forge",
-              "act": "resumes it when the wait ends",
+              "act": "resume it when the wait ends",
               "rule": "held all_devices_exhausted: the release sweep retries it once jobs.retry_after_at has passed",
               "ref": null,
-              "dueAt": "2026-10-24T21:41:43.973Z",
+              "dueAt": "2026-10-24T22:35:09.698Z",
               "says": {
                 "who": {
                   "key": "overview.hold.who.forge"
@@ -357,14 +391,11 @@
                 }
               }
             },
-            "since": "2026-10-24T20:26:43.973Z",
-            "cause": "held all_devices_exhausted: the release sweep retries it once jobs.retry_after_at has passed",
+            "since": "2026-10-24T21:20:09.698Z",
+            "cause": "Every runner was busy; it retries by itself",
             "says": {
               "cause": {
-                "key": "runs.rule.heldRetry",
-                "vars": {
-                  "reason": "all_devices_exhausted"
-                }
+                "key": "overview.hold.cause.gate.allDevicesExhausted"
               }
             }
           }
@@ -376,11 +407,12 @@
         "holds": [
           {
             "kind": "job",
-            "runId": "3cbdcc7f-b921-44fc-9f8f-b1d71afa58b1",
+            "runId": "6222f16a-7e95-46ca-91e2-5ec8a4824d50",
             "issues": [
               "ISS-2"
             ],
             "release": null,
+            "code": "retry_rounds_exhausted",
             "waitingOn": {
               "kind": "you",
               "who": "You",
@@ -414,25 +446,11 @@
                 }
               }
             },
-            "since": "2026-10-24T20:26:43.991Z",
-            "cause": "the job is held (retry_rounds_exhausted), a hold that does not resume itself (job held: retry_rounds_exhausted)",
+            "since": "2026-10-24T21:20:09.716Z",
+            "cause": "Retried too many times; it will not resume itself",
             "says": {
               "cause": {
-                "key": "runs.rule.withRef",
-                "vars": {
-                  "rule": {
-                    "key": "runs.rule.jobHeld",
-                    "vars": {
-                      "reason": "retry_rounds_exhausted"
-                    }
-                  },
-                  "ref": {
-                    "key": "runs.ref.jobHeld",
-                    "vars": {
-                      "reason": "retry_rounds_exhausted"
-                    }
-                  }
-                }
+                "key": "overview.hold.cause.gate.retryRoundsExhausted"
               }
             }
           }
@@ -449,41 +467,35 @@
               "ISS-6"
             ],
             "release": "0.1.0",
+            "code": "NO_RUNNER_ONLINE",
             "waitingOn": {
-              "kind": "release",
-              "who": "Release",
-              "act": "a runner to come online",
-              "rule": "NO_RUNNER_ONLINE: no runner serving this project is online",
+              "kind": "person",
+              "who": "The runner's owner",
+              "act": "bring a runner online",
+              "rule": "NO_RUNNER_ONLINE: The automatic release was refused: no runner serving this project is online.",
               "ref": null,
               "dueAt": null,
               "says": {
                 "who": {
-                  "key": "issues.standing.who.release"
+                  "key": "standing.who.runnerOwner"
                 },
                 "act": {
-                  "key": "standing.text",
-                  "vars": {
-                    "text": "a runner to come online"
-                  }
+                  "key": "issues.releaseHold.act.noRunnerOnline"
                 },
                 "rule": {
                   "key": "issues.rule.releaseHeld",
                   "vars": {
                     "code": "NO_RUNNER_ONLINE",
-                    "reason": "no runner serving this project is online"
+                    "reason": "The automatic release was refused: no runner serving this project is online."
                   }
                 }
               }
             },
-            "since": "2026-10-24T20:31:44.011Z",
-            "cause": "NO_RUNNER_ONLINE: no runner serving this project is online",
+            "since": "2026-10-24T21:25:09.737Z",
+            "cause": "No runner serving this project is online",
             "says": {
               "cause": {
-                "key": "issues.rule.releaseHeld",
-                "vars": {
-                  "code": "NO_RUNNER_ONLINE",
-                  "reason": "no runner serving this project is online"
-                }
+                "key": "issues.releaseHold.cause.noRunnerOnline"
               }
             }
           }
@@ -502,41 +514,35 @@
               "ISS-6"
             ],
             "release": "0.1.0",
+            "code": "NO_RUNNER_ONLINE",
             "waitingOn": {
-              "kind": "release",
-              "who": "Release",
-              "act": "a runner to come online",
-              "rule": "NO_RUNNER_ONLINE: no runner serving this project is online",
+              "kind": "person",
+              "who": "The runner's owner",
+              "act": "bring a runner online",
+              "rule": "NO_RUNNER_ONLINE: The automatic release was refused: no runner serving this project is online.",
               "ref": null,
               "dueAt": null,
               "says": {
                 "who": {
-                  "key": "issues.standing.who.release"
+                  "key": "standing.who.runnerOwner"
                 },
                 "act": {
-                  "key": "standing.text",
-                  "vars": {
-                    "text": "a runner to come online"
-                  }
+                  "key": "issues.releaseHold.act.noRunnerOnline"
                 },
                 "rule": {
                   "key": "issues.rule.releaseHeld",
                   "vars": {
                     "code": "NO_RUNNER_ONLINE",
-                    "reason": "no runner serving this project is online"
+                    "reason": "The automatic release was refused: no runner serving this project is online."
                   }
                 }
               }
             },
-            "since": "2026-10-24T20:31:44.011Z",
-            "cause": "NO_RUNNER_ONLINE: no runner serving this project is online",
+            "since": "2026-10-24T21:25:09.737Z",
+            "cause": "No runner serving this project is online",
             "says": {
               "cause": {
-                "key": "issues.rule.releaseHeld",
-                "vars": {
-                  "code": "NO_RUNNER_ONLINE",
-                  "reason": "no runner serving this project is online"
-                }
+                "key": "issues.releaseHold.cause.noRunnerOnline"
               }
             }
           }
@@ -555,15 +561,11 @@
       "parts": [
         {
           "group": "stuck",
-          "count": 1
+          "count": 2
         },
         {
           "group": "moving",
           "count": 3
-        },
-        {
-          "group": "queued",
-          "count": 1
         }
       ],
       "shipped": 0,

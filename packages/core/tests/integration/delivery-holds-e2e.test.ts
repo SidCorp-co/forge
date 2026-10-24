@@ -108,6 +108,7 @@ type Hold = {
   issues: string[];
   release: string | null;
   cause: string;
+  code: string | null;
   waitingOn: { who: string; act: string; kind: string; dueAt: string | null };
   says: { cause: { key: string } };
 };
@@ -127,9 +128,10 @@ describe('the Delivery overview lists each hold with its cause and who acts', ()
     const d = await overview();
     const [h] = holdsOn(d, 'ISS-1');
     expect(h).toMatchObject({ kind: 'job', runId, issues: ['ISS-1'] });
-    expect(h?.cause).toContain('all_devices_exhausted');
+    expect(h?.cause).toBe('Every runner was busy; it retries by itself');
+    expect(h?.code).toBe('all_devices_exhausted');
     expect(h?.waitingOn.who).toBe('Forge');
-    expect(h?.waitingOn.act).toBe('resumes it when the wait ends');
+    expect(h?.waitingOn.act).toBe('resume it when the wait ends');
     expect(h?.waitingOn.dueAt).toBe(at.toISOString());
     expect(d.holds.count).toBe(1);
   });
@@ -142,7 +144,8 @@ describe('the Delivery overview lists each hold with its cause and who acts', ()
     });
     const [h] = holdsOn(await overview(), 'ISS-2');
     expect(h).toMatchObject({ kind: 'job', runId });
-    expect(h?.cause).toContain('retry_rounds_exhausted');
+    expect(h?.cause).toBe('Retried too many times; it will not resume itself');
+    expect(h?.code).toBe('retry_rounds_exhausted');
     expect(h?.waitingOn.who).toBe('You');
     expect(h?.waitingOn.act).toBe('resume the job');
   });
@@ -152,7 +155,8 @@ describe('the Delivery overview lists each hold with its cause and who acts', ()
     const runId = await failedRun(id, HOUR);
     const [h] = holdsOn(await overview(), 'ISS-3');
     expect(h).toMatchObject({ kind: 'failed', runId, issues: ['ISS-3'] });
-    expect(h?.cause).toBe('it failed: provider_usage_limit');
+    expect(h?.cause).toBe("Hit the model provider's usage limit");
+    expect(h?.code).toBe('provider_usage_limit');
     expect(h?.waitingOn.who).toBe('Master');
   });
 
@@ -173,12 +177,13 @@ describe('the Delivery overview lists each hold with its cause and who acts', ()
     await db.execute(sql`
       INSERT INTO release_holds (project_id, issue_id, code, reason, owes, waiting_for, held_at)
       VALUES (${world.projectId}, ${id}, 'NO_RUNNER_ONLINE', 'no runner serving this project is online',
-              'agent', 'a runner to come online', now() - interval '10 minutes')`);
+              'human', 'the refusal named here to be cleared', now() - interval '10 minutes')`);
     const d = await overview();
     const [h] = holdsOn(d, 'ISS-6');
     expect(h).toMatchObject({ kind: 'release', runId: null, issues: ['ISS-6'] });
-    expect(h?.cause).toContain('NO_RUNNER_ONLINE');
-    expect(h?.waitingOn.who).toBe('Release');
+    expect(h?.cause).toBe('No runner serving this project is online');
+    expect(h?.code).toBe('NO_RUNNER_ONLINE');
+    expect(h?.waitingOn).toMatchObject({ who: "The runner's owner", act: 'bring a runner online' });
     expect(h?.release).toEqual(expect.any(String));
     const releases = d.holds.releases as Doc[];
     expect(releases.map((g) => g.key)).toEqual([h?.release]);
@@ -190,12 +195,52 @@ describe('the Delivery overview lists each hold with its cause and who acts', ()
     const runId = await runWithJob(id, { status: 'queued' });
     const [h] = holdsOn(await overview(), 'ISS-7');
     expect(h).toMatchObject({ kind: 'blocked', runId });
-    expect(h?.says.cause.key).toBe('runs.rule.dispatchGate');
-    expect(h?.cause).toContain('runner_stale');
-    expect(h?.waitingOn).toMatchObject({
-      who: "The runner's owner",
-      act: 'brings a runner back online',
+    expect(h?.cause).toBe('No runner has checked in recently');
+    expect(h?.code).toBe('runner_stale');
+    expect(h?.waitingOn).toMatchObject({ who: "The runner's owner", act: 'bring a runner online' });
+  });
+});
+
+/** The verbs an act may open with: base form, so "<who> · <act>" reads as what that agent does. */
+const VERBS = new Set(
+  'resume fail decide bring update let settle review clear dispatch judge back make route declare fix take record name finish try bind file write land split merge release'.split(
+    ' ',
+  ),
+);
+const CODE = /[a-z]+_[a-z_]+|[A-Z]{3,}_[A-Z_]+/;
+
+describe('every hold, of every kind, reads in plain words', () => {
+  it('a cause with no code, a who with no code, and an act that is a verb phrase', async () => {
+    const a = await issueAt(1, 'in_progress');
+    await runWithJob(a, {
+      status: 'held',
+      payload: hold('all_devices_exhausted', true),
+      retryAfterAt: new Date(Date.now() + HOUR),
     });
+    await runWithJob(await issueAt(2, 'in_progress'), {
+      status: 'held',
+      payload: hold('retry_rounds_exhausted', false),
+    });
+    await failedRun(await issueAt(3, 'open'), HOUR);
+    const gated = await issueAt(6, 'awaiting_release');
+    await db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${gated}`);
+    await db.execute(sql`
+      INSERT INTO release_holds (project_id, issue_id, code, reason, owes, waiting_for, held_at)
+      VALUES (${world.projectId}, ${gated}, 'RELEASE_QUEUED_BEHIND', 'a release is already cut',
+              'agent', 'a later automatic release', now() - interval '5 minutes')`);
+    await runWithJob(await issueAt(7, 'in_progress'), { status: 'queued' });
+    const d = await overview();
+    const holds = (d.holds.issues as Doc[]).flatMap((g) => g.holds as Hold[]);
+    expect(new Set(holds.map((h) => h.kind))).toEqual(
+      new Set(['job', 'failed', 'release', 'blocked']),
+    );
+    for (const h of holds) {
+      expect(h.cause, `${h.kind} cause`).not.toMatch(CODE);
+      expect(h.waitingOn.who, `${h.kind} who`).not.toMatch(CODE);
+      expect(h.waitingOn.act, `${h.kind} act`).not.toMatch(CODE);
+      const verb = h.waitingOn.act.split(' ')[0] ?? '';
+      expect(VERBS.has(verb), `${h.kind} act "${h.waitingOn.act}" is not a verb phrase`).toBe(true);
+    }
   });
 });
 

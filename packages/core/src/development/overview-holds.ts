@@ -14,6 +14,8 @@ import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import type { RunGateWait, RunStanding } from '@forge/contracts/run-standing';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
+import { releaseHoldWords } from '../issues/index.js';
+import { failureCause, gateCause, personCause, stuckCause } from './hold-causes.js';
 
 /** A failed run reads as a hold this long after it ended, while nothing has taken its issue up again. */
 export const FAILED_HOLD_WINDOW_MS = 24 * 60 * 60_000;
@@ -44,7 +46,7 @@ function gateWho(w: RunGateWait): WaitingOn {
   const rule = w.says.rule;
   if (w.gate === 'runner_stale' || w.gate === 'runner_too_old') {
     return waitingOn('machine', {
-      who: say('overview.hold.who.runnerOwner'),
+      who: say('standing.who.runnerOwner'),
       act:
         w.gate === 'runner_stale'
           ? say('overview.hold.act.reviveRunner')
@@ -54,7 +56,7 @@ function gateWho(w: RunGateWait): WaitingOn {
   }
   if (w.gate === 'token_cannot_reach') {
     return waitingOn('admins', {
-      who: say('overview.hold.who.projectAdmin'),
+      who: say('standing.who.projectAdmin'),
       act: say('overview.hold.act.grantToken'),
       rule,
     });
@@ -74,11 +76,14 @@ function gateWho(w: RunGateWait): WaitingOn {
     });
   }
   if (w.gate.startsWith('blocked_on_')) {
-    return waitingOn('gate', {
-      who: say('overview.hold.who.blocker', { kind: w.gate.slice('blocked_on_'.length) }),
-      act: say('overview.hold.act.clearBlocker'),
-      rule,
-    });
+    const kind = w.gate.slice('blocked_on_'.length);
+    const who =
+      kind === 'machine'
+        ? say('overview.hold.who.blockerMachine')
+        : kind === 'master_or_peer'
+          ? say('overview.hold.who.blockerPeer')
+          : say('overview.hold.who.blockerOther');
+    return waitingOn('gate', { who, act: say('overview.hold.act.clearBlocker'), rule });
   }
   return w.resumesAt
     ? forge(say('overview.hold.act.resumesAt'), rule, w.resumesAt)
@@ -119,27 +124,43 @@ const issuesOf = (run: RunStanding): string[] =>
 function hold(
   kind: OverviewHoldKind,
   run: RunStanding | null,
-  fields: Pick<OverviewHold, 'issues' | 'release' | 'waitingOn' | 'since'> & { cause: Said },
+  fields: Pick<OverviewHold, 'issues' | 'release' | 'waitingOn' | 'since' | 'code'> & {
+    cause: Said;
+  },
 ): OverviewHold {
   const { cause, ...rest } = fields;
   return { kind, runId: run?.id ?? null, ...rest, cause: sayEn(cause), says: { cause } };
+}
+
+/** The reason a held job's wait names (the run's own rule, `runs.rule.jobHeld`), else null. */
+function jobHoldReason(run: RunStanding): string | null {
+  const said = run.says.rule;
+  const reason = said.key === 'runs.rule.jobHeld' ? said.vars?.reason : undefined;
+  return typeof reason === 'string' ? reason : null;
+}
+
+/** Why a live run is held, as a plain sentence, and the code it was read from. */
+function liveCause(kind: OverviewHoldKind, run: RunStanding): { cause: Said; code: string | null } {
+  const w = run.waitingOn;
+  if (kind === 'stuck') {
+    const s = run.stuck;
+    if (s.source !== 'stuck') return { cause: stuckCause(null), code: null };
+    return { cause: stuckCause(s.rule), code: s.disagreement ?? s.rule };
+  }
+  if (isGate(w)) return { cause: gateCause(w.gate), code: w.gate };
+  const reason = jobHoldReason(run);
+  return reason ? { cause: gateCause(reason), code: reason } : { cause: personCause(), code: null };
 }
 
 function liveHold(run: RunStanding): OverviewHold | null {
   const kind = liveKindOf(run);
   if (!kind) return null;
   const w = run.waitingOn;
-  const cause =
-    kind === 'stuck'
-      ? run.stuck.source === 'stuck'
-        ? run.stuck.says.detail
-        : run.says.rule
-      : w.says.rule;
   const who = kind === 'stuck' ? stuckWho(run) : isGate(w) ? gateWho(w) : w;
   return hold(kind, run, {
     issues: issuesOf(run),
     release: run.release?.version ?? null,
-    cause,
+    ...liveCause(kind, run),
     waitingOn: who,
     since: run.since,
   });
@@ -170,15 +191,15 @@ function failedHolds(
     const subject = keys.length > 0 ? keys.join(',') : `${run.lane}:${run.release?.version ?? ''}`;
     if (seen.has(subject)) continue;
     seen.add(subject);
-    const cause = o.detail
-      ? say('overview.hold.cause.failedDetail', { cause: o.cause, detail: o.detail })
-      : say('overview.hold.cause.failed', { cause: o.cause });
+    const cause = failureCause(o.cause);
+    const code = o.detail ? `${o.cause}: ${o.detail}` : o.cause;
     if (keys.length === 0) {
       out.push(
         hold('failed', run, {
           issues: [],
           release: run.release?.version ?? null,
           cause,
+          code,
           waitingOn: master(run.says.rule),
           since: run.finishedAt,
         }),
@@ -196,6 +217,7 @@ function failedHolds(
         issues: open.map((r) => r.key),
         release: run.release?.version ?? null,
         cause,
+        code,
         waitingOn: first.standing.waitingOn,
         since: run.finishedAt,
       }),
@@ -213,7 +235,8 @@ function releaseHolds(rows: readonly IssueStandingRow[], drafted: string | null)
       hold('release', null, {
         issues: [r.key],
         release: drafted,
-        cause: say('issues.rule.releaseHeld', { code: h.code, reason: h.reason }),
+        cause: releaseHoldWords(h).cause,
+        code: h.code,
         waitingOn: r.standing.waitingOn,
         since: h.heldAt,
       }),

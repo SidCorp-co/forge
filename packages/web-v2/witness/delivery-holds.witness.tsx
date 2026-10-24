@@ -60,15 +60,21 @@ const settled = () => [
   ...[...unanswered].map((r) => `core was sent ${r} and nothing answers it`),
   ...(document.documentElement.scrollWidth > window.innerWidth ? [`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`] : []),
 ];
+const CODE = /[a-z]+_[a-z_]+|[A-Z]{3,}_[A-Z_]+/;
+const coded = () =>
+  [...document.querySelectorAll<HTMLElement>("[data-testid=hold-cause]")].flatMap((c) => (CODE.test(c.innerText) ? [`a cause line shows a code: "${c.innerText}"`] : []));
 const byIssue = () => [
   ...has("Held"),
-  ...has("It failed: provider_usage_limit"),
-  ...has("NO_RUNNER_ONLINE"),
+  ...has("Hit the model provider's usage limit"),
+  ...has("No runner has checked in recently"),
+  ...has("Every runner was busy; it retries by itself"),
+  ...has("Retried too many times; it will not resume itself"),
+  ...has("No runner serving this project is online"),
   ...has("The runner's owner"),
-  ...has("brings a runner back online"),
-  ...has("Forge"),
-  ...has("resumes it when the wait ends"),
+  ...has("bring a runner online"),
+  ...has("resume it when the wait ends"),
   ...has("by "),
+  ...coded(),
   ...(document.querySelectorAll("[data-testid=delivery-hold]").length === 5 ? [] : ["five holds are not drawn by issue"]),
 ];
 const byRelease = () => [

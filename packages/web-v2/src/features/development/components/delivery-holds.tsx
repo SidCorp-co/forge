@@ -8,8 +8,6 @@ import type { OverviewHold, OverviewHoldGroup, OverviewHolds } from "../types";
 
 type By = "issue" | "release";
 
-// core says a cause as a clause ("it failed: …"); standing alone on its line it opens with a capital
-const sentenceCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function HoldEntry({ hold, slug, withIssues }: { hold: OverviewHold; slug: string; withIssues: boolean }) {
   const t = useCopy();
@@ -32,8 +30,8 @@ function HoldEntry({ hold, slug, withIssues }: { hold: OverviewHold; slug: strin
             ))}
           </span>
         ) : null}
-        <span className="text-13 text-fg" data-testid="hold-cause">
-          {sentenceCase(said(hold.says.cause, language))}
+        <span className="text-13 text-fg" data-testid="hold-cause" title={hold.code ?? undefined}>
+          {said(hold.says.cause, language)}
         </span>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
           <WaitingOn w={hold.waitingOn} />

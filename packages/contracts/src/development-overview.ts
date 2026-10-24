@@ -164,8 +164,10 @@ export interface OverviewHold {
 	issues: string[];
 	/** The release it sits in: a release run's version, or the drafted one for a hold at the gate. */
 	release: string | null;
-	/** Why it is held, in one sentence. */
+	/** Why it is held, one plain sentence a person reads: no code or snake_case reaches it. */
 	cause: string;
+	/** The code the cause was read from (a failure cause, a gate, a stuck rule, a release hold code), for the technical view; null where none. */
+	code: string | null;
 	/** Who acts on it next and what they do; `who` is never empty. */
 	waitingOn: WaitingOn;
 	since: string | null;

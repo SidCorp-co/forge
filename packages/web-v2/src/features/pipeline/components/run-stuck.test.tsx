@@ -33,7 +33,7 @@ describe("a stuck run's detail", () => {
     const box = await screen.findByTestId("run-stuck");
     expect(box.textContent).toContain("Nobody owns it, so nobody moves it on.");
     expect(box.textContent).toContain("Master");
-    expect(box.textContent).toContain("decides what follows on its next pass");
+    expect(box.textContent).toContain("decide what follows on its next pass");
   });
 
   it("draws nothing for a run whose issue is not stuck", async () => {
