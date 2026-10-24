@@ -8785,15 +8785,14 @@ mod give_back_tests {
     /// Seed the absence clock as though every sweep for `for_` had read `a1`
     /// absent.
     fn absent_since(masters: &Masters, for_: Duration) {
-        let then = Instant::now()
-            .checked_sub(for_)
-            .expect("clock older than the window");
-        masters
-            .0
-            .lock()
-            .unwrap()
-            .ask
-            .absent_for("p", &[("a1".to_string(), Some(true))], then);
+        let now = Instant::now();
+        let mut at = now.checked_sub(for_).expect("clock older than the window");
+        let mut reg = masters.0.lock().unwrap();
+        while at < now {
+            reg.ask
+                .absent_for("p", &[("a1".to_string(), Some(true))], at);
+            at += Duration::from_secs(30);
+        }
     }
 
     /// Criterion 16: a master whose only child has been absent and silent past
@@ -8935,10 +8934,28 @@ mod give_back_tests {
         assert_eq!(counted.doing(), agent_activity::Doing::AwaitingChildren);
     }
 
-    /// Criterion 18: a box that cannot read its process table keeps the child.
+    /// Criterion 18: a box that cannot read its process table keeps the child,
+    /// and the absence it had run up starts again.
     #[test]
     fn a_child_this_box_cannot_read_still_counts() {
         let scratch = crate::test_scratch::Scratch::new("iss1306-unread-child");
+        let mut led = Ledger::open(&scratch.path().join("ledger.sqlite")).unwrap();
+        let tree = scratch.path().join("w").join("iss-1");
+        std::fs::create_dir_all(&tree).unwrap();
+        led.create_run_group(crate::runner::ledger::NewRun {
+            run_id: "run-1".into(),
+            project_id: "p".into(),
+            master_session_id: "s1".into(),
+            worktree_path: tree,
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        assert!(led.bind_agent("run-1", "a1").unwrap());
+        // A file where the table should be: it is there and will not list,
+        // which is a reading not taken rather than a platform without one.
+        let proc_root = scratch.path().join("proc");
+        std::fs::write(&proc_root, "not a directory").unwrap();
         let seen = over_a_child(scratch.path(), master_ask::ASK_FLOOR * 3);
         let masters = Masters::new();
         absent_since(&masters, master_ask::ASK_FLOOR * 2);
@@ -8948,11 +8965,21 @@ mod give_back_tests {
             "proj",
             "forge-master-proj",
             Some(seen),
-            None,
-            &scratch.path().join("proc"),
+            Some(&led),
+            &proc_root,
         )
         .unwrap();
         assert_eq!(counted.doing(), agent_activity::Doing::AwaitingChildren);
+        let after = masters.0.lock().unwrap().ask.absent_for(
+            "p",
+            &[("a1".to_string(), Some(true))],
+            Instant::now(),
+        );
+        assert_eq!(
+            after.get("a1"),
+            Some(&Duration::ZERO),
+            "the unread reading broke the absence"
+        );
     }
 
     /// The sweep reads the master through `counted_activity` at both places it
