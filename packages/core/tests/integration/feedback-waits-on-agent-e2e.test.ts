@@ -326,3 +326,44 @@ describe('a duplicate read alone follows its original (FB-188)', () => {
     expect((await read(dup)).phase).toBe('resolved');
   });
 });
+
+// K61 on dev.299 (ISS-669): FB-271 merged into FB-153, both on the draft ISS-572, read planned
+// while its original read triaged; a duplicate reads its original's own phase and wait
+describe('a duplicate of an item held on a draft carrier reads its original (K61)', () => {
+  let root = '';
+  let dup = '';
+  let carrier: Issue;
+
+  beforeAll(async () => {
+    root = await file('Secret detector reads prose token: as a credential');
+    dup = await file('Verdict refused for the words token: 503');
+    carrier = await issue('Read only real credentials as secrets');
+    await routedTo(root, carrier);
+    await routedTo(dup, carrier);
+    ok(
+      await triage(dup, {
+        answers: TRIAGE_ANSWERS,
+        route: 'duplicate',
+        duplicateOf: root,
+        note: `Same defect as ${root}`,
+      }),
+    );
+  });
+
+  it('reads triaged while its original reads triaged', async () => {
+    expect((await read(root)).phase).toBe('triaged');
+    expect((await read(dup)).phase).toBe('triaged');
+  });
+
+  it("reads its original's wait and group, the master's to take the draft on", async () => {
+    const [own, original] = [await read(dup), await read(root)];
+    expect(own.waitingOn).toEqual(original.waitingOn);
+    expect(own.waitingOn).toMatchObject({ kind: 'agent', act: `take on ${carrier.key}` });
+    expect(own.attentionGroup).toBe(original.attentionGroup);
+    expect(own.times.stuck).toEqual(original.times.stuck);
+  });
+
+  it('is counted for no person anywhere', async () => {
+    expect(await personCounts(dup)).toEqual(NOBODY_PERSON);
+  });
+});

@@ -227,16 +227,17 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     projectId,
     ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),
   );
-  const carrying = new Set(rows.flatMap((r) => routeIssues.get(r.id) ?? []));
+  // an original read only as a root has its own standing read too: its duplicate reads it
+  const carrying = new Set([...routeIssues.values()].flat());
   const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
   const [owed, release, windowDays, origins, standing] = await Promise.all([
-    rows.some((r) => r.status === 'new' || r.status === 'reopened')
+    allRows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
       : [],
     atGate ? readReleaseMode(projectId) : null,
-    rows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
+    allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
     forgeOriginsOf(rows.map((r) => r.id)),
-    standingFactsOf(projectId, rows, issueRows, carrying),
+    standingFactsOf(projectId, allRows, issueRows, carrying),
   ]);
   const releaseHolders =
     release && release !== 'automatic'
@@ -294,7 +295,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     roots: new Map(allRows.map((r) => [r.id, r])),
     names: await userNames(allRows.map((r) => r.reportedBy)),
   };
-  const shipped = rows.flatMap((r) => {
+  const shipped = allRows.flatMap((r) => {
     const phase = r.route === 'issue' ? phaseIn(r, linked) : null;
     return phase === 'resolved' || phase === 'verified'
       ? [{ id: r.id, route: r.route, phase, reporterAgency: r.reporterAgency }]
@@ -399,27 +400,32 @@ export function snoozeOf(
   return { until: r.snoozedUntil.toISOString(), reason: r.snoozeReason };
 }
 
-export function summaryOf(
-  r: Row,
-  l: Linked,
-  viewer: FeedbackActor,
-  withhold: boolean,
-  can: ViewerCan,
-  now: Date = new Date(),
-): FeedbackSummary {
+const SETTLED: readonly FeedbackPhase[] = ['resolved', 'verified', 'declined'];
+
+/**
+ * A duplicate of an unsettled original reads the original's own standing as no viewer, so the one
+ * act stays on the original's row (K61, dev.299); a settled one asks its own reporter.
+ */
+function standingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
+  const root = r.route === 'duplicate' && r.duplicateOf ? l.roots.get(r.duplicateOf) : undefined;
+  if (!root || SETTLED.includes(phaseIn(root, l))) return ownStandingIn(r, l, viewer, now);
+  const none = { canTriage: false, canApproveRelease: false, canWrite: false, canAdmin: false };
+  return ownStandingIn(root, l, { ...none, isReporter: false }, now);
+}
+
+function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
   const phase = phaseIn(r, l);
   const snoozed = snoozeOf(r, now);
   const route = routeView(r, l);
-  const reporterName = l.names.get(r.reportedBy) ?? null;
-  const reporter = reporterName ?? 'The reporter';
+  const reporter = l.names.get(r.reportedBy) ?? 'The reporter';
   const owed = owedCarriers(route);
   const carried = r.route === 'issue' ? carriersOf(r, l) : { carrier: null, draft: null };
-  const standing = feedbackStandingOf(
+  return feedbackStandingOf(
     phase,
     r.route,
     owed.flatMap((c) => (c.key ? [c.key] : [])),
     reporter,
-    { ...can, isReporter: viewer.userId === r.reportedBy },
+    viewer,
     r.route === 'revision' && r.routedSuggestionId
       ? revisionStageOf(l.suggestions.get(r.routedSuggestionId) ?? null)
       : null,
@@ -448,6 +454,21 @@ export function summaryOf(
     },
     { since: l.decidedAt.get(r.id) ?? r.createdAt, master: l.master, now },
   );
+}
+
+export function summaryOf(
+  r: Row,
+  l: Linked,
+  viewer: FeedbackActor,
+  withhold: boolean,
+  can: ViewerCan,
+  now: Date = new Date(),
+): FeedbackSummary {
+  const phase = phaseIn(r, l);
+  const snoozed = snoozeOf(r, now);
+  const route = routeView(r, l);
+  const reporterName = l.names.get(r.reportedBy) ?? null;
+  const standing = standingIn(r, l, { ...can, isReporter: viewer.userId === r.reportedBy }, now);
   return {
     reporterNotTold: notToldOf(r.id, l.untold),
     id: r.id,
