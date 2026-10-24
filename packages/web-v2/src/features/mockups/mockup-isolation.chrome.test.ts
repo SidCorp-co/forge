@@ -102,8 +102,27 @@ async function stop(proc: ChildProcess, profile: string): Promise<void> {
   }
 }
 
-/** Chrome headless on a fresh profile, and the DevTools socket of its one page. */
+/** A start that never answered: Chrome said nothing and wrote no DevToolsActivePort in 30s. */
+class Hung extends Error {}
+
+/** Chrome headless on a fresh profile, and the DevTools socket of its one page. A start that hung
+ * silently is tried once more on a new profile: on a CI runner one cold start in many says nothing
+ * for 30s (whole suite 40067716267), and the next start beside it answers. A second hang, a crash
+ * or an exit fails by name. */
 async function chrome(): Promise<{ proc: ChildProcess; page: string; profile: string }> {
+  try {
+    return await launch();
+  } catch (first) {
+    if (!(first instanceof Hung)) throw first;
+    try {
+      return await launch();
+    } catch (second) {
+      throw second instanceof Hung ? new Error(`${second.message}, twice: the first start hung the same way`) : second;
+    }
+  }
+}
+
+async function launch(): Promise<{ proc: ChildProcess; page: string; profile: string }> {
   const bin = process.env.WITNESS_CHROME ?? "google-chrome";
   const profile = mkdtempSync(join(tmpdir(), "mockup-isolation-"));
   const proc = spawn(bin, ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--remote-debugging-port=0", "--remote-allow-origins=*", `--user-data-dir=${profile}`, "about:blank"], {
@@ -119,7 +138,8 @@ async function chrome(): Promise<{ proc: ChildProcess; page: string; profile: st
   const portFile = join(profile, "DevToolsActivePort");
   const refuse = async (why: string) => {
     await stop(proc, profile);
-    return new Error(`${bin} ${why}. Chrome said: ${said.trim() || "nothing"}`);
+    const message = `${bin} ${why}. Chrome said: ${said.trim() || "nothing"}`;
+    return why.startsWith("wrote no") && said.trim() === "" ? new Hung(message) : new Error(message);
   };
   // 30s: a cold Chrome beside the web suite's workers on a CI runner has taken over 15s to start
   for (let i = 0; i < 300 && !existsSync(portFile); i++) {
@@ -193,5 +213,5 @@ describe("an HTML mockup in Chrome", () => {
     });
     // nothing it tried — a call, through the parent or not, nor an image — reached the server
     expect(apiCalls).toEqual([]);
-  }, 60_000);
+  }, 120_000);
 });
