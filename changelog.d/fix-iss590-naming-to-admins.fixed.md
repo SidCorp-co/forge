@@ -1,1 +1,0 @@
-**A master without admin rights is no longer asked to name releases.** Naming needs a project admin, so an unnamed release's page now names its admins, and only a master holding admin is nudged to name it.
