@@ -48,6 +48,7 @@ export {
   readSurfaceMap,
   type SurfaceMap,
 } from './landing-surfaces.js';
+export { releaseApprovalsOwed, releaseMergesOwed } from './merges-owed.js';
 export {
   draftNaming,
   nameReleaseAs,

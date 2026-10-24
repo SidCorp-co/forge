@@ -69,6 +69,8 @@ const none = {
   releaseNotes: [],
   warnedNotes: [],
   unnamedReleases: [] as { version: string }[],
+  releaseMerges: [] as Parameters<typeof owedLine>[0]['releaseMerges'],
+  releaseApprovals: [] as Parameters<typeof owedLine>[0]['releaseApprovals'],
   answers: [],
   stewardAsks: [] as Parameters<typeof owedLine>[0]['stewardAsks'],
   contentLanguage: 'vi',
@@ -97,6 +99,16 @@ const everyOwed = {
   ...none,
   ...Object.fromEntries(Object.entries(OWED_KINDS).map(([kind, { item }]) => [kind, [item]])),
   unnamedReleases: [{ version: '0.1.0' }],
+  releaseMerges: [
+    {
+      runId: 'r1',
+      version: '0.1.0',
+      next: { label: '!5008', number: 5008, issueId: 'u1', issueKey: 'ISS-1' },
+      merged: 0,
+      total: 2,
+    },
+  ],
+  releaseApprovals: [{ runId: 'r2', version: '0.2.0' }],
   answers: [{ issueKey: 'ISS-9', questionId: 'q1', outcome: null }],
 } as typeof none;
 

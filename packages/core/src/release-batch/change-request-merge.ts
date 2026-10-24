@@ -86,7 +86,7 @@ export async function admitChangeRequestMerge(args: {
   const moved = pr.state === 'merged' ? null : changeRequestHeadWhy(me, step.headSha, pr.headSha);
   if (moved) {
     throw refuseMerge(
-      'RELEASE_MERGE_NOT_APPROVED',
+      'RELEASE_MERGE_HEAD_MOVED',
       `${moved}: release run ${run.runId} was approved at the head it was cut at. Abort the release and cut it again on the new head.`,
       '/pullRequest',
     );

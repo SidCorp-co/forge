@@ -72,6 +72,9 @@ export interface Part {
 }
 
 export interface Shared {
+  projectId: string;
+  /** The project releases by merging its change requests and its owner deploys, so a release ends at its last merge (REQ-71 BC-6). */
+  ownerDeploys: boolean;
   current: string | null;
   required: boolean;
   viewer: ViewerFacts | null;
@@ -132,6 +135,9 @@ function turnFor(p: Part, s: Shared) {
   return turnOf({
     state: p.state,
     version: p.version,
+    projectId: s.projectId,
+    runId: p.runId,
+    merges: p.mergeSteps ? p.mergeSteps.length : null,
     approval: approvalFacts(p),
     approvers: s.approvers,
     admins: s.admins,
@@ -453,6 +459,7 @@ export function detailOf(
     attempts: p.attempts.map(attemptView),
     cuts: p.cuts,
     production,
+    ownerDeploys: s.ownerDeploys,
     verifiedBy,
     head: headOf(p),
   };

@@ -10,7 +10,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
-import { mastersPorts, type StewardAsk } from './ports.js';
+import { mastersPorts, type ReleaseMergeOwed, type StewardAsk } from './ports.js';
 
 /** The edge kind that gates dispatch, the one whose blocker's state changes what a master can take. */
 const GATING_KIND = 'blocks';
@@ -34,6 +34,10 @@ interface Owed {
   warnedNotes: { issueId: string; key: string; problems: string[] }[];
   /** Releases drafted, or cut and not yet out, that carry no name and summary, where the master names them. */
   unnamedReleases: { version: string }[];
+  /** Accepted change-request releases waiting on their next merge, which only the master makes (REQ-71 BC-4). */
+  releaseMerges: ReleaseMergeOwed[];
+  /** Running releases the project requires approval for, with no request asked (ISS-591). */
+  releaseApprovals: { runId: string; version: string | null }[];
   /** Park questions answered since the master's last finished pass began, with what each did. */
   answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
   /** What the steward asked the master to act on, each standing until its item's standing moves. */
@@ -163,6 +167,26 @@ export function owedLine(owed: Owed): string {
     const versions = owed.unnamedReleases.map((r) => r.version);
     line += ` ${versions.length} release${plural(versions.length, '', 's')} drafted or cut ${plural(versions.length, 'has', 'have')} no name (${versions.join(', ')}), so ${plural(versions.length, 'its page opens', 'their pages open')} on a bare version: read what each carries (\`forge-runner api projects/<projectId>/releases/<version>\`), then name it (\`forge-runner api projects/<projectId>/releases/<version>/naming -X PUT -d '{"name":"<a few words, at most ${RELEASE_NAME_WORDS_MAX}>","summary":"<two or three sentences on what it brings its users, in ${contentLanguageName(contentLanguage)}>"}'\`); a draft's name carries through its cut, and a cut can carry both as \`name\` and \`summary\`.`;
   }
+  return line + releasesLine(owed);
+}
+
+const releaseName = (r: { runId: string; version: string | null }) =>
+  r.version ? `${r.version} (run ${r.runId})` : `run ${r.runId}`;
+
+/** The acts a running release owes the master: its approval request, then its merges in order. */
+function releasesLine(owed: Owed): string {
+  let line = '';
+  const { releaseApprovals, releaseMerges } = owed;
+  if (releaseApprovals.length > 0) {
+    line += ` ${releaseApprovals.length} running release${plural(releaseApprovals.length, ' waits', 's wait')} for an approval request, which this project requires before any production act (${releaseApprovals.map(releaseName).join(', ')}): ask for each with \`forge-runner api projects/<projectId>/release-batches/<runId>/approvals -X POST -d '{"evidence":{"environment":"<where the reading was taken, omitted on a release that merges change requests>","commit":"<the full sha read>","reading":"<what was read there>"}}'\`, and a project admin accepts or returns it.`;
+  }
+  if (releaseMerges.length > 0) {
+    const steps = releaseMerges.map(
+      (m) =>
+        `${releaseName(m)}: ${m.next.label} next, ${m.merged} of ${m.total} merged, through ${m.next.issueKey} ${m.next.issueId}`,
+    );
+    line += ` ${releaseMerges.length} accepted release${plural(releaseMerges.length, ' waits', 's wait')} for you to merge its requests in their declared order (${steps.join('; ')}): merge each next one with \`forge-runner api issues/<issueId>/merge-pull-request -X POST -d '{"pullRequest":<number>}'\`, one at a time; the release ends at its last merge, and where its owner deploys nothing is deployed for it. A refusal names its fault: \`RELEASE_MERGE_HEAD_MOVED\` means the request's head moved since the owner accepted it, so abort the release and cut it again on the new head.`;
+  }
   return line;
 }
 
@@ -193,6 +217,9 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
     ...owed.releaseNotes.map((r) => `release-note:${r.issueId}`),
     ...owed.warnedNotes.map((n) => `warned-note:${n.issueId}|${n.problems.join(';')}`),
+    // the next merge, so each merge made moves the digest and the master is asked for the one after
+    ...owed.releaseMerges.map((m) => `release-merge:${m.runId}|${m.next.number}`),
+    ...owed.releaseApprovals.map((r) => `release-approval:${r.runId}`),
   ];
   return [...issues, ...ids].sort();
 }
@@ -248,6 +275,8 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     unnamedReleases,
     contentLanguage,
     stewardAsks,
+    releaseMerges,
+    releaseApprovals,
   ] = await Promise.all([
     readAdmissibleIssues({ deviceId, projectId }),
     readOwedComments(projectId),
@@ -260,6 +289,8 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     releasesTheMasterNames(projectId),
     ports.contentLanguageOf(projectId),
     ports.stewardAsks(projectId),
+    ports.releaseMergesOwed(projectId),
+    ports.releaseApprovalsOwed(projectId),
   ]);
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
   const breakdownsDue = breakdowns.filter((b) => !held.has(b.key));
@@ -277,6 +308,8 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     releaseNotes,
     warnedNotes,
     unnamedReleases,
+    releaseMerges,
+    releaseApprovals,
     answers,
     stewardAsks,
     contentLanguage,

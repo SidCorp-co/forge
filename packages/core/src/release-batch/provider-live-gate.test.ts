@@ -27,6 +27,7 @@ describe('the provider live gate a release asks (requirement-to-delivery release
 
   it('refuses CONTRACT_PROVIDER_NOT_LIVE once per held issue, pointed at it', async () => {
     provideReleaseBatchPorts({
+      wakeMasters: async () => ({ boxes: 0, delivered: 0 }),
       contractProviderGate: async () => ({
         shortfalls: [short('b', 'HOP-2'), short('b', 'HOP-2')],
         gateOff: [],
@@ -43,6 +44,7 @@ describe('the provider live gate a release asks (requirement-to-delivery release
 
   it('lets a release through an off gate and answers what it passed, for the release to record as gate off', async () => {
     provideReleaseBatchPorts({
+      wakeMasters: async () => ({ boxes: 0, delivered: 0 }),
       contractProviderGate: async () => ({ shortfalls: [], gateOff: [short('a', 'HOP-1')] }),
     });
     await expect(askProviderLiveGate(['a'])).resolves.toEqual([

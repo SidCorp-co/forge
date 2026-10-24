@@ -1,16 +1,21 @@
 // A decision on a release's approval request is told to the release run that asked, in its own
 // session, the way an answer reaches the run that asked a question (`pipeline/answer-resume.ts`):
-// the run is waiting on it, and until this nothing reached its pane but a person typing there.
+// the run is waiting on it, and until this nothing reached its pane but a person typing there. A
+// release that merges change requests runs no job and holds no session: its merges are the master's,
+// so its decision wakes the project's master instead, which reads what it owes on that wake
+// (`merges-owed.ts`, `masters/owed.ts`; REQ-71 BC-4).
 
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { and, desc, eq, notInArray } from 'drizzle-orm';
 import { requestSessionSend } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import { agentSessions, jobs, terminalAgentSessionStatuses } from '../db/schema.js';
+import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { peopleOf } from '../lib/people.js';
 import { consume } from '../outbox/index.js';
+import { mergeStepsOf } from './change-request-roster.js';
 import { releaseBatchPath } from './plan.js';
+import { wakeMastersForRelease } from './provider-live.js';
 
 type Decided = OutboxEventPayload<'release.approvalDecided'>;
 
@@ -41,10 +46,33 @@ export function decisionMessage(p: Decided, decidedBy: string): string {
   return `Release approval ${p.approvalId} was RETURNED by ${decidedBy} at ${p.decidedAt}: "${p.reason ?? ''}". No production act is allowed on release run ${p.runId}. Answer that reason, then ask again with POST ${path}/approvals, or abort the batch with the reason.`;
 }
 
-type Told = 'sent' | 'unpublished' | 'no_session';
+type Told = 'sent' | 'unpublished' | 'no_session' | 'master_woken' | 'no_master';
 
-/** Hand the decision to the session that asked, idempotent per approval request. */
+/** Whether the run is a release that merges change requests, which runs no job of its own. */
+async function mergesChangeRequests(runId: string): Promise<boolean> {
+  const [run] = await db
+    .select({ metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  return mergeStepsOf(run?.metadata) !== null;
+}
+
+/**
+ * Hand the decision to whoever acts on it, idempotent per approval request: the session that asked,
+ * or, on a release that merges change requests, the project's master.
+ */
 export async function tellReleaseRun(p: Decided): Promise<Told> {
+  if (await mergesChangeRequests(p.runId)) {
+    const { delivered } = await wakeMastersForRelease(p.projectId);
+    logger.info(
+      { runId: p.runId, approvalId: p.approvalId, decision: p.decision, delivered },
+      delivered > 0
+        ? 'release-approval-wake: the decision woke the master that merges the release'
+        : 'release-approval-wake: no master box heard the decision; its next sweep reads the merges it owes',
+    );
+    return delivered > 0 ? 'master_woken' : 'no_master';
+  }
   const sessionId = await releaseRunSession(p.runId);
   if (!sessionId) {
     logger.warn(

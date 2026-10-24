@@ -64,11 +64,14 @@ export async function servedCarries(
 interface ReleaseBatchPorts {
   /** The roster's waits the provider's production does not serve, and those the gate let through (ecosystem, after release). */
   contractProviderGate(issueIds: readonly string[]): Promise<ProviderLiveGate>;
+  /** Wake the project's master boxes to a release at its gate (the ws door's `master.wake`). */
+  wakeMasters(projectId: string): Promise<{ boxes: number; delivered: number }>;
 }
 
 const slot = portSlot<ReleaseBatchPorts>('release-batch', 'provideReleaseBatchPorts');
 export const provideReleaseBatchPorts = slot.provide;
 const contractProviderGate = slot.port('contractProviderGate');
+export const wakeMastersForRelease = slot.port('wakeMasters');
 
 /** What a release records of a gate it passed because the ecosystem turned it off. */
 export type GateOffRecord = Pick<LiveShortfall, 'issue' | 'contract' | 'needed' | 'live'>[];

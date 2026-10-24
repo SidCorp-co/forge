@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { masterWork, owedLine, workDigest } from './owed.js';
-import type { StewardAsk } from './ports.js';
+import type { ReleaseMergeOwed, StewardAsk } from './ports.js';
 
 // The owed-work read is core's: the seven kinds of work a master owes are counted and digested in
 // owed.ts, and the box only carries the line core composed. These are those rules.
@@ -16,6 +16,8 @@ const none = {
   releaseNotes: [],
   warnedNotes: [],
   unnamedReleases: [] as { version: string }[],
+  releaseMerges: [] as ReleaseMergeOwed[],
+  releaseApprovals: [] as { runId: string; version: string | null }[],
   answers: [],
   stewardAsks: [] as StewardAsk[],
   contentLanguage: 'en',
@@ -277,5 +279,34 @@ describe('masterWork: what the box types and opens a pass on', () => {
     expect(work.nudge.startsWith('Pass. Hand it to the dispatch skill')).toBe(true);
     expect(work.nudge).toContain(work.owedLine);
     expect(work.owedLine).toContain('1 ecosystem builder run is open (b1)');
+  });
+});
+
+describe('an accepted merge-request release is owed to the master that merges it (REQ-71 BC-4)', () => {
+  const merge = (number: number, merged: number): ReleaseMergeOwed => ({
+    runId: 'r1',
+    version: '0.1.0',
+    next: { label: `!${number}`, number, issueId: 'u1', issueKey: 'ISS-1' },
+    merged,
+    total: 2,
+  });
+
+  it('names the next request in order, the door that merges it and the moved-head refusal', () => {
+    const line = owedLine({ ...none, releaseMerges: [merge(5008, 0)] });
+    expect(line).toContain('0.1.0 (run r1): !5008 next, 0 of 2 merged, through ISS-1 u1');
+    expect(line).toContain('merge-pull-request');
+    expect(line).toContain('RELEASE_MERGE_HEAD_MOVED');
+  });
+
+  it('moves the digest with each merge, so the master is asked for the one after', () => {
+    const first = workDigest([], { ...none, releaseMerges: [merge(5008, 0)] });
+    expect(workDigest([], { ...none, releaseMerges: [merge(5009, 1)] })).not.toBe(first);
+    expect(masterWork([], { ...none, releaseMerges: [merge(5008, 0)] }).owed).toBe(1);
+  });
+
+  it('names the route a release waiting on its approval request asks with (ISS-591)', () => {
+    const line = owedLine({ ...none, releaseApprovals: [{ runId: 'r2', version: '0.2.0' }] });
+    expect(line).toContain('0.2.0 (run r2)');
+    expect(line).toContain('release-batches/<runId>/approvals -X POST');
   });
 });

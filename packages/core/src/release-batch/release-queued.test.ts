@@ -11,6 +11,9 @@ const draftTurn = (blockers: ReturnType<typeof blocker>[]) =>
   turnOf({
     state: 'draft',
     version: '0.3.0',
+    projectId: 'p1',
+    runId: null,
+    merges: null,
     approval: null,
     approvers: [],
     admins: ['Ada'],

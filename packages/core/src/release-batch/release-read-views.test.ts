@@ -98,6 +98,8 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
 }
 
 const shared = (n: number, isAdmin = true): Shared => ({
+  projectId: 'p1',
+  ownerDeploys: false,
   current: null,
   required: false,
   viewer: { userId: 'u1', agency: 'human', isAdmin, mayApprove: isAdmin },

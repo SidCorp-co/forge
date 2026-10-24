@@ -34,6 +34,11 @@ export interface ViewerFacts {
 interface TurnFacts {
   state: ReleaseState;
   version: string;
+  /** The project and run, which the route a master asks approval with names (ISS-591). */
+  projectId: string;
+  runId: string | null;
+  /** The requests a change-request release merges, in order; null on a release that deploys (REQ-71). */
+  merges: number | null;
   approval: {
     decision: 'approved' | 'returned' | null;
     requestedBy: ReleasePerson;
@@ -150,10 +155,13 @@ function draftTurn(f: TurnFacts): Turn {
 function approvalTurn(f: TurnFacts): Turn {
   const a = f.approval;
   if (!a) {
+    const route = f.runId
+      ? `POST /api/projects/${f.projectId}/release-batches/${f.runId}/approvals`
+      : `POST /api/projects/${f.projectId}/release-batches/<runId>/approvals`;
     return turn('waiting', 'agent', {
       who: MASTER,
       act: say('standing.act.askApproval'),
-      rule: say('releases.rule.noRequest'),
+      rule: say('releases.rule.noRequest', { route }),
     });
   }
   const rule = say('releases.rule.asked', { name: a.requestedBy.name });
@@ -194,6 +202,17 @@ export function turnOf(f: TurnFacts): Turn {
           : say('releases.rule.returned'),
       });
     case 'in_progress':
+      // a change-request release runs no job: once accepted, the master merges its requests in order
+      if (f.merges !== null) {
+        return turn('waiting', 'agent', {
+          who: MASTER,
+          act: say('standing.act.mergeInOrder'),
+          rule: say('releases.rule.acceptedMerges', {
+            n: f.merges,
+            requests: agrees(f.merges, 'request', 'requests'),
+          }),
+        });
+      }
       return turn('moving', 'agent', {
         who: RELEASE_RUN,
         act: f.inFlight ? IN_FLIGHT_ACT[f.inFlight] : say('standing.act.starting'),

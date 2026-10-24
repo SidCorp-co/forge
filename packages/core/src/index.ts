@@ -27,12 +27,7 @@ import { provideCredentialsPorts } from './credentials/ports.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { forgeNeedsYouTool, needsYouViewerOf, readNeedsYouDecisions } from './development/index.js';
-import {
-  contractHolding,
-  contractProviderGate,
-  contractVersionReads,
-  interfaceContractsOf,
-} from './ecosystem/index.js';
+import { contractHolding, contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
 import {
@@ -148,7 +143,6 @@ import { startBoss, stopBoss } from './queue/boss.js';
 import {
   landingReads,
   liveBuildHolds,
-  provideReleaseBatchPorts,
   registerDeployWorker,
   registerReleaseBatchFinish,
   releaseVersionsAmong,
@@ -340,7 +334,6 @@ provideForgeReads({
 });
 provideInterfaceContracts(interfaceContractsOf);
 provideContractVersionReads(contractVersionReads);
-provideReleaseBatchPorts({ contractProviderGate });
 provideRequirementDependents({
   feedbackOf: requirementFeedbackAs,
   revised: staleOnTargetRevised,

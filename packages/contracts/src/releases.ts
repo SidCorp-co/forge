@@ -701,6 +701,11 @@ export interface ReleaseDetail extends ReleaseSummary {
 	/** Every attempt at this release, first first (ADR 0011). */
 	cuts: ReleaseCutView[];
 	production: { name: string | null; url: string | null } | null;
+	/**
+	 * The project releases by merging its change requests and its owner deploys (`release.changeRequests`):
+	 * the release ends at its last merge, and names no production of its own (REQ-71 BC-6).
+	 */
+	ownerDeploys: boolean;
 	/** `null` where the run recorded no verification and the project declares no way to prove one. */
 	verifiedBy: ReleaseVerifiedBy | null;
 	head: string | null;
