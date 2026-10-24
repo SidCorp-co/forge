@@ -1,1 +1,0 @@
-**A parked issue can change what it waits on without leaving the park.** Moving a `needs_info` issue to `needs_info` with another `waitingKind` re-kinds it: its questions are withdrawn, a new one is asked, and every reader shows the new wait.

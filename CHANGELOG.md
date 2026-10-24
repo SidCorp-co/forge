@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.306] - 2026-10-24
+
+Release notes list every change a cut ships, folded at the shipping commit
+
+### Fixed
+
+- **A merge mark now claims a commit a release can place.** An unchecked mark refuses an abbreviated commit by name, its refusal teaches the whole sha in `commit`, and a standing mark names `DELETE /api/issues/:id/merge`.
+- **A release judge keeps its run after its issues close.** Recovery ends a run whose issues are all over only once its agent reads over; until then its standing says it is held and that its master closes it.
+- **A held issue now says why the release is not taking it.** The issue read and its standing name the release hold, who owes the next act and what it waits for, instead of "next release".
+- **A release lists every change it ships.** Changes that landed while a release's checks ran are now listed under that release, not the next one, and an edited entry ships with its new text.
+- **A park can name the requirement its question is about.** The question it asks carries it, the person answering sees it, and the answer is recorded on that requirement as a decision.
+- **Merge check tests the packages as their source stands.** After a rebase, `pnpm merge-check` and `pnpm test:changed` rebuild `@forge/contracts` and `@forge/observability` before core's tests, and stop with `PACKAGE_BUILD_STALE` naming the package and command when a build cannot match its source.
+- **A master without admin rights is no longer asked to name releases.** Naming needs a project admin, so an unnamed release's page now names its admins, and only a master holding admin is nudged to name it.
+- **Onboarding whose last analysis failed reads Failed, never Done.** Its hint names the failed attempt and why, waits on a holder of onboarding.request to ask for a re-analysis, and an open question stays open on its own item.
+- **A parked issue can change what it waits on without leaving the park.** Moving a `needs_info` issue to `needs_info` with another `waitingKind` re-kinds it: its questions are withdrawn, a new one is asked, and every reader shows the new wait.
+
 ## [0.4.0-dev.305] - 2026-10-24
 
 Builder runs open only on the branch a project builds from
