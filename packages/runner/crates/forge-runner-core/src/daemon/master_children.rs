@@ -210,6 +210,7 @@ pub(crate) fn lost_line(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
     use crate::daemon::agent_activity::{Activities, Event, Report};
 
     const NOW: i64 = 100_000_000_000;
@@ -293,7 +294,7 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     fn planted_proc(root: &Path, pid: u32, cwd: &Path) {
         let dir = root.join(pid.to_string());
         std::fs::create_dir_all(&dir).unwrap();
@@ -302,6 +303,7 @@ mod tests {
         std::fs::write(dir.join("status"), "Name:\tnode\nPPid:\t1\n").unwrap();
     }
 
+    #[cfg(target_os = "linux")]
     fn master_over(child_id: &str, transcript: &Path) -> Activity {
         let all = Activities::new();
         for (event, subject) in [
