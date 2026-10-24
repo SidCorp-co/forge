@@ -3,12 +3,12 @@
  * as a plan before anyone acts, then taken by whoever the project's `designs` person gate asks
  * (`approverRefusalFor`) in one transaction, each design's pin-only revision written as a re-pin by
  * the acting person (or a filed one approved as it stands) and approved, one recorded decision per
- * design naming the act. No pin moves without that act or the design's own decision (REQ-41 BC-23,
+ * design naming the act; the members of a ring are all written before any is approved (FB-150). No pin moves without that act or the design's own decision (REQ-41 BC-23,
  * the owner's ruling of 2026-10-14).
  */
 
 import { randomUUID } from 'node:crypto';
-import { type Said, say, sayEn } from '@forge/contracts/said';
+import { say } from '@forge/contracts/said';
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { PinMove, RepinActResult, RepinPlan } from '@forge/contracts/workflows';
 import { db, type Tx } from '../db/client.js';
@@ -16,9 +16,7 @@ import { userNames } from '../lib/people.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { type DesignRefusal, designFingerprint, fingerprintShape } from './design.js';
-import { standingBaseRefusal } from './design-bases.js';
-import { recordDecision } from './design-record.js';
+import { type DesignRefusal, fingerprintShape } from './design.js';
 import {
   canonicalDiff,
   pinOnlyChange,
@@ -26,18 +24,14 @@ import {
   type RepinDesign,
   type RepinStep,
 } from './design-repin.js';
+import { actRefused, type StepInput, takeUnit, unitsOf } from './design-repin-take.js';
 import { approverRefusalFor } from './design-service.js';
-import { reaskSupersededDesignQuestions } from './ports.js';
 import { readStoredWorkflow } from './schema.js';
 import { assertWriter, templatesOf, type WorkflowWriter } from './service.js';
 import {
   designsOf,
   headDesignsOf,
-  insertDesign,
   lockWorkflows,
-  moveDesign,
-  readWorkflow,
-  replaceWorkflow,
   type StoredDesign,
   type StoredWorkflow,
   workflowsOf,
@@ -216,9 +210,6 @@ export async function repinGroupsAs(
   return { canDecide: (await approverRefusalFor(viewer, projectId)) === null, groups };
 }
 
-/** Refuses the whole act, rolling its transaction back: nothing it wrote stands. */
-const actRefused = (refusals: DesignRefusal[]) => new RefusalError(refusals, 'WORKFLOW_REFUSED');
-
 export type RepinOutcome =
   | { ok: true; result: RepinActResult }
   | { ok: false; refusals: DesignRefusal[] };
@@ -308,77 +299,6 @@ async function namedRefusals(
   return out;
 }
 
-async function takeStep(
-  tx: Tx,
-  input: {
-    projectId: string;
-    step: RepinStep;
-    actor: WorkflowWriter;
-    /** Forge's own sentence naming the act: stored in English beside the sentence it was said from. */
-    reason: Said;
-    pending?: StoredDesign;
-  },
-): Promise<number> {
-  const { projectId, step, actor } = input;
-  const reason = sayEn(input.reason);
-  const d = step.design;
-  const row = await readWorkflow(tx, d.id);
-  if (!row || row.revision !== d.revision) {
-    throw new Error(`workflows: ${d.flow} moved under the project's workflow lock`);
-  }
-  let revision = step.approves;
-  let designIssueId = input.pending?.designIssueId ?? null;
-  if (step.write) {
-    const next = await replaceWorkflow(tx, {
-      id: d.id,
-      revision: row.revision,
-      doc: step.write,
-      userId: actor.userId,
-      design: {
-        designFingerprint: designFingerprint(step.write, d.template),
-        approvedRevision: row.approvedRevision,
-      },
-    });
-    revision = next.revision;
-    // a re-pin is drawn under no issue: the walk for the next proposal's issue passes over it
-    designIssueId = null;
-    if (row.designStatus !== 'proposed') {
-      await moveDesign(tx, d.id, row.designStatus, 'proposed', { writer: actor, reason });
-    }
-    await insertDesign(tx, {
-      workflowId: d.id,
-      revision,
-      document: step.write,
-      userId: actor.userId,
-      designIssueId: null,
-    });
-    if (row.designStatus === 'proposed' && input.pending) {
-      await reaskSupersededDesignQuestions(tx, {
-        workflowId: d.id,
-        superseded: input.pending.revision,
-        revision,
-        flow: d.flow,
-        by: actor.userId,
-        actor: { type: 'user', id: actor.userId, agency: actor.agency },
-      });
-    }
-  }
-  const approving = step.write ?? readStoredWorkflow(input.pending?.document);
-  const unapproved = standingBaseRefusal(revision, approving, await workflowsOf(tx, projectId));
-  if (unapproved) throw actRefused([{ ...unapproved, flow: d.flow }]);
-  await recordDecision(tx, {
-    projectId,
-    row: { id: d.id, flow: d.flow, designStatus: 'proposed' },
-    designIssueId,
-    revision,
-    decision: 'approve',
-    reason,
-    reasonSays: input.reason,
-    decider: actor,
-  });
-  return revision;
-}
-
 /**
  * The act: every named design re-pinned and approved in one transaction, in the plan's order, or
  * nothing written and each design it cannot take refused by name.
@@ -429,28 +349,32 @@ export async function repinAs(input: {
         r: base.approvedRevision ?? 0,
       });
       const approved: RepinActResult['approved'] = [];
-      for (const step of plan.ready) {
-        const reason = say('designs.reason.repinOnly', {
-          act,
-          actWords,
-          flow: base.flow,
-          pins: pinWords(step),
-          fp: step.change.fingerprint.slice(0, 12),
-          r: step.design.approvedRevision ?? 0,
+      for (const unit of unitsOf(plan.ready)) {
+        const inputs = unit.map((step): StepInput => {
+          const pending = loaded.pending.get(step.design.id);
+          return {
+            projectId,
+            step,
+            actor,
+            reason: say('designs.reason.repinOnly', {
+              act,
+              actWords,
+              flow: base.flow,
+              pins: pinWords(step),
+              fp: step.change.fingerprint.slice(0, 12),
+              r: step.design.approvedRevision ?? 0,
+            }),
+            ...(pending ? { pending } : {}),
+          };
         });
-        const pending = loaded.pending.get(step.design.id);
-        const revision = await takeStep(tx, {
-          projectId,
-          step,
-          actor,
-          reason,
-          ...(pending ? { pending } : {}),
-        });
-        approved.push({
-          workflowId: step.design.id,
-          flow: step.design.flow,
-          revision,
-          pins: step.change.pins,
+        const revisions = await takeUnit(tx, projectId, inputs);
+        unit.forEach((step, i) => {
+          approved.push({
+            workflowId: step.design.id,
+            flow: step.design.flow,
+            revision: revisions[i] as number,
+            pins: step.change.pins,
+          });
         });
       }
       return {

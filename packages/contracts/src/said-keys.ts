@@ -1711,6 +1711,7 @@ export const SAID = {
 		en: "a holder of workflow-designs.approve decides the design, person or agent",
 	},
 	"designs.act.repin": { en: "re-pin basedOn" },
+	"designs.act.approveBase": { en: "approve {bases}", vars: { bases: "text" } },
 	"designs.title.repinBatch": {
 		en: "{n} {designs} only {need} {its} pin moved → r{r}",
 		vars: {
@@ -2705,6 +2706,14 @@ export const SAID = {
 	"designs.base.stale": {
 		en: "{flow} r{r}, which is approved at r{approved} now",
 		vars: { flow: "name", r: "count", approved: "count" },
+	},
+	"designs.base.proposed": {
+		en: "{flow} r{r}, which waits on its approver",
+		vars: { flow: "name", r: "count" },
+	},
+	"designs.rule.baseAwaitsApproval": {
+		en: "r{r} builds on {bases}: the base is approved first",
+		vars: { r: "count", bases: "saidList" },
 	},
 	"designs.base.unapproved": {
 		en: "{flow} r{r}, which is not approved",

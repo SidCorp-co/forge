@@ -13,6 +13,7 @@ const list = (items: string[], language: string) => new Intl.ListFormat(copyLoca
 
 const BASE_STATES = {
   stale: "workflows.refusal.base.stale",
+  proposed: "workflows.refusal.base.proposed",
   unapproved: "workflows.refusal.base.unapproved",
   missing: "workflows.refusal.base.missing",
 } as const;

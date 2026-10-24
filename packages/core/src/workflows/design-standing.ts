@@ -27,6 +27,8 @@ interface DesignStandingInput extends DesignHeadFacts {
 /** A base the proposed revision rests on, said from the refusal's facts rather than its English detail. */
 function baseSaid(b: DesignBaseFault): Said {
   if (b.state === 'missing') return say('designs.base.missing', { flow: b.workflow });
+  if (b.state === 'proposed')
+    return say('designs.base.proposed', { flow: b.workflow, r: b.revision });
   if (b.state === 'stale' && b.approvedRevision !== null) {
     return say('designs.base.stale', {
       flow: b.workflow,
@@ -43,26 +45,44 @@ const wait = (kind: DesignWaitingKind, who: Said, act: Said, rule: Said): Design
 const NOBODY = say('standing.who.nobody');
 const NO_ACT = say('standing.act.none');
 
+/** A decision only the design approver takes: you where you may take it, else whoever holds approval. */
+const approverWait = (canDecide: boolean, act: Said, rule: Said): DesignWaitingOn =>
+  canDecide
+    ? wait('you', say('standing.who.you'), act, rule)
+    : wait('person', say('standing.who.holderOf', { perm: 'workflow-designs.approve' }), act, rule);
+
 function proposedWait(input: DesignStandingInput, revision: number): DesignWaitingOn {
-  const act = say('designs.act.approveOrReturn');
-  if (input.canDecide) {
-    return wait(
-      'you',
-      say('standing.who.you'),
-      act,
-      say('designs.rule.youDecide', { r: revision }),
-    );
-  }
-  return wait(
-    'person',
-    say('standing.who.holderOf', { perm: 'workflow-designs.approve' }),
-    act,
-    say('designs.rule.approverDecides'),
+  return approverWait(
+    input.canDecide,
+    say('designs.act.approveOrReturn'),
+    input.canDecide
+      ? say('designs.rule.youDecide', { r: revision })
+      : say('designs.rule.approverDecides'),
   );
 }
 
-// Whose turn a design is, first rule wins: proposed → its approver (you when you may decide);
-// returned → the project's master, which `owed-designs.ts` carries it to; draft → the writer drawing
+// Every base the proposed revision waits on is proposed at the pinned revision: approving those
+// bases is the next act, the approver's, and the writer owes no re-pin (FB-145)
+function baseApprovalWait(
+  input: DesignStandingInput,
+  blocked: NonNullable<DesignStandingInput['baseUnapproved']>,
+): DesignWaitingOn | null {
+  if (!blocked.bases.every((b) => b.state === 'proposed')) return null;
+  return approverWait(
+    input.canDecide,
+    say('designs.act.approveBase', {
+      bases: blocked.bases.map((b) => `${b.workflow} r${b.revision}`).join(', '),
+    }),
+    say('designs.rule.baseAwaitsApproval', {
+      r: blocked.revision,
+      bases: blocked.bases.map(baseSaid),
+    }),
+  );
+}
+
+// Whose turn a design is, first rule wins: proposed on a base proposed at its pin → the base's
+// approver; proposed on a base it must be re-pinned off → its writer; proposed → its approver (you
+// when you may decide); returned → the project's master, which `owed-designs.ts` carries it to; draft → the writer drawing
 // it; approved, withdrawn or not under approval → nobody
 export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
   const latest = input.latest?.revision ?? null;
@@ -71,6 +91,8 @@ export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
   switch (input.status) {
     case 'proposed':
       if (input.baseUnapproved) {
+        const onBase = baseApprovalWait(input, input.baseUnapproved);
+        if (onBase) return onBase;
         return wait(
           'agent',
           writer,

@@ -7,9 +7,10 @@ import { decisionRefusals } from './design.js';
 import { baseApprovalRefusal, designsLeftStale, readBases } from './design-bases.js';
 
 const held = [
-  { flow: 'access', designStatus: 'proposed' as const, approvedRevision: 10 },
-  { flow: 'consent', designStatus: 'proposed' as const, approvedRevision: null },
-  { flow: 'intake', designStatus: 'approved' as const, approvedRevision: 3 },
+  { flow: 'access', revision: 11, designStatus: 'proposed' as const, approvedRevision: 10 },
+  { flow: 'consent', revision: 2, designStatus: 'proposed' as const, approvedRevision: null },
+  { flow: 'intake', revision: 3, designStatus: 'approved' as const, approvedRevision: 3 },
+  { flow: 'review', revision: 5, designStatus: 'proposed' as const, approvedRevision: 4 },
 ];
 
 describe('WORKFLOW_DESIGN_BASE_UNAPPROVED carries its facts', () => {
@@ -51,6 +52,22 @@ describe('WORKFLOW_DESIGN_BASE_UNAPPROVED carries its facts', () => {
       },
     ]);
     expect(refusal?.detail).toContain('"access" rev 9');
+  });
+
+  // FB-145: the pin is the revision the base put to its approver, so nobody owes a re-pin
+  it('reads a base proposed at exactly the pinned revision as proposed, not stale', () => {
+    const refusal = baseApprovalRefusal(2, readBases([{ workflow: 'review', revision: 5 }], held));
+    expect(refusal?.bases).toEqual([
+      {
+        workflow: 'review',
+        revision: 5,
+        state: 'proposed',
+        approvedRevision: 4,
+        designStatus: 'proposed',
+      },
+    ]);
+    expect(refusal?.detail).toContain('waits on its approver');
+    expect(refusal?.detail).not.toContain('stale base');
   });
 
   it('refuses nothing while every base stands approved at the revision it names', () => {

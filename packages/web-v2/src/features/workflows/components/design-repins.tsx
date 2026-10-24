@@ -34,7 +34,7 @@ export function PinOnlyReading({ change, approvedRevision }: { change: PinOnlyCh
 const REFUSAL_WORDS = {
   WORKFLOW_REPIN_PENDING_CHANGE: "workflows.repins.refusal.pending",
   WORKFLOW_DESIGN_BASE_UNAPPROVED: "workflows.repins.refusal.unapproved",
-  WORKFLOW_REPIN_CYCLE: "workflows.repins.refusal.cycle",
+  WORKFLOW_REPIN_RING_HELD: "workflows.repins.refusal.ringHeld",
 } as const;
 
 const isRefusalCode = (code: string): code is keyof typeof REFUSAL_WORDS => code in REFUSAL_WORDS;

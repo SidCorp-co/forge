@@ -93,8 +93,12 @@ export interface DesignListReading {
 	waitingOn: WaitingOn<DesignWaitingKind>;
 }
 
-/** Why one base a design declares refuses its approval: no such workflow, approved at another revision now, or not approved at all. */
-export type DesignBaseFaultState = "missing" | "stale" | "unapproved";
+/**
+ * Why one base a design declares refuses its approval: no such workflow, approved at another revision
+ * than the pin while the pin is not its pending proposal (`stale`, the writer re-pins), proposed at
+ * exactly the pinned revision (`proposed`, its approver decides it), or not approved at all.
+ */
+export type DesignBaseFaultState = "missing" | "stale" | "proposed" | "unapproved";
 
 /** One declared base that refuses the approval, as `WORKFLOW_DESIGN_BASE_UNAPPROVED` carries it beside its detail. */
 export interface DesignBaseFault {
@@ -324,7 +328,7 @@ export const DESIGN_REFUSAL_CODES = [
 	"WORKFLOW_DESIGN_BASE_UNAPPROVED",
 	"WORKFLOW_REPIN_PENDING_CHANGE",
 	"WORKFLOW_REPIN_NOT_DEPENDENT",
-	"WORKFLOW_REPIN_CYCLE",
+	"WORKFLOW_REPIN_RING_HELD",
 	"WORKFLOW_DESIGN_ISSUE_IS_BUILD",
 	"WORKFLOW_DESIGN_ISSUE_REQUIRED",
 	"WORKFLOW_BUILD_ALREADY_LINKED",

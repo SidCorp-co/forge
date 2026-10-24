@@ -161,8 +161,9 @@ never held, or one flow twice is refused at the write (\`WORKFLOW_BASE_SELF\`, \
 \`WORKFLOW_BASE_DUPLICATE\`). Approving a revision is refused \`WORKFLOW_DESIGN_BASE_UNAPPROVED\` while any
 base it declares is not approved at the revision it names — returned, still proposed, never approved, or
 approved at another revision — and the refusal names each base and its state. The same reading stands
-before anyone tries: a proposed design whose base moved reads as waiting on its writer to re-pin \`basedOn\`,
-not on its approver. Approve the base first, or write the design again naming the base revision that is approved; whoever
+before anyone tries: a proposed design whose base moved past its pin reads as waiting on its writer to re-pin
+\`basedOn\`, not on its approver; one pinned at the revision its base has proposed reads that base as
+\`proposed\`, never stale, and waits on the base's approver. Approve the base first, or write the design again naming the base revision that is approved; whoever
 approves designs re-pins every dependent in one act (below). Prose that cites another design is never read as
 a base.
 
@@ -183,8 +184,9 @@ takes it in one transaction for whoever the \`approvals.designs\` gate asks (\`w
 is on, \`workflow-designs.write\` where it is off): each design is re-pinned as a revision
 written by the acting person and approved, one recorded decision per design whose note names the act's id. A design with any other change
 pending is refused \`WORKFLOW_REPIN_PENDING_CHANGE\` and goes through its own review; a re-pin that would rest
-on a base with no approved revision is refused \`WORKFLOW_DESIGN_BASE_UNAPPROVED\`; bases naming each other in a
-ring are refused \`WORKFLOW_REPIN_CYCLE\`; a design the plan does not take is \`WORKFLOW_REPIN_NOT_DEPENDENT\`. A
+on a base with no approved revision is refused \`WORKFLOW_DESIGN_BASE_UNAPPROVED\`; designs whose bases name each
+other in a ring are re-pinned together, each pinned to the revision the act approves for the other, whole or not at
+all: a member the act cannot take holds the rest of its ring \`WORKFLOW_REPIN_RING_HELD\`, naming it; a design the plan does not take is \`WORKFLOW_REPIN_NOT_DEPENDENT\`. A
 base or design read at a revision that has moved is \`WORKFLOW_DESIGN_REVISION_STALE\`. Needs you shows the base's dependents as one row, not one per design.
 
 An issue that delivers a design revision — the issue the revision is drawn under, or one whose criteria

@@ -159,17 +159,80 @@ describe('the re-pin act for a moved base', () => {
     ]);
   });
 
-  it('refuses designs whose bases name each other in a ring', () => {
+  // FB-150: a ring is one unit of the act, each member pinned to the revision it approves for the other
+  it('re-pins designs whose bases name each other in a ring together, and what rests on them after', () => {
     const plan = planRepins('access', [
       approvedDesign('access', 13),
-      approvedDesign('a', 1, [...onAccess, { workflow: 'b', revision: 1 }]),
+      approvedDesign('a', 2, [...onAccess, { workflow: 'b', revision: 1 }]),
+      approvedDesign('b', 1, [...onAccess, { workflow: 'a', revision: 1 }]),
+      approvedDesign('ux', 1, [{ workflow: 'b', revision: 1 }]),
+    ]);
+    expect(plan.refused).toEqual([]);
+    expect(plan.ready.map((s) => [s.design.flow, s.approves, s.change.pins, s.ring])).toEqual([
+      [
+        'a',
+        3,
+        [
+          { workflow: 'access', from: 12, to: 13 },
+          { workflow: 'b', from: 1, to: 2 },
+        ],
+        ['a', 'b'],
+      ],
+      [
+        'b',
+        2,
+        [
+          { workflow: 'access', from: 12, to: 13 },
+          { workflow: 'a', from: 1, to: 3 },
+        ],
+        ['a', 'b'],
+      ],
+      ['ux', 2, [{ workflow: 'b', from: 1, to: 2 }], []],
+    ]);
+  });
+
+  it('approves a ring member filed pin-only proposal as filed where its pins are where the ring lands', () => {
+    const filed = doc('a', [
+      { workflow: 'access', revision: 13 },
+      { workflow: 'b', revision: 2 },
+    ]);
+    const plan = planRepins('access', [
+      approvedDesign('access', 13),
+      approvedDesign('a', 2, [...onAccess, { workflow: 'b', revision: 1 }], {
+        revision: 3,
+        designStatus: 'proposed',
+        current: filed,
+        pending: { revision: 3, document: filed, proposedBy: 'master' },
+      }),
+      approvedDesign('b', 1, [...onAccess, { workflow: 'a', revision: 1 }]),
+    ]);
+    expect(plan.ready.map((s) => [s.design.flow, s.source, s.approves, s.write === null])).toEqual([
+      ['a', 'proposal', 3, true],
+      ['b', 'approved', 2, false],
+    ]);
+  });
+
+  it('holds the whole ring by name where one member has a real change pending', () => {
+    const changed = {
+      ...doc('a', [...onAccess, { workflow: 'b', revision: 1 }]),
+      title: 'renamed',
+    };
+    const plan = planRepins('access', [
+      approvedDesign('access', 13),
+      approvedDesign('a', 2, [...onAccess, { workflow: 'b', revision: 1 }], {
+        revision: 3,
+        designStatus: 'proposed',
+        current: changed,
+        pending: { revision: 3, document: changed, proposedBy: 'master' },
+      }),
       approvedDesign('b', 1, [...onAccess, { workflow: 'a', revision: 1 }]),
     ]);
     expect(plan.ready).toEqual([]);
-    expect(plan.refused.map((r) => r.refusal.code)).toEqual([
-      'WORKFLOW_REPIN_CYCLE',
-      'WORKFLOW_REPIN_CYCLE',
+    expect(plan.refused.map((r) => [r.design.flow, r.refusal.code])).toEqual([
+      ['a', 'WORKFLOW_REPIN_PENDING_CHANGE'],
+      ['b', 'WORKFLOW_REPIN_RING_HELD'],
     ]);
+    expect(plan.refused[1]?.refusal.detail).toContain('"a"');
   });
 
   it('is empty while the base has no approved revision', () => {

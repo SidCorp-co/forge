@@ -18,7 +18,12 @@ interface DesignBase {
 interface BaseReading extends DesignBase {
   readonly designStatus: DesignStatus | null | 'missing';
   readonly approvedRevision: number | null;
+  /** The base's newest revision, the one its status speaks of; null where it is missing. */
+  readonly headRevision: number | null;
 }
+
+/** What a base reading reads of each design of the project. */
+type HeldBase = Pick<StoredWorkflow, 'flow' | 'revision' | 'designStatus' | 'approvedRevision'>;
 
 function basesOf(doc: WorkflowWrite | null): readonly DesignBase[] {
   return doc?.basedOn ?? [];
@@ -77,10 +82,7 @@ export function baseRefusals(
   return out;
 }
 
-export function readBases(
-  bases: readonly DesignBase[],
-  held: readonly Pick<StoredWorkflow, 'flow' | 'designStatus' | 'approvedRevision'>[],
-): BaseReading[] {
+export function readBases(bases: readonly DesignBase[], held: readonly HeldBase[]): BaseReading[] {
   const byFlow = new Map(held.map((w) => [w.flow, w]));
   return bases.map((base) => {
     const row = byFlow.get(base.workflow);
@@ -88,12 +90,16 @@ export function readBases(
       ...base,
       designStatus: row ? row.designStatus : 'missing',
       approvedRevision: row?.approvedRevision ?? null,
+      headRevision: row?.revision ?? null,
     };
   });
 }
 
+// A pin at the revision the base has put to its approver waits on that approver, whatever revision
+// the base was approved at before (FB-145); only a pin the base has moved past is the writer's to move
 function faultStateOf(b: BaseReading): DesignBaseFaultState {
   if (b.designStatus === 'missing') return 'missing';
+  if (b.designStatus === 'proposed' && b.headRevision === b.revision) return 'proposed';
   return b.approvedRevision !== null && b.approvedRevision !== b.revision ? 'stale' : 'unapproved';
 }
 
@@ -106,6 +112,11 @@ function stateOf(b: BaseReading): string {
         ? ''
         : ` and stands ${b.designStatus ?? 'outside the design lifecycle'}`
     }, so this design rests on a stale base`;
+  }
+  if (fault === 'proposed') {
+    return `is proposed at that revision and waits on its approver${
+      b.approvedRevision === null ? '' : ` (approved at revision ${b.approvedRevision} before it)`
+    }`;
   }
   const approved =
     b.approvedRevision === null
@@ -126,7 +137,7 @@ export type BaseUnapprovedRefusal = DesignRefusal & {
 export function standingBaseRefusal(
   revision: number,
   doc: unknown,
-  held: readonly Pick<StoredWorkflow, 'flow' | 'designStatus' | 'approvedRevision'>[],
+  held: readonly HeldBase[],
 ): BaseUnapprovedRefusal | null {
   const bases = basesOfStored(doc);
   return bases.length > 0 ? baseApprovalRefusal(revision, readBases(bases, held)) : null;

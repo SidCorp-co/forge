@@ -1,0 +1,1 @@
+**A design on a proposed base, or in a ring, moves.** A design pinned to the revision its base has proposed waits on that base's approver, not a re-pin; designs naming each other as bases re-pin together in one act.
