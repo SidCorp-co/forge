@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.305] - 2026-10-24
+
+Builder runs open only on the branch a project builds from
+
+### Fixed
+
+- **A push opens a builder run only on the branch the project builds from.** A project's own master replaces a run through POST /api/projects/:id/builder-runs/:run/supersede, and a refusal names the project and why.
+
 ## [0.4.0-dev.304] - 2026-10-23
 
 Agents finish the issues they hold without someone stepping in
