@@ -75,8 +75,10 @@ change notice owes nothing and is not listed; read it in \`GET /api/projects/:id
    version no longer holds. That link is checked against the code and written by hand.
 
 ### Working a builder run
-Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to its
-default branch opens another (trigger \`push\`, at the pushed commit) once the last one is finished.
+Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to the
+branch it builds from (its project document's \`source.git.defaultBranch\`, never the host's default
+branch) opens another (trigger \`push\`, at the pushed commit, its \`head.ref\` naming that branch) once
+the last one is finished. A push to any other branch opens nothing.
 A git project's joined run names its default branch's head as its host binding reports it, or, with
 no host binding (or a local-path repository), as a connected box reads it from its bound checkout
 with its own git access; the trigger's \`head\` says which (\`via\`), on which \`ref\`, and when
@@ -125,7 +127,9 @@ A project works one run per ecosystem at a time: opening another while one is op
 
 A run whose steps no longer match its project's source type (the bus shows it \`stepsStale: true\`),
 or one that can never finish truly, is replaced, not worked:
-\`POST /api/ecosystems/<ecosystem>/builder-runs/<run>/supersede { reason }\`. It closes the open run (its unfinished
+\`POST /api/projects/:id/builder-runs/<run>/supersede { reason }\`, which a project-fenced token reaches
+(\`POST /api/ecosystems/<ecosystem>/builder-runs/<run>/supersede\` is the same act for a session or an
+unfenced token). A run that is not this project's is refused \`BUILDER_RUN_NOT_IN_PROJECT\`. It closes the open run (its unfinished
 steps \`superseded\`, the run naming \`supersededBy { run, reason }\`) and opens a fresh one, trigger
 \`manual\`, with the steps the current source type derives, and wakes this project's master. It takes
 \`project.write\` on the project, or org admin of the steward org; anyone else is refused

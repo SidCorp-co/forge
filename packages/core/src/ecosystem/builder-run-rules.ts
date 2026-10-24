@@ -92,6 +92,62 @@ export function openedRun(input: {
   };
 }
 
+const COMMIT = /^[0-9a-f]{40}$/;
+const NO_COMMIT = /^0{40}$/;
+
+/** What one reported push owes a project's builder: a run with the trigger it opens with, nothing, or a refusal. */
+export type PushReading =
+  | { kind: 'open'; trigger: BuilderRunWrite['trigger'] }
+  | { kind: 'none'; why: string }
+  | { kind: 'refused'; refusal: EcosystemRefusal };
+
+// a push re-reads the project's own code, so only the branch the project builds from (its document's source.git.defaultBranch, the branch a joined run reads in builder-head.ts:projectHead) counts, never the host's default branch; a push that cannot be placed on a branch is refused by name, never read as a push to it (ISS-597)
+export function pushReading(input: {
+  projectId: string;
+  branch: string | null;
+  buildBranch: string | null;
+  commit: string | null;
+  at: string;
+}): PushReading {
+  const { projectId, branch, buildBranch, commit, at } = input;
+  if (!commit || NO_COMMIT.test(commit) || !COMMIT.test(commit)) {
+    return { kind: 'none', why: 'the push names no commit (a branch deletion re-reads no code)' };
+  }
+  if (branch === null) {
+    return unattributed(
+      `a push of ${commit} to project ${projectId} names no branch (a tag or another ref), so it cannot be read as a push to the branch the project builds from`,
+    );
+  }
+  if (buildBranch === null) {
+    return unattributed(
+      `project ${projectId} declares no build branch (source.git.defaultBranch in its project document), so a push of ${commit} to ${branch} cannot be attributed to it; declare it with PUT /api/projects/:id/config`,
+    );
+  }
+  if (branch !== buildBranch) {
+    return {
+      kind: 'none',
+      why: `${branch} is not ${buildBranch}, the branch project ${projectId} builds from`,
+    };
+  }
+  return {
+    kind: 'open',
+    trigger: {
+      kind: 'push',
+      sha: commit,
+      head: { ref: `refs/heads/${branch}`, readAt: at, via: 'source-host' },
+    },
+  };
+}
+
+const unattributed = (detail: string): PushReading => ({
+  kind: 'refused',
+  refusal: {
+    code: 'BUILDER_RUN_PUSH_UNATTRIBUTED',
+    path: '/trigger',
+    detail: `${detail}. No builder run was opened.`,
+  },
+});
+
 export interface DeclaredWithoutCallSite {
   classification: 'declared_without_call_site';
   contract: string;
@@ -140,7 +196,7 @@ export function checkBuilderRun(doc: BuilderRunWrite, world: BuilderRunWorld): E
     out.push({
       code: 'BUILDER_RUN_IMMUTABLE',
       path: '/supersededBy',
-      detail: `a run is closed as superseded only by the supersede verb (POST /api/ecosystems/${doc.ecosystem}/builder-runs/:runId/supersede), which opens the run that replaces it; a written document never names supersededBy.`,
+      detail: `a run is closed as superseded only by the supersede verb (POST /api/projects/${doc.project}/builder-runs/:runId/supersede), which opens the run that replaces it; a written document never names supersededBy.`,
     });
   }
   if (world.openRun !== null && isOpenRun(doc)) {

@@ -215,7 +215,9 @@ interface IssueSnapshot {
 	labels: string[];
 }
 
-export interface OutboxEventPayloads extends StewardEventPayloads, LessonEventPayloads {
+export interface OutboxEventPayloads
+	extends StewardEventPayloads,
+		LessonEventPayloads {
 	"issue.created": {
 		issueId: string;
 		projectId: string;
@@ -345,7 +347,6 @@ export interface OutboxEventPayloads extends StewardEventPayloads, LessonEventPa
 		bindingId: string;
 		branch: string | null;
 		commit: string | null;
-		defaultBranch: string | null;
 	};
 	/** A source host reported a change request merged (on the host, not through Forge's merge). */
 	"source.merged": {

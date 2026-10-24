@@ -137,15 +137,29 @@ const supersedeParam = zValidator(
 
 const supersedeBody = zValidator('json', z.unknown());
 
-busRoutes.post('/:id/builder-runs/:run/supersede', supersedeParam, supersedeBody, async (c) => {
-  const { id, run } = c.req.valid('param');
-  const body = c.req.valid('json');
+// one act behind both doors and the MCP tool: the run is replaced by core, so the caller holds no outside credential to do it
+async function supersedeAnswer(
+  c: Context<{ Variables: AuthVars }>,
+  scope: { runId: string; ecosystemId?: string; projectId?: string },
+  body: unknown,
+) {
   const outcome = await supersedeBuilderRun({
-    runId: run,
-    ecosystemId: id,
+    ...scope,
     actor: writerOf(c),
     reason: body && typeof body === 'object' ? (body as { reason?: unknown }).reason : undefined,
   });
   if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
   return c.json({ superseded: recordView(outcome.superseded), opened: recordView(outcome.opened) });
+}
+
+// the project's own door, which a project-fenced master token reaches (ISS-597)
+linkProjectRoutes.post('/:id/builder-runs/:run/supersede', runParam, supersedeBody, async (c) => {
+  const { id, run } = c.req.valid('param');
+  return supersedeAnswer(c, { runId: run, projectId: id }, c.req.valid('json'));
+});
+
+// the ecosystem's door, an account route: a session or a token fenced to no project reaches it, as the steward org's admin does
+busRoutes.post('/:id/builder-runs/:run/supersede', supersedeParam, supersedeBody, async (c) => {
+  const { id, run } = c.req.valid('param');
+  return supersedeAnswer(c, { runId: run, ecosystemId: id }, c.req.valid('json'));
 });

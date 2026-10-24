@@ -114,11 +114,21 @@ export function permissionRefusal(
   act?: string,
 ): PermissionRefusal | null {
   if (holds(facts, permission)) return null;
-  const held = facts.role ?? 'no role';
-  const grant = facts.grants.length > 0 ? ` and a grant of ${facts.grants.join(', ')}` : '';
+  const scope = currentPatScope();
   const holders = rolesHolding(permission);
   const by = holders.length > 0 ? `the ${holders.join(' or ')} role or ` : '';
-  const scope = currentPatScope();
+  // a token fenced to other projects reads as holding no role here whatever its holder holds, so the refusal names the fence rather than a role the holder may have
+  if (scope?.projectIds && !scope.projectIds.includes(facts.projectId)) {
+    return {
+      code: 'PERMISSION_FORBIDDEN',
+      path: '',
+      detail: `${act ? `${act} needs` : 'This needs'} ${permission} on project ${facts.projectId}, and this token is fenced to other projects, so it holds nothing there whatever its holder's role; send it with a token whose project list names project ${facts.projectId}.`,
+      permission,
+      scope: { kind: 'project', id: facts.projectId },
+    };
+  }
+  const held = facts.role ?? 'no role';
+  const grant = facts.grants.length > 0 ? ` and a grant of ${facts.grants.join(', ')}` : '';
   const excluded = scope && grantExcludes(scope.grant, permission);
   const token = excluded
     ? ` This token's grant names ${scope.grant?.filter((g) => (TOKEN_GRANT_EXCLUSIONS[g as Permission] ?? []).includes(permission)).join(', ')}, and a token naming that never holds ${permission}: an observer credential cannot write or decide the design it reads.`

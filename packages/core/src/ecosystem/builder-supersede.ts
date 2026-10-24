@@ -9,6 +9,7 @@ import { notFound } from './access.js';
 import { owedTrigger } from './builder-head.js';
 import { openedRun } from './builder-run-rules.js';
 import {
+  notInProjectRefusal,
   notOpenRefusal,
   supersededRun,
   supersedeReason,
@@ -20,7 +21,7 @@ import { type Held, sourceOf, storedBuilderRun } from './link-service.js';
 import { insertBuilderRun, readBuilderRun, replaceBuilderRun } from './link-store.js';
 import { activeEcosystemIdsOf } from './membership-store.js';
 import type { EcosystemRefusal } from './refusals.js';
-import { lockKeys } from './store.js';
+import { lockKeys, projectsWhere } from './store.js';
 
 type SupersedeOutcome =
   | { ok: true; superseded: Held<BuilderRunWrite>; opened: Held<BuilderRunWrite> }
@@ -31,11 +32,23 @@ const refusedWith = (refusal: EcosystemRefusal): SupersedeOutcome => ({
   refusals: [refusal],
 });
 
+// a caller who may not supersede in the named project hears that first, so the door never says which runs a project holds to someone outside it
+async function outsideProject(
+  runId: string,
+  projectId: string,
+  userId: string,
+): Promise<EcosystemRefusal> {
+  const denied = supersederRefusal(await permissionFactsOf(userId, projectId), null);
+  if (denied) return denied;
+  const [project] = await projectsWhere(db, { ids: [projectId] });
+  return notInProjectRefusal(runId, project?.slug ?? projectId);
+}
+
 export async function supersedeBuilderRun(input: {
   runId: string;
   /** The ecosystem the REST path names; the run must be in it. */
   ecosystemId?: string;
-  /** The project the MCP side names; the run must be its. */
+  /** The project the project route and the MCP side name; a run that is not its is refused BUILDER_RUN_NOT_IN_PROJECT. */
   projectId?: string;
   actor: { userId: string; agency: ActorAgency };
   reason: unknown;
@@ -44,13 +57,12 @@ export async function supersedeBuilderRun(input: {
   const reason = supersedeReason(input.reason);
   if (!reason.ok) return reason;
   const row = await readBuilderRun(db, runId);
-  if (
-    !row ||
-    (input.ecosystemId !== undefined && row.ecosystemId !== input.ecosystemId) ||
-    (input.projectId !== undefined && row.projectId !== input.projectId)
-  ) {
+  if (input.projectId !== undefined && row?.projectId !== input.projectId) {
+    return refusedWith(await outsideProject(runId, input.projectId, actor.userId));
+  }
+  if (!row || (input.ecosystemId !== undefined && row.ecosystemId !== input.ecosystemId)) {
     throw notFound(
-      `no builder run ${runId}${input.ecosystemId ? ` in ecosystem ${input.ecosystemId}` : ''}${input.projectId ? ` of project ${input.projectId}` : ''}`,
+      `no builder run ${runId}${input.ecosystemId ? ` in ecosystem ${input.ecosystemId}` : ''}`,
     );
   }
   const projectId = row.projectId;

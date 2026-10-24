@@ -39,7 +39,6 @@ interface GitLabDeliveryContext {
 
 interface ProjectPart {
   path_with_namespace?: string;
-  default_branch?: string;
   web_url?: string;
 }
 
@@ -115,7 +114,6 @@ async function onPush(ctx: GitLabDeliveryContext, payload: PushHook): Promise<Gi
       bindingId: ctx.bindingId,
       branch,
       commit: payload.after ?? null,
-      defaultBranch: payload.project?.default_branch ?? null,
     },
   });
   return { actions: 1 };

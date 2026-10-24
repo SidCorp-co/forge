@@ -1,0 +1,1 @@
+**A push opens a builder run only on the branch the project builds from.** A project's own master replaces a run through POST /api/projects/:id/builder-runs/:run/supersede, and a refusal names the project and why.

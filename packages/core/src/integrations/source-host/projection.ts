@@ -83,7 +83,6 @@ export interface ReviewPayload {
 export interface PushPayload {
   ref?: string;
   after?: string;
-  repository?: { default_branch?: string };
 }
 
 /** The state a payload reports, with `merged` kept apart from `closed`. */

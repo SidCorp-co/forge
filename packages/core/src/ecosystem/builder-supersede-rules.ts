@@ -37,6 +37,15 @@ export function supersedeReason(raw: unknown): Checked<string> {
   };
 }
 
+// said the same whether the run is another project's or none at all, so a project's door never tells its caller what another project holds
+export function notInProjectRefusal(runId: string, project: string): EcosystemRefusal {
+  return {
+    code: 'BUILDER_RUN_NOT_IN_PROJECT',
+    path: '/run',
+    detail: `builder run ${runId} is not a run of project ${project}; a project supersedes only its own runs, and GET /api/projects/:id/builder-runs lists them. Nothing was changed.`,
+  };
+}
+
 export function notOpenRefusal(runId: string, doc: BuilderRunWrite): EcosystemRefusal | null {
   if (isOpenRun(doc)) return null;
   const how = doc.supersededBy

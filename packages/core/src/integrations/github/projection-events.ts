@@ -110,7 +110,6 @@ async function onPush(ctx: DeliveryContext, payload: PushPayload): Promise<numbe
       bindingId: ctx.bindingId,
       branch,
       commit: payload.after ?? null,
-      defaultBranch: payload.repository?.default_branch ?? null,
     },
   });
   if (!branch) return 0;

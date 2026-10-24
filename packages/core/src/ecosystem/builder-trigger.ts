@@ -1,34 +1,18 @@
-/** A push to a member project's default branch reopens its builder runs (ISS-39). */
+/** A push to the branch a member project builds from reopens its builder runs (ISS-39, ISS-597). */
 
 import type { Tx } from '../db/client.js';
-import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
+import type { PushReading } from './builder-run-rules.js';
 import { openOwedRun } from './link-service.js';
 import { membershipsWhere } from './membership-store.js';
 
-const COMMIT = /^[0-9a-f]{40}$/;
-const NO_COMMIT = /^0{40}$/;
-
-// a push re-reads the project's own code, so only its default branch counts; a payload that does not name that branch is skipped and said, never read as a push to it
+/** Opens the run a push owes in every ecosystem the project is an active member of; a reading that owes none opens nothing. */
 export async function openPushedRuns(
   tx: Tx,
-  input: {
-    projectId: string;
-    branch: string;
-    defaultBranch: string | null;
-    commit: string | undefined;
-  },
+  input: { projectId: string; reading: PushReading },
 ): Promise<void> {
-  const { projectId, branch, defaultBranch, commit } = input;
-  if (!commit || NO_COMMIT.test(commit) || !COMMIT.test(commit)) return;
-  if (defaultBranch === null) {
-    logger.warn(
-      { projectId, branch },
-      'push names no repository.default_branch — no ecosystem builder run opened for it',
-    );
-    return;
-  }
-  if (branch !== defaultBranch) return;
+  const { projectId, reading } = input;
+  if (reading.kind !== 'open') return;
   const active = (await membershipsWhere({ projectIds: [projectId] })).filter(
     (m) => m.state === 'active',
   );
@@ -37,7 +21,7 @@ export async function openPushedRuns(
     await openOwedRun(tx, {
       ecosystemId: m.ecosystemId,
       projectId,
-      trigger: { kind: 'push', sha: commit },
+      trigger: reading.trigger,
       userId: m.decidedBy ?? m.invitedBy,
     });
   }
