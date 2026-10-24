@@ -64,7 +64,7 @@ describe('applyMergeMarker: a mark that writes', () => {
       issue: { id: 'i1', projectId: 'p1', mergedAt: null },
       op: 'mark',
       target: 'dev',
-      commit: 'abcdef1',
+      commit: 'abcdef1'.padEnd(40, '0'),
       actor: {
         agency: 'human',
         commentAuthorId: 'u1',

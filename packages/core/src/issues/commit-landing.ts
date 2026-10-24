@@ -33,7 +33,7 @@ function refuse(code: CommitLandingRefusalCode, detail: string): CommitLanding {
 function unreadable(commit: string, why: string): CommitLanding {
   return refuse(
     'COMMIT_UNVERIFIED',
-    `commit ${commit} could not be checked against this project's repository, so it is not taken as evidence unchecked: ${why}. Mark again once the repository can be read, or send the mark with target and a note naming this commit, its branch recorded in workState.branch`,
+    `commit ${commit} could not be checked against this project's repository, so it is not taken as evidence unchecked: ${why}. Mark again once the repository can be read, or record the work's branch in \`workState.branch\` (\`PATCH /api/issues/:id\`) and mark again with \`target\` and this commit, the whole 40-character sha, in \`commit\`: the mark is then an asserted claim of it, which a release places. A commit named only in \`note\` is no claim`,
   );
 }
 

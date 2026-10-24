@@ -4,7 +4,7 @@ import { isRefusal } from '../lib/refusal.js';
 const designArtifacts = [{ surface: 'design', ref: 'checkout-flow@rev2', change: 'changed' }];
 const stampedAt = new Date('2026-10-01T00:00:00Z');
 const committedAt = new Date('2026-10-02T00:00:00Z');
-const SHA = 'abcdef1234567';
+const SHA = 'abcdef1234567'.padEnd(40, '0');
 const designOnly = {
   id: 'i1',
   projectId: 'p1',

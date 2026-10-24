@@ -54,7 +54,17 @@ branch or the release chain's live branch contains it. Then `merged_at` and
 date, and the mark reads `observed`. Every other answer is a refusal by name and writes
 nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
 `COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
-evidence unchecked.
+evidence unchecked. That refusal names the asserted route instead: record the work's branch in
+`workState.branch`, then mark again with `target` and the whole sha in `commit`, which the mark
+records as its claim (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`) and a release places. A commit named only
+in `note` is no claim.
+
+Where no host or repository resolved the mark's `commit`, so the mark records it as the caller's
+claim, it is the whole 40-character sha or the mark is refused `COMMIT_NOT_WHOLE`
+(`packages/core/src/issues/landing-evidence.ts:wholeCommitRefusal`) and nothing is written: the claim is read only as the
+whole sha (`packages/core/src/issues/mark-trail.ts:CLAIMABLE_COMMIT`), so an abbreviation stamped would be a mark the release
+never places (ISS-575). A commit a host or the repository resolved is stamped as the whole sha it
+read.
 
 Where the caller names a `landing` and no merged pull request exists, it stamps `merged_at` AND
 `merged_landing`. On every path but the one above, the caller's `commit` never reaches the
@@ -73,8 +83,9 @@ same commit.
 
 A `landing` is the one input that repeat does not answer: where a mark stands and the landing sent
 is not the one it names — a corrected typo, or a landing sent over a mark naming none — the call is
-refused `MARK_ALREADY_STANDS` (`standingMarkRefusal`), naming what stands and `unmark` then mark as
-the correction, and neither the row nor the thread is written. The first stamp wins for the landing
+refused `MARK_ALREADY_STANDS` (`standingMarkRefusal`), naming what stands and, as the correction,
+clearing the mark with `DELETE /api/issues/:id/merge` (`packages/core/src/issues/landing-evidence.ts:CLEAR_THE_MARK`, which
+every such refusal words it with) then marking again, and neither the row nor the thread is written. The first stamp wins for the landing
 as for `merged_at`; a `200` that kept the old landing while the caller was told it had sent the
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.

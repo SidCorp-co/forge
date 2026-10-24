@@ -18,12 +18,36 @@ import { z } from 'zod';
 import { type Db, db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { projectConfigDocuments } from '../db/schema-project-config.js';
+import { CLAIMABLE_COMMIT } from './mark-trail.js';
 import {
   describeMergeMark,
   type MergeMarkColumns,
   type MergeMarkKind,
   mergeMarkKindOf,
 } from './merge-record.js';
+
+/** The act that clears a standing mark, as every refusal naming the mark as standing words it. */
+export const CLEAR_THE_MARK =
+  'clear the mark with `DELETE /api/issues/:id/merge` (Unmark on the rail)';
+
+/**
+ * A mark's `commit` that is not the whole sha, or `null` where it is or none was sent. Asked where no
+ * host or repository resolved the commit, so the mark records it as the caller's claim: the claim is
+ * read only as the whole sha (`mark-trail.ts:CLAIMABLE_COMMIT`), and an abbreviation stamped would be
+ * a mark whose claim the release never reads (ISS-575). One a host resolved is stamped whole.
+ */
+export function wholeCommitRefusal(
+  commit: string | undefined,
+): { code: 'COMMIT_NOT_WHOLE'; detail: string } | null {
+  if (commit === undefined || CLAIMABLE_COMMIT.test(commit)) return null;
+  return {
+    code: 'COMMIT_NOT_WHOLE',
+    detail:
+      `commit ${commit} is ${commit.length} characters, and a mark takes the whole 40-character sha ` +
+      `the work landed at (\`git rev-parse ${commit}\` prints it), so nothing was marked. An ` +
+      'abbreviated sha is refused, never expanded.',
+  };
+}
 
 /** `git`: the work lands as commits. `outside_git`: it lands as a live resource, a CMS entry, a
  *  storefront change — the repository, where there is one, holds none of it. */
@@ -97,8 +121,7 @@ export function landingRoute(shape: LandingShape | null, held: MergeMarkKind = '
   }
   const clear =
     held === 'asserted'
-      ? 'This issue already carries a mark naming no landing, and the first stamp wins, so `unmark` ' +
-        'it first (`DELETE /api/issues/:id/merge`, or Unmark on the rail). '
+      ? `This issue already carries a mark naming no landing, and the first stamp wins, so ${CLEAR_THE_MARK} first. `
       : '';
   return (
     clear +
@@ -255,8 +278,8 @@ export function standingArtifactsRefusal(args: {
     code: 'MARK_ALREADY_STANDS',
     detail:
       `${stands}, and the first mark stands, so the artifacts sent were not recorded and nothing ` +
-      'changed. To change them, `unmark` (Unmark on the rail), then mark again with the landing and ' +
-      'artifacts that are right.',
+      `changed. To change them, ${CLEAR_THE_MARK}, then mark again with the landing and artifacts ` +
+      'that are right.',
   };
 }
 
@@ -284,8 +307,7 @@ export function standingMarkRefusal(args: {
     code: 'MARK_ALREADY_STANDS',
     detail:
       `${stands}, and the first mark stands, so ${args.sent} was not recorded and nothing ` +
-      'changed. To change it, `unmark` (Unmark on the rail), then mark again with the landing ' +
-      'that is right.',
+      `changed. To change it, ${CLEAR_THE_MARK}, then mark again with the landing that is right.`,
   };
 }
 

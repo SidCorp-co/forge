@@ -1,0 +1,1 @@
+**A merge mark now claims a commit a release can place.** An unchecked mark refuses an abbreviated commit by name, its refusal teaches the whole sha in `commit`, and a standing mark names `DELETE /api/issues/:id/merge`.

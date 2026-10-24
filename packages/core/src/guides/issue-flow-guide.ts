@@ -267,10 +267,13 @@ naming its own rule before the green counts.
 ### 6. Land, mark, move
 1. Land onto the base branch by the project's route — the brief or the project's knowledge says
    which: a fast-forward, a pull request, a merge.
-2. \`POST /api/issues/:id/merge\` \`{ commit, target, note }\`, the commit as it stands on the target.
-   It is refused \`COMMIT_NOT_LANDED\` until it is there, and \`COMMIT_UNVERIFIED\` where core
-   cannot read the project's repository; there the mark is sent with \`target\` and a \`note\`
-   naming the commit, and reads as asserted rather than observed. A merge mark moves no status.
+2. \`POST /api/issues/:id/merge\` \`{ commit, target, note }\`, the commit as it stands on the target,
+   whole: an abbreviated sha is refused \`COMMIT_NOT_WHOLE\`. It is refused \`COMMIT_NOT_LANDED\`
+   until it is there, and \`COMMIT_UNVERIFIED\` where core cannot read the project's repository;
+   there record the work's branch in \`workState.branch\` first and send the same mark, the commit
+   in \`commit\`, never only in \`note\`: it reads as asserted rather than observed, and the release
+   places the issue by that commit. A commit named only in the note is no claim. To correct a mark,
+   \`DELETE /api/issues/:id/merge\` clears it first. A merge mark moves no status.
    Where a merge check is owed, the mark is refused \`MERGE_CHECK_MISSING\` until a passing one is
    recorded at the commit it marks (the commit named, else the one the issue records).
    Where the project declares the merge check, it is then refused \`MERGE_REVIEW_MISSING\` until a

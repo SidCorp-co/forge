@@ -102,6 +102,8 @@ export const MERGE_REFUSAL_CODES = [
 	"MARK_NOT_A_HOST_MERGE",
 	/** The host a change-request project's mark is checked against could not be read, so the mark is not taken unchecked (REQ-71). */
 	"MARK_HOST_UNREACHABLE",
+	/** A mark's `commit` that is not the whole 40-character sha, which is the only claim a release can place (REQ-71). */
+	"COMMIT_NOT_WHOLE",
 	...COMMIT_LANDING_REFUSAL_CODES,
 ] as const;
 export type MergeRefusalCode = (typeof MERGE_REFUSAL_CODES)[number];

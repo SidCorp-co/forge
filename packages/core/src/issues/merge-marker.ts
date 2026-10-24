@@ -11,6 +11,7 @@ import { resolveCarriage } from './carriage.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import { type HostMerge, hostMergeOfMark } from './host-mark.js';
 import {
+  CLEAR_THE_MARK,
   landingMarkRefusal,
   markArtifacts,
   markReadPaths,
@@ -19,6 +20,7 @@ import {
   SOURCE_UNDECLARED,
   standingArtifactsRefusal,
   standingMarkRefusal,
+  wholeCommitRefusal,
 } from './landing-evidence.js';
 import { lastUnmarkedAt, markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
 import { uncheckedMergeRefusal } from './merge-check.js';
@@ -304,7 +306,7 @@ async function recordStampPaths(
   if (wrote || !held || held.commit.toLowerCase() === paths.commit.toLowerCase()) return;
   throw refuse(
     'MARK_ALREADY_STANDS',
-    `this issue's mark already holds the paths read at ${held.commit}, and the first reading stands, so the paths read at ${paths.commit} were not recorded and nothing changed. To change them, \`unmark\`, then mark again naming the commit that landed.`,
+    `this issue's mark already holds the paths read at ${held.commit}, and the first reading stands, so the paths read at ${paths.commit} were not recorded and nothing changed. To change them, ${CLEAR_THE_MARK}, then mark again naming the commit that landed.`,
     '/changedPaths',
   );
 }
@@ -343,7 +345,7 @@ async function writeMarkTrail(
   const label = markTrailLabel(args.op, args.target, commit);
   const unchanged =
     marking && !result.wrote
-      ? `\n${NOT_STAMPED}: merged_at was already ${result.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`
+      ? `\n${NOT_STAMPED}: merged_at was already ${result.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; to correct it, ${CLEAR_THE_MARK}, then mark again. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`
       : '';
   // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
   const mark: MergeMarkKind = marking
@@ -489,6 +491,10 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   const args = await withCarriers(input, prior);
   const hostMerge = args.op === 'mark' ? await hostMergeOfMark(args, prior) : null;
   const preflight = args.op === 'mark' ? await preflightMark(args, prior, hostMerge) : null;
+  // A commit no host or repository resolved is recorded as the caller's claim, so it is whole.
+  const unread = preflight && !hostMerge && !preflight.fromRepository;
+  const partial = unread ? wholeCommitRefusal(args.commit) : null;
+  if (partial) throw refuse(partial.code, partial.detail, '/commit');
   if (preflight) await refuseUncheckedMerge(args, prior, preflight.shape);
 
   // The stamp, its audit comment and their events commit together or not at all.

@@ -35,6 +35,9 @@ export function markTrailLabel(
   return `mark_merged${target ? ` target=${target}` : ''}${commit ? ` commit=${commit}` : ''}`;
 }
 
+/** The only commit a mark's claim is read as: the whole sha, never an abbreviation of one. */
+export const CLAIMABLE_COMMIT = /^[0-9a-f]{40}$/i;
+
 /** Written into a mark's comment when the first stamp outranked it, so it claims nothing. */
 export const NOT_STAMPED = 'NOT stamped by this call';
 
@@ -98,7 +101,7 @@ export async function currentMarkClaims(
   `)) as unknown as Array<{ issue_id: string; sha: string | null }>;
   for (const r of found) {
     const sha = r.sha?.toLowerCase() ?? null;
-    if (sha && /^[0-9a-f]{40}$/.test(sha)) out.set(r.issue_id, sha);
+    if (sha && CLAIMABLE_COMMIT.test(sha)) out.set(r.issue_id, sha);
   }
   return out;
 }

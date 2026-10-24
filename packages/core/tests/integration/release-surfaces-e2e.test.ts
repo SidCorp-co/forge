@@ -238,7 +238,7 @@ describe('on git with no source host, the paths a box read are classified and la
 
   it("records the box's paths with the mark and reads them by the project's map as box-read", async () => {
     const issue = await fx.insertIssue('awaiting_release', NOTE, false);
-    await markOk(issue, { target: 'dev', commit: SHA.slice(0, 12), changedPaths: BOX_PATHS });
+    await markOk(issue, { target: 'dev', commit: SHA, changedPaths: BOX_PATHS });
     const [row] = [
       ...(await db.execute(sql`SELECT merged_paths FROM issues WHERE id = ${issue}`)),
     ] as Array<{ merged_paths: { read: string; commit: string } | null }>;
@@ -264,6 +264,7 @@ describe('on git with no source host, the paths a box read are classified and la
     });
     expect(other.status, JSON.stringify(other.body)).toBe(422);
     expect(JSON.stringify(other.body)).toContain('MARK_ALREADY_STANDS');
+    expect(JSON.stringify(other.body)).toContain('DELETE /api/issues/:id/merge');
   });
 
   it('refuses paths read at another commit than the mark names, by name, and marks nothing', async () => {
