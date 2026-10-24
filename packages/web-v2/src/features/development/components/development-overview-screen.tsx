@@ -11,6 +11,7 @@ import { ModuleBars } from "./module-bars";
 import { NeedsYouList } from "@/features/needs-you";
 import { useNeedsYou } from "@/features/needs-you";
 import { DevelopmentSignals } from "./development-signals";
+import { DeliveryHolds } from "./delivery-holds";
 import { StuckChains } from "./stuck-chains";
 
 const Count = ({ n }: { n: number }) => <span className="font-mono tabular-nums">{n}</span>;
@@ -57,6 +58,9 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
                   </Section>
                 </div>
                 <div className="min-w-0">
+                  <Section title={t("overview.hold.title")} right={<Count n={d.holds.count} />}>
+                    <DeliveryHolds holds={d.holds} slug={scope.slug} />
+                  </Section>
                   <Section title={t("issues.attention.stuck")} right={<Count n={d.stuck.count} />}>
                     <StuckChains stuck={d.stuck} slug={scope.slug} />
                   </Section>
@@ -65,7 +69,7 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
                   </Section>
                 </div>
               </div>
-              {d.flow.total === 0 && needsYou.length === 0 && d.stuck.count === 0 && d.moving.count === 0 ? (
+              {d.flow.total === 0 && needsYou.length === 0 && d.stuck.count === 0 && d.moving.count === 0 && d.holds.count === 0 ? (
                 <EmptyState message={t("overview.dev.emptyTitle")} />
               ) : null}
               <section id="needs-you" aria-label={t("issues.attention.needs_you")} className="scroll-mt-4" data-testid="needs-you">

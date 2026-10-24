@@ -1,9 +1,10 @@
+import type { WaitingOn } from "@forge/contracts/standing";
 import type { ItemStanding, StandingSubjectKind, StewardActRecord, StewardNoteSubjectKind } from "@forge/contracts/steward";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { readOf, useWrite } from "@/lib/api/query-kit";
-import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { said } from "@/lib/i18n/said";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { said, saidView } from "@/lib/i18n/said";
 import { standingApi } from "./api";
 
 // under ['issues','standing'] so the event router, which invalidates that prefix on every issue event,
@@ -29,15 +30,30 @@ export function useNoteLines(projectId: string | undefined, kind: StandingSubjec
   }, [standings, kind]);
 }
 
-/** Core's stuck sentence by item key for one kind, in the viewer's language; an item not stuck is absent. */
-export function useStuckReasons(projectId: string | undefined, kind: StandingSubjectKind): ReadonlyMap<string, string> {
+/** Why an item is stuck and who acts on it next (REQ-74 BC-5), in the viewer's language; `line` says both at once. */
+export interface StuckReason {
+  reason: string;
+  who: string;
+  act: string;
+  line: string;
+  waitingOn: WaitingOn;
+}
+
+/** Each stuck item's reason and the agent that acts on it, by item key for one kind; an item not stuck is absent. */
+export function useStuckReasons(projectId: string | undefined, kind: StandingSubjectKind): ReadonlyMap<string, StuckReason> {
   const standings = useStandings(projectId);
   const language = useInterfaceLanguage();
+  const t = useCopy();
   return useMemo(() => {
-    const reasons = new Map<string, string>();
-    for (const s of standings.values()) if (s.subject.kind === kind && s.stuck) reasons.set(s.subject.key, said(s.stuck.says.reason, language));
+    const reasons = new Map<string, StuckReason>();
+    for (const s of standings.values()) {
+      if (s.subject.kind !== kind || !s.stuck) continue;
+      const reason = said(s.stuck.says.reason, language);
+      const { who, act } = saidView(s.waitingOn, language);
+      reasons.set(s.subject.key, { reason, who, act, line: t("issues.stuck.line", { reason, who, act }), waitingOn: s.waitingOn });
+    }
     return reasons;
-  }, [standings, kind, language]);
+  }, [standings, kind, language, t]);
 }
 
 export const standingKeyOf = (kind: StandingSubjectKind, key: string) => `${kind}:${key}`;

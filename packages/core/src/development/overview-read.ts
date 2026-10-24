@@ -29,6 +29,8 @@ import {
   type ProposedVersionFact,
   stuckOf,
 } from './overview.js';
+import { holdsOf } from './overview-holds.js';
+import { deliveryRunsOf } from './ports.js';
 
 const terminalSessions = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),
@@ -58,7 +60,7 @@ async function laneFacts(
     acquired_at: string | null;
   }>(
     await db.execute(sql`
-      SELECT i.id, w.steps, d.name AS box, l.acquired_at
+      SELECT i.id, w.steps, coalesce(d.name, wd.name) AS box, l.acquired_at
         FROM issues i
         LEFT JOIN issue_work_state w ON w.issue_id = i.id
         LEFT JOIN issue_leases l
@@ -66,6 +68,8 @@ async function laneFacts(
               AND EXISTS (SELECT 1 FROM agent_sessions s
                            WHERE s.id = l.session_id AND s.status NOT IN (${terminalSessions}))
         LEFT JOIN devices d ON d.id = l.device_id
+        -- a declared run holds through its work-state lease, taken from this box (issues/run-holder.ts)
+        LEFT JOIN devices wd ON wd.id = w.lease_device_id AND w.lease_holder IS NOT NULL
        WHERE i.project_id = ${projectId} AND i.id IN (${ids})`),
   );
   const keyOf = new Map(moving.map((r) => [r.id, r.key]));
@@ -231,12 +235,13 @@ export async function readDevelopmentOverview(
     listIssueStanding(projectId, 'closed', viewer, now),
   ]);
   const rows = [...open.issues, ...closed.issues];
-  const [lanes, mods, master, proposed, changes] = await Promise.all([
+  const [lanes, mods, master, proposed, changes, runs] = await Promise.all([
     laneFacts(projectId, open.issues),
     moduleFacts(projectId),
     masterSignal(projectId),
     proposedVersions(projectId),
     contractChanges(projectId),
+    deliveryRunsOf(projectId, viewer),
   ]);
   const oldest = closed.issues.at(-1);
   const cutoff = now.getTime() - OVERVIEW_WINDOW_DAYS * 86_400_000;
@@ -251,6 +256,13 @@ export async function readDevelopmentOverview(
     flow: flowOf(rows, now),
     moving: movingOf(open.issues, lanes, now),
     stuck: stuckOf(open.issues),
+    holds: holdsOf({
+      rows: open.issues,
+      live: runs.live,
+      finished: runs.finished,
+      drafted: runs.drafted,
+      now,
+    }),
     modules: modulesOf(open.issues, mods.modules, mods.unassigned),
     coverage: {
       open: open.counts.open,

@@ -141,6 +141,51 @@ export interface OverviewStuck {
 	chains: OverviewChain[];
 }
 
+/**
+ * What holds work back that is not a person's ordinary turn (REQ-74 BC-4, BC-5): a release hold on an
+ * issue at the gate, a held job, a run behind a gate it cannot clear by moving, a run that failed and
+ * whose issue nothing has taken up again, and a live run nothing moves. Each names its cause and who
+ * acts on it next.
+ */
+export const OVERVIEW_HOLD_KINDS = [
+	"release",
+	"job",
+	"blocked",
+	"failed",
+	"stuck",
+] as const;
+export type OverviewHoldKind = (typeof OVERVIEW_HOLD_KINDS)[number];
+
+export interface OverviewHold {
+	kind: OverviewHoldKind;
+	/** The run held; null for an issue a release holds at the gate with no run of its own. */
+	runId: string | null;
+	/** The issues it holds, by key. */
+	issues: string[];
+	/** The release it sits in: a release run's version, or the drafted one for a hold at the gate. */
+	release: string | null;
+	/** Why it is held, in one sentence. */
+	cause: string;
+	/** Who acts on it next and what they do; `who` is never empty. */
+	waitingOn: WaitingOn;
+	since: string | null;
+	/** `cause` as said (`said.ts`). */
+	says: { cause: Said };
+}
+
+/** The holds on one issue or one release, its key an issue's `ISS-n` or a release's version. */
+export interface OverviewHoldGroup {
+	key: string;
+	title: string;
+	holds: OverviewHold[];
+}
+
+export interface OverviewHolds {
+	count: number;
+	issues: OverviewHoldGroup[];
+	releases: OverviewHoldGroup[];
+}
+
 export interface OverviewModuleRow {
 	id: string | null;
 	path: string;
@@ -163,6 +208,7 @@ export interface DevelopmentOverview {
 	flow: OverviewFlow;
 	moving: OverviewMoving;
 	stuck: OverviewStuck;
+	holds: OverviewHolds;
 	modules: OverviewModules;
 	coverage: {
 		open: number;
