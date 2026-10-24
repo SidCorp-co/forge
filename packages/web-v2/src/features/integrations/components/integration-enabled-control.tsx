@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { Button, Toggle } from "@/design";
 import {
+  connectionManagers,
+  useConnectionManager,
   useOrgConnectionLocked,
   useUpdateConnection,
   useUpdateProviderIntegration,
@@ -26,7 +27,7 @@ export function removedCredentialLine(provider: string, keyLocked: boolean): str
   if (module?.secretField !== null) {
     return keyLocked
       ? "The shared connection was removed, so it holds no key. Only an owner or admin of the organization that owns it can save a new key on it, which turns it back on."
-      : "The shared connection was removed, so it holds no key. Saving a new key on it on the Integrations page turns it back on.";
+      : "The shared connection was removed, so it holds no key. Saving a new key in this drawer turns it back on.";
   }
   return module.removedLine ?? "The shared connection was removed, so no project can use it.";
 }
@@ -47,20 +48,13 @@ export function IntegrationEnabledControl({
   const update = useUpdateProviderIntegration(projectId);
   const updateConnection = useUpdateConnection();
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
+  const manager = useConnectionManager(binding.connectionId);
 
   const optedIn = binding.bindingActive;
   const credentialDisabled = !binding.connectionActive;
   // A removed connection holds no key, and core refuses to turn it on (ISS-1421 r22): no Enable
-  // credential, only what does turn it back on.
+  // credential, only what does turn it back on. A key saved here turns it on (r26).
   const credentialRemoved = bindsRemovedConnection(binding);
-  // A key saved here onto a removed connection leaves it off, and that save said nothing (ISS-1421 r23).
-  const wasRemoved = useRef(credentialRemoved);
-  const [keySavedOff, setKeySavedOff] = useState(false);
-  useEffect(() => {
-    if (wasRemoved.current && !credentialRemoved && credentialDisabled) setKeySavedOff(true);
-    if (!credentialDisabled) setKeySavedOff(false);
-    wasRemoved.current = credentialRemoved;
-  }, [credentialRemoved, credentialDisabled]);
 
   // A row of its own, the notice below the switch at the drawer's full width: beside the switch it
   // was squeezed to about a word a line at 390 (ISS-1421 r12).
@@ -68,13 +62,16 @@ export function IntegrationEnabledControl({
     <div className="flex w-full flex-col gap-2">
       <span className="flex items-center gap-2">
         <span className="fg-body-sm text-muted">Enabled</span>
+        {/* The binding's own tier, a project admin's on an organization's connection too (ISS-1115);
+            it was still locked to the organization's admins, so "Enabled switches it back on" was
+            false for the rest (ISS-1421 r26). */}
         <Toggle
           aria-label="Enabled for this project"
           checked={optedIn}
           onChange={(active) =>
             update.mutate({ id: binding.id, body: { active } })
           }
-          disabled={orgLocked || (credentialRemoved && !optedIn)}
+          disabled={credentialRemoved && !optedIn}
         />
       </span>
       {credentialRemoved && (
@@ -83,24 +80,25 @@ export function IntegrationEnabledControl({
       {credentialDisabled && !credentialRemoved && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="fg-body-sm min-w-0 flex-1 basis-48 text-amber">
-            {keySavedOff
-              ? "The key is saved, but the shared connection is still off, so no project can use it yet."
-              : "Shared credential is disabled — no project can use it."}
+            Shared credential is disabled — no project can use it.
+            {/* Enable credential was offered to a reader the connection's routes refuse (ISS-1421 r26). */}
+            {manager && !manager.manages && ` Only ${connectionManagers(manager.ownerType)} can turn it back on.`}
           </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={orgLocked}
-            loading={updateConnection.isPending}
-            onClick={() =>
-              updateConnection.mutate({
-                id: binding.connectionId,
-                body: { active: true },
-              })
-            }
-          >
-            Enable credential
-          </Button>
+          {manager?.manages && (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={updateConnection.isPending}
+              onClick={() =>
+                updateConnection.mutate({
+                  id: binding.connectionId,
+                  body: { active: true },
+                })
+              }
+            >
+              Enable credential
+            </Button>
+          )}
         </div>
       )}
     </div>

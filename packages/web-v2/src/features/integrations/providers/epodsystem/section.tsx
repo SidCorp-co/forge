@@ -16,7 +16,6 @@ import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
-  useDeleteProviderIntegration,
   useIntegrationsList,
   useIsOrgAdmin,
   useOrgConnectionLocked,
@@ -42,6 +41,7 @@ import {
   IntegrationEnabledControl,
 } from "../../components/integration-enabled-control";
 import { bindingBadge, bindingConnected } from "../../derive";
+import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
 
 // Scopes a website build needs to publish themes + toggle commerce/cache.
 const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
@@ -159,7 +159,6 @@ function EpodsystemBindingRow({
 }: EpodsystemBindingRowProps) {
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
-  const remove = useDeleteProviderIntegration(projectId);
   const list = useIntegrationsList(projectId);
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
 
@@ -200,16 +199,6 @@ function EpodsystemBindingRow({
   }
 
 
-  function handleDelete() {
-    const label = bindingLabel || "default";
-    if (
-      !window.confirm(
-        `Delete the "${label}" Epodsystem integration for this project?`,
-      )
-    )
-      return;
-    remove.mutate(binding.id);
-  }
 
   return (
     <div className="flex flex-col gap-3 border-t border-subtle pt-4">
@@ -299,14 +288,11 @@ function EpodsystemBindingRow({
           Test
         </Button>
         )}
-        <Button
-          variant="danger"
-          icon="trash"
-          loading={remove.isPending}
-          onClick={handleDelete}
-        >
-          Delete
-        </Button>
+        <DisconnectFromProject
+          projectId={projectId}
+          binding={binding}
+          says={disconnectSays(`the "${bindingLabel || "default"}" Epodsystem integration`, binding)}
+        />
       </div>
 
       <IntegrationEnabledControl projectId={projectId} binding={binding} />

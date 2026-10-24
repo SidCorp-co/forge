@@ -16,7 +16,6 @@ import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
-  useDeleteProviderIntegration,
   useIntegrationsList,
   useIsOrgAdmin,
   useOrgConnectionLocked,
@@ -42,6 +41,7 @@ import {
   IntegrationEnabledControl,
 } from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
+import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
 
@@ -95,7 +95,6 @@ export function PostmanSection({ projectId }: { projectId: string }) {
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
-  const remove = useDeleteProviderIntegration(projectId);
 
   // Re-seed the form whenever the loaded integration identity changes.
   const [form, setForm] = useState<FormState>(() => initialForm(existing));
@@ -328,14 +327,11 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             )}
           </div>
           {existing && (
-            <Button
-              variant="danger"
-              icon="trash"
-              loading={remove.isPending}
-              onClick={() => remove.mutate(existing.id)}
-            >
-              Remove
-            </Button>
+            <DisconnectFromProject
+              projectId={projectId}
+              binding={existing}
+              says={disconnectSays("Postman", existing)}
+            />
           )}
         </div>
       </div>

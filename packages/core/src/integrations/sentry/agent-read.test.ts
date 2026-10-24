@@ -259,6 +259,36 @@ describe('the four walls in front of the call', () => {
     );
   });
 
+  // ISS-1421 r26, judge-105 (8): "re-enable the connection under Settings → Integrations" was said over
+  // a removed connection too, which no Enable turns on and whose key not every reader may save.
+  it('says the way back of a removed connection and who takes it', async () => {
+    listBindingsForProject.mockResolvedValue([
+      pair({ connection: { active: false, secretsEnc: null, ownerType: 'org', ownerId: 'org-1' } }),
+    ]);
+    const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
+    expect(refusal.reason).toBe('connection_disabled');
+    expect(refusal.message).toBe(
+      "this project's Sentry binding exists, but the connection behind it was removed and holds no key. Only an owner or admin of the organization that owns it can save a new key to turn it back on. Nothing was asked of Sentry.",
+    );
+  });
+
+  it('names who turns on a switched-off connection that still holds its key', async () => {
+    listBindingsForProject.mockResolvedValue([
+      pair({
+        connection: {
+          active: false,
+          secretsEnc: Buffer.from('x'),
+          ownerType: 'user',
+          ownerId: 'u-1',
+        },
+      }),
+    ]);
+    const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
+    expect(refusal.message).toBe(
+      "this project's Sentry binding exists, but the connection behind it is switched off for every project sharing it. Only its owner can turn it back on with Enable on the Integrations page. Nothing was asked of Sentry.",
+    );
+  });
+
   it('refuses a binding no agent on this project may use', async () => {
     listBindingsForProject.mockResolvedValue([pair({ binding: { agentAccess: 'none' } })]);
     const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));

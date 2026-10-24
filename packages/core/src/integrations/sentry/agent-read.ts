@@ -9,6 +9,7 @@
 
 import { scrubLogText } from '@forge/observability';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
+import { offBindingWords } from '../held-key.js';
 import { getIntegration } from '../registry.js';
 import {
   type BindingWithConnection,
@@ -116,16 +117,10 @@ export async function resolveGrantedSentryBinding(
   const usable = pairs.find((r) => r.binding.active && r.connection.active);
   if (!usable) {
     const dead = pairs.find((r) => !r.binding.active) ?? first;
-    if (!dead.binding.active) {
-      throw new SentryRefusal(
-        'binding_disabled',
-        `this project's Sentry binding exists and is switched off for this project — re-enable it under Settings → Integrations. Nothing was asked of Sentry.`,
-        { bindingId: dead.binding.id },
-      );
-    }
+    const why = await offBindingWords(dead, projectId);
     throw new SentryRefusal(
-      'connection_disabled',
-      `this project's Sentry binding exists and its Sentry credential is switched off for every project sharing it — re-enable the connection under Settings → Integrations. Nothing was asked of Sentry.`,
+      dead.binding.active ? 'connection_disabled' : 'binding_disabled',
+      `this project's Sentry binding exists, but ${why} Nothing was asked of Sentry.`,
       { bindingId: dead.binding.id },
     );
   }

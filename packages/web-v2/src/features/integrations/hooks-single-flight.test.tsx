@@ -17,15 +17,23 @@ const toast = vi.fn();
 const refuseUpdate = vi.fn(async () => {
   throw new Error("The binding was removed.");
 });
+const refuseConnection = vi.fn(async () => {
+  const { ApiError } = await import("@/lib/api/client");
+  throw new ApiError(403, "Only its owner can turn it on.");
+});
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [] }) }));
 vi.mock("./api", () => ({
   integrationsApi: { remove: removeBinding, update: refuseUpdate },
-  integrationConnectionsApi: { remove: removeConnection },
+  integrationConnectionsApi: { remove: removeConnection, update: refuseConnection },
 }));
 
-const { useDeleteProviderIntegration, useRemoveConnection, useUpdateProviderIntegration } =
-  await import("./hooks");
+const {
+  useDeleteProviderIntegration,
+  useRemoveConnection,
+  useUpdateConnection,
+  useUpdateProviderIntegration,
+} = await import("./hooks");
 
 afterEach(() => {
   cleanup();
@@ -106,5 +114,25 @@ describe("an update whose caller says its own refusal", () => {
     });
 
     expect(toast).toHaveBeenCalledTimes(toasts);
+  });
+});
+
+// ISS-1421 r26, judge-105 (283b): a refused Enable credential was headed "The connection was not
+// saved" right after a key had been saved; a toast names the act that was refused.
+describe("a refused write to a connection, toasted (criterion 298)", () => {
+  it.each([
+    [{ active: true }, "The connection was not turned on"],
+    [{ active: false }, "The connection was not turned off"],
+    [{ displayName: "x" }, "The connection was not saved"],
+  ])("heads %j with what was not done", async (body, title) => {
+    toast.mockClear();
+    const { result } = renderHook(() => useUpdateConnection(), client());
+    act(() => result.current.mutate({ id: "c1", body }));
+    await act(async () => {
+      await tick();
+      await tick();
+    });
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast.mock.calls[0]?.[0]).toMatchObject({ title });
   });
 });

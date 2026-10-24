@@ -32,6 +32,42 @@ export const VERIFY_PROBE_SECTION = "verify-probe";
 
 export const REMOVE_ALL_PROBES = "Remove all probes";
 
+/**
+ * What removing a binding's own probes is called, in the count it removes: one probe read "Keep them"
+ * and "Remove all probes" under "Remove the probe?" (ISS-1421 r26). A stored block naming no probe a
+ * release can read is still a declaration to remove.
+ */
+export function removalWords(count: number) {
+  if (count === 0) {
+    return {
+      title: "Remove the verify block?",
+      what: "the verify block stored on this binding, which names no probe a release can read",
+      act: "Remove the verify block",
+      keep: "Keep it",
+      them: "it",
+      failed: "The verify block was not removed.",
+    };
+  }
+  if (count === 1) {
+    return {
+      title: "Remove the probe?",
+      what: "the 1 probe this binding declares",
+      act: "Remove the probe",
+      keep: "Keep it",
+      them: "it",
+      failed: "The probe was not removed.",
+    };
+  }
+  return {
+    title: `Remove all ${count} probes?`,
+    what: `all ${count} probes this binding declares`,
+    act: REMOVE_ALL_PROBES,
+    keep: "Keep them",
+    them: "them",
+    failed: "The probes were not removed.",
+  };
+}
+
 /** `verify.probes` caps at ten in core's `releaseChannelFields`. */
 const MAX_PROBES = 10;
 
@@ -342,29 +378,23 @@ function RemoveAllConfirm({
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  // A stored block naming no probe a release can read is still a declaration to remove.
-  const what =
-    count === 0
-      ? "the verify block stored on this binding, which names no probe a release can read"
-      : count === 1
-        ? "the 1 probe this binding declares"
-        : `all ${count} probes this binding declares`;
+  const words = removalWords(count);
   return (
     <ConfirmDialog
       open={open}
-      title={count === 1 ? "Remove the probe?" : count === 0 ? "Remove the verify block?" : `Remove all ${count} probes?`}
+      title={words.title}
       message={
         <>
-          {`This removes ${what}. ${afterRemovalSentence(otherDeclares)}`}
+          {`This removes ${words.what}. ${afterRemovalSentence(otherDeclares)}`}
           {typeof stableReads === "number" &&
-            ` The rule that a release believes a probe only after ${stableReads} matching readings in a row goes with them, as it applies only while a probe is declared.`}
+            ` The rule that a release believes a probe only after ${stableReads} matching readings in a row goes with ${words.them}, as it applies only while a probe is declared.`}
         </>
       }
-      confirmLabel={REMOVE_ALL_PROBES}
-      cancelLabel="Keep them"
+      confirmLabel={words.act}
+      cancelLabel={words.keep}
       tone="danger"
       loading={busy}
-      failure={failure ? { title: "The probes were not removed.", description: failure } : null}
+      failure={failure ? { title: words.failed, description: failure } : null}
       onConfirm={onConfirm}
       onClose={onClose}
     />
@@ -531,7 +561,7 @@ function Editor({
         )}
         {removable !== null && (
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
-            {REMOVE_ALL_PROBES}
+            {removalWords(removable).act}
           </Button>
         )}
       </div>

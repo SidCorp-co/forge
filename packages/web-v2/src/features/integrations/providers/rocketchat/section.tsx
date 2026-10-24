@@ -21,7 +21,6 @@ import { useProject } from "@/features/projects/hooks";
 import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
-  useDeleteProviderIntegration,
   useIntegrationsList,
   useOrgConnectionLocked,
   useProbeRocketchatRooms,
@@ -47,6 +46,7 @@ import {
   IntegrationEnabledControl,
 } from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
+import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
 
 export function RocketchatSection({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
@@ -185,7 +185,6 @@ function RocketchatBindingPanel({
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
-  const remove = useDeleteProviderIntegration(projectId);
   const list = useIntegrationsList(projectId);
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
 
@@ -241,10 +240,6 @@ function RocketchatBindingPanel({
     }
   }
 
-  function handleDelete() {
-    if (!window.confirm("Disconnect the Rocket.Chat bot from this project?")) return;
-    remove.mutate(binding.id);
-  }
 
   return (
     <div className="flex flex-col gap-3 border-t border-subtle pt-4">
@@ -386,14 +381,11 @@ function RocketchatBindingPanel({
           Test
         </Button>
         )}
-        <Button
-          variant="danger"
-          icon="trash"
-          loading={remove.isPending}
-          onClick={handleDelete}
-        >
-          Disconnect
-        </Button>
+        <DisconnectFromProject
+          projectId={projectId}
+          binding={binding}
+          says={disconnectSays("the Rocket.Chat bot", binding)}
+        />
       </div>
 
       <IntegrationEnabledControl projectId={projectId} binding={binding} />

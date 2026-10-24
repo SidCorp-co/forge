@@ -75,8 +75,20 @@ function managersOf(connection: { ownerType: 'user' | 'org' }): string {
     : 'Only its owner';
 }
 
-function byWhoMay(may: boolean, connection: { ownerType: 'user' | 'org' }, act: string): string {
-  return may ? act : `${managersOf(connection)} can ${act.charAt(0).toLowerCase()}${act.slice(1)}`;
+/** A binding PATCH also saves a key on a person's connection for an admin of a project bound to it (ISS-1115). */
+function keySaversOf(connection: { ownerType: 'user' | 'org' }): string {
+  return connection.ownerType === 'org'
+    ? managersOf(connection)
+    : 'Only its owner or an admin of a project bound to it';
+}
+
+function byWhoMay(
+  may: boolean,
+  connection: { ownerType: 'user' | 'org' },
+  act: string,
+  who = managersOf(connection),
+): string {
+  return may ? act : `${who} can ${act.charAt(0).toLowerCase()}${act.slice(1)}`;
 }
 
 export function clearIt(connection: { ownerType: 'user' | 'org' }, reader: RemovedReader): string {
@@ -94,7 +106,10 @@ export function turnsBackOnFrom(
   askedFrom?: string,
 ): string {
   const install = getIntegration(connection.provider)?.noKeyTurnsBackOn;
-  if (!install) return byWhoMay(reader.savesKey, connection, 'Save a new key to turn it back on.');
+  if (!install) {
+    const save = 'Save a new key to turn it back on.';
+    return byWhoMay(reader.savesKey, connection, save, keySaversOf(connection));
+  }
   const clear = clearIt(connection, reader);
   const here = bound.find((p) => p.projectId === askedFrom);
   if (here && takesTheApp(connection, here)) {
@@ -107,4 +122,45 @@ export function turnsBackOnFrom(
   }
   if (bound.length > 0) return `${install.noneTakesIt} ${clear}`;
   return `No project is bound to it, so nothing can turn it back on. ${clear}`;
+}
+
+/** No act is an agent's: the way back names who takes it. */
+const AN_AGENT: RemovedReader = { manages: false, savesKey: false, installsHere: false };
+
+/** A binding an agent called through, and the connection behind it. */
+export interface OffPair {
+  binding: { active: boolean };
+  connection: {
+    id: string;
+    provider: string;
+    ownerType: 'user' | 'org';
+    ownerId: string;
+    active: boolean;
+    secretsEnc: Buffer | null;
+  };
+}
+
+/**
+ * Why a binding an agent called through gives it nothing, and who switches it back on. "Re-enable the
+ * connection under Settings → Integrations" was the answer over a removed connection too, which no
+ * Enable turns on (ISS-1421 r26).
+ */
+export async function offBindingWords(
+  { binding, connection }: OffPair,
+  projectId: string,
+): Promise<string> {
+  const enabled =
+    'an admin of this project can switch it back on with Enabled on its Integrations tab';
+  if (connection.active) return `it is switched off for this project, and ${enabled}.`;
+  const removed = isRemovedConnection(connection);
+  const bound =
+    removed && getIntegration(connection.provider)?.noKeyTurnsBackOn
+      ? await listBoundProjectOrgs(connection.id)
+      : [];
+  const why = removed
+    ? `the connection behind it was removed and holds no key. ${turnsBackOnFrom(connection, bound, AN_AGENT, projectId)}`
+    : `the connection behind it is switched off for every project sharing it. ${byWhoMay(false, connection, 'Turn it back on with Enable on the Integrations page.')}`;
+  return binding.active
+    ? why
+    : `${why} This project's binding is switched off as well, and once the connection is on ${enabled}.`;
 }

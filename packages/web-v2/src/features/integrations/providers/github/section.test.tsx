@@ -113,6 +113,8 @@ vi.mock("../../hooks", () => ({
   }),
   useUpdateConnection: () => ({ mutate: vi.fn(), isPending: false }),
   useOrgConnectionLocked: () => false,
+  useConnectionManager: () => ({ manages: true, ownerType: "user" }),
+  connectionManagers: () => "its owner",
   useIsOrgAdmin: () => true,
 }));
 
@@ -329,7 +331,7 @@ describe("the controls that belong to the binding row itself", () => {
   });
 
   it("keeps Disconnect on the picker when the repository list fails to load", () => {
-    items = [GITHUB_EMPTY_INACTIVE];
+    items = [binding({ config: {} })];
     repos = { isLoading: false, isError: true, error: new Error("boom") };
     mount();
 
@@ -337,6 +339,16 @@ describe("the controls that belong to the binding row itself", () => {
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
     expect(remove.mock.calls[0][0]).toBe(BINDING);
+  });
+
+  // ISS-1421 r26, judge-105 (7): the panel still offered Disconnect right after disconnecting.
+  it("offers no Disconnect on a binding already switched off for this project", () => {
+    items = [GITHUB_EMPTY_INACTIVE];
+    repos = { isLoading: false, isError: true, error: new Error("boom") };
+    mount();
+
+    expect(screen.queryByRole("button", { name: /disconnect from this project/i })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Enabled for this project" })).toBeInTheDocument();
   });
 
   // r24: Disconnect on a live binding took effect on one click.

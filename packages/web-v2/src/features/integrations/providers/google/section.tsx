@@ -11,7 +11,6 @@ import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
-  useDeleteProviderIntegration,
   useIntegrationsList,
   useOrgConnectionLocked,
   useTestIntegration,
@@ -31,6 +30,7 @@ import {
   IntegrationEnabledControl,
 } from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
+import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
 
 /** What Google's own check found, under the badge that names the state as the row does: the five
  *  findings name five next actions, and `needs_scope` must not read as "re-enter the credential".
@@ -91,7 +91,6 @@ function GoogleBindingPanel({
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
-  const remove = useDeleteProviderIntegration(projectId);
   const list = useIntegrationsList(projectId);
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
 
@@ -149,10 +148,6 @@ function GoogleBindingPanel({
     }
   }
 
-  function handleDelete() {
-    if (!window.confirm("Disconnect the Google service account from this project?")) return;
-    remove.mutate(binding.id);
-  }
 
   return (
     <div className="flex flex-col gap-3 border-t border-subtle pt-4">
@@ -248,9 +243,11 @@ function GoogleBindingPanel({
           Test
         </Button>
         )}
-        <Button variant="danger" icon="trash" loading={remove.isPending} onClick={handleDelete}>
-          Disconnect
-        </Button>
+        <DisconnectFromProject
+          projectId={projectId}
+          binding={binding}
+          says={disconnectSays("the Google service account", binding)}
+        />
       </div>
 
       <IntegrationEnabledControl projectId={projectId} binding={binding} />

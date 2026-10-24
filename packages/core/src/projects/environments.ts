@@ -162,14 +162,14 @@ const spelled = (segment: string) => segment.toLowerCase().replace(/[_-]/g, '');
 
 /**
  * The retired live field a sent key's path names in any spelling: dotted inside one key
- * (`live.commitUrl`), prefixed with the document's own name (`environments.live.commitUrl`), or
- * cased or separated otherwise (`commit_url`, `commitURL`). Null where it names none.
+ * (`live.commitUrl`), under any wrapper (`environments.live.commitUrl`, `whatever.live.commitUrl`,
+ * ISS-1421 r26), or cased or separated otherwise (`commit_url`, `commitURL`). Null where it names none.
  */
 function retiredFieldOf(path: string): string | null {
   const segments = path.split('.').filter((s) => s !== '');
-  if (segments.length > 0 && spelled(segments[0] as string) === 'environments') segments.shift();
-  if (segments.length !== 2 || spelled(segments[0] as string) !== 'live') return null;
-  const key = RETIRED_LIVE_KEYS.find((k) => spelled(k) === spelled(segments[1] as string));
+  const [parent, leaf] = segments.slice(-2);
+  if (leaf === undefined || spelled(parent as string) !== 'live') return null;
+  const key = RETIRED_LIVE_KEYS.find((k) => spelled(k) === spelled(leaf));
   return key ? `live.${key}` : null;
 }
 

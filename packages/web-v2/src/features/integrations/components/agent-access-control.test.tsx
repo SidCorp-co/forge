@@ -12,12 +12,20 @@ import { AgentAccessControl, turnedOffCopy } from "./agent-access-control";
 
 expect.extend(matchers);
 
+let manager: { manages: boolean; ownerType: "user" | "org" } | null = { manages: true, ownerType: "user" };
+const managers = (ownerType: "user" | "org") =>
+  ownerType === "org" ? "an owner or admin of the organization that owns it" : "its owner";
 vi.mock("../hooks", () => ({
   useUpdateProviderIntegration: () => ({ mutate: vi.fn() }),
   useIsOrgAdmin: () => true,
+  useConnectionManager: () => manager,
+  connectionManagers: (ownerType: "user" | "org") => managers(ownerType),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  manager = { manages: true, ownerType: "user" };
+});
 
 const LIVE = /handed to the runner box|calls the provider directly|makes the call|hands the project's credential/;
 
@@ -40,13 +48,38 @@ function show(
   render(
     <AgentAccessControl
       projectId="p1"
-      binding={{ id: "b1", active, bindingActive, connectionActive, hasSecrets, agentAccess, agentPathKind }}
+      binding={{ id: "b1", connectionId: "c1", active, bindingActive, connectionActive, hasSecrets, agentAccess, agentPathKind }}
       canEdit
       {...(readFrom ? { readFrom } : {})}
     />,
   );
   return document.body.textContent ?? "";
 }
+
+// ISS-1421 r26, judge-105 (283b): "once you press Enable credential" was read by a project admin the
+// connection's routes refuse; the drawer no longer shows them that button, so the line names who does.
+describe("the agents line for a reader who may not turn the credential on (criterion 296)", () => {
+  it.each([
+    ["credential", true, "A grant takes effect once its owner turns its shared credential back on."],
+    [
+      "both",
+      false,
+      "A grant takes effect once its owner turns its shared credential back on and Enabled in this drawer is switched back on.",
+    ],
+  ] as const)("names who turns it on where the %s is off", (_tier, bindingActive, line) => {
+    manager = { manages: false, ownerType: "user" };
+    const said = show(false, "none", "core-mediated", { bindingActive, connectionActive: false });
+    expect(said).toContain(line);
+    expect(said).not.toContain("Enable credential");
+  });
+
+  it("names the organization's owners and admins for its connection", () => {
+    manager = { manages: false, ownerType: "org" };
+    expect(show(false, "none", "core-mediated", { bindingActive: true, connectionActive: false })).toContain(
+      "once an owner or admin of the organization that owns it turns its shared credential back on.",
+    );
+  });
+});
 
 // ISS-1421 r22: a removed connection has no Enable credential, so the line never names one.
 describe("the agents line over a removed connection (criterion 228)", () => {
@@ -142,6 +175,8 @@ describe("the agents switch on a binding that is turned off", () => {
     vi.doMock("../hooks", () => ({
       useUpdateProviderIntegration: () => ({ mutate: vi.fn() }),
       useIsOrgAdmin: () => false,
+      useConnectionManager: () => manager,
+      connectionManagers: (ownerType: "user" | "org") => managers(ownerType),
     }));
     const { AgentAccessControl: Control } = await import("./agent-access-control");
     render(
@@ -149,6 +184,7 @@ describe("the agents switch on a binding that is turned off", () => {
         projectId="p1"
         binding={{
           id: "b1",
+          connectionId: "c1",
           active: false,
           bindingActive: false,
           connectionActive: true,

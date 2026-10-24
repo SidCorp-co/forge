@@ -1,6 +1,6 @@
 "use client";
 
-import { formatApiError } from "@/lib/api/error";
+import { formatApiReason } from "@/lib/api/error";
 import { Badge, Button, Input, NativeSelect } from "@/design";
 import { useMemo } from "react";
 import { useCoolifyApplications, useCoolifyTargets } from "../../hooks";
@@ -18,6 +18,7 @@ export function CoolifyTargetsField({
   targets,
   onChange,
   inherited,
+  canFixCredentials,
 }: {
   projectId: string;
   stage: string;
@@ -27,6 +28,9 @@ export function CoolifyTargetsField({
   targets: CoolifyTargetInput[];
   onChange: (next: CoolifyTargetInput[]) => void;
   inherited: boolean;
+  /** Whether this reader may change the base URL and token above, on a connection not removed: the
+   *  hint to fix them told a reader the drawer locks them out of to do it (ISS-1421 r26). */
+  canFixCredentials: boolean;
 }) {
   const auth = integrationId
     ? { integrationId }
@@ -72,8 +76,8 @@ export function CoolifyTargetsField({
       </p>
       {apps.isError && (
         <p className="fg-body-sm text-muted">
-          Could not read the application list. {formatApiError(apps.error)} Enter the resource
-          UUID by hand, or fix the base URL and token above and try again.
+          Could not read the application list. {formatApiReason(apps.error)} Enter the resource
+          UUID by hand{canFixCredentials ? ", or fix the base URL and token above and try again" : ""}.
         </p>
       )}
       {targets.map((t, idx) => {

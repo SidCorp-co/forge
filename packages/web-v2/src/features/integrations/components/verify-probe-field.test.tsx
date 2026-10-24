@@ -214,9 +214,9 @@ describe("the write each act sends", () => {
 
 	it("removes every probe by sending null, once the person has confirmed it", () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />);
-		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		fireEvent.click(screen.getByRole("button", { name: "Remove the probe" }));
 		expect(sent()).toEqual([]);
-		fireEvent.click(within(screen.getAllByRole("dialog").at(-1) as HTMLElement).getByRole("button", { name: "Remove all probes" }));
+		fireEvent.click(within(screen.getAllByRole("dialog").at(-1) as HTMLElement).getByRole("button", { name: "Remove the probe" }));
 		expect(sent()).toEqual([{ id: BINDING_ID, body: { config: { verify: null } } }]);
 	});
 
@@ -302,6 +302,27 @@ describe("removing every probe asks once, and says what goes", () => {
 	it("asks the update for no toast, since the field and the question show a refusal themselves", () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
 		expect(updateOptions).toEqual({ failureSaidHere: true });
+	});
+
+	// ISS-1421 r26, judge-105 (4): one probe's question read "Keep them", "Remove all probes" and "goes
+	// with them", and its refusal "The probes were not removed".
+	it("speaks of one probe in every word of the question that removes the only one", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE], stableReads: 3 })} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove the probe" }));
+		expect(dialog()).toHaveTextContent("Remove the probe?");
+		expect(dialog()).toHaveTextContent("goes with it, as it applies");
+		expect(within(dialog()).queryByRole("button", { name: "Keep them" })).toBeNull();
+		expect(within(dialog()).queryByRole("button", { name: "Remove all probes" })).toBeNull();
+		fireEvent.click(within(dialog()).getByRole("button", { name: "Remove the probe" }));
+		expect(sent()).toEqual([{ id: BINDING_ID, body: { config: { verify: null } } }]);
+		act(() => {
+			const callbacks = updateBinding.mock.calls[0]?.[1];
+			callbacks?.onError?.(new Error("the binding is locked"));
+			callbacks?.onSettled?.();
+		});
+		expect(within(dialog()).getByTestId("panel-failure")).toHaveTextContent("The probe was not removed.");
+		fireEvent.click(within(dialog()).getByRole("button", { name: "Keep it" }));
+		expect(screen.queryAllByRole("dialog")).toHaveLength(0);
 	});
 
 	it("sends nothing on Keep them, and leaves an unsaved edit as it was", () => {

@@ -171,6 +171,17 @@ describe('which refusal a caller meets', () => {
     );
   });
 
+  // ISS-1421 r26: a binding off over a connection that is off too is answered by the connection first,
+  // since Enabled cannot turn a binding on until the connection is on.
+  it('says the connection first where the binding and the connection are both off', async () => {
+    listBindingsForProjectMock.mockResolvedValue([
+      row({ bindingActive: false, connectionActive: false }),
+    ]);
+    await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toThrow(
+      /switched off for every project sharing it\. .* This project's binding is switched off as well, and once the connection is on an admin of this project can switch it back on with Enabled on its Integrations tab\. Nothing was sent to GitHub\.$/,
+    );
+  });
+
   // ISS-1074 criterion 14. The distinction this asserts is the whole reason discovery and
   // authorization are two steps: a granted-only lookup would answer `no_binding` here, and send an
   // operator to bind a repository that is already bound.

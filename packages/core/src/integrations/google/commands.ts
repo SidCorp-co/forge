@@ -8,6 +8,7 @@
  */
 
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
+import { offBindingWords } from '../held-key.js';
 import { getIntegration } from '../registry.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import {
@@ -67,15 +68,11 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
   const usable = rows
     .filter((r) => r.binding.active && r.connection.active)
     .sort((a, b) => a.binding.createdAt.getTime() - b.binding.createdAt.getTime());
-  const disabledPair = rows[0];
   if (!usable[0]) {
-    const which =
-      disabledPair && !disabledPair.connection.active
-        ? 'its Google credential is switched off for every project sharing it'
-        : 'the binding is switched off for this project';
+    const why = await offBindingWords(rows[0] as BindingWithConnection, projectId);
     throw new GoogleCommandError(
       'BINDING_DISABLED',
-      `this project's Google connection exists but ${which} — re-enable it under Settings → Integrations → Google. Nothing was sent to Google.`,
+      `this project's Google connection exists, but ${why} Nothing was sent to Google.`,
     );
   }
   if (!grantHolds(getIntegration('google'), usable[0].binding)) {

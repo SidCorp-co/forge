@@ -51,8 +51,10 @@ import {
   buildCreatedBindingResponse,
   defaultConnectionDisplayName,
   forbidden,
+  keySavedHere,
   notFound,
   notifyConnectionChanged,
+  orgConnectionNotYours,
   refuseSwitchOnOverRemoved,
   stagesOnNonDeployBinding,
   summarizeBinding,
@@ -216,6 +218,7 @@ integrationsRoutes.patch(
     const { binding, connection } = existing;
 
     const patch = c.req.valid('json');
+    await refuseSwitchOnOverRemoved(patch, connection, { userId, role, projectId });
     // Re-validate the loose config against the existing provider so a PATCH can
     // never strip the wrong provider's fields, then split it into tiers:
     // coolify resourceUuid/branch are BINDING-scoped (the deploy target follows
@@ -249,7 +252,7 @@ integrationsRoutes.patch(
       (mergedConfig !== undefined || Object.keys(patch.secrets ?? {}).length > 0)
     ) {
       const access = await effectiveProjectRole(userId, projectId);
-      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
+      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw orgConnectionNotYours();
     }
 
     if (patch.agentAccess !== undefined) {
@@ -272,13 +275,15 @@ integrationsRoutes.patch(
         vaultGuardTiming: 'on-secret-input',
       });
     }
-    await refuseSwitchOnOverRemoved(patch, mergedSecrets, connection, { userId, role, projectId });
 
     // Connection-tier config and secrets go to the connection; binding-tier config and `active` to the binding.
     if (mergedConfig !== undefined || mergedSecrets !== undefined) {
       const connPatch: Parameters<typeof updateConnection>[1] = {};
       if (mergedConfig !== undefined) connPatch.config = mergedConfig;
-      if (mergedSecrets !== undefined) connPatch.secrets = mergedSecrets;
+      if (mergedSecrets !== undefined) {
+        connPatch.secrets = mergedSecrets;
+        Object.assign(connPatch, keySavedHere(connection, patch.secrets ?? {}));
+      }
       await updateConnection(connection.id, connPatch);
     }
     if (

@@ -3196,6 +3196,11 @@
 ### Fixed
 
 - **An integration credential Forge cannot decrypt is named, not a server error.** Verify, Test connection and its webhooks say which connection it is and that entering it again fixes it, and entering it again now works. (ISS-1259)
+- **Saving a new key on a removed connection from a project turns it back on**, and anyone who cannot is told who can; turning one on without a key is refused alike for everyone. (ISS-1421)
+- **Every integration is taken off a project with Disconnect from this project**, which asks once, says the connection stays, and is not offered once the integration is already off. (ISS-1421)
+- **Enable credential appears only for someone who can turn the connection on**, and a refused turn-on says it was not turned on rather than not saved. (ISS-1421)
+- **Removing a single verify probe speaks of one probe**, and a double-click on a connection's Delete no longer leaves the Clear question open. (ISS-1421)
+- **Agents told an integration is off now hear the way back and who can take it**, and a retired live commit field is named under any wrapper. (ISS-1421)
 - **A removed connection stays off until a key is actually saved.** Sending the switch with an empty key no longer turns it on, and its refusals offer Clear, a new key or an install only to someone allowed to. (ISS-1421)
 - **Disconnect, Delete and Clear send once on a double-click**, and a refused GitHub App install says once who may install it. (ISS-1421)
 - **The verify probe drawer keeps your place.** Focus stays in it after Save probe and Remove all probes, the removal question says in words what goes, and a refused removal is said once, not in a toast too. (ISS-1421)
