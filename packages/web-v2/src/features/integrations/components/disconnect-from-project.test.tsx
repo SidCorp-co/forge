@@ -60,6 +60,12 @@ describe("Disconnect from this project (criteria 299 to 302)", () => {
     expect(screen.queryByRole("button", { name: DISCONNECT_FROM_PROJECT })).toBeNull();
   });
 
+  it("says the shared connection has to come back on too where it is off but holds its key", () => {
+    expect(disconnectSays("Postman", { connectionActive: false, hasSecrets: true })).toBe(
+      "Disconnecting switches Postman off for this project, and nothing here uses it until its shared connection is turned back on and Enabled in this drawer switches it back on. The connection and its key stay.",
+    );
+  });
+
   it("says a binding over a removed connection stays off if the connection comes back", () => {
     expect(disconnectSays("Postman", { connectionActive: false, hasSecrets: false })).toBe(
       "Disconnecting switches Postman off for this project, so it stays off if the connection is turned back on.",

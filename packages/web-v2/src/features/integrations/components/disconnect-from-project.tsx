@@ -14,9 +14,12 @@ export function disconnectSays(
   binding: Pick<IntegrationSummary, "connectionActive" | "hasSecrets">,
 ): string {
   const off = `Disconnecting switches ${subject} off for this project`;
-  return bindsRemovedConnection(binding)
-    ? `${off}, so it stays off if the connection is turned back on.`
-    : `${off}, and nothing here uses it until Enabled in this drawer switches it back on. The connection and its key stay.`;
+  if (bindsRemovedConnection(binding)) return `${off}, so it stays off if the connection is turned back on.`;
+  // Enabled alone does not bring back a binding whose shared connection is off too.
+  const back = binding.connectionActive
+    ? "until Enabled in this drawer switches it back on"
+    : "until its shared connection is turned back on and Enabled in this drawer switches it back on";
+  return `${off}, and nothing here uses it ${back}. The connection and its key stay.`;
 }
 
 /**
