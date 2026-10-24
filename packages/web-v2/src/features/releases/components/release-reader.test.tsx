@@ -80,6 +80,23 @@ describe("the lead: the summary it was given and its changes in one line (BC-14)
     expect(screen.getByText(/RELEASE_NAMING_JARGON/)).toBeInTheDocument();
   });
 
+  it("names who names a release whose draft was refused: the admins by name, the master, or nobody (ISS-590)", () => {
+    const page = releasePage();
+    const failed = { state: "failed" as const, at: "2026-10-23T10:00:00.000Z", refusals: [{ code: "RELEASE_NAMING_NOTHING_TO_SAY", path: "", detail: "nothing to say" }] };
+    const cases: [NonNullable<ReleasePage["header"]["namer"]>, string][] = [
+      [{ to: "admins", names: ["Ada", "Bo"] }, "Named by Ada, Bo"],
+      [{ to: "master" }, "Named by the master"],
+      [{ to: "nobody" }, "Nobody can name it"],
+    ];
+    for (const [namer, says] of cases) {
+      const { unmount } = renderWithQuery(<ReleaseReader page={{ ...page, header: { ...page.header, name: null, summary: null, naming: failed, namer } }} authed={false} />);
+      expect(screen.getByTestId("page-naming-namer")).toHaveTextContent(says);
+      unmount();
+    }
+    renderWithQuery(<ReleaseReader page={{ ...page, header: { ...page.header, name: null, summary: null, naming: failed } }} authed={false} />);
+    expect(screen.queryByTestId("page-naming-namer"), "a share names no person").toBeNull();
+  });
+
   it("groups Security and Removed apart from the fixes and improvements their kinds fold them into", () => {
     const page = releasePage();
     const extra = [

@@ -11,6 +11,7 @@ import {
 import { releaseNoteReferences } from "./content-language.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 import {
+	type ReleaseNamer,
 	type ReleaseNamingStanding,
 	ReleaseNamingStandingSchema,
 } from "./release-naming.js";
@@ -389,6 +390,8 @@ export interface ReleasePageHeader {
 	summary: string | null;
 	/** Whether the name is written, owed to the assistant, or refused and why; absent on a share frozen before it was said. */
 	naming?: ReleaseNamingStanding | undefined;
+	/** Who names it while it is unnamed (ISS-590); absent once named, and on a share, which names no person. */
+	namer?: ReleaseNamer | undefined;
 	state: ReleaseState;
 	releasedAt: string | null;
 	/** Where it runs: the production environment the release was verified on. */

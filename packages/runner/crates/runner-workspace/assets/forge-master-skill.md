@@ -125,8 +125,10 @@ write that plainly disagrees comes back with a `warnings` entry: rewrite the not
 **A release reads as its notes and its name say, never cut.** Every note but `Skip` carries
 `releaseNotes.title`, a short name of at most ten words, beside `userFacing`, its one full sentence; a
 note without a title is refused by name. Each step an admin must take before the change goes out goes
-in `releaseNotes.adminSteps`, which the page lists under "Before you release". Name a release once
-it is drafted, with a `name` (a few words) and a two-to-three-sentence `summary`:
+in `releaseNotes.adminSteps`, which the page lists under "Before you release". Naming a release
+takes project.admin, so your nudge asks you to name one only where your account holds it; otherwise
+the release's page names the admins who do, and it is not yours. Where asked, give it a `name` (a
+few words) and a two-to-three-sentence `summary`:
 `forge-runner api projects/<projectId>/releases/<version>/naming -X PUT` names the draft or a release
 already cut, and a draft's name carries through its cut.
 

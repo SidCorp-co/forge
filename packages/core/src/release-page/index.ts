@@ -6,6 +6,7 @@ export {
   nameReleaseIfOwed,
   registerReleaseNaming,
 } from './naming-refresh.js';
+export { provideReleasePagePorts } from './ports.js';
 export { readReleasePage } from './read.js';
 export {
   backgroundRefreshesSettled,

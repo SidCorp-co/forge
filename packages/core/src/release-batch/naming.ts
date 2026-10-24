@@ -218,7 +218,8 @@ export async function carryNaming(
 
 /**
  * The releases drafted, or cut and not yet out nor ended unshipped, that carry no name: each is the
- * project master's to name (`PUT …/releases/:version/naming`), oldest first and the draft last. A
+ * project's to name (`PUT …/releases/:version/naming`, project.admin; the master is asked only where it
+ * holds that, `masters/owed.ts`), oldest first and the draft last. A
  * shipped release is history.
  */
 export async function unnamedReleases(projectId: string): Promise<{ version: string }[]> {

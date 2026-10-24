@@ -107,8 +107,11 @@ async function freeze(input: {
     }
     throw err;
   }
+  // a share names no person: who names the release is the live page's alone
+  const { namer: _namer, ...header } = page.header;
   const frozen = {
     ...page,
+    header,
     view: 'user' as const,
     technical: null,
     highlights: await relinked(page.highlights, () => null),

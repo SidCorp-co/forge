@@ -21,8 +21,8 @@ import { Technical } from "./release-technical";
 
 /**
  * The summary the release was given once drafted (BC-14), whole. A release nobody named yet says the
- * assistant is naming it, or, where its draft was refused, says so with why behind a fold: a page
- * never opens on a silent blank.
+ * assistant is naming it, or, where its draft was refused, says so with why behind a fold and who
+ * names it instead (ISS-590): a page never opens on a silent blank.
  */
 function ReleaseSummary({ page }: { page: ReleasePage }) {
   const t = useCopy();
@@ -42,8 +42,14 @@ function ReleaseSummary({ page }: { page: ReleasePage }) {
       </p>
     );
   if (naming?.state !== "failed") return null;
+  const namer = page.header.namer;
   return (
     <div data-testid="page-naming-failed">
+      {namer ? (
+        <p className="text-14 text-muted" data-testid="page-naming-namer">
+          {namer.to === "admins" ? t("releases.page.namer.admins", { names: namer.names.join(", ") }) : t(`releases.page.namer.${namer.to}`)}
+        </p>
+      ) : null}
       <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-14" testId="page-naming-failed-toggle">
         {t("releases.page.naming.failed")}
       </DisclosureToggle>

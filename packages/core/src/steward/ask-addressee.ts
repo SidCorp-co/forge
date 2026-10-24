@@ -2,9 +2,12 @@
 // act the item waits on. A release approval is taken by a holder of `releases.approve`, a feedback
 // item's triage by a holder of `feedback.approve`; where no account the project's master acts as
 // holds that permission, the master is not asked, and the holders are, by name, the steward's own
-// account never among them. Every other wait asks the master, as before.
+// account never among them. Every other wait asks the master, as before. A release's naming is such
+// an act too (ISS-590): it takes project.admin (`release-batch/naming.ts:nameReleaseAs`), so the
+// release names its namer the same way, `releaseNamerOf`.
 
 import type { ProjectPermission } from '@forge/contracts/permissions';
+import type { ReleaseNamer } from '@forge/contracts/release-naming';
 import type { ItemStanding } from '@forge/contracts/steward';
 import { FEEDBACK_TRIAGE_ACTS } from '@forge/contracts/steward';
 import { innerActKey } from '../lib/standing-act-class.js';
@@ -15,6 +18,7 @@ import {
   namedHolders,
   projectResource,
 } from '../permissions/index.js';
+import { heldStewardOf } from './account.js';
 import { stewardPorts } from './ports.js';
 
 /** The acts a wait names that approve a release: an issue's, a requirement's and a carrier's. */
@@ -50,6 +54,13 @@ const HELD_ACTS: readonly (HeldAct & { acts: ReadonlySet<string> })[] = [
     door: 'NOTIFY feedback holders',
   },
 ];
+
+/** Naming a release: the act no standing waits on, which a release's unnamed state owes (ISS-590). */
+export const RELEASE_NAMING: HeldAct = {
+  permission: 'project.admin',
+  what: 'release naming',
+  door: 'NOTIFY release namers',
+};
 
 /** The held act the item waits on, or null where it waits on one the master is asked about. */
 export function heldActOf(standing: Pick<ItemStanding, 'waitingOn'> | null): HeldAct | null {
@@ -89,7 +100,15 @@ export async function askAddresseeOf(
   stewardId: string | null,
 ): Promise<AskAddressee> {
   const act = heldActOf(standing);
-  if (!act) return { to: 'master' };
+  return act ? addresseeOfAct(projectId, act, stewardId) : { to: 'master' };
+}
+
+/** Whom an act only `act.permission`'s holders take goes to: the master, its holders by name, or nobody. */
+export async function addresseeOfAct(
+  projectId: string,
+  act: HeldAct,
+  stewardId: string | null,
+): Promise<AskAddressee> {
   if (await masterHolds(projectId, act.permission)) return { to: 'master' };
   const holders = (await namedHolders(act.permission, projectId)).filter((h) => h.id !== stewardId);
   if (holders.length === 0) {
@@ -100,4 +119,11 @@ export async function askAddresseeOf(
     };
   }
   return { to: 'holders', act, holders };
+}
+
+/** Who names the project's unnamed releases, as a release's page says it. */
+export async function releaseNamerOf(projectId: string): Promise<ReleaseNamer> {
+  const to = await addresseeOfAct(projectId, RELEASE_NAMING, await heldStewardOf(projectId));
+  if (to.to === 'holders') return { to: 'admins', names: to.holders.map((h) => h.name) };
+  return { to: to.to };
 }

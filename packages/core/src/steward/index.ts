@@ -1,4 +1,5 @@
 export { heldStewardOf } from './account.js';
+export { releaseNamerOf } from './ask-addressee.js';
 export { registerSteward } from './consumer.js';
 export { carryStewardDecision } from './decision-act.js';
 export { dispatchStewardRuns } from './dispatch.js';

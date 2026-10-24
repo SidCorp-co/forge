@@ -33,6 +33,7 @@ import {
 import { carriedCriteria, carriedRequirements, issueFiles, type RequirementText } from './facts.js';
 import { digestOf, highlightFacts, highlightsRow, shownHighlights } from './highlights.js';
 import { namingDraftStale, namingRow, namingStanding } from './naming-store.js';
+import { releaseNamer } from './ports.js';
 import { actionsOf, buildOf, changesOf, headerOf, technicalOf } from './sections.js';
 
 export const refusePage = refuser<ReleasePageRefusalCode>(RELEASE_PAGE_REFUSAL_CODES[0]);
@@ -156,6 +157,8 @@ export async function readReleasePage(args: {
   const named = detail.name !== null && detail.summary !== null;
   const drafting = named ? null : await namingRow(projectId, detail.version);
   const naming = namingStanding(named, drafting);
+  // naming takes project.admin, so the page says who that is while the release waits on it (ISS-590)
+  const namer = named ? null : await releaseNamer(projectId);
   if (!named && (drafting === null || namingDraftStale(drafting)))
     args.onNamingOwed?.({ projectId, version: detail.version });
   const changes = changesOf(detail, view);
@@ -171,6 +174,7 @@ export async function readReleasePage(args: {
         total: page.claims.length,
       }),
       naming,
+      ...(namer ? { namer } : {}),
     },
     highlights: linked(shown.highlights),
     requirements: requirementsOf(page.requirements, page.claims),

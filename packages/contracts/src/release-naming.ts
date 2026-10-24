@@ -35,6 +35,20 @@ export const ReleaseNamingStandingSchema = z.discriminatedUnion("state", [
 ]);
 export type ReleaseNamingStanding = z.infer<typeof ReleaseNamingStandingSchema>;
 
+/**
+ * Who names a release nobody has named (ISS-590): naming takes project.admin, so it is the project's
+ * master where an account it acts as holds that, else the project's admins by name, else nobody.
+ */
+export const ReleaseNamerSchema = z.discriminatedUnion("to", [
+	z.strictObject({ to: z.literal("master") }),
+	z.strictObject({
+		to: z.literal("admins"),
+		names: z.array(z.string().min(1)).min(1),
+	}),
+	z.strictObject({ to: z.literal("nobody") }),
+]);
+export type ReleaseNamer = z.infer<typeof ReleaseNamerSchema>;
+
 /** What the namer is shown: the release's changes as users read them, and the requirements it carries. */
 export interface ReleaseNamingFacts {
 	version: string;

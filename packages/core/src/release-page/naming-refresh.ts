@@ -65,7 +65,7 @@ export async function nameReleaseIfOwed(
         {
           code: 'RELEASE_NAMING_NOTHING_TO_SAY',
           path: '',
-          detail: `${version} carries no change its users see and advances no requirement, so nothing names it: the project's master names it (PUT /api/projects/${projectId}/releases/${version}/naming)`,
+          detail: `${version} carries no change its users see and advances no requirement, so nothing names it: a project admin names it (PUT /api/projects/${projectId}/releases/${version}/naming)`,
         },
       ],
       null,

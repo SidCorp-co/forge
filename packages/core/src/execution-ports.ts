@@ -90,7 +90,12 @@ import {
 } from './schedules/index.js';
 import { recordSkillActivityEvent, resolveRegisteredEffectiveSkills } from './skills/index.js';
 import { sendStatusReport } from './status-reports/index.js';
-import { breakdownsHeldBySteward, openStewardAsks, stewardJobCredential } from './steward/index.js';
+import {
+  breakdownsHeldBySteward,
+  openStewardAsks,
+  releaseNamerOf,
+  stewardJobCredential,
+} from './steward/index.js';
 import {
   issueMockupsOf,
   loadArtifactContext,
@@ -207,6 +212,7 @@ export function provideExecutionPorts(): void {
     releaseNotesOwed: owedReleaseNotes,
     releaseNotesWarned: warnedReleaseNotes,
     releasesUnnamed: unnamedReleases,
+    releaseNamer: releaseNamerOf,
     answersSince: async (projectId, after) =>
       (await answeredOnIssuesSince(projectId, after)).map((a) => ({
         issueKey: formatIssueRef(a.issuePrefix, a.issSeq),

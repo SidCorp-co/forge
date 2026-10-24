@@ -32,7 +32,7 @@ interface Owed {
   releaseNotes: { issueId: string; key: string }[];
   /** Notes written but not in the content language, or carrying an engineer's reference. */
   warnedNotes: { issueId: string; key: string; problems: string[] }[];
-  /** Releases drafted, or cut and not yet out, that carry no name and summary. */
+  /** Releases drafted, or cut and not yet out, that carry no name and summary, where the master names them. */
   unnamedReleases: { version: string }[];
   /** Park questions answered since the master's last finished pass began, with what each did. */
   answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
@@ -257,7 +257,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.triagesOwed(projectId),
     ports.designsOwed(projectId),
     ports.releaseNotesOwed(projectId),
-    ports.releasesUnnamed(projectId),
+    releasesTheMasterNames(projectId),
     ports.contentLanguageOf(projectId),
     ports.stewardAsks(projectId),
   ]);
@@ -281,6 +281,18 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     stewardAsks,
     contentLanguage,
   });
+}
+
+/**
+ * The unnamed releases the master is asked to name: none where naming goes to somebody else (ISS-590).
+ * Naming takes project.admin, which a master acting as a member is refused, so asking it would ask
+ * every pass for a write it can never make; the release's page names its admins instead.
+ */
+async function releasesTheMasterNames(projectId: string): Promise<{ version: string }[]> {
+  const ports = mastersPorts();
+  const unnamed = await ports.releasesUnnamed(projectId);
+  if (unnamed.length === 0) return unnamed;
+  return (await ports.releaseNamer(projectId)).to === 'master' ? unnamed : [];
 }
 
 /**
