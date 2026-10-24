@@ -14,7 +14,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, Instant};
 
 use super::agent_activity::{Activity, Doing};
-use super::master::{LIMITED_POLL_INTERVAL, NUDGE_REFRESH};
+use super::master::NUDGE_REFRESH;
 
 /// The longest an idle master is left unasked while the same admissible work
 /// stands. ISS-1100 withdrew the five-minute re-ask because blocked work cost a
@@ -28,19 +28,11 @@ pub(crate) const ASK_FLOOR: Duration = Duration::from_secs(30 * 60);
 pub(crate) const UNASKED_AFTER: Duration =
     Duration::from_secs(ASK_FLOOR.as_secs() + NUDGE_REFRESH.as_secs());
 
-/// The longest two readings of a child may stand apart and still be one
-/// unbroken run of absence: the slowest sweep cadence, a rate-limited box's,
-/// plus a minute for the sweep itself. A wider gap is sweeps that never looked
-/// at the child — a failed admissible read, a drain, a stand-down, a daemon
-/// that was not running — and absence nobody observed is not absence, so the
-/// run starts again from the reading after it.
-pub(crate) const ABSENCE_GAP: Duration = Duration::from_secs(LIMITED_POLL_INTERVAL.as_secs() + 60);
-
-/// Since when a child has been read absent, and when it last was.
+/// Since when a child has been read absent, and the sweep that last read it.
 #[derive(Debug, Clone, Copy)]
 struct Absence {
     since: Instant,
-    last: Instant,
+    sweep: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -64,6 +56,9 @@ pub(crate) struct AskClocks {
     absent: HashMap<String, HashMap<String, Absence>>,
     /// Per project, the children already said to have stopped counting.
     lost_said: HashMap<String, BTreeSet<String>>,
+    /// Which sweep this is, so a child's absence runs unbroken only across
+    /// sweeps that each read it.
+    sweep: u64,
 }
 
 impl AskClocks {
@@ -131,13 +126,20 @@ impl AskClocks {
         self.unread.remove(project_id);
     }
 
+    /// A sweep begins. A child not read on it, whatever the reason — a failed
+    /// admissible read, a drain, a stand-down — breaks its run of absence,
+    /// because absence nobody observed is not absence.
+    pub(crate) fn new_sweep(&mut self) {
+        self.sweep += 1;
+    }
+
     /// One sweep's reading of the master's children, by agent id: `Some(true)`
     /// where the child's worktree was read holding no process (or no open run
     /// names it), `Some(false)` where a process stands there, `None` where it
     /// could not be read. Answers how long each child has been read absent
-    /// on an unbroken run of sweeps; a resident, an unread reading or a gap
-    /// past [`ABSENCE_GAP`] starts it again, and a child no longer listed is
-    /// forgotten.
+    /// on an unbroken run of sweeps; a resident, an unread reading or a sweep
+    /// that did not read it starts it again, and a child no longer listed is
+    /// forgotten. A sweep may read a child twice; both readings are its own.
     pub(crate) fn absent_for(
         &mut self,
         project_id: &str,
@@ -151,11 +153,12 @@ impl AskClocks {
             if *absent != Some(true) {
                 continue;
             }
+            let sweep = self.sweep;
             let since = had
                 .get(agent)
-                .filter(|a| now.saturating_duration_since(a.last) <= ABSENCE_GAP)
+                .filter(|a| a.sweep + 1 >= sweep)
                 .map_or(now, |a| a.since);
-            kept.insert(agent.clone(), Absence { since, last: now });
+            kept.insert(agent.clone(), Absence { since, sweep });
             out.insert(agent.clone(), now.saturating_duration_since(since));
         }
         if !kept.is_empty() {
@@ -529,32 +532,31 @@ mod tests {
             c.absent_for("p", &read(Some(true)), t0).get("a1"),
             Some(&Duration::ZERO)
         );
-        let mut at = t0;
-        while at < t0 + ASK_FLOOR {
-            at += Duration::from_secs(30);
-            c.absent_for("p", &read(Some(true)), at);
-        }
+        c.new_sweep();
         assert_eq!(
             c.absent_for("p", &read(Some(true)), t0 + ASK_FLOOR)
                 .get("a1"),
             Some(&ASK_FLOOR)
         );
+        c.new_sweep();
         assert_eq!(
             c.absent_for("p", &read(Some(false)), t0 + ASK_FLOOR)
                 .get("a1"),
             None,
             "a resident ends the absence"
         );
+        c.new_sweep();
         assert_eq!(
             c.absent_for("p", &read(Some(true)), now).get("a1"),
             Some(&Duration::ZERO),
             "and it starts again from the next absent reading"
         );
-        c.absent_for("p", &read(Some(true)), now);
+        c.new_sweep();
         assert!(
             c.absent_for("p", &read(None), now).is_empty(),
             "an unread reading is no absence"
         );
+        c.new_sweep();
         assert_eq!(
             c.absent_for("p", &read(Some(true)), now + Duration::from_secs(30))
                 .get("a1"),
@@ -567,32 +569,40 @@ mod tests {
         );
     }
 
-    /// Whole-set read F1: sweeps that never looked at the child (a failed
-    /// admissible read skips the rest of the project's iteration) are not
-    /// absence, so a gap past ABSENCE_GAP starts the run again.
+    /// Whole-set reads F1: a sweep that never looked at the child (a failed
+    /// admissible read skips the rest of the project's iteration) breaks the
+    /// run of absence, however soon the next reading comes.
     #[test]
     fn absence_nobody_observed_is_not_absence() {
         let now = Instant::now();
         let t0 = ago(now, ASK_FLOOR * 2);
-        let mut c = AskClocks::default();
         let read = vec![("a1".to_string(), Some(true))];
-        c.absent_for("p", &read, t0);
-        assert_eq!(
-            c.absent_for("p", &read, t0 + ASK_FLOOR + Duration::from_secs(1))
-                .get("a1"),
-            Some(&Duration::ZERO),
-            "nothing read the child for the whole floor"
-        );
+        let mut skipping = AskClocks::default();
+        let mut at = t0;
+        while at < t0 + ASK_FLOOR * 2 {
+            skipping.new_sweep();
+            assert_eq!(
+                skipping.absent_for("p", &read, at).get("a1"),
+                Some(&Duration::ZERO),
+                "every other sweep did not read it"
+            );
+            skipping.new_sweep();
+            assert!(skipping.read_failed("p", "admissible 503"));
+            skipping.read_ok("p");
+            at += Duration::from_secs(60);
+        }
         let mut steady = AskClocks::default();
         let mut at = t0;
-        steady.absent_for("p", &read, at);
-        while at < t0 + ASK_FLOOR {
-            at += ABSENCE_GAP;
+        while at <= t0 + ASK_FLOOR {
+            steady.new_sweep();
             steady.absent_for("p", &read, at);
+            steady.absent_for("p", &read, at);
+            at += Duration::from_secs(30);
         }
+        steady.new_sweep();
         assert!(
             steady.absent_for("p", &read, at)["a1"] >= ASK_FLOOR,
-            "readings at the slowest cadence are one unbroken run"
+            "a reading on every sweep, twice in some, is one unbroken run"
         );
     }
 

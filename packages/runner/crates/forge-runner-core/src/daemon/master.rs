@@ -1106,6 +1106,12 @@ impl Masters {
         reg.ask.note(project_id, work, working, Instant::now())
     }
 
+    /// A sweep begins: a child it does not read breaks its run of absence.
+    fn new_sweep(&self) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.ask.new_sweep();
+    }
+
     /// How long each of this master's children has been read absent, off one
     /// sweep's reading of them (`master_children`).
     fn absent_for(
@@ -1562,6 +1568,7 @@ async fn sweep(
         drain,
         ..
     } = *shared;
+    masters.new_sweep();
     let now_unix = master_limit::now_unix();
     let mut account_said: Vec<master_limit::Decisive> = Vec::new();
     let mut deaf_found: Vec<Deaf> = Vec::new();
@@ -8789,10 +8796,12 @@ mod give_back_tests {
         let mut at = now.checked_sub(for_).expect("clock older than the window");
         let mut reg = masters.0.lock().unwrap();
         while at < now {
+            reg.ask.new_sweep();
             reg.ask
                 .absent_for("p", &[("a1".to_string(), Some(true))], at);
             at += Duration::from_secs(30);
         }
+        reg.ask.new_sweep();
     }
 
     /// Criterion 16: a master whose only child has been absent and silent past
@@ -8999,6 +9008,13 @@ mod give_back_tests {
         );
         let first = sweep.find("counted_activity(").unwrap();
         assert!(first < sweep.find("note_unasked(").unwrap());
+        let begun = sweep
+            .find("masters.new_sweep();")
+            .expect("a sweep must say it began, or a child it skips keeps its absence");
+        assert!(
+            begun < sweep.find("runners::list_me(").unwrap(),
+            "the sweep begins before anything can end it early"
+        );
         let second = sweep.rfind("counted_activity(").unwrap();
         assert!(second < sweep.find("claim_nudge(").unwrap());
     }
