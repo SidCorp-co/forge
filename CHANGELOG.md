@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.309] - 2026-10-24
+
+Rewording a requirement-linked criterion now keeps its link or says why
+
+### Fixed
+
+- **A dropped-trace refusal names the line that dropped it.** Where several lines on one BC are reworded, it no longer names a line that already restates the tag, so following its advice is taken.
+
 ## [0.4.0-dev.308] - 2026-10-24
 
 MCP tools name the missing field or mistyped key they refuse
