@@ -1,5 +1,6 @@
 // The body `POST /api/issues/:id/transition` takes: the one definition its validator reads, its
-// published contract is generated from, and every guide is held to (transition-body.test.ts).
+// published contract is generated from, and every served guide and run prompt is held to, sentence
+// by sentence (transition-body.test.ts).
 
 import { checklistsOn } from '@forge/contracts/checklist-registry';
 import { moveAnswersInputOf } from '@forge/contracts/checklists';
