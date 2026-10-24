@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../helpers/api.js';
 import { agreedRequirement, bcOf, traced } from '../helpers/landed-requirement.js';
 import {
+  D9,
   F4,
   judgedAll,
   landedIssue,
@@ -33,10 +34,15 @@ vi.mock('../../src/release-batch/shipped-earlier.js', async (importOriginal) => 
 beforeEach(() => seedLandedWorld({ verdictsRequired: false }));
 
 /** QA's verdict on criterion `n` through the verdict route, as the master's QA writes it. */
-const judged = (issueId: string, n: number, identity: Record<string, string>) =>
+const judged = (
+  issueId: string,
+  n: number,
+  identity: Record<string, string>,
+  verdict: 'pass' | 'fail' = 'pass',
+) =>
   api(world.token, 'POST', `/api/issues/${issueId}/verdicts`, {
     criterion: n,
-    verdict: 'pass',
+    verdict,
     reason: `Ran it on the box at ${F4.slice(0, 7)}.`,
     identity,
   });
@@ -83,6 +89,30 @@ describe('a runtime identity naming the landed sha', () => {
 describe('where none is owed', () => {
   it('still closes an issue with no verdict, which QA may judge after the landing', async () => {
     const issue = await landedIssue(11, F4);
+
+    expect((await record([issue], F4)).status).toBe(201);
+  });
+
+  // ISS-630 c1, judge K64 at dev.304: the record closed the issue over this fail (201)
+  it('refuses a criterion judged fail at the landed commit by name, and the issue stays open', async () => {
+    const issue = await landedIssue(11, F4);
+    await ok(judged(issue, 1, { kind: 'commit', sha: F4 }));
+    await ok(judged(issue, 2, { kind: 'commit', sha: F4 }, 'fail'));
+
+    const res = await record([issue], F4);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const refusals = refusalsOf(res.body);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatchObject({ code: 'RELEASE_LANDING_UNJUDGED' });
+    expect(refusals[0]?.detail).toContain('ISS-11 criterion 2: its verdict is `fail`');
+    expect(refusals[0]?.detail).toContain('a recorded fail never does');
+    expect(await statusOf(issue)).toBe('awaiting_release');
+  });
+
+  it('closes over a fail judged at an earlier commit, which judged another build', async () => {
+    const issue = await landedIssue(11, F4);
+    await ok(judged(issue, 2, { kind: 'commit', sha: D9 }, 'fail'));
 
     expect((await record([issue], F4)).status).toBe(201);
   });

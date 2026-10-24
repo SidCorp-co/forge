@@ -299,21 +299,38 @@ export function weighOnLanded(
 }
 
 // Where the project's document owes no verdict, a criterion with none is not weighed, and QA may
-// judge it after the landing; a verdict that is there is kernel input all the same, and one whose
-// identity names no commit is refused by name rather than closed over (`landedIdentityWhy`).
-function misshapenOf(build: string, criteria: readonly StandingCriterion[]): LandedCriterion[] {
-  return criteria.flatMap(({ criterion, verdict }) => {
-    if (!verdict?.at || verdict.at.kind === 'source') return [];
-    const why = landedIdentityWhy(verdict.at.kind, verdict.at.value);
-    return why
-      ? [
-          {
-            criterion,
-            counts: false as const,
-            why: `it was ${why}; it needs a verdict whose identity is commit \`${short(build)}\``,
-          },
-        ]
-      : [];
+// judge it after the landing; a verdict that is there is kernel input all the same: one whose
+// identity names no commit is refused by name rather than closed over (`landedIdentityWhy`), and so
+// is one judged at `build` itself that does not earn, since a missing verdict passes there but a
+// recorded fail never does (ISS-630). A verdict at another commit judged another build.
+function heldWhereNoneOwed(
+  build: string,
+  criteria: readonly StandingCriterion[],
+): LandedCriterion[] {
+  return criteria.flatMap(({ criterion, verdict }): LandedCriterion[] => {
+    if (!verdict?.at) return [];
+    const why =
+      verdict.at.kind === 'source' ? null : landedIdentityWhy(verdict.at.kind, verdict.at.value);
+    if (why) {
+      return [
+        {
+          criterion,
+          counts: false,
+          why: `it was ${why}; it needs a verdict whose identity is commit \`${short(build)}\``,
+        },
+      ];
+    }
+    const judged = judgedCommit(verdict);
+    if (verdictEarns(verdict.verdict) || !('sha' in judged) || judged.sha !== build.toLowerCase()) {
+      return [];
+    }
+    return [
+      {
+        criterion,
+        counts: false,
+        why: `its verdict is \`${verdict.verdict}\`, judged at \`${short(build)}\`: where no verdict is owed a missing one passes, a recorded fail never does`,
+      },
+    ];
   });
 }
 
@@ -342,7 +359,7 @@ export async function landedStandings(
         owes: s.owes,
         criteria: s.owes
           ? s.criteria.map((c) => weighOnLanded(build, c, viaOf(issueId)))
-          : misshapenOf(build, s.criteria),
+          : heldWhereNoneOwed(build, s.criteria),
       },
     ];
   });
