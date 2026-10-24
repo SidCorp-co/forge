@@ -113,6 +113,21 @@ export function rejectedBeforeRefusal(
   };
 }
 
+// A suggestion names the one it supersedes among its own project's (ISS-568): an id this project does
+// not hold is refused the same whether it exists nowhere or in another project, so no other project's
+// suggestion is confirmed to exist
+export function supersedesUnknownRefusal(
+  supersedes: string | null,
+  heldByProject: boolean,
+): SuggestionRefusal | null {
+  if (supersedes === null || heldByProject) return null;
+  return {
+    code: 'SUGGESTION_SUPERSEDES_UNKNOWN',
+    path: '/supersedes',
+    detail: `this project holds no suggestion ${supersedes}; supersedes names an earlier suggestion of the same project by its id, or is left out.`,
+  };
+}
+
 // At most 5 proposed suggestions wait on one target; a 6th is SUGGESTION_QUEUE_FULL
 export function queueFullRefusal(openOnTarget: number): SuggestionRefusal | null {
   if (openOnTarget < SUGGESTION_MAX_OPEN_PER_TARGET) return null;

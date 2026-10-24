@@ -51,6 +51,7 @@ import {
   queueFullRefusal,
   rejectedBeforeRefusal,
   rejectReasonRefusal,
+  supersedesUnknownRefusal,
   unchangedRevisionRefusal,
 } from './rules.js';
 import { markMovedStale } from './stale.js';
@@ -75,6 +76,8 @@ interface Proposal {
   model: string | null;
   conversationMessageId: string | null;
   revisesId: string | null;
+  rationale: string | null;
+  supersedesId: string | null;
 }
 
 /** start -> proposed inside the caller's transaction, which holds the target's lock and checked the
@@ -164,6 +167,8 @@ async function proposeIn(
       payload: p.payload,
       fingerprint: p.fingerprint,
       revisesId: p.revisesId,
+      rationale: p.rationale,
+      supersedesId: p.supersedesId,
       producerKind: p.producerKind,
       producerId: p.producerId,
       model: p.model,
@@ -181,6 +186,14 @@ async function proposeIn(
   return { id: row.id };
 }
 
+async function heldByProject(tx: Tx, projectId: string, id: string): Promise<boolean> {
+  const [held] = await tx
+    .select({ id: suggestions.id })
+    .from(suggestions)
+    .where(and(eq(suggestions.id, id), eq(suggestions.projectId, projectId)));
+  return held !== undefined;
+}
+
 export async function createSuggestion(input: {
   projectId: string;
   actor: SuggestionActor;
@@ -193,6 +206,9 @@ export async function createSuggestion(input: {
   payload: unknown;
   model?: string | null | undefined;
   conversationMessageId?: string | null | undefined;
+  /** Why it is proposed and the earlier suggestion of the project it supersedes: kept on the row only. */
+  rationale?: string | null | undefined;
+  supersedes?: string | null | undefined;
 }): Promise<SuggestionOutcome> {
   const { projectId, kind } = input;
   await requireCan(actorFor(input.actor.userId), 'project.write', projectResource(projectId));
@@ -221,6 +237,12 @@ export async function createSuggestion(input: {
     if (unbased) return [unbased];
     const stale = baseStaleRefusal(base, head, open);
     if (stale) return [stale];
+    const supersedes = input.supersedes ?? null;
+    const unknown = supersedesUnknownRefusal(
+      supersedes,
+      supersedes !== null && (await heldByProject(tx, projectId, supersedes)),
+    );
+    if (unknown) return [unknown];
     const proposed = await proposeIn(
       tx,
       {
@@ -235,6 +257,8 @@ export async function createSuggestion(input: {
         model: input.model ?? null,
         conversationMessageId: input.conversationMessageId ?? null,
         revisesId: null,
+        rationale: input.rationale ?? null,
+        supersedesId: supersedes,
       },
       head,
     );
@@ -311,6 +335,8 @@ export async function reviseSuggestion(input: {
         model: null,
         conversationMessageId: null,
         revisesId: row.id,
+        rationale: null,
+        supersedesId: null,
       },
       head,
     );

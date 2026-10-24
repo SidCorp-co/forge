@@ -1,3 +1,4 @@
+import { REASON_TEXT_MAX } from '@forge/contracts/reason-text';
 import { BREAKDOWN_SLA_WORKING_DAYS } from '@forge/contracts/requirements';
 import {
   BREAKDOWN_ISSUE_DEFAULTS,
@@ -57,6 +58,12 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 ### Before you write one
 - An open suggestion of the same kind proposing the same change on the same target is
   \`SUGGESTION_DUPLICATE\`, naming it: the comparison ignores key order.
+- Say why on the suggestion, never in its payload: \`rationale\` (optional, at most ${REASON_TEXT_MAX} characters) is
+  kept on the row, and \`supersedes\` names the earlier suggestion of this project it answers or
+  replaces by id (\`SUGGESTION_SUPERSEDES_UNKNOWN\` for an id the project does not hold, another
+  project's included). Neither is copied into what the accept writes, so a re-proposal answers the
+  rejection it follows there rather than in a breakdown slice's description, which becomes the filed
+  issue's. Naming a rejected suggestion does not lift \`SUGGESTION_REJECTED_BEFORE\`: change the payload.
 - At most ${SUGGESTION_MAX_OPEN_PER_TARGET} proposed suggestions wait on one target; another is
   \`SUGGESTION_QUEUE_FULL\` until one is decided.
 - A \`breakdown\` is the project master's to propose (workflow requirement-to-delivery step
@@ -117,12 +124,12 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 - A decided suggestion stays decided: accepting, rejecting or withdrawing it again is
   \`SUGGESTION_DECIDED\`.
 - A suggestion nobody decides within ${SUGGESTION_STALE_AFTER_DAYS} days goes \`stale\`; a rejected,
-  stale or withdrawn one loses its payload ${SUGGESTION_PURGE_PAYLOAD_AFTER_DAYS} days after the
-  decision.
+  stale or withdrawn one loses its payload and its rationale ${SUGGESTION_PURGE_PAYLOAD_AFTER_DAYS} days
+  after the decision.
 
 ### Reading them
 \`GET …/suggestions\` takes \`?requirement=\`, \`issue\`, \`feedback\` or \`workflow\`, and \`status\` (comma-separated);
-it answers each suggestion whole, and \`view=summary\` leaves the payloads out. A \`proposed\` breakdown
+it answers each suggestion whole, and \`view=summary\` leaves the payloads and rationales out. A \`proposed\` breakdown
 also carries \`breakdown\`: each slice as its accept would file it at the requirement's head — criteria
 by BC code, the pinned design and the revision the baseline pins it at, each \`blockedBy\` resolved — with
 the accept's refusal where it would refuse, and \`unreadable\` naming why a stored payload no longer parses. Statuses: \`proposed\` (waits on a decision),

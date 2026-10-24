@@ -81,7 +81,7 @@ describe("a breakdown's details, before Accept", () => {
     shown(breakdown());
     const panel = await details();
     const [, second] = within(panel).getAllByTestId("breakdown-slice");
-    expect(within(second as HTMLElement).getAllByRole("listitem").map((li) => li.textContent)).toEqual(
+    expect(within(second).getAllByRole("listitem").map((li) => li.textContent)).toEqual(
       expect.arrayContaining(["BC-2 · completion is counted", "BC-3 · a missing step is reported"]),
     );
     expect(panel).toHaveTextContent("Leaves uncovered: BC-4 · waits on tour.manage");
@@ -98,7 +98,7 @@ describe("a breakdown's details, before Accept", () => {
     const view = breakdown();
     const read = view.breakdown;
     if (!read) throw new Error("fixture carries a read");
-    read.slices[1] = { ...read.slices[1], buildsRefusal: "print-flow is not a design the requirement's latest baseline pins" } as (typeof read.slices)[number];
+    read.slices[1] = { ...read.slices[1], buildsRefusal: "print-flow is not a design the requirement's latest baseline pins" };
     shown(view);
     const [, second] = within(await details()).getAllByTestId("breakdown-slice");
     expect(second).toHaveTextContent("Accept would refuse its design: print-flow is not a design the requirement's latest baseline pins");
@@ -126,8 +126,8 @@ describe("a breakdown's details, before Accept", () => {
           unreadable: null,
           uncovered: [],
           slices: [
-            { ...(player as NonNullable<typeof player>), blockedBy: [self] },
-            { ...(stats as NonNullable<typeof stats>), blockedBy: [outside, loop] },
+            { ...player, blockedBy: [self] },
+            { ...stats, blockedBy: [outside, loop] },
           ],
         },
       }),
@@ -227,7 +227,7 @@ describe("a breakdown's details, read as a person", () => {
     const view = breakdown();
     const read = view.breakdown;
     if (!read) throw new Error("fixture carries a read");
-    read.slices[0] = { ...read.slices[0], blockedBy: [{ issue: "ISS-12", title: "Tour shell", status: "in_progress" }] } as (typeof read.slices)[number];
+    read.slices[0] = { ...read.slices[0], blockedBy: [{ issue: "ISS-12", title: "Tour shell", status: "in_progress" }] };
     shown(view);
     const [first] = within(await details()).getAllByTestId("breakdown-slice");
     expect(first).toHaveTextContent("After ISS-12 · Tour shell (In progress)");
@@ -298,5 +298,26 @@ describe("a drafted revision's picture, before Accept", () => {
 
   it("shows no picture line for a draft that carries none", async () => {
     expect(await lines(drafted(undefined))).toEqual(["BC-1 · a buyer asks for a refund"]);
+  });
+});
+
+// ISS-568 / FB-139: a re-proposal answers the rejection it follows on the suggestion itself; the card
+// folds that agent text under Show details, never on the row, and shows nothing for a suggestion without it.
+describe("a suggestion's rationale and what it supersedes", () => {
+  it("are folded under Show details, the superseded one by its short id", async () => {
+    shown(breakdown({ rationale: "Answers the rejection: the print slice is folded in.", supersedes: "6f0c1b52-6a0e-4c3a-9a51-0d1f6b7b2a10" }));
+    await screen.findByText("Show details");
+    expect(screen.getByText(/Answers the rejection/)).not.toBeVisible();
+    await details();
+    const why = screen.getByTestId("suggestion-why");
+    expect(why).toHaveTextContent("Rationale · Answers the rejection: the print slice is folded in.");
+    expect(why).toHaveTextContent("Supersedes · 6f0c1b52");
+    expect(why).not.toHaveTextContent("6a0e");
+  });
+
+  it("show no line for a suggestion with neither", async () => {
+    shown(breakdown({ rationale: null, supersedes: null }));
+    await details();
+    expect(screen.queryByTestId("suggestion-why")).toBeNull();
   });
 });

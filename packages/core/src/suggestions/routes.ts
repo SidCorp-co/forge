@@ -110,6 +110,8 @@ suggestionRoutes.post(
         baseRevision: body.baseRevision,
         payload: body.payload,
         model: body.model ?? null,
+        rationale: body.rationale,
+        supersedes: body.supersedes,
       }),
     );
   },

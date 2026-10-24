@@ -1,0 +1,1 @@
+**A suggestion says why, on itself.** A suggestion takes an optional rationale and the earlier suggestion it supersedes, folded on its card; an accepted breakdown no longer carries a re-proposal's answer to a rejection into its issues (ISS-568).

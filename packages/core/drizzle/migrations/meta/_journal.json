@@ -3368,6 +3368,13 @@
       "when": 1828310400000,
       "tag": "0525_a_requirement_criterion_holds_its_own_verdict",
       "breakpoints": true
+    },
+    {
+      "idx": 526,
+      "version": "7",
+      "when": 1828396800000,
+      "tag": "0526_a_suggestion_says_why_and_what_it_supersedes",
+      "breakpoints": true
     }
   ]
 }

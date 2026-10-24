@@ -91,6 +91,14 @@ function detailLines(s: Suggestion, t: Copy): string[] {
   return [];
 }
 
+/** Why its producer proposed it and the suggestion it supersedes: agent text, folded with the details (ISS-568). */
+function whyLines(s: Suggestion, t: Copy): string[] {
+  return [
+    ...(s.rationale ? [`${t("requirements.suggestion.rationale")} · ${s.rationale}`] : []),
+    ...(s.supersedes ? [`${t("requirements.suggestion.supersedes")} · ${s.supersedes.slice(0, 8)}`] : []),
+  ];
+}
+
 function tipOf(s: Suggestion, t: Copy, dateTime: (at: string) => string): string {
   const who = producerLabel(t, s.producerKind);
   return [
@@ -120,6 +128,7 @@ function SuggestionItem({ s, projectId, reqKey }: { s: Suggestion; projectId: st
   const lang = useInterfaceLanguage();
   const time = useTimeFormat();
   const details = detailLines(s, t);
+  const why = whyLines(s, t);
   return (
     <li
       className="grid gap-1.5 border-l-3 border-ai-9 bg-ai-bg px-3 py-2.25 text-13"
@@ -136,11 +145,18 @@ function SuggestionItem({ s, projectId, reqKey }: { s: Suggestion; projectId: st
         </span>
       </div>
       <p className="text-14">{summaryOf(s, lang)}</p>
-      {details.length > 0 || s.kind === "breakdown" ? (
+      {details.length > 0 || why.length > 0 || s.kind === "breakdown" ? (
         <details className="text-12 text-muted">
           <summary className="cursor-pointer select-none font-semibold text-ai">
             {t("requirements.suggestion.showDetails")}
           </summary>
+          {why.length > 0 ? (
+            <ul className="mt-1 grid gap-0.5" data-testid="suggestion-why">
+              {why.map((d) => (
+                <li key={d}>{d}</li>
+              ))}
+            </ul>
+          ) : null}
           {s.kind === "breakdown" ? (
             <BreakdownSlices read={s.breakdown} />
           ) : (

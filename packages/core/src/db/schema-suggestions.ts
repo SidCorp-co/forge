@@ -61,6 +61,12 @@ export const suggestions = pgTable(
     // a reviewer's edit is a new suggestion by the reviewer naming the one it replaced, which
     // is rejected in the same write (decision on design suggestion-lifecycle, ISS-117)
     revisesId: uuid('revises_id').references((): AnyPgColumn => suggestions.id),
+    // why its producer proposed it and the earlier suggestion of the project it supersedes (ISS-568):
+    // kept on the row, never copied into what an accept writes
+    rationale: text('rationale'),
+    supersedesId: uuid('supersedes_id').references((): AnyPgColumn => suggestions.id, {
+      onDelete: 'set null',
+    }),
     status: text('status', { enum: SUGGESTION_STATUSES }).notNull().default('proposed'),
     producerKind: text('producer_kind', { enum: SUGGESTION_PRODUCERS }).notNull(),
     producerId: uuid('producer_id').references(() => users.id, { onDelete: 'set null' }),

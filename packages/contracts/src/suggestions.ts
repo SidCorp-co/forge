@@ -141,6 +141,7 @@ const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_DESIGN_NOT_APPROVED",
 	"SUGGESTION_JOURNEY_SUGGESTED",
 	"SUGGESTION_REFUSED",
+	"SUGGESTION_SUPERSEDES_UNKNOWN",
 	...CONTRACT_WAIT_TARGET_REFUSAL_CODES,
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
@@ -372,8 +373,13 @@ export const createSuggestionRequestSchema = z.strictObject({
 		.describe(BASE_REVISION_MEANING),
 	payload: z.unknown(),
 	model: z.string().max(200).nullable().optional(),
+	/** Why it is proposed, kept on the suggestion and never copied into what its accept writes: a
+	 *  re-proposal answers the rejection it follows here, not in a slice's description (FB-139). */
+	rationale: z.string().trim().min(1).max(REASON_TEXT_MAX).optional(),
+	/** The earlier suggestion of this project this one answers or replaces, by id. */
+	supersedes: z.uuid().optional(),
 });
-export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback | workflow, baseRevision: number | null, payload, model? } — baseRevision is ${BASE_REVISION_MEANING}`;
+export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback | workflow, baseRevision: number | null, payload, model?, rationale?, supersedes? } — baseRevision is ${BASE_REVISION_MEANING}; rationale (at most ${REASON_TEXT_MAX} characters) and supersedes (an earlier suggestion's id in this project) stay on the suggestion and are never copied into what its accept writes`;
 
 /** `POST /api/projects/:id/suggestions/:sid/accept` — the person's reason, kept on the row. */
 export const acceptSuggestionRequestSchema = z.strictObject({
@@ -422,6 +428,10 @@ export interface SuggestionView {
 	fingerprint: string;
 	/** The suggestion this one revises: a reviewer's edit names the original it replaced. */
 	revises: string | null;
+	/** Why its producer proposed it; null when none was given, and once the payload is purged. */
+	rationale: string | null;
+	/** The earlier suggestion of the project its producer said this one supersedes. */
+	supersedes: string | null;
 	producerKind: SuggestionProducer;
 	producerId: string | null;
 	conversationMessageId: string | null;
@@ -578,6 +588,7 @@ const SUGGESTION_SUMMARY_FIELDS = [
 	"target",
 	"baseRevision",
 	"revises",
+	"supersedes",
 	"producerKind",
 	"producerId",
 	"model",

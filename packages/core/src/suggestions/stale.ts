@@ -42,7 +42,7 @@ export async function staleOnTargetRevised(
 interface SuggestionSweepResult {
   /** Proposed past STALE_AFTER_DAYS, marked stale this tick. */
   staled: number;
-  /** Payloads cleared this tick; the row keeps kind, model, status and decided_at for the metric. */
+  /** Payloads (with their rationale) cleared this tick; the row keeps kind, model, status and decided_at for the metric. */
   purged: number;
 }
 
@@ -63,7 +63,7 @@ export async function sweepSuggestions(now: Date = new Date()): Promise<Suggesti
   });
   const purged = await db
     .update(suggestions)
-    .set({ payload: null, payloadPurgedAt: now })
+    .set({ payload: null, rationale: null, payloadPurgedAt: now })
     .where(
       and(
         sql`${suggestions.status} IN ('rejected', 'stale', 'withdrawn')`,

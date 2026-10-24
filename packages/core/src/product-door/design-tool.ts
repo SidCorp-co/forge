@@ -331,6 +331,8 @@ async function suggestion_create(ctx: McpContext, i: Input) {
       baseRevision: body.baseRevision,
       payload: body.payload,
       model: body.model ?? null,
+      rationale: body.rationale,
+      supersedes: body.supersedes,
     }),
   );
 }

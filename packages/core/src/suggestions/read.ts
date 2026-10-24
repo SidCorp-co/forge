@@ -47,6 +47,8 @@ export const viewOf = (r: Row): SuggestionView => ({
   payloadVersion: r.payloadVersion,
   fingerprint: r.fingerprint,
   revises: r.revisesId,
+  rationale: r.rationale,
+  supersedes: r.supersedesId,
   producerKind: r.producerKind,
   producerId: r.producerId,
   conversationMessageId: r.conversationMessageId,
