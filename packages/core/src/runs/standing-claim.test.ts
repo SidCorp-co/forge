@@ -58,6 +58,7 @@ function building(
       strand: null,
     },
     issues: ['ISS-1'],
+    statuses: { 'ISS-1': 'in_progress' },
     openingStatuses: { 'ISS-1': 'open' },
     endStatuses: {},
     workState: { step: null, stepStartedAt: null, lease },

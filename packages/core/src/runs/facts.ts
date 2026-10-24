@@ -64,6 +64,17 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
   return { openingStatuses, endStatuses, landedAt };
 }
 
+// each carried issue's status as its row stands now, which a live run's standing reads (ISS-576)
+function statusesNow(t: Tables, keys: string[], display: Display): Record<string, IssueStatus> {
+  const now: Record<string, IssueStatus> = {};
+  for (const canonical of keys) {
+    const n = seqOf(canonical);
+    const row = n === null ? undefined : t.issueBySeq.get(n);
+    if (row) now[display(canonical)] = String(row.status) as IssueStatus;
+  }
+  return now;
+}
+
 // the idle-issues sweep's finding on the issue (`pipeline/idle-issues.ts:StrandRecord`); a record that
 // names no time or reason is not one this read can stand a stuck rule on
 function strandOf(raw: unknown): { at: Date; status: string; reason: string } | null {
@@ -251,6 +262,7 @@ function factsOf(
         }
       : null,
     issues: keys.map(display),
+    statuses: statusesNow(t, keys, display),
     ...issueStatusesOf(b, t, keys, display, end),
     workState: primary
       ? {

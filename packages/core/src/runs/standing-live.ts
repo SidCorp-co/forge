@@ -1,3 +1,4 @@
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { type Said, say, verbatim } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import { holdReleasesItself } from '../jobs/index.js';
@@ -324,6 +325,31 @@ function declaredBehindOf(f: RunFacts): Derived | null {
 export const masterWho = (f: RunFacts): Said =>
   f.master?.name ? say('standing.who.named', { name: f.master.name }) : say('standing.who.master');
 
+/**
+ * A live run whose every issue is over at core: its master holds it while its agent works on (a
+ * release judge, whose issues its release closed), and the verdict keeps it (ISS-576). It names
+ * that cause and its master, who closes it, rather than "its holder is working it" over closed work.
+ */
+function heldOverIssues(f: RunFacts, since: Date | null): Derived | null {
+  const over = (key: string) => {
+    const status = f.statuses[key];
+    return status !== undefined && ISSUE_TERMINAL_STATUSES.includes(status);
+  };
+  if (f.issues.length === 0 || !f.issues.every(over)) return null;
+  return {
+    state: 'running',
+    since,
+    rule: say('runs.live.heldIssuesOver', { issues: f.issues.join(', ') }),
+    outcome: null,
+    waitingOn: runWait(
+      'master',
+      masterWho(f),
+      say('runs.act.closeRunWhenReported'),
+      say('runs.rule.heldIssuesOver'),
+    ),
+  };
+}
+
 export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
   const waited = declaredBehindOf(f) ?? personWaitOf(f, ctx) ?? gateWaitOf(f, ctx);
   if (waited) return waited;
@@ -380,7 +406,10 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
     if (s.runtimeState === 'starting' || f.ledger?.incarnation === 'starting') {
       return claimed(s.startedAt ?? s.createdAt, say('runs.live.starting'));
     }
-    return running(s.startedAt ?? s.createdAt, say('runs.live.sessionIs', { status: s.status }));
+    return (
+      heldOverIssues(f, s.startedAt ?? s.createdAt) ??
+      running(s.startedAt ?? s.createdAt, say('runs.live.sessionIs', { status: s.status }))
+    );
   }
   if (!job && !s) {
     return {

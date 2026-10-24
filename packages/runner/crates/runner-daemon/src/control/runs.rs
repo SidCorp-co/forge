@@ -113,7 +113,8 @@ pub(crate) async fn preflight_refusal(
             "core would not open a run over these issues, so nothing was declared: {said}. A dispatch on them would be accepted by this box and refused at every sweep. Declare it once the hold named above has lifted. Nothing was recorded"
         )),
         // FB-273: accepted, a run over a closed issue had its subagent bind and was then
-        // reclaimed under it, because core's verdict closes a run whose issues are over.
+        // reclaimed under it, because core's verdict then closed a run whose issues were over
+        // whatever its subagent was doing (it waits for the subagent to read over since ISS-576).
         Err(runner_platform::error::Error::AtRest { said }) => Some(format!(
             "core would not open a run over these issues, so nothing was declared: {said}"
         )),

@@ -1102,6 +1102,10 @@ export const SAID = {
 		en: "queued: the project master takes it in a pass",
 	},
 	"runs.rule.queuedNothing": { en: "queued: nothing is dispatched on the run" },
+	"runs.rule.heldIssuesOver": {
+		en: "held: every issue it holds is over; its master closes it",
+	},
+	"runs.act.closeRunWhenReported": { en: "close the run once its agent reports" },
 	"runs.rule.lockHeld": {
 		en: "DEPLOY_ENVIRONMENT_LOCKED: refused at {at}: run {run} holds {environment}, deploying {subject}{since}; refused {until}",
 		vars: {
@@ -1823,6 +1827,10 @@ export const SAID = {
 	"runs.live.sessionIs": {
 		en: "the run session is {status}",
 		vars: { status: "code" },
+	},
+	"runs.live.heldIssuesOver": {
+		en: "held: {issues} over, its agent works on",
+		vars: { issues: "key" },
 	},
 	"runs.live.openNothing": {
 		en: "the run is open and nothing has been dispatched on it yet",

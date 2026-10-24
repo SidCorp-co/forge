@@ -59,6 +59,8 @@ export interface RunFacts {
       })
     | null;
   issues: string[];
+  /** Each carried issue's status at core now, by display key; a key whose row was not read is absent. */
+  statuses: Record<string, IssueStatus>;
   openingStatuses: Record<string, string>;
   endStatuses: Record<string, IssueStatus>;
   /** Carried issues whose landing (`issues.merged_at`, where it reads as landed) fell inside the run's window. */

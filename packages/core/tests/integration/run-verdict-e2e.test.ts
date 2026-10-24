@@ -27,8 +27,9 @@ let projectId = '';
 
 async function issue(seq: number, status: string, ownerId: string): Promise<void> {
   const [row] = (await db.execute(sql`
-    INSERT INTO issues (project_id, iss_seq, title, status, created_by_id)
-    VALUES (${projectId}, ${seq}, ${`issue ${seq}`}, 'open', ${ownerId})
+    INSERT INTO issues (project_id, iss_seq, title, status, created_by_id, merged_at)
+    VALUES (${projectId}, ${seq}, ${`issue ${seq}`}, 'open', ${ownerId},
+            ${status === 'closed' ? sql`now()` : null})
     RETURNING id
   `)) as unknown as Array<{ id: string }>;
   if (status !== 'open') await seedIssueStatus(String(row?.id), status);
@@ -47,6 +48,7 @@ beforeAll(async () => {
   await issue(1, 'dropped', ownerId);
   await issue(2, 'on_hold', ownerId);
   await issue(3, 'in_progress', ownerId);
+  await issue(4, 'closed', ownerId);
   say = requester(app, {
     box: (
       await mintPat({
@@ -113,6 +115,24 @@ describe('POST /api/devices/me/run-sessions/verdict', () => {
     expect(
       ok(await verdict({ projectId, facts: facts({ issueKeys: ['ISS-1', 'ISS-3'] }) })),
     ).toMatchObject({ act: 'keep', beat: true, sayKept: true });
+  });
+
+  // ISS-576: a release judge is declared on issues its release then closes, and works on after.
+  it('ISS-576 keeps a working subagent under a live master though every issue it holds is closed', async () => {
+    const judging = facts({
+      issueKeys: ['ISS-1', 'ISS-4'],
+      subagent: { kind: 'no_turn_end', silentMs: 5 * 60_000 },
+    });
+    const kept = ok(await verdict({ projectId, facts: judging }));
+    expect(kept).toMatchObject({ act: 'keep', beat: true, reparent: false, sayKept: false });
+    expect(kept.because).toContain('every issue it holds is over at core (ISS-1, ISS-4)');
+    expect(kept.because).toContain('until its master closes it');
+    expect(
+      ok(await verdict({ projectId, facts: facts({ issueKeys: ['ISS-1', 'ISS-4'] }) })),
+    ).toMatchObject({ act: 'close', end: null });
+    expect(
+      ok(await verdict({ projectId, facts: { ...judging, master: 'gone', host: 'gone' } })),
+    ).toMatchObject({ act: 'close', end: null });
   });
 
   it('ends a stale declaration whose issues rest at core and whose checkout is gone', async () => {

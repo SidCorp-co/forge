@@ -30,6 +30,7 @@ function closed(landedAt: Record<string, Date>): RunFacts {
     runFlip: null,
     job: null,
     issues: ['ISS-1'],
+    statuses: { 'ISS-1': 'in_progress' },
     openingStatuses: { 'ISS-1': 'open' },
     endStatuses: { 'ISS-1': 'in_progress' },
     landedAt,

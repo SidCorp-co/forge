@@ -271,15 +271,19 @@ export function runVerdict(f: RunFacts, issues: RunIssues): RunVerdict {
   const issuesOver =
     keptSubagent && issues.over.length === f.issueKeys.length && every(issues.over);
   if (f.close !== null) return settle(f, f.close, master, issuesOver);
-  if (!orphaned && !issuesOver) {
+  // Issues going over end a kept subagent only once its own evidence reads it over: a release judge
+  // is declared on the issues its release then closes, and works on after they close (ISS-576).
+  const issuesEnd = issuesOver && subagentOver(f.subagent) !== null;
+  if (!orphaned && !issuesEnd) {
     if (keptSubagent) {
       return {
         act: 'keep',
         beat: f.hasSession,
         reparent: false,
         sayKept: keptSaid(f.subagent),
-        because:
-          "a subagent under a live master ends with its master's close or its issues going over, never with its own silence",
+        because: issuesOver
+          ? `every issue it holds is over at core (${f.issueKeys.join(', ')}), but its subagent is not read over, so it is held for its work until its master closes it or its subagent reads over`
+          : "a subagent under a live master ends with its master's close, or with its issues going over once it reads over itself, never with its own silence",
       };
     }
     const cause = f.hasSession ? exitCause(f.activity) : null;
@@ -295,8 +299,8 @@ export function runVerdict(f: RunFacts, issues: RunIssues): RunVerdict {
   return {
     act: 'close',
     end: null,
-    because: issuesOver
-      ? 'every issue it holds is over at core'
+    because: issuesEnd
+      ? 'every issue it holds is over at core and its subagent reads over'
       : 'no live master on this boot answers for it, or its process is gone',
   };
 }

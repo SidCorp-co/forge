@@ -172,8 +172,52 @@ describe('a run under a live master', () => {
     expect(kept('unreadable', null)).toMatchObject({ act: 'keep', sayKept: true });
     expect(kept('no_turn_end', 9 * HOUR)).toMatchObject({ act: 'keep', sayKept: false });
   });
-  it('closes a subagent whose every issue is over at core', () => {
+  it('closes a subagent whose every issue is over at core once its own evidence reads it over', () => {
     expect(runVerdict(subagent(), over)).toMatchObject({ act: 'close', end: null });
+    expect(
+      runVerdict(subagent({ subagent: { kind: 'host_ended', silentMs: 0 } }), over),
+    ).toMatchObject({ act: 'close', end: null });
+  });
+  // ISS-576: a release judge is declared on awaiting_release issues the release then closes; the
+  // verdict closed it mid-turn and the box released its checkout under it.
+  it('ISS-576 keeps a working subagent under a live master though every issue it holds is closed', () => {
+    const working: Array<RunFacts['subagent']> = [
+      { kind: 'no_turn_end', silentMs: 5 * MIN },
+      { kind: 'no_turn_end', silentMs: 9 * HOUR },
+      { kind: 'resumed', silentMs: 2 * MIN },
+      { kind: 'turn_ended', silentMs: HOUR - 1 },
+      { kind: 'awaiting_reply', silentMs: HOUR - 1 },
+      { kind: 'unreadable', silentMs: null },
+      { kind: 'tail_unreadable', silentMs: MIN },
+    ];
+    for (const s of working) {
+      const v = runVerdict(subagent({ subagent: s }), over);
+      expect(v, s.kind).toMatchObject({ act: 'keep', beat: true, reparent: false });
+      expect(v.because).toContain('every issue it holds is over at core');
+      expect(v.because).toContain('its master');
+    }
+  });
+  it('ISS-576 keeps a judge holding several closed issues, and closes it at the bound', () => {
+    const judge = (silentMs: number) =>
+      subagent({
+        issueKeys: ['ISS-1', 'ISS-2'],
+        subagent: { kind: 'turn_ended', silentMs },
+      });
+    const allOver: RunIssues = { over: [true, true], rests: [true, true] };
+    expect(runVerdict(judge(HOUR - 1), allOver)).toMatchObject({ act: 'keep' });
+    expect(runVerdict(judge(HOUR), allOver)).toMatchObject({ act: 'close', end: null });
+  });
+  it('ISS-576 still closes a run whose master is gone, whatever its issues say', () => {
+    expect(
+      runVerdict(
+        subagent({
+          master: 'gone',
+          host: 'gone',
+          subagent: { kind: 'no_turn_end', silentMs: MIN },
+        }),
+        over,
+      ),
+    ).toMatchObject({ act: 'close', end: null });
   });
   it('reads a pane tmux could not answer for as the pane last seen', () => {
     expect(runVerdict(facts({ master: 'unanswered' }), live)).toMatchObject({

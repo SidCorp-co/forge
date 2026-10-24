@@ -1,0 +1,1 @@
+**A release judge keeps its run after its issues close.** Recovery ends a run whose issues are all over only once its agent reads over; until then its standing says it is held and that its master closes it.
