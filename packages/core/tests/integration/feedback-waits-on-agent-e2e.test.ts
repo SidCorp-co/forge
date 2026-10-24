@@ -367,3 +367,46 @@ describe('a duplicate of an item held on a draft carrier reads its original (K61
     expect(await personCounts(dup)).toEqual(NOBODY_PERSON);
   });
 });
+
+// a duplicate reads its original's phase, and is counted under it, never beside it: one report per
+// root (REQ-66 BC-3). An original at new and its duplicate at new are one untriaged report
+describe('a duplicate is counted under its original, never beside it', () => {
+  let home = '';
+  let root = '';
+  const on = (path: string) => `/api/projects/${home}${path}`;
+
+  beforeAll(async () => {
+    home = (await createTestProject(ownerId)).id;
+    const filed = async (title: string) =>
+      ok(
+        await say('owner', 'POST', on('/feedback'), { kind: 'bug', title, screen: 'The board' }),
+        201,
+      ).feedback.key as string;
+    root = await filed('Export drops the last row');
+    const dup = await filed('The last row is missing from exports');
+    ok(
+      await say('owner', 'POST', on(`/feedback/${dup}/triage`), {
+        answers: TRIAGE_ANSWERS,
+        route: 'duplicate',
+        duplicateOf: root,
+      }),
+    );
+    expect(ok(await say('owner', 'GET', on(`/feedback/${dup}`))).feedback.phase).toBe('new');
+  });
+
+  it('reads one untriaged report on Needs you', async () => {
+    const needs = ok(await say('owner', 'GET', on('/needs-you')));
+    expect(needs.untriagedFeedback).toBe(1);
+  });
+
+  it('reads one report in the feedback list counts and one in the standings', async () => {
+    const list = ok(await say('owner', 'GET', on('/feedback')));
+    expect(list.feedback).toHaveLength(2);
+    const counted = Object.values(list.counts as Record<string, number>).reduce((a, b) => a + b);
+    expect(counted).toBe(1);
+    const standings = ok(await say('owner', 'GET', on('/standings'))).standings;
+    expect(
+      standings.filter((s: Doc) => s.subject.kind === 'feedback').map((s: Doc) => s.subject.key),
+    ).toEqual([root]);
+  });
+});

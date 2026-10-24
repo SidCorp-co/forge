@@ -6,7 +6,11 @@
  */
 
 import { AUTOMATION_FIRES_DEFAULT } from '@forge/contracts/automation-standing';
-import { FEEDBACK_UNTRIAGED_PHASES, type FeedbackPhase } from '@forge/contracts/feedback';
+import {
+  countsAsReport,
+  FEEDBACK_UNTRIAGED_PHASES,
+  type FeedbackPhase,
+} from '@forge/contracts/feedback';
 import {
   NEEDS_YOU_AREA_SPACE,
   NEEDS_YOU_AREAS,
@@ -241,6 +245,6 @@ export async function readNeedsYou(
     ) as Record<NeedsYouAreaKey, NeedsYouArea>,
     items,
     requirementsInDelivery: requirements.filter((r) => r.standing.state === 'in_delivery').length,
-    untriagedFeedback: feedback.filter((f) => UNTRIAGED.has(f.phase)).length,
+    untriagedFeedback: feedback.filter((f) => UNTRIAGED.has(f.phase) && countsAsReport(f)).length,
   };
 }

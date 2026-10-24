@@ -5,6 +5,7 @@
  */
 
 import {
+  countsAsReport,
   FEEDBACK_ATTENTION_GROUPS,
   type FeedbackAttentionGroup,
   type FeedbackListResponse,
@@ -98,10 +99,12 @@ export async function listFeedbackIn(
     FeedbackAttentionGroup,
     number
   >;
-  for (const s of all) counts[s.attentionGroup] += 1;
+  // a duplicate is listed, and counted under its original only: one report per root
+  const reports = all.filter(countsAsReport);
+  for (const s of reports) counts[s.attentionGroup] += 1;
   const untold = {
-    owed: all.filter((s) => s.reporterNotTold === 'owed').length,
-    beforeNotices: all.filter((s) => s.reporterNotTold === 'before_notices').length,
+    owed: reports.filter((s) => s.reporterNotTold === 'owed').length,
+    beforeNotices: reports.filter((s) => s.reporterNotTold === 'before_notices').length,
     noticesBegan,
   };
   return { ok: true, list: { feedback: listed, counts, untold, sensitive: level !== 'off' } };

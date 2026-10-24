@@ -1,5 +1,6 @@
 // One module's detail: its standing, purpose, key paths, couplings, landings, activity and feedback.
 
+import { countsAsReport } from '@forge/contracts/feedback';
 import {
   MODULE_BODY_LIMIT,
   type ModuleActiveIssue,
@@ -108,7 +109,7 @@ async function openFeedbackOf(
     );
   }
   return answer.list.feedback
-    .filter((f) => !CLOSED_FEEDBACK.has(f.phase))
+    .filter((f) => !CLOSED_FEEDBACK.has(f.phase) && countsAsReport(f))
     .filter(
       (f) =>
         (f.target.type === 'issue' && issueKeys.has(f.target.key)) ||

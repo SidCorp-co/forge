@@ -70,6 +70,14 @@ export const FEEDBACK_PHASES = [
 ] as const;
 export type FeedbackPhase = (typeof FEEDBACK_PHASES)[number];
 
+/**
+ * Whether an item counts as a report of its own: a duplicate reads its original's phase and wait,
+ * and is counted under that original, never beside it (REQ-66 BC-3: one report per root).
+ */
+export const countsAsReport = (f: {
+	route: { route: string } | null;
+}): boolean => f.route?.route !== "duplicate";
+
 /** The phases a person still has to triage: never routed, or sent back by the reporter. */
 export const FEEDBACK_UNTRIAGED_PHASES = [
 	"new",

@@ -5,7 +5,7 @@
 // (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`).
 
 import { Written } from "@/lib/i18n/written";
-import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
+import { countsAsReport, FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
 import type { StandingGroupLabels } from "@forge/contracts/standing";
 import { needsViewer } from "@forge/contracts/standing";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
@@ -53,7 +53,8 @@ function Funnel({ rows, untold }: { rows: FeedbackSummary[]; untold: FeedbackLis
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
-  const n = (p: string) => rows.filter((r) => r.phase === p).length;
+  // a duplicate is counted under its original, never beside it: one report per root
+  const n = (p: string) => rows.filter((r) => r.phase === p && countsAsReport(r)).length;
   const total = Math.max(1, ...FUNNEL.map((p) => n(p)));
   return (
     <div className="grid gap-2 border-b border-line-subtle bg-app px-5 py-3 max-md:px-3" data-testid="feedback-funnel">
