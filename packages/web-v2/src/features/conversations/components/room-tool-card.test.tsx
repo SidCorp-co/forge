@@ -25,7 +25,9 @@ describe("a room's tool card", () => {
     render(<RoomToolCard tool={refused} />);
     const card = screen.getByTestId("room-tool-card");
     expect(screen.getByTestId("room-tool-said")).toHaveTextContent("Couldn't file “Footer typo”");
-    expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent("Hold — this files an issue the flow cannot carry.");
+    expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent(
+      "Hold — this files an issue the flow cannot carry. Ask the assistant to put it right and try again.",
+    );
     expect(card).not.toHaveTextContent(/Failed|Object|fields|exitCode|argv|--category/);
     expect(card.textContent).not.toMatch(/\bforge\b/);
     expect(screen.queryByTestId("room-tool-technical")).not.toBeInTheDocument();
@@ -62,5 +64,28 @@ describe("a room's tool card", () => {
     expect(screen.getByTestId("room-tool-card").textContent).not.toMatch(/\bforge\b|`|command/);
     fireEvent.click(screen.getByRole("button", { name: "Technical details" }));
     expect(screen.getByTestId("room-tool-technical")).toHaveTextContent("`forge deploy` is not open from chat.");
+  });
+  // ISS-1229 r38, judge-103: the assistant read a guide that does not exist and listed the guides next,
+  // in the same reply; the refused card offered the person nothing to do and said nothing of that.
+  it("says the assistant tried another way where a later call in the same reply did", () => {
+    const noGuide: ToolCallData = {
+      id: "g1",
+      name: "forge",
+      input: { argv: ["guide", "issue-claiming"] },
+      result: { exitCode: 1, stdout: "", stderr: "No guide named issue-claiming. `forge guide` lists the guides this plugin stands behind.\n" },
+      isError: true,
+    };
+    const listed: ToolCallData = { id: "g2", name: "forge", input: { argv: ["guide"] }, result: { exitCode: 0, stdout: "contract\n", stderr: "" } };
+    const flow: ToolCallData = { ...listed, id: "g3", input: { argv: ["guide", "issue-flow"] } };
+    const { unmount } = render(<RoomToolCard tool={noGuide} later={[listed, flow]} />);
+    expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent(
+      "No guide named issue-claiming. The assistant tried another way below, and its answer says how it went.",
+    );
+    unmount();
+    render(<RoomToolCard tool={noGuide} />);
+    expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent(
+      "No guide named issue-claiming. Ask the assistant to put it right and try again.",
+    );
+    expect(screen.getByTestId("room-tool-card").textContent).not.toMatch(/`|\bforge\b/);
   });
 });

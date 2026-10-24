@@ -22,8 +22,16 @@ export interface ConversationActions {
     | undefined;
 }
 
-/** What draws one tool call: a run's technical card by default, a room's words where a room passes its own. */
-export type ToolCardComponent = ComponentType<{ tool: ToolCallData; live?: boolean; blockKey?: string }>;
+/**
+ * What draws one tool call: a run's technical card by default, a room's words where a room passes its own.
+ * `later` is every call after it in the same turn, so a room's card can say the assistant took another way.
+ */
+export type ToolCardComponent = ComponentType<{
+  tool: ToolCallData;
+  live?: boolean;
+  blockKey?: string;
+  later?: readonly ToolCallData[];
+}>;
 
 interface ConversationProps extends ConversationActions {
   items: ConversationItem[];
@@ -221,6 +229,7 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
         key={block.tool.id ?? i}
         tool={block.tool}
         live={streamingTail}
+        later={item.blocks.slice(i + 1).flatMap((b) => (b.type === "tool" ? [b.tool] : []))}
         {...(keys[i] ? { blockKey: keys[i] } : {})}
       />
     );

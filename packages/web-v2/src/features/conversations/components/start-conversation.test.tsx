@@ -140,7 +140,9 @@ describe("the projects a room can be started in", () => {
     projects = [];
     const { container } = render(<StartConversation onStarted={vi.fn()} />);
     expect(screen.queryByRole("combobox")).toBeNull();
-    expect(screen.getByText("No project here yet")).toBeTruthy();
+    // r38, judge-103: "No project here yet" read as if the organization held none, when it held seven.
+    expect(screen.getByText("No project you can see")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/here yet/);
     expect(container.textContent).not.toMatch(/start|pick a project/i);
   });
 });
