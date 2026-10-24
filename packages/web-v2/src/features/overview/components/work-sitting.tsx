@@ -38,7 +38,7 @@ const SILENCE_COLUMNS: DataTableColumn<ProjectSilenceRow>[] = [
     sortValue: (r) => r.buckets[b],
     cell: (r) =>
       r.buckets[b] === 0 ? (
-        <span className="text-disabled">0</span>
+        <span className="text-subtle">0</span>
       ) : (
         <Link
           href={bucketHref(r.slug, b)}

@@ -47,10 +47,31 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
 const ABSENT_AFTER =
   /^[*_`"')\]]*\s+(?:(?:is not|isn't|is no longer|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w'-]+\s+){0,5}?(?:tracker|project)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
 
+/**
+ * The conjunctions a clause stating an absence may open with. "or" and "nor" are not among them: an
+ * alternative asserts nothing (ISS-1229 r39).
+ */
+const CONJ = String.raw`(?:(?:and|but|so|yet|while|whereas|although|though|because|since)\s+)?`;
+const MARKS = "[*_`\"'([]*$";
+
 /** A clause's opening up to its key: the key itself, or "there is no" / "I couldn't find" before it. */
-const OPENS_ON_KEY = /^\s*(?:(?:and|but|so)\s+)?[*_`"'([]*$/i;
-const OPENS_ON_ABSENCE =
-  /^\s*(?:(?:and|but|so)\s+)?(?:there is no|there's no|there isn't an?|no issue(?: called| named| keyed| with the key)?|(?:i\s+)?(?:could not|couldn't|cannot|can't|did not|didn't) find|(?:i\s+)?found no)\s+(?:(?:an? )?issue\s+|key\s+)?[*_`"'([]*$/i;
+const OPENS_ON_KEY = new RegExp(String.raw`^\s*${CONJ}${MARKS}`, 'i');
+const OPENS_ON_ABSENCE = new RegExp(
+  String.raw`^\s*${CONJ}(?:there is no|there's no|there isn't an?|no issue(?: called| named| keyed| with the key)?|(?:i\s+)?(?:could not|couldn't|cannot|can't|did not|didn't) find|(?:i\s+)?found no)\s+(?:(?:an? )?issue\s+|key\s+)?${MARKS}`,
+  'i',
+);
+
+/**
+ * A clause denying a key's identity: "it is not ISS-9", "and not ISS-9". It says the project does not
+ * hold the key only after the project's whole set has been stated (`STATES_WHOLE_SET`); "this one is
+ * not ISS-7" alone says nothing of the project (ISS-1229 r39, judge-107; consult F1).
+ */
+const DENIES_IDENTITY = new RegExp(
+  String.raw`^\s*${CONJ}(?:(?:it|this|that|which|this one|that one|they|the (?:only |one |single )?(?:issue|one))\s+(?:is not|isn't|are not|aren't)\s+|(?:none|neither)(?: of them)?\s+(?:is|are)\s+|not\s+)${MARKS}`,
+  'i',
+);
+const STATES_WHOLE_SET =
+  /\b(?:(?:this|the) project|it|here)\s+(?:currently\s+|only\s+)*(?:has|holds|contains)\s+(?:only\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+issues?\b|\b(?:the|this project's|the project's) only issues?\b/i;
 
 /** What may follow a key after "there is no": the clause's end, or the project it is absent from. */
 const ABSENT_TAIL =
@@ -63,8 +84,11 @@ const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case|assuming|p
 const NOT_NOW_OR_NARROWER =
   /\b(?:(?:in|on|from|of)\s+(?:[\w'-]+\s+){0,3}?(?:sprint|milestone|board|column|release|filter|search|page|list|view)|yesterday|earlier|previously|last|ago|until|anymore|any longer|used to|at the time)\b/i;
 
-/** A plain, present, unconditional absence: its clause opens on the key or "there is no", in no question. */
-function assertsAbsence(sentence: string, at: number, after: string): boolean {
+/**
+ * A plain, present, unconditional absence: its clause opens on the key or "there is no", or denies the
+ * key's identity after the project's whole set was stated (`before`), in no question.
+ */
+function assertsAbsence(sentence: string, at: number, after: string, before: string): boolean {
   const cuts = [...sentence.matchAll(CLAUSE_CUT)].map((c) => (c.index ?? 0) + c[0].length);
   const opening = sentence.slice(Math.max(0, ...cuts.filter((c) => c <= at)), at);
   const conditions = sentence.split(CLAUSE_CUT).filter((clause) => !ASKS_BACK.test(clause));
@@ -72,7 +96,10 @@ function assertsAbsence(sentence: string, at: number, after: string): boolean {
   if (conditions.some((clause) => CONDITIONAL.test(clause))) return false;
   return (
     (OPENS_ON_KEY.test(opening) && ABSENT_AFTER.test(after)) ||
-    (OPENS_ON_ABSENCE.test(opening) && ABSENT_TAIL.test(after))
+    (OPENS_ON_ABSENCE.test(opening) && ABSENT_TAIL.test(after)) ||
+    (DENIES_IDENTITY.test(opening) &&
+      STATES_WHOLE_SET.test(`${before} ${sentence.slice(0, at)}`) &&
+      ABSENT_TAIL.test(after))
   );
 }
 
@@ -91,12 +118,14 @@ export interface KeyMention {
  */
 export function keyMentions(text: string, prefixes: readonly string[] = []): KeyMention[] {
   const out: KeyMention[] = [];
+  let before = '';
   for (const sentence of plainQuotes(text).split(/(?<=[.!?][*_`"')\]]*)\s+|\n\s*\n/)) {
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
-      const absent = assertsAbsence(sentence, at, sentence.slice(at + m[0].length));
+      const absent = assertsAbsence(sentence, at, sentence.slice(at + m[0].length), before);
       out.push({ seq: Number(m[2]), token: m[0], absent });
     }
+    before = `${before} ${sentence}`;
   }
   return out;
 }

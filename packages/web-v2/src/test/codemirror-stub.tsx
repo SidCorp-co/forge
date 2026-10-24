@@ -39,8 +39,17 @@ export class FakeView {
 /** The most recently mounted stand-in, for a test that drives the toolbar. */
 export let lastView: FakeView | null = null;
 
+/** Every theme spec the editor asked for, for a test that reads what it paints. */
+export const themes: Record<string, Record<string, string>>[] = [];
+
 export function codeMirrorStub() {
   return {
+    EditorView: {
+      theme: (spec: Record<string, Record<string, string>>) => {
+        themes.push(spec);
+        return spec;
+      },
+    },
     default: ({
       value,
       onChange,

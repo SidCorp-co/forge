@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeToolOutput } from "@/features/session/result-summary";
 import type { ToolCallData } from "@/features/session/types";
-import { PUT_IT_RIGHT, refusalReason, TOOK_ANOTHER_WAY, toolWords } from "./tool-words";
+import { DOOR_OF_TOOL, PUT_IT_RIGHT, refusalReason, TOOK_ANOTHER_WAY, toolWords } from "./tool-words";
 
 const cli = (argv: string[], out: { exitCode: number; stdout: string; stderr: string }, body = ""): ToolCallData => ({
   id: "t1",
@@ -53,7 +53,7 @@ describe("what a room's assistant did, in words", () => {
     };
     expect(toolWords(cli(["new", "-", "--title", "J93 judge test: invoice footer typo", "--category", "bug"], refused, "## Summary"))).toEqual({
       said: "Couldn't file “J93 judge test: invoice footer typo”",
-      refusal: "No What happened section. Ask the assistant to put it right and try again.",
+      refusal: "The What happened section is missing. Ask the assistant to put it right and try again.",
     });
   });
 
@@ -77,7 +77,7 @@ describe("what a room's assistant did, in words", () => {
     };
     const words = toolWords(cli(["new", "-", "--title", "J95 judge test: invoice footer typo", "--category", "bug"], refused));
     expect(words.refusal).toBe(
-      "No What happened, Why it happens, Outcome or Out of scope section. Ask the assistant to put it right and try again.",
+      "The What happened, Why it happens, Outcome and Out of scope sections are missing. Ask the assistant to put it right and try again.",
     );
     expect(words.refusal).not.toMatch(/Hold|flow cannot carry|among/);
   });
@@ -90,7 +90,7 @@ describe("what a room's assistant did, in words", () => {
         "Hold — this files an issue the flow cannot carry.\n\n- read: no heading naming what happened, among `Summary`\n  wants: a heading saying what happened, required of a bug\n  clear: add `## What happened` and re-send the same command\n- read: the title `Fix`\n  wants: a sentence saying the behaviour after the change, not one word\n  clear: forge new with a title that says the behaviour",
     };
     expect(toolWords(cli(["new", "-", "--title", "Fix"], refused)).refusal).toBe(
-      "No What happened section. Ask the assistant to put it right and try again.",
+      "The What happened section is missing. Ask the assistant to put it right and try again.",
     );
   });
 
@@ -102,7 +102,7 @@ describe("what a room's assistant did, in words", () => {
         "Hold — name one of the routes below, then re-send.\n\nThis body names billing, carries no rule or invariant and no out-of-scope, and reads as a fix: filed as a feature the flow costs a confirmation.\n\n  --with ISS-nn   file it and relate it",
     };
     expect(toolWords(cli(["new", "-", "--title", "Typo"], route)).refusal).toBe(
-      "This body names billing, carries no rule or invariant and no out-of-sc… Ask the assistant to put it right and try again.",
+      "This body names billing, carries no rule or invariant and no out-of-scope, and reads as a fix: filed as a feature the flow costs a confirmation. Ask the assistant to put it right and try again.",
     );
   });
 
@@ -193,13 +193,13 @@ describe("a refused card's reason", () => {
       "The tracker did not answer in time. Ask the assistant to check whether it went through before trying again.",
     );
     const other: ToolCallData = { id: "o", name: "forge_guide", input: {}, result: { message: "forge_guide refused: no slug." }, isError: true };
-    expect(toolWords(other).refusal).toBe("The tool refused: no slug. Ask the assistant to put it right and try again.");
+    expect(toolWords(other).refusal).toBe("No slug. Ask the assistant to put it right and try again.");
   });
 });
 
 describe("a refusal's reason", () => {
   it("says what was wrong, and the person's way out by the refusal's kind", () => {
-    expect(refusalReason({ stderr: `${"a".repeat(200)}.` })).toBe(`${"a".repeat(70)}… ${PUT_IT_RIGHT}`);
+    expect(refusalReason({ stderr: `${"a".repeat(200)}.` })).toBe(`A${"a".repeat(199)}. ${PUT_IT_RIGHT}`);
     expect(refusalReason({ exitCode: 1, stdout: "", stderr: "" })).toBe(`It gave no reason. ${PUT_IT_RIGHT}`);
     expect(refusalReason("`forge issue --set` refused.\n`forge issue -h` lists the fields.", "forge")).toBe(
       `Its reason is under Technical details. ${PUT_IT_RIGHT}`,
@@ -323,8 +323,9 @@ describe("a refusal's reason", () => {
     const mcp = "NOT_FOUND: id `ISS-9` is a display key, and this project holds no issue at that number. Nothing was read or written. `forge_issues action=list` prints the keys it does hold under issueId.";
     const line = refusalReason(mcp, "forge_issues");
     expect(line).not.toMatch(/`|action=|issueId|NOT_FOUND/);
-    expect(line.endsWith("Check the key, or ask the assistant to list this project's issues.")).toBe(true);
-    expect(line.length).toBeLessThanOrEqual(120);
+    expect(line).toBe(
+      "Id ISS-9 is a display key, and this project holds no issue at that number. Check the key, or ask the assistant to list this project's issues.",
+    );
   });
 
   // The whole-set read of round 37 (F2): a remedy longer than the line pushed the line past its limit.
@@ -344,5 +345,104 @@ describe("a refusal's reason", () => {
     expect(refusalReason("`forge knowledge write` is not open from chat; list/get/search are.", "forge")).toBe(
       "The assistant can't do that from a room. Here it can read, file and comment on issues.",
     );
+  });
+});
+
+// ISS-1229 r39, judge-107 at 7d4a69d: a claim refused as a status change read "Couldn't read ISS-1" over
+// "The tracker issue failed: status is not a field an update writes: the…", and a filing missing four
+// sections read "No What happened, Why it happens, Outcome or Ou…". Both are the stored refusals.
+describe("a refused card in whole sentences", () => {
+  const statusRefusal =
+    "forge issue failed: status is not a field an update writes: the tracker moves it on a route of its own and refuses it here, and the fields of one call go up together, so nothing of this one was sent. Move it with:\n  forge advance ISS-1 --set in_progress --why <w>\n";
+  const claim = cli(["issue", "ISS-1", "--set", "status=in_progress"], { exitCode: 1, stdout: "", stderr: statusRefusal });
+
+  it("titles a refused status change for the move it tried", () => {
+    expect(toolWords(claim).said).toBe("Couldn't move ISS-1 to In progress");
+    const done = cli(["issue", "ISS-1", "--set", "status=closed"], { exitCode: 0, stdout: "{}", stderr: "" });
+    expect(toolWords(done).said).toBe("Moved ISS-1 to Closed");
+    const advance = cli(["advance", "ISS-1", "--set", "in_progress", "--why", "x"], { exitCode: 2, stdout: "", stderr: "`forge advance` is not open from chat. What is: issue, new." });
+    expect(toolWords(advance).said).toBe("Couldn't move ISS-1 to In progress");
+    expect(toolWords(cli(["advance", "ISS-1"], { exitCode: 0, stdout: "", stderr: "" })).said).toBe("Moved ISS-1 to its next status");
+    const priority = cli(["issue", "ISS-1", "--set", "priority=high", "--why", "x"], { exitCode: 0, stdout: "{}", stderr: "" });
+    expect(toolWords(priority).said).toBe("Updated ISS-1");
+    expect(toolWords(cli(["issue", "ISS-1", "--blocks", "ISS-2"], { exitCode: 0, stdout: "{}", stderr: "" })).said).toBe("Updated ISS-1");
+    expect(toolWords(cli(["issue", "ISS-1"], { exitCode: 0, stdout: "{}", stderr: "" })).said).toBe("Read ISS-1");
+  });
+
+  it("says what was wrong as a whole clause, without the command's own prefix", () => {
+    const line = toolWords(claim).refusal as string;
+    expect(line).toBe(`Status is not a field an update writes. ${PUT_IT_RIGHT}`);
+    expect(line).not.toMatch(/…|failed:|tracker issue|forge/);
+  });
+
+  it("names a filing's missing sections in one whole sentence", () => {
+    const gaps = ["What happened", "Why it happens", "Outcome", "Out of scope"].map(
+      (h) => `- read: no heading naming ${h.toLowerCase()}, among \`Summary\`, \`Where\`\n  wants: a heading\n  clear: add \`## ${h}\` and re-send the same command`,
+    );
+    const filing = cli(["new", "-", "--title", "[Bug] PDF export footer shows last year"], {
+      exitCode: 1,
+      stdout: "",
+      stderr: `Hold — this files an issue the flow cannot carry. Each line below is what was read, what the shape wants and the one command that clears it.\n\n${gaps.join("\n")}`,
+    });
+    const line = toolWords(filing).refusal as string;
+    expect(line.startsWith("The What happened, Why it happens, Outcome and Out of scope sections are missing.")).toBe(true);
+    expect(line).not.toMatch(/…|\bNo What\b/);
+  });
+
+  it("never cuts a sentence or a word at a character count, however long the reason", () => {
+    const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ");
+    for (const reason of [`${words(40)}.`, `${words(10)}; ${words(30)}.`, `${words(10)}. ${words(30)}.`, "a".repeat(300)]) {
+      const line = refusalReason(reason, "forge");
+      expect(line).not.toContain("…");
+      const shown = line.slice(0, -PUT_IT_RIGHT.length - 1);
+      expect(reason.toLowerCase().startsWith(shown.replace(/\.$/, "").toLowerCase())).toBe(true);
+      expect(/[.!?]$/.test(shown) || shown.toLowerCase() === reason).toBe(true);
+    }
+  });
+
+  it("drops a tool's failure prefix wherever it leads, never rewording it", () => {
+    for (const prefix of ["forge issue failed: ", "forge failed: ", "forge_issues refused: ", "forge comment refused: "]) {
+      expect(refusalReason(`${prefix}the comment is empty.`, prefix.startsWith("forge_") ? "forge_issues" : "forge")).toBe(
+        `The comment is empty. ${PUT_IT_RIGHT}`,
+      );
+    }
+  });
+});
+
+// ISS-1229 r39, judge-107: the assistant read a guide through the CLI, was refused twice, then read it
+// through the forge_guide tool; both refused cards still asked the person to have it put right.
+describe("one act, one identity across its doors", () => {
+  const cliGuide = (slug: string, exitCode: number) =>
+    cli(["guide", slug], { exitCode, stdout: exitCode ? "" : "# guide", stderr: exitCode ? `No guide named ${slug}. \`forge guide\` lists the guides this plugin stands behind.\n` : "" });
+  const mcpGuide = (slug: string): ToolCallData => ({ id: "g", name: "forge_guide", input: { action: "get", slug }, result: { slug, body: "# guide" } });
+
+  it("counts a guide read through the tool as the same act the CLI was refused", () => {
+    const later = [cliGuide("pipeline-and-issue-lifecycle", 1), mcpGuide("pipeline-and-issue-lifecycle")];
+    expect(toolWords(cliGuide("issue-claiming", 1), false, later).refusal).toBe(`No guide named issue-claiming. ${TOOK_ANOTHER_WAY}`);
+    expect(toolWords(later[0] as ToolCallData, false, later.slice(1)).refusal).toBe(
+      `No guide named pipeline-and-issue-lifecycle. ${TOOK_ANOTHER_WAY}`,
+    );
+  });
+
+  it("matches every door the table names to its CLI verb, and no other door", () => {
+    const gone = (what: string) => ({ exitCode: 1, stdout: "", stderr: `${what} not found.` });
+    const pairs: Record<string, [ToolCallData, ToolCallData]> = {
+      forge_guide: [cliGuide("contract", 1), mcpGuide("contract")],
+      forge_knowledge: [
+        cli(["knowledge", "get", "billing"], gone("The entry was")),
+        { id: "k", name: "forge_knowledge", input: { action: "get", slug: "billing" }, result: {} },
+      ],
+      forge_memory_search: [
+        cli(["knowledge", "search", "billing", "--scope", "memory"], gone("The store was")),
+        { id: "m", name: "forge_memory_search", input: { query: "billing" }, result: { hits: [] } },
+      ],
+      forge_projects_get: [cli(["project"], gone("The project was")), { id: "p", name: "forge_projects_get", input: {}, result: {} }],
+    };
+    expect(Object.keys(pairs).sort()).toEqual(Object.keys(DOOR_OF_TOOL).sort());
+    for (const [tool, [refused, through]] of Object.entries(pairs)) {
+      expect(toolWords(refused, false, [through]).refusal, tool).toMatch(/The assistant tried another way below/);
+      const elsewhere = { ...through, name: "forge_memory_note" };
+      expect(toolWords(refused, false, [elsewhere]).refusal, tool).toMatch(/Ask the assistant to put it right/);
+    }
   });
 });
