@@ -1,10 +1,11 @@
 /** What the autonomous wedge pass reads off a candidate's lease (`issue_work_state.lease`), and the comment a
- *  reset leaves. The pass decides "nothing is working this issue" from the job table; a run holding
+ *  reset leaves, or the one it leaves on landed work it does not reset (ISS-564). The pass decides "nothing is working this issue" from the job table; a run holding
  *  a live lease is working it whatever the job table says (ISS-1317). */
 
 import { sql } from 'drizzle-orm';
 import type { IssueDependencyExecutor } from '../issues/index.js';
 import { classifyLease, type LeaseReading, leaseIsWorkInProgress } from '../issues/index.js';
+import type { LandedWork } from './wedge-landed.js';
 
 /** Holder fanout is not counted: the question is whether THIS issue's claim is unexpired, and a
  *  holder claiming several issues is still working each one it holds. */
@@ -62,5 +63,29 @@ export function buildWedgeResetBody(args: {
     `The reconciler's autonomous wedge pass made this move, not a person. It found nothing working the issue: its latest job is a \`drive\` job that is no longer live, no job is queued or running, nothing wrote to the issue for ${args.grace}, and ${leaseSentence(args.reading)}.`,
     '',
     `The issue is back at \`${args.to}\`, where the next dispatch takes it up again.`,
+  ].join('\n');
+}
+
+function markSentence(landed: LandedWork): string {
+  const where = landed.commit
+    ? `commit \`${landed.commit}\``
+    : landed.landing
+      ? `landing \`${landed.landing}\``
+      : 'a mark naming no commit';
+  return `its merge is recorded: ${where}, marked at ${landed.mergedAt.toISOString()}`;
+}
+
+/** The notice on landed work the pass leaves. Posted once per mark, so its body names the mark. */
+export function buildWedgeLeftLandedBody(args: {
+  grace: string;
+  reading: LeaseReading;
+  landed: LandedWork;
+}): string {
+  return [
+    '**Left at `in_progress` by the reconciler: its work landed**',
+    '',
+    `Nothing has written to this issue for ${args.grace} and ${leaseSentence(args.reading)}, but ${markSentence(args.landed)}. Landed work is not handed back to be dispatched again.`,
+    '',
+    'The agent working it moves it to `awaiting_release`. If this mark is not this work, clear it with `DELETE /api/issues/:id/merge`; the next pass then hands the issue back.',
   ].join('\n');
 }

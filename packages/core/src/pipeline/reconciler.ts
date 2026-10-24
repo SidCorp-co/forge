@@ -20,6 +20,7 @@ import {
   holdsOpenHumanQuestion,
   personOwesAnAnswer,
   postIssueNotice,
+  postIssueNoticeOnce,
   wakeMastersForProject,
 } from './ports.js';
 import { mintReconcilerActor, reconcilerActorFor } from './reconciler-actor.js';
@@ -28,7 +29,9 @@ import {
   recordDeliveredRescue,
   rescuesNotDue,
 } from './rescue-wake-ledger.js';
+import { type LandedWork, landedWorkStands } from './wedge-landed.js';
 import {
+  buildWedgeLeftLandedBody,
   buildWedgeResetBody,
   readWedgeLease,
   wedgeLeaseHoldsTheIssue,
@@ -176,14 +179,17 @@ export async function runReconcilerOnce(): Promise<{
   return { rescued, stale, autonomousReset };
 }
 
-/** Committed between the wedge read and the reset's row lock: a question, a lease, an agent account. */
-type StoodSinceSelected = 'asked' | 'lease' | 'minted';
+/** Committed between the wedge read and the reset's row lock: a question, a lease, an agent account,
+ *  a merge mark. */
+type StoodSinceSelected = 'asked' | 'lease' | 'minted' | 'landed';
 
 const STOOD_SAID: Record<StoodSinceSelected, string> = {
   asked: 'reconciler: a person was asked since the wedge read, so it stays',
   lease: 'reconciler: a lease was renewed since the wedge read, so it stays',
   minted:
     'reconciler: the project gained an agent account since the wedge read, so the next pass resets it',
+  landed:
+    'reconciler: its merge was recorded since the wedge read, so it stays for its agent to move to awaiting_release',
 };
 
 type WedgeCandidate = {
@@ -261,6 +267,13 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
   }
   let stood = null as StoodSinceSelected | null;
   try {
+    // Landed work is left before the rescue cap too: parked, it would wait on its master, not on
+    // the move to awaiting_release its agent owes (REQ-45 BC-7).
+    const landed = await landedWorkStands(db, row.id);
+    if (landed) {
+      await leaveLandedWork(row, landed);
+      return false;
+    }
     const { capped } = await checkAutonomousRescueCap({
       projectId: row.project_id,
       issueId: row.id,
@@ -292,6 +305,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
           if (await personOwesAnAnswer(tx, row.id)) throw stop('asked');
           const reading = readWedgeLease(await wedgeLeaseUnderLock(tx, row.id), new Date());
           if (wedgeLeaseHoldsTheIssue(reading)) throw stop('lease');
+          if (await landedWorkStands(tx, row.id)) throw stop('landed');
           if (!(await mintReconcilerActor(tx, row.project_id, actor))) throw stop('minted');
           await postIssueNotice(
             {
@@ -331,4 +345,39 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
     );
     return false;
   }
+}
+
+/**
+ * Landed work nothing holds stays at `in_progress` (ISS-564): no status moves by itself, so the
+ * agent working it moves it to `awaiting_release` (REQ-45 BC-1, BC-7). One notice per mark says so
+ * on the issue; a later pass over the same mark posts nothing.
+ */
+async function leaveLandedWork(row: WedgeCandidate, landed: LandedWork): Promise<void> {
+  const actor = await reconcilerActorFor(row.project_id);
+  const minted = await db.transaction((tx) => mintReconcilerActor(tx, row.project_id, actor));
+  if (!minted) {
+    logger.info({ issueId: row.id, projectId: row.project_id }, STOOD_SAID.minted);
+    return;
+  }
+  const body = buildWedgeLeftLandedBody({
+    grace: WEDGE_GRACE,
+    reading: readWedgeLease(row.lease, new Date()),
+    landed,
+  });
+  const posted = await postIssueNoticeOnce({
+    issueId: row.id,
+    authorId: actor.id,
+    body,
+    marker: body,
+  });
+  if (posted === null) return;
+  logger.warn(
+    { issueId: row.id, mergedAt: landed.mergedAt, commit: landed.commit },
+    'reconciler: left landed work at in_progress for its agent to move to awaiting_release',
+  );
+  traceStep({
+    category: 'pipeline.reconciler.autonomous_wedge_left_landed',
+    level: 'warning',
+    data: { issueId: row.id },
+  });
 }
