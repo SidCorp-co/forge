@@ -34,6 +34,7 @@ pub mod job_unheard;
 pub mod master;
 pub mod master_ask;
 pub mod master_build;
+pub(crate) mod master_children;
 pub mod master_exit;
 pub mod master_handed;
 pub mod master_limit;
@@ -189,6 +190,47 @@ const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_s
 
 /// How often the update loop asks whether a newer release exists.
 const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
+
+/// The release manifest at `url`, or `None` where it could not be read.
+///
+/// A failure is said at warn the first time its reason is met, in the sentence
+/// `forge-runner update` and doctor print for it, and at debug while the same
+/// reason repeats; a read that answers clears `said`, so the next failure is
+/// said again. At debug alone, a box that could not reach Forge for its
+/// manifest said so nowhere the default journal shows (ISS-1306 round 2,
+/// routed from ISS-1421 r25).
+async fn read_manifest(
+    url: &str,
+    core: &str,
+    said: &std::sync::Mutex<Option<String>>,
+) -> Option<crate::update::Manifest> {
+    let read = crate::update::fetch_manifest(url, Some(core)).await;
+    let mut last = said.lock().expect("update reason poisoned");
+    match read {
+        Ok(m) => {
+            *last = None;
+            Some(m)
+        }
+        Err(e) => {
+            let why = e.to_string();
+            if last.as_deref() == Some(why.as_str()) {
+                tracing::debug!("[update] check failed again: {why}");
+            } else {
+                tracing::warn!("{}", update_check_failed_line(&why));
+                *last = Some(why);
+            }
+            None
+        }
+    }
+}
+
+fn update_check_failed_line(why: &str) -> String {
+    format!(
+        "[update] check failed: {} This box cannot tell whether a newer forge-runner is released until a check answers; the next is in {}h, and the same reason is not said again",
+        crate::transport::status::ended(why),
+        UPDATE_CHECK_INTERVAL.as_secs() / 3600
+    )
+}
 
 /// What a handover carries across its exec besides the control listener.
 #[cfg_attr(not(unix), allow(dead_code))]
@@ -743,10 +785,11 @@ pub async fn run(
         let served = served.clone();
         let masters = masters.clone();
         let cancel_rx = cancel_rx.clone();
+        let said = Arc::new(std::sync::Mutex::new(None::<String>));
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             update_checks(UPDATE_CHECK_INTERVAL, cancel_rx, move |checked_at| {
-                let (url, core, inflight, drain, runner, bound, assignments, served, masters) = (
+                let (url, core, inflight, drain, runner, bound, assignments, served, masters, said) = (
                     url.clone(),
                     core.clone(),
                     inflight.clone(),
@@ -756,10 +799,11 @@ pub async fn run(
                     assignments.clone(),
                     served.clone(),
                     masters.clone(),
+                    said.clone(),
                 );
                 async move {
-                match crate::update::fetch_manifest(&url, Some(core.as_str())).await {
-                    Ok(m)
+                match read_manifest(&url, core.as_str(), &said).await {
+                    Some(m)
                         if crate::update::is_newer(&m.version, crate::update::CURRENT_VERSION) =>
                     {
                         tracing::warn!(
@@ -848,11 +892,11 @@ pub async fn run(
                             }
                         }
                     }
-                    Ok(_) => {
+                    Some(_) => {
                         tracing::debug!("[update] up to date");
                         drain.update_settled();
                     }
-                    Err(e) => tracing::debug!("[update] check failed: {e}"),
+                    None => {}
                 }
                 }
             })
@@ -1469,6 +1513,77 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Nothing listens on port 1; the crate's refusal tests share it rather
+    /// than a freed port a sibling test could take (see `update::tests`).
+    const REFUSED: &str = "http://127.0.0.1:1";
+
+    /// Serves `body` as a 200 JSON answer to each connection, until dropped.
+    async fn answering(body: &'static str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 8192];
+                let _ = sock.read(&mut buf).await;
+                let _ = sock
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    /// ISS-1306 round 2, criteria 20 and 21 (routed from ISS-1421 r25): a
+    /// failed update check is said at warn in the sentence `forge-runner
+    /// update` prints, once per reason, and again after a check answers.
+    #[tokio::test]
+    async fn a_failed_update_check_is_said_at_warn_once_per_reason() {
+        let said = std::sync::Mutex::new(None);
+        let from_core = crate::update::manifest_url(None, Some(REFUSED)).unwrap();
+        let configured = format!("{REFUSED}/latest.json");
+        let sentence = |url: String| async move {
+            crate::update::fetch_manifest(&url, Some(REFUSED))
+                .await
+                .unwrap_err()
+                .to_string()
+        };
+        let core_said = sentence(from_core.clone()).await;
+        let configured_said = sentence(configured.clone()).await;
+        assert_ne!(core_said, configured_said, "two reasons, so two lines");
+        let up = answering(r#"{"version":"0.0.1"}"#).await;
+        let answers = crate::update::manifest_url(None, Some(&up)).unwrap();
+
+        let (log, guard) = crate::log_capture::capturing();
+        assert!(read_manifest(&from_core, REFUSED, &said).await.is_none());
+        assert!(read_manifest(&from_core, REFUSED, &said).await.is_none());
+        assert!(read_manifest(&configured, REFUSED, &said).await.is_none());
+        assert!(read_manifest(&answers, &up, &said).await.is_some());
+        assert!(read_manifest(&configured, REFUSED, &said).await.is_none());
+        drop(guard);
+        let said = log.said();
+
+        let warned: Vec<&str> = said
+            .lines()
+            .filter(|l| l.contains("WARN") && l.contains("[update] check failed:"))
+            .collect();
+        assert_eq!(warned.len(), 3, "{said}");
+        assert!(warned[0].contains(&core_said), "{said}");
+        assert!(warned[1].contains(&configured_said), "{said}");
+        assert!(
+            warned[2].contains(&configured_said),
+            "a check that answered clears the reason: {said}"
+        );
+        assert!(core_said.contains("Forge could not be reached at http://127.0.0.1:1"));
+    }
 
     /// ISS-1223 criteria 22 and 23: what either loop writes before its
     /// handover is asked for says what is on disk or in the store, and never

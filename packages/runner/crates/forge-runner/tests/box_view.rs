@@ -1700,9 +1700,14 @@ fn keys_hold_and_turn_pages_and_the_terminal_is_given_back() {
         "space: {:?}",
         pty.page_rows_after(at)
     );
-    // Two intervals: pages would have turned twice.
+    // Two redraws: pages would have turned twice. Waited for rather than slept
+    // through: under a loaded box the second redraw of a 5s interval landed
+    // past a fixed 11s sleep and read as a view that stopped redrawing.
     let at = pty.screens_drawn();
-    std::thread::sleep(std::time::Duration::from_secs(11));
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(25);
+    while pty.page_rows_after(at).len() < 2 && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
     let since = pty.page_rows_after(at);
     assert!(since.len() >= 2, "the view kept redrawing: {since:?}");
     assert!(since.iter().all(|r| r.starts_with(&held)), "{since:?}");

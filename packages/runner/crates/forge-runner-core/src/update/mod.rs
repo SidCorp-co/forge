@@ -127,7 +127,11 @@ pub async fn fetch_manifest(url: &str, core_url: Option<&str>) -> Result<Manifes
         .await
         .map_err(unread)?;
     if !resp.status().is_success() {
-        return Err(Error::Other(format!("manifest {}", resp.status())));
+        return Err(Error::Other(manifest_refused(
+            url,
+            core_url,
+            resp.status().as_u16(),
+        )));
     }
     resp.json::<Manifest>().await.map_err(unread)
 }
@@ -150,6 +154,20 @@ fn manifest_unread(url: &str, core_url: Option<&str>, e: &reqwest::Error) -> Str
         status::why_not_reached(e)
     };
     configured_unread(url, &why)
+}
+
+/// Why the manifest at `url` was not read where it answered `code`: where it was sought and what it
+/// answered. It said `manifest 503 Service Unavailable`, which named neither the address nor whose
+/// answer it was (ISS-1306 round 2).
+fn manifest_refused(url: &str, core_url: Option<&str>, code: u16) -> String {
+    let named = crate::transport::status::named(code);
+    if from_core(url, core_url) {
+        return format!(
+            "update manifest: Forge at {} answered {named}.",
+            crate::transport::status::core_origin(url)
+        );
+    }
+    configured_unread(url, &format!("it answered {named}"))
 }
 
 /// What a manifest read that outlasted `deadline` says, for a caller that bounds it itself.
@@ -726,6 +744,43 @@ mod tests {
         assert!(
             said.ends_with(&format!(
                 "update manifest: Forge at {core} answered, but the body did not arrive whole."
+            )),
+            "{said}"
+        );
+    }
+
+    /// ISS-1306 round 2, criterion 22: a manifest answered with an error status names where it was
+    /// sought and what it answered.
+    #[tokio::test]
+    async fn a_manifest_answered_with_an_error_names_the_address_and_the_status() {
+        let core = answer_once(
+            "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        )
+        .await;
+        let url = manifest_url(None, Some(&core)).unwrap();
+        let said = fetch_manifest(&url, Some(&core))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            said.ends_with(&format!(
+                "update manifest: Forge at {core} answered 503 Service Unavailable."
+            )),
+            "{said}"
+        );
+        let configured =
+            answer_once("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .await;
+        let said = fetch_manifest(
+            &format!("{configured}/latest.json"),
+            Some("https://core.example"),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(
+            said.contains(&format!(
+                "The update manifest at {configured} could not be read, as it answered 404 Not Found."
             )),
             "{said}"
         );

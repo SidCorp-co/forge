@@ -2,8 +2,8 @@
 //!
 //! A master used to be a `claude -p` child of the runner — killed on restart,
 //! unreachable by a human, and with no reasoning that survived the pass. Here
-//! it is a named tmux session instead: an operator types
-//! `tmux attach -t forge-master-<slug>` and is looking at the same pane core
+//! it is a named tmux session instead: an operator types the command
+//! [`attach_command`] builds and is looking at the same pane core
 //! addresses, the process outlives a `forge-runner` restart, and the pane is
 //! piped to an append-only transcript.
 //!
@@ -105,6 +105,37 @@ fn unoverridden_config_dir() -> Option<std::path::PathBuf> {
 
 pub fn socket_path() -> Option<std::path::PathBuf> {
     SessionIdentity::current().map(|id| id.socket)
+}
+
+/// The command a person types to open the pane `name` on the tmux server this
+/// box places panes on. Without `-S` it reaches the default server, which holds
+/// no master, and says only that no such session exists (ISS-1306 round 2).
+pub fn attach_command(name: &str) -> String {
+    attach_command_for(socket_path().as_deref(), name)
+}
+
+fn attach_command_for(socket: Option<&std::path::Path>, name: &str) -> String {
+    match socket {
+        Some(p) => format!(
+            "tmux -S {} attach -t {name}",
+            shell_word(&p.to_string_lossy())
+        ),
+        None => format!("tmux attach -t {name}"),
+    }
+}
+
+/// `word` as one shell word: as is where it holds nothing a shell reads, else
+/// single-quoted.
+fn shell_word(word: &str) -> String {
+    let plain = !word.is_empty()
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/._-+:@%=,".contains(c));
+    if plain {
+        word.to_string()
+    } else {
+        format!("'{}'", word.replace('\'', r"'\''"))
+    }
 }
 
 fn fits_a_unix_socket(path: &str) -> bool {
@@ -2236,6 +2267,46 @@ mod tests {
     use super::testing::{cannot_run, UnaskableTmux, ONE_AT_A_TIME};
     #[cfg(unix)]
     use super::testing::{Asked, RefusingKill, ShimTmux};
+
+    /// ISS-1306 round 2, criteria 13 and 15: the attach command names the
+    /// socket master panes run on, quoted where the path needs it.
+    #[test]
+    fn the_attach_command_names_the_socket_panes_run_on() {
+        let at = std::path::Path::new("/home/op/.config/forge-runner/tmux.sock");
+        assert_eq!(
+            super::attach_command_for(Some(at), "forge-master-p"),
+            "tmux -S /home/op/.config/forge-runner/tmux.sock attach -t forge-master-p"
+        );
+        let spaced = std::path::Path::new("/home/o p/it's/tmux.sock");
+        assert_eq!(
+            super::attach_command_for(Some(spaced), "forge-master-p"),
+            r"tmux -S '/home/o p/it'\''s/tmux.sock' attach -t forge-master-p"
+        );
+        assert_eq!(
+            super::attach_command_for(None, "forge-master-p"),
+            "tmux attach -t forge-master-p"
+        );
+    }
+
+    /// Criterion 15: every place that tells a person how to open a master
+    /// pane builds the command here, so none can drop the socket.
+    #[test]
+    fn no_attach_command_is_spelled_by_hand() {
+        for (file, source) in [
+            ("daemon/master.rs", include_str!("master.rs")),
+            ("daemon/master_ask.rs", include_str!("master_ask.rs")),
+            (
+                "forge-runner/src/cmd/master.rs",
+                include_str!("../../../forge-runner/src/cmd/master.rs"),
+            ),
+        ] {
+            let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+            assert!(
+                !production.contains("tmux attach -t"),
+                "{file} spells an attach command by hand"
+            );
+        }
+    }
 
     /// ISS-1312 criteria 67 and 68: a shim is handed to no tmux call while
     /// anything can still write it. A sibling thread's fork holds the write
