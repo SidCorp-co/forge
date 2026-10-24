@@ -1,4 +1,4 @@
-import { redactQueryParams } from '@forge/observability';
+import { redactQueryParams, scrubLogText, scrubSecretsDeep } from '@forge/observability';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -12,7 +12,7 @@ import { type AuditResultCode, digestArgs, writeMcpAudit } from '../credentials/
 import { runWithPatScope } from '../credentials/pat-scope.js';
 import { RETIRED_MCP_TOOLS } from '../forge-door/index.js';
 import { env } from '../lib/env.js';
-import { RefusalError } from '../lib/refusal.js';
+import { RefusalError, thrownEnvelope } from '../lib/refusal.js';
 import {
   type McpContext,
   type McpTool,
@@ -25,6 +25,7 @@ import { toToolCallContent } from '../lib/tool-result.js';
 import { chatToolWriteRefusal } from '../middleware/chat-write-hold.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
 import { resolveManagedMetaPrompts } from '../skills/index.js';
+import { actionRefusal, gatedTool } from './input-gate.js';
 import { MCP_TOOLS } from './registry.js';
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
@@ -36,7 +37,14 @@ function classifyError(err: unknown): { code: AuditResultCode; message: string }
   return { code: 'error', message };
 }
 
-const errorAnswer = (text: string) => ({ content: [{ type: 'text', text }], isError: true });
+// a refused or failed call's answer echoes what the caller sent at most by name; whatever a refusal
+// quotes passes the secret scrubber, so a credential sent in the wrong place does not come back
+const errorAnswer = (text: string) => ({
+  content: [{ type: 'text', text: scrubLogText(text) }],
+  isError: true,
+});
+
+const refusalAnswer = (answer: unknown) => toToolCallContent(scrubSecretsDeep(answer));
 
 function projectIdFromArgs(args: Record<string, unknown>): string | null {
   const top = args.projectId;
@@ -77,7 +85,7 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     }
     assertToolDeclaresAccess(tool);
     takesProjectArgument(tool);
-    return tool;
+    return gatedTool(tool);
   });
 }
 
@@ -150,7 +158,7 @@ export function createMcpServer(ctx: McpContext): Server {
     if (!tool) {
       writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
       const retired = RETIRED_MCP_TOOLS[name];
-      if (retired) return toToolCallContent(refusedAnswer([retired], retired.code));
+      if (retired) return refusalAnswer(refusedAnswer([retired], retired.code));
       return errorAnswer(`Unknown tool: ${name}`);
     }
 
@@ -170,6 +178,11 @@ export function createMcpServer(ctx: McpContext): Server {
       scopes: principal.scopes,
     };
     return runWithPatScope(patScope, async () => {
+      const undeclared = actionRefusal(tool, args);
+      if (undeclared) {
+        writeMcpAudit({ ...auditBase, resultCode: 'error' });
+        return refusalAnswer({ _mcpIsError: true, ...thrownEnvelope(undeclared) });
+      }
       const refusal = toolCallRefusal(tool, args, {
         grant: principal.permissions,
         fence: allow,
@@ -189,15 +202,16 @@ export function createMcpServer(ctx: McpContext): Server {
 
       try {
         const result = await tool.handler(args);
+        const refused = (result as { _mcpIsError?: unknown } | null)?._mcpIsError === true;
         writeMcpAudit({ ...auditBase, resultCode: 'ok' });
-        return toToolCallContent(result);
+        return refused ? refusalAnswer(result) : toToolCallContent(result);
       } catch (err) {
         if (err instanceof RefusalError) {
-          const answer = refusedAnswer(err.refusals, err.fallbackCode);
+          const answer = thrownEnvelope(err);
           const resultCode =
             answer.status === 403 ? 'forbidden' : answer.status === 404 ? 'not_found' : 'error';
           writeMcpAudit({ ...auditBase, resultCode });
-          return toToolCallContent(answer);
+          return refusalAnswer({ _mcpIsError: true, ...answer });
         }
         const { code, message } = classifyError(err);
         writeMcpAudit({ ...auditBase, resultCode: code });

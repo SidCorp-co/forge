@@ -106,8 +106,18 @@ export type McpContext = {
 
 export type ContextScopedMcpToolFactory = (ctx: McpContext) => McpTool;
 
+const declaredInputs = new WeakMap<object, z.ZodTypeAny>();
+
+/** A tool's published input, rendered from the schema it is judged by, which it stays tied to. */
 export function zodToMcpSchema(schema: z.ZodTypeAny): Record<string, unknown> {
-  return z.toJSONSchema(schema) as Record<string, unknown>;
+  const published = z.toJSONSchema(schema) as Record<string, unknown>;
+  declaredInputs.set(published, schema);
+  return published;
+}
+
+/** The schema a published input was rendered from by `zodToMcpSchema`; none for one written by hand. */
+export function declaredInputOf(inputSchema: object): z.ZodTypeAny | undefined {
+  return declaredInputs.get(inputSchema);
 }
 
 /** The user a principal acts as. */

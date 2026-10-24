@@ -53,11 +53,13 @@ export const PATTERN_CATALOG: readonly PatternEntry[] = [
 			"packages/contracts/src/mcp-tools.ts",
 			"packages/core/src/mcp/chat-read-tools.ts",
 			"packages/core/src/lib/tool-call-guard.ts",
+			"packages/core/src/mcp/input-gate.ts",
 			"packages/core/src/lib/tool.ts",
 			"packages/core/contracts/forge-mcp.tools.json"
 		],
 		tests: [
 			"packages/core/src/assistant/tools/await-reply-tool.test.ts",
+			"packages/core/src/mcp/input-gate.test.ts",
 			"packages/core/src/assistant/tools/forge-memory-note-tool.test.ts",
 			"packages/core/tests/integration/ba-suggest-base-e2e.test.ts",
 			"packages/core/tests/integration/"
