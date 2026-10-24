@@ -1,1 +1,0 @@
-**The wedge reset leaves landed work for its agent.** An in-progress issue whose merge is recorded this round stays put with one notice naming the mark, instead of going back to open or on hold to be dispatched again.

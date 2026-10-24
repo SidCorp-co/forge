@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.310] - 2026-10-24
+
+Duplicate feedback counts once under its original and reads its phase
+
+### Fixed
+
+- **A duplicate reads where its original stands, and counts once.** A merged feedback item shows the original's phase and wait, and every count reads it under its original, never beside it.
+- **The wedge reset leaves landed work for its agent.** An in-progress issue whose merge is recorded this round stays put with one notice naming the mark, instead of going back to open or on hold to be dispatched again.
+- **A judge and a design writer learn the whole shape from the served guides.** A new `qa` guide gives a REST-only judge its reads; workflow-design gives the create body, `writtenBy`, every size cap, the park body and the trace act.
+
 ## [0.4.0-dev.309] - 2026-10-24
 
 Rewording a requirement-linked criterion now keeps its link or says why

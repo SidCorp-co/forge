@@ -1,1 +1,0 @@
-**A judge and a design writer learn the whole shape from the served guides.** A new `qa` guide gives a REST-only judge its reads; workflow-design gives the create body, `writtenBy`, every size cap, the park body and the trace act.
