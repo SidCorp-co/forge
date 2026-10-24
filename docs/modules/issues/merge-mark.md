@@ -355,13 +355,16 @@ sentence the shortfall prints says so.
 ## A project that releases through change requests
 
 Where the project document declares `release.changeRequests`, only the host's merge of a change
-request lands, and the amnesty below does not reach it (REQ-71). The mark writer
-(`packages/core/src/issues/host-mark.ts:hostMergeOfMark`) takes a mark only over a host merge:
-the merged request linking the issue (`observedMergeForIssue`), a `commit` that is the merge
-commit of a request the host reported merged (`packages/core/src/issues/host-landing.ts:hostMergeNamed`), or a `commit`
-the host's `target` branch contains, read through the binding's source host (`hostBranchLanding`:
-GitLab's commit refs, GitHub's compare), as catalog-api ISS-3's c988d627 on GitLab `dev` was. Each
-is stamped `observed` at the host's sha. Any other mark is refused `MARK_NOT_A_HOST_MERGE`, naming
+request into the project's target branch (`source.git.defaultBranch`) lands, and the amnesty
+below does not reach it (REQ-71, ISS-672). The mark writer
+(`packages/core/src/issues/host-mark.ts:hostMergeOfMark`) takes a mark only over a host merge into
+that branch: the merged request linking the issue (`observedMergeForIssue`), a `commit` that is the
+merge commit of a request the host reported merged into it (`packages/core/src/issues/host-landing.ts:hostMergeNamed`), or a `commit`
+the branch contains, read through the binding's source host (`hostBranchLanding`: GitLab's commit
+refs, GitHub's compare), as catalog-api ISS-3's c988d627 on GitLab `dev` was. Each is stamped
+`observed` at the host's sha; a branch landing is stamped when the host was read holding it, since
+the commit's own date can be long before it reached the branch. A mark naming any other `target` is
+refused, and so is any other mark, `MARK_NOT_A_HOST_MERGE`, naming
 what was checked and writing nothing, and the refusal says to open or update a change request
 that links the issue, which the master merges through `POST /api/issues/:id/merge-pull-request`
 once the release is approved. A host that cannot be read refuses the mark `MARK_HOST_UNREACHABLE`;
@@ -369,8 +372,8 @@ it is never taken unchecked. A design approval's stamp
 is the approval's own write (`recordDesignLanding`) and stands as before.
 
 Every read of "landed" takes one predicate, `packages/core/src/issues/host-landing.ts:landedSql`: on such a project a
-`merged_at` with neither the host's merge commit nor a linked request merged no earlier than it
-does not read as landed, so a stamp written before this rule (catalog-api ISS-12, 2026-10-22)
+`merged_at` with neither the host's merge commit nor a linked request merged into the target branch
+no earlier than it does not read as landed, so a stamp written before this rule (catalog-api ISS-12, 2026-10-22)
 asks nobody to judge a landing that never happened, and the `merged` guard refuses
 `awaiting_release` on it unless an open linked request carries the issue.
 

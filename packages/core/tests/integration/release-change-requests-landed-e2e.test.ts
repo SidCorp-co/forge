@@ -120,8 +120,12 @@ async function iss12(status = 'reopen'): Promise<string> {
   return id;
 }
 
-/** A change request merged on the host at `mergedAt`, linked to `issueId` where one is named. */
-async function mergedRequest(issueId: string | null, mergedAt: string): Promise<void> {
+/** A change request merged on the host into `base` at `mergedAt`, linked to `issueId` where one is named. */
+async function mergedRequest(
+  issueId: string | null,
+  mergedAt: string,
+  base = BRANCH,
+): Promise<void> {
   await applyPullRequestEvent(
     { projectId: world.projectId, bindingId: world.bindingId, host: 'gitlab' },
     {
@@ -136,7 +140,7 @@ async function mergedRequest(issueId: string | null, mergedAt: string): Promise<
         merged_at: mergedAt,
         merge_commit_sha: HOST_MERGE,
         head: { ref: 'feat/iss-12-scribe', sha: 'b'.repeat(40) },
-        base: { ref: BRANCH, sha: 'f'.repeat(40) },
+        base: { ref: base, sha: 'f'.repeat(40) },
         updated_at: mergedAt,
       },
       repository: { full_name: 'acme/catalog-api' },
@@ -383,6 +387,70 @@ describe('REQ-71: on a change-request project a mark names a host merge or is re
     );
     expect(outcome.action).toBe('marked');
     expect((await stampOf(id))?.merged_at).not.toBeNull();
+  });
+});
+
+describe('ISS-672 c1 (judge K65): only the project’s target branch on the host is a landing', () => {
+  beforeEach(async () => {
+    host.branches = new Set();
+    host.fail = null;
+    host.checked = [];
+    await seedWorld({ approval: { required: true }, changeRequests: true });
+  });
+
+  it('refuses a mark naming a feature branch the host holds the commit on, checking dev', async () => {
+    const id = await unmarked();
+    host.branches = new Set(['feat/iss-12-scribe']);
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: 'feat/iss-12-scribe',
+      commit: C988,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const said = JSON.stringify(res.body);
+    expect(said).toContain('MARK_NOT_A_HOST_MERGE');
+    expect(said).toContain(`which lands on \`${BRANCH}\``);
+    expect(host.checked).toEqual([]);
+    expect(await stampOf(id)).toEqual({ merged_at: null, merged_commit_sha: null });
+  });
+
+  it('refuses the merge commit of a request merged into another branch', async () => {
+    const id = await unmarked();
+    await mergedRequest(null, new Date().toISOString(), 'release/production');
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: BRANCH,
+      commit: HOST_MERGE,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(JSON.stringify(res.body)).toContain('MARK_NOT_A_HOST_MERGE');
+    expect((await stampOf(id))?.merged_at).toBeNull();
+  });
+
+  it('does not read a linked request merged into another branch as landed', async () => {
+    const id = await iss12();
+    await mergedRequest(id, new Date().toISOString(), 'release/production');
+    expect(await standingsOf()).not.toContain(JUDGE_WHAT_LANDED);
+  });
+
+  it('refuses a mark over a linked request merged into another branch', async () => {
+    const id = await unmarked();
+    await mergedRequest(id, new Date().toISOString(), 'release/production');
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, { target: BRANCH });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(JSON.stringify(res.body)).toContain('MARK_NOT_A_HOST_MERGE');
+    expect((await stampOf(id))?.merged_at).toBeNull();
+  });
+
+  it('stamps a branch landing at the time the host was read holding it, not the commit’s date', async () => {
+    const id = await unmarked();
+    host.branches = new Set([BRANCH]);
+    const before = Date.now();
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: BRANCH,
+      commit: C988,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const at = new Date((await stampOf(id))?.merged_at ?? '').getTime();
+    expect(at).toBeGreaterThanOrEqual(before - 1000);
   });
 });
 
