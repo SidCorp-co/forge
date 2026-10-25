@@ -11,9 +11,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const findIssueById = vi.fn();
 const findIssueByDisplaySeq = vi.fn();
+const findProjectName = vi.fn();
 vi.mock('./read-service.js', () => ({
   findIssueById: (...a: unknown[]) => findIssueById(...a),
   findIssueByDisplaySeq: (...a: unknown[]) => findIssueByDisplaySeq(...a),
+  findProjectName: (...a: unknown[]) => findProjectName(...a),
 }));
 
 const heldIssuePrefixes = vi.fn();
@@ -22,8 +24,10 @@ vi.mock('./issue-prefix-read.js', () => ({
 }));
 
 const loadProjectAccess = vi.fn();
+const effectiveProjectRole = vi.fn();
 vi.mock('../lib/authz.js', () => ({
   loadProjectAccess: (...a: unknown[]) => loadProjectAccess(...a),
+  effectiveProjectRole: (...a: unknown[]) => effectiveProjectRole(...a),
 }));
 
 const { resolveIssueRouteRef, resolveIssueKeyInProject, isUuid } = await import(
@@ -41,6 +45,109 @@ const NO_ACCESS = { projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: 
 beforeEach(() => {
   vi.clearAllMocks();
   heldIssuePrefixes.mockResolvedValue([]);
+  findProjectName.mockImplementation(async (id: string) =>
+    id === PROJECT_ID ? 'Vault' : id === OTHER_PROJECT_ID ? 'Desk' : null,
+  );
+});
+
+/** What a refusal says and carries, for the assertions below. */
+async function refusalOf(run: Promise<unknown>) {
+  try {
+    await run;
+  } catch (err) {
+    const e = err as {
+      status: number;
+      message: string;
+      cause?: { code?: string; details?: unknown };
+    };
+    return { status: e.status, message: e.message, code: e.cause?.code, details: e.cause?.details };
+  }
+  throw new Error('the read was not refused');
+}
+
+describe('resolveIssueRouteRef — the refusal names the project (ISS-1229 r41)', () => {
+  const ORG_MEMBER_ONLY = { ...NO_ACCESS, orgRole: 'member' };
+  const DESK_MEMBER = {
+    projectId: OTHER_PROJECT_ID,
+    orgId: 'org-1',
+    role: 'member',
+    orgRole: 'member',
+  };
+  const DESK_UNSEEN = { projectId: OTHER_PROJECT_ID, orgId: 'org-2', role: null, orgRole: null };
+
+  it("names the issue's project to a member of its organization, and the project the address named", async () => {
+    findIssueById.mockResolvedValueOnce({ id: ISSUE_UUID, projectId: PROJECT_ID });
+    loadProjectAccess.mockResolvedValueOnce(ORG_MEMBER_ONLY);
+    effectiveProjectRole.mockResolvedValueOnce(DESK_MEMBER);
+
+    const r = await refusalOf(resolveIssueRouteRef(ISSUE_UUID, OTHER_PROJECT_ID, USER_ID));
+
+    expect(r).toMatchObject({ status: 403, code: 'FORBIDDEN' });
+    expect(r.message).toBe(
+      'This issue belongs to Vault, a project you are not a member of. It is not in Desk, the project this address names.',
+    );
+    expect(r.details).toEqual({
+      issueProject: { name: 'Vault' },
+      addressProject: { id: OTHER_PROJECT_ID, name: 'Desk' },
+    });
+  });
+
+  it("calls the issue's project 'a project you are not a member of' to a caller outside its organization", async () => {
+    findIssueById.mockResolvedValueOnce({ id: ISSUE_UUID, projectId: PROJECT_ID });
+    loadProjectAccess.mockResolvedValueOnce(NO_ACCESS);
+    effectiveProjectRole.mockResolvedValueOnce(DESK_MEMBER);
+
+    const r = await refusalOf(resolveIssueRouteRef(ISSUE_UUID, OTHER_PROJECT_ID, USER_ID));
+
+    expect(r.message).toBe(
+      'This issue belongs to a project you are not a member of. It is not in Desk, the project this address names.',
+    );
+    expect(r.message).not.toMatch(/Vault/);
+    expect(r.details).toEqual({
+      issueProject: { name: null },
+      addressProject: { id: OTHER_PROJECT_ID, name: 'Desk' },
+    });
+  });
+
+  it('never names an address project the caller may not see, in the sentence or the details', async () => {
+    findIssueById.mockResolvedValueOnce({ id: ISSUE_UUID, projectId: PROJECT_ID });
+    loadProjectAccess.mockResolvedValueOnce(NO_ACCESS);
+    effectiveProjectRole.mockResolvedValueOnce(DESK_UNSEEN);
+
+    const r = await refusalOf(resolveIssueRouteRef(ISSUE_UUID, OTHER_PROJECT_ID, USER_ID));
+
+    expect(r.message).toBe(
+      'This issue belongs to a project you are not a member of. It is not in the project this address names.',
+    );
+    expect(JSON.stringify(r)).not.toMatch(/Desk|Vault/);
+  });
+
+  it("says no address sentence where the read named no project, or named the issue's own", async () => {
+    findIssueById.mockResolvedValue({ id: ISSUE_UUID, projectId: PROJECT_ID });
+    loadProjectAccess.mockResolvedValue(ORG_MEMBER_ONLY);
+
+    for (const named of [undefined, PROJECT_ID]) {
+      const r = await refusalOf(resolveIssueRouteRef(ISSUE_UUID, named, USER_ID));
+      expect(r.message).toBe('This issue belongs to Vault, a project you are not a member of.');
+      expect(r.details).toEqual({ issueProject: { name: 'Vault' }, addressProject: null });
+    }
+    expect(effectiveProjectRole).not.toHaveBeenCalled();
+  });
+
+  it('refuses a display key under a closed project by naming that project as the caller may see it', async () => {
+    loadProjectAccess.mockResolvedValueOnce(ORG_MEMBER_ONLY);
+    const seen = await refusalOf(resolveIssueRouteRef('ISS-4', PROJECT_ID, USER_ID));
+    expect(seen.message).toBe(
+      'Vault is a project you are not a member of, so none of its issues can be read.',
+    );
+
+    loadProjectAccess.mockResolvedValueOnce(NO_ACCESS);
+    const unseen = await refusalOf(resolveIssueRouteRef('ISS-4', PROJECT_ID, USER_ID));
+    expect(unseen.message).toBe(
+      'This address names a project you are not a member of, so none of its issues can be read.',
+    );
+    expect(unseen.details).toEqual({ issueProject: { name: null }, addressProject: null });
+  });
 });
 
 describe('isUuid', () => {

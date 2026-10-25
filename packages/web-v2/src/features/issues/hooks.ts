@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { useProjects } from "@/features/projects/hooks";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CarriedDecisionBody, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, type RunAnswer, issuesApi, modulesApi, releaseBatchApi } from "./api";
 import { registryApi } from "./registry-api";
@@ -409,12 +410,13 @@ export type BulkUpdate =
  * On failure preserves the selection (does NOT clear `onCleared`) so the user
  * can retry after fixing the issue.
  */
-/** What is waiting at the release gate, and when the next cut fires. */
+/** What waits at the release gate; asked only by a member or admin, the roles core reads it to. */
 export function useReleaseRoster(projectId: string | undefined) {
+  const role = useProjects().data?.find((p) => p.id === projectId)?.role;
   return useQuery({
     queryKey: ["release-roster", projectId],
     queryFn: () => releaseBatchApi.roster(projectId as string),
-    enabled: !!projectId,
+    enabled: !!projectId && (role === "member" || role === "admin"),
   });
 }
 

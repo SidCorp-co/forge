@@ -858,3 +858,52 @@ describe("an issue opened under another project's address", () => {
     expect(screen.getByText("What the issue says.")).toBeInTheDocument();
   });
 });
+
+// ISS-1229 r41, judge-115 at 119c164: an issue of a project the reader holds no role on, opened under a
+// project they belong to, read "Couldn't load issue / Not a project member." — naming no project.
+describe("an issue of a project closed to the reader, opened under one they belong to", () => {
+  const refusedWith = (details: unknown) => {
+    const refetch = vi.fn();
+    issueRead = {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new ApiError(403, "This issue belongs to Vault, a project you are not a member of.", "FORBIDDEN", details),
+      refetch,
+    };
+    return refetch;
+  };
+
+  it("says the issue is not in the address's project and names the project it belongs to", () => {
+    refusedWith({ issueProject: { name: "Vault" }, addressProject: { id: "p1", name: "Forge dev" } });
+    renderScreen();
+    expect(screen.getByText("This issue is not in Forge dev")).toBeInTheDocument();
+    expect(screen.getByText("It belongs to Vault, a project you are not a member of.")).toBeInTheDocument();
+    expect(screen.queryByText(/Not a project member/)).toBeNull();
+    expect(screen.queryByText("Couldn't load issue")).toBeNull();
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
+  });
+
+  it("calls it a project the reader is not a member of where core gives no name", () => {
+    refusedWith({ issueProject: { name: null }, addressProject: { id: "p1", name: "Forge dev" } });
+    renderScreen();
+    expect(screen.getByText("This issue is not in Forge dev")).toBeInTheDocument();
+    expect(screen.getByText("It belongs to a project you are not a member of.")).toBeInTheDocument();
+  });
+
+  it("keeps any other refused read as the load failure it is", () => {
+    issueRead = {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new ApiError(403, "Vault is a project you are not a member of, so none of its issues can be read.", "FORBIDDEN", {
+        issueProject: { name: "Vault" },
+        addressProject: null,
+      }),
+      refetch: vi.fn(),
+    };
+    renderScreen();
+    expect(screen.getByText("Couldn't load issue")).toBeInTheDocument();
+    expect(screen.getByText("Vault is a project you are not a member of, so none of its issues can be read.")).toBeInTheDocument();
+  });
+});

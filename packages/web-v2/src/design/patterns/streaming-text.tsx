@@ -16,7 +16,9 @@ export function StreamingText({ text, streaming, className }: StreamingTextProps
       className={cn("fg-body", streaming && "forge-caret", className)}
       {...(streaming ? { "data-streaming": "true" } : {})}
     >
-      <Markdown className="forge-caret-anchor">{text}</Markdown>
+      <Markdown className="forge-caret-anchor" codeBlocks="wrap">
+        {text}
+      </Markdown>
     </div>
   );
 }

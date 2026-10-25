@@ -3195,6 +3195,9 @@
 
 ### Fixed
 
+- **An issue of a project closed to you, opened under one you belong to, says so.** The page names the project it belongs to where you may see it, instead of "Not a project member.". (ISS-1229)
+- **A room reply of one bullet reads as its sentence**, and an agent answering "(nothing to add)" behind a list or quote mark posts nothing. (ISS-1229)
+- **A code block in a reply wraps inside the reply**, and a viewer's issue pages no longer ask for the release roster they cannot read. (ISS-1229)
 - **Whoever an integration's refusal tells you to ask can do what you asked.** A change you may not make names who may make all of it, and Rocket.Chat, which agents cannot use, names nobody. (ISS-1421)
 - **An integration switched on for a project over a connection that is off says nothing uses it**, and a connection's own refusals say what you asked (test, rename, turn off, remove) and who to ask by name. (ISS-1421)
 - **A key sent to an integration that keeps none is refused**, where it was answered as saved and kept nowhere. (ISS-1421)

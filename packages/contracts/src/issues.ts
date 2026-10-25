@@ -22,3 +22,9 @@ export type ReleaseBlockerCode =
   | 'RELEASE_CARRIED_DECISION_REFUSED'
   | 'RELEASE_CUT_DROPS_ROSTER'
   | 'RELEASE_CHECK_UNEVALUATED';
+
+/** An issue read refused for want of a role: each name null where the caller may not see it (ISS-1229 r41). */
+export interface IssueReadRefusalDetails {
+  issueProject: { name: string | null };
+  addressProject: { id: string; name: string | null } | null;
+}

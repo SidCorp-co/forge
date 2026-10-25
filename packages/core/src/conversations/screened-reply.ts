@@ -17,21 +17,34 @@ import { codeAuthored, type ScreenedMessage, screened } from './ports.js';
  */
 export const NOTHING_TO_ADD = '(nothing to add)';
 
+const OPENING_MARKS = /^(?:[\s\-*+•>_`~]|\d{1,3}[.)])+/;
+
 /**
- * Did the model decline this turn? Case, punctuation and whatever it added after
+ * Did the model decline this turn? Case, punctuation, an opening list or quote mark and what follows
  * the sentinel are the model's; the judgement is not.
  */
 export function declinedTurn(text: string): boolean {
-  return text.trim().toLowerCase().startsWith(NOTHING_TO_ADD);
+  return text.replace(OPENING_MARKS, '').toLowerCase().startsWith(NOTHING_TO_ADD);
 }
 
 /** What the model wrote after the sentinel, for the log; empty when it wrote nothing more. */
 export function declinedTail(text: string): string {
-  const trimmed = text.trim();
-  return trimmed
+  return text
+    .replace(OPENING_MARKS, '')
     .slice(NOTHING_TO_ADD.length)
-    .replace(/^[\s.!—–-]+/, '')
+    .replace(/^[\s.!—–\-*_`~]+/, '')
     .trim();
+}
+
+const BULLET = /^[ \t]{0,3}[-*+•][ \t]+(?=.*[\p{L}\p{N}(])/u;
+const ANY_ITEM = /^\s*(?:[-*+•]|\d{1,9}[.)])(?:[ \t]|$)/;
+
+/** A reply of one bulleted item as its sentence; a list, a numbered or a quoted reply stays as written. */
+export function oneItemAsSentence(text: string): string {
+  const lines = text.trim().split('\n');
+  const first = lines[0] ?? '';
+  if (!BULLET.test(first) || lines.slice(1).some((line) => ANY_ITEM.test(line))) return text;
+  return [first.replace(BULLET, ''), ...lines.slice(1)].join('\n');
 }
 
 const correctiveMessage = (problems: string[]): string =>
