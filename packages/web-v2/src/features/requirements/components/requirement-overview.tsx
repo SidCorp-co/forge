@@ -1,12 +1,12 @@
 
 // A requirement's Overview tab: its summary, its checklists' answers and gaps (REQ-34 r2 BC-5, BC-26),
 // what is still unclear, what it assumes, whom it serves and its scope, and the suggestions waiting on
-// it. The revision each is read from, where an answer came from and the intake assistant's draft are
-// agent text, drawn in the developer view (REQ-43 BC-7).
+// it. Its value check is for everyone who reads it (REQ-65). The revision each is read from, where an
+// answer came from and the intake assistant's draft are agent text, drawn in the developer view (REQ-43 BC-7).
 
 import { FieldLabel, ViewHeading } from "@/design";
 import { RequirementChecklists } from "@/features/checklists";
-import { IntakeDraft } from "@/features/intake";
+import { IntakeDraft, ValueCheck } from "@/features/intake";
 import { RequirementSuggestions } from "@/features/suggestions";
 import { useWaitingSuggestions } from "@/features/suggestions";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -69,6 +69,7 @@ export function RequirementOverview({
           </details>
         ) : null}
       </section>
+      <ValueCheck projectId={projectId} slug={slug} itemKey={d.key} />
       <RequirementChecklists projectId={projectId} reqKey={d.key} onRevise={d.standing.attentionGroup !== "done" ? onRevise : undefined} developer={developer} />
       <OpenQuestions questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />
       {spec.assumptions?.length ? <Assumptions assumptions={spec.assumptions} revision={developer ? (shown?.revision ?? null) : null} slug={slug} /> : null}

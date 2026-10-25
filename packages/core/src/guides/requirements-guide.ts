@@ -23,9 +23,9 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
 ### Three things move, and they are not one field
 - **The requirement's status**: \`draft\` (being written; nothing is built against it), \`agreed\` (a
   revision was signed off under a baseline), \`in_delivery\` and \`delivered\` (each moved there by
-  an act, below), \`deferred\` (out of the current release), \`accepted\` (delivered and accepted)
-  and \`dropped\` (no longer wanted). A status moves only by an explicit act of a person, the
-  assistant or an agent; no read derives one from results.
+  an act, below), \`deferred\` (out of the current release), \`accepted\` (delivered and accepted),
+  \`dropped\` (no longer wanted) and \`refused\` (its value check refused it, below). A status moves
+  only by an explicit act of a person, the assistant or an agent; no read derives one from results.
 - **Each revision's state**: \`draft → proposed → current → superseded\`. \`current\` is the head, the
   revision that was accepted. A requirement holds **one open revision at a time** (a draft or a
   proposed one): writing a second is \`REQUIREMENT_REVISION_OPEN\`.
@@ -145,6 +145,20 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
   consumes (\`REQUIREMENT_CONTRACT_UNKNOWN\` otherwise). The next agree or repin pins its current
   (newest approved) version; while none is approved nothing is pinned for it, and the standing waits
   on a re-pin once one is.
+
+### The value check
+Every new requirement, from every door (web, API, MCP, chat), gets one value check from the intake
+assistant before anyone works it: who it is for, what improves, how that is measured, and whether it
+already exists. Each answer names its source: the requirement itself, a record shown, or a
+question's recommended answer. The check ends one of four ways. **accept** keeps it as a draft. **merge**
+proposes a \`duplicate\` suggestion into what it repeats, which an approver decides. **alternative** says
+what would serve better. **refuse** moves it from \`draft\` to \`refused\` with a one-line reason.
+Only a missing problem or value, or a criterion a conflict link quotes, holds the check, as a question
+with \`blocks\` set. While it holds, agreeing is refused on the checklist's questions gap. Any other gap
+takes the recommended answer, named \`question:N\`. \`POST /api/projects/:id/intake-drafts/:ref/answers\` (\`:ref\` the REQ-n)
+\`{ question, option }\` answers one (the author or \`project.write\`). Answering the last blocking question
+drafts it again (\`intake.answered\`). \`POST …/keep\` \`{ reason }\` (one line, \`project.write\`) moves a
+refused requirement back to \`draft\`. Keeping one that is not refused is \`VALUE_CHECK_NOT_REFUSED\`.
 
 ### Deferring
 **defer** \`{ reason }\` takes a draft or agreed requirement out of the current release

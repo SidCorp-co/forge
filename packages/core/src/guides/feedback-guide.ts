@@ -123,6 +123,13 @@ reporter's confirm in the fix's preview does as theirs (below).
 - Triage is picked while the item is \`new\`, \`reopened\`, or \`triaged\` with nothing carrying it; any
   other phase is \`FEEDBACK_STATUS_INVALID\`.
 
+### The value check on filing
+Every filed item gets the same value check a requirement does (requirements guide, The value check).
+The assistant's proposed triage follows it: a refusal proposes \`decline\` with its reason as the
+note, a merge proposes \`duplicate\` with \`duplicateOf\`, and while a blocking question waits on the
+reporter no triage is proposed at all. The reporter answers it at
+\`POST /api/projects/:id/intake-drafts/:ref/answers\` (\`:ref\` the FB-n). A holder of \`feedback.approve\` still decides.
+
 ### The verbs of a new item
 Each is a state transition by a holder of \`feedback.approve\`, refused by name where it does not apply.
 No verb moves an item to \`triaged\` around the checklist.

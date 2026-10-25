@@ -37,7 +37,7 @@ export async function rootedOfAll(
   const rows = (await executor.execute(sql`
     SELECT rw.workflow_id, r.req_seq FROM requirement_workflows rw
       JOIN requirements r ON r.id = rw.requirement_id
-     WHERE rw.workflow_id IN (${idList(workflows.map((w) => w.id))}) AND r.status <> 'dropped'
+     WHERE rw.workflow_id IN (${idList(workflows.map((w) => w.id))}) AND r.status NOT IN ('dropped', 'refused')
      ORDER BY r.req_seq`)) as unknown as { workflow_id: string; req_seq: number }[];
   const serving = new Map<string, string[]>(workflows.map((w) => [w.id, []]));
   for (const r of rows) serving.get(r.workflow_id)?.push(requirementKey(Number(r.req_seq)));

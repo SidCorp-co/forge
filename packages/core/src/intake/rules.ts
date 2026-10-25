@@ -8,6 +8,8 @@
  * itself or such a record as its source and fills a field the item has; at most three questions, each
  * with a recommended option it offers; and a nothing-to-ask line exactly when it asks nothing. Each
  * fault is a sentence the model reads on its one retry.
+ *
+ * The value check (REQ-65 BC-1..BC-5) is judged the same way, in value-rules.ts.
  */
 
 import {
@@ -24,6 +26,9 @@ import {
   type IntakeQuestion,
   intakeRefOf,
 } from '@forge/contracts/intake-drafts';
+import { type JudgedValue, judgeValue, triageFollowsFaults } from './value-rules.js';
+
+export type { JudgedValue } from './value-rules.js';
 
 export interface JudgedDraft {
   links: IntakeDraftLink[];
@@ -31,7 +36,8 @@ export interface JudgedDraft {
   assumptions: IntakeDraftAssumption[];
   questions: IntakeQuestion[];
   nothingToAsk: string | null;
-  /** A feedback draft's triage checklist, parsed by the suggestion's own schema. */
+  value: JudgedValue;
+  /** A feedback draft's triage checklist, parsed by the suggestion's own schema; absent while the check is held. */
   triage: unknown;
 }
 
@@ -324,6 +330,10 @@ export function judgeDraft(answer: IntakeAnswer, input: JudgeInput): Judged {
       );
     }
   }
+  const judged = judgeValue(answer.value, { item, known, links, questions: answer.questions });
+  faults.push(...judged.faults);
+  const held = judged.value.outcome === null;
+
   const asks = answer.questions.length > 0;
   if (asks && answer.nothingToAsk !== null) {
     faults.push('nothingToAsk is set while questions are asked: set it to null');
@@ -335,12 +345,15 @@ export function judgeDraft(answer: IntakeAnswer, input: JudgeInput): Judged {
   }
 
   if (item.kind === 'feedback') {
-    if (answer.triage === undefined) {
+    // a held check proposes no triage, so none is judged: the reporter's answer comes first
+    const outcome = judged.value.outcome;
+    if (outcome && answer.triage === undefined) {
       faults.push('triage is missing: a feedback draft carries its triage checklist');
-    } else {
+    } else if (outcome) {
       const wrong = input.triageFault(answer.triage);
       if (wrong) faults.push(`triage: ${wrong}`);
       faults.push(...triageRestFaults(answer.triage, links, refused));
+      faults.push(...triageFollowsFaults(answer.triage, outcome));
     }
   } else if (answer.triage !== undefined) {
     faults.push('triage is set on a requirement draft: leave it out');
@@ -355,7 +368,8 @@ export function judgeDraft(answer: IntakeAnswer, input: JudgeInput): Judged {
       assumptions,
       questions: answer.questions,
       nothingToAsk: asks ? null : answer.nothingToAsk,
-      triage: answer.triage,
+      value: judged.value,
+      triage: held ? undefined : answer.triage,
     },
   };
 }

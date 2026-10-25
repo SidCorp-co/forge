@@ -27,14 +27,22 @@ const hung: ServerResponse[] = [];
 const CALL_LIMIT_MS = 1_500;
 let gateway: Server;
 
-/** A draft the rules take: nothing to link or ask, and a feedback item's triage checklist. */
+/** A draft the rules take: nothing to link or ask, an accepted value check, and a feedback item's triage checklist. */
 function reply(user: string): string {
   const feedback = /^The feedback /m.test(user);
+  const key = /^The (?:requirement|feedback) (\S+):$/m.exec(user)?.[1] ?? '';
   return JSON.stringify({
     fills: [],
     links: [],
     questions: [],
     nothingToAsk: 'The record settles every answer.',
+    value: {
+      who: { value: 'Referral clerk', source: key },
+      improves: { value: 'Referrals reach the right patient', source: key },
+      measured: { value: 'Wrong matches per week', source: key },
+      exists: null,
+      outcome: { kind: 'accept' },
+    },
     ...(feedback
       ? {
           triage: {

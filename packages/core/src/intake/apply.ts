@@ -3,6 +3,11 @@
  * fields filled, each stated as an assumption naming its source; a feedback item gets its triage
  * checklist proposed as a `feedback_triage` suggestion by the BA assistant. A refusal is kept as
  * what was applied, never thrown, so the draft itself is still kept on the item.
+ *
+ * How the value check ended lands too (REQ-65 BC-2, REQ-66 BC-2): a refused requirement moves to
+ * `refused` with its reason, one that repeats another is proposed as its duplicate, and a feedback
+ * item's triage follows the check, its decline noting the reason; a held check proposes no triage
+ * until its question is answered.
  */
 
 import { FEEDBACK_TRIAGE_CHECKLIST } from '@forge/contracts/checklist-registry';
@@ -18,12 +23,13 @@ import {
   INTAKE_FIELDS,
   type IntakeDraftApplied,
   intakeRefOf,
+  type ValueEffect,
 } from '@forge/contracts/intake-drafts';
 import { SUGGESTION_PAYLOADS } from '@forge/contracts/suggestions';
 import { db } from '../db/client.js';
 import { feedbackTriageRecord } from '../feedback/index.js';
 import { RefusalError } from '../lib/refusal.js';
-import { type DraftGapFill, fillDraftGaps } from '../requirements/index.js';
+import { type DraftGapFill, fillDraftGaps, refuseOnValueIn } from '../requirements/index.js';
 import { createSuggestion } from '../suggestions/index.js';
 import type { IntakeItem } from './reads.js';
 import type { JudgedDraft } from './rules.js';
@@ -81,6 +87,62 @@ export async function triageJudgeFor(
   return triageFaultOver(item.kind === 'feedback' ? await feedbackTriageRecord(db, item.id) : {});
 }
 
+/** A refusal kept as what was applied: its first code and detail. */
+function noneOf(err: unknown): { as: 'none'; code: string; detail: string } {
+  if (err instanceof RefusalError) {
+    const [first] = err.refusals;
+    return {
+      as: 'none',
+      code: first?.code ?? err.fallbackCode,
+      detail: first?.detail ?? err.message,
+    };
+  }
+  throw err;
+}
+
+/** How a requirement's value check ended, written where its flow reads it. */
+async function valueToRequirement(
+  item: IntakeItem,
+  draft: JudgedDraft,
+  model: string | null,
+): Promise<ValueEffect | null> {
+  const outcome = draft.value.outcome;
+  if (outcome?.kind === 'refuse') {
+    const out = await db.transaction((tx) =>
+      refuseOnValueIn(tx, {
+        projectId: item.projectId,
+        requirementId: item.id,
+        reason: outcome.reason,
+      }),
+    );
+    return out.moved
+      ? { as: 'refused' }
+      : {
+          as: 'none',
+          code: 'VALUE_CHECK_NOT_DRAFT',
+          detail: `${item.key} is ${out.status}; the value check refuses only a draft`,
+        };
+  }
+  if (outcome?.kind !== 'merge') return null;
+  try {
+    const out = await createSuggestion({
+      projectId: item.projectId,
+      actor: { userId: item.authorId, agency: item.authorAgency },
+      producerKind: 'ba_assistant',
+      producerId: null,
+      kind: 'duplicate',
+      target: { requirement: item.key },
+      payload: { duplicateOf: outcome.into.key, note: outcome.why },
+      model,
+    });
+    if (out.ok) return { as: 'suggestion', suggestionId: out.suggestion.id };
+    const [first] = out.refusals;
+    return { as: 'none', code: first?.code ?? 'SUGGESTION_REFUSED', detail: first?.detail ?? '' };
+  } catch (err) {
+    return noneOf(err);
+  }
+}
+
 async function applyToRequirement(
   item: IntakeItem,
   draft: JudgedDraft,
@@ -97,11 +159,27 @@ async function applyToRequirement(
     : { as: 'none', code: out.code, detail: out.detail };
 }
 
+/** A refused item's decline carries the check's reason where the triage gives no note of its own. */
+function triageOf(draft: JudgedDraft): unknown {
+  const outcome = draft.value.outcome;
+  const triage = objectOf(draft.triage);
+  if (outcome?.kind !== 'refuse' || !triage) return draft.triage;
+  const note = typeof triage.note === 'string' && triage.note.trim() ? triage.note : outcome.reason;
+  return { ...triage, note };
+}
+
 async function applyToFeedback(
   item: IntakeItem,
   draft: JudgedDraft,
   model: string | null,
 ): Promise<IntakeDraftApplied> {
+  if (draft.value.outcome === null) {
+    return {
+      as: 'none',
+      code: 'VALUE_CHECK_HELD',
+      detail: 'a question holds the value check, so its triage waits for the answer',
+    };
+  }
   try {
     const out = await createSuggestion({
       projectId: item.projectId,
@@ -110,7 +188,7 @@ async function applyToFeedback(
       producerId: null,
       kind: 'feedback_triage',
       target: { feedback: item.key },
-      payload: draft.triage,
+      payload: triageOf(draft),
       model,
     });
     if (out.ok) return { as: 'suggestion', suggestionId: out.suggestion.id };
@@ -118,25 +196,20 @@ async function applyToFeedback(
     return { as: 'none', code: first?.code ?? 'SUGGESTION_REFUSED', detail: first?.detail ?? '' };
   } catch (err) {
     // the reporter's own permissions bound what the assistant proposes for them: a refusal is kept
-    if (err instanceof RefusalError) {
-      const [first] = err.refusals;
-      return {
-        as: 'none',
-        code: first?.code ?? err.fallbackCode,
-        detail: first?.detail ?? err.message,
-      };
-    }
-    throw err;
+    return noneOf(err);
   }
 }
 
-/** Writes `draft` where `item`'s own flow reads it, and says what was written. */
-export function applyDraft(
+/** Writes `draft` where `item`'s own flow reads it, and says what was written: its fills or triage, then its value check. */
+export async function applyDraft(
   item: IntakeItem,
   draft: JudgedDraft,
   model: string | null,
-): Promise<IntakeDraftApplied> {
-  return item.kind === 'requirement'
-    ? applyToRequirement(item, draft)
-    : applyToFeedback(item, draft, model);
+): Promise<{ applied: IntakeDraftApplied; effect: ValueEffect | null }> {
+  if (item.kind === 'feedback') {
+    return { applied: await applyToFeedback(item, draft, model), effect: null };
+  }
+  // the draft is filled first, so a refused request a person keeps is already drafted
+  const applied = await applyToRequirement(item, draft);
+  return { applied, effect: await valueToRequirement(item, draft, model) };
 }

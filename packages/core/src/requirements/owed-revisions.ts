@@ -38,7 +38,7 @@ export async function owedRequirementRevisions(
     .where(
       and(
         eq(requirements.projectId, projectId),
-        notInArray(requirements.status, ['dropped', 'accepted', 'deferred']),
+        notInArray(requirements.status, ['dropped', 'accepted', 'deferred', 'refused']),
         eq(requirementRevisions.state, 'draft'),
         eq(requirementRevisions.authorAgency, 'agent'),
         isNotNull(requirementRevisions.returnReason),

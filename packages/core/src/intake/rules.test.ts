@@ -76,6 +76,15 @@ const question = {
     { id: 'reject', label: 'It is rejected', effect: 'The clinic is asked to resend it' },
   ],
   recommended: 'wait',
+  blocks: null,
+};
+
+const value: IntakeAnswer['value'] = {
+  who: { value: 'Clinic clerks booking referrals', source: 'REQ-9' },
+  improves: { value: 'Each referral reaches its own patient', source: 'REQ-9' },
+  measured: { value: 'Referrals matched by clinic code', source: 'REQ-1' },
+  exists: null,
+  outcome: { kind: 'accept' },
 };
 
 const base: IntakeAnswer = {
@@ -116,6 +125,7 @@ const base: IntakeAnswer = {
   notAffected: [],
   questions: [question],
   nothingToAsk: null,
+  value,
 };
 
 const judge = (
@@ -216,6 +226,11 @@ describe('an intake draft judged against what it read', () => {
     const fb: IntakeAnswer = {
       ...base,
       fills: [{ field: 'severity', value: 'high', source: 'FB-9' }],
+      value: {
+        ...value,
+        who: { value: 'Clerks importing referrals', source: 'FB-9' },
+        improves: { value: 'The right patient is matched', source: 'FB-9' },
+      },
       links: [
         link(
           'duplicate',
@@ -239,6 +254,154 @@ describe('an intake draft judged against what it read', () => {
     expect(faultsOf({ ...base, triage: { route: 'issue' } })).toEqual([
       'triage is set on a requirement draft: leave it out',
     ]);
+  });
+});
+
+describe('the value check judged against what it read (REQ-65 BC-2..BC-5)', () => {
+  const blocking = (blocks: 'problem' | 'value' | 'criterion') => ({ ...question, blocks });
+  const withValue = (v: Partial<IntakeAnswer['value']>, rest: Partial<IntakeAnswer> = {}) =>
+    faultsOf({ ...base, ...rest, value: { ...value, ...v } });
+
+  it('resolves each fact to the item, a record shown, or a question’s recommended answer as offered', () => {
+    const out = judge({
+      ...base,
+      value: { ...value, measured: { value: 'model words', source: 'question:1' } },
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.draft.value.who?.source).toEqual({
+      kind: 'requirement',
+      key: 'REQ-9',
+      title: 'Match referrals',
+    });
+    expect(out.draft.value.measured).toEqual({
+      value: 'It waits',
+      source: { kind: 'recommended', question: 1 },
+    });
+    expect(out.draft.value.outcome).toEqual({ kind: 'accept' });
+  });
+
+  it('refuses a fact sourced from nothing read, a question not asked, or a question that blocks', () => {
+    expect(withValue({ measured: { value: 'x', source: 'ISS-4' } })).toEqual([
+      'value.measured.source "ISS-4" is not REQ-9, a ref shown in the record, or question:N',
+    ]);
+    expect(withValue({ measured: { value: 'x', source: 'question:3' } })).toEqual([
+      'value.measured.source "question:3" names no question: 1 are asked',
+    ]);
+    expect(
+      withValue(
+        { who: null, measured: { value: 'x', source: 'question:1' }, outcome: null },
+        { questions: [blocking('problem')] },
+      ),
+    ).toEqual([
+      'value.measured.source "question:1" is a question that blocks the check: a blocking question\'s answer is waited for, never assumed',
+    ]);
+  });
+
+  it('merges only into the duplicate it links, and never accepts what already exists', () => {
+    const exists = { ref: 'REQ-1', why: 'Same clinic-code match.' };
+    expect(withValue({ exists })).toEqual([
+      'value.outcome accepts REQ-9, which repeats REQ-1: merge into it, offer a better alternative, or refuse',
+    ]);
+    expect(withValue({ exists, outcome: { kind: 'merge', into: 'REQ-2', why: 'x' } })).toEqual([
+      'value.outcome merges into REQ-2, which is not what value.exists names: a merge joins the item it repeats',
+    ]);
+    expect(withValue({ exists: { ref: 'REQ-2', why: 'x' }, outcome: null })).toContain(
+      'value.exists names REQ-2, which no duplicate link that stands names: link it as a duplicate with its basis, or set exists to null',
+    );
+    const merged = judge({
+      ...base,
+      value: {
+        ...value,
+        exists,
+        outcome: { kind: 'merge', into: 'REQ-1', why: 'One match rule.' },
+      },
+    });
+    expect(merged.ok && merged.draft.value.outcome).toEqual({
+      kind: 'merge',
+      into: { kind: 'requirement', key: 'REQ-1', title: 'Referral import' },
+      why: 'One match rule.',
+    });
+  });
+
+  it('blocks only on a missing problem or value, or a criterion a conflict link quotes (BC-4)', () => {
+    expect(withValue({ outcome: null }, { questions: [blocking('problem')] })).toEqual([
+      'questions[0] blocks on the problem, which value.who states: a question blocks only on what is missing',
+    ]);
+    expect(withValue({ outcome: null }, { questions: [blocking('value')] })).toEqual([
+      'questions[0] blocks on the value, which value.improves states: a question blocks only on what is missing',
+    ]);
+    // with REQ-2's conflict link gone, no criterion the item contradicts can hold the check
+    const noConflict = base.links.filter((l) => l.relation !== 'conflict');
+    expect(
+      withValue({ outcome: null }, { links: noConflict, questions: [blocking('criterion')] }),
+    ).toEqual([
+      'questions[0] blocks on a criterion, but no conflict link that stands quotes one: link the criterion it contradicts, or let it not block',
+    ]);
+    // REQ-2's link quotes its BC-1 word for word, so that criterion holds the check
+    expect(withValue({ outcome: null }, { questions: [blocking('criterion')] })).toEqual([]);
+    const held = judge({
+      ...base,
+      questions: [blocking('problem')],
+      value: { ...value, who: null, outcome: null },
+    });
+    expect(held.ok && held.draft.value.outcome).toBeNull();
+  });
+
+  it('asks or refuses a missing problem or value, and never leaves the measure unfilled (BC-4, BC-5)', () => {
+    expect(withValue({ who: null })).toEqual([
+      'value.who is null: ask whose problem it is in a question that blocks on "problem", or refuse the request for naming nobody',
+    ]);
+    expect(withValue({ improves: null })).toEqual([
+      'value.improves is null: ask what improves in a question that blocks on "value", or refuse the request for giving nothing',
+    ]);
+    expect(
+      withValue({ who: null, outcome: { kind: 'refuse', reason: 'It names nobody.' } }),
+    ).toEqual([]);
+    expect(withValue({ measured: null })).toEqual([
+      'value.measured is null, a gap that does not block: fill it from the record, or ask a question and name it as the source (question:N) so its recommended answer is taken',
+    ]);
+  });
+
+  it('ends the check exactly when no question holds it', () => {
+    expect(withValue({ outcome: null })).toEqual([
+      'value.outcome is null while no question blocks: end the check as accept, merge, alternative or refuse',
+    ]);
+    expect(withValue({ who: null }, { questions: [blocking('problem')] })).toEqual([
+      'a question blocks the check, so value.outcome is null until it is answered',
+    ]);
+  });
+
+  it('has a feedback triage follow the check, and proposes none while it is held (REQ-66 BC-2)', () => {
+    const fbValue = {
+      ...value,
+      who: { value: 'Clerks', source: 'FB-9' },
+      improves: { value: 'The right patient', source: 'FB-9' },
+    };
+    const fb = (v: Partial<IntakeAnswer['value']>, triage: unknown, questions = base.questions) => {
+      const out = judge(
+        {
+          ...base,
+          fills: [{ field: 'severity', value: 'high', source: 'FB-9' }],
+          links: [],
+          questions,
+          value: { ...fbValue, ...v },
+          triage,
+        },
+        feedbackItem,
+      );
+      return out.ok ? out : out.faults;
+    };
+    expect(
+      fb({ outcome: { kind: 'refuse', reason: 'Not a problem.' } }, { route: 'issue' }),
+    ).toEqual([
+      'value.outcome refuses the item, so triage.route is "decline", its note the reason',
+    ]);
+    expect(fb({}, { route: 'decline' })).toEqual([
+      'value.outcome is accept, so triage neither declines nor routes as a duplicate',
+    ]);
+    const held = fb({ who: null, outcome: null }, undefined, [blocking('problem')]);
+    expect(!Array.isArray(held) && held.draft.triage).toBeUndefined();
   });
 });
 

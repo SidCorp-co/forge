@@ -77,6 +77,15 @@ const question = (n: number) => ({
     { id: 'reject', label: 'It is rejected', effect: 'The clinic resends it' },
   ],
   recommended: 'wait',
+  blocks: null,
+});
+
+const valueFrom = (key: string) => ({
+  who: { value: 'Clinic clerks', source: key },
+  improves: { value: 'Each referral reaches its patient', source: key },
+  measured: { value: 'Referrals matched by clinic code', source: key },
+  exists: null,
+  outcome: { kind: 'accept' },
 });
 
 const answerWith = (over: Record<string, unknown> = {}) =>
@@ -107,6 +116,7 @@ const answerWith = (over: Record<string, unknown> = {}) =>
     ],
     questions: [question(1)],
     nothingToAsk: null,
+    value: valueFrom('REQ-9'),
     ...over,
   });
 
@@ -181,14 +191,22 @@ describe('an intake draft reads the product record and nothing else (BC-11)', ()
   it('imports nothing that holds an issue, a comment, a knowledge entry or the code', () => {
     const dir = __dirname;
     const drafting = readdirSync(dir).filter((f) =>
-      ['reads.ts', 'draft.ts', 'prompt.ts', 'rules.ts'].includes(f),
+      ['reads.ts', 'draft.ts', 'prompt.ts', 'rules.ts', 'value-rules.ts'].includes(f),
     );
-    expect(drafting.sort()).toEqual(['draft.ts', 'prompt.ts', 'reads.ts', 'rules.ts']);
+    expect(drafting.sort()).toEqual([
+      'draft.ts',
+      'prompt.ts',
+      'reads.ts',
+      'rules.ts',
+      'value-rules.ts',
+    ]);
     const allowedTables = new Set([
       '../db/schema-requirements.js',
       '../db/schema-workflows.js',
       '../db/schema-feedback.js',
       '../db/schema-release-highlights.js',
+      // the item's own answers to its draft's questions (REQ-65 BC-3), part of the item it drafts
+      '../db/schema-intake.js',
     ]);
     const faults: string[] = [];
     for (const file of drafting) {
@@ -320,6 +338,7 @@ describe('a draft link rests on what was read, or it is refused (BC-12, FB-111)'
     ],
     questions: [],
     nothingToAsk: 'The record settles the triage.',
+    value: valueFrom('FB-111'),
     triage: {
       route: 'decline',
       note: 'Conflicts with REQ-34: BC-14 permits scope- or outcome-changing questions.',
@@ -339,6 +358,7 @@ describe('a draft link rests on what was read, or it is refused (BC-12, FB-111)'
     notAffected: [],
     questions: [],
     nothingToAsk: 'The record settles the triage.',
+    value: valueFrom('FB-111'),
     triage: { route: 'revision' },
   });
 

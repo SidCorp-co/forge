@@ -49,8 +49,10 @@ export function nextStepOf(
       return 'accepted';
     case 'deferred':
       return agreedAt === null ? 'draft' : 'agreed';
+    // a refused request kept by a person is a draft again; nothing follows it until then
     case 'accepted':
     case 'dropped':
+    case 'refused':
       return null;
   }
 }

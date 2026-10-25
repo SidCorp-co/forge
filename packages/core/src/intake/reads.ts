@@ -18,9 +18,10 @@ import {
 } from '@forge/contracts/intake-drafts';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
+import { intakeAnswers, intakeDrafts } from '../db/schema-intake.js';
 import { releaseHighlights } from '../db/schema-release-highlights.js';
 import {
   requirementCriteria,
@@ -85,6 +86,24 @@ export interface IntakeReads {
 }
 
 const workflowRef = (flow: string) => intakeRefOf({ kind: 'workflow', key: flow });
+
+/**
+ * What the item's author answered on its drafts, oldest first, as lines of the item's own words: a
+ * draft made after an answer states it from the item (REQ-65 BC-3).
+ */
+async function answeredLines(kind: IntakeItemKind, id: string): Promise<string[]> {
+  const rows = await db
+    .select({ prompt: intakeAnswers.prompt, label: intakeAnswers.label })
+    .from(intakeAnswers)
+    .innerJoin(intakeDrafts, eq(intakeDrafts.id, intakeAnswers.draftId))
+    .where(
+      kind === 'requirement' ? eq(intakeDrafts.requirementId, id) : eq(intakeDrafts.feedbackId, id),
+    )
+    .orderBy(intakeAnswers.answeredAt);
+  return rows.map(
+    (r) => `Answered: ${clip(oneLine(r.prompt), 200)} → ${clip(oneLine(r.label), 120)}`,
+  );
+}
 const releaseRef = (version: string) => intakeRefOf({ kind: 'release', key: version });
 
 async function requirementItem(id: string): Promise<IntakeItem | null> {
@@ -134,6 +153,7 @@ async function requirementItem(id: string): Promise<IntakeItem | null> {
   if (spec.scopeIn?.length) lines.push(`In scope: ${clip(spec.scopeIn.join('; '))}`);
   if (spec.scopeOut?.length) lines.push(`Out of scope: ${clip(spec.scopeOut.join('; '))}`);
   for (const c of criteria) lines.push(`${c.code}: ${clip(oneLine(c.body), 200)}`);
+  lines.push(...(await answeredLines('requirement', id)));
   return {
     kind: 'requirement',
     id: req.id,
@@ -194,6 +214,7 @@ async function feedbackItem(id: string): Promise<IntakeItem | null> {
   ];
   if (row.body?.trim()) lines.push(`Body: ${clip(oneLine(row.body), 1500)}`);
   if (row.whereSeen?.trim()) lines.push(`Where seen: ${clip(oneLine(row.whereSeen), 200)}`);
+  lines.push(...(await answeredLines('feedback', id)));
   return {
     kind: 'feedback',
     id: row.id,
@@ -242,7 +263,7 @@ async function requirementRecords(item: IntakeItem): Promise<IntakeRecord[]> {
     .where(
       and(
         eq(requirements.projectId, item.projectId),
-        ne(requirements.status, 'dropped'),
+        notInArray(requirements.status, ['dropped', 'refused']),
         item.kind === 'requirement' ? ne(requirements.id, item.id) : undefined,
       ),
     )

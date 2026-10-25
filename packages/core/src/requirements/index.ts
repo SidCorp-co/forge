@@ -52,4 +52,5 @@ export {
 } from './standing-read.js';
 export { type StepChange, stepChangeOf } from './step-notice.js';
 export { type StewardRequirementAct, stewardRequirementActIn } from './steward-decision.js';
+export { keepRefusedIn, refuseOnValueIn } from './value-refusal.js';
 export { lockRequirements } from './write-tx.js';

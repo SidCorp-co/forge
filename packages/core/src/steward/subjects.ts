@@ -15,7 +15,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 
 /** The statuses an item's life ends at: nothing more is owed of the steward there. */
 const ENDED: Record<StandingSubjectKind, readonly string[]> = {
-  requirement: ['accepted', 'dropped'],
+  requirement: ['accepted', 'dropped', 'refused'],
   feedback: ['declined', 'verified'],
   issue: ['closed', 'dropped'],
 };

@@ -443,9 +443,10 @@
     "intake": {
       "kind": "domain",
       "context": "conversations",
-      "owns": ["intakeDrafts"],
+      "owns": ["intakeDrafts", "intakeAnswers"],
       "serves": [
         "REQ-34",
+        "REQ-65",
         "feedback-triage#intake",
         "feedback-triage#dedup",
         "feedback-triage#suggest",
@@ -1351,7 +1352,7 @@
       "serves": ["REQ-23"]
     },
     "intake": {
-      "serves": ["REQ-34", "feedback-triage#suggest", "requirement-lifecycle#draft"]
+      "serves": ["REQ-34", "REQ-65", "feedback-triage#suggest", "requirement-lifecycle#draft"]
     },
     "integrations": {
       "serves": ["github-merge-sequence#p-integrations"]
