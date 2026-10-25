@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.324] - 2026-10-25
+
+Agents act on permissions like people; release highlights carry a clip
+
+### Changed
+
+- **An agent holding onboarding.request may start onboarding or ask for a re-analysis, as a person holding it may.** Each sign-in button shows its own provider's mark, so Google's carries the Google G.
+- **Every highlight on a release still to ship shows a clip or picture from QA, and each change reads as a short title and one sentence.** Shipped releases read as they shipped.
+
 ## [0.4.0-dev.322] - 2026-10-25
 
 Every new request and report passes one value check first
