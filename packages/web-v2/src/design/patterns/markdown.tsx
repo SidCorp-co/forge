@@ -8,7 +8,13 @@ import remarkGfm from "remark-gfm";
 import { Button } from "@/design/primitives/button";
 import { cn } from "@/lib/utils/cn";
 import { BodyImage, BodyLink } from "./body-link";
-import { CODE_BLOCK_CLASS, CODE_INLINE_CLASS, COMPACT_TAG_CLASS as T, LINK_CLASS } from "./body-tags";
+import {
+  CODE_BLOCK_CLASS,
+  CODE_BLOCK_WRAPPED_CLASS,
+  CODE_INLINE_CLASS,
+  COMPACT_TAG_CLASS as T,
+  LINK_CLASS,
+} from "./body-tags";
 import { MermaidDiagram } from "./mermaid";
 
 const sameUrl = (url: string) => url;
@@ -158,6 +164,12 @@ const compactComponents: Components = {
   hr: () => <hr className={T.hr} />,
 };
 
+/** The compact set with code blocks that wrap rather than scroll (ISS-1229 r41). */
+const compactWrappedComponents: Components = {
+  ...compactComponents,
+  code: makeCodeRenderer(CODE_BLOCK_WRAPPED_CLASS, CODE_INLINE_CLASS),
+};
+
 // PROSE — long-form reading styling for the Docs viewer. Real heading
 // hierarchy, comfortable body size + line-height, roomier code/tables, and a
 // soft callout for blockquotes.
@@ -205,6 +217,11 @@ export interface MarkdownProps {
   docBasePath?: string;
   /** Where those links navigate: `/docs` in the workspace, `/guides` on the public pages. */
   docRoute?: string;
+  /**
+   * `wrap` breaks a compact code block's long lines inside its column, for text read where a sideways
+   * scroll shows no sign of itself, as a reply in a conversation is; `scroll` (default) keeps each line whole.
+   */
+  codeBlocks?: "scroll" | "wrap";
 }
 
 /** Render trusted-ish markdown (issue descriptions, comments, plans, docs). */
@@ -214,11 +231,13 @@ export function Markdown({
   variant = "compact",
   docBasePath,
   docRoute = "/docs",
+  codeBlocks = "scroll",
 }: MarkdownProps): ReactNode {
   const components = useMemo<Components>(() => {
-    const base = variant === "prose" ? proseComponents : compactComponents;
+    const compact = codeBlocks === "wrap" ? compactWrappedComponents : compactComponents;
+    const base = variant === "prose" ? proseComponents : compact;
     return docBasePath ? { ...base, a: makeDocLinkRenderer(docBasePath, docRoute) } : base;
-  }, [variant, docBasePath, docRoute]);
+  }, [variant, docBasePath, docRoute, codeBlocks]);
   return (
     <div className={cn("min-w-0 max-w-full break-words [overflow-wrap:anywhere]", className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={sameUrl}>

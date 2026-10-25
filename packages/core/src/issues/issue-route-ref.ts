@@ -2,12 +2,18 @@
 // display key (`ISS-1097`), key scoped by `?projectId=` since `issSeq` is
 // unique per project, not globally (ISS-992).
 
+import type { IssueReadRefusalDetails } from '@forge/contracts';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/authz.js';
+import { effectiveProjectRole, loadProjectAccess, type ProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
-import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
+import {
+  findIssueByDisplaySeq,
+  findIssueById,
+  findProjectName,
+  type IssueRow,
+} from './read-service.js';
 
 const uuidSchema = z.uuid();
 
@@ -21,8 +27,52 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+const forbidden = (message: string, details: IssueReadRefusalDetails) =>
+  new HTTPException(403, { message, cause: { code: 'FORBIDDEN', details } });
+
+/** A project's name where this caller may see it: a role on it, or a place in its organization. */
+async function nameShownTo(access: ProjectAccess | null): Promise<string | null> {
+  if (!access || (access.role === null && access.orgRole === null)) return null;
+  return findProjectName(access.projectId);
+}
+
+/**
+ * The read refused for want of a role on the issue's project: which project that is, as far as the
+ * caller may see it, and that the project the address named is not it (ISS-1229 r41).
+ */
+async function closedIssueRefusal(
+  issueAccess: ProjectAccess,
+  addressProjectId: string | undefined,
+  userId: string,
+): Promise<HTTPException> {
+  const issueName = await nameShownTo(issueAccess);
+  const elsewhere = addressProjectId !== undefined && addressProjectId !== issueAccess.projectId;
+  const addressName = elsewhere
+    ? await nameShownTo(await effectiveProjectRole(userId, addressProjectId))
+    : null;
+  const owner = issueName ? `${issueName}, a project` : 'a project';
+  const address = !elsewhere
+    ? ''
+    : addressName
+      ? ` It is not in ${addressName}, the project this address names.`
+      : ' It is not in the project this address names.';
+  return forbidden(`This issue belongs to ${owner} you are not a member of.${address}`, {
+    issueProject: { name: issueName },
+    addressProject: elsewhere ? { id: addressProjectId, name: addressName } : null,
+  });
+}
+
+/** A display key read under a project the caller holds no role on. */
+async function closedProjectRefusal(access: ProjectAccess): Promise<HTTPException> {
+  const name = await nameShownTo(access);
+  const project = name
+    ? `${name} is a project you are not a member of`
+    : 'This address names a project you are not a member of';
+  return forbidden(`${project}, so none of its issues can be read.`, {
+    issueProject: { name },
+    addressProject: null,
+  });
+}
 
 const needsProjectScopeMessage = (raw: string): string =>
   `\`${raw}\` is not a uuid — it reads as a display key, like \`ISS-1097\` or its bare sequence ` +
@@ -52,7 +102,7 @@ export async function resolveIssueRouteRef(
     const issue = await findIssueById(rawId);
     if (!issue) throw notFound('issue not found');
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    if (!access.role) throw await closedIssueRefusal(access, projectIdQuery, userId);
     return issue;
   }
 
@@ -69,7 +119,7 @@ export async function resolveIssueRouteRef(
   }
 
   const access = await loadProjectAccess(projectIdQuery, userId);
-  if (!access.role) throw forbidden('not a project member');
+  if (!access.role) throw await closedProjectRefusal(access);
 
   const parsed = parseIssueRef(
     rawId,

@@ -33,5 +33,9 @@ export const LINK_CLASS = "text-[color:var(--link)] underline underline-offset-2
 export const CODE_BLOCK_CLASS =
   "block overflow-x-auto rounded-md bg-sunken p-3 font-mono text-12-5 text-fg";
 
+/** A code block that wraps its long lines inside its column, for a reply read in a conversation. */
+export const CODE_BLOCK_WRAPPED_CLASS =
+  "block whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md bg-sunken p-3 font-mono text-12-5 text-fg";
+
 export const CODE_INLINE_CLASS =
   "rounded-sm bg-sunken px-1 py-0.5 font-mono text-12-5 text-fg";

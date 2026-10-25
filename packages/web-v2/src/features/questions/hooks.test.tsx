@@ -16,6 +16,11 @@ const PROJECT = "11111111-1111-4111-8111-111111111111";
 /** What the server holds: one open question, which is the close's only refusal. */
 const server = { answered: false };
 
+// The roster is read only for a member or admin of its project (ISS-1229 r41).
+vi.mock("@/features/projects/hooks", async (orig) => ({
+  ...(await orig<typeof import("@/features/projects/hooks")>()),
+  useProjects: () => ({ data: [{ id: PROJECT, role: "admin" }] }),
+}));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
 vi.mock("./api", () => ({

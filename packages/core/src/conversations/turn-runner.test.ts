@@ -32,6 +32,18 @@ vi.mock('./transcript.js', () => ({
   recordDeliveredReply: vi.fn(async () => ({ messageId: 'm1' })),
 }));
 
+// The reply check reads the tracker; a written reply passes it untouched here, an empty one goes to the real check.
+vi.mock('./screened-reply.js', async (orig) => {
+  const real = await orig<typeof import('./screened-reply.js')>();
+  return {
+    ...real,
+    screenedTurnReply: (args: Parameters<typeof real.screenedTurnReply>[0]) =>
+      args.first.reply.trim()
+        ? Promise.resolve({ text: args.first.reply, problems: [] })
+        : real.screenedTurnReply(args),
+  };
+});
+
 const { runConversationTurn } = await import('./turn-runner.js');
 
 const VENUE = {
@@ -150,5 +162,43 @@ describe('a reply that posts nothing', () => {
     const outcome = await runConversationTurn(request() as never);
 
     expect(outcome).toEqual({ kind: 'declined', reason: 'empty-reply', silenceSeq: 7 });
+  });
+});
+
+// ISS-1229 r41, judge-115: in a room the model wrote "- (nothing to add)" and "- Agreed.", and both were posted as
+// bullet points; the first is the agent choosing to say nothing, the second a sentence.
+describe('a reply written as a list item', () => {
+  beforeEach(() => {
+    runExternalChatTurn.mockReset();
+    deliver.mockReset();
+    recordSilence.mockReset();
+  });
+
+  const replying = (reply: string) =>
+    runExternalChatTurn.mockResolvedValue({
+      terminal: 'done',
+      reply,
+      toolCalls: [],
+      iterations: 1,
+    });
+
+  it('declines a turn whose reply is the sentinel behind a list marker, posting nothing', async () => {
+    replying('- (nothing to add)');
+
+    const outcome = await runConversationTurn(request({ mayDecline: true }) as never);
+
+    expect(outcome).toMatchObject({ kind: 'declined', reason: 'nothing-to-say' });
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
+  it('posts a reply that is one bulleted item as its sentence', async () => {
+    replying('- Agreed.');
+
+    const outcome = await runConversationTurn(request() as never);
+
+    expect(outcome).toMatchObject({ kind: 'delivered' });
+    expect((deliver.mock.calls[0] as unknown[] | undefined)?.[1]).toMatchObject({
+      text: 'Agreed.',
+    });
   });
 });
