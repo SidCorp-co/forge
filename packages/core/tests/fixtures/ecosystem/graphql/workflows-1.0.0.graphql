@@ -1,0 +1,20 @@
+# Backend workflows: the editor saves a draft and reads it back.
+
+enum WorkflowState {
+  DRAFT
+  PUBLISHED
+}
+
+type BackendWorkflow {
+  id: ID!
+  name: String!
+  state: WorkflowState!
+}
+
+type Query {
+  backendWorkflow(id: ID!): BackendWorkflow
+}
+
+type Mutation {
+  saveBackendWorkflowDraft(id: ID!, definition: String!): BackendWorkflow
+}

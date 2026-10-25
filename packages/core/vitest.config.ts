@@ -40,6 +40,10 @@ export default defineConfig({
     setupFiles: ['../../scripts/lib/whole-tree-guard.mjs', './vitest.setup.ts'],
     hookTimeout: 60_000,
     testTimeout: 20_000,
+    // graphql-js refuses a schema built by another copy of itself: vite resolves core's own
+    // `graphql` import to index.mjs while node hands an external graphql-inspector index.js, so the
+    // differ runs inside vite too and both read the one copy, as they do under node in production
+    server: { deps: { inline: ['@graphql-inspector/core'] } },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

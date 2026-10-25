@@ -1,4 +1,4 @@
-import { type Change, CriticalityLevel, diff } from '@graphql-inspector/core';
+import { type Change, ChangeType, CriticalityLevel, diff } from '@graphql-inspector/core';
 import {
   type GraphQLNamedType,
   getNamedType,
@@ -10,7 +10,8 @@ import {
 import type { ChangeKind, ChangeLevel, MeasuredChange } from './diff.js';
 import { operationsOf, type SdlField, type SdlSchema } from './graphql-sdl.js';
 
-export const GRAPHQL_RULES_VERSION = 'graphql-inspector-8';
+// a recorded diff names the rules that measured it; forge-2 reads an optional argument added to an existing field as additive (levelOf)
+export const GRAPHQL_RULES_VERSION = 'graphql-inspector-8+forge-2';
 
 const CAP_REACHED = 1000;
 
@@ -19,6 +20,24 @@ const LEVEL: Record<CriticalityLevel, ChangeLevel> = {
   [CriticalityLevel.Dangerous]: 'warning',
   [CriticalityLevel.NonBreaking]: 'info',
 };
+
+/**
+ * graphql-inspector rates Dangerous what may change what a caller gets back without failing its
+ * query, and core reads each such change by whether a caller can break. An argument added to an
+ * existing field with no default is the one that cannot: inspector rates it Dangerous only when it
+ * is optional (a required one is Breaking), and a caller that omits it sends a query that still
+ * validates and returns the same shape. Every other Dangerous kind stays a warning, so its change
+ * measures unknown: an enum value, union member or interface added to an existing type (a caller
+ * matching the cases it gets back exhaustively meets one it never handled), an argument or input
+ * field added with a default and a changed default (a caller that omits it gets the new default),
+ * and a directive made non-repeatable or a special directive applied or removed.
+ */
+function levelOf(c: Change): ChangeLevel {
+  const level = LEVEL[c.criticality.level];
+  if (level !== 'warning' || c.type !== ChangeType.FieldArgumentAdded) return level;
+  const meta = (c as Change<typeof ChangeType.FieldArgumentAdded>).meta;
+  return meta.hasDefaultValue || meta.isAddedFieldArgumentBreaking ? level : 'info';
+}
 
 function kindOf(type: string): ChangeKind {
   if (/DEPRECATION(_REASON)?_ADDED$/.test(type)) return 'deprecated';
@@ -44,7 +63,7 @@ const ignored = (c: Change) =>
 const toMeasured = (c: Change): MeasuredChange => ({
   element: elementOf(c),
   kind: kindOf(c.type),
-  level: LEVEL[c.criticality.level],
+  level: levelOf(c),
   text: c.message,
   check: `graphql-${c.type.toLowerCase().replace(/_/g, '-')}`,
 });

@@ -1,0 +1,23 @@
+# Backend workflows: the editor saves a draft, patches it in place, and reads it back with its version.
+
+enum WorkflowState {
+  DRAFT
+  PUBLISHED
+}
+
+type BackendWorkflow {
+  id: ID!
+  name: String!
+  state: WorkflowState!
+  draft_version: Int
+  draft_hash: String
+}
+
+type Query {
+  backendWorkflow(id: ID!): BackendWorkflow
+}
+
+type Mutation {
+  saveBackendWorkflowDraft(id: ID!, definition: String!, base_draft_version: Int): BackendWorkflow
+  patchBackendWorkflowDraft(id: ID!, patch: String!, base_draft_version: Int): BackendWorkflow
+}

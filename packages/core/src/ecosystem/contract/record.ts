@@ -9,7 +9,7 @@ import {
   type NamingProblem,
   namingProblem,
   proposeVersion,
-  unmeasuredProblem,
+  underivedProblem,
   type Versioning,
 } from './naming.js';
 import { insertVersion, latestVersion, readArtifact, type StoredVersion } from './store.js';
@@ -172,7 +172,7 @@ export async function recordVersion(input: RecordInput): Promise<RecordOutcome> 
       });
       if (problem) return { outcome: 'refused', problem };
     } else {
-      const problem = unmeasuredProblem(input.versioning, previous, diff);
+      const problem = underivedProblem(input.versioning, previous, diff);
       if (problem) return { outcome: 'refused', problem };
     }
     const name = input.requestedVersion ?? proposeVersion(input.versioning, previous, diff, today);

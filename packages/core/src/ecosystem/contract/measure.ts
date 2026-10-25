@@ -69,7 +69,7 @@ const undecided = (type: string, why: string): MeasuredChange => ({
   check: `${type}-not-measured`,
 });
 
-// a type with no differ, and a differ that ran and failed, record unknown with a not-measured check, and core then derives no version from it (naming.ts:unmeasuredProblem); only a differ that is absent refuses here, because then nothing could be measured at all
+// a type with no differ, and a differ that ran and failed, record unknown with a not-measured check, and core then derives no version from it (naming.ts:underivedProblem); only a differ that is absent refuses here, because then nothing could be measured at all
 export async function measureChange(
   type: string,
   previous: string,

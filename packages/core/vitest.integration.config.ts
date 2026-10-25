@@ -28,6 +28,10 @@ export default defineConfig({
     hookTimeout: 60_000,
     testTimeout: 30_000,
     pool: 'forks',
+    // graphql-js refuses a schema built by another copy of itself: vite resolves core's own
+    // `graphql` import to index.mjs while node hands an external graphql-inspector index.js, so the
+    // differ runs inside vite too and both read the one copy, as they do under node in production
+    server: { deps: { inline: ['@graphql-inspector/core'] } },
     fileParallelism: true,
     maxWorkers: workers(),
     coverage: {

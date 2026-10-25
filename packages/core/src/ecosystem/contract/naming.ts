@@ -1,4 +1,4 @@
-import { type MeasuredDiff, notMeasured } from './diff.js';
+import { type MeasuredChange, type MeasuredDiff, notMeasured } from './diff.js';
 
 export type Versioning = 'dated' | 'semver';
 
@@ -35,10 +35,11 @@ export function compareVersions(versioning: Versioning, a: string, b: string): n
 
 type Bump = 'major' | 'minor' | 'patch';
 
-// a measured unknown asks for a MAJOR like breaking does: naming a smaller bump would say the change is compatible, which is the one thing the differ could not show; a change no differ measured owes nothing it could derive, so its number is the uploader's (unmeasuredProblem)
+// only a breaking measurement owes a MAJOR; a change measured unknown, or one no differ measured, says nothing core could derive a number from, so its number is the uploader's and its classification is recorded and announced as it is (underivedProblem, REQ-5 BC-9)
 function bumpOwed(diff: Pick<MeasuredDiff, 'classification' | 'changes'>): Bump | null {
   if (notMeasured(diff).length > 0) return null;
-  if (diff.classification === 'breaking' || diff.classification === 'unknown') return 'major';
+  if (diff.classification === 'breaking') return 'major';
+  if (diff.classification === 'unknown') return null;
   return diff.changes.some((c) => c.kind === 'added') ? 'minor' : 'patch';
 }
 
@@ -59,7 +60,7 @@ export function proposeVersion(
   const bump = bumpOwed(diff);
   if (bump === null) {
     throw new Error(
-      'ecosystem: a semver version was asked of a change no differ measured; unmeasuredProblem refuses that upload first',
+      'ecosystem: a semver version was asked of a change core derives no version from; underivedProblem refuses that upload first',
     );
   }
   if (bump === 'major') return `${p[0] + 1}.0.0`;
@@ -68,28 +69,38 @@ export function proposeVersion(
 }
 
 export interface NamingProblem {
-  code: 'VERSION_NOT_IN_SCHEME' | 'VERSION_BUMP_TOO_SMALL' | 'VERSION_NOT_MEASURED';
+  code:
+    | 'VERSION_NOT_IN_SCHEME'
+    | 'VERSION_BUMP_TOO_SMALL'
+    | 'VERSION_NOT_MEASURED'
+    | 'VERSION_CHANGE_UNKNOWN';
   detail: string;
 }
 
-// a semver number says how compatible a change is, so core proposes one only from a measurement; a change no differ measured is recorded at the version its uploader names, never at a MAJOR core guessed
-export function unmeasuredProblem(
+const listed = (changes: readonly MeasuredChange[]) =>
+  changes
+    .map((c) => c.text)
+    .join('; ')
+    .slice(0, 600);
+
+// a semver number says how compatible a change is, so core proposes one only from a measurement that says it; a change no differ measured, and one measured unknown, are recorded at the version their uploader names, never at a MAJOR core guessed
+export function underivedProblem(
   versioning: Versioning,
   previous: string | null,
   diff: Pick<MeasuredDiff, 'classification' | 'changes'>,
 ): NamingProblem | null {
   if (versioning !== 'semver' || previous === null) return null;
   const why = notMeasured(diff);
-  if (why.length === 0) return null;
+  if (why.length > 0) {
+    return {
+      code: 'VERSION_NOT_MEASURED',
+      detail: `no differ measured this change (${listed(why)}), so core derives no version from it; name the version after ${previous} that says what the change is.`,
+    };
+  }
+  if (diff.classification !== 'unknown') return null;
   return {
-    code: 'VERSION_NOT_MEASURED',
-    detail: `no differ measured this change (${why
-      .map((c) => c.text)
-      .join('; ')
-      .slice(
-        0,
-        600,
-      )}), so core derives no version from it; name the version after ${previous} that says what the change is.`,
+    code: 'VERSION_CHANGE_UNKNOWN',
+    detail: `this change measured unknown, neither breaking nor additive (${listed(diff.changes.filter((c) => c.level === 'warning'))}), so core derives no version from it; name the version after ${previous} that says what the change is.`,
   };
 }
 

@@ -154,14 +154,17 @@ publishes and the versions of its contracts, and a person is not handed that wor
    - \`kind\` is the publication's type: \`graphql\` takes the SDL text; \`mcp-tools\` takes
      \`{ tools: [{ name, description, inputSchema }] }\`; \`openapi\` and \`json-schema\` their JSON.
    - \`sourceRef\` is where you read it, \`<repository path>@<commit sha>\`.
-   - \`version\` is in the interface's scheme and after the latest; a breaking measurement owes a MAJOR
-     on semver.
+   - \`version\` is in the interface's scheme and after the latest; on semver a breaking measurement owes a
+     MAJOR and an additive one a MINOR, and a change measured unknown is recorded, unknown, at the
+     version you name.
    Core indexes the elements and measures the change against the latest version. A GraphQL contract's
    elements are its operations under their role (\`Query.products\`, \`Mutation.productCreate\`), their
    arguments (\`Query.products(first)\`) and each type's fields (\`Product.title\`). graphql-inspector
    measures the change: a removed operation, field, enum value or argument and a new required
-   argument are breaking; an added enum value or union
-   member is a warning; and a breaking type change is also named under each operation reaching it
+   argument are breaking; an added operation, field or optional argument without a default is
+   additive; an enum value, union member or interface added to an existing type, an argument or input
+   field added with a default, and a changed default are a warning, measured unknown, because a caller
+   can get back what it never handled; and a breaking type change is also named under each operation reaching it
    (\`Query.products.variants.price\`), which is what a consumer's link names in \`fieldsUsed\`
    (\`products.variants.price\`). A tools contract's elements are each tool and its input properties
    (\`<tool>/properties/<input>\`).
@@ -171,7 +174,8 @@ publishes and the versions of its contracts, and a person is not handed that wor
    the detail naming its error and the place holding a non-schema where a schema belongs),
    \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`, \`VERSION_NOT_MEASURED\` (a semver change no differ
    measured — an opaque contract, or a previous artifact the differ cannot read — is recorded only at the
-   \`version\` you name, never at a MAJOR core guessed),
+   \`version\` you name, never at a MAJOR core guessed), \`VERSION_CHANGE_UNKNOWN\` (a semver change
+   measured unknown, the same: name the \`version\`),
    \`CONTRACT_NOT_PUBLISHED\` (no such publication, or another project's).
    A recorded version is proposed; it is current only once approved:
    \`POST /api/projects/:id/contracts/:contract/versions/:version/decision { decision: approve | return, reason? }\`. Whoever holds
