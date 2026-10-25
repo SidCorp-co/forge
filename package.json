@@ -20,9 +20,9 @@
     "lint:code-quality": "node .forge/code-quality/bin/code-quality-gate.mjs"
   },
   "devDependencies": {
-    "eslint": "^10.12.0",
-    "turbo": "^2.11.7",
-    "typescript-eslint": "^8.71.1"
+    "eslint": "^10.13.0",
+    "turbo": "^2.11.10",
+    "typescript-eslint": "^8.72.0"
   },
   "pnpm": {
     "overrides": {
