@@ -13,6 +13,7 @@ import {
   type SortingState,
 } from "@/design";
 import { Fragment } from "react";
+import type { StuckReason } from "@/features/standing";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { groupRows } from "../../derive";
@@ -81,8 +82,8 @@ export function IssuesTable({
   memberNames: Map<string, RowAssignee>;
   /** Absent when the reader cannot act on rows in bulk. */
   selection?: TableSelection;
-  /** Core's stuck sentence by issue key, from the one standing read (REQ-48 BC-8). */
-  stuck: ReadonlyMap<string, string>;
+  /** Why each issue is stuck and who acts on it, by issue key, from the one standing read (REQ-48 BC-8, REQ-74 BC-5). */
+  stuck: ReadonlyMap<string, StuckReason>;
 }) {
   const t = useCopy();
   const L = useLabel();
@@ -150,7 +151,7 @@ export function IssuesTable({
                 slug={slug}
                 actions={actions}
                 now={now}
-                stuck={stuck.get(row.displayId) ?? null}
+                stuck={stuck.get(row.displayId)?.line ?? null}
                 assignee={assigneeOf(row, memberNames, t)}
                 selection={
                   selection

@@ -1,0 +1,581 @@
+{
+  "generatedAt": "2026-10-24T21:54:42.251Z",
+  "signals": {
+    "ci": {
+      "available": false,
+      "reason": "Pull request checks only; dev has no reading.",
+      "says": {
+        "reason": {
+          "key": "overview.signal.ciNote"
+        }
+      }
+    },
+    "postMerge": {
+      "available": false,
+      "reason": "Post-merge jobs run on GitHub; none stored.",
+      "says": {
+        "reason": {
+          "key": "overview.signal.postMergeNote"
+        }
+      }
+    },
+    "contracts": {
+      "windows": [],
+      "openWindows": 0,
+      "awaitingApproval": 0
+    },
+    "master": {
+      "masters": 0,
+      "state": "none",
+      "slots": null,
+      "slotsNote": "No master",
+      "says": {
+        "slotsNote": {
+          "key": "overview.signal.noSlotsNote"
+        }
+      }
+    }
+  },
+  "flow": {
+    "windowDays": 14,
+    "total": 5,
+    "stages": [
+      {
+        "id": "draft",
+        "count": 0,
+        "parts": []
+      },
+      {
+        "id": "open",
+        "count": 1,
+        "parts": [
+          {
+            "group": "stuck",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "id": "in_progress",
+        "count": 3,
+        "parts": [
+          {
+            "group": "moving",
+            "count": 3
+          }
+        ]
+      },
+      {
+        "id": "awaiting_release",
+        "count": 1,
+        "parts": [
+          {
+            "group": "stuck",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "id": "closed",
+        "count": 0,
+        "parts": []
+      }
+    ]
+  },
+  "moving": {
+    "count": 3,
+    "window": {
+      "from": "2026-10-24T21:45:00.000Z",
+      "to": "2026-10-24T22:15:00.000Z",
+      "now": "2026-10-24T21:54:42.251Z"
+    },
+    "lanes": [
+      {
+        "key": "ISS-1",
+        "title": "Export keeps the column order",
+        "status": "in_progress",
+        "step": null,
+        "holder": null,
+        "box": null,
+        "branch": null,
+        "segments": [],
+        "heldSince": null,
+        "lease": null,
+        "waitingOn": {
+          "kind": "run",
+          "who": "Queued run",
+          "act": "starting",
+          "rule": "a job is queued; no run session holds it yet",
+          "ref": null,
+          "dueAt": null,
+          "says": {
+            "who": {
+              "key": "issues.standing.who.queuedRun"
+            },
+            "act": {
+              "key": "standing.act.starting"
+            },
+            "rule": {
+              "key": "issues.rule.queued"
+            }
+          }
+        }
+      },
+      {
+        "key": "ISS-2",
+        "title": "Invoice totals round per line",
+        "status": "in_progress",
+        "step": null,
+        "holder": null,
+        "box": null,
+        "branch": null,
+        "segments": [],
+        "heldSince": null,
+        "lease": null,
+        "waitingOn": {
+          "kind": "run",
+          "who": "Queued run",
+          "act": "starting",
+          "rule": "a job is queued; no run session holds it yet",
+          "ref": null,
+          "dueAt": null,
+          "says": {
+            "who": {
+              "key": "issues.standing.who.queuedRun"
+            },
+            "act": {
+              "key": "standing.act.starting"
+            },
+            "rule": {
+              "key": "issues.rule.queued"
+            }
+          }
+        }
+      },
+      {
+        "key": "ISS-7",
+        "title": "Report emails send at 8am local",
+        "status": "in_progress",
+        "step": null,
+        "holder": null,
+        "box": null,
+        "branch": null,
+        "segments": [],
+        "heldSince": null,
+        "lease": null,
+        "waitingOn": {
+          "kind": "run",
+          "who": "Queued run",
+          "act": "starting",
+          "rule": "a job is queued; no run session holds it yet",
+          "ref": null,
+          "dueAt": null,
+          "says": {
+            "who": {
+              "key": "issues.standing.who.queuedRun"
+            },
+            "act": {
+              "key": "standing.act.starting"
+            },
+            "rule": {
+              "key": "issues.rule.queued"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "stuck": {
+    "count": 2,
+    "chains": [
+      {
+        "id": "ISS-3",
+        "levels": [
+          [
+            {
+              "kind": "issue",
+              "key": "ISS-3",
+              "title": "Search finds archived customers",
+              "status": "open",
+              "step": null,
+              "tone": "neutral",
+              "waitingOn": {
+                "kind": "master",
+                "who": "Master",
+                "act": "dispatch a run",
+                "rule": "admitted and not withheld: the master owes it a run",
+                "ref": null,
+                "dueAt": null,
+                "says": {
+                  "who": {
+                    "key": "standing.who.master"
+                  },
+                  "act": {
+                    "key": "issues.standing.act.dispatch"
+                  },
+                  "rule": {
+                    "key": "issues.rule.admitted"
+                  }
+                }
+              },
+              "held": true
+            }
+          ]
+        ],
+        "held": 1
+      },
+      {
+        "id": "ISS-6",
+        "levels": [
+          [
+            {
+              "kind": "issue",
+              "key": "ISS-6",
+              "title": "Login remembers the last workspace",
+              "status": "awaiting_release",
+              "step": null,
+              "tone": "ready",
+              "waitingOn": {
+                "kind": "person",
+                "who": "The runner's owner",
+                "act": "bring a runner online",
+                "rule": "NO_RUNNER_ONLINE: The automatic release was refused: no runner serving this project is online.",
+                "ref": null,
+                "dueAt": null,
+                "says": {
+                  "who": {
+                    "key": "standing.who.runnerOwner"
+                  },
+                  "act": {
+                    "key": "issues.releaseHold.act.noRunnerOnline"
+                  },
+                  "rule": {
+                    "key": "issues.rule.releaseHeld",
+                    "vars": {
+                      "code": "NO_RUNNER_ONLINE",
+                      "reason": "The automatic release was refused: no runner serving this project is online."
+                    }
+                  }
+                }
+              },
+              "held": true
+            }
+          ]
+        ],
+        "held": 1
+      }
+    ]
+  },
+  "holds": {
+    "count": 5,
+    "issues": [
+      {
+        "key": "ISS-3",
+        "title": "Search finds archived customers",
+        "holds": [
+          {
+            "kind": "failed",
+            "runId": "f7b60c7e-5224-4f45-93d2-c4149c5ff2db",
+            "issues": [
+              "ISS-3"
+            ],
+            "release": null,
+            "code": "provider_usage_limit",
+            "waitingOn": {
+              "kind": "master",
+              "who": "Master",
+              "act": "dispatch a run",
+              "rule": "admitted and not withheld: the master owes it a run",
+              "ref": null,
+              "dueAt": null,
+              "says": {
+                "who": {
+                  "key": "standing.who.master"
+                },
+                "act": {
+                  "key": "issues.standing.act.dispatch"
+                },
+                "rule": {
+                  "key": "issues.rule.admitted"
+                }
+              }
+            },
+            "since": "2026-10-24T20:54:42.175Z",
+            "cause": "Hit the model provider's usage limit",
+            "says": {
+              "cause": {
+                "key": "overview.hold.cause.failure.providerUsageLimit"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "key": "ISS-7",
+        "title": "Report emails send at 8am local",
+        "holds": [
+          {
+            "kind": "blocked",
+            "runId": "3ac59af2-21dc-4e7f-a343-f8c923d9c0bd",
+            "issues": [
+              "ISS-7"
+            ],
+            "release": null,
+            "code": "runner_stale",
+            "waitingOn": {
+              "kind": "machine",
+              "who": "The runner's owner",
+              "act": "bring a runner online",
+              "rule": "pipeline health reads runner_stale: no box serving this project has beaten recently, which has no deadline",
+              "ref": null,
+              "dueAt": null,
+              "says": {
+                "who": {
+                  "key": "standing.who.runnerOwner"
+                },
+                "act": {
+                  "key": "overview.hold.act.reviveRunner"
+                },
+                "rule": {
+                  "key": "runs.rule.dispatchGate",
+                  "vars": {
+                    "gate": "runner_stale",
+                    "why": {
+                      "key": "runs.gate.runnerStale"
+                    }
+                  }
+                }
+              }
+            },
+            "since": "2026-10-24T21:34:42.184Z",
+            "cause": "The runners have not checked in recently",
+            "says": {
+              "cause": {
+                "key": "overview.hold.cause.gate.runnerStale"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "key": "ISS-1",
+        "title": "Export keeps the column order",
+        "holds": [
+          {
+            "kind": "job",
+            "runId": "4388f79f-258a-4220-b7b9-15d01125bb10",
+            "issues": [
+              "ISS-1"
+            ],
+            "release": null,
+            "code": "all_devices_exhausted",
+            "waitingOn": {
+              "kind": "gate",
+              "who": "Forge",
+              "act": "resume it when the wait ends",
+              "rule": "held all_devices_exhausted: the release sweep retries it once jobs.retry_after_at has passed",
+              "ref": null,
+              "dueAt": "2026-10-24T22:54:42.159Z",
+              "says": {
+                "who": {
+                  "key": "overview.hold.who.forge"
+                },
+                "act": {
+                  "key": "overview.hold.act.resumesAt"
+                },
+                "rule": {
+                  "key": "runs.rule.heldRetry",
+                  "vars": {
+                    "reason": "all_devices_exhausted"
+                  }
+                }
+              }
+            },
+            "since": "2026-10-24T21:39:42.158Z",
+            "cause": "Every runner was busy; it retries by itself",
+            "says": {
+              "cause": {
+                "key": "overview.hold.cause.gate.allDevicesExhausted"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "key": "ISS-2",
+        "title": "Invoice totals round per line",
+        "holds": [
+          {
+            "kind": "job",
+            "runId": "83703e3f-41cc-43b2-b0b2-c881b8dc2dcf",
+            "issues": [
+              "ISS-2"
+            ],
+            "release": null,
+            "code": "retry_rounds_exhausted",
+            "waitingOn": {
+              "kind": "you",
+              "who": "You",
+              "act": "resume the job",
+              "rule": "the job is held (retry_rounds_exhausted), a hold that does not resume itself (job held: retry_rounds_exhausted)",
+              "ref": null,
+              "dueAt": null,
+              "says": {
+                "who": {
+                  "key": "standing.who.you"
+                },
+                "act": {
+                  "key": "runs.act.resumeJob"
+                },
+                "rule": {
+                  "key": "runs.rule.withRef",
+                  "vars": {
+                    "rule": {
+                      "key": "runs.rule.jobHeld",
+                      "vars": {
+                        "reason": "retry_rounds_exhausted"
+                      }
+                    },
+                    "ref": {
+                      "key": "runs.ref.jobHeld",
+                      "vars": {
+                        "reason": "retry_rounds_exhausted"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "since": "2026-10-24T21:39:42.169Z",
+            "cause": "Retried too many times; it will not resume itself",
+            "says": {
+              "cause": {
+                "key": "overview.hold.cause.gate.retryRoundsExhausted"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "key": "ISS-6",
+        "title": "Login remembers the last workspace",
+        "holds": [
+          {
+            "kind": "release",
+            "runId": null,
+            "issues": [
+              "ISS-6"
+            ],
+            "release": "0.1.0",
+            "code": "NO_RUNNER_ONLINE",
+            "waitingOn": {
+              "kind": "person",
+              "who": "The runner's owner",
+              "act": "bring a runner online",
+              "rule": "NO_RUNNER_ONLINE: The automatic release was refused: no runner serving this project is online.",
+              "ref": null,
+              "dueAt": null,
+              "says": {
+                "who": {
+                  "key": "standing.who.runnerOwner"
+                },
+                "act": {
+                  "key": "issues.releaseHold.act.noRunnerOnline"
+                },
+                "rule": {
+                  "key": "issues.rule.releaseHeld",
+                  "vars": {
+                    "code": "NO_RUNNER_ONLINE",
+                    "reason": "The automatic release was refused: no runner serving this project is online."
+                  }
+                }
+              }
+            },
+            "since": "2026-10-24T21:44:42.180Z",
+            "cause": "Every runner serving this project is offline",
+            "says": {
+              "cause": {
+                "key": "issues.releaseHold.cause.noRunnerOnline"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "releases": [
+      {
+        "key": "0.1.0",
+        "title": "0.1.0",
+        "holds": [
+          {
+            "kind": "release",
+            "runId": null,
+            "issues": [
+              "ISS-6"
+            ],
+            "release": "0.1.0",
+            "code": "NO_RUNNER_ONLINE",
+            "waitingOn": {
+              "kind": "person",
+              "who": "The runner's owner",
+              "act": "bring a runner online",
+              "rule": "NO_RUNNER_ONLINE: The automatic release was refused: no runner serving this project is online.",
+              "ref": null,
+              "dueAt": null,
+              "says": {
+                "who": {
+                  "key": "standing.who.runnerOwner"
+                },
+                "act": {
+                  "key": "issues.releaseHold.act.noRunnerOnline"
+                },
+                "rule": {
+                  "key": "issues.rule.releaseHeld",
+                  "vars": {
+                    "code": "NO_RUNNER_ONLINE",
+                    "reason": "The automatic release was refused: no runner serving this project is online."
+                  }
+                }
+              }
+            },
+            "since": "2026-10-24T21:44:42.180Z",
+            "cause": "Every runner serving this project is offline",
+            "says": {
+              "cause": {
+                "key": "issues.releaseHold.cause.noRunnerOnline"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "modules": {
+    "rows": [],
+    "max": 5,
+    "unassigned": {
+      "id": null,
+      "path": "",
+      "name": "No module",
+      "open": 5,
+      "parts": [
+        {
+          "group": "stuck",
+          "count": 2
+        },
+        {
+          "group": "moving",
+          "count": 3
+        }
+      ],
+      "shipped": 0,
+      "lastLandingAt": null
+    }
+  },
+  "coverage": {
+    "open": 5,
+    "openRead": 5,
+    "limit": 500,
+    "flowTruncated": false
+  }
+}

@@ -125,11 +125,16 @@ export function LeaseLanes({ moving, slug }: { moving: OverviewMoving; slug: str
           </div>
         ))}
         <div className="relative ml-45 h-4 text-12 text-muted" aria-hidden>
-          {ticksOf(from, to).map((tick) => (
-            <span key={tick} className="absolute -translate-x-1/2 font-mono tabular-nums" style={{ left: `${(((tick - from) / (to - from)) * 100).toFixed(2)}%` }}>
-              {time.clock(tick)}
-            </span>
-          ))}
+          {ticksOf(from, to).map((tick) => {
+            const at = ((tick - from) / (to - from)) * 100;
+            // a tick at either end is set inside the track, so its label never runs past the page edge
+            const shift = at > 90 ? "-translate-x-full" : at < 10 ? "" : "-translate-x-1/2";
+            return (
+              <span key={tick} className={`absolute font-mono tabular-nums ${shift}`} style={{ left: `${at.toFixed(2)}%` }}>
+                {time.clock(tick)}
+              </span>
+            );
+          })}
         </div>
       </div>
     </div>

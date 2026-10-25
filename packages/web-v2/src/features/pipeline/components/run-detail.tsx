@@ -39,6 +39,7 @@ import { drawerRunChip } from "../derive";
 import { useCancelRun, usePauseRun, useResumeRun } from "@/features/run-control";
 import { useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
+import { RunStuck } from "./run-stuck";
 import { AskAboutThis } from "@/features/chat-dock";
 import type {
   PipelineIssueRow,
@@ -166,6 +167,8 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
           )}
 
           <RunHeading issue={issue} run={run} runId={runId} slug={slug} />
+
+          <RunStuck projectId={issue?.projectId ?? run?.projectId} issueKey={issue?.displayId ?? run?.issueRef ?? null} />
 
           <RunControls run={run} runId={runId} canWrite={canWrite} menuItems={menuItems} />
 

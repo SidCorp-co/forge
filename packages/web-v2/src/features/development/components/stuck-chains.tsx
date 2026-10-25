@@ -1,7 +1,7 @@
 
 import { Link } from "@/lib/navigation/router";
 import { Fragment } from "react";
-import { StatusBadge } from "@/design";
+import { StatusBadge, WaitingOn } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
@@ -23,6 +23,7 @@ function Node({ node, slug }: { node: OverviewChainNode; slug: string }) {
       <span className="block truncate text-13 text-muted" title={node.waitingOn?.rule ? `${node.title} · ${said(node.waitingOn.says.rule, language)}` : node.title}>
         {node.title}
       </span>
+      {node.waitingOn ? <WaitingOn w={node.waitingOn} /> : null}
     </div>
   );
 }

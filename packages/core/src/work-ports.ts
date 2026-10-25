@@ -2,6 +2,7 @@
 // import, handed to it at boot so work stays upstream of execution and of the contexts below it.
 
 import { countsAsReport } from '@forge/contracts/feedback';
+import { RUN_STANDING_LIST_MAX } from '@forge/contracts/run-standing';
 import { fireOfCaller, issueDeleteRefusal } from './agent-reports/index.js';
 import {
   agentSessionEventsRetention,
@@ -123,6 +124,7 @@ import {
   deliveryHeadsOf,
   judgedBuildOf,
   landedRecordOf,
+  nextDraftVersion,
   releaseEndsRun,
   releaseHoldsOf,
 } from './release-batch/index.js';
@@ -138,7 +140,7 @@ import {
   traceWordingsOf,
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
-import { latestRunsOfIssues, runWaitingOf } from './runs/index.js';
+import { latestRunsOfIssues, listRunStanding, runWaitingOf } from './runs/index.js';
 import { lastFires, readScheduleStreaks, streakFails } from './schedules/index.js';
 import { carryStewardDecision } from './steward/index.js';
 import { provideUploadPorts } from './uploads/index.js';
@@ -204,6 +206,17 @@ function provideWorkPipelinePorts(): void {
     readEffectivePolicy,
     policyRefusal,
   });
+}
+
+/** Every live run's standing, the recently finished ones and the next cut's version, for Delivery. */
+async function deliveryRunsOf(projectId: string, viewer: { userId: string } | null) {
+  const page = { limit: RUN_STANDING_LIST_MAX, offset: 0 };
+  const [live, finished, drafted] = await Promise.all([
+    listRunStanding(projectId, { scope: 'live', ...page }, viewer),
+    listRunStanding(projectId, { scope: 'finished', ...page }, viewer),
+    nextDraftVersion(projectId),
+  ]);
+  return { live: live.items, finished: finished.items, drafted };
 }
 
 export function provideWorkPorts(): void {
@@ -326,6 +339,7 @@ export function provideWorkPorts(): void {
     designHealthOf: projectHealthAs,
     designRepinsOf: repinGroupsAs,
     releaseApprovalsOfRuns: approvalsOfRuns,
+    deliveryRunsOf,
   });
 
   provideWorkflowHealthPorts({

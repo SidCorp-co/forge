@@ -67,7 +67,7 @@ describe('a held issue at the release gate (ISS-577 criterion 2)', () => {
     const s = derive(atGate({ releaseHold: personHold }));
     expect(s.releaseHold).toEqual(personHold);
     expect(s.attentionGroup).toBe('stuck');
-    expect(s.waitingOn).toMatchObject({ kind: 'you', act: personHold.waitingFor });
+    expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'record the landing' });
     expect(s.waitingOn.rule).toBe(`NO_RELEASE_GATE: ${personHold.reason}`);
   });
 
@@ -86,7 +86,7 @@ describe('a held issue at the release gate (ISS-577 criterion 2)', () => {
     expect(s.attentionGroup).toBe('queued');
     expect(s.waitingOn).toMatchObject({
       kind: 'release',
-      act: 'a later automatic release',
+      act: 'take it in a later release',
       rule: `RELEASE_QUEUED_BEHIND: ${releaseHold.reason}`,
     });
   });
@@ -103,6 +103,37 @@ describe('a held issue at the release gate (ISS-577 criterion 2)', () => {
       expect(s.waitingOn.rule).toContain('NO_RELEASE_GATE');
       expect(s.waitingOn.act).not.toBe('next release');
     }
+  });
+});
+
+describe('who clears a release hold, and the act, in plain words (ISS-684)', () => {
+  const runnerHold: ReleaseHoldView = {
+    code: 'NO_RUNNER_ONLINE',
+    reason: 'The automatic release was refused: no runner serving this project is online.',
+    owes: 'human',
+    waitingFor: 'the refusal named here to be cleared',
+    heldAt: '2026-10-23T23:50:00.000Z',
+  };
+
+  it('names the runner owner and the verb that clears a hold no runner online can take', () => {
+    const s = derive(atGate({ releaseHold: runnerHold }));
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.waitingOn).toMatchObject({
+      kind: 'person',
+      who: "The runner's owner",
+      act: 'bring a runner online',
+    });
+    expect(s.waitingOn.rule).toContain('NO_RUNNER_ONLINE');
+  });
+
+  it('says a code it has no words for plainly by who owes it, never the waiting-for noun', () => {
+    const human = derive(atGate({ releaseHold: { ...runnerHold, code: 'RELEASE_SOMETHING_NEW' } }));
+    expect(human.waitingOn).toMatchObject({ kind: 'you', act: 'clear the refusal' });
+    const agent = derive(
+      atGate({ releaseHold: { ...runnerHold, code: 'RELEASE_SOMETHING_NEW', owes: 'agent' } }),
+    );
+    expect(agent.attentionGroup).toBe('queued');
+    expect(agent.waitingOn).toMatchObject({ kind: 'release', act: 'release it on a later sweep' });
   });
 });
 

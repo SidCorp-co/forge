@@ -268,7 +268,7 @@ export function IssueTableLine({
   /** One instant for the whole table, so the waiting figures on two rows are a
    *  comparison and not two independent readings of the clock. */
   now: number;
-  /** Core's stuck sentence for this issue from the one standing read, or null. */
+  /** Why core reads this issue stuck and who acts on it, from the one standing read, or null. */
   stuck: string | null;
 }) {
   const { open, pending } = useOpenIssue(slug, row.id);

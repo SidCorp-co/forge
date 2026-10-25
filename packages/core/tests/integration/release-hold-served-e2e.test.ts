@@ -99,7 +99,8 @@ describe('a release hold on the standing (criterion 2)', () => {
     expect(s.releaseHold).toMatchObject({ code: 'NO_RELEASE_GATE', owes: 'human' });
     expect(s.attentionGroup).toBe('stuck');
     expect(s.waitingOn.kind).toBe('you');
-    expect(s.waitingOn.act).toBe(NO_RELEASE_GATE_HOLD.waitingFor);
+    // the act is the verb that clears the hold (ISS-684), never the noun the release waits for
+    expect(s.waitingOn.act).toBe('record the landing');
     expect(s.waitingOn.rule).toContain('NO_RELEASE_GATE');
     expect(s.waitingOn.rule).toContain('declares no production environment');
     expect(s.waitingOn.act).not.toBe('next release');
@@ -113,7 +114,7 @@ describe('a release hold on the standing (criterion 2)', () => {
     expect(s.releaseHold).toMatchObject({ code: 'RELEASE_QUEUED_BEHIND', owes: 'agent' });
     expect(s.attentionGroup).toBe('queued');
     expect(s.waitingOn.kind).toBe('release');
-    expect(s.waitingOn.act).toBe('a later automatic release');
+    expect(s.waitingOn.act).toBe('take it in a later release');
     expect(s.waitingOn.rule).toContain('RELEASE_QUEUED_BEHIND');
   });
 });

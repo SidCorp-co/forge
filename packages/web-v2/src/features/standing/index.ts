@@ -3,4 +3,4 @@
 export { StewardActs } from "./components/steward-acts";
 export { StewardBudgetLine, StewardBudgetSentence } from "./components/steward-budget-line";
 export { StewardNoteLines } from "./components/steward-note";
-export { standingKeyOf, useNoteLines, useStandings, useStewardActs, useStewardBudget, useStewardNote, useStuckReasons } from "./hooks";
+export { standingKeyOf, useNoteLines, useStandings, useStewardActs, useStewardBudget, useStewardNote, useStuckReasons, type StuckReason } from "./hooks";

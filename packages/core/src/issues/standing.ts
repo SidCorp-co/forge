@@ -31,6 +31,7 @@ import { holdersWho, nobodyHoldsAct, type WaitingOn } from '@forge/contracts/sta
 import type { MasterServing } from '@forge/contracts/steward';
 import { withTimes } from '../lib/standing-times.js';
 import { answeredWait } from './answered-wait.js';
+import { releaseHoldWords } from './release-hold-words.js';
 import { awaitsJudge, blockerAct, blockerTurn, withheldTurn } from './standing-held.js';
 import { releaseTurn } from './standing-release.js';
 import { wait } from './standing-wait.js';
@@ -273,16 +274,20 @@ function personTurn(input: IssueStandingInput): Turn | null {
 /**
  * A row the automatic release recorded a hold on waits on what the hold says, never on "the next
  * release" (ISS-577): a person's hold reads stuck on that person, the release's own queued on it.
+ * Who clears it and the act are the hold's own words (`release-hold-words.ts`, ISS-684): a runner
+ * that is not online is its owner's to bring back, never "Release · a runner to come online".
  */
 function releaseHeldTurn(hold: ReleaseHoldView, people: People): Turn {
-  const act = verbatim(hold.waitingFor);
+  const { act, actor } = releaseHoldWords(hold);
   const rule = say('issues.rule.releaseHeld', { code: hold.code, reason: hold.reason });
-  if (hold.owes === 'human')
-    return { group: 'stuck', waitingOn: forPerson(people, act, rule).waitingOn };
-  return {
-    group: 'queued',
-    waitingOn: wait('release', say('issues.standing.who.release'), act, rule),
-  };
+  const group = hold.owes === 'human' ? 'stuck' : 'queued';
+  if (actor === 'release')
+    return { group, waitingOn: wait('release', say('issues.standing.who.release'), act, rule) };
+  if (actor === 'runnerOwner')
+    return { group, waitingOn: wait('person', say('standing.who.runnerOwner'), act, rule) };
+  if (actor === 'admin')
+    return { group, waitingOn: wait('person', say('standing.who.projectAdmin'), act, rule) };
+  return { group, waitingOn: forPerson(people, act, rule).waitingOn };
 }
 
 function runningTurn(input: IssueStandingInput): Turn {

@@ -100,7 +100,7 @@ export function PipelineBoard({ scope }: PipelineBoardProps) {
               {group.issues.map((issue) => {
                 const run = issue.id ? runIndex.get(issue.id) : undefined;
                 const card = cardStatus(issue, run, language);
-                const stuckWhy = stuck.get(issue.displayId);
+                const stuckWhy = stuck.get(issue.displayId)?.line;
                 return (
                   <KanbanCard
                     key={issue.id}
