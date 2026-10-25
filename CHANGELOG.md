@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.314] - 2026-10-25
+
+GraphQL optional arguments ship as minor; landed-work notices told once per mark
+
+### Fixed
+
+- **Landed work left at in progress reaches its master.** When the reconciler leaves an in-progress issue whose work already landed, it says so once per landing and wakes the project's master, whose next pass names the move to awaiting release.
+- **Guides and run prompts can no longer name a transition field the route refuses, however phrased.** Every sentence about the transition request is checked against the route's own schema; only naming a field as refused is allowed.
+- **An additive GraphQL contract change can ship as a minor.** An optional argument added to an existing field measures non-breaking, and a change measured unknown is recorded at the version its uploader names, never forced to a major.
+
 ## [0.4.0-dev.313] - 2026-10-24
 
 Decisions on issues can be withdrawn, and comment types corrected in place

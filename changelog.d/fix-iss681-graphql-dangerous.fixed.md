@@ -1,1 +1,0 @@
-**An additive GraphQL contract change can ship as a minor.** An optional argument added to an existing field measures non-breaking, and a change measured unknown is recorded at the version its uploader names, never forced to a major.
