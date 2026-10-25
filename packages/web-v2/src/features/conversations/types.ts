@@ -224,6 +224,27 @@ export const SILENCE_REASON: Record<SilenceDecision, string> = {
   stopped: "You stopped this answer, so the agent never finished it.",
 };
 
+/** The silences a turn chose, which "had nothing to add" says truly. */
+const CHOSEN_SILENCE: ReadonlySet<string> = new Set(["nothing-to-say", "not-mentioned", "tool-not-called"]);
+
+const NOT_POSTED: Readonly<Record<string, string>> = {
+  "screen-refused":
+    "The agent's reply was withheld: the reply check found it said something the tracker does not show, and a rewrite did not fix it.",
+  "empty-reply": "The agent's reply came back empty, so nothing was posted.",
+};
+const ENDED_UNWRITTEN = "The agent's turn ended before it wrote a reply, so nothing was posted.";
+
+/** Why a turn said nothing, in words: a withheld or empty reply never reads as nothing to add (ISS-1229 r40). */
+export function silencedWords(reason: unknown): string {
+  if (typeof reason !== "string" || CHOSEN_SILENCE.has(reason)) return SILENCE_REASON["nothing-to-say"];
+  return NOT_POSTED[reason] ?? ENDED_UNWRITTEN;
+}
+
+export function silenceWords(decision: SilenceDecision, detail: unknown): string {
+  if (decision !== "nothing-to-say") return SILENCE_REASON[decision];
+  return silencedWords(detail && typeof detail === "object" ? (detail as { reason?: unknown }).reason : undefined);
+}
+
 /**
  * What a person reads beside a runner-hosted turn, in each of its four states.
  */
@@ -257,6 +278,11 @@ export function threadEntries(
   }
   const out: ThreadEntry[] = [];
   const ordered = [...messages].sort((a, b) => a.seq - b.seq);
+  const storedSilences = new Set(ordered.filter((m) => m.silenceReason).map((m) => m.seq));
+  const saidByItsMessage = (w: ConversationWindow) => {
+    const seq = (w.decisionDetail as { silenceSeq?: unknown } | null)?.silenceSeq;
+    return typeof seq === "number" && storedSilences.has(seq);
+  };
   for (const message of ordered) {
     out.push({ kind: "said", key: message.id, message });
     for (const w of bySeq.get(message.seq) ?? []) {
@@ -268,7 +294,7 @@ export function threadEntries(
         if (turn && turn.state !== "delivered")
           out.push({ kind: "agent-turn", key: w.id, turn });
         else if (!turn) out.push({ kind: "pending", key: w.id });
-      } else if (w.decision && w.decision !== "answered")
+      } else if (w.decision && w.decision !== "answered" && !saidByItsMessage(w))
         out.push({ kind: "silence", key: w.id, decision: w.decision, detail: w.decisionDetail });
     }
   }

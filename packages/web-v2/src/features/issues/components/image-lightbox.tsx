@@ -224,7 +224,7 @@ export function ImageLightbox({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <span className="fg-body-sm truncate" title={current.name}>
+          <span className="truncate text-13-5 leading-normal text-white" title={current.name}>
             {current.name}
           </span>
           {count > 1 && (

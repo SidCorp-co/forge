@@ -48,9 +48,11 @@ const ISSUE = {
   mergedAt: null,
 };
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }) }));
+const replace = vi.hoisted(() => vi.fn());
+const projects = vi.hoisted(() => ({ list: [] as Record<string, unknown>[] }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch: vi.fn(), replace }) }));
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [{ id: "p1", role: "admin" }] }),
+  useProjects: () => ({ data: projects.list, isLoading: false }),
   useProjectsIncludingArchived: () => ({ data: [], isLoading: false }),
 }));
 vi.mock("@/features/project-settings/hooks", () => ({ useUnarchiveProject: () => ({ mutate: vi.fn(), isPending: false }) }));
@@ -116,6 +118,8 @@ const answerOther = (url: string) =>
   });
 
 beforeEach(() => {
+  replace.mockReset();
+  projects.list = [{ id: "p1", slug: "forge-dev", name: "Forge dev", role: "admin" }];
   fetchMock.mockReset();
   fetchMock.mockImplementation(async (url: string) => answerOther(url));
   vi.stubGlobal("fetch", fetchMock);
@@ -826,5 +830,31 @@ describe("the issue page's main column with an agent on the issue", () => {
     const column = description.parentElement as HTMLElement;
     expect(column.querySelector(":scope > section")).toBe(description);
     expect(column.className).toContain("[&>section:first-child]:border-t-0");
+  });
+});
+
+// ISS-1229 r40, judge-111 at abdd0d7: one project's issue opened under another project's address showed
+// it with the address's project in the breadcrumb, because a uuid reads whichever project holds it.
+describe("an issue opened under another project's address", () => {
+  it("follows the issue to its own project", () => {
+    projects.list = [...projects.list, { id: "p2", slug: "ops", name: "Ops", role: "member" }];
+    issueOver = { projectId: "p2" };
+    renderScreen();
+    expect(replace).toHaveBeenCalledWith("/projects/ops/issues/ISS-7");
+    expect(screen.queryByText("What the issue says.")).toBeNull();
+  });
+
+  it("is refused by name where the reader cannot see the project that holds it", () => {
+    issueOver = { projectId: "p9" };
+    renderScreen();
+    expect(screen.getByText("ISS-7 is not in Forge dev")).toBeInTheDocument();
+    expect(screen.queryByText("What the issue says.")).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("stays where it is when the address names its own project", () => {
+    renderScreen();
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByText("What the issue says.")).toBeInTheDocument();
   });
 });

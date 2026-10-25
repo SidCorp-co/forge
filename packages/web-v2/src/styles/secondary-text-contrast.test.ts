@@ -3,6 +3,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { BANNER_TONE } from "@/design/primitives/banner";
 import { AVATAR_HUE, TONE_META } from "@/design/status";
@@ -128,5 +129,80 @@ describe("text on the accent beside a type class", () => {
         .map((cls) => `${relative(root, path)}: "${cls}"`),
     );
     expect(swallowed).toEqual([]);
+  });
+});
+
+// ISS-1229 r40, judge-111 at abdd0d7: the lightbox's file name sat in a header set in white on the dark
+// scrim, and its own `.fg-body-sm` painted it --fg-muted, 1.8:1. Every pair above passed: a type class
+// overriding the light text a dark surface sets is a fact about the tree, not about two tokens.
+
+/** The type classes that set a colour of their own (tokens.css), and the ones that set a light one. */
+const COLOURED_TYPE = /(?:^|\s)fg-(?:display|h[1-3]|body|body-sm|label|caption|overline|mono|code)(?=\s|$)/;
+const LIGHT_OVERRIDE = /(?:^|\s)fg-on-accent(?=\s|$)/;
+/** A container that sets light text because what it paints under it is dark. */
+const LIGHT_TEXT = /(?:^|\s)(?:text-white(?:\/\d+)?|text-on-accent|fg-on-accent)(?=\s|$)/;
+
+/** Every string a className's value spells, in a literal, a template or a helper's arguments. */
+function classText(attr: ts.JsxAttribute): string {
+  const parts: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) parts.push(node.text);
+    else if (ts.isTemplateExpression(node)) {
+      parts.push(node.head.text, ...node.templateSpans.map((span) => span.literal.text));
+      for (const span of node.templateSpans) visit(span.expression);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  if (attr.initializer) visit(attr.initializer);
+  return parts.join(" ");
+}
+
+function classOf(node: ts.JsxElement | ts.JsxSelfClosingElement): string {
+  const opening = ts.isJsxElement(node) ? node.openingElement : node;
+  const attr = opening.attributes.properties.find(
+    (a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && a.name.getText() === "className",
+  );
+  return attr ? classText(attr) : "";
+}
+
+/** Each element whose type class paints over the light text an element around it (or itself) set. */
+function swallowedLightText(file: string, text: string): string[] {
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const found: string[] = [];
+  const walk = (node: ts.Node, light: boolean): void => {
+    let under = light;
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const cls = classOf(node);
+      const sets = LIGHT_TEXT.test(cls);
+      if ((under || sets) && COLOURED_TYPE.test(cls) && !LIGHT_OVERRIDE.test(cls)) {
+        const line = source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+        found.push(`${file}:${line}: "${cls.trim()}"`);
+      }
+      under = under || sets;
+    }
+    ts.forEachChild(node, (child) => walk(child, under));
+  };
+  walk(source, false);
+  return found;
+}
+
+describe("text a type class sets inside a surface that sets light text", () => {
+  it("keeps the light text: no coloured type class sits under, or beside, a light text colour", () => {
+    const root = join(__dirname, "..");
+    const found = sources(root)
+      .filter((path) => path.endsWith(".tsx"))
+      .flatMap((path) => swallowedLightText(relative(root, path), readFileSync(path, "utf8")));
+    expect(found).toEqual([]);
+  });
+
+  it("finds judge-111's lightbox name, and passes the name set in white", () => {
+    const before = `<header className="flex text-white"><div className="flex"><span className="fg-body-sm truncate">{n}</span></div></header>`;
+    expect(swallowedLightText("lightbox.tsx", before)).toEqual([`lightbox.tsx:1: "fg-body-sm truncate"`]);
+    const after = `<header className="flex text-white"><span className="truncate text-13-5 text-white">{n}</span></header>`;
+    expect(swallowedLightText("lightbox.tsx", after)).toEqual([]);
+    expect(swallowedLightText("chip.tsx", '<span className={cn("fg-caption", x, "text-white")}>{n}</span>')).toHaveLength(1);
+    expect(swallowedLightText("chip.tsx", "<span className={`fg-caption text-white`}>{n}</span>")).toHaveLength(1);
+    expect(swallowedLightText("bubble.tsx", `<p className="text-on-accent"><span className="fg-body fg-on-accent">x</span></p>`)).toEqual([]);
   });
 });

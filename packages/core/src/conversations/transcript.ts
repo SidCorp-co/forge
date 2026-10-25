@@ -67,26 +67,28 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
 }
 
 /**
- * A turn that chose to say nothing, recorded as the reason rather than as nothing.
+ * A turn that chose to say nothing, recorded as the reason rather than as nothing; answers its seq.
  */
 export async function recordSilence(args: {
   conversationId: string;
   projectId: string;
   reason: string;
-}): Promise<void> {
+}): Promise<number | null> {
   try {
-    await appendMessage({
+    const stored = await appendMessage({
       conversationId: args.conversationId,
       role: 'assistant',
       content: '',
       authorUserId: await handleForProject(args.conversationId, args.projectId),
       silenceReason: args.reason,
     });
+    return stored.seq;
   } catch (err) {
     logger.warn(
       { err, conversationId: args.conversationId },
       'conversations: a turn declined and the silence could not be recorded',
     );
+    return null;
   }
 }
 

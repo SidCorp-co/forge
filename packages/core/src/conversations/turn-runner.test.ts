@@ -113,3 +113,42 @@ describe('a turn a person stopped', () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 });
+
+// ISS-1229 r40, judge-111: a silence the reply check caused reads, in the room, that the reply was
+// withheld. An empty reply the check never refused is recorded as what it is.
+describe('a reply that posts nothing', () => {
+  beforeEach(() => {
+    runExternalChatTurn.mockReset();
+    deliver.mockReset();
+    recordSilence.mockReset();
+  });
+
+  it('records an empty reply as empty, not as one the reply check refused', async () => {
+    runExternalChatTurn.mockResolvedValue({
+      terminal: 'done',
+      reply: '  ',
+      toolCalls: [],
+      iterations: 1,
+    });
+
+    const outcome = await runConversationTurn(request() as never);
+
+    expect(outcome).toEqual({ kind: 'declined', reason: 'empty-reply' });
+    expect(recordSilence).toHaveBeenCalledWith(expect.objectContaining({ reason: 'empty-reply' }));
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
+  it('names the stored silence by its seq, so the window it closes can say which', async () => {
+    runExternalChatTurn.mockResolvedValue({
+      terminal: 'done',
+      reply: '',
+      toolCalls: [],
+      iterations: 1,
+    });
+    recordSilence.mockResolvedValue(7);
+
+    const outcome = await runConversationTurn(request() as never);
+
+    expect(outcome).toEqual({ kind: 'declined', reason: 'empty-reply', silenceSeq: 7 });
+  });
+});

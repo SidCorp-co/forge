@@ -87,7 +87,7 @@ export interface TurnHookContext {
 }
 
 export type TurnReply =
-  | { send: false; reason: string; declined?: boolean }
+  | { send: false; reason: string; declined?: boolean; silenceSeq?: number }
   | { send: true; message: ScreenedMessage; screenReplaced: boolean };
 
 export interface ConversationTurnRequest {
@@ -182,7 +182,7 @@ export type TurnOutcome =
   | { kind: 'stopped'; reason: string }
   | { kind: 'superseded'; reason: string }
   | { kind: 'diverted'; reason: string }
-  | { kind: 'declined'; reason: string }
+  | { kind: 'declined'; reason: string; silenceSeq?: number }
   | { kind: 'undeliverable'; reason: string };
 
 interface TurnContext {
@@ -190,6 +190,17 @@ interface TurnContext {
   conversationId: string;
   abort: AbortController;
   setPhase: (phase: string) => void;
+}
+
+/** A declined turn, its silence stored and named by seq so the window it closes can say which. */
+async function silence(args: Parameters<typeof recordSilence>[0]): Promise<TurnReply> {
+  const silenceSeq = await recordSilence(args);
+  return {
+    send: false,
+    reason: args.reason,
+    declined: true,
+    ...(typeof silenceSeq === 'number' ? { silenceSeq } : {}),
+  };
 }
 
 async function composeReply(ctx: TurnContext): Promise<TurnReply> {
@@ -251,24 +262,17 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const late = await req.divertAfterTurn?.(result, hook);
   if (late) return late;
 
+  const quiet = (reason: string) =>
+    silence({ conversationId: ctx.conversationId, projectId: req.venue.projectId, reason });
+
   if (capture) {
     if (result.terminal !== 'done') {
       const reason = result.error ?? result.terminal;
-      await recordSilence({
-        conversationId: ctx.conversationId,
-        projectId: req.venue.projectId,
-        reason,
-      });
-      return { send: false, reason, declined: true };
+      return quiet(reason);
     }
     const captured = capture.captured();
     if (captured === null) {
-      await recordSilence({
-        conversationId: ctx.conversationId,
-        projectId: req.venue.projectId,
-        reason: 'tool-not-called',
-      });
-      return { send: false, reason: 'tool-not-called', declined: true };
+      return quiet('tool-not-called');
     }
     result = { ...result, reply: captured };
   }
@@ -284,12 +288,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
           { ...req.log, tail },
           'conversations: the turn declined with a trailing remark',
         );
-      await recordSilence({
-        conversationId: ctx.conversationId,
-        projectId: req.venue.projectId,
-        reason: 'nothing-to-say',
-      });
-      return { send: false, reason: 'nothing-to-say', declined: true };
+      return quiet('nothing-to-say');
     }
   }
 
@@ -322,20 +321,12 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     },
   });
   if (declinedInRetry) {
-    await recordSilence({
-      conversationId: ctx.conversationId,
-      projectId: req.venue.projectId,
-      reason: 'nothing-to-say',
-    });
-    return { send: false, reason: 'nothing-to-say', declined: true };
+    return quiet('nothing-to-say');
   }
   if (!screenedMessage) {
-    await recordSilence({
-      conversationId: ctx.conversationId,
-      projectId: req.venue.projectId,
-      reason: 'screen-refused',
-    });
-    return { send: false, reason: 'screen-refused', declined: true };
+    // The screen passes an empty first reply untouched, so only a written one was refused (ISS-1229 r40).
+    const reason = result.reply.trim() ? 'screen-refused' : 'empty-reply';
+    return quiet(reason);
   }
   const screenReplaced = screenedMessage.text.trim() !== result.reply.trim();
   return { send: true, message: screenedMessage, screenReplaced };
@@ -402,12 +393,11 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
       extra: { adapter: req.venue.adapter, externalId: req.venue.externalId, ...req.log },
     });
     if (req.sendMode === 'tool' || req.fallbacks === 'silence') {
-      await recordSilence({
+      reply = await silence({
         conversationId: conversation.id,
         projectId: req.venue.projectId,
         reason: 'turn-failed',
       });
-      reply = { send: false, reason: 'turn-failed', declined: true };
     } else {
       reply = {
         send: true,
@@ -423,7 +413,11 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
 
   if (!reply.send) {
     return reply.declined
-      ? { kind: 'declined', reason: reply.reason }
+      ? {
+          kind: 'declined',
+          reason: reply.reason,
+          ...(reply.silenceSeq !== undefined ? { silenceSeq: reply.silenceSeq } : {}),
+        }
       : { kind: 'diverted', reason: reply.reason };
   }
 

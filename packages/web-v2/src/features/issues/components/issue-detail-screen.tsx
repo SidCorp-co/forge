@@ -169,9 +169,17 @@ export function IssueDetailScreen({
   }, [issue?.acceptanceCriteria]);
   const issueDisplayId = issue?.displayId;
   const issueTitle = issue?.title;
+  // A uuid reads whichever project holds the issue, so an address naming another project is followed to
+  // the issue's own, never drawn under the address's breadcrumb (ISS-1229 r40, judge-111).
+  const elsewhere = issue !== undefined && issue.projectId !== projectId;
+  const ownSlug = elsewhere ? projectsQ.data?.find((p) => p.id === issue.projectId)?.slug : undefined;
 
   useEffect(() => {
-    if (!issueDisplayId || !issueTitle) return;
+    if (ownSlug) router.replace(`/projects/${ownSlug}/issues/${id}`);
+  }, [ownSlug, id, router]);
+
+  useEffect(() => {
+    if (!issueDisplayId || !issueTitle || elsewhere) return;
     pushRecent({
       kind: "issue",
       id,
@@ -179,7 +187,7 @@ export function IssueDetailScreen({
       href: `/projects/${slug}/issues/${id}`,
       icon: "list",
     });
-  }, [issueDisplayId, issueTitle, id, slug, pushRecent]);
+  }, [issueDisplayId, issueTitle, id, slug, pushRecent, elsewhere]);
 
   function copyLink() {
     const url = buildShareLink(`/projects/${slug}/issues/${id}`);
@@ -213,6 +221,22 @@ export function IssueDetailScreen({
           message={formatApiError(issueQ.error)}
           onRetry={isRetryableApiError(issueQ.error) ? () => issueQ.refetch() : undefined}
         />
+      </div>
+    );
+  }
+
+  if (elsewhere) {
+    const here = projectsQ.data?.find((p) => p.id === projectId)?.name ?? slug;
+    return (
+      <div className="grid min-h-[60vh] place-items-center">
+        {ownSlug || projectsQ.isLoading ? (
+          <ProjectLoader label="opening it in its own project…" />
+        ) : (
+          <ErrorState
+            title={`${issue.displayId} is not in ${here}`}
+            message="It belongs to another project, which this address does not name."
+          />
+        )}
       </div>
     );
   }
@@ -541,6 +565,7 @@ export function IssueDetailScreen({
             cost={costQ.data}
             deps={depsQ.data}
             pending={pending || !mayWrite}
+            readOnly={!mayWrite}
             onPatch={onPatch}
             onTransition={onTransition}
             onEditModules={mayWrite ? () => setModulePickerOpen(true) : undefined}
@@ -559,6 +584,7 @@ export function IssueDetailScreen({
               cost={costQ.data}
               deps={depsQ.data}
               pending={pending || !mayWrite}
+              readOnly={!mayWrite}
               onPatch={onPatch}
               onTransition={onTransition}
               onEditModules={mayWrite ? () => setModulePickerOpen(true) : undefined}
