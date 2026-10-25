@@ -264,13 +264,17 @@ describe('forge_issues action=mark_merged, the answer to the call that writes on
     expect(claimed.action).toBe(witnessed.action);
   });
 
-  it('tells a caller whose merge was not witnessed that what it wrote is a claim', async () => {
+  // ISS-1300 r3: a person's commit the repository holds is recorded as the landing, as their claim.
+  it('tells a person whose merge was not witnessed that the commit they named is a claim', async () => {
+    stampedRows = [
+      { mergedAt: AT, mergedCommitSha: 'abc1234', mergedLanding: null, mergedCommitStated: true },
+    ];
     const claimed = await call({
       action: 'mark_merged',
       data: { issueId: ISSUE_ID, target: 'base', commit: 'abc1234' },
     });
-    expect(claimed.detail).toContain('Forge did not see this merge');
-    expect(claimed.detail).toContain('so the mark is a claim that names no commit');
+    expect(claimed.detail).toContain('is recorded as where this work landed');
+    expect(claimed.detail).toContain('Forge did not see this merge, so the mark is a claim.');
     expect(claimed.detail).not.toContain('kept');
   });
 
@@ -310,13 +314,21 @@ describe('what the tool description tells an agent about the column', () => {
     expect(setPayloads.some((p) => p.mergedCommitSha === OBSERVED_SHA)).toBe(true);
   });
 
-  it("is true of the claimed path: the mark writes no sha, and not the caller's", async () => {
+  it("is true of a person's claimed path: the mark writes no sha where it names none", async () => {
+    asAsserted();
+    await call({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } });
+    for (const p of setPayloads) expect(p).not.toHaveProperty('mergedCommitSha');
+  });
+
+  it("writes a person's commit the repository holds as theirs, flagged stated (ISS-1300 r3)", async () => {
     asAsserted();
     await call({
       action: 'mark_merged',
       data: { issueId: ISSUE_ID, target: 'base', commit: 'abc1234' },
     });
-    for (const p of setPayloads) expect(p).not.toHaveProperty('mergedCommitSha');
+    expect(setPayloads.some((p) => p.mergedCommitStated === true && 'mergedCommitSha' in p)).toBe(
+      true,
+    );
   });
 });
 
