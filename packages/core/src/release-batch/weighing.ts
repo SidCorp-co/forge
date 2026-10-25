@@ -16,8 +16,7 @@ export interface Weighing {
   readonly runtimes: readonly RuntimeReading[];
   readonly changed: ReadonlyMap<string, ChangedPaths>;
   readonly carriage: ReadonlyMap<string, Carriage>;
-  /** Each commit an issue records as its landing that the repository was read and does not hold,
-   *  by `landingKey`. Absent where nothing was asked; a read that failed puts nothing here. */
+  /** Recorded landings the repository was read and lacks, by `landingKey`; a failed read adds none. */
   readonly unresolved?: ReadonlyMap<string, UnresolvedLanding>;
 }
 

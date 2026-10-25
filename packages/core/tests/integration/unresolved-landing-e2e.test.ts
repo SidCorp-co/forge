@@ -7,6 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { ServingReading } from '../../src/release-batch/serving-reading.js';
 import { type GitHubDouble, startGitHubDouble } from '../helpers/github-double.js';
 import {
   createTestProject,
@@ -17,7 +18,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
-import type { ServingReading } from '../../src/release-batch/serving-reading.js';
 
 /** sid-desk ISS-578's pair: the real merge, and a commit sharing its first eight characters. */
 const JUDGED = '0d018a9ac5897cd4ef3fe299f9c13e4c252162e2';
@@ -205,7 +205,9 @@ describe('a recorded merged commit the repository does not hold (ISS-1300)', () 
 
     expect(got.unresolvedLanding).toBeUndefined();
     expect(got.unearned[0]?.standing).toBe('superseded');
-    expect(got.unearned[0]?.why).toContain(`judged at ${JUDGED}, and this issue now stands at ${HELD}`);
+    expect(got.unearned[0]?.why).toContain(
+      `judged at ${JUDGED}, and this issue now stands at ${HELD}`,
+    );
   });
 
   it('weighs a recorded commit the repository could not be read for as before, never as absent (criterion 8)', async () => {

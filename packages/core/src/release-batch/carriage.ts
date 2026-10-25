@@ -1,6 +1,5 @@
 /**
- * What a served commit carries of a judged one, what a landing changed (ISS-1368, ISS-1398), and
- * whether the repository holds a recorded landing (ISS-1300).
+ * What a served commit carries of a judged one, and what a landing changed (ISS-1368, ISS-1398).
  * An answer about named commits never changes, so it is kept, bounded; a failure is never kept.
  */
 
