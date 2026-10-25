@@ -26,7 +26,10 @@ requirementVerdictRoutes.post(
       body: c.req.valid('json'),
     });
     if (!written.ok) return refused(c, written.refusals, 'REQUIREMENT_REFUSED');
-    return c.json({ verdictId: written.verdictId, coverage: written.coverage }, 201);
+    return c.json(
+      { verdictId: written.verdictId, coverage: written.coverage, owner: written.owner },
+      201,
+    );
   },
 );
 

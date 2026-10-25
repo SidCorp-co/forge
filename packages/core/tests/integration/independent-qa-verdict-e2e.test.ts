@@ -40,8 +40,7 @@ import { seedProjectDocument } from '../helpers/release-world.js';
 
 const NEW = '2222222222222222222222222222222222222222';
 const LIVE = '9999999999999999999999999999999999999999';
-const BUILDER_WHY =
-  'passed by the run that built it, and this project counts only a pass from its independent judge';
+const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
 const PROBE = {
   kind: 'command',
   command: { argv: ['pnpm', 'test', 'reminders'] },
@@ -272,7 +271,7 @@ describe('c1: the building run records its pass, which never counts, named VERDI
     expect((await bc(req, 'BC-2')).verdict).toBe('not_judged');
   });
 
-  it('under qa: self the same pass counts and nothing is named', async () => {
+  it('under qa: self the same pass does not count either, and says so (ISS-683, REQ-74 BC-2)', async () => {
     await truncateAll();
     await world('self');
     const req = await agreedRequirement();
@@ -281,8 +280,8 @@ describe('c1: the building run records its pass, which never counts, named VERDI
 
     const res = await ok(verdict(issue.id, 1, 'pass'));
 
-    expect(res.notCounted).toBeNull();
-    expect((await bc(req, 'BC-1')).verdict).toBe('passing');
+    expect(res.notCounted).toMatchObject({ code: 'VERDICT_BY_BUILDER' });
+    expect((await bc(req, 'BC-1')).verdict).toBe('not_judged');
   });
 
   it('refuses a run naming no live run of the box, and a run named on a person’s credential, with nothing written', async () => {

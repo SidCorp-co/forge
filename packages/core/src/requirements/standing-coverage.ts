@@ -172,8 +172,8 @@ export function coverageOf(
 // build as a commit verdict on an issue is: it counts only where the live build is read to hold its
 // commit. A project with no production environment has no running build to hold it (its issues count
 // on their own landings), so there it never counts, saying why. Of those on the current wording the
-// one it stands on is read as an issue criterion's is (`judgesOf`): the newest, under an independent
-// judge the judge's; every other is kept on the line, naming the one that replaced it. One on an
+// one it stands on is read as an issue criterion's is (`judgesOf`): the newest a judge recorded; every
+// other is kept on the line, naming the one that replaced it. One on an
 // earlier wording is stale and never counts for this one.
 function requirementVerdictsOn(
   bc: { id: string; code: string },
@@ -240,11 +240,11 @@ function standsAtLanding(
   return { ...traced, ...kept };
 }
 
-// The verdict an issue criterion stands on. Under independent QA a newer verdict that is not the
-// judge's does not take the judge's older one away: the builder's own pass or short after the
-// judge's pass leaves that pass standing, and the criterion reads the judge's. With nothing of the
-// judge's to read, or under any other judge, it is the latest. A fail is everyone's, so it is never
-// read past, and a skip or short by the judge stands as the judge's latest word.
+// The verdict an issue criterion stands on. A newer verdict that is not a judge's does not take a
+// judge's older one away: the builder's own pass or short after a judge's pass leaves that pass
+// standing, whatever the project's `qa` (REQ-74 BC-2). With nothing of a judge's to read, it is the
+// latest. A fail is everyone's, so it is never read past, and a skip or short by a judge stands as
+// that judge's latest word.
 function judgesOf(ic: StandingIssueCriterion, judge: PolicyQaMode | null): StandingVerdict {
   return judgesVerdict<StandingVerdict>([ic, ...(ic.earlier ?? [])], judge) ?? ic;
 }

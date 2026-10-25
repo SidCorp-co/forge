@@ -328,8 +328,7 @@ describe('under an independent judge, only the judge proves a criterion on the p
       expect.objectContaining({
         bc: 'BC-1',
         standing: 'not_judged',
-        reason:
-          'passed by the run that built it, and this project counts only a pass from its independent judge',
+        reason: "passed by the run that built it, and a builder's own pass never counts",
       }),
       expect.objectContaining({
         bc: 'BC-2',
@@ -344,8 +343,8 @@ describe('under an independent judge, only the judge proves a criterion on the p
     expect(claim).toMatchObject({ proven: true, claim: { claimed: true } });
   });
 
-  it("counts the builder's pass where the project names no independent judge", () => {
-    expect(readClaims([builders], BUILD, 'self')[0]?.proven).toBe(true);
-    expect(readClaims([builders], BUILD, null)[0]?.proven).toBe(true);
+  it("does not count the builder's pass where the project names no independent judge either", () => {
+    expect(readClaims([builders], BUILD, 'self')[0]?.proven).toBe(false);
+    expect(readClaims([builders], BUILD, null)[0]?.proven).toBe(false);
   });
 });

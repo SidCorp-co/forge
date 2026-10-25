@@ -3,7 +3,7 @@
 // history (`release-evidence.ts`). Verdicts are judged here, on the release (REQ-45 BC-2). What
 // proves a criterion is the verified rule every count of proof reads (contracts
 // `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca): "Ship only proven work" holds a short,
-// and under an independent judge the builder's own pass, as the release record counts them unproven.
+// and the builder's own pass, as the release record counts them unproven.
 
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { ServingReading } from '@forge/contracts/releases';

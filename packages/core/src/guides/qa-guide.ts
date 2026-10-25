@@ -32,10 +32,10 @@ makes it with the pane's credential, so a judge needs no other tool to follow th
 
 ### What your verdicts are held to
 Read these before judging anything, while whoever sent you can still equip you.
-- \`GET /api/projects/:id/policy\` answers \`qa\`. Where it is \`independent\`, a verdict the run that
-  built the change wrote is that builder's evidence and counts as no judgement: yours is the one that
-  counts. A verdict answering \`notCounted\` (\`VERDICT_BY_BUILDER\`) was read as the builder's:
-  where the building run is still live on your box, send \`run\` with your box's run id.
+- A verdict the run that built the change wrote is that builder's evidence and counts as no
+  judgement, whatever \`qa\` (\`GET /api/projects/:id/policy\`) says: yours is the one that counts.
+  A verdict answering \`notCounted\` (\`VERDICT_BY_BUILDER\`) was read as the builder's: where the
+  building run is still live on your box, send \`run\` with your box's run id.
 - \`GET /api/projects/:id/issues?status=awaiting_release\` lists the issues whose work landed and waits
   on its release. Their criteria are judged on the build the release ships.
 - \`GET /api/issues/:id/criteria\` lists each live criterion: its statement, its \`class\`
@@ -93,6 +93,6 @@ the revision that waits.
 
 ### When you are done
 Report one line per criterion: its verdict, the build or revision it was taken at, and what it was
-taken from. A failing criterion goes back by the act ${guideRef('pipeline-and-issue-lifecycle')}
-names for it, taken by whoever sent you; you move no status yourself.`,
+taken from. A \`fail\` you record sends an issue past its build back to \`reopen\` by itself, and the
+correction is made there: file no new issue for it. You move no status yourself.`,
 };

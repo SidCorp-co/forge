@@ -9,8 +9,7 @@ import { proofTurn } from './standing-proof.js';
 
 const A = 'a'.repeat(40);
 const F = 'f'.repeat(40);
-const BUILDER_WHY =
-  'passed by the run that built it, and this project counts only a pass from its independent judge';
+const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
 
 const issue = (n: number) => ({
   id: `i${n}`,
@@ -131,10 +130,10 @@ describe("under independent QA the builder's own pass is not verified", () => {
     expect(coverage[0]).toMatchObject({ verdict: 'failing', counts: { displayId: 'ISS-2' } });
   });
 
-  it('under self QA, or no policy, the builder is the judge the project named and its pass counts', () => {
+  it("under self QA, or no policy, the builder's own pass does not count either (REQ-74 BC-2)", () => {
     const rows = [builder(1, 'pass', '2026-10-05T00:00:00Z')];
-    expect(read(rows, 'self').coverage[0]?.verdict).toBe('passing');
-    expect(read(rows, null).coverage[0]?.verdict).toBe('passing');
+    expect(read(rows, 'self').coverage[0]?.verdict).toBe('not_judged');
+    expect(read(rows, null).coverage[0]?.verdict).toBe('not_judged');
   });
 
   it("a builder's pass on a build the live one lacks is named for the build first", () => {
@@ -192,7 +191,7 @@ describe("a verdict that is not the judge's does not take the judge's away", () 
     expect(coverage[0]?.verdict).toBe('not_judged');
   });
 
-  it('under self QA the latest is read, whoever recorded it', () => {
+  it("under self QA too, the builder's newer short does not hide another's pass (REQ-74 BC-2)", () => {
     const { coverage } = read(
       [
         history(
@@ -202,7 +201,7 @@ describe("a verdict that is not the judge's does not take the judge's away", () 
       ],
       'self',
     );
-    expect(coverage[0]?.verdict).toBe('not_judged');
+    expect(coverage[0]?.verdict).toBe('passing');
   });
 });
 

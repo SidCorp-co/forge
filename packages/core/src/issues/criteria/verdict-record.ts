@@ -22,7 +22,7 @@ import type { Actor } from '../activity.js';
 import { verdictByBuilderSql } from '../built-by.js';
 import { criterionRoutesOf } from '../design-record.js';
 import { runOfCall } from '../pattern-runs.js';
-import { readJudge, readProjectDocument } from '../ports.js';
+import { readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
 import { writeKernelRecord } from '../record-events/store.js';
 import { probeNote } from './probe-rules.js';
@@ -337,12 +337,9 @@ async function recordingSession(
  */
 async function notCountedFor(
   tx: Tx,
-  issue: { id: string; projectId: string },
   verdict: { id: string; value: string },
 ): Promise<NotCounted | null> {
   if (verdict.value !== 'pass' && verdict.value !== 'short') return null;
-  const judge = await readJudge(issue.projectId);
-  if (judge !== 'independent') return null;
   const rows = (await tx.execute(sql`
     SELECT ${verdictByBuilderSql({
       issueId: sql`v.issue_id`,
@@ -354,10 +351,11 @@ async function notCountedFor(
       FROM criterion_verdicts v WHERE v.id = ${verdict.id}`)) as unknown as {
     by_builder: boolean | null;
   }[];
-  return notCountedOf(
-    { verdict: verdict.value, byBuilder: rows[0]?.by_builder === true, authored: true },
-    judge,
-  );
+  return notCountedOf({
+    verdict: verdict.value,
+    byBuilder: rows[0]?.by_builder === true,
+    authored: true,
+  });
 }
 
 /**
@@ -376,6 +374,8 @@ export async function recordVerdict(
     run?: string | undefined;
     /** The recording session a door already resolved; given, `run` is not read. */
     runSession?: string | null | undefined;
+    /** False where the door moves the issue itself on a fail (a release's probe replay). */
+    reopens?: boolean;
   },
 ): Promise<{ id: string; notCounted: NotCounted | null }> {
   const { issue, draft, author } = args;
@@ -453,7 +453,7 @@ export async function recordVerdict(
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
-  const notCounted = await notCountedFor(tx, issue, { id: row.id, value: draft.verdict });
+  const notCounted = await notCountedFor(tx, { id: row.id, value: draft.verdict });
   await keepFailAsCorrection(tx, {
     issue,
     verdictId: row.id,
@@ -475,13 +475,27 @@ export async function recordVerdict(
     ],
     commentId: args.commentId ?? null,
   });
-  // a verdict against a commit changes what a release page carrying the issue may claim (REQ-40 BC-13)
-  if (identity.identityKind === 'commit' && identity.commitSha) {
+  // a verdict against a commit changes what a release page carrying the issue may claim (REQ-40 BC-13),
+  // and a fail sends the issue that owns the work back to reopen, whichever door recorded it (REQ-74 BC-3)
+  const commitSha = identity.identityKind === 'commit' ? (identity.commitSha ?? null) : null;
+  const failed =
+    draft.verdict === 'fail' && args.reopens !== false
+      ? {
+          criterion: draft.criterion,
+          requirement: null,
+          reason: draft.reason?.trim() || null,
+          authorUserId: author.userId,
+          authorDeviceId: author.deviceId,
+          agency: author.agency,
+        }
+      : null;
+  if (commitSha || failed) {
     await emitEvent(tx, 'verdict.recorded', {
       projectId: issue.projectId,
       issueId: issue.id,
       verdictId: row.id,
-      commitSha: identity.commitSha,
+      commitSha,
+      failed,
     });
   }
   return { id: row.id, notCounted };

@@ -4,6 +4,7 @@ import { registerIntakeAssistant } from './intake/index.js';
 import {
   registerActivitySubscribers,
   registerDependencyHealth,
+  registerFailReopen,
   registerHostMergeStamp,
   registerIssueMoveReactions,
 } from './issues/index.js';
@@ -62,6 +63,7 @@ export function registerOutboxConsumers(): void {
   registerMemoryReconcileTrigger();
   registerMemoryExtraction();
   registerHostMergeStamp();
+  registerFailReopen();
   registerIssueMoveReactions();
   registerDependencyHealth();
   registerReviewNotes();

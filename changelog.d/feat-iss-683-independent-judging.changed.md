@@ -1,0 +1,1 @@
+**A builder's own pass no longer counts, and a fail reopens the issue that owns the work.** A judge run over a landed issue is no longer read as its builder; a requirement fail goes to the delivering issue.

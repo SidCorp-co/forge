@@ -2,7 +2,7 @@
 // release carries, read at the build the page describes by the rule a requirement's coverage counts
 // by (contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca), as the release record counts them: the
 // verdict it stands on is the judge's, and only a pass that rule counts as verified proves it, so
-// a short, or under an independent judge the builder's own pass, is never listed or counted as
+// a short, or the builder's own pass, is never listed or counted as
 // proven. A claimed criterion proves its requirement criterion live (BC-5) and lends its kept clip or
 // picture to a highlight (BC-3); every other one is a known issue as its verdict on the build reads
 // (BC-8). Pure: the loaders in facts.ts hand it rows.

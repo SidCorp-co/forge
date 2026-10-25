@@ -27,23 +27,31 @@ describe("the verified rule every count of proof reads (REQ-35 decision 7b261fca
 		});
 	});
 
-	it("under an independent judge, counts neither the builder's pass nor an unauthored one", () => {
-		expect(unverifiedWhy(v("pass", true), "independent")).toContain(
-			"passed by the run that built it",
-		);
+	it("never counts the builder's own pass, whatever the project's qa says (REQ-74 BC-2)", () => {
+		for (const judge of [null, "self", "independent"] as const) {
+			expect(unverifiedWhy(v("pass", true), judge)).toBe(
+				"passed by the run that built it, and a builder's own pass never counts",
+			);
+			expect(verifiedOf([v("pass", true)], judge).proven).toBe(false);
+		}
+	});
+
+	it("counts an unauthored pass only where no independent judge is declared", () => {
 		expect(unverifiedWhy(v("pass", false, false), "independent")).toContain(
 			"no recorded author",
 		);
-		expect(unverifiedWhy(v("pass", true), "self")).toBeNull();
+		expect(unverifiedWhy(v("pass", false, false), "self")).toBeNull();
 	});
 
-	it("reads the judge's older pass past a newer verdict of the builder's, never past a fail", () => {
-		const judge = v("pass");
-		expect(judgesVerdict([v("short", true), judge], "independent")).toBe(judge);
-		const fail = v("fail", true);
-		expect(judgesVerdict([fail, judge], "independent")).toBe(fail);
-		expect(judgesVerdict([v("short", true), judge], null)?.verdict).toBe(
-			"short",
+	it("reads a judge's older pass past a newer verdict of the builder's, never past a fail", () => {
+		for (const qa of [null, "self", "independent"] as const) {
+			const judge = v("pass");
+			expect(judgesVerdict([v("short", true), judge], qa)).toBe(judge);
+			const fail = v("fail", true);
+			expect(judgesVerdict([fail, judge], qa)).toBe(fail);
+		}
+		expect(judgesVerdict([v("pass", false, false), v("pass")], "self")?.authored).toBe(
+			false,
 		);
 	});
 });

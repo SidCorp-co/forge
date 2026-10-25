@@ -127,7 +127,7 @@ export async function carriedVerdictsOf(
  * An issue's criteria as the release whose build is `build` counts them, by the one rule every count
  * of proof reads (contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca): of the verdicts on that build,
  * the one the criterion stands on is the judge's, and only a pass the rule counts as verified proves
- * it. A short never does, nor, under an independent judge, the builder's own pass; where neither
+ * it. A short never does, nor the builder's own pass, whatever the project's `qa`; where neither
  * counts, `unverified` says why. A release with no cut build reads every verdict since the last
  * reopen, its newest shown; one with a build reads only that build's, so a verdict on an earlier
  * build never counts, and none on it reads not judged.

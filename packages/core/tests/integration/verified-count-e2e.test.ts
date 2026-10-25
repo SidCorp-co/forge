@@ -32,8 +32,7 @@ import { plantLiveBuild } from '../helpers/live-build.js';
 const NEW = '2222222222222222222222222222222222222222';
 const LIVE = '9999999999999999999999999999999999999999';
 const BUILT = '2026-10-04T10:00:00Z';
-const BUILDER_WHY =
-  'passed by the run that built it, and this project counts only a pass from its independent judge';
+const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
 
 let projectId: string;
 let ownerId: string;
@@ -196,7 +195,7 @@ describe('a short is not verified', () => {
   });
 });
 
-describe("under independent QA the builder's own pass is not verified", () => {
+describe("the builder's own pass is not verified", () => {
   it('a pass sent from the box while the run that checked the issue was live there does not count', async () => {
     const req = await agreedRequirement();
     const issue = await closedIssueTracing(req, 1, ['BC-1']);
@@ -288,14 +287,14 @@ describe("under independent QA the builder's own pass is not verified", () => {
     expect(detail).toContain('passed by the run that built it');
   });
 
-  it('under self QA the same builder pass counts, since the builder is the judge the project named', async () => {
+  it('under self QA the same builder pass does not count either (REQ-74 BC-2)', async () => {
     projectId = (await createTestProject(ownerId)).id;
     const req = await agreedRequirement();
     const issue = await closedIssueTracing(req, 1, ['BC-1']);
     await checked(issue, await runOn(box));
     await judge(issue, 1, 'pass', '2026-10-05T10:00:00Z', box);
 
-    expect(await bc(req, 'BC-1')).toMatchObject({ verdict: 'passing' });
+    expect(await bc(req, 'BC-1')).toMatchObject({ verdict: 'not_judged' });
   });
 });
 

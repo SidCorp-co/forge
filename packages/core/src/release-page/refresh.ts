@@ -111,7 +111,8 @@ export function registerReleaseHighlightsRefresh(): void {
   consume('verdict.recorded', {
     name: 'release-highlights',
     handle: async (p) => {
-      await refreshForVerdict(p.projectId, p.issueId);
+      // a fail on no commit is carried for the issue's reopen (`issues/fail-reopen.ts`), not a page
+      if (p.commitSha) await refreshForVerdict(p.projectId, p.issueId);
     },
   });
 }

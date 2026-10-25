@@ -21,6 +21,8 @@ export const CRITERIA_REFUSAL_CODES = [
 	"CRITERIA_TRACE_DROPPED",
 	"CRITERIA_TRACE_DUPLICATE",
 	"CRITERIA_RENUMBER_AMBIGUOUS",
+	/** A trace taking up a criterion that stands failed on the issue that delivered it, named (REQ-74 BC-3). */
+	"CRITERION_FAILURE_OWNED",
 ] as const;
 export type CriteriaRefusalCode = (typeof CRITERIA_REFUSAL_CODES)[number];
 

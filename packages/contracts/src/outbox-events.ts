@@ -216,6 +216,18 @@ interface IssueSnapshot {
 	labels: string[];
 }
 
+/** A fail a `verdict.recorded` carries: what was judged, and who judged it. */
+export interface VerdictFailed {
+	/** The issue criterion judged, or null where the fail was recorded at the requirement. */
+	criterion: number | null;
+	/** The requirement criterion judged there, as `REQ-<n> BC-<n>`; null on an issue criterion. */
+	requirement: string | null;
+	reason: string | null;
+	authorUserId: string | null;
+	authorDeviceId: string | null;
+	agency: "human" | "agent";
+}
+
 export interface OutboxEventPayloads
 	extends StewardEventPayloads,
 		LessonEventPayloads {
@@ -540,13 +552,17 @@ export interface OutboxEventPayloads
 	};
 	/**
 	 * A verdict was recorded on an issue criterion against a commit: what a release page claims
-	 * changes for every release carrying the issue whose build is that commit (REQ-40 BC-13).
+	 * changes for every release carrying the issue whose build is that commit (REQ-40 BC-13). Also
+	 * emitted for every fail, on any identity and at the requirement too, naming the issue that owns
+	 * the work in `issueId`: that issue goes back to `reopen` where it is past its build, never a new
+	 * issue (REQ-74 BC-3, REQ-45 BC-2).
 	 */
 	"verdict.recorded": {
 		projectId: string;
 		issueId: string;
 		verdictId: string;
-		commitSha: string;
+		commitSha: string | null;
+		failed?: VerdictFailed | null;
 	};
 	/**
 	 * The requirement read delivered at `revision`, after a linked issue's move or on a later sweep; its
