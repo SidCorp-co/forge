@@ -252,6 +252,80 @@ describe('a steward job is not retried by the pool, nor held behind once its run
   });
 });
 
+// ISS-618 c1, judged on dev.276: FB-211 stayed queued past 5 minutes behind 16 filed items' triage
+// jobs, taken one at a time per project, its run owing nothing but a job
+describe("a filed item's run starts within the bound while its project's steward job is taken", () => {
+  it('starts with the note turn, and its triage waits as the next run behind the live job', async () => {
+    const { db } = await import('../../src/db/client.js');
+    const { foldTrigger, claimDueRuns } = await import('../../src/steward/runs-store.js');
+    const { enqueueStewardJob, stewardJobLive } = await import('../../src/steward/job.js');
+    const { stewardRuns } = await import('../../src/db/schema-steward-runs.js');
+    const { eq } = await import('drizzle-orm');
+    const { STEWARD_DEBOUNCE_MS } = await import('@forge/contracts/steward');
+    const lane = (await createTestProject(ownerId)).id;
+    await bindTestRunner(lane, await createTestDevice(ownerId));
+    const item = async (seq: number) => {
+      const key = await createTestFeedback(lane, ownerId, seq);
+      const [row] = await rows<{ id: string }>(sql`
+        SELECT id FROM feedback WHERE project_id = ${lane} AND fb_seq = ${seq}`);
+      return { kind: 'feedback' as const, id: row?.id ?? '', key };
+    };
+    // the item whose triage job is live now, and 16 filed before FB-211 still waiting on theirs
+    const busy = await item(180);
+    const [running] = await rows<{ id: string }>(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
+                                state, not_before, started_at)
+      VALUES (${lane}, 'feedback', ${busy.id}, ${busy.key}, 'feedback.filed', '[]'::jsonb,
+              ARRAY['triage_draft']::text[], 'running', now(), now())
+      RETURNING id`);
+    const [runRow] = await db
+      .select()
+      .from(stewardRuns)
+      .where(eq(stewardRuns.id, running?.id ?? ''));
+    if (!runRow) throw new Error('the running run was not written');
+    const job = await enqueueStewardJob(runRow, ['triage_draft']);
+    if (!job.ok) throw new Error(job.failure);
+    expect(await stewardJobLive(lane)).toBe(true);
+    for (let n = 0; n < 16; n += 1) {
+      const waiting = await item(184 + n);
+      await rows(sql`
+        INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
+                                  state, queued_at, not_before)
+        VALUES (${lane}, 'feedback', ${waiting.id}, ${waiting.key}, 'feedback.filed', '[]'::jsonb,
+                ARRAY['triage_draft']::text[], 'queued', now() - interval '9 hours',
+                now() - interval '9 hours')
+        RETURNING id`);
+    }
+    const filedAt = new Date(Date.now() - STEWARD_DEBOUNCE_MS - 1_000);
+    const subject = await item(211);
+    const filed = await db.transaction((tx) =>
+      foldTrigger(tx, {
+        projectId: lane,
+        subject,
+        trigger: 'feedback.filed',
+        outboxId: 'fb211-filed',
+        at: filedAt,
+      }),
+    );
+    await dispatch(new Date());
+
+    const [run] = await rows<{ state: string; started_at: string | null; acts: string[] }>(sql`
+      SELECT state, started_at::text, acts_to_run AS acts FROM steward_runs WHERE id = ${filed.runId}`);
+    expect(run?.started_at, 'FB-211 was not started').not.toBeNull();
+    expect(new Date(run?.started_at ?? 0).getTime() - filedAt.getTime()).toBeLessThanOrEqual(
+      BOUND_MS,
+    );
+    expect(run).toMatchObject({ state: 'done', acts: ['note'] });
+    // its triage is not dropped: the item's next run owes it, queued behind the live job
+    const [next] = await rows<{ trigger: string; acts: string[]; state: string }>(sql`
+      SELECT trigger, acts_to_run AS acts, state FROM steward_runs
+       WHERE subject_id = ${subject.id} AND id <> ${filed.runId}`);
+    expect(next).toEqual({ trigger: 'feedback.filed', acts: ['triage_draft'], state: 'queued' });
+    expect((await claimDueRuns(new Date(), 30)).map((r) => r.subjectKey)).toEqual([]);
+    expect(await stewardJobLive(lane)).toBe(true);
+  });
+});
+
 describe("a day's sweep backlog never spends the handoffs' share (REQ-48 BC-1, dev.271)", () => {
   it('starts a feedback.filed and a requirement.agreed run within the bound after the sweep has used its share', async () => {
     const { db } = await import('../../src/db/client.js');

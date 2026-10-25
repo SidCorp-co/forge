@@ -2652,6 +2652,10 @@ export const SAID = {
 		vars: { title: "said", revision: "count" },
 	},
 	"needsYou.title.question": { en: "A question a run asked" },
+	"needsYou.act.decideProposal": { en: "approve or decline what an agent proposed" },
+	"needsYou.rule.proposed": {
+		en: "an agent proposed it, and only a person decides it",
+	},
 	"needsYou.title.release": {
 		en: "Release {version}",
 		vars: { version: "version" },

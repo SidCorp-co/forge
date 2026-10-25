@@ -47,7 +47,7 @@ import {
   questionDecision,
 } from './needs-you-decision-builders.js';
 import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
-import { foldedDecisions } from './needs-you-fold.js';
+import { foldedDecisions, unreadableItem } from './needs-you-fold.js';
 import { repinDecision as designRepinDecision } from './needs-you-repin.js';
 import { type DesignRepinGroup, releaseApprovalsOfRuns } from './ports.js';
 
@@ -334,6 +334,14 @@ export interface OwedDecision {
 
 type Attention = Awaited<ReturnType<typeof readAttention>>;
 
+/** The owed rows listed (each a decision or left out by why) and every owed row, ops ones too. */
+interface Classification {
+  owed: OwedDecision[];
+  left: Map<NeedsYouNotDecisionReason, NotDecisionItem[]>;
+  listed: { area: NeedsYouAreaKey; row: AttentionRow }[];
+  owedRows: Record<NeedsYouAreaKey, AttentionRow[]>;
+}
+
 /**
  * The viewer's owed rows of one attention read, each a decision or counted under why it is not one:
  * the one classification the needs-me read and the approval inbox both take.
@@ -341,7 +349,7 @@ type Attention = Awaited<ReturnType<typeof readAttention>>;
 export async function decisionsOf(
   projectId: string,
   attention: Attention,
-): Promise<{ owed: OwedDecision[]; left: Map<NeedsYouNotDecisionReason, NotDecisionItem[]> }> {
+): Promise<Classification> {
   const owedRows = owedOf(attention.rows);
   const runIds = attention.releases.releases.flatMap((r) =>
     r.state === 'awaiting_approval' && r.runId ? [r.runId] : [],
@@ -396,6 +404,7 @@ export async function decisionsOf(
     ),
   };
   const owed: OwedDecision[] = [];
+  const listed: { area: NeedsYouAreaKey; row: AttentionRow }[] = [];
   const asked = new Set<string>();
   const left = new Map<NeedsYouNotDecisionReason, NotDecisionItem[]>();
   const asks = NEEDS_YOU_AREAS.filter((a) => NEEDS_YOU_AREA_SPACE[a] === 'asks').flatMap((area) =>
@@ -411,39 +420,33 @@ export async function decisionsOf(
     if ('folded' in c) continue;
     if ('reason' in c) {
       left.set(c.reason, [...(left.get(c.reason) ?? []), leftItem(row)]);
+      listed.push({ area, row });
       continue;
     }
     // a requirement held up by an issue's question and the issue itself are one decision
     if (c.questionId && asked.has(c.questionId)) continue;
     if (c.questionId) asked.add(c.questionId);
     owed.push({ area, row, decision: completed(c.decision, dueOfRow(row)) });
+    listed.push({ area, row });
   }
-  return { owed, left };
+  return { owed, left, listed, owedRows };
 }
 
-/** Every decision of one attention read, in the list's order, and what was left out by why. */
-async function allDecisionsOf(
+/**
+ * The one list both Needs you reads are built from (`/needs-you` and `/needs-you/decisions`): every
+ * decision of one attention read in the list's order, what was left out by why, and the rows of both.
+ */
+export async function needsYouListOf(
   projectId: string,
   viewer: NeedsYouViewer,
   access: ProjectAccess,
   attention: Attention,
 ) {
-  const [{ owed, left }, folded] = await Promise.all([
+  const [{ owed, left, listed, owedRows }, folded] = await Promise.all([
     decisionsOf(projectId, attention),
     foldedDecisions(projectId, viewer, access, attention),
   ]);
-  if (folded.unreadable.length > 0) {
-    // a record no decision could be made of is opened on its own page, named by its key alone
-    left.set(
-      'unreadable',
-      folded.unreadable.map((key) => ({
-        key,
-        title: key,
-        next: 'open it on its own page',
-        opens: null,
-      })),
-    );
-  }
+  if (folded.unreadable.length > 0) left.set('unreadable', folded.unreadable.map(unreadableItem));
   const decisions = uniqueIds([...owed.map((o) => o.decision), ...folded.decisions]).sort(
     byDecisionOrder,
   );
@@ -451,7 +454,7 @@ async function allDecisionsOf(
     issue: new Map(attention.issues.issues.map((i) => [i.key, i.id])),
     requirement: new Map(attention.requirements.map((r) => [r.key, r.id])),
   };
-  return { decisions, left, ids };
+  return { decisions, left, ids, listed, owedRows, folded };
 }
 
 /** The viewer's whole Needs you from an attention read already made: what the status report counts. */
@@ -461,7 +464,7 @@ export async function needsYouDecisionsOf(
   access: ProjectAccess,
   attention: Attention,
 ): Promise<NeedsYouDecision[]> {
-  return (await allDecisionsOf(projectId, viewer, access, attention)).decisions;
+  return (await needsYouListOf(projectId, viewer, access, attention)).decisions;
 }
 
 /** Each decision's id once in the read, a second built for the same record numbered after it. */
@@ -485,7 +488,7 @@ export async function readNeedsYouDecisionsBare(
   now: Date = new Date(),
 ): Promise<{ read: NeedsYouDecisions; ids: EvidenceGroup['ids'] }> {
   const attention = await readAttention(projectId, viewer, now);
-  const { decisions, left, ids } = await allDecisionsOf(projectId, viewer, access, attention);
+  const { decisions, left, ids } = await needsYouListOf(projectId, viewer, access, attention);
   const read = needsYouDecisionsSchema.parse({
     generatedAt: now.toISOString(),
     decisions: decisions.slice(0, DECISIONS_MAX),

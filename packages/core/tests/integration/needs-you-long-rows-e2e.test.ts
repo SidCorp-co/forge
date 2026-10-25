@@ -223,12 +223,18 @@ describe('a decision is titled by its record’s title, and one long title never
       items: [
         {
           key: w.issues[0]?.key,
-          title: w.issues[0]?.key,
+          title: 'issue 1',
           next: 'open it on its own page',
-          opens: null,
+          opens: { kind: 'issue', key: w.issues[0]?.key },
         },
       ],
     });
+    // and /needs-you lists it too: one list, counted alike (ISS-618 c3)
+    const needs = expectOk(await api(owner, 'GET', `/api/projects/${w.projectId}/needs-you`));
+    const asks = (needs.items as Doc[]).filter((i) => i.space === 'asks');
+    expect(asks.length).toBe(
+      read.total + read.notDecisions.reduce((n: number, x: Doc) => n + x.count, 0),
+    );
     expect(read.decisions.map((d: Doc) => d.id)).not.toContain(`suggestion:${made.suggestion.id}`);
     expect(byId(read, 'suggestion:')).toHaveLength(1);
     expect(byId(read, 'mockup:')).toHaveLength(1);

@@ -13,7 +13,9 @@ import { feedbackKey } from '@forge/contracts/feedback';
 import type { MockupAcceptConsequence, MockupView } from '@forge/contracts/mockups';
 import type { NeedsYouAreaKey, NeedsYouEntity } from '@forge/contracts/needs-you';
 import {
+  type DecisionOpens,
   type NeedsYouDecision,
+  type NotDecisionItem,
   needsYouDecisionSchema,
 } from '@forge/contracts/needs-you-decisions';
 import {
@@ -162,6 +164,9 @@ function standingOf(m: MockupView): { label: string; value: string }[] {
   ];
 }
 
+const mockupArea = (m: MockupView): NeedsYouAreaKey =>
+  m.target.type === 'feedback' ? 'feedback' : m.target.type === 'issue' ? 'issues' : 'requirements';
+
 function mockupDecision(projectId: string, m: MockupView): DecisionBody {
   const consequence = CONSEQUENCE_OF[m.target.type];
   const proposal: DecisionProposal = fitProposal({
@@ -202,12 +207,7 @@ function mockupDecision(projectId: string, m: MockupView): DecisionBody {
     : null;
   return {
     group: 'approve',
-    area:
-      m.target.type === 'feedback'
-        ? 'feedback'
-        : m.target.type === 'issue'
-          ? 'issues'
-          : 'requirements',
+    area: mockupArea(m),
     entity: m.target.type,
     key: m.key,
     title: cutAtWord(m.name, 500),
@@ -335,14 +335,39 @@ function proposalOf(
   return suggestionProposal(s.kind, s.payload, s.target.key);
 }
 
-export interface Folded {
-  decisions: NeedsYouDecision[];
-  /** The keys of the waiting records no decision could be made of. */
-  unreadable: string[];
+/** A waiting record no decision could be made of, named by what its source row says of it. */
+export interface UnreadableRecord {
+  area: NeedsYouAreaKey;
+  entity: NeedsYouEntity;
+  key: string;
+  title: string;
+  touchedAt: string | null;
+  /** The page it is decided on. */
+  opens: DecisionOpens;
 }
 
-/** One record as a decision checked on its own, or its key named unreadable with what broke. */
-function checked(key: string, build: () => DecisionBody, out: Folded, projectId: string) {
+export interface Folded {
+  decisions: NeedsYouDecision[];
+  /** The waiting records no decision could be made of: listed by key, opened on their own page. */
+  unreadable: UnreadableRecord[];
+}
+
+/** A record no decision could be made of, left out by its source row and opened on its own page. */
+export const unreadableItem = (u: UnreadableRecord): NotDecisionItem => ({
+  key: u.key,
+  title: u.title.slice(0, 500) || u.key,
+  next: 'open it on its own page',
+  opens: u.opens,
+});
+
+/** One record as a decision checked on its own, or named unreadable with what broke. */
+function checked(
+  record: UnreadableRecord,
+  build: () => DecisionBody,
+  out: Folded,
+  projectId: string,
+) {
+  const { key } = record;
   try {
     const parsed = needsYouDecisionSchema.safeParse({ ...build(), stuck: false, dueAt: null });
     if (parsed.success) {
@@ -351,7 +376,7 @@ function checked(key: string, build: () => DecisionBody, out: Folded, projectId:
     }
     throw new Error(parsed.error.issues.map((i) => `${i.path.join('/')}: ${i.message}`).join('; '));
   } catch (err) {
-    out.unreadable.push(key);
+    out.unreadable.push(record);
     // a silence is ours: the page names the key, and the log says what broke
     logger.warn(
       { projectId, key, problem: err instanceof Error ? err.message : String(err) },
@@ -391,13 +416,48 @@ export async function foldedDecisions(
   const out: Folded = { decisions: [], unreadable: [] };
   for (const s of suggestions) {
     checked(
-      s.target.key,
+      {
+        area: AREA_OF[s.target.type],
+        entity: s.target.type as NeedsYouEntity,
+        key: s.target.key,
+        title: s.target.title,
+        touchedAt: s.createdAt,
+        opens: { kind: s.target.type, key: s.target.key },
+      },
       () => suggestionDecision(projectId, s, fitProposal(proposalOf(s, items, reqs))),
       out,
       projectId,
     );
   }
-  for (const m of mockups) checked(m.key, () => mockupDecision(projectId, m), out, projectId);
-  for (const p of previews) checked(p.issueKey, () => previewDecision(p), out, projectId);
+  for (const m of mockups) {
+    checked(
+      {
+        area: mockupArea(m),
+        entity: m.target.type,
+        key: m.key,
+        title: m.name,
+        touchedAt: m.createdAt,
+        opens: { kind: m.target.type, key: m.target.key },
+      },
+      () => mockupDecision(projectId, m),
+      out,
+      projectId,
+    );
+  }
+  for (const p of previews) {
+    checked(
+      {
+        area: 'issues',
+        entity: 'issue',
+        key: p.issueKey,
+        title: p.issueTitle,
+        touchedAt: p.since,
+        opens: { kind: 'issue', key: p.issueKey },
+      },
+      () => previewDecision(p),
+      out,
+      projectId,
+    );
+  }
   return out;
 }
