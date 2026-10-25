@@ -184,24 +184,44 @@ export const RELEASE_HIGHLIGHT_BODY_WORDS_MAX = 40;
 /**
  * One highlight as the assistant drafts it: one requirement the release completes or advances, what
  * it now does for the reader, the criteria it claims (each a pass on the build), and the clip or
- * picture that shows it — or, where that release's evidence holds none, why not.
+ * picture from QA evidence that shows it (REQ-70 BC-2). A highlight nothing shows is never written:
+ * the drafter picks a requirement QA kept a clip or picture of, or the QA agent records one.
  */
-export const ReleaseHighlightSchema = z
-	.strictObject({
-		requirement: z.strictObject({
-			key: z.string().min(1),
-			title: z.string().min(1),
+export const ReleaseHighlightSchema = z.strictObject({
+	requirement: z.strictObject({
+		key: z.string().min(1),
+		title: z.string().min(1),
+	}),
+	title: z.string().trim().min(1).max(RELEASE_HIGHLIGHT_TITLE_MAX),
+	body: z
+		.string()
+		.trim()
+		.min(1)
+		.refine((b) => digestWordCount(b) <= RELEASE_HIGHLIGHT_BODY_WORDS_MAX, {
+			error: `a highlight body runs to ${RELEASE_HIGHLIGHT_BODY_WORDS_MAX} words at most`,
 		}),
-		title: z.string().trim().min(1).max(RELEASE_HIGHLIGHT_TITLE_MAX),
-		body: z
-			.string()
-			.trim()
-			.min(1)
-			.refine((b) => digestWordCount(b) <= RELEASE_HIGHLIGHT_BODY_WORDS_MAX, {
-				error: `a highlight body runs to ${RELEASE_HIGHLIGHT_BODY_WORDS_MAX} words at most`,
-			}),
-		/** The requirement's BC codes this highlight claims; never empty, since a highlight says something works. */
-		claims: z.array(z.string().min(1)).min(1),
+	/** The requirement's BC codes this highlight claims; never empty, since a highlight says something works. */
+	claims: z.array(z.string().min(1)).min(1),
+	media: ReleaseMediaRefSchema,
+});
+export type ReleaseHighlight = z.infer<typeof ReleaseHighlightSchema>;
+
+/** A highlight as drafted, before it is judged: its media may be missing, which the judge refuses. */
+export type ReleaseHighlightDraft = Omit<ReleaseHighlight, "media"> & {
+	media: ReleaseMediaRef | null;
+};
+
+/**
+ * A highlight kept before REQ-70 BC-2, which may say why no clip or picture shows it (`mediaGap`). A
+ * release that ended keeps the highlights it ended with, and a share keeps what it froze, so this
+ * shape is still read there; nothing drafts it any more.
+ */
+export const ReleaseHighlightKeptSchema = z
+	.strictObject({
+		requirement: ReleaseHighlightSchema.shape.requirement,
+		title: ReleaseHighlightSchema.shape.title,
+		body: ReleaseHighlightSchema.shape.body,
+		claims: ReleaseHighlightSchema.shape.claims,
 		media: ReleaseMediaRefSchema.nullable(),
 		/** Set exactly when `media` is null: why no clip or picture shows it. */
 		mediaGap: z.string().min(1).nullable(),
@@ -211,7 +231,23 @@ export const ReleaseHighlightSchema = z
 			"a highlight carries media or says why it has none, never both and never neither",
 		path: ["mediaGap"],
 	});
-export type ReleaseHighlight = z.infer<typeof ReleaseHighlightSchema>;
+export type ReleaseHighlightKept = z.infer<typeof ReleaseHighlightKeptSchema>;
+
+/** A highlight as a page shows it: drafted under today's rule, or kept by a release that ended before it. */
+export const ReleaseShownHighlightSchema = z.union([
+	ReleaseHighlightSchema,
+	ReleaseHighlightKeptSchema,
+]);
+export type ReleaseShownHighlight = ReleaseHighlight | ReleaseHighlightKept;
+
+/**
+ * The release states that end a release: it shipped, failed or was aborted. Its page is history from
+ * then on, so a rule tightened after it ended never changes it (REQ-70): it keeps the highlights and
+ * reads the notes it ended with, and nothing drafts its highlights again.
+ */
+export const RELEASE_ENDED_STATES = ["shipped", "failed", "aborted"] as const;
+export const releaseEnded = (state: ReleaseState): boolean =>
+	(RELEASE_ENDED_STATES as readonly string[]).includes(state);
 
 export const RELEASE_HIGHLIGHTS_STATES = [
 	"drafted",
@@ -223,14 +259,15 @@ export type ReleaseHighlightsState = (typeof RELEASE_HIGHLIGHTS_STATES)[number];
 
 /**
  * The release's highlights as stored and refreshed: `drafted` at the cut and again whenever a verdict
- * on the build changes what may be claimed; `none` where the release completes or advances no
- * requirement; `pending` while a draft is owed; `failed` with the refusal the last draft earned.
+ * on the build changes what may be claimed, until the release ends; `none` where the release completes
+ * or advances no requirement, or ended before any was drafted; `pending` while a draft is owed;
+ * `failed` with the refusal the last draft earned.
  */
 export const ReleaseHighlightsSchema = z.discriminatedUnion("state", [
 	z.strictObject({
 		state: z.literal("drafted"),
 		highlights: z
-			.array(ReleaseHighlightSchema)
+			.array(ReleaseShownHighlightSchema)
 			.min(RELEASE_HIGHLIGHTS_MIN)
 			.max(RELEASE_HIGHLIGHTS_MAX),
 		/** The gateway model that wrote it, as the gateway names it. */
@@ -261,7 +298,8 @@ export type ReleaseHighlights = z.infer<typeof ReleaseHighlightsSchema>;
 /**
  * What the drafter is shown, and the only thing a highlight may draw on: the Product record of each
  * requirement the release completes or advances (title, summary, criterion statements), the codes
- * the truth rule lets it claim, and the media that release's verdicts kept. Never the codebase.
+ * the truth rule lets it claim, and the media that release's verdicts kept of those claims, each under
+ * the requirement its criterion traces, so one requirement never borrows another's clip. Never the codebase.
  */
 export interface ReleaseHighlightFacts {
 	version: string;
@@ -272,9 +310,19 @@ export interface ReleaseHighlightFacts {
 		text: string;
 		completes: boolean;
 		claimable: string[];
+		/** The clips and pictures pass verdicts on the build kept of its claimable criteria, clips first. */
+		media: ReleaseMediaRef[];
 	}[];
-	media: ReleaseMediaRef[];
 }
+
+/** The media a highlight of `requirement` claiming `claims` may show. */
+export const highlightMediaOf = (
+	requirement: ReleaseHighlightFacts["requirements"][number],
+	claims: readonly string[],
+): ReleaseMediaRef[] =>
+	requirement.media.filter(
+		(m) => m.criterion.bc !== null && claims.includes(m.criterion.bc),
+	);
 
 const NUMERAL = /\d+(?:[.,:]\d+)*/g;
 /** The figures a text states, as written. */
@@ -287,15 +335,24 @@ export function numeralsIn(text: string): string[] {
  * empty list means it may. A drafter that earns a refusal retries once with it, then stores `failed`.
  */
 export function judgeHighlights(
-	highlights: readonly ReleaseHighlight[],
+	highlights: readonly ReleaseHighlightDraft[],
 	facts: ReleaseHighlightFacts,
 ): Refusal[] {
 	const out: Refusal[] = [];
+	const shown = facts.requirements.filter((r) => r.media.length > 0);
+	if (facts.requirements.length > 0 && shown.length === 0)
+		return [
+			{
+				code: "RELEASE_HIGHLIGHTS_NO_MEDIA",
+				path: "highlights",
+				detail: `QA kept no clip or picture of any criterion ${facts.version} proves (${facts.requirements.map((r) => `${r.key} ${r.claimable.join(", ")}`).join("; ")}), so no highlight can show one; the QA agent records a clip of one on this build`,
+			},
+		];
 	const want =
 		facts.requirements.length === 0
 			? "none, since the release completes or advances no requirement"
-			: `${RELEASE_HIGHLIGHTS_MIN} to ${Math.min(RELEASE_HIGHLIGHTS_MAX, facts.requirements.length)}`;
-	const max = Math.min(RELEASE_HIGHLIGHTS_MAX, facts.requirements.length);
+			: `${RELEASE_HIGHLIGHTS_MIN} to ${Math.min(RELEASE_HIGHLIGHTS_MAX, shown.length)}, one per requirement QA kept a clip or picture of`;
+	const max = Math.min(RELEASE_HIGHLIGHTS_MAX, shown.length);
 	const min = Math.min(RELEASE_HIGHLIGHTS_MIN, max);
 	if (highlights.length < min || highlights.length > max)
 		out.push({
@@ -348,24 +405,26 @@ export function judgeHighlights(
 					path: at,
 					detail: `"${n}" is not a figure ${req.key}'s record states`,
 				});
-		const showable = facts.media.filter(
-			(m) => m.criterion.bc !== null && h.claims.includes(m.criterion.bc),
-		);
-		if (h.media) {
-			const media = h.media;
-			if (!showable.some((m) => m.attachmentId === media.attachmentId))
-				out.push({
-					code: "RELEASE_HIGHLIGHT_MEDIA_FOREIGN",
-					path: `${at}.media`,
-					detail: `${media.name} is not evidence of a criterion this highlight claims in ${facts.version}`,
-				});
-		} else if (showable.length > 0) {
+		const showable = highlightMediaOf(req, h.claims);
+		const media = h.media;
+		if (showable.length === 0)
 			out.push({
-				code: "RELEASE_HIGHLIGHT_MEDIA_MISSED",
+				code: "RELEASE_HIGHLIGHT_MEDIA_MISSING",
+				path: `${at}.media`,
+				detail: `QA kept no clip or picture of ${req.key} ${h.claims.join(", ")} on this build; highlight ${shown.length > 0 ? `a requirement it kept one of (${shown.map((r) => r.key).join(", ")})` : "another requirement"}, or the QA agent records a clip of it`,
+			});
+		else if (media === null)
+			out.push({
+				code: "RELEASE_HIGHLIGHT_MEDIA_MISSING",
 				path: `${at}.media`,
 				detail: `${showable.length} clip or picture of its claims is kept (${showable[0]?.name}); a highlight shows one`,
 			});
-		}
+		else if (!showable.some((m) => m.attachmentId === media.attachmentId))
+			out.push({
+				code: "RELEASE_HIGHLIGHT_MEDIA_FOREIGN",
+				path: `${at}.media`,
+				detail: `${media.name} is not evidence of a criterion this highlight claims in ${facts.version}`,
+			});
 	});
 	return out;
 }
@@ -599,6 +658,10 @@ export const RELEASE_PAGE_UNNOTED_WHYS = [
 	"no_note",
 	"held",
 	"reworked",
+	/** Its note has no short title yet (written before titles); it shows once its writer gives it one. */
+	"untitled",
+	/** Its note says more or less than one sentence; it shows once its writer says it in one. */
+	"not_one_sentence",
 ] as const;
 
 export interface ReleasePageUnnoted {
@@ -840,7 +903,10 @@ export const RELEASE_PAGE_REFUSAL_CODES = [
 	"RELEASE_HIGHLIGHT_UNCLAIMED",
 	"RELEASE_HIGHLIGHT_FIGURE_UNBACKED",
 	"RELEASE_HIGHLIGHT_MEDIA_FOREIGN",
-	"RELEASE_HIGHLIGHT_MEDIA_MISSED",
+	/** A highlight of claims QA kept no clip or picture of on the build (REQ-70 BC-2). */
+	"RELEASE_HIGHLIGHT_MEDIA_MISSING",
+	/** No criterion the release proves has a clip or picture from QA, so no highlight is drafted until the QA agent records one. */
+	"RELEASE_HIGHLIGHTS_NO_MEDIA",
 	/** No gateway model is configured, so no highlight can be drafted; never a direct provider key. */
 	"RELEASE_HIGHLIGHTS_MODEL_UNCONFIGURED",
 	/** The project's data policy keeps its requirements from a model, so nothing was drafted. */

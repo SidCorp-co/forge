@@ -240,11 +240,16 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
 
   it('lists the notes that warn with what is wrong, counts them as owed, and moves the digest', () => {
     const warned = [
-      { issueId: 'u6', key: 'ISS-6', problems: ['not in Vietnamese', 'issue key ISS-6'] },
+      {
+        issueId: 'u6',
+        key: 'ISS-6',
+        release: null,
+        problems: ['not in Vietnamese', 'issue key ISS-6'],
+      },
     ];
     const line = owedLine({ ...none, warnedNotes: warned });
     expect(line).toContain(
-      '1 release note at the release gate reads wrong to a user (ISS-6 u6 (not in Vietnamese; issue key ISS-6))',
+      '1 release note waiting to ship reads wrong to a user (ISS-6 u6 (not in Vietnamese; issue key ISS-6))',
     );
     expect(line).toContain('the release is not refused for it');
     expect(masterWork([], { ...none, warnedNotes: warned }).owed).toBe(1);
@@ -253,6 +258,23 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
 
   it('says nothing when nothing is owed', () => {
     expect(owedLine(none)).toBe('');
+  });
+});
+
+// REQ-70 BC-3: a note claimed by a release still open is named with that release, so it is fixed before review
+describe('owedLine: a warned note names the open release holding it', () => {
+  it('names the release beside the note that needs one sentence', () => {
+    const claimed = [
+      {
+        issueId: 'u16',
+        key: 'ISS-16',
+        release: '0.1.0',
+        problems: ['note needs one sentence (it says 2)'],
+      },
+    ];
+    expect(owedLine({ ...none, warnedNotes: claimed })).toContain(
+      'ISS-16 u16 in release 0.1.0 (note needs one sentence (it says 2))',
+    );
   });
 });
 

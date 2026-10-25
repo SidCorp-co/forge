@@ -49,11 +49,15 @@ interface MastersPorts {
   designsOwed(projectId: string): Promise<{ workflowId: string; flow: string; revision: number }[]>;
   /** Issues waiting at the release gate with no release note, which the draft release refuses. */
   releaseNotesOwed(projectId: string): Promise<{ issueId: string; key: string }[]>;
-  /** Issues at the release gate whose note's user-facing line is not in the content language or carries an engineer's reference; each says what to fix. */
+  /**
+   * Issues waiting to ship, at the gate or in a release not yet ended, whose note reads wrong to a
+   * user (not in the content language, an engineer's reference, no short title, more than one
+   * sentence); each names the release holding it, if any, and says what to fix.
+   */
   releaseNotesWarned(
     projectId: string,
     language: string,
-  ): Promise<{ issueId: string; key: string; problems: string[] }[]>;
+  ): Promise<{ issueId: string; key: string; release: string | null; problems: string[] }[]>;
   /** Releases cut and not yet out that carry no name and summary (REQ-40 BC-14), oldest first. */
   releasesUnnamed(projectId: string): Promise<{ version: string }[]>;
   /** Who names them: naming takes project.admin, so the master only where an account it acts as holds it (ISS-590). */

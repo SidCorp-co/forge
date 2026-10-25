@@ -176,9 +176,10 @@ describe('the release this build is, is the one a person owes a look at', () => 
     expect(release.releasedAt).not.toBeNull();
     expect(release.highlights.state).toBe('drafted');
     expect(release.highlights.highlights.map((h) => h.title)).toEqual(['Visit reminders']);
+    // a change reads in What's new by its short title (REQ-70 BC-3)
     expect(release.changes).toEqual([
-      { kind: 'new', line: 'Nurses see a reminder before each visit.' },
-      { kind: 'fixed', line: 'A visit report keeps its filter after a reload.' },
+      { kind: 'new', line: 'Visit reminders' },
+      { kind: 'fixed', line: 'Report filter kept' },
     ]);
     const url = release.highlights.highlights[0]?.media.url ?? '';
     expect(url).toMatch(/^\/api\/uploads\/download\//);

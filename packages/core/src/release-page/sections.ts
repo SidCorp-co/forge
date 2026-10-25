@@ -19,6 +19,7 @@ import {
   type ReleaseShipped,
   type ReleaseTechnicalNotes,
   releaseBuildOf,
+  releaseEnded,
 } from '@forge/contracts/release-page';
 import {
   type ReleaseDetail,
@@ -87,13 +88,14 @@ const isWhatsNewSection = (s: string): s is WhatsNewSection =>
  * Each change as users read it (`customer-notes.ts:customerNotes`): its short title and the sentence
  * that says it in full, whole (REQ-40 BC-6), kept with the issue it came from, the requirement that
  * issue traces and the kind its section reads as. A line another already says is left out; an issue
- * whose line is held back, that has none, or whose line now says a later round (`notes.reworked`),
- * is named rather than invented. What nobody using the product sees — a `Skip` note, or an issue
+ * whose line is held back, that has none, whose note still owes a short title or one sentence on a
+ * release still to ship (REQ-70 BC-3), or whose line now says a later round (`notes.reworked`), is
+ * named rather than invented. A release that ended reads its notes as they were when it ended. What nobody using the product sees — a `Skip` note, or an issue
  * that only carries another change out — is counted apart and listed on the developer view only
  * (REQ-40 BC-16).
  */
 export function changesOf(
-  detail: Pick<ReleaseDetail, 'notes' | 'issues'>,
+  detail: Pick<ReleaseDetail, 'notes' | 'issues' | 'state'>,
   view: ReleasePageViewKind,
 ): {
   improvements: ReleasePageChange[];
@@ -102,7 +104,7 @@ export function changesOf(
   withoutNotes: ReleasePageUnnoted[];
 } {
   const { notes } = detail;
-  const notesView = customerNotes(notes.sections);
+  const notesView = customerNotes(notes.sections, { ended: releaseEnded(detail.state) });
   const requirementOf = new Map(detail.issues.map((i) => [i.key, i.requirement]));
   const changes: ReleasePageChange[] = [];
   for (const section of notesView.sections) {
@@ -146,6 +148,7 @@ export function changesOf(
         title: titleOf(h.key),
         why: 'held' as const,
       })),
+      ...notesView.unwritten.map((u) => ({ issueKey: u.key, title: titleOf(u.key), why: u.why })),
       ...notes.reworked.map((n) => ({
         issueKey: n.key,
         title: n.title,

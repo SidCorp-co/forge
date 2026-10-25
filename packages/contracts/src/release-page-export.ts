@@ -232,7 +232,9 @@ export function releasePageEmail(
 		"<!doctype html>",
 		`<html><body style="font-family:sans-serif;max-width:640px">`,
 		`<h1>${escapeHtml(subject)}</h1>`,
-		...(page.header.summary ? [`<p>${escapeHtml(page.header.summary)}</p>`] : []),
+		...(page.header.summary
+			? [`<p>${escapeHtml(page.header.summary)}</p>`]
+			: []),
 		`<p>${escapeHtml(facts)}</p>`,
 		...sections.flatMap((s) => [
 			`<h2>${escapeHtml(s.title)}</h2>`,

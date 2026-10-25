@@ -4,6 +4,7 @@ import {
   ReleaseNamingSchema,
   ReleaseNotesSchema,
   ReleaseNotesWriteSchema,
+  releaseNoteUnwritten,
   sentencesIn,
 } from "./release-notes.js";
 
@@ -42,8 +43,37 @@ describe("a release note as written (REQ-40 BC-17)", () => {
     expect(ReleaseNotesWriteSchema.safeParse({ section: "Skip", userFacing: "-" }).success).toBe(true);
   });
 
-  it("still reads a note stored before titles, which a reader shows whole", () => {
+  it("still reads a note stored before titles or before the sentence rule, so its page can say what it owes", () => {
     expect(ReleaseNotesSchema.safeParse({ section: "Added", userFacing: sentence }).success).toBe(true);
+    expect(ReleaseNotesSchema.safeParse({ section: "Added", title: "Two", userFacing: `${sentence} ${sentence}` }).success).toBe(true);
+  });
+});
+
+describe("a change says what it does in one sentence (REQ-70 BC-3)", () => {
+  const title = "Visit reminders";
+  const one = "Nurses see a reminder before each visit, e.g. the morning round.";
+
+  it("refuses a userFacing of two sentences or of none, naming the field and how many it read", () => {
+    expect(refusal(ReleaseNotesWriteSchema.safeParse({ section: "Added", title, userFacing: `${one} It works offline too.` }))).toEqual([
+      expect.stringMatching(/^userFacing: userFacing has 2 sentences; it is exactly one sentence a user reads\./),
+    ]);
+    expect(refusal(ReleaseNotesWriteSchema.safeParse({ section: "Fixed", title, userFacing: "…" }))).toEqual([
+      expect.stringMatching(/^userFacing: userFacing has 0 sentences;/),
+    ]);
+  });
+
+  it("takes one long sentence: the rule counts sentences, never characters", () => {
+    const long = `Nurses ${"and doctors ".repeat(60)}see a reminder before each visit.`;
+    expect(long.length).toBeGreaterThan(500);
+    expect(ReleaseNotesWriteSchema.safeParse({ section: "Added", title, userFacing: long }).success).toBe(true);
+    expect(ReleaseNotesWriteSchema.safeParse({ section: "Added", title, userFacing: one }).success).toBe(true);
+  });
+
+  it("names what a stored note owes before it shows: a title first, then one sentence", () => {
+    expect(releaseNoteUnwritten({ userFacing: one })).toBe("untitled");
+    expect(releaseNoteUnwritten({ title: "  ", userFacing: one })).toBe("untitled");
+    expect(releaseNoteUnwritten({ title, userFacing: `${one} ${one}` })).toBe("not_one_sentence");
+    expect(releaseNoteUnwritten({ title, userFacing: one })).toBeNull();
   });
 });
 
@@ -68,7 +98,8 @@ describe("a release's name and summary (REQ-40 BC-14)", () => {
     ]);
   });
 
-  it("counts sentences in any script, and never splits a version number", () => {
+  it("counts sentences in any script, and never splits a version number or an abbreviation", () => {
+    expect(sentencesIn("A report keeps its filter, e.g. the date range, after a reload.")).toBe(1);
     expect(sentencesIn("ePOD must run storefront-graphql 1.1.0 or later. Approve the contract.")).toBe(2);
     expect(sentencesIn("リリースしました。設定を確認してください。")).toBe(2);
   });

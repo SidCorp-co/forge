@@ -11,6 +11,7 @@
 // the ledger, the method gate and the promotion-aware abort landed.
 
 import { contentLanguageName, releaseNoteAttention } from '@forge/contracts/content-language';
+import { releaseNoteUnwritten, sentencesIn } from '@forge/contracts/release-notes';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
@@ -370,25 +371,38 @@ export async function owedReleaseNotes(
   return rows.map((r) => ({ issueId: r.id, key: formatIssueRef(prefix, r.seq) }));
 }
 
+/** The batch run statuses that end a release; an issue claimed by any other run is still on its way out. */
+const ENDED_RUN_STATUSES = ['completed', 'failed', 'cancelled'];
+
 /**
- * The issues waiting at the gate whose release note is written but would read wrong to a user:
- * not in the project's content language, carrying an engineer's reference, or written before short
- * titles and so without one (REQ-40 BC-17). The same test the draft page and the write-time warning
- * apply (`releaseNoteAttention`); a master fixes each note.
+ * The issues waiting to ship whose release note is written but would read wrong to a user: not in
+ * the project's content language, carrying an engineer's reference, written before short titles and
+ * so without one (REQ-40 BC-17), or saying more than one sentence (REQ-70 BC-3), which keeps it off
+ * the release page until fixed. Waiting means at the gate, or claimed by a release that has not
+ * ended, so a note can still be fixed before the owner reviews that release; each names the release
+ * holding it. The same tests the draft page and the write-time rule apply (`releaseNoteAttention`,
+ * `releaseNoteUnwritten`); a master fixes each note.
  */
 export async function warnedReleaseNotes(
   projectId: string,
   language: string,
-): Promise<{ issueId: string; key: string; problems: string[] }[]> {
+): Promise<{ issueId: string; key: string; release: string | null; problems: string[] }[]> {
   const [rows, prefix] = await Promise.all([
     db
-      .select({ id: issues.id, seq: issues.issSeq, notes: issues.releaseNotes })
+      .select({
+        id: issues.id,
+        seq: issues.issSeq,
+        notes: issues.releaseNotes,
+        release: pipelineRuns.releaseVersion,
+        runStatus: pipelineRuns.status,
+        shippedAt: pipelineRuns.releaseReleasedAt,
+      })
       .from(issues)
+      .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
       .where(
         and(
           eq(issues.projectId, projectId),
           eq(issues.status, RELEASE_GATE_STATUS),
-          isNull(issues.releaseBatchRunId),
           sql`${issues.releaseNotes} IS NOT NULL AND ${issues.releaseNotes} <> 'null'::jsonb`,
         ),
       )
@@ -397,14 +411,29 @@ export async function warnedReleaseNotes(
   ]);
   return rows.flatMap((r) => {
     if (!r.notes || r.notes.section === 'Skip') return [];
+    // a release that ended (shipped, or its run concluded) reads its notes as it ended with them;
+    // only one still to ship is fixed
+    if (r.shippedAt !== null || (r.runStatus !== null && ENDED_RUN_STATUSES.includes(r.runStatus)))
+      return [];
     const found = releaseNoteAttention(language, r.notes.userFacing);
+    const owed = releaseNoteUnwritten(r.notes);
     const problems = [
-      ...(r.notes.title?.trim() ? [] : ['no short title']),
+      ...(owed === 'untitled' ? ['note needs a short title'] : []),
+      ...(owed === 'not_one_sentence'
+        ? [`note needs one sentence (it says ${sentencesIn(r.notes.userFacing)})`]
+        : []),
       ...(found.notInLanguage ? [`not in ${contentLanguageName(language)}`] : []),
       ...found.references,
     ];
     return problems.length > 0
-      ? [{ issueId: r.id, key: formatIssueRef(prefix, r.seq), problems }]
+      ? [
+          {
+            issueId: r.id,
+            key: formatIssueRef(prefix, r.seq),
+            release: r.runStatus === null ? null : r.release,
+            problems,
+          },
+        ]
       : [];
   });
 }

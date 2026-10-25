@@ -7,12 +7,15 @@
 import { createHash } from 'node:crypto';
 import type { Refusal } from '@forge/contracts/refusal';
 import {
+  highlightMediaOf,
   judgeHighlights,
   type ReleaseHighlight,
   type ReleaseHighlightFacts,
   ReleaseHighlightSchema,
   type ReleaseHighlights,
   type ReleaseMediaRef,
+  type ReleaseShownHighlight,
+  ReleaseShownHighlightSchema,
 } from '@forge/contracts/release-page';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -29,7 +32,12 @@ const MISS_RETRY_MS = 10 * 60_000;
 
 const byCode = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
 
-/** What the drafter is shown: each requirement with something the build proves, in its own words, and the media of its claims. */
+/**
+ * What the drafter is shown: each requirement with something the build proves, in its own words, and
+ * the media kept of its claims. A file is placed under the requirement its criterion traces, read off
+ * the claim of the issue criterion its verdict judged, never matched by code alone: BC-1 of one
+ * requirement is not BC-1 of another.
+ */
 export function highlightFacts(
   version: string,
   requirements: readonly RequirementText[],
@@ -38,20 +46,38 @@ export function highlightFacts(
 ): ReleaseHighlightFacts {
   const claimable = claimableByRequirement(claims);
   const shown = requirements.filter((r) => (claimable.get(r.key)?.size ?? 0) > 0);
-  const codes = new Set(shown.flatMap((r) => [...(claimable.get(r.key) ?? [])]));
+  const requirementOf = (m: ReleaseMediaRef) =>
+    claims.find((c) => c.criterion.issueKey === m.issueKey && c.criterion.n === m.criterion.n)
+      ?.criterion.requirementKey ?? null;
   return {
     version,
-    requirements: shown.map((r) => ({
-      key: r.key,
-      title: r.title,
-      text: [r.tldr ?? '', ...[...r.criteria].map(([code, body]) => `${code}: ${body}`)]
-        .filter((line) => line.trim() !== '')
-        .join('\n'),
-      completes: r.completes,
-      claimable: [...(claimable.get(r.key) ?? [])].sort(byCode),
-    })),
-    media: media.filter((m) => m.criterion.bc !== null && codes.has(m.criterion.bc)),
+    requirements: shown.map((r) => {
+      const codes = [...(claimable.get(r.key) ?? [])].sort(byCode);
+      return {
+        key: r.key,
+        title: r.title,
+        text: [r.tldr ?? '', ...[...r.criteria].map(([code, body]) => `${code}: ${body}`)]
+          .filter((line) => line.trim() !== '')
+          .join('\n'),
+        completes: r.completes,
+        claimable: codes,
+        media: media.filter(
+          (m) =>
+            requirementOf(m) === r.key && m.criterion.bc !== null && codes.includes(m.criterion.bc),
+        ),
+      };
+    }),
   };
+}
+
+/** The clip or picture a highlight of `requirement` claiming `claims` shows: the first kept of them, clips first. */
+export function mediaForHighlight(
+  facts: ReleaseHighlightFacts,
+  requirement: string,
+  claims: readonly string[],
+): ReleaseMediaRef | null {
+  const req = facts.requirements.find((r) => r.key === requirement);
+  return req ? (highlightMediaOf(req, claims)[0] ?? null) : null;
 }
 
 export function digestOf(facts: ReleaseHighlightFacts): string {
@@ -141,13 +167,16 @@ export async function settleDraft(
 
 /** A highlight as kept: its media without the link a reader is handed, which is minted when it is shown. */
 function stored(h: ReleaseHighlight): ReleaseHighlight {
-  if (!h.media) return h;
   const { url: _url, poster, ...media } = h.media;
   if (!poster) return { ...h, media: poster === null ? { ...media, poster } : media };
   const { url: _still, ...still } = poster;
   return { ...h, media: { ...media, poster: still } };
 }
 
+/**
+ * The stored highlights, where every one still parses: a row drafted under an earlier rule (a
+ * highlight with no clip, kept before REQ-70 BC-2) reads as none, so the page never shows it.
+ */
 function storedHighlights(row: ReleaseHighlightsRow): ReleaseHighlight[] | null {
   if (!Array.isArray(row.highlights)) return null;
   const out: ReleaseHighlight[] = [];
@@ -167,6 +196,115 @@ export interface ShownHighlights {
 
 const iso = (d: Date) => d.toISOString();
 
+/** The stored highlights where they may still be shown against today's facts; null where they may not. */
+function stillShown(
+  row: ReleaseHighlightsRow | null,
+  facts: ReleaseHighlightFacts,
+): ReleaseHighlight[] | null {
+  const kept = row ? storedHighlights(row) : null;
+  if (!row || !kept || !row.draftedAt || !row.model) return null;
+  return judgeHighlights(kept, facts).length === 0 ? kept : null;
+}
+
+/**
+ * Whether the stored row answers `digest` for good: a refusal for these facts, or highlights that
+ * still show. A row drafted for these facts under an earlier rule, which no longer shows, is owed
+ * again; without this its digest would call it unchanged and the page would wait on it for ever.
+ */
+export function answered(
+  row: ReleaseHighlightsRow | null,
+  facts: ReleaseHighlightFacts,
+  digest: string,
+): boolean {
+  if (row?.sourceDigest !== digest) return false;
+  if (row.state === 'failed') return true;
+  return row.state === 'drafted' && stillShown(row, facts) !== null;
+}
+
+/**
+ * Whether a kept highlight still tells the truth about its build (REQ-40 BC-13, REQ-70 BC-5): its
+ * requirement is one the release still carries, and each code it claims still has a pass on the
+ * build. The one rule a page that ended still answers to, since it is about the build and not about
+ * how a highlight is written.
+ */
+const stillTrue = (h: ReleaseShownHighlight, facts: ReleaseHighlightFacts): boolean => {
+  const req = facts.requirements.find((r) => r.key === h.requirement.key);
+  return req !== undefined && h.claims.every((c) => req.claimable.includes(c));
+};
+
+/**
+ * What a release that ended shows (REQ-70): the highlights it ended with, as they were kept, in the
+ * shape of their day (one kept before REQ-70 BC-2 may say it has no clip); the refusal it ended on;
+ * or none. No rule about how a highlight is written is applied after it ended (media, wording,
+ * figures, count), nothing is owed and nothing drafts it again; only a claim its build no longer
+ * proves is left out, since a page never claims what the build does not prove.
+ */
+function endedHighlights(
+  row: ReleaseHighlightsRow | null,
+  facts: ReleaseHighlightFacts,
+  build: string | null,
+): ShownHighlights {
+  if (row?.state === 'drafted' && row.draftedAt && row.model) {
+    const kept: ReleaseShownHighlight[] = [];
+    const raws: unknown[] = Array.isArray(row.highlights) ? row.highlights : [];
+    for (const [i, raw] of raws.entries()) {
+      const parsed = ReleaseShownHighlightSchema.safeParse(raw);
+      if (!parsed.success) {
+        // a kept row that reads in no shape it was ever written in is said, never shown half
+        return {
+          highlights: {
+            state: 'failed',
+            at: iso(row.updatedAt),
+            refusals: [
+              {
+                code: 'RELEASE_HIGHLIGHT_SHAPE',
+                path: `highlights.${i}`,
+                detail: `the highlights this release ended with do not read as a highlight: ${parsed.error.issues[0]?.message ?? 'invalid'}`,
+              },
+            ],
+          },
+          owed: false,
+        };
+      }
+      if (stillTrue(parsed.data, facts)) kept.push(parsed.data);
+    }
+    if (kept.length > 0)
+      return {
+        highlights: {
+          state: 'drafted',
+          highlights: kept,
+          model: row.model,
+          draftedAt: iso(row.draftedAt),
+          sourceDigest: row.sourceDigest ?? digestOf(facts),
+        },
+        owed: false,
+      };
+  }
+  if (row?.state === 'failed') {
+    return {
+      highlights: {
+        state: 'failed',
+        at: iso(row.updatedAt),
+        refusals: (row.refusals as Refusal[]).map((r) => ({
+          code: r.code,
+          path: r.path,
+          detail: r.detail,
+        })),
+      },
+      owed: false,
+    };
+  }
+  const why =
+    facts.requirements.length > 0
+      ? row?.state === 'drafted'
+        ? 'what its highlights claimed is no longer proven on its build'
+        : 'this release ended before its highlights were drafted'
+      : build === null
+        ? 'this release has no build yet, so nothing it carries is proven on it'
+        : 'no criterion of a requirement this release carries has a pass on its build yet';
+  return { highlights: { state: 'none', why }, owed: false };
+}
+
 /**
  * What the page shows of the highlights today: `none` where the build proves nothing of any
  * requirement; the stored highlights where they still hold against today's facts (even while a
@@ -179,7 +317,9 @@ export function shownHighlights(
   digest: string,
   build: string | null,
   now: Date = new Date(),
+  ended = false,
 ): ShownHighlights {
+  if (ended) return endedHighlights(row, facts, build);
   if (facts.requirements.length === 0) {
     const why =
       build === null
@@ -190,8 +330,8 @@ export function shownHighlights(
   const answers = row?.sourceDigest === digest;
   const inFlight =
     row?.state === 'pending' && answers && now.getTime() - row.updatedAt.getTime() < IN_FLIGHT_MS;
-  const kept = row ? storedHighlights(row) : null;
-  if (row && kept && row.draftedAt && row.model && judgeHighlights(kept, facts).length === 0) {
+  const kept = stillShown(row, facts);
+  if (row?.draftedAt && row.model && kept) {
     return {
       highlights: {
         state: 'drafted',
@@ -202,6 +342,10 @@ export function shownHighlights(
       },
       owed: !answers && !inFlight,
     };
+  }
+  // drafted for these facts under an earlier rule, and no longer shown: owed again
+  if (row?.state === 'drafted' && answers) {
+    return { highlights: { state: 'pending', since: iso(row.updatedAt) }, owed: true };
   }
   if (row?.state === 'failed' && (answers || row.sourceDigest === null)) {
     const retry =

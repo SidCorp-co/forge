@@ -255,8 +255,8 @@ describe('the page reads off the release record', () => {
         issueKey: await keyOf(w.a),
         kind: 'new',
         section: 'Added',
-        line: 'Nurses see a reminder before each visit.',
-        detail: null,
+        line: 'Visit reminders',
+        detail: 'Nurses see a reminder before each visit.',
         requirementKey: 'REQ-1',
       },
     ]);
@@ -265,8 +265,8 @@ describe('the page reads off the release record', () => {
         issueKey: await keyOf(w.b),
         kind: 'fixed',
         section: 'Fixed',
-        line: 'A visit report keeps its filter after a reload.',
-        detail: null,
+        line: 'Report filter kept',
+        detail: 'A visit report keeps its filter after a reload.',
         requirementKey: 'REQ-1',
       },
     ]);

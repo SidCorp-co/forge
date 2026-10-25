@@ -11692,7 +11692,6 @@
                             "type": "string"
                           },
                           "userFacing": {
-                            "maxLength": 500,
                             "minLength": 1,
                             "type": "string"
                           }

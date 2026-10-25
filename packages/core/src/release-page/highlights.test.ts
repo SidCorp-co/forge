@@ -1,8 +1,9 @@
 import type { ReleaseHighlightFacts, ReleaseMediaRef } from '@forge/contracts/release-page';
 import { describe, expect, it } from 'vitest';
 import type { ReleaseHighlightsRow } from '../db/schema.js';
+import type { ClaimReading } from './claims.js';
 import { judged } from './draft.js';
-import { digestOf, shownHighlights } from './highlights.js';
+import { answered, digestOf, highlightFacts, shownHighlights } from './highlights.js';
 
 const BUILD = 'a'.repeat(40);
 const CLIP: ReleaseMediaRef = {
@@ -25,9 +26,9 @@ const FACTS: ReleaseHighlightFacts = {
       text: 'Nurses are reminded 2 hours ahead.\nBC-1: A nurse sees the reminder',
       completes: true,
       claimable: ['BC-1'],
+      media: [CLIP],
     },
   ],
-  media: [CLIP],
 };
 
 const answer = (h: Record<string, unknown>) =>
@@ -53,7 +54,6 @@ describe('a drafted answer judged before it is kept (BC-2, BC-3, BC-13)', () => 
           requirement: { key: 'REQ-1', title: 'Reminders' },
           claims: ['BC-1'],
           media: CLIP,
-          mediaGap: null,
         }),
       ],
     });
@@ -81,6 +81,32 @@ describe('a drafted answer judged before it is kept (BC-2, BC-3, BC-13)', () => 
     const out = judged(answer(h), FACTS);
     expect(out.ok).toBe(false);
     if (!out.ok) expect(out.refusals.map((r) => r.code)).toContain(code);
+  });
+
+  // REQ-70 BC-2: a highlight nothing shows is never written; the drafter is told which it may pick
+  it('refuses a highlight of a requirement QA kept no clip or picture of, naming the one it did', () => {
+    const two = {
+      ...FACTS,
+      requirements: [
+        ...FACTS.requirements,
+        {
+          key: 'REQ-2',
+          title: 'Reports',
+          text: 'BC-1: A report opens',
+          completes: false,
+          claimable: ['BC-1'],
+          media: [],
+        },
+      ],
+    };
+    const out = judged(
+      answer({ requirement: 'REQ-2', title: 'Reports', body: 'A report opens.' }),
+      two,
+    );
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.refusals.map((r) => r.code)).toEqual(['RELEASE_HIGHLIGHT_MEDIA_MISSING']);
+    expect(out.refusals[0]?.detail).toContain('(REQ-1)');
   });
 
   it('refuses an answer that is not the highlights shape', () => {
@@ -142,13 +168,7 @@ describe('what the page shows of the highlights', () => {
   const now = new Date('2026-10-09T10:02:00Z');
 
   it('shows nothing claimed where the build proves no requirement criterion', () => {
-    const shown = shownHighlights(
-      null,
-      { ...FACTS, requirements: [], media: [] },
-      digest,
-      BUILD,
-      now,
-    );
+    const shown = shownHighlights(null, { ...FACTS, requirements: [] }, digest, BUILD, now);
     expect(shown.highlights).toMatchObject({ state: 'none' });
   });
 
@@ -167,6 +187,64 @@ describe('what the page shows of the highlights', () => {
     const shown = shownHighlights(drafted, later, digestOf(later), BUILD, now);
     expect(shown.highlights.state).toBe('pending');
     expect(shown.owed).toBe(true);
+  });
+
+  // 0.4.0-dev.317 on dev: one highlight kept with no clip, under the rule before REQ-70 BC-2
+  it('never shows a highlight kept with no clip, and owes its redraft though the facts are the same', () => {
+    const [h] = highlights;
+    const gap = row({
+      ...drafted,
+      highlights: [
+        { ...h, media: null, mediaGap: 'QA kept no clip or picture as evidence of BC-1' },
+      ],
+    });
+    expect(shownHighlights(gap, FACTS, digest, BUILD, now)).toEqual({
+      highlights: { state: 'pending', since: gap.updatedAt.toISOString() },
+      owed: true,
+    });
+    expect(answered(gap, FACTS, digest)).toBe(false);
+    expect(answered(drafted, FACTS, digest)).toBe(true);
+  });
+
+  // the coordinator's ruling on REQ-70: a release that ended is history
+  it('shows a release that ended as it was kept, its no-clip highlight included, and owes nothing', () => {
+    const [h] = highlights;
+    const kept = { ...h, media: null, mediaGap: 'QA kept no clip or picture as evidence of BC-1' };
+    const gap = row({ ...drafted, highlights: [kept], sourceDigest: 'an older digest' });
+    expect(shownHighlights(gap, FACTS, digest, BUILD, now, true)).toEqual({
+      highlights: expect.objectContaining({ state: 'drafted', highlights: [kept] }),
+      owed: false,
+    });
+    const failed = row({
+      state: 'failed',
+      refusals: [{ code: 'RELEASE_HIGHLIGHT_UNCLAIMED', path: 'highlights.0', detail: 'x' }],
+    });
+    expect(shownHighlights(failed, FACTS, digest, BUILD, now, true)).toMatchObject({
+      highlights: { state: 'failed', refusals: [{ code: 'RELEASE_HIGHLIGHT_UNCLAIMED' }] },
+      owed: false,
+    });
+    // a claim its build no longer proves is left out even of a page that ended; nothing redrafts it
+    const later = {
+      ...FACTS,
+      requirements: [{ ...FACTS.requirements[0], claimable: ['BC-2'] }],
+    } as ReleaseHighlightFacts;
+    expect(shownHighlights(gap, later, digestOf(later), BUILD, now, true)).toEqual({
+      highlights: {
+        state: 'none',
+        why: 'what its highlights claimed is no longer proven on its build',
+      },
+      owed: false,
+    });
+    // a rule about wording written after it ended is not applied: an engineer's code stays as kept
+    const coded = { ...kept, body: 'Stale suggestions are refused with SUGGESTION_BASE_STALE.' };
+    expect(
+      shownHighlights(row({ ...drafted, highlights: [coded] }), FACTS, digest, BUILD, now, true)
+        .highlights,
+    ).toMatchObject({ state: 'drafted', highlights: [coded] });
+    expect(shownHighlights(null, FACTS, digest, BUILD, now, true)).toEqual({
+      highlights: { state: 'none', why: 'this release ended before its highlights were drafted' },
+      owed: false,
+    });
   });
 
   it('says the model is not configured where the last draft could not be asked', () => {
@@ -188,5 +266,46 @@ describe('what the page shows of the highlights', () => {
       highlights: { state: 'pending' },
       owed: false,
     });
+  });
+});
+
+describe('the media each requirement may show', () => {
+  const criterion = (issueKey: string, requirementKey: string) => ({
+    issueId: `id-${issueKey}`,
+    issueKey,
+    requirementKey,
+    n: 1,
+    statement: 's',
+    bc: 'BC-1',
+    verdicts: [],
+  });
+  const claimed = (issueKey: string, requirementKey: string): ClaimReading => ({
+    criterion: criterion(issueKey, requirementKey),
+    claim: { claimed: true, at: '2026-10-09T10:00:00Z' },
+    proven: true,
+    unverified: null,
+    onBuild: null,
+    underCutover: false,
+  });
+  const requirement = (key: string) => ({
+    key,
+    title: key,
+    completes: false,
+    criteria: new Map([['BC-1', 'A nurse sees it']]),
+    tldr: null,
+  });
+
+  // two requirements each prove their own BC-1; QA kept a clip of REQ-1's only
+  it('places a clip under the requirement its verdict judged, never under another of the same code', () => {
+    const facts = highlightFacts(
+      '0.2.0',
+      [requirement('REQ-1'), requirement('REQ-2')],
+      [claimed('ISS-1', 'REQ-1'), claimed('ISS-2', 'REQ-2')],
+      [CLIP],
+    );
+    expect(facts.requirements.map((r) => [r.key, r.media.map((m) => m.name)])).toEqual([
+      ['REQ-1', ['reminder.webm']],
+      ['REQ-2', []],
+    ]);
   });
 });

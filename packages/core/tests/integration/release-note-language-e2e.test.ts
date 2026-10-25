@@ -105,7 +105,7 @@ describe('release note language warning', () => {
   it("warns on each engineer's reference in a note, for any language, and still stores it", async () => {
     const { id, token } = await seed('en');
     const note =
-      'Fixed in 9db12a21a (ISS-12), enforcing SOD-RULE-MAKER-CHECKER. Technical note: index added.';
+      'Fixed in 9db12a21a (ISS-12), enforcing SOD-RULE-MAKER-CHECKER, with Technical note: index added.';
     const res = await write(id, token, note, 'Fixed', 'Login fixed');
     expect(res.status).toBe(200);
     expect(res.body.warnings).toEqual([

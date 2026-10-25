@@ -6,11 +6,12 @@
 //
 // @direct-test-of packages/web-v2/src/features/releases/components/release-media.tsx
 // @direct-test-of packages/web-v2/src/features/releases/components/release-highlights.tsx
+// @direct-test-of packages/web-v2/src/test/release-page.ts
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReleasePage } from "@forge/contracts/release-page";
+import type { ReleaseHighlightKept, ReleasePage } from "@forge/contracts/release-page";
 import { releasePage, TECHNICAL } from "@/test/release-page";
 import { renderWithQuery } from "@/test/render";
 import { ReleaseReader } from "./release-reader";
@@ -349,16 +350,57 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
     expect(await screen.findByTestId("release-media-lost")).toHaveTextContent("could not be loaded");
   });
 
-  it("draws a picture as an image, and says why a highlight has no media where it has none", () => {
+  it("draws a picture as an image", () => {
     const page = releasePage();
     if (page.highlights.state !== "drafted") throw new Error("fixture");
     const [h] = page.highlights.highlights;
-    if (!h?.media) throw new Error("fixture");
+    // a release still to ship draws today's shape, whose media is always set
+    if (!h || "mediaGap" in h) throw new Error("fixture");
     const picture = { ...h, media: { ...h.media, kind: "picture" as const, mime: "image/png" as const, url: "/api/uploads/download/t1" } };
-    const bare = { ...h, requirement: { key: "REQ-41", title: "Other" }, media: null, mediaGap: "QA recorded no clip for this build" };
-    renderWithQuery(<ReleaseReader page={{ ...page, highlights: { ...page.highlights, highlights: [picture, bare] } }} authed={false} />);
+    renderWithQuery(<ReleaseReader page={{ ...page, highlights: { ...page.highlights, highlights: [picture] } }} authed={false} />);
     expect(screen.getByTestId("release-media-picture")).toHaveAttribute("src", "/api/uploads/download/t1");
+    expect(screen.queryByTestId("page-highlight-gap")).toBeNull();
+  });
+
+  // a release that ended before REQ-70 BC-2 keeps the highlight it ended with, gap and all
+  it("says why a highlight a release ended with has no media", () => {
+    const page = releasePage({ header: { ...releasePage().header, state: "shipped" } });
+    if (page.highlights.state !== "drafted") throw new Error("fixture");
+    const [h] = page.highlights.highlights;
+    if (!h) throw new Error("fixture");
+    const kept: ReleaseHighlightKept = {
+      requirement: h.requirement,
+      title: h.title,
+      body: h.body,
+      claims: h.claims,
+      media: null,
+      mediaGap: "QA recorded no clip for this build",
+    };
+    renderWithQuery(<ReleaseReader page={{ ...page, highlights: { ...page.highlights, highlights: [kept] } }} authed={false} />);
     expect(screen.getByTestId("page-highlight-gap")).toHaveTextContent(/^No clip$/);
+  });
+
+  // REQ-70 BC-2: a highlight nothing shows is refused, and the page says QA owes a clip, not "no clip"
+  it("says no highlight shows yet because QA kept no clip or picture, with the refusal behind the fold", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(
+      <ReleaseReader
+        page={releasePage({
+          highlights: {
+            state: "failed",
+            at: "2026-10-09T10:00:00.000Z",
+            refusals: [{ code: "RELEASE_HIGHLIGHTS_NO_MEDIA", path: "highlights", detail: "QA kept no clip or picture of any criterion 0.4.0 proves (REQ-40 BC-2); the QA agent records a clip of one on this build" }],
+          },
+        })}
+        authed={false}
+      />,
+    );
+    const failed = screen.getByTestId("page-highlights-failed");
+    expect(failed).toHaveAttribute("data-why", "no-media");
+    expect(failed).toHaveTextContent("Waiting for a clip or picture from QA.");
+    expect(failed).not.toHaveTextContent("RELEASE_HIGHLIGHTS_NO_MEDIA");
+    await user.click(screen.getByTestId("page-highlights-failed-toggle"));
+    expect(failed).toHaveTextContent("the QA agent records a clip");
   });
 
   it("names no criterion code in a highlight's text", () => {

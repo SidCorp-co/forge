@@ -1,17 +1,25 @@
 // The release notes as a customer is handed them: each section's user-facing lines and nothing an
 // engineer wrote for themselves. An issue key or internal path inside brackets goes with its
 // brackets; a note whose sentence itself carries an engineer's handle is held back, named, for its
-// writer to rewrite, never cut into a broken sentence. An issue whose title names another issue of
+// writer to rewrite, never cut into a broken sentence. On a release still to ship, a note with no
+// short title, or one saying more or less than one sentence, is held the same way until its writer
+// fixes it (REQ-70 BC-3); a release that ended reads its notes as they were when it ended, a note
+// written before titles shown as its whole sentence. An issue whose title names another issue of
 // the same release ships that issue's change (a publish or a carrier), so its line folds into the
 // change it ships; two notes that say the same thing keep one line. Read by the release page
 // (`packages/core/src/release-page/sections.ts`), which gathers its improvements and fixes from it.
 
 import { releaseNoteReferences } from "./content-language.js";
+import {
+	type ReleaseNoteUnwritten,
+	releaseNoteUnwritten,
+} from "./release-notes.js";
 import type { ReleaseNoteSection } from "./releases.js";
 
 /**
- * One change as a customer reads it: `line` is the note's short title, or, on a note written before
- * titles, its whole sentence; `detail` is the sentence a titled note says in full. Neither is cut.
+ * One change as a customer reads it: `line` is the note's short title, `detail` the sentence that says
+ * it in full; on a release that ended, a note written before titles is its whole sentence as `line`,
+ * with no `detail`. Neither is cut.
  */
 export interface CustomerNoteLine {
 	key: string;
@@ -30,6 +38,8 @@ export interface CustomerNotesView {
 	folded: { key: string; why: "carries" | "duplicate"; into: string[] }[];
 	/** Notes held back because their sentence names what a customer cannot follow, with what each names. */
 	held: { key: string; references: string[] }[];
+	/** Notes held back until their writer gives them a short title or says them in one sentence. */
+	unwritten: { key: string; why: ReleaseNoteUnwritten }[];
 }
 
 const KEY = /\b(?:ISS|REQ|FB)-\d+\b/g;
@@ -68,10 +78,12 @@ const sameWords = (text: string) =>
 
 export function customerNotes(
 	sections: readonly ReleaseNoteSection[],
+	release: { ended: boolean } = { ended: false },
 ): CustomerNotesView {
 	const noted = new Set(sections.flatMap((s) => s.entries.map((e) => e.key)));
 	const folded: CustomerNotesView["folded"] = [];
 	const held: CustomerNotesView["held"] = [];
+	const unwritten: CustomerNotesView["unwritten"] = [];
 	const said = new Map<string, string>();
 	const out: CustomerNotesSection[] = [];
 	for (const s of sections) {
@@ -82,6 +94,13 @@ export function customerNotes(
 			);
 			if (carried.length > 0) {
 				folded.push({ key: e.key, why: "carries", into: carried });
+				continue;
+			}
+			const owed = release.ended
+				? null
+				: releaseNoteUnwritten({ title: e.heading, userFacing: e.userFacing });
+			if (owed) {
+				unwritten.push({ key: e.key, why: owed });
 				continue;
 			}
 			const sentence = withoutAsides(e.userFacing);
@@ -103,7 +122,7 @@ export function customerNotes(
 		}
 		if (lines.length > 0) out.push({ section: s.section, lines });
 	}
-	return { sections: out, folded, held };
+	return { sections: out, folded, held, unwritten };
 }
 
 // words a user-facing line uses when the build it describes is a demo, a dev build or runs on test

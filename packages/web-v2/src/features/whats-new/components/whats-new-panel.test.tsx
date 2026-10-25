@@ -42,7 +42,7 @@ describe("the What's new panel", () => {
     expect(clip).toHaveAttribute("playsinline");
   });
 
-  it("shows what there is to see: a highlight with no clip says nothing of the gap", () => {
+  it("shows what there is to see: a highlight a release ended with and no clip says nothing of the gap", () => {
     const release = releaseOf();
     if (release.highlights.state !== "drafted") throw new Error("fixture");
     const [h] = release.highlights.highlights;
