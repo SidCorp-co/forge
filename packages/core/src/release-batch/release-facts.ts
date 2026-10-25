@@ -10,7 +10,7 @@ import {
   criterionStandingOf,
   identityPhraseOf,
 } from '@forge/contracts/verdict-identity';
-import { verifiedOf } from '@forge/contracts/verified-rule';
+import { releaseCounts, verifiedOf, voidedByReopen } from '@forge/contracts/verified-rule';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
@@ -40,7 +40,7 @@ export interface IssueFact {
   requirementId: string | null;
   /** Each live criterion read by its latest verdict: what a release with no cut build counts. */
   criteria: ReleaseCriterionView[];
-  /** Every verdict each live criterion earned since the issue's last reopen, by its number. */
+  /** Every verdict each live criterion earned, by its number; `criteriaAt` voids those at or before `reopenedAt`. */
   verdicts: ReadonlyMap<number, readonly CarriedVerdict[]>;
   /** The issue's last move to `reopen`: its note and mark after it are a later round's. */
   reopenedAt: Date | null;
@@ -131,9 +131,11 @@ export async function carriedVerdictsOf(
  * of proof reads (contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca): of the verdicts on that build,
  * the one the criterion stands on is the judge's, and only a pass the rule counts as verified proves
  * it. A short never does, nor the builder's own pass, whatever the project's `qa`; where neither
- * counts, `unverified` says why. A release with no cut build reads every verdict since the last
- * reopen, its newest shown; one with a build reads only that build's, so a verdict on an earlier
- * build never counts, and none on it reads not judged.
+ * counts, `unverified` says why. A verdict at or before the issue's last reopen never counts
+ * (contracts `verified-rule.ts:voidedByReopen`), and where that leaves none `unverified` says to judge
+ * it again. A release with no cut build reads every verdict since the last reopen, its newest shown;
+ * one with a build reads only that build's, so a verdict on an earlier build never counts, and none
+ * on it reads not judged.
  */
 export function criteriaAt(
   issue: IssueFact,
@@ -146,9 +148,9 @@ export function criteriaAt(
       build === null
         ? newestFirst
         : newestFirst.filter((v) => v.identityKind === 'commit' && v.commitSha === build);
-    const read = verifiedOf(counted, judge);
+    const read = verifiedOf(counted, judge, issue.reopenedAt);
     const stands = read.stands;
-    const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
+    const proven = releaseCounts(read).counted;
     const unverified = proven ? null : read.why;
     if (build === null) return { ...c, proven, unverified };
     return {
@@ -168,10 +170,9 @@ export function criteriaAt(
   });
 }
 
-function criterionView(c: CriterionWithVerdict, voidedBy: Date | undefined): ReleaseCriterionView {
-  const stale =
-    voidedBy && c.latest && new Date(c.latest.createdAt).getTime() <= voidedBy.getTime();
-  const latest = stale ? null : c.latest;
+function criterionView(c: CriterionWithVerdict, reopenedAt: Date | null): ReleaseCriterionView {
+  const latest =
+    c.latest && !voidedByReopen({ recordedAt: c.latest.createdAt }, reopenedAt) ? c.latest : null;
   return {
     n: c.n,
     statement: c.statement,
@@ -295,16 +296,13 @@ export async function loadReleaseFacts(
   const verdicts = await carriedVerdictsOf(
     [...criteria.values()].flatMap((list) => list.map((c) => c.id)),
   );
-  // a reopen voids what was judged before it, as `criterionView` reads the latest
-  const judged = (issueId: string) => {
-    const voidedBy = reopened.get(issueId)?.getTime() ?? Number.NEGATIVE_INFINITY;
-    return new Map(
+  const judged = (issueId: string) =>
+    new Map(
       (criteria.get(issueId) ?? []).map((c) => [
         c.n,
-        verdicts.filter((v) => v.criterionId === c.id && new Date(v.at).getTime() > voidedBy),
+        verdicts.filter((v) => v.criterionId === c.id),
       ]),
     );
-  };
   const byIssue = new Map<string, IssueFact>(
     rows.map((r) => [
       r.id,
@@ -316,7 +314,9 @@ export async function loadReleaseFacts(
         updatedAt: r.updatedAt,
         releaseNotes: r.releaseNotes ?? null,
         requirementId: r.requirementId,
-        criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, reopened.get(r.id))),
+        criteria: (criteria.get(r.id) ?? []).map((c) =>
+          criterionView(c, reopened.get(r.id) ?? null),
+        ),
         verdicts: judged(r.id),
         reopenedAt: reopened.get(r.id) ?? null,
         closedAt: closed.get(r.id) ?? [],

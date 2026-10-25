@@ -7,6 +7,7 @@
 import type { ChecklistAnswer } from '@forge/contracts/checklists';
 import type { CoverageFile, RequirementAcceptanceDecision } from '@forge/contracts/requirements';
 import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
+import { voidedByReopen } from '@forge/contracts/verified-rule';
 import { desc, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
@@ -170,10 +171,8 @@ export async function issueCriteriaOf(
   const files = await filesOf(
     rows.flatMap((r) => ((r.evidence ?? []).length > 0 ? [r.issue_id] : [])),
   );
-  const voidedOf = (r: CriterionVerdictRow): boolean => {
-    const at = reopened.get(r.issue_id);
-    return !!at && !!r.verdict_at && new Date(r.verdict_at).getTime() <= at.getTime();
-  };
+  const voidedOf = (r: CriterionVerdictRow): boolean =>
+    voidedByReopen({ recordedAt: r.verdict_at }, reopened.get(r.issue_id) ?? null);
   const verdictOf = (r: CriterionVerdictRow, voided = voidedOf(r)): StandingVerdict => {
     return {
       verdict: voided ? null : r.verdict,

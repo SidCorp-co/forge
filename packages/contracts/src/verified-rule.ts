@@ -6,7 +6,9 @@
 // `issues/criteria-verdicts.ts:unearnedCriteriaReports`). Only a pass from someone other than the
 // builder proves it, whatever the project's `qa` says: the builder's own pass is its evidence, kept
 // with its probe, and never its proof (core `issues/built-by.ts` names the builder), save the ones
-// recorded before `BUILDER_PASS_CUTOVER`, an amnesty with its end condition. A short is met
+// recorded before `BUILDER_PASS_CUTOVER`, an amnesty with its end condition. A verdict recorded at or
+// before the issue's last reopen is about a build the reopen rejected (`voidedByReopen`, ISS-55), so
+// no release counts it and the issue's criteria read says so (core `issues/criteria/counting.ts`). A short is met
 // short of its wording, not verified, so it never does. Where the project declares an independent
 // judge, a pass that names no author is not that judge's either, since nothing shows it came from
 // anyone else. A fail counts whoever records it: it is evidence the criterion does not hold, and
@@ -124,23 +126,74 @@ export function judgesVerdict<V extends JudgedVerdict>(
 	return earlier.find((v) => !notTheJudges(v, judge)) ?? latest;
 }
 
+/**
+ * Whether a verdict was recorded at or before the issue's last reopen (ISS-55): evidence about a
+ * build the reopen rejected, so it is not current and no release counts it. The one void every
+ * count of proof reads, by way of `verifiedOf` or directly where a reader keeps the voided row.
+ */
+export function voidedByReopen(
+	v: Pick<JudgedVerdict, "recordedAt">,
+	reopenedAt: string | Date | null,
+): boolean {
+	if (reopenedAt === null || v.recordedAt === null) return false;
+	return new Date(v.recordedAt).getTime() <= new Date(reopenedAt).getTime();
+}
+
+/** Why a pass or short the issue's last reopen voided does not count: what a judge does about it. */
+export function reopenVoidWhy(reopenedAt: string | Date): string {
+	const at = new Date(reopenedAt).toISOString().slice(0, 16).replace("T", " ");
+	return `recorded before the reopen on ${at} UTC; judge it again`;
+}
+
 /** A criterion read by the verified rule: the verdict it stands on, and whether that proves it. */
 export interface Verified<V> {
 	/** The verdict the criterion stands on (`judgesVerdict`), or null where it has none. */
 	stands: V | null;
 	/** Whether `stands` is a pass the rule counts as verified. */
 	proven: boolean;
-	/** Where `stands` is a pass or short that does not count, why (`unverifiedWhy`); else null. */
+	/**
+	 * Where `stands` is a pass or short that does not count, why (`unverifiedWhy`); where every verdict
+	 * was voided by the reopen and the newest was a pass or short, `reopenVoidWhy`; else null.
+	 */
 	why: string | null;
 }
 
-/** Whether a criterion whose verdicts are `newestFirst` is proven, by the verified rule. */
+/**
+ * Whether a criterion whose verdicts are `newestFirst` is proven, by the verified rule. Given the
+ * issue's last reopen, a verdict recorded at or before it is not read (`voidedByReopen`).
+ */
 export function verifiedOf<V extends JudgedVerdict>(
 	newestFirst: readonly V[],
 	judge: PolicyQaMode | null,
+	reopenedAt: string | Date | null = null,
 ): Verified<V> {
-	const stands = judgesVerdict(newestFirst, judge) ?? null;
-	if (!stands) return { stands: null, proven: false, why: null };
+	const current = newestFirst.filter((v) => !voidedByReopen(v, reopenedAt));
+	const stands = judgesVerdict(current, judge) ?? null;
+	if (!stands) {
+		const voided = newestFirst[0];
+		const answered = voided?.verdict === "pass" || voided?.verdict === "short";
+		const why = reopenedAt !== null && answered ? reopenVoidWhy(reopenedAt) : null;
+		return { stands: null, proven: false, why };
+	}
 	const why = unverifiedWhy(stands, judge);
 	return { stands, proven: stands.verdict === "pass" && why === null, why };
+}
+
+/** Why a pass on a backfilled abbreviation never counts on a release: it names no build (`commit_unresolved`). */
+export const UNRESOLVED_COMMIT_WHY =
+	"judged on an abbreviated commit that was backfilled and never resolved, so no build is shown to hold it; judge it again on a whole commit";
+
+/**
+ * Whether a release counts a criterion read by the verified rule (`verifiedOf`): only where it is
+ * proven and the verdict it stands on names a commit that resolved, read the same by the release
+ * record (core `release-batch/release-facts.ts:criteriaAt`) and the issue's criteria read (core
+ * `issues/criteria/counting.ts`). `unresolved` is set where only the abbreviation keeps it from
+ * counting, so a reader may name it.
+ */
+export function releaseCounts<
+	V extends JudgedVerdict & { identityKind: string | null },
+>(read: Verified<V>): { counted: boolean; unresolved: boolean } {
+	const unresolved =
+		read.proven && read.stands?.identityKind === "commit_unresolved";
+	return { counted: read.proven && !unresolved, unresolved };
 }

@@ -1,0 +1,1 @@
+**An issue's criteria now say whether a release counts each verdict.** A pass recorded before the issue's last reopen reads Not counted, with the reopen's time, and is never marked as the builder's counted pass.

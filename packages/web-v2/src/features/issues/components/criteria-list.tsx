@@ -133,6 +133,11 @@ function CriterionItem({
             {t("issues.verdict.builderPass")}
           </span>
         ) : null}
+        {row?.counts?.why ? (
+          <span className="flex-none text-12 text-warn-11" title={row.counts.why} data-testid={`criterion-${line.n}-not-counted`}>
+            {t("issues.verdict.notCounted")}
+          </span>
+        ) : null}
         <span className={cn("w-6 flex-none text-center font-semibold", MARK_TONE[line.standing])} role="img" aria-label={reading} title={reading} data-testid={`criterion-${line.n}-verdict`}>
           {MARK[line.standing]}
         </span>
@@ -143,6 +148,7 @@ function CriterionItem({
           {row ? (
             <>
               <p className="whitespace-pre-wrap">{tooltipOf(row, t, language, time.dateTime, developer)}</p>
+              {row.counts?.why ? <p data-testid="criterion-not-counted-why">{row.counts.why}</p> : null}
               <VerdictEvidence
                 className="grid gap-1 text-13"
                 note={row.latest?.reason?.trim() ? row.latest.reason : null}

@@ -4,7 +4,7 @@
 import type { CriterionClass, CriterionJudge } from '@forge/contracts/issue-design';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { RELEASE_CLIP_MIMES } from '@forge/contracts/release-page';
-import { countedUnderCutover, type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
+import { type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import {
@@ -25,6 +25,7 @@ import { runOfCall } from '../pattern-runs.js';
 import { readJudge, readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
 import { writeKernelRecord } from '../record-events/store.js';
+import { countingOf } from './counting.js';
 import { probeNote } from './probe-rules.js';
 import { probeOfVerdict } from './probes.js';
 import { liveRows } from './store.js';
@@ -333,13 +334,14 @@ async function recordingSession(
 
 /**
  * Whether the verdict just written will never count, by name (contracts `verified-rule.ts:notCountedOf`),
- * or counts only under the builder-pass cutover: read through the same builder rule every count of
- * proof reads (`built-by.ts`).
+ * or counts only under the builder-pass cutover: the builder read through the same rule every count
+ * of proof reads (`built-by.ts`), the cutover mark only where the criterion now stands on this verdict
+ * and a release counts it (`counting.ts:countingOf`), as the criteria read marks it.
  */
-async function countingOf(
+async function countingOfWritten(
   tx: Tx,
-  projectId: string,
-  verdict: { id: string; value: string },
+  issue: { id: string; projectId: string },
+  verdict: { id: string; value: string; criterion: number },
 ): Promise<{ notCounted: NotCounted | null; countedUnderCutover: boolean }> {
   if (verdict.value !== 'pass' && verdict.value !== 'short') {
     return { notCounted: null, countedUnderCutover: false };
@@ -356,16 +358,17 @@ async function countingOf(
     by_builder: boolean | null;
     recorded_at: string | Date;
   }[];
-  const judge = await readJudge(projectId);
+  const judge = await readJudge(issue.projectId);
   const read = {
     verdict: verdict.value,
     byBuilder: rows[0]?.by_builder === true,
     authored: true,
     recordedAt: rows[0]?.recorded_at ?? null,
   };
+  const counting = await countingOf(tx, issue);
   return {
     notCounted: notCountedOf(read, judge),
-    countedUnderCutover: countedUnderCutover(read, judge),
+    countedUnderCutover: counting.get(verdict.criterion)?.underCutover === verdict.id,
   };
 }
 
@@ -465,9 +468,10 @@ export async function recordVerdict(
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
-  const { notCounted, countedUnderCutover: underCutover } = await countingOf(tx, issue.projectId, {
+  const { notCounted, countedUnderCutover: underCutover } = await countingOfWritten(tx, issue, {
     id: row.id,
     value: draft.verdict,
+    criterion: draft.criterion,
   });
   await keepFailAsCorrection(tx, {
     issue,

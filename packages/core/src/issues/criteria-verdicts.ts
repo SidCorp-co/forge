@@ -8,7 +8,7 @@
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { ServingReading } from '@forge/contracts/releases';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
-import { verifiedOf } from '@forge/contracts/verified-rule';
+import { verifiedOf, voidedByReopen } from '@forge/contracts/verified-rule';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
@@ -121,13 +121,13 @@ async function standingOn(
     liveVerdictsOf(db, issueId),
     reopenedAtOf(db, [issueId]),
   ]);
-  const since = reopened.get(issueId)?.getTime() ?? Number.NEGATIVE_INFINITY;
+  const reopenedAt = reopened.get(issueId) ?? null;
   const unverified = new Map<number, string | null>();
   const read = criteria.map((c) => {
     const [newest, ...earlier] = history.get(c.n) ?? [];
     if (!newest) return c;
     const verified = verifiedOf(
-      [newest, ...earlier.filter((v) => new Date(v.createdAt).getTime() > since)],
+      [newest, ...earlier.filter((v) => !voidedByReopen(v, reopenedAt))],
       judge,
     );
     unverified.set(c.n, verified.proven ? null : verified.why);

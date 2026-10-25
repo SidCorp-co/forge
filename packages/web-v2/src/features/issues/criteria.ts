@@ -36,6 +36,8 @@ export interface CriterionRow {
   position: number;
   requirementCriterionId: string | null;
   latest: CriterionVerdict | null;
+  /** Whether a release counts the verdict it stands on, and where its newest pass or short does not, why. */
+  counts?: { counted: boolean; why: string | null };
 }
 
 /** A criterion a reword, a removal or a re-tie retired, with every verdict on it, newest first; none counts. */

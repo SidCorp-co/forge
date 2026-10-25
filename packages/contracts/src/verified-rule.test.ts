@@ -4,8 +4,11 @@ import {
 	countedUnderCutover,
 	judgesVerdict,
 	notCountedOf,
+	releaseCounts,
+	reopenVoidWhy,
 	unverifiedWhy,
 	verifiedOf,
+	voidedByReopen,
 } from "./verified-rule.js";
 
 /** After the builder-pass cutover, where the rule reads as it will once the amnesty ends. */
@@ -92,5 +95,49 @@ describe("the verified rule every count of proof reads (REQ-35 decision 7b261fca
 		expect(judgesVerdict([v("pass", false, false), v("pass")], "self")?.authored).toBe(
 			false,
 		);
+	});
+
+	it("voids every verdict recorded at or before the issue's last reopen, and says to judge it again (ISS-55)", () => {
+		const reopen = "2026-10-23T07:13:00Z";
+		const at = v("pass", false, true, reopen);
+		const after = v("pass", false, true, "2026-10-23T07:13:00.001Z");
+		expect(voidedByReopen(at, reopen), "the very instant of the reopen is before it").toBe(true);
+		expect(voidedByReopen(after, reopen)).toBe(false);
+		expect(voidedByReopen(at, null), "an issue never reopened voids nothing").toBe(false);
+		expect(reopenVoidWhy(reopen)).toBe(
+			"recorded before the reopen on 2026-10-23 07:13 UTC; judge it again",
+		);
+		for (const judge of [null, "self", "independent"] as const) {
+			expect(verifiedOf([at], judge, reopen)).toEqual({
+				stands: null,
+				proven: false,
+				why: reopenVoidWhy(reopen),
+			});
+			expect(verifiedOf([after, at], judge, reopen)).toMatchObject({ stands: after, proven: true });
+		}
+		// a builder's pre-cutover pass the amnesty counts is voided by the reopen like any other
+		expect(verifiedOf([v("pass", true, true, BEFORE)], "self", AFTER).proven).toBe(false);
+		// a voided fail or skip owes no reason: only a pass or short claims anything
+		expect(verifiedOf([v("fail", false, true, reopen)], "self", reopen).why).toBeNull();
+		expect(verifiedOf([v("short", false, true, reopen)], "self", reopen).why).toBe(
+			reopenVoidWhy(reopen),
+		);
+	});
+
+	it("counts on a release only a proven criterion whose verdict names a resolved commit", () => {
+		const on = (identityKind: string | null) => ({ ...v("pass"), identityKind });
+		expect(releaseCounts(verifiedOf([on("commit")], "self"))).toEqual({
+			counted: true,
+			unresolved: false,
+		});
+		expect(releaseCounts(verifiedOf([on("commit_unresolved")], "self"))).toEqual({
+			counted: false,
+			unresolved: true,
+		});
+		const failed = { ...on("commit_unresolved"), verdict: "fail" };
+		expect(releaseCounts(verifiedOf([failed], "self"))).toEqual({
+			counted: false,
+			unresolved: false,
+		});
 	});
 });

@@ -4,6 +4,7 @@
 // criteria), which the highlights are drafted from and the requirements section quotes.
 
 import type { ReleaseDetail } from '@forge/contracts/releases';
+import { voidedByReopen } from '@forge/contracts/verified-rule';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
@@ -18,7 +19,7 @@ import type { CarriedCriterion, CarriedRequirement, CarriedVerdict, IssueFile } 
 
 /**
  * Each live criterion of the issues the release carries, with every verdict it earned since the
- * issue's last reopen (a reopen voids what was judged before it, as the release record reads it),
+ * issue's last reopen (contracts `verified-rule.ts:voidedByReopen`, as the release record reads it),
  * and the requirement criterion it traces as the release record names it.
  */
 export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCriterion[]> {
@@ -31,7 +32,7 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
   // the rows the release record counts by (`release-batch/release-facts.ts:criteriaAt`)
   const verdicts = await carriedVerdictsOf(all.map((c) => c.id));
   return detail.issues.flatMap((issue) => {
-    const voidedBy = reopened.get(issue.id)?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const reopenedAt = reopened.get(issue.id) ?? null;
     const traced = detail.issueCriteria.find((i) => i.key === issue.key)?.criteria ?? [];
     return (criteria.get(issue.id) ?? []).map((c) => ({
       issueId: issue.id,
@@ -41,7 +42,7 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
       statement: c.statement,
       bc: traced.find((t) => t.n === c.n)?.bc ?? null,
       verdicts: verdicts
-        .filter((v) => v.criterionId === c.id && new Date(v.at).getTime() > voidedBy)
+        .filter((v) => v.criterionId === c.id && !voidedByReopen(v, reopenedAt))
         .map(
           (v): CarriedVerdict => ({
             id: v.id,

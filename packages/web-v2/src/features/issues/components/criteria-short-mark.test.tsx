@@ -87,3 +87,26 @@ describe("a builder's pass counted under the cutover on the Criteria tab (ISS-68
     expect(screen.queryByTestId("criterion-2-builder")).toBeNull();
   });
 });
+
+describe("a pass no release counts on the Criteria tab", () => {
+  const why = "recorded before the reopen on 2026-10-23 07:13 UTC; judge it again";
+  it("marks the row Not counted, saying why, where the reopen voided its pass, and leaves a counted pass unmarked", async () => {
+    fakeCore((c) =>
+      c.path === "/issues/i1/criteria"
+        ? {
+            body: {
+              criteria: [
+                { ...criterion(1, judged("pass")), counts: { counted: false, why } },
+                { ...criterion(2, judged("pass")), counts: { counted: true, why: null } },
+              ],
+            },
+          }
+        : undefined,
+    );
+    renderWithQuery(<IssueCriteria issue={{ id: "i1", projectId: "p1", status: "awaiting_release" } as IssueDetail} projectId="p1" checklist={[]} canWrite={false} requirementKey={null} />);
+    const word = await screen.findByTestId("criterion-1-not-counted");
+    expect(word).toHaveTextContent(/^Not counted$/);
+    expect(word).toHaveAttribute("title", why);
+    expect(screen.queryByTestId("criterion-2-not-counted")).toBeNull();
+  });
+});
