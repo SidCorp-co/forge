@@ -33,7 +33,7 @@ export function Field({ label, htmlFor, hint, error, required, children }: Field
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="fg-label">
         {label}
-        {required && <span style={{ color: "var(--red-500)" }} aria-hidden> *</span>}
+        {required && <span style={{ color: "var(--red-600)" }} aria-hidden> *</span>}
       </label>
       {control}
       {error ? (
