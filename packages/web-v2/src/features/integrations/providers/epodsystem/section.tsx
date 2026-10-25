@@ -235,7 +235,11 @@ function EpodsystemBindingRow({
       {showKeyField && (
         <Field
           label="New API key"
-          hint="Enter the new crmk_ key to rotate. Leave blank to keep the current key."
+          hint={
+            binding.hasSecrets
+              ? "Enter the new crmk_ key to rotate. Leave blank to keep the current key."
+              : removedKeyHint("key", binding.acts)
+          }
         >
           <Input
             type="password"
