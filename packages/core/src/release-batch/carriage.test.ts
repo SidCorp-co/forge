@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { GitHubReadError, type GitHubRepoClient } from '../integrations/github/client.js';
 import { githubRepositoryReader } from '../integrations/github/repository-reader.js';
-import { carriageOf, changedPathsOf, forgetCarriage } from './carriage.js';
+import { carriageOf, changedPathsOf, forgetCarriage, landingHeld } from './carriage.js';
 
 const J = '655cc09cebfc9eb07840dfed6bccd04aaf7f1728';
 const S = '420d3a80aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -212,5 +212,37 @@ describe('changedPathsOf', () => {
       kind: 'unread',
       why: `${J} has no parent to diff it against`,
     });
+  });
+});
+
+// ISS-1300 — whether the repository holds a recorded landing: possession can change, so a found
+// answer is trusted for an hour and an absent one never kept.
+describe('landingHeld', () => {
+  const commit = (sha: string) => `/repos/o/r/commits/${sha}`;
+
+  it('asks again past the hour, and reports a commit rewritten away as absent', async () => {
+    let clock = 0;
+    const now = () => clock;
+    const answers: Record<string, Answer> = { [commit(J)]: { sha: J } };
+    const c = client(answers);
+    const reader = githubRepositoryReader(c);
+    expect(await landingHeld(reader, J, undefined, now)).toBe('found');
+    clock = 59 * 60 * 1000;
+    expect(await landingHeld(reader, J, undefined, now)).toBe('found');
+    expect(c.asked).toHaveLength(1);
+    delete answers[commit(J)];
+    clock = 61 * 60 * 1000;
+    expect(await landingHeld(reader, J, undefined, now)).toBe('absent');
+    expect(c.asked).toHaveLength(2);
+  });
+
+  it('never keeps an absent answer, and answers unread without asking once the budget is spent', async () => {
+    const c = client({});
+    const reader = githubRepositoryReader(c);
+    expect(await landingHeld(reader, S)).toBe('absent');
+    expect(await landingHeld(reader, S)).toBe('absent');
+    expect(c.asked).toHaveLength(2);
+    expect(await landingHeld(reader, S, () => 'spent')).toBe('unread');
+    expect(c.asked).toHaveLength(2);
   });
 });

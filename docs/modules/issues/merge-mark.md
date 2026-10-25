@@ -299,7 +299,8 @@ no mark writer checks. So where a source verdict is weighed against that recorde
 where nothing reads what the project serves, a served commit answering a source verdict first —
 the weighing asks the repository once whether it holds it
 (`packages/core/src/release-batch/runtime-weighing.ts:readWeighingNow`, through the same reader
-the carriage takes; a commit found is kept, one absent is asked again on the next weighing).
+the carriage takes; a commit found is trusted for an hour, since a rewrite can take it away, and
+one absent is asked again on the next weighing).
 
 A repository that was read and holds no such commit anchors no verdict: each criterion it holds
 back carries one sentence word for word, naming the commit, the repository and the record to

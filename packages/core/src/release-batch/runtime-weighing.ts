@@ -166,7 +166,7 @@ async function readLandings(
 ): Promise<Map<string, UnresolvedLanding>> {
   const out = new Map<string, UnresolvedLanding>();
   if ('unread' in reader) return out;
-  for (const commit of landings) {
+  for (const commit of rotated(landings, passes)) {
     if ((await landingHeld(reader.reader, commit, spend)) !== 'absent') continue;
     out.set(landingKey(commit), { commit, repository: reader.reader.name });
   }
