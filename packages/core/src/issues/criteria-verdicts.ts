@@ -9,7 +9,12 @@ import { commentAttachments, comments, issueAttachments, issues } from '../db/sc
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { criterionBlocksIn, longestSpelling } from '../messaging/verdict-identity.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
-import { type RuntimeReading, UNWEIGHED, type Weighing } from '../release-batch/weighing.js';
+import {
+  landingKey,
+  type RuntimeReading,
+  UNWEIGHED,
+  type Weighing,
+} from '../release-batch/weighing.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
 import {
   type OwedRuntimes,
@@ -21,6 +26,7 @@ import {
   EARNED_STANDINGS,
   type IssueIdentities,
   issueIdentities,
+  type LandingRecord,
   standingSentence,
   type VerdictIdentity,
   type VerdictStanding,
@@ -108,6 +114,13 @@ export interface IssueCriteriaReport {
   readonly runtimes: readonly RuntimeReading[];
   /** Criteria earned on a runtime nothing could re-read: earned, and weaker than a checked one. */
   readonly uncorroborated: readonly number[];
+  /** The commit this issue records as landed that its repository holds no commit under, once for
+   *  the issue: one defect, however many criteria it holds back (ISS-1300). */
+  readonly unresolvedLanding?: {
+    readonly commit: string;
+    readonly repository: string;
+    readonly from: LandingRecord;
+  };
 }
 
 /** Every name the tracker holds an attachment under for this issue, its comments' included. */
@@ -255,7 +268,7 @@ async function reportFor(
   weighing: Weighing,
 ): Promise<IssueCriteriaReport> {
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
-  const identities = issueIdentities(row);
+  const identities = withUnresolved(issueIdentities(row), weighing);
   const numbers = acceptanceCriteriaNumbers(row.acceptanceCriteria);
   const { runtimes } = weighing;
   if (numbers.length === 0) {
@@ -265,6 +278,11 @@ async function reportFor(
   const held = await heldAttachmentNames(row.id);
   const owed = owedRuntimes(row.id, weighing);
   const found = findingsFor(numbers, latest, { serving, owed, weighing }, identities, held);
+  const { source, from, unresolvedIn } = identities;
+  const unresolved =
+    source && from && unresolvedIn
+      ? { unresolvedLanding: { commit: source, repository: unresolvedIn, from } }
+      : {};
   return {
     issueId: row.id,
     unearned: found.unearned,
@@ -272,7 +290,15 @@ async function reportFor(
     serving,
     runtimes,
     uncorroborated: found.uncorroborated,
+    ...unresolved,
   };
+}
+
+/** The identities, marked where the weighing read the repository and found no commit at the source. */
+function withUnresolved(identities: IssueIdentities, weighing: Weighing): IssueIdentities {
+  const { source } = identities;
+  const absent = source ? weighing.unresolved?.get(landingKey(source)) : undefined;
+  return absent ? { ...identities, unresolvedIn: absent.repository } : identities;
 }
 
 /**
