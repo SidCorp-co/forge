@@ -1,8 +1,9 @@
 /**
  * ISS-1368 — the weighing (`weighing.ts`), read by the caller before any enumerator runs, since
  * `collectReleaseBlockers` reaches no network: the release runtimes this project declares and what
- * each serves now, which paths each waiting issue's landing changed, and what every served commit
- * holds of every commit a verdict was judged at.
+ * each serves now, which paths each waiting issue's landing changed, what every served commit
+ * holds of every commit a verdict was judged at, and, where nothing reads what is served, whether
+ * the repository holds the commit each issue records as its landing (ISS-1300).
  *
  * Every read that fails is kept as the reason it failed, never as an answer: a pair whose carriage
  * was not read is weighed by equality alone, and an issue whose paths were not read owes every
@@ -12,7 +13,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, issues, projects, runners } from '../db/schema.js';
-import { latestCriterionVerdicts } from '../issues/criteria-verdicts.js';
+import { type CriterionVerdict, latestCriterionVerdicts } from '../issues/criteria-verdicts.js';
 import { issueIdentities } from '../issues/verdict-standing.js';
 import { issueSentences } from '../lib/zod-sentences.js';
 import { recognisableIdentity, sameIdentity } from '../messaging/verdict-identity.js';
@@ -27,12 +28,19 @@ import type {
   RepositoryAccess,
   RepositoryReader,
 } from '../projects/repository-reader.js';
-import { carriageOf, changedPathsOf } from './carriage.js';
+import { carriageOf, changedPathsOf, landingHeld } from './carriage.js';
 import { type ServingReading, servedCommits } from './serving-reading.js';
-import { carriageKey, type RuntimeReading, rotated, type Weighing } from './weighing.js';
+import {
+  carriageKey,
+  landingKey,
+  type RuntimeReading,
+  rotated,
+  type UnresolvedLanding,
+  type Weighing,
+} from './weighing.js';
 
-/** Uncached reads (one or two compares each) one weighing may make of each kind — landings and
- *  carriages, so neither can starve the other; a cached answer costs none. */
+/** Uncached reads (one or two compares each) one weighing may make of each kind — landings'
+ *  paths, carriages and recorded landings, so none can starve another; a cached answer costs none. */
 export const WEIGHING_READ_LIMIT = 60;
 
 export interface WeighingDeps {
@@ -117,15 +125,52 @@ async function rowsOf(projectId: string, issueIds?: readonly string[]): Promise<
     .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, issues.id);
 }
 
+/** Each row's latest verdicts, read once for the weighing. */
+async function verdictsOf(rows: readonly WaitingRow[]): Promise<Map<string, CriterionVerdict[]>> {
+  const out = new Map<string, CriterionVerdict[]>();
+  for (const row of rows) out.set(row.id, [...(await latestCriterionVerdicts(row.id)).values()]);
+  return out;
+}
+
 /** Each commit any of these rows' latest verdicts was judged at. */
-async function judgedCommits(rows: readonly WaitingRow[]): Promise<string[]> {
+function judgedCommits(verdicts: ReadonlyMap<string, readonly CriterionVerdict[]>): string[] {
   const judged = new Set<string>();
-  for (const row of rows) {
-    for (const verdict of (await latestCriterionVerdicts(row.id)).values()) {
-      if (verdict.at && recognisableIdentity(verdict.at.value)) judged.add(verdict.at.value.trim());
-    }
+  for (const verdict of [...verdicts.values()].flat()) {
+    if (verdict.at && recognisableIdentity(verdict.at.value)) judged.add(verdict.at.value.trim());
   }
   return [...judged];
+}
+
+/** The landing each row records that a source verdict is weighed against: only where nothing reads
+ *  what the project serves, since a served commit answers a source verdict first (`verdictStanding`). */
+function comparedLandings(
+  rows: readonly WaitingRow[],
+  verdicts: ReadonlyMap<string, readonly CriterionVerdict[]>,
+  serving: ServingReading,
+): string[] {
+  if (serving.kind === 'serving') return [];
+  const out = new Map<string, string>();
+  for (const row of rows) {
+    const { source } = issueIdentities(row);
+    if (!source || !(verdicts.get(row.id) ?? []).some((v) => v.at?.kind === 'source')) continue;
+    out.set(landingKey(source), source);
+  }
+  return [...out.values()];
+}
+
+/** Each recorded landing the repository was read and does not hold; a failed read names none. */
+async function readLandings(
+  landings: readonly string[],
+  reader: Reader,
+  spend: () => string | null,
+): Promise<Map<string, UnresolvedLanding>> {
+  const out = new Map<string, UnresolvedLanding>();
+  if ('unread' in reader) return out;
+  for (const commit of landings) {
+    if ((await landingHeld(reader.reader, commit, spend)) !== 'absent') continue;
+    out.set(landingKey(commit), { commit, repository: reader.reader.name });
+  }
+  return out;
 }
 
 type Unread = Extract<Carriage, { kind: 'unread' }>;
@@ -210,12 +255,14 @@ export async function readWeighingNow(
     runtimes.push({ name: runtime.name, paths: runtime.paths, serving: runnersRead });
   }
   const rows = await rowsOf(projectId, issueIds);
-  const judged = await judgedCommits(rows);
+  const verdicts = await verdictsOf(rows);
+  const judged = judgedCommits(verdicts);
+  const landings = comparedLandings(rows, verdicts, serving);
   const served = [
     ...new Set([...servedCommits(serving), ...runtimes.flatMap((r) => servedCommits(r.serving))]),
   ];
   const unequal = judged.some((j) => served.some((s) => !sameIdentity(j, s)));
-  if (runtimes.length === 0 && !unequal) {
+  if (runtimes.length === 0 && !unequal && landings.length === 0) {
     return { read: true, runtimes, changed: new Map(), carriage: new Map() };
   }
   passes += 1;
@@ -225,7 +272,8 @@ export async function readWeighingNow(
       const reader = readerOf(access);
       const changed = runtimes.length > 0 ? await readChanged(rows, reader, budget()) : new Map();
       const carriage = await readCarriage(judged, served, reader, budget());
-      return { read: true, runtimes, changed, carriage };
+      const unresolved = await readLandings(landings, reader, budget());
+      return { read: true, runtimes, changed, carriage, unresolved };
     },
     deps.repository,
   );

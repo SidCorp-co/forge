@@ -83,12 +83,34 @@ const UNREAD_REPORT: IssueCriteriaReport = {
 const TARGET =
   'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land.';
 
+/** ISS-1300: a recorded commit sharing a real one's first eight characters, as sid-desk ISS-578's did. */
+const ABSENT = '0d018a9a0e1cf5dadf2b1b3be9ba1b81c5e9cb40';
 const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
   [
     'criteria unearned',
     criteriaHold(REPORT),
     'The automatic release leaves this issue out, because criteria 3 and 5 are not earned at the deployment. ' +
       'A person records a verdict on each at the running deployment, or closes the issue by hand. ' +
+      'The next sweep weighs it again.',
+  ],
+  [
+    'criteria held by a merge mark the repository lacks',
+    criteriaHold({
+      ...REPORT,
+      unresolvedLanding: { commit: ABSENT, repository: 'SidCorp-co/forge', from: 'merge' },
+    }),
+    'The automatic release leaves this issue out, because the commit it records as landed is not in its repository. ' +
+      'A person removes its merge mark, then marks it merged at the commit that landed. ' +
+      'The next sweep weighs it again.',
+  ],
+  [
+    'criteria held by a landing record the repository lacks',
+    criteriaHold({
+      ...REPORT,
+      unresolvedLanding: { commit: ABSENT, repository: 'SidCorp-co/forge', from: 'landing' },
+    }),
+    'The automatic release leaves this issue out, because the commit it records as landed is not in its repository. ' +
+      'Its run records the landing again at the commit that landed. ' +
       'The next sweep weighs it again.',
   ],
   [
@@ -206,7 +228,7 @@ describe('every hold kind is commented in three short sentences (ISS-1421 r8 rep
   // that clears itself), and each variant one of them words differently, is measured above.
   it('measures every kind a hold comes in', () => {
     expect(new Set(KINDS.map(([, hold]) => hold.code)).size).toBe(12);
-    expect(KINDS.length).toBe(16);
+    expect(KINDS.length).toBe(18);
   });
 
   it.each(KINDS)(
@@ -308,6 +330,27 @@ describe('no hold sentence runs past the cap, for any shortfalls a project can r
         criteriaHold({ ...REPORT, unearned: unearned.map((c) => ({ ...c, clears: ['x'] })) }),
       );
     }
+  });
+
+  // ISS-1300: one defect, whatever the count of criteria it holds back; the reason names it once.
+  it('says a recorded commit the repository lacks once, however many criteria it holds', () => {
+    const why = `the commit this issue records as landed, ${ABSENT}, is not a commit SidCorp-co/forge holds`;
+    const unearned = Array.from({ length: 13 }, (_, i) => ({
+      criterion: i + 1,
+      verdict: 'pass',
+      standing: 'unanchored' as const,
+      why,
+    }));
+    const unresolvedLanding = {
+      commit: ABSENT,
+      repository: 'SidCorp-co/forge',
+      from: 'merge' as const,
+    };
+    const hold = criteriaHold({ ...REPORT, unearned, unresolvedLanding });
+    expect(hold.words?.[0]).not.toMatch(/criteria|13/);
+    expect(hold.reason.split(why).length - 1).toBe(1);
+    expect(hold.waitingFor).toBe('the merge mark corrected to the commit that landed');
+    expectEachFits(hold);
   });
 
   it('measures every other kind at its longest', () => {

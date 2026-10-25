@@ -102,6 +102,7 @@ function criteriaHeld(report: IssueCriteriaReport): string {
  * A failed repository read's clearing act leads the remedy, once: a new verdict does not repair it.
  */
 export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
+  if (report.unresolvedLanding) return unresolvedLandingHold(report, report.unresolvedLanding);
   const reasons = reasonsByWhy(report);
   const judge = judgeClause(report.serving, report.runtimes);
   const clears = [...new Set(report.unearned.flatMap((c) => c.clears ?? []))];
@@ -132,6 +133,43 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
     owes: 'human',
     waitingFor: `${readable}a verdict on each criterion named at the running deployment, or the issue closed by hand`,
     words,
+  };
+}
+
+/** The act that corrects a recorded landing, by the record it was read from. */
+const CORRECT_THE_RECORD = {
+  merge: 'A person removes its merge mark, then marks it merged at the commit that landed.',
+  landing: 'Its run records the landing again at the commit that landed.',
+} as const;
+
+/**
+ * A commit the issue records as landed that its repository does not hold holds every source verdict
+ * back for one reason, and no verdict clears it: the record does (ISS-1300). It is said first and
+ * once, and every other reason a criterion is held for follows it.
+ */
+function unresolvedLandingHold(
+  report: IssueCriteriaReport,
+  landing: NonNullable<IssueCriteriaReport['unresolvedLanding']>,
+): ReleaseHold {
+  const correct = CORRECT_THE_RECORD[landing.from];
+  const record = landing.from === 'merge' ? 'the merge mark' : 'the landing record';
+  const reasons = reasonsByWhy(report);
+  // A criterion held only by its own `fail` names no commit, so the record is named here instead.
+  const named = reasons.includes(landing.commit)
+    ? ''
+    : ` It records ${landing.commit} as landed, which ${landing.repository} does not hold.`;
+  return {
+    code: 'RELEASE_CRITERIA_UNEARNED',
+    reason:
+      'The automatic release carries only an issue whose every acceptance criterion is earned, and ' +
+      `this one is not — ${reasons}.${named} ${correct} The next sweep then weighs its verdicts again.`,
+    owes: 'human',
+    waitingFor: `${record} corrected to the commit that landed`,
+    words: [
+      'The automatic release leaves this issue out, because the commit it records as landed is not in its repository.',
+      correct,
+      NEXT_WEIGHS,
+    ],
   };
 }
 

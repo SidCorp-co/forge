@@ -4,7 +4,8 @@
  * verdict is weighed; `sessionContext.landing.deployment` gates nothing, a commit stored on a row
  * being unable to say what a host serves now (ISS-1286). Where that reading names what is running,
  * it decides a verdict written in either field, the observation being Forge's (ISS-1346); where it
- * names nothing, a source verdict resolves against the issue's own source. The shapes an identity
+ * names nothing, a source verdict resolves against the issue's own source, which anchors nothing
+ * where the repository was read and holds no such commit (ISS-1300). The shapes an identity
  * may be written in: `messaging/verdict-identity.ts`. Its report says the reading, once (ISS-1346).
  */
 
@@ -20,7 +21,13 @@ export interface VerdictIdentity {
 export interface IssueIdentities {
   /** The source the issue stands at. */
   readonly source: string | null;
+  /** The record `source` was read from: the merge mark's commit, or the landing's head. */
+  readonly from?: LandingRecord;
+  /** The repository that was read and holds no commit `source` names (ISS-1300). */
+  readonly unresolvedIn?: string;
 }
+
+export type LandingRecord = 'merge' | 'landing';
 
 /** How a verdict's identity resolves; `stands` and `uncorroborated` are the two a criterion is
  *  earned on. `uncorroborated` is a runtime witnessed that nothing here could re-read: absence of
@@ -55,8 +62,10 @@ export function issueIdentities(row: {
   sessionContext: unknown;
   mergedCommitSha?: string | null;
 }): IssueIdentities {
-  const landing = landingOf(row.sessionContext);
-  return { source: textOrNull(row.mergedCommitSha) ?? textOrNull(landing.head) };
+  const merged = textOrNull(row.mergedCommitSha);
+  if (merged) return { source: merged, from: 'merge' };
+  const head = textOrNull(landingOf(row.sessionContext).head);
+  return head ? { source: head, from: 'landing' } : { source: null };
 }
 
 /** Whether a runtime verdict names something the reading says is running. Any commit a probe
@@ -86,10 +95,25 @@ export function verdictStanding(
   if (at.kind === 'runtime') return runtimeStanding(at.value, serving);
   const observed = servedSource(at.value, serving);
   if (observed) return observed;
-  if (identities.source === null) return 'unanchored';
+  // A recorded commit the repository does not hold anchors nothing, whatever the verdict names.
+  if (identities.source === null || identities.unresolvedIn) return 'unanchored';
   return sameIdentity(at.value, identities.source, { abbreviating: true })
     ? 'unwitnessed'
     : 'superseded';
+}
+
+/** One sentence for every verdict a recorded commit the repository lacks holds back, whatever each
+ *  was judged at, so a report and a hold say it as the one defect it is (ISS-1300). */
+export function unresolvedSentence(
+  commit: string,
+  repository: string,
+  from: LandingRecord | undefined,
+): string {
+  const record = from === 'landing' ? 'its landing record' : 'its merge mark';
+  const names = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(commit)
+    ? `is not a commit ${repository} holds`
+    : `names no single commit ${repository} holds`;
+  return `the commit this issue records as landed, ${commit}, ${names}, so no verdict can be weighed against it until ${record} names the commit that landed`;
 }
 
 function named(value: string | null): string {
@@ -152,6 +176,9 @@ export function standingSentence(
   }
   if (standing === 'stands') {
     return `judged at ${named(at?.value ?? null)}, which this project is serving`;
+  }
+  if (standing === 'unanchored' && at && identities.source && identities.unresolvedIn) {
+    return unresolvedSentence(identities.source, identities.unresolvedIn, identities.from);
   }
   if (standing === 'unanchored') {
     return at
