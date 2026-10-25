@@ -1,1 +1,0 @@
-**A builder's own pass recorded from 2026-10-25 17:00 UTC no longer counts, and a fail reopens the issue that owns the work.** Earlier builder passes still count, marked Builder; a requirement fail goes to the delivering issue.

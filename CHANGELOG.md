@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.318] - 2026-10-25
+
+Criteria count only when someone other than the builder judged them
+
+### Changed
+
+- **A builder's own pass recorded from 2026-10-25 17:00 UTC no longer counts, and a fail reopens the issue that owns the work.** Earlier builder passes still count, marked Builder; a requirement fail goes to the delivering issue.
+
 ## [0.4.0-dev.317] - 2026-10-25
 
 Feedback reporters confirm shipped fixes with the check's evidence
