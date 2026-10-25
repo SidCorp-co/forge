@@ -3197,6 +3197,7 @@
 
 - **Whoever an integration's refusal tells you to ask can do what you asked.** A change you may not make names who may make all of it, and Rocket.Chat, which agents cannot use, names nobody. (ISS-1421)
 - **An integration switched on for a project over a connection that is off says nothing uses it**, and a connection's own refusals say what you asked (test, rename, turn off, remove) and who to ask by name. (ISS-1421)
+- **A key sent to an integration that keeps none is refused**, where it was answered as saved and kept nowhere. (ISS-1421)
 - **Refusals about a Google key file or a Coolify server speak plainly**, naming the key file or what the server was asked for, never an API field or an HTTP route. (ISS-1421)
 - **An integration's drawer offers only what you may do there.** Controls you may not use say who may, from the rule the server refuses by, and every refusal there says what, why and who may act instead of "Forbidden.". (ISS-1421)
 - **Returning from GitHub after an App install lands on a page that says what happened.** A refusal there showed raw JSON in the tab; the page now says in words why nothing was recorded and what to do. (ISS-1421)

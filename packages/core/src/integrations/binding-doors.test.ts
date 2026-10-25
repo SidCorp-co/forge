@@ -114,6 +114,24 @@ describe('refuseByTier — the acts a binding PATCH carries (ISS-1421 r28)', () 
     }
   });
 
+  it('refuses a key sent to a provider that keeps none, whoever asks, and takes an empty one', () => {
+    const keyless = listIntegrations().find((d) => !d.schemas.primaryCredentialField)?.provider;
+    if (!keyless) throw new Error('no provider keeps no key');
+    for (const r of [reader('admin', 'owner'), reader('member', 'member')]) {
+      const said = refusal(() =>
+        refuseByTier(r, { provider: keyless }, orgs, { secrets: { token: 'x' } }, noTiers),
+      );
+      expect(said?.status).toBe(400);
+      expect(said?.message).toContain(`${keyless} keeps no key or secret`);
+    }
+    const empty = { active: true, secrets: {} };
+    expect(
+      refusal(() =>
+        refuseByTier(reader('admin', 'owner'), { provider: keyless }, orgs, empty, noTiers),
+      ),
+    ).toBeNull();
+  });
+
   it('answers one act alone by its own refusal', () => {
     const said = refusal(() =>
       refuseByTier(

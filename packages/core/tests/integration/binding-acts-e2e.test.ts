@@ -327,14 +327,14 @@ describe('every who the list names is who the door takes (criteria 308, 310, 311
 
   async function orgBinding(provider: Provider) {
     projectId = await freshProject();
-    const field = registry.getIntegration(provider)?.schemas.primaryCredentialField ?? 'token';
+    const field = registry.getIntegration(provider)?.schemas.primaryCredentialField ?? null;
     const connection = await store.createConnection({
       ownerType: 'org',
       ownerId: orgId,
       provider,
       displayName: `${provider} ${randomUUID().slice(0, 6)}`,
       config: {},
-      secrets: { [field]: 'scratch-held-key' },
+      secrets: field ? { [field]: 'scratch-held-key' } : {},
     });
     const binding = await store.createBinding({
       connectionId: connection.id,
@@ -345,17 +345,69 @@ describe('every who the list names is who the door takes (criteria 308, 310, 311
     return { bindingId: binding.id, field };
   }
 
-  /** The act as a PATCH body, and the `who` the list answers for it. */
-  const sends = (field: string) =>
-    [
-      { act: 'change', body: { instructions: 'scratch' }, who: (a: Acts) => a.whoChanges },
-      { act: 'grantAgents', body: { agentAccess: 'none' }, who: (a: Acts) => a.whoGrantsAgents },
+  /** A key the provider's own schema takes, new on every send so reading it back proves the save. */
+  const keyFor = (provider: Provider, tag: string) =>
+    provider === 'google'
+      ? JSON.stringify({
+          type: 'service_account',
+          client_email: `scratch-${tag}@scratch-project.iam.gserviceaccount.com`,
+          private_key: '-----BEGIN PRIVATE KEY-----\nscratch\n-----END PRIVATE KEY-----\n',
+          token_uri: 'https://oauth2.googleapis.com/token',
+        })
+      : provider === 'github'
+        ? `-----BEGIN RSA PRIVATE KEY-----\nscratch-${tag}-${'x'.repeat(100)}\n-----END RSA PRIVATE KEY-----\n`
+        : `scratch-key-${tag}`;
+
+  type Held = { instructions: unknown; agentAccess: unknown; key: unknown };
+  async function heldOn(bindingId: string, field: string | null): Promise<Held> {
+    const pair = await store.findBindingWithConnectionById(bindingId);
+    if (!pair) throw new Error('binding missing from the store');
+    const secrets = store.decryptConnectionSecrets(pair.connection, bindingId);
+    return {
+      instructions: pair.binding.instructions,
+      agentAccess: pair.binding.agentAccess,
+      key: field ? secrets[field] : undefined,
+    };
+  }
+
+  /** The act as a PATCH body, the `who` the list answers for it, and what a taken send leaves held. */
+  const sends = (provider: Provider, field: string | null, tag: string) => {
+    const key = keyFor(provider, tag);
+    return [
+      {
+        act: 'change',
+        body: { instructions: `scratch ${tag}` },
+        who: (a: Acts) => a.whoChanges,
+        left: (h: Held) => h.instructions === `scratch ${tag}`,
+      },
+      {
+        act: 'grantAgents',
+        body: { agentAccess: 'all' },
+        who: (a: Acts) => a.whoGrantsAgents,
+        left: (h: Held) => h.agentAccess === 'all',
+      },
       {
         act: 'saveKey',
-        body: { secrets: { [field]: 'scratch-new-key' } },
+        body: { secrets: { [field ?? 'token']: key } },
         who: (a: Acts) => a.whoSavesKey,
+        left: (h: Held) => h.key === key,
       },
     ] as const;
+  };
+
+  /** A send the door must take: answered 200, and what it carried is what the store now holds. */
+  async function taken(
+    by: Reader,
+    bindingId: string,
+    field: string | null,
+    send: ReturnType<typeof sends>[number],
+    at: string,
+  ) {
+    await store.updateBinding(bindingId, { agentAccess: 'none' });
+    const said = await patch(by.token, bindingId, send.body);
+    expect(said.status, `${at} taken: ${JSON.stringify(said.body)}`).toBe(200);
+    expect(send.left(await heldOn(bindingId, field)), `${at} held after the send`).toBe(true);
+  }
 
   const providers = () => registry.listIntegrations().map((d) => d.provider);
 
@@ -365,26 +417,33 @@ describe('every who the list names is who the door takes (criteria 308, 310, 311
       const { bindingId, field } = await orgBinding(provider);
       for (const [name, reader] of Object.entries(readers())) {
         const acts = await actsOf(reader.token, bindingId);
-        for (const { act, body, who } of sends(field)) {
-          const said = await patch(reader.token, bindingId, body);
-          const at = `${provider} ${name} ${act}: ${JSON.stringify(said.body)}`;
-          const named = who(acts);
-          if (act === 'grantAgents' && named === null) {
+        for (const send of sends(provider, field, `${provider}-${name}`)) {
+          const at = `${provider} ${name} ${send.act}`;
+          const named = send.who(acts);
+          if (send.act === 'saveKey' && field === null) {
+            // A provider that keeps no key: a key sent to it is refused for everyone, never saved nowhere.
+            const said = await patch(reader.token, bindingId, send.body);
+            expect(said.status, `${at}: ${JSON.stringify(said.body)}`).toBe(400);
+            expect(JSON.stringify(said.body), at).toContain('keeps no key or secret');
+            continue;
+          }
+          if (send.act === 'grantAgents' && named === null) {
             // No one may: the list names no one, and the door says why, whoever sends it (324, 325).
+            const said = await patch(reader.token, bindingId, send.body);
             expect(acts.grantAgents, at).toBe(false);
             expect(said.status, at).toBe(400);
             expect(JSON.stringify(said.body), at).toContain('declares no agent path');
             continue;
           }
-          if (acts[act]) {
-            expect(said.status, at).not.toBe(403);
+          if (acts[send.act]) {
+            await taken(reader, bindingId, field, send, at);
             continue;
           }
-          expect(said.status, at).toBe(403);
+          const said = await patch(reader.token, bindingId, send.body);
+          expect(said.status, `${at}: ${JSON.stringify(said.body)}`).toBe(403);
           expect(String(said.body.message).toLowerCase(), at).toContain(`only ${named} can`);
-          const asWho = await patch(personFor(String(named)).token, bindingId, body);
-          expect(asWho.status, `${at} as ${named}: ${JSON.stringify(asWho.body)}`).not.toBe(403);
-          checked.push(`${provider} ${name} ${act}`);
+          await taken(personFor(String(named)), bindingId, field, send, `${at} as ${named}`);
+          checked.push(at);
         }
       }
     }
@@ -394,15 +453,22 @@ describe('every who the list names is who the door takes (criteria 308, 310, 311
   it("names who may take all of a member's acts, and that person's same request is taken (308, 323)", async () => {
     for (const provider of providers()) {
       const { bindingId, field } = await orgBinding(provider);
-      const body = { active: true, secrets: { [field]: 'scratch-new-key' } };
+      const key = keyFor(provider, `${provider}-all`);
+      const body = { active: true, secrets: { [field ?? 'token']: key } };
       const said = await patch(member.token, bindingId, body);
       const at = `${provider}: ${JSON.stringify(said.body)}`;
+      if (field === null) {
+        expect(said.status, at).toBe(400);
+        continue;
+      }
       expect(said.status, at).toBe(403);
       expect(said.body.message, at).toBe(
         "You are a member of this project, and you may not switch this integration or change its settings here, nor change its connection's key or shared settings. Only an owner or admin of this project's organization can do all of that, so ask one of them.",
       );
       expect((await patch(admin.token, bindingId, body)).status, at).toBe(403);
-      expect((await patch(owner.token, bindingId, body)).status, at).not.toBe(403);
+      const asOwner = await patch(owner.token, bindingId, body);
+      expect(asOwner.status, `${at} as owner: ${JSON.stringify(asOwner.body)}`).toBe(200);
+      expect((await heldOn(bindingId, field)).key, at).toBe(key);
     }
   });
 });

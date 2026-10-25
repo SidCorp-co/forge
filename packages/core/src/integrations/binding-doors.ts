@@ -15,7 +15,12 @@ import {
   projectIntegrationActs,
   whoMayAll,
 } from './binding-acts.js';
-import { bindingConfigPatch, splitProviderConfig, type updateSchema } from './provider-schemas.js';
+import {
+  bindingConfigPatch,
+  noKeyToSave,
+  splitProviderConfig,
+  type updateSchema,
+} from './provider-schemas.js';
 import { getIntegration } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
 import { noAgentPath } from './route-helpers.js';
@@ -107,7 +112,7 @@ function oneNotYours(
 }
 
 /**
- * A grant no one may take is refused first, whoever asks; several acts refused at once are answered
+ * A grant or a key no one may take is refused first, whoever asks; several acts refused at once are answered
  * together, naming who may take them all (ISS-1421 r28, judge-114 on 308).
  */
 export function refuseByTier(
@@ -122,6 +127,8 @@ export function refuseByTier(
   if (carried.includes('grantAgents') && acts.whoGrantsAgents === null) {
     throw noAgentPath(binding.provider);
   }
+  const keyless = !getIntegration(binding.provider)?.schemas.primaryCredentialField;
+  if (keyless && Object.keys(patch.secrets ?? {}).length > 0) throw noKeyToSave(binding.provider);
   const refused = carried.filter((act) => !acts[act]);
   const [only] = refused;
   if (!only) return;
