@@ -127,7 +127,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
             </div>
           </div>
         ) : (
-          <p className="fg-body whitespace-pre-wrap text-on-accent">{item.text}</p>
+          <p className="fg-body whitespace-pre-wrap fg-on-accent">{item.text}</p>
         )}
       </div>
       {!editing && item.attachments.length > 0 && (

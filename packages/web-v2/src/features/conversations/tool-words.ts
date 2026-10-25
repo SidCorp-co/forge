@@ -15,7 +15,7 @@ export interface ToolWords {
   refusal?: string;
 }
 
-/** How long the refusal's line may run before it is shortened. */
+/** How long the refusal's line runs before it takes fewer of its whole sentences; it never cuts one. */
 const REASON_CHARS = 120;
 
 interface Act {
@@ -38,6 +38,11 @@ function flag(argv: readonly string[], name: string): string | undefined {
   const at = argv.indexOf(name);
   const value = at >= 0 ? argv[at + 1] : undefined;
   return value !== undefined && !value.startsWith("--") ? value : undefined;
+}
+
+/** Every value given a repeatable flag, as in `--set status=x --set priority=y`. */
+function flags(argv: readonly string[], name: string): string[] {
+  return argv.flatMap((a, i) => (a === name && argv[i + 1] !== undefined && !(argv[i + 1] as string).startsWith("--") ? [argv[i + 1] as string] : []));
 }
 
 /** The arguments that are neither a flag nor a flag's value, after the verb (and its sub-verb, if given). */
@@ -63,6 +68,15 @@ function statusLabel(status: string): string {
 /** Whether a `forge comment` writes one: it names something beside the issue, such as `-` for its body. */
 const commentWrites = (argv: readonly string[]) => positionals(argv, 1).some((a) => !ISSUE_KEY.test(a));
 
+/** A move to another status, or any other change to an issue, named for what it tried (ISS-1229 r39, judge-107). */
+function changeAct(key: string, status: string | undefined): Act {
+  return status
+    ? act("Moved", "move", "Moving", `${key} to ${statusLabel(status)}`)
+    : act("Updated", "update", "Updating", key);
+}
+
+const CHANGE_FLAGS = ["--set", "--blocks", "--relates", "--unlink"];
+
 /** What the `forge` CLI did, read off its arguments. */
 function forgeAct(argv: readonly string[]): Act {
   const [verb, sub] = argv;
@@ -70,7 +84,15 @@ function forgeAct(argv: readonly string[]): Act {
   const keys = positionals(argv, 1).filter((a) => ISSUE_KEY.test(a));
   const key = keys[0];
   switch (verb) {
+    case "advance": {
+      const to = flag(argv, "--set");
+      return to ? changeAct(key ?? "an issue", to) : act("Moved", "move", "Moving", `${key ?? "an issue"} to its next status`);
+    }
     case "issue": {
+      if (key && CHANGE_FLAGS.some((f) => argv.includes(f))) {
+        const status = flags(argv, "--set").find((v) => v.startsWith("status="));
+        return changeAct(key, status?.slice("status=".length));
+      }
       const search = flag(argv, "--search");
       if (search) return act("Searched", "search", "Searching", `issues for ${quoted(search)}`);
       const status = flag(argv, "--status");
@@ -220,8 +242,6 @@ function filedKey(tool: ToolCallData): string | null {
   return /"issueId"\s*:\s*"([^"]+)"/.exec(out)?.[1] ?? null;
 }
 
-const shortened = (line: string) => (line.length > REASON_CHARS ? `${line.slice(0, REASON_CHARS).trimEnd()}…` : line);
-
 /** A paragraph's sentences, wherever its lines break. */
 const sentencesOf = (paragraph: string) =>
   paragraph
@@ -261,18 +281,34 @@ const PERSON_KINDS: readonly { says: RegExp; wrong?: string; remedy: string }[] 
 export const PUT_IT_RIGHT = "Ask the assistant to put it right and try again.";
 export const TOOK_ANOTHER_WAY = "The assistant tried another way below, and its answer says how it went.";
 
-/** A call's verb and target as the card's own `Act` says them; no target where it names nothing (r38). */
+/** The CLI verb each tool is another door to: one act, one identity, never matched by spelling (ISS-1229 r39). */
+export const DOOR_OF_TOOL: Readonly<Record<string, string>> = {
+  forge_guide: "guide",
+  forge_knowledge: "knowledge",
+  forge_memory_search: "knowledge",
+  forge_projects_get: "project",
+};
+
+/** The door a call came through, as one name for the CLI verb and the tool that mirrors it. */
+function doorOf(tool: ToolCallData): string {
+  if (tool.name !== "forge") return DOOR_OF_TOOL[tool.name] ?? tool.name;
+  const argv = Array.isArray(tool.input?.argv) ? (tool.input.argv as unknown[]) : [];
+  return typeof argv[0] === "string" ? argv[0] : "";
+}
+
+/** A call's door, verb and target as the card's own `Act` says them; no target where it names nothing (r38). */
 function callOf(tool: ToolCallData): { act: string; target: string | null } {
   const input = tool.input ?? {};
   const said = actOf(tool);
+  const act = `${doorOf(tool)} ${said?.kind ?? String(input.action ?? "")}`;
   if (tool.name === "forge" && Array.isArray(input.argv)) {
     const argv = input.argv.filter((a): a is string => typeof a === "string");
     const sub = argv[0] === "knowledge" ? 2 : 1;
     const names = positionals(argv, sub).some((a) => a !== "-") || TARGET_FLAGS.some((f) => flag(argv, f));
-    return { act: `forge ${argv[0] ?? ""} ${said?.kind ?? ""}`, target: names && said ? said.on : null };
+    return { act, target: names && said ? said.on : null };
   }
   const names = [input.slug, input.id, input.issueId, input.query].some((v) => typeof v === "string");
-  return { act: `${tool.name} ${said?.kind ?? String(input.action ?? "")}`, target: names ? (said?.on ?? JSON.stringify(input)) : null };
+  return { act, target: names ? (said?.on ?? JSON.stringify(input)) : null };
 }
 
 /** The flags that say what a call acted on: a filing's title, a search's words, a listing's status. */
@@ -305,11 +341,15 @@ function refusalText(result: unknown): string {
   return [r.stderr, r.message, r.stdout].find((v): v is string => typeof v === "string" && v.trim() !== "") ?? "";
 }
 
-/** A sentence cut to the clause it leads with, where the clauses after it only add detail. */
+/** A sentence's leading whole clause made a sentence, where the clauses after it only add detail. */
 const leadClause = (sentence: string) => {
-  const cut = sentence.split("; ")[0] as string;
+  const cut = sentence.split(/; |: /)[0] as string;
   return cut === sentence ? sentence : `${cut.replace(/[,;:]$/, "")}.`;
 };
+
+/** A tool's own failure prefix ("forge issue failed: "): the technical view's, never reworded (ISS-1229 r39). */
+const TOOL_PREFIX = /^(?:forge(?:_\w+)?)(?:\s+[\w-]+)?\s+(?:failed|refused)\s*:\s*/i;
+const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 const listed = (items: readonly string[], last: string) =>
   items.length === 1 ? (items[0] as string) : `${items.slice(0, -1).join(", ")} ${last} ${items.at(-1)}`;
@@ -330,20 +370,36 @@ function gapsOf(text: string): Gap[] {
 }
 
 /**
- * What a refusal that lists its gaps (the CLI's `- read:`, `wants:` and `clear:` lines) says was wrong:
- * the missing sections as one list, and each other gap with what it wants instead (ISS-1229 r35,
- * judge-95). Putting them right is the assistant's, as for any call of its own (r38).
+ * What a refusal listing its gaps (`- read:`, `wants:`, `clear:`) says was wrong, a whole sentence each:
+ * the missing sections as one, then each other gap with what it wants (ISS-1229 r35, r39).
  */
-function gapsReason(text: string): string | null {
+function gapsReason(text: string): string[] {
   const gaps = gapsOf(text);
-  if (gaps.length === 0) return null;
   const sections = gaps.flatMap((g) => (g.adds ? [g.adds] : []));
-  const clauses = [
-    ...(sections.length ? [`no ${listed(sections, "or")} section`] : []),
-    ...gaps.filter((g) => !g.adds).map((g) => `${g.read} needs ${g.wants}`),
+  return [
+    ...(sections.length
+      ? [`The ${listed(sections, "and")} section${sections.length === 1 ? " is" : "s are"} missing.`]
+      : []),
+    ...gaps.filter((g) => !g.adds).map((g) => `${capitalised(g.read)} needs ${g.wants}.`),
   ];
-  const said = clauses.join("; ");
-  return `${said.charAt(0).toUpperCase()}${said.slice(1)}.`;
+}
+
+/**
+ * As many whole sentences as fit beside the way out, at least one: else the first's leading clause, else
+ * the first whole. Never cut at a character count (ISS-1229 r39); the rest is under technical details.
+ */
+function fitting(wrong: readonly string[], room: number): string {
+  const [first = ""] = wrong;
+  if (first.length > room) {
+    const lead = leadClause(first);
+    return lead.length <= room ? lead : first;
+  }
+  let line = first;
+  for (const next of wrong.slice(1)) {
+    if (line.length + 1 + next.length > room) break;
+    line = `${line} ${next}`;
+  }
+  return line;
 }
 
 /**
@@ -360,30 +416,27 @@ export function refusalReason(result: unknown, tool?: string, recovered = false)
   const remedy = known?.remedy ?? (recovered ? TOOK_ANOTHER_WAY : PUT_IT_RIGHT);
   const paragraphs = text.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const held = paragraphs.length > 1 && /^Hold\b/.test(paragraphs[0] as string);
-  // A machine code leading the refusal ("NOT_FOUND: …") is the technical view's, not the card's.
+  // A machine code ("NOT_FOUND: …") or a tool's failure prefix leading a sentence is the technical view's.
   const sentences = paragraphs
     .slice(held ? 1 : 0)
     .flatMap(sentencesOf)
-    .map((x) => x.replace(/^[A-Z][A-Z_]{2,}:\s*/, ""));
-  const wrong =
-    known?.wrong ??
-    gapsReason(text) ??
-    sentences.find((x) => !FOR_THE_AGENT.test(x)) ??
-    (sentences.length === 0 ? "It gave no reason." : "Its reason is under Technical details.");
-  const whole = said(`${wrong} ${remedy}`, tool, false);
-  if (whole.length <= REASON_CHARS) return whole;
-  // Where the two do not fit, the wrong gives way: the remedy is the half a reader acts on.
-  const fix = said(remedy, tool, false);
-  const lead = said(leadClause(wrong), tool, false);
-  const room = REASON_CHARS - fix.length - 1;
-  if (room < 40) return shortened(`${lead} ${fix}`);
-  return `${lead.length <= room ? lead : `${lead.slice(0, room - 1).trimEnd()}…`} ${fix}`;
+    .map((x) => capitalised(x.replace(/^[A-Z][A-Z_]{2,}:\s*/, "").replace(TOOL_PREFIX, "")));
+  const gaps = gapsReason(text);
+  const reason = sentences.find((x) => !FOR_THE_AGENT.test(x));
+  const wrong = known?.wrong
+    ? [known.wrong]
+    : gaps.length
+      ? gaps
+      : reason
+        ? [reason]
+        : [sentences.length === 0 ? "It gave no reason." : "Its reason is under Technical details."];
+  const fix = said(remedy, tool);
+  return `${fitting(wrong.map((w) => said(w, tool)), REASON_CHARS - fix.length - 1)} ${fix}`;
 }
 
-/** A line as the card shows it: the tool's stored name and every backtick out, and cut to fit. */
-function said(line: string, tool: string | undefined, cut = true): string {
-  const plain = (tool ? unnamed(line, tool) : line).replace(/`/g, "");
-  return cut ? shortened(plain) : plain;
+/** A line as the card shows it: the tool's stored name and every backtick out. */
+function said(line: string, tool: string | undefined): string {
+  return (tool ? unnamed(line, tool) : line).replace(/`/g, "");
 }
 
 /** The reason with the tool's stored name taken out, which only the technical details show. */
@@ -393,7 +446,7 @@ function unnamed(reason: string, name: string): string {
   const out = name === "forge"
     ? reason.replace(/`forge ([^`]+)`/g, "the tracker's $1 command").replace(word, "the tracker")
     : reason.replace(word, "the tool");
-  return out.charAt(0).toUpperCase() + out.slice(1);
+  return capitalised(out);
 }
 
 /** What the call did, in the tense it is in, and why it was refused where it was; `later` is the rest of its reply. */

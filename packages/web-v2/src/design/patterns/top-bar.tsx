@@ -121,7 +121,7 @@ export function TopBar({
           {notificationCount > 0 && (
             <span
               className="absolute right-1.5 top-1.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 text-10 font-bold text-white"
-              style={{ background: "var(--flame-500)" }}
+              style={{ background: "var(--accent)" }}
             >
               {notificationCount}
             </span>

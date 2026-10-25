@@ -223,3 +223,83 @@ describe('a reply saying a key is absent, whichever apostrophe it is written wit
     expect(ISSUE_REFERENCES_EXIST.check(said, facts).map((b) => b.quote)).toEqual(['ISS-999']);
   });
 });
+
+// ISS-1229 r39, judge-107 at 7d4a69d: the assistant's true reply "ISS-999 is not in the J107 desk
+// tracker, so I couldn’t add the comment. This project currently has one issue, and it is not ISS-999."
+// was withdrawn, because "and it is not ISS-999" opens on neither the key nor "there is no".
+describe('a reply denying a key after saying which issues the project holds', () => {
+  it('keeps the reply judge-107 saw withdrawn, in every apostrophe', () => {
+    const said =
+      "ISS-999 is not in the J107 desk tracker, so I couldn't add the comment. This project currently has one issue, and it is not ISS-999.";
+    for (const text of spelled(said)) {
+      expect(keyMentions(text, ['ISS']).map((m) => [m.seq, m.absent])).toEqual([
+        [999, true],
+        [999, true],
+      ]);
+      expect(room(text)).toMatchObject({ ok: true });
+      expect(ISSUE_REFERENCES_EXIST.check(text, facts)).toEqual([]);
+    }
+  });
+
+  it.each([
+    'This project currently has one issue, and it is not ISS-$.',
+    "This project has one issue, and it isn't ISS-$.",
+    'The only issue here is ISS-1, not ISS-$.',
+    'This project holds two issues, but neither of them is ISS-$.',
+    "The project's only issue is ISS-1. It is not ISS-$.",
+    'This project has one issue. That one is not ISS-$.',
+    'ISS-1 is open, while ISS-$ is not on this project.',
+    'ISS-1 is open, although ISS-$ does not exist here.',
+    'I left the comment unwritten, because there is no ISS-$ on this project.',
+    'ISS-1 is open, yet ISS-$ is not on this project.',
+  ])('reads %s as an absence, compound or across sentences', (shape) => {
+    for (const text of spelled(shape.replaceAll('$', '999'))) {
+      const mention = keyMentions(text, ['ISS']).find((m) => m.seq === 999);
+      expect(mention?.absent).toBe(true);
+      expect(room(text).ok).toBe(true);
+    }
+  });
+
+  it('still withdraws the same denial about a key the project holds', () => {
+    for (const text of [
+      'This project currently has one issue, and it is not ISS-1.',
+      "This project has one issue. It isn't ISS-1.",
+    ]) {
+      expect(keyMentions(text, ['ISS'])[0]?.absent).toBe(true);
+      expect(room(text).ok).toBe(false);
+    }
+  });
+
+  // Consult F1 on the round-39 plan: a denial of identity with no statement of the project's issues
+  // says nothing of the project, so a key it holds stays a citation it may make.
+  it('reads "this one is not ISS-7" alone as no absence', () => {
+    const both = {
+      ...facts,
+      knownIssueSeqs: new Set([7, 8]),
+      issueRows: new Map([
+        [7, { seq: 7, merged: false, status: 'open' }],
+        [8, { seq: 8, merged: false, status: 'open' }],
+      ]),
+    };
+    for (const text of [
+      'ISS-8 is the invoice issue. This one is not ISS-7.',
+      // The whole-set read of round 39 (F1): a set stated earlier does not carry past a sentence about one issue.
+      'This project has two issues. ISS-8 is the invoice issue. This one is not ISS-7.',
+      'This project has two issues. ISS-8 is the invoice issue, and this one is not ISS-7.',
+      'This project has two issues, ISS-8 is the invoice issue, and this one is not ISS-7.',
+      // The second whole-set read of round 39 (F1): a set stated under a narrower scope is not the project's.
+      'This project has two issues in the current sprint. Neither of them is ISS-7.',
+      'If the import ran, this project has two issues. Neither of them is ISS-7.',
+    ]) {
+      expect(keyMentions(text, ['ISS']).every((m) => !m.absent)).toBe(true);
+      expect(screenAtDoor('web-chat-reply', [text], both).ok).toBe(true);
+    }
+    expect(room('ISS-1 is the invoice issue. This one is not ISS-999.').ok).toBe(false);
+  });
+
+  it('reads an alternative as no absence', () => {
+    const text = "Either the key is wrong, or ISS-999 isn't on this project.";
+    expect(keyMentions(text, ['ISS'])[0]?.absent).toBe(false);
+    expect(room(text).ok).toBe(false);
+  });
+});

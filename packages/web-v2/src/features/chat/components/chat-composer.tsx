@@ -450,7 +450,7 @@ export function ChatComposer({
               maxRows={MAX_ROWS}
               placeholder={disabled ? "No device online — start a runner to chat." : placeholder}
               aria-label="Message"
-              className="w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-base text-fg outline-none placeholder:text-disabled disabled:cursor-not-allowed md:text-sm"
+              className="w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-base text-fg outline-none placeholder:text-subtle disabled:cursor-not-allowed md:text-sm"
             />
 
             <div className="flex items-center gap-1 px-2 pb-2">
@@ -480,7 +480,7 @@ export function ChatComposer({
               )}
               {footerControl}
               <div className="ml-auto flex items-center gap-2.5">
-                <span className="fg-caption hidden text-disabled sm:inline">{hint}</span>
+                <span className="fg-caption hidden text-subtle sm:inline">{hint}</span>
                 {showStop ? (
                   <Button
                     variant="secondary"

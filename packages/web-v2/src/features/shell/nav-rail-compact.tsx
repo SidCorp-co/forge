@@ -324,7 +324,7 @@ export function NavRailCompact({
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Find a project…"
-                className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-disabled"
+                className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-subtle"
               />
             </div>
             <div className="max-h-[300px] overflow-y-auto">
@@ -360,7 +360,7 @@ export function NavRailCompact({
                     aria-pressed={p.pinned}
                     className={cn(
                       'flex flex-none rounded-xs p-3px transition-colors hover:bg-active',
-                      p.pinned ? 'text-accent' : 'text-disabled hover:text-fg',
+                      p.pinned ? 'text-accent' : 'text-subtle hover:text-fg',
                     )}
                   >
                     <Icon name="pin" size={14} strokeWidth={p.pinned ? 2.4 : 1.75} />

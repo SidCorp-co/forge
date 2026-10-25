@@ -16,7 +16,7 @@
 
 import { markdown } from "@codemirror/lang-markdown";
 import { useQuery } from "@tanstack/react-query";
-import CodeMirror, { type EditorView } from "@uiw/react-codemirror";
+import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { BodyView, IconButton, PreviewPane, Spinner, useDebounced } from "@/design";
 import type { IconName } from "@/design/icons/icon";
@@ -88,6 +88,9 @@ export interface BodyEditorProps {
   actions?: ReactNode;
 }
 
+/** CodeMirror paints its placeholder #888, 3.54:1 on white; it is read, so it takes the secondary grey (ISS-1229 r39). */
+const PLACEHOLDER_INK = EditorView.theme({ ".cm-placeholder": { color: "var(--fg-subtle)" } });
+
 export function BodyEditor({
   value,
   onChange,
@@ -101,7 +104,7 @@ export function BodyEditor({
   const view = useRef<EditorView | null>(null);
   const debounced = useDebounced(value, PREVIEW_DEBOUNCE_MS);
 
-  const extensions = useMemo(() => [markdown()], []);
+  const extensions = useMemo(() => [markdown(), PLACEHOLDER_INK], []);
 
   const preview = useQuery({
     queryKey: ["body", "preview", debounced],
