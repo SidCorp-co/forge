@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.317] - 2026-10-25
+
+Feedback reporters confirm shipped fixes with the check's evidence
+
+### Added
+
+- **Feedback asks one question at a time and confirms fixes.** A clarification carries a recommended answer, a triage records its reproduction, and a shipped fix asks its reporter, or an agent's master, to confirm from the verdict and clip.
+
 ## [0.4.0-dev.316] - 2026-10-25
 
 The Delivery page lists what holds work back and who acts next
