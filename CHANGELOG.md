@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.320] - 2026-10-25
+
+Merge-request releases no longer ask for work already on the target branch
+
+### Fixed
+
+- **A change-request release no longer asks a request for work already on its target branch.** The release carries it and closes it with the rest, and the steward no longer reopens it as unlanded.
+
 ## [0.4.0-dev.319] - 2026-10-25
 
 Feedback from any page with a screenshot; repeats join the open item
