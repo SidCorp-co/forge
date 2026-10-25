@@ -6,6 +6,14 @@
 // source; and asks at most three questions that change scope or outcome, each with a recommended
 // answer and what each choice changes, or says it has nothing to ask. Core keeps one draft per item
 // (`core/src/intake/`); the item's page shows it.
+//
+// The draft carries the item's one value check (REQ-65 BC-1..BC-6, REQ-66 BC-2): who it is for, what
+// improves, how that is measured and whether it already exists, ending as accept, merge into an
+// existing item, a better alternative, or refuse with a one-line reason. Only a missing problem or
+// value, or a contradicted criterion, holds the check on a question; every other gap takes its
+// question's recommended answer as an assumption. A person answers a question (`POST
+// …/intake-drafts/:ref/answers`) and keeps a refused requirement with a one-line reason (`POST
+// …/intake-drafts/:ref/keep`).
 
 import { z } from "zod";
 import type { RefusalStatuses } from "./refusal.js";
@@ -76,6 +84,24 @@ export const INTAKE_QUESTIONS_MAX = 3;
 export const INTAKE_QUESTION_CHANGES = ["scope", "outcome"] as const;
 export type IntakeQuestionChange = (typeof INTAKE_QUESTION_CHANGES)[number];
 
+/** What the value check states of every request (REQ-65 BC-1): whose problem, what improves, how it is measured. */
+export const VALUE_FACTS = ["who", "improves", "measured"] as const;
+export type ValueFact = (typeof VALUE_FACTS)[number];
+
+/** How the value check ends (REQ-65 BC-2). */
+export const VALUE_OUTCOMES = ["accept", "merge", "alternative", "refuse"] as const;
+export type ValueOutcome = (typeof VALUE_OUTCOMES)[number];
+
+/**
+ * What alone may hold the check on a question (REQ-65 BC-4): a missing problem (whose it is), a
+ * missing value (what improves), or a current criterion the request contradicts.
+ */
+export const VALUE_BLOCKS = ["problem", "value", "criterion"] as const;
+export type ValueBlock = (typeof VALUE_BLOCKS)[number];
+
+/** The source a fact names when it is a question's recommended answer, taken while unanswered (REQ-65 BC-5). */
+export const RECOMMENDED_SOURCE = /^question:([1-3])$/;
+
 export const INTAKE_LIMITS = {
 	fills: 24,
 	links: 12,
@@ -88,7 +114,19 @@ export const INTAKE_LIMITS = {
 	nothingToAsk: 200,
 	optionsMin: 2,
 	optionsMax: 4,
+	/** A refusal's reason, an alternative, a keep's reason: one line. */
+	line: 150,
+	fact: 300,
 } as const;
+
+/** One line of text: no line break, at most `max` characters. */
+export const oneLineText = (max: number) =>
+	z
+		.string()
+		.trim()
+		.min(1)
+		.max(max)
+		.regex(/^[^\r\n]*$/, "one line: no line break");
 
 const OPTION_ID = /^[a-z0-9_-]{1,32}$/;
 
@@ -108,8 +146,52 @@ const intakeQuestionSchema = z.strictObject({
 		.max(INTAKE_LIMITS.optionsMax),
 	/** The id of the option the assistant recommends (BC-15). */
 	recommended: z.string().min(1),
+	/** What the question holds the value check on, or null where its recommended answer is taken (REQ-65 BC-4, BC-5). */
+	blocks: z.enum(VALUE_BLOCKS).nullable().default(null),
 });
 export type IntakeQuestion = z.infer<typeof intakeQuestionSchema>;
+
+const valueFactSchema = z.strictObject({
+	value: z.string().trim().min(1).max(INTAKE_LIMITS.fact),
+	/** The item's own key, a ref shown in the record, or `question:N` for question N's recommended answer. */
+	source: z.string().trim().min(1).max(200),
+});
+
+const valueOutcomeSchema = z.discriminatedUnion("kind", [
+	z.strictObject({ kind: z.literal("accept") }),
+	z.strictObject({
+		kind: z.literal("merge"),
+		/** The existing item it joins: the ref `exists` names. */
+		into: z.string().trim().min(1).max(200),
+		why: oneLineText(INTAKE_LIMITS.line),
+	}),
+	z.strictObject({
+		kind: z.literal("alternative"),
+		instead: oneLineText(INTAKE_LIMITS.line),
+		/** A record the alternative rests on, where one does. */
+		ref: z.string().trim().min(1).max(200).nullable().default(null),
+	}),
+	z.strictObject({ kind: z.literal("refuse"), reason: oneLineText(INTAKE_LIMITS.line) }),
+]);
+
+/**
+ * The value check as the model answers it. A fact is null where the item and the record leave it
+ * open; `exists` names the item it repeats, or is null; `outcome` is null exactly while a blocking
+ * question holds the check.
+ */
+export const valueCheckAnswerSchema = z.strictObject({
+	who: valueFactSchema.nullable(),
+	improves: valueFactSchema.nullable(),
+	measured: valueFactSchema.nullable(),
+	exists: z
+		.strictObject({
+			ref: z.string().trim().min(1).max(200),
+			why: oneLineText(INTAKE_LIMITS.line),
+		})
+		.nullable(),
+	outcome: valueOutcomeSchema.nullable(),
+});
+export type ValueCheckAnswer = z.infer<typeof valueCheckAnswerSchema>;
 
 /**
  * What the model answers with. A `source` and a link's `ref` name a record by the ref the draft was
@@ -153,6 +235,7 @@ export const intakeAnswerSchema = z.strictObject({
 	questions: z.array(intakeQuestionSchema).max(INTAKE_QUESTIONS_MAX),
 	/** Said, in one line, exactly when `questions` is empty (BC-16). */
 	nothingToAsk: z.string().trim().min(1).max(INTAKE_LIMITS.nothingToAsk).nullable(),
+	value: valueCheckAnswerSchema,
 	triage: z.unknown().optional(),
 });
 export type IntakeAnswer = z.infer<typeof intakeAnswerSchema>;
@@ -224,6 +307,57 @@ export type IntakeDraftApplied =
 	| { as: "suggestion"; suggestionId: string }
 	| { as: "none"; code: string; detail: string };
 
+/** Where a value fact came from: the item's own words, a record it read, or a question's recommended answer. */
+export type ValueFactSource =
+	| IntakeDraftRef
+	| { kind: "recommended"; question: number };
+
+export interface ValueFactView {
+	value: string;
+	source: ValueFactSource;
+}
+
+export type ValueOutcomeView =
+	| { kind: "accept" }
+	| { kind: "merge"; into: IntakeDraftRef; why: string }
+	| { kind: "alternative"; instead: string; ref: IntakeDraftRef | null }
+	| { kind: "refuse"; reason: string };
+
+/** What a requirement's value check wrote: its move to refused, a duplicate suggestion, or neither and why. */
+export type ValueEffect =
+	| { as: "refused" }
+	| { as: "suggestion"; suggestionId: string }
+	| { as: "none"; code: string; detail: string };
+
+/** The one value check of a request (REQ-65 BC-1, BC-2). */
+export interface ValueCheckView {
+	who: ValueFactView | null;
+	improves: ValueFactView | null;
+	measured: ValueFactView | null;
+	exists: { ref: IntakeDraftRef; why: string } | null;
+	/** Null while a blocking question holds it. */
+	outcome: ValueOutcomeView | null;
+	/** A refused requirement a person kept anyway, with their one-line reason (REQ-65 BC-6). */
+	kept: { reason: string; by: { id: string; name: string | null }; at: string } | null;
+	/** What a requirement's check wrote; null on a feedback item, whose triage is `applied`. */
+	effect: ValueEffect | null;
+}
+
+/** A question as the item's page shows it: whether it holds the check, and the answer given. */
+export interface IntakeQuestionView extends IntakeQuestion {
+	/** 1-based: what an answer names it by. */
+	number: number;
+	answer: { option: string; label: string; by: { id: string; name: string | null }; at: string } | null;
+}
+
+/** A question answered on an earlier draft, as asked and answered. */
+export interface IntakeAnsweredView {
+	prompt: string;
+	label: string;
+	by: { id: string; name: string | null };
+	at: string;
+}
+
 export interface IntakeDraftView {
 	item: { kind: IntakeItemKind; key: string };
 	outcome: IntakeDraftOutcome;
@@ -241,10 +375,16 @@ export interface IntakeDraftView {
 	/** Workflows the item's words touch that the draft says it does not affect, each with why. */
 	notAffected: IntakeDraftUnaffected[];
 	assumptions: IntakeDraftAssumption[];
-	questions: IntakeQuestion[];
+	questions: IntakeQuestionView[];
+	/** Questions answered before this draft was made, which it was drafted with. */
+	answered: IntakeAnsweredView[];
 	/** Set exactly when it asks nothing (BC-16). */
 	nothingToAsk: string | null;
 	applied: IntakeDraftApplied | null;
+	/** The value check; null on a draft made before the check, or one that failed. */
+	value: ValueCheckView | null;
+	/** Whether the viewer may answer its questions and keep it once refused. */
+	can: { answer: boolean; keep: boolean };
 }
 
 /** `GET /api/projects/:id/intake-drafts/:ref`: the item's draft, or null while none was made. */
@@ -252,10 +392,33 @@ export interface IntakeDraftResponse {
 	draft: IntakeDraftView | null;
 }
 
-export const INTAKE_REFUSAL_CODES = ["INTAKE_REF_INVALID"] as const;
+/** `POST /api/projects/:id/intake-drafts/:ref/answers`: one option of one question, by its number. */
+export const intakeAnswerRequestSchema = z.strictObject({
+	question: z.number().int().min(1).max(INTAKE_QUESTIONS_MAX),
+	option: z.string().regex(OPTION_ID, "an option id is 1-32 of a-z, 0-9, _ and -"),
+});
+export type IntakeAnswerRequest = z.infer<typeof intakeAnswerRequestSchema>;
+export const INTAKE_ANSWER_SHAPE = `{ question: 1-${INTAKE_QUESTIONS_MAX}, option: <option id> }`;
+
+/** `POST /api/projects/:id/intake-drafts/:ref/keep`: a refused request kept, with a one-line reason. */
+export const intakeKeepRequestSchema = z.strictObject({
+	reason: oneLineText(INTAKE_LIMITS.line),
+});
+export type IntakeKeepRequest = z.infer<typeof intakeKeepRequestSchema>;
+export const INTAKE_KEEP_SHAPE = `{ reason: one line, at most ${INTAKE_LIMITS.line} characters }`;
+
+export const INTAKE_REFUSAL_CODES = [
+	"INTAKE_REF_INVALID",
+	"INTAKE_NOT_DRAFTED",
+	"INTAKE_QUESTION_UNKNOWN",
+	"VALUE_CHECK_NOT_REFUSED",
+] as const;
 export type IntakeRefusalCode = (typeof INTAKE_REFUSAL_CODES)[number];
 export const INTAKE_REFUSAL_STATUSES = {
 	INTAKE_REF_INVALID: 400,
+	INTAKE_NOT_DRAFTED: 409,
+	INTAKE_QUESTION_UNKNOWN: 400,
+	VALUE_CHECK_NOT_REFUSED: 409,
 } as const satisfies RefusalStatuses<IntakeRefusalCode>;
 
 /** The item a ref names: REQ-n is a requirement, FB-n a feedback item; null for anything else. */

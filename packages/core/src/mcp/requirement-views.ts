@@ -24,6 +24,7 @@ const NO_ISSUE: Record<RequirementState, string> = {
   accepted: 'no live issue carries it',
   deferred: 'it is deferred out of the current release, so no work is planned for it',
   dropped: 'it was dropped, so nothing will be built',
+  refused: 'its value check refused it, so nothing will be built unless a person keeps it',
 };
 
 const TASK_ACT = {

@@ -1,0 +1,1 @@
+**Every new request passes one value check.** Who it serves, what improves, how it is measured, whether it exists; it ends accepted, merged, offered an alternative or refused with one line. A refused requirement can be kept.

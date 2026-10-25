@@ -7,6 +7,10 @@
  * be made under, is kept on the item. A miss worth trying again is delivered again by the outbox,
  * with its backoff, up to `INTAKE_DRAFT_ATTEMPTS` tries; an item the assistant could not draft stays
  * owed to its master (feedback-triage `master-draft`).
+ *
+ * The draft carries the item's value check (REQ-65 BC-1). A check a blocking question holds is drafted
+ * once more when its last such question is answered (`intake.answered`), with the answers among the
+ * item's own words; any other draft stands.
  */
 
 import {
@@ -15,6 +19,7 @@ import {
   type IntakeDraftApplied,
   type IntakeDraftCode,
   type IntakeItemKind,
+  type ValueEffect,
 } from '@forge/contracts/intake-drafts';
 import { eq } from 'drizzle-orm';
 import { recordModelCallUsage } from '../agent-sessions/index.js';
@@ -29,6 +34,7 @@ import { readContentLanguage } from '../project-config/index.js';
 import { applyDraft, triageJudgeFor } from './apply.js';
 import { type DraftDeps, type DraftOutcome, draftIntake, type Spent } from './draft.js';
 import { dbIntakeReads, type IntakeItem } from './reads.js';
+import { answersOf, draftRowOf, heldBy, questionsOf, valueStateOf } from './value.js';
 
 export type IntakeResult =
   | { kind: 'drafted'; applied: IntakeDraftApplied }
@@ -49,22 +55,24 @@ const arcOf = (kind: IntakeItemKind, id: string) =>
   kind === 'requirement' ? eq(intakeDrafts.requirementId, id) : eq(intakeDrafts.feedbackId, id);
 
 async function standingOf(kind: IntakeItemKind, id: string) {
-  const [row] = await db
-    .select({
-      outcome: intakeDrafts.outcome,
-      code: intakeDrafts.code,
-      attempts: intakeDrafts.attempts,
-    })
-    .from(intakeDrafts)
-    .where(arcOf(kind, id))
-    .limit(1);
-  return row ?? null;
+  return draftRowOf(kind, id);
+}
+
+/**
+ * Whether a held check is owed its next draft: every question that held it is answered (REQ-65
+ * BC-3). A draft that failed is owed by its own retry rule.
+ */
+async function answeredOut(row: NonNullable<Awaited<ReturnType<typeof standingOf>>>) {
+  if (row.outcome !== 'drafted' || row.valueOutcome !== 'held') return false;
+  return heldBy(questionsOf(row), await answersOf(db, row)).length === 0;
 }
 
 /** Why `standing` owes no new draft, or null when one is owed. */
-function settled(standing: Awaited<ReturnType<typeof standingOf>>): string | null {
+async function settled(standing: Awaited<ReturnType<typeof standingOf>>): Promise<string | null> {
   if (!standing) return null;
-  if (standing.outcome === 'drafted') return 'it is drafted';
+  if (standing.outcome === 'drafted') {
+    return (await answeredOut(standing)) ? null : 'it is drafted';
+  }
   if (standing.code && !INTAKE_RETRYABLE_CODES.includes(standing.code))
     return `its draft ended as ${standing.code}`;
   if (standing.attempts >= INTAKE_DRAFT_ATTEMPTS)
@@ -100,6 +108,9 @@ async function keep(
   item: IntakeItem,
   out: DraftOutcome,
   applied: IntakeDraftApplied | null,
+  effect: ValueEffect | null = null,
+  /** The drafted_at of the held draft this one follows, which it alone may replace. */
+  follows: Date | null = null,
 ): Promise<{ attempts: number; retry: boolean } | null> {
   return db.transaction(async (tx) => {
     await lockXact(tx, 'intakeDrafts', item.id);
@@ -108,12 +119,15 @@ async function keep(
         id: intakeDrafts.id,
         outcome: intakeDrafts.outcome,
         attempts: intakeDrafts.attempts,
+        draftedAt: intakeDrafts.draftedAt,
       })
       .from(intakeDrafts)
       .where(arcOf(item.kind, item.id))
       .limit(1);
-    if (held?.outcome === 'drafted') return null;
-    const attempts = held ? held.attempts + 1 : 1;
+    const replaces = follows !== null && held?.draftedAt.getTime() === follows.getTime();
+    if (held?.outcome === 'drafted' && !replaces) return null;
+    // a redraft after answers starts its own count of tries
+    const attempts = held && !replaces ? held.attempts + 1 : 1;
     const retry =
       out.outcome === 'failed' &&
       INTAKE_RETRYABLE_CODES.includes(out.code) &&
@@ -134,6 +148,8 @@ async function keep(
               nothingToAsk: out.draft.nothingToAsk,
             }
           : null,
+      value: out.outcome === 'drafted' ? { ...out.draft.value, effect } : null,
+      valueOutcome: out.outcome === 'drafted' ? valueStateOf(out.draft.value) : null,
       applied,
       attempts,
       retryOwed: retry,
@@ -178,15 +194,19 @@ export async function draftIntakeFor(
   id: string,
   deps?: DraftDeps,
 ): Promise<IntakeResult> {
-  const done = settled(await standingOf(kind, id));
+  const standing = await standingOf(kind, id);
+  const done = await settled(standing);
   if (done) return { kind: 'not_owed', why: done };
+  // a held check answered out is drafted again in its place, and nothing else may replace a draft
+  const follows = standing?.outcome === 'drafted' ? standing.draftedAt : null;
   const reads = deps?.reads ?? dbIntakeReads;
   const item = await reads.item(kind, id);
   if (!item) return { kind: 'not_owed', why: `there is no such ${kind}` };
   const out = await draftIntake(item, deps ?? (await liveDeps(item)));
   await recordSpend(item.projectId, out.spent);
   if (out.outcome === 'failed') {
-    const kept = await keep(item, out, null);
+    // a failed redraft takes the held draft's place and is retried as any miss is; the answers stay
+    const kept = await keep(item, out, null, null, follows);
     if (!kept) return { kind: 'not_owed', why: 'another delivery drafted it' };
     logger.info(
       { key: item.key, code: out.code, attempts: kept.attempts, retry: kept.retry },
@@ -194,8 +214,8 @@ export async function draftIntakeFor(
     );
     return { kind: 'failed', key: item.key, code: out.code, ...kept };
   }
-  const applied = await applyDraft(item, out.draft, out.model);
-  await keep(item, out, applied);
+  const { applied, effect } = await applyDraft(item, out.draft, out.model);
+  await keep(item, out, applied, effect, follows);
   return { kind: 'drafted', applied };
 }
 
@@ -218,5 +238,10 @@ export function registerIntakeAssistant(): void {
     name: 'intake-assistant',
     handle: (p) => deliver('feedback', p.feedbackId),
     onDeadLetter: (p) => settleRetry('feedback', p.feedbackId),
+  });
+  consume('intake.answered', {
+    name: 'intake-assistant',
+    handle: (p) => deliver(p.kind, p.itemId),
+    onDeadLetter: (p) => settleRetry(p.kind, p.itemId),
   });
 }

@@ -577,6 +577,14 @@ export const SAID = {
 		en: "Dropped: {rest}",
 		vars: { rest: "text" },
 	},
+	"requirements.history.text.refused": {
+		en: "Refused by its value check: {rest}",
+		vars: { rest: "text" },
+	},
+	"requirements.history.text.kept": {
+		en: "Kept after its value check refused it: {rest}",
+		vars: { rest: "text" },
+	},
 	"requirements.history.text.deliveryStarted": {
 		en: "Moved into delivery{rest}",
 		vars: { rest: "text" },

@@ -48,6 +48,15 @@ const titleIn = (user: string) =>
 
 function reply(m: Mode, user: string): string {
   const itemQuote = titleIn(user).replace(/\.$/, '');
+  const key = /^The (?:requirement|feedback) (\S+):$/m.exec(user)?.[1] ?? '';
+  // the value check every draft carries (REQ-65 BC-1), accepted: its rules are value-check-e2e's
+  const value = {
+    who: { value: 'Referral clerk', source: 'workflow:referral' },
+    improves: { value: 'No referral reaches the wrong patient', source: key },
+    measured: { value: 'Wrong matches per week', source: 'REQ-1' },
+    exists: null,
+    outcome: { kind: 'accept' },
+  };
   const requirementDraft = {
     fills: [
       { field: 'summary', value: 'Clinic referrals reach the right patient.', source: 'REQ-1' },
@@ -73,6 +82,7 @@ function reply(m: Mode, user: string): string {
     ],
     questions: [question(1)],
     nothingToAsk: null,
+    value,
   };
   if (m === 'requirement') return JSON.stringify(requirementDraft);
   if (m === 'nothing') {
@@ -123,6 +133,7 @@ function reply(m: Mode, user: string): string {
     ],
     questions: [],
     nothingToAsk: 'The record settles the triage.',
+    value,
     // the triage the accept would refuse: no checklist answers (Feedback lifecycle r14 triage-check)
     triage: m === 'unchecked' ? { route: 'issue', kind: 'bug' } : triage,
   });

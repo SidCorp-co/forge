@@ -1,37 +1,16 @@
 
-// The intake assistant's draft of a requirement or feedback item (REQ-34 BC-12..BC-16), as core keeps
+// The intake assistant's draft of a requirement or feedback item (REQ-34 BC-12, BC-13), as core keeps
 // it: what the item duplicates, conflicts with, affects and relates to, each a link, and each workflow it
-// touches but does not affect, with why; the gaps it filled, each with the record it came from; and at
-// most three questions, each option with what it changes and the recommended one marked, or that it has
-// nothing to ask and why. Rows, not prose; nothing shows before a
-// draft exists.
+// touches but does not affect, with why; and the gaps it filled, each with the record it came from. Its
+// questions and its value check are the person's, on the value check (value-check.tsx). Rows, not
+// prose; nothing shows before a draft exists.
 
-import { Link } from "@/lib/navigation/router";
 import { FieldLabel, ViewHeading } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { feedbackHref } from "@/lib/routes/feedback";
-import { releaseHref } from "@/lib/routes/releases";
-import { requirementHref } from "@/lib/routes/requirements";
-import { workflowHref } from "@/lib/routes/workflows";
 import { INTAKE_DRAFT_ATTEMPTS, intakeRefParse } from "@forge/contracts/intake-drafts";
 import { useIntakeDraft } from "../hooks";
-import type { IntakeDraftRef, IntakeDraftView, IntakeQuestion } from "../types";
-
-function hrefOf(slug: string, ref: Pick<IntakeDraftRef, "kind" | "key">): string {
-  if (ref.kind === "requirement") return requirementHref(slug, ref.key);
-  if (ref.kind === "feedback") return feedbackHref(slug, ref.key);
-  if (ref.kind === "workflow") return workflowHref(slug, ref.key);
-  return releaseHref(slug, ref.key);
-}
-
-/** One record a draft names, linked to its page. */
-function IntakeRefLink({ slug, target: r }: { slug: string; target: Pick<IntakeDraftRef, "kind" | "key"> }) {
-  return (
-    <Link href={hrefOf(slug, r)} className="font-mono text-13 text-accent-text hover:underline" data-testid="intake-ref">
-      {r.key}
-    </Link>
-  );
-}
+import type { IntakeDraftView } from "../types";
+import { IntakeRefLink } from "./intake-ref-link";
 
 /** An assumption's source as a requirement's spec stores it (REQ-n, FB-n, workflow:<flow>, release:<v>), linked. */
 export function IntakeSource({ slug, source }: { slug: string; source: string }) {
@@ -41,26 +20,6 @@ export function IntakeSource({ slug, source }: { slug: string; source: string })
     <span data-testid="assumption-source">
       {t("intake.from")} {ref ? <IntakeRefLink slug={slug} target={ref} /> : source}
     </span>
-  );
-}
-
-function Question({ q }: { q: IntakeQuestion }) {
-  const t = useCopy();
-  return (
-    <li className="grid gap-1.5 border-t border-line-subtle py-3 first:border-t-0 first:pt-0" data-testid="intake-question">
-      <p className="text-14 leading-snug text-fg">
-        {q.prompt} <span className="text-12 text-subtle">· {t(q.changes === "scope" ? "intake.changes.scope" : "intake.changes.outcome")}</span>
-      </p>
-      <ul className="grid gap-1 pl-3">
-        {q.options.map((o) => (
-          <li key={o.id} className="text-13 leading-snug" data-testid="intake-option" data-recommended={o.id === q.recommended || undefined}>
-            <span className="font-medium text-fg">{o.label}</span>
-            {o.id === q.recommended ? <span className="ml-1.5 text-12 font-semibold text-accent-text">{t("intake.recommended")}</span> : null}
-            <span className="text-muted"> · {o.effect}</span>
-          </li>
-        ))}
-      </ul>
-    </li>
   );
 }
 
@@ -140,21 +99,6 @@ function IntakeDraftBody({ draft, slug, assumptions }: { draft: IntakeDraftView;
           )}
         </div>
       ) : null}
-      <div>
-        <FieldLabel>{t("intake.questions")}</FieldLabel>
-        {draft.questions.length === 0 ? (
-          <p className="text-13 leading-snug" data-testid="intake-nothing-to-ask">
-            <span className="font-medium text-fg">{t("intake.nothingToAsk")}</span>
-            {draft.nothingToAsk ? <span className="text-subtle"> · {draft.nothingToAsk}</span> : null}
-          </p>
-        ) : (
-          <ul className="grid">
-            {draft.questions.map((q) => (
-              <Question key={q.prompt} q={q} />
-            ))}
-          </ul>
-        )}
-      </div>
     </div>
   );
 }

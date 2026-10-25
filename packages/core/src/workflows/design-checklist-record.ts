@@ -195,13 +195,13 @@ export async function designFactsIn(tx: Tx, workflowId: string): Promise<DesignF
   const linked = (await tx.execute(sql`
     SELECT r.req_seq
       FROM requirement_workflows rw JOIN requirements r ON r.id = rw.requirement_id
-     WHERE rw.workflow_id = ${workflowId} AND r.status <> 'dropped'
+     WHERE rw.workflow_id = ${workflowId} AND r.status NOT IN ('dropped', 'refused')
      ORDER BY r.req_seq
   `)) as unknown as Array<{ req_seq: number }>;
   const traced = (await tx.execute(sql`
     SELECT DISTINCT r.req_seq, s.code
       FROM requirement_criterion_steps s
-      JOIN requirements r ON r.id = s.requirement_id AND r.status <> 'dropped'
+      JOIN requirements r ON r.id = s.requirement_id AND r.status NOT IN ('dropped', 'refused')
       JOIN requirement_criteria c ON c.requirement_id = s.requirement_id AND c.code = s.code
        AND c.since_revision <= r.current_revision
        AND (c.retired_revision IS NULL OR c.retired_revision > r.current_revision)
@@ -212,7 +212,7 @@ export async function designFactsIn(tx: Tx, workflowId: string): Promise<DesignF
     SELECT r.req_seq, count(DISTINCT s.code)::int AS traced
       FROM requirement_criterion_steps s
       JOIN requirements r ON r.id = s.requirement_id
-       AND r.status <> 'dropped' AND r.current_revision IS NULL
+       AND r.status NOT IN ('dropped', 'refused') AND r.current_revision IS NULL
      WHERE s.workflow_id = ${workflowId}
      GROUP BY r.req_seq
      ORDER BY r.req_seq

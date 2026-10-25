@@ -208,7 +208,8 @@ function feedbackTurn(input: StandingInput): Turn | null {
   );
 }
 
-// Whose turn it is, first rule wins: 1. dropped or deferred → nobody (ISS-85), accepted →
+// Whose turn it is, first rule wins: 1. dropped, refused or deferred → nobody (ISS-85, REQ-65 BC-6:
+// keeping a refused request is a person's choice, never owed), accepted →
 // done unless feedback waits on triage; 2. a proposed revision → a signer; 3. a draft revision →
 // its author, unless 2b. the steward asked a decision on the stuck draft → a signer answers it
 // (REQ-48 BC-5); 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a
@@ -232,7 +233,7 @@ function turnOf(
   coverage: readonly RequirementCoverage[],
 ): Turn {
   const { status, viewer } = input;
-  if (status === 'accepted' || status === 'dropped') {
+  if (status === 'accepted' || status === 'dropped' || status === 'refused') {
     const triage = status === 'accepted' ? feedbackTurn(input) : null;
     return (
       triage ?? {

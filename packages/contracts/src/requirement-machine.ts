@@ -23,12 +23,12 @@ export const REQUIREMENT_CRITERIA_PROVEN_GUARD = "requirement_criteria_proven";
 
 export const REQUIREMENT_MACHINE = defineMachine({
 	entity: "requirement",
-	shapes: ["7bf2075a", "96abf038", "4befa9c4", "5a00cd50", "e8899387"],
+	shapes: ["7bf2075a", "96abf038", "4befa9c4", "5a00cd50", "e8899387", "2b612d32"],
 	design: { flow: "requirement-lifecycle", revision: 11 },
 	states: REQUIREMENT_STATUSES,
 	initial: ["draft"],
 	terminal: ["dropped"],
-	reasonRequired: ["dropped", "deferred"],
+	reasonRequired: ["dropped", "deferred", "refused"],
 	edges: [
 		// approvals.agree and approvals.accept off (the default): project.write moves them (REQ-4 BC-16 r6)
 		{ from: "draft", to: "agreed", act: "requirement.agreed", permission: "requirements.approve", personGate: "agree", guards: [CHECKLIST_GUARD], checklist: REQUIREMENT_READY_CHECKLIST.id },
@@ -43,5 +43,8 @@ export const REQUIREMENT_MACHINE = defineMachine({
 		{ from: "deferred", to: "draft", act: "requirement.undeferred", permission: "requirements.approve", guards: [] },
 		{ from: "deferred", to: "agreed", act: "requirement.undeferred", permission: "requirements.approve", guards: [] },
 		...fromEach(["draft", "agreed", "in_delivery", "deferred"] as const, "dropped", { act: "requirement.dropped", permission: "requirements.approve", guards: [] }),
+		// its value check refuses a request with a reason, and a person keeps it with one (REQ-65 BC-2, BC-6)
+		{ from: "draft", to: "refused", act: "requirement.refused", permission: null, guards: [] },
+		{ from: "refused", to: "draft", act: "requirement.kept", permission: "project.write", guards: [] },
 	],
 });
