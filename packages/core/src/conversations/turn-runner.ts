@@ -32,6 +32,7 @@ import {
   assertAnswerableDoor,
   declinedTail,
   declinedTurn,
+  oneItemAsSentence,
   screenedTurnReply,
 } from './screened-reply.js';
 import { openConversation } from './store.js';
@@ -203,6 +204,17 @@ async function silence(args: Parameters<typeof recordSilence>[0]): Promise<TurnR
   };
 }
 
+/** A reply as its writer meant it: one bulleted item posted as its sentence, and the log told so. */
+function asWritten(reply: string, log: Record<string, unknown> | undefined): string {
+  const sentence = oneItemAsSentence(reply);
+  if (sentence !== reply)
+    logger.info(
+      { ...log },
+      'conversations: a reply written as one list item is posted as its sentence',
+    );
+  return sentence;
+}
+
 async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const { req } = ctx;
   const speakerUserId = req.speakerUserId === undefined ? req.principalUserId : req.speakerUserId;
@@ -276,6 +288,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     }
     result = { ...result, reply: captured };
   }
+  result = { ...result, reply: asWritten(result.reply, req.log) };
 
   if (req.mayDecline) {
     if (result.terminal !== 'done' || result.reply.trim().length === 0) {
@@ -312,7 +325,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
         record: 'nothing',
         message: instruction,
       });
-      const text = again ? (again.captured() ?? '') : retried.reply;
+      const text = asWritten(again ? (again.captured() ?? '') : retried.reply, req.log);
       if (req.mayDecline && declinedTurn(text)) {
         declinedInRetry = true;
         return { ...retried, reply: '' };

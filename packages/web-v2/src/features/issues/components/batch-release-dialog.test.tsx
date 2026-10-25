@@ -19,6 +19,11 @@ import { BatchReleaseDialog } from "./batch-release-dialog";
 
 expect.extend(matchers);
 
+// The roster is read only for a member or admin of its project (ISS-1229 r41).
+vi.mock("@/features/projects/hooks", async (orig) => ({
+  ...(await orig<typeof import("@/features/projects/hooks")>()),
+  useProjects: () => ({ data: [{ id: "proj-1", role: "admin" }] }),
+}));
 vi.mock("@sentry/react", () => ({ captureException: vi.fn() }));
 
 /** The roster the dialog reads each listed issue's last close failure off, answered on its own route. */

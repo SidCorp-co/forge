@@ -12,6 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const toast = vi.fn();
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
+/** The reader's projects, as the rail lists them: their role on each decides what they may read. */
+const projects = vi.hoisted(() => ({ list: undefined as Array<{ id: string; role: string }> | undefined }));
+vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: projects.list }) }));
+
 /** Each release the server is asked for answers once the test says so. */
 const answers: Array<(value: unknown) => void> = [];
 const create = vi.fn(() => new Promise((resolve) => answers.push(resolve)));
@@ -38,6 +42,7 @@ const { useBatchRelease, useIssues, useReleaseRoster, useRunPipelineStep } = awa
 
 afterEach(() => {
   cleanup();
+  projects.list = [{ id: "proj-1", role: "member" }];
   create.mockClear();
   roster.mockReset();
   search.mockReset();
@@ -49,6 +54,33 @@ afterEach(() => {
 function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>;
 }
+
+projects.list = [{ id: "proj-1", role: "member" }];
+
+// ISS-1229 r41, judge-115: a viewer's issue page asked for the release roster, which core reads to members
+// only, and drew nothing of the 403 it got back.
+describe("useReleaseRoster — only a reader who may read it asks", () => {
+  it.each([["member"], ["admin"]])("reads it for a reader holding the %s role", async (role) => {
+    projects.list = [{ id: "proj-1", role }];
+    roster.mockResolvedValue({ issues: [] });
+    const { result } = renderHook(() => useReleaseRoster("proj-1"), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual({ issues: [] }));
+    expect(roster).toHaveBeenCalledWith("proj-1");
+  });
+
+  it.each([
+    ["a viewer", [{ id: "proj-1", role: "viewer" }]],
+    ["a reader whose role is not known yet", undefined],
+    ["a reader the project list does not hold", [{ id: "proj-2", role: "admin" }]],
+  ])("never asks for %s", async (_who, list) => {
+    projects.list = list;
+    const { result } = renderHook(() => useReleaseRoster("proj-1"), { wrapper });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(roster).not.toHaveBeenCalled();
+    expect(result.current.isError).toBe(false);
+    expect(result.current.data).toBeUndefined();
+  });
+});
 
 describe("useBatchRelease — Release now pressed twice", () => {
   it("sends one release and shows the person no failure for the second press", async () => {

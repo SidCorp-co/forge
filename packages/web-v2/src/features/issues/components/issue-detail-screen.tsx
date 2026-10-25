@@ -32,6 +32,8 @@ import { useIssueQuestions } from "@/features/questions/hooks";
 import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
+import type { IssueReadRefusalDetails } from "@forge/contracts";
+import { ApiError } from "@/lib/api/client";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { clockAt, couldNotRefresh, heldThroughFailure, offersRetry, projectGone } from "@/lib/api/read-failed";
 import { useAskAgainWhenAccessReturns } from "@/lib/api/ask-again-when-access-returns";
@@ -94,6 +96,16 @@ interface IssueDetailScreenProps {
   projectId: string;
   slug: string;
   id: string;
+}
+
+/**
+ * The issue read refused because the issue belongs to a project closed to this reader, read off the
+ * refusal's `details` — which name each project only where the reader may see it (ISS-1229 r41).
+ */
+function closedIssueRead(err: unknown): IssueReadRefusalDetails | null {
+  if (!(err instanceof ApiError) || err.status !== 403) return null;
+  const d = err.details as Partial<IssueReadRefusalDetails> | undefined;
+  return d?.issueProject && typeof d.issueProject === "object" && d.addressProject ? (d as IssueReadRefusalDetails) : null;
 }
 
 export function IssueDetailScreen({
@@ -213,6 +225,19 @@ export function IssueDetailScreen({
     );
   }
   // An issue read that answered and then failed keeps the page as it was read; only one that never answered blanks it.
+  const closed = issue ? null : closedIssueRead(issueQ.error);
+  if (closed) {
+    const here = projectsQ.data?.find((p) => p.id === projectId)?.name ?? slug;
+    const owner = closed.issueProject.name ? `${closed.issueProject.name}, a project` : "a project";
+    return (
+      <div className="grid min-h-[60vh] place-items-center">
+        <ErrorState
+          title={`This issue is not in ${here}`}
+          message={`It belongs to ${owner} you are not a member of.`}
+        />
+      </div>
+    );
+  }
   if (!issue) {
     return (
       <div className="grid min-h-[60vh] place-items-center">

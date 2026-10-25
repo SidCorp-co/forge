@@ -3195,6 +3195,9 @@
 
 ### Fixed
 
+- **An issue of a project closed to you, opened under one you belong to, says so.** The page names the project it belongs to where you may see it, instead of "Not a project member.". (ISS-1229)
+- **A room reply of one bullet reads as its sentence**, and an agent answering "(nothing to add)" behind a list or quote mark posts nothing. (ISS-1229)
+- **A code block in a reply wraps inside the reply**, and a viewer's issue pages no longer ask for the release roster they cannot read. (ISS-1229)
 - **An integration's drawer offers only what you may do there.** Controls you may not use say who may, from the rule the server refuses by, and every refusal there says what, why and who may act instead of "Forbidden.". (ISS-1421)
 - **Returning from GitHub after an App install lands on a page that says what happened.** A refusal there showed raw JSON in the tab; the page now says in words why nothing was recorded and what to do. (ISS-1421)
 - **On a phone, a toast no longer covers an open drawer's title**, and a drawer opened on a connection needing sign-in again says why, as its row does. (ISS-1421)

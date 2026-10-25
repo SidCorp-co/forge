@@ -175,7 +175,10 @@ export const ISSUE_REF_REFUSALS = {
     'BAD_REQUEST',
     'the id is neither a uuid nor a display key, or a display key came without `projectId`',
   ),
-  403: fail('FORBIDDEN', "the caller is not a member of the issue's project"),
+  403: fail(
+    'FORBIDDEN',
+    "the caller is not a member of the issue's project; `details` names it, and the project `projectId` named, each where the caller may see it",
+  ),
   404: fail('NOT_FOUND', 'no issue has the id or key'),
 } as const;
 

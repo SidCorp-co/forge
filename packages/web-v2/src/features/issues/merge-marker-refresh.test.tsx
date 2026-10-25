@@ -23,6 +23,11 @@ const LATER = "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b";
 /** What the server holds: the mark, an open question, the comments the mark writes, its commit. */
 const server = { merged: false, question: false, comments: [] as string[], sha: FIRST };
 
+// The roster is read only for a member or admin of its project (ISS-1229 r41).
+vi.mock("@/features/projects/hooks", async (orig) => ({
+  ...(await orig<typeof import("@/features/projects/hooks")>()),
+  useProjects: () => ({ data: [{ id: PROJECT, role: "admin" }] }),
+}));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }) }));
 vi.mock("./components/inline-edit-cell", async () => {
