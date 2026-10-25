@@ -217,15 +217,43 @@ describe("a reply the reply check withheld", () => {
     expect(line).not.toHaveTextContent(/nothing-to-say|screen-refused|nothing to add/);
   });
 
-  it("says it once where the turn stored its silence and its window closed on it", () => {
+  it("says it once where the window names the silence its turn stored", () => {
     render(
       <ConversationThread
         messages={[said(), blocked]}
-        windows={[window({ decision: "nothing-to-say", decisionDetail: { reason: "screen-refused" } })]}
+        windows={[window({ decision: "nothing-to-say", decisionDetail: { reason: "screen-refused", silenceSeq: 1 } })]}
       />,
     );
     expect(screen.getAllByText(WITHHELD)).toHaveLength(1);
     expect(screen.queryByTestId("thread-silence")).toBeNull();
+  });
+
+  // Consult review F1: a message arriving while a turn runs puts the silence after it, so adjacency
+  // names the wrong window; the window's own detail names its silence.
+  it("keeps another window's line where a message arrived between a turn and its silence", () => {
+    const second = said({ id: "m3", seq: 1, content: "and one more thing" });
+    const late = { ...blocked, id: "m4", seq: 2 };
+    render(
+      <ConversationThread
+        messages={[said(), second, late]}
+        windows={[
+          window({ id: "w1", firstSeq: 0, lastSeq: 0, decision: "nothing-to-say", decisionDetail: { reason: "screen-refused", silenceSeq: 2 } }),
+          window({ id: "w2", firstSeq: 1, lastSeq: 1, decision: "stopped" }),
+        ]}
+      />,
+    );
+    expect(screen.getAllByText(WITHHELD)).toHaveLength(1);
+    expect(screen.getByTestId("thread-silence")).toHaveTextContent("You stopped this answer");
+  });
+
+  it("still says a window's silence where it names no stored message", () => {
+    render(
+      <ConversationThread
+        messages={[said()]}
+        windows={[window({ decision: "nothing-to-say", decisionDetail: { reason: "screen-refused", silenceSeq: 9 } })]}
+      />,
+    );
+    expect(screen.getByTestId("thread-silence")).toHaveTextContent(WITHHELD);
   });
 
   it("keeps 'nothing to add' for a turn that chose silence, in words", () => {

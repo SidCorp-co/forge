@@ -409,8 +409,13 @@ function routedOutcome(outcome: TurnOutcome): RoutedWindow {
   switch (outcome.kind) {
     case 'delivered':
       return { decision: 'answered', detail: { messageId: outcome.messageId } };
-    case 'declined':
-      return { decision: 'nothing-to-say', detail: { reason: outcome.reason } };
+    case 'declined': {
+      const { reason, silenceSeq } = outcome;
+      return {
+        decision: 'nothing-to-say',
+        detail: silenceSeq === undefined ? { reason } : { reason, silenceSeq },
+      };
+    }
     case 'stopped':
       return { decision: 'stopped', detail: { reason: outcome.reason } };
     case 'diverted':

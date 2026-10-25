@@ -137,4 +137,13 @@ describe('a reply that posts nothing', () => {
     expect(recordSilence).toHaveBeenCalledWith(expect.objectContaining({ reason: 'empty-reply' }));
     expect(deliver).not.toHaveBeenCalled();
   });
+
+  it('names the stored silence by its seq, so the window it closes can say which', async () => {
+    runExternalChatTurn.mockResolvedValue({ terminal: 'done', reply: '', toolCalls: [], iterations: 1 });
+    recordSilence.mockResolvedValue(7);
+
+    const outcome = await runConversationTurn(request() as never);
+
+    expect(outcome).toEqual({ kind: 'declined', reason: 'empty-reply', silenceSeq: 7 });
+  });
 });

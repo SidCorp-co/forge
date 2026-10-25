@@ -279,6 +279,10 @@ export function threadEntries(
   const out: ThreadEntry[] = [];
   const ordered = [...messages].sort((a, b) => a.seq - b.seq);
   const storedSilences = new Set(ordered.filter((m) => m.silenceReason).map((m) => m.seq));
+  const saidByItsMessage = (w: ConversationWindow) => {
+    const seq = (w.decisionDetail as { silenceSeq?: unknown } | null)?.silenceSeq;
+    return typeof seq === "number" && storedSilences.has(seq);
+  };
   for (const message of ordered) {
     out.push({ kind: "said", key: message.id, message });
     for (const w of bySeq.get(message.seq) ?? []) {
@@ -290,7 +294,7 @@ export function threadEntries(
         if (turn && turn.state !== "delivered")
           out.push({ kind: "agent-turn", key: w.id, turn });
         else if (!turn) out.push({ kind: "pending", key: w.id });
-      } else if (w.decision && w.decision !== "answered" && !storedSilences.has(w.lastSeq + 1))
+      } else if (w.decision && w.decision !== "answered" && !saidByItsMessage(w))
         out.push({ kind: "silence", key: w.id, decision: w.decision, detail: w.decisionDetail });
     }
   }
