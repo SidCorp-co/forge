@@ -22,8 +22,8 @@ async function absentFrom(projectId: string, commit: string): Promise<boolean> {
 /**
  * The commit a person named, which the repository holds (`recorded`), is the landing wherever Forge
  * holds none that resolves: no commit on the row and no merged pull request, or one the repository
- * was read and lacks. A landing Forge holds that does resolve, or could not be read for, keeps its
- * own rules, and an agent's commit is never stated.
+ * was read and lacks, an abbreviation it cannot resolve included. A landing Forge holds that does
+ * resolve, or could not be read for, keeps its own rules, and an agent's commit is never stated.
  */
 export async function statedLanding(args: {
   issueId: string;
@@ -38,7 +38,6 @@ export async function statedLanding(args: {
   const held = (await readMergeColumns(db, args.issueId)).commitSha?.trim() || null;
   const forge = held ?? args.observed?.commitSha ?? null;
   if (!forge) return { ...said, supersedes: null };
-  // Only the very commit short-circuits: an abbreviation the repository cannot resolve is replaced.
   if (forge.toLowerCase() === said.commit.toLowerCase()) return null;
   if (!(await absentFrom(args.projectId, forge))) return null;
   return { ...said, supersedes: held };
