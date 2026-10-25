@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.322] - 2026-10-25
+
+Every new request and report passes one value check first
+
+### Added
+
+- **Every new request passes one value check.** Who it serves, what improves, how it is measured, whether it exists; it ends accepted, merged, offered an alternative or refused with one line. A refused requirement can be kept.
+
 ## [0.4.0-dev.321] - 2026-10-25
 
 Agents reach GitLab through Forge without holding the connection token
