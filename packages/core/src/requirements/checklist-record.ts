@@ -25,6 +25,7 @@ import {
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { openAmong } from '../questions/index.js';
 import type { DeliveryProof } from './acceptance-rules.js';
+import { requirementDependents } from './dependents.js';
 import { linkedDesigns } from './read.js';
 
 /** The longest record answer kept on a move: the record itself holds the whole text. */
@@ -247,15 +248,20 @@ export async function readyFactsAt(
     tx,
   );
   const designs = await linkedDesigns(tx, requirementId);
+  // a question holding the value check blocks the agree as any blocking question does (REQ-65 BC-4)
+  const held = await requirementDependents().valueCheckHeld(tx, requirementId);
   return {
     key,
     head: revision,
     spec,
     kind: rev.kind ?? null,
     criteria,
-    openBlocking: blocking
-      .filter((q) => open.has(q.questionId as string))
-      .map((q) => ({ question: q.question, whoAnswers: q.whoAnswers })),
+    openBlocking: [
+      ...blocking
+        .filter((q) => open.has(q.questionId as string))
+        .map((q) => ({ question: q.question, whoAnswers: q.whoAnswers })),
+      ...held.map((question) => ({ question, whoAnswers: 'its author' })),
+    ],
     designs: designs.map((d) => ({ flow: d.flow, approvedRevision: d.approvedRevision })),
     writtenLang: rev.writtenLang ?? null,
   };

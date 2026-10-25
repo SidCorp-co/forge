@@ -204,6 +204,10 @@
   "REQ-50": {
    "title": "Forge learns from every correction and stops to ask when a lesson confuses",
    "status": "agreed"
+  },
+  "REQ-65": {
+   "title": "Value is agreed with the assistant before a requirement exists",
+   "status": "agreed"
   }
  },
  "workflows": {

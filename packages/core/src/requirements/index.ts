@@ -28,7 +28,7 @@ export { requirementStandingsOf } from './list-rows.js';
 export type { ProposeDuplicate } from './near-duplicate.js';
 export { owedBreakdowns } from './owed-breakdowns.js';
 export { owedRequirementRevisions } from './owed-revisions.js';
-export { proposePlacement } from './placement.js';
+export { proposePlacement, proposePlacementLater } from './placement.js';
 export { changedTracedOf } from './plan-drift.js';
 export { listRequirementsAs, readRequirementAs, requirementIdIn, rowIn } from './read.js';
 export { registerReasonAnswers } from './reason-question.js';
@@ -52,4 +52,5 @@ export {
 } from './standing-read.js';
 export { type StepChange, stepChangeOf } from './step-notice.js';
 export { type StewardRequirementAct, stewardRequirementActIn } from './steward-decision.js';
+export { keepRefusedIn, refuseOnValueIn } from './value-refusal.js';
 export { lockRequirements } from './write-tx.js';

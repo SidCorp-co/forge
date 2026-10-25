@@ -64,6 +64,7 @@ export const OUTBOX_CONSUMERS = {
 	"requirement.delivered": ["notify-requirements"],
 	"requirement.accepted": ["notify-requirements"],
 	"feedback.filed": ["master-wake", "intake-assistant", "steward"],
+	"intake.answered": ["intake-assistant"],
 	"feedback.verifyAsked": ["notify-feedback"],
 	"feedback.verifySettled": ["notify-feedback"],
 	"feedback.reporterTold": ["notify-feedback"],

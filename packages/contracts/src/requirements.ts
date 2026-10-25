@@ -47,6 +47,7 @@ export const REQUIREMENT_STATUSES = [
 	"accepted",
 	"dropped",
 	"deferred",
+	"refused",
 ] as const;
 export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 
@@ -75,7 +76,7 @@ export const REQUIREMENT_DEFERRAL_ACTS = ["defer", "undefer"] as const;
 
 export const BASELINE_ACTS = ["agree", "repin"] as const;
 
-/** The lifecycle a person reads, every step a stored status. `dropped` and `deferred` are off the line. */
+/** The lifecycle a person reads, every step a stored status. `dropped`, `deferred` and `refused` are off the line. */
 export const REQUIREMENT_LIFECYCLE = [
 	"draft",
 	"agreed",
@@ -87,6 +88,7 @@ export const REQUIREMENT_STATES = [
 	...REQUIREMENT_LIFECYCLE,
 	"deferred",
 	"dropped",
+	"refused",
 ] as const;
 export type RequirementState = (typeof REQUIREMENT_STATES)[number];
 
@@ -101,6 +103,7 @@ export const REQUIREMENT_STATE_LABELS: Record<RequirementState, string> = {
 	accepted: "Accepted",
 	deferred: "Deferred",
 	dropped: "Dropped",
+	refused: "Refused",
 };
 
 export const REQUIREMENT_STATE_TONES: Record<RequirementState, StandingTone> = {
@@ -111,6 +114,7 @@ export const REQUIREMENT_STATE_TONES: Record<RequirementState, StandingTone> = {
 	accepted: "done",
 	deferred: "neutral",
 	dropped: "done",
+	refused: "neutral",
 };
 
 export const REQUIREMENT_STATE_GLYPHS: Record<RequirementState, string> = {
@@ -121,6 +125,7 @@ export const REQUIREMENT_STATE_GLYPHS: Record<RequirementState, string> = {
 	accepted: "✓",
 	deferred: "‖",
 	dropped: "×",
+	refused: "⊘",
 };
 
 export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
@@ -132,6 +137,8 @@ export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
 	deferred:
 		"deferred: out of this release; nothing is built until a person undefers it",
 	dropped: "dropped: no longer wanted",
+	refused:
+		"refused: its value check refused it, with a reason; a person may keep it with a one-line reason",
 };
 
 /** A revision's one state (docs/patterns/core-module.md "Revisions: one vocabulary"). */

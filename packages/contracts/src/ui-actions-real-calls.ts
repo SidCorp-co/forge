@@ -4,6 +4,8 @@
 // shape the contract was written for; these are the shapes the model sent. No personal data: the
 // keys are the project's own ISS/REQ/FB records and a workflow's flow.
 
+import { REQUIREMENT_STATUSES } from "./requirements.js";
+
 export interface RealUiCall {
 	/** The wire name the model called. */
 	name: string;
@@ -20,15 +22,8 @@ export interface RealUiCall {
 	expect: "ok" | { refused: string };
 }
 
-const ALL_STATES = [
-	"draft",
-	"agreed",
-	"in_delivery",
-	"delivered",
-	"accepted",
-	"deferred",
-	"dropped",
-];
+// the model named every state there was; read from the statuses so a new one keeps it every state
+const ALL_STATES = [...REQUIREMENT_STATUSES];
 
 export const REAL_UI_CALLS: readonly RealUiCall[] = [
 	// the map the model sent when the filter was offered as an object of optional fields: every

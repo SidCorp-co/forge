@@ -38,10 +38,11 @@ export interface StageInput {
 	facts: { passing: number; judged: number; criteria: number };
 }
 
-/** Where a requirement stands. `null` for a dropped one, which is on no roadmap. */
+/** Where a requirement stands. `null` for a dropped or refused one, which is on no roadmap. */
 export function requirementStageOf(s: StageInput): RequirementStage | null {
 	switch (s.state) {
 		case "dropped":
+		case "refused":
 			return null;
 		case "draft":
 			return "draft";

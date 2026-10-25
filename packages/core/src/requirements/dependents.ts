@@ -37,6 +37,11 @@ export interface RequirementDependents {
    * weighed on (`release-batch/landed-build.ts:landedBuildHolds`); null on a project with one.
    */
   landedBuildHolds(projectId: string, issueIds: readonly string[]): Promise<LiveBuildHolds | null>;
+  /**
+   * The questions holding the requirement's value check, each unanswered and blocking (REQ-65 BC-4,
+   * `intake/value-held.ts`): an agree waits for them as for any blocking question.
+   */
+  valueCheckHeld(tx: Tx, requirementId: string): Promise<string[]>;
   /** The landing record that closed each issue standing closed (`release-batch/landing-records.ts`). */
   landedRecordsOf(
     issueIds: readonly string[],

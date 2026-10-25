@@ -7,7 +7,7 @@
 import { issueUpdatedAsChanges } from '@forge/contracts/field-changes';
 import type { BaselineReadiness, RequirementHistoryEntry } from '@forge/contracts/requirements';
 import { type Said, type SaidPlainKey, say, verbatim } from '@forge/contracts/said';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, issues, kernelTransitions } from '../db/schema.js';
 import { requirementDeferrals, requirementReturns } from '../db/schema-requirement-acts.js';
@@ -85,7 +85,7 @@ type DeferralRow = typeof requirementDeferrals.$inferSelect;
 type ActivityRow = typeof activityLog.$inferSelect;
 type MoveRow = Pick<
   typeof kernelTransitions.$inferSelect,
-  'id' | 'toStatus' | 'reason' | 'actorId' | 'createdAt' | 'checklistAnswers'
+  'id' | 'fromStatus' | 'toStatus' | 'reason' | 'actorId' | 'createdAt' | 'checklistAnswers'
 >;
 interface SuggestionRow {
   id: string;
@@ -181,9 +181,10 @@ function baselineText(b: BaselineRow): Said {
 const noted = (text: Said, note: Said | null): Said =>
   note ? say('requirements.history.text.noted', { text, note }) : text;
 
-// The delivery moves, an accept and a drop write no row of their own: the requirement's kernel
-// transition is their record, the mover's reason on it (ISS-281, REQ-74 BC-8)
-const MOVES_READ = ['in_delivery', 'delivered', 'accepted', 'dropped'];
+// The delivery moves, an accept, a drop, and a value check's refusal and its keep write no row of
+// their own: the requirement's kernel transition is their record, the mover's reason on it (ISS-281,
+// REQ-74 BC-8, REQ-65 BC-6)
+const MOVES_READ = ['in_delivery', 'delivered', 'accepted', 'dropped', 'refused'];
 
 const why = (m: MoveRow) => (m.reason ? `: ${m.reason}` : '');
 
@@ -208,6 +209,10 @@ function moveText(m: MoveRow): Said {
   }
   if (m.toStatus === 'dropped')
     return say('requirements.history.text.dropped', { rest: m.reason ?? '' });
+  if (m.toStatus === 'refused')
+    return say('requirements.history.text.refused', { rest: m.reason ?? '' });
+  if (m.fromStatus === 'refused')
+    return say('requirements.history.text.kept', { rest: m.reason ?? '' });
   throw new Error(
     `history-read: read a requirement move to ${m.toStatus}; only ${MOVES_READ.join(' and ')} are read`,
   );
@@ -218,7 +223,11 @@ const moveEntry = (m: MoveRow, n: Namer) =>
     id: `move-${m.id}`,
     at: m.createdAt.toISOString(),
     source: n.sourceOf(m.actorId),
-    who: n.who(m.actorId, SIGNER),
+    // the value check refuses as the kernel's own act, with no person to name
+    who:
+      m.toStatus === 'refused' && m.actorId === null
+        ? say('requirements.history.who.forge')
+        : n.who(m.actorId, SIGNER),
     kind: say('requirements.history.kind.Decision'),
     text: moveText(m),
   });
@@ -345,6 +354,7 @@ async function historyRows(requirementId: string, projectId: string) {
       db
         .select({
           id: kernelTransitions.id,
+          fromStatus: kernelTransitions.fromStatus,
           toStatus: kernelTransitions.toStatus,
           reason: kernelTransitions.reason,
           actorId: kernelTransitions.actorId,
@@ -356,7 +366,10 @@ async function historyRows(requirementId: string, projectId: string) {
           and(
             eq(kernelTransitions.entity, 'requirement'),
             eq(kernelTransitions.entityId, requirementId),
-            inArray(kernelTransitions.toStatus, MOVES_READ),
+            or(
+              inArray(kernelTransitions.toStatus, MOVES_READ),
+              eq(kernelTransitions.fromStatus, 'refused'),
+            ),
           ),
         ),
       db

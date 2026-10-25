@@ -38,6 +38,7 @@ import {
 } from './feedback/index.js';
 import { releaseLegFor } from './forecast/index.js';
 import { provideAssistantMethod } from './guides/index.js';
+import { valueCheckHeld } from './intake/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
 import { refreshMainRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
 import { assertVaultBootSafety, provideForgeReads } from './integrations/index.js';
@@ -336,6 +337,7 @@ provideInterfaceContracts(interfaceContractsOf);
 provideContractVersionReads(contractVersionReads);
 provideRequirementDependents({
   feedbackOf: requirementFeedbackAs,
+  valueCheckHeld,
   revised: staleOnTargetRevised,
   proposeDuplicate: proposeRequirementDuplicate,
   releaseLeg: releaseLegFor,

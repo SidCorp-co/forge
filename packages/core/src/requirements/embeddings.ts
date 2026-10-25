@@ -20,6 +20,7 @@ import {
   unembeddedCounts,
   writeItemEmbedding,
 } from '../knowledge/index.js';
+import { background } from '../lib/background.js';
 import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 
@@ -91,16 +92,19 @@ export async function embedRequirementHead(
 }
 
 /** After the head moved: embed outside the transaction that moved it, logging what did not land. */
+const embeddings = background();
+
 export function embedRequirementHeadLater(requirementId: string): void {
-  embedRequirementHead(requirementId)
-    .then((status) => {
+  embeddings.start(
+    async () => {
+      const status = await embedRequirementHead(requirementId);
       if (status !== 'embedded') {
         logger.warn({ requirementId, status }, 'item_embeddings: the head was not embedded');
       }
-    })
-    .catch((err: unknown) =>
+    },
+    (err: unknown) =>
       logger.error({ err, requirementId }, 'item_embeddings: the embedding row was not written'),
-    );
+  );
 }
 
 type SimilarRequirements =

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { db } from '../db/client.js';
 import { mcpAuditLog } from '../db/schema.js';
+import { background } from '../lib/background.js';
 
 export type AuditResultCode =
   | 'ok'
@@ -36,10 +37,13 @@ export function digestArgs(args: unknown): string | null {
   return createHash('sha256').update(sortedJson).digest('hex');
 }
 
+const audits = background();
+
+/** Writes the audit row after the response, never failing the request it records. */
 export function writeMcpAudit(row: AuditRow): void {
-  void (async () => {
-    try {
-      await db.insert(mcpAuditLog).values({
+  audits.start(
+    () =>
+      db.insert(mcpAuditLog).values({
         userId: row.userId,
         tokenId: row.tokenId,
         deviceId: row.deviceId,
@@ -51,10 +55,7 @@ export function writeMcpAudit(row: AuditRow): void {
         ip: row.ip ?? null,
         userAgent: row.userAgent ?? null,
         payloadDigest: row.payloadDigest ?? null,
-      });
-    } catch (err) {
-      // Audit failure must not propagate — log and move on.
-      console.warn('[mcp-audit] insert failed', err);
-    }
-  })();
+      }),
+    (err) => console.warn('[mcp-audit] insert failed', err),
+  );
 }

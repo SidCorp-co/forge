@@ -15,7 +15,7 @@ import {
   requirementKey,
 } from '@forge/contracts/requirements';
 import { say, sayEn } from '@forge/contracts/said';
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
@@ -165,7 +165,7 @@ async function nearOf(
           requirements.id,
           nearest.map((n) => n.itemId),
         ),
-        ne(requirements.status, 'dropped'),
+        notInArray(requirements.status, ['dropped', 'refused']),
       ),
     );
   // one accepted by decision was closed over its checklist, as a person decided (REQ-74): it

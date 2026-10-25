@@ -30,7 +30,7 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { FEEDBACK_UNTRIAGED_PHASES } from "@forge/contracts/feedback";
 import { FeedbackChecklists } from "@/features/checklists";
-import { IntakeDraft } from "@/features/intake";
+import { IntakeDraft, ValueCheck } from "@/features/intake";
 import { MockupList } from "@/features/mockups";
 import { useMockups } from "@/features/mockups";
 import { Reproduction } from "@/features/previews";
@@ -193,6 +193,7 @@ export function FeedbackPage({
               {tab === "overview" ? (
                 <div className="grid gap-8" data-testid="view-overview">
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
+                  <ValueCheck projectId={projectId} slug={slug} itemKey={f.key} />
                   <Proposals projectId={projectId} f={f} />
                   {developer ? <IntakeDraft projectId={projectId} slug={slug} itemKey={f.key} assumptions /> : null}
                   {triageOwed ? checklists : null}

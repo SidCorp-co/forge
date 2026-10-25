@@ -47,6 +47,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"requirement.delivered",
 	"requirement.accepted",
 	"feedback.filed",
+	"intake.answered",
 	"feedback.verifyAsked",
 	"feedback.verifySettled",
 	"feedback.reporterTold",
@@ -499,6 +500,13 @@ export interface OutboxEventPayloads
 		projectId: string;
 		feedbackId: string;
 		severity: FeedbackSeverity;
+	};
+	/** A person answered the last question holding an item's value check; the intake assistant drafts it again (REQ-65 BC-3). */
+	"intake.answered": {
+		projectId: string;
+		kind: "requirement" | "feedback";
+		itemId: string;
+		key: string;
 	};
 	/** A holder of feedback.approve asked the reporter to verify a resolved item (feedback-triage `verify-ask`). */
 	"feedback.verifyAsked": {

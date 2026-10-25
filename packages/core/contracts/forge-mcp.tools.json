@@ -1320,7 +1320,8 @@
               "delivered",
               "accepted",
               "deferred",
-              "dropped"
+              "dropped",
+              "refused"
             ],
             "type": "string"
           },

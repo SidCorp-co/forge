@@ -6,6 +6,7 @@
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import { background } from '../lib/background.js';
 import { isRefusal } from '../lib/refusal.js';
 import { consume } from '../outbox/index.js';
 import { type DraftOutcome, draftHighlights } from './draft.js';
@@ -85,21 +86,18 @@ export async function refreshForVerdict(projectId: string, issueId: string): Pro
   }
 }
 
-const running = new Set<Promise<void>>();
+const refreshes = background();
 
 /** Starts a refresh no request waits on, for a page read that found its highlights owed. */
 export function refreshInBackground(run: { projectId: string; runId: string }): void {
-  const done: Promise<void> = refreshReleaseHighlights(run.projectId, run.runId)
-    .then(() => undefined)
-    .catch((err) => refreshFailed(err, run))
-    .finally(() => running.delete(done));
-  running.add(done);
+  refreshes.start(
+    () => refreshReleaseHighlights(run.projectId, run.runId),
+    (err) => refreshFailed(err, run),
+  );
 }
 
 /** Settles every refresh started in the background, for a caller that must not leave one running. */
-export async function backgroundRefreshesSettled(): Promise<void> {
-  while (running.size > 0) await Promise.all([...running]);
-}
+export const backgroundRefreshesSettled = (): Promise<void> => refreshes.settled();
 
 export function registerReleaseHighlightsRefresh(): void {
   consume('run.transitioned', {
