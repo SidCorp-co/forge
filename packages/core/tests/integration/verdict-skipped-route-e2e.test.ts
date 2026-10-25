@@ -111,7 +111,16 @@ async function counted(issueId: string, req: string) {
       criteria.map((c) => ({
         standing: criterionStandingOf(c.latest as never),
         proven: verifiedOf(
-          c.latest ? [{ verdict: c.latest.verdict, byBuilder: false, authored: true }] : [],
+          c.latest
+            ? [
+                {
+                  verdict: c.latest.verdict,
+                  byBuilder: false,
+                  authored: true,
+                  recordedAt: null,
+                },
+              ]
+            : [],
           null,
         ).proven,
       })),

@@ -28,7 +28,7 @@ function ShortMark() {
 export const STANDING_KEY = (s: ReleaseKnownIssue["standing"]) => `releases.page.known.${s}` as const;
 
 /** One criterion as a line under a row: a mark, its wording without its code, and in the Technical view its issue and number. */
-export function CheckLine({ text, mark, label }: { text: string; mark: ReactNode; label?: string | null }) {
+export function CheckLine({ text, mark, label, tag }: { text: string; mark: ReactNode; label?: string | null; tag?: { word: string; why: string } | null }) {
   return (
     <li className="flex gap-2 text-12 text-muted">
       <span className="w-3 flex-none text-center">{mark}</span>
@@ -36,6 +36,11 @@ export function CheckLine({ text, mark, label }: { text: string; mark: ReactNode
         {label ? <span className="mr-1.5 font-mono text-subtle">{label}</span> : null}
         {text}
       </span>
+      {tag ? (
+        <span className="flex-none text-subtle" title={tag.why} data-testid="proof-builder-mark">
+          {tag.word}
+        </span>
+      ) : null}
     </li>
   );
 }
@@ -146,7 +151,13 @@ export function ChangeDetail({ page, change, checks, reach }: { page: ReleasePag
               <CheckLine key={`o:${k.statement}`} mark="○" text={`${withoutCriterionCode(k.statement)} (${t(STANDING_KEY(k.standing))})`} />
             ))}
             {proven.map((p) => (
-              <CheckLine key={`p:${p.n ?? p.statement}`} mark={p.short ? <ShortMark /> : "✓"} text={p.statement} label={p.n !== null ? `#${p.n}` : null} />
+              <CheckLine
+                key={`p:${p.n ?? p.statement}`}
+                mark={p.short ? <ShortMark /> : "✓"}
+                text={p.statement}
+                label={p.n !== null ? `#${p.n}` : null}
+                tag={p.countedUnderCutover ? { word: t("releases.page.row.builderPass"), why: t("releases.page.row.builderPassWhy") } : null}
+              />
             ))}
           </ul>
         </div>

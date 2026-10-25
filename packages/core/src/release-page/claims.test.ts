@@ -32,6 +32,7 @@ function verdict(
     evidence: [],
     byBuilder: false,
     authored: true,
+    recordedAt: at,
     ...extra,
   };
 }
@@ -103,7 +104,16 @@ describe('the truth rule over the carried criteria', () => {
         key: 'REQ-1',
         title: 'Reminders',
         completes: false,
-        proven: [{ code: 'BC-1', statement: 'criterion 1', short: false, issueKey: 'ISS-1', n: 1 }],
+        proven: [
+          {
+            code: 'BC-1',
+            statement: 'criterion 1',
+            short: false,
+            issueKey: 'ISS-1',
+            n: 1,
+            countedUnderCutover: false,
+          },
+        ],
         unproven: 3,
         business: {
           total: 2,
@@ -343,8 +353,19 @@ describe('under an independent judge, only the judge proves a criterion on the p
     expect(claim).toMatchObject({ proven: true, claim: { claimed: true } });
   });
 
-  it("does not count the builder's pass where the project names no independent judge either", () => {
-    expect(readClaims([builders], BUILD, 'self')[0]?.proven).toBe(false);
-    expect(readClaims([builders], BUILD, null)[0]?.proven).toBe(false);
+  it("does not count the builder's pass recorded after the cutover under any qa (REQ-74 BC-2)", () => {
+    const late = criterion(1, 'BC-1', [
+      verdict('pass', BUILD, '2026-10-26T10:00:00.000Z', { byBuilder: true }),
+    ]);
+    expect(readClaims([late], BUILD, 'self')[0]?.proven).toBe(false);
+    expect(readClaims([late], BUILD, null)[0]?.proven).toBe(false);
+  });
+
+  it("lists the builder's pass recorded before the cutover as proven under self QA, marked as the builder's", () => {
+    const claims = readClaims([builders], BUILD, 'self');
+    expect(claims[0]).toMatchObject({ proven: true, underCutover: true });
+    expect(untracedOf([], claims)?.proven).toEqual([
+      expect.objectContaining({ n: 1, countedUnderCutover: true }),
+    ]);
   });
 });

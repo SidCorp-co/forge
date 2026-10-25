@@ -72,3 +72,18 @@ describe("a short's mark on the Criteria tab", () => {
     ]);
   });
 });
+
+describe("a builder's pass counted under the cutover on the Criteria tab (ISS-683)", () => {
+  it("marks the row Builder where its latest verdict counts only under the cutover, and no other row", async () => {
+    fakeCore((c) =>
+      c.path === "/issues/i1/criteria"
+        ? { body: { criteria: [criterion(1, { ...judged("pass"), countedUnderCutover: true } as ReturnType<typeof judged>), criterion(2, judged("pass"))] } }
+        : undefined,
+    );
+    renderWithQuery(<IssueCriteria issue={{ id: "i1", projectId: "p1", status: "in_progress" } as IssueDetail} projectId="p1" checklist={[]} canWrite={false} requirementKey={null} />);
+    const word = await screen.findByTestId("criterion-1-builder");
+    expect(word).toHaveTextContent(/^Builder$/);
+    expect(word).toHaveAttribute("title", "Passed by the run that built it, before independent judging began");
+    expect(screen.queryByTestId("criterion-2-builder")).toBeNull();
+  });
+});

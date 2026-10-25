@@ -114,6 +114,7 @@ describe('the coverage the move to delivered and the accept read (REQ-74 BC-10)'
       identity: v ? ({ kind: 'commit', sha: 'f'.repeat(40) } as const) : null,
       byBuilder,
       authored: true,
+      recordedAt: v ? at : null,
     },
   ];
 

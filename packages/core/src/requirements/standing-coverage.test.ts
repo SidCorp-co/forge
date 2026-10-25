@@ -90,6 +90,7 @@ const row = (
   identity,
   byBuilder: false,
   authored: true,
+  recordedAt: iso ? at(iso) : null,
 });
 /** Every commit these rows name held by the live build, unless a test says otherwise. */
 const HELD = new Map([
@@ -318,6 +319,7 @@ describe('what a verdict identity counts for on coverage', () => {
           identity,
           byBuilder: false,
           authored: true,
+          recordedAt: at('2026-10-05T00:00:00Z'),
         },
       ],
       liveBuild,

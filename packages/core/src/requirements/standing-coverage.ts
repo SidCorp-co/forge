@@ -44,6 +44,8 @@ export interface StandingVerdict {
   byBuilder: boolean;
   /** Whether the verdict names who recorded it, an account or a box; false where there is none. */
   authored: boolean;
+  /** When it was recorded, as the verified rule reads it; null where there is none. */
+  recordedAt: Date | null;
 }
 
 /** An issue criterion tracing a business criterion, read at its latest verdict. */
@@ -185,7 +187,7 @@ function requirementVerdictsOn(
     .sort((a, b) => b.verdictAt.getTime() - a.verdictAt.getTime());
   const current = mine.filter((v) => v.requirementCriterionId === bc.id);
   const stands = judgesVerdict(
-    current.map((v) => ({ ...v, byBuilder: false })),
+    current.map((v) => ({ ...v, byBuilder: false, recordedAt: v.verdictAt })),
     input.judge,
   );
   const live = input.liveBuild ?? null;
@@ -216,7 +218,9 @@ function requirementVerdictsOn(
       commit: r?.commit ?? null,
       inLiveBuild: r?.inLiveBuild ?? null,
       notCounted: judged
-        ? (replaced ?? r?.notCounted ?? unverifiedWhy({ ...v, byBuilder: false }, input.judge))
+        ? (replaced ??
+          r?.notCounted ??
+          unverifiedWhy({ ...v, byBuilder: false, recordedAt: v.verdictAt }, input.judge))
         : null,
       stale,
     };

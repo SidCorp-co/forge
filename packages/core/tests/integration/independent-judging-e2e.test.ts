@@ -13,6 +13,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { BUILDER_PASS_CUTOVER } from '@forge/contracts/verified-rule';
 import { sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -36,6 +37,8 @@ const NEW = '2222222222222222222222222222222222222222';
 const LIVE = '9999999999999999999999999999999999999999';
 const BUILT = '2026-10-04T10:00:00Z';
 const JUDGED = '2026-10-05T10:00:00Z';
+/** A day after the builder-pass cutover (contracts `verified-rule.ts:BUILDER_PASS_CUTOVER`). */
+const AFTER = '2026-10-26T10:00:00Z';
 const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
 
 let projectId: string;
@@ -191,7 +194,23 @@ async function statusOf(issueId: string): Promise<string> {
 }
 
 describe('BC-2: a pass by the run that built the work never counts, whatever qa says', () => {
-  it('does not count the building run’s own pass under qa: self, and says why', async () => {
+  it('does not count the building run’s own pass recorded after the cutover under qa: self, and says why', async () => {
+    await world('self');
+    const req = await agreedRequirement();
+    const issue = await issueTracing(req, 1, ['BC-1']);
+    await checked(issue, await runOn({ 'ISS-1': 'in_progress' }));
+    await judge(issue, 1, 'pass', AFTER, box);
+
+    const one = await bc(req, 'BC-1');
+    expect(one.verdict).toBe('not_judged');
+    expect(one.issues[0]?.notCounted).toBe(BUILDER_WHY);
+    const read = (await ok(api(token, 'GET', `/api/issues/${issue}/criteria`))) as {
+      criteria: { latest: { countedUnderCutover: boolean } | null }[];
+    };
+    expect(read.criteria[0]?.latest?.countedUnderCutover).toBe(false);
+  });
+
+  it('keeps counting the building run’s pass recorded before the cutover under qa: self, marked as the builder’s', async () => {
     await world('self');
     const req = await agreedRequirement();
     const issue = await issueTracing(req, 1, ['BC-1']);
@@ -199,8 +218,14 @@ describe('BC-2: a pass by the run that built the work never counts, whatever qa 
     await judge(issue, 1, 'pass', JUDGED, box);
 
     const one = await bc(req, 'BC-1');
-    expect(one.verdict).toBe('not_judged');
-    expect(one.issues[0]?.notCounted).toBe(BUILDER_WHY);
+    expect(one.verdict, 'BUILDER_PASS_CUTOVER: a pre-cutover builder pass is not un-proven').toBe(
+      'passing',
+    );
+    expect(one.issues[0]?.notCounted).toBeNull();
+    const read = (await ok(api(token, 'GET', `/api/issues/${issue}/criteria`))) as {
+      criteria: { latest: { countedUnderCutover: boolean } | null }[];
+    };
+    expect(read.criteria[0]?.latest?.countedUnderCutover).toBe(true);
   });
 
   it('does not count the builder’s pass once a judge took its lease, by the run it was declared over', async () => {
@@ -242,7 +267,15 @@ describe('BC-2: a pass by the run that built the work never counts, whatever qa 
     });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body.notCounted).toMatchObject({ code: 'VERDICT_BY_BUILDER' });
+    // the write reads the pass at the moment it was recorded: before the cutover it still counts, marked
+    if (Date.now() < Date.parse(BUILDER_PASS_CUTOVER)) {
+      expect(res.body).toMatchObject({ notCounted: null, countedUnderCutover: true });
+    } else {
+      expect(res.body).toMatchObject({
+        notCounted: { code: 'VERDICT_BY_BUILDER' },
+        countedUnderCutover: false,
+      });
+    }
   });
 });
 

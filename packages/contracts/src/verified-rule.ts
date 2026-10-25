@@ -5,7 +5,8 @@
 // and the criteria hold that "Ship only proven work" names (core
 // `issues/criteria-verdicts.ts:unearnedCriteriaReports`). Only a pass from someone other than the
 // builder proves it, whatever the project's `qa` says: the builder's own pass is its evidence, kept
-// with its probe, and never its proof (core `issues/built-by.ts` names the builder). A short is met
+// with its probe, and never its proof (core `issues/built-by.ts` names the builder), save the ones
+// recorded before `BUILDER_PASS_CUTOVER`, an amnesty with its end condition. A short is met
 // short of its wording, not verified, so it never does. Where the project declares an independent
 // judge, a pass that names no author is not that judge's either, since nothing shows it came from
 // anyone else. A fail counts whoever records it: it is evidence the criterion does not hold, and
@@ -13,13 +14,48 @@
 
 import type { PolicyQaMode } from "./project-config.js";
 
-/** What the verified rule reads of a verdict: what it said, and who recorded it. */
+/** What the verified rule reads of a verdict: what it said, who recorded it, and when. */
 export interface JudgedVerdict {
 	verdict: string | null;
 	/** Recorded by the issue's builder (core `issues/built-by.ts`); false where there is no verdict. */
 	byBuilder: boolean;
 	/** Names who recorded it, an account or a box; false where there is no verdict. */
 	authored: boolean;
+	/** When it was recorded; null where there is no verdict. Read against `BUILDER_PASS_CUTOVER`. */
+	recordedAt: string | Date | null;
+}
+
+/**
+ * AMNESTY (ISS-683, REQ-74 BC-2): when the rule that a builder's own pass never counts took effect,
+ * whatever the project's `qa`. Before it, a project without an independent judge counted the
+ * building run's pass, and those verdicts were already read as proof by releases and requirements
+ * still waiting on them.
+ * - Traded: a builder's pass recorded before this instant keeps counting where it counted then (any
+ *   project but one declaring an independent judge); one recorded at or after it never counts.
+ * - Cost: the criteria standing on such a pass were never judged by anyone but their builder. Each
+ *   one is shown as such (`countedUnderCutover`), never hidden.
+ * - Ends when: every issue holding a pre-cutover builder pass is closed or judged again by another
+ *   run. Then this constant and `underCutover` are deleted, and the builder's pass never counts.
+ */
+export const BUILDER_PASS_CUTOVER = "2026-10-25T17:00:00Z";
+const CUTOVER_MS = Date.parse(BUILDER_PASS_CUTOVER);
+
+/** A builder's verdict the amnesty still counts: recorded before the cutover, on a project with no independent judge. */
+function underCutover(v: JudgedVerdict, judge: PolicyQaMode | null): boolean {
+	if (!v.byBuilder || judge === "independent" || v.recordedAt === null) return false;
+	return new Date(v.recordedAt).getTime() < CUTOVER_MS;
+}
+
+/** A builder's verdict the rule bars: every one but those the amnesty still counts. */
+const barred = (v: JudgedVerdict, judge: PolicyQaMode | null) =>
+	v.byBuilder && !underCutover(v, judge);
+
+/** Whether a builder's pass counts only by the amnesty (`BUILDER_PASS_CUTOVER`), so a reader can say so. */
+export function countedUnderCutover(
+	v: JudgedVerdict,
+	judge: PolicyQaMode | null,
+): boolean {
+	return v.verdict === "pass" && underCutover(v, judge);
 }
 
 /** Why a verdict does not count as verified, or null where it does, or is a fail, a skip or none. */
@@ -31,7 +67,7 @@ export function unverifiedWhy(
 		return "judged short: met short of its wording, and only a pass counts as verified";
 	}
 	if (v.verdict !== "pass") return null;
-	if (v.byBuilder) {
+	if (barred(v, judge)) {
 		return "passed by the run that built it, and a builder's own pass never counts";
 	}
 	if (judge === "independent" && !v.authored) {
@@ -55,8 +91,11 @@ export interface NotCounted {
  * named here, since no count of proof will ever read it (`unverifiedWhy`). A fail counts whoever
  * records it.
  */
-export function notCountedOf(v: JudgedVerdict): NotCounted | null {
-	if (!v.byBuilder) return null;
+export function notCountedOf(
+	v: JudgedVerdict,
+	judge: PolicyQaMode | null,
+): NotCounted | null {
+	if (!barred(v, judge)) return null;
 	if (v.verdict !== "pass" && v.verdict !== "short") return null;
 	return {
 		code: VERDICT_BY_BUILDER,
@@ -65,11 +104,11 @@ export function notCountedOf(v: JudgedVerdict): NotCounted | null {
 	};
 }
 
-/** Whether a verdict is not a judge's: anything but a fail, from the builder, or from nobody named where an independent judge is declared. */
+/** Whether a verdict is not a judge's: anything but a fail, from the builder (`barred`), or from nobody named where an independent judge is declared. */
 const notTheJudges = (v: JudgedVerdict, judge: PolicyQaMode | null) =>
 	v.verdict !== null &&
 	v.verdict !== "fail" &&
-	(v.byBuilder || (judge === "independent" && !v.authored));
+	(barred(v, judge) || (judge === "independent" && !v.authored));
 
 /**
  * Of verdicts newest first, the one a criterion stands on: the newest, unless it is not a judge's

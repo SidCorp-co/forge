@@ -416,6 +416,11 @@ export interface ReleasePageProven {
 	issueKey: string | null;
 	/** Its number on its issue; null on a share frozen before rows carried it. */
 	n: number | null;
+	/**
+	 * Proven by the building run's own pass, recorded before the builder-pass cutover
+	 * (`verified-rule.ts:BUILDER_PASS_CUTOVER`); false on a share frozen before rows said so.
+	 */
+	countedUnderCutover: boolean;
 }
 
 /** The carried criteria of one group, each row one issue criterion: what the header counts, listed. */
@@ -637,6 +642,7 @@ const ProvenSchema = z.strictObject({
 	short: z.boolean().default(false),
 	issueKey: z.string().min(1).nullable().default(null),
 	n: z.number().int().min(1).nullable().default(null),
+	countedUnderCutover: z.boolean().default(false),
 });
 // a share frozen before titles holds each change's whole sentence as its line, with no detail
 const ChangeSchema = z.strictObject({

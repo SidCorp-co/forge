@@ -53,6 +53,7 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
             evidence: v.evidence,
             byBuilder: v.byBuilder,
             authored: v.authored,
+            recordedAt: v.at,
           }),
         ),
     }));

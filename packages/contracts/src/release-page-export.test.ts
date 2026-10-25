@@ -73,6 +73,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 						short: false,
 						issueKey: "ISS-1",
 						n: 1,
+						countedUnderCutover: false,
 					},
 					{
 						code: "BC-1",
@@ -80,6 +81,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 						short: false,
 						issueKey: "ISS-1",
 						n: 2,
+						countedUnderCutover: false,
 					},
 					{
 						code: "BC-2",
@@ -87,6 +89,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 						short: true,
 						issueKey: "ISS-1",
 						n: 3,
+						countedUnderCutover: false,
 					},
 				],
 				unproven: 1,
@@ -107,6 +110,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 					short: false,
 					issueKey: "ISS-4",
 					n: 1,
+					countedUnderCutover: false,
 				},
 			],
 			unproven: 0,

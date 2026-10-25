@@ -32,7 +32,7 @@ const page = releasePage({
       key: "REQ-34",
       title: "Every refusal names the field and the fix",
       completes: false,
-      proven: SEVEN.map((statement, i) => ({ code: "BC-18", statement, short: i === 6, issueKey: "ISS-451", n: i + 2 })),
+      proven: SEVEN.map((statement, i) => ({ code: "BC-18", statement, short: i === 6, issueKey: "ISS-451", n: i + 2, countedUnderCutover: false })),
       unproven: 30,
       business: { total: 26, proven: [{ code: "BC-18", statement: BC18 }] },
     },

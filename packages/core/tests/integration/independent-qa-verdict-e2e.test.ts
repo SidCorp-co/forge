@@ -17,6 +17,7 @@ import {
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
 } from '@forge/contracts/agent-sessions';
+import { BUILDER_PASS_CUTOVER } from '@forge/contracts/verified-rule';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mintPat } from '../../src/credentials/pat.js';
@@ -271,7 +272,7 @@ describe('c1: the building run records its pass, which never counts, named VERDI
     expect((await bc(req, 'BC-2')).verdict).toBe('not_judged');
   });
 
-  it('under qa: self the same pass does not count either, and says so (ISS-683, REQ-74 BC-2)', async () => {
+  it('under qa: self the same pass after the cutover does not count either, and says so (ISS-683, REQ-74 BC-2)', async () => {
     await truncateAll();
     await world('self');
     const req = await agreedRequirement();
@@ -279,8 +280,15 @@ describe('c1: the building run records its pass, which never counts, named VERDI
     await declaredRun(issue.key, 'open', true);
 
     const res = await ok(verdict(issue.id, 1, 'pass'));
-
-    expect(res.notCounted).toMatchObject({ code: 'VERDICT_BY_BUILDER' });
+    // the write reads it at the moment it was recorded: before the cutover it still counts, marked
+    if (Date.now() < Date.parse(BUILDER_PASS_CUTOVER)) {
+      expect(res).toMatchObject({ notCounted: null, countedUnderCutover: true });
+    } else {
+      expect(res.notCounted).toMatchObject({ code: 'VERDICT_BY_BUILDER' });
+    }
+    await db.execute(
+      sql`UPDATE criterion_verdicts SET created_at = '2026-10-26T10:00:00Z' WHERE id = ${String(res.verdictId)}`,
+    );
     expect((await bc(req, 'BC-1')).verdict).toBe('not_judged');
   });
 

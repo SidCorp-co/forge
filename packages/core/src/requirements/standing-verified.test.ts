@@ -37,6 +37,7 @@ const row = (
   identity: { kind: 'commit', sha: commit },
   byBuilder,
   authored: true,
+  recordedAt: new Date(iso),
 });
 const builder = (issueN: number, verdict: 'pass' | 'short' | 'fail', iso: string, commit = F) =>
   row(issueN, verdict, iso, true, commit);
@@ -130,10 +131,16 @@ describe("under independent QA the builder's own pass is not verified", () => {
     expect(coverage[0]).toMatchObject({ verdict: 'failing', counts: { displayId: 'ISS-2' } });
   });
 
-  it("under self QA, or no policy, the builder's own pass does not count either (REQ-74 BC-2)", () => {
-    const rows = [builder(1, 'pass', '2026-10-05T00:00:00Z')];
+  it("under self QA, or no policy, the builder's pass after the cutover does not count either (REQ-74 BC-2)", () => {
+    const rows = [builder(1, 'pass', '2026-10-26T00:00:00Z')];
     expect(read(rows, 'self').coverage[0]?.verdict).toBe('not_judged');
     expect(read(rows, null).coverage[0]?.verdict).toBe('not_judged');
+  });
+
+  it("under self QA, the builder's pass before the cutover keeps counting (BUILDER_PASS_CUTOVER)", () => {
+    const rows = [builder(1, 'pass', '2026-10-05T00:00:00Z')];
+    expect(read(rows, 'self').coverage[0]?.verdict).toBe('passing');
+    expect(read(rows, 'independent').coverage[0]?.verdict).toBe('not_judged');
   });
 
   it("a builder's pass on a build the live one lacks is named for the build first", () => {
@@ -195,7 +202,7 @@ describe("a verdict that is not the judge's does not take the judge's away", () 
     const { coverage } = read(
       [
         history(
-          builder(1, 'short', '2026-10-05T00:00:00Z'),
+          builder(1, 'short', '2026-10-26T00:00:00Z'),
           row(1, 'pass', '2026-10-01T00:00:00Z'),
         ),
       ],

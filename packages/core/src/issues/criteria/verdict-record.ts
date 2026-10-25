@@ -4,7 +4,7 @@
 import type { CriterionClass, CriterionJudge } from '@forge/contracts/issue-design';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { RELEASE_CLIP_MIMES } from '@forge/contracts/release-page';
-import { type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
+import { countedUnderCutover, type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import {
@@ -22,7 +22,7 @@ import type { Actor } from '../activity.js';
 import { verdictByBuilderSql } from '../built-by.js';
 import { criterionRoutesOf } from '../design-record.js';
 import { runOfCall } from '../pattern-runs.js';
-import { readProjectDocument } from '../ports.js';
+import { readJudge, readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
 import { writeKernelRecord } from '../record-events/store.js';
 import { probeNote } from './probe-rules.js';
@@ -332,14 +332,18 @@ async function recordingSession(
 }
 
 /**
- * Whether the verdict just written will never count, by name (contracts `verified-rule.ts:notCountedOf`):
- * read through the same builder rule every count of proof reads (`built-by.ts`).
+ * Whether the verdict just written will never count, by name (contracts `verified-rule.ts:notCountedOf`),
+ * or counts only under the builder-pass cutover: read through the same builder rule every count of
+ * proof reads (`built-by.ts`).
  */
-async function notCountedFor(
+async function countingOf(
   tx: Tx,
+  projectId: string,
   verdict: { id: string; value: string },
-): Promise<NotCounted | null> {
-  if (verdict.value !== 'pass' && verdict.value !== 'short') return null;
+): Promise<{ notCounted: NotCounted | null; countedUnderCutover: boolean }> {
+  if (verdict.value !== 'pass' && verdict.value !== 'short') {
+    return { notCounted: null, countedUnderCutover: false };
+  }
   const rows = (await tx.execute(sql`
     SELECT ${verdictByBuilderSql({
       issueId: sql`v.issue_id`,
@@ -347,20 +351,28 @@ async function notCountedFor(
       authorDevice: sql`v.author_device_id`,
       at: sql`v.created_at`,
       runSession: sql`v.run_session_id`,
-    })} AS by_builder
+    })} AS by_builder, v.created_at AS recorded_at
       FROM criterion_verdicts v WHERE v.id = ${verdict.id}`)) as unknown as {
     by_builder: boolean | null;
+    recorded_at: string | Date;
   }[];
-  return notCountedOf({
+  const judge = await readJudge(projectId);
+  const read = {
     verdict: verdict.value,
     byBuilder: rows[0]?.by_builder === true,
     authored: true,
-  });
+    recordedAt: rows[0]?.recorded_at ?? null,
+  };
+  return {
+    notCounted: notCountedOf(read, judge),
+    countedUnderCutover: countedUnderCutover(read, judge),
+  };
 }
 
 /**
  * Insert one verdict, refused by name where the draft, its criterion or its design is wrong. It
- * answers, by name, where the verdict is kept and will never count (`notCounted`).
+ * answers, by name, where the verdict is kept and will never count (`notCounted`), and marks a
+ * builder's pass that counts only under the cutover (`countedUnderCutover`).
  */
 export async function recordVerdict(
   tx: Tx,
@@ -377,7 +389,7 @@ export async function recordVerdict(
     /** False where the door moves the issue itself on a fail (a release's probe replay). */
     reopens?: boolean;
   },
-): Promise<{ id: string; notCounted: NotCounted | null }> {
+): Promise<{ id: string; notCounted: NotCounted | null; countedUnderCutover: boolean }> {
   const { issue, draft, author } = args;
   const fault = verdictDraftFault(draft);
   if (fault) throw verdictRefused(fault);
@@ -453,7 +465,10 @@ export async function recordVerdict(
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
-  const notCounted = await notCountedFor(tx, { id: row.id, value: draft.verdict });
+  const { notCounted, countedUnderCutover: underCutover } = await countingOf(tx, issue.projectId, {
+    id: row.id,
+    value: draft.verdict,
+  });
   await keepFailAsCorrection(tx, {
     issue,
     verdictId: row.id,
@@ -472,6 +487,7 @@ export async function recordVerdict(
       ...probeField(draft.verdict, route?.class ?? null, probeId),
       ...(runSessionId ? [{ key: 'run-session', value: runSessionId }] : []),
       ...(notCounted ? [{ key: 'not-counted', value: notCounted.code }] : []),
+      ...(underCutover ? [{ key: 'counted-under-cutover', value: 'true' }] : []),
     ],
     commentId: args.commentId ?? null,
   });
@@ -498,5 +514,5 @@ export async function recordVerdict(
       failed,
     });
   }
-  return { id: row.id, notCounted };
+  return { id: row.id, notCounted, countedUnderCutover: underCutover };
 }

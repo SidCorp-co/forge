@@ -75,6 +75,8 @@ export interface CarriedVerdict extends ReleaseVerdictReading {
   byBuilder: boolean;
   /** Names who recorded it, an account or a box. */
   authored: boolean;
+  /** When it was recorded (`at`), as the verified rule reads it. */
+  recordedAt: string;
 }
 
 /**
@@ -120,6 +122,7 @@ export async function carriedVerdictsOf(
     agency: v.agency,
     byBuilder: v.byBuilder === true,
     authored: v.authored === true,
+    recordedAt: v.createdAt.toISOString(),
   }));
 }
 

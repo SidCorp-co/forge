@@ -512,6 +512,8 @@ export interface AuthoredVerdict extends LatestVerdict {
   readonly byBuilder: boolean;
   /** Names who recorded it, an account or a box. */
   readonly authored: boolean;
+  /** When it was recorded (`createdAt`), as the verified rule reads it. */
+  readonly recordedAt: string;
 }
 
 /**
@@ -551,7 +553,12 @@ export async function liveVerdictsOf(
     const verdict = latestOf(row);
     if (!verdict) continue;
     const list = out.get(row.n) ?? [];
-    list.push({ ...verdict, byBuilder: row.by_builder === true, authored: row.authored === true });
+    list.push({
+      ...verdict,
+      byBuilder: row.by_builder === true,
+      authored: row.authored === true,
+      recordedAt: verdict.createdAt,
+    });
     out.set(row.n, list);
   }
   return out;

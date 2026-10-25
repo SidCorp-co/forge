@@ -287,14 +287,24 @@ describe("the builder's own pass is not verified", () => {
     expect(detail).toContain('passed by the run that built it');
   });
 
-  it('under self QA the same builder pass does not count either (REQ-74 BC-2)', async () => {
+  it('under self QA the same builder pass recorded after the cutover does not count either (REQ-74 BC-2)', async () => {
+    projectId = (await createTestProject(ownerId)).id;
+    const req = await agreedRequirement();
+    const issue = await closedIssueTracing(req, 1, ['BC-1']);
+    await checked(issue, await runOn(box));
+    await judge(issue, 1, 'pass', '2026-10-26T10:00:00Z', box);
+
+    expect(await bc(req, 'BC-1')).toMatchObject({ verdict: 'not_judged' });
+  });
+
+  it('under self QA the same builder pass recorded before the cutover still counts (BUILDER_PASS_CUTOVER)', async () => {
     projectId = (await createTestProject(ownerId)).id;
     const req = await agreedRequirement();
     const issue = await closedIssueTracing(req, 1, ['BC-1']);
     await checked(issue, await runOn(box));
     await judge(issue, 1, 'pass', '2026-10-05T10:00:00Z', box);
 
-    expect(await bc(req, 'BC-1')).toMatchObject({ verdict: 'not_judged' });
+    expect(await bc(req, 'BC-1')).toMatchObject({ verdict: 'passing' });
   });
 });
 

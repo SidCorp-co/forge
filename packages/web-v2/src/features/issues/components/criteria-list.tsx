@@ -128,6 +128,11 @@ function CriterionItem({
             {reading}
           </span>
         ) : null}
+        {row?.latest?.countedUnderCutover ? (
+          <span className="flex-none text-12 text-subtle" title={t("issues.verdict.builderPassWhy")} data-testid={`criterion-${line.n}-builder`}>
+            {t("issues.verdict.builderPass")}
+          </span>
+        ) : null}
         <span className={cn("w-6 flex-none text-center font-semibold", MARK_TONE[line.standing])} role="img" aria-label={reading} title={reading} data-testid={`criterion-${line.n}-verdict`}>
           {MARK[line.standing]}
         </span>

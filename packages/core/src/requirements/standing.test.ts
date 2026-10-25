@@ -304,6 +304,7 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     identity: verdict ? ({ kind: 'commit', sha: 'f'.repeat(40) } as const) : null,
     byBuilder: false,
     authored: true,
+    recordedAt: verdict ? at('2026-09-22T00:00:00Z') : null,
   });
   /** The live build, read to hold the commit every verdict here names: only a checked one counts. */
   const liveBuild = {

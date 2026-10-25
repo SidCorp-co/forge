@@ -19,7 +19,7 @@ const requirement = (key: string, business: ReleasePageRequirement["business"], 
   key,
   title: `Requirement ${key}`,
   completes: false,
-  proven: Array.from({ length: rows }, (_, i) => ({ code: "BC-1", statement: `Check ${i}.`, short: false, issueKey: "ISS-1", n: i + 1 })),
+  proven: Array.from({ length: rows }, (_, i) => ({ code: "BC-1", statement: `Check ${i}.`, short: false, issueKey: "ISS-1", n: i + 1, countedUnderCutover: false })),
   unproven: 0,
   business,
 });

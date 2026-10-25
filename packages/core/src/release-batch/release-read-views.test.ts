@@ -190,6 +190,7 @@ describe('what a release says it verified', () => {
     agency: 'agent' as const,
     byBuilder: false,
     authored: true,
+    recordedAt: new Date(T0).toISOString(),
   });
   const withCriteria = (standings: ('pass' | 'fail' | 'unjudged')[]): Shared => {
     const s = shared(standings.length);
