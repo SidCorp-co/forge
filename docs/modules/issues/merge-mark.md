@@ -282,7 +282,7 @@ A person's mark carries the commit that landed (ISS-1300 round 3). Where Forge h
 that resolves — no commit on the row and no merged pull request, or one the repository was read and
 lacks — the commit a person names, once the repository resolves it, is stamped in
 `merged_commit_sha` with `merged_commit_stated` set, replacing a held commit the repository lacks
-(`packages/core/src/issues/merge-marker.ts:statedLanding`). It is the commit everything reading the
+(`packages/core/src/issues/stated-landing.ts:statedLanding`). It is the commit everything reading the
 landing reads, the weighing included, ahead of the landing head a run captured and of a pull
 request's merge commit the repository lacks. The mark reads `asserted`: Forge read that the
 repository holds the commit, not that it is this issue's landing, so the answer says the commit "is

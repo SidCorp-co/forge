@@ -26,6 +26,7 @@ import {
   UnknownProjectKindError,
 } from './landing-evidence.js';
 import { targetRequiredDetail } from './merge-input-refusal.js';
+import { announceMark } from './merge-mark-announce.js';
 import {
   alreadyMarkedSentence,
   CHANGE_THE_MARK,
@@ -42,7 +43,6 @@ import {
   threadBody,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
-import { announceMark } from './merge-mark-announce.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 import { type Stated, stampStated, statedWords } from './stated-landing.js';
 import { statusForCaller } from './status-sets.js';
