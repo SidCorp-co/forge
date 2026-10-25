@@ -75,18 +75,23 @@ How concurrent runs share one without stepping on each other:
 ### Concurrent runs on one server
 
 Every database a run creates is named for that run: a private template is
-`forge_test_tpl_<token>`, each file's clone is
-`test_w_<token>_<id>_<stamp>_<rand>` and a migration case's is
+`forge_test_tpl_<token>`, a worker slot's database is `test_w_<slot>_<token>`, a file that declared
+its own gets `test_own_<token>_<stamp>_<rand>` and a migration case's is
 `test_case_<token>_<tag>_<stamp>_<rand>`, all minted in
 `tests/helpers/scratch-db.ts`. The token is minted per run by global setup and read from
 `TEST_PG_RUN_TOKEN`, **not** taken from the template's name, because runs sharing a template must
-still sweep only their own databases. A run drops only what it created; anything a crashed run left
-behind is dropped by `reapAbandoned` once it is older than any live run could be.
+still sweep only their own databases. Global setup also records its own pid as `TEST_PG_RUN_OWNER`,
+and a slot database is handed only to a worker that process forked
+(`scratch-db.ts:slotRefusal`): a vitest launched apart that inherited the token would otherwise be
+handed a database one of the first run's workers is using, so it is refused naming the owner. A
+nested run mints a token of its own, as `tests/helpers/file-isolation/global-setup.ts` does. A run
+drops only what it created; anything a crashed run left behind is dropped by `reapAbandoned` once it
+is older than any live run could be.
 
 None of those drops happens where vitest is timing something. `DROP DATABASE`
-forces a cluster-wide checkpoint and waits for it, which is a wait no test owns,
-so a database is given back through `scratch-db.ts:retireScratchDb` and dropped
-by a drain behind the test. A teardown waits out that drain for a grace of its
+forces a cluster-wide checkpoint and waits for it, which is a wait no test owns. A slot database is
+dropped only by the run's global teardown; any other database is given back through
+`scratch-db.ts:retireScratchDb` and dropped by a drain behind the test. A teardown waits out that drain for a grace of its
 own choosing and then stops; what the grace did not reach is dropped by the run's
 global teardown, which vitest gives no budget at all, and after that by the next
 run's `reapAbandoned`. `scratch-db.test.ts` holds every file under `tests/` to
@@ -116,9 +121,53 @@ and the count the rule would have given. Giving it beside `VITEST_MAX_WORKERS` i
 file runs, naming both: vitest reads the variable after the command line and would drop the flag
 without a word, so the run asks for one of the two.
 
-Running files in parallel is safe because every file clones a database of its own (see *Concurrent
-runs on one server*); `tests/integration/file-database-isolation-e2e.test.ts` goes red the day two
-files are given the same one.
+Running files in parallel is safe because two files running at once never hold the same database:
+each holds its worker slot's, and vitest gives a slot to one file at a time (see *One database per
+worker slot*). `tests/integration/file-database-isolation-e2e.test.ts` goes red the day a file can
+see a row, a seed row's absence, a sequence value or a table the file before it left.
+
+### One database per worker slot
+
+A run clones one database per worker slot, not one per file. `tests/helpers/slot-db.ts:claimSlotDatabase`
+creates `test_w_<slot>_<token>` the first time a slot asks (`VITEST_POOL_ID`, 1 to `maxWorkers`)
+and hands the same database to every file the slot runs after that. Before handing it over it
+resets it, the same way for every file:
+
+1. ends every connection the previous file left (`pg_terminate_backend`, waited on),
+2. compares the schema with the digest taken when the database was cloned, and refuses on any
+   difference,
+3. drops the schemas the queue makes at runtime (`slot-db.ts:RUNTIME_SCHEMAS`, which the digest
+   leaves out) and empties every table the way `truncateAll` does between cases,
+4. writes back the rows the template seeds and sets every sequence to its cloned value.
+
+What it was cloned as — the schema digest, the seed rows, the sequence values — is kept on the
+database's own comment, read without connecting to it. The file's `cleanup()` compares the schema
+again, so a file that changes it is refused at its own teardown, naming the file and the objects
+it added, dropped or changed; the database is then renamed out of the slot and dropped behind the
+run, and the next file in the slot gets a fresh clone. A file that gave its database back without
+`cleanup()` is caught by the next file's step 2, which names it.
+
+**A file that writes schema or runs a migration declares it** at its own call site,
+`setupTestDatabase({ own: '<what it changes>' })`, and gets a `test_own_` clone nobody else is
+handed, dropped behind it as every file's database once was. A declaration without a reason is
+refused. A file asking for a second slot database while its first is still open is refused too,
+because the second hand-out would reset the database under the first.
+
+**What is traded.** A database per file isolated everything Postgres keeps per database; a slot
+database isolates what the reset puts back — rows in `current_schema()`, seed rows, sequences — and
+what the digest compares, which is schema and grants. It does not isolate anything else a file can
+leave in a database: a row in a table outside `current_schema()` (of those, the digest counts only
+`drizzle.__drizzle_migrations`), table statistics, or a database-level object the digest does not
+read, such as a large object. A file that writes any of those declares `own`.
+
+**What it buys**, measured with `log_statement=ddl` over one whole local run at three workers:
+
+PLACEHOLDER_NUMBERS
+
+**What ends it.** The trade holds while every file a slot runs reads only what the reset puts back.
+The day a file has to depend on something the reset does not restore and cannot declare `own` for
+it, or a reset costs more than the clone it replaces, a database per file comes back — `own` on
+every call is that, without a code change.
 
 **Re-deriving the factor.** It is a measurement, not a preference, and it goes stale when the
 runner image or the suite changes. Push a throwaway branch carrying a workflow that runs this job's
@@ -194,10 +243,12 @@ describe('my feature', () => {
 
 Rules:
 
-- One `setupTestDatabase()` per file (inside `beforeAll`). The per-test
-  reset happens in `beforeEach` via `truncateAll`.
+- One `setupTestDatabase()` per file (inside `beforeAll`), given back with
+  `cleanup()` in `afterAll`. The per-test reset happens in `beforeEach` via
+  `truncateAll`; the per-file one is the slot's (*One database per worker slot*).
 - Never issue DDL against the test DB from inside a test — migrations are the
-  only source of schema changes.
+  only source of schema changes. A file that has to declares
+  `setupTestDatabase({ own: '<what it changes>' })`.
 - Do not import `src/db/client.ts` in integration tests (it reads
   `DATABASE_URL`, not the test-scoped URL). Use `harness.db`.
 - **Reaching production code that imports it — a mounted router, an exported

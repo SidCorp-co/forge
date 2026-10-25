@@ -3,9 +3,12 @@ import { reapSharedTemplate, SHARED_TEMPLATE, stamp, TEMPLATE_PREFIX } from './s
 
 export { TEMPLATE_PREFIX };
 export const WORKER_PREFIX = 'test_w_';
+export const OWN_PREFIX = 'test_own_';
 export const CASE_PREFIX = 'test_case_';
 
 const TAG_SHAPE = /^[a-z0-9]{1,16}$/;
+
+const SLOT_SHAPE = /^[1-9][0-9]{0,3}$/;
 
 const ABANDONED_AFTER_MS = 2 * 60 * 60 * 1000;
 
@@ -41,8 +44,56 @@ export function runToken(token: string | undefined = process.env.TEST_PG_RUN_TOK
   return token !== undefined && TOKEN_SHAPE.test(token) ? token : null;
 }
 
-export function workerDbName(workerId: string, token: string | null = runToken()): string {
-  return `${WORKER_PREFIX}${requireToken(token, 'file database')}_${workerId}_${stamp()}`;
+/** The one database worker slot `slot` holds for this whole run: the same name every time it is asked. */
+export function workerDbName(slot: string, token: string | null = runToken()): string {
+  if (!SLOT_SHAPE.test(slot)) {
+    throw new Error(
+      `scratch-db: "${slot}" is not a worker slot. A slot is VITEST_POOL_ID, a whole number from 1 ` +
+        'to maxWorkers that vitest gives each file it runs.',
+    );
+  }
+  return `${WORKER_PREFIX}${slot}_${requireToken(token, 'slot database')}`;
+}
+
+/** A database for ONE file that declared it cannot share its slot's: this run's token, this call's stamp. */
+export function ownDbName(token: string | null = runToken()): string {
+  return `${OWN_PREFIX}${requireToken(token, 'own database')}_${stamp()}`;
+}
+
+/**
+ * Why this process may not take a slot database of the run its environment names, or null where it
+ * may. A slot database is named for the run and the slot, so a vitest launched apart that inherited
+ * another run's token would be handed the database one of that run's workers is using.
+ */
+export function slotRefusal(
+  env: Readonly<Record<string, string | undefined>>,
+  self: { pid: number; ppid: number } = { pid: process.pid, ppid: process.ppid },
+): string | null {
+  const slot = env.VITEST_POOL_ID;
+  if (slot === undefined || !SLOT_SHAPE.test(slot)) {
+    return (
+      `[db] VITEST_POOL_ID is ${slot === undefined ? 'unset' : `"${slot}"`}, so this process has no ` +
+      'worker slot to take a database for. setupTestDatabase runs inside a vitest worker, which ' +
+      'vitest gives a slot from 1 to maxWorkers.'
+    );
+  }
+  const owner = Number(env.TEST_PG_RUN_OWNER);
+  if (owner === self.pid || owner === self.ppid) return null;
+  return (
+    `[db] TEST_PG_RUN_TOKEN=${env.TEST_PG_RUN_TOKEN} was minted by process ${env.TEST_PG_RUN_OWNER ?? '(unnamed)'}, ` +
+    `and this one (pid ${self.pid}, parent ${self.ppid}) is not a worker of it: it was launched ` +
+    'apart and inherited the token. Slot databases are named for the run and the slot, so it would ' +
+    'be handed a database a worker of that run is using. Give this run a global setup that mints ' +
+    'a token of its own, as tests/helpers/file-isolation/global-setup.ts does.'
+  );
+}
+
+export function mintedBy(datname: string, token: string): boolean {
+  return (
+    datname.startsWith(`${CASE_PREFIX}${token}_`) ||
+    datname.startsWith(`${OWN_PREFIX}${token}_`) ||
+    (datname.startsWith(WORKER_PREFIX) && datname.endsWith(`_${token}`))
+  );
 }
 
 /** A database for ONE test case: this run's token, the minting suite's `tag`, this call's stamp. */
@@ -77,6 +128,7 @@ export async function reapAbandoned(admin: Sql, now: number = Date.now()): Promi
     SELECT datname FROM pg_database
     WHERE datname LIKE ${`${TEMPLATE_PREFIX}%`}
        OR datname LIKE ${'test_w%'}
+       OR datname LIKE ${'test_own%'}
        OR datname LIKE ${`${CASE_PREFIX}%`}
   `;
   const dropped: string[] = [];
@@ -142,9 +194,10 @@ export async function drainRetiredScratchDbs(graceMs = 15_000): Promise<number> 
 }
 
 /**
- * Drop every scratch database THIS run minted, and nothing another run's token names — the backstop
- * behind the drain. The match is on the token, not a `LIKE` whose `_` is a wildcard that would
- * reach a concurrently running suite's database (ISS-937).
+ * Drop every scratch database THIS run minted, and nothing another run's token names: the one place
+ * a slot database is dropped, and the backstop behind the drain for the rest. The match is on the
+ * token, not a `LIKE` whose `_` is a wildcard that would reach a concurrently running suite's
+ * database (ISS-937).
  *
  * A drop here can be refused — a worker killed at its grace leaves the server dropping the same
  * name — so the catalog is read back between attempts, and a name that outlives them all is NAMED
@@ -156,14 +209,11 @@ export async function sweepRunScratchDbs(
   attempts = 3,
 ): Promise<string[]> {
   if (token === null) return [];
-  const mine = [`${CASE_PREFIX}${token}_`, `${WORKER_PREFIX}${token}_`];
   const standing = async (): Promise<string[]> => {
     const rows = await admin<{ datname: string }[]>`
-      SELECT datname FROM pg_database
-      WHERE starts_with(datname, ${mine[0] as string})
-         OR starts_with(datname, ${mine[1] as string})
+      SELECT datname FROM pg_database WHERE starts_with(datname, 'test_') AND strpos(datname, ${token}) > 0
     `;
-    return rows.map((r) => r.datname).filter((n) => mine.some((p) => n.startsWith(p)));
+    return rows.map((r) => r.datname).filter((n) => mintedBy(n, token));
   };
 
   const dropped = new Set<string>();

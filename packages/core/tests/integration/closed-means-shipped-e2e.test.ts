@@ -117,7 +117,7 @@ async function runMigration() {
 }
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({ own: 'drops the closed-means-shipped triggers on issues' });
   // The unmark cases import `merge-marker`, which builds its own pool from the environment.
   process.env.DATABASE_URL = harness.url;
 });

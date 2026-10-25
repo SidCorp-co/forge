@@ -99,7 +99,9 @@ async function read(id: string, column: 'environments' | 'preview_deploy'): Prom
 }
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({
+    own: 'renames projects.environments back to replay its migration',
+  });
   forward = await statements('../../drizzle/migrations/0279_environments.sql');
   const downParts = await statements('../../drizzle/rollback/0279_down.sql');
   expect(downParts).toHaveLength(1);

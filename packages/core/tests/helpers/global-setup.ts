@@ -102,6 +102,8 @@ export async function setup(project: TestProject): Promise<void> {
   process.env.TEST_PG_ADMIN_URL = adminUrl;
   process.env.TEST_PG_TEMPLATE = name;
   process.env.TEST_PG_RUN_TOKEN = token;
+  // The workers this process forks are the only ones a slot database of this token is handed to.
+  process.env.TEST_PG_RUN_OWNER = String(process.pid);
 }
 
 export async function teardown(): Promise<void> {
@@ -114,10 +116,11 @@ export async function teardown(): Promise<void> {
     // and then names.
     const admin = postgres(finished.url, { max: 1, onnotice: () => {} });
     try {
-      // Every scratch database this run minted and the drain did not reach — per case and per file
-      // — and here rather than in the cases and hooks that used them: this is the only teardown in
-      // the suite with no vitest budget over it, so a `DROP DATABASE` waiting on the cluster's
-      // checkpoint costs a run its wall time and never a case or a hook its verdict.
+      // Every worker slot's database, which lives as long as the run, and every other scratch
+      // database this run minted that the drain did not reach. Here rather than in the cases and
+      // hooks that used them: this is the only teardown in the suite with no vitest budget over it,
+      // so a `DROP DATABASE` waiting on the cluster's checkpoint costs a run its wall time and never
+      // a case or a hook its verdict.
       await sweepRunScratchDbs(admin, finished.token);
       // Only a template this run built for itself is dropped; a shared one outlives every run.
       if (finished.fresh) {

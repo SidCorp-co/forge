@@ -29,7 +29,9 @@ const MIGRATION = fileURLToPath(
 let harness: TestDatabase;
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({
+    own: 'drops issues.created_via_token_id to replay its migration',
+  });
   process.env.DATABASE_URL = harness.url;
   process.env.NODE_ENV ??= 'test';
 }, 60_000);

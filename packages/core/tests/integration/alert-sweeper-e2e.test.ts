@@ -152,7 +152,9 @@ describe('runAlertSweep E2E (ISS-652)', () => {
   let mods: Mods;
 
   beforeAll(async () => {
-    harness = await setupTestDatabase();
+    harness = await setupTestDatabase({
+      own: 'disables and re-enables the jobs terminal-run trigger',
+    });
     process.env.DATABASE_URL = harness.url;
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';

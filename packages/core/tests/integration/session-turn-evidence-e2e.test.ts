@@ -57,7 +57,9 @@ let deviceToken: string;
 let app: Hono<{ Variables: Vars }>;
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({
+    own: 'creates a statement-counting function and its triggers',
+  });
   process.env.DATABASE_URL = harness.url;
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';

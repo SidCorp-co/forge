@@ -3,7 +3,8 @@ import postgres, { type Sql } from 'postgres';
 import { startPostgresContainer } from './container.js';
 import { runMigrations } from './migrate.js';
 import { createTestSchema } from './schema-mode.js';
-import { drainRetiredScratchDbs, retireScratchDb, workerDbName } from './scratch-db.js';
+import { drainRetiredScratchDbs, ownDbName, retireScratchDb } from './scratch-db.js';
+import { claimSlotDatabase, reportLingeringConnections } from './slot-db.js';
 
 export type TestDb = PostgresJsDatabase<Record<string, unknown>>;
 
@@ -20,12 +21,22 @@ export interface TestDatabase {
   cleanup: () => Promise<void>;
 }
 
-export async function setupTestDatabase(): Promise<TestDatabase> {
+export interface SetupOptions {
+  /**
+   * Why this file cannot share its worker slot's database — what it changes that the next file in
+   * the slot would inherit, such as schema written or a migration run. Declaring it clones a
+   * database no other file is handed.
+   */
+  own?: string;
+}
+
+export async function setupTestDatabase(options: SetupOptions = {}): Promise<TestDatabase> {
   const mode = resolveMode();
+  const own = ownReason(options);
 
   const workerId = process.env.VITEST_POOL_ID ?? '0';
 
-  const cloned = await cloneFromTemplate(workerId);
+  const cloned = await cloneFromTemplate(own);
   if (cloned) return cloned;
 
   let url: string;
@@ -66,7 +77,7 @@ export async function setupTestDatabase(): Promise<TestDatabase> {
     client,
     url,
     cleanup: async () => {
-      await quiesceOrReport(url);
+      await quiesce();
       try {
         await client.end({ timeout: 5 });
       } finally {
@@ -76,28 +87,51 @@ export async function setupTestDatabase(): Promise<TestDatabase> {
   };
 }
 
+/** The reason a caller declared for a database of its own, refused by name where it gives none. */
+function ownReason(options: SetupOptions): string | undefined {
+  if (!('own' in options)) return undefined;
+  if (typeof options.own === 'string' && options.own.trim() !== '') return options.own;
+  throw new Error(
+    `setupTestDatabase({ own }) takes the reason this file cannot share its worker slot's ` +
+      `database — what it changes that the next file would inherit — and ${JSON.stringify(options.own)} ` +
+      'gives none.',
+  );
+}
+
 /**
- * Fast path: clone the already-migrated template built once by
- * `tests/helpers/global-setup.ts`. Postgres copies the template at the file
- * level, so this replaces a per-file container boot AND a full migration
- * replay with a single `CREATE DATABASE`.
+ * Fast path: the already-migrated template built once by `tests/helpers/global-setup.ts`. A file
+ * shares its worker slot's database (`slot-db.ts:claimSlotDatabase`) unless it declared `own`, which
+ * clones one for it alone. Postgres copies a template at the file level, so either replaces a
+ * container boot AND a full migration replay with one `CREATE DATABASE`.
  *
  * Returns null when global setup did not run (e.g. a test invoked through a
  * config without `globalSetup`), so the original container/schema paths stay
  * as the fallback.
  */
-async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null> {
+async function cloneFromTemplate(own: string | undefined): Promise<TestDatabase | null> {
   const adminUrl = process.env.TEST_PG_ADMIN_URL;
   const template = process.env.TEST_PG_TEMPLATE;
   if (!adminUrl || !template) return null;
+  const explain = (err: unknown) => explainCloneFailure(template, err);
+  if (own === undefined) {
+    return claimSlotDatabase(adminUrl, template, explain, quiesce);
+  }
+  return cloneOwnDatabase(adminUrl, template, explain);
+}
 
-  const dbName = workerDbName(workerId);
+/** A clone for one file that declared it cannot share, dropped behind it when it is done. */
+async function cloneOwnDatabase(
+  adminUrl: string,
+  template: string,
+  explain: (err: unknown) => string,
+): Promise<TestDatabase> {
+  const dbName = ownDbName();
 
   const admin = postgres(adminUrl, { max: 1 });
   try {
     await admin.unsafe(`CREATE DATABASE "${dbName}" TEMPLATE "${template}"`);
   } catch (err) {
-    throw new Error(explainCloneFailure(template, err), { cause: err });
+    throw new Error(explain(err), { cause: err });
   } finally {
     await admin.end({ timeout: 5 });
   }
@@ -112,7 +146,7 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
     client,
     url: url.toString(),
     cleanup: async () => {
-      await quiesceOrReport(dbName);
+      await quiesce();
       await client.end({ timeout: 5 }).catch(() => {});
       const reporter = postgres(adminUrl, { max: 1 });
       try {
@@ -124,8 +158,7 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
       // cluster-wide checkpoint and waits for it, which is a number this file does not own and
       // which was sampled past that budget with two suites on one server. So the name goes to the
       // drain and the wait is bounded by a grace instead: what the grace does not reach is the run
-      // sweep's, and after that the next run's reaper. Every file gives its database back the same
-      // way, which is the point — one file made safe by hand leaves the next reshuffle a new pair.
+      // sweep's, and after that the next run's reaper.
       retireScratchDb(adminUrl, dbName);
       await drainRetiredScratchDbs();
     },
@@ -152,25 +185,9 @@ function explainCloneFailure(template: string, err: unknown): string {
   return `could not clone the template database "${template}": ${detail}`;
 }
 
-async function quiesceOrReport(_dbName: string): Promise<void> {
+async function quiesce(): Promise<void> {
   const { quiesceBackgroundWork } = await import('./quiesce.js');
   await quiesceBackgroundWork();
-}
-
-async function reportLingeringConnections(admin: Sql, dbName: string): Promise<void> {
-  try {
-    const rows = await admin<{ count: string }[]>`
-      SELECT count(*)::text AS count FROM pg_stat_activity
-      WHERE datname = ${dbName} AND pid <> pg_backend_pid()
-    `;
-    const n = Number(rows[0]?.count ?? '0');
-    if (n > 0) {
-      console.error(
-        `[db] ${dbName}: ${n} connection(s) still open at teardown. FORCE will sever them; ` +
-          'whatever holds them is background work that outlived this file.',
-      );
-    }
-  } catch {}
 }
 
 function resolveMode(): 'container' | 'schema' {

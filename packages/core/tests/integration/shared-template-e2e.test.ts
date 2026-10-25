@@ -47,7 +47,8 @@ afterEach(async () => {
 
 afterAll(async () => {
   for (const name of touched) retireScratchDb(adminUrl, name);
-  await drainRetiredScratchDbs(60_000);
+  // Inside the hook's 60s, with room for what follows; what the grace leaves is the sweep's.
+  await drainRetiredScratchDbs(45_000);
   await admin.end({ timeout: 5 });
   for (const dir of folders) rmSync(dir, { recursive: true, force: true });
 });
@@ -434,7 +435,8 @@ describe('a worker cloning a template that is gone', () => {
     async () => {
       process.env.TEST_PG_TEMPLATE = `forge_test_tpl_${'0'.repeat(24)}`;
 
-      await expect(setupTestDatabase()).rejects.toThrow(
+      // Declared, so the call clones: a slot database this worker already holds clones nothing.
+      await expect(setupTestDatabase({ own: 'clones a template that is gone' })).rejects.toThrow(
         new RegExp(`"${process.env.TEST_PG_TEMPLATE}".*it is gone`, 's'),
       );
       expect(await existing(process.env.TEST_PG_TEMPLATE)).toBeUndefined();

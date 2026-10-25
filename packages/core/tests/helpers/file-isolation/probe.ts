@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Sql } from 'postgres';
 
 function dir(): string {
   const d = process.env.ISOLATION_DIR;
@@ -10,7 +11,14 @@ function dir(): string {
   return d;
 }
 
-export const MARKER = (): string => `row-of-${process.env.ISOLATION_MARKER ?? 'unset'}`;
+/** The value the writer plants, unique to one nested run. */
+export const MARKER = (): number => Number(process.env.ISOLATION_MARKER);
+
+/** The name of the database `client` is connected to. */
+export async function databaseOf(client: Sql): Promise<string> {
+  const [row] = await client<{ db: string }[]>`SELECT current_database() AS db`;
+  return row?.db ?? '';
+}
 
 export function leave(name: string, value: string): void {
   writeFileSync(join(dir(), name), value);

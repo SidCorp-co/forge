@@ -37,7 +37,7 @@ vi.mock('../../src/notifications/project-admins.js', () => ({
  * detector that flags everything is the same defect as one that flags nothing.
  */
 
-const fx = registerIdleFixture(1100);
+const fx = registerIdleFixture(1100, { own: 'drops and re-adds issues_status_chk' });
 const NOW = new Date('2026-09-20T16:00:00.000Z');
 
 let mods: typeof import('../../src/pipeline/idle-issues.js');
