@@ -189,11 +189,13 @@ const NOTIFICATION_CONTRACT: Record<
 		kind: "task",
 		tier: "ticket",
 	},
+	// the release's notice is the ask to confirm the fix (REQ-66 BC-8): it stands until the reporter
+	// verifies or reopens, which resolves it as an asked verify is resolved
 	feedback_shipped: {
 		severity: "success",
 		channels: ["bell", "toast"],
-		kind: "signal",
-		tier: "log",
+		kind: "task",
+		tier: "ticket",
 	},
 	feedback_message: {
 		severity: "info",

@@ -25,7 +25,7 @@ import {
 } from '../helpers/factories.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
-type Who = 'owner' | 'member';
+type Who = 'owner' | 'member' | 'reporter';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
 
@@ -41,9 +41,9 @@ function refusal(r: Reply): Doc {
   return first;
 }
 
-async function file(title: string): Promise<string> {
+async function file(title: string, by: Who = 'member'): Promise<string> {
   const made = ok(
-    await say('member', 'POST', at('/feedback'), { kind: 'bug', title, screen: 'The board' }),
+    await say(by, 'POST', at('/feedback'), { kind: 'bug', title, screen: 'The board' }),
     201,
   );
   return made.feedback.key as string;
@@ -61,9 +61,15 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   const owner = (await createTestUser({ verified: true })).id;
   const member = (await createTestUser({ verified: true })).id;
+  const reporter = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(owner)).id;
   await addProjectMember(projectId, member, 'member');
-  say = requester(app, { owner: await signUserToken(owner), member: await signUserToken(member) });
+  await addProjectMember(projectId, reporter, 'member');
+  say = requester(app, {
+    owner: await signUserToken(owner),
+    member: await signUserToken(member),
+    reporter: await signUserToken(reporter),
+  });
 }, 120_000);
 
 afterAll(async () => {
@@ -161,6 +167,7 @@ describe('a clarification is asked where the route takes one', () => {
       await say('member', 'POST', item(fb, 'clarification'), {
         prompt: 'Which browser shows it?',
         needed: 'The browser and its version',
+        recommended: 'The default answer',
       }),
     );
     expect(asked.feedback.clarification).toMatchObject({
@@ -172,24 +179,28 @@ describe('a clarification is asked where the route takes one', () => {
       await say('member', 'POST', item(fb, 'clarification'), {
         prompt: 'And which device?',
         needed: 'The device',
+        recommended: 'The default answer',
       }),
     );
     expect(again.code).toBe('FEEDBACK_CLARIFICATION_ALREADY_OPEN');
   });
 
   it('reads every question about the item on the item, open and then answered, and no other item’s', async () => {
-    const fb = await file('The board loses its filter');
-    const other = await file('The board forgets its sort');
+    // one question at a time per reporter (REQ-66 BC-4): each item is a reporter's with none open
+    const fb = await file('The board loses its filter', 'owner');
+    const other = await file('The board forgets its sort', 'reporter');
     const asked = ok(
       await say('member', 'POST', item(fb, 'clarification'), {
         prompt: 'Which filter was set?',
         needed: 'The filter and its value',
+        recommended: 'The default answer',
       }),
     );
     ok(
       await say('member', 'POST', item(other, 'clarification'), {
         prompt: 'Which sort was set?',
         needed: 'The sort',
+        recommended: 'The default answer',
       }),
     );
     const open = asked.feedback.questions;
@@ -224,6 +235,7 @@ describe('a clarification is asked where the route takes one', () => {
     const r = await say('member', 'POST', item(fb, 'clarification'), {
       prompt: 'Why',
       needed: 'x',
+      recommended: 'The default answer',
     });
     expect(r.status).toBe(400);
     expect(JSON.stringify(r.json)).toMatch(/prompt/);

@@ -72,6 +72,7 @@ import {
   criterionTextRefusal,
   type FoundCriterion,
   judgeRetriage,
+  reproductionRefusal,
   shortFormRouteRefusal,
 } from './triage-checklist.js';
 
@@ -234,6 +235,7 @@ async function earlyRefusal(
     triagePhaseRefusal(phase, route, await replanOf(t, route, row)) ??
     answersShapeRefusal(t.route, t.answers) ??
     criterionTextRefusal(t.answers) ??
+    reproductionRefusal(t.answers) ??
     shortFormRouteRefusal(row.kind, t.answers, t.route) ??
     (route ? routeShapeRefusal(t, route) : null) ??
     (route ? await diagnosisRefusal(t, route, row, actor) : null)

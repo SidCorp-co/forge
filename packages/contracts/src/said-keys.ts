@@ -36,9 +36,6 @@ export const SAID = {
 		vars: { names: "name", n: "count" },
 	},
 	"standing.act.none": { en: "" },
-	"feedback.notice.agent": {
-		en: "The reporter is an agent with no bell: tell it directly.",
-	},
 	"feedback.notice.autoVerified": {
 		en: "Verified automatically after {n} days with no reply",
 		vars: { n: "count" },
@@ -54,6 +51,20 @@ export const SAID = {
 		vars: { by: "name" },
 	},
 	"feedback.told.relayedUnnamed": { en: "a member told them outside Forge" },
+	"feedback.told.agentAsked": {
+		en: "asked to confirm the fix",
+	},
+	"feedback.evidence.passes": {
+		en: "{ref} passes on the running build.",
+		vars: { ref: "key" },
+	},
+	"feedback.evidence.notYet": {
+		en: "{ref} does not pass on the running build yet.",
+		vars: { ref: "key" },
+	},
+	"feedback.evidence.noCriterion": {
+		en: "This item names no criterion, so there is no check to show.",
+	},
 	"feedback.act.tellNow": { en: "Tell the reporter now" },
 	"feedback.notice.noDedup": {
 		en: "triage without dedup: the item's vector is {status}",
@@ -1261,6 +1272,9 @@ export const SAID = {
 	},
 	"feedback.rule.verifyByPerson": {
 		en: "resolved: it names no criterion, so only a person can verify it",
+	},
+	"feedback.rule.agentConfirms": {
+		en: "resolved: the reporter checks the fix, then confirms or reopens it",
 	},
 	"feedback.rule.verifyHeld": {
 		en: "resolved: past its window, a triager answers: {why}",

@@ -70,6 +70,29 @@ export function criterionTextRefusal(answers: unknown): FeedbackRefusal | null {
   );
 }
 
+/** The fewest words a reproduction answer says what was tried and what was seen in: a command and its result. */
+export const REPRODUCTION_MIN_WORDS = 3;
+
+/** An answer that says outright nothing was tried: an attempt is what the question asks for. */
+const NOT_TRIED = /\b(?:did ?n[o']t|not|never|no(?:body)?)\s+(?:try|tried|attempt(?:ed)?)\b/i;
+
+/**
+ * A `reproduced` answer that names no attempt, refused by name (REQ-66 BC-5): a bare yes or no says
+ * nothing a reader can check. It says how it was reproduced and what was seen (a recording, a command
+ * and its output, the steps), or what was tried and why it could not be reproduced.
+ */
+export function reproductionRefusal(answers: unknown): FeedbackRefusal | null {
+  const given = asObject(answers)?.reproduced;
+  if (typeof given !== 'string' || given.trim() === '') return null;
+  const text = given.trim();
+  if (text.split(/\s+/).length >= REPRODUCTION_MIN_WORDS && !NOT_TRIED.test(text)) return null;
+  return refusal(
+    'FEEDBACK_REPRODUCTION_EMPTY',
+    '/answers/reproduced',
+    `"${text.slice(0, 80)}" names no attempt. Say how it was reproduced and what was seen (a recording, a command and its output, the steps), or what was tried and why it could not be reproduced.`,
+  );
+}
+
 /** The criterion a triage named, as core found it: standing now on its requirement, or not found. */
 export type FoundCriterion =
   | { found: true; id: string; requirementId: string; requirementKey: string }

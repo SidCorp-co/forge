@@ -102,7 +102,9 @@ describe('the release that ships an item tells its reporter', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]?.title).toContain(fb);
     expect(sent[0]?.title).toContain('0.1.0');
-    expect(sent[0]?.body).toBe('Saving the board keeps every card.');
+    expect(sent[0]?.body, 'what changed, then the ask to confirm (REQ-66 BC-8)').toBe(
+      'Saving the board keeps every card.\nConfirm it is fixed, or reopen it saying what you still see.',
+    );
     expect(sent[0]?.delivered).toBe(1);
 
     const after = await detail(fb);
@@ -119,7 +121,8 @@ describe('the release that ships an item tells its reporter', () => {
     expect((await detail(fb)).shipNotice).toBeNull();
   });
 
-  it('names a reporter that is an agent instead of skipping the item', async () => {
+  // REQ-66 BC-8: an agent has no bell; its own read of the item asks it, and nobody owes it a relay
+  it('asks a reporter that is an agent to confirm through its own read of the item, never through a bell', async () => {
     const carrier = await closed({ mergedAt: new Date() });
     const fb = await feedback(w, [carrier.id]);
     await db.execute(sql`
@@ -128,8 +131,11 @@ describe('the release that ships an item tells its reporter', () => {
     const runId = await releaseRun('0.1.2', [carrier.id]);
     await ship(runId, '0.1.2', [carrier.id]);
     expect((await notices('feedback_shipped')).filter((n) => n.title.includes(fb))).toEqual([]);
-    expect((await detail(fb)).shipNotice).toMatchObject({ state: 'not_told' });
-    expect(String(((await detail(fb)).shipNotice as Body).reason)).toContain('agent');
+    const d = await detail(fb);
+    expect(d.shipNotice).toMatchObject({ state: 'told', how: 'asked' });
+    expect(d.reporterNotTold).toBeNull();
+    expect((d.waitingOn as Body).kind).toBe('agent');
+    expect(saidDisagreements(d)).toEqual([]);
   });
 });
 
@@ -253,7 +259,7 @@ describe("a project's first release notice is the cutoff: before it nothing was 
     expect(event?.payload).toMatchObject({
       recipients: [reporter],
       title: `${before} đã được phát hành trong bản 0.0.9: feedback ${Number(before.slice(3))}`,
-      body: 'Bảng giữ bộ lọc sau khi tải lại.',
+      body: 'Bảng giữ bộ lọc sau khi tải lại.\nHãy xác nhận lỗi đã được sửa, hoặc mở lại và cho biết bạn vẫn thấy gì.',
     });
     const again = await api(v.token, 'POST', at(`/feedback/${before}/tell-shipped`), {});
     expect(again.status).toBe(422);
@@ -324,7 +330,9 @@ describe("the notice is the reporter's, in their words, once", () => {
       expect(sent?.title, 'a reporter who reads Vietnamese is told in Vietnamese').toContain(
         `${fb} đã được phát hành trong bản 0.3.0`,
       );
-      expect(sent?.body).toBe('Lưu bảng giữ nguyên mọi thẻ.');
+      expect(sent?.body).toBe(
+        'Lưu bảng giữ nguyên mọi thẻ.\nHãy xác nhận lỗi đã được sửa, hoặc mở lại và cho biết bạn vẫn thấy gì.',
+      );
     } finally {
       await db.execute(sql`DELETE FROM user_preferences WHERE user_id = ${w.userId}`);
     }
@@ -336,7 +344,9 @@ describe("the notice is the reporter's, in their words, once", () => {
     const runId = await releaseRun('0.3.1', [carrier.id]);
     await ship(runId, '0.3.1', [carrier.id]);
     const [sent] = (await notices('feedback_shipped')).filter((n) => n.title.includes(fb));
-    expect(sent?.body).toBe('0.3.1 carries the work your feedback asked for.');
+    expect(sent?.body).toBe(
+      '0.3.1 carries the work your feedback asked for.\nConfirm it is fixed, or reopen it saying what you still see.',
+    );
     expect(sent?.body).not.toContain('ISS-');
   });
 
@@ -358,7 +368,30 @@ describe("the notice is the reporter's, in their words, once", () => {
   });
 });
 
-describe('a reporter no bell reaches is relayed to by a person, on their Needs you until done', () => {
+describe('a reporter no notice reached is relayed to by a person, on their Needs you until done', () => {
+  /** An item a person reported whose release was stamped shipped but sent them no notice. */
+  async function silentItem(version: string): Promise<{ fb: string; runId: string }> {
+    const reporter = await createTestUser({ verified: true });
+    const carrier = await closed();
+    const fb = await feedback(w, [carrier.id]);
+    await db.execute(sql`
+      UPDATE feedback SET reported_by = ${reporter.id}
+       WHERE project_id = ${w.projectId} AND fb_seq = ${Number(fb.slice(3))}
+    `);
+    const runId = await releaseRun(version, [carrier.id]);
+    await db.execute(
+      sql`UPDATE issues SET release_batch_run_id = ${runId} WHERE id = ${carrier.id}`,
+    );
+    await db.execute(sql`
+      UPDATE pipeline_runs SET release_released_at = now(),
+             metadata = metadata || '{"source":"release-batch"}'::jsonb WHERE id = ${runId}
+    `);
+    const { stampReleaseShipped } = await import('../../src/pipeline/index.js');
+    await stampReleaseShipped(runId);
+    return { fb, runId };
+  }
+
+  /** An item an agent reported, shipped: an agent has no bell a message could reach. */
   async function agentItem(version: string): Promise<{ fb: string; runId: string }> {
     const reporter = await createTestUser({ kind: 'agent' });
     const carrier = await closed();
@@ -383,7 +416,7 @@ describe('a reporter no bell reaches is relayed to by a person, on their Needs y
     api(w.token, 'POST', `/api/projects/${w.projectId}/feedback/${fb}/messages`, body);
 
   it('names the holders of feedback.approve as owing the relay, as their own act', async () => {
-    const { fb } = await agentItem('0.4.0');
+    const { fb } = await silentItem('0.4.0');
     const d = await detail(fb);
     expect(d.phase).toBe('resolved');
     expect(d.shipNotice).toMatchObject({ state: 'not_told' });
@@ -417,7 +450,7 @@ describe('a reporter no bell reaches is relayed to by a person, on their Needs y
   });
 
   it('reads told once a person records the relay, and leaves their Needs you', async () => {
-    const { fb } = await agentItem('0.4.2');
+    const { fb } = await silentItem('0.4.2');
     const res = await send(fb, {
       audience: 'reporter',
       text: 'Told them in the support thread: 0.4.2 fixes the export.',

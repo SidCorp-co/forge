@@ -1,6 +1,7 @@
 // "Feedback answered": the feedback items a release's issues carry, read for the release page, each
 // with whether the release told its reporter (the notice `notify-feedback.ts` wrote for this run), or
 // a person did once it shipped: a message to reporters, or a relay recorded for one no bell reaches.
+// An agent reporter reads told from the ship on: its own read of the item asks it (`ship-notice.ts`).
 
 import type { FeedbackRoute } from '@forge/contracts/feedback';
 import { feedbackKey } from '@forge/contracts/feedback';
@@ -118,7 +119,9 @@ export async function feedbackAnsweredBy(
     const key = feedbackKey(i.seq);
     const notice = release.runId ? told.get(feedbackShippedKey(i.id, release.runId)) : undefined;
     const byNotice = notice && notice.delivered > 0 ? notice.at : null;
-    const at = byNotice ?? relayed.get(i.id) ?? null;
+    // an agent reporter has no bell: its own read of the item asks it once the release shipped
+    const askedOnRead = i.agency === 'agent' ? ship.at : null;
+    const at = byNotice ?? askedOnRead ?? relayed.get(i.id) ?? null;
     const state: ReleaseFeedbackView['told'] = !release.shipped
       ? 'on_ship'
       : at

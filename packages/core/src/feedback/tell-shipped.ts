@@ -15,6 +15,7 @@ import { feedbackMessages, feedbackRouteIssues } from '../db/schema-feedback.js'
 import type { Refusal } from '../lib/refusal.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { phaseOfRow } from './list-read.js';
+import { shipEvidenceOf } from './loop-close.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
 import { reporterLanguageOf, tellReporters } from './reporter-language.js';
 import { shippedNotice } from './reporter-notices.js';
@@ -77,11 +78,12 @@ async function tellIn(tx: Tx, row: Row, actor: FeedbackActor): Promise<Refusal[]
   const said = await saidOf(tx, row.id);
   const version = notice.shipped.release;
   const first = await reporterLanguageOf(reached[0] as string, row.projectId);
+  const evidence = await shipEvidenceOf(row);
   await tx.insert(feedbackMessages).values({
     projectId: row.projectId,
     feedbackId: row.id,
     audience: 'all_reporters',
-    body: shippedNotice(first, key, row.title, version, said).body,
+    body: shippedNotice(first, key, row.title, version, said, evidence).body,
     recipients: reached,
     sentBy: actor.userId,
     sentAgency: actor.agency,
@@ -90,7 +92,7 @@ async function tellIn(tx: Tx, row: Row, actor: FeedbackActor): Promise<Refusal[]
     tx,
     { projectId: row.projectId, feedbackId: row.id, kind: 'message' },
     reached,
-    (language) => shippedNotice(language, key, row.title, version, said),
+    (language) => shippedNotice(language, key, row.title, version, said, evidence),
   );
   return null;
 }

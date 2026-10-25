@@ -4,6 +4,7 @@
  * (`reporter-language.ts`). An internal note has no builder here: it is never a notice.
  */
 
+import type { FeedbackShipEvidence } from '@forge/contracts/feedback';
 import { type NoticeLanguage, noticeCopy } from './reporter-language.js';
 
 export interface NoticeText {
@@ -47,24 +48,45 @@ export function messageNotice(
   return { title: noticeCopy(language, 'message.title', { key, title }), body: text.trim() };
 }
 
-/** That the item's work shipped: in which release, and what changed for them in the release note's words. */
+/** What the record shows of the fix, as lines of the notice: the criterion's verdict, then its clip. */
+function evidenceLines(language: NoticeLanguage, e: FeedbackShipEvidence | null): string[] {
+  if (!e?.criterion) return [];
+  const verdict =
+    e.verdict === 'passing'
+      ? noticeCopy(language, 'shipped.evidencePasses', { ref: e.criterion })
+      : noticeCopy(language, 'shipped.evidenceNotYet', { ref: e.criterion });
+  return e.clip
+    ? [verdict, noticeCopy(language, 'shipped.clip', { name: e.clip.name })]
+    : [verdict];
+}
+
+/**
+ * That the item's work shipped, and the ask to confirm it (REQ-66 BC-8): in which release, what
+ * changed for them in the release note's words, what the record shows of the fix, and what to do.
+ */
 export function shippedNotice(
   language: NoticeLanguage,
   key: string,
   title: string,
   version: string | null,
   said: readonly string[],
+  evidence: FeedbackShipEvidence | null,
 ): NoticeText {
+  const changed =
+    said.length > 0
+      ? said.join('\n')
+      : version
+        ? noticeCopy(language, 'shipped.body', { version })
+        : noticeCopy(language, 'shipped.bodyNoRelease', {});
   return {
     title: version
       ? noticeCopy(language, 'shipped.title', { key, version, title })
       : noticeCopy(language, 'shipped.titleNoRelease', { key, title }),
-    body:
-      said.length > 0
-        ? said.join('\n')
-        : version
-          ? noticeCopy(language, 'shipped.body', { version })
-          : noticeCopy(language, 'shipped.bodyNoRelease', {}),
+    body: [
+      changed,
+      ...evidenceLines(language, evidence),
+      noticeCopy(language, 'shipped.ask', {}),
+    ].join('\n'),
   };
 }
 

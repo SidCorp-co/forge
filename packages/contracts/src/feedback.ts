@@ -279,6 +279,10 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_ANSWER_MISSING",
 	"FEEDBACK_DECLINE_REASON_REQUIRED",
 	"FEEDBACK_REOPEN_REASON_REQUIRED",
+	/** An agent confirms or reopens a fix only with what it ran and saw (REQ-66 BC-8). */
+	"FEEDBACK_EVIDENCE_REQUIRED",
+	/** A triage's `reproduced` names no attempt: a recording of the item, or what was tried and seen (REQ-66 BC-5). */
+	"FEEDBACK_REPRODUCTION_EMPTY",
 	"FEEDBACK_DUPLICATE_CHAIN",
 	"FEEDBACK_DUPLICATE_SELF",
 	"FEEDBACK_DUPLICATE_OF_DECLINED",
@@ -496,9 +500,13 @@ export const FEEDBACK_EMPTY_SHAPE = "{}";
 export const FEEDBACK_CLARIFICATION_LIMITS = {
 	prompt: { min: 5, max: 2_000 },
 	needed: { min: 3, max: 1_000 },
+	recommended: { min: 2, max: 1_500 },
 } as const;
 const L = FEEDBACK_CLARIFICATION_LIMITS;
-/** `POST …/feedback/:fb/clarification`: one open question to the reporter (Q5). */
+/**
+ * `POST …/feedback/:fb/clarification`: one open question to the reporter (Q5), with the answer the asker
+ * recommends, which the reporter sends by one click or writes over (REQ-66 BC-4).
+ */
 export const feedbackClarificationRequestSchema = z.strictObject({
 	prompt: z
 		.string()
@@ -518,8 +526,20 @@ export const feedbackClarificationRequestSchema = z.strictObject({
 		.max(L.needed.max, {
 			error: `what is needed back is at most ${L.needed.max} characters`,
 		}),
+	recommended: z
+		.string({
+			error:
+				"a clarification carries the answer you recommend, which the reporter can send by one click",
+		})
+		.trim()
+		.min(L.recommended.min, {
+			error: `the recommended answer is at least ${L.recommended.min} characters`,
+		})
+		.max(L.recommended.max, {
+			error: `the recommended answer is at most ${L.recommended.max} characters`,
+		}),
 });
-export const FEEDBACK_CLARIFICATION_SHAPE = "{ prompt, needed }";
+export const FEEDBACK_CLARIFICATION_SHAPE = "{ prompt, needed, recommended }";
 
 /**
  * `POST …/feedback/similar`: the items most like a draft not yet filed, read the way an item's own
@@ -724,8 +744,17 @@ export interface FeedbackSummary
 	updatedAt: string;
 }
 
-/** How the reporter heard the work shipped: the release's own notice, a message to reporters, or a relay a person recorded. */
-export const FEEDBACK_TOLD_HOWS = ["notice", "message", "relayed"] as const;
+/**
+ * How the reporter heard the work shipped: the release's own notice, a message to reporters, a relay a
+ * person recorded, or, for a reporter that is an agent, its own read of the item, which asks it to
+ * confirm or reopen once the work shipped.
+ */
+export const FEEDBACK_TOLD_HOWS = [
+	"notice",
+	"message",
+	"relayed",
+	"asked",
+] as const;
 export type FeedbackToldHow = (typeof FEEDBACK_TOLD_HOWS)[number];
 
 /**
@@ -786,6 +815,28 @@ export interface FeedbackQuestionView {
 	answeredAt: string | null;
 }
 
+/** What the record shows of a shipped fix, read from the violated criterion's coverage (`loop-close.ts`). */
+export interface FeedbackShipEvidence {
+	/** The criterion its triage named it violates, as REQ-n BC-m; null where it named none. */
+	criterion: string | null;
+	/** That criterion's verdict on the running build; null where none counts or no criterion is named. */
+	verdict:
+		| "passing"
+		| "failing"
+		| "stale"
+		| "not_live"
+		| "not_judged"
+		| "gap"
+		| null;
+	/** Why it reads as it does, in one sentence; null where a verdict counts. */
+	why: string | null;
+	/** The clip or picture the counting verdict cites, served at `url`; null where it cites none. */
+	clip: { name: string; mime: string; url: string } | null;
+	/** What the reporter is shown, in one English sentence; `says.reads` is the same, said. */
+	reads: string;
+	says: { reads: Said };
+}
+
 export interface FeedbackView extends FeedbackSummary {
 	/** Set once the item is verified. */
 	verified: FeedbackVerifiedView | null;
@@ -813,8 +864,15 @@ export interface FeedbackView extends FeedbackSummary {
 		id: string;
 		status: string;
 		prompt: string | null;
+		/** The answer the asker recommends; null on a question asked before one was required, or withheld. */
+		recommended: string | null;
 		answer: string | null;
 	} | null;
+	/**
+	 * Once the work shipped (resolved or verified on an issue route): what the reporter is shown when
+	 * asked to confirm, the violated criterion's verdict on the running build and its clip. Null before.
+	 */
+	shipEvidence: FeedbackShipEvidence | null;
 	/** Every question about the item, open and answered, newest first: read here, never on a page of its own (REQ-33 BC-8). */
 	questions: FeedbackQuestionView[];
 	/** Proposed triage suggestions waiting on a person. */

@@ -77,7 +77,7 @@ const DESCRIPTION = [
   'progress {feedback}: the progress block alone.',
   'similar {feedback}: the items nearest it, to spot a duplicate; not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar.',
   `submit ${CREATE_FEEDBACK_SHAPE}: file it as the person you speak for, at phase new. Name exactly one target; a requirement it touches is best (find it with forge_requirements).`,
-  'clarify {feedback, prompt, needed}: ask the reporter one question; `needed` says what would settle it. Refused while one is open, or when the item is past triage.',
+  'clarify {feedback, prompt, needed, recommended}: ask the reporter one question; `needed` says what would settle it, `recommended` is the answer you recommend, which they send by one click. Refused while one is open on the item or to the same reporter, or when the item is past triage.',
   'Triage, decline, verify and retarget are a person’s acts on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
 ].join(' ');
@@ -222,6 +222,7 @@ async function clarify(ctx: McpContext, projectId: string, input: Input) {
   const body = feedbackClarificationRequestSchema.safeParse({
     prompt: input.prompt,
     needed: input.needed,
+    recommended: input.recommended,
   });
   if (!body.success) throw zodArgumentRefusal(body.error);
   return written(

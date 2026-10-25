@@ -5,7 +5,7 @@
  * which items they are shown before anything here reads them.
  */
 
-import type { FeedbackSummary } from '@forge/contracts/feedback';
+import type { FeedbackShipEvidence, FeedbackSummary } from '@forge/contracts/feedback';
 import type { ForgeFeedbackItem } from '@forge/contracts/forge-feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { listFeedbackIn, type ReadDoor, withDuplicateRoots } from '../feedback/index.js';
@@ -82,7 +82,11 @@ export async function homeReads(
   };
 }
 
-export function forgeItemOf(s: FeedbackSummary, reads: FeedbackReads): ForgeFeedbackItem {
+export function forgeItemOf(
+  s: FeedbackSummary,
+  reads: FeedbackReads,
+  shipEvidence: FeedbackShipEvidence | null,
+): ForgeFeedbackItem {
   return {
     key: s.key,
     title: s.title,
@@ -94,5 +98,6 @@ export function forgeItemOf(s: FeedbackSummary, reads: FeedbackReads): ForgeFeed
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
     progress: feedbackProgress(s, reads),
+    shipEvidence,
   };
 }

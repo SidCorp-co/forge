@@ -1,8 +1,10 @@
 // feedback-triage `verify-ask`: an ask to verify a resolved item reaches its reporter's bell, and the
 // verify or reopen of that item settles it. A decline, a merge into an original and a triager's
-// message each reach their reporters as one notice, the text the event carries. The release that ships the work of an item tells its
-// reporter in their language, naming the release and what it changed for them, once per item: a
-// second release or a redelivery carrying the same item tells nobody twice.
+// message each reach their reporters as one notice, the text the event carries. The release that
+// ships the work of an item asks its reporter to confirm it by itself (REQ-66 BC-8), in their
+// language: the release, what it changed for them, the violated criterion's verdict and clip, and the
+// ask, cleared like any verify ask once they verify or reopen. Once per item: a second release or a
+// redelivery carrying the same item tells nobody twice.
 
 import { feedbackKey } from '@forge/contracts/feedback';
 import { feedbackShippedKey, feedbackShippedPrefix } from '@forge/contracts/notifications';
@@ -11,7 +13,12 @@ import { and, eq, inArray, like } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, notifications } from '../db/schema.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
-import { noticeCopy, reporterLanguageOf, shippedNotice } from '../feedback/index.js';
+import {
+  noticeCopy,
+  reporterLanguageOf,
+  shipEvidenceOf,
+  shippedNotice,
+} from '../feedback/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { resolveNotifications } from './auto-resolve.js';
@@ -61,6 +68,7 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
       title: feedback.title,
       reporter: feedback.reportedBy,
       agency: feedback.reporterAgency,
+      violatedCriterionId: feedback.violatedCriterionId,
     })
     .from(feedback)
     .where(
@@ -76,10 +84,11 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
   for (const item of items) {
     const key = feedbackKey(item.seq);
     if (item.agency !== 'human') {
-      // not skipped: the item reads not told, and its triagers owe the relay (`feedback/standing.ts`)
+      // not skipped: an agent has no bell, and its own read of the item asks it to confirm or reopen
+      // (`feedback/ship-notice.ts`, `feedback/standing.ts`)
       logger.info(
         { feedback: key, project: p.projectId, release: p.version },
-        'feedback: a shipped release closed an item whose reporter is an agent; its triagers owe the relay',
+        'feedback: a shipped release closed an item whose reporter is an agent; its read of the item asks it to confirm',
       );
       continue;
     }
@@ -106,11 +115,14 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
       .map((c) => c.notes?.userFacing?.trim())
       .filter((t): t is string => Boolean(t));
     const language = await reporterLanguageOf(item.reporter, p.projectId);
+    const evidence = await shipEvidenceOf({ projectId: p.projectId, ...item });
     await emitNotification({
       recipients: [item.reporter],
       projectId: p.projectId,
       type: 'feedback_shipped',
-      ...shippedNotice(language, key, item.title, p.version, said),
+      ...shippedNotice(language, key, item.title, p.version, said, evidence),
+      // the ask to confirm: cleared by the verify or reopen that settles it, as an asked verify is
+      resolutionKey: verifyKey(item.id),
       dedupeKey: feedbackShippedKey(item.id, p.runId),
     });
   }

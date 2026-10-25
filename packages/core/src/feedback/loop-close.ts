@@ -7,15 +7,22 @@
  * answer and never gives it, so nothing verifies an item by itself.
  */
 
-import { feedbackKey } from '@forge/contracts/feedback';
+import { type FeedbackShipEvidence, feedbackKey } from '@forge/contracts/feedback';
 import { type BcVerdict, requirementKey } from '@forge/contracts/requirements';
-import { sql } from 'drizzle-orm';
+import { say, sayEn } from '@forge/contracts/said';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { criterionVerdictOf } from '../requirements/index.js';
+import { feedback } from '../db/schema-feedback.js';
+import { type CriterionClip, criterionVerdictOf } from '../requirements/index.js';
 
 export interface LoopCloseFacts {
-  /** The criterion the triage named it violates, with its verdict now; null where it named none. */
-  criterion: { ref: string; verdict: BcVerdict | null; why: string | null } | null;
+  /** The criterion the triage named it violates, with its verdict now and the clip it cites; null where it named none. */
+  criterion: {
+    ref: string;
+    verdict: BcVerdict | null;
+    why: string | null;
+    clip: CriterionClip | null;
+  } | null;
   /** Items filed since it read resolved that may say the problem is back: against the criterion, or untriaged about its requirement. */
   filedSince: readonly string[];
   /** When it first read resolved. */
@@ -52,6 +59,54 @@ export function goneByRecord(f: LoopCloseFacts): RecordAnswer {
   };
 }
 
+/** The named criterion as the record reads it now: its key, verdict, why and clip; null where none is named. */
+async function criterionNow(
+  projectId: string,
+  criterionId: string | null,
+): Promise<(NonNullable<LoopCloseFacts['criterion']> & { requirementId: string }) | null> {
+  if (!criterionId) return null;
+  const found = (await db.execute(sql`
+    SELECT c.requirement_id, c.code, r.req_seq
+      FROM requirement_criteria c JOIN requirements r ON r.id = c.requirement_id
+     WHERE c.id = ${criterionId}
+  `)) as unknown as Array<{ requirement_id: string; code: string; req_seq: number }>;
+  const c = found[0];
+  if (!c) return null;
+  const verdict = await criterionVerdictOf(projectId, c.requirement_id, c.code);
+  return {
+    requirementId: c.requirement_id,
+    ref: `${requirementKey(Number(c.req_seq))} ${c.code}`,
+    verdict: verdict?.verdict ?? null,
+    why: verdict?.why ?? null,
+    clip: verdict?.clip ?? null,
+  };
+}
+
+/**
+ * What the reporter of a shipped fix is shown when asked to confirm it (REQ-66 BC-8): the violated
+ * criterion's verdict on the running build and the clip its counting verdict cites, never only the
+ * release note's words.
+ */
+export async function shipEvidenceOf(row: {
+  projectId: string;
+  violatedCriterionId: string | null;
+}): Promise<FeedbackShipEvidence> {
+  const c = await criterionNow(row.projectId, row.violatedCriterionId);
+  const reads = !c
+    ? say('feedback.evidence.noCriterion')
+    : c.verdict === 'passing'
+      ? say('feedback.evidence.passes', { ref: c.ref })
+      : say('feedback.evidence.notYet', { ref: c.ref });
+  return {
+    criterion: c?.ref ?? null,
+    verdict: c?.verdict ?? null,
+    why: c && c.verdict !== 'passing' ? c.why : null,
+    clip: c?.clip ?? null,
+    reads: sayEn(reads),
+    says: { reads },
+  };
+}
+
 /** What the record holds for one resolved item: its criterion's verdict, and what was filed since. */
 export async function loopCloseFactsOf(row: {
   id: string;
@@ -59,32 +114,35 @@ export async function loopCloseFactsOf(row: {
   violatedCriterionId: string | null;
   resolvedSeenAt: Date;
 }): Promise<LoopCloseFacts> {
-  if (!row.violatedCriterionId) {
-    return { criterion: null, filedSince: [], resolvedSince: row.resolvedSeenAt };
-  }
-  const found = (await db.execute(sql`
-    SELECT c.requirement_id, c.code, r.req_seq
-      FROM requirement_criteria c JOIN requirements r ON r.id = c.requirement_id
-     WHERE c.id = ${row.violatedCriterionId}
-  `)) as unknown as Array<{ requirement_id: string; code: string; req_seq: number }>;
-  const c = found[0];
-  if (!c) return { criterion: null, filedSince: [], resolvedSince: row.resolvedSeenAt };
-  const verdict = await criterionVerdictOf(row.projectId, c.requirement_id, c.code);
+  const found = await criterionNow(row.projectId, row.violatedCriterionId);
+  if (!found) return { criterion: null, filedSince: [], resolvedSince: row.resolvedSeenAt };
+  const { requirementId, ...criterion } = found;
   const since = (await db.execute(sql`
     SELECT fb_seq FROM feedback
      WHERE project_id = ${row.projectId} AND id <> ${row.id}
        AND created_at > ${row.resolvedSeenAt.toISOString()}
        AND (violated_criterion_id = ${row.violatedCriterionId}
-            OR (requirement_id = ${c.requirement_id} AND status IN ('new', 'reopened')))
+            OR (requirement_id = ${requirementId} AND status IN ('new', 'reopened')))
      ORDER BY fb_seq
   `)) as unknown as Array<{ fb_seq: number }>;
   return {
-    criterion: {
-      ref: `${requirementKey(Number(c.req_seq))} ${c.code}`,
-      verdict: verdict?.verdict ?? null,
-      why: verdict?.why ?? null,
-    },
+    criterion,
     filedSince: since.map((s) => feedbackKey(Number(s.fb_seq))),
     resolvedSince: row.resolvedSeenAt,
   };
+}
+
+/** What the reporter of one item is shown of its shipped fix; null before its work shipped. */
+export async function shipEvidenceOfShipped(
+  projectId: string,
+  feedbackId: string,
+  phase: string,
+): Promise<FeedbackShipEvidence | null> {
+  if (phase !== 'resolved' && phase !== 'verified') return null;
+  const [row] = await db
+    .select({ violatedCriterionId: feedback.violatedCriterionId, route: feedback.route })
+    .from(feedback)
+    .where(and(eq(feedback.projectId, projectId), eq(feedback.id, feedbackId)));
+  if (row?.route !== 'issue') return null;
+  return shipEvidenceOf({ projectId, violatedCriterionId: row.violatedCriterionId });
 }

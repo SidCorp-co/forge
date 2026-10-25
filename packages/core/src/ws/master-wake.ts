@@ -2,6 +2,7 @@ import type { FeedbackSeverity } from '@forge/contracts/feedback';
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { masterCharterPath } from '@forge/contracts/master-standing';
 import type { IssueStatus } from '../db/schema.js';
+import { confirmsOwedByShip } from '../feedback/index.js';
 import { issuesSettledBy } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
@@ -129,6 +130,24 @@ async function wakeMastersForFeedback(args: {
     source: 'feedback',
     feedbackId: args.feedbackId,
     severity: args.severity,
+  });
+}
+
+/**
+ * A release shipped an item an agent of this project reported: an agent has no bell, so the master
+ * that acts for it is asked to confirm or reopen the fix (REQ-66 BC-8). The durable half is
+ * `masters/owed.ts` confirms, read on the next box sweep, so `source` stays `feedback`, which every
+ * runner already reads.
+ */
+async function wakeMastersForConfirm(args: {
+  projectId: string;
+  feedbackId: string;
+}): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    source: 'feedback',
+    feedbackId: args.feedbackId,
+    owes: 'confirm',
   });
 }
 
@@ -282,6 +301,17 @@ export function registerMasterWakeSubscribers(): void {
     handle: async (p) => {
       // every filed item is owed to the master whatever its severity (`feedback/owed-triage.ts`)
       await wakeMastersForFeedback(p);
+    },
+  });
+
+  // the release that ships an agent's item wakes the master of the project it reported from, which
+  // confirms for it, as an accepted release wakes the master that merges it
+  consume('release.shipped', {
+    name: 'master-wake',
+    handle: async (p) => {
+      for (const owed of await confirmsOwedByShip(p.issueIds)) {
+        await wakeMastersForConfirm({ projectId: owed.reportedFrom, feedbackId: owed.feedbackId });
+      }
     },
   });
 

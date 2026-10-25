@@ -57,15 +57,38 @@ describe("feedback follows its work to the release", () => {
     const f = view({
       shipNotice: {
         state: "not_told",
-        reason: sentence(say("feedback.notice.agent")),
-        says: { reason: say("feedback.notice.agent") },
+        reason: sentence(say("feedback.notice.turnedOff")),
+        says: { reason: say("feedback.notice.turnedOff") },
         shipped: { at: null, release: null },
         beforeNotices: false,
         noticesBegan: null,
       },
     });
     renderWithQuery(<LinkedFeedback f={f} slug="hop" />);
-    expect(screen.getByTestId("ship-notice-not-told").textContent).toContain("The reporter is an agent");
+    expect(screen.getByTestId("ship-notice-not-told").textContent).toContain("turned this notice off");
+  });
+
+  // REQ-66 BC-8: an agent reporter hears through its own read of the item, and the evidence is shown
+  it("reads an agent reporter as asked to confirm, with when, and shows the verdict and clip it confirms from", () => {
+    const told = say("feedback.told.agentAsked");
+    const f = view({
+      shipNotice: { state: "told", how: "asked", at: at(-5), release: "0.1.0", by: null, shipped: { at: at(-5), release: "0.1.0" }, told: sentence(told), says: { told } },
+      shipEvidence: {
+        criterion: "REQ-3 BC-2",
+        verdict: "passing",
+        why: null,
+        clip: { name: "bc2.webm", mime: "video/webm", url: "/api/attachments/a1/download" },
+        reads: "REQ-3 BC-2 passes on the running build.",
+        says: { reads: say("feedback.evidence.passes", { ref: "REQ-3 BC-2" }) },
+      },
+    });
+    renderWithQuery(<LinkedFeedback f={f} slug="hop" />);
+    const row = screen.getByTestId("facts-ship-notice");
+    expect(row.textContent).toContain("Asked to confirm");
+    expect(row.textContent).toMatch(/Asked to confirm\d+\w+ ago$/);
+    expect(row.textContent, "no plumbing on a person's page").not.toMatch(/own read|reporter told/i);
+    expect(screen.getByTestId("ship-evidence").textContent).toContain("REQ-3 BC-2 passes on the running build.");
+    expect(screen.getByTestId("ship-evidence-clip")).toHaveAttribute("href", "/api/attachments/a1/download");
   });
 
   it("says shipped work shipped, in which release and when, never that no release has told", () => {

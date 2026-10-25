@@ -2,6 +2,8 @@
 // telling, never off a flag that could drift from it. A release's notice that reached their bell tells
 // them (`notifications/notify-feedback.ts`); so does a message to reporters sent once the work shipped,
 // or a relay a person recorded for a reporter no bell reaches (a reporters message with no recipient).
+// A reporter that is an agent has no bell: it hears through its own read of the item, whose standing
+// asks it to confirm or reopen from the moment the work shipped (REQ-66 BC-8), so it owes nobody a relay.
 // While nothing told them, the item owes a holder of feedback.approve that relay (`standing.ts`),
 // unless its work shipped before this project's releases sent any notice: that item reads a named,
 // dated state of its own, owes nobody, and anyone who wants to may still tell the reporter now.
@@ -145,15 +147,9 @@ async function reporterMessagesOf(feedbackIds: readonly string[]): Promise<SentM
   return rows.map((r) => ({ ...r, relayed: r.recipients.length === 0 }));
 }
 
-function untoldReason(
-  item: ShipNoticeItem,
-  notice: SentNotice | undefined,
-  shipped: Shipped,
-  began: Date | null,
-): Said {
+function untoldReason(notice: SentNotice | undefined, shipped: Shipped, began: Date | null): Said {
   if (began) return say('feedback.notice.before', { date: day(began) });
   if (notice) return say('feedback.notice.turnedOff');
-  if (item.reporterAgency === 'agent') return say('feedback.notice.agent');
   return shipped.release
     ? say('feedback.notice.silent', { release: shipped.release })
     : say('feedback.notice.noRelease');
@@ -164,6 +160,21 @@ function toldBy(relayed: boolean, by: string | null): Said {
   if (relayed)
     return by ? say('feedback.told.relayed', { by }) : say('feedback.told.relayedUnnamed');
   return by ? say('feedback.told.message', { by }) : say('feedback.told.messageUnnamed');
+}
+
+/** An agent reporter's telling: its own read of the item asks it once the work shipped. */
+function askedOnRead(at: Date, release: string | null): FeedbackShipNotice {
+  const told = say('feedback.told.agentAsked');
+  return {
+    state: 'told',
+    how: 'asked',
+    at: at.toISOString(),
+    release,
+    by: null,
+    shipped: { at: at.toISOString(), release },
+    told: sayEn(told),
+    says: { told },
+  };
 }
 
 /**
@@ -187,6 +198,10 @@ export async function shipNoticesOf(
   const names = await userNames(messages.map((m) => m.by));
   for (const item of shippedItems) {
     const ship = shipped.get(item.id) ?? { at: null, release: null };
+    if (item.reporterAgency === 'agent' && ship.at) {
+      out.set(item.id, askedOnRead(ship.at, ship.release));
+      continue;
+    }
     const notice = notices.get(item.id);
     if (notice && notice.delivered > 0) {
       out.set(item.id, {
@@ -221,7 +236,7 @@ export async function shipNoticesOf(
       continue;
     }
     const before = !notice && ship.at !== null && began !== null && ship.at < began;
-    const reason = untoldReason(item, notice, ship, before ? began : null);
+    const reason = untoldReason(notice, ship, before ? began : null);
     out.set(item.id, {
       state: 'not_told',
       reason: sayEn(reason),

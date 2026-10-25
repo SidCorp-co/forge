@@ -40,5 +40,5 @@ export type FeedbackAction =
   | { kind: "verify"; note?: string }
   | { kind: "verify-ask" }
   | { kind: "reopen"; reason: string }
-  | { kind: "clarify"; prompt: string; needed: string }
+  | { kind: "clarify"; prompt: string; needed: string; recommended: string }
   | { kind: "redact" };

@@ -20,7 +20,7 @@ import {
   renderContractContext,
   unansweredDocuments,
 } from './ecosystem/index.js';
-import { owedTriages } from './feedback/index.js';
+import { owedAgentConfirms, owedTriages } from './feedback/index.js';
 import { cmpVersion, mainRunnerHead } from './integrations/github/index.js';
 import {
   applyGrantedMcpServers,
@@ -219,6 +219,7 @@ export function provideExecutionPorts(): void {
     breakdownsOwed: owedBreakdowns,
     revisionsOwed: owedRequirementRevisions,
     triagesOwed: (projectId) => owedTriages(projectId),
+    confirmsOwed: owedAgentConfirms,
     designsOwed: owedDesignRevisions,
     releaseNotesOwed: owedReleaseNotes,
     releaseNotesWarned: warnedReleaseNotes,

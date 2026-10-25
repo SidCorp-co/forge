@@ -36,7 +36,8 @@ const FIELD_MEANING: Record<IntakeItemKind, Record<string, string>> = {
     severity: FEEDBACK_SEVERITIES.join(', '),
     requirement: 'the requirement it is about (REQ-n), or none',
     criterion: 'the criterion it says is broken (BC-n of that requirement), or none',
-    reproduced: 'whether the record shows it reproduced, and with what evidence, or no',
+    reproduced:
+      'how the record shows it reproduced and what was seen, or what was tried and why it was not',
     route: `where it goes: ${FEEDBACK_ROUTES.join(', ')}`,
   },
 };
