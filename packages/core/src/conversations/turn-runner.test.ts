@@ -139,7 +139,12 @@ describe('a reply that posts nothing', () => {
   });
 
   it('names the stored silence by its seq, so the window it closes can say which', async () => {
-    runExternalChatTurn.mockResolvedValue({ terminal: 'done', reply: '', toolCalls: [], iterations: 1 });
+    runExternalChatTurn.mockResolvedValue({
+      terminal: 'done',
+      reply: '',
+      toolCalls: [],
+      iterations: 1,
+    });
     recordSilence.mockResolvedValue(7);
 
     const outcome = await runConversationTurn(request() as never);

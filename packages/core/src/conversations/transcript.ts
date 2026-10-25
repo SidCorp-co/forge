@@ -67,8 +67,7 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
 }
 
 /**
- * A turn that chose to say nothing, recorded as the reason rather than as nothing. Answers the
- * stored message's seq, so the window it closes can name it; null where it could not be stored.
+ * A turn that chose to say nothing, recorded as the reason rather than as nothing; answers its seq.
  */
 export async function recordSilence(args: {
   conversationId: string;
