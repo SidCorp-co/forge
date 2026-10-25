@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.315] - 2026-10-25
+
+Merge-request projects count work landed only once merged on the host
+
+### Fixed
+
+- **A recorded fail at the landed commit now keeps a landing record from closing the issue.** Where no verdict is owed, a missing verdict still passes, but the record refuses the fail by name.
+- **On a merge-request project, only the project's target branch on the host counts as landed.** A mark naming another branch, or a request merged elsewhere, is refused by name, and a branch landing is stamped when the host was read.
+
 ## [0.4.0-dev.314] - 2026-10-25
 
 GraphQL optional arguments ship as minor; landed-work notices told once per mark
