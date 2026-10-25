@@ -51,6 +51,8 @@ describe('oneItemAsSentence', () => {
     'Two things:\n- one',
     '- Agreed.\n- 🚀',
     '- Agreed.\n      - nested detail',
+    '- Agreed.\n1. Then this.',
+    '- Agreed.\n-',
   ])('keeps %j as written', (reply) => {
     expect(oneItemAsSentence(reply)).toBe(reply);
   });

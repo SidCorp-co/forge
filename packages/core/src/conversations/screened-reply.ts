@@ -37,7 +37,7 @@ export function declinedTail(text: string): string {
 }
 
 const BULLET = /^[ \t]{0,3}[-*+•][ \t]+(?=.*[\p{L}\p{N}(])/u;
-const ANY_ITEM = /^\s*[-*+•][ \t]+\S/;
+const ANY_ITEM = /^\s*(?:[-*+•]|\d{1,9}[.)])(?:[ \t]|$)/;
 
 /** A reply of one bulleted item as its sentence; a list, a numbered or a quoted reply stays as written. */
 export function oneItemAsSentence(text: string): string {
