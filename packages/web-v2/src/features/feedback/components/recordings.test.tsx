@@ -65,6 +65,7 @@ const upload = (over: Record<string, unknown> = {}) => ({
   mime: "video/mp4",
   size: 900_000,
   flagged: false,
+  redacted: false,
   uploadedBy: BO,
   uploadedByName: "Bo",
   createdAt: "2026-10-09T11:00:00.000Z",

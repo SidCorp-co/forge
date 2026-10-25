@@ -24,6 +24,7 @@ const ATTACHED = {
   mime: "image/png",
   size: 8,
   flagged: false,
+  redacted: false,
   uploadedBy: "u1",
   uploadedByName: "Ann",
   createdAt: "2026-10-07T00:00:00.000Z",
