@@ -111,13 +111,11 @@ function McpServerRow({
   entry,
   projectId,
   binding,
-  canEdit,
 }: {
   entry: McpServerPreviewEntry;
   projectId: string;
   /** The binding this row previews, absent for the synthetic not-configured row. */
   binding: IntegrationSummary | undefined;
-  canEdit: boolean;
 }) {
   const test = useTestIntegration(projectId);
   const [result, setResult] = useState<IntegrationTestResult | { errorMessage: string } | null>(
@@ -128,7 +126,7 @@ function McpServerRow({
     if (!entry.bindingId) return;
     setResult(null);
     test.mutate(entry.bindingId, {
-      onSuccess: (r) => setResult(r),
+      onSuccess: setResult,
       onError: (err) => setResult({ errorMessage: formatApiError(err) }),
     });
   }
@@ -169,7 +167,7 @@ function McpServerRow({
       )}
 
       {binding && (
-        <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} readFrom="panel" />
+        <AgentAccessControl projectId={projectId} binding={binding} readFrom="panel" />
       )}
 
       {entry.configured && (
@@ -200,13 +198,7 @@ function McpServerRow({
  * be injected into the next dispatched agent, the exact URL, and a Verify
  * action that runs the provider's real credential healthcheck.
  */
-export function McpServersPanel({
-  projectId,
-  canEdit = true,
-}: {
-  projectId: string;
-  canEdit?: boolean;
-}) {
+export function McpServersPanel({ projectId }: { projectId: string }) {
   const preview = useMcpPreview(projectId);
   const bindings = useIntegrationsList(projectId);
   const byBindingId = new Map((bindings.data?.bindings ?? []).map((b) => [b.id, b]));
@@ -234,7 +226,6 @@ export function McpServersPanel({
               entry={entry}
               projectId={projectId}
               binding={entry.bindingId ? byBindingId.get(entry.bindingId) : undefined}
-              canEdit={canEdit}
             />
           ))}
         </ul>

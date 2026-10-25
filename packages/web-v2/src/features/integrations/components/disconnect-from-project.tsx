@@ -12,9 +12,11 @@ export const DISCONNECT_FROM_PROJECT = "Disconnect from this project…";
 export function disconnectSays(
   subject: string,
   binding: Pick<IntegrationSummary, "connectionActive" | "hasSecrets">,
+  /** Over a removed connection: GitHub's panel names the install from here, which does switch it on. */
+  staysOff = "so it stays off if the connection is turned back on",
 ): string {
   const off = `Disconnecting switches ${subject} off for this project`;
-  if (bindsRemovedConnection(binding)) return `${off}, so it stays off if the connection is turned back on.`;
+  if (bindsRemovedConnection(binding)) return `${off}, ${staysOff}.`;
   // Enabled alone does not bring back a binding whose shared connection is off too.
   const back = binding.connectionActive
     ? "until Enabled in this drawer switches it back on"
@@ -32,16 +34,19 @@ export function disconnectSays(
 export function DisconnectFromProject({
   projectId,
   binding,
-  says,
+  subject,
+  staysOff,
 }: {
   projectId: string;
-  binding: Pick<IntegrationSummary, "id" | "bindingActive">;
-  /** The question's sentence: what stops for this project, and what stays. */
-  says: string;
+  binding: Pick<IntegrationSummary, "id" | "bindingActive" | "connectionActive" | "hasSecrets" | "acts">;
+  /** What the question names ("Sentry"); its words are `disconnectSays`, every provider's (ISS-1421 r27). */
+  subject: string;
+  staysOff?: string;
 }) {
   const remove = useDeleteProviderIntegration(projectId);
   const [confirming, setConfirming] = useState(false);
-  if (!binding.bindingActive) return null;
+  if (!binding.bindingActive || !binding.acts.change) return null;
+  const says = disconnectSays(subject, binding, staysOff);
 
   return (
     <>

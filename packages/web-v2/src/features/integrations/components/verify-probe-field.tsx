@@ -51,7 +51,7 @@ export function removalWords(count: number) {
   if (count === 1) {
     return {
       title: "Remove the probe?",
-      what: "the 1 probe this binding declares",
+      what: "the one probe this binding declares",
       act: "Remove the probe",
       keep: "Keep it",
       them: "it",

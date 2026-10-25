@@ -3195,6 +3195,10 @@
 
 ### Fixed
 
+- **An integration's drawer offers only what you may do there.** Controls you may not use say who may, from the rule the server refuses by, and every refusal there says what, why and who may act instead of "Forbidden.". (ISS-1421)
+- **Returning from GitHub after an App install lands on a page that says what happened.** A refusal there showed raw JSON in the tab; the page now says in words why nothing was recorded and what to do. (ISS-1421)
+- **On a phone, a toast no longer covers an open drawer's title**, and a drawer opened on a connection needing sign-in again says why, as its row does. (ISS-1421)
+- **A Google key whose token address is not Google's is refused for that address**, not as a malformed file, and a retired setting inside a list is named where it sits. (ISS-1421)
 - **An issue recording a landing commit its repository lacks is held for that one reason.** The automatic release used to ask for a verdict on every criterion; it now asks for the merge mark or landing to be corrected. (ISS-1300)
 - **A credential Forge cannot decrypt names the project binding it was read through.** A new key saved from a project reads Not checked yet, and a GitHub App install is no longer refused over another App it cannot read. (ISS-1259)
 - **An integration credential Forge cannot decrypt is named, not a server error.** Verify, Test connection and its webhooks say which connection it is and that entering it again fixes it, and entering it again now works. (ISS-1259)

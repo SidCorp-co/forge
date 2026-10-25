@@ -311,6 +311,8 @@ describe("removing every probe asks once, and says what goes", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Remove the probe" }));
 		expect(dialog()).toHaveTextContent("Remove the probe?");
 		expect(dialog()).toHaveTextContent("goes with it, as it applies");
+		// ISS-1421 r27: "the 1 probe" read as a count where the question is about the only one.
+		expect(dialog()).toHaveTextContent("This removes the one probe this binding declares.");
 		expect(within(dialog()).queryByRole("button", { name: "Keep them" })).toBeNull();
 		expect(within(dialog()).queryByRole("button", { name: "Remove all probes" })).toBeNull();
 		fireEvent.click(within(dialog()).getByRole("button", { name: "Remove the probe" }));

@@ -268,7 +268,6 @@ describe('the live refusal: an admin of the bound project who does not own the A
 
 describe('who does not reach it', () => {
   it.each([
-    ['a plain member of the bound project', () => boundMember],
     ['an admin of a project the App is not bound to', () => otherAdmin],
     ['a stranger', () => stranger],
   ])('%s sees nothing in the directory and is refused the bindings route', async (_name, who) => {
@@ -287,7 +286,8 @@ describe('who does not reach it', () => {
 
     expect(res.status).toBe(404);
     expect(body.code).toBe('CONNECTION_NOT_REACHABLE');
-    expect(body.message).toContain(missing);
+    expect(body.message).not.toContain(missing);
+    expect(body.details).toEqual({ connectionId: missing });
   });
 
   it('names the subject, who may see a connection, and the way round', async () => {
@@ -295,7 +295,7 @@ describe('who does not reach it', () => {
 
     const body = await bodyOf(await bindingsAs(stranger.id, connection.id));
 
-    expect(body.message).toContain(connection.id);
+    expect(body.message).not.toContain(connection.id);
     expect(body.message).toMatch(/owner|organization/i);
     expect(body.message).toMatch(/admin of a project/i);
     expect(body.message).toMatch(/owner or admin of that organization/i);
@@ -431,7 +431,7 @@ describe('every door reaches the same connections', () => {
       );
 
       expect(inDirectory).toBe(reached);
-      expect(bindingsStatus === 200).toBe(reached);
+      expect(bindingsStatus === 200).toBe(reached || who() === boundMember); // ISS-1421 r27
       expect(probed).toBe(reached);
     },
   );

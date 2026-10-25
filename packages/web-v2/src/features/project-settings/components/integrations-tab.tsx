@@ -17,7 +17,12 @@ import {
 } from "@/design";
 import {
   AGENT_ACCESS_CLOSED,
-  AgentAccessChoice, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "@/features/integrations/components/agent-access-control";
+  AgentAccessChoice,
+  agentAccessBody,
+  grantOnConnectWho,
+  mayGrantOnConnect,
+} from "@/features/integrations/components/agent-access-control";
+import { onlyWho } from "@/features/integrations/components/integration-enabled-control";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
 import { connectionPickerLabels } from "@/features/integrations/connection-identity";
 import { cardProvider, isProviderCard } from "@/features/integrations/derive";
@@ -26,7 +31,7 @@ import {
   useConnections,
   useIntegrationsList,
   useIntegrationsStatus,
-  useIsOrgAdmin,
+  useProjectIntegrationActs,
 } from "@/features/integrations/hooks";
 import { probeIsUsable, VERIFY_KEY, VERIFY_PROBE_SECTION } from "@/features/integrations/components/verify-probe-field";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
@@ -76,12 +81,10 @@ function useDeployProviders(projectId: string): { provider: string; label: strin
 
 function ShareExistingCard({
   projectId,
-  canEdit,
   addingLiveTarget,
   onConnect,
 }: {
   projectId: string;
-  canEdit: boolean;
   /** Arrived to add a live deploy target: Deploy target is picked and Live ticked already. */
   addingLiveTarget: boolean;
   /** Open a provider's own setup on this tab, to connect one that is not connected yet. */
@@ -95,11 +98,13 @@ function ShareExistingCard({
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Only active connections with a stored credential are eligible to share —
-  // a soft-deleted or secret-less row would fail server-side (loadOwnedConnection
-  // rejects active=false). Filtering here keeps the picker honest.
+  // Only a connection the share door takes is offered: active, holding its credential, and one the
+  // reader manages, since the door refuses anyone else's (ISS-1421 r27).
   const eligible = useMemo(
-    () => (connectionsQ.data?.items ?? []).filter((c) => c.active && c.hasSecrets),
+    () =>
+      (connectionsQ.data?.items ?? []).filter(
+        (c) => c.active && c.hasSecrets && c.access?.canManage === true,
+      ),
     [connectionsQ.data],
   );
 
@@ -120,7 +125,7 @@ function ShareExistingCard({
   // No binding exists yet, so the risk class comes off the provider's own module. `none` renders no
   // control at all — that provider has no agent path for a grant to open.
   const agentPathKind = provider ? (providerModule(provider)?.agentPathKind ?? "none") : "none";
-  const isOrgAdmin = useIsOrgAdmin(projectId);
+  const may = useProjectIntegrationActs(projectId);
   const deployProviders = useDeployProviders(projectId);
 
   // Arriving to add a live deploy target, the one connection Forge can deploy to is picked too.
@@ -191,9 +196,9 @@ function ShareExistingCard({
         you have not connected yet starts from its provider on this tab.
       </p>
 
-      {!canEdit ? (
+      {may && !may.connect ? (
         <Banner tone="info">
-          Only the project owner can share a connection with this project.
+          {`${onlyWho(may.whoConnects)} can share a connection with this project.`}
         </Banner>
       ) : isEmpty ? (
         <div className="flex flex-col gap-3" data-testid="no-connection">
@@ -267,21 +272,20 @@ function ShareExistingCard({
             value={agentAccess}
             onChange={setAgentAccess}
             pathKind={agentPathKind}
-            canEdit={mayWriteAgentAccess(agentPathKind, { canEditProject: canEdit, isOrgAdmin }) && !bind.isPending}
-            disabledReason={agentAccessDeniedReason(agentPathKind)}
+            canEdit={mayGrantOnConnect(agentPathKind, may) && !bind.isPending}
+            disabledReason={grantOnConnectWho(agentPathKind, may)}
           />
           {formError && <Banner tone="attention">{formError}</Banner>}
           {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
-          <div>
-            <Button
-              variant="primary"
-              onClick={submit}
-              loading={bind.isPending}
-              disabled={!connectionId || bind.isPending}
-            >
-              Share with this project
-            </Button>
-          </div>
+          <Button
+            variant="primary"
+            className="self-start"
+            onClick={submit}
+            loading={bind.isPending}
+            disabled={!connectionId || bind.isPending}
+          >
+            Share with this project
+          </Button>
         </div>
       )}
     </SettingsSection>
@@ -304,13 +308,7 @@ export function probeLandingFor(bindings: readonly IntegrationSummary[]): Integr
   return live.find((b) => !probeIsUsable(b.config?.[VERIFY_KEY])) ?? live[0] ?? null;
 }
 
-export function IntegrationsTab({
-  projectId,
-  canEdit,
-}: {
-  projectId: string;
-  canEdit: boolean;
-}) {
+export function IntegrationsTab({ projectId }: { projectId: string }) {
   // Arriving to add one puts this section first, so the link lands on what it names.
   const params = new URLSearchParams(useLocationSearch());
   const addingLiveTarget = params.get("add") === LIVE_DEPLOY_TARGET;
@@ -354,7 +352,6 @@ export function IntegrationsTab({
   const share = (
     <ShareExistingCard
       projectId={projectId}
-      canEdit={canEdit}
       addingLiveTarget={addingLiveTarget}
       onConnect={(provider) => setConnecting({ provider, stage: "live" })}
     />
@@ -364,7 +361,6 @@ export function IntegrationsTab({
       {addingLiveTarget && share}
       <ProjectIntegrationsPanel
         projectId={projectId}
-        canEdit={canEdit}
         openProvider={connecting}
         onOpenProvider={clearConnecting}
         onDrawerClose={dropProbeLanding}

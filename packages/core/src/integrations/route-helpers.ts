@@ -5,8 +5,15 @@ import { effectiveProjectRole, orgRoleAtLeast, projectWriteRefusal } from '../li
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
+import {
+  type BindingReader,
+  bindingActs,
+  bindingReaderOf,
+  type ProjectRole,
+  WHO_CHANGES,
+} from './binding-acts.js';
 import { checkBindingHealth } from './binding-health.js';
-import { healthAnswer } from './health-words.js';
+import { healthAnswer, providerLabel } from './health-words.js';
 import {
   holdsKey,
   isRemovedConnection,
@@ -14,9 +21,9 @@ import {
   listBoundProjectOrgs,
   type RemovedReader,
   turnsBackOnFrom,
+  whoSavesKey,
 } from './held-key.js';
 import { raceWithTimeout } from './probe.js';
-import { findReachableConnection } from './reach.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
   type BindingWithConnection,
@@ -55,20 +62,20 @@ export const notFound = (entity = 'integration') =>
 export const connectionNotReachable = (connectionId: string) =>
   new HTTPException(404, {
     message:
-      `Connection ${connectionId} is not one you can reach. A connection is visible to the ` +
+      'This connection is not one you can reach. A connection is visible to the ' +
       'individual who owns it, to the members of the organization that owns it, and to an admin ' +
       "of a project it is bound to. Only its owner (for an organization's connection, an owner or " +
       'admin of that organization) can bind it to a project you administer, so ask them.',
-    cause: { code: 'CONNECTION_NOT_REACHABLE' },
+    cause: { code: 'CONNECTION_NOT_REACHABLE', details: { connectionId } },
   });
 
 /** {@link connectionNotReachable} for a delete, naming the usual reason first: a Clear (ISS-1421 r24). */
 export const connectionGoneOrNotReachable = (connectionId: string) =>
   new HTTPException(404, {
     message:
-      `Connection ${connectionId} is already gone, or is not one you can reach. Only its owner ` +
+      'This connection is already gone, or is not one you can reach. Only its owner ' +
       "(for an organization's connection, an owner or admin of that organization) can delete it.",
-    cause: { code: 'CONNECTION_NOT_REACHABLE' },
+    cause: { code: 'CONNECTION_NOT_REACHABLE', details: { connectionId } },
   });
 
 /** {@link turnsBackOnFrom}, reading the connection's bindings only where they decide the sentence. */
@@ -86,19 +93,14 @@ export async function turnsBackOn(
 /** A person asking about a connection from a project, holding `role` there. */
 export type Asker = { userId: string; role: 'admin' | 'member' | 'viewer'; projectId: string };
 
-/** What an asker may do about a removed connection. */
+/** What an asker may do about a removed connection, read off the predicate the doors refuse by (ISS-1421 r27). */
 export async function removedReaderOf(
-  connection: { id: string; ownerType: 'user' | 'org' },
-  asker: Pick<Asker, 'userId' | 'role'>,
+  connection: { id: string; provider: string; ownerType: 'user' | 'org'; ownerId: string },
+  asker: Asker,
 ): Promise<RemovedReader> {
-  const manages = (await findReachableConnection(asker.userId, connection.id))?.canManage === true;
-  const projectAdmin = asker.role === 'admin';
-  return {
-    manages,
-    // A binding PATCH saves a key on a person's connection for any admin of the project (ISS-1115).
-    savesKey: manages || (projectAdmin && connection.ownerType === 'user'),
-    installsHere: manages && projectAdmin,
-  };
+  const reader = await bindingReaderOf(asker.userId, asker.projectId, asker.role);
+  const acts = bindingActs(reader, connection, connection.provider);
+  return { manages: acts.turnOn, savesKey: acts.saveKey, installsHere: acts.turnOn && acts.change };
 }
 
 type RemovedAct = 'shared' | 'tested' | 'turned on for this project' | 'asked for its applications';
@@ -169,11 +171,40 @@ export function keySavedHere(
   return { ...health, active: true };
 }
 
-/** The org tier of a binding PATCH, naming who may change what the asker sent (ISS-1421 r26). */
-export const orgConnectionNotYours = () =>
+/** The connection tier of a binding PATCH, naming who may change what the asker sent (ISS-1421 r26, r27). */
+export const keyNotYours = (connection: { ownerType: 'user' | 'org' }) =>
   new HTTPException(403, {
     message:
-      "This binding's connection belongs to the organization, so only an owner or admin of that organization can change its key or its shared settings. Ask one of them.",
+      connection.ownerType === 'org'
+        ? "This binding's connection belongs to the organization, so only an owner or admin of that organization can change its key or its shared settings. Ask one of them."
+        : `This binding's connection belongs to a person, so only ${whoSavesKey(connection)} can change its key or its shared settings. Ask one of them.`,
+    cause: { code: 'FORBIDDEN' },
+  });
+
+const ROLE_HELD: Record<ProjectRole, string> = {
+  admin: 'an admin',
+  member: 'a member',
+  viewer: 'a viewer',
+};
+
+/** A binding-tier act, or any act on the project's integrations, from a reader who is not its admin. */
+export const notThisProjectsAdmin = (role: ProjectRole, act: string) =>
+  new HTTPException(403, {
+    message: `You are ${ROLE_HELD[role]} of this project, so you cannot ${act}. Only ${WHO_CHANGES} can, so ask one of them.`,
+    cause: { code: 'FORBIDDEN' },
+  });
+
+/** A grant that hands a provider's credential to a runner box (ISS-1071 rule 5). */
+const boxGrantNotYours = (provider: string) =>
+  new HTTPException(403, {
+    message: `Letting agents use ${providerLabel(provider)} hands its credential to the runner box, so only an owner or admin of this project's organization can change it. Ask one of them.`,
+    cause: { code: 'FORBIDDEN' },
+  });
+
+/** An organization's own connection, asked of a reader who is not its owner or admin. */
+export const orgCredentialNotYours = (act: string) =>
+  new HTTPException(403, {
+    message: `Only an owner or admin of the organization can ${act} a connection it owns. Make it your own connection instead, or ask one of them.`,
     cause: { code: 'FORBIDDEN' },
   });
 
@@ -260,7 +291,12 @@ export async function assertProjectMember(
 ): Promise<'admin' | 'member' | 'viewer'> {
   const access = await effectiveProjectRole(userId, projectId);
   if (!access) throw notFound('project');
-  if (!access.role) throw forbidden();
+  if (!access.role) {
+    throw new HTTPException(403, {
+      message: `You are not a member of this project, so its integrations are not yours to read or change. Ask ${WHO_CHANGES} to add you.`,
+      cause: { code: 'FORBIDDEN' },
+    });
+  }
   return access.role;
 }
 
@@ -292,11 +328,20 @@ export async function authorizeAgentAccessWrite(
   if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
   if (tier !== 'org-admin') return;
   const access = await effectiveProjectRole(userId, projectId);
-  if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
+  if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw boxGrantNotYours(provider);
 }
 
-export function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {
-  if (role !== 'admin') throw forbidden();
+/** `act` completes "you cannot …": what the reader asked to do, said as they would say it. */
+export function assertAdmin(role: ProjectRole, act: string): void {
+  if (role !== 'admin') throw notThisProjectsAdmin(role, act);
+}
+
+/** {@link summarizeBinding} as a project's own list reads it: with what this reader may do (ISS-1421 r27). */
+export function summarizeProjectBinding(pair: BindingWithConnection, reader: BindingReader) {
+  return {
+    ...summarizeBinding(pair),
+    acts: bindingActs(reader, pair.connection, pair.binding.provider),
+  };
 }
 
 export function summarizeBinding(pair: BindingWithConnection) {
@@ -452,8 +497,9 @@ async function runInitialHealthcheck(
 export async function buildCreatedBindingResponse(
   pair: BindingWithConnection,
   integrationSecret: string,
+  reader: BindingReader,
 ): Promise<{
-  integration: ReturnType<typeof summarizeBinding>;
+  integration: ReturnType<typeof summarizeProjectBinding>;
   integrationSecret: string;
   health: HealthCheckResult | null;
 }> {
@@ -468,7 +514,11 @@ export async function buildCreatedBindingResponse(
     bindingId: pair.binding.id,
     connectionId: pair.connection.id,
   });
-  return { integration: summarizeBinding(refreshed ?? pair), integrationSecret, health };
+  return {
+    integration: summarizeProjectBinding(refreshed ?? pair, reader),
+    integrationSecret,
+    health,
+  };
 }
 
 export function toIso(d: Date | string | null): string | null {

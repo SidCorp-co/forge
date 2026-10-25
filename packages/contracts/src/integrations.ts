@@ -451,8 +451,49 @@ export interface ConnectionListResponse {
  * and the runner, and goes once those readers name `bindings` (ISS-1191).
  */
 export interface BindingListResponse {
-  bindings: BindingSummary[];
-  items: BindingSummary[];
+  bindings: ProjectBinding[];
+  items: ProjectBinding[];
+  /** What the reader may do on the project's Integrations tab as a whole. */
+  may: ProjectIntegrationActs;
+}
+
+/**
+ * What the reader may do with one binding, decided by the same rule its doors refuse by, and who may
+ * take each act the reader may not (ISS-1421 r27). Each `who…` is a sentence's subject, opening lower
+ * case ("an admin of this project"), and names the people who may whether or not the reader is one.
+ */
+export interface BindingActs {
+  /** Switch it on or off for this project, change its own settings, or disconnect it. */
+  change: boolean;
+  /** Save its connection's key or shared settings from this project. */
+  saveKey: boolean;
+  /** Turn its connection on or off for every project sharing it. */
+  turnOn: boolean;
+  /** Change whether this project's agents may use it. */
+  grantAgents: boolean;
+  whoChanges: string;
+  whoSavesKey: string;
+  whoTurnsOn: string;
+  whoGrantsAgents: string;
+}
+
+/** What the reader may do on a project's Integrations tab beyond any one binding. */
+export interface ProjectIntegrationActs {
+  /** Connect a provider to the project, or share an existing connection with it. */
+  connect: boolean;
+  whoConnects: string;
+  /** Let agents use a new connection whose credential goes to the runner box. */
+  grantBoxAgents: boolean;
+  whoGrantsBoxAgents: string;
+  /** Change the project's own settings a provider's drawer shows, such as the Rocket.Chat bot's
+   *  personality: the project's settings door, which needs an owner or admin of its organization. */
+  changeProjectSettings: boolean;
+  whoChangesProjectSettings: string;
+}
+
+/** A binding as the project's own list reads it: the summary, and what its reader may do with it. */
+export interface ProjectBinding extends BindingSummary {
+  acts: BindingActs;
 }
 /** List envelope for delivery rows (`GET .../integrations/:id/deliveries`). */
 export interface IntegrationDeliveryListResponse {

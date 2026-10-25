@@ -10,6 +10,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
+import { ALL_ACTS } from "../../test-acts";
 import type { IntegrationSummary } from "../../types";
 import { ApiError } from "@/lib/api/client";
 
@@ -112,10 +113,6 @@ vi.mock("../../hooks", () => ({
     error: connectError,
   }),
   useUpdateConnection: () => ({ mutate: vi.fn(), isPending: false }),
-  useOrgConnectionLocked: () => false,
-  useConnectionManager: () => ({ manages: true, ownerType: "user" }),
-  connectionManagers: () => "its owner",
-  useIsOrgAdmin: () => true,
 }));
 
 const { GitHubSection } = await import("./section");
@@ -143,6 +140,7 @@ function binding(over: Partial<IntegrationSummary> = {}): IntegrationSummary {
     integrationSecretSet: true,
     agentAccess: "none",
     agentPathKind: "core-mediated",
+    acts: ALL_ACTS,
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-20T00:00:00.000Z",
     ...over,
@@ -360,7 +358,7 @@ describe("the controls that belong to the binding row itself", () => {
     expect(remove).not.toHaveBeenCalled();
     expect(
       screen.getByText(
-        "Disconnecting stops this project's agents and runners reaching SidCorp-co/forge through this App. The App itself stays, and other projects bound to it keep it.",
+        "Disconnecting switches GitHub (SidCorp-co/forge) off for this project, and nothing here uses it until Enabled in this drawer switches it back on. The connection and its key stay.",
       ),
     ).toBeInTheDocument();
 
@@ -711,7 +709,7 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
     expect(remove).not.toHaveBeenCalled();
     expect(
       screen.getByText(
-        "Disconnecting switches this project off from SidCorp-co App, so it stays off if the connection is turned back on from anywhere but here.",
+        "Disconnecting switches SidCorp-co App off for this project, so it stays off if the connection is turned back on from anywhere but here.",
       ),
     ).toBeInTheDocument();
 
@@ -729,7 +727,7 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(remove).not.toHaveBeenCalled();
-    expect(screen.queryByText(/^Disconnecting switches this project off/)).toBeNull();
+    expect(screen.queryByText(/^Disconnecting switches/)).toBeNull();
   });
 
   it("asks without the exception where this project's install cannot turn the connection on", () => {
@@ -740,7 +738,7 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
 
     expect(
       screen.getByText(
-        "Disconnecting switches this project off from SidCorp-co App, so it stays off if the connection is turned back on.",
+        "Disconnecting switches SidCorp-co App off for this project, so it stays off if the connection is turned back on.",
       ),
     ).toBeInTheDocument();
   });

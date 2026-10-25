@@ -7,24 +7,31 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentAccess, AgentPathKind } from "@forge/contracts";
+import type { AgentAccess, AgentPathKind, BindingActs } from "@forge/contracts";
 import { AgentAccessControl, turnedOffCopy } from "./agent-access-control";
 
 expect.extend(matchers);
 
-let manager: { manages: boolean; ownerType: "user" | "org" } | null = { manages: true, ownerType: "user" };
-const managers = (ownerType: "user" | "org") =>
-  ownerType === "org" ? "an owner or admin of the organization that owns it" : "its owner";
 vi.mock("../hooks", () => ({
   useUpdateProviderIntegration: () => ({ mutate: vi.fn() }),
-  useIsOrgAdmin: () => true,
-  useConnectionManager: () => manager,
-  connectionManagers: (ownerType: "user" | "org") => managers(ownerType),
 }));
+
+/** What core answers a project admin who manages the connection and may grant a box-held one. */
+const ALL: BindingActs = {
+  change: true,
+  saveKey: true,
+  turnOn: true,
+  grantAgents: true,
+  whoChanges: "an admin of this project",
+  whoSavesKey: "its owner or an admin of a project bound to it",
+  whoTurnsOn: "its owner",
+  whoGrantsAgents: "an owner or admin of this project's organization",
+};
+let acts: BindingActs = ALL;
 
 afterEach(() => {
   cleanup();
-  manager = { manages: true, ownerType: "user" };
+  acts = ALL;
 });
 
 const LIVE = /handed to the runner box|calls the provider directly|makes the call|hands the project's credential/;
@@ -48,8 +55,7 @@ function show(
   render(
     <AgentAccessControl
       projectId="p1"
-      binding={{ id: "b1", connectionId: "c1", active, bindingActive, connectionActive, hasSecrets, agentAccess, agentPathKind }}
-      canEdit
+      binding={{ id: "b1", connectionId: "c1", active, bindingActive, connectionActive, hasSecrets, agentAccess, agentPathKind, acts }}
       {...(readFrom ? { readFrom } : {})}
     />,
   );
@@ -67,14 +73,14 @@ describe("the agents line for a reader who may not turn the credential on (crite
       "A grant takes effect once its owner turns its shared credential back on and Enabled in this drawer is switched back on.",
     ],
   ] as const)("names who turns it on where the %s is off", (_tier, bindingActive, line) => {
-    manager = { manages: false, ownerType: "user" };
+    acts = { ...ALL, turnOn: false };
     const said = show(false, "none", "core-mediated", { bindingActive, connectionActive: false });
     expect(said).toContain(line);
     expect(said).not.toContain("Enable credential");
   });
 
   it("names the organization's owners and admins for its connection", () => {
-    manager = { manages: false, ownerType: "org" };
+    acts = { ...ALL, turnOn: false, whoTurnsOn: "an owner or admin of the organization that owns it" };
     expect(show(false, "none", "core-mediated", { bindingActive: true, connectionActive: false })).toContain(
       "once an owner or admin of the organization that owns it turns its shared credential back on.",
     );
@@ -170,35 +176,22 @@ describe("the agents switch on a binding that is turned off", () => {
   });
 
   // Seen on the after-shot: the line saying who may grant it read as a credential already sent.
-  it("says who may grant it as what granting would do, for a caller who may not", async () => {
-    vi.resetModules();
-    vi.doMock("../hooks", () => ({
-      useUpdateProviderIntegration: () => ({ mutate: vi.fn() }),
-      useIsOrgAdmin: () => false,
-      useConnectionManager: () => manager,
-      connectionManagers: (ownerType: "user" | "org") => managers(ownerType),
-    }));
-    const { AgentAccessControl: Control } = await import("./agent-access-control");
-    render(
-      <Control
-        projectId="p1"
-        binding={{
-          id: "b1",
-          connectionId: "c1",
-          active: false,
-          bindingActive: false,
-          connectionActive: true,
-          hasSecrets: true,
-          agentAccess: "all",
-          agentPathKind: "direct-mcp",
-        }}
-        canEdit
-      />,
+  it("says who may grant it as what granting would do, for a caller who may not", () => {
+    acts = { ...ALL, grantAgents: false };
+    const text = show(false, "all", "direct-mcp", { bindingActive: false });
+    expect(text).toContain(
+      "Granting this sends the integration's credential to the runner, so only an owner or admin of this project's organization can grant it.",
     );
-    const text = document.body.textContent ?? "";
-    expect(text).toContain("Granting this sends the integration's credential to the runner");
     expect(text).not.toMatch(/credential is (?:sent|handed)/);
-    vi.doUnmock("../hooks");
+  });
+
+  // ISS-1421 r27 (287, 293): the switch was live for a plain member of the project, whose grant core
+  // then refused; it is drawn off and names the admin of the project who may.
+  it("is not live for a plain member of the project, and names who may change it", () => {
+    acts = { ...ALL, change: false, grantAgents: false, saveKey: false, turnOn: false };
+    const text = show(true, "none", "core-mediated");
+    expect(screen.getByRole("switch", { name: "Agents on this project may use this" })).toBeDisabled();
+    expect(text).toContain("Only an admin of this project can change this.");
   });
 
   it("still says what the grant does on a binding that is on", () => {

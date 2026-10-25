@@ -10,7 +10,7 @@ import {
   projectMembers,
   projects,
 } from '../db/schema.js';
-import { orgRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
 import type { IntegrationConnectionRow } from './store.js';
 
 export type { ConnectionReach };
@@ -60,7 +60,8 @@ async function administeredProjectIds(userId: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-async function orgRolesOf(userId: string): Promise<Map<string, OrgMemberRole>> {
+/** The caller's role in every organization they belong to. */
+export async function orgRolesOf(userId: string): Promise<Map<string, OrgMemberRole>> {
   const rows = await db
     .select({ orgId: organizationMembers.orgId, role: organizationMembers.role })
     .from(organizationMembers)
@@ -95,6 +96,16 @@ async function boundThrough(
   return out;
 }
 
+/** The `canManage` rule: the individual who owns it, or an owner or admin of the organization that does. */
+export function managesConnection(
+  connection: Pick<IntegrationConnectionRow, 'ownerType' | 'ownerId'>,
+  userId: string,
+  orgRoles: ReadonlyMap<string, OrgMemberRole>,
+): boolean {
+  if (connection.ownerType === 'user') return connection.ownerId === userId;
+  return orgRoleAtLeast(orgRoles.get(connection.ownerId) ?? null, 'admin');
+}
+
 function classify(
   connection: IntegrationConnectionRow,
   userId: string,
@@ -110,7 +121,7 @@ function classify(
       return {
         connection,
         reach: 'org',
-        canManage: orgRoleAtLeast(role, 'admin'),
+        canManage: managesConnection(connection, userId, orgRoles),
         viaProjectIds: [],
       };
     }
@@ -189,4 +200,26 @@ export function bindingsVisibleTo<T>(
   if (reached.reach !== 'binding') return bindings;
   const allowed = new Set(reached.viaProjectIds);
   return bindings.filter((b) => allowed.has(projectOf(b)));
+}
+
+/**
+ * The projects bound to a connection that the caller is a member of, any role: each reads its own
+ * bindings, so its drawer's list of the projects using the connection names it, where reach alone
+ * named only the projects the caller administers (ISS-1421 r27).
+ */
+export async function memberProjectsBoundTo(
+  userId: string,
+  connectionId: string,
+): Promise<string[]> {
+  const bound = await db
+    .selectDistinct({ projectId: integrationBindings.projectId })
+    .from(integrationBindings)
+    .where(eq(integrationBindings.connectionId, connectionId));
+  const roles = await Promise.all(
+    bound.map(async ({ projectId }) => ({
+      projectId,
+      role: (await effectiveProjectRole(userId, projectId))?.role ?? null,
+    })),
+  );
+  return roles.filter((r) => r.role !== null).map((r) => r.projectId);
 }

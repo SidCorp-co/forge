@@ -22,8 +22,8 @@ import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
   useIntegrationsList,
-  useOrgConnectionLocked,
   useProbeRocketchatRooms,
+  useProjectIntegrationActs,
   useRocketchatRooms,
   useTestIntegration,
   useUpdateProviderIntegration,
@@ -37,16 +37,23 @@ import type { RocketchatReadConfig } from "./config";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
+  AgentAccessControl,
+  agentAccessBody,
+  grantOnConnectWho,
+  mayGrantOnConnect,
+} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { rocketchat } from "./index";
 import {
+  bindingLockedLine,
   bindsRemovedConnection,
   IntegrationEnabledControl,
+  keyLockedLine,
+  onlyWho,
 } from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
-import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
+import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 export function RocketchatSection({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
@@ -75,9 +82,18 @@ const ANSWER_MODE_OPTIONS = [
   { value: "agent", label: "Agent (runner Claude)" },
 ];
 
+/** The bot's answer mode and personality are the project's own settings, whose door needs an owner
+ *  or admin of its organization: anyone else is told who may, not offered a write it refuses
+ *  (ISS-1421 r27). Null while the list is unread. */
+function useProjectSettingsLock(projectId: string): string | null {
+  const may = useProjectIntegrationActs(projectId);
+  return may && !may.changeProjectSettings ? onlyWho(may.whoChangesProjectSettings) : null;
+}
+
 function AnswerModePanel({ projectId }: { projectId: string }) {
   const projectQ = useProject(projectId);
   const update = useUpdateProject(projectId);
+  const lockedTo = useProjectSettingsLock(projectId);
 
   const saved =
     ((projectQ.data?.agentConfig as Record<string, unknown> | null)?.rocketChatAnswerMode as
@@ -99,8 +115,9 @@ function AnswerModePanel({ projectId }: { projectId: string }) {
           update.mutate({ rocketChatAnswerMode: value === "fast" ? null : (value as "agent") })
         }
         options={ANSWER_MODE_OPTIONS}
-        disabled={projectQ.isLoading || update.isPending}
+        disabled={projectQ.isLoading || update.isPending || lockedTo !== null}
       />
+      {lockedTo && <p className="fg-body-sm text-muted">{`${lockedTo} can change the answer mode.`}</p>}
     </div>
   );
 }
@@ -116,6 +133,7 @@ const STYLE_PLACEHOLDER = `e.g. "Xưng 'em', gọi user là 'anh'. Tone thân th
 function BotPersonalityPanel({ projectId }: { projectId: string }) {
   const projectQ = useProject(projectId);
   const update = useUpdateProject(projectId);
+  const lockedTo = useProjectSettingsLock(projectId);
 
   const saved =
     ((projectQ.data?.agentConfig as Record<string, unknown> | null)?.personaStyle as
@@ -138,36 +156,40 @@ function BotPersonalityPanel({ projectId }: { projectId: string }) {
         placeholder={STYLE_PLACEHOLDER}
         value={value}
         onChange={(e) => setDraft(e.target.value)}
-        disabled={projectQ.isLoading}
+        disabled={projectQ.isLoading || lockedTo !== null}
       />
-      <div className="flex items-center gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          loading={update.isPending}
-          disabled={draft === null || draft === saved}
-          onClick={() =>
-            update.mutate(
-              { personaStyle: value.trim() ? value.trim() : null },
-              { onSuccess: () => setDraft(null) },
-            )
-          }
-        >
-          Save personality
-        </Button>
-        {saved && (
+      {lockedTo ? (
+        <p className="fg-body-sm text-muted">{`${lockedTo} can change the bot's personality.`}</p>
+      ) : (
+        <div className="flex items-center gap-2">
           <Button
-            variant="ghost"
+            variant="secondary"
             size="sm"
             loading={update.isPending}
+            disabled={draft === null || draft === saved}
             onClick={() =>
-              update.mutate({ personaStyle: null }, { onSuccess: () => setDraft(null) })
+              update.mutate(
+                { personaStyle: value.trim() ? value.trim() : null },
+                { onSuccess: () => setDraft(null) },
+              )
             }
           >
-            Clear
+            Save personality
           </Button>
-        )}
-      </div>
+          {saved && (
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={update.isPending}
+              onClick={() =>
+                update.mutate({ personaStyle: null }, { onSuccess: () => setDraft(null) })
+              }
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -186,7 +208,10 @@ function RocketchatBindingPanel({
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
   const list = useIntegrationsList(projectId);
-  const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
+  // The bot credential is the connection's tier and the rooms the binding's, each offered by what
+  // core says this reader may change (ISS-1421 r27).
+  const keyLocked = !binding.acts.saveKey;
+  const bindingLocked = !binding.acts.change;
 
   const cfg = binding.config as RocketchatReadConfig;
   const savedRids = useMemo(() => cfg.rids ?? [], [cfg.rids]);
@@ -267,65 +292,67 @@ function RocketchatBindingPanel({
           <Banner tone="danger">{testResult.message ?? "Connection failed"}</Banner>
         ))}
 
-      <Field
-        label="Rooms"
-        hint="The rooms this project listens on. The picker lists every room the bot is a member of — invite the bot to a room to make it appear here."
-      >
-        <div className="flex flex-col gap-2">
-          {savedRids.map((r) => (
-            <div key={r} className="flex items-center gap-2">
-              <span className="fg-body-sm flex-1 truncate">
-                {roomLabel(r) ?? "unknown room"}{" "}
-                <span className="text-muted font-mono">{r}</span>
-              </span>
+      <fieldset disabled={bindingLocked} className="contents">
+        <Field
+          label="Rooms"
+          hint="The rooms this project listens on. The picker lists every room the bot is a member of — invite the bot to a room to make it appear here."
+        >
+          <div className="flex flex-col gap-2">
+            {savedRids.map((r) => (
+              <div key={r} className="flex items-center gap-2">
+                <span className="fg-body-sm flex-1 truncate">
+                  {roomLabel(r) ?? "unknown room"}{" "}
+                  <span className="text-muted font-mono">{r}</span>
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="trash"
+                  loading={update.isPending}
+                  disabled={savedRids.length === 1}
+                  onClick={() => saveRids(savedRids.filter((x) => x !== r))}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <div className="flex items-center gap-2">
+              {availableRooms.length > 0 ? (
+                <div className="min-w-0 flex-1">
+                  <Select
+                    placeholder="pick a room…"
+                    value={newRid}
+                    onChange={setNewRid}
+                    options={availableRooms.map((r) => ({
+                      value: r.rid,
+                      label: `${r.name}${r.type === "p" ? " (private)" : ""}`,
+                    }))}
+                  />
+                </div>
+              ) : (
+                <Input
+                  placeholder={
+                    roomsQ.isLoading ? "loading rooms…" : "room id (rid)…"
+                  }
+                  value={newRid}
+                  onChange={(e) => setNewRid(e.target.value)}
+                />
+              )}
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="sm"
-                icon="trash"
                 loading={update.isPending}
-                disabled={savedRids.length === 1}
-                onClick={() => saveRids(savedRids.filter((x) => x !== r))}
+                disabled={!newRid.trim() || savedRids.includes(newRid.trim())}
+                onClick={() => saveRids([...savedRids, newRid.trim()])}
               >
-                Remove
+                Add room
               </Button>
             </div>
-          ))}
-          <div className="flex items-center gap-2">
-            {availableRooms.length > 0 ? (
-              <div className="min-w-0 flex-1">
-                <Select
-                  placeholder="pick a room…"
-                  value={newRid}
-                  onChange={setNewRid}
-                  options={availableRooms.map((r) => ({
-                    value: r.rid,
-                    label: `${r.name}${r.type === "p" ? " (private)" : ""}`,
-                  }))}
-                />
-              </div>
-            ) : (
-              <Input
-                placeholder={
-                  roomsQ.isLoading ? "loading rooms…" : "room id (rid)…"
-                }
-                value={newRid}
-                onChange={(e) => setNewRid(e.target.value)}
-              />
-            )}
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={update.isPending}
-              disabled={!newRid.trim() || savedRids.includes(newRid.trim())}
-              onClick={() => saveRids([...savedRids, newRid.trim()])}
-            >
-              Add room
-            </Button>
           </div>
-        </div>
-      </Field>
+        </Field>
+      </fieldset>
 
-      {showRotate && !orgLocked && (
+      {showRotate && !keyLocked && (
         <>
           <Field
             label="New bot auth token"
@@ -349,14 +376,17 @@ function RocketchatBindingPanel({
         </>
       )}
 
-      {orgLocked && (
+      {keyLocked && (
+        <p className="fg-body-sm text-muted">{keyLockedLine(binding.acts)}</p>
+      )}
+      {bindingLocked && (
         <p className="fg-body-sm text-muted">
-          Org-shared credential — only an org owner/admin can change it.
+          {bindingLockedLine(binding.acts)}
         </p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {!orgLocked &&
+        {!keyLocked &&
           (showRotate ? (
             <>
               <Button
@@ -384,18 +414,13 @@ function RocketchatBindingPanel({
         <DisconnectFromProject
           projectId={projectId}
           binding={binding}
-          says={disconnectSays("the Rocket.Chat bot", binding)}
+          subject={"the Rocket.Chat bot"}
         />
       </div>
 
       <IntegrationEnabledControl projectId={projectId} binding={binding} />
 
-      <AgentAccessControl
-        projectId={projectId}
-        binding={binding}
-        canEdit={!orgLocked}
-        disabledReason="Org-shared credential — only an org owner/admin can grant it."
-      />
+      <AgentAccessControl projectId={projectId} binding={binding} />
     </div>
   );
 }
@@ -406,6 +431,7 @@ function RocketchatBindingPanel({
 
 function AddRocketchatForm({ projectId }: { projectId: string }) {
   const create = useCreateProviderIntegration(projectId);
+  const may = useProjectIntegrationActs(projectId);
   const probe = useProbeRocketchatRooms(projectId);
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const [serverUrl, setServerUrl] = useState("");
@@ -548,7 +574,8 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
         value={agentAccess}
         onChange={setAgentAccess}
         pathKind={rocketchat.agentPathKind}
-        canEdit={true}
+        canEdit={mayGrantOnConnect(rocketchat.agentPathKind, may)}
+        disabledReason={grantOnConnectWho(rocketchat.agentPathKind, may)}
       />
 
       {error && <Banner tone="danger">{error}</Banner>}

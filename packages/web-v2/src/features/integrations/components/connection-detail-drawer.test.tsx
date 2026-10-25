@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROVIDER_MODULES } from "../providers/registry";
 import { GRANT_LABEL } from "./agent-access-control";
 import { BindingsList, ConnectionDetailDrawer } from "./connection-detail-drawer";
+import { ALL_ACTS, ALL_MAY } from "../test-acts";
 
 expect.extend(matchers);
 
@@ -23,6 +24,9 @@ let provider = "coolify";
 let served: string[] = [];
 /** The providers whose binding here is a deploy binding; the others are service bindings. */
 let deployTo: string[] = ["coolify"];
+/** What core answers the reader about each binding and the tab: everything, unless a test narrows it. */
+let acts = ALL_ACTS;
+let may = ALL_MAY;
 
 function binding(stage: "preview" | "live") {
   return {
@@ -45,6 +49,7 @@ function binding(stage: "preview" | "live") {
     integrationSecretSet: true,
     agentAccess: "off",
     agentPathKind: "core-mediated",
+    acts,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -70,7 +75,7 @@ vi.mock("@/lib/api/client", async () => {
       served.push(bare);
       if (bare === `/projects/${PROJECT}/integrations`) {
         // One binding per provider, as a drawer opened from one row shows; Coolify's two are its stages.
-        return { items: provider === "coolify" ? [binding("preview"), binding("live")] : [binding("live")] };
+        return { items: provider === "coolify" ? [binding("preview"), binding("live")] : [binding("live")], may };
       }
       if (bare === "/projects") return [PROJECT_ROW];
       if (bare === `/projects/${PROJECT}`) return { ...PROJECT_ROW, agentConfig: {} };
@@ -100,6 +105,8 @@ function Page({ children }: { children: ReactNode }) {
 beforeEach(() => {
   served = [];
   deployTo = ["coolify"];
+  acts = ALL_ACTS;
+  may = ALL_MAY;
   queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 afterEach(cleanup);
@@ -129,6 +136,86 @@ describe("a provider's drawer shows the agents switch once", () => {
       expect(screen.getAllByText(GRANT_LABEL)).toHaveLength(1);
     },
   );
+});
+
+// ISS-1421 r27, judge-108 (287, 293 and the extras): a plain member of the project was told to save a
+// key and fix the base URL, and offered Save, Disconnect and a live Enabled switch, all of which core
+// refused. The drawer now draws from the binding's acts, the rule core refuses by.
+describe("a plain member of the project's drawer offers nothing core refuses them", () => {
+  it.each(PROVIDER_MODULES.filter((m) => m.section !== null).map((m) => m.provider))(
+    "%s",
+    async (name) => {
+      provider = name;
+      acts = { ...ALL_ACTS, change: false, saveKey: false, turnOn: false, grantAgents: false };
+      may = { ...ALL_MAY, connect: false, grantBoxAgents: false, changeProjectSettings: false };
+      render(
+        <Page>
+          <ConnectionDetailDrawer
+            projectId={PROJECT}
+            card={{ key: name, status: "connected", meta: {} } as never}
+            onClose={() => {}}
+          />
+        </Page>,
+      );
+      await waitFor(() => {
+        expect(served).toContain(`/projects/${PROJECT}/integrations`);
+        expect(queries.isFetching()).toBe(0);
+        expect(document.querySelector(".skeleton")).toBeNull();
+        expect(screen.getAllByText(GRANT_LABEL).length).toBeGreaterThan(0);
+      });
+      expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: /disconnect/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /enable credential/i })).toBeNull();
+      for (const control of screen.queryAllByRole("switch")) expect(control).toBeDisabled();
+      // Nothing they may not save is left editable: a field with no Save reads as one that saves.
+      for (const box of screen.queryAllByRole("textbox")) expect(box, box.getAttribute("aria-label") ?? box.id).toBeDisabled();
+      expect(screen.queryByText(/Enter one to store it|Saving a new key/)).toBeNull();
+      expect(
+        screen.getAllByText(/^Only an admin of this project can switch this integration/).length,
+      ).toBeGreaterThan(0);
+    },
+  );
+});
+
+// ISS-1421 r27: the Coolify drawer's auto-approve writes the pipeline config, whose door needs an
+// owner or admin of the organization; a project admin who is neither was offered it and refused.
+describe("a project admin who does not administer the organization", () => {
+  it("is not offered Coolify's auto-approve, and is told who may", async () => {
+    provider = "coolify";
+    may = { ...ALL_MAY, changeProjectSettings: false };
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: "coolify:live", status: "connected", meta: { capabilities: { canDeploy: true } } } as never}
+          onClose={() => {}}
+        />
+      </Page>,
+    );
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Auto-approve production deploys" })).toBeDisabled());
+    expect(
+      screen.getByText("Only an owner or admin of this project's organization can change this."),
+    ).toBeInTheDocument();
+  });
+});
+
+// ISS-1421 r27, judge-110 (c): a Postman connection needing sign-in showed only the badge in the
+// drawer; the reason sentence was on the row, or here only after Test was pressed.
+describe("a drawer opened on a row needing attention", () => {
+  it("says the row's reason, from the same card", async () => {
+    provider = "postman";
+    const detail = "Postman needs you to sign in again before Forge can read its collections.";
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: "postman", status: "attention", configured: true, detail, meta: {} } as never}
+          onClose={() => {}}
+        />
+      </Page>,
+    );
+    await waitFor(() => expect(screen.getByText(detail)).toBeInTheDocument());
+  });
 });
 
 // ISS-1339 r2, judge-98: round 1 took the probe off Shape & release, and the place its gap link

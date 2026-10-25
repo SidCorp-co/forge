@@ -18,8 +18,9 @@ import { projectCalled } from "../connection-identity";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
 import { cardProvider, getCapabilities } from "../derive";
 import { PROVIDER_MODULES, providerLabel } from "../providers/registry";
-import type { BindingSummary, DeployStage, StatusCard } from "../types";
+import type { BindingSummary, DeployStage, ProjectBinding, StatusCard } from "../types";
 import { AgentAccessControl } from "./agent-access-control";
+import { onlyWho } from "./integration-enabled-control";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { BindingReleaseRunnerField } from "./release-runner-field";
 import { STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-pill";
@@ -83,7 +84,7 @@ function useBindingForCard(
   projectId: string,
   provider: string,
   stageHint: DeployStage | null,
-): BindingSummary | undefined {
+): ProjectBinding | undefined {
   const list = useIntegrationsList(projectId);
   return useMemo(() => {
     const rows = (list.data?.items ?? []).filter((i) => i.provider === provider);
@@ -225,18 +226,28 @@ function ConfigPane({
   provider,
   projectId,
   stageFromCardKey,
-  canEdit,
   focus,
   onProbeDirty,
 }: {
   provider: string;
   projectId: string;
   stageFromCardKey: DeployStage | null;
-  canEdit: boolean;
   focus: string | null;
   onProbeDirty: (dirty: boolean) => void;
 }) {
   const binding = useBindingForCard(projectId, provider, stageFromCardKey);
+  const list = useIntegrationsList(projectId);
+  const may = list.data?.may ?? null;
+  // A provider this project has not connected is offered to a reader who may connect one, and
+  // anyone else is told who may, rather than shown a form core refuses (ISS-1421 r27).
+  const connected = (list.data?.items ?? []).some((i) => i.provider === provider);
+  if (!connected && may && !may.connect) {
+    return (
+      <p className="fg-body-sm border-b border-line pb-2 text-muted">
+        {`${onlyWho(may.whoConnects)} can connect ${providerLabel(provider)} to this project.`}
+      </p>
+    );
+  }
   return (
     <>
       <ProviderSection
@@ -251,7 +262,7 @@ function ConfigPane({
               <BindingVerifyProbeField
                 projectId={projectId}
                 binding={binding}
-                canEdit={canEdit}
+                canEdit={binding.acts.change}
                 focus={focus === VERIFY_PROBE_SECTION}
                 onDirtyChange={onProbeDirty}
               />
@@ -263,7 +274,7 @@ function ConfigPane({
           pane adds one only where there is no section (ISS-1421 r8, criterion 128). */}
       {binding && !SECTIONS.has(provider) && (
         <section className="mt-4">
-          <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
+          <AgentAccessControl projectId={projectId} binding={binding} />
         </section>
       )}
       {/* ISS-1275 — the binding tier of the release runner label, beside the other
@@ -274,7 +285,7 @@ function ConfigPane({
           <BindingReleaseRunnerField
             projectId={projectId}
             binding={binding}
-            canEdit={canEdit}
+            canEdit={binding.acts.change}
           />
         </section>
       )}
@@ -293,7 +304,6 @@ export function ConnectionDetailDrawer({
   projectId,
   card,
   onClose,
-  canEdit = true,
   statusReadError = null,
   statusReadFailedAt = 0,
   onRetryStatus,
@@ -302,7 +312,6 @@ export function ConnectionDetailDrawer({
   projectId: string;
   card: StatusCard | null;
   onClose: () => void;
-  canEdit?: boolean;
   /** The section a link opened the drawer for, scrolled to and focused once it is drawn. */
   focus?: string | null;
   /** Why the Integrations tab's last status read failed, said here so the open drawer stays open. */
@@ -363,6 +372,11 @@ export function ConnectionDetailDrawer({
           </Banner>
           </div>
         ) : null}
+        {/* The reason the row gives, from the same card: a Postman binding needing sign-in showed only
+            the badge here until Test was pressed (ISS-1421 r27, judge-110 (c)). */}
+        {card.configured && (card.status === "attention" || card.status === "error") && card.detail ? (
+          <p className="fg-body-sm text-muted">{card.detail}</p>
+        ) : null}
         {caps.hasDeliveryLog ? (
           <>
             <Tabs
@@ -379,7 +393,6 @@ export function ConnectionDetailDrawer({
                 provider={provider}
                 projectId={projectId}
                 stageFromCardKey={stageFromCardKey}
-                canEdit={canEdit}
                 focus={focus}
                 onProbeDirty={setProbeDirty}
               />
@@ -397,7 +410,6 @@ export function ConnectionDetailDrawer({
             provider={provider}
             projectId={projectId}
             stageFromCardKey={stageFromCardKey}
-            canEdit={canEdit}
             focus={focus}
             onProbeDirty={setProbeDirty}
           />

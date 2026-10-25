@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
+import { ALL_ACTS, ALL_MAY } from "../test-acts";
 
 expect.extend(matchers);
 
@@ -45,6 +46,7 @@ function row() {
     integrationSecretSet: true,
     agentAccess: "all",
     agentPathKind: "direct-mcp",
+    acts: ALL_ACTS,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -85,7 +87,7 @@ vi.mock("@/lib/api/client", async () => {
         const held = holdNextRead;
         holdNextRead = null;
         if (held) await held;
-        return { items: [before], bindings: [before] };
+        return { items: [before], bindings: [before], may: ALL_MAY };
       }
       // The reader manages the org's connection, so the drawer offers Enable credential (ISS-1421 r26).
       if (bare === "/integration-connections") {

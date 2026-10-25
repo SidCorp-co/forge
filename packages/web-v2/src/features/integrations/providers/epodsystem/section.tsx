@@ -17,8 +17,7 @@ import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
   useIntegrationsList,
-  useIsOrgAdmin,
-  useOrgConnectionLocked,
+  useProjectIntegrationActs,
   useTestIntegration,
   useUpdateProviderIntegration,
 } from "../../hooks";
@@ -32,16 +31,18 @@ import type { EpodsystemReadConfig } from "./config";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, grantOnConnectWho, mayGrantOnConnect} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { epodsystem } from "./index";
 import {
   bindsRemovedConnection,
   IntegrationEnabledControl,
+  keyLockedLine,
+  removedKeyHint,
 } from "../../components/integration-enabled-control";
 import { bindingBadge, bindingConnected } from "../../derive";
-import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
+import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 // Scopes a website build needs to publish themes + toggle commerce/cache.
 const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
@@ -128,14 +129,9 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
             onCreated={() => setShowAddForm(false)}
           />
         ) : (
-          <div>
-            <Button
-              variant="secondary"
-              onClick={() => setShowAddForm(true)}
-            >
-              Add storefront
-            </Button>
-          </div>
+          <Button variant="secondary" onClick={() => setShowAddForm(true)} className="self-start">
+            Add storefront
+          </Button>
         )}
       </div>
     </SettingsSection>
@@ -160,7 +156,8 @@ function EpodsystemBindingRow({
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
   const list = useIntegrationsList(projectId);
-  const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
+  const may = useProjectIntegrationActs(projectId);
+  const keyLocked = binding ? !binding.acts.saveKey : !may?.connect;
 
   const [apiKey, setApiKey] = useState("");
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
@@ -238,7 +235,11 @@ function EpodsystemBindingRow({
       {showKeyField && (
         <Field
           label="New API key"
-          hint="Enter the new crmk_ key to rotate. Leave blank to keep the current key."
+          hint={
+            binding.hasSecrets
+              ? "Enter the new crmk_ key to rotate. Leave blank to keep the current key."
+              : removedKeyHint("key", binding.acts)
+          }
         >
           <Input
             type="password"
@@ -246,19 +247,17 @@ function EpodsystemBindingRow({
             placeholder="crmk_…"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            disabled={orgLocked}
+            disabled={keyLocked}
           />
         </Field>
       )}
 
-      {orgLocked && (
-        <p className="fg-body-sm text-muted">
-          Org-shared credential — only an org owner/admin can change it.
-        </p>
+      {binding && keyLocked && (
+        <p className="fg-body-sm text-muted">{keyLockedLine(binding.acts)}</p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {!orgLocked && (
+        {!keyLocked && (
           showKeyField ? (
             <>
               <Button
@@ -291,7 +290,7 @@ function EpodsystemBindingRow({
         <DisconnectFromProject
           projectId={projectId}
           binding={binding}
-          says={disconnectSays(`the "${bindingLabel || "default"}" Epodsystem integration`, binding)}
+          subject={`the "${bindingLabel || "default"}" Epodsystem integration`}
         />
       </div>
 
@@ -299,10 +298,7 @@ function EpodsystemBindingRow({
 
       <AgentAccessControl
         projectId={projectId}
-        binding={binding}
-        canEdit={true}
-        disabledReason={agentAccessDeniedReason("direct-mcp")}
-      />
+        binding={binding} />
 
       <ThemePanel config={binding.config as EpodsystemReadConfig} />
     </div>
@@ -327,7 +323,7 @@ function AddEpodsystemForm({
   onCreated,
 }: AddEpodsystemFormProps) {
   const create = useCreateProviderIntegration(projectId);
-  const isOrgAdmin = useIsOrgAdmin(projectId);
+  const may = useProjectIntegrationActs(projectId);
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -476,7 +472,8 @@ function AddEpodsystemForm({
         value={agentAccess}
         onChange={setAgentAccess}
         pathKind={epodsystem.agentPathKind}
-        canEdit={mayWriteAgentAccess(epodsystem.agentPathKind, { canEditProject: true, isOrgAdmin })}
+        canEdit={mayGrantOnConnect(epodsystem.agentPathKind, may)}
+        disabledReason={grantOnConnectWho(epodsystem.agentPathKind, may)}
       />
 
       {error && <Banner tone="danger">{error}</Banner>}

@@ -342,7 +342,7 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
       const id = c.req.param('id');
       const userId = c.get('userId');
       const role = await assertProjectMember(projectId, userId);
-      assertAdmin(role);
+      assertAdmin(role, 'confirm a live deploy for it');
 
       const existing = await findBindingWithConnectionById(id);
       if (!existing || existing.binding.projectId !== projectId) throw notFound();

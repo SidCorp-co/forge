@@ -1,6 +1,5 @@
 "use client";
 
-import { removedKeyHint } from "../../components/integration-enabled-control";
 
 import {
   Badge,
@@ -24,22 +23,30 @@ import { useMemo, useState } from "react";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
+  AgentAccessControl,
+  agentAccessBody,
+  grantOnConnectWho,
+  mayGrantOnConnect,
+} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import {
+  bindingLockedLine,
   bindsRemovedConnection,
   IntegrationEnabledControl,
+  keyLockedLine,
+  onlyWho,
+  removedKeyHint,
 } from "../../components/integration-enabled-control";
 import { coolify } from "./index";
 import { CoolifyTargetsField } from "./targets-field";
-import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
+import { DisconnectFromProject } from "../../components/disconnect-from-project";
 import { STAGE_OPTIONS } from "../../components/status-pill";
 import {
   useConfirmProdDeploy,
   useCreateProviderIntegration,
   useIntegrationsList,
-  useOrgConnectionLocked,
+  useProjectIntegrationActs,
   useTestIntegration,
   useUpdateProviderIntegration,
 } from "../../hooks";
@@ -143,10 +150,12 @@ function StagePanel({
 
   const isLive = stage === "live";
   const saving = create.isPending || update.isPending;
-  // Org-shared credential: only an org owner/admin may change the CONNECTION
-  // tier (base URL + token). The deploy target (resourceUuid/branch) is
-  // binding-tier and stays editable by a project admin, as do Test + Delete.
-  const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
+  // The connection tier (base URL + token) and the binding's own (its deploy targets) are each
+  // offered by what core says this reader may do with them, the rule its PATCH refuses by; a guess
+  // in the web offered a plain project member both, then core refused them (ISS-1421 r27).
+  const may = useProjectIntegrationActs(projectId);
+  const keyLocked = existing ? !existing.acts.saveKey : !may?.connect;
+  const bindingLocked = existing ? !existing.acts.change : !may?.connect;
   // True when this project has no binding-level targets of its own and the
   // values shown are inherited off the shared connection's config.
   const bindingCfg = (existing?.bindingConfig ?? {}) as CoolifyReadConfig;
@@ -171,13 +180,14 @@ function StagePanel({
     }
     try {
       if (existing) {
-        const config: Record<string, unknown> = { targets: cleanTargets };
-        if (!orgLocked && baseUrl.trim()) config.baseUrl = baseUrl.trim();
+        // Each tier is sent only by a reader core takes it from.
+        const config: Record<string, unknown> = bindingLocked ? {} : { targets: cleanTargets };
+        if (!keyLocked && baseUrl.trim()) config.baseUrl = baseUrl.trim();
         await update.mutateAsync({
           id: existing.id,
           body: {
-            config,
-            ...(apiToken.trim() && !orgLocked
+            ...(Object.keys(config).length > 0 ? { config } : {}),
+            ...(apiToken.trim() && !keyLocked
               ? { secrets: { apiToken: apiToken.trim() } }
               : {}),
           },
@@ -246,14 +256,14 @@ function StagePanel({
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder="https://coolify.example.com"
-            disabled={orgLocked}
+            disabled={keyLocked}
           />
         </Field>
         <Field
           label="API token"
           hint={
             existing && !existing.hasSecrets
-              ? removedKeyHint("token", orgLocked)
+              ? removedKeyHint("token", existing.acts)
               : existing
               ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
               : "Coolify API token. Stored encrypted; never shown again."
@@ -266,18 +276,14 @@ function StagePanel({
             value={apiToken}
             onChange={(e) => setApiToken(e.target.value)}
             placeholder={existing?.hasSecrets ? "•••••••• (unchanged)" : "Coolify API token"}
-            disabled={orgLocked}
+            disabled={keyLocked}
           />
         </Field>
-        {orgLocked && (
-          <p className="fg-body-sm text-muted">
-            Org-shared credential — only an org owner/admin can change the base
-            URL or API token. The deploy targets below are yours to configure per
-            project.
-          </p>
-        )}
+        {existing && keyLocked && <p className="fg-body-sm text-muted">{keyLockedLine(existing.acts)}</p>}
       </fieldset>
 
+      {/* The binding's own tier: disabled as one for a reader core would refuse it (ISS-1421 r27). */}
+      <fieldset disabled={bindingLocked} className="contents">
       <CoolifyTargetsField
         projectId={projectId}
         stage={stage}
@@ -287,8 +293,14 @@ function StagePanel({
         targets={targets}
         onChange={setTargets}
         inherited={targetsInherited}
-        canFixCredentials={!orgLocked && !(existing && bindsRemovedConnection(existing))}
+        canFixCredentials={!keyLocked && !(existing && bindsRemovedConnection(existing))}
+        canEditTargets={!bindingLocked}
       />
+      </fieldset>
+      {existing && bindingLocked && <p className="fg-body-sm text-muted">{bindingLockedLine(existing.acts)}</p>}
+      {!existing && may && !may.connect && (
+        <p className="fg-body-sm text-muted">{`${onlyWho(may.whoConnects)} can connect Coolify to this project.`}</p>
+      )}
 
       {error && <Banner tone="danger">{error}</Banner>}
       {testResult &&
@@ -303,26 +315,23 @@ function StagePanel({
         ))}
 
       {existing ? (
-        <AgentAccessControl
-          projectId={projectId}
-          binding={existing}
-          canEdit={true}
-          disabledReason="Org-shared credential — only an org owner/admin can grant it."
-        />
+        <AgentAccessControl projectId={projectId} binding={existing} />
       ) : (
         <AgentAccessChoice
           value={agentAccess}
           onChange={setAgentAccess}
           pathKind={coolify.agentPathKind}
-          canEdit={true}
-          disabledReason="Org-shared credential — only an org owner/admin can grant it."
+          canEdit={mayGrantOnConnect(coolify.agentPathKind, may)}
+          disabledReason={grantOnConnectWho(coolify.agentPathKind, may)}
         />
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" onClick={handleSave} loading={saving}>
-          {existing ? "Save" : "Create integration"}
-        </Button>
+        {!(keyLocked && bindingLocked) && (
+          <Button variant="primary" onClick={handleSave} loading={saving}>
+            {existing ? "Save" : "Create integration"}
+          </Button>
+        )}
         {existing && !bindsRemovedConnection(existing) && (
           <Button
             variant="secondary"
@@ -336,7 +345,7 @@ function StagePanel({
           <DisconnectFromProject
             projectId={projectId}
             binding={existing}
-            says={disconnectSays(`Coolify (${stage})`, existing)}
+            subject={`Coolify (${stage})`}
           />
         )}
       </div>
@@ -347,12 +356,14 @@ function StagePanel({
       {existing && <DeployConfirmationHint />}
 
       {isLive && existing && (
-        <ProdGateSection
-          projectId={projectId}
-          integrationId={existing.id}
-          confirmPending={confirmProd.isPending}
-          onConfirm={() => confirmProd.mutate(existing.id)}
-        />
+        <fieldset disabled={bindingLocked} className="contents">
+          <ProdGateSection
+            projectId={projectId}
+            integrationId={existing.id}
+            confirmPending={confirmProd.isPending}
+            onConfirm={() => confirmProd.mutate(existing.id)}
+          />
+        </fieldset>
       )}
     </div>
   );
@@ -386,6 +397,9 @@ function ProdGateSection({
 }) {
   const cfgQ = usePipelineConfig(projectId);
   const update = useUpdatePipelineConfig(projectId);
+  // The pipeline config's door needs an owner or admin of the organization (ISS-1421 r27).
+  const may = useProjectIntegrationActs(projectId);
+  const settingsLocked = may !== null && !may.changeProjectSettings;
 
   const featureOff = cfgQ.isError && isFeatureOff(cfgQ.error);
   // Default OFF: only an explicit `=== true` enables auto-approve — a missing
@@ -422,10 +436,13 @@ function ProdGateSection({
             <Toggle
               checked={autoProd}
               onChange={handleToggle}
-              disabled={update.isPending || cfgQ.isLoading || !cfgQ.data}
+              disabled={update.isPending || cfgQ.isLoading || !cfgQ.data || settingsLocked}
               aria-label="Auto-approve production deploys"
             />
           </div>
+          {settingsLocked && (
+            <span className="fg-body-sm text-muted">{`${onlyWho(may.whoChangesProjectSettings)} can change this.`}</span>
+          )}
           <span className="fg-body-sm text-muted">
             When on, production deploys dispatch automatically on release —
             skipping the manual approval gate. Off (default) keeps the manual
@@ -491,11 +508,9 @@ function ProdConfirmBanner({
           Live deploys never auto-dispatch. Click confirm when ready to release
           the gate for an in-flight pipeline run.
         </span>
-        <div>
-          <Button size="sm" loading={pending} onClick={onConfirm}>
-            Confirm live deploy
-          </Button>
-        </div>
+        <Button size="sm" loading={pending} onClick={onConfirm} className="self-start">
+          Confirm live deploy
+        </Button>
         <span className="font-mono text-10 text-subtle">
           integration: {integrationId}
         </span>

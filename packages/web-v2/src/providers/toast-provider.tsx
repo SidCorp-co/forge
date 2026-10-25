@@ -69,6 +69,33 @@ function ToastStack({ items, remove }: Pick<ToastLaneApi, "items" | "remove">) {
 
 const WIDE = "(min-width: 768px)";
 
+/** Where the open dialog's header ends, or null. On a phone a toast at the top covered a drawer's title,
+ *  state and close control (ISS-1421 r27), so the lane starts below that header instead. */
+function useOpenDialogHeaderBottom(watch: boolean): number | null {
+  const [bottom, setBottom] = useState<number | null>(null);
+  useEffect(() => {
+    if (!watch) {
+      setBottom(null);
+      return;
+    }
+    const read = () => {
+      const open = document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]');
+      const header = open[open.length - 1]?.querySelector("header");
+      const edge = header ? Math.round(header.getBoundingClientRect().bottom) : 0;
+      setBottom(edge > 0 ? edge : null);
+    };
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("resize", read);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", read);
+    };
+  }, [watch]);
+  return bottom;
+}
+
 /**
  * Where a frame's toasts go: an overlay at every width, over the top edge and clear of the bottom
  * one, where a page's save bar and a phone's tab bar sit. A lane in the page flow took its height
@@ -84,6 +111,7 @@ export function ToastLane({ className }: { className?: string }) {
   if (!lane) throw new Error("ToastLane must be used within <ToastProvider>");
   const { items, remove, registerLane } = lane;
   const wide = useMediaQuery(WIDE);
+  const belowDialogHeader = useOpenDialogHeaderBottom(!wide && items.length > 0);
 
   useEffect(() => registerLane(), [registerLane]);
 
@@ -104,6 +132,7 @@ export function ToastLane({ className }: { className?: string }) {
               "pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-[60] md:left-auto md:top-14",
               className,
             )}
+            style={belowDialogHeader === null ? undefined : { top: belowDialogHeader }}
           >
             <ToastStack items={passing} remove={remove} />
           </section>,

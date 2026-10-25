@@ -72,7 +72,7 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
     const why = await offBindingWords(rows[0] as BindingWithConnection, projectId);
     throw new GoogleCommandError(
       'BINDING_DISABLED',
-      `this project's Google connection exists, but ${why} Nothing was sent to Google.`,
+      `this project's Google binding exists, but ${why} Nothing was sent to Google.`,
     );
   }
   if (!grantHolds(getIntegration('google'), usable[0].binding)) {

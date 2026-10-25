@@ -5,13 +5,8 @@ import { useState } from "react";
 import type { AgentAccess, AgentPathKind } from "@forge/contracts";
 import { Toggle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import {
-  connectionManagers,
-  useConnectionManager,
-  useIsOrgAdmin,
-  useUpdateProviderIntegration,
-} from "../hooks";
-import type { IntegrationSummary } from "../types";
+import { useUpdateProviderIntegration } from "../hooks";
+import type { BindingActs, IntegrationSummary, ProjectIntegrationActs } from "../types";
 
 /** The closed answer, and what a binding gets for not choosing. */
 export const AGENT_ACCESS_CLOSED: AgentAccess = "none";
@@ -49,25 +44,30 @@ export type ReadFrom = "drawer" | "panel";
 
 const OFF = "Agents get nothing from it while it is turned off.";
 
-/** Who turns the shared credential on: the reader, by Enable credential, or the people named. */
-export type CredentialOn = { reader: true } | { reader: false; who: string | null };
+/** Who turns each tier back on: the reader where the binding's acts say they may, else the people named. */
+export type WhoTurnsOn = Pick<BindingActs, "turnOn" | "whoTurnsOn" | "change" | "whoChanges">;
+
+const THE_READER: WhoTurnsOn = { turnOn: true, whoTurnsOn: "", change: true, whoChanges: "" };
 
 /** Each control that turns it back on, named as its drawer labels it, and where it is (ISS-1421 r11, r12). */
-function backOn(tier: TurnedOff, from: ReadFrom, on: CredentialOn): string {
+function backOn(tier: TurnedOff, from: ReadFrom, on: WhoTurnsOn): string {
   const where = from === "drawer" ? "in this drawer" : "in its drawer, opened from the list above,";
+  // Enabled is offered only to a reader who may switch it (ISS-1421 r27): anyone else is told who may.
+  const enabled = on.change
+    ? `Enabled ${where} is switched back on`
+    : `${on.whoChanges} switches Enabled ${where} back on`;
   // A removed connection has no Enable credential: it comes back as its drawer says (ISS-1421 r22).
   if (tier === "removed") return "once its shared connection, which was removed, is turned back on";
   if (tier === "removed-and-binding")
-    return `once its shared connection, which was removed, is turned back on and Enabled ${where} is switched back on`;
+    return `once its shared connection, which was removed, is turned back on and ${enabled}`;
+  if (tier === "binding") return `once ${enabled}`;
   // Enable credential is drawn only for a reader who may press it (ISS-1421 r26).
-  if (tier === "binding") return `once Enabled ${where} is switched back on`;
-  if (!on.reader) {
-    const credential = on.who
-      ? `once ${on.who} turns its shared credential back on`
-      : "once its shared credential is turned back on";
-    return tier === "both" ? `${credential} and Enabled ${where} is switched back on` : credential;
+  if (!on.turnOn) {
+    const credential = `once ${on.whoTurnsOn} turns its shared credential back on`;
+    return tier === "both" ? `${credential} and ${enabled}` : credential;
   }
   if (tier === "both") {
+    if (!on.change) return `once you press Enable credential ${where} and ${enabled}`;
     const both = from === "drawer" ? "both in this drawer" : "both in its drawer, opened from the list above";
     return `once you press Enable credential and switch Enabled back on, ${both}`;
   }
@@ -79,7 +79,7 @@ function backOn(tier: TurnedOff, from: ReadFrom, on: CredentialOn): string {
 export function turnedOffCopy(
   tier: TurnedOff,
   from: ReadFrom,
-  on: CredentialOn = { reader: true },
+  on: WhoTurnsOn = THE_READER,
 ): { granted: string; withheld: string } {
   return {
     granted: `${OFF} They may use it ${backOn(tier, from, on)}.`,
@@ -105,20 +105,27 @@ export function agentAccessBody(
   return pathKind === "none" ? {} : { agentAccess: value };
 }
 
-export function mayWriteAgentAccess(
-  pathKind: AgentPathKind,
-  perms: { canEditProject: boolean; isOrgAdmin: boolean },
-): boolean {
-  if (pathKind === "none") return false;
-  if (!perms.canEditProject) return false;
-  return pathKind === "direct-mcp" ? perms.isOrgAdmin : true;
+/** Whether a connection being made may carry a grant, read off what core says the reader may do (ISS-1421 r27). */
+export function mayGrantOnConnect(pathKind: AgentPathKind, may: ProjectIntegrationActs | null): boolean {
+  if (pathKind === "none" || !may?.connect) return false;
+  return pathKind === "direct-mcp" ? may.grantBoxAgents : true;
 }
 
-/** Who the caller has to be, said in the same terms the server refuses in. */
-export function agentAccessDeniedReason(pathKind: AgentPathKind): string {
-  return pathKind === "direct-mcp"
-    ? "Granting this sends the integration's credential to the runner, so only an organization owner or admin can grant it."
-    : "Only a project admin can change this.";
+/** Who may grant it, in the server's terms; a box-held grant says why it needs an organization admin. */
+function whoGrants(pathKind: AgentPathKind, change: boolean, whoChanges: string, whoGrantsBox: string): string {
+  if (change && pathKind === "direct-mcp")
+    return `Granting this sends the integration's credential to the runner, so only ${whoGrantsBox} can grant it.`;
+  return `Only ${whoChanges} can change this.`;
+}
+
+/** Who may grant it on a connection being made. */
+export function grantOnConnectWho(pathKind: AgentPathKind, may: ProjectIntegrationActs | null): string {
+  return whoGrants(
+    pathKind,
+    may?.connect ?? true,
+    may?.whoConnects ?? "an admin of this project",
+    may?.whoGrantsBoxAgents ?? "an owner or admin of this project's organization",
+  );
 }
 
 /**
@@ -138,7 +145,7 @@ export function AgentAccessChoice({
   failure,
   turnedOff = null,
   readFrom = "drawer",
-  credentialOn = { reader: true },
+  credentialOn = THE_READER,
 }: {
   value: AgentAccess;
   onChange: (next: AgentAccess) => void;
@@ -151,8 +158,8 @@ export function AgentAccessChoice({
   /** A saved binding that is turned off: what the grant would do is not what happens now. */
   turnedOff?: TurnedOff | null;
   readFrom?: ReadFrom;
-  /** Who turns the shared credential on, so the way back offers no button this reader is not shown. */
-  credentialOn?: CredentialOn;
+  /** Who turns each tier back on, so the way back offers no control this reader is not shown. */
+  credentialOn?: WhoTurnsOn;
 }) {
   const kind = pathKind === "none" ? undefined : KIND_COPY[pathKind];
   const copy = kind && turnedOff ? turnedOffCopy(turnedOff, readFrom, credentialOn) : kind;
@@ -192,8 +199,6 @@ export function AgentAccessChoice({
 export function AgentAccessControl({
   projectId,
   binding,
-  canEdit,
-  disabledReason,
   readFrom = "drawer",
 }: {
   projectId: string;
@@ -207,41 +212,27 @@ export function AgentAccessControl({
     | "bindingActive"
     | "connectionActive"
     | "hasSecrets"
+    | "acts"
   >;
-  /** May the caller edit this project's integrations at all. The GRANT's own tier is applied here. */
-  canEdit: boolean;
-  disabledReason?: string;
   readFrom?: ReadFrom;
 }) {
   const update = useUpdateProviderIntegration(projectId);
-  const isOrgAdmin = useIsOrgAdmin(projectId);
-  const manager = useConnectionManager(binding.connectionId);
-  const credentialOn: CredentialOn = manager?.manages
-    ? { reader: true }
-    : { reader: false, who: manager ? connectionManagers(manager.ownerType) : null };
   const [inFlight, setInFlight] = useState<AgentAccess | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-
-  // The tier is applied HERE rather than by each caller. A saved binding carries its own
-  // `agentPathKind`, so this component has everything the rule needs — and nine call sites deciding
-  // it separately is how `mcp-servers-panel` and the connection drawer came to pass plain
-  // editability while the provider sections passed a credential lock.
-  const mayWrite = mayWriteAgentAccess(binding.agentPathKind, {
-    canEditProject: canEdit,
-    isOrgAdmin,
-  });
+  // Who may grant it, and who turns each tier back on, are core's answer on the binding (ISS-1421 r27).
+  const { acts } = binding;
 
   return (
     <AgentAccessChoice
       value={inFlight ?? binding.agentAccess}
       pathKind={binding.agentPathKind}
-      canEdit={mayWrite}
-      disabledReason={disabledReason ?? agentAccessDeniedReason(binding.agentPathKind)}
+      canEdit={acts.grantAgents}
+      disabledReason={whoGrants(binding.agentPathKind, acts.change, acts.whoChanges, acts.whoGrantsAgents)}
       busy={inFlight !== null}
       failure={failure}
       turnedOff={turnedOffTier(binding)}
       readFrom={readFrom}
-      credentialOn={credentialOn}
+      credentialOn={acts}
       onChange={(next) => {
         setFailure(null);
         setInFlight(next);

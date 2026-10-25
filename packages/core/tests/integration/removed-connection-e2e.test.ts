@@ -373,7 +373,7 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
     expect(gone.status).toBe(404);
     expect(gone.body.code).toBe('CONNECTION_NOT_REACHABLE');
     expect(gone.body.message).toBe(
-      `Connection ${connection.id} is already gone, or is not one you can reach. Only its owner ` +
+      'This connection is already gone, or is not one you can reach. Only its owner ' +
         "(for an organization's connection, an owner or admin of that organization) can delete it.",
     );
   });
@@ -413,7 +413,7 @@ describe('a write that races another (criteria 227, 238)', () => {
     expect(both.map((r) => r.status).sort()).toEqual([200, 404]);
     const lost = both.find((r) => r.status === 404);
     expect(lost?.body.message).toBe(
-      `Connection ${connection.id} is already gone, or is not one you can reach. Only its owner ` +
+      'This connection is already gone, or is not one you can reach. Only its owner ' +
         "(for an organization's connection, an owner or admin of that organization) can delete it.",
     );
   });

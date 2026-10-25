@@ -1,6 +1,5 @@
 "use client";
 
-import { removedKeyHint } from "../../components/integration-enabled-control";
 
 import {
   Badge,
@@ -17,8 +16,7 @@ import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
   useIntegrationsList,
-  useIsOrgAdmin,
-  useOrgConnectionLocked,
+  useProjectIntegrationActs,
   useTestIntegration,
   useUpdateProviderIntegration,
 } from "../../hooks";
@@ -31,16 +29,18 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess, reachesAgentsWhile} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, grantOnConnectWho, mayGrantOnConnect, reachesAgentsWhile} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { sentry } from "./index";
 import {
   bindsRemovedConnection,
   IntegrationEnabledControl,
+  keyLockedLine,
+  removedKeyHint,
 } from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
-import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
+import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 /** Editable Sentry target row — strings only so inputs stay controlled. */
 interface TargetRow {
@@ -185,17 +185,17 @@ export function SentrySection({ projectId }: { projectId: string }) {
   const keyRequired = !existing; // a brand-new integration must carry a token
   const hostRequired = !existing || !form.host.trim();
   const hasInvalidTarget = form.targets.some(rowInvalid);
-  // Org-shared credential: only an org owner/admin may change config/secrets/
-  // active. Test connection stays enabled (binding-level, project admin OK).
-  const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
-  const isOrgAdmin = useIsOrgAdmin(projectId);
+  // Its whole form is the connection's tier, offered by what core says this reader may save
+  // (ISS-1421 r27); Test connection stays open to every member.
+  const may = useProjectIntegrationActs(projectId);
+  const keyLocked = existing ? !existing.acts.saveKey : !may?.connect;
   const canSave =
     form.host.trim().length > 0 &&
     (!keyRequired || form.authToken.trim().length >= 8) &&
     !hasInvalidTarget &&
     !create.isPending &&
     !update.isPending &&
-    !orgLocked;
+    !keyLocked;
 
   async function handleSave() {
     setTestResult(null);
@@ -263,7 +263,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
             value={form.host}
             onChange={(e) => set("host", e.target.value)}
             placeholder="logs.canawan.com"
-            disabled={orgLocked}
+            disabled={keyLocked}
           />
         </Field>
 
@@ -271,7 +271,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
           label="Auth token"
           hint={
             existing && !existing.hasSecrets
-              ? removedKeyHint("token", orgLocked)
+              ? removedKeyHint("token", existing.acts)
               : existing
               ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
               : "Sentry user auth token (sntryu-…). Stored encrypted; never shown again."
@@ -284,14 +284,12 @@ export function SentrySection({ projectId }: { projectId: string }) {
             placeholder={existing?.hasSecrets ? "•••••••• (unchanged)" : "sntryu_…"}
             value={form.authToken}
             onChange={(e) => set("authToken", e.target.value)}
-            disabled={orgLocked}
+            disabled={keyLocked}
           />
         </Field>
 
-        {orgLocked && (
-          <p className="fg-body-sm text-muted">
-            Org-shared credential — only an org owner/admin can change it.
-          </p>
+        {existing && keyLocked && (
+          <p className="fg-body-sm text-muted">{keyLockedLine(existing.acts)}</p>
         )}
 
         {!existing && (
@@ -310,7 +308,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
               variant="secondary"
               icon="plus"
               onClick={addTarget}
-              disabled={orgLocked}
+              disabled={keyLocked}
             >
               Add project
             </Button>
@@ -336,7 +334,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
                     variant="ghost"
                     icon="trash"
                     onClick={() => removeTarget(i)}
-                    disabled={orgLocked}
+                    disabled={keyLocked}
                     aria-label={`Remove project ${i + 1}`}
                   />
                 </div>
@@ -354,7 +352,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
                     value={t.label}
                     onChange={(e) => setTarget(i, "label", e.target.value)}
                     placeholder="Backend prod"
-                    disabled={orgLocked}
+                    disabled={keyLocked}
                   />
                 </Field>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -365,7 +363,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
                         setTarget(i, "organizationSlug", e.target.value)
                       }
                       placeholder="(optional)"
-                      disabled={orgLocked}
+                      disabled={keyLocked}
                     />
                   </Field>
                   <Field label="Project slug" hint="Optional — scopes the Sentry project.">
@@ -375,7 +373,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
                         setTarget(i, "projectSlug", e.target.value)
                       }
                       placeholder="(optional)"
-                      disabled={orgLocked}
+                      disabled={keyLocked}
                     />
                   </Field>
                 </div>
@@ -387,7 +385,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
                     value={t.environment}
                     onChange={(e) => setTarget(i, "environment", e.target.value)}
                     placeholder="(optional)"
-                    disabled={orgLocked}
+                    disabled={keyLocked}
                   />
                 </Field>
                 <Field
@@ -399,7 +397,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
                     onChange={(e) => setTarget(i, "notes", e.target.value)}
                     rows={2}
                     placeholder="(optional)"
-                    disabled={orgLocked}
+                    disabled={keyLocked}
                   />
                 </Field>
               </div>
@@ -422,17 +420,14 @@ export function SentrySection({ projectId }: { projectId: string }) {
         {existing ? (
           <AgentAccessControl
             projectId={projectId}
-            binding={existing}
-            canEdit={true}
-            disabledReason={agentAccessDeniedReason("direct-mcp")}
-          />
+            binding={existing} />
         ) : (
           <AgentAccessChoice
             value={agentAccess}
             onChange={setAgentAccess}
             pathKind={sentry.agentPathKind}
-            canEdit={mayWriteAgentAccess(sentry.agentPathKind, { canEditProject: true, isOrgAdmin })}
-            disabledReason={agentAccessDeniedReason("direct-mcp")}
+            canEdit={mayGrantOnConnect(sentry.agentPathKind, may)}
+            disabledReason={grantOnConnectWho(sentry.agentPathKind, may)}
           />
         )}
 
@@ -440,14 +435,17 @@ export function SentrySection({ projectId }: { projectId: string }) {
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="flex items-center gap-3">
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              loading={create.isPending || update.isPending}
-              disabled={!canSave}
-            >
-              {existing ? "Save" : "Create integration"}
-            </Button>
+            {/* Not drawn for a reader core would refuse the save; the line above names who may (ISS-1421 r27). */}
+            {!keyLocked && (
+              <Button
+                variant="primary"
+                onClick={handleSave}
+                loading={create.isPending || update.isPending}
+                disabled={!canSave}
+              >
+                {existing ? "Save" : "Create integration"}
+              </Button>
+            )}
             {existing && !bindsRemovedConnection(existing) && (
               <Button
                 variant="secondary"
@@ -462,7 +460,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
             <DisconnectFromProject
               projectId={projectId}
               binding={existing}
-              says={disconnectSays("Sentry", existing)}
+              subject={"Sentry"}
             />
           )}
         </div>

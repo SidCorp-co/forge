@@ -68,7 +68,36 @@ export const bindingSummarySchema = z.object({
   updatedAt: z.date(),
 });
 
+/** What the reader may do with a binding, and who may each act they may not (ISS-1421 r27). */
+const bindingActsSchema = z.object({
+  change: z.boolean(),
+  saveKey: z.boolean(),
+  turnOn: z.boolean(),
+  grantAgents: z.boolean(),
+  whoChanges: z.string(),
+  whoSavesKey: z.string(),
+  whoTurnsOn: z.string(),
+  whoGrantsAgents: z.string(),
+});
+
+/** A binding as its project's own list reads it: with what this reader may do with it. */
+export const projectBindingSchema = bindingSummarySchema.extend({ acts: bindingActsSchema });
+
 export const bindingListSchema = z.object({
+  bindings: z.array(projectBindingSchema),
+  items: z.array(projectBindingSchema),
+  may: z.object({
+    connect: z.boolean(),
+    whoConnects: z.string(),
+    grantBoxAgents: z.boolean(),
+    whoGrantsBoxAgents: z.string(),
+    changeProjectSettings: z.boolean(),
+    whoChangesProjectSettings: z.string(),
+  }),
+});
+
+/** A connection's bindings across projects: the summaries, read by the connection's own drawer. */
+export const connectionBindingListSchema = z.object({
   bindings: z.array(bindingSummarySchema),
   items: z.array(bindingSummarySchema),
 });
@@ -97,7 +126,7 @@ export const healthResultSchema = z.object({
 });
 
 const createdBindingShape = {
-  integration: bindingSummarySchema,
+  integration: projectBindingSchema,
   integrationSecret: z.string(),
   health: healthResultSchema.nullable(),
 };
@@ -108,9 +137,9 @@ const createdBindingSchema = z.object(createdBindingShape);
 /** The same, plus whatever the provider says a bind adds (GitHub adds the `repoUrl` it synced). */
 export const boundConnectionSchema = z.object(createdBindingShape).catchall(z.unknown());
 
-const bindingChangedSchema = z.object({ integration: bindingSummarySchema });
+const bindingChangedSchema = z.object({ integration: projectBindingSchema });
 const rotatedSecretSchema = z.object({
-  integration: bindingSummarySchema,
+  integration: projectBindingSchema,
   integrationSecret: z.string(),
 });
 const deliveryListSchema = z.object({ items: z.array(tableRow(integrationDeliveries)) });

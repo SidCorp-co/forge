@@ -163,7 +163,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						{!canEdit && (
 							<p className="fg-body-sm mb-4 border-b border-line pb-3 text-muted">
 								{isProjectAdmin
-									? "General, Shape & release, Pipeline and Integrations need an org owner/admin — you can still manage Members, Labels & modules, Runners and Memory."
+									? "General, Shape & release and Pipeline need an org owner/admin — you can still manage Members, Labels & modules, Runners and Memory. Integrations say what your role in this project lets you do."
 									: "You have read-only access to these settings."}
 							</p>
 						)}
@@ -195,7 +195,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						/>
 					)}
 					{tab === "integrations" && (
-						<IntegrationsTab projectId={project.id} canEdit={canEdit} />
+						<IntegrationsTab projectId={project.id} />
 					)}
 					{tab === "members" && (
 						<MembersTab

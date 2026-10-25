@@ -175,6 +175,10 @@ function retiredFieldOf(path: string): string | null {
 
 /** The dotted path of every value under `value`, stopping at a retired field whatever it holds. */
 function leavesOf(path: string, value: unknown): string[] {
+  // Each array entry is walked as its own path, so a retired field inside one is named (ISS-1421 r27).
+  if (Array.isArray(value) && value.length > 0 && !retiredFieldOf(path)) {
+    return value.flatMap((inner, i) => leavesOf(`${path}[${i}]`, inner));
+  }
   if (!isObject(value) || Object.keys(value).length === 0 || retiredFieldOf(path)) return [path];
   return Object.entries(value).flatMap(([key, inner]) => leavesOf(`${path}.${key}`, inner));
 }
