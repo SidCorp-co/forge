@@ -217,6 +217,17 @@ describe("a reply the reply check withheld", () => {
     expect(line).not.toHaveTextContent(/nothing-to-say|screen-refused|nothing to add/);
   });
 
+  it("says it once where the turn stored its silence and its window closed on it", () => {
+    render(
+      <ConversationThread
+        messages={[said(), blocked]}
+        windows={[window({ decision: "nothing-to-say", decisionDetail: { reason: "screen-refused" } })]}
+      />,
+    );
+    expect(screen.getAllByText(WITHHELD)).toHaveLength(1);
+    expect(screen.queryByTestId("thread-silence")).toBeNull();
+  });
+
   it("keeps 'nothing to add' for a turn that chose silence, in words", () => {
     render(<ConversationThread messages={[said(), { ...blocked, silenceReason: "nothing-to-say" }]} windows={[]} />);
     expect(screen.getByTestId("message-silence")).toHaveTextContent("The agent read this and had nothing to add.");
