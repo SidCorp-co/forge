@@ -287,6 +287,9 @@ describe('a reply denying a key after saying which issues the project holds', ()
       'This project has two issues. ISS-8 is the invoice issue. This one is not ISS-7.',
       'This project has two issues. ISS-8 is the invoice issue, and this one is not ISS-7.',
       'This project has two issues, ISS-8 is the invoice issue, and this one is not ISS-7.',
+      // The second whole-set read of round 39 (F1): a set stated under a narrower scope is not the project's.
+      'This project has two issues in the current sprint. Neither of them is ISS-7.',
+      'If the import ran, this project has two issues. Neither of them is ISS-7.',
     ]) {
       expect(keyMentions(text, ['ISS']).every((m) => !m.absent)).toBe(true);
       expect(screenAtDoor('web-chat-reply', [text], both).ok).toBe(true);

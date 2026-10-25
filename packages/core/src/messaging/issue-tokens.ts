@@ -85,6 +85,12 @@ const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case|assuming|p
 const NOT_NOW_OR_NARROWER =
   /\b(?:(?:in|on|from|of)\s+(?:[\w'-]+\s+){0,3}?(?:sprint|milestone|board|column|release|filter|search|page|list|view)|yesterday|earlier|previously|last|ago|until|anymore|any longer|used to|at the time)\b/i;
 
+/** The sentence before, where it speaks of the whole project now; nothing where it narrows the scope. */
+const plainSet = (previous: string) =>
+  NOT_NOW_OR_NARROWER.test(previous) || CONDITIONAL.test(previous) || /\?/.test(previous)
+    ? ''
+    : previous;
+
 /** A plain, present, unconditional absence: its clause opens on the key or "there is no", in no question. */
 function assertsAbsence(
   sentence: string,
@@ -102,7 +108,7 @@ function assertsAbsence(
     (OPENS_ON_KEY.test(opening) && ABSENT_AFTER.test(after)) ||
     (OPENS_ON_ABSENCE.test(opening) && ABSENT_TAIL.test(after)) ||
     (DENIES_IDENTITY.test(opening) &&
-      setStatedJustBefore(`${previous} ${sentence.slice(0, at)}`, prefixes) &&
+      setStatedJustBefore(`${plainSet(previous)} ${sentence.slice(0, at)}`, prefixes) &&
       ABSENT_TAIL.test(after))
   );
 }
