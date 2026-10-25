@@ -33,9 +33,12 @@ BASE="__BASE__"
 PREFIX="__PREFIX__"
 # Auto-update defaults ON (ISS-392). Pass --no-auto-update to opt this device out.
 AUTO_UPDATE=1
+# --setup goes straight on to \`forge-runner setup\`, so one pasted command installs and pairs the box.
+SETUP=0
 for arg in "$@"; do
   case "$arg" in
     --no-auto-update) AUTO_UPDATE=0;;
+    --setup) SETUP=1;;
   esac
 done
 os=$(uname -s); arch=$(uname -m)
@@ -157,7 +160,19 @@ case ":$PATH:" in
   *":$dest:"*) ;;
   *) echo "Add to PATH:  export PATH=\\"$dest:\\$PATH\\"";;
 esac
-echo "Next:  forge-runner setup"
+if [ "$SETUP" = "0" ]; then
+  echo "Next:  forge-runner setup"
+  exit 0
+fi
+echo "Running forge-runner setup"
+# exec replaces this shell, so its exit trap never runs: the scratch goes first
+rm -rf "$tmp"
+trap - EXIT
+# piped into sh, stdin is this script, so setup reads the terminal where there is one
+if (exec </dev/tty) 2>/dev/null; then
+  exec "$dest/forge-runner" setup </dev/tty
+fi
+exec "$dest/forge-runner" setup
 `;
 
 // Served when RUNNER_RELEASE_DIR is unset: the download script above would

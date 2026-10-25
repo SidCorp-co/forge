@@ -56,6 +56,8 @@ export interface InstallOptions {
   servedBy?: { base: string; prefix: string };
   /** Run the script with shorter request limits, so a stall is refused inside a test's time. */
   limits?: { connect: number; stall: number };
+  /** Arguments after the script, as `sh -s -- <args>` passes them. */
+  args?: string[];
 }
 
 export interface InstallWorld {
@@ -175,7 +177,7 @@ export async function installWorld(routes: () => Promise<Hono>): Promise<Install
     name: string,
     os: string,
     arch: string,
-    { existing, servedBy, limits }: InstallOptions = {},
+    { existing, servedBy, limits, args = [] }: InstallOptions = {},
   ): Promise<Install> {
     const box = join(root, name);
     const home = join(box, 'home');
@@ -216,7 +218,7 @@ export async function installWorld(routes: () => Promise<Hono>): Promise<Install
     const run = await new Promise<Install>((resolve, reject) => {
       const started = Date.now();
       // Its own process group, so the deadline reaches the curl the script is waiting on too.
-      const child = spawn('sh', [join(box, 'install.sh')], { env, detached: true });
+      const child = spawn('sh', [join(box, 'install.sh'), ...args], { env, detached: true });
       let stdout = '';
       let stderr = '';
       let killed = false;

@@ -172,6 +172,10 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
     'the storefront MCP relay admits only the relay ticket core minted for one binding, read by readRelayTicket; a PAT verifies as none',
   'integrations/mcp-relay.ts':
     'readRelayTicket verifies a relay ticket, a JWT under its own issuer naming one binding; a PAT is never one',
+  'integration-door/git-relay-routes.ts':
+    'git’s smart HTTP at /api/git admits only the relay ticket core minted for one device and binding, read by readGitRelayTicket; a PAT verifies as none',
+  'integrations/source-host/git-relay.ts':
+    'readGitRelayTicket verifies a git relay ticket, a JWT under its own issuer naming one device and binding; a PAT is never one',
   'uploads/routes.ts':
     'an upload or download ticket, a uuid core minted for one file, is the only authority there; a PAT is never one',
   'credentials/mcp-oauth-routes.ts':

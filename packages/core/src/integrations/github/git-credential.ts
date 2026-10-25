@@ -1,4 +1,4 @@
-import type { GitCredentialMint } from '../index.js';
+import type { MintedGitCredential } from '../index.js';
 import { mintInstallationToken } from './octokit.js';
 import { githubHostOf } from './source-host.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
@@ -21,7 +21,8 @@ function parseRepoPath(raw: string): { owner: string; repo: string } | null {
  * A GitHub binding serves git an installation token for its own repository: an hour long, minted per
  * ask, so nothing on the box outlives the binding.
  */
-export const githubGitCredential: GitCredentialMint = {
+export const githubGitCredential: MintedGitCredential = {
+  kind: 'minted',
   serves: (config) => typeof config.installationId === 'number',
   reaches(config, host, path) {
     const parsed = parseRepoPath(path);

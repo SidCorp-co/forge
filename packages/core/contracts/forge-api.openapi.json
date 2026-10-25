@@ -9580,6 +9580,118 @@
         ]
       }
     },
+    "/api/git/{host}/{rest}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "pattern": "^.+$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "service",
+            "required": false,
+            "schema": {
+              "maxLength": 40,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-git-upload-pack-request": {
+              "schema": {}
+            }
+          },
+          "description": "git's smart-HTTP request body (application/x-git-upload-pack-request or application/x-git-receive-pack-request), relayed to the host as sent; ref discovery carries none.",
+          "required": false
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "pattern": "^.+$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "service",
+            "required": false,
+            "schema": {
+              "maxLength": 40,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-git-upload-pack-request": {
+              "schema": {}
+            }
+          },
+          "description": "git's smart-HTTP request body (application/x-git-upload-pack-request or application/x-git-receive-pack-request), relayed to the host as sent; ref discovery carries none.",
+          "required": false
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
+      }
+    },
     "/api/guides": {
       "get": {
         "responses": {

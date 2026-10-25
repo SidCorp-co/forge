@@ -5,6 +5,7 @@ import type { z } from 'zod';
 import type { Tx } from '../db/client.js';
 import type { BindingRole } from '../db/schema.js';
 import type { TargetedDeployAdapter } from './deploy/index.js';
+import type { GitCredentialMint } from './git-credential-types.js';
 import type { SourceHostFactory } from './source-host/index.js';
 
 export type IntegrationProvider =
@@ -620,20 +621,6 @@ export interface IntegrationDeclaration<
   readonly sourceHost?: SourceHostFactory;
   /** Present where this provider can mint a short-lived HTTPS git credential for a runner. */
   readonly gitCredential?: GitCredentialMint;
-}
-
-/** What `source-host/host-credential.ts` asks of a provider for one repository git is fetching. */
-export interface GitCredentialMint {
-  /** Whether this binding is complete enough to mint for at all — the provision flag reads it. */
-  serves(config: Record<string, unknown>): boolean;
-  /** Whether this binding reaches the repository git named by `host` and `path`. */
-  reaches(config: Record<string, unknown>, host: string, path: string): boolean;
-  /** The binding's repository as a person reads it, for a refusal or a log line. */
-  repositoryOf(config: Record<string, unknown>): string;
-  mint(args: {
-    config: Record<string, unknown>;
-    secrets: Record<string, unknown>;
-  }): Promise<{ username: string; password: string; expiresAt: string }>;
 }
 
 /** The declaration as an author writes it: `agentPath` is the one field that may be left out. */

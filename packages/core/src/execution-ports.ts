@@ -30,6 +30,7 @@ import {
 } from './integrations/index.js';
 import { callFastModel } from './integrations/llm/index.js';
 import {
+  gitRemoteThroughForge,
   isHttpsGitUrl,
   projectsWithHostCredential,
   readPullRequestsForIssues,
@@ -50,6 +51,7 @@ import { landedWorkOwed } from './pipeline/index.js';
 import { registerRoomBridge } from './previews/index.js';
 import {
   dispatchStateOf,
+  parseRepository,
   policyGapOf,
   policyRefusal,
   policyRefusalOf,
@@ -114,6 +116,19 @@ import {
 } from './workflows/index.js';
 import { boxIsListening, sendToBoxNow, wakeMastersForProject } from './ws/index.js';
 
+/** Forge's git relay URL for a repository whose binding reaches git only through it (REQ-73 BC-5), else null. */
+async function relayRemoteOf(projectId: string, repository: string): Promise<string | null> {
+  const ref = parseRepository(repository);
+  return ref.kind === 'hosted'
+    ? gitRemoteThroughForge(projectId, { host: ref.host, path: ref.path })
+    : null;
+}
+
+/** A checkout's remote: Forge's git relay where the project's binding is relayed, else the host's own URL. */
+async function checkoutRemoteOf(projectId: string, repository: string): Promise<string> {
+  return (await relayRemoteOf(projectId, repository)) ?? remoteOf(repository);
+}
+
 export function provideExecutionPorts(): void {
   provideReleaseBatchPorts({
     contractProviderGate,
@@ -177,7 +192,8 @@ export function provideExecutionPorts(): void {
     requirePolicy,
     readPullRequestsForIssues,
     readDeclaredSource,
-    remoteOf,
+    checkoutRemoteOf,
+    relayRemoteOf,
     withDeclaredSource,
     projectsWithHostCredential,
     isHttpsGitUrl,

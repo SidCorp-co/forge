@@ -28,6 +28,11 @@ export {
   updateDelivery,
 } from './deliveries.js';
 export { forgeReads, provideForgeReads } from './forge-reads.js';
+export type {
+  GitCredentialMint,
+  MintedGitCredential,
+  RelayedGitCredential,
+} from './git-credential-types.js';
 export { healthOf, thrownSaid } from './health-said.js';
 export { runIntegrationsHealthSweep } from './health-sweep.js';
 export type { InboundDoorState } from './inbound-door.js';
@@ -154,7 +159,6 @@ export type {
 } from './types.js';
 export {
   declareIntegration,
-  type GitCredentialMint,
   type IntegrationDeclaration,
   NonRetryableDispatchError,
   type StorefrontDraftReading,

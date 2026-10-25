@@ -10,6 +10,7 @@ import { DEVICE_REFUSAL_STATUSES } from "./devices.js";
 import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
 import { FAST_LANE_REFUSAL_STATUSES } from "./fast-lane.js";
 import { FORGE_FEEDBACK_REFUSAL_STATUSES } from "./forge-feedback.js";
+import { GIT_REFUSAL_STATUSES } from "./git.js";
 import { INSTANCE_SETTINGS_REFUSAL_STATUSES } from "./instance-settings.js";
 import { INTAKE_REFUSAL_STATUSES } from "./intake-drafts.js";
 import { INTEGRATION_REFUSAL_STATUSES } from "./integrations.js";
@@ -70,6 +71,7 @@ const DECLARED: ReadonlyArray<
 	INSTANCE_SETTINGS_REFUSAL_STATUSES,
 	INTAKE_REFUSAL_STATUSES,
 	INTEGRATION_REFUSAL_STATUSES,
+	GIT_REFUSAL_STATUSES,
 	ISSUE_TRANSITION_REFUSAL_STATUSES,
 	ISSUE_CREATE_REFUSAL_STATUSES,
 	ISSUE_TAKE_REFUSAL_STATUSES,

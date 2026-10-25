@@ -1,0 +1,1 @@
+**A runner's git reaches GitLab through Forge, so boxes stop holding the connection's token.** The helper gets an hour-long relay ticket and checkouts move their origin; runners older than 0.18.0 keep the token until they update.

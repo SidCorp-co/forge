@@ -34,6 +34,10 @@ pub struct MeRunner {
     /// credential helper at its host the way a provision does (ISS-50).
     #[serde(default)]
     pub host_credential: bool,
+    /// Forge's git relay URL for that repository where git reaches it only through Forge (REQ-73
+    /// BC-5): `bind --path` accepts a checkout whose origin is either, and points origin here.
+    #[serde(default)]
+    pub relay_remote: Option<String>,
     #[serde(default, deserialize_with = "lenient_seconds")]
     pub rate_limited_for_seconds: Option<u64>,
     /// Why core limited this runner (`usage_limit`, `auth`, …). Reported in the
