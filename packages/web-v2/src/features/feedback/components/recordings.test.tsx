@@ -64,6 +64,7 @@ const upload = (over: Record<string, unknown> = {}) => ({
   name: "spinner.mp4",
   mime: "video/mp4",
   size: 900_000,
+  redacted: false,
   flagged: false,
   uploadedBy: BO,
   uploadedByName: "Bo",

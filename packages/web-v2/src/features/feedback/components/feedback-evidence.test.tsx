@@ -39,6 +39,7 @@ const file = (id: string, name: string, mime: string) => ({
   name,
   mime,
   size: 4096,
+  redacted: false,
   flagged: false,
   uploadedBy: ANN,
   uploadedByName: "Ann",

@@ -23,6 +23,7 @@ const ATTACHED = {
   name: "board.png",
   mime: "image/png",
   size: 8,
+  redacted: false,
   flagged: false,
   uploadedBy: "u1",
   uploadedByName: "Ann",

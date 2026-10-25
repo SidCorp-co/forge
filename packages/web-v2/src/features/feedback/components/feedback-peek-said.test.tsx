@@ -29,6 +29,7 @@ const file = (id: string, mime: string) => ({
   name: `${id}.bin`,
   mime,
   size: 4096,
+  redacted: false,
   flagged: false,
   uploadedBy: ANN,
   uploadedByName: "Ann",
