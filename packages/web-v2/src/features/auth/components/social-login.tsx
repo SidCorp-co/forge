@@ -1,15 +1,13 @@
 
 import { useEffect, useState } from 'react';
-import { Divider, Icon, type IconName } from '@/design';
+import { Divider } from '@/design';
 import { useCopy } from '@/lib/i18n/interface-language';
 import {
   fetchOAuthProviders,
   startUrl,
   type OAuthProviderPublic,
 } from '../oauth-api';
-
-// Map provider ids to kit icons; GitHub is the only one wired today.
-const PROVIDER_ICON: Record<string, IconName> = { github: 'github' };
+import { ProviderMark } from './provider-mark';
 
 /**
  * Renders an OAuth button per configured provider, then an "or" divider above
@@ -43,7 +41,7 @@ export function SocialLogin({ redirectTo = '/' }: { redirectTo?: string }) {
             href={startUrl(p.id, redirectTo)}
             className="fg-label inline-flex w-full items-center justify-center gap-2 rounded-md border border-line-strong bg-surface px-4 py-2.5 text-fg transition-colors hover:bg-hover focus-visible:border-link focus-visible:shadow-focus focus-visible:outline-none"
           >
-            <Icon name={PROVIDER_ICON[p.id] ?? 'github'} size={18} />
+            <ProviderMark provider={p.id} />
             {p.label}
           </a>
         ))}

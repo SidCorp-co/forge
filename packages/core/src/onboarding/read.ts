@@ -30,7 +30,7 @@ import { actorFor, permissionFactsOf, projectResource, requireCan } from '../per
 import { linkItems, type SeriesItem } from './design-items.js';
 import { batchDue, hintOf, type SystemContextState } from './hint.js';
 import { runWaitingOf } from './ports.js';
-import { type LiveJob, onboardingStatusOf, personActRefusal } from './rules.js';
+import { type LiveJob, onboardingStatusOf, requestRefusal } from './rules.js';
 
 type Executor = typeof db | Tx;
 export type OnboardingRow = typeof onboardings.$inferSelect;
@@ -394,7 +394,7 @@ export async function onboardingView(
 
 /**
  * The onboarding as `reader` reads it. The hint offers a re-analysis, and names them as who acts,
- * only where the ask would take theirs: the same rule (rules.ts:personActRefusal) the ask is held to.
+ * only where the ask would take theirs: the same rule (rules.ts:requestRefusal) the ask is held to.
  */
 export async function readOnboardingState(
   projectId: string,
@@ -404,7 +404,7 @@ export async function readOnboardingState(
   const row = await onboardingOf(db, projectId);
   const view = row ? await onboardingView(db, row) : null;
   const facts = await permissionFactsOf(reader.userId, projectId);
-  const canRequest = personActRefusal(reader.agency, facts, 'asking for a re-analysis') === null;
+  const canRequest = requestRefusal(facts, 'asking for a re-analysis') === null;
   return {
     onboarding: view,
     hint: hintOf(view, view ? 'none' : await systemContextOf(projectId), { canRequest }),
