@@ -43,8 +43,7 @@ export async function statedLanding(args: {
   return { ...said, supersedes: held };
 }
 
-/** Whether the row holds `commit` as a person's stated one: the commit Forge has now read wins over
- *  a merged pull request's there, so the claim becomes Forge's record (ISS-1300 r3 review). */
+/** True where `commit` is the stated commit this row already keeps. */
 export async function statedAt(issueId: string, commit: string): Promise<boolean> {
   const held = await readMergeColumns(db, issueId);
   return held.stated && held.commitSha?.toLowerCase() === commit.toLowerCase();
