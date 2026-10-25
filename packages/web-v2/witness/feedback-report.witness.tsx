@@ -111,9 +111,14 @@ async function drag(from: [number, number], to: [number, number]) {
 }
 
 async function hidden(): Promise<string[]> {
+  const wrong = laidOut();
   await drag([0.05, 0.35], [0.45, 0.7]);
   await settle(200);
-  const wrong = laidOut();
+  if (document.querySelectorAll("[data-testid=report-mask-box]").length !== 0) wrong.push("a drag hid part of the screenshot before Hide an area was pressed");
+  q("[data-testid=report-hide]")?.click();
+  await settle(100);
+  await drag([0.05, 0.35], [0.45, 0.7]);
+  await settle(200);
   if (document.querySelectorAll("[data-testid=report-mask-box]").length !== 1) wrong.push("a drag drew no box over the screenshot");
   (q("[data-testid=report-dialog] [role=checkbox]") as HTMLElement | null)?.click();
   await settle();

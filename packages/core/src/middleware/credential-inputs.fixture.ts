@@ -175,7 +175,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:raw field:json:localGuide field:json:skillMd field:json:decision
     field:json:suggestion field:json:evidence field:json:emoji field:json:name
     field:json:displayName field:json:shortName field:json:request field:json:account
-    field:json:lines field:json:sides field:json:withoutClip field:json:rationale`,
+    field:json:lines field:json:sides field:json:withoutClip field:json:rationale field:json:said`,
   'a structured part of a record core validates and stores; it admits nobody': words`
     field:json:other field:json:output field:json:answers field:json:artifact field:json:attachments
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
@@ -207,7 +207,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:error field:json:origin field:json:contentBase64 field:json:binaries
     field:json:basis field:json:claims
     field:json:endpoint field:json:by field:json:cites field:json:intent field:json:recommended
-    field:json:reportedBy field:json:resolves field:json:refused field:json:broken`,
+    field:json:reportedBy field:json:resolves field:json:refused field:json:broken
+    field:json:screenshot`,
   'a time, a version or a time zone': words`
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt

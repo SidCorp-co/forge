@@ -123,7 +123,7 @@ describe("Feedback from a project's page", () => {
   it("asks the reporter to say nothing personal shows on a project that redacts, and sends their word", async () => {
     const calls = served({ level: "redact", report: () => ({ status: 201, body: filedAs("FB-15", true) }) });
     const user = await openOn("/projects/hop/wards");
-    const mark = await screen.findByRole("checkbox", { name: "Nothing personal shows" });
+    const mark = await screen.findByRole("checkbox", { name: "Shows no personal data" });
     await user.type(screen.getByLabelText(/^What happened\?/), "The ward shows the wrong patient");
     await user.click(mark);
     await user.click(screen.getByRole("button", { name: "Send" }));

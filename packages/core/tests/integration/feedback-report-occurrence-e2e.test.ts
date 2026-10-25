@@ -270,6 +270,43 @@ describe('a repeat joins the open item as an occurrence, never a new item (BC-3)
     expect(filed.created).toBe(true);
     expect(await itemCount(p.open)).toBe((before ?? 0) + 1);
   });
+  it('carries the repeats a duplicate had joined to the root a triage later merged it into', async () => {
+    model.answer = { kind: 'bug', severity: 'high', sameAs: null };
+    const later = ok(
+      await report('owner', p.open, {
+        said: 'Exporting the roster loses the night shift',
+        whereSeen: '/projects/demo/roster',
+      }),
+      201,
+    ).feedback as Doc;
+    await embedded(p.open, String(later.key));
+    model.answer = { kind: 'bug', severity: 'high', sameAs: String(later.key) };
+    const joined = ok(
+      await report('other', p.open, {
+        said: 'The roster export has no night shift',
+        whereSeen: '/projects/demo/roster',
+      }),
+    ).feedback as Doc;
+    const repeater = String((joined.occurrences as Doc[])[0]?.reporter.id);
+    model.answer = { kind: 'bug', severity: 'high', sameAs: null };
+    const root = ok(
+      await report('viewer', p.open, {
+        said: 'Night shift rows vanish from every export',
+        whereSeen: '/projects/demo/exports',
+      }),
+      201,
+    ).feedback as Doc;
+    await rows(sql`
+      UPDATE feedback SET duplicate_of = (SELECT id FROM feedback WHERE project_id = ${p.open} AND fb_seq = ${Number(String(root.key).slice(3))})
+      WHERE project_id = ${p.open} AND fb_seq = ${Number(String(later.key).slice(3))}
+    `);
+    const read = ok(await say('owner', 'GET', `/api/projects/${p.open}/feedback/${root.key}`))
+      .feedback as Doc;
+    expect(
+      (read.reporters as Doc[]).find((r) => r.id === repeater),
+      'the repeat that joined the duplicate is told of the root, by the duplicate it joined',
+    ).toMatchObject({ from: later.key });
+  });
 });
 
 describe('personal data is removed before a model reads feedback on a sensitive project (BC-7)', () => {

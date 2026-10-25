@@ -14,6 +14,7 @@ import { placeRefusals } from "@/lib/api/field-refusals";
 import { namedRefusals } from "@/lib/api/refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { cn } from "@/lib/utils/cn";
 import { Link, usePathname } from "@/lib/navigation/router";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
@@ -61,6 +62,8 @@ function ScreenshotMask({ blob, boxes, onBoxes }: { blob: Blob; boxes: Box[]; on
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   const frameRef = useRef<HTMLDivElement>(null);
   const [drawing, setDrawing] = useState<{ x: number; y: number; at: Box } | null>(null);
+  // a drag hides part of the screenshot only once the reporter has asked to, so a stray touch draws nothing
+  const [hiding, setHiding] = useState(false);
   const point = (e: PointerEvent) => {
     const r = frameRef.current?.getBoundingClientRect();
     if (!r || r.width === 0 || r.height === 0) return { x: 0, y: 0 };
@@ -71,9 +74,10 @@ function ScreenshotMask({ blob, boxes, onBoxes }: { blob: Blob; boxes: Box[]; on
     <div className="grid gap-1.5">
       <div
         ref={frameRef}
-        className="relative cursor-crosshair touch-none select-none overflow-hidden rounded-sm border border-line"
+        className={cn("relative select-none overflow-hidden rounded-sm border border-line", hiding && "cursor-crosshair touch-none")}
         data-testid="report-screenshot"
         onPointerDown={(e) => {
+          if (!hiding) return;
           e.currentTarget.setPointerCapture(e.pointerId);
           const p = point(e);
           setDrawing({ ...p, at: { x: p.x, y: p.y, w: 0, h: 0 } });
@@ -98,8 +102,10 @@ function ScreenshotMask({ blob, boxes, onBoxes }: { blob: Blob; boxes: Box[]; on
           />
         ))}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-12 text-muted">
-        <span>{t("feedback.report.hideHint")}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" variant={hiding ? "secondary" : "ghost"} size="sm" aria-pressed={hiding} onClick={() => setHiding(!hiding)} data-testid="report-hide">
+          {t("feedback.report.hide")}
+        </Button>
         {boxes.length > 0 ? (
           <Button type="button" variant="ghost" size="sm" onClick={() => onBoxes(boxes.slice(0, -1))}>
             {t("feedback.report.undo")}
