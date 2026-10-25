@@ -1465,6 +1465,7 @@ impl Shared {
             job_panes: &self.job_panes,
             job_records: self.job_records.as_ref(),
             drain: &self.drain,
+            proc_root: std::path::Path::new(crate::workspace::worktree_processes::PROC),
         }
     }
 }
@@ -1477,6 +1478,8 @@ pub(crate) struct SweepShared<'a> {
     job_panes: &'a Arc<JobPanes>,
     job_records: &'a dyn Records,
     drain: &'a crate::daemon::drain::Drain,
+    /// Where the process table is read, which a test plants.
+    proc_root: &'a std::path::Path,
 }
 
 pub async fn run(
@@ -1566,6 +1569,7 @@ async fn sweep(
         activity,
         job_panes,
         drain,
+        proc_root,
         ..
     } = *shared;
     masters.new_sweep();
@@ -1709,7 +1713,6 @@ async fn sweep(
         ) else {
             continue;
         };
-        let proc_root = std::path::Path::new(crate::workspace::worktree_processes::PROC);
         let placed_master = masters.get(&runner.project_id);
         let counted = counted_activity(
             masters,
@@ -8991,23 +8994,16 @@ mod give_back_tests {
         );
     }
 
-    /// The sweep reads the master through `counted_activity` at both places it
-    /// decides from the master's report: the unasked clock and the nudge.
+    /// A sweep begins before anything can end it early: a child it skips must
+    /// break its run of absence, which `new_sweep` is how it says.
     #[test]
-    fn the_sweep_reads_the_master_as_counted_for_the_clock_and_the_nudge() {
+    fn a_sweep_says_it_began_before_anything_can_end_it() {
         let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
         let sweep = production
             .split("\nasync fn sweep(")
             .nth(1)
             .and_then(|r| r.split("\nasync fn ").next())
             .expect("sweep is gone");
-        assert_eq!(sweep.matches("counted_activity(").count(), 2, "{sweep}");
-        assert!(
-            !sweep.contains("activity.get(&session_id));"),
-            "a raw hooks read decides nothing in the sweep"
-        );
-        let first = sweep.find("counted_activity(").unwrap();
-        assert!(first < sweep.find("note_unasked(").unwrap());
         let begun = sweep
             .find("masters.new_sweep();")
             .expect("a sweep must say it began, or a child it skips keeps its absence");
@@ -9015,8 +9011,6 @@ mod give_back_tests {
             begun < sweep.find("runners::list_me(").unwrap(),
             "the sweep begins before anything can end it early"
         );
-        let second = sweep.rfind("counted_activity(").unwrap();
-        assert!(second < sweep.find("claim_nudge(").unwrap());
     }
 
     #[test]
@@ -12008,6 +12002,7 @@ mod servers_refusal_walk_tests {
                 job_panes: &Arc::new(JobPanes::new()),
                 job_records: &crate::daemon::pool_jobs::NoRecords,
                 drain: &crate::daemon::drain::Drain::unrecorded(),
+                proc_root: std::path::Path::new(crate::workspace::worktree_processes::PROC),
             },
             &adopted,
             &mut ledger,
@@ -12025,6 +12020,212 @@ mod servers_refusal_walk_tests {
             led.run("run-old").unwrap().unwrap().host_ended_by.as_deref(),
             Some(HOST_PANE_STARTED),
             "criterion 30: the pane this sweep started is the end of the subagent the pane before it ran"
+        );
+    }
+
+    /// ISS-1306 round 3, criteria 2 and 16, run through the sweep and not read
+    /// off its source (judge-109: the source check counted calls, so the sweep
+    /// could decide from the raw hooks with it green). One project holds work,
+    /// its master is up on a pane of the test's own and ended its turn over one
+    /// run whose worktree no process entered and whose transcript is 31 minutes
+    /// silent, absent for 31 minutes and unasked for 36. The sweep reads the
+    /// master as having run: it says the run no longer counts and that the
+    /// project's work stands unasked.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    #[cfg_attr(
+        not(target_os = "linux"),
+        ignore = "no process table names a run's worktree off Linux, so a child always counts there"
+    )]
+    async fn a_sweep_asks_about_a_master_whose_only_run_was_lost() {
+        use crate::runner::ledger::{Ledger, NewRun};
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("sweeplost");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let claude_home = crate::test_scratch::Scratch::new("sweeplost-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let pane = terminal::session_name(terminal::MASTER_PREFIX, "sweeplost");
+        let sock = terminal::socket_path().expect("the isolated socket");
+        let up = std::process::Command::new("tmux")
+            .args(["-S", &sock.to_string_lossy()])
+            .args(["new-session", "-d", "-s", &pane, "sleep 120"])
+            .stdin(std::process::Stdio::null())
+            .status()
+            .expect("tmux runs");
+        assert!(up.success(), "the plant: the master's pane is up");
+
+        let scratch = crate::test_scratch::Scratch::new("sweeplost");
+        let repo = scratch.path().join("repo");
+        let worktree = scratch.path().join("wt");
+        let proc_root = scratch.path().join("proc");
+        for dir in [&repo, &worktree, &proc_root] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let lead = scratch.path().join("t").join("conv.jsonl");
+        let sub = crate::daemon::transcript_age::child_transcript(&lead, "a1").unwrap();
+        std::fs::create_dir_all(sub.parent().unwrap()).unwrap();
+        std::fs::write(&lead, "{}\n").unwrap();
+        std::fs::write(&sub, "{}\n").unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&sub)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() - Duration::from_secs(31 * 60))
+            .unwrap();
+        let activity = agent_activity::Activities::new();
+        for (event, subject) in [
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::SubagentStarted, Some("a1")),
+            (agent_activity::Event::Stopped, None),
+        ] {
+            activity.record(
+                "sess-lost",
+                agent_activity::Report {
+                    event,
+                    at: agent_activity::now_ms(),
+                    subject,
+                    conversation: Some("conv-lost"),
+                    transcript: Some(lead.to_str().unwrap()),
+                },
+            );
+        }
+        let mut ledger = Some(Ledger::open_in_memory().unwrap());
+        {
+            let led = ledger.as_mut().unwrap();
+            led.create_run_group(NewRun {
+                run_id: "run-lost".into(),
+                project_id: "proj-lost".into(),
+                master_session_id: "sess-lost".into(),
+                worktree_path: worktree.clone(),
+                boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
+                issue_keys: vec!["ISS-1".into()],
+            })
+            .unwrap();
+            assert!(led.bind_agent("run-lost", "a1").unwrap());
+        }
+        let masters = Arc::new(Masters::new());
+        masters.remember_for_test("proj-lost", "sess-lost", &pane);
+        {
+            let now = Instant::now();
+            let mut reg = masters.0.lock().unwrap();
+            reg.ask.note(
+                "proj-lost",
+                true,
+                false,
+                now.checked_sub(Duration::from_secs(36 * 60)).unwrap(),
+            );
+            let mut at = now.checked_sub(Duration::from_secs(31 * 60)).unwrap();
+            while at < now {
+                reg.ask.new_sweep();
+                reg.ask
+                    .absent_for("proj-lost", &[("a1".to_string(), Some(true))], at);
+                at += Duration::from_secs(30);
+            }
+        }
+        let runners: &'static str = Box::leak(
+            format!(
+                r#"[{{"projectId":"proj-lost","runnerId":"r-1","slug":"sweeplost","baseBranch":null,"repoPath":{},"branch":null,"status":"active"}}]"#,
+                serde_json::to_string(&repo.to_string_lossy()).unwrap()
+            )
+            .into_boxed_str(),
+        );
+        let routes: &'static [(&'static str, &'static str, &'static str)] = Box::leak(
+            vec![
+                ("/api/devices/me/runners", "200 OK", runners),
+                (
+                    "/api/devices/me/issues/admissible",
+                    "200 OK",
+                    r#"{"items":[{"issueId":"i-1","issueKey":"ISS-1","projectId":"proj-lost","status":"open"}]}"#,
+                ),
+                (
+                    REGISTER,
+                    "200 OK",
+                    r#"{"sessionId":"sess-lost","name":"forge-master-sweeplost","created":false}"#,
+                ),
+                (SERVERS, "200 OK", DECLARES),
+            ]
+            .into_boxed_slice(),
+        );
+        let core = fake_core::serve_routes(routes).await;
+        let client = CoreClient::new(core, "device-token");
+        // Asked 31 minutes ago about this same work, with no turn begun then:
+        // only the floor's arm can ask it again, and only for a master that ran.
+        let work = admissible::admissible(&client, Some("proj-lost"))
+            .await
+            .expect("the plant: core answers the work");
+        let nudged_at = Instant::now()
+            .checked_sub(Duration::from_secs(31 * 60))
+            .unwrap();
+        masters
+            .0
+            .lock()
+            .unwrap()
+            .live
+            .get_mut("proj-lost")
+            .unwrap()
+            .last_nudge = Some(Nudge {
+            digest: work_digest(&work),
+            at: nudged_at,
+            prompts: Some(0),
+        });
+        let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
+        let mut said_limit = None;
+
+        let (said, guard) = crate::log_capture::capturing();
+        let _ = sweep(
+            &client,
+            &Config::default(),
+            &SweepShared {
+                masters: &masters,
+                activity: &activity,
+                job_panes: &Arc::new(JobPanes::new()),
+                job_records: &crate::daemon::pool_jobs::NoRecords,
+                drain: &crate::daemon::drain::Drain::unrecorded(),
+                proc_root: &proc_root,
+            },
+            &adopted,
+            &mut ledger,
+            None,
+            &mut said_limit,
+        )
+        .await;
+        drop(guard);
+        let _ = terminal::kill(&pane).await;
+        let said = said.said();
+
+        assert!(
+            said.contains("no longer counting run run-lost (subagent a1)"),
+            "criterion 19: the sweep says the lost run stopped counting: {said}"
+        );
+        let unasked = said
+            .lines()
+            .find(|l| l.contains("WARN") && l.contains("sweeplost") && l.contains("36m"))
+            .unwrap_or_else(|| {
+                panic!("criterion 16: the master reads idle, so the unasked clock runs and its line is said: {said}")
+            });
+        assert!(unasked.contains(&pane), "{unasked}");
+        let last = masters
+            .0
+            .lock()
+            .unwrap()
+            .live
+            .get("proj-lost")
+            .and_then(|m| m.last_nudge);
+        assert!(
+            last.is_some_and(|n| n.at > nudged_at && n.prompts == Some(1)),
+            "criterion 1 over a lost run: the floor asks the master that ran again: {last:?}\n{said}"
         );
     }
 
@@ -12184,6 +12385,7 @@ mod servers_refusal_walk_tests {
                 job_panes: &Arc::new(JobPanes::new()),
                 job_records: &crate::daemon::pool_jobs::NoRecords,
                 drain: &crate::daemon::drain::Drain::unrecorded(),
+                proc_root: std::path::Path::new(crate::workspace::worktree_processes::PROC),
             },
             &adopted,
             &mut ledger,
@@ -12417,6 +12619,7 @@ mod servers_refusal_walk_tests {
                         job_panes: &Arc::new(JobPanes::new()),
                         job_records: &crate::daemon::pool_jobs::NoRecords,
                         drain: &crate::daemon::drain::Drain::unrecorded(),
+                        proc_root: std::path::Path::new(crate::workspace::worktree_processes::PROC),
                     },
                     &adopted,
                     &mut ledger,
@@ -12682,6 +12885,7 @@ mod servers_refusal_walk_tests {
                         job_panes: &Arc::new(JobPanes::new()),
                         job_records: &crate::daemon::pool_jobs::NoRecords,
                         drain: &crate::daemon::drain::Drain::unrecorded(),
+                        proc_root: std::path::Path::new(crate::workspace::worktree_processes::PROC),
                     },
                     &adopted,
                     &mut ledger,
@@ -14135,6 +14339,7 @@ mod drain_sweep_tests {
                 job_panes: &Arc::new(JobPanes::new()),
                 job_records: &crate::daemon::pool_jobs::NoRecords,
                 drain,
+                proc_root: std::path::Path::new(crate::workspace::worktree_processes::PROC),
             },
             &adopted,
             &mut ledger,
