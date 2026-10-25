@@ -171,7 +171,7 @@ describe('a recorded merged commit the repository does not hold (ISS-1300)', () 
       'The automatic release leaves this issue out, because the commit it records as landed is not in its repository.',
     );
     expect(hold.words?.[1]).toBe(
-      'A person removes its merge mark, then marks it merged at the commit that landed.',
+      "A person uses Unmark in the issue's properties, then Mark merged at the commit that landed.",
     );
     expect(hold.words?.join(' ')).not.toContain('records a verdict on each');
     expect(hold.reason).toContain(ABSENT);
@@ -191,7 +191,7 @@ describe('a recorded merged commit the repository does not hold (ISS-1300)', () 
     });
     expect(got.unearned[0]?.why).toContain('its landing record');
     expect(criteriaHold(got).words?.[1]).toBe(
-      'Its run records the landing again at the commit that landed.',
+      "A person uses Mark merged in the issue's properties, at the commit that landed.",
     );
   });
 
@@ -218,6 +218,63 @@ describe('a recorded merged commit the repository does not hold (ISS-1300)', () 
     expect(got.unresolvedLanding).toBeUndefined();
     expect(got.unearned[0]?.standing).toBe('superseded');
     expect(got.unearned[0]?.why).toContain(`this issue now stands at ${ABSENT}`);
+  });
+
+  // judge-113: GitHub answers 404 for a repository the installation cannot see, 422 for a commit a
+  // repository it shows lacks. A bound repository answering 404 says nothing of the commit.
+  it('weighs a recorded commit a bound repository answering 404 could not be read for as before, never as absent (criterion 8)', async () => {
+    await repo.bind(projectId, ownerId);
+    repo.hidden = true;
+    const id = await plant({ merged: JUDGED });
+    const { criteriaHold } = await import('../../src/pipeline/release-hold-kinds.js');
+
+    const got = await weigh(id);
+
+    expect(askedFor(JUDGED)).toHaveLength(1);
+    expect(got.unresolvedLanding).toBeUndefined();
+    expect(got.unearned.map((c) => c.standing)).toEqual(['unwitnessed', 'unwitnessed']);
+    expect(got.unearned[0]?.why).not.toContain('is not a commit');
+    expect(criteriaHold(got).words?.join(' ')).not.toContain('not in its repository');
+  });
+
+  it('refuses no mark as absent at the merge door where the repository answers 404, and still refuses one a readable repository lacks', async () => {
+    await repo.bind(projectId, ownerId);
+    const { resolveMarkCommit } = await import('../../src/issues/commit-landing.js');
+
+    repo.hidden = true;
+    const hidden = await resolveMarkCommit({ projectId, commit: JUDGED });
+    expect(hidden.ok).toBe(false);
+    if (hidden.ok) return;
+    expect(hidden.code).toBe('COMMIT_UNVERIFIED');
+    expect(hidden.detail).toContain(`${REPOSITORY} answered HTTP 404`);
+    expect(hidden.detail).toContain(`Restore ${REPOSITORY}`);
+    expect(hidden.unread).toBeDefined();
+
+    repo.hidden = false;
+    const absent = await resolveMarkCommit({ projectId, commit: ABSENT });
+    expect(absent.ok).toBe(false);
+    if (absent.ok) return;
+    expect(absent.code).toBe('COMMIT_NOT_IN_REPOSITORY');
+    expect(absent.detail).toContain(REPOSITORY);
+  });
+
+  it('gives the release readiness and its refusal the same act as the issue hold', async () => {
+    await repo.bind(projectId, ownerId);
+    const id = await plant({ merged: ABSENT });
+    const { readWeighingNow } = await import('../../src/release-batch/runtime-weighing.js');
+    const { criteriaHold } = await import('../../src/release-batch/criteria-hold.js');
+    const { landingCorrection } = await import('../../src/issues/landing-correction.js');
+    const out: Array<{ code: string; message: string }> = [];
+
+    const weighing = await readWeighingNow(projectId, UNREADABLE, [id]);
+    await criteriaHold(projectId, [id], out as never, [], UNREADABLE, weighing);
+
+    const [blocked] = out;
+    expect(blocked?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    const said = blocked?.message ?? '';
+    expect(said).toContain(`records ${ABSENT} as landed, which ${REPOSITORY} does not hold`);
+    expect(said).toContain(landingCorrection('merge'));
+    expect(said).not.toContain('owes');
   });
 
   it('asks the repository once per weighing, however many verdicts name the commit (criterion 9)', async () => {

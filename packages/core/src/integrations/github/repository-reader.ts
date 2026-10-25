@@ -41,6 +41,11 @@ const TOO_MANY = `${COMPARE_FILE_CEILING} or more files differ, and the reposito
 
 const DESCENDS = new Set(['ahead', 'identical']);
 
+/** A commit lookup's two refusals, as GitHub tells them apart (measured on api.github.com
+ *  2026-10-25): a repository the caller cannot see, and a commit a readable repository lacks. */
+const REPOSITORY_HIDDEN = 404;
+const COMMIT_UNKNOWN = 422;
+
 interface CommitRead {
   sha?: string;
   parents?: Array<{ sha?: string }>;
@@ -222,6 +227,15 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
     };
   }
 
+  /** A 404 is GitHub refusing to show the repository, so it says nothing of the commit. */
+  function hidden(ref: string): string {
+    return (
+      `${repository} answered HTTP 404, which GitHub gives for a repository this binding's ` +
+      `installation cannot see, so whether it holds ${ref} was not read. Restore ${repository} to ` +
+      "the GitHub App installation's repositories, or bind the project to where it now lives"
+    );
+  }
+
   return {
     name: repository,
     route: 'binding',
@@ -235,7 +249,8 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
       } catch (err) {
         const lookup =
           err instanceof GitHubReadError && err.phase === 'request' ? err.status : null;
-        if (lookup === 404 || lookup === 422) {
+        if (lookup === REPOSITORY_HIDDEN) return { kind: 'unreadable', why: hidden(ref) };
+        if (lookup === COMMIT_UNKNOWN) {
           // GitHub answers a prefix nothing starts with and one several commits start with alike, so
           // an abbreviated sha it cannot resolve is not reported as absent.
           const detail =
@@ -246,7 +261,10 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
                 `alike. ${MARK_WITH_WHOLE_SHA}`;
           return { kind: 'absent', detail, details: { commit: ref, repository } };
         }
-        return { kind: 'unreadable', why: why(err) };
+        // GitHub's own refusals name the repository or the installation token; a request that
+        // never reached GitHub names neither.
+        if (err instanceof GitHubReadError) return { kind: 'unreadable', why: why(err) };
+        return { kind: 'unreadable', why: `${repository} could not be read: ${why(err)}` };
       }
       const sha = read.sha?.toLowerCase();
       if (!sha) return { kind: 'unreadable', why: `${repository} answered no sha for it` };

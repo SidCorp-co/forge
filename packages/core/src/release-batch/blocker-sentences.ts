@@ -4,6 +4,7 @@
  */
 
 import type { ReleaseBlockerCode } from '@forge/contracts';
+import { LANDINGS_LEAD, type LandingHeld, splitLandings } from '../issues/landing-correction.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
 import type { RunnerHold } from '../runners/ineligible.js';
@@ -230,7 +231,7 @@ export function blockerHttpStatus(code: ReleaseBlockerCode): 409 | 503 {
 }
 
 /** One issue the release sweep will not carry, and what it still owes. */
-export interface HeldIssueRef {
+export interface HeldIssueRef extends LandingHeld {
   /** The uuid, which the api and a follow-up call need and no screen shows. */
   issueId: string;
   /** `ISS-nn` — what the issue list, the header and the url call it. */
@@ -257,12 +258,14 @@ function readableFirst(clears: readonly string[], subject: 'this' | 'that'): str
  *  criterion rides along for a caller with no link. A failed repository read leads with its own
  *  act, because no verdict and no link repairs it (ISS-1398 judge j3). */
 function criteriaUnearnedSentence(held: HeldIssueRef[], clears: readonly string[]): string {
-  const owed = held.length === 0 ? '' : `: ${owesList(held)}`;
+  const { owing, landings } = splitLandings(held);
+  const owed = owing.length === 0 ? '' : `: ${owesList(owing)}`;
   const unread =
     clears.length === 0
       ? ''
       : `At least one acceptance criterion cannot be weighed until the repository can be read: ${clears.join('; and ')}. `;
-  return `${unread}${criteriaUnearnedLead(held.length)}${owed}.`;
+  if (owing.length === 0 && landings) return `${unread}${LANDINGS_LEAD}${landings}`;
+  return `${unread}${criteriaUnearnedLead(owing.length)}${owed}.${landings}`;
 }
 
 /** "criterion 4", "criteria 1–30", "criteria 3, 7 and 9–12". */
@@ -487,14 +490,16 @@ export function heldBackWarningSentence(
   clears: readonly string[] = [],
 ): string {
   const lead = `A release will still be cut, without ${counted(held.length, 'issue')} the sweep is holding back`;
-  const each = agree(held.length, 'it', 'each');
+  const { owing, landings } = splitLandings(held);
+  if (owing.length === 0) return withCosts('RELEASE_CRITERIA_HELD_BACK', `${lead}.${landings}`);
+  const each = agree(owing.length, 'it', 'each');
   const why =
     serving.kind === 'undeclared'
       ? `${lead}: ${each} owes an acceptance criterion, and nothing here can read what this project is serving, so no judging run can earn one until the project can be read. What is missing: ${serving.missing}. The way to give it one: ${serving.route}.`
       : clears.length > 0
         ? `${lead}: ${each} still owes an acceptance criterion, and at least one could not be weighed because the repository could not be read. ${readableFirst(clears, 'that')} Otherwise ${each} stays at the gate until a judging run earns it.`
         : `${lead}: ${each} still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`;
-  return withCosts('RELEASE_CRITERIA_HELD_BACK', heldIssuesSentence(why, held));
+  return withCosts('RELEASE_CRITERIA_HELD_BACK', `${heldIssuesSentence(why, owing)}${landings}`);
 }
 
 /** The sweep cuts an over-cap roster in parts, so there is nothing here for a person to cut (ISS-1360). */

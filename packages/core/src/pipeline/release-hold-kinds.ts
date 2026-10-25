@@ -7,6 +7,7 @@
 
 import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD } from '@forge/contracts/mark-merged-words';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
+import { landingCorrection, landingRecordName } from '../issues/landing-correction.js';
 import { type ServingReading, servingClause } from '../release-batch/serving-reading.js';
 import { shortfallSentence } from '../release-batch/shortfall-words.js';
 import type { RuntimeReading } from '../release-batch/weighing.js';
@@ -136,12 +137,6 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
   };
 }
 
-/** The act that corrects a recorded landing, by the record it was read from. */
-const CORRECT_THE_RECORD = {
-  merge: 'A person removes its merge mark, then marks it merged at the commit that landed.',
-  landing: 'Its run records the landing again at the commit that landed.',
-} as const;
-
 /**
  * A commit the issue records as landed that its repository does not hold holds every source verdict
  * back for one reason, and no verdict clears it: the record does (ISS-1300). It is said first and
@@ -151,8 +146,8 @@ function unresolvedLandingHold(
   report: IssueCriteriaReport,
   landing: NonNullable<IssueCriteriaReport['unresolvedLanding']>,
 ): ReleaseHold {
-  const correct = CORRECT_THE_RECORD[landing.from];
-  const record = landing.from === 'merge' ? 'the merge mark' : 'the landing record';
+  const correct = landingCorrection(landing.from);
+  const record = landingRecordName(landing.from);
   const reasons = reasonsByWhy(report);
   // A criterion held only by its own `fail` names no commit, so the record is named here instead.
   const named = reasons.includes(landing.commit)
