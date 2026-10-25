@@ -7,10 +7,11 @@ import type { Tx } from '../db/client.js';
 /**
  * When each issue last entered `reopen`, read from the move history (`kernel_transitions`); an
  * issue never reopened is absent. A verdict at or before that instant is not current evidence
- * (contracts `verified-rule.ts:voidedByReopen`): a release and the issue's criteria read never count
- * it, nor does the release cut's hold. Two readers keep one: the landing guard reads a criterion's
- * newest verdict however old (`criteria-verdicts.ts:landingGuardCriteriaOf`), and coverage keeps one
- * judged at the issue's landed commit (requirements `standing-coverage.ts:standsAtLanding`).
+ * (contracts `verified-rule.ts:voidedByReopen`). Whether it still counts is one rule per delivery
+ * mode (`verified-rule.ts:voidedUnder`): where the project releases, never, by the release, its cut
+ * hold, coverage and the criteria read alike; under release mode `none`, where the landing record is
+ * the delivery, only one judged at the issue's landed commit. The landing guard, which counts no
+ * proof, reads a criterion's newest verdict however old (`criteria-verdicts.ts:landingGuardCriteriaOf`).
  */
 export async function reopenedAtOf(
   executor: Pick<Tx, 'execute'>,

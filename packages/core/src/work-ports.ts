@@ -125,6 +125,7 @@ import {
   judgedBuildOf,
   landedRecordOf,
   nextDraftVersion,
+  proofDeliveriesOf,
   releaseEndsRun,
   releaseHoldsOf,
 } from './release-batch/index.js';
@@ -250,6 +251,7 @@ export function provideWorkPorts(): void {
     liveReachForIssue,
     judgedBuildOf,
     deliveryHeadsOf,
+    proofDeliveriesOf,
     getLoopThresholds,
     extractStageStatus,
     freshRunnerAvailability,

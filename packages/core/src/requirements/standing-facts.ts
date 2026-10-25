@@ -192,6 +192,7 @@ export async function issueCriteriaOf(
     byCriterion.set(r.criterion_id, [...(byCriterion.get(r.criterion_id) ?? []), r]);
   return [...byCriterion.values()].map(([latest, ...older]) => {
     const r = latest as CriterionVerdictRow;
+    const reopenedAt = reopened.get(r.issue_id);
     return {
       issueId: r.issue_id,
       n: r.n,
@@ -199,7 +200,9 @@ export async function issueCriteriaOf(
       ...verdictOf(r),
       earlier: older.map((v) => verdictOf(v)).filter((v) => v.verdict !== null),
       // kept beside the void for coverage to weigh on a landing (`standing-coverage.ts:standsAtLanding`)
-      ...(voidedOf(r) && r.verdict !== null ? { beforeReopen: verdictOf(r, false) } : {}),
+      ...(reopenedAt && voidedOf(r) && r.verdict !== null
+        ? { beforeReopen: verdictOf(r, false), reopenedAt }
+        : {}),
     };
   });
 }

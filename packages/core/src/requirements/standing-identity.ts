@@ -43,6 +43,12 @@ export interface LiveBuildHolds {
    * live build for every commit and runtime verdict.
    */
   landed?: ReadonlyMap<string, LandedHolds>;
+  /**
+   * Whether the landing record is the project's delivery (release mode `none`), so a verdict judged at
+   * an issue's landed build counts from before its reopen too (contracts `verified-rule.ts:voidedUnder`);
+   * false on a change-request project, which releases.
+   */
+  landsAsDelivery?: boolean;
 }
 
 /** One issue's landed build, or why it has none. */

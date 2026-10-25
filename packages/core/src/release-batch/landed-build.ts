@@ -25,6 +25,7 @@ import {
   landedIdentityWhy,
   verdictEarns,
 } from '@forge/contracts/verdict-identity';
+import { type ProofDelivery, RELEASE_DELIVERY } from '@forge/contracts/verified-rule';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -74,6 +75,28 @@ export async function deliveryOf(projectId: string): Promise<Delivery | null> {
   const declared = await resolveReleaseDeclaration(projectId);
   if (declared?.kind === 'change-requests') return 'change-request';
   return declared?.kind === 'no-release' && declared.defaultBranch !== null ? 'landing' : null;
+}
+
+/**
+ * How each issue's proof is delivered (contracts `verified-rule.ts:ProofDelivery`): under release
+ * mode `none` the landing record, at the build `deliveredBuildsOf` reads for it, the one coverage
+ * weighs on; on any project that releases, its release.
+ */
+export async function proofDeliveriesOf(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, ProofDelivery>> {
+  const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
+  if ((await deliveryOf(projectId)) !== 'landing') {
+    return new Map(ids.map((id) => [id, RELEASE_DELIVERY]));
+  }
+  const builds = await deliveredBuildsOf(projectId, 'landing', ids);
+  return new Map(
+    ids.map((id): [string, ProofDelivery] => [
+      id,
+      { mode: 'landing', landed: builds.get(id)?.sha ?? null },
+    ]),
+  );
 }
 
 /** Whether this project's landing is its delivery (release mode `none`). */
@@ -502,6 +525,7 @@ export async function landedBuildHolds(
   runtimes: Map<string, string | null>;
   unanswered: Map<string, string>;
   landed: Map<string, LandedHolds>;
+  landsAsDelivery: boolean;
 } | null> {
   const delivery = await deliveryOf(projectId);
   if (!delivery) return null;
@@ -511,5 +535,12 @@ export async function landedBuildHolds(
   for (const [issueId, build] of builds) {
     landed.set(issueId, { sha: build.sha, why: build.sha === null ? build.why : null });
   }
-  return { sha: null, holds: new Map(), runtimes: new Map(), unanswered: new Map(), landed };
+  return {
+    sha: null,
+    holds: new Map(),
+    runtimes: new Map(),
+    unanswered: new Map(),
+    landed,
+    landsAsDelivery: delivery === 'landing',
+  };
 }

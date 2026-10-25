@@ -20,6 +20,7 @@ import type {
 import type { ReleaseHoldView } from '@forge/contracts/releases';
 import type { MasterServing } from '@forge/contracts/steward';
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
+import type { ProofDelivery } from '@forge/contracts/verified-rule';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -249,6 +250,11 @@ interface IssuePorts {
     mergedAt: Date | string | null;
     mergedCommitSha: string | null;
   }) => Promise<JudgedBuild>;
+  /** How each issue's proof is delivered (`release-batch/landed-build.ts:proofDeliveriesOf`). */
+  proofDeliveriesOf: (
+    projectId: string,
+    issueIds: readonly string[],
+  ) => Promise<Map<string, ProofDelivery>>;
   /** On a change-request project, each issue's head through the one predicate
    *  (`release-batch/landed-build.ts:deliveryHeadsOf`); null on any other project. */
   deliveryHeadsOf: (
@@ -440,6 +446,7 @@ export const subjectOf = port('subjectOf');
 export const liveReachOfIssue = port('liveReachForIssue');
 export const judgedBuildOf = port('judgedBuildOf');
 export const deliveryHeadsOf = port('deliveryHeadsOf');
+export const proofDeliveriesOf = port('proofDeliveriesOf');
 
 export const getLoopThresholds = port('getLoopThresholds');
 export const extractStageStatus = port('extractStageStatus');

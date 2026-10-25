@@ -9,6 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { api } from '../helpers/api.js';
 import {
   agreedRequirement,
   bcOf,
@@ -27,6 +28,7 @@ import {
   seedLandedWorld,
   statusOf,
   verdict,
+  world,
 } from '../helpers/landed-world.js';
 
 vi.mock('../../src/release-batch/shipped-earlier.js', async (importOriginal) => {
@@ -111,6 +113,27 @@ describe('a requirement whose issues all closed by landing records', () => {
     await traced(req, issue, 1);
     await passedAll(issue, LATER);
 
+    expect(await bcOf(req)).toMatchObject({ verdict: 'passing' });
+  });
+
+  // the one rule per delivery mode (contracts `verified-rule.ts:voidedUnder`): the issue's own criteria
+  // read counts what the landing record counted, as coverage does, never a release's rule
+  it('has the issue criteria read count the passes the landing record counted after a reopen', async () => {
+    const req = await agreedRequirement(BCS.slice(0, 1));
+    const issue = await landedIssue(6, F4);
+    await traced(req, issue, 6);
+    await passedAll(issue, F4);
+    await reopenedNow(issue);
+    expect((await record([issue], F4)).status).toBe(201);
+
+    const read = await api(world.token, 'GET', `/api/issues/${issue}/criteria`);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    const counts = (read.body.criteria as { counts: { counted: boolean } }[]).map((c) => c.counts);
+    expect(counts).toEqual([
+      { counted: true, why: null },
+      { counted: true, why: null },
+      { counted: true, why: null },
+    ]);
     expect(await bcOf(req)).toMatchObject({ verdict: 'passing' });
   });
 

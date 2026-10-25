@@ -6,9 +6,11 @@ import {
 	notCountedOf,
 	releaseCounts,
 	reopenVoidWhy,
+	RELEASE_DELIVERY,
 	unverifiedWhy,
 	verifiedOf,
 	voidedByReopen,
+	voidedUnder,
 } from "./verified-rule.js";
 
 /** After the builder-pass cutover, where the rule reads as it will once the amnesty ends. */
@@ -139,5 +141,22 @@ describe("the verified rule every count of proof reads (REQ-35 decision 7b261fca
 			counted: false,
 			unresolved: false,
 		});
+	});
+
+	it("voids a pass from before the reopen by the project's delivery: always on a release, kept at the landed commit on a landing", () => {
+		const reopen = "2026-10-23T07:13:00Z";
+		const landed = "f".repeat(40);
+		const before = { recordedAt: "2026-10-23T07:07:16Z", commit: landed };
+		const landing = { mode: "landing", landed } as const;
+		expect(voidedUnder(before, reopen, RELEASE_DELIVERY)).toBe(true);
+		expect(voidedUnder(before, reopen, landing)).toBe(false);
+		expect(voidedUnder({ ...before, commit: "d".repeat(40) }, reopen, landing)).toBe(true);
+		expect(voidedUnder({ ...before, commit: null }, reopen, landing)).toBe(true);
+		expect(voidedUnder(before, reopen, { mode: "landing", landed: null })).toBe(true);
+		const after = { recordedAt: "2026-10-23T07:14:00Z", commit: null };
+		expect(voidedUnder(after, reopen, RELEASE_DELIVERY), "after the reopen nothing voids it").toBe(false);
+		const pass = { ...v("pass", false, true, before.recordedAt), identityKind: "commit", commitSha: landed };
+		expect(verifiedOf([pass], "self", reopen, landing).proven).toBe(true);
+		expect(verifiedOf([pass], "self", reopen).proven).toBe(false);
 	});
 });

@@ -8,7 +8,9 @@
 // with its probe, and never its proof (core `issues/built-by.ts` names the builder), save the ones
 // recorded before `BUILDER_PASS_CUTOVER`, an amnesty with its end condition. A verdict recorded at or
 // before the issue's last reopen is about a build the reopen rejected (`voidedByReopen`, ISS-55), so
-// no release counts it and the issue's criteria read says so (core `issues/criteria/counting.ts`). A short is met
+// it no longer counts, save where a landing record is the delivery and counted it at the landed
+// commit (`voidedUnder`, one rule per delivery mode); the issue's criteria read says which (core
+// `issues/criteria/counting.ts`). A short is met
 // short of its wording, not verified, so it never does. Where the project declares an independent
 // judge, a pass that names no author is not that judge's either, since nothing shows it came from
 // anyone else. A fail counts whoever records it: it is evidence the criterion does not hold, and
@@ -25,6 +27,9 @@ export interface JudgedVerdict {
 	authored: boolean;
 	/** When it was recorded; null where there is no verdict. Read against `BUILDER_PASS_CUTOVER`. */
 	recordedAt: string | Date | null;
+	/** What it was judged against, where a reader holds it: a landing delivery reads the commit (`voidedUnder`). */
+	identityKind?: string | null;
+	commitSha?: string | null;
 }
 
 /**
@@ -128,8 +133,8 @@ export function judgesVerdict<V extends JudgedVerdict>(
 
 /**
  * Whether a verdict was recorded at or before the issue's last reopen (ISS-55): evidence about a
- * build the reopen rejected, so it is not current and no release counts it. The one void every
- * count of proof reads, by way of `verifiedOf` or directly where a reader keeps the voided row.
+ * build the reopen rejected, so no release counts it. Whether it still counts anywhere is the
+ * project's delivery's to say (`voidedUnder`); a reader uses this alone to keep the voided row aside.
  */
 export function voidedByReopen(
 	v: Pick<JudgedVerdict, "recordedAt">,
@@ -138,6 +143,37 @@ export function voidedByReopen(
 	if (reopenedAt === null || v.recordedAt === null) return false;
 	return new Date(v.recordedAt).getTime() <= new Date(reopenedAt).getTime();
 }
+
+/**
+ * How a project delivers, which decides what a verdict from before an issue's last reopen proves (core
+ * `release-batch/landed-build.ts:proofDeliveryOf`). A project that releases (any release mode but
+ * `none`, change requests included) proves by its release, and a release never counts it. Under
+ * release mode `none` the landing record is the delivery, and it counted the passes at the commit it
+ * landed (`landed`), from before a reopen or after, so one judged there still counts.
+ */
+export type ProofDelivery = { mode: "release" } | { mode: "landing"; landed: string | null };
+export const RELEASE_DELIVERY: ProofDelivery = { mode: "release" };
+
+/**
+ * Whether a verdict no longer counts because of the issue's last reopen, by how the project delivers
+ * (`ProofDelivery`): the one rule every count of proof reads, so no reader picks its own. Recorded at
+ * or before the reopen (`voidedByReopen`), it is void, save on a landing delivery where it was judged
+ * at the very commit the issue landed.
+ */
+export function voidedUnder(
+	v: { recordedAt: string | Date | null; commit: string | null },
+	reopenedAt: string | Date | null,
+	delivery: ProofDelivery,
+): boolean {
+	if (!voidedByReopen(v, reopenedAt)) return false;
+	if (delivery.mode === "release") return true;
+	const { landed } = delivery;
+	return !(landed !== null && v.commit !== null && v.commit.toLowerCase() === landed.toLowerCase());
+}
+
+/** The commit a verdict names where it was judged on one, as `voidedUnder` reads it. */
+const commitOf = (v: JudgedVerdict): string | null =>
+	v.identityKind === "commit" ? (v.commitSha ?? null) : null;
 
 /** Why a pass or short the issue's last reopen voided does not count: what a judge does about it. */
 export function reopenVoidWhy(reopenedAt: string | Date): string {
@@ -160,14 +196,17 @@ export interface Verified<V> {
 
 /**
  * Whether a criterion whose verdicts are `newestFirst` is proven, by the verified rule. Given the
- * issue's last reopen, a verdict recorded at or before it is not read (`voidedByReopen`).
+ * issue's last reopen, a verdict it voided under the project's delivery is not read (`voidedUnder`).
  */
 export function verifiedOf<V extends JudgedVerdict>(
 	newestFirst: readonly V[],
 	judge: PolicyQaMode | null,
 	reopenedAt: string | Date | null = null,
+	delivery: ProofDelivery = RELEASE_DELIVERY,
 ): Verified<V> {
-	const current = newestFirst.filter((v) => !voidedByReopen(v, reopenedAt));
+	const current = newestFirst.filter(
+		(v) => !voidedUnder({ recordedAt: v.recordedAt, commit: commitOf(v) }, reopenedAt, delivery),
+	);
 	const stands = judgesVerdict(current, judge) ?? null;
 	if (!stands) {
 		const voided = newestFirst[0];

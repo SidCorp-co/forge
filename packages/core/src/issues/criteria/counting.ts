@@ -1,6 +1,8 @@
-// Whether a release counts each live criterion's standing verdict, read by the one rule every count of
-// proof reads (contracts `verified-rule.ts:verifiedOf`, given the issue's last reopen), so the issue's
-// criteria read and the release record (`release-batch/release-facts.ts:criteriaAt`) cannot disagree.
+// Whether the project's delivery counts each live criterion's standing verdict, read by the one rule
+// every count of proof reads (contracts `verified-rule.ts:verifiedOf`, given the issue's last reopen
+// and how the project delivers, `voidedUnder`), so the issue's criteria read, the release record
+// (`release-batch/release-facts.ts:criteriaAt`) and requirement coverage cannot disagree. Under
+// release mode `none` the landing record is the delivery, and a pass at the landed commit counts.
 // A judge reads it to know which criteria still need a verdict: a pass voided by a reopen, or the
 // builder's own pass, does not count, and it says why. A release besides reads only the verdicts at
 // its own build. A pass that counts only under the builder-pass cutover
@@ -8,16 +10,17 @@
 
 import {
   countedUnderCutover,
+  RELEASE_DELIVERY,
   releaseCounts,
   UNRESOLVED_COMMIT_WHY,
   verifiedOf,
 } from '@forge/contracts/verified-rule';
 import type { Tx } from '../../db/client.js';
-import { readJudge } from '../ports.js';
+import { proofDeliveriesOf, readJudge } from '../ports.js';
 import { reopenedAtOf } from '../release-evidence.js';
 import { liveVerdictsOf } from './store.js';
 
-/** How a release counts one criterion's verdicts. */
+/** How the project's delivery counts one criterion's verdicts. */
 export interface CriterionCounting {
   /** Whether the verdict the criterion stands on proves it. */
   counted: boolean;
@@ -32,15 +35,17 @@ export async function countingOf(
   executor: Pick<Tx, 'execute'>,
   issue: { id: string; projectId: string },
 ): Promise<Map<number, CriterionCounting>> {
-  const [history, reopened, judge] = await Promise.all([
+  const [history, reopened, judge, deliveries] = await Promise.all([
     liveVerdictsOf(executor, issue.id),
     reopenedAtOf(executor, [issue.id]),
     readJudge(issue.projectId),
+    proofDeliveriesOf(issue.projectId, [issue.id]),
   ]);
   const reopenedAt = reopened.get(issue.id) ?? null;
+  const delivery = deliveries.get(issue.id.toLowerCase()) ?? RELEASE_DELIVERY;
   const out = new Map<number, CriterionCounting>();
   for (const [n, newestFirst] of history) {
-    const read = verifiedOf(newestFirst, judge, reopenedAt);
+    const read = verifiedOf(newestFirst, judge, reopenedAt, delivery);
     const release = releaseCounts(read);
     const marked =
       release.counted && read.stands !== null && countedUnderCutover(read.stands, judge);

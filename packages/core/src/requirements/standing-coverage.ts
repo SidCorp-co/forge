@@ -15,13 +15,18 @@ import type {
   RequirementCoverage,
 } from '@forge/contracts/requirements';
 import { verdictExercised } from '@forge/contracts/verdict-identity';
-import { judgesVerdict, unverifiedWhy } from '@forge/contracts/verified-rule';
+import {
+  judgesVerdict,
+  type ProofDelivery,
+  RELEASE_DELIVERY,
+  unverifiedWhy,
+  voidedUnder,
+} from '@forge/contracts/verified-rule';
 import { liveAt } from './rules.js';
 import {
   atLiveCommit,
   type CoverageIdentity,
   identityWords,
-  type LandedHolds,
   type LiveBuildHolds,
   type Resolved,
   resolve,
@@ -57,6 +62,8 @@ export interface StandingIssueCriterion extends StandingVerdict {
   earlier?: readonly StandingVerdict[];
   /** Its newest verdict where the issue's latest reopen voided it; absent where none was voided. */
   beforeReopen?: StandingVerdict;
+  /** The issue's latest reopen, set beside `beforeReopen`, which the delivery's rule reads it against. */
+  reopenedAt?: Date;
 }
 
 /**
@@ -128,7 +135,7 @@ export function coverageOf(
       const wording = byId.get(traced.requirementCriterionId);
       const issue = issues.get(traced.issueId);
       if (!wording || wording.code !== bc.code || !issue) return [];
-      const ic = judgesOf(standsAtLanding(traced, input.liveBuild?.landed), input.judge);
+      const ic = judgesOf(standsAtLanding(traced, input.liveBuild), input.judge);
       const judged = verdictExercised(ic.verdict);
       const r =
         ic.verdict === null ? null : resolve(ic.identity, input.liveBuild ?? null, traced.issueId);
@@ -227,21 +234,33 @@ function requirementVerdictsOn(
   });
 }
 
-// With no production environment a commit names the build exactly, so a reopen voids nothing a
-// commit check does not: the landing guard reads a criterion's newest verdict however old
-// (`issues/criteria-verdicts.ts:landingGuardCriteriaOf`), and the record that closed the issue counted it. A
-// newest verdict older than the reopen stands here only where it was judged at the issue's landed
-// commit, so coverage and the record read one issue's verdicts by one rule; anywhere else it stays
-// voided.
+// Coverage counts proof the way the project's delivery counted it (contracts
+// `verified-rule.ts:voidedUnder`, one rule per delivery mode). Where the project releases, a newest
+// verdict the reopen voided stays void, as the release roster and the cut hold read it. Under release
+// mode `none` the landing record is the delivery and counted the passes at the commit it landed, so
+// one judged at the issue's landed build stands from before its reopen too.
+function deliveryOfIssue(
+  traced: StandingIssueCriterion,
+  live: LiveBuildHolds | null | undefined,
+): ProofDelivery {
+  if (!live?.landsAsDelivery) return RELEASE_DELIVERY;
+  const landed = live.landed?.get(traced.issueId.toLowerCase())?.sha ?? null;
+  return { mode: 'landing', landed };
+}
+
 function standsAtLanding(
   traced: StandingIssueCriterion,
-  landed: ReadonlyMap<string, LandedHolds> | undefined,
+  live: LiveBuildHolds | null | undefined,
 ): StandingIssueCriterion {
   const kept = traced.beforeReopen;
-  if (!landed || !kept || kept.identity?.kind !== 'commit') return traced;
-  const sha = landed.get(traced.issueId.toLowerCase())?.sha;
-  if (!sha || kept.identity.sha.toLowerCase() !== sha) return traced;
-  return { ...traced, ...kept };
+  if (!kept || !traced.reopenedAt) return traced;
+  const commit = kept.identity?.kind === 'commit' ? kept.identity.sha : null;
+  const voided = voidedUnder(
+    { recordedAt: kept.recordedAt, commit },
+    traced.reopenedAt,
+    deliveryOfIssue(traced, live),
+  );
+  return voided ? traced : { ...traced, ...kept };
 }
 
 // The verdict an issue criterion stands on. A newer verdict that is not a judge's does not take a

@@ -430,8 +430,11 @@ export interface StandingCriterion {
  * reads it (`standingOn`, `landing`), its newest however old, for the doors that weigh them against a
  * build of their own: a landing record (`release-batch/landed-build.ts:landedStandings`), the
  * steward's reopen rule (`reopen-guard.ts`) and the build a change request's verdicts default to
- * (`change-request-build.ts`). It counts no proof and is never a number shown as proven: every count
- * of proof reads `proof` (`unearnedCriteriaReports`, the release roster, the criteria read). `owes` is
+ * (`change-request-build.ts`). It counts no proof of its own: every count of proof reads `proof`
+ * (`unearnedCriteriaReports`, the release roster, the criteria read). It feeds a number shown as proven
+ * only on a project whose landing is its delivery (release mode `none`), and only because there the
+ * landing record is the proof: the build it finds is the one coverage weighs on
+ * (`landed-build.ts:landedBuildHolds`, contracts `verified-rule.ts:voidedUnder`). `owes` is
  * false where the project's document says `delivery.verdictsRequired: false`: its issues owe no verdict.
  */
 export async function landingGuardCriteriaOf(
