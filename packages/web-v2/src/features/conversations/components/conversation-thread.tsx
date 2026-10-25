@@ -258,7 +258,7 @@ function PersonSaid({ message }: { message: ConversationMessage }) {
             own ? "rounded-br-sm bg-accent text-on-accent" : "rounded-bl-sm border border-line bg-surface text-fg"
           }`}
         >
-          <p className={`fg-body whitespace-pre-wrap ${own ? "text-on-accent" : "text-fg"}`}>{message.content}</p>
+          <p className={`fg-body whitespace-pre-wrap ${own ? "fg-on-accent" : "text-fg"}`}>{message.content}</p>
         </div>
       )}
       {message.images && message.images.length > 0 && (
@@ -280,12 +280,10 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
           className={`${USER_BUBBLE} rounded-lg rounded-br-sm px-3.5 py-2.5 ${
             failed
               ? "border border-danger bg-surface"
-              : item.state === "sent"
-                ? "bg-accent text-on-accent"
-                : "bg-accent/60 text-on-accent"
+              : "bg-accent text-on-accent"
           }`}
         >
-          <p className={`fg-body whitespace-pre-wrap ${failed ? "text-fg" : "text-on-accent"}`}>
+          <p className={`fg-body whitespace-pre-wrap ${failed ? "text-fg" : "fg-on-accent"}`}>
             {item.content}
           </p>
         </div>

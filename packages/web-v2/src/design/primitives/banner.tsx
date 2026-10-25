@@ -4,7 +4,8 @@ import { IconButton } from "./icon-button";
 
 type Tone = "info" | "neutral" | "attention" | "danger" | "success";
 
-const TONE: Record<Tone, { fg: string; bg: string; border: string; icon: IconName }> = {
+/** Each tone's text, tint and icon; its text reads at 4.5:1 or more on its tint (secondary-text-contrast.test.ts). */
+export const BANNER_TONE: Record<Tone, { fg: string; bg: string; border: string; icon: IconName }> = {
   info: { fg: "var(--cobalt-700)", bg: "var(--cobalt-50)", border: "var(--cobalt-100)", icon: "activity" },
   neutral: { fg: "var(--ink-600)", bg: "var(--paper-100)", border: "var(--paper-200)", icon: "archive" },
   attention: { fg: "var(--amberw-600)", bg: "var(--amberw-50)", border: "var(--amber-50)", icon: "alert" },
@@ -21,7 +22,7 @@ export interface BannerProps {
 
 /** Full-width contextual banner (e.g. needs-attention, live run, error). */
 export function Banner({ tone = "info", children, action, onDismiss }: BannerProps) {
-  const t = TONE[tone];
+  const t = BANNER_TONE[tone];
   return (
     <div
       className="flex items-center gap-3 rounded-lg border px-4 py-3"

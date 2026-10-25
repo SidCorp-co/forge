@@ -228,7 +228,7 @@ export function ImageLightbox({
             {current.name}
           </span>
           {count > 1 && (
-            <span className="fg-caption flex-none text-white/60">
+            <span className="flex-none text-12 font-medium text-white/60">
               {index + 1} / {count}
             </span>
           )}
@@ -248,7 +248,7 @@ export function ImageLightbox({
             type="button"
             onClick={resetZoom}
             aria-label="Reset zoom"
-            className="fg-caption min-w-11 rounded-md px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            className="min-w-11 rounded-md text-12 font-medium px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             {Math.round(scale * 100)}%
           </button>
@@ -265,7 +265,7 @@ export function ImageLightbox({
             href={current.href}
             target="_blank"
             rel="noreferrer noopener"
-            className="fg-caption ml-1 hidden rounded-md px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
+            className="ml-1 hidden rounded-md text-12 font-medium px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
           >
             Open original
           </a>

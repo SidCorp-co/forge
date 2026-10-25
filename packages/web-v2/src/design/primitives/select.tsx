@@ -151,7 +151,7 @@ export function Select({
         )}
       >
         {selected?.icon && <Icon name={selected.icon} size={16} className="text-subtle" />}
-        <span className={cn("flex-1 truncate", selected ? "text-fg" : "text-disabled")}>
+        <span className={cn("flex-1 truncate", selected ? "text-fg" : "text-subtle")}>
           {selected ? selected.label : placeholder}
         </span>
         <Icon name="chevronDown" size={16} className="text-subtle" />

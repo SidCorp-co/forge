@@ -1,11 +1,10 @@
 /* ============================================================
    FORGE DESIGN SYSTEM — Colors & Type  (source of truth)
-   Mirrors packages/web-redesign-plan/design-system/colors_and_type.css.
    A calm, bright control plane for running Claude Code at scale.
    Warm flame-orange action accent · cool cobalt structure ·
    warm paper-white surfaces · clean grotesk + true monospace.
 
-   2-LAYER TOKENS (see docs/proposals/web-v2-redesign.md):
+   2-LAYER TOKENS:
      Layer 1 — raw palette (--flame-*, --paper-*, --ink-*).
                Theme-independent. Components NEVER reference these directly.
      Layer 2 — semantic (--bg-*, --fg-*, --border-*, --accent, ...).
@@ -37,14 +36,17 @@
   --ink-550: #636A77;
   --ink-400: #9AA0AB;
 
-  /* ===== FLAME — primary brand / action ===== */
+  /* ===== FLAME — primary brand / action =====
+     White text sits on 600 and darker at 4.5:1 or more (5.07, 5.75, 7.49); 500 is 3.37:1, so it carries
+     no text (ISS-1229 r39). */
   --flame-50:  #FEF2EC;
   --flame-100: #FDE2D5;
   --flame-200: #FBC3A8;
   --flame-300: #F89B72;
   --flame-500: #F15A2B;
-  --flame-600: #DC4A1D;
+  --flame-600: #C4421A;
   --flame-700: #B73B15;
+  --flame-800: #9A3010;
 
   /* ===== COBALT — secondary / structural / links ===== */
   --cobalt-50:  #EAF0FE;
@@ -57,11 +59,12 @@
   /* ===== AMBER — mascot gold highlight / scheduled ===== */
   --amber-50:  #FDF4DF;
   --amber-500: #E8920C;
-  --amber-600: #C6790A;
+  --amber-600: #9C5F08;
 
-  /* ===== SEMANTIC HUES (calm, not neon) ===== */
-  --green-50:  #E8F5EF;  --green-500: #1F9D6B;  --green-600: #168256;
-  --amberw-50: #FDF2DD;  --amberw-500:#E8920C;  --amberw-600:#C6790A;  --amberw-700:#9C5F08;
+  /* ===== SEMANTIC HUES (calm, not neon) =====
+     Text is set in 600 and darker: 4.5:1 or more on its own 50 tint and on the page (ISS-1229 r39). */
+  --green-50:  #E8F5EF;  --green-500: #1F9D6B;  --green-600: #127650;
+  --amberw-50: #FDF2DD;  --amberw-500:#E8920C;  --amberw-600:#9C5F08;  --amberw-700:#7F4C06;
   --red-50:    #FCEBE9;  --red-500:   #D6453B;  --red-600:   #B5332A;
   /* ISS-509 — SLATE: the `infra` tone (runner offline / down). A cool, dimmed
      blue-grey, deliberately distinct from failure-red AND attention-amber so an
@@ -94,9 +97,9 @@
   --border-default:var(--paper-300);
   --border-strong: var(--paper-400);
 
-  --accent:        var(--flame-500);
-  --accent-hover:  var(--flame-600);
-  --accent-press:  var(--flame-700);
+  --accent:        var(--flame-600);
+  --accent-hover:  var(--flame-700);
+  --accent-press:  var(--flame-800);
   --accent-tint:   var(--flame-50);
   --accent-text:   var(--flame-700);
 
@@ -174,6 +177,10 @@
    moved 2h ago. This rule sits after `.fg-caption`, same specificity, so source
    order decides and the mark survives. */
 .fg-caption-stale { font-weight: 600; color: var(--amber-600); }
+
+/* Text on the accent fill beside a type class, which swallows `text-on-accent`: the reader's own
+   message read in the default ink, 3.40:1 on the accent (ISS-1229 r39). */
+.fg-on-accent { color: var(--fg-on-accent); }
 
 /* An error said at a type class's own size: `fg-danger` beside any `.fg-*` above. `text-danger`
    is a Tailwind utility and is swallowed there for the reason the note above gives, so eleven
