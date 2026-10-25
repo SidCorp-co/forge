@@ -34,6 +34,7 @@ async function relinked(
   if (highlights.state !== 'drafted') return highlights;
   const out = [];
   for (const h of highlights.highlights) {
+    // a highlight a release ended with before REQ-70 BC-2 may show nothing, and says why
     if (!h.media) {
       out.push(h);
       continue;

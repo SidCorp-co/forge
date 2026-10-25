@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { actionsOf, changesOf } from './sections.js';
 
 const UNREAD: ReleaseShipped = { state: 'unread', why: 'planted' };
+/** A release still to ship, which REQ-70's rules hold; one that ended reads as it ended. */
+const OPEN = 'awaiting_approval' as const;
 const NO_NOTES: ReleaseDetail['notes'] = {
   sections: [],
   designs: [],
@@ -29,7 +31,7 @@ describe('improvements and fixes in user terms (BC-6)', () => {
     key: string,
     userFacing: string,
     title = `title ${key}`,
-    heading: string | null = null,
+    heading: string | null = `Heading ${key.slice(4)}`,
   ) => ({
     key,
     title,
@@ -44,8 +46,8 @@ describe('improvements and fixes in user terms (BC-6)', () => {
       {
         section: 'Changed',
         entries: [
-          entry('ISS-2', 'Reports load faster.'),
-          entry('ISS-3', 'Reports load faster.'),
+          entry('ISS-2', 'Reports load faster.', 'title ISS-2', 'Faster reports'),
+          entry('ISS-3', 'Reports load faster.', 'title ISS-3', 'Faster reports'),
           entry('ISS-4', 'See ISS-9 for the reminder fix.'),
         ],
       },
@@ -62,24 +64,25 @@ describe('improvements and fixes in user terms (BC-6)', () => {
   const issues = [{ key: 'ISS-1', requirement: 'REQ-3' }] as ReleaseDetail['issues'];
 
   it('keeps each line with its issue, its requirement, the kind its section reads as, and the section itself', () => {
-    const out = changesOf({ notes, issues }, 'user');
+    const out = changesOf({ notes, issues, state: OPEN }, 'user');
     const line = (
       issueKey: string,
       kind: string,
       section: string,
       text: string,
       req: string | null = null,
+      heading = `Heading ${issueKey.slice(4)}`,
     ) => ({
       issueKey,
       kind,
       section,
-      line: text,
-      detail: null,
+      line: heading,
+      detail: text,
       requirementKey: req,
     });
     expect(out.improvements).toEqual([
       line('ISS-1', 'new', 'Added', 'Nurses see reminders.', 'REQ-3'),
-      line('ISS-2', 'improved', 'Changed', 'Reports load faster.'),
+      line('ISS-2', 'improved', 'Changed', 'Reports load faster.', null, 'Faster reports'),
     ]);
     // a Security entry reads as a fix and keeps its section, so the page groups it apart
     expect(out.fixes).toEqual([
@@ -89,8 +92,9 @@ describe('improvements and fixes in user terms (BC-6)', () => {
   });
 
   // catalog-api 0.1.0: the page cut "Giờ đây, khi deploy lại thiết kế lên cửa hàng ePOD, …" at its // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
-  // first comma; a titled note is its title, whole, and its sentence, whole
-  it('shows a titled note as its short title with its sentence beside it, and an untitled one whole', () => {
+  // first comma; a titled note is its title, whole, and its sentence, whole. REQ-70 BC-3: a note with
+  // no title, or saying two sentences, is held until its writer fixes it, never shown or cut
+  it('shows a titled note as its short title with its sentence beside it, and holds an untitled or two-sentence one', () => {
     const sentence =
       'Giờ đây, khi deploy lại thiết kế lên cửa hàng ePOD, sản phẩm đã có được cập nhật tại chỗ thay vì báo lỗi trùng SKU.'; // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
     const out = changesOf(
@@ -102,23 +106,59 @@ describe('improvements and fixes in user terms (BC-6)', () => {
               section: 'Fixed',
               entries: [
                 entry('ISS-3', sentence, 't', 'Deploy lại lên ePOD không còn báo lỗi trùng SKU'), // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
-                entry('ISS-4', sentence.replace('SKU', 'mã')), // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
+                entry('ISS-4', sentence.replace('SKU', 'mã'), 't', null), // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
+                entry('ISS-5', `${sentence} ${sentence}`, 't', 'Hai câu'), // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
               ],
             },
           ],
         },
         issues,
+        state: OPEN,
       },
       'user',
     );
     expect(out.fixes.map((c) => [c.line, c.detail])).toEqual([
       ['Deploy lại lên ePOD không còn báo lỗi trùng SKU', sentence], // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
-      [sentence.replace('SKU', 'mã'), null], // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
+    ]);
+    expect(out.withoutNotes).toEqual([
+      { issueKey: 'ISS-6', title: 'Untold change', why: 'no_note' },
+      { issueKey: 'ISS-4', title: 't', why: 'untitled' },
+      { issueKey: 'ISS-5', title: 't', why: 'not_one_sentence' },
+    ]);
+  });
+
+  // the coordinator's ruling on REQ-70: a release that ended reads its notes as it ended with them
+  it('reads a release that ended as it ended: an untitled note whole, a two-sentence note shown', () => {
+    const ended = changesOf(
+      {
+        notes: {
+          ...notes,
+          sections: [
+            {
+              section: 'Fixed',
+              entries: [
+                entry('ISS-4', 'A saved filter no longer resets.', 't', null),
+                entry('ISS-5', 'A saved filter stays. It survives a reload.', 't', 'Filter kept'),
+              ],
+            },
+          ],
+        },
+        issues,
+        state: 'shipped',
+      },
+      'user',
+    );
+    expect(ended.fixes.map((c) => [c.line, c.detail])).toEqual([
+      ['A saved filter no longer resets.', null],
+      ['Filter kept', 'A saved filter stays. It survives a reload.'],
+    ]);
+    expect(ended.withoutNotes).toEqual([
+      { issueKey: 'ISS-6', title: 'Untold change', why: 'no_note' },
     ]);
   });
 
   it('names an issue with no line, and one whose line a reader cannot follow, rather than inventing one', () => {
-    expect(changesOf({ notes, issues }, 'user').withoutNotes).toEqual([
+    expect(changesOf({ notes, issues, state: OPEN }, 'user').withoutNotes).toEqual([
       { issueKey: 'ISS-6', title: 'Untold change', why: 'no_note' },
       { issueKey: 'ISS-4', title: 'title ISS-4', why: 'held' },
     ]);
@@ -134,10 +174,12 @@ describe('improvements and fixes in user terms (BC-6)', () => {
       ],
       skipped: [entry('ISS-9', '-', 'Declare the report row schema')],
     };
-    const user = changesOf({ notes: carried, issues }, 'user');
+    const user = changesOf({ notes: carried, issues, state: OPEN }, 'user');
     expect(user.internal).toEqual({ count: 2, changes: null });
     expect([...user.improvements, ...user.fixes].map((c) => c.issueKey)).not.toContain('ISS-9');
-    expect(changesOf({ notes: carried, issues }, 'developer').internal.changes).toEqual([
+    expect(
+      changesOf({ notes: carried, issues, state: OPEN }, 'developer').internal.changes,
+    ).toEqual([
       { issueKey: 'ISS-9', title: 'Declare the report row schema', why: 'skip' },
       { issueKey: 'ISS-8', title: 'Publish ISS-1', why: 'carries' },
     ]);
@@ -158,6 +200,7 @@ describe('an issue reworked after the release claimed it (BC-6, J9 on 0.4.0-dev.
           attention: [],
         },
         issues: [],
+        state: OPEN,
       },
       'user',
     );

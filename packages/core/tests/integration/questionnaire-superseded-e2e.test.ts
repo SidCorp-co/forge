@@ -55,7 +55,7 @@ async function post(id: string): Promise<string> {
   return (made.questionnaire as Doc).id as string;
 }
 
-// the analysis job ends, so no live job refuses the person's ask for a re-analysis
+// the analysis job ends, so no live job refuses the ask for a re-analysis
 async function reanalyze(): Promise<void> {
   const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
   await withKernelMarker(db, (tx) =>

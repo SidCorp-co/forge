@@ -3,6 +3,7 @@
 // since either can change what the page may claim. Each trigger refreshes; the digest decides
 // whether a draft is owed. Delivered through the outbox, so a trigger is never lost to a crash.
 
+import { releaseEnded } from '@forge/contracts/release-page';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -10,11 +11,20 @@ import { background } from '../lib/background.js';
 import { isRefusal } from '../lib/refusal.js';
 import { consume } from '../outbox/index.js';
 import { type DraftOutcome, draftHighlights } from './draft.js';
-import { claimDraft, highlightsRow, refreshFailed, settleDraft, storeNone } from './highlights.js';
+import {
+  answered,
+  claimDraft,
+  highlightsRow,
+  refreshFailed,
+  settleDraft,
+  storeNone,
+} from './highlights.js';
 import { pageFacts, releaseDetailOf } from './read.js';
 
 export type RefreshOutcome =
   | 'not_a_release'
+  /** The release ended: it keeps the highlights it ended with, and nothing drafts them again (REQ-70). */
+  | 'ended'
   | 'superseded'
   | 'none'
   | 'unchanged'
@@ -49,6 +59,7 @@ export async function refreshReleaseHighlights(
     throw err;
   }
   if (detail.runId !== runId) return 'superseded';
+  if (releaseEnded(detail.state)) return 'ended';
   const page = await pageFacts(projectId, detail);
   const ref = { projectId, runId, version: run.version };
   const row = await highlightsRow(runId);
@@ -57,7 +68,7 @@ export async function refreshReleaseHighlights(
     if (!(same && row?.state === 'none')) await storeNone(ref, page.digest);
     return 'none';
   }
-  if (same && row?.state !== 'pending' && row?.state !== 'none') return 'unchanged';
+  if (answered(row, page.facts, page.digest)) return 'unchanged';
   if (!(await claimDraft(ref, page.digest))) return 'in_flight';
   const outcome = await draft(projectId, page.facts);
   await settleDraft(ref, page.digest, outcome);

@@ -28,31 +28,37 @@ const SECTIONS: ReleaseNoteSection[] = [
 				"ISS-102",
 				"Demo CRM report screen: catalogue, campaign ROI",
 				"CRM reports and campaign ROI: each report names its definition and refresh time.",
+				"CRM reports",
 			),
 			entry(
 				"ISS-122",
 				"Publish the ROI slice and reports (ISS-102) to the dev site: workflow 178, routes 221/222",
 				"The demo site now has the CRM report screen at /pages/reports.",
+				"CRM report screen",
 			),
 			entry(
 				"ISS-83",
 				"Patient 360 screen for staff",
 				"Staff open a patient's 360 record (/pages/patients?key=<HOP key>, ISS-78) from the staff menu.",
+				"Patient 360 record",
 			),
 			entry(
 				"ISS-90",
 				"Campaign approval guard",
 				"A campaign is sent for approval only when every item is filled.",
+				"Campaign approval guard",
 			),
 			entry(
 				"ISS-91",
 				"Campaign approval guard, second slice",
 				"A campaign is sent for approval only when every item is filled. ",
+				"Campaign approval guard",
 			),
 			entry(
 				"ISS-95",
 				"Maker-checker on campaigns",
 				"Approval follows SOD-RULE-MAKER-CHECKER at /hop/campaigns/sign.",
+				"Maker-checker on campaigns",
 			),
 		],
 	},
@@ -63,6 +69,7 @@ const SECTIONS: ReleaseNoteSection[] = [
 				"ISS-125",
 				"Home page showed the store theme sample",
 				"The home page opens the staff overview instead of a shop sample.",
+				"Staff overview home page",
 			),
 		],
 	},
@@ -70,7 +77,9 @@ const SECTIONS: ReleaseNoteSection[] = [
 
 describe("release notes a customer can be handed", () => {
 	const view = customerNotes(SECTIONS);
-	const lines = view.sections.flatMap((s) => s.lines.map((l) => l.line));
+	const lines = view.sections.flatMap((s) =>
+		s.lines.flatMap((l) => (l.detail ? [l.line, l.detail] : [l.line])),
+	);
 	const all = () => lines.join("\n");
 
 	it("names no issue key, internal title or internal path, taking out the brackets that held them", () => {
@@ -108,6 +117,9 @@ describe("release notes a customer can be handed", () => {
 		expect(
 			lines.filter((l) => l.startsWith("A campaign is sent for approval")),
 		).toHaveLength(1);
+		expect(lines.filter((l) => l === "Campaign approval guard")).toHaveLength(
+			1,
+		);
 		expect(view.folded).toContainEqual({
 			key: "ISS-91",
 			why: "duplicate",
@@ -122,17 +134,91 @@ describe("release notes a customer can be handed", () => {
 			{
 				section: "Fixed",
 				entries: [
-					entry("ISS-3", "t", sentence, "Deploy lại lên ePOD không còn lỗi trùng SKU"),
+					entry(
+						"ISS-3",
+						"t",
+						sentence,
+						"Deploy lại lên ePOD không còn lỗi trùng SKU",
+					),
 					entry("ISS-4", "t", "Reports load faster.", "Faster reports (ISS-9)"),
 					entry("ISS-5", "t", "Reports open.", "Reports at /pages/reports"),
 				],
 			},
 		]);
 		expect(titled.sections[0]?.lines).toEqual([
-			{ key: "ISS-3", line: "Deploy lại lên ePOD không còn lỗi trùng SKU", detail: sentence },
+			{
+				key: "ISS-3",
+				line: "Deploy lại lên ePOD không còn lỗi trùng SKU",
+				detail: sentence,
+			},
 			{ key: "ISS-4", line: "Faster reports", detail: "Reports load faster." },
 		]);
-		expect(titled.held).toEqual([{ key: "ISS-5", references: ["path /pages/reports"] }]);
+		expect(titled.held).toEqual([
+			{ key: "ISS-5", references: ["path /pages/reports"] },
+		]);
+	});
+
+	it("holds back a note with no short title, or saying more than one sentence, until its writer fixes it (REQ-70 BC-3)", () => {
+		const owed = customerNotes([
+			{
+				section: "Added",
+				entries: [
+					entry("ISS-6", "t", "Reports load faster."),
+					entry(
+						"ISS-7",
+						"t",
+						"Reports load faster. They also export.",
+						"Faster reports",
+					),
+					entry(
+						"ISS-8",
+						"t",
+						"Reports export to a spreadsheet.",
+						"Report export",
+					),
+				],
+			},
+		]);
+		expect(owed.sections[0]?.lines).toEqual([
+			{
+				key: "ISS-8",
+				line: "Report export",
+				detail: "Reports export to a spreadsheet.",
+			},
+		]);
+		expect(owed.unwritten).toEqual([
+			{ key: "ISS-6", why: "untitled" },
+			{ key: "ISS-7", why: "not_one_sentence" },
+		]);
+	});
+
+	it("reads a release that ended as it ended: an untitled note whole, a two-sentence note shown", () => {
+		const ended = customerNotes(
+			[
+				{
+					section: "Added",
+					entries: [
+						entry("ISS-6", "t", "Reports load faster."),
+						entry(
+							"ISS-7",
+							"t",
+							"Reports load faster. They also export.",
+							"Faster reports",
+						),
+					],
+				},
+			],
+			{ ended: true },
+		);
+		expect(ended.sections[0]?.lines).toEqual([
+			{ key: "ISS-6", line: "Reports load faster.", detail: null },
+			{
+				key: "ISS-7",
+				line: "Faster reports",
+				detail: "Reports load faster. They also export.",
+			},
+		]);
+		expect(ended.unwritten).toEqual([]);
 	});
 
 	it("keeps each section's order and drops an empty one", () => {

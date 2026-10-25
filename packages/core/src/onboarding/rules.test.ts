@@ -1,4 +1,5 @@
-// REQ-10 r4 BC-2, BC-6 and BC-11 as pure rules: start and re-analysis are a person's ask, a round asks
+// REQ-10 r4 BC-2, BC-6 and BC-11 and REQ-72 BC-4 as pure rules: start and re-analysis take
+// onboarding.request whoever holds it, a round asks
 // at most three recommended questions, what the code suggests is an assumption, a recommendation is a
 // suggestion, and done waits on no draft.
 
@@ -9,7 +10,7 @@ import {
   designsUnproposedRefusal,
   onboardingItemRefusals,
   onboardingStatusOf,
-  personActRefusal,
+  requestRefusal,
 } from './rules.js';
 
 const item = (id: string, over: Partial<QuestionnaireItem> = {}): QuestionnaireItem => ({
@@ -29,29 +30,21 @@ const item = (id: string, over: Partial<QuestionnaireItem> = {}): QuestionnaireI
 });
 const codes = (items: QuestionnaireItem[]) => onboardingItemRefusals(items).map((r) => r.code);
 
-describe("personActRefusal: start and re-analysis are a person's ask (BC-2)", () => {
+describe('requestRefusal: start and re-analysis take onboarding.request, whoever holds it (REQ-72 BC-4)', () => {
   const projectId = '00000000-0000-4000-8000-000000000001';
   const admin = { projectId, role: 'admin' as const, grants: [] };
   const viewer = { projectId, role: 'viewer' as const, grants: [] };
 
-  it('refuses an agent by name though its role holds onboarding.request', () => {
-    const r = personActRefusal('agent', admin, 'asking for a re-analysis');
-    expect(r?.code).toBe('ONBOARDING_PERSON_ACT_FORBIDDEN');
-    expect(r?.detail).toContain("asking for a re-analysis is a person's ask (REQ-10 BC-2)");
-    expect(r?.detail).toContain('A person of the project holding onboarding.request asks for it');
+  it('lets whoever holds onboarding.request ask: the rule reads the permission, never the actor type', () => {
+    expect(requestRefusal(admin, 'asking for a re-analysis')).toBeNull();
+    expect(requestRefusal(admin, 'starting onboarding')).toBeNull();
   });
 
-  it('refuses an agent by name before the permission it lacks', () => {
-    expect(personActRefusal('agent', viewer, 'starting onboarding')?.code).toBe(
-      'ONBOARDING_PERSON_ACT_FORBIDDEN',
-    );
-  });
-
-  it('lets a person holding onboarding.request ask, and refuses one without it the permission', () => {
-    expect(personActRefusal('human', admin, 'asking for a re-analysis')).toBeNull();
-    expect(personActRefusal('human', viewer, 'starting onboarding')?.code).toBe(
-      'PERMISSION_FORBIDDEN',
-    );
+  it('refuses one without it the permission, naming the act and onboarding.request', () => {
+    const r = requestRefusal(viewer, 'starting onboarding');
+    expect(r?.code).toBe('PERMISSION_FORBIDDEN');
+    expect(r?.detail).toContain('starting onboarding');
+    expect(r?.detail).toContain('onboarding.request');
   });
 });
 

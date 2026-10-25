@@ -1,7 +1,7 @@
 /**
  * The guards of workflow project-onboarding rev 1 (rules `may-start`, `which-designs`,
- * `approve-guard`), as pure functions over what the service read. Who may act is a permission, and
- * a start or a re-analysis is a person's alone.
+ * `approve-guard`), as pure functions over what the service read. Who may act is a permission,
+ * whoever holds it, person or agent (REQ-72 BC-4).
  */
 
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
@@ -28,7 +28,7 @@ const runningDetail = (job: LiveJob) =>
 
 // one analysis job per onboarding (may-start): a second start while one runs is
 // ONBOARDING_ALREADY_RUNNING naming the running job; a start over a finished onboarding is
-// ONBOARDING_ALREADY_STARTED, because a fresh analysis is a re-analysis a person asks for
+// ONBOARDING_ALREADY_STARTED, because a fresh analysis is a re-analysis someone asks for
 export function startRefusal(
   existing: { id: string; doneAt: Date | null } | null,
   live: LiveJob | null,
@@ -56,39 +56,29 @@ export function notStarted(): OnboardingRefusal {
   return {
     code: 'ONBOARDING_NOT_STARTED',
     path: '',
-    detail: 'this project has no onboarding yet; a person starts it (POST …/onboarding/start).',
+    detail:
+      'this project has no onboarding yet; whoever holds onboarding.request starts it (POST …/onboarding/start).',
   };
 }
 
-// a done onboarding takes no more batches or updates (ONBOARDING_DONE) until a person
+// a done onboarding takes no more batches or updates (ONBOARDING_DONE) until someone
 // asks for a re-analysis, which reopens it
 export function doneRefusal(row: { doneAt: Date | null }): OnboardingRefusal | null {
   if (!row.doneAt) return null;
   return {
     code: 'ONBOARDING_DONE',
     path: '',
-    detail: 'this onboarding is done; a re-analysis (asked by a person) reopens it.',
+    detail:
+      'this onboarding is done; a re-analysis, asked by whoever holds onboarding.request, reopens it.',
   };
 }
 
 /**
- * Start and re-analysis are a person's ask (REQ-10 BC-1, BC-2): an agent's credential is refused
- * them by name, whatever its grant holds (ONBOARDING_PERSON_ACT_FORBIDDEN); a person's spends a job,
- * so it takes onboarding.request.
+ * A start or a re-analysis spends an analysis job, so it takes onboarding.request, and whoever holds
+ * that may ask, person or agent alike (REQ-72 BC-4: approval is a permission, never a person rule).
  */
-export function personActRefusal(
-  agency: ActorAgency,
-  facts: PermissionFacts,
-  act: string,
-): OnboardingRefusal | null {
-  if (agency === 'agent')
-    return {
-      code: 'ONBOARDING_PERSON_ACT_FORBIDDEN',
-      path: '',
-      detail: `${act} is a person's ask (REQ-10 BC-2), and this request carries an agent's credential. A person of the project holding onboarding.request asks for it, signed in or with their own token.`,
-    };
-  return permissionRefusal(facts, 'onboarding.request', act);
-}
+export const requestRefusal = (facts: PermissionFacts, act: string): OnboardingRefusal | null =>
+  permissionRefusal(facts, 'onboarding.request', act);
 
 /** The thread's agent messages. */
 export const agentWriteRefusal = (facts: PermissionFacts): OnboardingRefusal | null =>

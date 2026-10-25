@@ -333,6 +333,13 @@
   --dur-fast: 120ms;
   --dur-base: 160ms;
   --dur-slow: 200ms;
+
+  /* ===== BRAND MARKS — a sign-in provider's mark in the colours its owner publishes, the same in
+     both themes; read only by features/auth/components/provider-mark.tsx ===== */
+  --mark-google-red: #EA4335;
+  --mark-google-blue: #4285F4;
+  --mark-google-yellow: #FBBC05;
+  --mark-google-green: #34A853;
 }
 
 /* The base layer: its neutral scale is the base's own graphite steps, so every alias and old name the

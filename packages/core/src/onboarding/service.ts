@@ -1,6 +1,6 @@
 /**
  * Onboarding (workflow project-onboarding rev 1): a conversation in the chat panel, one per project,
- * held by an `onboardings` row. A person starts it or asks for a re-analysis; each runs one
+ * held by an `onboardings` row. Whoever holds onboarding.request starts it or asks for a re-analysis; each runs one
  * analysis job (`job.ts`). The agent posts updates and questionnaire batches into the thread
  * (`agent-writes.ts`); a person answers a batch once, which hands the thread back to the agent
  * with a revise job.
@@ -38,7 +38,7 @@ import {
 } from './act.js';
 import { enqueueJob } from './job.js';
 import { liveJobOf, onboardingOf, onboardingView, threadRequestsOf } from './read.js';
-import { notStarted, personActRefusal, reanalyzeRefusal, startRefusal } from './rules.js';
+import { notStarted, reanalyzeRefusal, requestRefusal, startRefusal } from './rules.js';
 
 async function committedRow(projectId: string) {
   const row = await onboardingOf(db, projectId);
@@ -59,9 +59,7 @@ export async function startOnboarding(input: {
   request?: string | undefined;
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
-  const who = await refusalFor(actor, projectId, (f) =>
-    personActRefusal(actor.agency, f, 'starting onboarding'),
-  );
+  const who = await refusalFor(actor, projectId, (f) => requestRefusal(f, 'starting onboarding'));
   if (who) return { ok: false, refusals: [who] };
   const [project] = await db
     .select({ name: projects.name })
@@ -130,7 +128,7 @@ export async function reanalyzeOnboarding(input: {
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
   const who = await refusalFor(actor, projectId, (f) =>
-    personActRefusal(actor.agency, f, 'asking for a re-analysis'),
+    requestRefusal(f, 'asking for a re-analysis'),
   );
   if (who) return { ok: false, refusals: [who] };
   const asker = await nameOf(actor.userId);

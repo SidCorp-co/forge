@@ -38,7 +38,7 @@ interface Owed {
   builderRuns: { id: string; ecosystem: string }[];
   releaseNotes: { issueId: string; key: string }[];
   /** Notes written but not in the content language, or carrying an engineer's reference. */
-  warnedNotes: { issueId: string; key: string; problems: string[] }[];
+  warnedNotes: { issueId: string; key: string; release: string | null; problems: string[] }[];
   /** Releases drafted, or cut and not yet out, that carry no name and summary, where the master names them. */
   unnamedReleases: { version: string }[];
   /** Accepted change-request releases waiting on their next merge, which only the master makes (REQ-71 BC-4). */
@@ -194,8 +194,11 @@ export function owedLine(owed: Owed): string {
     line += ` ${releaseNotes.length} issue${plural(releaseNotes.length, ' waits', 's wait')} at the release gate with no release note (${keys.join(', ')}), so the next release refuses to carry ${plural(releaseNotes.length, 'it', 'them')} (\`RELEASE_RECORD_MISSING\`): read each issue and what it shipped, then write its note (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"Added","title":"<the change's short name, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<the one plain sentence a user would read, in ${contentLanguageName(contentLanguage)}>"}}'\`), as ${method('issue-flow')} (Land, mark, move) says, its sections, \`adminSteps\` and \`Skip\` included; the project's content language is ${contentLanguageName(contentLanguage)} (\`${contentLanguage}\`), so the note is written in it whatever language the issue or its commits are in.`;
   }
   if (warnedNotes.length > 0) {
-    const keys = warnedNotes.map((n) => `${n.key} ${n.issueId} (${n.problems.join('; ')})`);
-    line += ` ${warnedNotes.length} release note${plural(warnedNotes.length, '', 's')} at the release gate ${plural(warnedNotes.length, 'reads', 'read')} wrong to a user (${keys.join(', ')}): rewrite each in ${contentLanguageName(contentLanguage)} so the problem named goes (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"<the same section>","title":"<its short name, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<the sentence>"}}'\`), as ${method('issue-flow')} (Land, mark, move) says a note reads, moving the engineering detail to \`technical\`; this is a reader aid, the release is not refused for it.`;
+    const keys = warnedNotes.map(
+      (n) =>
+        `${n.key} ${n.issueId}${n.release ? ` in release ${n.release}` : ''} (${n.problems.join('; ')})`,
+    );
+    line += ` ${warnedNotes.length} release note${plural(warnedNotes.length, '', 's')} waiting to ship ${plural(warnedNotes.length, 'reads', 'read')} wrong to a user (${keys.join(', ')}): rewrite each in ${contentLanguageName(contentLanguage)} so the problem named goes (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"<the same section>","title":"<its short name, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<the sentence>"}}'\`), as ${method('issue-flow')} (Land, mark, move) says a note reads, moving the engineering detail to \`technical\`; this is a reader aid, the release is not refused for it, but a note that needs a short title or one sentence stays off its release page until it has them.`;
   }
   if (owed.unnamedReleases.length > 0) {
     const versions = owed.unnamedReleases.map((r) => r.version);

@@ -43,7 +43,6 @@ const HIGHLIGHT: ReleaseHighlight = {
     url: beside("release-clip.webm"),
     poster: { attachmentId: "75b6f7db-2f75-48e6-b5e7-42e2f6040cea", name: "release-clip.png", mime: "image/png", url: beside("release-clip.png") },
   },
-  mediaGap: null,
 };
 
 const NAMING = {

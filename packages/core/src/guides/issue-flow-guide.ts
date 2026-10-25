@@ -314,8 +314,9 @@ naming its own rule before the green counts.
    what a user will now see, in their words and in the project's content language (its
    \`## Content language\` block names it; the answer carries a \`warnings\` entry when a Vietnamese
    project's note has no Vietnamese letter in it) — a short \`title\` of at most ten words (refused
-   by name without one), one full sentence in \`userFacing\`, and each step an admin must take
-   before it goes out in \`adminSteps\` — no paths, hashes or refactors, the engineering detail in
+   by name without one), exactly one full sentence in \`userFacing\` (two are refused by name, and a
+   note kept with two waits off a release page still to ship until rewritten), and each step an
+   admin must take before it goes out in \`adminSteps\` — no paths, hashes or refactors, the engineering detail in
    \`technical\`; \`{ section: 'Skip', userFacing: '-' }\` where they will see nothing, since a Skip
    still carries a sentence. A release refuses to claim an issue without one.
 4. \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release' }\`. It is refused

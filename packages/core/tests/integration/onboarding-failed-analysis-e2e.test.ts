@@ -39,7 +39,6 @@ let doneRoom = '';
 let openRoom = '';
 
 const at = (project: string, path: string) => `/api/projects/${project}${path}`;
-const codesOf = (r: Reply) => (r.json.error?.refusals ?? []).map((x: Doc) => x.code as string);
 const state = async (project: string, as: Who = 'owner') =>
   ok(await say(as, 'GET', at(project, '/onboarding')));
 const roomStatus = async (room: string) =>
@@ -269,18 +268,17 @@ describe('c2: the failed state names who acts and what they do', () => {
     expect((await state(doneProject)).onboarding.status).toBe('failed');
   });
 
-  it('names the role to the master too: an agent is not who asks, so it is not offered the act', async () => {
+  it('names You to the master too: it holds onboarding.request, so it is offered the act (REQ-72 BC-4)', async () => {
     const { hint } = await state(doneProject, 'master');
-    expect(hint.says.text.vars.who.key).toBe('standing.who.holderOf');
-    expect(hint.text).toBe('Attempt 10 failed · Waits on: Member');
-    expect(hint.mayReanalyze).toBe(false);
+    expect(hint.says.text.vars.who).toEqual({ key: 'standing.who.you' });
+    expect(hint.text).toBe('Attempt 10 failed · Waits on: You');
+    expect(hint.mayReanalyze).toBe(true);
   });
 
-  it('is a person’s act: the agent is refused the re-analysis by name, and the failure stands', async () => {
+  it('runs the re-analysis an agent holding onboarding.request asks for, as a person’s (REQ-72 BC-4)', async () => {
     const r = await say('master', 'POST', at(doneProject, '/onboarding/reanalyze'), {});
-    expect(r.status).toBe(403);
-    expect(codesOf(r)).toEqual(['ONBOARDING_PERSON_ACT_FORBIDDEN']);
-    expect((await state(doneProject)).onboarding.status).toBe('failed');
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect((await state(doneProject)).onboarding.status).not.toBe('failed');
   });
 });
 

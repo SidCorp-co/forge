@@ -138,8 +138,8 @@ export interface HintViewer {
 }
 
 /**
- * Who acts on a failed analysis: a re-analysis is a person's ask, held by onboarding.request
- * (rules.ts:personActRefusal). The reader who holds it reads You, as a standing names its viewer's
+ * Who acts on a failed analysis: a re-analysis is held by onboarding.request, whoever holds it
+ * (rules.ts:requestRefusal). The reader who holds it reads You, as a standing names its viewer's
  * own act; anyone else reads the role that holds it.
  */
 const reanalysisAsker = (viewer: HintViewer): Said =>

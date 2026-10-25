@@ -455,7 +455,11 @@ describe('an issue reopened between two releases reads as the rework of the one 
 
   /** ISS-455 shipped by dev.224, then reopened inside dev.225's window. */
   async function iss455() {
-    const id = await fx.insertIssue('closed', { section: 'Fixed', userFacing: RETRY });
+    const id = await fx.insertIssue('closed', {
+      section: 'Fixed',
+      title: 'Missed drafts retried',
+      userFacing: RETRY,
+    });
     await db.execute(sql`
       UPDATE issues SET merged_artifacts = ${JSON.stringify([
         { surface: 'data', ref: MIGRATION, change: 'added' },
@@ -485,8 +489,8 @@ describe('an issue reopened between two releases reads as the rework of the one 
         issueKey: key,
         kind: 'fixed',
         section: 'Fixed',
-        line: RETRY,
-        detail: null,
+        line: 'Missed drafts retried',
+        detail: RETRY,
         requirementKey: null,
       },
     ]);

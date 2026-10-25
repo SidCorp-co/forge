@@ -11,6 +11,7 @@ import {
   type ReleasePage,
   type ReleasePageRefusalCode,
   type ReleasePageViewKind,
+  releaseEnded,
 } from '@forge/contracts/release-page';
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
@@ -152,7 +153,14 @@ export async function readReleasePage(args: {
   const detail = await releaseDetailOf(projectId, version, viewer);
   const page = await pageFacts(projectId, detail);
   const row = detail.runId ? await highlightsRow(detail.runId) : null;
-  const shown = shownHighlights(row, page.facts, page.digest, page.build);
+  const shown = shownHighlights(
+    row,
+    page.facts,
+    page.digest,
+    page.build,
+    new Date(),
+    releaseEnded(detail.state),
+  );
   if (shown.owed && detail.runId) args.onOwed?.({ projectId, runId: detail.runId });
   const named = detail.name !== null && detail.summary !== null;
   const drafting = named ? null : await namingRow(projectId, detail.version);

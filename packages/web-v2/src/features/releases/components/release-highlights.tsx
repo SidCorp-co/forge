@@ -8,14 +8,21 @@ import { requirementHref } from "@/lib/routes/requirements";
 import { DisclosureToggle } from "./release-bits";
 import { ReleaseMedia } from "./release-media";
 
-/** Why no highlight was drafted: one line, and the drafter's refusals (agent text) behind a fold. */
+/** The refusals that say a highlight had no clip or picture from QA to show (REQ-70 BC-2). */
+const NO_MEDIA = new Set(["RELEASE_HIGHLIGHTS_NO_MEDIA", "RELEASE_HIGHLIGHT_MEDIA_MISSING"]);
+
+/**
+ * Why no highlight was drafted: one line, and the drafter's refusals (agent text) behind a fold. A
+ * highlight refused for having no clip or picture says so, and who acts: QA records one.
+ */
 function HighlightsFailed({ refusals }: { refusals: Extract<ReleaseHighlights, { state: "failed" }>["refusals"] }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
+  const noMedia = refusals.length > 0 && refusals.some((r) => NO_MEDIA.has(r.code));
   return (
-    <div data-testid="page-highlights-failed">
+    <div data-testid="page-highlights-failed" data-why={noMedia ? "no-media" : "refused"}>
       <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="page-highlights-failed-toggle">
-        {t("releases.page.highlights.failed")}
+        {t(noMedia ? "releases.page.highlights.waitsForMedia" : "releases.page.highlights.failed")}
       </DisclosureToggle>
       {open ? (
         <ul className="mt-1 grid gap-0.5 text-12 text-subtle">
@@ -31,9 +38,10 @@ function HighlightsFailed({ refusals }: { refusals: Extract<ReleaseHighlights, {
 }
 
 /**
- * The one to three highlights a release opens on, or what stands in their place and why; the criterion
- * codes a highlight claims are its title, not its text. `gaps` says a highlight with no clip says so:
- * the release page does, for the people deciding on it; What's new shows only what there is to see.
+ * The one to three highlights a release opens on, each with the clip or picture QA kept of it, or what
+ * stands in their place and why; the criterion codes a highlight claims are its title, not its text. A
+ * release that ended before every highlight needed one (REQ-70 BC-2) may keep one with no clip: `gaps`
+ * says it says so, as the release page does; What's new shows only what there is to see.
  */
 export function ReleaseHighlightList({ highlights, slug, authed, gaps = true }: { highlights: ReleaseHighlights; slug?: string | undefined; authed: boolean; gaps?: boolean }) {
   const t = useCopy();

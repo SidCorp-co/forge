@@ -2,9 +2,11 @@
 // (`completeOnce`, so the deployment's provider and the project's data policy apply as they do to a
 // chat turn), given the Product record of each requirement the release proves something of, and
 // nothing else. The model writes each highlight's words and the codes it claims; the clip or picture
-// is picked here, from that release's own QA evidence, never chosen by the model. The answer is
-// judged by `judgeHighlights`; a refused answer gets one retry carrying the refusal, then the draft
-// is `failed` with what it was refused for. The pattern is `reports/narrative.ts:writeTemplateNarrative`.
+// is picked here, from that release's own QA evidence, never chosen by the model, and a highlight
+// nothing shows is refused (REQ-70 BC-2). The answer is judged by `judgeHighlights`; a refused answer
+// gets one retry carrying the refusal, then the draft is `failed` with what it was refused for. Where
+// QA kept no clip or picture of anything the release proves, no model is asked: the draft is refused
+// until the QA agent records one. The pattern is `reports/narrative.ts:writeTemplateNarrative`.
 
 import { contentLanguageBlock } from '@forge/contracts/content-language';
 import type { Refusal } from '@forge/contracts/refusal';
@@ -14,6 +16,7 @@ import {
   RELEASE_HIGHLIGHT_TITLE_MAX,
   RELEASE_HIGHLIGHTS_MAX,
   type ReleaseHighlight,
+  type ReleaseHighlightDraft,
   type ReleaseHighlightFacts,
   ReleaseHighlightSchema,
 } from '@forge/contracts/release-page';
@@ -26,6 +29,7 @@ import {
 } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { readContentLanguage } from '../project-config/index.js';
+import { mediaForHighlight } from './highlights.js';
 
 /** A hung provider cannot hold a refresh longer than this per call. */
 const CALL_TIMEOUT_MS = 60_000;
@@ -39,7 +43,10 @@ function systemPrompt(
   facts: ReleaseHighlightFacts,
   language: Parameters<typeof contentLanguageBlock>[0],
 ): string {
-  const max = Math.min(RELEASE_HIGHLIGHTS_MAX, facts.requirements.length);
+  const max = Math.min(
+    RELEASE_HIGHLIGHTS_MAX,
+    facts.requirements.filter((r) => r.media.length > 0).length,
+  );
   return [
     `You write the highlights a reader sees first on the page of release ${facts.version}.`,
     "Your only input is the record of each requirement this release proves something of, below: its title, its own words, and the criteria a pass on this release's build lets it claim. Nothing else from the project is given to you, so state nothing it does not hold.",
@@ -47,6 +54,7 @@ function systemPrompt(
     'Rules:',
     '- Answer with one JSON object and nothing else: {"highlights": [{"requirement": "<REQ key>", "title": "...", "body": "...", "claims": ["<BC code>", ...]}]}.',
     `- Write 1 to ${max} highlights, at most one per requirement, leading with what matters most to a person using the product.`,
+    '- Write a highlight only for a requirement whose "Shown by" line names a clip or picture, and claim at least one code that line lists: every highlight shows one, and a requirement without one gets none.',
     `- "title" is at most ${RELEASE_HIGHLIGHT_TITLE_MAX} characters; "body" is at most ${RELEASE_HIGHLIGHT_BODY_WORDS_MAX} words saying what the reader can now do.`,
     '- "claims" names at least one code, and only codes listed as claimable for that requirement.',
     "- Every number you write appears in that requirement's record or in the version, as written there.",
@@ -62,6 +70,9 @@ function factsInput(facts: ReleaseHighlightFacts): string {
         `## ${r.key}: ${r.title}${r.completes ? ' (completed by this release)' : ' (advanced by this release)'}`,
         r.text,
         `Claimable: ${r.claimable.join(', ')}`,
+        r.media.length > 0
+          ? `Shown by: a clip or picture QA kept of ${[...new Set(r.media.map((m) => m.criterion.bc))].join(', ')}`
+          : 'Shown by: nothing QA kept, so no highlight',
       ].join('\n'),
     )
     .join('\n\n');
@@ -102,22 +113,20 @@ function parseAnswer(text: string): Drafted[] | string {
   return ok ? (list as Drafted[]) : SHAPE;
 }
 
-/** The clip or picture a highlight shows: the first kept of its claims, clips first (`claims.ts:mediaOf` orders them). */
-function withMedia(d: Drafted, facts: ReleaseHighlightFacts): unknown {
+/** The highlight as drafted, with the clip or picture it shows: the first kept of its claims, clips first (`claims.ts:mediaOf` orders them), or none. */
+function withMedia(d: Drafted, facts: ReleaseHighlightFacts): ReleaseHighlightDraft {
   const title = facts.requirements.find((r) => r.key === d.requirement)?.title ?? d.requirement;
-  const media =
-    facts.media.find((m) => m.criterion.bc !== null && d.claims.includes(m.criterion.bc)) ?? null;
   return {
     requirement: { key: d.requirement, title },
     title: d.title,
     body: d.body,
     claims: d.claims,
-    media,
-    mediaGap: media
-      ? null
-      : `QA kept no clip or picture as evidence of ${d.claims.join(', ') || 'what it claims'} on this build`,
+    media: mediaForHighlight(facts, d.requirement, d.claims),
   };
 }
+
+const DraftShape = ReleaseHighlightSchema.omit({ media: true });
+const shows = (h: ReleaseHighlightDraft): h is ReleaseHighlight => h.media !== null;
 
 /** The drafted highlights, or every reason they may not be shown. */
 export function judged(
@@ -128,11 +137,12 @@ export function judged(
   if (typeof parsed === 'string') {
     return { ok: false, refusals: [{ code: 'RELEASE_HIGHLIGHT_SHAPE', path: '', detail: parsed }] };
   }
-  const highlights: ReleaseHighlight[] = [];
+  const drafts: ReleaseHighlightDraft[] = [];
   const refusals: Refusal[] = [];
   parsed.forEach((d, i) => {
-    const out = ReleaseHighlightSchema.safeParse(withMedia(d, facts));
-    if (out.success) highlights.push(out.data);
+    const { media, ...words } = withMedia(d, facts);
+    const out = DraftShape.safeParse(words);
+    if (out.success) drafts.push({ ...out.data, media });
     else
       refusals.push({
         code: 'RELEASE_HIGHLIGHT_SHAPE',
@@ -140,8 +150,11 @@ export function judged(
         detail: out.error.issues[0]?.message ?? 'invalid',
       });
   });
-  refusals.push(...judgeHighlights(highlights, facts));
-  return refusals.length > 0 ? { ok: false, refusals } : { ok: true, highlights };
+  // the judge refuses a draft with no media, so a set it passes shows a clip or picture in each
+  refusals.push(...judgeHighlights(drafts, facts));
+  return refusals.length > 0
+    ? { ok: false, refusals }
+    : { ok: true, highlights: drafts.filter(shows) };
 }
 
 function missOf(answer: Extract<CompletionAnswer, { ok: false }>): Refusal {
@@ -180,6 +193,10 @@ export async function draftHighlights(
     projectId,
     what: `the highlights of release ${facts.version}`,
   };
+  // nothing QA kept can show a highlight, so no model is asked until the QA agent records a clip
+  if (facts.requirements.length > 0 && facts.requirements.every((r) => r.media.length === 0)) {
+    return { kind: 'refused', refusals: judgeHighlights([], facts), model: null };
+  }
   const language = await readContentLanguage(projectId);
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt(facts, language) },

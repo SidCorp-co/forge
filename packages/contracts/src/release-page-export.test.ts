@@ -57,7 +57,6 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 						commitSha: BUILD,
 						url: "/api/attachments/x/download",
 					},
-					mediaGap: null,
 				},
 			],
 		},

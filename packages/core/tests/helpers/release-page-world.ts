@@ -134,10 +134,12 @@ export function releasePageWorld(context: () => ReleasePageWorldContext) {
     const req = await agreedRequirement();
     const a = await CTX.fx.insertIssue('awaiting_release', {
       section: 'Added',
+      title: 'Visit reminders',
       userFacing: 'Nurses see a reminder before each visit.',
     });
     const b = await CTX.fx.insertIssue('awaiting_release', {
       section: 'Fixed',
+      title: 'Report filter kept',
       userFacing: 'A visit report keeps its filter after a reload.',
       technical: 'The filter is kept in the URL.',
     });
