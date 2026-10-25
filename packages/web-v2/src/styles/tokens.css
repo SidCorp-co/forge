@@ -178,6 +178,10 @@
    order decides and the mark survives. */
 .fg-caption-stale { font-weight: 600; color: var(--amber-600); }
 
+/* Text on the accent fill beside a type class, which swallows `text-on-accent`: the reader's own
+   message read in the default ink, 3.40:1 on the accent (ISS-1229 r39). */
+.fg-on-accent { color: var(--fg-on-accent); }
+
 /* An error said at a type class's own size: `fg-danger` beside any `.fg-*` above. `text-danger`
    is a Tailwind utility and is swallowed there for the reason the note above gives, so eleven
    error lines rendered grey from the day they were written. This sits after every `.fg-*`, same

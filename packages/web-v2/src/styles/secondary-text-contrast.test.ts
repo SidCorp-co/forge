@@ -117,3 +117,16 @@ describe("the disabled grey", () => {
     expect(found).toEqual([]);
   });
 });
+
+describe("text on the accent beside a type class", () => {
+  it("uses .fg-on-accent, since a .fg-* class swallows the text-on-accent utility", () => {
+    const root = join(__dirname, "..");
+    const swallowed = sources(root).flatMap((path) =>
+      [...readFileSync(path, "utf8").matchAll(/className=\{?[`"]([^`"]*)[`"]/g)]
+        .map((m) => m[1] as string)
+        .filter((cls) => /(^|\s)fg-(?!on-accent|danger)[a-z0-9-]+/.test(cls) && /(^|\s)text-on-accent\b/.test(cls))
+        .map((cls) => `${relative(root, path)}: "${cls}"`),
+    );
+    expect(swallowed).toEqual([]);
+  });
+});
