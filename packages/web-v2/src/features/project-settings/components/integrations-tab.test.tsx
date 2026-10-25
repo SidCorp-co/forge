@@ -129,6 +129,7 @@ function coolify(id: string): Record<string, unknown> {
     lastHealthAt: null,
     breakerOpenedAt: null,
     hasSecrets: true,
+    access: { reach: "owner", canManage: true, ownerName: null },
     createdAt: "2026-10-17T00:00:00.000Z",
     updatedAt: "2026-10-17T00:00:00.000Z",
   };
@@ -315,5 +316,15 @@ describe("who the share form is offered to", () => {
     state.connections = [coolify("c-1")];
     render(<IntegrationsTab projectId="p-1" />);
     expect(screen.queryByText(/can share a connection with this project/)).toBeNull();
+  });
+
+  it("offers no connection the reader does not manage, which the share door refuses", () => {
+    state.search = "?tab=integrations&add=live-deploy-target";
+    state.connections = [
+      { ...coolify("c-org"), ownerType: "org", displayName: "Org Coolify", access: { reach: "org", canManage: false, ownerName: "Northwind" } },
+    ];
+    render(<IntegrationsTab projectId="p-1" />);
+    expect(screen.getByTestId("no-connection")).toBeInTheDocument();
+    expect(screen.queryByText(/Org Coolify/)).toBeNull();
   });
 });

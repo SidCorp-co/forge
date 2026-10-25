@@ -98,11 +98,13 @@ function ShareExistingCard({
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Only active connections with a stored credential are eligible to share —
-  // a soft-deleted or secret-less row would fail server-side (loadOwnedConnection
-  // rejects active=false). Filtering here keeps the picker honest.
+  // Only a connection the share door takes is offered: active, holding its credential, and one the
+  // reader manages, since the door refuses anyone else's (ISS-1421 r27).
   const eligible = useMemo(
-    () => (connectionsQ.data?.items ?? []).filter((c) => c.active && c.hasSecrets),
+    () =>
+      (connectionsQ.data?.items ?? []).filter(
+        (c) => c.active && c.hasSecrets && c.access?.canManage === true,
+      ),
     [connectionsQ.data],
   );
 

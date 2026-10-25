@@ -1,11 +1,13 @@
 "use client";
 
-import { Banner, ButtonLink, PageContainer, PageTitle } from "@/design";
+import { ButtonLink } from "@/design";
+import { AuthShell } from "@/features/auth/components/auth-shell";
 
 /**
  * Where GitHub's return to Forge lands a person when Forge could not finish: setup_url and the
  * manifest callback are API addresses, and a refusal there was JSON in their tab (ISS-1421 r27).
- * Worded from the refusal's code alone, so the address carries nothing a link could make it say.
+ * Worded from the refusal's code alone. Outside both route groups, as /link-chat is, so a person
+ * whose session lapsed while GitHub had them reads it rather than being sent to sign in.
  */
 const SIGNED_OUT =
   "You were signed out while GitHub had you, so Forge recorded nothing. Sign in, then start again from the project's Integrations tab.";
@@ -34,12 +36,10 @@ export function githubLandedWords(code: string | null): string {
 
 export function GithubLanded({ code }: { code: string | null }) {
   return (
-    <PageContainer className="flex max-w-2xl flex-col gap-4">
-      <PageTitle className="fg-h2">GitHub sent you back, but Forge could not finish</PageTitle>
-      <Banner tone="attention">{githubLandedWords(code)}</Banner>
-      <ButtonLink href="/integrations" variant="secondary" className="self-start">
+    <AuthShell title="GitHub sent you back, but Forge could not finish" subtitle={githubLandedWords(code)}>
+      <ButtonLink href="/integrations" variant="secondary">
         Go to Integrations
       </ButtonLink>
-    </PageContainer>
+    </AuthShell>
   );
 }
