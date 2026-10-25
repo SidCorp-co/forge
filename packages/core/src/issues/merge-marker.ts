@@ -44,7 +44,7 @@ import {
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById, type IssueRow } from './read-service.js';
-import { type Stated, stampStated, statedWords } from './stated-landing.js';
+import { type Stated, stampStated, statedAt, statedWords } from './stated-landing.js';
 import { statusForCaller } from './status-sets.js';
 
 /**
@@ -385,6 +385,7 @@ export async function applyMergeMarker(args: {
       shape === 'git' && !stated
         ? await compareLater(before, args.commit, observed, fromRepository)
         : null;
+    const readFirst = fromRepository && (await statedAt(before.id, fromRepository.sha));
     if (statedStamp) {
       stampResult = statedStamp.stamp;
     } else if (later?.kind === 'moved') {
@@ -393,7 +394,7 @@ export async function applyMergeMarker(args: {
       // A commit nothing could check writes nothing: the mark stays as it stands.
       namedUnread = recorded.unread;
       stampResult = { wrote: false, ...(await readMergeColumns(db, before.id)) };
-    } else if (observed) {
+    } else if (observed && !readFirst) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         declared: before.declaredLandingShape ?? null,

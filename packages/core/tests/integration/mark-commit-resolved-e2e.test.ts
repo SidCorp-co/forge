@@ -144,6 +144,19 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     expect(after[0]).toMatchObject({ merged_commit_stated: false, merged_commit_sha: OWN });
   });
 
+  it('turns it observed though a merged pull request names another commit the repository lacks', async () => {
+    const issue = await seed({ sessionContext: {} });
+    const ABSENT_PR = 'f'.repeat(40);
+    repo.pullRequest = { commitSha: ABSENT_PR, mergedAt: new Date('2026-10-01T09:00:00Z') };
+    await mark(issue, OWN, 'human');
+    expect((await row(issue.id)).merged_commit_sha).toBe(OWN);
+
+    const res = await mark({ ...issue, mergedAt: new Date() }, OWN, 'agent');
+
+    expect(res.mark).toBe('observed');
+    expect((await row(issue.id)).merged_commit_sha).toBe(OWN);
+  });
+
   // ISS-1300 r3 review F2 — a stored abbreviation the repository cannot resolve is replaced by the
   // full commit a person names, though that commit begins with it.
   it('replaces a stored abbreviation the repository cannot resolve with the full commit a person names', async () => {
