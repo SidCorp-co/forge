@@ -75,6 +75,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     whereSeen: "/du-an",
     duplicateOf: null,
     duplicates: ["FB-9"],
+    occurrences: [],
     origin: null,
     decisions: [
       { decision: "triaged", route: "issue", carrier: "ISS-4", reason: null, says: { reason: null }, decidedBy: "u2", decidedByName: "Minh", decidedAgency: "human", decidedAt: AT, fromSuggestionId: null, acceptReason: "co the" },

@@ -54,7 +54,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     body: "Clicking Save shows a spinner forever.\nThe order is never stored.",
     whereSeen: null,
     duplicateOf: null,
-    duplicates: [],
+    duplicates: [],    occurrences: [],
     origin: null,
     decisions: [],
     attachments: [],

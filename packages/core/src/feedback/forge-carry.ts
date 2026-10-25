@@ -15,7 +15,8 @@ import { feedback, feedbackOccurrences } from '../db/schema-feedback.js';
 import { forgeHomeProject } from '../instance-settings/index.js';
 import type { Refusal } from '../lib/refusal.js';
 import { embedFeedbackLater } from './embeddings.js';
-import { addOccurrenceIn, HOME_NOT_SET } from './forge-intake.js';
+import { HOME_NOT_SET } from './forge-intake.js';
+import { addOccurrenceIn } from './occurrences.js';
 import type { FeedbackActor } from './read.js';
 import { insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
 

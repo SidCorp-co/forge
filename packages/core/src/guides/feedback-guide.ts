@@ -32,6 +32,18 @@ into FB-n when it is product feedback after all.
   serve is \`FEEDBACK_TARGET_UNKNOWN\`, naming what it does serve; a project that provides no such
   contract serves nothing, and the refusal says so. The item reads back keyed \`<contract>:<element>\`.
 
+### Reporting from a page
+\`POST …/feedback/report\` \`{ said, whereSeen, kind?, screenshot?: { name, mime, contentBase64, redacted } }\` is
+the top bar's Feedback: one sentence and the page's screenshot, filed as the caller, who needs only to read the
+project. The target is read off \`whereSeen\` (a requirement's or an issue's page names it, any other page is a
+\`screen\`), and the agent reads \`kind\` and \`severity\` from the sentence and decides whether it repeats one of
+the open items most like it. A repeat joins that item as an occurrence, its words and screenshot kept on it, and
+answers \`200\` with \`created: false\`; anything else is a new item, \`201\`. Where the agent cannot read the
+sentence (a \`no_egress\` project, no model configured) the report is \`FEEDBACK_KIND_NEEDED\` until it names
+\`kind\`. A screenshot the store refuses files the item without it and says why (\`screenshot.state: not_kept\`).
+A repeat caught at filing (here, or by the Forge door's signal) is an occurrence; a duplicate a triage finds later
+was already an item and keeps its row, following its root through \`duplicateOf\`. Both read as the item's reporters.
+
 ### Correcting what an item is about
 - \`retarget\` \`{ requirement | issue | release | workflow | endpoint | screen, node?, reason? }\` moves the item to
   another target, so an item filed about a screen moves to the requirement that later records its
@@ -126,7 +138,7 @@ No verb moves an item to \`triaged\` around the checklist.
 ### Messages to reporters
 \`POST …/feedback/:fb/messages/preview\` \`{ audience, text }\` answers the exact notice and who would get it, writing
 nothing; \`POST …/messages\` with the same body sends it. \`audience\` is \`reporter\` (the item's own),
-\`all_reporters\` (the reporters of every duplicate merged into it too) or \`internal\`, a note for project members
+\`all_reporters\` (everyone whose repeat joined it, and the reporters of every duplicate merged into it, too) or \`internal\`, a note for project members
 that is stored and read back but never sent as a notice and has no preview. A message needs \`feedback.approve\`,
 a note \`project.write\`; a message reaching no reporter with a bell is \`FEEDBACK_MESSAGE_NO_RECIPIENT\`.
 
@@ -173,6 +185,8 @@ route, declining included, closes the open question.
 On a project whose data policy is \`redact\` or \`no_egress\`, the title, body, where-seen text, answer and
 every decision reason are scrubbed on write. On a \`no_egress\` project every answer of this door carries
 metadata only, and a text search (\`q\`) is \`FEEDBACK_SEARCH_WITHHELD\`: list by phase instead.
+A screenshot's bytes cannot be scrubbed, so on a \`redact\` project a model is handed one only where its uploader
+said nothing personal shows (\`redacted: true\`); any other is \`EGRESS_BYTES_UNREDACTED\`, and on \`no_egress\` none.
 \`DELETE …/feedback/:fb/reporter-data\` deletes an item's text, attachments and embedding while keeping the row; it takes
 \`feedback.redact\` (project admin), which a full token holds where its holder does and a named token only
 where its grant names it (\`PERMISSION_FORBIDDEN\` without it). It deletes the item's mockups too, so while

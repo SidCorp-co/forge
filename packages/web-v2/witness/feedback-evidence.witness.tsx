@@ -64,7 +64,7 @@ const item = {
   body: "I pressed Save on a new order. The button spins and nothing is saved; the console says the save failed with a 500.",
   whereSeen: null,
   duplicateOf: null,
-  duplicates: [],
+  duplicates: [],  occurrences: [],
   source: null,
   decisions: [],
   attachments: [file("a1", "IMG_0042.png", "image/png", AT), file("v1", "spinner.webm", "video/webm", "2026-10-09T10:05:00.000Z")],

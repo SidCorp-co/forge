@@ -251,6 +251,42 @@ export function egressReading(
   return { withhold, shown };
 }
 
+/**
+ * Bytes no scrubber reads (a screenshot) at a level already read: whole where nothing is redacted,
+ * never at no_egress for an operational surface, and on a project that redacts only where a person
+ * redacted them and said so (REQ-66 BC-7). A product surface's bytes leave as stored.
+ */
+export function egressBytesAt(
+  level: SensitiveDataLevel,
+  surface: EgressSurface,
+  redacted: boolean,
+  what: string = surface,
+): EgressDeep<null> {
+  const gate = egressAt(level, surface, null, what);
+  if (!gate.ok) return gate;
+  if (level === 'off' || classOf(surface) === 'product' || redacted) return gate;
+  return {
+    ok: false,
+    refusal: {
+      code: 'EGRESS_BYTES_UNREDACTED',
+      path: '',
+      detail: `${what} is ${surface} content of a project whose sensitiveData is redact, and no scrubber reads its bytes: it reaches no agent or provider until a person redacts it and marks it so. Its name, type and size may still be read.`,
+    },
+  };
+}
+
+/** `egressBytesAt` for one reader: a person reads the bytes whole, a provider-bound reader through the gate. */
+export async function egressBytesAs(
+  reader: EgressReader,
+  projectId: string,
+  surface: EgressSurface,
+  redacted: boolean,
+  what?: string,
+): Promise<EgressDeep<null>> {
+  if (!isProviderBound(reader)) return { ok: true, value: null };
+  return egressBytesAt(await dataPolicyOf(projectId), surface, redacted, what);
+}
+
 export function egressText(
   level: SensitiveDataLevel,
   surface: EgressSurface,

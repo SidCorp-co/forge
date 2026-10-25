@@ -27,7 +27,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     route: null,
     reporter: { id: "u9", name: "Ana", agency: "human" },
     reporters: [],
-    duplicates: [],
+    duplicates: [],    occurrences: [],
     decisions: [],
     messages: [],
     attachments: [],

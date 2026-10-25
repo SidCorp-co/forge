@@ -56,7 +56,7 @@ const item = {
   body: "The board loses its filter whenever I reload the page.",
   whereSeen: null,
   duplicateOf: null,
-  duplicates: [],
+  duplicates: [],  occurrences: [],
   source: null,
   decisions: [],
   attachments: [],

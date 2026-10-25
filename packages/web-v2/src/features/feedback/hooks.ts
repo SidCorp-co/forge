@@ -4,7 +4,7 @@ import { feedbackForecastKey } from "@/features/forecast";
 import { recordingsKey, reproduceApi } from "@/features/previews";
 import { readOf, useWrite } from "@/lib/api/query-kit";
 import { feedbackApi, forgeFeedbackApi } from "./api";
-import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, ForgeFeedbackRequest, SimilarFeedbackDraft } from "./types";
+import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, FeedbackReportRequest, ForgeFeedbackRequest, SimilarFeedbackDraft } from "./types";
 
 /** The signed-in person's feedback to Forge, whichever project it came from. */
 export const forgeFeedbackKeys = { mine: ["forge-feedback", "mine"] as const };
@@ -58,6 +58,8 @@ export const useFeedbackChoices = (projectId: string, type: "requirement" | "wor
 
 /** What every write to feedback changes: the list, the items, the suggestions about them and their forecast. */
 const touched = (projectId: string) => [feedbackKeys.list(projectId), feedbackKeys.items(projectId), ["suggestions", projectId], feedbackForecastKey(projectId)];
+
+export const useReportFeedback = (projectId: string) => useWrite((body: FeedbackReportRequest) => feedbackApi.report(projectId, body), { touches: touched(projectId) });
 
 export const useCreateFeedback = (projectId: string) => useWrite((body: CreateFeedbackRequest) => feedbackApi.create(projectId, body), { touches: touched(projectId) });
 

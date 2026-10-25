@@ -32,6 +32,8 @@ export type EgressClass = (typeof EGRESS_CLASSES)[number];
 export const DATA_EGRESS_REFUSAL_CODES = [
 	"CONTENT_EGRESS_FORBIDDEN",
 	"EGRESS_SURFACE_UNDECLARED",
+	/** Bytes no scrubber can read (a screenshot) on a redact project, which a person has not redacted (REQ-66 BC-7). */
+	"EGRESS_BYTES_UNREDACTED",
 ] as const;
 export type DataEgressRefusalCode = (typeof DATA_EGRESS_REFUSAL_CODES)[number];
 

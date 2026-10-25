@@ -335,6 +335,8 @@ export const feedbackAttachments = pgTable(
     size: integer('size').notNull(),
     storagePath: text('storage_path').notNull(),
     flagged: boolean('flagged').notNull(),
+    /** The reporter's word that nothing personal shows: on a project that redacts, only such bytes reach a model (REQ-66 BC-7). */
+    redacted: boolean('redacted').notNull().default(false),
     uploadedBy: uuid('uploaded_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -460,6 +462,12 @@ export const feedbackOccurrences = pgTable(
       onDelete: 'set null',
     }),
     clientVersion: text('client_version'),
+    /** What a repeat's reporter said, scrubbed on write as the item's own text is (REQ-66 BC-3). */
+    said: text('said'),
+    /** The screenshot taken with it: one of the item's attachments. */
+    attachmentId: uuid('attachment_id').references((): AnyPgColumn => feedbackAttachments.id, {
+      onDelete: 'set null',
+    }),
     /** What this row was carried from, so a carry run twice writes it once (`agent_report:<id>`). */
     dedupKey: text('dedup_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -470,6 +478,10 @@ export const feedbackOccurrences = pgTable(
     dedupUq: uniqueIndex('feedback_occurrences_dedup_uq')
       .on(t.dedupKey)
       .where(sql`dedup_key IS NOT NULL`),
+    saidChk: check(
+      'feedback_occurrences_said_chk',
+      sql`${t.said} IS NULL OR ${t.said} ~ '[^[:space:]]'`,
+    ),
     agencyChk: check(
       'feedback_occurrences_agency_chk',
       sql`${t.reporterAgency} IN ('human', 'agent')`,

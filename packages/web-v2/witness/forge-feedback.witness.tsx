@@ -1,5 +1,5 @@
-// Feedback to Forge (REQ-47 BC-9), witnessed as drawn: the shell's top bar offers it on a project's
-// page — named at desktop width, an icon at phone width — and its form opens over the page, files as
+// Feedback to Forge (REQ-47 BC-9), witnessed as drawn: the shell's top bar offers Feedback on a project's
+// page — named at desktop width, an icon at phone width — whose Forge choice opens the form, which files as
 // the signed-in person into Forge's home project and answers with the item's key and a link to "Your
 // feedback to Forge". Each stage reads what is laid out, never the component's state.
 //
@@ -35,6 +35,7 @@ const posted: unknown[] = [];
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const path = new URL(String(input), "http://witness.test").pathname.replace(/^\/api/, "");
   if (path === "/version") return json({ version: "0.4.0-dev.260", sourceCommit: null, uptimeSeconds: 60 });
+  if (path === "/projects/p-hop/config") return json({ declared: false, revision: null, document: null });
   if (init?.method === "POST" && path === "/forge/feedback") {
     posted.push(JSON.parse(String(init.body)));
     return json(FILED, 201);
@@ -60,8 +61,8 @@ createRoot(root).render(
   </InRouter>,
 );
 
-const opener = () => document.querySelector<HTMLButtonElement>("[data-testid=forge-feedback-open]");
-const dialog = () => document.querySelector<HTMLElement>("[data-testid=forge-feedback-dialog]");
+const opener = () => document.querySelector<HTMLButtonElement>("[data-testid=feedback-open]");
+const dialog = () => document.querySelector<HTMLElement>("[data-testid=report-dialog]");
 const phone = () => window.innerWidth < 640;
 
 function typeInto(el: HTMLInputElement | HTMLTextAreaElement | null, value: string) {
@@ -73,21 +74,25 @@ function typeInto(el: HTMLInputElement | HTMLTextAreaElement | null, value: stri
 
 function bar(): string[] {
   const b = opener();
-  if (!b) return ["the top bar draws no Feedback to Forge entry"];
+  if (!b) return ["the top bar draws no Feedback entry"];
   const wrong = sideways();
   const r = b.getBoundingClientRect();
-  if (r.width === 0 || r.right > window.innerWidth) wrong.push("the Feedback to Forge entry is not inside the window");
+  if (r.width === 0 || r.right > window.innerWidth) wrong.push("the Feedback entry is not inside the window");
   const label = b.querySelector("span:not(.sr-only)")?.textContent ?? b.textContent ?? "";
-  if (!phone() && !label.includes("Feedback to Forge")) wrong.push(`the entry reads "${label}" at desktop width`);
-  if (b.getAttribute("aria-label") !== "Feedback to Forge") wrong.push("the entry has no accessible name");
+  if (!phone() && !label.includes("Feedback")) wrong.push(`the entry reads "${label}" at desktop width`);
+  if (b.getAttribute("aria-label") !== "Feedback") wrong.push("the entry has no accessible name");
   return wrong;
 }
 
 async function form(): Promise<string[]> {
   opener()?.click();
-  await settle(300);
+  for (let i = 0; i < 40 && !dialog(); i += 1) await settle(150);
   const d = dialog();
   if (!d) return ["the button opens no dialog"];
+  const forge = [...d.querySelectorAll("button")].find((b) => b.textContent === "Forge");
+  if (!forge) return ["the dialog offers no Forge choice"];
+  forge.click();
+  await settle(300);
   typeInto(d.querySelector("input"), "The board drops a card dragged to Done");
   typeInto(d.querySelector("textarea"), "Dragging a card from Review to Done makes it vanish until the page is reloaded.");
   await settle();

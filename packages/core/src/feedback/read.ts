@@ -30,6 +30,7 @@ import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
 import { shipEvidenceOfShipped } from './loop-close.js';
+import { occurrencesOf } from './occurrences.js';
 import { questionsOnFeedback, questionViewsOf } from './questions-read.js';
 import { reportersOf } from './reporters.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
@@ -173,6 +174,7 @@ function attachmentViewsOf(
 ): FeedbackAttachmentView[] {
   return rows.map(({ a, from }) => ({
     id: a.id,
+    redacted: a.redacted,
     from,
     name: o.withhold ? 'withheld' : a.name,
     mime: a.mime,
@@ -257,6 +259,7 @@ export async function detailAs(
     reporters,
     messages,
     mergedAttachments,
+    occurrences,
   ] = await Promise.all([
     dataPolicyOf(projectId),
     effectiveProjectRole(viewer.userId, projectId),
@@ -290,6 +293,7 @@ export async function detailAs(
       .innerJoin(feedback, eq(feedback.id, feedbackAttachments.feedbackId))
       .where(eq(feedback.duplicateOf, row.id))
       .orderBy(asc(feedbackAttachments.createdAt)),
+    occurrencesOf(row),
   ]);
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const facts = { projectId, role: access?.role ?? null, grants: access?.grants ?? [] };
@@ -368,6 +372,7 @@ export async function detailAs(
         agency: r.agency,
         from: r.from,
       })),
+      occurrences: withhold ? occurrences.map((o) => ({ ...o, said: null })) : occurrences,
       messages: messageViewsOf(shownMessages, deciders, withhold),
       clarification: clarificationViewOf(q, withhold),
       questions: questionViewsOf(questions, withhold),
