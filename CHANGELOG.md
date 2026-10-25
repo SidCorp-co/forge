@@ -3195,6 +3195,7 @@
 
 ### Fixed
 
+- **A credential Forge cannot decrypt names the project binding it was read through.** A new key saved from a project reads Not checked yet, and a GitHub App install is no longer refused over another App it cannot read. (ISS-1259)
 - **An integration credential Forge cannot decrypt is named, not a server error.** Verify, Test connection and its webhooks say which connection it is and that entering it again fixes it, and entering it again now works. (ISS-1259)
 - **Saving a new key on a removed connection from a project turns it back on**, and anyone who cannot is told who can; turning one on without a key is refused alike for everyone. (ISS-1421)
 - **Every integration is taken off a project with Disconnect from this project**, which asks once, says the connection stays, and is not offered once the integration is already off. (ISS-1421)

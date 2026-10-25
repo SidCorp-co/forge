@@ -211,11 +211,12 @@ export async function listActiveDeployBindingsForStage(
 /**
  * Decrypt a connection's secrets blob, or `{}` when it has none. One this server's key cannot open
  * is refused as {@link CredentialUnreadable}, naming the connection and the binding it was read
- * through.
+ * through. `bindingId` is required so a reader holding a binding cannot leave it out by omission:
+ * `null` says this reader holds none (ISS-1259 r2).
  */
 export function decryptConnectionSecrets<
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
->(connection: IntegrationConnectionRow, bindingId?: string): TSecrets {
+>(connection: IntegrationConnectionRow, bindingId: string | null): TSecrets {
   if (!connection.secretsEnc) return {} as TSecrets;
   try {
     return decryptJson<TSecrets>(connection.secretsEnc);

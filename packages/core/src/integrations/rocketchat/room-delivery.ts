@@ -31,7 +31,7 @@ export async function resolveRoomPostAuth(
     logger.error({ ...logContext, connectionId }, 'rocketchat: connection not found');
     return null;
   }
-  const secrets = decryptConnectionSecrets<RocketChatSecrets>(connection);
+  const secrets = decryptConnectionSecrets<RocketChatSecrets>(connection, null);
   const config = (connection.config ?? {}) as RocketChatConfig;
   if (!config.serverUrl || !secrets.authToken || !secrets.userId) {
     logger.error(

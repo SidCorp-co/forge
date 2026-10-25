@@ -249,7 +249,7 @@ async function storedSecretsOrWhole(
   if (!connection.secretsEnc) return null;
   const { decryptConnectionSecrets } = await import('./store.js');
   try {
-    return decryptConnectionSecrets(connection, bindingId);
+    return decryptConnectionSecrets(connection, bindingId ?? null);
   } catch (err) {
     if (!(err instanceof CredentialUnreadable)) throw err;
     if (decl.schemas.secrets.safeParse(incoming).success) return 'replaced';

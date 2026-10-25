@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { createCipheriv, randomBytes } from 'node:crypto';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildProvisionRow,
   integrityViolation,
@@ -131,34 +132,6 @@ describe('buildProvisionRow', () => {
     expect(built.reports[0]?.terminal).toBe(false);
   });
 
-  it('serves the provision without the ssh key it could not decrypt, and says the key was dropped', async () => {
-    const built = await buildProvisionRow(row({ sshPrivateKeyEnc: Buffer.from('rubbish') }), ctx, {
-      issueCredential: async () => 'forge_pat_dev_ok',
-      decrypt: () => null,
-    });
-    expect(built.provision).toMatchObject({
-      sshPrivateKey: null,
-      sshPublicKey: null,
-      sshKeySource: null,
-      mcpCredential: 'forge_pat_dev_ok',
-    });
-    expect(built.reports).toHaveLength(1);
-    expect(built.reports[0]).toMatchObject({ kind: 'degraded', terminal: false });
-    expect(built.reports[0]?.reason).toContain('could not be decrypted');
-  });
-
-  it('lets a fault that is not an unreadable key surface as itself', async () => {
-    const malformed = new Error('INTEGRATION_MASTER_KEY: base64 must decode to 32 bytes (got 6)');
-    await expect(
-      buildProvisionRow(row({ sshPrivateKeyEnc: Buffer.from('rubbish') }), ctx, {
-        issueCredential: async () => 'forge_pat_dev_ok',
-        decrypt: () => {
-          throw malformed;
-        },
-      }),
-    ).rejects.toBe(malformed);
-  });
-
   it('mints nothing when the device has no live credential to act as', async () => {
     const issueCredential = vi.fn<() => Promise<string>>();
     const built = await buildProvisionRow(
@@ -220,5 +193,68 @@ describe('provisionFailuresHeader', () => {
     ]) as string;
     expect(header).toMatch(/^[\x20-\x7e]*$/);
     expect(JSON.parse(header).failures[0].reason).toContain('—');
+  });
+});
+
+// The vault this row reads through is the real one, under the key this process holds: a decrypt
+// handed in by the test would prove the row against a stand-in and never against what it calls.
+describe('the stored ssh key, read through the vault', () => {
+  const HELD = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
+  const before = process.env.INTEGRATION_MASTER_KEY;
+  afterEach(() => {
+    if (before === undefined) delete process.env.INTEGRATION_MASTER_KEY;
+    else process.env.INTEGRATION_MASTER_KEY = before;
+    vi.resetModules();
+  });
+
+  /** A fresh vault, so the key it caches is the one this case sets. */
+  async function underKey(masterKey: string) {
+    vi.resetModules();
+    process.env.INTEGRATION_MASTER_KEY = masterKey;
+    const vault = await import('../integrations/vault.js');
+    const { buildProvisionRow: build } = await import('./provision-row.js');
+    return { vault, build };
+  }
+
+  function sealedUnderAnotherKey(plain: string): Buffer {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', randomBytes(32), iv);
+    const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), enc]);
+  }
+
+  const mint = { issueCredential: async () => 'forge_pat_dev_ok' };
+
+  it('serves the key the vault opens', async () => {
+    const { vault, build } = await underKey(HELD);
+    const sealed = vault.encryptSecret('made-up-private-key');
+    const built = await build(row({ sshPrivateKeyEnc: sealed }), ctx, mint);
+    expect(built.provision?.sshPrivateKey).toBe('made-up-private-key');
+    expect(built.reports).toEqual([]);
+  });
+
+  it('serves the provision without a key sealed under another, and says the key was dropped', async () => {
+    const { build } = await underKey(HELD);
+    const built = await build(
+      row({ sshPrivateKeyEnc: sealedUnderAnotherKey('made-up-private-key') }),
+      ctx,
+      mint,
+    );
+    expect(built.provision).toMatchObject({
+      sshPrivateKey: null,
+      sshPublicKey: null,
+      sshKeySource: null,
+      mcpCredential: 'forge_pat_dev_ok',
+    });
+    expect(built.reports).toHaveLength(1);
+    expect(built.reports[0]).toMatchObject({ kind: 'degraded', terminal: false });
+    expect(built.reports[0]?.reason).toContain('could not be decrypted');
+  });
+
+  it('lets a malformed INTEGRATION_MASTER_KEY surface as itself rather than as a dropped key', async () => {
+    const { build } = await underKey('AAAAAAAA');
+    await expect(
+      build(row({ sshPrivateKeyEnc: sealedUnderAnotherKey('made-up-private-key') }), ctx, mint),
+    ).rejects.toThrow('INTEGRATION_MASTER_KEY: base64 must decode to 32 bytes (got 6)');
   });
 });

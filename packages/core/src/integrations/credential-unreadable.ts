@@ -53,6 +53,36 @@ export class CredentialUnreadable extends HTTPException {
   }
 }
 
+/**
+ * An installation no App this server can read owns, where GitHub could not be asked about it with
+ * an App whose stored credential this server's key cannot open: that App may own it, so nothing is
+ * recorded and each such App is named.
+ */
+export function installOwnerUnreadable(
+  installationId: number,
+  credentials: UnreadableCredential[],
+): HTTPException {
+  const named = credentials
+    .map((c) => `${c.displayName ? `"${c.displayName}" ` : ''}(connection ${c.connectionId})`)
+    .join(', ');
+  const which = credentials.length === 1 ? 'the GitHub App' : 'the GitHub Apps';
+  return new HTTPException(409, {
+    message:
+      `No GitHub App this server can read owns installation ${installationId}, and GitHub could ` +
+      `not be asked about it with ${which} ${named}, whose stored credential could not be ` +
+      `decrypted with the key this server holds. One of them may own it, so the installation was ` +
+      `not recorded. Enter the credential again to replace it, then finish the installation ` +
+      `again. If every connection says this at once, this server's INTEGRATION_MASTER_KEY changed.`,
+    cause: {
+      code: CREDENTIAL_UNREADABLE,
+      details: {
+        installationId,
+        connections: credentials.map(({ connectionId, provider }) => ({ connectionId, provider })),
+      },
+    },
+  });
+}
+
 /** A failed check, as the ssh-key Test answers `key_unreadable`: the check ran and found this. */
 export function unreadableHealth(err: CredentialUnreadable): HealthCheckResult {
   const { connectionId, provider, bindingId } = err.credential;

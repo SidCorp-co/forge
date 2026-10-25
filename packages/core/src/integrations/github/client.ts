@@ -320,6 +320,6 @@ export async function githubRepoClient(projectId: string): Promise<GitHubRepoCli
   return buildRepoClient({
     bindingId: binding.id,
     config: (binding.config ?? {}) as GitHubConfig,
-    secrets: decryptConnectionSecrets<GitHubSecrets>(connection),
+    secrets: decryptConnectionSecrets<GitHubSecrets>(connection, binding.id),
   });
 }

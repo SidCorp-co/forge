@@ -153,7 +153,7 @@ class RocketChatConnectionManager {
       });
     });
 
-    const secrets = decryptConnectionSecrets<RocketChatSecrets>(conn);
+    const secrets = decryptConnectionSecrets<RocketChatSecrets>(conn, null);
     const config = (conn.config ?? {}) as RocketChatConfig;
     if (!config.serverUrl || !secrets.authToken || !secrets.userId) {
       logger.error({ connectionId }, 'rocketchat: connection missing serverUrl/credentials');

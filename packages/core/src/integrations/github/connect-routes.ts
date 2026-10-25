@@ -321,7 +321,7 @@ githubConnectRoutes.get(
     const { appId, privateKey } = decryptConnectionSecrets<{
       appId?: string;
       privateKey?: string;
-    }>(connection);
+    }>(connection, null);
     if (!appId || !privateKey) throw githubAppUnfinished(connectionId);
 
     return c.json(

@@ -5,7 +5,7 @@
  * not hold, which is what a rotated or misconfigured INTEGRATION_MASTER_KEY leaves behind.
  */
 
-import { createCipheriv, createHmac, randomBytes } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -17,6 +17,14 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import {
+  expectNamed,
+  expectNothingSecret,
+  type PlantedProvider,
+  type PlantOptions,
+  plantUnreadable,
+  WEBHOOK_SECRET,
+} from '../helpers/unreadable-credential-fixture.js';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
@@ -28,16 +36,6 @@ let harness: TestDatabase;
 let app: Hono<AppVars>;
 let store: typeof import('../../src/integrations/store.js');
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-
-const WEBHOOK_SECRET = 'the-binding-signing-secret-at-least-32-chars';
-const PLANTED_TOKEN = 'made-up-token-never-to-be-shown-0001';
-
-function sealedUnderAnotherKey(plain: string): Buffer {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', randomBytes(32), iv);
-  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
-  return Buffer.concat([iv, cipher.getAuthTag(), enc]);
-}
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -88,32 +86,8 @@ beforeEach(async () => {
   projectSlug = project.slug;
 });
 
-/** A connection and one binding of it, whose stored secrets this server's key cannot open. */
-async function plant(
-  provider: 'postman' | 'rocketchat' | 'github' | 'coolify',
-  opts: { config?: Record<string, unknown>; role?: 'service' | 'deploy' } = {},
-) {
-  const connection = await store.createConnection({
-    ownerType: 'user',
-    ownerId: userId,
-    provider,
-    displayName: `Planted ${provider}`,
-    config: opts.config ?? {},
-  });
-  const sealed = sealedUnderAnotherKey(JSON.stringify({ apiKey: PLANTED_TOKEN }));
-  await harness.db.execute(
-    sql`UPDATE integration_connections SET secrets_enc = ${sealed} WHERE id = ${connection.id}`,
-  );
-  const binding = await store.createBinding({
-    connectionId: connection.id,
-    projectId,
-    provider,
-    role: opts.role ?? 'service',
-    stages: opts.role === 'deploy' ? ['live'] : [],
-    integrationSecret: WEBHOOK_SECRET,
-  });
-  return { connectionId: connection.id, bindingId: binding.id, sealed };
-}
+const plant = (provider: PlantedProvider, opts?: PlantOptions) =>
+  plantUnreadable(harness.db, { userId, projectId }, provider, opts);
 
 const headers = async () => ({
   authorization: `Bearer ${await signUserToken(userId)}`,
@@ -130,21 +104,6 @@ async function lastHealth(connectionId: string) {
     last_health_at: Date | null;
   }>;
   return row;
-}
-
-/** Nothing a secret could be recovered from: not the sealed bytes, the key, or the plaintext. */
-function expectNothingSecret(text: string, sealed: Buffer) {
-  expect(text).not.toContain(PLANTED_TOKEN);
-  expect(text).not.toContain(sealed.toString('hex'));
-  expect(text).not.toContain(sealed.toString('base64'));
-  expect(text).not.toContain(process.env.INTEGRATION_MASTER_KEY as string);
-  expect(text).not.toMatch(/Unsupported state|unable to authenticate/);
-}
-
-function expectNamed(message: string | undefined, label: string, ids: string[]) {
-  expect(message).toContain(`The stored credential of the ${label} connection`);
-  for (const id of ids) expect(message).toContain(id);
-  expect(message).toContain('could not be decrypted with the key this server holds');
 }
 
 describe('a Test of an undecryptable credential', () => {
@@ -282,7 +241,7 @@ describe('entering the credential again', () => {
     expect(res.status).toBe(200);
     const connection = await store.findConnectionById(connectionId);
     if (!connection) throw new Error('the planted connection is gone');
-    expect(store.decryptConnectionSecrets(connection)).toEqual({
+    expect(store.decryptConnectionSecrets(connection, null)).toEqual({
       apiKey: 'PMAK-made-up-replacement-0001',
     });
   });
@@ -297,7 +256,7 @@ describe('entering the credential again', () => {
     expect(res.status).toBe(200);
     const connection = await store.findConnectionById(connectionId);
     if (!connection) throw new Error('the planted connection is gone');
-    expect(store.decryptConnectionSecrets(connection)).toEqual({
+    expect(store.decryptConnectionSecrets(connection, null)).toEqual({
       apiKey: 'PMAK-made-up-replacement-0002',
     });
   });
@@ -402,5 +361,75 @@ describe('a reader that is not an HTTP door', () => {
     const unread = reading.kind === 'unanswered' ? reading.unread.join('\n') : '';
     expectNamed(unread, 'Coolify', [connectionId, bindingId]);
     expect(unread).not.toMatch(/Unsupported state|unable to authenticate/);
+  });
+});
+
+describe('a key saved over the last check', () => {
+  async function testedThenSaved(door: 'binding' | 'connection', apiKey: string) {
+    const { connectionId, bindingId } = await plant('postman');
+    await app.request(`/api/projects/${projectId}/integrations/${bindingId}/test`, {
+      method: 'POST',
+      headers: await headers(),
+    });
+    expect((await lastHealth(connectionId))?.last_health_status).toBe('error');
+    const path =
+      door === 'binding'
+        ? `/api/projects/${projectId}/integrations/${bindingId}`
+        : `/api/integration-connections/${connectionId}`;
+    const res = await app.request(path, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ secrets: { apiKey } }),
+    });
+    expect(res.status).toBe(200);
+    return lastHealth(connectionId);
+  }
+
+  it('reads Not checked yet once the credential is entered again at the binding PATCH', async () => {
+    expect(await testedThenSaved('binding', 'PMAK-made-up-replacement-0003')).toEqual({
+      last_health_status: null,
+      last_health_detail: null,
+      last_health_at: null,
+    });
+  });
+
+  it('reads Not checked yet once the credential is entered again at the connection PATCH', async () => {
+    expect(await testedThenSaved('connection', 'PMAK-made-up-replacement-0004')).toEqual({
+      last_health_status: null,
+      last_health_detail: null,
+      last_health_at: null,
+    });
+  });
+
+  it('forgets an ordinary failed check when a new key is saved at the binding PATCH', async () => {
+    const connection = await store.createConnection({
+      ownerType: 'user',
+      ownerId: userId,
+      provider: 'postman',
+      displayName: 'Readable postman',
+      secrets: { apiKey: 'PMAK-made-up-old-0005' },
+    });
+    const binding = await store.createBinding({
+      connectionId: connection.id,
+      projectId,
+      provider: 'postman',
+      role: 'service',
+    });
+    await harness.db.execute(sql`
+      UPDATE integration_connections
+      SET last_health_status = 'needs_reauth', last_health_detail = 'refused', last_health_at = now()
+      WHERE id = ${connection.id}
+    `);
+    const res = await app.request(`/api/projects/${projectId}/integrations/${binding.id}`, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ secrets: { apiKey: 'PMAK-made-up-new-0005' } }),
+    });
+    expect(res.status).toBe(200);
+    expect(await lastHealth(connection.id)).toEqual({
+      last_health_status: null,
+      last_health_detail: null,
+      last_health_at: null,
+    });
   });
 });

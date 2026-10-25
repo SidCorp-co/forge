@@ -76,7 +76,7 @@ import {
   connectionNotReachable,
   defaultConnectionDisplayName,
   forbidden,
-  NOT_CHECKED,
+  healthOnKeySaved,
   notFound,
   notifyConnectionChanged,
   summarizeBinding,
@@ -421,10 +421,9 @@ integrationConnectionsRoutes.patch(
 
     // A new key makes the last check a check of a key no longer used (ISS-1421 r21): the connection
     // reads Not checked yet until Test connection judges the key just saved.
-    const sentKey = primary
-      ? typeof (patch.secrets as Record<string, unknown> | undefined)?.[primary] === 'string'
-      : patch.secrets !== undefined;
-    if (sentKey) Object.assign(connPatch, NOT_CHECKED);
+    if (connPatch.secrets !== undefined) {
+      Object.assign(connPatch, healthOnKeySaved(existing.provider, patch.secrets ?? {}));
+    }
 
     const updated = await updateConnection(id, connPatch);
     if (!updated) throw notFound('connection');
