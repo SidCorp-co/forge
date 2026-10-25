@@ -118,7 +118,15 @@ issueCriteriaRoutes.post(
       run: body.run,
     });
     const criterion = (await readCriteria(issue)).find((row) => row.n === body.criterion);
-    return c.json({ verdictId: written.id, criterion, notCounted: written.notCounted }, 201);
+    return c.json(
+      {
+        verdictId: written.id,
+        criterion,
+        notCounted: written.notCounted,
+        countedUnderCutover: written.countedUnderCutover,
+      },
+      201,
+    );
   },
 );
 

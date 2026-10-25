@@ -7,7 +7,9 @@ import { issues } from '../../db/schema.js';
 import { issueCriteria } from '../../db/schema-issue-criteria.js';
 import { traceWordingsOf } from '../ports.js';
 import { renderCriteriaText } from './criteria-text.js';
-import { liveRows, liveWordingAt, lockIssue, refuseCriteria } from './store.js';
+import { failureOwnedElsewhere } from './fail-owner.js';
+import { liveRows, lockIssue, refuseCriteria } from './store.js';
+import { liveWordingAt } from './trace-wording.js';
 
 const BC_CODE = /^BC-[1-9]\d*$/u;
 
@@ -99,6 +101,12 @@ export async function appendTracedCriteria(
         : { n: next++, statement, requirementCriterionId: wording.id, position: position++ },
     );
   }
+  const owned = await failureOwnedElsewhere(
+    tx,
+    issueId,
+    written.map((c) => c.requirementCriterionId),
+  );
+  if (owned) throw refuseCriteria('CRITERION_FAILURE_OWNED', owned, '/codes');
   for (const id of refreshed) {
     await tx.update(issueCriteria).set({ retiredAt: sql`now()` }).where(eq(issueCriteria.id, id));
   }

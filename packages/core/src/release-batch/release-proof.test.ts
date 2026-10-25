@@ -13,8 +13,7 @@ import { proofOf, totalsOf } from './release-view.js';
 
 const BUILD = 'a'.repeat(40);
 const EARLIER = 'b'.repeat(40);
-const BUILDER_WHY =
-  'passed by the run that built it, and this project counts only a pass from its independent judge';
+const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
 
 const verdict = (
   v: CarriedVerdict['verdict'],
@@ -32,6 +31,7 @@ const verdict = (
   agency: 'agent',
   byBuilder: false,
   authored: true,
+  recordedAt: `2026-10-14T${at}:00.000Z`,
   ...over,
 });
 
@@ -82,12 +82,18 @@ describe("a release record counts what it proves by the requirement's rule", () 
     expect(proofOf(totals)).toBe('unproven');
   });
 
-  it("under an independent judge, does not count the builder's own pass, and says why", () => {
+  it("does not count the builder's own pass, whatever the project's qa says, and says why", () => {
     const own = issue([[verdict('pass', '10:00', { byBuilder: true })]]);
     const [c] = read(own, 'independent');
     expect(c).toMatchObject({ standing: 'pass', proven: false, unverified: BUILDER_WHY });
     expect(proofOf(totalsOf(read(own, 'independent')))).toBe('unproven');
-    // the same pass counts where the builder is the judge the project named
+    // REQ-74 BC-2: recorded after the cutover, it never counts, under self or no policy either
+    const late = issue([
+      [verdict('pass', '10:00', { byBuilder: true, recordedAt: '2026-10-26T10:00:00.000Z' })],
+    ]);
+    expect(read(late, 'self')[0]).toMatchObject({ proven: false, unverified: BUILDER_WHY });
+    expect(read(late, null)[0]?.proven).toBe(false);
+    // recorded before it, it keeps counting under self or no policy (BUILDER_PASS_CUTOVER)
     expect(read(own, 'self')[0]?.proven).toBe(true);
     expect(read(own, null)[0]?.proven).toBe(true);
   });

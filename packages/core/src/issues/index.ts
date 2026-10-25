@@ -85,6 +85,7 @@ export {
 } from './dispatch-order.js';
 export { issueDisplayIds, issueKeysAndTitles } from './display-ids.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';
+export { registerFailReopen } from './fail-reopen.js';
 export {
   fileDetectedIssue,
   rewriteIssueMetadata,

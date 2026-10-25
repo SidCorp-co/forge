@@ -35,6 +35,7 @@ import {
   TRACE_TAG_SHAPE,
   traceTagOf,
 } from './criteria-text.js';
+import { failureOwnedElsewhere } from './fail-owner.js';
 import {
   ambiguousDetail,
   droppedTraceDetail,
@@ -42,6 +43,7 @@ import {
   matchCriteria,
   sameCriteria,
 } from './match.js';
+import { liveWordingAt } from './trace-wording.js';
 
 export const refuseCriteria = refuser<CriteriaRefusalCode>('CRITERIA_REFUSED');
 
@@ -234,7 +236,7 @@ async function tracedInputs(
   if (tags.every((t) => t.tag.kind !== 'tag')) return [...desired];
   const { requirement: req, wordings } = await traceWordingsOf(tx, issueId);
   const revision = req?.revision ?? null;
-  return tags.map(({ c, i, tag }) => {
+  const traced = tags.map(({ c, i, tag }) => {
     if (tag.kind !== 'tag') return c;
     const where = `criterion ${c.n} traces REQ-${tag.requirementSeq} ${tag.code}`;
     if (!req) {
@@ -265,25 +267,12 @@ async function tracedInputs(
     if (keptCode === tag.code) return c;
     return { ...c, requirementCriterionId: live.id };
   });
-}
-
-type Wording = TraceWordings['wordings'][number];
-type TraceWordings = Awaited<ReturnType<typeof traceWordingsOf>>;
-
-/** The one wording of `code` live at `revision`, or null where there is none or more than one. */
-export function liveWordingAt(
-  wordings: readonly Wording[],
-  code: string,
-  revision: number | null,
-): Wording | null {
-  const live = wordings.filter(
-    (w) =>
-      w.code === code &&
-      revision !== null &&
-      w.sinceRevision <= revision &&
-      (w.retiredRevision === null || w.retiredRevision > revision),
+  const taken = traced.flatMap((c, i) =>
+    c.requirementCriterionId && c !== desired[i] ? [c.requirementCriterionId] : [],
   );
-  return live.length === 1 ? (live[0] ?? null) : null;
+  const owned = await failureOwnedElsewhere(tx, issueId, taken);
+  if (owned) throw refuseCriteria('CRITERION_FAILURE_OWNED', owned, path);
+  return traced;
 }
 
 /** Refuse a desired set whose numbers repeat or fall below 1, or whose statements are blank. */
@@ -523,6 +512,8 @@ export interface AuthoredVerdict extends LatestVerdict {
   readonly byBuilder: boolean;
   /** Names who recorded it, an account or a box. */
   readonly authored: boolean;
+  /** When it was recorded (`createdAt`), as the verified rule reads it. */
+  readonly recordedAt: string;
 }
 
 /**
@@ -562,7 +553,12 @@ export async function liveVerdictsOf(
     const verdict = latestOf(row);
     if (!verdict) continue;
     const list = out.get(row.n) ?? [];
-    list.push({ ...verdict, byBuilder: row.by_builder === true, authored: row.authored === true });
+    list.push({
+      ...verdict,
+      byBuilder: row.by_builder === true,
+      authored: row.authored === true,
+      recordedAt: verdict.createdAt,
+    });
     out.set(row.n, list);
   }
   return out;

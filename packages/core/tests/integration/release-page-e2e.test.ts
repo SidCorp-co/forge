@@ -159,7 +159,16 @@ describe('a release page claims a criterion only with a pass verdict on the buil
         completes: false,
         // each row in its issue criterion's own wording, the requirement criterion it proves said once
         // a short is never proven: the page counts by the rule a requirement does (REQ-35 decision 7b261fca)
-        proven: [{ code: 'BC-1', statement: 'criterion 1', short: false, issueKey: 'ISS-1', n: 1 }],
+        proven: [
+          {
+            code: 'BC-1',
+            statement: 'criterion 1',
+            short: false,
+            issueKey: 'ISS-1',
+            n: 1,
+            countedUnderCutover: false,
+          },
+        ],
         unproven: 3,
         business: {
           total: 4,

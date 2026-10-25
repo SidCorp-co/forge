@@ -152,6 +152,8 @@
     "releases.page.row.requirement": "Requirement {key}",
     "releases.page.row.technical": "Technical note",
     "releases.page.row.technicalLink": "Technical details",
+    "releases.page.row.builderPass": "Builder",
+    "releases.page.row.builderPassWhy": "Passed by the run that built it, before independent judging began",
     "releases.page.shared.lead": "Shared release page · read-only snapshot",
     "releases.page.shared.link": "Shared by link",
     "releases.page.shared.members": "Shared with the project's members",

@@ -134,9 +134,9 @@ function formatProjectConfig(baseBranch: string | null, deploysFrom: string | nu
 }
 
 const QA_LINE: Record<DispatchState['qa'], string> = {
-  self: 'self — the run that builds a change may also be the one that says it works.',
+  self: "self — another of this project's runs judges a change once it lands; the run that built it proves its criteria, and its own pass never counts.",
   independent:
-    'independent — the run that built a change may not be the run that says it works; another run judges it.',
+    'independent — a judge apart from the building run judges a change on the release; the run that built it proves its criteria, and its own pass never counts.',
 };
 
 /** The policy state this job runs under, as the project's policy-v1 declares it. */

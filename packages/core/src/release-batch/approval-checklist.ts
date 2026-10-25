@@ -3,8 +3,8 @@
  * (`@forge/contracts/checklist-registry:RELEASE_APPROVAL_CHECKLIST`, Requirement lifecycle r15
  * release_check) when its approver approves it: the requirements it carries, each at its revision,
  * and each carried criterion as proven or not on the commit it ships, by the verified rule every count
- * of proof reads (`release-facts.ts:criteriaAt`, contracts `verified-rule.ts:verifiedOf`): a short, or under an
- * independent judge the builder's own pass, is not proven, and the gap says why. A project whose document says
+ * of proof reads (`release-facts.ts:criteriaAt`, contracts `verified-rule.ts:verifiedOf`): a short, or the
+ * builder's own pass, is not proven, and the gap says why. A project whose document says
  * `delivery.verdictsRequired: false` judges on the running build after release, so its verdicts are
  * not asked here.
  *

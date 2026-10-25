@@ -2,7 +2,7 @@
 // release carries, read at the build the page describes by the rule a requirement's coverage counts
 // by (contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca), as the release record counts them: the
 // verdict it stands on is the judge's, and only a pass that rule counts as verified proves it, so
-// a short, or under an independent judge the builder's own pass, is never listed or counted as
+// a short, or the builder's own pass, is never listed or counted as
 // proven. A claimed criterion proves its requirement criterion live (BC-5) and lends its kept clip or
 // picture to a highlight (BC-3); every other one is a known issue as its verdict on the build reads
 // (BC-8). Pure: the loaders in facts.ts hand it rows.
@@ -20,7 +20,7 @@ import {
   releaseClaimOf,
   releaseMediaKindOf,
 } from '@forge/contracts/release-page';
-import { verifiedOf } from '@forge/contracts/verified-rule';
+import { countedUnderCutover, verifiedOf } from '@forge/contracts/verified-rule';
 
 export interface CarriedVerdict extends ReleaseVerdictReading {
   id: string;
@@ -30,6 +30,8 @@ export interface CarriedVerdict extends ReleaseVerdictReading {
   byBuilder: boolean;
   /** Names who recorded it. */
   authored: boolean;
+  /** When it was recorded, as the verified rule reads it. */
+  recordedAt: string;
 }
 
 /** One live criterion of an issue the release carries, with every verdict it earned since its last reopen. */
@@ -64,6 +66,8 @@ export interface ClaimReading {
   unverified: string | null;
   /** The verdict on the build the claim reads: the pass it claims, or the short, fail, skip or uncounted pass it is held by. */
   onBuild: CarriedVerdict | null;
+  /** Proven by the building run's own pass, counted only under the builder-pass cutover. */
+  underCutover: boolean;
 }
 
 /** The verdicts a release reads a criterion by, newest first: those on `build`, or every one on a draft. */
@@ -96,6 +100,7 @@ export function readClaims(
       proven,
       unverified: stands?.verdict === 'pass' ? why : null,
       onBuild,
+      underCutover: proven && stands !== null && countedUnderCutover(stands, judge),
     };
   });
 }
@@ -161,12 +166,13 @@ const byKeyThenN = (a: ReleasePageProven, b: ReleasePageProven) =>
 function criteriaOf(claims: readonly ClaimReading[]): ReleasePageCriteria {
   const proven: ReleasePageProven[] = claims
     .filter((c) => c.proven)
-    .map(({ criterion }) => ({
+    .map(({ criterion, underCutover }) => ({
       code: criterion.bc,
       statement: criterion.statement,
       short: false,
       issueKey: criterion.issueKey,
       n: criterion.n,
+      countedUnderCutover: underCutover,
     }))
     .sort((a, b) => byCode(a.code, b.code) || byKeyThenN(a, b));
   return { proven, unproven: claims.length - proven.length };

@@ -126,9 +126,9 @@ describe("the rail and the Technical view's list say one count (BC-5)", () => {
         title: "Visit reminders",
         completes: false,
         proven: [
-          { code: "BC-1", statement: "A nurse sees the reminder", short: false, issueKey: "ISS-1", n: 1 },
-          { code: "BC-2", statement: "A nurse sees it on a phone", short: true, issueKey: "ISS-1", n: 2 },
-          { code: null, statement: "(REQ-1 BC-2) the reminder names the patient", short: false, issueKey: "ISS-2", n: 1 },
+          { code: "BC-1", statement: "A nurse sees the reminder", short: false, issueKey: "ISS-1", n: 1, countedUnderCutover: false },
+          { code: "BC-2", statement: "A nurse sees it on a phone", short: true, issueKey: "ISS-1", n: 2, countedUnderCutover: false },
+          { code: null, statement: "(REQ-1 BC-2) the reminder names the patient", short: false, issueKey: "ISS-2", n: 1, countedUnderCutover: false },
         ],
         unproven: 2,
         business: {
@@ -141,7 +141,7 @@ describe("the rail and the Technical view's list say one count (BC-5)", () => {
       },
     ],
     untraced: {
-      proven: [{ code: null, statement: "the list loads in a second", short: false, issueKey: "ISS-3", n: 1 }],
+      proven: [{ code: null, statement: "the list loads in a second", short: false, issueKey: "ISS-3", n: 1, countedUnderCutover: false }],
       unproven: 0,
     },
   });

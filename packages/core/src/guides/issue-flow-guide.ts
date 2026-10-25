@@ -229,15 +229,17 @@ the mark or the decision answers it, so the business question is asked on its ow
   recorded at \`head\` instead.
 
 ### 5. Prove it, one criterion at a time
-Read \`qa\` from the policy. **\`self\`** — this run judges. **\`independent\`** — another run judges,
-on the release that carries the work, so this run lands and leaves the criteria standing as that
-run's brief. Its own \`pass\` or \`short\` is still written, with the probe it ran: it is kept as
-this run's evidence, the merge check runs that probe, and it never counts. Its answer says so,
-\`notCounted: { code: 'VERDICT_BY_BUILDER' }\`. A \`fail\` counts whoever writes it. The building
-run is the one that took the issue before its work landed (it holds the lease or recorded the checks);
-each verdict names the run that wrote it, the run holding the issue on the caller's box unless the
-body names another in \`run\` (the box's run id), and an unknown \`run\` is refused
-\`VERDICT_RUN_UNKNOWN\`.
+Whatever \`qa\` says, the run that builds a change does not judge it. Another run judges once the work
+lands, on the release that carries it: under \`self\` one of this project's runs declared over the
+issue at \`awaiting_release\`, under \`independent\` the project's judge. This run lands and leaves the
+criteria standing as that run's brief. Its own \`pass\` or \`short\` is still written, with the probe
+it ran: it is kept as this run's evidence, the merge check runs that probe, and it never counts. Its
+answer says so, \`notCounted: { code: 'VERDICT_BY_BUILDER' }\`. A \`fail\` counts whoever writes it,
+and on an issue past its build it sends the issue back to \`reopen\`: the correction is made there,
+never in a new issue. The building run is the one that took the issue before its work landed (it
+holds the lease or recorded the checks); each verdict names the run that wrote it, the run holding
+the issue on the caller's box unless the body names another in \`run\` (the box's run id), and an
+unknown \`run\` is refused \`VERDICT_RUN_UNKNOWN\`.
 
 Judge each criterion at the head you will land and write its verdict as you judge it:
 \`POST /api/issues/:id/verdicts\` \`{ criterion, verdict, reason, identity: { kind: 'commit', sha }, evidence, withoutClip?, run? }\`,

@@ -124,7 +124,8 @@ describe('a held row says why, and keeps one record per reason', () => {
     const id = await heldRow();
     await sweep();
 
-    await fx.postVerdict(id, verdictComment([verdictBlock(1, 'pass'), verdictBlock(2, 'fail')]));
+    // a skip, not a fail: a fail reopens the issue (ISS-683, REQ-74 BC-3), which takes it off the release
+    await fx.postVerdict(id, verdictComment([verdictBlock(1, 'pass'), verdictBlock(2, 'skipped')]));
     await sweep();
 
     const hold = await holdOf(id);

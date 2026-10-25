@@ -70,7 +70,7 @@ export const OUTBOX_CONSUMERS = {
 	"release.cut": ["release-naming"],
 	"release.shipped": ["notify-feedback", "steward", "master-wake"],
 	"release.approvalDecided": ["release-approval-wake"],
-	"verdict.recorded": ["release-highlights"],
+	"verdict.recorded": ["release-highlights", "issue-fail-reopen"],
 	"credential.tokenChanged": ["ws-broadcast"],
 	"runner.changed": ["ws-broadcast"],
 	"job.changed": ["ws-broadcast"],

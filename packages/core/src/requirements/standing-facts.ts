@@ -185,6 +185,7 @@ export async function issueCriteriaOf(
       identity: voided || r.verdict === null ? null : identityOf(r),
       byBuilder: !voided && r.verdict !== null && r.by_builder === true,
       authored: !voided && r.verdict !== null && r.authored === true,
+      recordedAt: voided || !r.verdict_at ? null : new Date(r.verdict_at),
     };
   };
   const byCriterion = new Map<string, CriterionVerdictRow[]>();

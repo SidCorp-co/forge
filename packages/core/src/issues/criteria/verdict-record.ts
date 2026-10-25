@@ -4,7 +4,7 @@
 import type { CriterionClass, CriterionJudge } from '@forge/contracts/issue-design';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { RELEASE_CLIP_MIMES } from '@forge/contracts/release-page';
-import { type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
+import { countedUnderCutover, type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import {
@@ -332,17 +332,18 @@ async function recordingSession(
 }
 
 /**
- * Whether the verdict just written will never count, by name (contracts `verified-rule.ts:notCountedOf`):
- * read through the same builder rule every count of proof reads (`built-by.ts`).
+ * Whether the verdict just written will never count, by name (contracts `verified-rule.ts:notCountedOf`),
+ * or counts only under the builder-pass cutover: read through the same builder rule every count of
+ * proof reads (`built-by.ts`).
  */
-async function notCountedFor(
+async function countingOf(
   tx: Tx,
-  issue: { id: string; projectId: string },
+  projectId: string,
   verdict: { id: string; value: string },
-): Promise<NotCounted | null> {
-  if (verdict.value !== 'pass' && verdict.value !== 'short') return null;
-  const judge = await readJudge(issue.projectId);
-  if (judge !== 'independent') return null;
+): Promise<{ notCounted: NotCounted | null; countedUnderCutover: boolean }> {
+  if (verdict.value !== 'pass' && verdict.value !== 'short') {
+    return { notCounted: null, countedUnderCutover: false };
+  }
   const rows = (await tx.execute(sql`
     SELECT ${verdictByBuilderSql({
       issueId: sql`v.issue_id`,
@@ -350,19 +351,28 @@ async function notCountedFor(
       authorDevice: sql`v.author_device_id`,
       at: sql`v.created_at`,
       runSession: sql`v.run_session_id`,
-    })} AS by_builder
+    })} AS by_builder, v.created_at AS recorded_at
       FROM criterion_verdicts v WHERE v.id = ${verdict.id}`)) as unknown as {
     by_builder: boolean | null;
+    recorded_at: string | Date;
   }[];
-  return notCountedOf(
-    { verdict: verdict.value, byBuilder: rows[0]?.by_builder === true, authored: true },
-    judge,
-  );
+  const judge = await readJudge(projectId);
+  const read = {
+    verdict: verdict.value,
+    byBuilder: rows[0]?.by_builder === true,
+    authored: true,
+    recordedAt: rows[0]?.recorded_at ?? null,
+  };
+  return {
+    notCounted: notCountedOf(read, judge),
+    countedUnderCutover: countedUnderCutover(read, judge),
+  };
 }
 
 /**
  * Insert one verdict, refused by name where the draft, its criterion or its design is wrong. It
- * answers, by name, where the verdict is kept and will never count (`notCounted`).
+ * answers, by name, where the verdict is kept and will never count (`notCounted`), and marks a
+ * builder's pass that counts only under the cutover (`countedUnderCutover`).
  */
 export async function recordVerdict(
   tx: Tx,
@@ -376,8 +386,10 @@ export async function recordVerdict(
     run?: string | undefined;
     /** The recording session a door already resolved; given, `run` is not read. */
     runSession?: string | null | undefined;
+    /** False where the door moves the issue itself on a fail (a release's probe replay). */
+    reopens?: boolean;
   },
-): Promise<{ id: string; notCounted: NotCounted | null }> {
+): Promise<{ id: string; notCounted: NotCounted | null; countedUnderCutover: boolean }> {
   const { issue, draft, author } = args;
   const fault = verdictDraftFault(draft);
   if (fault) throw verdictRefused(fault);
@@ -453,7 +465,10 @@ export async function recordVerdict(
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
-  const notCounted = await notCountedFor(tx, issue, { id: row.id, value: draft.verdict });
+  const { notCounted, countedUnderCutover: underCutover } = await countingOf(tx, issue.projectId, {
+    id: row.id,
+    value: draft.verdict,
+  });
   await keepFailAsCorrection(tx, {
     issue,
     verdictId: row.id,
@@ -472,17 +487,32 @@ export async function recordVerdict(
       ...probeField(draft.verdict, route?.class ?? null, probeId),
       ...(runSessionId ? [{ key: 'run-session', value: runSessionId }] : []),
       ...(notCounted ? [{ key: 'not-counted', value: notCounted.code }] : []),
+      ...(underCutover ? [{ key: 'counted-under-cutover', value: 'true' }] : []),
     ],
     commentId: args.commentId ?? null,
   });
-  // a verdict against a commit changes what a release page carrying the issue may claim (REQ-40 BC-13)
-  if (identity.identityKind === 'commit' && identity.commitSha) {
+  // a verdict against a commit changes what a release page carrying the issue may claim (REQ-40 BC-13),
+  // and a fail sends the issue that owns the work back to reopen, whichever door recorded it (REQ-74 BC-3)
+  const commitSha = identity.identityKind === 'commit' ? (identity.commitSha ?? null) : null;
+  const failed =
+    draft.verdict === 'fail' && args.reopens !== false
+      ? {
+          criterion: draft.criterion,
+          requirement: null,
+          reason: draft.reason?.trim() || null,
+          authorUserId: author.userId,
+          authorDeviceId: author.deviceId,
+          agency: author.agency,
+        }
+      : null;
+  if (commitSha || failed) {
     await emitEvent(tx, 'verdict.recorded', {
       projectId: issue.projectId,
       issueId: issue.id,
       verdictId: row.id,
-      commitSha: identity.commitSha,
+      commitSha,
+      failed,
     });
   }
-  return { id: row.id, notCounted };
+  return { id: row.id, notCounted, countedUnderCutover: underCutover };
 }

@@ -132,6 +132,8 @@ export async function recordReplayVerdicts(
             author,
             // a replay is no run's: read off its box, as before any verdict named one
             runSession: null,
+            // the replay sends a failing member back as its release (`release-batch/probe-replay.ts`)
+            reopens: false,
           }),
         ),
       );

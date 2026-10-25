@@ -533,6 +533,8 @@
     "issues.verdict.none": "No verdict",
     "issues.verdict.reason": "Reason: {reason}",
     "issues.verdict.short": "Pass, short of the wording",
+    "issues.verdict.builderPass": "Builder",
+    "issues.verdict.builderPassWhy": "Passed by the run that built it, before independent judging began",
     "issues.verdictAct.attached": "Attached to this issue",
     "issues.verdictAct.attachedNone": "None",
     "issues.verdictAct.clipChosen": "Clip {name} · {size}, cited when you record.",

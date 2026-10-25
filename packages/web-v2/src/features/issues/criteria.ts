@@ -25,6 +25,8 @@ export interface CriterionVerdict extends StorefrontDraftVerdictView {
   authorAgency: "human" | "agent";
   backfilled: boolean;
   createdAt: string;
+  /** On a live criterion's latest verdict: a builder's pass counted only because it predates the cutover. */
+  countedUnderCutover?: boolean;
 }
 
 export interface CriterionRow {

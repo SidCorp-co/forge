@@ -226,7 +226,7 @@ describe("the overview shows no criterion, code, commit or path (BC-15)", () => 
   it("draws seven criteria of one issue as seven lines a reader tells apart", () => {
     // J7 on 0.4.0-dev.222: REQ-34 drew `BC-18 A refusal says…` seven times, under one repeated React key
     const base = releasePage();
-    const seven = Array.from({ length: 7 }, (_, i) => ({ code: "BC-18", statement: `refusal ${i + 1} names its field`, short: false, issueKey: "ISS-451", n: i + 1 }));
+    const seven = Array.from({ length: 7 }, (_, i) => ({ code: "BC-18", statement: `refusal ${i + 1} names its field`, short: false, issueKey: "ISS-451", n: i + 1, countedUnderCutover: false }));
     const page = {
       ...base,
       view: "developer" as const,

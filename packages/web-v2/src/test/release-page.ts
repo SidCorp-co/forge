@@ -51,9 +51,9 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
         title: "Release page",
         completes: true,
         proven: [
-          { code: "BC-1", statement: "The page shows the version and date.", short: false, issueKey: "ISS-1", n: 1 },
-          { code: "BC-1", statement: "The page names who approved it.", short: false, issueKey: "ISS-1", n: 2 },
-          { code: "BC-2", statement: "Each release opens on highlights.", short: true, issueKey: "ISS-1", n: 3 },
+          { code: "BC-1", statement: "The page shows the version and date.", short: false, issueKey: "ISS-1", n: 1, countedUnderCutover: false },
+          { code: "BC-1", statement: "The page names who approved it.", short: false, issueKey: "ISS-1", n: 2, countedUnderCutover: false },
+          { code: "BC-2", statement: "Each release opens on highlights.", short: true, issueKey: "ISS-1", n: 3, countedUnderCutover: false },
         ],
         unproven: 1,
         business: {
