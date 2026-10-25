@@ -90,6 +90,21 @@ export const MCP_PANEL_INTRO =
 /** Each reason's hint, for a reader that holds them to the panel's own sentence rule. */
 export const REASON_HINTS = Object.values(REASON_META).flatMap((m) => (m.hint ? [m.hint] : []));
 
+/** "Not granted" to a reader who may not grant it: the grant's own line below names who may. */
+export const NOT_GRANTED_YET = "No agent on this project may use it yet.";
+
+/**
+ * A row's hint for this reader: the switch to press is offered only to a reader core says may press
+ * it (ISS-1421 r28, judge-114 on 314).
+ */
+export function reasonHint(
+  reason: McpServerPreviewEntry["reason"],
+  binding: Pick<IntegrationSummary, "acts"> | undefined,
+): string | undefined {
+  if (reason === "not_granted" && binding && !binding.acts.grantAgents) return NOT_GRANTED_YET;
+  return REASON_META[reason].hint;
+}
+
 function ReasonPill({ reason }: { reason: McpServerPreviewEntry["reason"] }) {
   const meta = REASON_META[reason];
   return <Pill label={meta.label} fg={meta.fg} bg={meta.bg} icon={meta.icon} />;
@@ -132,6 +147,7 @@ function McpServerRow({
   }
 
   const checked = formatRelativeTime(entry.lastHealthAt);
+  const hint = reasonHint(entry.reason, binding);
 
   return (
     <li className="flex flex-col gap-1.5 border-t border-line py-3">
@@ -162,9 +178,7 @@ function McpServerRow({
         </p>
       ) : null}
 
-      {REASON_META[entry.reason].hint && (
-        <p className="fg-body-sm text-[var(--amberw-600)]">{REASON_META[entry.reason].hint}</p>
-      )}
+      {hint && <p className="fg-body-sm text-[var(--amberw-600)]">{hint}</p>}
 
       {binding && (
         <AgentAccessControl projectId={projectId} binding={binding} readFrom="panel" />

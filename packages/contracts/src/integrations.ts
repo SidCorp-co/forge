@@ -474,7 +474,8 @@ export interface BindingActs {
   whoChanges: string;
   whoSavesKey: string;
   whoTurnsOn: string;
-  whoGrantsAgents: string;
+  /** Null where no one may: the provider declares no agent path, so there is nothing to grant (ISS-1421 r28). */
+  whoGrantsAgents: string | null;
 }
 
 /** What the reader may do on a project's Integrations tab beyond any one binding. */

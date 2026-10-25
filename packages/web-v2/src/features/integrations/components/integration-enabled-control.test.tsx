@@ -177,3 +177,33 @@ describe("the key field's hint over a removed connection", () => {
     expect(removedKeyHint("key", { saveKey: false })).not.toContain("Enter one");
   });
 });
+
+// ISS-1421 r28: judge-114 saw the Enabled switch drawn on, orange, under a header reading Turned off,
+// over a removed connection, for every reader, with nothing saying why.
+describe("an Enabled switch on over a connection that is off", () => {
+  it("says nothing uses it while its shared connection is removed", () => {
+    render(<IntegrationEnabledControl projectId={PROJECT} binding={binding({})} />);
+    expect(screen.getByRole("switch", { name: "Enabled for this project" })).toBeChecked();
+    expect(
+      screen.getByText("On for this project, but nothing uses it while its shared connection is removed."),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing uses it while its shared connection is turned off", () => {
+    render(<IntegrationEnabledControl projectId={PROJECT} binding={binding({ hasSecrets: true })} />);
+    expect(
+      screen.getByText("On for this project, but nothing uses it while its shared connection is turned off."),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing more where the connection is on, or the switch is off", () => {
+    render(
+      <IntegrationEnabledControl
+        projectId={PROJECT}
+        binding={binding({ connectionActive: true, hasSecrets: true, active: true })}
+      />,
+    );
+    render(<IntegrationEnabledControl projectId={PROJECT} binding={binding({ bindingActive: false })} />);
+    expect(screen.queryByText(/^On for this project, but nothing uses it/)).toBeNull();
+  });
+});

@@ -170,7 +170,7 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     expect(body.code).toBe('COOLIFY_API_ERROR');
     // ISS-1421 r17 — said of the host that answered, which may not be Coolify.
     expect(body.message).toContain(
-      'The server at coolify.example answered 404 Not Found to GET /api/v1/applications/app-uuid/rollback-images, so it may not be Coolify.',
+      'The server at coolify.example answered 404 Not Found when asked for the rollback images of application app-uuid, so it may not be Coolify.',
     );
     expect(body.message).not.toContain('Coolify answered');
     expect(body.message).toContain('no rollback image list to read and no tag to roll back to');
@@ -185,7 +185,7 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     const body = (await res.json()) as { message: string };
     // ISS-1421 r6, criterion 98: it ends as a sentence does.
     expect(body.message).toBe(
-      'The server at coolify.example answered 500 Internal Server Error to GET /api/v1/applications/app-uuid/rollback-images.',
+      'The server at coolify.example answered 500 Internal Server Error when asked for the rollback images of application app-uuid.',
     );
   });
 
@@ -223,7 +223,8 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     expect(body.code).toBe('COOLIFY_UNREACHABLE');
     expect(body.message).toContain('Forge could not reach the server at');
     expect(body.message).toMatch(/\.$/);
-    expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
+    expect(body.message).toContain('the rollback images of application app-uuid');
+    expect(body.message).not.toContain('/api/');
     expect(body.message).not.toContain('<uuid>');
   });
 
@@ -241,8 +242,10 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     expect(res.status).toBe(424);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('COOLIFY_UNREACHABLE');
-    expect(body.message).toContain('Forge got no answer to');
-    expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
+    expect(body.message).toContain(
+      'for the rollback images of application app-uuid and got no answer in time',
+    );
+    expect(body.message).not.toContain('/api/');
     expect(body.message).not.toContain('<uuid>');
   });
 
@@ -254,7 +257,8 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     expect(body.code).toBe('COOLIFY_ANSWER_NOT_JSON');
     expect(body.code).not.toBe('COOLIFY_UNREACHABLE');
     expect(body.message).toContain('something that is not JSON');
-    expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
+    expect(body.message).toContain('the rollback images of application app-uuid');
+    expect(body.message).not.toContain('/api/');
     expect(body.message).not.toContain('<uuid>');
   });
 
@@ -294,7 +298,7 @@ describe('the other Coolify routes, when Coolify refuses', () => {
     const res = await app.request(`/${PROJECT_ID}/integrations/coolify/status`);
     expect(res.status).toBe(502);
     expect(((await res.json()) as { message: string }).message).toBe(
-      'The server answered HTTP 500 to GET /api/v1/resources.',
+      'The server answered HTTP 500 when asked for its list of resources.',
     );
   });
 });
@@ -328,7 +332,8 @@ describe('the application list reads, when Coolify cannot be reached', () => {
     expect(res.status).toBe(424);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('COOLIFY_UNREACHABLE');
-    expect(body.message).toContain('for GET /api/v1/applications, because');
+    expect(body.message).toContain('to ask for its list of applications, because');
+    expect(body.message).not.toContain('/api/');
   });
 
   it('answers the bound targets 424 naming the read, never a bare 500', async () => {
@@ -354,7 +359,7 @@ describe('the application list reads, when Coolify cannot be reached', () => {
     });
     expect(res.status).toBe(424);
     expect(((await res.json()) as { message: string }).message).toBe(
-      'The server answered HTTP 500 to GET /api/v1/applications.',
+      'The server answered HTTP 500 when asked for its list of applications.',
     );
   });
 });

@@ -269,7 +269,7 @@ describe('who a keyless switch-on and a key save answer (ISS-1421 r26, criteria 
     });
     expect(saved.status, JSON.stringify(saved.body)).toBe(403);
     expect(saved.body.message).toMatch(
-      /only an owner or admin of that organization can change its key/,
+      /only an owner or admin of the organization that owns it can change its key/,
     );
     const after = await store.findBindingWithConnectionById(bindingId);
     expect(after?.connection.secretsEnc).toBeNull();

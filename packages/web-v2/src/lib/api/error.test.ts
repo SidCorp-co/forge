@@ -211,7 +211,7 @@ describe('the connection refusals (ISS-1216)', () => {
   });
 
   it('prints the server sentence for a connection the caller may read but not change', () => {
-    const sentence = 'You can see the connection "Deploy box" but not change it: it is owned by another member. Ask another member.';
+    const sentence = 'You can see the connection "Deploy box" but not test it: it is owned by a member who has set no name Forge can show, and only its owner can test it. Ask the member who owns it, or create a connection of your own.';
     const err = new ApiError(403, sentence, 'CONNECTION_NOT_MANAGEABLE');
     expect(formatApiError(err)).toBe(sentence);
   });

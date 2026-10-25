@@ -167,7 +167,8 @@ describe('a refusal to change a connection names its owner', () => {
     expect(body.message).not.toMatch(/another individual/i);
   });
 
-  it('names a person who set no display name as another member, lower-case mid-sentence, never by their email', async () => {
+  // ISS-1421 r28, judge-114: "Ask another member" read as "ask anyone", so the one to ask is named by what they are.
+  it('names a person who set no display name as the member who owns it, never as another member or by their email', async () => {
     const connection = await appBoundTo([projectId]);
     await harness.db.execute(sql`UPDATE users SET display_name = NULL WHERE id = ${clicker.id}`);
     const rows = (await harness.db.execute(
@@ -179,8 +180,9 @@ describe('a refusal to change a connection names its owner', () => {
       await app.request('/api/integration-connections', { headers: await headers(boundAdmin.id) }),
     );
 
-    expect(body.message).toContain('owned by another member,');
-    expect(body.message).toContain('Ask another member,');
+    expect(body.message).toContain('owned by a member who has set no name Forge can show,');
+    expect(body.message).toContain('Ask the member who owns it,');
+    expect(body.message).not.toContain('another member');
     expect(body.message).not.toContain(rows[0]?.email ?? '@');
     expect(body.message).not.toMatch(/Another member/);
     expect(listed.items?.find((i) => i.id === connection.id)?.access?.ownerName).toBe(
@@ -203,7 +205,7 @@ describe('a refusal to change a connection names its owner', () => {
       const body = await bodyOf(await patch(caller, connection.id));
 
       expect(body.message).toMatch(
-        /^You can see the connection "GitHub App forge-test" but not change it/,
+        /^You can see the connection "GitHub App forge-test" but not rename it/,
       );
       expect(body.message).not.toContain(connection.id);
     },

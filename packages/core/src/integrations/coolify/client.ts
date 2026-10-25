@@ -25,12 +25,57 @@ export class CoolifyApiError extends Error {
     route?: string,
     addressSuspect = false,
   ) {
-    super(message ?? `The server answered HTTP ${status}${route ? ` to ${route}` : ''}.`);
+    super(message ?? `The server answered HTTP ${status}${whenAsked(route ?? null)}.`);
     this.status = status;
     this.body = body;
     this.route = route ?? null;
     this.addressSuspect = addressSuspect;
   }
+}
+
+/** One route this client sends, and what it asks the server for, in a person's words. */
+const ROUTE_WORDS: { match: RegExp; words: (m: RegExpExecArray) => string }[] = [
+  { match: /^POST \/api\/v1\/deploy$/, words: () => 'a deploy' },
+  { match: /^GET \/api\/v1\/resources$/, words: () => 'its list of resources' },
+  { match: /^GET \/api\/v1\/applications$/, words: () => 'its list of applications' },
+  {
+    match: /^GET \/api\/v1\/applications\/([^/]+)\/rollback-images$/,
+    words: (m) => `the rollback images of application ${decodeURIComponent(m[1] ?? '')}`,
+  },
+  {
+    match: /^GET \/api\/v1\/applications\/([^/]+)\/logs$/,
+    words: (m) => `the logs of application ${decodeURIComponent(m[1] ?? '')}`,
+  },
+  {
+    match: /^POST \/api\/v1\/applications\/([^/]+)\/rollback$/,
+    words: (m) => `a rollback of application ${decodeURIComponent(m[1] ?? '')}`,
+  },
+  {
+    match: /^POST \/api\/v1\/deployments\/([^/]+)\/cancel$/,
+    words: (m) => `a cancel of deployment ${decodeURIComponent(m[1] ?? '')}`,
+  },
+  {
+    match: /^GET \/api\/v1\/deployments\/([^/]+)$/,
+    words: (m) => `deployment ${decodeURIComponent(m[1] ?? '')}`,
+  },
+];
+
+/**
+ * What a request asked the server for, said to a person: "its list of applications", never the HTTP
+ * route, which stays on the error's `route` for logs and the ability table (ISS-1421 r28, judge-114).
+ */
+function askedFor(route: string | null): string | null {
+  for (const { match, words } of ROUTE_WORDS) {
+    const m = route === null ? null : match.exec(route);
+    if (m) return words(m);
+  }
+  return null;
+}
+
+/** " when asked for its list of applications", or nothing for a request this client has no words for. */
+function whenAsked(route: string | null): string {
+  const asked = askedFor(route);
+  return asked ? ` when asked for ${asked}` : '';
 }
 
 /** "404 Not Found", or the bare number where the status has no registered name. */
@@ -77,13 +122,14 @@ export function coolifyAbilityForRoute(route: string | null): string | null {
  * which reproduces the state exactly (ISS-924).
  */
 export function describeCoolifyForbidden(err: CoolifyApiError): string {
-  const route = err.route ?? 'the requested route';
+  const asked = askedFor(err.route);
+  const request = asked ? `the request for ${asked}` : 'the request';
   const ability = coolifyAbilityForRoute(err.route);
   const missing = ability
     ? `the \`${ability}\` ability (\`api.ability:${ability}\`)`
-    : 'the ability that route requires';
+    : 'the ability that request requires';
   const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
-  return `${said} If this is Coolify, it knows the API token but refused ${route}: the token is missing ${missing}. Widen this token's abilities in Coolify (Keys & Tokens → edit the token); the credential itself is valid, so replacing it will not change this.`;
+  return `${said} If this is Coolify, it knows the API token but refused ${request}: the token is missing ${missing}. Widen this token's abilities in Coolify (Keys & Tokens → edit the token); the credential itself is valid, so replacing it will not change this.`;
 }
 
 /**
@@ -172,7 +218,7 @@ export class CoolifyClient {
 
   /** What the host answered, said of the host: whether it is Coolify is what the answer is about. */
   private answered(status: number, route: string): string {
-    const said = `The server at ${hostOf(this.baseUrl)} answered ${statusWords(status)} to ${route}`;
+    const said = `The server at ${hostOf(this.baseUrl)} answered ${statusWords(status)}${whenAsked(route)}`;
     return status === 404 ? `${said}, so it may not be Coolify.` : `${said}.`;
   }
 
@@ -314,7 +360,7 @@ export class CoolifyClient {
     return new CoolifyApiError(
       status,
       '',
-      `The server at ${hostOf(this.baseUrl)} answered ${route} with something other than ${what}, so it may not be Coolify.`,
+      `The server at ${hostOf(this.baseUrl)} was asked for ${askedFor(route) ?? what} and answered with something other than ${what}, so it may not be Coolify.`,
       route,
       true,
     );

@@ -219,7 +219,7 @@ describe('CoolifyClient reading a resource it was not given', () => {
     await expect(client.getResource('res-uuid')).rejects.toMatchObject({
       status: 404,
       message:
-        'The server at example.com answered 404 Not Found to GET /api/v1/resources, so it may not be Coolify.',
+        'The server at example.com answered 404 Not Found when asked for its list of resources, so it may not be Coolify.',
       addressSuspect: true,
     });
   });
@@ -240,7 +240,7 @@ describe('CoolifyClient reading a resource it was not given', () => {
     const refused = await client.getResource('res-uuid').catch((e: unknown) => e);
     expect(refused).toMatchObject({ status: 200, addressSuspect: true });
     expect((refused as Error).message).toBe(
-      'The server at httpbin.org/anything answered GET /api/v1/resources with something other than a list of resources, so it may not be Coolify.',
+      'The server at httpbin.org/anything was asked for its list of resources and answered with something other than a list of resources, so it may not be Coolify.',
     );
     expect((refused as Error).message).not.toMatch(/Coolify API error|404/);
   });
@@ -263,13 +263,14 @@ describe('coolify 403 diagnosis (ISS-924)', () => {
     const msg = describeCoolifyForbidden(
       new CoolifyApiError(403, 'forbidden', undefined, 'POST /api/v1/deploy'),
     );
-    expect(msg).toContain('POST /api/v1/deploy');
+    expect(msg).toContain('refused the request for a deploy');
+    expect(msg).not.toContain('/api/');
     expect(msg).toContain('api.ability:deploy');
     expect(msg).toContain('Widen');
     expect(msg).toContain('replacing it will not change this');
     // ISS-1421 r17 — said of the server that answered, which may not be Coolify.
     expect(msg).toMatch(
-      /^The server answered HTTP 403 to POST \/api\/v1\/deploy\. If this is Coolify,/,
+      /^The server answered HTTP 403 when asked for a deploy\. If this is Coolify,/,
     );
   });
 
@@ -277,8 +278,11 @@ describe('coolify 403 diagnosis (ISS-924)', () => {
     const msg = describeCoolifyForbidden(
       new CoolifyApiError(403, 'forbidden', undefined, 'GET /api/v1/servers'),
     );
-    expect(msg).toContain('GET /api/v1/servers');
-    expect(msg).toContain('the ability that route requires');
+    expect(msg).toMatch(
+      /^The server answered HTTP 403\. If this is Coolify, it knows the API token but refused the request:/,
+    );
+    expect(msg).not.toContain('/api/');
+    expect(msg).toContain('the ability that request requires');
   });
 });
 
@@ -420,7 +424,7 @@ describe('a server at the saved address that may not be Coolify', () => {
       .catch((e: unknown) => e);
     expect(refused).toMatchObject({ status: 200, addressSuspect: true });
     expect(describeCoolifyAnswer(refused as CoolifyApiError)).toBe(
-      'The server at httpbin.org/anything answered GET /api/v1/applications with something other than a list of applications, so it may not be Coolify. Check the address saved on this connection.',
+      'The server at httpbin.org/anything was asked for its list of applications and answered with something other than a list of applications, so it may not be Coolify. Check the address saved on this connection.',
     );
   });
 
@@ -464,7 +468,7 @@ describe('a server at the saved address that may not be Coolify', () => {
       .catch((e: unknown) => e)) as CoolifyApiError;
     const said = describeCoolifyAnswer(refused);
     expect(said).toBe(
-      'The server at httpbin.org/anything answered 401 Unauthorized to GET /api/v1/resources. If this is Coolify, it refused the stored API token, so save a new token from Keys & Tokens in Coolify. If it is not, check the address saved on this connection.',
+      'The server at httpbin.org/anything answered 401 Unauthorized when asked for its list of resources. If this is Coolify, it refused the stored API token, so save a new token from Keys & Tokens in Coolify. If it is not, check the address saved on this connection.',
     );
     expect(said).not.toMatch(/^Coolify refused/);
   });

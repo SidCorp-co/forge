@@ -110,7 +110,8 @@ describe('coolifyAdapter.healthcheck — 401 and 403 are different verdicts (ISS
 
     expect(res.status).toBe('needs_scope');
     expect(res.message).toContain('api.ability:read');
-    expect(res.message).toContain('GET /api/v1/resources');
+    expect(res.message).toContain('refused the request for its list of resources');
+    expect(res.message).not.toContain('/api/');
     expect(res.message).not.toMatch(/re-enter|replace it/);
     expect(res.diagnostics).toMatchObject({
       httpStatus: 403,
@@ -157,7 +158,7 @@ describe('coolifyAdapter.healthcheck — 401 and 403 are different verdicts (ISS
     const res = await coolifyAdapter.healthcheck(buildCtx({ apiToken: 'cf-current' }));
     expect(res.status).toBe('error');
     expect(res.message).toBe(
-      'The server at coolify.example answered 404 Not Found to GET /api/v1/resources, so it may not be Coolify. Check the address saved on this connection, then test again.',
+      'The server at coolify.example answered 404 Not Found when asked for its list of resources, so it may not be Coolify. Check the address saved on this connection, then test again.',
     );
     expect(res.diagnostics).toMatchObject({ httpStatus: 404 });
 

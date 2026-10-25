@@ -8,7 +8,15 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { McpServerPreviewEntry } from "../types";
-import { MCP_PANEL_INTRO, McpServersPanel, REASON_HINTS, rowTitle } from "./mcp-servers-panel";
+import { ALL_ACTS } from "../test-acts";
+import {
+  MCP_PANEL_INTRO,
+  McpServersPanel,
+  NOT_GRANTED_YET,
+  REASON_HINTS,
+  reasonHint,
+  rowTitle,
+} from "./mcp-servers-panel";
 
 expect.extend(matchers);
 
@@ -103,5 +111,19 @@ describe("McpServersPanel", () => {
     expect(screen.queryByText(/Set up Coolify/)).toBeNull();
     expect(screen.getByText(/^It is set up and turned off/)).toBeInTheDocument();
     expect(screen.getByText(/Set up Sentry in the list above/)).toBeInTheDocument();
+  });
+});
+
+// ISS-1421 r28 (314): judge-114's plain member read "Switch on … below to allow it." above a switch
+// they may not press, on a grant only an owner or admin of the organization may give.
+describe("the not-granted hint", () => {
+  it("tells a reader who may grant it to switch it on", () => {
+    expect(reasonHint("not_granted", { acts: ALL_ACTS })).toMatch(/^No agent on this project may use it yet\. Switch on /);
+  });
+
+  it("tells a reader who may not grant it nothing to press", () => {
+    const said = reasonHint("not_granted", { acts: { ...ALL_ACTS, grantAgents: false } });
+    expect(said).toBe(NOT_GRANTED_YET);
+    expect(said).not.toMatch(/Switch on/);
   });
 });

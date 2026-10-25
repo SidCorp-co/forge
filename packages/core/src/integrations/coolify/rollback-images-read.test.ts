@@ -25,7 +25,7 @@ describe('readRollbackImagesNamingFailure', () => {
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('unreachable');
     expect(err.message).toBe(
-      'Forge could not reach the server at coolify.example for GET /api/v1/applications/app-1/rollback-images, because nothing accepted the connection at its address. Forge has no rollback image list to read.',
+      'Forge could not reach the server at coolify.example to ask for the rollback images of application app-1, because nothing accepted the connection at its address. Forge has no rollback image list to read.',
     );
     expect(err.message).not.toMatch(/fetch failed|ECONNREFUSED/);
   });
@@ -40,9 +40,9 @@ describe('readRollbackImagesNamingFailure', () => {
     const err = await refused(clientWith(fetchImpl, 5));
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('timeout');
-    expect(err.message).toContain('Forge got no answer to');
-    expect(err.message).toContain('in time from the server at coolify.example.');
-    expect(err.message).toContain('GET /api/v1/applications/app-1/rollback-images');
+    expect(err.message).toBe(
+      'Forge asked the server at coolify.example for the rollback images of application app-1 and got no answer in time. Forge has no rollback image list to read.',
+    );
   });
 
   it('names a 200 whose body is not JSON', async () => {
@@ -52,10 +52,9 @@ describe('readRollbackImagesNamingFailure', () => {
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('not-json');
     expect(err.message).toContain(
-      'The server at coolify.example answered GET /api/v1/applications/app-1/rollback-images with something that is not JSON, so it may not be Coolify.',
+      'Forge asked the server at coolify.example for the rollback images of application app-1, and it answered with something that is not JSON, so it may not be Coolify.',
     );
     expect(err.message).not.toContain('Unexpected token');
-    expect(err.message).toContain('GET /api/v1/applications/app-1/rollback-images');
   });
 
   it('leaves a Coolify HTTP refusal as the CoolifyApiError it is', async () => {
@@ -70,5 +69,21 @@ describe('readRollbackImagesNamingFailure', () => {
       })) as typeof fetch;
     const res = await readRollbackImagesNamingFailure(clientWith(fetchImpl), 'app-1');
     expect(res.current).toBe('a');
+  });
+});
+
+// ISS-1421 r28 — judge-114 read "for GET /api/v1/applications" in the deploy-target picker.
+describe('a read failure says what was asked for in words', () => {
+  it('names no HTTP route for the application list or the rollback images', async () => {
+    const { listApplicationsNamingFailure } = await import('./rollback-images-read.js');
+    const fetchImpl = (async () => {
+      throw new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } });
+    }) as typeof fetch;
+    const apps = await listApplicationsNamingFailure(clientWith(fetchImpl)).catch((e) => e);
+    expect(apps.message).toBe(
+      'Forge could not reach the server at coolify.example to ask for its list of applications, because its host name does not resolve. Forge has no application list to read.',
+    );
+    const images = await refused(clientWith(fetchImpl));
+    for (const said of [apps.message, images.message]) expect(said).not.toMatch(/GET |\/api\//);
   });
 });
