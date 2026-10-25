@@ -51,6 +51,7 @@ import {
   lockRequirements,
   type RequirementOutcome,
   requirementKernelActor,
+  voidsItsDecisions,
 } from './write-tx.js';
 
 const DROPPABLE = entriesOf(REQUIREMENT_MACHINE, 'dropped') as RequirementStatus[];
@@ -195,6 +196,7 @@ export async function acceptDelivery(input: {
       where: eq(requirements.id, row.id),
       reason,
       actor: requirementKernelActor(actor),
+      afterWrite: voidsItsDecisions('accepted', actor, reason, 'requirements'),
       source: 'requirements',
       returning: ['id'],
       // the acceptance checklist (Requirement lifecycle r15 acceptance_check), judged by the kernel
@@ -280,6 +282,7 @@ export async function moveDelivery(input: {
       where: eq(requirements.id, row.id),
       reason: input.reason?.trim() || null,
       actor: requirementKernelActor(actor),
+      afterWrite: voidsItsDecisions(input.to, actor, input.reason?.trim() || null, 'requirements'),
       source: 'requirements',
       returning: ['id'],
       guards: {
@@ -332,6 +335,7 @@ export async function dropIn(
     where: eq(requirements.id, rowId),
     reason: reason.trim(),
     actor: requirementKernelActor(actor),
+    afterWrite: voidsItsDecisions('dropped', actor, reason.trim(), 'requirements'),
     source: 'requirements',
     returning: ['id'],
   });

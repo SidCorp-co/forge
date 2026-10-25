@@ -15,6 +15,8 @@ const decision = (key: string, over: Partial<NeedsYouDecision> = {}): NeedsYouDe
   title: key,
   opens: { kind: 'requirement', key },
   question: `Agree ${key}?`,
+  changes: `Whether ${key} is built`,
+  impact: `${key} waits on this.`,
   recommended: { answerId: 'agree', why: 'rule', by: 'rule' },
   noRecommendation: null,
   answers: [

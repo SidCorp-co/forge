@@ -169,8 +169,11 @@ describe('a requirement re-pin decision declares the reason its route needs (REQ
       repin?.needsReason,
       'the route refuses a re-pin with no reason, so the button asks for one',
     ).toBe(true);
+    // the reason it asks starts from the recommendation's why (REQ-68 BC-2)
+    expect(repin?.body?.reason).toBe((decision?.recommended as Doc | undefined)?.why);
 
-    const bare = await say('owner', 'POST', repin?.path as string, repin?.body as Doc);
+    const { reason: _prefilled, ...withoutReason } = (repin?.body ?? {}) as Doc;
+    const bare = await say('owner', 'POST', repin?.path as string, withoutReason);
     expect([bare.status, bare.json.code]).toEqual([422, 'REQUIREMENT_SIGNOFF_REASON_REQUIRED']);
     const pressed = await say(
       'owner',

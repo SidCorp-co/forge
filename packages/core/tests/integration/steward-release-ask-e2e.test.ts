@@ -19,7 +19,6 @@
 // The master's account is the one its pane writes under (ISS-590 round 2): a box a person admin
 // paired, its pane writing as the project's agent, is not asked to approve as that person.
 
-import type { Said } from '@forge/contracts/said';
 import { type ItemStanding, STEWARD_DEBOUNCE_MS } from '@forge/contracts/steward';
 import { sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -41,6 +40,7 @@ import {
   rows,
 } from '../helpers/factories.js';
 import { pairTestBox } from '../helpers/paired-box.js';
+import { releaseWait } from '../helpers/release-wait.js';
 import { resetScript, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -59,45 +59,6 @@ let masterId = '';
 let deviceId = '';
 let standings: ItemStanding[] = [];
 let clock = Date.now();
-
-/** A sentence the fake read carries, by its registry key; nothing here renders it. */
-const said = (key: string) => ({ key }) as unknown as Said;
-
-/** An issue at the release gate, its release waiting on an approval, overdue. */
-function releaseWait(issue: { id: string; key: string }, basis: string): ItemStanding {
-  const says = {
-    who: said('issues.standing.who.release'),
-    act: said('issues.standing.act.approveOnReleases'),
-    rule: said('issues.rule.approval'),
-  };
-  return {
-    subject: { kind: 'issue', id: issue.id, key: issue.key },
-    title: 'issue',
-    group: 'stuck',
-    waitingOn: {
-      kind: 'release',
-      who: 'Release',
-      act: 'Approve release on Releases',
-      rule: 'the project asks a person to approve a release',
-      ref: null,
-      dueAt: '2026-10-19T00:00:00.000Z',
-      says,
-    },
-    note: null,
-    actClass: 'release_cut',
-    since: '2026-10-15T00:00:00.000Z',
-    dueAt: '2026-10-19T00:00:00.000Z',
-    stuck: {
-      code: 'overdue',
-      since: '2026-10-19T00:00:00.000Z',
-      reason: `${issue.key}'s release approval is overdue`,
-      via: null,
-      says: { reason: said('overdue') },
-    },
-    carriedBy: null,
-    basis,
-  };
-}
 
 interface ActRead {
   door: string;
@@ -455,6 +416,60 @@ describe('an ask is keyed on the standing of the item it is about, whichever run
     expect(await openAbout(issue.key)).toEqual([]);
     expect(await askFrom(86)).toContain('a decision answered it');
     expect(await openAbout(issue.key)).toEqual([]);
+    standings = [];
+  });
+
+  it('asks once when two runs ask about one item at the same moment; the second is told it stands', async () => {
+    const { callStewardDoor } = await import('../../src/steward/doors.js');
+    const issue = await createTestIssue(projectId, ownerId, 62, {
+      status: 'awaiting_release',
+      createdAt: new Date(),
+    });
+    standings = [releaseWait(issue, 'race-1')];
+    // one live run per subject, so the two are feedback items' runs, both asking about the issue
+    const runOn = async (seq: number) => {
+      const fbKey = await createTestFeedback(projectId, ownerId, seq);
+      const [fb] = await rows<{ id: string }>(sql`
+        SELECT id FROM feedback WHERE project_id = ${projectId} AND fb_seq = ${seq}`);
+      const [made] = await rows<{ id: string }>(sql`
+        INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
+                                  acts_to_run, state, basis, not_before, started_at)
+        VALUES (${projectId}, 'feedback', ${fb?.id}, ${fbKey}, 'feedback.filed', '[]'::jsonb,
+                ARRAY['stuck_diagnosis']::text[], 'running', ${`fb-${seq}`}, now(), now())
+        RETURNING id`);
+      return {
+        runId: made?.id as string,
+        subject: { kind: 'feedback', id: fb?.id as string, key: fbKey },
+      };
+    };
+    const runs = [await runOn(87), await runOn(88)];
+    const outs = await Promise.all(
+      runs.map(({ runId, subject }) =>
+        callStewardDoor(
+          'steward_wake_master',
+          JSON.stringify({
+            about: issue.key,
+            ask: `Approve the release that carries ${issue.key}.`,
+          }),
+          {
+            projectId,
+            runId,
+            act: 'stuck_diagnosis',
+            subject,
+            standing: null,
+            token: '',
+            refused: [],
+            broken: [],
+            acts: [],
+          },
+        ),
+      ),
+    );
+    expect(outs.map((o) => o.ok).sort()).toEqual([false, true]);
+    expect(outs.find((o) => !o.ok)?.text).toContain('still stands');
+    const asks = await rows<{ id: string }>(sql`
+      SELECT id FROM steward_acts WHERE project_id = ${projectId} AND wrote ->> 'ref' = ${issue.key}`);
+    expect(asks).toHaveLength(1);
     standings = [];
   });
 });

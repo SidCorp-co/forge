@@ -30,6 +30,7 @@ import { refuser } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { emitEvent, emitEvents } from '../outbox/index.js';
 import { holds, type PermissionFacts } from '../permissions/index.js';
+import { feedbackAbout } from './about-feedback.js';
 import {
   type AwaitedDesign,
   awaitedDesignFault,
@@ -261,14 +262,14 @@ function refuseAboutOnWait(input: {
 /**
  * The stored `about` an ask names, or a refusal naming what it could not resolve: a requirement of
  * another project or none, `requirement: null` on a question no delivering issue carries, or a
- * contract the project neither publishes nor consumes.
+ * contract the project neither publishes nor consumes, or a feedback item that is not this project's.
  */
 export async function resolveAbout(
   executor: QuestionExecutor,
   input: { projectId: string; issueId?: string | undefined },
   about: QuestionAboutRequest | { feedbackId: string },
 ): Promise<QuestionAbout> {
-  if ('feedbackId' in about) return { kind: 'feedback', feedbackId: about.feedbackId };
+  if ('feedbackId' in about) return feedbackAbout(executor, input.projectId, about.feedbackId);
   if ('contract' in about) {
     const refusal = await contractAboutRefusal(input.projectId, about.contract);
     if (refusal) throw refuseQuestion('QUESTION_ABOUT_UNKNOWN', refusal, '/about/contract');

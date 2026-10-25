@@ -36,7 +36,8 @@ const mockupRow = () => {
 };
 const posts = <C extends { method: string }>(calls: C[]) => calls.filter((c) => c.method === "POST");
 
-beforeEach(() => window.history.replaceState(null, "", "/projects/hop/approvals"));
+// three decisions show at a time (REQ-68 BC-3): the mockup is reached by its chip
+beforeEach(() => window.history.replaceState(null, "", "/projects/hop/approvals?topic=mockup"));
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();

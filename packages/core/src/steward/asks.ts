@@ -11,7 +11,7 @@
 import type { ItemStanding, StandingSubjectKind, StewardCite } from '@forge/contracts/steward';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, like, ne, or, sql } from 'drizzle-orm';
 import { type ItemDecision, reasonedDecisionsOnItems } from '../comments/index.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { type ReasonedDecision, reasonedDecisionsOn } from '../issues/index.js';
@@ -19,6 +19,16 @@ import { heldStewardOf } from './account.js';
 
 /** The act door a wake of the master is logged under. */
 export const WAKE_DOOR = 'WAKE master.wake steward';
+
+/**
+ * Hold the ask lock on one item of a project until the transaction ends: whoever asks about the item
+ * next waits, then reads the ask this one wrote, so two runs at once ask once.
+ */
+export async function lockAsksOn(tx: Tx, projectId: string, about: string): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`steward-ask:${projectId}:${about}`}, 0))`,
+  );
+}
 /** Every act door an ask of an act's holders is logged under (`ask-addressee.ts:HeldAct.door`). */
 const NOTIFY_HOLDERS = 'NOTIFY %';
 const toldHolders = (door: string) => door.startsWith('NOTIFY ');

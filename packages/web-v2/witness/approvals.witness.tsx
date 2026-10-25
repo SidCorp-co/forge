@@ -6,12 +6,15 @@
 // reason step, and the Undo held after an approve. A question's ✓ names the answer it sends, and its
 // other answers open its peek; a release's ✕ asks why and is never its approve (ISS-539). At 390 px the peek is its full-screen sheet and
 // nothing scrolls sideways. The rows are `src/test/approvals-read.ts`, the read the page tests use.
+// Three decisions show at a time, the rest counted (REQ-68 BC-3), so a stage reaches a row past them
+// by the page's own search; every peek says what deciding changes and its impact (REQ-68 BC-1).
 // A mockup decision (REQ-49 BC-7) shows its page small in its row and runs it in its peek: the page is
 // `<out>/mockup-fixture.js` where one is written there (`mockups-on-the-item.witness.tsx` says how),
 // else a line of HTML.
 //
 //   pnpm --filter web-v2 witness witness/approvals.witness.tsx --out <dir>
 
+import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { NavRail, TopBarSlotProvider } from "@/design";
@@ -96,7 +99,9 @@ function sideways(): string[] {
 
 function listed(): string[] {
   const wrong = sideways();
-  if (rows().length !== READ.total) wrong.push(`${rows().length} rows are drawn, not ${READ.total}`);
+  if (rows().length !== NEEDS_YOU_PERSON_CAP) wrong.push(`${rows().length} rows are drawn, not ${NEEDS_YOU_PERSON_CAP}`);
+  const more = document.querySelector("[data-testid=approvals-cap-more]")?.textContent ?? "";
+  if (!more.startsWith(`${READ.total - NEEDS_YOU_PERSON_CAP} more after these`)) wrong.push(`the rest are counted as "${more}"`);
   const count = document.querySelector("[data-testid=approvals-count]")?.textContent ?? "";
   if (!count.includes(`Decisions waiting on you: ${READ.total}`)) wrong.push(`the page's count reads "${count}"`);
   const h1 = document.querySelector<HTMLElement>("header h1");
@@ -109,6 +114,15 @@ function listed(): string[] {
     for (const b of r.querySelectorAll("button")) if (b.getBoundingClientRect().right > window.innerWidth + 0.5) wrong.push(`a row's "${b.getAttribute("aria-label") ?? b.textContent}" runs past the window's right edge`);
   }
   return wrong;
+}
+
+/** Type into the page's search, as a person narrows the list to reach a row past the first three. */
+async function search(text: string) {
+  const box = document.querySelector<HTMLInputElement>("input[type=search]");
+  if (!box) return;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(box, text);
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+  await settle();
 }
 
 function open(key: string): string[] {
@@ -137,7 +151,7 @@ window.__witness = {
     { name: "desktop", width: 1440 },
     { name: "phone", width: 390 },
   ],
-  ready: () => rows().length === READ.total,
+  ready: () => rows().length === NEEDS_YOU_PERSON_CAP,
   stages: [
     { name: "list-light", run: async () => (theme("light"), await settle(), listed()) },
     { name: "list-dark", run: async () => (theme("dark"), await settle(), listed()) },
@@ -147,7 +161,7 @@ window.__witness = {
         theme("light");
         const wrong = open("FB-135");
         await settle();
-        return [...wrong, ...peekReads("proposal", "consequences", "why", "said", "foot")];
+        return [...wrong, ...peekReads("proposal", "stakes", "consequences", "why", "said", "foot")];
       },
     },
     {
@@ -155,7 +169,7 @@ window.__witness = {
       run: async () => {
         theme("dark");
         closePeek();
-        await settle();
+        await search("system-context");
         const wrong = open("system-context");
         await settle();
         return [...wrong, ...peekReads("proposal", "consequences", "table", "foot")];
@@ -166,7 +180,7 @@ window.__witness = {
       run: async () => {
         theme("light");
         closePeek();
-        await settle();
+        await search("REQ-49");
         const row = rows().find((r) => r.dataset.topic === "mockup");
         const wrong: string[] = [];
         if (!phone && !row?.querySelector("[data-testid=approval-row-mockup] iframe[sandbox=allow-scripts]")) wrong.push("the mockup row draws no isolated preview");
@@ -183,7 +197,7 @@ window.__witness = {
       run: async () => {
         theme("light");
         closePeek();
-        await settle();
+        await search("");
         rowOf("FB-139")?.querySelector<HTMLElement>("[data-testid=approval-decline]")?.click();
         await settle();
         peek()?.querySelector<HTMLElement>("[data-testid=approval-words-send]")?.click();
@@ -197,7 +211,7 @@ window.__witness = {
       run: async () => {
         theme("dark");
         closePeek();
-        await settle();
+        await search("ISS-41");
         const row = rowOf("ISS-41");
         const sends = row?.querySelector<HTMLElement>("[data-testid=approval-approve]");
         const wrong: string[] = [];
@@ -207,7 +221,7 @@ window.__witness = {
         await settle();
         const answers = [...(peek()?.querySelectorAll("[data-testid=approval-peek-answer-label]") ?? [])].map((b) => b.textContent);
         if (answers.join("|") !== "Keep the old order|Use the new order") wrong.push(`its peek offers "${answers.join("|")}"`);
-        return [...wrong, ...peekReads("proposal", "foot")];
+        return [...wrong, ...peekReads("proposal", "stakes", "foot")];
       },
     },
     {
@@ -215,7 +229,7 @@ window.__witness = {
       run: async () => {
         theme("light");
         closePeek();
-        await settle();
+        await search("0.4.0-dev.270");
         const row = rowOf("0.4.0-dev.270");
         const wrong: string[] = [];
         if (!row?.querySelector("[data-testid=approval-approve]")?.textContent?.includes("Approve 0.4.0-dev.270")) wrong.push("the release's ✓ does not name its approve");
@@ -231,7 +245,7 @@ window.__witness = {
       run: async () => {
         theme("light");
         closePeek();
-        await settle();
+        await search("0.4.0-dev.270");
         const wrong = open("0.4.0-dev.270");
         await settle();
         const merges = [...(peek()?.querySelectorAll<HTMLElement>("[data-testid=release-merge]") ?? [])];
@@ -245,11 +259,12 @@ window.__witness = {
       name: "bulk-light",
       run: async () => {
         closePeek();
-        await settle();
+        await search("");
         document.querySelector<HTMLElement>("[data-testid=approval-group-feedback] [role=checkbox]")?.click();
         await settle();
         const summary = document.querySelector("[data-testid=approval-bulk-summary]")?.textContent ?? "";
-        const want = "Approving makes 2 new issues · 1 requirement revision · 1 closed · 2 marked Check first";
+        // a group selects the three it shows, never one the person has not seen
+        const want = "Approving makes 2 new issues · 1 requirement revision · 2 marked Check first";
         return summary.includes(want) ? sideways() : [`the bulk bar reads "${summary}", not "${want}"`];
       },
     },
@@ -258,13 +273,16 @@ window.__witness = {
       run: async () => {
         document.querySelector<HTMLElement>("[data-testid=approval-bulk-clear]")?.click();
         await settle();
+        await search("requirement-to-delivery");
         const wrong = open("requirement-to-delivery");
         await settle();
         peek()?.querySelector<HTMLElement>("[data-testid=approval-peek-answer][data-answer=approve]")?.click();
         await settle();
         const undo = document.querySelector("[data-testid=approval-undo]")?.textContent ?? "";
         if (!undo.includes("requirement-to-delivery approved")) wrong.push(`the Undo bar reads "${undo}"`);
-        return [...wrong, ...peekReads("proposal", "foot")];
+        // the search matched that one row, so the peek has no next row to step on to and closes
+        if (peek()) wrong.push("the peek stays open with no row left to show");
+        return [...wrong, ...sideways()];
       },
     },
   ],

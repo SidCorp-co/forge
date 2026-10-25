@@ -19,6 +19,7 @@ export const NOTIFICATION_TYPES = [
 	"feedback_message",
 	"status_report",
 	"steward_ask",
+	"decision_reminder",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -44,6 +45,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	feedback_message: "Feedback update",
 	status_report: "Status report",
 	steward_ask: "Steward asks",
+	decision_reminder: "Decision waiting",
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
@@ -214,6 +216,13 @@ const NOTIFICATION_CONTRACT: Record<
 		severity: "warning",
 		channels: ["bell", "toast"],
 		kind: "task",
+		tier: "ticket",
+	},
+	/** An owed decision unanswered for 3 days, and on day 14 the agent's defer-or-drop proposal (REQ-68 BC-8). */
+	decision_reminder: {
+		severity: "info",
+		channels: ["bell", "toast"],
+		kind: "signal",
 		tier: "ticket",
 	},
 };

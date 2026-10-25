@@ -1,16 +1,14 @@
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import { fireEvent } from "@testing-library/react";
 import type { QueryKey } from "@tanstack/react-query";
-import { AgentsScreen } from "@/features/agents/components/agents-screen";
 import { IssueQuestions } from "@/features/questions/components/issue-questions";
-import { projectQuestionsKey } from "@/features/questions/hooks";
 import type { AgentQuestion, QuestionOption, QuestionStep } from "@/features/questions/types";
 import { Seeded } from "./vi-chrome-requirements";
 
 // The question chrome for the vi walking test: the block on an issue (an open question of each shape,
 // the earlier rounds, a settled one of every ending, the question a run asked in the thread, the issue
-// with none) and the Questions tab of the Agents screen. A prompt, an option and a reason are what a run
-// or a person wrote, so they are placeholder words here; everything else on the screen is chrome.
+// with none). A prompt, an option and a reason are what a run or a person wrote, so they are
+// placeholder words here; everything else on the screen is chrome.
 
 const P = "p1";
 const I = "5a1c0e52-3b7d-4f0a-9d2e-6c1f8b4a7e30";
@@ -105,10 +103,6 @@ const tick = () => {
 
 const thread: ParkThreadQuestion = { prompt: "Cau hoi trong luong", why: "Ly do dung", readings: [{ choice: "Cach mot", outcome: "Ket qua mot" }], answer: null };
 
-const paneSeed = (questions: AgentQuestion[]): [QueryKey, unknown][] => [
-  [projectQuestionsKey(P), { pages: [{ questions, total: questions.length, hasMore: true, nextCursor: "c1" }], pageParams: [null] }],
-];
-
 export const SCREENS = [
   { name: "Decision · free text", render: panel([question()]) },
   { name: "Decision · free text, still waits", render: panel([question()]), act: tick },
@@ -119,26 +113,4 @@ export const SCREENS = [
   { name: "Decision · asked in the thread", render: panel([], { parkedForInfo: true, threadQuestion: thread, onAnswerInThread: () => Promise.resolve() }) },
   { name: "Decision · answered in the thread", render: panel([], { parkedForInfo: true, threadQuestion: { ...thread, answer: { text: "Tra loi" } as never } }) },
   { name: "Decision · none on the issue", render: panel([], { parkedForInfo: true }) },
-  {
-    name: "Agents · Questions tab",
-    render: () => {
-      window.history.replaceState(null, "", "/?tab=questions");
-      return (
-        <Seeded data={paneSeed([question({ id: "q5", issueId: null }), hidden])}>
-          <AgentsScreen access={{ projectId: P, slug: "hop", canWrite: true }} />
-        </Seeded>
-      );
-    },
-  },
-  {
-    name: "Agents · Questions tab, empty",
-    render: () => {
-      window.history.replaceState(null, "", "/?tab=questions");
-      return (
-        <Seeded data={[[projectQuestionsKey(P), { pages: [{ questions: [], total: 0, hasMore: false, nextCursor: null }], pageParams: [null] }]]}>
-          <AgentsScreen access={{ projectId: P, slug: "hop", canWrite: true }} />
-        </Seeded>
-      );
-    },
-  },
 ];

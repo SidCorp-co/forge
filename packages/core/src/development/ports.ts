@@ -23,6 +23,8 @@ interface DevelopmentPorts {
   /** Every live run's standing and the recently finished ones (`runs/read.ts:listRunStanding`), and
    *  the version the next cut takes (`release-batch/draft-version.ts:nextDraftVersion`), as `viewer`. */
   deliveryRunsOf: (projectId: string, viewer: { userId: string } | null) => Promise<DeliveryRuns>;
+  /** The accounts the project's master acts as, each serving box's checkout holder (`steward-ports.ts`). */
+  masterAccountsOf: (projectId: string) => Promise<string[]>;
 }
 
 export interface DeliveryRuns {
@@ -55,3 +57,4 @@ export const designHealthOf = slot.port('designHealthOf');
 export const designRepinsOf = slot.port('designRepinsOf');
 export const releaseApprovalsOfRuns = slot.port('releaseApprovalsOfRuns');
 export const deliveryRunsOf = slot.port('deliveryRunsOf');
+export const masterAccountsOf = slot.port('masterAccountsOf');

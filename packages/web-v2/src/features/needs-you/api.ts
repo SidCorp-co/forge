@@ -25,3 +25,13 @@ export function pressBody(answer: DecisionAnswer, typed: string | null): Record<
   body[field] = typed ?? "";
   return body;
 }
+
+/**
+ * The words an answer that asks them starts from: the recommendation's why core put in its body
+ * (REQ-68 BC-2), under the field `pressBody` writes, else nothing.
+ */
+export function prefillOf(answer: DecisionAnswer): string {
+  const body = answer.body ?? {};
+  const words = answer.act !== "question.answer" ? body.reason : "optionId" in body ? body.note : undefined;
+  return typeof words === "string" ? words : "";
+}

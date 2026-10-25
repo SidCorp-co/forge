@@ -2,6 +2,7 @@ export { heldStewardOf } from './account.js';
 export { releaseNamerOf } from './ask-addressee.js';
 export { registerSteward } from './consumer.js';
 export { carryStewardDecision } from './decision-act.js';
+export { sweepDecisionUpkeep } from './decision-upkeep.js';
 export { dispatchStewardRuns } from './dispatch.js';
 export { breakdownsHeldBySteward } from './holds.js';
 export { stewardJobCredential } from './job.js';

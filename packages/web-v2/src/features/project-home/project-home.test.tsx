@@ -40,6 +40,8 @@ const decision = (key: string, group: "answer" | "approve", question: string) =>
   title: key,
   opens: { kind: "issue", key },
   question,
+  changes: "What happens next on it",
+  impact: "It waits on this until it is decided.",
   recommended: { answerId: "yes", why: "The run that asked recommends it.", by: "asker" },
   noRecommendation: null,
   answers: [answer("yes", "Yes", true), answer("no", "No", false)],

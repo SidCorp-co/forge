@@ -48,13 +48,15 @@ export const NEEDS_YOU_DECISION_GROUP_LABELS: Record<
  * revision to finish. `work`: a task to carry out (criteria to check), not a choice.
  * `awaiting_proposal`: a draft the assistant has not yet proposed merging or dropping (BC-12).
  * `unreadable`: a record waiting on the viewer that no decision could be made of, named so it is
- * opened on its own page rather than dropped (the log says what broke).
+ * opened on its own page rather than dropped (the log says what broke). `agent_takes`: a decision the
+ * project's agent may take itself, so it is not a person's (REQ-68 BC-3).
  */
 export const NEEDS_YOU_NOT_DECISION_REASONS = [
 	"own_work",
 	"work",
 	"awaiting_proposal",
 	"unreadable",
+	"agent_takes",
 ] as const;
 export type NeedsYouNotDecisionReason =
 	(typeof NEEDS_YOU_NOT_DECISION_REASONS)[number];
@@ -265,6 +267,14 @@ export const decisionEvidenceSchema = z.strictObject({
 });
 export type DecisionEvidence = z.infer<typeof decisionEvidenceSchema>;
 
+/** The id of a question's decision: the question's own, so a link to the question opens it (REQ-68 BC-9). */
+export const questionDecisionId = (questionId: string): string =>
+	`question:${questionId}`;
+
+/** A sentence as two of a decision's fields would read alike: its words, case and end stop aside. */
+export const sameSentence = (text: string): string =>
+	text.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.!?…]+$/, "");
+
 /** One decision only a person can make (BC-1), with what BC-2 asks of it. */
 export const needsYouDecisionSchema = z
 	.strictObject({
@@ -283,6 +293,10 @@ export const needsYouDecisionSchema = z
 		opens: decisionOpensSchema.nullable(),
 		/** What is asked, in the asker's words, or Forge's for an approval. */
 		question: z.string().min(1).max(LIMITS.question),
+		/** What deciding it changes: the record and the move at stake, in one line (REQ-68 BC-1). */
+		changes: z.string().trim().min(1).max(LIMITS.effect),
+		/** Its impact: what waits on it, and what follows once it is decided, in one line (REQ-68 BC-1). */
+		impact: z.string().trim().min(1).max(LIMITS.effect),
 		recommended: decisionRecommendationSchema.nullable(),
 		/** Set exactly when `recommended` is null: why none is offered (the asker gave none). */
 		noRecommendation: z.string().min(1).max(LIMITS.why).nullable(),
@@ -345,6 +359,28 @@ export const needsYouDecisionSchema = z
 					"a decision either recommends an answer or says why it cannot, never both or neither",
 			});
 		}
+		// each said once (REQ-68 BC-1): what changes, its impact, the question, why the answer is
+		// recommended and what each answer does are never one sentence said twice
+		const said = [
+			["question", d.question],
+			["changes", d.changes],
+			["impact", d.impact],
+			["recommended", d.recommended?.why ?? null],
+			...d.answers.map((a, i) => [`answers.${i}.effect`, a.effect] as const),
+		] as const;
+		const seen = new Map<string, string>();
+		for (const [where, text] of said) {
+			if (text === null) continue;
+			const key = sameSentence(text);
+			const first = seen.get(key);
+			if (first) {
+				ctx.addIssue({
+					code: "custom",
+					path: where.split(".").map((p) => (/^\d+$/.test(p) ? Number(p) : p)),
+					message: `a decision says each thing once: ${where} repeats ${first}`,
+				});
+			} else seen.set(key, where);
+		}
 		const ids = d.answers.map((a) => a.id);
 		if (new Set(ids).size !== ids.length) {
 			ctx.addIssue({
@@ -373,11 +409,14 @@ export const needsYouDecisionSchema = z
 				});
 			}
 		});
-		for (const a of declining.filter((x) => !x.needsReason)) {
+		// a declining answer asks why, or carries the why it was recommended for (REQ-68 BC-2)
+		const carriesWhy = (a: DecisionAnswer) =>
+			[a.body?.reason, a.body?.note].some((w) => typeof w === "string" && w.trim() !== "");
+		for (const a of declining.filter((x) => !x.needsReason && !carriesWhy(x))) {
 			ctx.addIssue({
 				code: "custom",
 				path: ["answers", d.answers.indexOf(a), "needsReason"],
-				message: "a declining answer asks why: it takes a reason",
+				message: "a declining answer asks why: it takes a reason, or carries one",
 			});
 		}
 		const marked = d.answers.filter((a) => a.recommended).map((a) => a.id);
@@ -463,6 +502,7 @@ export const DECISION_ACT_KEYS: ReadonlySet<string> = new Set([
 	"issues.standing.act.decide",
 	"issues.standing.act.supply",
 	"standing.act.answerSteward",
+	"standing.act.answerQuestion",
 	"standing.act.acceptR",
 	"standing.act.agreeR",
 	"standing.act.check",

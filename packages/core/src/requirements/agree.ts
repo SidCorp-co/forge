@@ -47,6 +47,7 @@ import {
   requirementKernelActor,
   revisionIn,
   revisionWhere,
+  voidsItsDecisions,
 } from './write-tx.js';
 
 /** The requirement-ready checklist read for `revision`, the head-to-be of an agreed requirement. */
@@ -176,6 +177,7 @@ export async function acceptRevision(input: {
         where: eq(requirements.id, row.id),
         reason: acceptReason,
         actor: requirementKernelActor(actor),
+        afterWrite: voidsItsDecisions('agreed', actor, acceptReason, 'requirements'),
         source: 'requirements',
         returning: ['id'],
       });
@@ -261,6 +263,7 @@ export async function agreeRequirement(input: {
       where: eq(requirements.id, row.id),
       reason: input.reason?.trim() || null,
       actor: requirementKernelActor(actor),
+      afterWrite: voidsItsDecisions('agreed', actor, input.reason?.trim() || null, 'requirements'),
       source: 'requirements',
       returning: ['id'],
       // the ready checklist (Requirement lifecycle r15 ready_check), judged by the kernel

@@ -115,7 +115,7 @@ import {
   recordAnswerResume,
   settleOpenQuestions,
   voidCancelledRunQuestions,
-  voidStewardDraftQuestions,
+  voidStewardDecisionsOnMove,
   withdrawParkQuestions,
 } from './questions/index.js';
 import {
@@ -143,6 +143,7 @@ import { runnerEventsRetention } from './runners/index.js';
 import { latestRunsOfIssues, listRunStanding, runWaitingOf } from './runs/index.js';
 import { lastFires, readScheduleStreaks, streakFails } from './schedules/index.js';
 import { carryStewardDecision } from './steward/index.js';
+import { masterAccountsOf } from './steward-ports.js';
 import { provideUploadPorts } from './uploads/index.js';
 import {
   assertDesignApprovedForIssue,
@@ -227,7 +228,7 @@ export function provideWorkPorts(): void {
     keepCorrection: recordCorrection,
     settleOpenQuestions,
     withdrawParkQuestions,
-    voidStewardDraftQuestions,
+    voidStewardDecisionsOnMove,
     openParkWaitsOn,
     holdsOpenHumanQuestion,
     personOwesAnAnswer,
@@ -340,6 +341,7 @@ export function provideWorkPorts(): void {
     designRepinsOf: repinGroupsAs,
     releaseApprovalsOfRuns: approvalsOfRuns,
     deliveryRunsOf,
+    masterAccountsOf: async (projectId) => (await masterAccountsOf(projectId)).accounts,
   });
 
   provideWorkflowHealthPorts({

@@ -145,8 +145,15 @@ export interface TransitionArgs<E extends MachineEntity, K extends keyof Machine
   checklist?: MoveChecklist<E>;
   /** Runs after the guards pass and before the status is written, in the same transaction. */
   beforeWrite?: (tx: Tx, rows: readonly PriorRow<E>[]) => Promise<void>;
-  /** Runs after the status and its record are written, in the same transaction. */
-  afterWrite?: (tx: Tx, rows: ReadonlyArray<Pick<MachineRow<E>, K | 'id'>>) => Promise<void>;
+  /**
+   * Runs after the status and its record are written, in the same transaction. `from` is each moved
+   * row's status before the move, by id.
+   */
+  afterWrite?: (
+    tx: Tx,
+    rows: ReadonlyArray<Pick<MachineRow<E>, K | 'id'>>,
+    from: ReadonlyMap<string, string>,
+  ) => Promise<void>;
 }
 
 export interface TransitionResult<R> {
@@ -405,7 +412,7 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   });
   if (records.length > 0) await tx.insert(kernelTransitions).values(records);
 
-  await args.afterWrite?.(tx, rows);
+  await args.afterWrite?.(tx, rows, left);
   await emitTransitionEvents(tx, machine, records, args.actor);
   return done({ rows, refusals: [] });
 }

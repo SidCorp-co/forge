@@ -10,10 +10,9 @@ import {
 } from '@forge/contracts/issue-machine';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
-import { isStewardDecisionQuestion } from '@forge/contracts/steward';
 import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { IssueStatus } from '../db/schema.js';
-import { agentQuestions, isChoiceStep } from '../db/schema-questions.js';
+import { agentQuestions } from '../db/schema-questions.js';
 import { type IssueDependencyExecutor, parkSinceSql } from '../issues/index.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 
@@ -23,7 +22,6 @@ const QUESTION_ENDED_WITH_ISSUE = 'issue_terminal';
 const QUESTION_NOT_NEEDED = 'not_needed';
 const QUESTION_PARK_LEFT = 'park_left';
 const QUESTION_PARK_REPOINTED = 'park_repointed';
-const QUESTION_DRAFT_LEFT = 'draft_left';
 
 /**
  * The marker that a person owes an issue an answer: an open `human` question on it.
@@ -234,57 +232,6 @@ export async function withdrawParkQuestions(
       voidReason: sentence,
       endedBy: args.by,
       endedReason: args.repointedTo ? QUESTION_PARK_REPOINTED : QUESTION_PARK_LEFT,
-      updatedAt: new Date(),
-    },
-    where: inArray(agentQuestions.id, ids),
-    reason: sentence,
-    actor: args.actor,
-    source: 'issues',
-    returning: ['id'],
-  });
-  return ids;
-}
-
-/**
- * Void the steward's open take-on-or-drop decisions on an issue, inside the move that takes it out of
- * `draft`, by whichever door makes the move: the decision asked what to do with the draft, and once
- * it is not one an answer has nothing to act on, while an open row would go on listing it in Needs
- * you and the chat would go on recommending it (REQ-41 BC-26, `VISION: state-never-lies`). Only a
- * question whose round offers the steward's fixed decisions is one; a person's or a run's question
- * on the issue stays open. A move made by answering the decision answers it first, in the same
- * transaction, so nothing is left here to void.
- */
-export async function voidStewardDraftQuestions(
-  tx: Executor,
-  args: {
-    issueId: string;
-    toStatus: IssueStatus;
-    /** The move's own reason, in the mover's words; null when the move gave none. */
-    reason: string | null;
-    by: string;
-    actor: KernelActor;
-  },
-): Promise<string[]> {
-  const open = await tx
-    .select({ id: agentQuestions.id, steps: agentQuestions.steps })
-    .from(agentQuestions)
-    .where(and(eq(agentQuestions.issueId, args.issueId), eq(agentQuestions.status, 'open')));
-  const ids = open
-    .filter((q) => {
-      const round = q.steps.at(-1);
-      return round !== undefined && isChoiceStep(round) && isStewardDecisionQuestion(round.options);
-    })
-    .map((q) => q.id);
-  if (ids.length === 0) return [];
-  const why = args.reason?.trim();
-  const sentence = `the issue moved from ${ISSUE_STATUS_LABELS.draft} to ${ISSUE_STATUS_LABELS[args.toStatus]} without this being answered, so the draft it asked about is gone and no answer to it can act${why ? `: ${why}` : ''}`;
-  await transition(tx, QUESTION_MACHINE, {
-    to: 'void',
-    from: 'open',
-    set: {
-      voidReason: sentence,
-      endedBy: args.by,
-      endedReason: QUESTION_DRAFT_LEFT,
       updatedAt: new Date(),
     },
     where: inArray(agentQuestions.id, ids),

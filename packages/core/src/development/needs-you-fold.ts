@@ -44,7 +44,7 @@ import {
   waitingSuggestionsFor,
 } from '../suggestions/waiting-read.js';
 import type { NeedsYouViewer, readAttention } from './needs-you.js';
-import { clip, type DecisionBody, filled } from './needs-you-decision-builders.js';
+import { clip, type DecisionBody, filled, prefilledReason } from './needs-you-decision-builders.js';
 import {
   type BrokenDown,
   breakdownProposal,
@@ -133,6 +133,8 @@ function suggestionDecision(
     title: cutAtWord(s.target.title, 500),
     opens: { kind: s.target.type, key: s.target.key },
     question: asked(proposal),
+    changes: `What happens to ${s.target.key}, as the agent proposes it`,
+    impact: `${s.target.key} waits on this; nothing the agent proposed is done until it is approved.`,
     ...approveOrDecline(proposal, approve, decline),
     touchedAt: s.createdAt,
     id: `suggestion:${s.id}`,
@@ -213,6 +215,8 @@ function mockupDecision(projectId: string, m: MockupView): DecisionBody {
     title: cutAtWord(m.name, 500),
     opens: { kind: m.target.type, key: m.target.key },
     question: asked(proposal),
+    changes: `Whether ${m.key} is the agreed picture for ${m.target.key}`,
+    impact: `${m.target.key} waits on this; round ${m.round} stays open until it is decided.`,
     ...approveOrDecline(proposal, approve, decline),
     touchedAt: m.createdAt,
     id: `mockup:${m.id}`,
@@ -251,6 +255,8 @@ function previewDecision(p: ApprovablePreview): DecisionBody {
     title: cutAtWord(p.issueTitle, 500),
     opens: { kind: 'issue', key: p.issueKey },
     question: asked(proposal),
+    changes: `Whether the running preview of ${p.issueKey} is approved`,
+    impact: `${p.issueKey} waits on this; it moves on only once its preview is approved.`,
     ...approveOrDecline(
       proposal,
       {
@@ -369,7 +375,11 @@ function checked(
 ) {
   const { key } = record;
   try {
-    const parsed = needsYouDecisionSchema.safeParse({ ...build(), stuck: false, dueAt: null });
+    const parsed = needsYouDecisionSchema.safeParse({
+      ...prefilledReason(build()),
+      stuck: false,
+      dueAt: null,
+    });
     if (parsed.success) {
       out.decisions.push(parsed.data);
       return;

@@ -25,9 +25,9 @@ The entity, its doors and everything that reads it:
 - `POST /api/devices/me/questions` and `GET /me/questions/:questionId?runId=` on a device pairing,
   in `devices/pool-routes.ts`
 - two screens: the issue decision panel (`web-v2` `features/questions/components/decision-panel.tsx`),
-  where a question on an issue is answered, and the Agents screen's Questions tab
-  (`features/agents/components/questions-pane.tsx`), which lists only the open questions that name
-  no issue. A question on an issue also shows on that issue's row in the Issues list, aged from the
+  where a question on an issue is answered, and Approvals (`features/approvals`), where every
+  question waiting on a person is a decision, a question on no issue among them (REQ-68 BC-9). A
+  question on an issue also shows on that issue's row in the Issues list, aged from the
   oldest open question blocked on a person (`issues/list-projection.ts:REST_ISSUE_LIST_COLUMNS`).
 - two sweeps that key on a question row: `jobs/park-deadline.ts`'s `parkedOnAHuman`, which exempts a
   processless human park from the residency reaper, and `reapUnansweredParks`, which is that park's
@@ -94,7 +94,7 @@ with the runner's tests (ISS-216), and core's TypeScript tests are deleted on de
   an answer to the session that asked only while the issue is parked; a run that asked about
   finished work reads the answer back with `GET /api/questions/:id`.
 - **`issue_id` stays nullable.** A master's question from the device door may carry none, and those
-  are what the Questions tab still lists. Making the column `NOT NULL` breaks the runner's wire.
+  are listed on Approvals as decisions on nothing. Making the column `NOT NULL` breaks the runner's wire.
 
 ## Honest costs
 

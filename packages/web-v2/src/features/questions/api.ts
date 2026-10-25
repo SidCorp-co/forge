@@ -3,19 +3,10 @@ import { apiClient } from "@/lib/api/client";
 import type { AgentQuestion, AnswerInput, QuestionListResponse } from "./types";
 import { isUuid } from "@/lib/api/ref-bridge";
 
-const PROJECT_PAGE_SIZE = 50;
-
 export const questionsApi = {
   listForIssue: (issueId: string, projectId?: string) =>
     apiClient<QuestionListResponse>(
       `/questions?issueId=${encodeURIComponent(issueId)}${projectId && !isUuid(issueId) ? `&projectId=${encodeURIComponent(projectId)}` : ""}`,
-    ),
-
-  /** One page of the open decisions that name no issue; one on an issue is answered there. */
-  listOpenWithoutIssue: (projectId: string, cursor?: string, limit = PROJECT_PAGE_SIZE) =>
-    apiClient<QuestionListResponse>(
-      `/questions?projectId=${encodeURIComponent(projectId)}&status=open&issue=none&limit=${limit}` +
-        (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""),
     ),
 
   /** `GET /api/questions/:id` — one decision, whole, whatever page it would have been on. */

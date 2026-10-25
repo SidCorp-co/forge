@@ -1,6 +1,7 @@
 
 // The decisions only the viewer can make (REQ-41 BC-1, BC-2), as core's needs-me read answers them:
-// each with its question, the recommended answer and why, and the buttons that answer it. A button
+// each with its question, what it changes and its impact (REQ-68 BC-1), the recommended answer and
+// why, and the buttons that answer it. A button
 // posts its own body to the route the record's page calls, as the person who presses it (BC-9);
 // nothing is decided here. Flat rows under hairlines, one heading per group; the project home and
 // the chat draw the same list.
@@ -19,7 +20,7 @@ import { useState } from "react";
 import { Button, Icon, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { needsYouApi, pressBody } from "../api";
+import { needsYouApi, prefillOf, pressBody } from "../api";
 import { NEEDS_YOU_ROOT } from "../hooks";
 import { decisionHref } from "../routes";
 
@@ -70,6 +71,16 @@ function OwedDecision({
       <p className="fg-body-sm whitespace-pre-wrap text-fg" data-testid="needs-you-decision-question">
         {d.question}
       </p>
+      <dl className="fg-caption flex flex-col gap-0.5 text-muted" data-testid="needs-you-decision-stakes">
+        <div className="flex gap-2">
+          <dt className="flex-none">{t("needsYou.decisions.changes")}</dt>
+          <dd className="min-w-0 text-fg">{d.changes}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="flex-none">{t("needsYou.decisions.impact")}</dt>
+          <dd className="min-w-0 text-fg">{d.impact}</dd>
+        </div>
+      </dl>
       {d.recommended && recommended ? (
         <p className="fg-caption text-muted" data-testid="needs-you-decision-recommended">
           {d.recommended.by === "assistant" ? (
@@ -132,7 +143,7 @@ function OwedDecision({
               data-answer={a.id}
               onClick={() => {
                 if (a.needsReason) {
-                  setTyped("");
+                  setTyped(prefillOf(a));
                   setTyping(a);
                 } else press.mutate({ answer: a, text: null });
               }}
