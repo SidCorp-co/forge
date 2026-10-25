@@ -188,10 +188,28 @@ describe("the agents switch on a binding that is turned off", () => {
   // ISS-1421 r27 (287, 293): the switch was live for a plain member of the project, whose grant core
   // then refused; it is drawn off and names the admin of the project who may.
   it("is not live for a plain member of the project, and names who may change it", () => {
-    acts = { ...ALL, change: false, grantAgents: false, saveKey: false, turnOn: false };
+    acts = {
+      ...ALL,
+      change: false,
+      grantAgents: false,
+      saveKey: false,
+      turnOn: false,
+      whoGrantsAgents: "an admin of this project",
+    };
     const text = show(true, "none", "core-mediated");
     expect(screen.getByRole("switch", { name: "Agents on this project may use this" })).toBeDisabled();
     expect(text).toContain("Only an admin of this project can change this.");
+  });
+
+  // ISS-1421 r28 (314): the line read the reader's own `change` instead of who core says grants it.
+  it("names who core says grants a box-held credential to a reader who may change nothing", () => {
+    acts = { ...ALL, change: false, grantAgents: false, saveKey: false, turnOn: false };
+    const text = show(true, "none", "direct-mcp");
+    expect(screen.getByRole("switch", { name: "Agents on this project may use this" })).toBeDisabled();
+    expect(text).toContain(
+      "Granting this sends the integration's credential to the runner, so only an owner or admin of this project's organization can grant it.",
+    );
+    expect(text).not.toContain("Only an admin of this project");
   });
 
   it("still says what the grant does on a binding that is on", () => {

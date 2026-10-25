@@ -101,7 +101,13 @@ describe("how a row names its owner and why it is read-only", () => {
   });
 
   it("says who may change it", () => {
-    expect(readOnlyNote(item(), "Another member")).toMatch(/only its owner/);
+    // ISS-1421 r28: "only its owner" left a reader who cannot see the owner nobody to ask.
+    expect(readOnlyNote(item({ access: { reach: "binding", canManage: false, ownerName: "Mai Tran" } }), "Mai Tran")).toBe(
+      "Read-only — only its owner, Mai Tran, can change this credential.",
+    );
+    expect(readOnlyNote(item({ access: { reach: "binding", canManage: false, ownerName: "another member" } }), "Another member")).toBe(
+      "Read-only — only the member who owns it can change this credential.",
+    );
     const owned = item({ ownerType: "org", ownerId: "o1" });
     expect(readOnlyNote(owned, "Sidcorp")).toMatch(/owner or admin of Sidcorp/);
   });

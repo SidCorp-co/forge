@@ -29,17 +29,22 @@ type Acts = {
   grantAgents: boolean;
   whoChanges: string;
   whoSavesKey: string;
+  whoGrantsAgents: string | null;
 };
+type Registry = typeof import('../../src/integrations/registry.js');
+type Provider = import('../../src/integrations/types.js').IntegrationProvider;
 
 let harness: TestDatabase;
 let app: import('hono').Hono<AppVars>;
 let store: Store;
+let registry: Registry;
 let signUserToken: (userId: string) => Promise<string>;
 
-/** The org's owner, a project admin who is a plain org member, and a plain member of both. */
+/** The org's owner, a project admin who is a plain org member, a plain member of both, and a viewer. */
 let owner: { id: string; token: string };
 let admin: { id: string; token: string };
 let member: { id: string; token: string };
+let viewer: { id: string; token: string };
 let orgId: string;
 let projectId: string;
 
@@ -58,6 +63,7 @@ beforeAll(async () => {
     app: import('hono').Hono<AppVars>;
   });
   store = await import('../../src/integrations/store.js');
+  registry = await import('../../src/integrations/registry.js');
   const { registerAllIntegrations } = await import('../../src/integrations/register-all.js');
   registerAllIntegrations();
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
@@ -65,8 +71,10 @@ beforeAll(async () => {
   owner = await person('acts-owner');
   admin = await person('acts-admin');
   member = await person('acts-member');
+  viewer = await person('acts-viewer');
   orgId = (await seedOrg(harness.db, owner.id)).id;
-  for (const p of [admin, member]) await createTestOrgMember(harness.db, { orgId, userId: p.id });
+  for (const p of [admin, member, viewer])
+    await createTestOrgMember(harness.db, { orgId, userId: p.id });
   projectId = await freshProject();
 }, 120_000);
 
@@ -100,6 +108,7 @@ async function freshProject() {
   const id = (await createTestProject(harness.db, owner.id, { orgId })).id;
   await createTestProjectMember(harness.db, { userId: admin.id, projectId: id, role: 'admin' });
   await createTestProjectMember(harness.db, { userId: member.id, projectId: id, role: 'member' });
+  await createTestProjectMember(harness.db, { userId: viewer.id, projectId: id, role: 'viewer' });
   return id;
 }
 
@@ -174,7 +183,7 @@ describe('a plain project member over a removed connection (criteria 290, 308, 3
     const org = { ...(await sentryBinding({ type: 'org', id: orgId }, true)), projectId };
     const person = { ...(await sentryBinding({ type: 'user', id: owner.id }, true)), projectId };
     for (const [{ bindingId, projectId: at }, who] of [
-      [org, 'only an owner or admin of that organization can change its key'],
+      [org, 'only an owner or admin of the organization that owns it can change its key'],
       [person, 'only its owner or an admin of a project bound to it can change its key'],
     ] as const) {
       projectId = at;
@@ -230,7 +239,7 @@ describe('the list says what each reader may do, and the doors agree (criteria 3
     const keyed = await patch(admin.token, bindingId, { secrets: { authToken: 'scratch-new' } });
     expect(keyed.status).toBe(403);
     expect(keyed.body.message).toContain(
-      'only an owner or admin of that organization can change its key',
+      'only an owner or admin of the organization that owns it can change its key',
     );
   });
 
@@ -296,5 +305,194 @@ describe("a connection's own refusals and bindings (criteria 317, 318)", () => {
     expect((said.body.items as Array<{ projectId: string }>).map((b) => b.projectId)).toContain(
       projectId,
     );
+  });
+});
+
+/**
+ * ISS-1421 r28, judge-114 on 308, 310 and 314: three sentences named someone the server then
+ * refused. For every provider and every reader, each act is sent at the binding PATCH: where the
+ * list says the reader may, the door takes it; where it says they may not, the refusal names the
+ * very people the list names, and one of those people sending the same act is taken.
+ */
+describe('every who the list names is who the door takes (criteria 308, 310, 311, 314, 323, 324, 325)', () => {
+  type Reader = { id: string; token: string };
+  const readers = () => ({ owner, admin, member, viewer });
+  /** A person the test holds in each role a `who` names, on an organization's connection. */
+  const personFor = (who: string): Reader => {
+    if (who === 'an admin of this project') return admin;
+    if (who === "an owner or admin of this project's organization") return owner;
+    if (who === 'an owner or admin of the organization that owns it') return owner;
+    throw new Error(`no person held for "${who}"`);
+  };
+
+  async function orgBinding(provider: Provider) {
+    projectId = await freshProject();
+    const field = registry.getIntegration(provider)?.schemas.primaryCredentialField ?? null;
+    const connection = await store.createConnection({
+      ownerType: 'org',
+      ownerId: orgId,
+      provider,
+      displayName: `${provider} ${randomUUID().slice(0, 6)}`,
+      config: {},
+      secrets: field ? { [field]: 'scratch-held-key' } : {},
+    });
+    const binding = await store.createBinding({
+      connectionId: connection.id,
+      projectId,
+      provider,
+      role: 'service',
+    });
+    return { bindingId: binding.id, field };
+  }
+
+  /** A key the provider's own schema takes, new on every send so reading it back proves the save. */
+  const keyFor = (provider: Provider, tag: string) =>
+    provider === 'google'
+      ? JSON.stringify({
+          type: 'service_account',
+          client_email: `scratch-${tag}@scratch-project.iam.gserviceaccount.com`,
+          private_key: '-----BEGIN PRIVATE KEY-----\nscratch\n-----END PRIVATE KEY-----\n',
+          token_uri: 'https://oauth2.googleapis.com/token',
+        })
+      : provider === 'github'
+        ? `-----BEGIN RSA PRIVATE KEY-----\nscratch-${tag}-${'x'.repeat(100)}\n-----END RSA PRIVATE KEY-----\n`
+        : `scratch-key-${tag}`;
+
+  type Held = { instructions: unknown; agentAccess: unknown; key: unknown };
+  async function heldOn(bindingId: string, field: string | null): Promise<Held> {
+    const pair = await store.findBindingWithConnectionById(bindingId);
+    if (!pair) throw new Error('binding missing from the store');
+    const secrets = store.decryptConnectionSecrets(pair.connection, bindingId);
+    return {
+      instructions: pair.binding.instructions,
+      agentAccess: pair.binding.agentAccess,
+      key: field ? secrets[field] : undefined,
+    };
+  }
+
+  /** The act as a PATCH body, the `who` the list answers for it, and what a taken send leaves held. */
+  const sends = (provider: Provider, field: string | null, tag: string) => {
+    const key = keyFor(provider, tag);
+    return [
+      {
+        act: 'change',
+        body: { instructions: `scratch ${tag}` },
+        who: (a: Acts) => a.whoChanges,
+        left: (h: Held) => h.instructions === `scratch ${tag}`,
+      },
+      {
+        act: 'grantAgents',
+        body: { agentAccess: 'all' },
+        who: (a: Acts) => a.whoGrantsAgents,
+        left: (h: Held) => h.agentAccess === 'all',
+      },
+      {
+        act: 'saveKey',
+        body: { secrets: { [field ?? 'token']: key } },
+        who: (a: Acts) => a.whoSavesKey,
+        left: (h: Held) => h.key === key,
+      },
+    ] as const;
+  };
+
+  /** A send the door must take: answered 200, and what it carried is what the store now holds. */
+  async function taken(
+    by: Reader,
+    bindingId: string,
+    field: string | null,
+    send: ReturnType<typeof sends>[number],
+    at: string,
+  ) {
+    await store.updateBinding(bindingId, { agentAccess: 'none' });
+    const said = await patch(by.token, bindingId, send.body);
+    expect(said.status, `${at} taken: ${JSON.stringify(said.body)}`).toBe(200);
+    expect(send.left(await heldOn(bindingId, field)), `${at} held after the send`).toBe(true);
+  }
+
+  const providers = () => registry.listIntegrations().map((d) => d.provider);
+
+  it('reads every sentence back against the door, for every provider and every reader', async () => {
+    const checked: string[] = [];
+    for (const provider of providers()) {
+      const { bindingId, field } = await orgBinding(provider);
+      for (const [name, reader] of Object.entries(readers())) {
+        const acts = await actsOf(reader.token, bindingId);
+        for (const send of sends(provider, field, `${provider}-${name}`)) {
+          const at = `${provider} ${name} ${send.act}`;
+          const named = send.who(acts);
+          if (send.act === 'saveKey' && field === null) {
+            // A provider that keeps no key: a key sent to it is refused for everyone, never saved nowhere.
+            const said = await patch(reader.token, bindingId, send.body);
+            expect(said.status, `${at}: ${JSON.stringify(said.body)}`).toBe(400);
+            expect(JSON.stringify(said.body), at).toContain('keeps no key or secret');
+            continue;
+          }
+          if (send.act === 'grantAgents' && named === null) {
+            // No one may: the list names no one, and the door says why, whoever sends it (324, 325).
+            const said = await patch(reader.token, bindingId, send.body);
+            expect(acts.grantAgents, at).toBe(false);
+            expect(said.status, at).toBe(400);
+            expect(JSON.stringify(said.body), at).toContain('declares no agent path');
+            continue;
+          }
+          if (acts[send.act]) {
+            await taken(reader, bindingId, field, send, at);
+            continue;
+          }
+          const said = await patch(reader.token, bindingId, send.body);
+          expect(said.status, `${at}: ${JSON.stringify(said.body)}`).toBe(403);
+          expect(String(said.body.message).toLowerCase(), at).toContain(`only ${named} can`);
+          await taken(personFor(String(named)), bindingId, field, send, `${at} as ${named}`);
+          checked.push(at);
+        }
+      }
+    }
+    expect(checked.length).toBeGreaterThan(20);
+  });
+
+  it("names who may take all of a member's acts, and that person's same request is taken (308, 323)", async () => {
+    for (const provider of providers()) {
+      const { bindingId, field } = await orgBinding(provider);
+      const key = keyFor(provider, `${provider}-all`);
+      const body = { active: true, secrets: { [field ?? 'token']: key } };
+      const said = await patch(member.token, bindingId, body);
+      const at = `${provider}: ${JSON.stringify(said.body)}`;
+      if (field === null) {
+        expect(said.status, at).toBe(400);
+        continue;
+      }
+      expect(said.status, at).toBe(403);
+      expect(said.body.message, at).toBe(
+        "You are a member of this project, and you may not switch this integration or change its settings here, nor change its connection's key or shared settings. Only an owner or admin of this project's organization can do all of that, so ask one of them.",
+      );
+      expect((await patch(admin.token, bindingId, body)).status, at).toBe(403);
+      const asOwner = await patch(owner.token, bindingId, body);
+      expect(asOwner.status, `${at} as owner: ${JSON.stringify(asOwner.body)}`).toBe(200);
+      expect((await heldOn(bindingId, field)).key, at).toBe(key);
+    }
+  });
+});
+
+// ISS-1421 r28, judge-114: a plain org member's Test of an org connection was refused with a sentence
+// about renaming, re-keying, disabling, removing or sharing, which named no testing.
+describe("a connection's own doors name the act refused (criteria 330, 331)", () => {
+  it('names a test, a rename and a removal as what was refused, and who may take each', async () => {
+    const { connectionId } = await sentryBinding({ type: 'org', id: orgId });
+    const at = `/api/integration-connections/${connectionId}`;
+    for (const [method, url, body, act] of [
+      ['POST', `${at}/test`, undefined, 'test it'],
+      ['PATCH', at, { displayName: 'renamed' }, 'rename it'],
+      ['PATCH', at, { active: false }, 'turn it off'],
+      ['DELETE', at, undefined, 'remove it'],
+    ] as const) {
+      const said = await callAs(member.token, method, url, body);
+      expect(said.status, JSON.stringify(said.body)).toBe(403);
+      expect(said.body.code).toBe('CONNECTION_NOT_MANAGEABLE');
+      expect(said.body.message).toContain(`but not ${act}:`);
+      expect(said.body.message).toContain(
+        `only an owner or admin of that organization can ${act}.`,
+      );
+      expect(said.body.message).not.toMatch(/rename, re-key, disable, remove or share/);
+    }
   });
 });

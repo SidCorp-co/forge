@@ -37,6 +37,7 @@ import {
 } from "../hooks";
 import { takesTheApp } from "../app-owner";
 import { connectionTitle, projectCalled } from "../connection-identity";
+import { readOnlyNote } from "../connection-space";
 import { deriveConnectionStatus } from "../derive";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { DangerZone, isRemovedConnection } from "./connection-danger-zone";
@@ -429,6 +430,12 @@ export function ConnectionEditDrawer({
       width={560}
     >
       <div className="flex flex-col gap-5">
+        {/* Said for as long as the drawer is open, not only in a refusal's toast (ISS-1421 r28). */}
+        {!canManage && (
+          <p className="fg-body-sm text-muted" data-testid="connection-read-only">
+            {readOnlyNote(connection, connection.access.ownerName ?? "the organization that owns it")}
+          </p>
+        )}
         <CredentialSection connection={connection} canManage={canManage} />
         {hasConfigSection(connection) && (
           <>

@@ -77,7 +77,7 @@ const bindingActsSchema = z.object({
   whoChanges: z.string(),
   whoSavesKey: z.string(),
   whoTurnsOn: z.string(),
-  whoGrantsAgents: z.string(),
+  whoGrantsAgents: z.string().nullable(),
 });
 
 /** A binding as its project's own list reads it: with what this reader may do with it. */

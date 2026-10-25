@@ -17,12 +17,17 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
-import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
 import { bindingReaderOf, projectIntegrationActs } from './binding-acts.js';
-import { assertMayDisconnect, mergedTiers, refuseByTier } from './binding-doors.js';
+import {
+  assertMayDisconnect,
+  mergedTiers,
+  refuseByTier,
+  refuseNewBinding,
+} from './binding-doors.js';
 import { checkBindingHealth } from './binding-health.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
@@ -45,7 +50,6 @@ import {
   assertNotRemoved,
   assertProjectMember,
   assertVaultConfigured,
-  authorizeAgentAccessWrite,
   badRequest,
   broadcastIntegrationChanged,
   buildCreatedBindingResponse,
@@ -53,7 +57,6 @@ import {
   keySavedHere,
   notFound,
   notifyConnectionChanged,
-  orgCredentialNotYours,
   refuseSwitchOnOverRemoved,
   stagesOnNonDeployBinding,
   summarizeProjectBinding,
@@ -131,17 +134,7 @@ integrationsRoutes.post(
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
     const role = await assertProjectMember(projectId, userId);
-    assertAdmin(role, 'connect an integration to it');
-
-    assertVaultConfigured();
-
     const body = c.req.valid('json');
-
-    const bindingLabel = 'label' in body && body.label ? body.label : '';
-    await assertNoActiveBindingClash(projectId, body.provider, body.role, bindingLabel);
-
-    const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
-
     if (body.orgId) {
       const access = await effectiveProjectRole(userId, projectId);
       if (!access || access.orgId !== body.orgId) {
@@ -150,14 +143,24 @@ integrationsRoutes.post(
           cause: { code: 'ORG_MISMATCH' },
         });
       }
-      if (!orgRoleAtLeast(access.orgRole, 'admin')) throw orgCredentialNotYours('connect');
     }
     // Connecting an integration and saying whether agents may use it is ONE act on ONE object
     // (ISS-1071 rule 3). The default is closed, so a caller that does not ask grants nothing.
     const bindingAgentAccess: AgentAccess = body.agentAccess ?? AGENT_ACCESS_CLOSED;
-    if (bindingAgentAccess !== AGENT_ACCESS_CLOSED) {
-      await authorizeAgentAccessWrite(userId, projectId, body.provider);
-    }
+    // Every act the create carries is refused together, by the rule the list's `may` answers (ISS-1421 r28).
+    refuseNewBinding(await bindingReaderOf(userId, projectId, role), body.provider, {
+      act: 'connect an integration to it',
+      grants: bindingAgentAccess !== AGENT_ACCESS_CLOSED,
+      orgOwned: Boolean(body.orgId),
+    });
+
+    assertVaultConfigured();
+
+    const bindingLabel = 'label' in body && body.label ? body.label : '';
+    await assertNoActiveBindingClash(projectId, body.provider, body.role, bindingLabel);
+
+    const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
+
     const tiers = splitProviderConfig(body.provider, body.config);
     const connection = await createConnection({
       ownerType: body.orgId ? 'org' : 'user',
@@ -230,11 +233,8 @@ integrationsRoutes.patch(
     const reader = await bindingReaderOf(userId, projectId, role);
     const tiers = mergedTiers(binding, connection, patch);
     const { mergedConfig, mergedBindingConfig } = tiers;
+    // The agents grant is one of the acts the predicate answers for, so no second rule asks it (ISS-1421 r28).
     refuseByTier(reader, binding, connection, patch, tiers);
-
-    if (patch.agentAccess !== undefined) {
-      await authorizeAgentAccessWrite(userId, projectId, binding.provider);
-    }
 
     // Refused here rather than as the DB check's constraint violation.
     if (patch.stages !== undefined && binding.role !== 'deploy')

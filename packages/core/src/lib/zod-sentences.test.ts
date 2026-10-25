@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { schemaRefused } from './zod-sentences.js';
+import { flattenedRefusalWords, schemaRefused, zodMessageWords } from './zod-sentences.js';
 
 const body = z
   .object({
@@ -176,5 +176,23 @@ describe('a number field sent no number', () => {
 
   it('says a boolean as itself', () => {
     expect(said({ inputTokens: true })).toBe('The field inputTokens takes a number, not true.');
+  });
+});
+
+// ISS-1421 r28 — judge-114 read "The field secrets.serviceAccountJson was refused. ServiceAccountJson
+// names a "token_uri"…" in the drawer of a person who had pasted a key file.
+describe("a schema's own sentence about the value sent", () => {
+  const said =
+    'This key file\'s "token_uri" is not Google\'s, so Forge will not send a signed assertion there.';
+
+  it('is said whole, naming no field', () => {
+    expect(zodMessageWords('secrets.serviceAccountJson', said)).toBe(said);
+    expect(flattenedRefusalWords({ secrets: { serviceAccountJson: [said] } })).toEqual([said]);
+  });
+
+  it('leaves a message that does not open on the value sent to name its field', () => {
+    expect(zodMessageWords('secrets.token', 'Thistle is not a token')).toBe(
+      'The field secrets.token was refused. Thistle is not a token.',
+    );
   });
 });

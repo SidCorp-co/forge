@@ -1,10 +1,10 @@
 import type { ConnectionAccess } from '@forge/contracts';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
-import { effectiveProjectRole, orgRoleAtLeast, projectWriteRefusal } from '../lib/authz.js';
+import { effectiveProjectRole, projectWriteRefusal } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
+import { type AgentAccess, noAgentPathMessage } from './agent-access.js';
 import {
   type BindingReader,
   bindingActs,
@@ -13,7 +13,7 @@ import {
   WHO_CHANGES,
 } from './binding-acts.js';
 import { checkBindingHealth } from './binding-health.js';
-import { healthAnswer, providerLabel } from './health-words.js';
+import { healthAnswer } from './health-words.js';
 import {
   holdsKey,
   isRemovedConnection,
@@ -21,7 +21,6 @@ import {
   listBoundProjectOrgs,
   type RemovedReader,
   turnsBackOnFrom,
-  whoSavesKey,
 } from './held-key.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
@@ -35,6 +34,7 @@ import {
 } from './store.js';
 import type { HealthCheckResult, IntegrationProvider } from './types.js';
 import { isVaultConfigured } from './vault.js';
+import { notThisProjectsAdmin } from './who-may-refusals.js';
 
 export function assertVaultConfigured(): void {
   if (!isVaultConfigured()) {
@@ -171,42 +171,8 @@ export function keySavedHere(
   return { ...health, active: true };
 }
 
-/** The connection tier of a binding PATCH, naming who may change what the asker sent (ISS-1421 r26, r27). */
-export const keyNotYours = (connection: { ownerType: 'user' | 'org' }) =>
-  new HTTPException(403, {
-    message:
-      connection.ownerType === 'org'
-        ? "This binding's connection belongs to the organization, so only an owner or admin of that organization can change its key or its shared settings. Ask one of them."
-        : `This binding's connection belongs to a person, so only ${whoSavesKey(connection)} can change its key or its shared settings. Ask one of them.`,
-    cause: { code: 'FORBIDDEN' },
-  });
-
-const ROLE_HELD: Record<ProjectRole, string> = {
-  admin: 'an admin',
-  member: 'a member',
-  viewer: 'a viewer',
-};
-
-/** A binding-tier act, or any act on the project's integrations, from a reader who is not its admin. */
-export const notThisProjectsAdmin = (role: ProjectRole, act: string) =>
-  new HTTPException(403, {
-    message: `You are ${ROLE_HELD[role]} of this project, so you cannot ${act}. Only ${WHO_CHANGES} can, so ask one of them.`,
-    cause: { code: 'FORBIDDEN' },
-  });
-
-/** A grant that hands a provider's credential to a runner box (ISS-1071 rule 5). */
-const boxGrantNotYours = (provider: string) =>
-  new HTTPException(403, {
-    message: `Letting agents use ${providerLabel(provider)} hands its credential to the runner box, so only an owner or admin of this project's organization can change it. Ask one of them.`,
-    cause: { code: 'FORBIDDEN' },
-  });
-
-/** An organization's own connection, asked of a reader who is not its owner or admin. */
-export const orgCredentialNotYours = (act: string) =>
-  new HTTPException(403, {
-    message: `Only an owner or admin of the organization can ${act} a connection it owns. Make it your own connection instead, or ask one of them.`,
-    cause: { code: 'FORBIDDEN' },
-  });
+/** A grant asked of a provider that declares no agent path: no one may take it, whoever asks. */
+export const noAgentPath = (provider: string) => badRequest(noAgentPathMessage(provider));
 
 /** `stages` say where a deploy binding sends code; the DB check holds any other role at none. */
 export const stagesOnNonDeployBinding = (role: string) =>
@@ -214,41 +180,6 @@ export const stagesOnNonDeployBinding = (role: string) =>
     message: `stages say where a deploy binding sends code; this binding's role is \`${role}\`, which sends none. Change the role, or leave stages off this patch.`,
     cause: { code: 'STAGES_ON_NON_DEPLOY_BINDING', details: { role } },
   });
-
-/** A connection as a sentence names it: by the name its owner gave it, never by its id. */
-function connectionCalled(connection: { displayName: string | null; provider: string }): string {
-  const prefix = `${connection.provider} · `;
-  const given = connection.displayName?.startsWith(prefix)
-    ? connection.displayName.slice(prefix.length)
-    : connection.displayName;
-  return given?.trim()
-    ? `the connection "${given.trim()}"`
-    : `this ${connection.provider} connection`;
-}
-
-/**
- * A connection the caller reaches and may not change. Names who owns it and who may, because the
- * caller can see it and will go looking for the control that works. `ownerName` is the owner as
- * `owner-names.ts` words it mid-sentence; null only where the owner no longer resolves, and then
- * the sentence says so instead of printing an id nobody can ask.
- */
-export const connectionNotManageable = (
-  connection: { ownerType: string; displayName: string | null; provider: string },
-  ownerName: string | null,
-) => {
-  const opening = `You can see ${connectionCalled(connection)} but not change it`;
-  return new HTTPException(403, {
-    message:
-      connection.ownerType === 'org'
-        ? `${opening}: it is owned by the organization ${ownerName ?? '(no longer found)'}, and only an ` +
-          `owner or admin of ${ownerName ? 'that organization' : 'the organization that owns it'} can ` +
-          'rename, re-key, disable, remove or share it. Ask one of them, or create a connection of your own.'
-        : `${opening}: it is owned by ${ownerName ?? 'a user who can no longer be found'}, and only its ` +
-          `owner can rename, re-key, disable, remove or share it. Ask ` +
-          `${ownerName ?? 'an admin of the project it is bound to'}, or create a connection of your own.`,
-    cause: { code: 'CONNECTION_NOT_MANAGEABLE' },
-  });
-};
 
 /** 409 for the one-active-service-binding invariant (create + bind-existing). */
 export const alreadyExists = (
@@ -313,22 +244,6 @@ export async function assertProjectWriter(
     });
   }
   return role;
-}
-
-/**
- * Authorize a write to a binding's agent-access grant (ISS-1071 rule 5): a `direct-mcp` grant puts
- * the credential on a runner box, so it takes the org-admin escalation; one with no agent path is refused.
- */
-export async function authorizeAgentAccessWrite(
-  userId: string,
-  projectId: string,
-  provider: string,
-): Promise<void> {
-  const tier = agentAccessTier(getIntegration(provider));
-  if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
-  if (tier !== 'org-admin') return;
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw boxGrantNotYours(provider);
 }
 
 /** `act` completes "you cannot …": what the reader asked to do, said as they would say it. */

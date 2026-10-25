@@ -111,20 +111,24 @@ export function mayGrantOnConnect(pathKind: AgentPathKind, may: ProjectIntegrati
   return pathKind === "direct-mcp" ? may.grantBoxAgents : true;
 }
 
-/** Who may grant it, in the server's terms; a box-held grant says why it needs an organization admin. */
-function whoGrants(pathKind: AgentPathKind, change: boolean, whoChanges: string, whoGrantsBox: string): string {
-  if (change && pathKind === "direct-mcp")
-    return `Granting this sends the integration's credential to the runner, so only ${whoGrantsBox} can grant it.`;
-  return `Only ${whoChanges} can change this.`;
+/**
+ * Who may grant it, as core's predicate names them for this reader, whoever reads it: a box-held
+ * grant says why it needs an organization admin, and one no one may take says so (ISS-1421 r28).
+ */
+function whoGrants(pathKind: AgentPathKind, who: string | null): string {
+  if (who === null) return "No one can let agents use it: it has no agent path.";
+  if (pathKind === "direct-mcp")
+    return `Granting this sends the integration's credential to the runner, so only ${who} can grant it.`;
+  return `Only ${who} can change this.`;
 }
 
 /** Who may grant it on a connection being made. */
 export function grantOnConnectWho(pathKind: AgentPathKind, may: ProjectIntegrationActs | null): string {
   return whoGrants(
     pathKind,
-    may?.connect ?? true,
-    may?.whoConnects ?? "an admin of this project",
-    may?.whoGrantsBoxAgents ?? "an owner or admin of this project's organization",
+    pathKind === "direct-mcp"
+      ? (may?.whoGrantsBoxAgents ?? "an owner or admin of this project's organization")
+      : (may?.whoConnects ?? "an admin of this project"),
   );
 }
 
@@ -227,7 +231,7 @@ export function AgentAccessControl({
       value={inFlight ?? binding.agentAccess}
       pathKind={binding.agentPathKind}
       canEdit={acts.grantAgents}
-      disabledReason={whoGrants(binding.agentPathKind, acts.change, acts.whoChanges, acts.whoGrantsAgents)}
+      disabledReason={whoGrants(binding.agentPathKind, acts.whoGrantsAgents)}
       busy={inFlight !== null}
       failure={failure}
       turnedOff={turnedOffTier(binding)}

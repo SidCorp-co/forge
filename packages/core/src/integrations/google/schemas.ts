@@ -28,11 +28,12 @@ export const googleConnectionConfigSchema = z
     });
   });
 
+// Said of the key file a person pasted, never of the API field it rides in (ISS-1421 r28).
 const SERVICE_ACCOUNT_SHAPE_REFUSAL =
-  'serviceAccountJson must be the whole service-account key file Google issued — a JSON object with "type":"service_account", "client_email" and "private_key". Download it from the Google Cloud console under IAM & Admin → Service Accounts → Keys → Add key → JSON, and paste the file unchanged.';
+  'This is not the whole service-account key file Google issued: that file is a JSON object with "type":"service_account", "client_email" and "private_key". Download it from the Google Cloud console under IAM & Admin → Service Accounts → Keys → Add key → JSON, and paste the file unchanged.';
 
 const FOREIGN_TOKEN_URI_SAVE_REFUSAL =
-  'serviceAccountJson names a "token_uri" that is not Google\'s (https://oauth2.googleapis.com/token), so Forge will not send a signed assertion there. Re-download the key from the Google Cloud console and paste it unchanged.';
+  'This key file\'s "token_uri" is not Google\'s (https://oauth2.googleapis.com/token), so Forge will not send a signed assertion there. Re-download the key from the Google Cloud console and paste it unchanged.';
 
 export const googleSecretsSchema = z.strictObject({
   serviceAccountJson: z

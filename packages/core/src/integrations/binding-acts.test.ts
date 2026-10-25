@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 (await import('./register-all.js')).registerAllIntegrations();
 
-const { bindingActs, projectIntegrationActs } = await import('./binding-acts.js');
+const { bindingActs, projectIntegrationActs, whoMayAll } = await import('./binding-acts.js');
 const { agentAccessTier } = await import('./agent-access.js');
 const { getIntegration, listIntegrations } = await import('./registry.js');
 
@@ -14,6 +14,7 @@ const ME = 'user-me';
 const reader = (role: Role, orgRole: OrgRole | null) => ({
   userId: ME,
   role,
+  projectOrgId: ORG,
   projectOrgRole: orgRole,
   orgRoles: new Map(orgRole ? [[ORG, orgRole] as const] : []),
 });
@@ -21,7 +22,7 @@ const orgs = { ownerType: 'org' as const, ownerId: ORG };
 const mine = { ownerType: 'user' as const, ownerId: ME };
 const someoneElses = { ownerType: 'user' as const, ownerId: 'user-other' };
 
-const providerOfTier = (tier: 'project-admin' | 'org-admin') => {
+const providerOfTier = (tier: 'project-admin' | 'org-admin' | 'refused') => {
   const found = listIntegrations().find(
     (d) => agentAccessTier(getIntegration(d.provider)) === tier,
   );
@@ -99,5 +100,54 @@ describe('bindingActs — one rule for what a drawer offers and a door accepts (
     expect(
       projectIntegrationActs({ role: 'admin', projectOrgRole: null }).changeProjectSettings,
     ).toBe(false);
+  });
+});
+
+describe('who may — an act no one may take, and several acts at once (ISS-1421 r28)', () => {
+  const plain = providerOfTier('project-admin');
+  const box = providerOfTier('org-admin');
+  const none = providerOfTier('refused');
+  const elsewhere = { ownerType: 'org' as const, ownerId: 'org-2' };
+
+  it('names no one who may grant agents a provider with no agent path, for every reader', () => {
+    for (const r of [reader('admin', 'owner'), reader('admin', 'member'), reader('member', null)]) {
+      const acts = bindingActs(r, orgs, none);
+      expect(acts.grantAgents).toBe(false);
+      expect(acts.whoGrantsAgents).toBeNull();
+    }
+    expect(bindingActs(reader('member', null), orgs, plain).whoGrantsAgents).toBe(
+      'an admin of this project',
+    );
+  });
+
+  it("names the owning organization's people for a switch and a key on its own project's connection", () => {
+    expect(whoMayAll(['change', 'saveKey'], orgs, plain, ORG)).toBe(
+      "an owner or admin of this project's organization",
+    );
+  });
+
+  it("names a project admin for a switch and a key on a person's connection", () => {
+    expect(whoMayAll(['change', 'saveKey'], someoneElses, plain, ORG)).toBe(
+      'an admin of this project',
+    );
+  });
+
+  it('names both roles where the organization owning the connection is not the project’s', () => {
+    expect(whoMayAll(['change', 'saveKey'], elsewhere, plain, ORG)).toBe(
+      'an admin of this project who is also an owner or admin of the organization that owns its connection',
+    );
+  });
+
+  it("narrows to the project's organization wherever a grant hands the credential to a box", () => {
+    expect(whoMayAll(['change', 'grantAgents'], someoneElses, box, ORG)).toBe(
+      "an owner or admin of this project's organization",
+    );
+    expect(whoMayAll(['change', 'grantAgents', 'saveKey'], someoneElses, box, ORG)).toBe(
+      "an owner or admin of this project's organization",
+    );
+    expect(whoMayAll(['grantAgents', 'saveKey'], elsewhere, box, ORG)).toBe(
+      "an owner or admin of this project's organization who is also an owner or admin of the organization that owns its connection",
+    );
+    expect(whoMayAll(['change', 'grantAgents'], orgs, plain, ORG)).toBe('an admin of this project');
   });
 });

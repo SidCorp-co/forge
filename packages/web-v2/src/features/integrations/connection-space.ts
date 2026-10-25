@@ -1,5 +1,5 @@
 import type { ConnectionDirectoryItem } from "@forge/contracts";
-import { personName } from "@forge/contracts/person-name";
+import { personName, UNNAMED_PERSON } from "@forge/contracts/person-name";
 
 export interface DirectorySpace {
   id: string;
@@ -35,9 +35,15 @@ export function connectionOwnerLabel(
   return personName(connection.access.ownerName, "start");
 }
 
-/** Why a row offers no controls, and who may change the credential. */
+/**
+ * Why a row or a drawer offers no controls, and who may change the credential: a person by the name
+ * core gives them, or as the member who owns it where they have none to show (ISS-1421 r28).
+ */
 export function readOnlyNote(connection: ConnectionDirectoryItem, ownerLabel: string): string {
-  return connection.ownerType === "org"
-    ? `Read-only — only an owner or admin of ${ownerLabel} can change this credential.`
-    : "Read-only — only its owner can change this credential.";
+  if (connection.ownerType === "org")
+    return `Read-only — only an owner or admin of ${ownerLabel} can change this credential.`;
+  const named = connection.access.ownerName;
+  return named && named !== UNNAMED_PERSON
+    ? `Read-only — only its owner, ${named}, can change this credential.`
+    : "Read-only — only the member who owns it can change this credential.";
 }

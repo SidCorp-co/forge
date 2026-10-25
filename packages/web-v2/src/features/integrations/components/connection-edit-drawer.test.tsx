@@ -105,7 +105,7 @@ describe("the drawer's Projects using it panel over a refusal", () => {
 describe("the drawer's Test connection line", () => {
   it("is the provider's own sentence when it gave one, with no stored status before it", () => {
     const said =
-      "Forge could not check Coolify. The server at example.com answered 404 Not Found to GET /api/v1/resources, so it may not be Coolify. Check the address saved on this connection, then test again.";
+      "Forge could not check Coolify. The server at example.com answered 404 Not Found when asked for its list of resources, so it may not be Coolify. Check the address saved on this connection, then test again.";
     expect(testOutcome({ status: "error", message: said })).toBe(said);
     expect(testOutcome({ status: "needs_reauth", message: "Postman refused the stored credential." })).toBe(
       "Postman refused the stored credential.",
@@ -393,5 +393,42 @@ describe("the drawer's Save key over a connection holding no key", () => {
   it("leaves a connection someone disabled turned off when its key is replaced", () => {
     mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: true });
     expect(save()).toEqual({ id: connection.id, body: { secrets: { apiKey: "scratch-fresh-key" } } });
+  });
+});
+
+// ISS-1421 r28: judge-114's plain org member lost the "who may change this" line once a refusal's toast
+// faded, and was told Sentry's host is edited per project, though the host is the connection's.
+describe("the drawer for a reader who may not change the connection", () => {
+  it("names who may for as long as it is open, a person by name", () => {
+    mount();
+    expect(screen.getByTestId("connection-read-only")).toHaveTextContent(
+      "Read-only — only its owner, Dana Reyes, can change this credential.",
+    );
+  });
+
+  it("names the member who owns it where they have no name to show", () => {
+    mount({ access: { reach: "binding", canManage: false, ownerName: "another member" } });
+    expect(screen.getByTestId("connection-read-only")).toHaveTextContent(
+      "Read-only — only the member who owns it can change this credential.",
+    );
+  });
+
+  it("names an organization's owners and admins on its connection", () => {
+    mount({
+      ownerType: "org",
+      ownerId: "org-acme",
+      provider: "sentry",
+      access: { reach: "org", canManage: false, ownerName: "Acme" },
+    });
+    expect(screen.getByTestId("connection-read-only")).toHaveTextContent(
+      "Read-only — only an owner or admin of Acme can change this credential.",
+    );
+    expect(screen.queryByText(/edited per project/)).toBeNull();
+    expect(screen.getByText(/belong to this connection, so every project bound to it shares them/)).toBeInTheDocument();
+  });
+
+  it("says nothing of the kind to a reader who may change it", () => {
+    mount({ access: { reach: "owner", canManage: true, ownerName: null } });
+    expect(screen.queryByTestId("connection-read-only")).toBeNull();
   });
 });

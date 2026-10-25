@@ -107,7 +107,7 @@ describe("a credential reached only through a binding", () => {
   it("says who may change it, and offers no Disable or Remove", async () => {
     mount();
 
-    expect(await screen.findByText(/only its owner can change this credential/i)).toBeInTheDocument();
+    expect(await screen.findByText(/only the member who owns it can change this credential/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^disable$/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
   });

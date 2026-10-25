@@ -47,6 +47,7 @@ export function zodMessageWords(field: string | null, message: string): string {
     if (m) return words(subject, m);
   }
   if (!field && said) return asSentence(said);
+  if (/^This\s/.test(said)) return asSentence(said);
   const phrase = ownPhrase(said);
   if (field && phrase) return `${subject} ${phrase}`;
   const named = field ? fieldLed(field, said) : null;

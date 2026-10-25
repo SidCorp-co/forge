@@ -41,6 +41,19 @@ export function keyLockedLine(acts: Pick<BindingActs, "whoSavesKey">): string {
   return `${onlyWho(acts.whoSavesKey)} can change this connection's key or shared settings.`;
 }
 
+/**
+ * Beside an Enabled switch drawn on over a connection that is off or removed, so it never reads as
+ * live under a Turned off header (ISS-1421 r28, judge-114).
+ */
+export function idleSwitchLine(
+  binding: Pick<IntegrationSummary, "bindingActive" | "connectionActive" | "hasSecrets">,
+): string | null {
+  if (!binding.bindingActive || binding.connectionActive) return null;
+  return bindsRemovedConnection(binding)
+    ? "On for this project, but nothing uses it while its shared connection is removed."
+    : "On for this project, but nothing uses it while its shared connection is turned off.";
+}
+
 /** Who may use the binding's own controls a drawer withholds. */
 export function bindingLockedLine(acts: Pick<BindingActs, "whoChanges">): string {
   return `${onlyWho(acts.whoChanges)} can switch this integration, change its settings here or disconnect it.`;
@@ -62,6 +75,7 @@ export function IntegrationEnabledControl({
   // A removed connection holds no key, and core refuses to turn it on (ISS-1421 r22): no Enable
   // credential, only what does turn it back on. A key saved here turns it on (r26).
   const credentialRemoved = bindsRemovedConnection(binding);
+  const idle = idleSwitchLine(binding);
 
   // A row of its own, the notice below the switch at the drawer's full width: beside the switch it
   // was squeezed to about a word a line at 390 (ISS-1421 r12).
@@ -78,6 +92,7 @@ export function IntegrationEnabledControl({
           }
           disabled={!acts.change || (credentialRemoved && !optedIn)}
         />
+        {idle && <span className="fg-body-sm min-w-0 text-muted">{idle}</span>}
       </span>
       {!acts.change && <span className="fg-body-sm text-muted">{bindingLockedLine(acts)}</span>}
       {credentialRemoved && (

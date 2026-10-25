@@ -12,6 +12,7 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { AGENT_ACCESS_CLOSED, AGENT_ACCESS_VALUES, type AgentAccess } from './agent-access.js';
 import { bindingReaderOf } from './binding-acts.js';
+import { refuseNewBinding } from './binding-doors.js';
 import { checkBindingHealth } from './binding-health.js';
 import {
   cannotDeployMessage,
@@ -59,23 +60,19 @@ import { getAdapter, getIntegration, providerCanDeploy } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
 import {
   alreadyExists,
-  assertAdmin,
   assertNoActiveBindingClash,
   assertNotRemoved,
   assertProjectMember,
   assertVaultConfigured,
-  authorizeAgentAccessWrite,
   badRequest,
   buildCreatedBindingResponse,
   connectionChangedWhileCleared,
   connectionGoneOrNotReachable,
-  connectionNotManageable,
   connectionNotReachable,
   defaultConnectionDisplayName,
   healthOnKeySaved,
   notFound,
   notifyConnectionChanged,
-  orgCredentialNotYours,
   summarizeBinding,
   summarizeConnection,
   summarizeConnectionWithUsage,
@@ -93,6 +90,12 @@ import {
   updateConnection,
 } from './store.js';
 import type { IntegrationProvider } from './types.js';
+import {
+  type ConnectionAct,
+  connectionNotManageable,
+  connectionPatchAct,
+  orgCredentialNotYours,
+} from './who-may-refusals.js';
 
 /**
  * The connection and how the caller reaches it, or the refusal that names why not. Reach decides
@@ -107,14 +110,23 @@ async function loadVisibleConnection(id: string, userId: string): Promise<Reache
 async function loadManageableConnection(
   id: string,
   userId: string,
+  act: ConnectionAct,
 ): Promise<IntegrationConnectionRow> {
-  return manageable(await loadVisibleConnection(id, userId));
+  return manageable(await loadVisibleConnection(id, userId), act);
 }
 
-async function manageable(reached: ReachedConnection): Promise<IntegrationConnectionRow> {
+/** The connection, or the refusal naming the act it was asked (ISS-1421 r28). */
+async function manageable(
+  reached: ReachedConnection,
+  act: ConnectionAct,
+): Promise<IntegrationConnectionRow> {
   if (!reached.canManage) {
     const names = await ownerNamesOf([reached.connection]);
-    throw connectionNotManageable(reached.connection, names.get(reached.connection.id) ?? null);
+    throw connectionNotManageable(
+      reached.connection,
+      names.get(reached.connection.id) ?? null,
+      act,
+    );
   }
   return reached.connection;
 }
@@ -217,13 +229,17 @@ integrationConnectionsRoutes.post(
     const id = c.req.param('id');
     const userId = c.get('userId');
     // user-owned: owner-only; org-owned: org admin (not-found for outsiders).
-    const connection = await loadManageableConnection(id, userId);
+    const connection = await loadManageableConnection(id, userId, 'share it with a project');
     // A binding to a removed connection resolves nothing (ISS-1421 r22).
     await assertNotRemoved(connection, 'shared', MANAGES_IT);
     const body = c.req.valid('json');
-    // Admin on the target project (mirrors the create path's authorization).
+    // The target project's side, by the rule its list's `may` answers, the agents grant with it (ISS-1421 r28).
     const role = await assertProjectMember(body.projectId, userId);
-    assertAdmin(role, 'share a connection with it');
+    refuseNewBinding(await bindingReaderOf(userId, body.projectId, role), connection.provider, {
+      act: 'share a connection with it',
+      grants: (body.agentAccess ?? AGENT_ACCESS_CLOSED) !== AGENT_ACCESS_CLOSED,
+      orgOwned: false,
+    });
     // An org-owned connection is shareable only within its own org.
     if (connection.ownerType === 'org') {
       const [targetProject] = await db
@@ -256,13 +272,7 @@ integrationConnectionsRoutes.post(
       bindingConfig = splitProviderConfig(provider, config).binding;
     }
 
-    // Same tier rule as the two project-side doors (ISS-1071 rule 5): a `direct-mcp` grant puts the
-    // credential on a runner box, so it takes the org-admin escalation; a `core-mediated` grant does
-    // not; a provider with no agent path is refused by name rather than storing an inert value.
     const bindingAgentAccess: AgentAccess = body.agentAccess ?? AGENT_ACCESS_CLOSED;
-    if (bindingAgentAccess !== AGENT_ACCESS_CLOSED) {
-      await authorizeAgentAccessWrite(userId, body.projectId, provider);
-    }
 
     const integrationSecret =
       getAdapter(provider)?.inboundSecret?.(connection) ??
@@ -333,7 +343,7 @@ integrationConnectionsRoutes.get('/:id/bindings', ...listConnectionBindings, asy
 integrationConnectionsRoutes.post('/:id/test', ...testConnection, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  const connection = await loadManageableConnection(id, userId);
+  const connection = await loadManageableConnection(id, userId, 'test it');
   // A removed connection holds nothing a check could pass, so none is recorded (ISS-1421 r22).
   await assertNotRemoved(connection, 'tested', MANAGES_IT);
 
@@ -380,8 +390,8 @@ integrationConnectionsRoutes.patch(
   async (c) => {
     const id = c.req.param('id');
     const userId = c.get('userId');
-    const existing = await loadManageableConnection(id, userId);
     const patch = c.req.valid('json');
+    const existing = await loadManageableConnection(id, userId, connectionPatchAct(patch));
 
     const connPatch: Parameters<typeof updateConnection>[1] = {};
     if (patch.displayName !== undefined) connPatch.displayName = patch.displayName;
@@ -444,7 +454,7 @@ async function noKeyRefusal(connection: Parameters<typeof turnsBackOn>[0]): Prom
 async function loadDeletableConnection(id: string, userId: string) {
   const reached = await findReachableConnection(userId, id);
   if (!reached) throw connectionGoneOrNotReachable(id);
-  return manageable(reached);
+  return manageable(reached, 'remove it');
 }
 
 integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {

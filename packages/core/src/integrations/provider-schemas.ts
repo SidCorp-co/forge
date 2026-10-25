@@ -257,6 +257,13 @@ async function storedSecretsOrWhole(
   }
 }
 
+/** A key sent to a provider that keeps none, which was once answered 200 and saved nowhere. */
+export function noKeyToSave(provider: string): HTTPException {
+  return badRequest(
+    `${provider} keeps no key or secret, so there is nothing here for one to be saved to. Send the write without one.`,
+  );
+}
+
 export async function applySecretsPatch(opts: {
   provider: string;
   rawSecrets: Record<string, unknown>;
@@ -267,7 +274,11 @@ export async function applySecretsPatch(opts: {
 }): Promise<Record<string, unknown> | undefined> {
   const decl = getIntegration(opts.provider);
   const primaryField = decl?.schemas.primaryCredentialField;
-  if (!decl || !primaryField) return undefined;
+  if (!decl) return undefined;
+  if (!primaryField) {
+    if (Object.keys(opts.rawSecrets).length > 0) throw noKeyToSave(opts.provider);
+    return undefined;
+  }
   if (opts.vaultGuardTiming === 'before-parse') assertVaultConfigured();
   const parsedSecrets = decl.schemas.patchSecrets.safeParse(opts.rawSecrets);
   if (!parsedSecrets.success)
