@@ -1,1 +1,0 @@
-**Guides and run prompts can no longer name a transition field the route refuses, however phrased.** Every sentence about the transition request is checked against the route's own schema; only naming a field as refused is allowed.
