@@ -84,7 +84,10 @@ export const githubCallbackRoutes = new Hono<{ Variables: AuthVars }>();
  * any other caller keeps the API's answer as it was (ISS-1421 r27). Registered before the auth
  * middleware, so a lapsed session lands on the page too.
  */
-const GITHUB_LANDINGS = ['/integrations/github/installed', '/integrations/github/manifest-callback'];
+const GITHUB_LANDINGS = [
+  '/integrations/github/installed',
+  '/integrations/github/manifest-callback',
+];
 
 export function landingFor(refusal: { code?: unknown } | null, status: number): string {
   const code = typeof refusal?.code === 'string' ? refusal.code : String(status);
@@ -183,7 +186,10 @@ githubConnectRoutes.post(
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
-    assertAdmin(await assertProjectMember(projectId, userId), 'create or install a GitHub App for it');
+    assertAdmin(
+      await assertProjectMember(projectId, userId),
+      'create or install a GitHub App for it',
+    );
     assertVaultConfigured();
 
     const [project] = await db
@@ -332,7 +338,10 @@ githubConnectRoutes.get(
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
-    assertAdmin(await assertProjectMember(projectId, userId), 'list the repositories its GitHub App can reach');
+    assertAdmin(
+      await assertProjectMember(projectId, userId),
+      'list the repositories its GitHub App can reach',
+    );
 
     const { connectionId } = c.req.valid('query');
 
@@ -372,7 +381,10 @@ githubCallbackRoutes.get(
     const userId = c.get('userId');
     if (state.userId !== userId) throw badRequest({ state: 'issued for another user' });
 
-    assertAdmin(await assertProjectMember(state.projectId, userId), 'finish creating a GitHub App for it');
+    assertAdmin(
+      await assertProjectMember(state.projectId, userId),
+      'finish creating a GitHub App for it',
+    );
     assertVaultConfigured();
 
     const app = await convertManifestCode({ code });
@@ -474,7 +486,10 @@ githubCallbackRoutes.get(
     if (!pair) throw notFound('github binding');
 
     const projectId = state?.projectId ?? pair.binding.projectId;
-    assertAdmin(await assertProjectMember(projectId, userId), 'record a GitHub App installation for it');
+    assertAdmin(
+      await assertProjectMember(projectId, userId),
+      'record a GitHub App installation for it',
+    );
 
     await recordInstallation(pair.binding.id, installationId, false);
     // One installation belongs to its connection (the master's ruling, ISS-1421 r22): every other

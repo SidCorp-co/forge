@@ -294,6 +294,7 @@ function StagePanel({
         onChange={setTargets}
         inherited={targetsInherited}
         canFixCredentials={!keyLocked && !(existing && bindsRemovedConnection(existing))}
+        canEditTargets={!bindingLocked}
       />
       </fieldset>
       {existing && bindingLocked && <p className="fg-body-sm text-muted">{bindingLockedLine(existing.acts)}</p>}
@@ -396,6 +397,9 @@ function ProdGateSection({
 }) {
   const cfgQ = usePipelineConfig(projectId);
   const update = useUpdatePipelineConfig(projectId);
+  // The pipeline config's door needs an owner or admin of the organization (ISS-1421 r27).
+  const may = useProjectIntegrationActs(projectId);
+  const settingsLocked = may !== null && !may.changeProjectSettings;
 
   const featureOff = cfgQ.isError && isFeatureOff(cfgQ.error);
   // Default OFF: only an explicit `=== true` enables auto-approve — a missing
@@ -432,10 +436,13 @@ function ProdGateSection({
             <Toggle
               checked={autoProd}
               onChange={handleToggle}
-              disabled={update.isPending || cfgQ.isLoading || !cfgQ.data}
+              disabled={update.isPending || cfgQ.isLoading || !cfgQ.data || settingsLocked}
               aria-label="Auto-approve production deploys"
             />
           </div>
+          {settingsLocked && (
+            <span className="fg-body-sm text-muted">{`${onlyWho(may.whoChangesProjectSettings)} can change this.`}</span>
+          )}
           <span className="fg-body-sm text-muted">
             When on, production deploys dispatch automatically on release —
             skipping the manual approval gate. Off (default) keeps the manual

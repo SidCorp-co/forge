@@ -21,7 +21,8 @@ import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
-import { bindingActs, bindingReaderOf, projectIntegrationActs } from './binding-acts.js';
+import { bindingReaderOf, projectIntegrationActs } from './binding-acts.js';
+import { assertMayDisconnect, mergedTiers, refuseByTier } from './binding-doors.js';
 import { checkBindingHealth } from './binding-health.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
@@ -29,14 +30,12 @@ import { healthAnswer } from './health-words.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import {
   applySecretsPatch,
-  bindingConfigPatch,
   createSchema,
   splitProviderConfig,
   updateSchema,
 } from './provider-schemas.js';
 import { enqueueOutboundDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
-import { withdrawNulls } from './release-channel-schema.js';
 import { rocketChatBindingOfProject } from './rocketchat/binding.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
 import {
@@ -51,11 +50,9 @@ import {
   broadcastIntegrationChanged,
   buildCreatedBindingResponse,
   defaultConnectionDisplayName,
-  keyNotYours,
   keySavedHere,
   notFound,
   notifyConnectionChanged,
-  notThisProjectsAdmin,
   orgCredentialNotYours,
   refuseSwitchOnOverRemoved,
   stagesOnNonDeployBinding,
@@ -231,46 +228,9 @@ integrationsRoutes.patch(
     // Whoever sends it, a switch-on over a removed connection is answered by what it is (ISS-1421 r27).
     await refuseSwitchOnOverRemoved(patch, connection, { userId, role, projectId });
     const reader = await bindingReaderOf(userId, projectId, role);
-    const acts = bindingActs(reader, connection, binding.provider);
-    // Re-validate the loose config against the existing provider so a PATCH can
-    // never strip the wrong provider's fields, then split it into tiers:
-    // coolify resourceUuid/branch are BINDING-scoped (the deploy target follows
-    // the project), the rest merges into the shared connection config.
-    let mergedConfig: Record<string, unknown> | undefined;
-    let mergedBindingConfig: Record<string, unknown> | undefined;
-    if (patch.config) {
-      const config = bindingConfigPatch(binding.provider, patch.config);
-      const tiers = splitProviderConfig(binding.provider, config);
-      if (Object.keys(tiers.connection).length > 0) {
-        mergedConfig = withdrawNulls({
-          ...((connection.config ?? {}) as object),
-          ...tiers.connection,
-        });
-      }
-      if (Object.keys(tiers.binding).length > 0) {
-        mergedBindingConfig = withdrawNulls({
-          ...((binding.config ?? {}) as object),
-          ...tiers.binding,
-        });
-      }
-    }
-
-    // Each tier is refused by the predicate the drawer draws from (`binding-acts.ts`): the binding's
-    // own tier, `active` among them, is a project admin's; the connection's key and shared settings
-    // are whoever's `saveKey` names. A patch touching neither asks nothing of the binding a member
-    // may ask, so it is held to the binding's tier.
-    const touchesKey = mergedConfig !== undefined || Object.keys(patch.secrets ?? {}).length > 0;
-    const touchesBinding =
-      mergedBindingConfig !== undefined ||
-      patch.active !== undefined ||
-      patch.instructions !== undefined ||
-      patch.agentAccess !== undefined ||
-      patch.stages !== undefined ||
-      !touchesKey;
-    if (touchesBinding && !acts.change) {
-      throw notThisProjectsAdmin(role, 'switch this integration or change its settings here');
-    }
-    if (touchesKey && !acts.saveKey) throw keyNotYours(connection);
+    const tiers = mergedTiers(binding, connection, patch);
+    const { mergedConfig, mergedBindingConfig } = tiers;
+    refuseByTier(reader, binding, connection, patch, tiers);
 
     if (patch.agentAccess !== undefined) {
       await authorizeAgentAccessWrite(userId, projectId, binding.provider);
@@ -337,10 +297,7 @@ integrationsRoutes.delete('/:projectId/integrations/:id', ...removeIntegration, 
 
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
-  const reader = await bindingReaderOf(userId, projectId, role);
-  if (!bindingActs(reader, existing.connection, existing.binding.provider).change) {
-    throw notThisProjectsAdmin(role, 'disconnect this integration from it');
-  }
+  await assertMayDisconnect(userId, projectId, role, existing);
 
   // Soft-delete the binding (stops resolution for this project). The connection
   // is left intact — it may be shared by other projects, and credential removal

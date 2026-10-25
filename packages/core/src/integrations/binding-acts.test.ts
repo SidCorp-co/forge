@@ -22,7 +22,9 @@ const mine = { ownerType: 'user' as const, ownerId: ME };
 const someoneElses = { ownerType: 'user' as const, ownerId: 'user-other' };
 
 const providerOfTier = (tier: 'project-admin' | 'org-admin') => {
-  const found = listIntegrations().find((d) => agentAccessTier(getIntegration(d.provider)) === tier);
+  const found = listIntegrations().find(
+    (d) => agentAccessTier(getIntegration(d.provider)) === tier,
+  );
   if (!found) throw new Error(`no provider declares the ${tier} agent tier`);
   return found.provider;
 };
@@ -79,13 +81,23 @@ describe('bindingActs — one rule for what a drawer offers and a door accepts (
   it('lets only a project admin connect a provider', () => {
     expect(projectIntegrationActs({ role: 'admin', projectOrgRole: 'member' }).connect).toBe(true);
     expect(projectIntegrationActs({ role: 'member', projectOrgRole: 'owner' }).connect).toBe(false);
-    expect(projectIntegrationActs({ role: 'admin', projectOrgRole: 'member' }).grantBoxAgents).toBe(false);
-    expect(projectIntegrationActs({ role: 'admin', projectOrgRole: 'admin' }).grantBoxAgents).toBe(true);
+    expect(projectIntegrationActs({ role: 'admin', projectOrgRole: 'member' }).grantBoxAgents).toBe(
+      false,
+    );
+    expect(projectIntegrationActs({ role: 'admin', projectOrgRole: 'admin' }).grantBoxAgents).toBe(
+      true,
+    );
   });
 
   it("lets only an owner or admin of the project's organization change the project's own settings", () => {
-    expect(projectIntegrationActs({ role: 'admin', projectOrgRole: 'member' }).changeProjectSettings).toBe(false);
-    expect(projectIntegrationActs({ role: 'member', projectOrgRole: 'admin' }).changeProjectSettings).toBe(true);
-    expect(projectIntegrationActs({ role: 'admin', projectOrgRole: null }).changeProjectSettings).toBe(false);
+    expect(
+      projectIntegrationActs({ role: 'admin', projectOrgRole: 'member' }).changeProjectSettings,
+    ).toBe(false);
+    expect(
+      projectIntegrationActs({ role: 'member', projectOrgRole: 'admin' }).changeProjectSettings,
+    ).toBe(true);
+    expect(
+      projectIntegrationActs({ role: 'admin', projectOrgRole: null }).changeProjectSettings,
+    ).toBe(false);
   });
 });

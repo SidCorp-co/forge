@@ -207,7 +207,10 @@ export function bindingsVisibleTo<T>(
  * bindings, so its drawer's list of the projects using the connection names it, where reach alone
  * named only the projects the caller administers (ISS-1421 r27).
  */
-export async function memberProjectsBoundTo(userId: string, connectionId: string): Promise<string[]> {
+export async function memberProjectsBoundTo(
+  userId: string,
+  connectionId: string,
+): Promise<string[]> {
   const bound = await db
     .selectDistinct({ projectId: integrationBindings.projectId })
     .from(integrationBindings)

@@ -29,7 +29,11 @@ afterEach(() => {
   listError = null;
 });
 
-function renderField(targets: { label: string; resourceUuid: string }[], canFixCredentials = true) {
+function renderField(
+  targets: { label: string; resourceUuid: string }[],
+  canFixCredentials = true,
+  canEditTargets = true,
+) {
   render(
     <CoolifyTargetsField
       projectId="p1"
@@ -41,6 +45,7 @@ function renderField(targets: { label: string; resourceUuid: string }[], canFixC
       onChange={() => {}}
       inherited={false}
       canFixCredentials={canFixCredentials}
+      canEditTargets={canEditTargets}
     />,
   );
 }
@@ -80,5 +85,15 @@ describe("CoolifyTargetsField", () => {
     cleanup();
     renderField([{ label: "", resourceUuid: "" }], true);
     expect(screen.getByText(/or fix the base URL and token above and try again\.$/)).toBeInTheDocument();
+  });
+
+  // ISS-1421 r27: a plain member, whose targets the drawer locks, was asked to type a UUID by hand.
+  it("asks for a UUID by hand only of a reader who may change the targets", () => {
+    listError = new Error("This connection was removed and holds no key.");
+    renderField([{ label: "", resourceUuid: "" }], false, false);
+    expect(
+      screen.getByText(/Could not read the application list\. This connection was removed and holds no key\.$/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/by hand/)).toBeNull();
   });
 });

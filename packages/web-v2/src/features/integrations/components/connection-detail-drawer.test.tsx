@@ -167,12 +167,36 @@ describe("a plain member of the project's drawer offers nothing core refuses the
       expect(screen.queryByRole("button", { name: /disconnect/i })).toBeNull();
       expect(screen.queryByRole("button", { name: /enable credential/i })).toBeNull();
       for (const control of screen.queryAllByRole("switch")) expect(control).toBeDisabled();
+      // Nothing they may not save is left editable: a field with no Save reads as one that saves.
+      for (const box of screen.queryAllByRole("textbox")) expect(box, box.getAttribute("aria-label") ?? box.id).toBeDisabled();
       expect(screen.queryByText(/Enter one to store it|Saving a new key/)).toBeNull();
       expect(
         screen.getAllByText(/^Only an admin of this project can switch this integration/).length,
       ).toBeGreaterThan(0);
     },
   );
+});
+
+// ISS-1421 r27: the Coolify drawer's auto-approve writes the pipeline config, whose door needs an
+// owner or admin of the organization; a project admin who is neither was offered it and refused.
+describe("a project admin who does not administer the organization", () => {
+  it("is not offered Coolify's auto-approve, and is told who may", async () => {
+    provider = "coolify";
+    may = { ...ALL_MAY, changeProjectSettings: false };
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: "coolify:live", status: "connected", meta: { capabilities: { canDeploy: true } } } as never}
+          onClose={() => {}}
+        />
+      </Page>,
+    );
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Auto-approve production deploys" })).toBeDisabled());
+    expect(
+      screen.getByText("Only an owner or admin of this project's organization can change this."),
+    ).toBeInTheDocument();
+  });
 });
 
 // ISS-1421 r27, judge-110 (c): a Postman connection needing sign-in showed only the badge in the

@@ -30,7 +30,9 @@ beforeAll(async () => {
     app: import('hono').Hono<AppVars>;
   });
   const { signUserToken } = await import('../../src/auth/jwt.js');
-  const user = await createTestUser(harness.db, { email: `landing-${randomUUID().slice(0, 6)}@test.forge.local` });
+  const user = await createTestUser(harness.db, {
+    email: `landing-${randomUUID().slice(0, 6)}@test.forge.local`,
+  });
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
   token = await signUserToken(user.id);
 }, 120_000);
@@ -56,7 +58,9 @@ describe("GitHub's return to setup_url (the master's ruling on judge-110 (a))", 
   it('lands a signed-out browser on the same page', async () => {
     const res = await installed('text/html', null);
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toMatch(/\/integrations\/github\/landed\?code=UNAUTHENTICATED$/);
+    expect(res.headers.get('location')).toMatch(
+      /\/integrations\/github\/landed\?code=UNAUTHENTICATED$/,
+    );
   });
 
   it('keeps the API answer for a caller that does not ask for a page', async () => {

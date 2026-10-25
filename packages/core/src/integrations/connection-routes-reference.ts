@@ -5,8 +5,8 @@ import { describeOperation, fail, json } from '../api-reference/declare/describe
 import { bindingRoles, deployStages } from '../db/schema.js';
 import { UNREADABLE_WHEN } from './credential-unreadable.js';
 import {
-  connectionBindingListSchema,
   boundConnectionSchema,
+  connectionBindingListSchema,
   connectionSummarySchema,
   healthResultSchema,
   inConnection,
@@ -42,7 +42,7 @@ const directoryItemSchema = connectionSummarySchema.extend({
 
 export const directorySchema = z.object({ items: z.array(directoryItemSchema) });
 export const connectionAnswerSchema = z.object({ connection: connectionSummarySchema });
-export { connectionBindingListSchema, boundConnectionSchema, healthResultSchema, okSchema };
+export { boundConnectionSchema, connectionBindingListSchema, healthResultSchema, okSchema };
 
 const unreachable =
   'the connection does not exist, or the caller neither owns it, shares its org nor administers a project it is bound to';

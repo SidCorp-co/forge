@@ -75,7 +75,9 @@ afterAll(async () => {
 });
 
 async function person(name: string) {
-  const user = await createTestUser(harness.db, { email: `${name}-${randomUUID().slice(0, 6)}@test.forge.local` });
+  const user = await createTestUser(harness.db, {
+    email: `${name}-${randomUUID().slice(0, 6)}@test.forge.local`,
+  });
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
   return { id: user.id, token: await signUserToken(user.id) };
 }
@@ -119,8 +121,10 @@ async function sentryBinding(ownerOf: { type: 'user' | 'org'; id: string }, remo
     role: 'service',
   });
   if (removed) {
-    const by = ownerOf.type === 'org' ? owner.token : (await signUserToken(ownerOf.id));
-    expect((await callAs(by, 'DELETE', `/api/integration-connections/${connection.id}`)).status).toBe(200);
+    const by = ownerOf.type === 'org' ? owner.token : await signUserToken(ownerOf.id);
+    expect(
+      (await callAs(by, 'DELETE', `/api/integration-connections/${connection.id}`)).status,
+    ).toBe(200);
   }
   return { connectionId: connection.id, bindingId: binding.id };
 }
@@ -128,7 +132,9 @@ async function sentryBinding(ownerOf: { type: 'user' | 'org'; id: string }, remo
 async function actsOf(bearer: string, bindingId: string): Promise<Acts> {
   const list = await callAs(bearer, 'GET', `/api/projects/${projectId}/integrations`);
   expect(list.status).toBe(200);
-  const row = (list.body.items as Array<{ id: string; acts: Acts }>).find((b) => b.id === bindingId);
+  const row = (list.body.items as Array<{ id: string; acts: Acts }>).find(
+    (b) => b.id === bindingId,
+  );
   if (!row) throw new Error('binding missing from the list');
   return row.acts;
 }
@@ -150,11 +156,17 @@ describe('a plain project member over a removed connection (criteria 290, 308, 3
   it("answers a member's keyless switch-on 409 CONNECTION_REMOVED, as it answers the owner", async () => {
     const { bindingId } = await sentryBinding({ type: 'org', id: orgId }, true);
     await store.updateBinding(bindingId, { active: false });
-    for (const body of [{ active: true }, { active: true, secrets: {} }, { active: true, secrets: { authToken: '' } }]) {
+    for (const body of [
+      { active: true },
+      { active: true, secrets: {} },
+      { active: true, secrets: { authToken: '' } },
+    ]) {
       const said = await patch(member.token, bindingId, body);
       expect(said.status, JSON.stringify(said.body)).toBe(409);
       expect(said.body.code).toBe('CONNECTION_REMOVED');
-      expect(said.body.message).toContain('Only an owner or admin of the organization that owns it can save a new key');
+      expect(said.body.message).toContain(
+        'Only an owner or admin of the organization that owns it can save a new key',
+      );
     }
   });
 
@@ -180,7 +192,12 @@ describe('the list says what each reader may do, and the doors agree (criteria 3
   it('offers a plain member nothing on an organization binding, and refuses each act by name', async () => {
     const { bindingId } = await sentryBinding({ type: 'org', id: orgId });
     const acts = await actsOf(member.token, bindingId);
-    expect(acts).toMatchObject({ change: false, saveKey: false, turnOn: false, grantAgents: false });
+    expect(acts).toMatchObject({
+      change: false,
+      saveKey: false,
+      turnOn: false,
+      grantAgents: false,
+    });
     expect(acts.whoChanges).toBe('an admin of this project');
 
     const switched = await patch(member.token, bindingId, { active: false });
@@ -188,10 +205,18 @@ describe('the list says what each reader may do, and the doors agree (criteria 3
     expect(switched.body.message).toBe(
       'You are a member of this project, so you cannot switch this integration or change its settings here. Only an admin of this project can, so ask one of them.',
     );
-    const gone = await callAs(member.token, 'DELETE', `/api/projects/${projectId}/integrations/${bindingId}`);
+    const gone = await callAs(
+      member.token,
+      'DELETE',
+      `/api/projects/${projectId}/integrations/${bindingId}`,
+    );
     expect(gone.status).toBe(403);
     expect(gone.body.message).toContain('you cannot disconnect this integration from it');
-    const rotated = await callAs(member.token, 'POST', `/api/projects/${projectId}/integrations/${bindingId}/rotate-secret`);
+    const rotated = await callAs(
+      member.token,
+      'POST',
+      `/api/projects/${projectId}/integrations/${bindingId}/rotate-secret`,
+    );
     expect(rotated.status).toBe(403);
     expect(rotated.body.message).toContain("you cannot rotate this integration's inbound secret");
     expect((await rowOf(bindingId)).bindingActive).toBe(true);
@@ -204,7 +229,9 @@ describe('the list says what each reader may do, and the doors agree (criteria 3
     expect((await patch(admin.token, bindingId, { active: false })).status).toBe(200);
     const keyed = await patch(admin.token, bindingId, { secrets: { authToken: 'scratch-new' } });
     expect(keyed.status).toBe(403);
-    expect(keyed.body.message).toContain('only an owner or admin of that organization can change its key');
+    expect(keyed.body.message).toContain(
+      'only an owner or admin of that organization can change its key',
+    );
   });
 
   it("lets a connection's owner save its key while only a member of the project, and nothing else", async () => {
@@ -214,14 +241,20 @@ describe('the list says what each reader may do, and the doors agree (criteria 3
     const keyed = await patch(member.token, bindingId, { secrets: { authToken: 'scratch-new' } });
     expect(keyed.status, JSON.stringify(keyed.body)).toBe(200);
     expect((keyed.body.integration as { acts: Acts }).acts.saveKey).toBe(true);
-    const switched = await patch(member.token, bindingId, { active: false, secrets: { authToken: 'x2' } });
+    const switched = await patch(member.token, bindingId, {
+      active: false,
+      secrets: { authToken: 'x2' },
+    });
     expect(switched.status).toBe(403);
     expect(switched.body.message).toContain('switch this integration or change its settings');
   });
 
   it('answers the project-wide acts on the list, and refuses a member connecting a provider by name', async () => {
     const asMember = await callAs(member.token, 'GET', `/api/projects/${projectId}/integrations`);
-    expect(asMember.body.may).toMatchObject({ connect: false, whoConnects: 'an admin of this project' });
+    expect(asMember.body.may).toMatchObject({
+      connect: false,
+      whoConnects: 'an admin of this project',
+    });
     const asAdmin = await callAs(admin.token, 'GET', `/api/projects/${projectId}/integrations`);
     expect((asAdmin.body.may as { connect: boolean }).connect).toBe(true);
     const made = await callAs(member.token, 'POST', `/api/projects/${projectId}/integrations`, {
@@ -254,8 +287,14 @@ describe("a connection's own refusals and bindings (criteria 317, 318)", () => {
 
   it("lists the reader's own project among those using a person's connection they do not reach", async () => {
     const { connectionId } = await sentryBinding({ type: 'user', id: owner.id });
-    const said = await callAs(member.token, 'GET', `/api/integration-connections/${connectionId}/bindings`);
+    const said = await callAs(
+      member.token,
+      'GET',
+      `/api/integration-connections/${connectionId}/bindings`,
+    );
     expect(said.status, JSON.stringify(said.body)).toBe(200);
-    expect((said.body.items as Array<{ projectId: string }>).map((b) => b.projectId)).toContain(projectId);
+    expect((said.body.items as Array<{ projectId: string }>).map((b) => b.projectId)).toContain(
+      projectId,
+    );
   });
 });

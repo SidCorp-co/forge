@@ -7,16 +7,10 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import {
-  AGENT_ACCESS_CLOSED,
-  AGENT_ACCESS_VALUES,
-  type AgentAccess,
-  agentAccessTier,
-  noAgentPathMessage,
-} from './agent-access.js';
+import { AGENT_ACCESS_CLOSED, AGENT_ACCESS_VALUES, type AgentAccess } from './agent-access.js';
 import { bindingReaderOf } from './binding-acts.js';
 import { checkBindingHealth } from './binding-health.js';
 import {
@@ -70,6 +64,7 @@ import {
   assertNotRemoved,
   assertProjectMember,
   assertVaultConfigured,
+  authorizeAgentAccessWrite,
   badRequest,
   buildCreatedBindingResponse,
   connectionChangedWhileCleared,
@@ -77,11 +72,10 @@ import {
   connectionNotManageable,
   connectionNotReachable,
   defaultConnectionDisplayName,
-  authorizeAgentAccessWrite,
   healthOnKeySaved,
-  orgCredentialNotYours,
   notFound,
   notifyConnectionChanged,
+  orgCredentialNotYours,
   summarizeBinding,
   summarizeConnection,
   summarizeConnectionWithUsage,

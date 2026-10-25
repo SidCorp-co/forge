@@ -5,8 +5,14 @@ import { effectiveProjectRole, orgRoleAtLeast, projectWriteRefusal } from '../li
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
+import {
+  type BindingReader,
+  bindingActs,
+  bindingReaderOf,
+  type ProjectRole,
+  WHO_CHANGES,
+} from './binding-acts.js';
 import { checkBindingHealth } from './binding-health.js';
-import { type BindingReader, bindingActs, bindingReaderOf, type ProjectRole, WHO_CHANGES } from './binding-acts.js';
 import { healthAnswer, providerLabel } from './health-words.js';
 import {
   holdsKey,

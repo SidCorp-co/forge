@@ -19,6 +19,7 @@ export function CoolifyTargetsField({
   onChange,
   inherited,
   canFixCredentials,
+  canEditTargets = true,
 }: {
   projectId: string;
   stage: string;
@@ -31,6 +32,9 @@ export function CoolifyTargetsField({
   /** Whether this reader may change the base URL and token above, on a connection not removed: the
    *  hint to fix them told a reader the drawer locks them out of to do it (ISS-1421 r26). */
   canFixCredentials: boolean;
+  /** Whether this reader may change the targets, so a list that cannot be read asks for a UUID typed
+   *  by hand only of one who may type it (ISS-1421 r27). */
+  canEditTargets?: boolean;
 }) {
   const auth = integrationId
     ? { integrationId }
@@ -76,8 +80,10 @@ export function CoolifyTargetsField({
       </p>
       {apps.isError && (
         <p className="fg-body-sm text-muted">
-          Could not read the application list. {formatApiReason(apps.error)} Enter the resource
-          UUID by hand{canFixCredentials ? ", or fix the base URL and token above and try again" : ""}.
+          Could not read the application list. {formatApiReason(apps.error)}
+          {canEditTargets
+            ? ` Enter the resource UUID by hand${canFixCredentials ? ", or fix the base URL and token above and try again" : ""}.`
+            : ""}
         </p>
       )}
       {targets.map((t, idx) => {

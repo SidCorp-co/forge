@@ -52,9 +52,7 @@ export function bindingActs(
   const tier = agentAccessTier(getIntegration(provider));
   const boxGrant = tier === 'org-admin';
   const grantAgents =
-    change &&
-    tier !== 'refused' &&
-    (!boxGrant || orgRoleAtLeast(reader.projectOrgRole, 'admin'));
+    change && tier !== 'refused' && (!boxGrant || orgRoleAtLeast(reader.projectOrgRole, 'admin'));
   return {
     change,
     saveKey,

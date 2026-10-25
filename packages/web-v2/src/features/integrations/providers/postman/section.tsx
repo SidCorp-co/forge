@@ -216,61 +216,64 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             onChange={setOwnerOrgId}
           />
         )}
-        <Field
-          label="Workspace name"
-          hint="The Postman workspace this project writes into."
-        >
-          <Input
-            value={form.workspaceName}
-            onChange={(e) => set("workspaceName", e.target.value)}
-            placeholder={DEFAULT_WORKSPACE}
-          />
-        </Field>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Workspace ID" hint="Optional — the workspace UUID.">
-            <Input
-              value={form.workspaceId}
-              onChange={(e) => set("workspaceId", e.target.value)}
-              placeholder="(optional)"
-            />
-          </Field>
+        {/* The workspace, region and mode are the connection's, as the key is (ISS-1421 r27). */}
+        <fieldset disabled={keyLocked} className="contents">
           <Field
-            label="Collection ID"
-            hint="Optional — the collection to write."
+            label="Workspace name"
+            hint="The Postman workspace this project writes into."
           >
             <Input
-              value={form.collectionId}
-              onChange={(e) => set("collectionId", e.target.value)}
-              placeholder="(optional)"
+              value={form.workspaceName}
+              onChange={(e) => set("workspaceName", e.target.value)}
+              placeholder={DEFAULT_WORKSPACE}
             />
           </Field>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-6">
-          <div className="flex flex-col gap-1.5">
-            <span className="fg-label">Region</span>
-            <SegmentedControl<PostmanRegion>
-              value={form.region}
-              onChange={(v) => set("region", v)}
-              options={[
-                { value: "us", label: "US" },
-                { value: "eu", label: "EU" },
-              ]}
-            />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Workspace ID" hint="Optional — the workspace UUID.">
+              <Input
+                value={form.workspaceId}
+                onChange={(e) => set("workspaceId", e.target.value)}
+                placeholder="(optional)"
+              />
+            </Field>
+            <Field
+              label="Collection ID"
+              hint="Optional — the collection to write."
+            >
+              <Input
+                value={form.collectionId}
+                onChange={(e) => set("collectionId", e.target.value)}
+                placeholder="(optional)"
+              />
+            </Field>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="fg-label">Mode</span>
-            <SegmentedControl<PostmanMode>
-              value={form.mode}
-              onChange={(v) => set("mode", v)}
-              options={[
-                { value: "minimal", label: "Minimal" },
-                { value: "full", label: "Full" },
-              ]}
-            />
+
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="flex flex-col gap-1.5">
+              <span className="fg-label">Region</span>
+              <SegmentedControl<PostmanRegion>
+                value={form.region}
+                onChange={(v) => set("region", v)}
+                options={[
+                  { value: "us", label: "US" },
+                  { value: "eu", label: "EU" },
+                ]}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="fg-label">Mode</span>
+              <SegmentedControl<PostmanMode>
+                value={form.mode}
+                onChange={(v) => set("mode", v)}
+                options={[
+                  { value: "minimal", label: "Minimal" },
+                  { value: "full", label: "Full" },
+                ]}
+              />
+            </div>
           </div>
-        </div>
+        </fieldset>
 
         {testError && <Banner tone="danger">{testError}</Banner>}
         {testResult &&
