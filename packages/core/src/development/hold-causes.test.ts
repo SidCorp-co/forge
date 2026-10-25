@@ -8,7 +8,7 @@ import { FAILURE_CAUSES } from '@forge/contracts/failure-causes';
 import { RUN_GATES, RUN_STUCK_RULES } from '@forge/contracts/run-standing';
 import { sayEn } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { RELEASE_HOLD_CODES, releaseHoldWords } from '../issues/index.js';
+import { releaseHoldWords, WORDED_RELEASE_HOLDS } from '../issues/index.js';
 import { failureCause, gateCause, personCause, stuckCause } from './hold-causes.js';
 
 const CODE = /[a-z]+_[a-z_]+|[A-Z]{3,}_[A-Z_]+/;
@@ -49,7 +49,7 @@ describe('a hold cause is one plain sentence', () => {
   });
 
   it('for every release hold code, and one it has no words for, each with a verb that clears it', () => {
-    const codes = [...RELEASE_HOLD_CODES, 'RELEASE_SOMETHING_NEW'];
+    const codes = [...WORDED_RELEASE_HOLDS, 'RELEASE_SOMETHING_NEW'];
     for (const code of codes) {
       for (const owes of ['human', 'agent'] as const) {
         const w = releaseHoldWords({ code, owes });

@@ -189,7 +189,7 @@ export {
   reopenedAtOf,
   shipsWithdrawnOf,
 } from './release-evidence.js';
-export { RELEASE_HOLD_CODES, releaseHoldWords } from './release-hold-words.js';
+export { releaseHoldWords, WORDED_RELEASE_HOLDS } from './release-hold-words.js';
 export { issuesMissingReleaseRecord } from './release-record-required.js';
 export {
   type IssueCreateInput,

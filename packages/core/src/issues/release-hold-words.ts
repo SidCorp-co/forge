@@ -174,4 +174,4 @@ export function releaseHoldWords(hold: { code: string; owes: ReleaseHoldOwer }):
 }
 
 /** Every code with its own words, for the test that holds each to a plain sentence. */
-export const RELEASE_HOLD_CODES: readonly string[] = Object.keys(WORDS);
+export const WORDED_RELEASE_HOLDS: readonly string[] = Object.keys(WORDS);
