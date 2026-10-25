@@ -3,9 +3,8 @@
 // doors: the Assistant's forge_requirement_draft and the REST draft an Agent session posts, so a
 // draft held for the person's agreement lands linked whichever door proposed it.
 
-import { logger } from '../lib/logger.js';
 import { designIdsOf, linkWorkflow } from './issue-links.js';
-import { proposePlacement } from './placement.js';
+import { proposePlacementLater } from './placement.js';
 import type { RequirementActor } from './read.js';
 import type { RevisionWrite } from './revision-write.js';
 import { designWithdrawnRefusal, type RequirementRefusal } from './rules.js';
@@ -75,9 +74,7 @@ export async function draftRequirement(input: {
   if (!linked.ok) return linked;
   const outcome = await draftLinked({ projectId, actor, title, write, workflowIds: linked.ids });
   if (outcome.ok) {
-    void proposePlacement(projectId, outcome.requirement.id).catch((err: unknown) =>
-      logger.warn({ err }, 'requirement placement: the proposal on create failed'),
-    );
+    proposePlacementLater(projectId, outcome.requirement.id, 'create');
   }
   return outcome;
 }

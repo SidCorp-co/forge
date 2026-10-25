@@ -10,7 +10,6 @@ import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { linkIssueToRequirement } from '../issues/index.js';
-import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
@@ -18,7 +17,7 @@ import {
   createRequirementIn,
   linkIssueRefusal,
   lockRequirements,
-  proposePlacement,
+  proposePlacementLater,
   requirementIdIn,
   rowIn,
 } from '../requirements/index.js';
@@ -117,7 +116,5 @@ export async function startRequirementIn(
 
 /** After the answer commits: the assistant is asked for the new requirement's area and short name. */
 export function proposeItsPlacement(projectId: string, requirementId: string): void {
-  void proposePlacement(projectId, requirementId).catch((err: unknown) =>
-    logger.warn({ err }, 'requirement placement: the proposal on a steward start failed'),
-  );
+  proposePlacementLater(projectId, requirementId, 'a steward start');
 }

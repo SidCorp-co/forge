@@ -3,6 +3,7 @@ import { and, desc, eq, type InferSelectModel, inArray, isNull, or, sql } from '
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, tokenFenceChanges, type UserKind, users } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { background } from '../lib/background.js';
 import { env, LEGACY_PAT_PEPPER } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 import {
@@ -323,17 +324,17 @@ export async function logUnprovenPatPeppers(): Promise<void> {
  * Fire-and-forget update of last_used_at / last_used_ip. Errors are
  * swallowed (logged) — never block the request path on this write.
  */
+const touches = background();
+
 export function touchPatUsage(tokenId: string, ip: string | undefined): void {
-  void (async () => {
-    try {
-      await db
+  touches.start(
+    () =>
+      db
         .update(personalAccessTokens)
         .set({ lastUsedAt: sql`now()`, lastUsedIp: ip ?? null })
-        .where(eq(personalAccessTokens.id, tokenId));
-    } catch (err) {
-      console.warn('[pat] touchPatUsage failed', err);
-    }
-  })();
+        .where(eq(personalAccessTokens.id, tokenId)),
+    (err) => console.warn('[pat] touchPatUsage failed', err),
+  );
 }
 
 /**

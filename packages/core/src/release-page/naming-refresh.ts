@@ -9,6 +9,7 @@ import { namingHasFacts } from '@forge/contracts/release-naming';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { consume } from '../outbox/index.js';
@@ -90,21 +91,18 @@ export async function nameReleaseIfOwed(
   return outcome.kind;
 }
 
-const running = new Set<Promise<void>>();
+const namings = background();
 
 /** Starts a naming no request waits on, for a page read that found its release unnamed. */
 export function nameInBackground(release: { projectId: string; version: string }): void {
-  const done: Promise<void> = nameReleaseIfOwed(release.projectId, release.version)
-    .then(() => undefined)
-    .catch((err) => logger.warn({ err, ...release }, 'release-page: a release naming draft failed'))
-    .finally(() => running.delete(done));
-  running.add(done);
+  namings.start(
+    () => nameReleaseIfOwed(release.projectId, release.version),
+    (err) => logger.warn({ err, ...release }, 'release-page: a release naming draft failed'),
+  );
 }
 
 /** Settles every naming started in the background, for a caller that must not leave one running. */
-export async function backgroundNamingsSettled(): Promise<void> {
-  while (running.size > 0) await Promise.all([...running]);
-}
+export const backgroundNamingsSettled = (): Promise<void> => namings.settled();
 
 async function versionOfRun(runId: string): Promise<string | null> {
   const [run] = await db

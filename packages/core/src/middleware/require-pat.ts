@@ -8,6 +8,7 @@ import { isPatLike } from '../credentials/pat-format.js';
 import type { StatedPatGrant } from '../credentials/pat-permissions.js';
 import { patPrincipalOf } from '../credentials/pat-principal.js';
 import { tokenChanged } from '../credentials/ports.js';
+import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
 import { type PatRequestClass, patRuleFor } from '../lib/rate-limits.js';
 import { parseBearerHeader } from './bearer.js';
@@ -81,6 +82,7 @@ const bucketKey = (tokenId: string, requestClass: PatRequestClass) => `${tokenId
  */
 const patUsedLastEmit = new Map<string, number>();
 const PAT_USED_THROTTLE_MS = 60 * 1000;
+const patUsedPushes = background();
 
 /**
  * Drop in-process throttle state for a token id. Called from PAT revoke /
@@ -96,12 +98,10 @@ function maybeEmitPatUsed(tokenId: string, userId: string): void {
   const last = patUsedLastEmit.get(tokenId);
   if (last && now - last < PAT_USED_THROTTLE_MS) return;
   patUsedLastEmit.set(tokenId, now);
-  tokenChanged({
-    userId,
-    tokenId,
-    change: 'used',
-    ts: new Date(now).toISOString(),
-  }).catch((err: unknown) => logger.warn({ err, tokenId }, 'pat.used: the push was not written'));
+  patUsedPushes.start(
+    () => tokenChanged({ userId, tokenId, change: 'used', ts: new Date(now).toISOString() }),
+    (err: unknown) => logger.warn({ err, tokenId }, 'pat.used: the push was not written'),
+  );
 }
 
 /**

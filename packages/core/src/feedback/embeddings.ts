@@ -22,6 +22,7 @@ import {
   nearestItems,
   writeItemEmbedding,
 } from '../knowledge/index.js';
+import { background } from '../lib/background.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -43,19 +44,22 @@ export async function embedFeedback(feedbackId: string) {
 }
 
 /** After the write committed: embed, logging what did not land. */
+const embeddings = background();
+
 export function embedFeedbackLater(feedbackId: string): void {
-  embedFeedback(feedbackId)
-    .then((status) => {
+  embeddings.start(
+    async () => {
+      const status = await embedFeedback(feedbackId);
       if (status && status !== 'embedded') {
         logger.warn({ feedbackId, status }, 'item_embeddings: the feedback item was not embedded');
       }
-    })
-    .catch((err: unknown) =>
+    },
+    (err: unknown) =>
       logger.error(
         { err, feedbackId },
         'item_embeddings: the feedback embedding row was not written',
       ),
-    );
+  );
 }
 
 /** The nearest other item by stored vector, keys only, or why it could not be compared. */

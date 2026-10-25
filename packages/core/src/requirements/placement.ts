@@ -16,6 +16,7 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { completeOnce } from '../integrations/llm/index.js';
+import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type RequirementActor, rowIn } from './read.js';
@@ -325,6 +326,8 @@ export async function proposePlacement(projectId: string, requirementId: string)
   return true;
 }
 
+const placements = background();
+
 /** A person asks for proposals for every requirement of the project that has none; they arrive one at a time, in the background. */
 export async function proposeMissingPlacements(
   projectId: string,
@@ -344,14 +347,29 @@ export async function proposeMissingPlacements(
       ),
     );
   // one model call each, so the answer is the count asked and the proposals arrive on the list as they are made
-  void (async () => {
-    for (const r of rows) {
-      try {
-        await proposePlacement(projectId, r.id);
-      } catch (err) {
-        logger.warn({ err, requirementId: r.id }, 'requirement placement: a proposal failed');
+  placements.start(
+    async () => {
+      for (const r of rows) {
+        try {
+          await proposePlacement(projectId, r.id);
+        } catch (err) {
+          logger.warn({ err, requirementId: r.id }, 'requirement placement: a proposal failed');
+        }
       }
-    }
-  })();
+    },
+    (err: unknown) => logger.warn({ err }, 'requirement placement: the proposals stopped'),
+  );
   return { asked: rows.length };
+}
+
+/** Asks for one requirement's placement after the write that made it, which does not wait on it. */
+export function proposePlacementLater(
+  projectId: string,
+  requirementId: string,
+  door: string,
+): void {
+  placements.start(
+    () => proposePlacement(projectId, requirementId),
+    (err: unknown) => logger.warn({ err }, `requirement placement: the proposal on ${door} failed`),
+  );
 }
