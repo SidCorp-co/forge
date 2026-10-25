@@ -4,7 +4,8 @@
  * release merges, so a verdict counts where it was judged at the head of an open change request
  * linked to the issue, while that head stays unchanged. A head that moved since is a different
  * build, and a verdict at the old one stops counting, named. Once the host merged the request, its
- * merge commit is the landing.
+ * merge commit is the landing. Work the host already holds on the target branch with no request
+ * (`landed-on-target.ts`) is landed at that commit (`from: 'landed'`), never read as unlanded.
  *
  * One reading, through `landed-build.ts:deliveredBuildsOf`, for the build a verdict defaults to
  * (`judged-build.ts`), the steward's reopen rule (`reopen-guard.ts`) and a requirement's coverage;
@@ -25,6 +26,7 @@ import {
   type ReleaseMergeStep,
   type RosterChangeRequest,
 } from './change-request-roster.js';
+import { alreadyOnPhrase, landedOnTargetOf, type OnTarget } from './landed-on-target.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
 const short = (sha: string) => sha.slice(0, 12);
@@ -33,14 +35,14 @@ const short = (sha: string) => sha.slice(0, 12);
 export type ChangeRequestBuild =
   | {
       sha: string;
-      from: 'merge' | 'change-request';
+      from: 'merge' | 'change-request' | 'landed';
       basis: string;
       /** The request whose head this is (`!12`); null for a merge commit. */
       via: string | null;
       /** The branch that request merges from; null for a merge commit. */
       branch: string | null;
     }
-  | { sha: null; why: string };
+  | { sha: null; why: string; unread?: true };
 
 /**
  * Why a release cut at `cutAt` of the request `via` no longer merges what was approved, or null
@@ -59,6 +61,8 @@ export function otherHeadWhy(judged: string, build: string, via: string): string
 interface Claimed {
   key: string;
   merged: string | null;
+  /** Whether a merge is stamped on it, a box's mark among them. */
+  stamped: boolean;
   steps: ReleaseMergeStep[] | null;
 }
 
@@ -68,6 +72,7 @@ async function claimedOf(ids: readonly string[]): Promise<Map<string, Claimed>> 
       .select({
         id: issues.id,
         merged: issues.mergedCommitSha,
+        mergedAt: issues.mergedAt,
         runStatus: pipelineRuns.status,
         metadata: pipelineRuns.metadata,
       })
@@ -82,6 +87,7 @@ async function claimedOf(ids: readonly string[]): Promise<Map<string, Claimed>> 
       {
         key: shown.get(r.id) ?? r.id,
         merged: r.merged?.trim().toLowerCase() ?? null,
+        stamped: r.mergedAt !== null,
         steps: r.runStatus === 'running' ? mergeStepsOf(r.metadata) : null,
       },
     ]),
@@ -193,6 +199,13 @@ export async function changeRequestBuildsOf(
   ]);
   const stepIds = [...claimed.values()].flatMap((c) => (c.steps ?? []).map((s) => s.pullRequestId));
   const heads = await currentHeads([...new Set(stepIds)]);
+  const onTarget = await onTargetOf(
+    projectId,
+    ids.filter((id) => {
+      const c = claimed.get(id);
+      return c?.stamped && !c.merged && !open.some((cr) => cr.issueIds.includes(id));
+    }),
+  );
   for (const id of ids) {
     const c = claimed.get(id);
     if (!c) continue;
@@ -207,6 +220,11 @@ export async function changeRequestBuildsOf(
       continue;
     }
     const released = c.steps ? inRelease(c.key, c.steps, id, heads) : null;
+    const landed = released || !c.stamped ? null : landedBuild(c.key, onTarget, id);
+    if (landed) {
+      out.set(id, landed);
+      continue;
+    }
     out.set(
       id,
       released ??
@@ -218,4 +236,40 @@ export async function changeRequestBuildsOf(
     );
   }
   return out;
+}
+
+/** The host's answer on which issues are already on the target branch, or why it could not be read. */
+async function onTargetOf(
+  projectId: string,
+  ids: readonly string[],
+): Promise<Map<string, OnTarget> | { unread: string }> {
+  try {
+    return await landedOnTargetOf(projectId, ids);
+  } catch (err) {
+    return { unread: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** The issue's landing where the host holds its work on the target branch with no request. */
+function landedBuild(
+  key: string,
+  onTarget: Map<string, OnTarget> | { unread: string },
+  id: string,
+): ChangeRequestBuild | null {
+  if (!(onTarget instanceof Map)) {
+    return {
+      sha: null,
+      unread: true,
+      why: `${key} has no open change request linked to it, and whether its merge mark's commit is on its target branch could not be read from the host: ${onTarget.unread}`,
+    };
+  }
+  const on = onTarget.get(id);
+  if (!on) return null;
+  return {
+    sha: on.commit,
+    from: 'landed',
+    via: null,
+    branch: on.branch,
+    basis: `${alreadyOnPhrase(key, on)}, so that commit is its landing`,
+  };
 }

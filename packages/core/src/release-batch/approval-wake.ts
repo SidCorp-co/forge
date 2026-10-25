@@ -13,7 +13,9 @@ import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from 
 import { logger } from '../lib/logger.js';
 import { peopleOf } from '../lib/people.js';
 import { consume } from '../outbox/index.js';
-import { mergeStepsOf } from './change-request-roster.js';
+import { projectCreatorOf } from '../projects/index.js';
+import { mergeStepsOf, type ReleaseMergeStep } from './change-request-roster.js';
+import { settleChangeRequestRelease } from './change-request-settle.js';
 import { releaseBatchPath } from './plan.js';
 import { wakeMastersForRelease } from './provider-live.js';
 
@@ -46,24 +48,43 @@ export function decisionMessage(p: Decided, decidedBy: string): string {
   return `Release approval ${p.approvalId} was RETURNED by ${decidedBy} at ${p.decidedAt}: "${p.reason ?? ''}". No production act is allowed on release run ${p.runId}. Answer that reason, then ask again with POST ${path}/approvals, or abort the batch with the reason.`;
 }
 
-type Told = 'sent' | 'unpublished' | 'no_session' | 'master_woken' | 'no_master';
+type Told = 'sent' | 'unpublished' | 'no_session' | 'master_woken' | 'no_master' | 'settled';
 
-/** Whether the run is a release that merges change requests, which runs no job of its own. */
-async function mergesChangeRequests(runId: string): Promise<boolean> {
+/** The merge order of a release that merges change requests, which runs no job; null otherwise. */
+async function mergeOrder(runId: string): Promise<ReleaseMergeStep[] | null> {
   const [run] = await db
     .select({ metadata: pipelineRuns.metadata })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
-  return mergeStepsOf(run?.metadata) !== null;
+  return mergeStepsOf(run?.metadata);
 }
 
 /**
  * Hand the decision to whoever acts on it, idempotent per approval request: the session that asked,
- * or, on a release that merges change requests, the project's master.
+ * or, on a release that merges change requests, the project's master. One with nothing to merge,
+ * every issue already on the target branch, settles on its approval: nobody has an act left.
  */
 export async function tellReleaseRun(p: Decided): Promise<Told> {
-  if (await mergesChangeRequests(p.runId)) {
+  const steps = await mergeOrder(p.runId);
+  if (steps?.length === 0 && p.decision === 'approved') {
+    // the release closes its roster as a host merge's settle does: on the project's behalf
+    const owner = await projectCreatorOf(p.projectId);
+    if (!owner)
+      throw new Error(`release run ${p.runId}: project ${p.projectId} has no creator to settle as`);
+    const out = await settleChangeRequestRelease(p.runId, {
+      type: 'user',
+      id: owner,
+      agency: 'agent',
+    });
+    if (out.pending === 'stamps' || out.pending === 'settling') {
+      throw new Error(
+        `release run ${p.runId}: approved with nothing to merge, and the settle waits on ${out.pending}; retried`,
+      );
+    }
+    return 'settled';
+  }
+  if (steps) {
     const { delivered } = await wakeMastersForRelease(p.projectId);
     logger.info(
       { runId: p.runId, approvalId: p.approvalId, decision: p.decision, delivered },

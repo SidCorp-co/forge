@@ -50,12 +50,17 @@ export const LANDED_VERIFICATION = 'landed';
 export type LandedBuild =
   | {
       sha: string;
-      from: 'record' | 'merge' | 'mark' | 'ahead' | 'change-request';
+      from: 'record' | 'merge' | 'mark' | 'ahead' | 'change-request' | 'landed';
       basis: string;
       /** The change request whose head this is (`!12`), which a verdict elsewhere is weighed against. */
       via?: string | null;
     }
-  | { sha: null; why: string };
+  | {
+      sha: null;
+      why: string;
+      /** The host could not be read, so whether the work is on the target branch is unknown. */
+      unread?: true;
+    };
 
 /**
  * How a project with no production environment delivers: by its landing on the branch its document
@@ -91,7 +96,12 @@ export async function deliveredBuildsOf(
     const landed = await landedBuildsOf(issueIds);
     return opts.ahead ? aheadBuildsOf(projectId, landed) : landed;
   }
-  return changeRequestBuildsOf(projectId, issueIds);
+  const builds: Map<string, LandedBuild> = await changeRequestBuildsOf(projectId, issueIds);
+  // work already on the target branch with no request is a landing, read as one (`landed-on-target.ts`)
+  const landed = new Map([...builds].filter(([, b]) => b.sha !== null && b.from === 'landed'));
+  if (!opts.ahead || landed.size === 0) return builds;
+  for (const [id, b] of await aheadBuildsOf(projectId, landed)) builds.set(id, b);
+  return builds;
 }
 
 /** Whether a judgement at a commit holds a build, or why that could not be read. */
@@ -224,7 +234,7 @@ export async function landedJudgedBuild(issue: {
   if (delivery === 'change-request') {
     return {
       sha: build.sha,
-      source: build.from === 'merge' ? 'merged' : 'change-request',
+      source: build.from === 'merge' || build.from === 'landed' ? 'merged' : 'change-request',
       version: null,
       basis: `${build.basis}; this project releases by merging its change requests, so that is the build a verdict counts on, judged at that commit`,
     };
@@ -441,6 +451,9 @@ export async function landedReopenRefusal(issueId: string): Promise<string | nul
   const build = (await deliveredBuildsOf(row.projectId, delivery, [issueId])).get(
     issueId.toLowerCase(),
   );
+  if (build?.sha === null && build.unread) {
+    return `${build.why}. Nothing is sent back on a read that failed: its work may already be on that branch. Read it again once the host answers.`;
+  }
   if (!build?.sha) return null;
   const sha = build.sha;
   const [standing] = await landedStandings(
@@ -457,6 +470,9 @@ export async function landedReopenRefusal(issueId: string): Promise<string | nul
     planned.length > 0
       ? ` The design's proof plan is met the same way: each of the ${planned.length} criteria it plans to prove passes at that commit, and with no production environment no release run replays a probe.`
       : '';
+  if (delivery === 'change-request' && (build.from === 'landed' || build.from === 'ahead')) {
+    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. Its work is already on the branch this project releases from, with no change request left to merge, so it is landed, and no evidence is missing.${plan} Wake the master to cut the release that carries it (POST /api/projects/${row.projectId}/release-batches) instead of sending it back.`;
+  }
   if (delivery === 'change-request') {
     return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project releases by merging its change requests, with no production environment: until the request merges its unchanged head is the build its verdicts are read on, and no landing record is owed (REQ-63 BC-6).${plan} No evidence is missing: wake the master to cut the release that merges it (POST /api/projects/${row.projectId}/release-batches) instead of sending it back.`;
   }

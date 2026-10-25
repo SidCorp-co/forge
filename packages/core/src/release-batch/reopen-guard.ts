@@ -95,7 +95,7 @@ export async function stewardReleaseFacts(
     declared?.kind === 'gated'
       ? `This project has a production environment, \`${declared.production.name}\`: its running build is what production serves, and a release batch deploys there and runs the release's checks.`
       : declared?.kind === 'change-requests'
-        ? `This project deploys nothing and releases by merging its change requests${declared.defaultBranch ? ` into \`${declared.defaultBranch}\`` : ''}: a release is cut naming the issues, the owner approves it, and the master merges each request in the declared order; nothing merges before the approval. Until its request merges, an issue's running build is that request's head: a pass judged there counts while the head is unchanged, and no landing is owed.`
+        ? `This project deploys nothing and releases by merging its change requests${declared.defaultBranch ? ` into \`${declared.defaultBranch}\`` : ''}: a release is cut naming the issues, the owner approves it, and the master merges each request in the declared order; nothing merges before the approval. Until its request merges, an issue's running build is that request's head: a pass judged there counts while the head is unchanged, and no landing is owed. Work the host already holds on that branch with no request is landed there and needs no request.`
         : declared?.kind === 'no-release'
           ? `This project declares no production environment: its running build is each issue's landing${declared.defaultBranch ? ` on \`${declared.defaultBranch}\`` : ''}.`
           : `This project's release target is not declared${declared ? `: ${declared.reason}` : ''}.`;

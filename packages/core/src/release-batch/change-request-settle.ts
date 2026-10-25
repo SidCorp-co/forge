@@ -36,8 +36,9 @@ function takeSettleLease(runId: string): Promise<boolean> {
 
 /**
  * The release closed once its last change request merged and every issue it carries holds its merge:
- * the roster closes, the ship is stamped, and the run completes. A call before then changes nothing
- * and says what it waits on; one settle runs at a time, under a lease on the run.
+ * the roster closes, the ship is stamped, and the run completes. A release with no request to merge,
+ * every issue already on the target branch (`create.ts`), settles on its approval. A call before
+ * then changes nothing and says what it waits on; one settle runs at a time, under a lease on the run.
  */
 export async function settleChangeRequestRelease(
   runId: string,
@@ -49,18 +50,19 @@ export async function settleChangeRequestRelease(
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
   const steps = run ? mergeStepsOf(run.metadata) : null;
-  if (run?.status !== 'running' || !steps || steps.length === 0) {
-    return { settled: false, pending: null };
-  }
-  const states = await db
-    .select({ state: repoPullRequests.state })
-    .from(repoPullRequests)
-    .where(
-      inArray(
-        repoPullRequests.id,
-        steps.map((s) => s.pullRequestId),
-      ),
-    );
+  if (run?.status !== 'running' || !steps) return { settled: false, pending: null };
+  const states =
+    steps.length === 0
+      ? []
+      : await db
+          .select({ state: repoPullRequests.state })
+          .from(repoPullRequests)
+          .where(
+            inArray(
+              repoPullRequests.id,
+              steps.map((s) => s.pullRequestId),
+            ),
+          );
   if (states.length < steps.length || states.some((s) => s.state !== 'merged')) {
     return { settled: false, pending: 'merges' };
   }

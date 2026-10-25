@@ -14,6 +14,7 @@ import { changeRequestLabelOf } from '../integrations/source-host/index.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { blocker, evaluate } from './blocker-kit.js';
 import type { ReleaseBlocker } from './blocker-sentences.js';
+import { landedOnTargetOf } from './landed-on-target.js';
 import { refuseRelease } from './refuse.js';
 
 /** An open change request a roster ships, with every issue it delivers. */
@@ -102,8 +103,9 @@ async function shown(ids: string[]): Promise<string[]> {
 
 /**
  * What a roster owes before a change-request release may be cut: every issue a request delivering
- * it, and every request delivering only issues the roster carries — a request that also carries an
- * issue outside it would ship work the owner was never asked to accept.
+ * it, unless the host already holds its work on the project's target branch, which leaves nothing
+ * to merge (`landed-on-target.ts`); and every request delivering only issues the roster carries — a
+ * request that also carries an issue outside it would ship work the owner was never asked to accept.
  */
 export async function changeRequestBlockers(
   projectId: string,
@@ -118,7 +120,16 @@ export async function changeRequestBlockers(
   );
   if (!requests) return;
   const delivered = new Set(requests.flatMap((r) => r.issueIds));
-  const missing = rosterIds.filter((id) => !delivered.has(id));
+  const undelivered = rosterIds.filter((id) => !delivered.has(id));
+  const landed =
+    undelivered.length === 0
+      ? new Map()
+      : await evaluate(
+          'host-landing',
+          async () => await landedOnTargetOf(projectId, undelivered),
+          out,
+        );
+  const missing = undelivered.filter((id) => !landed?.has(id.toLowerCase()));
   if (missing.length > 0) {
     out.push(
       blocker('RELEASE_CHANGE_REQUEST_MISSING', {
