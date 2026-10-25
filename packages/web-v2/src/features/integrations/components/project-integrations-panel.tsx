@@ -191,13 +191,11 @@ export function liveCard(opened: StatusCard | null, cards: StatusCard[]): Status
 
 export function ProjectIntegrationsPanel({
   projectId,
-  canEdit = true,
   openProvider = null,
   onOpenProvider,
   onDrawerClose,
 }: {
   projectId: string;
-  canEdit?: boolean;
   /** A provider to open the drawer on, asked for from outside the list, the stage to open it at and
    *  the section to land on; cleared once opened. */
   openProvider?: { provider: string; stage?: DeployStage; focus?: string } | null;
@@ -277,7 +275,7 @@ export function ProjectIntegrationsPanel({
             )}
           </ul>
 
-          <McpServersPanel projectId={projectId} canEdit={canEdit} />
+          <McpServersPanel projectId={projectId} />
         </>
       )}
       <ConnectionDetailDrawer
@@ -288,7 +286,6 @@ export function ProjectIntegrationsPanel({
           setFocus(null);
           onDrawerClose?.();
         }}
-        canEdit={canEdit}
         focus={focus}
         statusReadError={readError}
         statusReadFailedAt={status.errorUpdatedAt}

@@ -227,6 +227,9 @@ describe('refusedKeysMessage — one refusal, each key named once', () => {
     // ISS-1421 r26, judge-105 (5): a wrapper of any other name was only "not a key".
     ['a wrapper of any name', { whatever: { live: { commitUrl: 'x' } } }],
     ['wrappers two deep', { a: { b: { live: { commit_url: 'x' } } } }],
+    // ISS-1421 r27, judge-108 (304): an array entry was not walked, so the field went unnamed.
+    ['an entry of an array', { wrap: [{ live: { commitUrl: 'x' } }] }],
+    ['an array two deep', { wrap: [{ deeper: [{ live: { commit_url: 'x' } }] }] }],
   ])('gives a retired field sent as %s the retirement sentence alone', (_name, patch) => {
     const said = refusedKeysMessage(refusedKeysIn(patch, {}));
     expect(said).toMatch(/^`environments\.live\.commitUrl`( \(sent as `[^`]+`\))? was retired/);

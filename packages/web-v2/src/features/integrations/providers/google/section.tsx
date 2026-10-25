@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
   useIntegrationsList,
-  useOrgConnectionLocked,
+  useProjectIntegrationActs,
   useTestIntegration,
   useUpdateProviderIntegration,
 } from "../../hooks";
@@ -21,16 +21,22 @@ import type { GoogleReadConfig } from "./config";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
+  AgentAccessControl,
+  agentAccessBody,
+  grantOnConnectWho,
+  mayGrantOnConnect,
+} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { google } from "./index";
 import {
+  bindingLockedLine,
   bindsRemovedConnection,
   IntegrationEnabledControl,
+  keyLockedLine,
 } from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
-import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
+import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 /** What Google's own check found, under the badge that names the state as the row does: the five
  *  findings name five next actions, and `needs_scope` must not read as "re-enter the credential".
@@ -92,7 +98,10 @@ function GoogleBindingPanel({
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
   const list = useIntegrationsList(projectId);
-  const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
+  // The key is the connection's tier and the default sheet the binding's, each offered by what core
+  // says this reader may change (ISS-1421 r27).
+  const keyLocked = !binding.acts.saveKey;
+  const bindingLocked = !binding.acts.change;
 
   const cfg = binding.config as GoogleReadConfig;
   const savedSheet = cfg.defaultSpreadsheetId ?? "";
@@ -181,22 +190,25 @@ function GoogleBindingPanel({
             placeholder="1AbC…xYz"
             value={sheetValue}
             onChange={(e) => setSheetDraft(e.target.value)}
+            disabled={bindingLocked}
           />
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={update.isPending}
-            disabled={sheetDraft === null || sheetValue.trim() === savedSheet}
-            onClick={saveDefaultSheet}
-          >
-            Save
-          </Button>
+          {!bindingLocked && (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={update.isPending}
+              disabled={sheetDraft === null || sheetValue.trim() === savedSheet}
+              onClick={saveDefaultSheet}
+            >
+              Save
+            </Button>
+          )}
         </div>
       </Field>
 
       <ShareHint clientEmail={cfg.clientEmail} />
 
-      {showRotate && !orgLocked && (
+      {showRotate && !keyLocked && (
         <Field
           label="New service-account key"
           hint="Paste the whole JSON key file Google issued. Forge keeps the previous key for 24 hours and signs in with it wherever Google refuses the new one."
@@ -211,14 +223,11 @@ function GoogleBindingPanel({
         </Field>
       )}
 
-      {orgLocked && (
-        <p className="fg-body-sm text-muted">
-          Org-shared credential — only an org owner/admin can change it.
-        </p>
-      )}
+      {keyLocked && <p className="fg-body-sm text-muted">{keyLockedLine(binding.acts)}</p>}
+      {bindingLocked && <p className="fg-body-sm text-muted">{bindingLockedLine(binding.acts)}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
-        {!orgLocked &&
+        {!keyLocked &&
           (showRotate ? (
             <>
               <Button
@@ -246,18 +255,13 @@ function GoogleBindingPanel({
         <DisconnectFromProject
           projectId={projectId}
           binding={binding}
-          says={disconnectSays("the Google service account", binding)}
+          subject={"the Google service account"}
         />
       </div>
 
       <IntegrationEnabledControl projectId={projectId} binding={binding} />
 
-      <AgentAccessControl
-        projectId={projectId}
-        binding={binding}
-        canEdit={true}
-        disabledReason="Org-shared credential — only an org owner/admin can grant it."
-      />
+      <AgentAccessControl projectId={projectId} binding={binding} />
     </div>
   );
 }
@@ -287,6 +291,7 @@ function clientEmailOf(keyJson: string): string | null {
 
 function AddGoogleForm({ projectId }: { projectId: string }) {
   const create = useCreateProviderIntegration(projectId);
+  const may = useProjectIntegrationActs(projectId);
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const [keyJson, setKeyJson] = useState("");
   const [spreadsheetId, setSpreadsheetId] = useState("");
@@ -363,7 +368,8 @@ function AddGoogleForm({ projectId }: { projectId: string }) {
         value={agentAccess}
         onChange={setAgentAccess}
         pathKind={google.agentPathKind}
-        canEdit={true}
+        canEdit={mayGrantOnConnect(google.agentPathKind, may)}
+        disabledReason={grantOnConnectWho(google.agentPathKind, may)}
       />
 
       {error && <Banner tone="danger">{error}</Banner>}

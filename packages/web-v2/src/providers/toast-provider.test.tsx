@@ -296,6 +296,63 @@ describe("a toast marked keep", () => {
     expect(screen.getByTestId("toast-lane")).toHaveTextContent("Saved");
   });
 
+  // ISS-1421 r27, judge-110 (b): at 390 "Integration saved" covered the drawer's title and badge.
+  it("starts below an open drawer's header on a phone, and at the top with none open", async () => {
+    wide(false);
+    const header = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        return { bottom: this.tagName === "HEADER" ? 61 : 0 } as DOMRect;
+      });
+    try {
+      const { rerender } = render(
+        <ToastProvider>
+          <Trigger />
+          <SlideOver open onClose={() => {}} title="Sentry">
+            <p>panel</p>
+          </SlideOver>
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ title: "Integration saved", duration: 0 }));
+      expect(screen.getByTestId("toast-lane")).toHaveStyle({ top: "61px" });
+
+      rerender(
+        <ToastProvider>
+          <Trigger />
+          <SlideOver open={false} onClose={() => {}} title="Sentry">
+            <p>panel</p>
+          </SlideOver>
+          <ToastLane />
+        </ToastProvider>,
+      );
+      // The drawer leaves after its exit; the lane reads the body again once it has gone.
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+        await Promise.resolve();
+      });
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(screen.getByTestId("toast-lane").style.top).toBe("");
+    } finally {
+      header.mockRestore();
+    }
+  });
+
+  it("keeps to its place under the top bar on a wide screen, drawer open or not", () => {
+    wide(true);
+    render(
+      <ToastProvider>
+        <Trigger />
+        <SlideOver open onClose={() => {}} title="Sentry">
+          <p>panel</p>
+        </SlideOver>
+        <ToastLane />
+      </ToastProvider>,
+    );
+    act(() => fire({ title: "Integration saved", duration: 0 }));
+    expect(screen.getByTestId("toast-lane").style.top).toBe("");
+  });
+
   it("stays with the other toasts on a wide screen", () => {
     wide(true);
     render(<Frame />);

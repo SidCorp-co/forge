@@ -1,7 +1,6 @@
 "use client";
 
 import type { ConnectionDirectoryItem } from "@forge/contracts";
-import { useProjects } from "@/features/projects/hooks";
 import { useToast } from "@/providers/toast-provider";
 import {
   type MutateOptions,
@@ -15,13 +14,24 @@ import { useRef } from "react";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import type {
   BindingListResponse,
-  BindingSummary,
   BindExistingConnectionRequest,
   ConnectionUpdateInput,
   CreateIntegrationInput,
+  IntegrationSummary,
+  ProjectIntegrationActs,
   UpdateIntegrationInput,
 } from "./types";
 import { failureToast } from "@/lib/api/failure-toast";
+import { ApiError } from "@/lib/api/client";
+
+/**
+ * A write refused for who sent it, or for a row gone from under them: what the screen offered was
+ * read before the refusal and may no longer hold, so the list it came from is read again (ISS-1421
+ * r27: after a demotion the Integrations page went on offering Disable, Enable, Remove and Clear).
+ */
+function refusedForTheReader(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 403 || err.status === 404);
+}
 
 /** Integration status cards for a project. Keyed `['integrations','status',id]`. */
 export function useIntegrationsStatus(projectId: string | undefined) {
@@ -42,11 +52,19 @@ export function useIntegrationsList(projectId: string | undefined) {
 }
 
 /**
+ * What the reader may do on the project's Integrations tab beyond any one binding, as core decides
+ * it; null until the list is read, which offers nothing rather than guessing (ISS-1421 r27).
+ */
+export function useProjectIntegrationActs(projectId: string | undefined): ProjectIntegrationActs | null {
+  return useIntegrationsList(projectId).data?.may ?? null;
+}
+
+/**
  * Every cached project list reads a write's own answer before any refetch. A drawer that waited for
  * the refetch went on showing the state before the write for as long as that read did not land,
  * and the person who pressed Enabled was told it had not taken (ISS-1421 r12).
  */
-function writeThrough(qc: QueryClient, edit: (row: BindingSummary) => BindingSummary): void {
+function writeThrough(qc: QueryClient, edit: (row: IntegrationSummary) => IntegrationSummary): void {
   qc.setQueriesData<BindingListResponse>({ queryKey: ["integrations", "list"] }, (list) => {
     if (!list) return list;
     const items = list.items.map(edit);
@@ -54,7 +72,7 @@ function writeThrough(qc: QueryClient, edit: (row: BindingSummary) => BindingSum
   });
 }
 
-function writeBinding(qc: QueryClient, saved: BindingSummary): void {
+function writeBinding(qc: QueryClient, saved: IntegrationSummary): void {
   writeThrough(qc, (row) => (row.id === saved.id ? saved : row));
 }
 
@@ -179,8 +197,10 @@ export function useCreateProviderIntegration(projectId: string | undefined) {
       invalidate();
       toast({ title: "Integration saved", tone: "success" });
     },
-    onError: (err) =>
-      toast(failureToast(err, "The integration was not saved")),
+    onError: (err) => {
+      if (refusedForTheReader(err)) invalidate();
+      toast(failureToast(err, "The integration was not saved"));
+    },
   });
 }
 
@@ -202,6 +222,7 @@ export function useUpdateProviderIntegration(
       toast({ title: "Integration saved", tone: "success" });
     },
     onError: (err) => {
+      if (refusedForTheReader(err)) invalidate();
       if (!failureSaidHere) toast(failureToast(err, "The integration was not saved"));
     },
   });
@@ -243,8 +264,10 @@ export function useDeleteProviderIntegration(projectId: string | undefined) {
       invalidate();
       toast({ title: "Disconnected from this project", tone: "success" });
     },
-    onError: (err) =>
-      toast(failureToast(err, "It was not disconnected from this project")),
+    onError: (err) => {
+      if (refusedForTheReader(err)) invalidate();
+      toast(failureToast(err, "It was not disconnected from this project"));
+    },
   });
   return useOneWritePerIntent(mutation);
 }
@@ -325,60 +348,12 @@ export function useConnections() {
   });
 }
 
-/**
- * UX mirror of the server's org-permission rule: config/secret/active changes
- * on a binding backed by an ORG-owned connection require org owner/admin of
- * that org (the connection's org == the project's org — the server enforces
- * same-org binding). Returns true when the provider section should disable its
- * Save/Rotate buttons + secret inputs. Fails OPEN (false) while either query
- * is still loading — the server 403s regardless, this is purely affordance.
- */
-export function useIsOrgAdmin(projectId: string | undefined): boolean {
-  const projectsQ = useProjects();
-  if (!projectId) return false;
-  const orgRole = projectsQ.data?.find((p) => p.id === projectId)?.orgRole ?? null;
-  return orgRole === "owner" || orgRole === "admin";
-}
-
-export function useOrgConnectionLocked(
-  projectId: string | undefined,
-  connectionId: string | null | undefined,
-): boolean {
-  const connectionsQ = useConnections();
-  const projectsQ = useProjects();
-  if (!projectId || !connectionId) return false;
-  const connection = connectionsQ.data?.items.find(
-    (c) => c.id === connectionId,
-  );
-  if (connection?.ownerType !== "org") return false;
-  const orgRole =
-    projectsQ.data?.find((p) => p.id === projectId)?.orgRole ?? null;
-  return orgRole !== "owner" && orgRole !== "admin";
-}
-
 /** Whether the caller may manage a connection, read off the server's own `access.canManage`; a row
  *  without the field is not manageable (ISS-1216). */
 export function useCanManageConnection(
   connection: Pick<ConnectionDirectoryItem, "access"> | null,
 ): boolean {
   return connection?.access?.canManage === true;
-}
-
-/** Who turns a connection on: whether this reader may, and whose it is, read off the list; null until
- *  the list holds it (ISS-1421 r26). */
-export function useConnectionManager(
-  connectionId: string | null | undefined,
-): { manages: boolean; ownerType: "user" | "org" } | null {
-  const connection = useConnections().data?.items.find((c) => c.id === connectionId);
-  if (!connection) return null;
-  return { manages: connection.access?.canManage === true, ownerType: connection.ownerType };
-}
-
-/** Who may turn a connection on, as a sentence's subject. */
-export function connectionManagers(ownerType: "user" | "org"): string {
-  return ownerType === "org"
-    ? "an owner or admin of the organization that owns it"
-    : "its owner";
 }
 
 /** A body that only switches a connection says so, so its toast names that act rather than a save. */
@@ -412,6 +387,7 @@ export function useUpdateConnection() {
     },
     // "The connection was not saved" headed a refused Enable whose key had been saved (ISS-1421 r26).
     onError: (err, { body }) => {
+      if (refusedForTheReader(err)) invalidate();
       const on = switchedTo(body);
       const title =
         on === null
@@ -427,7 +403,7 @@ export function useUpdateConnection() {
 export function useTestConnection() {
   const invalidate = useInvalidateConnections();
   return useMutation({
-    mutationFn: (id: string) => integrationConnectionsApi.test(id),
+    mutationFn: integrationConnectionsApi.test,
     onSettled: invalidate,
   });
 }
@@ -437,13 +413,15 @@ export function useRemoveConnection() {
   const invalidate = useInvalidateConnections();
   const { toast } = useToast();
   const mutation = useMutation({
-    mutationFn: (id: string) => integrationConnectionsApi.remove(id),
+    mutationFn: integrationConnectionsApi.remove,
     onSuccess: () => {
       invalidate();
       toast({ title: "Connection removed", tone: "success" });
     },
-    onError: (err) =>
-      toast(failureToast(err, "The connection was not removed")),
+    onError: (err) => {
+      if (refusedForTheReader(err)) invalidate();
+      toast(failureToast(err, "The connection was not removed"));
+    },
   });
   return useOneWritePerIntent(mutation);
 }

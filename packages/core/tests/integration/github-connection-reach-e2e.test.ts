@@ -196,7 +196,9 @@ describe("the repository picker's reach", () => {
 
     expect(res.status).toBe(404);
     expect(body.code).toBe('CONNECTION_NOT_REACHABLE');
-    expect(body.message).toContain(connection.id);
+    // The id rides in details, not in the sentence a person reads (ISS-1421 r27).
+    expect(body.message).not.toContain(connection.id);
+    expect(body.details).toEqual({ connectionId: connection.id });
   });
 
   it('refuses an App id that does not exist', async () => {

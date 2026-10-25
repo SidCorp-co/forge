@@ -27,6 +27,9 @@ export type {
   GoogleConfigInput,
   GoogleSecretsInput,
   BindingSummary,
+  BindingActs,
+  ProjectBinding,
+  ProjectIntegrationActs,
   ConnectionSummary,
   ConnectionCreateInput,
   ConnectionUpdateInput,
@@ -74,7 +77,7 @@ export interface SentryConfig {
   environment?: string;
 }
 
-export type { BindingSummary as IntegrationSummary } from "@forge/contracts";
+export type { ProjectBinding as IntegrationSummary } from "@forge/contracts";
 
 export interface InstallationRepo {
   installationId: number;

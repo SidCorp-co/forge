@@ -11,6 +11,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { boxedInTree } from "@/test-support/flat-rule";
 import { PROVIDER_MODULES, type ProviderModule } from "./providers/registry";
+import { ALL_ACTS, ALL_MAY } from "./test-acts";
 
 expect.extend(matchers);
 
@@ -50,6 +51,7 @@ function binding(stage: "preview" | "live") {
     integrationSecretSet: true,
     agentAccess: "off",
     agentPathKind: "none",
+    acts: ALL_ACTS,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -91,7 +93,7 @@ vi.mock("@/lib/api/client", async () => {
     apiClient: async (path: string) => {
       const bare = path.split("?")[0] ?? path;
       served.push(bare);
-      if (bare === `/projects/${PROJECT}/integrations`) return { items: [binding("preview"), binding("live")] };
+      if (bare === `/projects/${PROJECT}/integrations`) return { items: [binding("preview"), binding("live")], may: ALL_MAY };
       if (bare === "/integration-connections") return { items: [CONNECTION_ROW()] };
       if (bare === "/projects") return [PROJECT_ROW];
       if (bare === `/projects/${PROJECT}`) return { ...PROJECT_ROW, agentConfig: {} };

@@ -3195,6 +3195,10 @@
 
 ### Fixed
 
+- **An integration's drawer offers only what you may do there.** A project member who is not an admin of it no longer sees a key to save, Save, Disconnect or a live Enabled switch that Forge then refuses; each control they may not use says who may, from the same rule the server refuses by, and every refusal on these doors says what was refused, why and who may act instead of "Forbidden.". (ISS-1421)
+- **Returning from GitHub after an App install lands on a page that says what happened.** A refusal there showed raw JSON in the tab; the page now says in words why nothing was recorded and what to do. (ISS-1421)
+- **On a phone, a toast no longer covers an open drawer's title**, and a drawer opened on a connection needing sign-in again says why, as its row does. (ISS-1421)
+- **A Google key whose token address is not Google's is refused for that address**, not as a malformed file, and a retired setting inside a list is named where it sits. (ISS-1421)
 - **A credential Forge cannot decrypt names the project binding it was read through.** A new key saved from a project reads Not checked yet, and a GitHub App install is no longer refused over another App it cannot read. (ISS-1259)
 - **An integration credential Forge cannot decrypt is named, not a server error.** Verify, Test connection and its webhooks say which connection it is and that entering it again fixes it, and entering it again now works. (ISS-1259)
 - **Saving a new key on a removed connection from a project turns it back on**, and anyone who cannot is told who can; turning one on without a key is refused alike for everyone. (ISS-1421)

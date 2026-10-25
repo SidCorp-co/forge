@@ -7,29 +7,26 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BindingActs } from "@forge/contracts";
+import { ALL_ACTS } from "../test-acts";
 import type { IntegrationSummary } from "../types";
 
-/** Whether the reader's key save on the connection is one core refuses: an org's, to a non-admin. */
-let keyLocked = false;
-/** Who turns the connection on, as the reader's connections list says; null while it is unread. */
-let manager: { manages: boolean; ownerType: "user" | "org" } | null = { manages: true, ownerType: "user" };
 vi.mock("../hooks", () => ({
   useUpdateProviderIntegration: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateConnection: () => ({ mutate: vi.fn(), isPending: false }),
-  useOrgConnectionLocked: () => keyLocked,
-  useConnectionManager: () => manager,
-  connectionManagers: (ownerType: "user" | "org") =>
-    ownerType === "org" ? "an owner or admin of the organization that owns it" : "its owner",
 }));
 
 const { IntegrationEnabledControl, removedKeyHint } = await import("./integration-enabled-control");
 
 expect.extend(matchers);
+/** What core says the reader may do with the binding: everything, unless a test narrows it. */
+let acts: BindingActs = ALL_ACTS;
 afterEach(() => {
   cleanup();
-  keyLocked = false;
-  manager = { manages: true, ownerType: "user" };
+  acts = ALL_ACTS;
 });
+
+const ORG_KEY = "an owner or admin of the organization that owns it";
 
 const PROJECT = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
 
@@ -54,6 +51,7 @@ function binding(over: Partial<IntegrationSummary>): IntegrationSummary {
     integrationSecretSet: true,
     agentAccess: "none",
     agentPathKind: "core-mediated",
+    acts,
     createdAt: "2026-10-01T00:00:00.000Z",
     updatedAt: "2026-10-01T00:00:00.000Z",
     ...over,
@@ -74,7 +72,7 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
 
   // r25, judge-101 (5): every person-facing line offers only an act its reader would not be refused.
   it("tell a reader who may not save a key on the organization's connection who may, not to save one", () => {
-    keyLocked = true;
+    acts = { ...ALL_ACTS, saveKey: false, turnOn: false, whoSavesKey: ORG_KEY, whoTurnsOn: ORG_KEY };
     render(<IntegrationEnabledControl projectId={PROJECT} binding={binding({})} />);
 
     expect(
@@ -108,7 +106,7 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
   // r26, judge-105 (283b): Enable credential was offered to a project admin over another member's
   // connection, whose turn-on the connection's routes refuse; that reader is told who turns it on.
   it("offer Enable credential only to a reader who manages the connection, naming who does otherwise", () => {
-    manager = { manages: false, ownerType: "user" };
+    acts = { ...ALL_ACTS, turnOn: false };
     const { rerender } = render(
       <IntegrationEnabledControl projectId={PROJECT} binding={binding({ hasSecrets: true })} />,
     );
@@ -117,14 +115,9 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
       screen.getByText("Shared credential is disabled — no project can use it. Only its owner can turn it back on."),
     ).toBeInTheDocument();
 
-    manager = { manages: false, ownerType: "org" };
+    acts = { ...ALL_ACTS, turnOn: false, whoTurnsOn: ORG_KEY };
     rerender(<IntegrationEnabledControl projectId={PROJECT} binding={binding({ hasSecrets: true, id: "x" })} />);
     expect(screen.getByText(/Only an owner or admin of the organization that owns it can turn it back on\.$/)).toBeInTheDocument();
-
-    manager = null;
-    rerender(<IntegrationEnabledControl projectId={PROJECT} binding={binding({ hasSecrets: true, id: "y" })} />);
-    expect(screen.queryByRole("button", { name: /enable credential/i })).toBeNull();
-    expect(screen.queryByText(/can turn it back on/)).toBeNull();
   });
 
   it("keep Enable credential where the connection is only switched off and still holds its key", () => {
@@ -141,7 +134,7 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
 // organization's connection (ISS-1115); a drawer saying Enabled switches it back on must offer it.
 describe("Enabled for a project admin who does not administer the organization", () => {
   it("is offered over the organization's live connection", () => {
-    keyLocked = true;
+    acts = { ...ALL_ACTS, saveKey: false, turnOn: false, whoSavesKey: ORG_KEY, whoTurnsOn: ORG_KEY };
     render(
       <IntegrationEnabledControl
         projectId={PROJECT}
@@ -152,13 +145,35 @@ describe("Enabled for a project admin who does not administer the organization",
   });
 });
 
+// ISS-1421 r27 (judge-108, extras): Enabled was live for a plain member of the project, whose
+// switch core then refused; it is drawn off and the line names who may switch it.
+describe("Enabled for a plain member of the project", () => {
+  it("is not live, and names the admin of the project who may switch it", () => {
+    acts = { ...ALL_ACTS, change: false, grantAgents: false, saveKey: false, turnOn: false };
+    render(
+      <IntegrationEnabledControl
+        projectId={PROJECT}
+        binding={binding({ hasSecrets: true, connectionActive: true, active: true })}
+      />,
+    );
+    expect(screen.getByRole("switch", { name: "Enabled for this project" })).toBeDisabled();
+    expect(
+      screen.getByText(
+        "Only an admin of this project can switch this integration, change its settings here or disconnect it.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
 // ISS-1421 r25: the key field above the switch asked a reader who may not save a key to enter one.
 describe("the key field's hint over a removed connection", () => {
   it("asks for a key only of a reader who may save one", () => {
-    expect(removedKeyHint("token", false)).toBe(
+    expect(removedKeyHint("token", { saveKey: true })).toBe(
       "No token is stored: the shared connection was removed. Enter one to store it.",
     );
-    expect(removedKeyHint("token", true)).toBe("No token is stored: the shared connection was removed.");
-    expect(removedKeyHint("key", true)).not.toContain("Enter one");
+    expect(removedKeyHint("token", { saveKey: false })).toBe(
+      "No token is stored: the shared connection was removed.",
+    );
+    expect(removedKeyHint("key", { saveKey: false })).not.toContain("Enter one");
   });
 });

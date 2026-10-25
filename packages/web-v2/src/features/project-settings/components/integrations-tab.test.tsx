@@ -11,11 +11,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
 
+/** What the list answers a project admin who is a plain member of the organization. */
+const ADMIN_MAY = {
+  connect: true,
+  whoConnects: "an admin of this project",
+  grantBoxAgents: false,
+  whoGrantsBoxAgents: "an owner or admin of this project's organization",
+  changeProjectSettings: false,
+  whoChangesProjectSettings: "an owner or admin of this project's organization",
+};
+
 const state = {
   search: "?tab=integrations&add=live-deploy-target",
   connections: [] as Array<Record<string, unknown>>,
   bindings: [] as Array<Record<string, unknown>>,
   fetchingBindings: false,
+  may: ADMIN_MAY as Record<string, unknown>,
 };
 
 const CARDS = [
@@ -59,7 +70,7 @@ vi.mock("@/lib/utils/use-location-search", () => ({
 vi.mock("@/features/integrations/hooks", () => ({
   useConnections: () => ({ data: { items: state.connections }, isLoading: false }),
   useBindExistingConnection: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
-  useIsOrgAdmin: () => false,
+  useProjectIntegrationActs: () => state.may,
   useIntegrationsList: () => ({
     data: { items: state.bindings },
     isLoading: false,
@@ -102,6 +113,7 @@ afterEach(() => {
   state.connections = [];
   state.bindings = [];
   state.fetchingBindings = false;
+  state.may = ADMIN_MAY;
 });
 
 function coolify(id: string): Record<string, unknown> {
@@ -124,7 +136,7 @@ function coolify(id: string): Record<string, unknown> {
 
 describe("the page the no-live-target link opens", () => {
   it("with no connection, offers to connect a provider Forge deploys to, and opens its setup", () => {
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     const none = screen.getByTestId("no-connection");
     expect(none).toHaveTextContent("You have no connection to share yet.");
     expect(none).not.toHaveTextContent("Integrations hub");
@@ -136,7 +148,7 @@ describe("the page the no-live-target link opens", () => {
 
   it("with one connection, opens the share form on it with Deploy target and Live chosen", () => {
     state.connections = [coolify("c-1")];
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
 
     expect(screen.getByText(/^Ops Coolify · /)).toBeInTheDocument();
     expect(screen.getByText("Deploy target — somewhere Forge deploys to")).toBeInTheDocument();
@@ -147,7 +159,7 @@ describe("the page the no-live-target link opens", () => {
   it("without the link, chooses nothing for the person", () => {
     state.search = "?tab=integrations";
     state.connections = [coolify("c-1")];
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     expect(screen.queryByRole("checkbox", { name: /Live/ })).toBeNull();
     expect(screen.queryByText(/^Ops Coolify · /)).toBeNull();
   });
@@ -166,7 +178,7 @@ describe("the page the verify-probe link opens", () => {
   it("opens the live binding that declares no probe, on its Verify probe section", () => {
     state.search = "?tab=integrations&field=verify-probe";
     state.bindings = [live("coolify")];
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     expect(screen.getByTestId("drawer")).toHaveTextContent("coolify:live at verify-probe");
   });
 
@@ -175,7 +187,7 @@ describe("the page the verify-probe link opens", () => {
     CARDS.push({ key: "epodsystem", label: "Epodsystem", status: "connected", detail: "", lastSyncAt: null, configured: true });
     try {
       state.bindings = [live("coolify", PROBE), live("epodsystem", { probes: [{ url: "health" }] })];
-      render(<IntegrationsTab projectId="p-1" canEdit />);
+      render(<IntegrationsTab projectId="p-1" />);
       expect(screen.getByTestId("drawer")).toHaveTextContent("epodsystem:live at verify-probe");
     } finally {
       CARDS.pop();
@@ -185,26 +197,26 @@ describe("the page the verify-probe link opens", () => {
   it("still lands when a cached empty list is refreshed into the binding the link is about", () => {
     state.search = "?tab=integrations&field=verify-probe";
     state.fetchingBindings = true;
-    const { rerender } = render(<IntegrationsTab projectId="p-1" canEdit />);
+    const { rerender } = render(<IntegrationsTab projectId="p-1" />);
     expect(screen.queryByTestId("drawer")).toBeNull();
 
     state.bindings = [live("coolify")];
     state.fetchingBindings = false;
-    rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    rerender(<IntegrationsTab projectId="p-1" />);
     expect(screen.getByTestId("drawer")).toHaveTextContent("coolify:live at verify-probe");
   });
 
   it("passes over a binding that serves only Preview", () => {
     state.search = "?tab=integrations&field=verify-probe";
     state.bindings = [{ ...live("coolify"), stages: ["preview"] }];
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     expect(screen.queryByTestId("drawer")).toBeNull();
   });
 
   it("without the link, opens nothing", () => {
     state.search = "?tab=integrations";
     state.bindings = [live("coolify")];
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     expect(screen.queryByTestId("drawer")).toBeNull();
   });
 
@@ -218,28 +230,28 @@ describe("the page the verify-probe link opens", () => {
   it("drops field from the address when the drawer it opened closes, keeping the rest", () => {
     arrive();
     state.bindings = [live("coolify")];
-    const { rerender } = render(<IntegrationsTab projectId="p-1" canEdit />);
+    const { rerender } = render(<IntegrationsTab projectId="p-1" />);
     fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
     expect(replaced).toEqual(["/stub/settings?tab=integrations#top"]);
     expect(window.location.search).toBe("?tab=integrations");
-    rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    rerender(<IntegrationsTab projectId="p-1" />);
     expect(screen.queryByTestId("drawer")).toBeNull();
   });
 
   it("opens no drawer on a reload of the address the close left", () => {
     arrive();
     state.bindings = [live("coolify")];
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
     cleanup();
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     expect(screen.queryByTestId("drawer")).toBeNull();
   });
 
   it("leaves an address that carries no probe landing as it was", () => {
     state.search = "?tab=integrations";
     window.history.replaceState(null, "", "/stub/settings?tab=integrations");
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     fireEvent.click(screen.getByText("Coolify"));
     fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
     expect(replaced).toEqual([]);
@@ -250,11 +262,11 @@ describe("the page the verify-probe link opens", () => {
   it("drops field again when the leave guard's Back brings it back, and opens nothing", () => {
     arrive();
     state.bindings = [live("coolify")];
-    const { rerender } = render(<IntegrationsTab projectId="p-1" canEdit />);
+    const { rerender } = render(<IntegrationsTab projectId="p-1" />);
     fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
-    rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    rerender(<IntegrationsTab projectId="p-1" />);
     arrive();
-    rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    rerender(<IntegrationsTab projectId="p-1" />);
     expect(screen.queryByTestId("drawer")).toBeNull();
     expect(replaced).toEqual(["/stub/settings?tab=integrations#top", "/stub/settings?tab=integrations#top"]);
     expect(window.location.search).toBe("?tab=integrations");
@@ -263,11 +275,11 @@ describe("the page the verify-probe link opens", () => {
   it("lands again when the link is followed from another tab, which mounts the tab anew", () => {
     arrive();
     state.bindings = [live("coolify")];
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
     cleanup();
     arrive();
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     expect(screen.getByTestId("drawer")).toHaveTextContent("coolify:live at verify-probe");
   });
 });
@@ -275,7 +287,7 @@ describe("the page the verify-probe link opens", () => {
 describe("the status list on the Integrations tab", () => {
   it("is flush rows in plain words, with no transport or empty sync line", () => {
     state.search = "?tab=integrations";
-    render(<IntegrationsTab projectId="p-1" canEdit />);
+    render(<IntegrationsTab projectId="p-1" />);
     const rows = screen.getByTestId("integration-rows");
     expect(rows.tagName).toBe("UL");
     // One flush row per provider: list items, not a grid of tiles.
@@ -283,5 +295,25 @@ describe("the status list on the Integrations tab", () => {
     expect(rows).not.toHaveTextContent(/transport/i);
     expect(rows).not.toHaveTextContent(/no sync data/i);
     expect(rows).toHaveTextContent("No GitHub App is set up for this project.");
+  });
+});
+
+// ISS-1421 r27: the share form said "Only the project owner can share" from the org role the web
+// guessed at, while core lets any admin of the project share; it now reads the list's `may`.
+describe("who the share form is offered to", () => {
+  it("tells a plain member of the project who may share, from the rule core refuses by", () => {
+    state.may = { ...ADMIN_MAY, connect: false };
+    state.connections = [coolify("c-1")];
+    render(<IntegrationsTab projectId="p-1" />);
+    expect(
+      screen.getByText("Only an admin of this project can share a connection with this project."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/project owner/)).toBeNull();
+  });
+
+  it("offers the form to an admin of the project who is a plain member of the organization", () => {
+    state.connections = [coolify("c-1")];
+    render(<IntegrationsTab projectId="p-1" />);
+    expect(screen.queryByText(/can share a connection with this project/)).toBeNull();
   });
 });

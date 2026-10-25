@@ -69,17 +69,29 @@ export interface RemovedReader {
 /** The connection's own routes admit its managers alone. */
 export const MANAGES_IT: RemovedReader = { manages: true, savesKey: true, installsHere: false };
 
-function managersOf(connection: { ownerType: 'user' | 'org' }): string {
+/** Who turns a connection on or off, as a sentence's subject: the people `managesConnection` admits. */
+export function whoManages(connection: { ownerType: 'user' | 'org' }): string {
   return connection.ownerType === 'org'
-    ? 'Only an owner or admin of the organization that owns it'
-    : 'Only its owner';
+    ? 'an owner or admin of the organization that owns it'
+    : 'its owner';
 }
 
 /** A binding PATCH also saves a key on a person's connection for an admin of a project bound to it (ISS-1115). */
-function keySaversOf(connection: { ownerType: 'user' | 'org' }): string {
+export function whoSavesKey(connection: { ownerType: 'user' | 'org' }): string {
   return connection.ownerType === 'org'
-    ? managersOf(connection)
-    : 'Only its owner or an admin of a project bound to it';
+    ? whoManages(connection)
+    : 'its owner or an admin of a project bound to it';
+}
+
+/** "Only …", opening a sentence. */
+export const only = (who: string): string => `Only ${who}`;
+
+function managersOf(connection: { ownerType: 'user' | 'org' }): string {
+  return only(whoManages(connection));
+}
+
+function keySaversOf(connection: { ownerType: 'user' | 'org' }): string {
+  return only(whoSavesKey(connection));
 }
 
 function byWhoMay(

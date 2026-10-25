@@ -17,6 +17,7 @@ import {
   agentAccessTier,
   noAgentPathMessage,
 } from './agent-access.js';
+import { bindingReaderOf } from './binding-acts.js';
 import { checkBindingHealth } from './binding-health.js';
 import {
   cannotDeployMessage,
@@ -26,10 +27,10 @@ import {
 } from './binding-shape.js';
 import {
   bindConnection,
-  bindingListSchema,
   boundConnectionSchema,
   changeConnection,
   connectionAnswerSchema,
+  connectionBindingListSchema,
   directorySchema,
   healthResultSchema,
   listConnectionBindings,
@@ -57,6 +58,7 @@ import {
   bindingsVisibleTo,
   findReachableConnection,
   listReachableConnections,
+  memberProjectsBoundTo,
   type ReachedConnection,
 } from './reach.js';
 import { getAdapter, getIntegration, providerCanDeploy } from './registry.js';
@@ -75,8 +77,9 @@ import {
   connectionNotManageable,
   connectionNotReachable,
   defaultConnectionDisplayName,
-  forbidden,
+  authorizeAgentAccessWrite,
   healthOnKeySaved,
+  orgCredentialNotYours,
   notFound,
   notifyConnectionChanged,
   summarizeBinding,
@@ -170,7 +173,7 @@ integrationConnectionsRoutes.post(
     if (body.orgId) {
       const orgRole = await loadOrgRole(body.orgId, userId);
       if (!orgRole) throw notFound('org');
-      if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
+      if (!orgRoleAtLeast(orgRole, 'admin')) throw orgCredentialNotYours('create');
     }
     const connection = await createConnection({
       ownerType: body.orgId ? 'org' : 'user',
@@ -226,7 +229,7 @@ integrationConnectionsRoutes.post(
     const body = c.req.valid('json');
     // Admin on the target project (mirrors the create path's authorization).
     const role = await assertProjectMember(body.projectId, userId);
-    assertAdmin(role);
+    assertAdmin(role, 'share a connection with it');
     // An org-owned connection is shareable only within its own org.
     if (connection.ownerType === 'org') {
       const [targetProject] = await db
@@ -264,12 +267,7 @@ integrationConnectionsRoutes.post(
     // not; a provider with no agent path is refused by name rather than storing an inert value.
     const bindingAgentAccess: AgentAccess = body.agentAccess ?? AGENT_ACCESS_CLOSED;
     if (bindingAgentAccess !== AGENT_ACCESS_CLOSED) {
-      const tier = agentAccessTier(getIntegration(provider));
-      if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
-      if (tier === 'org-admin') {
-        const access = await effectiveProjectRole(userId, body.projectId);
-        if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
-      }
+      await authorizeAgentAccessWrite(userId, body.projectId, provider);
     }
 
     const integrationSecret =
@@ -306,7 +304,11 @@ integrationConnectionsRoutes.post(
     // than whatever the connection last recorded (ISS-429).
     return c.json(
       answer(boundConnectionSchema, {
-        ...(await buildCreatedBindingResponse({ binding, connection }, integrationSecret)),
+        ...(await buildCreatedBindingResponse(
+          { binding, connection },
+          integrationSecret,
+          await bindingReaderOf(userId, body.projectId, role),
+        )),
         ...bindEffects,
       }),
       201,
@@ -317,14 +319,21 @@ integrationConnectionsRoutes.post(
 integrationConnectionsRoutes.get('/:id/bindings', ...listConnectionBindings, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  const reached = await loadVisibleConnection(id, userId);
-  const pairs = bindingsVisibleTo(
-    reached,
-    await listBindingsForConnection(id),
-    (pair) => pair.binding.projectId,
+  const [reached, memberOf] = await Promise.all([
+    findReachableConnection(userId, id),
+    memberProjectsBoundTo(userId, id),
+  ]);
+  if (!reached && memberOf.length === 0) throw connectionNotReachable(id);
+  const all = await listBindingsForConnection(id);
+  const shown = new Set(memberOf);
+  const pairs = all.filter(
+    (pair) =>
+      shown.has(pair.binding.projectId) ||
+      (reached !== null &&
+        bindingsVisibleTo(reached, [pair], (p) => p.binding.projectId).length > 0),
   );
   const bindings = pairs.map(summarizeBinding);
-  return c.json(answer(bindingListSchema, { bindings, items: bindings }));
+  return c.json(answer(connectionBindingListSchema, { bindings, items: bindings }));
 });
 
 integrationConnectionsRoutes.post('/:id/test', ...testConnection, async (c) => {

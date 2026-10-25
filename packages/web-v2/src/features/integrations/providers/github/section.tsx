@@ -40,6 +40,7 @@ import { bindableApps, unbindableReason } from "./reuse";
 import {
   bindsRemovedConnection,
   IntegrationEnabledControl,
+  onlyWho,
 } from "../../components/integration-enabled-control";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 import { scopeLabel } from "../../components/status-pill";
@@ -93,16 +94,15 @@ function BindingControls({
     <>
       <IntegrationEnabledControl projectId={projectId} binding={binding} />
 
-      <AgentAccessControl projectId={projectId} binding={binding} canEdit />
+      <AgentAccessControl projectId={projectId} binding={binding} />
 
-      {/* Disconnect took effect on one click (ISS-1421 r24); it asks once, saying what stops here. */}
+      {/* Disconnect took effect on one click (ISS-1421 r24); it asks once, in the words every
+          provider's question uses (r27). */}
       <div className="flex flex-wrap items-center gap-2">
         <DisconnectFromProject
           projectId={projectId}
           binding={binding}
-          says={`Disconnecting stops this project's agents and runners reaching ${
-            repository ? `${repository.owner}/${repository.repo}` : "GitHub"
-          } through this App. The App itself stays, and other projects bound to it keep it.`}
+          subject={repository ? `GitHub (${repository.owner}/${repository.repo})` : "GitHub"}
         />
       </div>
     </>
@@ -138,9 +138,12 @@ function ConnectedState({
           >
             {owner}/{repo}
           </a>
-          <Button variant="ghost" size="sm" onClick={onChangeRepository}>
-            Change repository
-          </Button>
+          {/* Offered to a reader core lets point the binding elsewhere (ISS-1421 r27). */}
+          {binding.acts.change && (
+            <Button variant="ghost" size="sm" onClick={onChangeRepository}>
+              Change repository
+            </Button>
+          )}
         </div>
 
         <BindingControls projectId={projectId} binding={binding} />
@@ -218,7 +221,10 @@ function SetRepository({
   connectionLabel: string;
   onDone: (() => void) | null;
 }) {
-  const repos = useGitHubRepositories(projectId, binding.connectionId);
+  // The repository list and the write are a project admin's (ISS-1421 r27): nobody else's drawer
+  // reads a list core refuses them, or offers a Save it refuses.
+  const mayPick = binding.acts.change;
+  const repos = useGitHubRepositories(projectId, mayPick ? binding.connectionId : undefined);
   const update = useUpdateProviderIntegration(projectId);
   const current = repositoryOf(binding.config);
   const [fullName, setFullName] = useState(current ? `${current.owner}/${current.repo}` : "");
@@ -254,26 +260,34 @@ function SetRepository({
           GitHub binding; picking here points that same binding at a repository.
         </p>
 
-        <RepositoryField repos={repos} value={fullName} onChange={setFullName} />
+        {mayPick ? (
+          <>
+            <RepositoryField repos={repos} value={fullName} onChange={setFullName} />
 
-        {!binding.bindingActive && (
+            {!binding.bindingActive && (
+              <p className="fg-body-sm text-muted">
+                This binding is switched off. Saving a repository switches it back on.
+              </p>
+            )}
+
+            {update.isError && <Banner tone="danger">{formatApiError(update.error)}</Banner>}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={submit} disabled={!chosen || update.isPending}>
+                {update.isPending ? "Saving…" : "Save repository"}
+              </Button>
+              {onDone && (
+                <Button variant="ghost" size="sm" onClick={onDone}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </>
+        ) : (
           <p className="fg-body-sm text-muted">
-            This binding is switched off. Saving a repository switches it back on.
+            {`${onlyWho(binding.acts.whoChanges)} can point this binding at a repository.`}
           </p>
         )}
-
-        {update.isError && <Banner tone="danger">{formatApiError(update.error)}</Banner>}
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={submit} disabled={!chosen || update.isPending}>
-            {update.isPending ? "Saving…" : "Save repository"}
-          </Button>
-          {onDone && (
-            <Button variant="ghost" size="sm" onClick={onDone}>
-              Cancel
-            </Button>
-          )}
-        </div>
 
         <BindingControls projectId={projectId} binding={binding} />
       </div>
@@ -569,7 +583,8 @@ function RemovedApp({
           <DisconnectFromProject
             projectId={projectId}
             binding={binding}
-            says={`Disconnecting switches this project off from ${connectionLabel}, ${staysOff}.`}
+            subject={connectionLabel}
+            staysOff={staysOff}
           />
         </div>
       </div>

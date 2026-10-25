@@ -11,6 +11,7 @@ import { LeaveGuardProvider } from "@/design";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DIRECTORY_STATUS_META, deriveDirectoryStatus } from "../derive";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
+import { ALL_ACTS, ALL_MAY } from "../test-acts";
 
 expect.extend(matchers);
 
@@ -45,6 +46,7 @@ function row() {
     integrationSecretSet: true,
     agentAccess: "all",
     agentPathKind: "direct-mcp",
+    acts: ALL_ACTS,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -67,7 +69,7 @@ vi.mock("@/lib/api/client", async () => {
     ...actual,
     apiClient: async (path: string) => {
       const bare = path.split("?")[0] ?? path;
-      if (bare === `/projects/${PROJECT}/integrations`) return { items: [row()], bindings: [row()] };
+      if (bare === `/projects/${PROJECT}/integrations`) return { items: [row()], bindings: [row()], may: ALL_MAY };
       if (bare === "/projects") return [PROJECT_ROW];
       if (bare === `/projects/${PROJECT}`) return { ...PROJECT_ROW, agentConfig: {} };
       return { items: [], bindings: [], applications: [], rooms: [], targets: [], repositories: [], truncated: false };

@@ -267,8 +267,19 @@ describe('the live refusal: an admin of the bound project who does not own the A
 });
 
 describe('who does not reach it', () => {
+  // ISS-1421 r27: a plain member of the bound project reads that project's own binding of it, which
+  // its drawer lists under "Projects using this connection", and nothing else of the connection.
+  it('a plain member of the bound project sees nothing in the directory, and only their project at the bindings route', async () => {
+    const connection = await appOwnedByClicker([projectId, otherProjectId]);
+
+    expect(await directoryIds(boundMember.id)).toEqual([]);
+    const res = await bindingsAs(boundMember.id, connection.id);
+    expect(res.status).toBe(200);
+    const read = (await bodyOf(res)) as unknown as { bindings: Array<{ projectId: string }> };
+    expect(read.bindings.map((b) => b.projectId)).toEqual([projectId]);
+  });
+
   it.each([
-    ['a plain member of the bound project', () => boundMember],
     ['an admin of a project the App is not bound to', () => otherAdmin],
     ['a stranger', () => stranger],
   ])('%s sees nothing in the directory and is refused the bindings route', async (_name, who) => {
@@ -287,7 +298,9 @@ describe('who does not reach it', () => {
 
     expect(res.status).toBe(404);
     expect(body.code).toBe('CONNECTION_NOT_REACHABLE');
-    expect(body.message).toContain(missing);
+    // The id is the caller's own, so the sentence does not print it back; it rides in details (r27).
+    expect(body.message).not.toContain(missing);
+    expect(body.details).toEqual({ connectionId: missing });
   });
 
   it('names the subject, who may see a connection, and the way round', async () => {
@@ -295,7 +308,8 @@ describe('who does not reach it', () => {
 
     const body = await bodyOf(await bindingsAs(stranger.id, connection.id));
 
-    expect(body.message).toContain(connection.id);
+    expect(body.message).toMatch(/^This connection is not one you can reach\./);
+    expect(body.message).not.toContain(connection.id);
     expect(body.message).toMatch(/owner|organization/i);
     expect(body.message).toMatch(/admin of a project/i);
     expect(body.message).toMatch(/owner or admin of that organization/i);
@@ -431,7 +445,8 @@ describe('every door reaches the same connections', () => {
       );
 
       expect(inDirectory).toBe(reached);
-      expect(bindingsStatus === 200).toBe(reached);
+      // A member of a bound project also reads its own project's binding there (ISS-1421 r27).
+      expect(bindingsStatus === 200).toBe(reached || who() === boundMember);
       expect(probed).toBe(reached);
     },
   );

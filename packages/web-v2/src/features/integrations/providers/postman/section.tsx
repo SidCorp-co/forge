@@ -1,6 +1,5 @@
 "use client";
 
-import { removedKeyHint } from "../../components/integration-enabled-control";
 
 import {
   Badge,
@@ -17,8 +16,7 @@ import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
   useIntegrationsList,
-  useIsOrgAdmin,
-  useOrgConnectionLocked,
+  useProjectIntegrationActs,
   useTestIntegration,
   useUpdateProviderIntegration,
 } from "../../hooks";
@@ -32,16 +30,18 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess, reachesAgentsWhile} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, grantOnConnectWho, mayGrantOnConnect, reachesAgentsWhile} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { postman } from "./index";
 import {
   bindsRemovedConnection,
   IntegrationEnabledControl,
+  keyLockedLine,
+  removedKeyHint,
 } from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
-import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
+import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
 
@@ -116,15 +116,15 @@ export function PostmanSection({ projectId }: { projectId: string }) {
     setForm((f) => ({ ...f, [key]: value }));
 
   const keyRequired = !existing; // a brand-new integration must carry a key
-  // Org-shared credential: only an org owner/admin may change config/secrets/
-  // active. Test connection stays enabled (binding-level, project admin OK).
-  const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
-  const isOrgAdmin = useIsOrgAdmin(projectId);
+  // Its whole form is the connection's tier, offered by what core says this reader may save
+  // (ISS-1421 r27); Test connection stays open to every member.
+  const may = useProjectIntegrationActs(projectId);
+  const keyLocked = existing ? !existing.acts.saveKey : !may?.connect;
   const canSave =
     (!keyRequired || form.apiKey.trim().length >= 8) &&
     !create.isPending &&
     !update.isPending &&
-    !orgLocked;
+    !keyLocked;
 
   async function handleSave() {
     setTestResult(null);
@@ -188,7 +188,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
           label="API key"
           hint={
             existing && !existing.hasSecrets
-              ? removedKeyHint("key", orgLocked)
+              ? removedKeyHint("key", existing.acts)
               : existing
               ? "A key is stored. Leave blank to keep it; enter a new one to rotate."
               : "Postman API key (PMAK-…). Stored encrypted; never shown again."
@@ -201,14 +201,12 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             placeholder={existing?.hasSecrets ? "•••••••• (unchanged)" : "PMAK-…"}
             value={form.apiKey}
             onChange={(e) => set("apiKey", e.target.value)}
-            disabled={orgLocked}
+            disabled={keyLocked}
           />
         </Field>
 
-        {orgLocked && (
-          <p className="fg-body-sm text-muted">
-            Org-shared credential — only an org owner/admin can change it.
-          </p>
+        {existing && keyLocked && (
+          <p className="fg-body-sm text-muted">{keyLockedLine(existing.acts)}</p>
         )}
 
         {!existing && (
@@ -290,17 +288,14 @@ export function PostmanSection({ projectId }: { projectId: string }) {
         {existing ? (
           <AgentAccessControl
             projectId={projectId}
-            binding={existing}
-            canEdit={true}
-            disabledReason={agentAccessDeniedReason("direct-mcp")}
-          />
+            binding={existing} />
         ) : (
           <AgentAccessChoice
             value={agentAccess}
             onChange={setAgentAccess}
             pathKind={postman.agentPathKind}
-            canEdit={mayWriteAgentAccess(postman.agentPathKind, { canEditProject: true, isOrgAdmin })}
-            disabledReason={agentAccessDeniedReason("direct-mcp")}
+            canEdit={mayGrantOnConnect(postman.agentPathKind, may)}
+            disabledReason={grantOnConnectWho(postman.agentPathKind, may)}
           />
         )}
 
@@ -308,14 +303,17 @@ export function PostmanSection({ projectId }: { projectId: string }) {
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="flex items-center gap-3">
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              loading={create.isPending || update.isPending}
-              disabled={!canSave}
-            >
-              {existing ? "Save" : "Create integration"}
-            </Button>
+            {/* Not drawn for a reader core would refuse the save; the line above names who may (ISS-1421 r27). */}
+            {!keyLocked && (
+              <Button
+                variant="primary"
+                onClick={handleSave}
+                loading={create.isPending || update.isPending}
+                disabled={!canSave}
+              >
+                {existing ? "Save" : "Create integration"}
+              </Button>
+            )}
             {existing && !bindsRemovedConnection(existing) && (
               <Button
                 variant="secondary"
@@ -330,7 +328,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             <DisconnectFromProject
               projectId={projectId}
               binding={existing}
-              says={disconnectSays("Postman", existing)}
+              subject={"Postman"}
             />
           )}
         </div>

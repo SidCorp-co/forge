@@ -21,6 +21,7 @@ import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
+import { bindingActs, bindingReaderOf, projectIntegrationActs } from './binding-acts.js';
 import { checkBindingHealth } from './binding-health.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
@@ -50,14 +51,15 @@ import {
   broadcastIntegrationChanged,
   buildCreatedBindingResponse,
   defaultConnectionDisplayName,
-  forbidden,
+  keyNotYours,
   keySavedHere,
   notFound,
   notifyConnectionChanged,
-  orgConnectionNotYours,
+  notThisProjectsAdmin,
+  orgCredentialNotYours,
   refuseSwitchOnOverRemoved,
   stagesOnNonDeployBinding,
-  summarizeBinding,
+  summarizeProjectBinding,
 } from './route-helpers.js';
 import {
   bindingChangedSchema,
@@ -109,12 +111,17 @@ registerCoolifyDeployRoutes(integrationsRoutes);
 integrationsRoutes.get('/:projectId/integrations', ...listIntegrations, async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
-  await assertProjectMember(projectId, userId);
+  const role = await assertProjectMember(projectId, userId);
 
-  const pairs = await listBindingsForProject(projectId);
+  const [pairs, reader] = await Promise.all([
+    listBindingsForProject(projectId),
+    bindingReaderOf(userId, projectId, role),
+  ]);
   // One array under both keys: `items` is the alias the `forge` CLI and the runner read (ISS-1191).
-  const bindings = pairs.map(summarizeBinding);
-  return c.json(answer(bindingListSchema, { bindings, items: bindings }));
+  const bindings = pairs.map((pair) => summarizeProjectBinding(pair, reader));
+  return c.json(
+    answer(bindingListSchema, { bindings, items: bindings, may: projectIntegrationActs(reader) }),
+  );
 });
 
 integrationsRoutes.post(
@@ -127,7 +134,7 @@ integrationsRoutes.post(
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
     const role = await assertProjectMember(projectId, userId);
-    assertAdmin(role);
+    assertAdmin(role, 'connect an integration to it');
 
     assertVaultConfigured();
 
@@ -146,7 +153,7 @@ integrationsRoutes.post(
           cause: { code: 'ORG_MISMATCH' },
         });
       }
-      if (!orgRoleAtLeast(access.orgRole, 'admin')) throw forbidden();
+      if (!orgRoleAtLeast(access.orgRole, 'admin')) throw orgCredentialNotYours('connect');
     }
     // Connecting an integration and saying whether agents may use it is ONE act on ONE object
     // (ISS-1071 rule 3). The default is closed, so a caller that does not ask grants nothing.
@@ -193,7 +200,11 @@ integrationsRoutes.post(
     return c.json(
       answer(
         createdBindingSchema,
-        await buildCreatedBindingResponse({ binding, connection }, integrationSecret),
+        await buildCreatedBindingResponse(
+          { binding, connection },
+          integrationSecret,
+          await bindingReaderOf(userId, projectId, role),
+        ),
       ),
       201,
     );
@@ -211,14 +222,16 @@ integrationsRoutes.patch(
     const id = c.req.param('id');
     const userId = c.get('userId');
     const role = await assertProjectMember(projectId, userId);
-    assertAdmin(role);
 
     const existing = await findBindingWithConnectionById(id);
     if (!existing || existing.binding.projectId !== projectId) throw notFound();
     const { binding, connection } = existing;
 
     const patch = c.req.valid('json');
+    // Whoever sends it, a switch-on over a removed connection is answered by what it is (ISS-1421 r27).
     await refuseSwitchOnOverRemoved(patch, connection, { userId, role, projectId });
+    const reader = await bindingReaderOf(userId, projectId, role);
+    const acts = bindingActs(reader, connection, binding.provider);
     // Re-validate the loose config against the existing provider so a PATCH can
     // never strip the wrong provider's fields, then split it into tiers:
     // coolify resourceUuid/branch are BINDING-scoped (the deploy target follows
@@ -242,18 +255,22 @@ integrationsRoutes.patch(
       }
     }
 
-    // Connection-tier config and secrets of an ORG-owned credential are managed
-    // at the org tier: a project admin alone must not rotate a credential the
-    // org's projects share. Binding-tier fields stay project-admin editable,
-    // `active` among them — the tier split below writes it to the binding, and
-    // DELETE throws that same switch for a project admin alone (ISS-1115).
-    if (
-      connection.ownerType === 'org' &&
-      (mergedConfig !== undefined || Object.keys(patch.secrets ?? {}).length > 0)
-    ) {
-      const access = await effectiveProjectRole(userId, projectId);
-      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw orgConnectionNotYours();
+    // Each tier is refused by the predicate the drawer draws from (`binding-acts.ts`): the binding's
+    // own tier, `active` among them, is a project admin's; the connection's key and shared settings
+    // are whoever's `saveKey` names. A patch touching neither asks nothing of the binding a member
+    // may ask, so it is held to the binding's tier.
+    const touchesKey = mergedConfig !== undefined || Object.keys(patch.secrets ?? {}).length > 0;
+    const touchesBinding =
+      mergedBindingConfig !== undefined ||
+      patch.active !== undefined ||
+      patch.instructions !== undefined ||
+      patch.agentAccess !== undefined ||
+      patch.stages !== undefined ||
+      !touchesKey;
+    if (touchesBinding && !acts.change) {
+      throw notThisProjectsAdmin(role, 'switch this integration or change its settings here');
     }
+    if (touchesKey && !acts.saveKey) throw keyNotYours(connection);
 
     if (patch.agentAccess !== undefined) {
       await authorizeAgentAccessWrite(userId, projectId, binding.provider);
@@ -306,7 +323,9 @@ integrationsRoutes.patch(
     if (!refreshed) throw notFound();
     broadcastIntegrationChanged(projectId, { bindingId: id, connectionId: connection.id });
     notifyConnectionChanged(binding.provider, connection.id);
-    return c.json(answer(bindingChangedSchema, { integration: summarizeBinding(refreshed) }));
+    return c.json(
+      answer(bindingChangedSchema, { integration: summarizeProjectBinding(refreshed, reader) }),
+    );
   },
 );
 
@@ -315,10 +334,13 @@ integrationsRoutes.delete('/:projectId/integrations/:id', ...removeIntegration, 
   const id = c.req.param('id');
   const userId = c.get('userId');
   const role = await assertProjectMember(projectId, userId);
-  assertAdmin(role);
 
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
+  const reader = await bindingReaderOf(userId, projectId, role);
+  if (!bindingActs(reader, existing.connection, existing.binding.provider).change) {
+    throw notThisProjectsAdmin(role, 'disconnect this integration from it');
+  }
 
   // Soft-delete the binding (stops resolution for this project). The connection
   // is left intact — it may be shared by other projects, and credential removal
@@ -399,7 +421,7 @@ integrationsRoutes.post(
     const id = c.req.param('id');
     const userId = c.get('userId');
     const role = await assertProjectMember(projectId, userId);
-    assertAdmin(role);
+    assertAdmin(role, "rotate this integration's inbound secret");
 
     const existing = await findBindingWithConnectionById(id);
     if (!existing || existing.binding.projectId !== projectId) throw notFound();
@@ -416,7 +438,10 @@ integrationsRoutes.post(
     });
     return c.json(
       answer(rotatedSecretSchema, {
-        integration: summarizeBinding(refreshed),
+        integration: summarizeProjectBinding(
+          refreshed,
+          await bindingReaderOf(userId, projectId, role),
+        ),
         integrationSecret: newSecret,
       }),
     );
@@ -454,7 +479,7 @@ integrationsRoutes.post(
     const deliveryId = c.req.param('deliveryId');
     const userId = c.get('userId');
     const role = await assertProjectMember(projectId, userId);
-    assertAdmin(role);
+    assertAdmin(role, "retry this integration's deliveries");
 
     const existing = await findBindingWithConnectionById(id);
     if (!existing || existing.binding.projectId !== projectId) throw notFound();

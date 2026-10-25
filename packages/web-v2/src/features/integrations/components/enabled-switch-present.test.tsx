@@ -9,6 +9,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROVIDER_MODULES } from "../providers/registry";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
+import { ALL_ACTS, ALL_MAY } from "../test-acts";
 
 expect.extend(matchers);
 
@@ -40,6 +41,7 @@ function binding(stage: "preview" | "live") {
     integrationSecretSet: true,
     agentAccess: "all",
     agentPathKind: "core-mediated",
+    acts: ALL_ACTS,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -64,7 +66,7 @@ vi.mock("@/lib/api/client", async () => {
       const bare = path.split("?")[0] ?? path;
       served.push(bare);
       if (bare === `/projects/${PROJECT}/integrations`) {
-        return { items: provider === "coolify" ? [binding("preview"), binding("live")] : [binding("live")] };
+        return { items: provider === "coolify" ? [binding("preview"), binding("live")] : [binding("live")], may: ALL_MAY };
       }
       if (bare === "/projects") return [PROJECT_ROW];
       if (bare === `/projects/${PROJECT}`) return { ...PROJECT_ROW, agentConfig: {} };
