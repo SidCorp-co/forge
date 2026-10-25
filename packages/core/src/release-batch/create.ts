@@ -10,6 +10,7 @@ import {
   activeIssuePrefix,
   designOnlyMarkSql,
   heldByEndedReleaseIds,
+  recordIssueMerge,
   setWorkStep,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -18,12 +19,14 @@ import { isRefusal } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import type { OneShotRunSpec } from '../pipeline/index.js';
 import { closeRunIfOneShot, insertAndEnqueueJob, insertOneShotRun } from '../pipeline/index.js';
+import { projectCreatorOf } from '../projects/index.js';
 import { requestApproval } from './approvals.js';
 import { admitRoster } from './blockers.js';
 import { label, mergeOrderOf, openChangeRequestsOf } from './change-request-roster.js';
 import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
 import { claimRoster } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
+import { landedOnTargetOf } from './landed-on-target.js';
 import { carryNaming } from './naming.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
@@ -350,7 +353,10 @@ export async function createReleaseBatch(
 /**
  * A release that ships by merging change requests (REQ-63): the run, its version and the roster
  * claimed as any cut, the declared merge order kept on the run, and the approval asked at once on
- * the requests' heads. No job runs: the master merges each request once the owner approves.
+ * the requests' heads. No job runs: the master merges each request once the owner approves. An
+ * issue the host already holds on the target branch rides with no request (`alreadyLanded` on the
+ * run); a roster of only such issues merges nothing, and its approval settles it
+ * (`approval-wake.ts`). Any other issue no request delivers is refused by name.
  */
 async function cutChangeRequestRelease(
   args: CreateReleaseBatchArgs,
@@ -358,8 +364,17 @@ async function cutChangeRequestRelease(
 ): Promise<CreateReleaseBatchResult> {
   const { projectId, issueIds, userId } = args;
   const steps = mergeOrderOf(await openChangeRequestsOf(projectId, issueIds), args.changeRequests);
+  const merged = new Set(steps.flatMap((s) => s.issueIds.map((id) => id.toLowerCase())));
+  const rest = issueIds.filter((id) => !merged.has(id.toLowerCase()));
+  const landed = await landedOnTargetOf(projectId, rest);
+  const missing = rest.filter((id) => !landed.has(id.toLowerCase()));
+  if (missing.length > 0)
+    throw blockerRefusal('RELEASE_CHANGE_REQUEST_MISSING', { issueIds: missing });
+  const alreadyLanded = [...landed].map(([issueId, on]) => ({ issueId, ...on }));
+  await stampHostLandings(projectId, alreadyLanded);
   const last = steps.at(-1);
-  if (!last) throw blockerRefusal('RELEASE_CHANGE_REQUEST_MISSING', { issueIds });
+  const evidenceCommit = last?.headSha ?? alreadyLanded[0]?.commit;
+  if (!evidenceCommit) throw blockerRefusal('RELEASE_CHANGE_REQUEST_MISSING', { issueIds });
   const { run, version } = await openClaimedRun({
     projectId,
     issueIds,
@@ -371,23 +386,29 @@ async function cutChangeRequestRelease(
       promotePlanned: false,
       verification: 'merged',
       changeRequests: steps,
+      alreadyLanded,
     },
     naming: args.naming ?? null,
     userId,
   });
   const order = steps.map((s) => label(s)).join(', ');
+  const n = alreadyLanded.length;
+  const onBranch =
+    n === 0
+      ? ''
+      : ` ${n === 1 ? 'One issue is' : `${n} issues are`} already on it and merge nothing.`;
+  const into = branch ? `\`${branch}\`` : 'the working branch';
   await requestApproval({
     projectId,
     runId: run.id,
     userId,
     body: {
       evidence: {
-        commit: last.headSha,
-        reading:
-          `Merges ${order} into ${branch ? `\`${branch}\`` : 'the working branch'}, in this order, once approved.`.slice(
-            0,
-            500,
-          ),
+        commit: evidenceCommit,
+        reading: (steps.length > 0
+          ? `Merges ${order} into ${into}, in this order, once approved.${onBranch}`
+          : `Nothing to merge: every issue is already on ${into}. Approving closes them.`
+        ).slice(0, 500),
       },
     },
   });
@@ -406,4 +427,30 @@ async function cutChangeRequestRelease(
       headSha: s.headSha,
     })),
   };
+}
+
+/**
+ * The host landing a cut read on the target branch, written as the host's record of it
+ * (`merged_commit_sha`), stamped when the host was read holding it there, as a mark read the same
+ * way is (`issues/host-mark.ts`): every reader of "landed", the close among them, reads the host's
+ * record, and a box's mark that predates it is not one.
+ */
+async function stampHostLandings(
+  projectId: string,
+  landed: ReadonlyArray<{ issueId: string; commit: string; from: 'host-merge' | 'branch' }>,
+): Promise<void> {
+  const read = landed.filter((l) => l.from === 'branch');
+  if (read.length === 0) return;
+  const owner = await projectCreatorOf(projectId);
+  const at = new Date();
+  await db.transaction(async (tx) => {
+    for (const l of read) {
+      await recordIssueMerge(tx, {
+        issueId: l.issueId,
+        via: 'repository',
+        actor: owner ? { type: 'user', id: owner, agency: 'agent' } : null,
+        evidence: { kind: 'observed', commitSha: l.commit, mergedAt: at },
+      });
+    }
+  });
 }
