@@ -29,6 +29,8 @@ export interface GitHubDouble {
   /** A branch's head, keyed by branch name. */
   heads: Map<string, string>;
   asked: string[];
+  /** A repository the installation cannot see: GitHub then answers every read of it 404. */
+  hidden: boolean;
   reset(): void;
   close(): Promise<void>;
   /** Bind this double to the project as its GitHub repository. */
@@ -60,6 +62,7 @@ export async function startGitHubDouble(): Promise<GitHubDouble> {
   const parents = new Map<string, string>();
   const heads = new Map<string, string>();
   const asked: string[] = [];
+  const state = { hidden: false };
   const server: Server = createServer((req, res) => {
     const url = req.url ?? '';
     asked.push(url);
@@ -70,6 +73,7 @@ export async function startGitHubDouble(): Promise<GitHubDouble> {
     if (url.includes('/access_tokens')) {
       return send(201, { token: 'ghs_installation_token', expires_at: '2099-01-01T00:00:00Z' });
     }
+    if (state.hidden) return send(404, { message: 'Not Found', status: '404' });
     const path = url.split('?')[0] ?? '';
     const compared = /\/compare\/([^/]+)$/.exec(path);
     if (compared) {
@@ -77,12 +81,15 @@ export async function startGitHubDouble(): Promise<GitHubDouble> {
       if (!answer) return send(404, { message: 'No common ancestor between these commits.' });
       return send(200, compareBody(answer));
     }
-    const ref = decodeURIComponent(/\/commits\/([^/]+)$/.exec(path)?.[1] ?? '');
+    const named = /\/commits\/([^/]+)$/.exec(path)?.[1];
+    if (named === undefined) return send(404, { message: `the double serves no ${url}` });
+    const ref = decodeURIComponent(named);
     const head = heads.get(ref);
     if (head) return send(200, { sha: head, parents: [] });
     const parent = parents.get(ref);
     if (parent) return send(200, { sha: ref, parents: [{ sha: parent }] });
-    return send(404, { message: `the double serves no ${url}` });
+    // GitHub's answer for a commit a repository it shows does not hold (api.github.com, 2026-10-25).
+    return send(422, { message: `No commit found for SHA: ${ref}`, status: '422' });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -92,7 +99,14 @@ export async function startGitHubDouble(): Promise<GitHubDouble> {
     parents,
     heads,
     asked,
+    get hidden() {
+      return state.hidden;
+    },
+    set hidden(value: boolean) {
+      state.hidden = value;
+    },
     reset() {
+      state.hidden = false;
       compare.clear();
       parents.clear();
       heads.clear();

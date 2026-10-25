@@ -9,7 +9,8 @@ const P = '1111111111111111111111111111111111111111';
 
 type Answer = unknown | ((path: string) => unknown);
 
-/** A client answering each path from `answers`, counting every request it was asked. */
+/** A client answering each path from `answers`, counting every request it was asked; a commit it
+ *  holds no answer for is refused 422, as GitHub refuses one a repository it shows lacks. */
 function client(answers: Record<string, Answer>): GitHubRepoClient & { asked: string[] } {
   const asked: string[] = [];
   return {
@@ -22,7 +23,10 @@ function client(answers: Record<string, Answer>): GitHubRepoClient & { asked: st
     async get<T>(path: string): Promise<T> {
       asked.push(path);
       const answer = answers[path];
-      if (answer === undefined) throw new GitHubReadError(404, `GET ${path} returned HTTP 404`);
+      if (answer === undefined) {
+        const status = path.includes('/commits/') ? 422 : 404;
+        throw new GitHubReadError(status, `GET ${path} returned HTTP ${status}`);
+      }
       return (
         typeof answer === 'function' ? (answer as (p: string) => unknown)(path) : answer
       ) as T;
@@ -244,5 +248,15 @@ describe('landingHeld', () => {
     expect(c.asked).toHaveLength(2);
     expect(await landingHeld(reader, S, () => 'spent')).toBe('unread');
     expect(c.asked).toHaveLength(2);
+  });
+
+  it('answers unread, never absent, where the repository answers 404 as one GitHub will not show (judge-113)', async () => {
+    const hidden: GitHubRepoClient = {
+      ...client({}),
+      async get<T>(path: string): Promise<T> {
+        throw new GitHubReadError(404, `GET ${path} on o/r returned HTTP 404`);
+      },
+    };
+    expect(await landingHeld(githubRepositoryReader(hidden), J)).toBe('unread');
   });
 });

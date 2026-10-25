@@ -281,3 +281,56 @@ describe('descends, on a GitHub binding', () => {
     expect('why' in failed && failed.why).toContain(`o/r could not compare ${SHA} with ${LATER}`);
   });
 });
+
+/**
+ * ISS-1300 judge-113 — GitHub refuses a commit lookup two ways (measured on api.github.com
+ * 2026-10-25): 422 "No commit found for SHA" from a repository it shows, and 404 "Not Found" from
+ * one the caller cannot see. Only the first says the commit is not there.
+ */
+describe('a commit lookup GitHub refuses, on a GitHub binding', () => {
+  const MISSING = '0d018a9a0e1cf5dadf2b1b3be9ba1b81c5e9cb40';
+
+  function refusing(status: number, message: string): GitHubRepoClient {
+    return {
+      ...github(),
+      async get<T>(path: string): Promise<T> {
+        throw new GitHubReadError(status, `GET ${path} on o/r returned HTTP ${status}: ${message}`);
+      },
+    };
+  }
+
+  it('reads a 422 from a repository it can see as the commit absent, naming the repository', async () => {
+    const read = await githubRepositoryReader(refusing(422, 'No commit found for SHA')).commit(
+      MISSING,
+    );
+    expect(read).toMatchObject({ kind: 'absent', details: { commit: MISSING, repository: 'o/r' } });
+  });
+
+  it('reads a 404 as the repository unreadable, naming it and what restores it, never the commit absent', async () => {
+    const read = await githubRepositoryReader(refusing(404, 'Not Found')).commit(MISSING);
+    expect(read.kind).toBe('unreadable');
+    const said = read.kind === 'unreadable' ? read.why : '';
+    expect(said).toContain('o/r answered HTTP 404');
+    expect(said).toContain(`whether it holds ${MISSING} was not read`);
+    expect(said).toContain("Restore o/r to the GitHub App installation's repositories");
+  });
+
+  it.each([401, 403, 500])('reads a %s as the repository unreadable, naming it', async (status) => {
+    const read = await githubRepositoryReader(refusing(status, 'refused')).commit(MISSING);
+    expect(read.kind).toBe('unreadable');
+    expect(read.kind === 'unreadable' && read.why).toContain('o/r');
+  });
+
+  it('names the repository where the request failed before GitHub answered', async () => {
+    const client: GitHubRepoClient = {
+      ...github(),
+      async get<T>(): Promise<T> {
+        throw new TypeError('fetch failed');
+      },
+    };
+    expect(await githubRepositoryReader(client).commit(MISSING)).toEqual({
+      kind: 'unreadable',
+      why: 'o/r could not be read: fetch failed',
+    });
+  });
+});

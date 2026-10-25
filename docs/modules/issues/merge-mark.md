@@ -81,7 +81,12 @@ answers an abbreviated sha that no commit starts with and one that
 several commits start with alike, and git resolves a prefix only against the commits its branches
 hold, so on either route such a sha is refused `COMMIT_NOT_IN_REPOSITORY` as
 unresolved, asking for the full sha, and never reported as absent. A full sha no branch holds is
-fetched by itself on the git route, and the host serving no such commit is the absent answer. A
+fetched by itself on the git route, and the host serving no such commit is the absent answer. On
+the GitHub route the absent answer is HTTP 422, which GitHub gives for a commit a repository it
+shows does not hold; HTTP 404 is its answer for a repository the installation cannot see (removed
+from the App's repositories, renamed or deleted), so a 404 is the repository unreadable — it names
+the repository and asks for it to be restored to the installation — and never a commit absent
+(`packages/core/src/integrations/github/repository-reader.ts:githubRepositoryReader`). A
 name longer than a whole sha (40 hex digits in a SHA-1 repository, which is every GitHub one) is no
 commit's sha and no prefix of one, yet git, once the commit is packed, and GitHub both answer it by
 its first 40 digits. So each reader refuses it `COMMIT_NOT_IN_REPOSITORY` by its length before the
@@ -308,9 +313,17 @@ correct, whatever commit each verdict names, the same commit included
 (`packages/core/src/issues/verdict-standing.ts:unresolvedSentence`). The criteria report carries it
 once as `unresolvedLanding`, with `from` saying whether it came from the merge mark or the landing
 record, and the automatic release's hold leads with it and names correcting that record, never a
-verdict on each criterion (`packages/core/src/pipeline/release-hold-kinds.ts:criteriaHold`). A
-repository that could not be read names nothing absent: the verdicts are weighed against the
-recorded commit as before, and stay held by equality.
+verdict on each criterion (`packages/core/src/pipeline/release-hold-kinds.ts:criteriaHold`). The
+act is a person's on the issue page — Unmark, then Mark merged at the commit that landed, or Mark
+merged alone where only a landing record names it — and the release readiness page and the
+release-create refusal give the same act for that issue in place of the criteria it would owe,
+all three from `packages/core/src/issues/landing-correction.ts:landingCorrection`.
+
+Absent means the repository was read and answered that it holds no such commit: on the GitHub
+route an HTTP 422, never the 404 GitHub gives for a repository the installation cannot see. A
+repository that could not be read — that 404, a 401 or 403, a failed token mint, or a request that
+never reached the host — names nothing absent: the verdicts are weighed against the recorded commit
+as before, and stay held by equality.
 
 The forge-plugin CLI's own check of a verdict against the merged commit reads that commit out of
 the mark's note, not off these columns, so it is not covered here.

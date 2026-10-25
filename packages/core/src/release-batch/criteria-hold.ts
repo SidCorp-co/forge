@@ -88,6 +88,7 @@ export async function criteriaHold(
     issueId: r.issueId,
     displayId: shown.value?.get(r.issueId) ?? r.issueId,
     criteria: r.unearned.map((c) => c.criterion),
+    ...(r.unresolvedLanding ? { unresolvedLanding: r.unresolvedLanding } : {}),
   }));
   // A failed repository read is cleared by its own act, which no verdict repairs (ISS-1398).
   const clears = [...new Set(owing.flatMap((r) => r.unearned.flatMap((c) => c.clears ?? [])))];
