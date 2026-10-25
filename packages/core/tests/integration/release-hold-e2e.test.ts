@@ -99,6 +99,15 @@ async function heldRow(verdict = 'skipped'): Promise<string> {
 
 const sweep = () => sweepAutomaticReleases();
 
+/** Its verdicts recorded at 07:07 and the issue reopened at 07:13, then back at the gate. */
+async function reopenedAfterItsPasses(issueId: string): Promise<void> {
+  await db.execute(sql`
+    UPDATE criterion_verdicts SET created_at = '2026-10-23T07:07:16Z' WHERE issue_id = ${issueId}`);
+  await db.execute(sql`
+    INSERT INTO kernel_transitions (id, entity, entity_id, from_status, to_status, actor_type, actor_agency, source, created_at)
+    VALUES (gen_random_uuid(), 'issue', ${issueId}, 'awaiting_release', 'reopen', 'user', 'human', 'test', '2026-10-23T07:13:00Z')`);
+}
+
 describe('a held row says why, and keeps one record per reason', () => {
   it('writes the hold once, and a second tick with the same reason writes nothing', async () => {
     const id = await heldRow();
@@ -179,6 +188,35 @@ describe('the criteria hold reads proof by the verified rule', () => {
     const hold = await holdOf(id);
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(hold?.reason).toContain('judged short: met short of its wording');
+  });
+
+  // catalog-api release 0.1.0, 2026-10-25: ISS-33 and ISS-31 were cut over passes recorded before
+  // their last reopen, which the release roster then read as open, so the release waited on them
+  it('holds a row whose passes were recorded before its last reopen, as the release roster reads them', async () => {
+    const id = await heldRow('pass');
+    await reopenedAfterItsPasses(id);
+
+    const result = await sweep();
+
+    expect(result.issuesCut, 'a pass the reopen voided proves nothing the roster will count').toBe(
+      0,
+    );
+    const hold = await holdOf(id);
+    expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(hold?.reason).toContain(
+      'recorded before the reopen on 2026-10-23 07:13 UTC; judge it again',
+    );
+  });
+
+  it('cuts the same row once it is judged again after the reopen', async () => {
+    const id = await heldRow('pass');
+    await reopenedAfterItsPasses(id);
+    await fx.postVerdict(id, verdictComment([verdictBlock(1, 'pass'), verdictBlock(2, 'pass')]));
+
+    const result = await sweep();
+
+    expect(result.issuesCut).toBe(1);
+    expect(await holdOf(id)).toBeNull();
   });
 
   it('cuts the same row once the short is judged again a pass on what is served', async () => {

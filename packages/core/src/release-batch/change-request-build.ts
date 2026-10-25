@@ -18,7 +18,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
-import { issueDisplayIds, standingCriteriaOf } from '../issues/index.js';
+import { issueDisplayIds, landingGuardCriteriaOf } from '../issues/index.js';
 import {
   label,
   mergeStepsOf,
@@ -96,7 +96,7 @@ async function claimedOf(ids: readonly string[]): Promise<Map<string, Claimed>> 
 
 /** The commit each of an issue's counting verdicts names, by criterion. */
 async function judgedAt(ids: readonly string[]): Promise<Map<string, (string | null)[]>> {
-  const standing = await standingCriteriaOf(ids);
+  const standing = await landingGuardCriteriaOf(ids);
   const out = new Map<string, (string | null)[]>();
   for (const [id, s] of standing) {
     out.set(

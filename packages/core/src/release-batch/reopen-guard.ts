@@ -26,7 +26,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { issueWorkState } from '../db/schema-issue-work-state.js';
-import { issueDisplayIds, standingCriteriaOf } from '../issues/index.js';
+import { issueDisplayIds, landingGuardCriteriaOf } from '../issues/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { deliveryHeadsOf, landedReopenRefusal } from './landed-build.js';
@@ -68,7 +68,7 @@ export async function stewardReopenRefusal(issueId: string): Promise<ReopenRefus
   if (counted) return { code: STEWARD_REOPEN_COUNTED, detail: counted };
   const document = await readProjectDocument(row.projectId);
   if (verdictsRequiredOf(document?.document.delivery)) return null;
-  const standing = (await standingCriteriaOf([issueId])).get(issueId);
+  const standing = (await landingGuardCriteriaOf([issueId])).get(issueId);
   const failing = (standing?.criteria ?? []).filter((c) => c.verdict?.verdict === 'fail');
   if (failing.length > 0) return null;
   return {

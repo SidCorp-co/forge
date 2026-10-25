@@ -32,8 +32,8 @@ import {
   type CriterionVerdict,
   currentMarkClaims,
   issueDisplayIds,
+  landingGuardCriteriaOf,
   type StandingCriterion,
-  standingCriteriaOf,
 } from '../issues/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { type AncestryPair, pairKey } from '../runners/index.js';
@@ -358,7 +358,7 @@ export async function landedStandings(
   buildOf: (issueId: string) => string,
   viaOf: (issueId: string) => string | null = () => null,
 ): Promise<LandedStanding[]> {
-  const standing = await standingCriteriaOf(issueIds);
+  const standing = await landingGuardCriteriaOf(issueIds);
   return issueIds.flatMap((issueId) => {
     const s = standing.get(issueId);
     if (!s) return [];
@@ -390,7 +390,7 @@ export async function aheadBuildsOf(
   const out = new Map(builds);
   const open = [...builds].filter(([, b]) => b.sha !== null && b.from !== 'record');
   if (open.length === 0) return out;
-  const standing = await standingCriteriaOf(open.map(([id]) => id));
+  const standing = await landingGuardCriteriaOf(open.map(([id]) => id));
   const ahead = new Map<string, { landing: string; sha: string }>();
   for (const [issueId, build] of open) {
     const s = standing.get(issueId);

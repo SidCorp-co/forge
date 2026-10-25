@@ -1,1 +1,1 @@
-**An issue's criteria now say whether a release counts each verdict.** A pass recorded before the issue's last reopen reads Not counted, with the reopen's time, and is never marked as the builder's counted pass.
+**A pass recorded before an issue's last reopen no longer counts anywhere a release reads.** The issue's criteria mark it Not counted with the reopen's time, and a release cut holds the issue until it is judged again.

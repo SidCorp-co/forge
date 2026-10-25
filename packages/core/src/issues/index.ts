@@ -62,8 +62,8 @@ export { type VerdictRefusal, verdictDraftFault } from './criteria/verdict-input
 export {
   type CriterionVerdict,
   type IssueCriteriaReport,
+  landingGuardCriteriaOf,
   type StandingCriterion,
-  standingCriteriaOf,
   unearnedCriteriaReports,
   verdictWeighingInputs,
 } from './criteria-verdicts.js';

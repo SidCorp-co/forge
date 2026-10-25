@@ -228,8 +228,8 @@ function requirementVerdictsOn(
 }
 
 // With no production environment a commit names the build exactly, so a reopen voids nothing a
-// commit check does not: the issue's own door reads a criterion's newest verdict however old
-// (`issues/criteria-verdicts.ts:standingOn`), and the record that closed the issue counted it. A
+// commit check does not: the landing guard reads a criterion's newest verdict however old
+// (`issues/criteria-verdicts.ts:landingGuardCriteriaOf`), and the record that closed the issue counted it. A
 // newest verdict older than the reopen stands here only where it was judged at the issue's landed
 // commit, so coverage and the record read one issue's verdicts by one rule; anywhere else it stays
 // voided.
