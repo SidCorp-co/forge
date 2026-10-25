@@ -37,12 +37,13 @@ export function declinedTail(text: string): string {
 }
 
 const BULLET = /^[ \t]{0,3}[-*+•][ \t]+(?=.*[\p{L}\p{N}(])/u;
+const ANY_ITEM = /^\s*[-*+•][ \t]+\S/;
 
 /** A reply of one bulleted item as its sentence; a list, a numbered or a quoted reply stays as written. */
 export function oneItemAsSentence(text: string): string {
   const lines = text.trim().split('\n');
   const first = lines[0] ?? '';
-  if (!BULLET.test(first) || lines.slice(1).some((line) => BULLET.test(line))) return text;
+  if (!BULLET.test(first) || lines.slice(1).some((line) => ANY_ITEM.test(line))) return text;
   return [first.replace(BULLET, ''), ...lines.slice(1)].join('\n');
 }
 
