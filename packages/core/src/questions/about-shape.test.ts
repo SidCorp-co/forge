@@ -40,7 +40,7 @@ vi.mock('../devices/ports.js', () => ({
     },
   }),
 }));
-vi.mock('./read.js', async (importOriginal) => ({
+vi.mock('./ask.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   askAs: async (input: Record<string, unknown>) => {
     state.asked.push(input);

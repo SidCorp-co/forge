@@ -419,6 +419,8 @@ mod tests {
             "`{requirement: \"REQ-n\"}`",
             "`QUESTION_ABOUT_SHAPE`",
             "`QUESTION_ABOUT_ON_MERGE_WAIT`",
+            "`forge-runner question ask --requirement REQ-n`",
+            "`QUESTION_SUBJECT_REQUIRED`",
             "`carriedBy`",
             "`ARTIFACT_CARRIER_SHIPPED`",
             "`carried`",

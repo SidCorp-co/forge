@@ -4,12 +4,10 @@
 // never carries the answer, so a box offline for the whole episode loses
 // latency and nothing else (ISS-964 criterion 12).
 
-import { randomUUID } from 'node:crypto';
 import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type {
   AnswerCredential,
-  QuestionAboutRequest,
   QuestionAsker,
   QuestionRoundFacts,
 } from '@forge/contracts/questions';
@@ -24,7 +22,6 @@ import {
   type AnswerShape,
   agentQuestions,
   isChoiceStep,
-  type QuestionBlockerKind,
   type QuestionOption,
   type QuestionStatus,
   type QuestionStep,
@@ -36,16 +33,15 @@ import type { EgressSurface } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { type PermissionFacts, requireHeld } from '../permissions/index.js';
+import type { PermissionFacts } from '../permissions/index.js';
 import { answerQuestion, type GivenAnswer, mayAnswerFreeText, type StillWaits } from './answer.js';
-import { refuseStewardOptions } from './steward-options.js';
 import { withSubject } from './subject.js';
-import { type AskAnswer, type AskInput, askQuestion, mayChoose, refuseQuestion } from './write.js';
+import { mayChoose, refuseQuestion } from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
 
 /** The caller's access to the project, or null where they hold no role on it. */
-async function accessOn(projectId: string, userId: string): Promise<PermissionFacts | null> {
+export async function accessOn(projectId: string, userId: string): Promise<PermissionFacts | null> {
   const access = await effectiveProjectRole(userId, projectId);
   return access?.role ? access : null;
 }
@@ -115,58 +111,6 @@ async function withAsker<T extends { askedBy: string | null }>(
     const p = r.askedBy ? people.get(r.askedBy) : undefined;
     return { ...r, asker: r.askedBy && p ? { id: r.askedBy, ...p } : null };
   });
-}
-
-/**
- * Ask a question against one issue, as somebody, or `null` when that somebody
- * cannot reach the issue. The ask writes the question and nothing else: the issue
- * keeps its status, and an open `human` question is the marker that a person owes
- * it an answer (ISS-1257).
- */
-type AskAsInput = {
-  userId: string;
-  issueId: string;
-  prompt: string;
-  blockerKind: QuestionBlockerKind;
-  answer: AskAnswer;
-  assumed?: Record<string, unknown> | undefined;
-  maxRounds?: number | undefined;
-  parkDeadlineAt?: Date | undefined;
-  sensitive?: boolean | undefined;
-  about?: QuestionAboutRequest | undefined;
-};
-
-export async function askAs(args: AskAsInput) {
-  refuseStewardOptions(args.answer);
-  const issue = await readAskedIssue(args.issueId);
-  if (!issue?.projectId) return null;
-  const access = await accessOn(issue.projectId, args.userId);
-  if (!access) return null;
-  requireHeld(access, 'project.write', 'asking a question');
-  const ask: AskInput = {
-    id: randomUUID(),
-    projectId: issue.projectId,
-    issueId: args.issueId,
-    askedBy: args.userId,
-    prompt: args.prompt,
-    blockerKind: args.blockerKind,
-    answer: args.answer,
-    ...(args.assumed ? { assumed: args.assumed } : {}),
-    ...(args.maxRounds === undefined ? {} : { maxRounds: args.maxRounds }),
-    ...(args.parkDeadlineAt ? { parkDeadlineAt: args.parkDeadlineAt } : {}),
-    ...(args.sensitive ? { sensitive: true } : {}),
-    ...(args.about ? { about: args.about } : {}),
-  };
-  return askQuestion(ask);
-}
-
-async function readAskedIssue(issueId: string) {
-  const [issue] = await db
-    .select({ projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  return issue;
 }
 
 /**

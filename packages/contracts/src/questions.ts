@@ -36,6 +36,10 @@ export const QUESTION_REFUSAL_CODES = [
 	/** A park waiting on a design revision's decision: the approver's decision answers it, never a business answer. */
 	"QUESTION_ABOUT_ON_DESIGN_WAIT",
 	"QUESTION_ABOUT_SHAPE",
+	/** An ask on no issue names what it is about: with neither, it would stand on nothing a person reads it from. */
+	"QUESTION_SUBJECT_REQUIRED",
+	/** An ask on no issue names the project it is asked in: `about` resolves a REQ-n key only there. */
+	"QUESTION_PROJECT_REQUIRED",
 	"QUESTION_RECOMMENDATION_REQUIRED",
 	"QUESTION_TOKEN_NOT_OWN",
 	"QUESTION_OWED_BY_PERSON",
@@ -46,6 +50,8 @@ export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];
 export const QUESTION_REFUSAL_STATUSES = {
 	QUESTION_ROUND_STALE: 409,
 	QUESTION_ABOUT_SHAPE: 400,
+	QUESTION_SUBJECT_REQUIRED: 400,
+	QUESTION_PROJECT_REQUIRED: 400,
 	QUESTION_TOKEN_NOT_OWN: 403,
 	QUESTION_OWED_BY_PERSON: 403,
 	QUESTION_BLOCKED_ON_AGENT: 403,

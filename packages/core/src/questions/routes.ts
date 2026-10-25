@@ -24,10 +24,10 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { fieldShape, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { assertTokenMayAnswer } from './answer-door.js';
 import { ANSWER_SHAPE, answerBody, givenAnswerOf } from './answer-input.js';
+import { askAs } from './ask.js';
 import { doorOfRequest } from './ports.js';
 import {
   answerAs,
-  askAs,
   decodeCursor,
   projectQuestionsFor,
   readQuestionFor,
@@ -51,9 +51,12 @@ const pageSchema = z.object({
     .optional(),
 });
 
+// An ask stands on an issue, or on none with `projectId` and `about` (FB-149): `askAs` refuses the
+// gaps by name, QUESTION_PROJECT_REQUIRED and QUESTION_SUBJECT_REQUIRED, rather than a bare 400.
 const askSchema = z
   .object({
-    issueId: uuid,
+    issueId: uuid.optional(),
+    projectId: uuid.optional(),
     prompt: z.string().trim().min(1).max(8000),
     options: z
       .array(
@@ -104,7 +107,7 @@ const listQuery = z.object({
   cursor: pageSchema.shape.cursor,
 });
 
-const notFound = (what: 'question' | 'issue' = 'question') =>
+const notFound = (what: 'question' | 'issue' | 'project' = 'question') =>
   new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
 
 function readerOf(agency: ActorAgency | undefined): EgressReader {
@@ -180,7 +183,7 @@ questionRoutes.post(
       parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
       userId: c.get('userId'),
     });
-    if (!asked) throw notFound('issue');
+    if (!asked) throw notFound(rest.issueId ? 'issue' : 'project');
     return c.json(asked, 201);
   },
 );

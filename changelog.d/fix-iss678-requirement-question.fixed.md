@@ -1,0 +1,1 @@
+**A question about a requirement can be asked without an issue.** `POST /api/questions` takes `projectId` and `about` in place of `issueId`, and `forge-runner question ask` takes `--requirement` or `--contract`; both read back the same subject.

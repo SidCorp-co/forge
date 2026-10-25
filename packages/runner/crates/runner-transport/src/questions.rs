@@ -57,9 +57,26 @@ pub struct Ask<'a> {
     pub assumed: Option<serde_json::Value>,
     pub cost: Option<serde_json::Value>,
     pub sensitive: Option<bool>,
+    /// What the question is about, in core's one shape: `{"requirement": "REQ-n"}` or
+    /// `{"contract": "<project>/<contract>"}`. With no `issue_id` it is what the question stands
+    /// on, listed on that requirement and answered from Needs you (FB-149).
+    pub about: Option<serde_json::Value>,
 }
 
 pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
+    let body = ask_body(req);
+    let resp = status::sent(
+        client.post("/api/devices/me/questions").json(&body),
+        "question ask",
+    )
+    .await?;
+    let resp = status::checked(resp, "question ask").await?;
+    let parsed: AskReply = status::decode(resp, "question ask").await?;
+    Ok(parsed.question_id)
+}
+
+/// The device door's ask body: every field the box knows, and none it does not.
+fn ask_body(req: Ask<'_>) -> serde_json::Value {
     let mut body = serde_json::json!({
         "id": req.id,
         "projectId": req.project_id,
@@ -93,14 +110,10 @@ pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
     if req.sensitive == Some(true) {
         body["sensitive"] = serde_json::json!(true);
     }
-    let resp = status::sent(
-        client.post("/api/devices/me/questions").json(&body),
-        "question ask",
-    )
-    .await?;
-    let resp = status::checked(resp, "question ask").await?;
-    let parsed: AskReply = status::decode(resp, "question ask").await?;
-    Ok(parsed.question_id)
+    if let Some(v) = req.about {
+        body["about"] = v;
+    }
+    body
 }
 
 /// `run_id` goes through the client's own query serializer rather than into the
@@ -125,4 +138,48 @@ pub async fn answer(
     let resp = status::checked(resp, "question read").await?;
     let parsed: AnswerReply = status::decode(resp, "question read").await?;
     Ok(parsed.answer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ask_of(issue_id: Option<&'static str>, about: Option<serde_json::Value>) -> Ask<'static> {
+        Ask {
+            id: "q1",
+            project_id: "p1",
+            run_id: "r1",
+            issue_id,
+            agent_session_id: None,
+            prompt: "May a referral manager download the report?",
+            blocker_kind: "human",
+            answer_shape: None,
+            options: serde_json::json!([]),
+            recommended_option_id: "no",
+            needed: None,
+            recommended: None,
+            assumed: None,
+            cost: None,
+            sensitive: None,
+            about,
+        }
+    }
+
+    #[test]
+    fn a_requirement_only_ask_sends_its_about_and_no_issue() {
+        let body = ask_body(ask_of(
+            None,
+            Some(serde_json::json!({"requirement": "REQ-74"})),
+        ));
+        assert_eq!(body["about"], serde_json::json!({"requirement": "REQ-74"}));
+        assert!(body.get("issueId").is_none());
+        assert_eq!(body["projectId"], "p1");
+    }
+
+    #[test]
+    fn an_ask_with_no_about_sends_none() {
+        let body = ask_body(ask_of(Some("i1"), None));
+        assert!(body.get("about").is_none());
+        assert_eq!(body["issueId"], "i1");
+    }
 }

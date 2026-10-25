@@ -157,7 +157,11 @@ park takes the same \`about\` beside \`needs\`, and the question it mints carrie
 stays on this issue, is listed on the requirement, names it to the person answering, and its answer
 is recorded there as a decision. An \`about\` naming nothing is \`QUESTION_ABOUT_UNKNOWN\`;
 \`{ requirement: null }\` on an issue that delivers no requirement is
-\`QUESTION_ABOUT_NO_REQUIREMENT\`.
+\`QUESTION_ABOUT_NO_REQUIREMENT\`. A business question that stands on no issue is asked with
+\`projectId\` in place of \`issueId\` and \`about\` naming the requirement by its key or the contract;
+it is listed on that requirement and on Needs you, and its answer is recorded there as a decision.
+On no issue, \`{ requirement: null }\` names nothing (\`QUESTION_ABOUT_NO_REQUIREMENT\`), and a
+missing \`about\` or \`projectId\` is \`QUESTION_SUBJECT_REQUIRED\` or \`QUESTION_PROJECT_REQUIRED\`.
 
 Waiting on another issue's landing is \`awaitsMerge: { issueId }\` on the park, never the condition
 written into \`needs\`: the stamp that writes that issue's merge mark answers the question and moves

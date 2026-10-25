@@ -38,7 +38,7 @@ pub struct Args {
 #[derive(Subcommand)]
 pub enum Command {
     /// Ask a person, on this box's device pairing.
-    Ask(AskArgs),
+    Ask(Box<AskArgs>),
     /// Read back the answer to a question this box asked.
     Answer(AnswerArgs),
 }
@@ -66,6 +66,14 @@ pub struct AskArgs {
     /// answered on the Agents screen's Questions tab rather than on an issue.
     #[arg(long)]
     pub issue: Option<String>,
+    /// The requirement a business question is about, by key (REQ-n) or id. With
+    /// no `--issue` the question stands on it: it is listed on that requirement
+    /// and its answer is recorded there as a decision.
+    #[arg(long, value_name = "REQ-N", conflicts_with = "contract")]
+    pub requirement: Option<String>,
+    /// The contract a business question is about, `<project>/<contract>`.
+    #[arg(long, value_name = "PROJECT/CONTRACT")]
+    pub contract: Option<String>,
     /// The run this question belongs to. Minted where absent, and printed
     /// either way, because the answer is served back only under it.
     #[arg(long)]
@@ -92,7 +100,7 @@ pub struct AnswerArgs {
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     match args.cmd {
-        Command::Ask(a) => ask(ctx, a).await,
+        Command::Ask(a) => ask(ctx, *a).await,
         Command::Answer(a) => answer(ctx, a).await,
     }
 }
@@ -248,9 +256,21 @@ async fn send_ask(
             assumed: None,
             cost: None,
             sensitive: Some(a.sensitive),
+            about: about_of(a),
         },
     )
     .await
+}
+
+/// `about` in core's one shape, sent as typed: core resolves the key and
+/// refuses one naming nothing (`QUESTION_ABOUT_UNKNOWN`), so that rule has one
+/// authority and its wording reaches the caller unaltered.
+fn about_of(a: &AskArgs) -> Option<serde_json::Value> {
+    match (a.requirement.as_deref(), a.contract.as_deref()) {
+        (Some(r), _) => Some(serde_json::json!({ "requirement": r })),
+        (None, Some(c)) => Some(serde_json::json!({ "contract": c })),
+        (None, None) => None,
+    }
 }
 
 async fn ask(ctx: Ctx, a: AskArgs) -> anyhow::Result<()> {
@@ -271,6 +291,7 @@ async fn ask(ctx: Ctx, a: AskArgs) -> anyhow::Result<()> {
                     &question_id,
                     &run_id,
                     a.issue.as_deref(),
+                    subject_of(&a),
                     ctx.core_url_override.as_deref(),
                 )
             );
@@ -319,11 +340,19 @@ fn asked(
     question_id: &str,
     run_id: &str,
     issue_id: Option<&str>,
+    subject: Option<String>,
     core_url_override: Option<&str>,
 ) -> String {
-    let where_answered = match issue_id {
-        Some(issue) => format!("It is on issue {issue}, under Decisions.\n"),
-        None => "It carries no issue, so it is on the Agents screen's Questions tab.\n".to_string(),
+    let where_answered = match (issue_id, subject) {
+        (Some(issue), _) => format!("It is on issue {issue}, under Decisions.\n"),
+        (None, Some(subject)) => {
+            format!(
+                "It carries no issue and is about {subject}, so it is answered from Needs you.\n"
+            )
+        }
+        (None, None) => {
+            "It carries no issue, so it is on the Agents screen's Questions tab.\n".to_string()
+        }
     };
     // The override travels with the invocation or the paste asks a different
     // core, which has neither the question nor the waiter and refuses.
@@ -336,6 +365,15 @@ fn asked(
         "question {question_id}\nrun      {run_id}\n{where_answered}\
          Read the answer back with:\n  forge-runner{endpoint} question answer {q} --run {r}\n"
     )
+}
+
+/// What the question is about, as the line after an ask names it.
+fn subject_of(a: &AskArgs) -> Option<String> {
+    match (a.requirement.as_deref(), a.contract.as_deref()) {
+        (Some(r), _) => Some(format!("requirement {}", r.trim())),
+        (None, Some(c)) => Some(format!("contract {}", c.trim())),
+        (None, None) => None,
+    }
 }
 
 fn read_back(question_id: &str, found: Option<&Answer>) -> String {
@@ -405,6 +443,8 @@ mod tests {
             options: options.iter().map(|o| o.to_string()).collect(),
             recommend: recommend.map(str::to_string),
             issue: None,
+            requirement: None,
+            contract: None,
             run: None,
             blocker: "human".into(),
             authority: "writer".into(),
@@ -431,5 +471,100 @@ mod tests {
         let shape = shape_of(&args(None, Some("keep"), &["keep=Keep it", "move=Move it"])).unwrap();
         assert_eq!(shape.recommended_option_id, "keep");
         assert_eq!(shape.recommended, None);
+    }
+
+    fn ask_line(argv: &[&str]) -> Result<AskArgs, clap::Error> {
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            cmd: Command,
+        }
+        let mut full = vec![
+            "forge-runner",
+            "ask",
+            "--project",
+            "forge",
+            "--prompt",
+            "May they?",
+        ];
+        full.extend_from_slice(argv);
+        match <Cli as clap::Parser>::try_parse_from(full)?.cmd {
+            Command::Ask(a) => Ok(*a),
+            Command::Answer(_) => unreachable!("the line names ask"),
+        }
+    }
+
+    #[test]
+    fn a_requirement_only_ask_sends_the_requirement_as_its_about_and_no_issue() {
+        let a = ask_line(&[
+            "--requirement",
+            "REQ-74",
+            "--needs",
+            "yes or no",
+            "--recommend",
+            "no",
+        ])
+        .unwrap();
+        assert_eq!(a.issue, None);
+        assert_eq!(
+            about_of(&a),
+            Some(serde_json::json!({ "requirement": "REQ-74" }))
+        );
+        let line = asked("q1", "r1", None, subject_of(&a), None);
+        assert!(line.contains("about requirement REQ-74"), "{line}");
+        assert!(line.contains("Needs you"), "{line}");
+    }
+
+    #[test]
+    fn a_contract_ask_sends_the_contract_as_its_about() {
+        let a = ask_line(&["--contract", "forge/forge-api", "--needs", "which"]).unwrap();
+        assert_eq!(
+            about_of(&a),
+            Some(serde_json::json!({ "contract": "forge/forge-api" }))
+        );
+    }
+
+    #[test]
+    fn a_requirement_and_a_contract_together_are_refused_by_name() {
+        let err = ask_line(&[
+            "--requirement",
+            "REQ-74",
+            "--contract",
+            "forge/forge-api",
+            "--needs",
+            "x",
+        ])
+        .err()
+        .expect("both subjects at once must be refused");
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+        assert!(err.to_string().contains("--contract"), "{err}");
+    }
+
+    #[test]
+    fn an_ask_naming_neither_sends_no_about_and_stays_the_boxs_own() {
+        let a = ask_line(&["--needs", "a region name"]).unwrap();
+        assert_eq!(about_of(&a), None);
+        let line = asked("q1", "r1", None, subject_of(&a), None);
+        assert!(line.contains("Agents screen's Questions tab"), "{line}");
+    }
+
+    #[test]
+    fn an_issue_ask_keeps_its_issue_and_carries_the_requirement_beside_it() {
+        let a = ask_line(&[
+            "--issue",
+            "ISS-678",
+            "--requirement",
+            "REQ-74",
+            "--needs",
+            "x",
+        ])
+        .unwrap();
+        assert_eq!(a.issue.as_deref(), Some("ISS-678"));
+        assert_eq!(
+            about_of(&a),
+            Some(serde_json::json!({ "requirement": "REQ-74" }))
+        );
+        let line = asked("q1", "r1", a.issue.as_deref(), subject_of(&a), None);
+        assert!(line.contains("on issue ISS-678"), "{line}");
     }
 }

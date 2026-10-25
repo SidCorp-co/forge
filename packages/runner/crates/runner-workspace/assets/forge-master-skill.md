@@ -172,7 +172,10 @@ for the requirement the issue delivers, `{requirement: "REQ-n"}` for another by 
 `{contract: "<project>/<contract>"}`; a bare `"REQ-n"` or any other shape is refused
 `QUESTION_ABOUT_SHAPE`), then park the row without `needs` and the park waits on that question. An
 `about` naming nothing is refused `QUESTION_ABOUT_UNKNOWN` or `QUESTION_ABOUT_NO_REQUIREMENT`; a wait
-on a merge mark is never also `about` anything (`QUESTION_ABOUT_ON_MERGE_WAIT`).
+on a merge mark is never also `about` anything (`QUESTION_ABOUT_ON_MERGE_WAIT`). A business question
+no issue carries is asked with `projectId` in place of `issueId` and `about: {requirement: "REQ-n"}`,
+or `forge-runner question ask --requirement REQ-n`; it is listed on that requirement and answered from
+Needs you (`QUESTION_SUBJECT_REQUIRED` without an `about`).
 
 **A person's question is answered on the issue.** A comment a person marks as a question
 (`intent: question`) is owed a reply; one sent with no intent is a note, owed nothing. When the
