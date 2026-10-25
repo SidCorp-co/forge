@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.321] - 2026-10-25
+
+Agents reach GitLab through Forge without holding the connection token
+
+### Changed
+
+- **A runner's git reaches GitLab through Forge, so boxes stop holding the connection's token.** The helper gets an hour-long relay ticket and checkouts move their origin; runners older than 0.18.0 keep the token until they update.
+
 ## [0.4.0-dev.320] - 2026-10-25
 
 Merge-request releases no longer ask for work already on the target branch
