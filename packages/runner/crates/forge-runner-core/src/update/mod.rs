@@ -772,9 +772,8 @@ mod tests {
         let configured =
             answer_once("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                 .await;
-        let with_secret = configured.replacen("http://", "http://op:hunter2@", 1);
         let said = fetch_manifest(
-            &format!("{with_secret}/releases/forge-runner/stable/latest.json?sig=s3cr3t#top"),
+            &format!("{configured}/releases/forge-runner/stable/latest.json"),
             Some("https://core.example"),
         )
         .await
@@ -787,8 +786,39 @@ mod tests {
             )),
             "{said}"
         );
-        for secret in ["hunter2", "op:", "s3cr3t", "#top"] {
-            assert!(!said.contains(secret), "{secret} in: {said}");
+    }
+
+    /// Criterion 22's redaction, where the sentence is built and with nothing sent: the address a
+    /// line names keeps its path and drops userinfo, query and fragment. Nothing read off the
+    /// sentence is printed, so a failure cannot write what it was meant to drop.
+    #[test]
+    fn the_address_a_refusal_names_drops_userinfo_query_and_fragment() {
+        let asked =
+            "http://op:pw-1306@manifests.example:8443/releases/stable/latest.json?sig=q-1306#f-1306";
+        let configured = manifest_refused(asked, Some("https://core.example"), 404);
+        assert!(
+            configured
+                == "The update manifest at http://manifests.example:8443/releases/stable/latest.json \
+                    could not be read, as it answered 404 Not Found. Check the update.manifest_url \
+                    this box is configured with.",
+            "the configured sentence is not the path-kept, userinfo-free one"
+        );
+        let core = "http://op:pw-1306@core.example:9000";
+        let derived = manifest_url(None, Some(core)).unwrap();
+        let from_core = manifest_refused(&derived, Some(core), 503);
+        assert!(
+            from_core
+                == "update manifest: Forge answered 503 Service Unavailable at \
+                    http://core.example:9000/api/install/latest.json.",
+            "the core-derived sentence is not the path-kept, userinfo-free one"
+        );
+        for (sentence, which) in [(&configured, "configured"), (&from_core, "core")] {
+            for part in ["op:", "pw-1306", "q-1306", "f-1306", "?", "#"] {
+                assert!(
+                    !sentence.contains(part),
+                    "the {which} sentence carries part of the address it was meant to drop"
+                );
+            }
         }
     }
 
