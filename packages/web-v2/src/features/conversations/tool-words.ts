@@ -418,16 +418,16 @@ function fitting(wrong: readonly string[], room: number): string {
  * The refusal's reason, one line, written for the person reading the room: what went wrong, read off
  * its gaps where it lists them, else its first sentence not written for the agent, after any opening
  * that only says it held the call ("Hold — …", r35). The way out is chosen by the refusal's kind, never
- * by its suggestion's wording: where it names a command a room does not open, where a person does that
- * act (r40); the person's own where the refusal is one of `PERSON_KINDS`; else, the call being the
- * assistant's, that it tried another way later in the same reply, claiming no more than its answer does,
- * else that they can ask it to put it right (r38). No command, flag or backtick reaches it.
+ * by its suggestion's wording: where the assistant tried another way later in the same reply, that it
+ * did, claiming no more than its answer does (r38); else where it names a command a room does not open,
+ * where a person does that act (r40); else the person's own where it is one of `PERSON_KINDS`; else
+ * that they can ask the assistant to put it right. No command, flag or backtick reaches it.
  */
 export function refusalReason(result: unknown, tool?: string, recovered = false): string {
   const text = refusalText(result);
   const known = PERSON_KINDS.find((p) => p.says.test(text));
   const closed = closedCommand(text);
-  const remedy = closed ? whereItIsDone(closed) : (known?.remedy ?? (recovered ? TOOK_ANOTHER_WAY : PUT_IT_RIGHT));
+  const remedy = recovered && (closed || !known) ? TOOK_ANOTHER_WAY : closed ? whereItIsDone(closed) : (known?.remedy ?? PUT_IT_RIGHT);
   const paragraphs = text.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const held = paragraphs.length > 1 && /^Hold\b/.test(paragraphs[0] as string);
   // A machine code ("NOT_FOUND: …") or a tool's failure prefix leading a sentence is the technical view's.

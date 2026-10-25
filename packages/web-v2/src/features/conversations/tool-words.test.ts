@@ -471,10 +471,12 @@ describe("a refused card's way out works where the card is shown", () => {
     for (const card of [claim, retry]) expect(toolWords(card).refusal).not.toMatch(/put it right|tried another way/);
   });
 
-  it("names where it is done even where a later call of the same act went through", () => {
+  it("names where it is done after another act went through, and says the assistant tried another way after the same act did", () => {
     const claim = cli(["issue", "ISS-1", "--set", "status=in_progress"], { exitCode: 1, stdout: "", stderr: statusRefusal });
-    const later = cli(["issue", "ISS-1", "--set", "priority=high"], { exitCode: 0, stdout: "{}", stderr: "" });
-    expect(toolWords(claim, false, [later]).refusal).toBe(`Status is not a field an update writes. ${MOVED_ON_THE_PAGE}`);
+    const other = cli(["issue", "ISS-1", "--set", "priority=high"], { exitCode: 0, stdout: "{}", stderr: "" });
+    expect(toolWords(claim, false, [other]).refusal).toBe(`Status is not a field an update writes. ${MOVED_ON_THE_PAGE}`);
+    const same = cli(["issue", "ISS-1", "--set", "status=in_progress"], { exitCode: 0, stdout: "{}", stderr: "" });
+    expect(toolWords(claim, false, [same]).refusal).toBe(`Status is not a field an update writes. ${TOOK_ANOTHER_WAY}`);
   });
 
   it("walks the table: a command a room does not open is never offered back to the assistant", () => {
