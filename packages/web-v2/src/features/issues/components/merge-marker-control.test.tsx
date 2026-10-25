@@ -46,6 +46,32 @@ describe("MergeMarkerControl", () => {
     expect(unmark).not.toHaveBeenCalled();
   });
 
+  // ISS-1300 r3: the hold asks a person to name the commit that landed, and judge-117 found the first
+  // mark's panel had no field to name it in, so the commit could only be sent through the API.
+  it("offers Commit on a first mark in git, and sends the commit named there", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} landingShape="git" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /Where it landed/ }), {
+      target: { value: "main" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /^Commit/ }), {
+      target: { value: " 0d018a9ac5897cd4ef3fe299f9c13e4c252162e2 " },
+    });
+    const buttons = screen.getAllByRole("button", { name: "Mark merged" });
+    fireEvent.click(buttons[1] as HTMLElement);
+
+    expect(mark).toHaveBeenCalledWith(
+      { target: "main", commit: "0d018a9ac5897cd4ef3fe299f9c13e4c252162e2" },
+      expect.anything(),
+    );
+  });
+
+  it("offers no Commit on a first mark outside git, where nothing lands at a commit", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} landingShape="outside_git" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    expect(screen.queryByRole("textbox", { name: /^Commit/ })).toBeNull();
+  });
+
   // ISS-1421 round 5: the field once opened holding the issue's own key, so one click marked the
   // work "merged into ISS-2". It opens empty, and nothing is sent until somebody says where.
   it("opens with Where it landed empty, and sends nothing until it is filled", () => {

@@ -97,9 +97,9 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     const res = await mark(issue, short, 'human');
     // ISS-1421 — a person reads seven characters of the resolved commit; the row keeps all forty.
     expect(res.markDetail).toContain(
-      `Commit ${OWN.slice(0, 7)} is in ${repo.fullName}, and is noted in the comment only.`,
+      `Commit ${OWN.slice(0, 7)} is in ${repo.fullName}, and is recorded as where this work landed.`,
     );
-    expect(res.namedCommit).toBe(OWN);
+    expect((await row(issue.id)).merged_commit_sha).toBe(OWN);
     const audit = (await comments(issue.id)).at(-1) ?? '';
     expect(audit).toBe(`Marked merged into main.\n${res.markDetail}`);
     expect(audit).not.toMatch(/\b[0-9a-f]{40}\b/);
@@ -108,17 +108,18 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     expect(audit).not.toContain(`at commit ${short}.`);
   });
 
-  it("keeps a person's resolved commit out of the row, and says the repository holds it (criteria 6, 7; ISS-1421 r8)", async () => {
+  // ISS-1300 r3 — the ruling that a person's mark carries the commit that landed replaced r8's
+  // "noted in the comment only": the row keeps it, flagged as their word, and the mark stays a claim.
+  it("records a person's resolved commit as the landing, as their claim, and says the repository holds it (criteria 6, 7)", async () => {
     const issue = await seed({ sessionContext: {} });
     const res = await mark(issue, OWN, 'human');
     expect(res.mark).toBe('asserted');
-    // Neither column keeps it: the answer says the comment alone holds it, and the row agrees.
     expect(await row(issue.id)).toMatchObject({
-      merged_commit_sha: null,
+      merged_commit_sha: OWN,
       merged_claimed_commit: null,
     });
     expect(res.markDetail).toBe(
-      `Commit ${OWN.slice(0, 7)} is in ${repo.fullName}, and is noted in the comment only. Forge did not see this merge, so the mark is a claim that names no commit.`,
+      `Commit ${OWN.slice(0, 7)} is in ${repo.fullName}, and is recorded as where this work landed. Forge did not see this merge, so the mark is a claim.`,
     );
   });
 

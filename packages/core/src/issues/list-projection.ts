@@ -37,6 +37,7 @@ export const REST_ISSUE_LIST_COLUMNS = {
   mergedCommitSha: issues.mergedCommitSha,
   mergedLanding: issues.mergedLanding,
   mergedClaimedCommit: issues.mergedClaimedCommit,
+  mergedCommitStated: issues.mergedCommitStated,
   releaseBatchRunId: issues.releaseBatchRunId,
   metadata: issues.metadata,
   archivedAt: issues.archivedAt,

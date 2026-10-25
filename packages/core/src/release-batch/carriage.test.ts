@@ -240,23 +240,25 @@ describe('landingHeld', () => {
     expect(c.asked).toHaveLength(2);
   });
 
-  it('never keeps an absent answer, and answers unread without asking once the budget is spent', async () => {
+  it('never keeps an absent answer, and answers spent without asking once the budget is spent', async () => {
     const c = client({});
     const reader = githubRepositoryReader(c);
     expect(await landingHeld(reader, S)).toBe('absent');
     expect(await landingHeld(reader, S)).toBe('absent');
     expect(c.asked).toHaveLength(2);
-    expect(await landingHeld(reader, S, () => 'spent')).toBe('unread');
+    expect(await landingHeld(reader, S, () => 'spent')).toBe('spent');
     expect(c.asked).toHaveLength(2);
   });
 
-  it('answers unread, never absent, where the repository answers 404 as one GitHub will not show (judge-113)', async () => {
+  it('answers why it is unreadable, never absent, where the repository answers 404 as one GitHub will not show (judge-113)', async () => {
     const hidden: GitHubRepoClient = {
       ...client({}),
       async get<T>(path: string): Promise<T> {
         throw new GitHubReadError(404, `GET ${path} on o/r returned HTTP 404`);
       },
     };
-    expect(await landingHeld(githubRepositoryReader(hidden), J)).toBe('unread');
+    const held = await landingHeld(githubRepositoryReader(hidden), J);
+    // ISS-1300 r3: the reason is kept, so the hold can name the repository and what restores it.
+    expect(held).toEqual({ unreadable: expect.stringContaining('answered HTTP 404') });
   });
 });

@@ -2276,6 +2276,13 @@
       "when": 1813968000000,
       "tag": "0358_the_probe_moves_to_the_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 377,
+      "version": "7",
+      "when": 1815609600000,
+      "tag": "0377_a_person_states_the_landing",
+      "breakpoints": true
     }
   ]
 }

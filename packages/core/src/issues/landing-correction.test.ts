@@ -4,7 +4,7 @@ import {
   releaseBlockerSentence,
 } from '../release-batch/blocker-sentences.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
-import { landingCorrection } from './landing-correction.js';
+import { landingCorrection, unreadLandingClears } from './landing-correction.js';
 
 // ISS-1300 r2: an issue whose recorded landing is not in its repository owes no verdict; its record
 // does, and the readiness page and the release-create refusal say so in the issue hold's own words.
@@ -62,5 +62,35 @@ describe('the criteria hold for an issue whose recorded landing is not in its re
 
     expect(message).toContain('the landing record is corrected');
     expect(message).toContain(landingCorrection('landing'));
+  });
+});
+
+// ISS-1300 r3 — the act names the panel a person finds and the field the commit goes in, and a
+// landing a bound repository refused names that repository with what restores it.
+describe('what corrects or restores a recorded landing', () => {
+  const words = (sentence: string) => sentence.trim().split(/\s+/).length;
+
+  it('names the panel and its Commit field, never Unmark, in at most 20 words', () => {
+    for (const from of ['merge', 'landing'] as const) {
+      const act = landingCorrection(from);
+      expect(act).toContain('under Commit');
+      expect(act).toContain('Mark a later merge');
+      expect(act).not.toContain('Unmark');
+      expect(words(act), act).toBeLessThanOrEqual(20);
+    }
+  });
+
+  it('says Forge cannot read the repository, and what reads it again', () => {
+    const clears = unreadLandingClears({
+      repository: 'SidCorp-co/forge',
+      why: 'SidCorp-co/forge answered HTTP 404',
+      clears: 'once the tracker can read it',
+    });
+    expect(clears).toBe(
+      'Forge cannot read SidCorp-co/forge, and reads it again once the tracker can read it',
+    );
+    expect(
+      unreadLandingClears({ repository: null, why: 'no token', clears: 'once it can' }),
+    ).toContain("Forge cannot read this project's repository");
   });
 });

@@ -10,7 +10,8 @@ what the columns MEAN.
 | empty | — | — | `unmarked` |
 | set | empty | empty | `asserted` (the commit an agent named, where Forge could not check it, in `merged_claimed_commit`) |
 | set | empty | text | `landed` |
-| set | a sha | — | `observed` |
+| set | a sha, `merged_commit_stated` false | — | `observed` |
+| set | a sha, `merged_commit_stated` true | — | `asserted` (a commit a person named, which the repository holds) |
 
 `landed` (ISS-1327) is a mark that names where work landed OUTSIDE git — a live URL, a CMS entry,
 a published storefront resource. Like `asserted` it is somebody's word, not a merge Forge
@@ -274,13 +275,23 @@ resolved by the project's repository (`packages/core/src/issues/commit-landing.t
 read `readCommitLanding` takes). The repository holding no such commit refuses the mark
 `COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED` on an
 issue not yet marked, naming why, and a mark naming no commit is the route that still records. A
-resolved commit is named by the full sha the repository gives (the answer's `namedCommit`), never
-as the caller typed it. No column keeps it: Forge read that the repository holds it, not that it is
-this issue's landing, so `merged_commit_sha` is not stamped from it, and a person's commit is no work
-evidence (`packages/core/src/pipeline/work-evidence.ts:gitDetail`), so `merged_claimed_commit` is
-not either. The answer and the comment say it is noted in the comment only and that the mark is a
-claim naming no commit — what the rail and a repeat mark say of the row. The one commit not read is the merged pull
-request's own merge sha, which Forge already holds.
+resolved commit is named by the full sha the repository gives, never as the caller typed it. The
+one commit not read is the merged pull request's own merge sha, which Forge already holds.
+
+A person's mark carries the commit that landed (ISS-1300 round 3). Where Forge holds no landing
+that resolves — no commit on the row and no merged pull request, or one the repository was read and
+lacks — the commit a person names, once the repository resolves it, is stamped in
+`merged_commit_sha` with `merged_commit_stated` set, replacing a held commit the repository lacks
+(`packages/core/src/issues/merge-marker.ts:statedLanding`). It is the commit everything reading the
+landing reads, the weighing included, ahead of the landing head a run captured and of a pull
+request's merge commit the repository lacks. The mark reads `asserted`: Forge read that the
+repository holds the commit, not that it is this issue's landing, so the answer says the commit "is
+recorded as where this work landed" and that the mark is a claim, and the rail shows it as claimed
+and in the repository. It is no work evidence
+(`packages/core/src/pipeline/work-evidence.ts:collectWorkEvidence`), as it was not before. A landing Forge
+holds that does resolve, or that the repository could not be read for, keeps the rules above and
+below: a person's other commit is read as a later landing, and an agent's commit is never stated. A
+later merge Forge observes moves a stated commit forward like any other and clears the flag.
 
 Where the caller names no commit, the mark records none. No step handoff is read for one: the
 work-evidence gate reads the issue's own row and nothing else (`packages/core/src/pipeline/work-evidence.ts:collectWorkEvidence`),
@@ -314,16 +325,23 @@ correct, whatever commit each verdict names, the same commit included
 once as `unresolvedLanding`, with `from` saying whether it came from the merge mark or the landing
 record, and the automatic release's hold leads with it and names correcting that record, never a
 verdict on each criterion (`packages/core/src/pipeline/release-hold-kinds.ts:criteriaHold`). The
-act is a person's on the issue page — Unmark, then Mark merged at the commit that landed, or Mark
-merged alone where only a landing record names it — and the release readiness page and the
-release-create refusal give the same act for that issue in place of the criteria it would owe,
-all three from `packages/core/src/issues/landing-correction.ts:landingCorrection`.
+act is a person's on the issue page: Mark a later merge, or Mark merged on an issue not yet marked,
+naming the commit that landed under Commit, which the panel offers on every mark in git. That
+commit is stamped as above and replaces the one the repository lacks, so the next weighing reads
+it and the hold is gone. The release readiness page and the release-create refusal give the same
+act for that issue in place of the criteria it would owe, all three from
+`packages/core/src/issues/landing-correction.ts:landingCorrection`.
 
 Absent means the repository was read and answered that it holds no such commit: on the GitHub
 route an HTTP 422, never the 404 GitHub gives for a repository the installation cannot see. A
 repository that could not be read — that 404, a 401 or 403, a failed token mint, or a request that
 never reached the host — names nothing absent: the verdicts are weighed against the recorded commit
-as before, and stay held by equality.
+as before, and stay held by equality. Where the project binds a repository and it refused the
+read, each held verdict says so beside its reason, and the hold, the release readiness page and the
+release-create refusal say Forge cannot read that repository and what restores it, through the
+same remedy as any failed repository read
+(`packages/core/src/issues/landing-correction.ts:unreadLandingClears`). A project that binds no
+repository is not told to bind one here.
 
 The forge-plugin CLI's own check of a verdict against the merged commit reads that commit out of
 the mark's note, not off these columns, so it is not covered here.

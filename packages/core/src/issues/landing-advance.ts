@@ -299,7 +299,8 @@ export function markStays(
   if (later?.kind === 'contained') {
     return `Commit ${s(later.candidate)} is already in commit ${s(later.held)}, where the mark stays.`;
   }
-  if (kind === 'observed' && row.commitSha) return `The mark stays at commit ${s(row.commitSha)}.`;
+  // A person's stated commit is an `asserted` mark that still names its commit (ISS-1300 r3).
+  if (kind !== 'landed' && row.commitSha) return `The mark stays at commit ${s(row.commitSha)}.`;
   if (kind === 'landed' && row.landing) return `The mark stays at ${row.landing}.`;
   return row.claimedCommit
     ? `The mark stays a claim naming commit ${s(row.claimedCommit)}.`

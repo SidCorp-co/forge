@@ -61,20 +61,21 @@ export async function changedPathsOf(
 }
 
 /** Whether the repository holds `commit` (ISS-1300). Only a commit found is kept, for an hour: one
- *  absent may be pushed later, so it is asked again, and a failed read or a spent budget answers
- *  `unread`. `now` is the clock the hour is read on. */
+ *  absent may be pushed later, so it is asked again. A spent budget answers `spent`, and a read the
+ *  repository refused answers why, which is the repository's to clear and not this weighing's.
+ *  `now` is the clock the hour is read on. */
 export async function landingHeld(
   reader: RepositoryReader,
   commit: string,
   spend: () => string | null = () => null,
   now: () => number = Date.now,
-): Promise<'found' | 'absent' | 'unread'> {
+): Promise<'found' | 'absent' | 'spent' | { unreadable: string }> {
   const key = `${reader.name}\u0000${commit.trim().toLowerCase()}`;
   const foundAt = held.get(key);
   if (foundAt !== undefined && now() - foundAt < HELD_FOR_MS) return 'found';
-  if (spend()) return 'unread';
+  if (spend()) return 'spent';
   const looked = await reader.commit(commit.trim());
   if (looked.kind === 'found') keep(held, key, now());
   else held.delete(key);
-  return looked.kind === 'unreadable' ? 'unread' : looked.kind;
+  return looked.kind === 'unreadable' ? { unreadable: looked.why } : looked.kind;
 }

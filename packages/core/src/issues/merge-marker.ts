@@ -1,9 +1,7 @@
 import { z } from 'zod';
-import { insertSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { projectKinds } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
-import { hooks } from '../pipeline/hooks.js';
 import { findMissingWorkEvidence, readStandingClaim } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding, resolveMarkCommit } from './commit-landing.js';
@@ -44,10 +42,10 @@ import {
   threadBody,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
+import { announceMark } from './merge-mark-announce.js';
 import { findIssueById, type IssueRow } from './read-service.js';
+import { type Stated, stampStated, statedWords } from './stated-landing.js';
 import { statusForCaller } from './status-sets.js';
-
-export type AuditComment = { id: string; body: string; parentId: string | null };
 
 /**
  * ISS-959 — the commit a merged mark was made at, on both doors.
@@ -91,15 +89,6 @@ async function recordedClaim(args: {
   }
   if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
   return { claim: read.sha, repository: read.repository };
-}
-
-export async function writeAuditComment(
-  issueId: string,
-  authorId: string,
-  body: string,
-): Promise<AuditComment | null> {
-  const row = await insertSystemComment({ issueId, authorId, body, parentId: null });
-  return row ? { id: row.id, body: row.body, parentId: row.parentId } : null;
 }
 
 export class MergeMarkerError extends Error {
@@ -349,6 +338,7 @@ export async function applyMergeMarker(args: {
     commitSha: null,
     landing: null,
     claimedCommit: null,
+    stated: false,
   };
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
   let claimedCommit: string | null = null;
@@ -360,6 +350,8 @@ export async function applyMergeMarker(args: {
   let claimHeldBy: string | null = null;
   let later: LaterLanding | null = null;
   let namedUnread: { commit: string; why: string } | null = null;
+  /** A person's commit stamped as the landing, where this call stamped one. */
+  let stated: Stated | null = null;
   if (args.op === 'mark') {
     const lane = await markLane(before);
     const shape = lane.shape;
@@ -387,9 +379,15 @@ export async function applyMergeMarker(args: {
             marked: before.mergedAt != null,
           })
         : null;
+    const statedStamp = await stampStated(before, args, recorded, observed);
+    stated = statedStamp?.stated ?? null;
     later =
-      shape === 'git' ? await compareLater(before, args.commit, observed, fromRepository) : null;
-    if (later?.kind === 'moved') {
+      shape === 'git' && !stated
+        ? await compareLater(before, args.commit, observed, fromRepository)
+        : null;
+    if (statedStamp) {
+      stampResult = statedStamp.stamp;
+    } else if (later?.kind === 'moved') {
       stampResult = { wrote: true, ...(await readMergeColumns(db, before.id)) };
     } else if (recorded?.unread) {
       // A commit nothing could check writes nothing: the mark stays as it stands.
@@ -452,6 +450,7 @@ export async function applyMergeMarker(args: {
         mergedAt: stampResult.mergedAt,
         mergedCommitSha: stampResult.commitSha,
         mergedLanding: stampResult.landing,
+        mergedCommitStated: stampResult.stated,
       },
     });
     if (standing) throw new MergeMarkerError(standing.code, standing.detail, standing.details);
@@ -468,6 +467,7 @@ export async function applyMergeMarker(args: {
           mergedAt: stampResult.mergedAt,
           mergedCommitSha: stampResult.commitSha,
           mergedLanding: stampResult.landing,
+          mergedCommitStated: stampResult.stated,
         })
       : 'unmarked';
   const kept = unverified && keptClaim(unverified, stampResult.claimedCommit);
@@ -479,6 +479,7 @@ export async function applyMergeMarker(args: {
     unverified: kept,
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
     claimHeldBy,
+    stated: statedWords(stated, stampResult),
   });
   const { after, unread, markDetail } = answerWords({
     later,
@@ -490,42 +491,8 @@ export async function applyMergeMarker(args: {
     standingDetail,
   });
   const said = { stamp: stampResult, claimedCommit, repeated, unread, after, markDetail };
-  const auditComment = await writeAuditComment(
-    before.id,
-    args.actor.commentAuthorId,
-    threadBody({ ...args, ...said }),
-  );
-  if (auditComment) {
-    await hooks.emit('commentCreated', {
-      issueId: before.id,
-      projectId: before.projectId,
-      actor: args.actor.hookActor,
-      authored: 'agent',
-      commentId: auditComment.id,
-      body: auditComment.body,
-      parentId: auditComment.parentId,
-    });
-  }
-
-  const issue = await findIssueById(before.id);
+  const issue = await announceMark(before, args, threadBody({ ...args, ...said }));
   if (!issue) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
-  await hooks.emit('issueUpdated', {
-    issueId: before.id,
-    projectId: before.projectId,
-    actor: args.actor.hookActor,
-    fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
-    before: { mergedAt: before.mergedAt },
-    after: {
-      mergedAt: issue.mergedAt,
-      mergedCommitSha: issue.mergedCommitSha,
-      mergedLanding: issue.mergedLanding,
-    },
-  });
-  await hooks.emit('contractInputChanged', {
-    projectId: before.projectId,
-    issueId: before.id,
-    reason: args.op === 'mark' ? 'merged mark written' : 'merged mark cleared',
-  });
 
   const action = args.op !== 'mark' ? 'unmarked' : repeated ? 'already_merged' : 'merged';
   const [movedFrom, namedCommit] = [

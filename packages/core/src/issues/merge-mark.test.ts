@@ -16,10 +16,30 @@ import {
 const AT = new Date('2026-09-20T14:59:37.646Z');
 const SHA = '9a78b0c93f1a2b3c4d5e6f708192a3b4c5d6e7f8';
 
-const ASSERTED = { mergedAt: AT, mergedCommitSha: null, mergedLanding: null };
-const OBSERVED = { mergedAt: AT, mergedCommitSha: SHA, mergedLanding: null };
-const UNMARKED = { mergedAt: null, mergedCommitSha: null, mergedLanding: null };
-const LANDED = { mergedAt: AT, mergedCommitSha: null, mergedLanding: 'https://shop.example/p/1' };
+const ASSERTED = {
+  mergedAt: AT,
+  mergedCommitSha: null,
+  mergedLanding: null,
+  mergedCommitStated: false,
+};
+const OBSERVED = {
+  mergedAt: AT,
+  mergedCommitSha: SHA,
+  mergedLanding: null,
+  mergedCommitStated: false,
+};
+const UNMARKED = {
+  mergedAt: null,
+  mergedCommitSha: null,
+  mergedLanding: null,
+  mergedCommitStated: false,
+};
+const LANDED = {
+  mergedAt: AT,
+  mergedCommitSha: null,
+  mergedLanding: 'https://shop.example/p/1',
+  mergedCommitStated: false,
+};
 
 describe('the mark kind, read off the pair of columns', () => {
   it('reads a mark with no commit as asserted and one with a commit as observed', () => {
@@ -31,6 +51,9 @@ describe('the mark kind, read off the pair of columns', () => {
   it('reads a mark naming a landing and no commit as landed', () => {
     expect(mergeMarkKindOf(LANDED)).toBe('landed');
     expect(mergeMarkKindOf({ ...LANDED, mergedLanding: '   ' })).toBe('asserted');
+    // ISS-1300 r3: a commit a person named is the mark's commit and still their claim.
+    expect(mergeMarkKindOf({ ...OBSERVED, mergedCommitStated: true })).toBe('asserted');
+    expect(mergeMarkKindOf({ ...OBSERVED, mergedCommitStated: null })).toBe('observed');
     // A commit Forge observed outranks the landing: the column says Forge saw the merge itself.
     expect(mergeMarkKindOf({ ...LANDED, mergedCommitSha: SHA })).toBe('observed');
     // A landing with no timestamp is no mark: `merged_at` decides first.

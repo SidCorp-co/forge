@@ -14,6 +14,8 @@ import { formatApiError } from "@/lib/api/error";
 import { answerShown, useMergeMarker } from "../hooks";
 import type { LandingShape } from "../types";
 import {
+  COMMIT_FIELD,
+  LATER_MERGE_ACTION,
   MARK_MERGED_ACTION,
   UNMARK_ACTION,
   WHERE_IT_LANDED_FIELD,
@@ -28,9 +30,13 @@ const LANDING_MAX = 2000;
 export const BLURB = `Marking merged records where this work landed, which a close needs. ${UNMARK_ACTION} takes it back, unless the issue is closed.`;
 
 /** A later merge of an issue already marked moves the mark forward (ISS-1421 round 7). */
-export const LATER_ACTION = "Mark a later merge";
+export const LATER_ACTION = LATER_MERGE_ACTION;
+/** ISS-1300 r3 — the same panel corrects a mark whose commit the repository does not hold. */
 export const LATER_BLURB =
-  "This issue is already marked merged. A later merge that carries the marked commit moves the mark to it.";
+  "A later merge that carries the marked commit moves the mark to it. " +
+  `Where the mark names no commit, or one its repository lacks, ${COMMIT_FIELD} records the one that landed.`;
+/** A person's commit is checked against the repository and recorded as where the work landed. */
+export const COMMIT_PLACEHOLDER = "e.g. the commit the work landed at, checked against the repository";
 /** Said only where Forge holds a merged pull request at another commit than the mark's: anywhere
  *  else an empty Commit has nothing to compare and changes nothing (ISS-1421 r8, criterion 127). */
 export const EMPTY_COMMIT_LINE = "Leave Commit empty to use the newest merged pull request.";
@@ -155,11 +161,11 @@ export function MergeMarkerControl({
                 }}
               />
             </Field>
-            {later && (
-              <Field label="Commit">
+            {!outsideGit && (
+              <Field label={COMMIT_FIELD}>
                 <Input
                   value={commit}
-                  placeholder="e.g. the merge commit of the later round"
+                  placeholder={later ? "e.g. the merge commit of the later round" : COMMIT_PLACEHOLDER}
                   onChange={(e) => {
                     setCommit(e.target.value);
                     setRefusal(null);
@@ -204,7 +210,7 @@ export function MergeMarkerControl({
                     {
                       // A project that moves no branch names no target: the landing is where it landed.
                       ...(outsideGit ? { landing: trimmedTarget } : { target: trimmedTarget }),
-                      ...(later && commit.trim() ? { commit: commit.trim() } : {}),
+                      ...(!outsideGit && commit.trim() ? { commit: commit.trim() } : {}),
                       ...(note.trim() ? { note: note.trim() } : {}),
                     },
                     // Closed on success only: a refused mark keeps what was typed, and says why.

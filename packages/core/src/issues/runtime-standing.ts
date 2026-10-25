@@ -14,6 +14,7 @@ import {
   type RuntimeReading,
   type Weighing,
 } from '../release-batch/weighing.js';
+import { unreadLandingClause, unreadLandingClears } from './landing-correction.js';
 import {
   EARNED_STANDINGS,
   type IssueIdentities,
@@ -89,6 +90,21 @@ function weighIn(
   // A declared runtime's reading is missing NOW, which is not ISS-1286's project with no route.
   if (declared && serving.kind !== 'serving') return { standing: 'superseded', ...none };
   const standing = verdictStanding(at, serving, identities);
+  // Weighed as before against a landing its bound repository refused to be read for; the read that
+  // failed is said beside it, with the repository's act (ISS-1300 r3).
+  if (
+    serving.kind !== 'serving' &&
+    at?.kind === 'source' &&
+    identities.unread &&
+    identities.source
+  ) {
+    const { unread, source } = identities;
+    return {
+      standing,
+      beside: [unreadLandingClause(source, unread)],
+      clears: [unreadLandingClears(unread)],
+    };
+  }
   if (standing !== 'superseded' || !at || serving.kind !== 'serving') return { standing, ...none };
   const beside: string[] = [];
   const clears: string[] = [];

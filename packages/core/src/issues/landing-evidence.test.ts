@@ -21,7 +21,12 @@ import {
 } from './landing-evidence.js';
 
 const AT = new Date('2026-09-29T14:44:34Z');
-const UNMARKED = { mergedAt: null, mergedCommitSha: null, mergedLanding: null };
+const UNMARKED = {
+  mergedAt: null,
+  mergedCommitSha: null,
+  mergedLanding: null,
+  mergedCommitStated: false,
+};
 const ASSERTED = { ...UNMARKED, mergedAt: AT };
 const OBSERVED = { ...ASSERTED, mergedCommitSha: '07f73960b2ce7ea1dfa1f050ec64d9bd0c80fe67' };
 const LANDED = { ...ASSERTED, mergedLanding: 'https://mowmentbrand.com/products/tee' };

@@ -21,6 +21,7 @@ type IssueRecord = {
   mergedAt: Date | null;
   mergedCommitSha: string | null;
   mergedLanding: string | null;
+  mergedCommitStated: boolean;
   declaredLandingShape: string | null;
   projectKind: string;
 };
@@ -102,6 +103,7 @@ export async function findUnmetEntryCriteria(args: {
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
+      mergedCommitStated: issues.mergedCommitStated,
       declaredLandingShape: issues.declaredLandingShape,
       projectKind: projects.kind,
     })
@@ -161,6 +163,7 @@ export async function readEntryCriteriaStrict(args: {
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
+      mergedCommitStated: issues.mergedCommitStated,
       declaredLandingShape: issues.declaredLandingShape,
       projectKind: projects.kind,
     })

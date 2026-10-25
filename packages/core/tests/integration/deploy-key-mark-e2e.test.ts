@@ -152,7 +152,8 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const person = await seed({ sessionContext: {}, seq: SEQ + 1 });
     const human = await mark(person, (at.foreign as string).slice(0, 10), 'human');
     expect(human.markDetail).toContain((at.foreign as string).slice(0, 7));
-    expect(human.namedCommit).toBe(at.foreign);
+    // ISS-1300 r3 — a person's commit the repository holds is the mark's own, by its full sha.
+    expect(human.issue.mergedCommitSha).toBe(at.foreign);
     const refused = await refusal(() => mark(person, 'e'.repeat(40), 'human'));
     expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
     const overlong = await refusal(() => mark(person, `${at.foreign}a`, 'human'));

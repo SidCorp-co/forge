@@ -114,6 +114,8 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
       : `A person clears this by making the repository readable: ${clears.join('; and ')}. The next sweep then weighs it again. Otherwise: ${others}`;
   const readable = clears.length === 0 ? '' : 'the repository readable again, ';
   const held = criteriaHeld(report);
+  // A recorded landing its bound repository refused names that repository (ISS-1300 r3).
+  const unread = report.unreadLanding?.repository;
   const words: HoldWords =
     clears.length === 0
       ? [
@@ -122,8 +124,10 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
           NEXT_WEIGHS,
         ]
       : [
-          `The automatic release leaves this issue out, because ${held} unearned and its repository is unreadable.`,
-          'A person makes the repository readable to Forge again, then records a verdict on each or closes the issue.',
+          unread
+            ? `The automatic release leaves this issue out, because ${held} unearned and Forge cannot read ${unread}.`
+            : `The automatic release leaves this issue out, because ${held} unearned and its repository is unreadable.`,
+          `A person makes ${unread ?? 'the repository'} readable to Forge again, then records a verdict on each or closes the issue.`,
           NEXT_WEIGHS,
         ];
   return {

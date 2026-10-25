@@ -119,6 +119,21 @@ function MergeMarkBadge({
       </>
     );
   }
+  if (mark === "asserted" && commitSha) {
+    // ISS-1300 r3 — a commit a person named, which the repository holds: a claim, so not observed.
+    return (
+      <>
+        <Badge tone="amber">claimed</Badge>
+        <span
+          className="fg-body-sm min-w-0 break-all font-mono text-muted"
+          data-testid="merged-stated"
+          title={`Commit ${commitSha}. A person named it as where this work landed, and the repository holds it. Forge did not see it land.`}
+        >
+          {commitSha.slice(0, 7)} — in the repository
+        </span>
+      </>
+    );
+  }
   if (mark === "asserted" && claimedCommit) {
     // ISS-1409 — a commit an agent named that Forge could not check: shown as text, with what is
     // owed it, because it is a claim and not a merge.

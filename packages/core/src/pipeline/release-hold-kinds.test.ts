@@ -100,7 +100,7 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
       unresolvedLanding: { commit: ABSENT, repository: 'SidCorp-co/forge', from: 'merge' },
     }),
     'The automatic release leaves this issue out, because the commit it records as landed is not in its repository. ' +
-      "A person uses Unmark in the issue's properties, then Mark merged at the commit that landed. " +
+      "A person uses Mark a later merge in the issue's properties, and names the commit that landed under Commit. " +
       'The next sweep weighs it again.',
   ],
   [
@@ -110,7 +110,7 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
       unresolvedLanding: { commit: ABSENT, repository: 'SidCorp-co/forge', from: 'landing' },
     }),
     'The automatic release leaves this issue out, because the commit it records as landed is not in its repository. ' +
-      "A person uses Mark merged in the issue's properties, at the commit that landed. " +
+      'A person uses Mark merged, or Mark a later merge once marked, and names the commit that landed under Commit. ' +
       'The next sweep weighs it again.',
   ],
   [

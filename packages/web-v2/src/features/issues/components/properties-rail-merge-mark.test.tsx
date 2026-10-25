@@ -91,6 +91,16 @@ describe("the merge mark on the issue rail", () => {
     expect(screen.queryByTestId("merged-claim")).toBeNull();
   });
 
+  // ISS-1300 r3: a person's commit the repository holds is the mark's commit, and still a claim.
+  it("shows a commit a person named as claimed and in the repository, never observed", () => {
+    render(rail("asserted", SHA, null, "git", null));
+    expect(screen.getByText("claimed")).toBeInTheDocument();
+    expect(screen.getByTestId("merged-stated")).toHaveTextContent(`${SHA.slice(0, 7)} — in the repository`);
+    expect(screen.getByTestId("merged-stated").getAttribute("title")).toContain("A person named it");
+    expect(screen.queryByText("observed")).toBeNull();
+    expect(screen.queryByTestId("merged-claim")).toBeNull();
+  });
+
   it("never shows a claimed commit beside an observed merge (ISS-1409)", () => {
     render(rail("observed", SHA, null, "git", SHA));
     expect(screen.getByText("observed")).toBeInTheDocument();

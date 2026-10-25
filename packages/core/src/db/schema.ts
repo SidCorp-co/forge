@@ -969,6 +969,8 @@ export const issues = pgTable(
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
     mergedClaimedCommit: text('merged_claimed_commit'),
+    // ISS-1300 r3 — `merged_commit_sha` is a commit a person named, which the repository holds.
+    mergedCommitStated: boolean('merged_commit_stated').notNull().default(false),
     // ISS-1384 — where THIS issue's work lands, declared on it; NULL answers the project's kind.
     declaredLandingShape: text('declared_landing_shape', { enum: landingShapes }),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
@@ -1019,6 +1021,10 @@ export const issues = pgTable(
     mergedClaimedCommitChk: check(
       'issues_merged_claimed_commit_chk',
       sql`${t.mergedClaimedCommit} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedCommitSha} IS NULL AND ${t.mergedClaimedCommit} ~ '^[0-9a-f]{7,64}$')`,
+    ),
+    mergedCommitStatedChk: check(
+      'issues_merged_commit_stated_chk',
+      sql`NOT ${t.mergedCommitStated} OR (${t.mergedAt} IS NOT NULL AND ${t.mergedCommitSha} IS NOT NULL)`,
     ),
     declaredLandingShapeChk: check(
       'issues_declared_landing_shape_chk',

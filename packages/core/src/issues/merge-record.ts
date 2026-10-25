@@ -18,6 +18,8 @@ export type MergeEvidence =
       supersedes?: string | null;
     }
   | { kind: 'landed'; landing: string; at?: Date | null; via: 'mark' }
+  /** ISS-1300 r3 — `supersedes` is a held commit the repository was read and lacks. */
+  | { kind: 'stated'; commitSha: string; at?: Date | null; supersedes: string | null }
   | {
       kind: 'asserted';
       at?: Date | null;
@@ -34,6 +36,8 @@ export interface MergeRecord {
   landing: string | null;
   /** The unverified claim the row holds (`merged_claimed_commit`): never beside `commitSha`. */
   claimedCommit: string | null;
+  /** Whether `commitSha` is a person's word (`merged_commit_stated`), not a merge Forge saw. */
+  stated: boolean;
 }
 
 /** The one name for what the pair of columns means, and the ONLY reading of it:
@@ -47,12 +51,16 @@ export interface MergeMarkColumns {
   mergedLanding: string | null;
   /** `merged_claimed_commit`; a row that does not select it reads as holding none. */
   mergedClaimedCommit?: string | null;
+  /** `merged_commit_stated`, required: a row that left it out would read a person's commit as one
+   *  Forge saw land. */
+  mergedCommitStated: boolean | null;
 }
 
 export function mergeMarkKindOf(row: MergeMarkColumns): MergeMarkKind {
   if (row.mergedAt == null) return 'unmarked';
   // `''` is representable and is not a commit; the doc says why it reads as a claim.
-  if ((row.mergedCommitSha ?? '').trim() !== '') return 'observed';
+  if ((row.mergedCommitSha ?? '').trim() !== '')
+    return row.mergedCommitStated ? 'asserted' : 'observed';
   return (row.mergedLanding ?? '').trim() === '' ? 'asserted' : 'landed';
 }
 
@@ -63,10 +71,12 @@ export function mergeMarkFields(row: MergeMarkColumns): {
   mergedLanding: string | null;
   /** The commit an `asserted` mark names that Forge could not check; null on every other mark. */
   mergedClaimedCommit: string | null;
+  mergedCommitStated: boolean;
   mergeMark: MergeMarkKind;
 } {
   return {
     mergedCommitSha: row.mergedCommitSha,
+    mergedCommitStated: row.mergedCommitStated === true,
     mergedLanding: row.mergedLanding,
     mergedClaimedCommit: row.mergedClaimedCommit ?? null,
     mergeMark: mergeMarkKindOf(row),
@@ -166,6 +176,8 @@ export function describeMergeMark(args: {
   /** The commit the mark holds as a claim because the project gives Forge no way to read its
    *  repository (ISS-1409), and the cause with the setting that clears it. */
   unverified?: Unverified | null;
+  /** The repository holding a person's stamped commit, and the commit it replaced (ISS-1300 r3). */
+  stated?: { repository: string; replaced: string | null } | null;
 }): string {
   if (args.kind === 'unmarked') {
     return 'This issue is not marked merged, so nothing here says the work landed.';
@@ -187,6 +199,14 @@ export function describeMergeMark(args: {
       ? ` Commit ${shortCommit(args.claimedCommit as string)}, named in this mark, was not recorded.`
       : '';
     return `Forge saw this merge land at commit ${at}, ${source}.${overruled}`;
+  }
+  if (args.stated && args.commitSha) {
+    const { repository, replaced } = args.stated;
+    const at = shortCommit(args.commitSha);
+    const said = replaced
+      ? `Commit ${at}, which ${repository} holds, replaces commit ${shortCommit(replaced)}, which it does not.`
+      : `Commit ${at} is in ${repository}, and is recorded as where this work landed.`;
+    return `${said} ${MARK_UNSEEN}`;
   }
   if (args.unverified) {
     const u = args.unverified;
@@ -219,6 +239,7 @@ export async function readMergeColumns(
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
       mergedClaimedCommit: issues.mergedClaimedCommit,
+      mergedCommitStated: issues.mergedCommitStated,
     })
     .from(issues)
     .where(eq(issues.id, issueId))
@@ -228,6 +249,7 @@ export async function readMergeColumns(
     commitSha: row?.mergedCommitSha ?? null,
     landing: row?.mergedLanding ?? null,
     claimedCommit: row?.mergedClaimedCommit ?? null,
+    stated: row?.mergedCommitStated === true,
   };
 }
 
@@ -256,25 +278,28 @@ export async function recordIssueMerge(
         : sql`now()`;
 
   // A claim may be attached to a bare `asserted` mark (one naming no commit, landing or claim), the
-  // way an observed write may replace one: the first stamp still wins `merged_at`.
-  const claimsOnly = evidence.kind === 'asserted' && Boolean(evidence.unverifiedCommit);
-  const supersedes = evidence.kind === 'observed' ? (evidence.supersedes ?? null) : null;
-  const gate =
-    evidence.kind === 'observed'
-      ? supersedes
-        ? eq(issues.mergedCommitSha, supersedes)
-        : isNull(issues.mergedCommitSha)
-      : claimsOnly
-        ? or(
-            isNull(issues.mergedAt),
-            and(
-              isNull(issues.mergedCommitSha),
-              isNull(issues.mergedLanding),
-              isNull(issues.mergedClaimedCommit),
-            ),
-          )
-        : isNull(issues.mergedAt);
-  const landing = evidence.kind === 'asserted' ? null : (evidence.landing ?? null);
+  // way an observed write may replace one: the first stamp still wins `merged_at`, a stated one's too.
+  const claimsOnly =
+    (evidence.kind === 'asserted' && Boolean(evidence.unverifiedCommit)) ||
+    evidence.kind === 'stated';
+  const withCommit = evidence.kind === 'observed' || evidence.kind === 'stated';
+  const supersedes = withCommit ? (evidence.supersedes ?? null) : null;
+  const gate = withCommit
+    ? supersedes
+      ? eq(issues.mergedCommitSha, supersedes)
+      : isNull(issues.mergedCommitSha)
+    : claimsOnly
+      ? or(
+          isNull(issues.mergedAt),
+          and(
+            isNull(issues.mergedCommitSha),
+            isNull(issues.mergedLanding),
+            isNull(issues.mergedClaimedCommit),
+          ),
+        )
+      : isNull(issues.mergedAt);
+  const landing =
+    evidence.kind === 'asserted' || evidence.kind === 'stated' ? null : (evidence.landing ?? null);
 
   const [wrote] = await executor
     .update(issues)
@@ -282,9 +307,13 @@ export async function recordIssueMerge(
       mergedAt: claimsOnly ? sql`coalesce(${issues.mergedAt}, ${stampExpr})` : stampExpr,
       // When the mark was first set, which the owed-close sweep counts from; a later write keeps it.
       mergeMarkedAt: sql`coalesce(${issues.mergeMarkedAt}, now())`,
-      // A merge Forge read replaces any claim here: the CHECK holds a claim beside no commit.
-      ...(evidence.kind === 'observed'
-        ? { mergedCommitSha: evidence.commitSha, mergedClaimedCommit: null }
+      // A commit replaces any claim here: the CHECK holds a claim beside no commit.
+      ...(withCommit
+        ? {
+            mergedCommitSha: evidence.commitSha,
+            mergedClaimedCommit: null,
+            mergedCommitStated: evidence.kind === 'stated',
+          }
         : {}),
       ...(evidence.kind === 'asserted' && evidence.unverifiedCommit
         ? { mergedClaimedCommit: evidence.unverifiedCommit.toLowerCase() }
@@ -306,6 +335,7 @@ export async function recordIssueMerge(
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
       mergedClaimedCommit: issues.mergedClaimedCommit,
+      mergedCommitStated: issues.mergedCommitStated,
     });
 
   if (wrote) {
@@ -315,6 +345,7 @@ export async function recordIssueMerge(
       commitSha: wrote.mergedCommitSha,
       landing: wrote.mergedLanding,
       claimedCommit: wrote.mergedClaimedCommit,
+      stated: wrote.mergedCommitStated,
     };
   }
   const held = await readMergeColumns(executor, issueId);
@@ -337,6 +368,7 @@ export async function clearIssueMerge(
       mergedCommitSha: null,
       mergedLanding: null,
       mergedClaimedCommit: null,
+      mergedCommitStated: false,
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), ne(issues.status, 'closed'), isNotNull(issues.mergedAt)))

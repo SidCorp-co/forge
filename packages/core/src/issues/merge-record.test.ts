@@ -102,6 +102,7 @@ describe('recordIssueMerge — an assertion', () => {
       commitSha: 'abc1234',
       landing: null,
       claimedCommit: null,
+      stated: false,
     });
   });
 });
@@ -140,6 +141,7 @@ describe('recordIssueMerge — evidence', () => {
       commitSha: 'deadbee',
       landing: null,
       claimedCommit: null,
+      stated: false,
     });
   });
 });
@@ -190,7 +192,42 @@ describe('recordIssueMerge — an unverified claim (ISS-1409)', () => {
   it('clears the claim in the statement that stamps an observed merge', async () => {
     const { executor, setCall } = buildExecutor();
     await recordIssueMerge(executor, { issueId: 'iss-1', evidence: OBSERVED });
-    expect(setCall.mock.calls[0]?.[0]).toMatchObject({ mergedClaimedCommit: null });
+    expect(setCall.mock.calls[0]?.[0]).toMatchObject({
+      mergedClaimedCommit: null,
+      mergedCommitStated: false,
+    });
+  });
+});
+
+// ISS-1300 r3 — a person's commit the repository holds is the mark's commit, flagged as their word.
+describe('recordIssueMerge — a commit a person stated', () => {
+  const STATED = 'a'.repeat(40);
+
+  it('stamps the commit, flags it stated and keeps a standing merged_at', async () => {
+    const { executor, setCall, whereCall } = buildExecutor();
+    await recordIssueMerge(executor, {
+      issueId: 'iss-1',
+      evidence: { kind: 'stated', commitSha: STATED, supersedes: null },
+    });
+    const payload = setCall.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      mergedCommitSha: STATED,
+      mergedCommitStated: true,
+      mergedClaimedCommit: null,
+    });
+    expect(renderedSql(payload.mergedAt)).toContain('coalesce');
+    expect(renderedSql(whereCall.mock.calls[0]?.[0])).toContain('"merged_commit_sha" is null');
+  });
+
+  it('replaces only the commit it was told the repository lacks', async () => {
+    const { executor, whereCall } = buildExecutor();
+    await recordIssueMerge(executor, {
+      issueId: 'iss-1',
+      evidence: { kind: 'stated', commitSha: STATED, supersedes: 'b'.repeat(40) },
+    });
+    const gated = renderedSql(whereCall.mock.calls[0]?.[0]);
+    expect(gated).toContain('"merged_commit_sha" =');
+    expect(gated).not.toContain('"merged_commit_sha" is null');
   });
 });
 
@@ -198,7 +235,10 @@ describe('clearIssueMerge', () => {
   it('clears the claim with the mark', async () => {
     const { executor, setCall } = buildExecutor();
     await clearIssueMerge(executor, 'iss-1');
-    expect(setCall.mock.calls[0]?.[0]).toMatchObject({ mergedClaimedCommit: null });
+    expect(setCall.mock.calls[0]?.[0]).toMatchObject({
+      mergedClaimedCommit: null,
+      mergedCommitStated: false,
+    });
   });
 
   it('clears the commit together with the timestamp', async () => {
