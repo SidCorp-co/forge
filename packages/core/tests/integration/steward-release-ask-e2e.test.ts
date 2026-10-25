@@ -1,8 +1,9 @@
 // ISS-607 (REQ-48 BC-5): the steward asks whoever can take the act an item waits on. A release
 // approval the project's master may not give is asked of the release holders, never of the master;
 // a master that holds releases.approve is asked as before. On the standing it reads now an item is
-// asked once: a reasoned decision recorded on the item after the ask answers it, the master is owed
-// it no more, and nobody is asked again until the standing moves; a moved standing asks again.
+// asked once, whichever run asks about it: a reasoned decision recorded on the item on that standing,
+// before the ask or after, answers it, the master is owed it no more, and nobody is asked again
+// until the standing moves; a moved standing asks again.
 // Driven through the real app, outbox and steward runtime on a throwaway Postgres, the gateway a
 // scripted provider and the standing read a scripted one, as steward-runtime-e2e does.
 //
@@ -21,7 +22,7 @@
 import type { Said } from '@forge/contracts/said';
 import { type ItemStanding, STEWARD_DEBOUNCE_MS } from '@forge/contracts/steward';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   closeWorld,
   ok,
@@ -33,6 +34,7 @@ import {
 } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
+  createTestFeedback,
   createTestIssue,
   createTestProject,
   createTestUser,
@@ -357,6 +359,102 @@ describe("a decision's until ends it only on a date it names (c2)", () => {
     expect((wrote.json as { warnings?: string[] }).warnings).toEqual([
       expect.stringContaining('DECISION_UNTIL_PASSED'),
     ]);
+    standings = [];
+  });
+});
+
+// ISS-607 c2, judge K53 on dev.293: a decision recorded before the steward's first ask on an
+// unchanged standing was never read as an answer, and the four asks on ISS-498 made from runs on
+// FB-83, FB-85, FB-86 and FB-126 stood after the decision on ISS-498, keyed on each run's item
+describe('an ask is keyed on the standing of the item it is about, whichever run asks (c2)', () => {
+  const why = [
+    { key: 'decision', value: 'waits' },
+    { key: 'why', value: 'the release waits on production being declared' },
+  ];
+  const sweep = async () => {
+    clock += 60_000;
+    return steward.sweepStandings(new Date(clock));
+  };
+  const openAbout = async (key: string) =>
+    (await steward.openStewardAsks(projectId)).filter((a) => a.ask.startsWith(`${key}:`));
+  // a run these leave queued would take the next test's scripted turn as its own
+  afterEach(() =>
+    rows(sql`
+      UPDATE steward_runs SET state = 'skipped', skip_reason = 'subject_ended', ended_at = now()
+       WHERE project_id = ${projectId} AND state IN ('queued', 'running') RETURNING id`),
+  );
+
+  it('reads a decision recorded before the first ask on the standing as its answer: nothing is asked', async () => {
+    const issue = await createTestIssue(projectId, ownerId, 60, {
+      status: 'awaiting_release',
+      createdAt: new Date(),
+    });
+    standings = [releaseWait(issue, 'decided-first-1')];
+    ok(await decide(issue.id, why), 201);
+    await askRun(issue);
+    expect(await openAbout(issue.key)).toEqual([]);
+    expect(await actsOn(issue.id)).toEqual([]);
+    expect(JSON.stringify(script.sent.at(-1))).toContain('a decision answered it');
+    // and the same decision answers nothing once the standing moves
+    standings = [releaseWait(issue, 'decided-first-2')];
+    await askRun(issue);
+    expect(await openAbout(issue.key)).toHaveLength(1);
+    standings = [];
+  });
+
+  it("keys feedback items' runs asking about one issue on the issue: one ask, settled by its decision", async () => {
+    const { db } = await import('../../src/db/client.js');
+    const { stewardRuns } = await import('../../src/db/schema-steward-runs.js');
+    const { runGatewayAct } = await import('../../src/steward/turn.js');
+    const { stewardAccountOf } = await import('../../src/steward/account.js');
+    const { eq } = await import('drizzle-orm');
+    const stewardId = await stewardAccountOf(projectId);
+    const issue = await createTestIssue(projectId, ownerId, 61, {
+      status: 'awaiting_release',
+      createdAt: new Date(),
+    });
+    standings = [releaseWait(issue, 'iss-498-1')];
+    await sweep(); // the ask left on the issue above, whose standing is gone, settles first
+    /** A run on feedback item FB-`seq`, its turn asking the master about the issue. */
+    const askFrom = async (seq: number) => {
+      const fbKey = await createTestFeedback(projectId, ownerId, seq);
+      const [fb] = await rows<{ id: string }>(sql`
+        SELECT id FROM feedback WHERE project_id = ${projectId} AND fb_seq = ${seq}`);
+      const [made] = await rows<{ id: string }>(sql`
+        INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
+                                  acts_to_run, state, basis, not_before, started_at)
+        VALUES (${projectId}, 'feedback', ${fb?.id}, ${fbKey}, 'feedback.filed', '[]'::jsonb,
+                ARRAY['stuck_diagnosis']::text[], 'running', ${`fb-${seq}`}, now(), now())
+        RETURNING id`);
+      const [run] = await db
+        .select()
+        .from(stewardRuns)
+        .where(eq(stewardRuns.id, made?.id ?? ''));
+      if (!run) throw new Error('the feedback run was not written');
+      resetScript();
+      script.steps = [
+        {
+          tool: {
+            name: 'steward_wake_master',
+            args: { about: issue.key, ask: `Approve the release that carries ${issue.key}.` },
+          },
+        },
+        { text: 'Asked.' },
+      ];
+      await runGatewayAct({ run, act: 'stuck_diagnosis', standing: null, stewardId });
+      return JSON.stringify(script.sent.at(-1));
+    };
+    await askFrom(83);
+    const asks = await openAbout(issue.key);
+    // the nudge names the issue's own decision door, not the feedback item the run was on
+    expect(asks.map((a) => a.subject)).toEqual([{ kind: 'issue', key: issue.key }]);
+    expect(await askFrom(85)).toContain('still stands');
+    expect(await openAbout(issue.key)).toHaveLength(1);
+    ok(await decide(issue.id, why), 201);
+    expect((await sweep()).settledAsks).toBe(1);
+    expect(await openAbout(issue.key)).toEqual([]);
+    expect(await askFrom(86)).toContain('a decision answered it');
+    expect(await openAbout(issue.key)).toEqual([]);
     standings = [];
   });
 });

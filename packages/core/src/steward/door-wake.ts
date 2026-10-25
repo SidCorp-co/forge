@@ -1,8 +1,9 @@
 // The steward's ask of whoever owes an item's act (REQ-48 BC-5, ISS-607). The door picks the
 // addressee from the item's standing, never the model: the project's master, woken and asked until the
 // item's standing moves; or, for a release approval or a feedback triage the master may not take, the
-// holders of that act's permission, told once in their notices (ISS-654). An item already asked on the standing it reads now, or whose ask a
-// decision answered, is not asked again: that is said to the turn, and nothing is written.
+// holders of that act's permission, told once in their notices (ISS-654). An item already asked on
+// the standing it reads now, or with a decision recorded on it, is not asked again: that is said to
+// the turn, and nothing is written. The ask cites the item it is about, which keys it (`asks.ts`).
 
 import type { ItemStanding } from '@forge/contracts/steward';
 import { z } from 'zod';
@@ -38,12 +39,13 @@ export const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
   write: true,
   async call(args, ctx) {
     const about = args.about.toUpperCase();
-    const basis = ctx.standing?.basis ?? null;
-    if (basis) {
-      const again = await askedAlready(ctx.projectId, ctx.subject, basis, new Date());
+    // keyed on the item asked about, whichever run asks (ISS-607: FB-runs asked on ISS-498 again)
+    const standing = await standingOfKey(about, ctx);
+    if (standing) {
+      const again = await askedAlready(ctx.projectId, standing, new Date());
       if (again) return { correct: again };
     }
-    const standing = await standingOfKey(about, ctx);
+    const cite = standing ? { kind: standing.subject.kind, ref: standing.subject.key } : null;
     const steward = await heldStewardOf(ctx.projectId);
     const to = await askAddresseeOf(ctx.projectId, standing, steward);
     if (to.to === 'nobody') {
@@ -69,7 +71,7 @@ export const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
         act: {
           door: to.act.door,
           did: `Asked the ${to.act.permission} holders (${names}) about ${about}: ${args.ask}${to.unread.length > 0 ? ` (${unreadLine(to.unread)})` : ''}`,
-          wrote: null,
+          wrote: cite,
           undo: null,
         },
       };
@@ -85,7 +87,7 @@ export const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
       act: {
         door: WAKE_DOOR,
         did: `Asked the master about ${about}: ${args.ask}`,
-        wrote: null,
+        wrote: cite,
         undo: null,
         masterAsk: `${about}: ${args.ask}`,
       },
