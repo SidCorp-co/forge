@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.319] - 2026-10-25
+
+Feedback from any page with a screenshot; repeats join the open item
+
+### Added
+
+- **Feedback is filed from any page with a screenshot.** One sentence and the page's screenshot; the agent fills kind and severity, a repeat joins the open item as an occurrence, and an unredacted screenshot reaches no model on sensitive projects.
+
 ## [0.4.0-dev.318] - 2026-10-25
 
 Criteria count only when someone other than the builder judged them
