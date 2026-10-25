@@ -523,6 +523,114 @@ fn read_cwd(at: &Path) -> std::io::Result<PathBuf> {
     std::fs::read_link(at)
 }
 
+/// [`residents_of`], and every pid whose working directory the kernel withheld
+/// from this box, in pid order, for a caller that has to decide whose each was
+/// with [`withheld`].
+pub fn residents_of_with_withheld(proc_root: &Path, worktree: &Path) -> (Reading, Vec<u32>) {
+    residents_of_with_withheld_by(proc_root, worktree, read_cwd)
+}
+
+/// [`residents_of_with_withheld`], with the `cwd` link read through `cwd`: a
+/// withheld link is not a state a planted process root can be made to enter.
+pub(crate) fn residents_of_with_withheld_by(
+    proc_root: &Path,
+    worktree: &Path,
+    cwd: impl Fn(&Path) -> std::io::Result<PathBuf>,
+) -> (Reading, Vec<u32>) {
+    let want = resolved(worktree);
+    let mut held = Vec::new();
+    let reading = each_pid_noting(
+        proc_root,
+        crate::daemon::serving::start_ticks,
+        cwd,
+        |at, _gone| under(&want, at),
+        |pid| held.push(pid),
+    );
+    held.sort_unstable();
+    (reading, held)
+}
+
+/// What stays readable of a pid whose working directory the kernel withheld:
+/// `/proc/<pid>/status` and `/proc/<pid>/stat` are readable whoever owns the
+/// process, dumpable or not. Each value is `None` where it could not be read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Withheld {
+    pub pid: u32,
+    /// Its real user id, which is the user that started it: a set-uid program
+    /// a run starts keeps the run's user here.
+    pub uid: Option<u32>,
+    /// When it started, wall-clock ms.
+    pub started_ms: Option<i64>,
+}
+
+/// Read [`Withheld`] for `pid` under `proc_root`. `clk_tck` is the kernel's
+/// clock ticks per second, which `/proc/<pid>/stat` counts a start in.
+pub fn withheld(proc_root: &Path, pid: u32, clk_tck: Option<u64>) -> Withheld {
+    let dir = proc_root.join(pid.to_string());
+    let started_ms = start_ticks_at(&dir.join("stat"))
+        .zip(boot_time_secs(proc_root))
+        .zip(clk_tck.filter(|hz| *hz > 0))
+        .and_then(|((ticks, btime), hz)| {
+            let after_boot = i64::try_from(ticks.checked_mul(1000)? / hz).ok()?;
+            btime.checked_mul(1000)?.checked_add(after_boot)
+        });
+    Withheld {
+        pid,
+        uid: real_uid(&dir.join("status")),
+        started_ms,
+    }
+}
+
+/// The real user id of the process reading `proc_root`, off `self/status`.
+pub fn own_uid(proc_root: &Path) -> Option<u32> {
+    real_uid(&proc_root.join("self").join("status"))
+}
+
+/// The kernel's clock ticks per second, which a process's start is counted in.
+#[cfg(target_os = "linux")]
+pub fn clk_tck() -> Option<u64> {
+    use nix::unistd::{sysconf, SysconfVar};
+    sysconf(SysconfVar::CLK_TCK)
+        .ok()
+        .flatten()
+        .and_then(|hz| u64::try_from(hz).ok())
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn clk_tck() -> Option<u64> {
+    None
+}
+
+/// The first field of a `status` file's `Uid:` line.
+fn real_uid(status: &Path) -> Option<u32> {
+    let text = std::fs::read_to_string(status).ok()?;
+    text.lines()
+        .find_map(|l| l.strip_prefix("Uid:"))?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// Field 22 of a `stat` file, the start in clock ticks since boot. The command
+/// sits in parens and may hold spaces of its own, so fields are counted from
+/// the last `) `.
+fn start_ticks_at(stat: &Path) -> Option<u64> {
+    let text = std::fs::read_to_string(stat).ok()?;
+    text.rsplit_once(") ")?.1.split(' ').nth(19)?.parse().ok()
+}
+
+/// The `btime` line of the process root's own `stat`: when the box booted, in
+/// wall-clock seconds.
+fn boot_time_secs(proc_root: &Path) -> Option<i64> {
+    let text = std::fs::read_to_string(proc_root.join("stat")).ok()?;
+    text.lines()
+        .find_map(|l| l.strip_prefix("btime "))?
+        .trim()
+        .parse()
+        .ok()
+}
+
 /// Every pid under `proc_root` whose working directory is a path already
 /// unlinked that lies beneath one of `roots`.
 ///
@@ -581,6 +689,18 @@ fn each_pid(
     cwd: impl Fn(&Path) -> std::io::Result<PathBuf>,
     wanted: impl Fn(&Path, bool) -> bool,
 ) -> Reading {
+    each_pid_noting(proc_root, identity, cwd, wanted, |_| {})
+}
+
+/// [`each_pid`], handing `withheld` each pid whose working directory the
+/// kernel would not show, for a caller that has to say whose it was.
+fn each_pid_noting(
+    proc_root: &Path,
+    identity: impl Fn(u32) -> Option<String>,
+    cwd: impl Fn(&Path) -> std::io::Result<PathBuf>,
+    wanted: impl Fn(&Path, bool) -> bool,
+    mut withheld: impl FnMut(u32),
+) -> Reading {
     let mut not_asked = 0usize;
     let entries = match std::fs::read_dir(proc_root) {
         Ok(e) => e,
@@ -630,6 +750,7 @@ fn each_pid(
             // (consult 2e320c F2).
             Err(e) if matches!(e.kind(), std::io::ErrorKind::PermissionDenied) => {
                 not_asked += 1;
+                withheld(pid);
                 continue;
             }
             // Anything else is a read this box should have been able to take

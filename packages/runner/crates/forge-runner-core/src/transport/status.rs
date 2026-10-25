@@ -265,6 +265,22 @@ pub fn not_reached_at(at: &str, why: &str) -> String {
     )
 }
 
+/// The address a request was sent to, path included, for a line about what that address answered:
+/// a 404 is about the path, which the origin alone drops (ISS-1306 round 3). Userinfo, query and
+/// fragment are left out, since any of them can carry a credential.
+pub fn requested(url: &str) -> String {
+    match reqwest::Url::parse(url) {
+        Ok(mut parsed) => {
+            let _ = parsed.set_username("");
+            let _ = parsed.set_password(None);
+            parsed.set_query(None);
+            parsed.set_fragment(None);
+            parsed.to_string()
+        }
+        Err(_) => url.to_string(),
+    }
+}
+
 /// The core address a url was derived from, as this box's configuration names it: the live
 /// connection's `ws(s)://` is the core address `http(s)://` with its scheme swapped, and the person
 /// reading the line compares it with the address they configured.

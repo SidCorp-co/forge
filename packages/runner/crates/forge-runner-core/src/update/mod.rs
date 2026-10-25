@@ -153,7 +153,7 @@ fn manifest_unread(url: &str, core_url: Option<&str>, e: &reqwest::Error) -> Str
     } else {
         status::why_not_reached(e)
     };
-    configured_unread(url, &why)
+    configured_unread(&crate::transport::status::core_origin(url), &why)
 }
 
 /// Why the manifest at `url` was not read where it answered `code`: where it was sought and what it
@@ -161,13 +161,11 @@ fn manifest_unread(url: &str, core_url: Option<&str>, e: &reqwest::Error) -> Str
 /// answer it was (ISS-1306 round 2).
 fn manifest_refused(url: &str, core_url: Option<&str>, code: u16) -> String {
     let named = crate::transport::status::named(code);
+    let at = crate::transport::status::requested(url);
     if from_core(url, core_url) {
-        return format!(
-            "update manifest: Forge at {} answered {named}.",
-            crate::transport::status::core_origin(url)
-        );
+        return format!("update manifest: Forge answered {named} at {at}.");
     }
-    configured_unread(url, &format!("it answered {named}"))
+    configured_unread(&at, &format!("it answered {named}"))
 }
 
 /// What a manifest read that outlasted `deadline` says, for a caller that bounds it itself.
@@ -180,14 +178,15 @@ pub fn manifest_not_answered(url: &str, core_url: Option<&str>, deadline: Durati
             crate::transport::status::not_reached_at(&at, &why)
         );
     }
-    configured_unread(url, &why)
+    configured_unread(&crate::transport::status::core_origin(url), &why)
 }
 
-fn configured_unread(url: &str, why: &str) -> String {
+/// `at` is the address as the line names it: the one requested where it answered, its origin where
+/// nothing was reached.
+fn configured_unread(at: &str, why: &str) -> String {
     format!(
-        "The update manifest at {} could not be read, as {why}. Check the update.manifest_url \
-         this box is configured with.",
-        crate::transport::status::core_origin(url)
+        "The update manifest at {at} could not be read, as {why}. Check the update.manifest_url \
+         this box is configured with."
     )
 }
 
@@ -749,8 +748,9 @@ mod tests {
         );
     }
 
-    /// ISS-1306 round 2, criterion 22: a manifest answered with an error status names where it was
-    /// sought and what it answered.
+    /// ISS-1306 criterion 22: a manifest answered with an error status names the address it was
+    /// requested at, path included (judge-109: the configured line named the host alone), and what
+    /// it answered; never a query or userinfo, which can carry a credential.
     #[tokio::test]
     async fn a_manifest_answered_with_an_error_names_the_address_and_the_status() {
         let core = answer_once(
@@ -762,17 +762,19 @@ mod tests {
             .await
             .unwrap_err()
             .to_string();
+        assert!(url.ends_with("/api/install/latest.json"), "{url}");
         assert!(
             said.ends_with(&format!(
-                "update manifest: Forge at {core} answered 503 Service Unavailable."
+                "update manifest: Forge answered 503 Service Unavailable at {url}."
             )),
             "{said}"
         );
         let configured =
             answer_once("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                 .await;
+        let with_secret = configured.replacen("http://", "http://op:hunter2@", 1);
         let said = fetch_manifest(
-            &format!("{configured}/latest.json"),
+            &format!("{with_secret}/releases/forge-runner/stable/latest.json?sig=s3cr3t#top"),
             Some("https://core.example"),
         )
         .await
@@ -780,10 +782,14 @@ mod tests {
         .to_string();
         assert!(
             said.contains(&format!(
-                "The update manifest at {configured} could not be read, as it answered 404 Not Found."
+                "The update manifest at {configured}/releases/forge-runner/stable/latest.json could \
+                 not be read, as it answered 404 Not Found."
             )),
             "{said}"
         );
+        for secret in ["hunter2", "op:", "s3cr3t", "#top"] {
+            assert!(!said.contains(secret), "{secret} in: {said}");
+        }
     }
 
     /// A manifest that arrived whole and is not JSON is not called cut: only a cut is a cut.

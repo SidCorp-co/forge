@@ -223,16 +223,42 @@ fn refused_with(e: &tokio_tungstenite::tungstenite::Error) -> Option<u16> {
 /// Why the live connection did not open, in the sentence every call that cannot reach core says:
 /// where Forge was sought, why in words and what to check. Its own error was tungstenite's, "IO
 /// error: Connection refused (os error 111)", which named no address (ISS-1421 r22).
+///
+/// Only a socket, TLS or address error reached nothing. Every other kind came after an answer:
+/// a stand-in answering `/ws` in HTTP/1.0 was said as "no connection could be made" while the
+/// request sat in its log (ISS-1306 round 3, judge-109).
 fn connect_failure(url: &str, e: &tokio_tungstenite::tungstenite::Error) -> String {
+    use tokio_tungstenite::tungstenite::error::{Error, ProtocolError};
     let at = super::status::core_origin(url);
-    match refused_with(e) {
-        Some(code) => format!(
-            "Forge at {at} answered {} where its live connection opens. Check that this box's \
-             core address is right and that core is running there.",
-            super::status::named(code)
-        ),
-        None => super::status::not_reached_at(&at, super::status::reached_nothing_because(e, true)),
-    }
+    let what = match e {
+        Error::Http(resp) => {
+            return format!(
+                "Forge at {at} answered {} where its live connection opens. Check that this box's \
+                 core address is right and that core is running there.",
+                super::status::named(resp.status().as_u16())
+            )
+        }
+        Error::Io(_) | Error::Tls(_) | Error::Url(_) => {
+            return super::status::not_reached_at(
+                &at,
+                super::status::reached_nothing_because(e, true),
+            )
+        }
+        Error::ConnectionClosed
+        | Error::AlreadyClosed
+        | Error::Protocol(ProtocolError::HandshakeIncomplete) => {
+            return super::status::not_reached_at(&at, "the connection was cut")
+        }
+        Error::Protocol(ProtocolError::WrongHttpVersion) => {
+            "an HTTP/1.0 answer, which cannot open one".to_string()
+        }
+        other => format!("an answer it could not take as one ({other})"),
+    };
+    format!(
+        "Forge at {at} answered where its live connection opens, but not with a WebSocket \
+         upgrade: {what}. Check that this box's core address is right and that core is running \
+         there."
+    )
 }
 
 #[cfg(test)]
@@ -383,6 +409,64 @@ mod tests {
             "{said}"
         );
         assert!(!said.contains("lookup address information"), "{said}");
+    }
+
+    /// The bytes `answer` sent back to the first request one listener takes.
+    async fn answered_with(answer: &'static [u8]) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf).await;
+            let _ = stream.write_all(answer).await;
+            let _ = stream.shutdown().await;
+        });
+        let said = failure_at(&format!("ws://127.0.0.1:{port}/ws")).await;
+        server.await.unwrap();
+        said.replace(&port.to_string(), "PORT")
+    }
+
+    /// ISS-1306 criterion 28: an address that answered, but not with an upgrade, is said as having
+    /// answered, never as reached by no connection (judge-109's stand-in answered /ws in HTTP/1.0).
+    #[tokio::test]
+    async fn an_answer_that_is_not_an_upgrade_says_forge_answered() {
+        let old_http = answered_with(
+            b"HTTP/1.0 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: 24\r\n\r\n{\"error\":\"unauthorized\"}",
+        )
+        .await;
+        assert_eq!(
+            old_http,
+            "Forge at http://127.0.0.1:PORT answered where its live connection opens, but not with \
+             a WebSocket upgrade: an HTTP/1.0 answer, which cannot open one. Check that this box's \
+             core address is right and that core is running there."
+        );
+        let no_upgrade =
+            answered_with(b"HTTP/1.1 101 Switching Protocols\r\nContent-Length: 0\r\n\r\n").await;
+        assert!(
+            no_upgrade.starts_with(
+                "Forge at http://127.0.0.1:PORT answered where its live connection opens, but not \
+                 with a WebSocket upgrade: an answer it could not take as one ("
+            ),
+            "{no_upgrade}"
+        );
+        for said in [&old_http, &no_upgrade] {
+            assert!(!said.contains("no connection could be made"), "{said}");
+            assert!(!said.contains("could not be reached"), "{said}");
+        }
+    }
+
+    /// A listener that takes the request and closes without a word cut the connection; it did
+    /// not answer.
+    #[tokio::test]
+    async fn a_listener_that_closes_without_answering_cut_the_connection() {
+        let said = answered_with(b"").await;
+        assert_eq!(
+            said,
+            "Forge could not be reached at http://127.0.0.1:PORT, as the connection was cut. Check \
+             that core is running there and that this box's core address is right."
+        );
     }
 
     /// Criterion 214: an address that answers the upgrade with a status says the status and what
