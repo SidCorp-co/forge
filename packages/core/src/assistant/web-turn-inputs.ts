@@ -33,6 +33,7 @@ import { buildBaToolset } from './tools/ba-tools.js';
 import { buildDecideToolset } from './tools/decide-tool.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildOfferActToolset } from './tools/offer-act-tool.js';
+import { buildOfferItemActToolset } from './tools/offer-item-act-tool.js';
 import { buildOfferPreviewToolset } from './tools/offer-preview-tool.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset, buildRecordToolset } from './tools/registry.js';
@@ -178,6 +179,7 @@ async function prepareWebTurn(
           userId: authority.userId,
           language: await askerLineLanguage(args),
         }),
+        buildOfferItemActToolset({ projectId: args.project.id, userId: authority.userId }),
         buildOfferPreviewToolset({ projectId: args.project.id, userId: authority.userId }),
         buildDecideToolset({
           projectId: args.project.id,

@@ -6,6 +6,7 @@
 
 import { CHAT_ACT_TOOL, type ChatActOffer, readChatActOffer } from "@forge/contracts/chat-acts";
 import type { IdeaOffer } from "@forge/contracts/idea-offer";
+import type { ItemActOffer } from "@forge/contracts/item-acts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { Button, Icon } from "@/design";
@@ -13,6 +14,9 @@ import type { CanonicalBlock } from "@/features/session";
 import { endsTheIssue, issuesApi, MootQuestions, releaseBatchApi, useIssue, useMootQuestions } from "@/features/issues";
 import { questionKeys } from "@/features/questions";
 import { IdeaOfferNotice, ideaOffersOf } from "./components/idea-offers";
+import { nextStepOf } from "./act-next-step";
+import { itemActOffersOf } from "./item-act-card";
+import { ItemActOfferNotice } from "./item-act-offers";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
@@ -56,13 +60,16 @@ export function pressAct(offer: ChatActOffer, opts?: { voids?: boolean }): Promi
 export function useActOffers(args: {
   messages: readonly ConversationMessage[];
   progress: ConversationProgressEntry | null | undefined;
+  /** The project's slug, for the link a failed card names; plain text until it is known. */
+  slug?: string | undefined;
 }) {
   const byEntry = useMemo(() => {
-    const map = new Map<string, { acts: ChatActOffer[]; ideas: IdeaOffer[] }>();
+    const map = new Map<string, { acts: ChatActOffer[]; items: ItemActOffer[]; ideas: IdeaOffer[] }>();
     const note = (id: string, blocks: readonly CanonicalBlock[] | null | undefined) => {
       const acts = actOffersOf(blocks);
+      const items = itemActOffersOf(blocks);
       const ideas = ideaOffersOf(blocks);
-      if (acts.length + ideas.length > 0) map.set(id, { acts, ideas });
+      if (acts.length + items.length + ideas.length > 0) map.set(id, { acts, items, ideas });
     };
     for (const m of args.messages) note(m.id, m.blocks);
     if (args.progress) note(args.progress.entry.id ?? "live", args.progress.entry.blocks);
@@ -78,13 +85,16 @@ export function useActOffers(args: {
           {offers.acts.map((o) => (
             <ActOfferNotice key={`${o.issueId}:${o.act}`} offer={o} />
           ))}
+          {offers.items.map((o) => (
+            <ItemActOfferNotice key={`${o.ref}:${o.act}`} offer={o} slug={args.slug} />
+          ))}
           {offers.ideas.map((o) => (
             <IdeaOfferNotice key={`${o.about}:${o.brief}`} offer={o} />
           ))}
         </div>
       );
     },
-    [byEntry],
+    [byEntry, args.slug],
   );
   return { offersFor };
 }
@@ -160,9 +170,10 @@ function ActOfferNotice({ offer }: { offer: ChatActOffer }) {
         </div>
       )}
       {press.isError && (
-        <p className="fg-caption text-danger" role="alert">
-          {questionsOpened(press.error) ? t("conversations.act.questionOpened") : formatApiError(press.error)}
-        </p>
+        <div className="fg-caption flex flex-col gap-0.5" role="alert">
+          <p className="text-danger">{questionsOpened(press.error) ? t("conversations.act.questionOpened") : formatApiError(press.error)}</p>
+          <p className="text-muted">{t(`conversations.next.${nextStepOf(press.error)}`)}</p>
+        </div>
       )}
     </div>
   );

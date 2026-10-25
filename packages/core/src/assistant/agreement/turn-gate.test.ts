@@ -36,6 +36,16 @@ vi.mock('../../lib/authz.js', () => ({
   loadProjectAccess: async () => ({ orgId: 'o', orgRole: role === 'admin' ? 'admin' : 'member' }),
 }));
 
+// the project writes in English, as the held text here is (REQ-69 BC-10)
+vi.mock('../../project-config/index.js', () => ({
+  readContentLanguage: async () => ({
+    contentLanguage: 'en',
+    keepTermsInEnglish: [],
+    source: 'default',
+    revision: null,
+  }),
+}));
+
 vi.mock('./store.js', () => ({
   failedProposalsOf: async () => [],
   recordProposal: async (p: { kind: string; call: { name: string; arguments: string } }) => {
@@ -283,5 +293,20 @@ describe('every write is held or refused by default: one rule, not a list of hel
     await gate.tools.execute('ui_navigate', JSON.stringify({ to: '/projects/forge' }));
     expect(writes).toEqual(['forge_show', 'ui_navigate']);
     expect(held).toEqual([]);
+  });
+});
+
+// REQ-69 BC-10: the chat answers in the person's language, and what it saves is in the project's
+describe("a held write's text in another language than the project's", () => {
+  it('is refused before any card, naming the field, and nothing is held or written', async () => {
+    const gate = agreementGate(inner, turn);
+    const vi = feedback('Bản nháp bị mất mỗi khi tôi chuyển sang trang khác'); // i18n-allow: the Vietnamese text under test
+    const refused = text(await gate.tools.execute('project_feedback', vi));
+    expect(refused).toMatch(
+      /^.*CHAT_TEXT_NOT_IN_PROJECT_LANGUAGE: title would be saved for this project/,
+    );
+    expect(held).toHaveLength(0);
+    expect(writes).toEqual([]);
+    expect(gate.heldThisTurn()).toBe(0);
   });
 });

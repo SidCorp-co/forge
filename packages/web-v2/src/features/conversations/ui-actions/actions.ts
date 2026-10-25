@@ -32,7 +32,7 @@ import { withArticle } from "@forge/contracts/articles";
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
 import { applyWireframePatch, type WireframeDoc } from "@forge/contracts/wireframe";
-import { mockupOpenOn, pageItemOf } from "./page-item";
+import { mockupOpenOn, pageItemAt, pageItemOf } from "./page-item";
 import { boardStore } from "@/features/board";
 import { toolOutputText } from "@/lib/tool-output";
 import { assistantFilters } from "@/features/chat-dock";
@@ -97,7 +97,7 @@ function listFilterOf(list: UiProductList, search: string): UiListFilterSnapshot
   return Object.keys(filter).length ? ({ list, filter } as UiListFilterSnapshot) : undefined;
 }
 
-export { mockupOpenOn, pageItemOf } from "./page-item";
+export { mockupOpenOn, pageItemAt, pageItemOf } from "./page-item";
 
 export function uiSnapshotOf(args: {
   pathname: string;
@@ -119,7 +119,7 @@ export function uiSnapshotOf(args: {
   };
   const at = projectPath(args.pathname);
   if (!at) return { ...base, route: "other" };
-  const item = mockupOpenOn(pageItemOf(at.rest), args.search);
+  const item = mockupOpenOn(pageItemAt(at.rest, args.search), args.search);
   if (item) return { ...base, route: item.kind, item };
   const route = ROUTE_BY_SUFFIX.find(([, suffix]) => suffix === at.rest)?.[0];
   if (!route) return { ...base, route: "other" };
@@ -425,6 +425,11 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
     case "ui.feedback.filter":
     case "ui.workflows.filter":
     case "ui.releases.filter":
+    case "ui.approvals.filter":
+    case "ui.contracts.filter":
+    case "ui.agents.filter":
+    case "ui.automation.filter":
+    case "ui.status.filter":
       return applyListFilter(action, env);
     case "ui.highlight":
       return applyHighlight(action.params, env);

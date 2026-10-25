@@ -24,19 +24,28 @@ import {
 
 export const UI_ACTION_VERSION = 1 as const;
 
-/** The project routes an action may name, each to its path under `/projects/<slug>`. */
+/**
+ * The project routes an action may name, each to its path under `/projects/<slug>`; every path is
+ * a page the web serves (web-v2 `ui-actions/ui-routes.test.ts` reads its route files). Memory and
+ * Decisions are not here: REQ-33 removed those pages, and their records are read inside the item
+ * they belong to.
+ */
 export const UI_ROUTES = {
 	overview: "",
 	issues: "/issues",
 	requirements: "/requirements",
 	feedback: "/feedback",
+	approvals: "/approvals",
 	pipeline: "/pipeline",
 	releases: "/releases",
 	agents: "/agents",
 	workflows: "/workflows",
-	ecosystem: "/ecosystem",
-	schedules: "/automation/schedules",
-	improvements: "/automation/improvements",
+	modules: "/modules",
+	contracts: "/contracts",
+	status: "/status",
+	// the project's Ecosystem page is its API page; /ecosystem itself draws nothing
+	ecosystem: "/ecosystem/api",
+	automation: "/automation",
 	settings: "/settings",
 } as const;
 export type UiRoute = keyof typeof UI_ROUTES;
@@ -78,6 +87,8 @@ const REQUIREMENT_KEY = /^REQ-\d{1,9}$/;
 const FEEDBACK_KEY = /^FB-\d{1,9}$/;
 /** A release is opened by its version, as its page is addressed (`0.4.0-dev.217`). */
 const RELEASE_KEY = /^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/;
+/** A decision is peeked on the Approvals page by its Needs-you id (`?peek=<id>`). */
+const APPROVAL_KEY = /^[0-9A-Za-z][0-9A-Za-z:_.-]{0,299}$/;
 const KEY_OF_KIND: Record<UiOpenKind, RegExp> = {
 	issue: ISSUE_KEY_PATTERN,
 	requirement: REQUIREMENT_KEY,
@@ -142,7 +153,7 @@ export type UiOpenTarget = z.output<typeof uiOpenParamsSchema>;
 /**
  * The records a page can be about, each the route its own page is read as (REQ-30 BC-6). A mockup
  * opened full screen on its item's page (`?mockup=MK-n`) is what that page is about while it is open
- * (REQ-49 BC-4).
+ * (REQ-49 BC-4), and so is a decision open in the Approvals peek (`?peek=<id>`, REQ-69 BC-2).
  */
 export const UI_PAGE_ITEM_KINDS = [
 	"issue",
@@ -150,6 +161,8 @@ export const UI_PAGE_ITEM_KINDS = [
 	"feedback",
 	"workflow",
 	"mockup",
+	"release",
+	"approval",
 ] as const;
 export type UiPageItemKind = (typeof UI_PAGE_ITEM_KINDS)[number];
 
@@ -209,7 +222,6 @@ const asked = (v: string | null | undefined): string | undefined => {
 export type HighlightResolved =
 	| { ok: true; highlight: UiHighlight; ignored: string[] }
 	| { ok: false; path: "key" | "section" | "step"; message: string };
-
 
 /**
  * The one reading of a highlight's `target`: what the record's kind says it can mark. An issue, a
@@ -411,24 +423,43 @@ const boardReviseParams = z.strictObject({
 	ops: wireframePatchSchema,
 });
 
-/** The Product lists a filter action opens (BC-4), each in the shape `ui.issues.filter` has. */
+/**
+ * The pages besides Issues a filter action opens (BC-4, REQ-69 BC-1), each in the shape
+ * `ui.issues.filter` has: the Product lists, and the pages whose view the URL holds (Approvals by
+ * topic, Agents and Automation by tab, Status by its window).
+ */
 export const UI_PRODUCT_LISTS = [
 	"requirements",
 	"feedback",
 	"workflows",
 	"releases",
+	"approvals",
+	"contracts",
+	"agents",
+	"automation",
+	"status",
 ] as const;
 export type UiProductList = (typeof UI_PRODUCT_LISTS)[number];
-const productFilter = <L extends UiProductList>(list: L, label: string) => ({
-	wire: `ui_${list}_filter` as const,
-	version: UI_ACTION_VERSION,
-	params: uiListFilterParams(list),
-	describe: `Open the ${label} list and set its filter. mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. set lists one {field, value} for each filter the person asked for and nothing else (an object {field: value} of only those fields is read the same): a field you leave out is left as it is, and a field sent empty or null is ignored and said so, so never fill a field to be complete. waitingOn is "you", "agent" or "running".`,
-});
-const requirementsFilter = productFilter("requirements", "Requirements");
-const feedbackFilter = productFilter("feedback", "Feedback");
-const workflowsFilter = productFilter("workflows", "Workflows");
-const releasesFilter = productFilter("releases", "Releases");
+const LIST_LABEL: Record<UiProductList, string> = {
+	requirements: "Requirements list",
+	feedback: "Feedback list",
+	workflows: "Workflows list",
+	releases: "Releases list",
+	approvals: "Approvals page",
+	contracts: "Contracts list",
+	agents: "Agents page",
+	automation: "Automation page",
+	status: "Status report",
+};
+const productFilter = <L extends UiProductList>(list: L) => {
+	const fields = Object.keys(UI_LIST_FILTERS[list].shape);
+	return {
+		wire: `ui_${list}_filter` as const,
+		version: UI_ACTION_VERSION,
+		params: uiListFilterParams(list),
+		describe: `Open the ${LIST_LABEL[list]} and set its filter (fields: ${fields.join(", ")}). mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. set lists one {field, value} for each filter the person asked for and nothing else (an object {field: value} of only those fields is read the same): a field you leave out is left as it is, and a field sent empty or null is ignored and said so, so never fill a field to be complete.${fields.includes("waitingOn") ? ' waitingOn is "you", "agent" or "running".' : ""}`,
+	};
+};
 
 /** The registry: one entry per action, its wire name (OpenAI allows no dots), its version and its params. */
 export const UI_ACTIONS = {
@@ -446,10 +477,15 @@ export const UI_ACTIONS = {
 		describe:
 			'Open the Issues list and set its filter. mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. set lists one {field, value} for each filter the person asked for and nothing else: a field you leave out is left as it is, so never fill a field to be complete. createdBy and assignee take only "me" (the signed-in person). waitingOn is "you", "agent" or "running", and shows the grouped view, which reads whom each issue waits on.',
 	},
-	"ui.requirements.filter": requirementsFilter,
-	"ui.feedback.filter": feedbackFilter,
-	"ui.workflows.filter": workflowsFilter,
-	"ui.releases.filter": releasesFilter,
+	"ui.requirements.filter": productFilter("requirements"),
+	"ui.feedback.filter": productFilter("feedback"),
+	"ui.workflows.filter": productFilter("workflows"),
+	"ui.releases.filter": productFilter("releases"),
+	"ui.approvals.filter": productFilter("approvals"),
+	"ui.contracts.filter": productFilter("contracts"),
+	"ui.agents.filter": productFilter("agents"),
+	"ui.automation.filter": productFilter("automation"),
+	"ui.status.filter": productFilter("status"),
 	"ui.select": {
 		wire: "ui_select",
 		version: UI_ACTION_VERSION,
@@ -497,31 +533,28 @@ export const UI_LIST_FILTER_ACTIONS = {
 	feedback: "ui.feedback.filter",
 	workflows: "ui.workflows.filter",
 	releases: "ui.releases.filter",
+	approvals: "ui.approvals.filter",
+	contracts: "ui.contracts.filter",
+	agents: "ui.agents.filter",
+	automation: "ui.automation.filter",
+	status: "ui.status.filter",
 } as const satisfies Record<UiList, UiActionName>;
+
+/** One list's filter action, as the browser reads it back. */
+type ListFilterUiAction = {
+	[L in UiProductList]: {
+		name: (typeof UI_LIST_FILTER_ACTIONS)[L];
+		v: 1;
+		params: z.infer<
+			(typeof UI_ACTIONS)[(typeof UI_LIST_FILTER_ACTIONS)[L]]["params"]
+		>;
+	};
+}[UiProductList];
 
 export type UiAction =
 	| { name: "ui.navigate"; v: 1; params: z.infer<typeof navigateParams> }
 	| { name: "ui.issues.filter"; v: 1; params: z.infer<typeof filterParams> }
-	| {
-			name: "ui.requirements.filter";
-			v: 1;
-			params: z.infer<typeof requirementsFilter.params>;
-	  }
-	| {
-			name: "ui.feedback.filter";
-			v: 1;
-			params: z.infer<typeof feedbackFilter.params>;
-	  }
-	| {
-			name: "ui.workflows.filter";
-			v: 1;
-			params: z.infer<typeof workflowsFilter.params>;
-	  }
-	| {
-			name: "ui.releases.filter";
-			v: 1;
-			params: z.infer<typeof releasesFilter.params>;
-	  }
+	| ListFilterUiAction
 	| { name: "ui.select"; v: 1; params: z.infer<typeof selectParams> }
 	| { name: "ui.open"; v: 1; params: UiOpenTarget }
 	| { name: "ui.highlight"; v: 1; params: UiHighlight }
@@ -740,6 +773,21 @@ export const uiPageItemSchema = z.discriminatedUnion("kind", [
 	z.strictObject({
 		kind: z.literal("mockup"),
 		key: z.string().regex(/^MK-\d{1,9}$/, "a mockup key such as MK-3"),
+	}),
+	z.strictObject({
+		kind: z.literal("release"),
+		key: z
+			.string()
+			.regex(RELEASE_KEY, "a release version such as 0.4.0-dev.217"),
+	}),
+	z.strictObject({
+		kind: z.literal("approval"),
+		key: z
+			.string()
+			.regex(
+				APPROVAL_KEY,
+				"a decision id as the Approvals page's peek names it",
+			),
 	}),
 ]);
 export type UiPageItem = z.infer<typeof uiPageItemSchema>;

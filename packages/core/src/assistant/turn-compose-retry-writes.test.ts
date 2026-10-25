@@ -50,6 +50,15 @@ vi.mock('../permissions/index.js', () => ({
   projectResource: (projectId: string) => ({ projectId }),
   requireCan: async () => undefined,
 }));
+vi.mock('../project-config/index.js', async (original) => ({
+  ...(await original<typeof import('../project-config/index.js')>()),
+  readContentLanguage: async () => ({
+    contentLanguage: 'en',
+    keepTermsInEnglish: [],
+    source: 'default',
+    revision: null,
+  }),
+}));
 vi.mock('../lib/data-egress.js', () => ({ egressDeep: async () => ({ ok: true, value: null }) }));
 vi.mock('./confab.js', () => ({ correctFalseClaims: (text: string) => ({ text }) }));
 vi.mock('../credentials/turn-credential.js', () => ({ turnAuthorityRefusalOf: () => null }));

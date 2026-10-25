@@ -1,4 +1,5 @@
 
+import { UI_AGENTS_TABS } from "@forge/contracts/ui-list-filters";
 import { PageTitle, Tabs, useUrlTab } from "@/design";
 import { SessionsScreen } from "@/features/sessions";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -8,7 +9,8 @@ import { useStuckRuns } from "../hooks";
 import { QuestionsPane } from "./questions-pane";
 import { type AgentsAccess, RunsList } from "./runs-list";
 
-const AGENTS_TABS = ["runs", "questions", "sessions"] as const;
+// the chat sets the tab through the same list (REQ-69 BC-1)
+const AGENTS_TABS = UI_AGENTS_TABS;
 type AgentsTab = (typeof AGENTS_TABS)[number];
 
 export function AgentsScreen({ access }: { access: AgentsAccess }) {

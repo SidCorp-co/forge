@@ -3,6 +3,7 @@
 // Markdown to send. Flat: one heading per section over hairline lists, each section dated by the
 // moment its own read answered. Every figure is core's; this page only lays it out.
 
+import { UI_STATUS_WINDOWS } from "@forge/contracts/ui-list-filters";
 import type { ProjectStatus, RoadmapItem } from "@forge/contracts/project-status";
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import { Link } from "@/lib/navigation/router";
@@ -24,7 +25,8 @@ import { personHeading, statusMarkdown, waitGroups } from "../report-markdown";
 import { Written } from "@/lib/i18n/written";
 import { NeedsYouPart, StuckPart } from "./status-lead";
 
-export const STATUS_WINDOWS = ["7", "14", "30"] as const;
+// the chat sets the window through the same list (REQ-69 BC-1)
+export const STATUS_WINDOWS = UI_STATUS_WINDOWS;
 type StatusWindow = (typeof STATUS_WINDOWS)[number];
 
 const ROW = "flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-line-subtle py-2 text-13";

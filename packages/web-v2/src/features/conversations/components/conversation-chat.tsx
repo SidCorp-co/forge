@@ -159,7 +159,7 @@ export function ConversationChat({
   const streaming = busy || progress != null;
 
   const { stage, doing } = turnNow(progress, streaming, t);
-  const acts = useActOffers({ messages, progress });
+  const acts = useActOffers({ messages, progress, slug: projectRow?.slug });
   const { cardsFor } = ui;
   const { offersFor } = acts;
   // what follows one message: the UI actions the turn took, then the acts it offers (ISS-47)

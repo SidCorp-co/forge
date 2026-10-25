@@ -61,9 +61,21 @@ describe("who a row waits on, as every list filters it (BC-5)", () => {
 });
 
 describe("each list's filter", () => {
-	it("filters every list by waitingOn", () => {
+	// REQ-41 BC-5: a list whose rows wait on someone filters by whom; the pages REQ-69 BC-1 added are
+	// views (Approvals holds only what waits on you, Status and the tabs of Agents and Automation)
+	it("filters every list of waiting rows by waitingOn, and no view by it", () => {
+		const waiting = [
+			"issues",
+			"requirements",
+			"feedback",
+			"workflows",
+			"releases",
+		];
 		for (const list of UI_LISTS)
-			expect(Object.keys(UI_LIST_FILTERS[list].shape)).toContain("waitingOn");
+			expect(
+				Object.keys(UI_LIST_FILTERS[list].shape).includes("waitingOn"),
+				list,
+			).toBe(waiting.includes(list));
 	});
 
 	it("holds every field in a named URL param", () => {

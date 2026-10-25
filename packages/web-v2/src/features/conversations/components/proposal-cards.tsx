@@ -10,6 +10,7 @@ import type { ChatProposalView } from "@forge/contracts/chat-proposals";
 import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { nextStepOf } from "../act-next-step";
 import { useConversationProposals, useDecideProposal } from "../hooks";
 
 /** Each line with a key of its own: a line written twice is shown twice, as the proposal holds it. */
@@ -49,9 +50,10 @@ export function ProposalCards({
         />
       ))}
       {decide.isError && (
-        <p className="fg-caption text-danger" role="alert">
-          {formatApiError(decide.error)}
-        </p>
+        <div className="fg-caption flex flex-col gap-0.5" role="alert">
+          <p className="text-danger">{formatApiError(decide.error)}</p>
+          <p className="text-muted">{t(`conversations.next.${nextStepOf(decide.error)}`)}</p>
+        </div>
       )}
     </section>
   );

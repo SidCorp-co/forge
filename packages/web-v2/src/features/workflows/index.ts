@@ -5,4 +5,5 @@ export { WorkflowCanvas } from "./canvas/workflow-canvas";
 export { SystemOverviewRegion } from "./components/system-overview";
 export { WorkflowDesignScreen } from "./components/workflow-design-screen";
 export { WorkflowsScreen } from "./components/workflows-screen";
-export { useWorkflowTemplates, useWorkflows } from "./hooks";
+export { workflowsApi } from "./api";
+export { useWorkflowDesign, useWorkflowTemplates, useWorkflows } from "./hooks";

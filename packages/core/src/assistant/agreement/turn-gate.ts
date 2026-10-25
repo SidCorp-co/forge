@@ -16,6 +16,7 @@ import { type ChatToolset, thrownMessage, toolError } from '../tools/mcp-adapter
 import { withinPersistLimits } from '../tools/turn-images.js';
 import { filingTitle, titleKey } from '../turn-writes.js';
 import type { TurnImage } from '../vision.js';
+import { heldLanguageRefusal } from './held-language.js';
 import { refusedTwice, targetOf } from './refused-twice.js';
 import { requireRoleFor } from './roles.js';
 import { type ChatProposalRow, recordProposal, restateProposal } from './store.js';
@@ -110,6 +111,8 @@ export function agreementGate(inner: ChatToolset, turn: GatedTurn): AgreementGat
     if (refused) return refused;
     const unfit = await vetHeld(name, argsJson, turn.projectId);
     if (unfit) return unfit;
+    const unsaid = await heldLanguageRefusal(turn.projectId, kind, name, argsJson);
+    if (unsaid) return unsaid;
     const target = targetOf(kind, argsJson);
     const twiceKey = `${kind}\u0000${target}`;
     const twice =

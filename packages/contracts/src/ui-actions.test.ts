@@ -40,9 +40,14 @@ describe("the registry offers what every page applies (REQ-41)", () => {
 		for (const name of Object.values(UI_LIST_FILTER_ACTIONS)) {
 			const r = parseUiAction(UI_ACTIONS[name].wire, {
 				mode: "merge",
-				set: [{ field: "waitingOn", value: "you" }],
+				set: [{ field: "text", value: "export" }],
 			});
-			expect(r.ok, name).toBe(true);
+			// the Status report is a view with no search: its one field is its window
+			const days = parseUiAction(UI_ACTIONS[name].wire, {
+				mode: "merge",
+				set: [{ field: "days", value: "14" }],
+			});
+			expect(r.ok || (name === "ui.status.filter" && days.ok), name).toBe(true);
 		}
 	});
 

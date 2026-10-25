@@ -34,9 +34,20 @@ describe("the page snapshot names the record its page is about", () => {
     expect(at("/projects/forge/requirements").item).toBeUndefined();
     expect(at("/projects/forge/requirements/not-a-key")).toMatchObject({ route: "other" });
     expect(at("/projects/forge/feedback/REQ-3").item).toBeUndefined();
-    expect(at("/projects/forge/releases/v1").item).toBeUndefined();
+    expect(at("/projects/forge/releases").item).toBeUndefined();
+    expect(at("/projects/forge/approvals").route).toBe("approvals");
     expect(pageItemOf("/requirements/%E0%A4%A")).toBeNull();
     expect(at("/settings").route).toBe("other");
+  });
+
+  // REQ-69 BC-2: a release page and a decision open in the Approvals peek are items the chat knows
+  it("names a release by its version, and the decision the Approvals peek has open", () => {
+    expect(at("/projects/forge/releases/0.4.0-dev.217")).toMatchObject({ route: "release", item: { kind: "release", key: "0.4.0-dev.217" } });
+    const peek = uiSnapshotOf({ pathname: "/projects/forge/approvals", search: "?topic=feedback&peek=fb-triage:FB-12", userId: null, selection: [] });
+    expect(peek).toMatchObject({ route: "approval", item: { kind: "approval", key: "fb-triage:FB-12" } });
+    const shut = uiSnapshotOf({ pathname: "/projects/forge/approvals", search: "?topic=feedback", userId: null, selection: [] });
+    expect(shut).toMatchObject({ route: "approvals", listFilter: { list: "approvals", filter: { topic: "feedback" } } });
+    expect(shut.item).toBeUndefined();
   });
 });
 
@@ -51,6 +62,11 @@ describe("every page action changes only the view (BC-9)", () => {
     "ui.feedback.filter": { mode: "merge", set: [{ field: "phase", value: ["new"] }] },
     "ui.workflows.filter": { mode: "merge", set: [{ field: "text", value: "chat" }] },
     "ui.releases.filter": { mode: "merge", set: [{ field: "waitingOn", value: "running" }] },
+    "ui.approvals.filter": { mode: "merge", set: [{ field: "topic", value: "breakdown" }] },
+    "ui.contracts.filter": { mode: "merge", set: [{ field: "text", value: "orders" }] },
+    "ui.agents.filter": { mode: "replace", set: [{ field: "tab", value: "questions" }] },
+    "ui.automation.filter": { mode: "merge", set: [{ field: "tab", value: "fires" }] },
+    "ui.status.filter": { mode: "merge", set: [{ field: "days", value: "30" }] },
     "ui.select": { keys: [] },
     "ui.open": { key: "REQ-34" },
     "ui.highlight": { target: { key: "REQ-34" } },

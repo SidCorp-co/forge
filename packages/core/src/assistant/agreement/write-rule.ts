@@ -25,6 +25,7 @@ import { CHAT_ACT_TOOL } from '@forge/contracts/chat-acts';
 import { CHAT_DECIDE_TOOL } from '@forge/contracts/chat-decide';
 import type { ChatProposalKind } from '@forge/contracts/chat-proposals';
 import { IDEA_CHANGE_TOOL, IDEA_OFFER_TOOL } from '@forge/contracts/idea-offer';
+import { ITEM_ACT_TOOL } from '@forge/contracts/item-acts';
 import { UI_ACTION_NAMES, UI_ACTIONS } from '@forge/contracts/ui-actions';
 import type { ToolGrantEntry } from '../../lib/tool.js';
 import { HISTORY_TOOL_NAME, QUOTE_CONTEXT_TOOL_NAME } from '../chat-room/context.js';
@@ -113,7 +114,12 @@ export const NOT_A_BUSINESS_WRITE: readonly NotABusinessWrite[] = [
   {
     why: "it moves the person's own screen, or offers them a button they press as themselves; it writes nothing",
     rest: [],
-    tools: [...UI_ACTION_NAMES.map((n) => UI_ACTIONS[n].wire), CHAT_ACT_TOOL, IDEA_OFFER_TOOL],
+    tools: [
+      ...UI_ACTION_NAMES.map((n) => UI_ACTIONS[n].wire),
+      CHAT_ACT_TOOL,
+      ITEM_ACT_TOOL,
+      IDEA_OFFER_TOOL,
+    ],
   },
   {
     why: 'a change the person asked for in this message, sent to their own throwaway idea sketch; it writes no record',

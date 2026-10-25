@@ -9,6 +9,7 @@ const ITEM_SEGMENT: Record<string, UiPageItem["kind"]> = {
   requirements: "requirement",
   feedback: "feedback",
   workflows: "workflow",
+  releases: "release",
 };
 
 /** The record a project path is the page of (`/requirements/REQ-30`), or null: a key its kind does not take names none. */
@@ -23,6 +24,16 @@ export function pageItemOf(rest: string): UiPageItem | null {
     return null;
   }
   const parsed = uiPageItemSchema.safeParse({ kind, key });
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * The record a project page is about: its own path's record, or the decision open in the Approvals
+ * peek (`/approvals?peek=<id>`, REQ-69 BC-2), which is what that page is about while it is open.
+ */
+export function pageItemAt(rest: string, search: string): UiPageItem | null {
+  if (rest !== "/approvals") return pageItemOf(rest);
+  const parsed = uiPageItemSchema.safeParse({ kind: "approval", key: new URLSearchParams(search).get("peek") ?? "" });
   return parsed.success ? parsed.data : null;
 }
 

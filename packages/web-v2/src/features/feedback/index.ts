@@ -7,4 +7,5 @@ export { FeedbackScreen } from "./components/feedback-screen";
 export { ForgeFeedbackButton } from "./components/forge-feedback-dialog";
 export { FeedbackButton } from "./components/report-dialog";
 export { MyForgeFeedback } from "./components/my-forge-feedback";
-export { useFeedbackList } from "./hooks";
+export { feedbackApi } from "./api";
+export { useFeedbackItem, useFeedbackList } from "./hooks";

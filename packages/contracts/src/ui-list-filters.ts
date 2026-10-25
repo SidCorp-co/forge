@@ -1,7 +1,8 @@
 // The filters the chat may set on each list beside it (REQ-41 BC-4, BC-5, BC-7). One shape for every
 // list: a closed set of fields per list, each held in one URL query param, so the page, the chat's
-// action and the orange "set by the assistant" mark all read the same param. Every list filters by
-// whom a row waits on, read from its standing by `waitingFilterOf`, never from the row's prose.
+// action and the orange "set by the assistant" mark all read the same param. Every list whose rows
+// wait on someone filters by whom, read from its standing by `waitingFilterOf`, never from the row's
+// prose; a page that is a view rather than such a list (Status, a tab of Agents) sets only its own.
 
 import { z } from "zod";
 import {
@@ -10,9 +11,11 @@ import {
 	FEEDBACK_SEVERITIES,
 } from "./feedback.js";
 import { ISSUE_STATUSES } from "./issue-machine.js";
+import type { NeedsYouTopic } from "./needs-you-proposal.js";
 import { REGISTRY_ISSUE_PRIORITIES } from "./pipeline-registry.js";
 import { RELEASE_STATES } from "./releases.js";
 import { REQUIREMENT_STATES } from "./requirements.js";
+import { RUN_STANDING_SCOPES } from "./run-standing.js";
 import {
 	needsViewer,
 	type StandingGroup,
@@ -66,6 +69,20 @@ const SINCE_DAYS: Record<UiSince, number> = { "1d": 1, "7d": 7, "30d": 30 };
 export const withinSince = (since: UiSince, at: Date, now: Date): boolean =>
 	now.getTime() - at.getTime() <= SINCE_DAYS[since] * 86_400_000;
 
+/** The topic chips the Approvals page narrows by, each a Needs-you topic (REQ-48 BC-11). */
+export const UI_APPROVAL_TOPICS = [
+	"feedback",
+	"breakdown",
+	"design_update",
+	"mockup",
+] as const satisfies readonly NeedsYouTopic[];
+/** The Agents page's tabs, the first its default. */
+export const UI_AGENTS_TABS = ["runs", "questions", "sessions"] as const;
+/** The Automation page's tabs, the first its default. */
+export const UI_AUTOMATION_TABS = ["schedules", "fires"] as const;
+/** The days the Status report reaches back, the first its default. */
+export const UI_STATUS_WINDOWS = ["7", "14", "30"] as const;
+
 const text = z.string().trim().min(1).max(200);
 const waitingOn = z.enum(UI_WAITING_FILTERS);
 const many = <T extends readonly [string, ...string[]]>(values: T) =>
@@ -103,6 +120,25 @@ export const UI_LIST_FILTERS = {
 		state: many(RELEASE_STATES).optional(),
 		text: text.optional(),
 	}),
+	approvals: z.strictObject({
+		topic: z.enum(UI_APPROVAL_TOPICS).optional(),
+		text: text.optional(),
+	}),
+	contracts: z.strictObject({
+		text: text.optional(),
+	}),
+	agents: z.strictObject({
+		tab: z.enum(UI_AGENTS_TABS).optional(),
+		scope: z.enum(RUN_STANDING_SCOPES).optional(),
+		text: text.optional(),
+	}),
+	automation: z.strictObject({
+		tab: z.enum(UI_AUTOMATION_TABS).optional(),
+		text: text.optional(),
+	}),
+	status: z.strictObject({
+		days: z.enum(UI_STATUS_WINDOWS).optional(),
+	}),
 } as const;
 export type UiList = keyof typeof UI_LIST_FILTERS;
 export const UI_LISTS = Object.keys(UI_LIST_FILTERS) as [UiList, ...UiList[]];
@@ -126,6 +162,10 @@ export const UI_FILTER_PARAMS = {
 	kind: "kind",
 	severity: "severity",
 	since: "since",
+	topic: "topic",
+	tab: "tab",
+	scope: "scope",
+	days: "days",
 	text: "q",
 } as const;
 export type UiFilterField = keyof typeof UI_FILTER_PARAMS;
@@ -140,6 +180,10 @@ const FIELD_HINT: Record<string, string> = {
 	priority: "the priority to show",
 	severity: "the severity to show",
 	since: "how far back to reach",
+	topic: "the Approvals topic to show",
+	tab: "the tab of the page to open",
+	scope: "which runs to show: live, finished or all",
+	days: "how many days the report reaches back: 7, 14 or 30",
 	createdBy: 'only "me"',
 	assignee: 'only "me"',
 };
@@ -269,6 +313,26 @@ export const uiListFilterSnapshotSchema = z.discriminatedUnion("list", [
 		list: z.literal("releases"),
 		filter: UI_LIST_FILTERS.releases,
 	}),
+	z.strictObject({
+		list: z.literal("approvals"),
+		filter: UI_LIST_FILTERS.approvals,
+	}),
+	z.strictObject({
+		list: z.literal("contracts"),
+		filter: UI_LIST_FILTERS.contracts,
+	}),
+	z.strictObject({
+		list: z.literal("agents"),
+		filter: UI_LIST_FILTERS.agents,
+	}),
+	z.strictObject({
+		list: z.literal("automation"),
+		filter: UI_LIST_FILTERS.automation,
+	}),
+	z.strictObject({
+		list: z.literal("status"),
+		filter: UI_LIST_FILTERS.status,
+	}),
 ]);
 export type UiListFilterSnapshot = z.infer<typeof uiListFilterSnapshotSchema>;
 
@@ -289,6 +353,7 @@ export function describeListFilter(filter: Record<string, unknown>): string[] {
 		else if (field === "assignee") parts.push("assigned to me");
 		else if (field === "text") parts.push(`"${String(value)}"`);
 		else if (field === "since") parts.push(`since ${String(value)}`);
+		else if (field === "days") parts.push(`last ${String(value)} days`);
 		else
 			parts.push(
 				`${field} ${Array.isArray(value) ? value.join("/") : String(value)}`,

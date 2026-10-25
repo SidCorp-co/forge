@@ -1,0 +1,1 @@
+**Chat does the Product acts a person can.** It offers a card for each act on a requirement, feedback, design or release, then shows the new state or what next; it opens Approvals, Status, Contracts, Modules and Automation.

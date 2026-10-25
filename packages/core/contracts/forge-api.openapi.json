@@ -4658,6 +4658,42 @@
                               "key"
                             ],
                             "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "release",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "pattern": "^[0-9A-Za-z][0-9A-Za-z:_.-]{0,299}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "approval",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ],
+                            "type": "object"
                           }
                         ]
                       },
@@ -4874,6 +4910,166 @@
                               "filter"
                             ],
                             "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "filter": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "text": {
+                                    "maxLength": 200,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "topic": {
+                                    "enum": [
+                                      "feedback",
+                                      "breakdown",
+                                      "design_update",
+                                      "mockup"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "list": {
+                                "const": "approvals",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "list",
+                              "filter"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "filter": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "text": {
+                                    "maxLength": 200,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "list": {
+                                "const": "contracts",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "list",
+                              "filter"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "filter": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "scope": {
+                                    "enum": [
+                                      "live",
+                                      "finished",
+                                      "all"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "tab": {
+                                    "enum": [
+                                      "runs",
+                                      "questions",
+                                      "sessions"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "maxLength": 200,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "list": {
+                                "const": "agents",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "list",
+                              "filter"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "filter": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "tab": {
+                                    "enum": [
+                                      "schedules",
+                                      "fires"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "maxLength": 200,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "list": {
+                                "const": "automation",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "list",
+                              "filter"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "filter": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "days": {
+                                    "enum": [
+                                      "7",
+                                      "14",
+                                      "30"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "list": {
+                                "const": "status",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "list",
+                              "filter"
+                            ],
+                            "type": "object"
                           }
                         ]
                       },
@@ -4887,18 +5083,23 @@
                           "issues",
                           "requirements",
                           "feedback",
+                          "approvals",
                           "pipeline",
                           "releases",
                           "agents",
                           "workflows",
+                          "modules",
+                          "contracts",
+                          "status",
                           "ecosystem",
-                          "schedules",
-                          "improvements",
+                          "automation",
                           "settings",
                           "issue",
                           "requirement",
                           "workflow",
                           "mockup",
+                          "release",
+                          "approval",
                           "other"
                         ],
                         "type": "string"

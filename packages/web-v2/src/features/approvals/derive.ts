@@ -5,8 +5,10 @@
 
 import type { DecisionAnswer, NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { NEEDS_YOU_TOPICS, NEEDS_YOU_YIELDS, type NeedsYouTopic, type NeedsYouYield } from "@forge/contracts/needs-you-proposal";
+import { UI_APPROVAL_TOPICS } from "@forge/contracts/ui-list-filters";
 
-export const CHIPS = ["all", "feedback", "breakdown", "design_update", "mockup"] as const;
+// the chat narrows by the same topics (REQ-69 BC-1)
+export const CHIPS = ["all", ...UI_APPROVAL_TOPICS] as const;
 export type Chip = (typeof CHIPS)[number];
 
 export interface Narrowing {

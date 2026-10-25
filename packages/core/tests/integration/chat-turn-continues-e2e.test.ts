@@ -236,7 +236,9 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
         tool: { name: 'forge', args: { argv: ['comment', 'ISS-61', '-'], body: '## Rules\n- …' } },
       }),
       async (signal) => {
-        await sleep(900, signal);
+        // the partial is due once the read and the held comment are in: under a whole-suite run those
+        // two rounds took over 400 ms, and a partial cut before the hold named no held write
+        await sleep(2500, signal);
         return {
           // read in neither language (`fallback-replies.ts:confidentLanguageOf`), so the reply-language
           // check passes it as written to a person who asked in Vietnamese, and no record verb in it
@@ -249,7 +251,7 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
       room,
       message: SPEC_ASK,
       tools: trackerTools(t),
-      budget: { partialAfterMs: 400, ceilingMs: 10_000 },
+      budget: { partialAfterMs: 1500, ceilingMs: 10_000 },
     });
     expect(outcome.kind).toBe('delivered');
     const continuation = outcome.kind === 'delivered' ? outcome.continuation?.rest : undefined;

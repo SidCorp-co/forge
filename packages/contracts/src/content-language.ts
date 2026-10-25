@@ -241,6 +241,34 @@ export function contentLanguageScriptWarning(
 	return `${what} is ${words.length} words with no Vietnamese letter (no đ, no vowel or tone mark) in it, but this project's content language is ${contentLanguageName(tag)} (\`${tag}\`); it was stored as sent. Rewrite it in ${contentLanguageName(tag)}.`;
 }
 
+/** The share of a text's words spelled with a Vietnamese letter at which it is not English. */
+const VIETNAMESE_WORD_SHARE = 1 / 3;
+
+/**
+ * Why `text` plainly is not in the project's content language, or null (REQ-69 BC-10): the check a
+ * chat's saved text meets before its card is offered. A text under `SCRIPT_CHECK_MIN_WORDS` words
+ * says too little to tell. `vi`: no Vietnamese letter anywhere in it. `en`: a third or more of its
+ * words spelled with one, so a Vietnamese name in an English sentence passes. No other language is
+ * guessed, and a text that passes is not thereby judged to be in the language.
+ */
+export function contentLanguageMisfit(
+	tag: string,
+	text: string,
+): string | null {
+	const words = text.split(/\s+/).filter((w) => /\p{L}/u.test(w));
+	if (words.length < SCRIPT_CHECK_MIN_WORDS) return null;
+	const name = `${contentLanguageName(tag)} (\`${tag}\`)`;
+	if (tag === "vi")
+		return VIETNAMESE_LETTER.test(text)
+			? null
+			: `it is ${words.length} words with no Vietnamese letter in it, and this project writes in ${name}`;
+	if (tag !== "en") return null;
+	const spelled = words.filter((w) => VIETNAMESE_LETTER.test(w)).length;
+	return spelled / words.length < VIETNAMESE_WORD_SHARE
+		? null
+		: `${spelled} of its ${words.length} words are spelled with Vietnamese letters, and this project writes in ${name}`;
+}
+
 // A release note is read by the people who use the product, so it carries none of the engineer's
 // handles for the change. These are the handles a reader cannot follow; a hit is a warning on the
 // write and a line on the draft, never a refusal (policy input).
@@ -290,8 +318,11 @@ export function releaseNoteAttention(
 ): ReleaseNoteAttention {
 	return {
 		notInLanguage:
-			contentLanguageScriptWarning(tag, userFacing, "releaseNotes.userFacing") !==
-			null,
+			contentLanguageScriptWarning(
+				tag,
+				userFacing,
+				"releaseNotes.userFacing",
+			) !== null,
 		references: releaseNoteReferences(userFacing),
 	};
 }
