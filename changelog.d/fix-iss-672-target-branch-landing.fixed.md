@@ -1,0 +1,1 @@
+**On a merge-request project, only the project's target branch on the host counts as landed.** A mark naming another branch, or a request merged elsewhere, is refused by name, and a branch landing is stamped when the host was read.

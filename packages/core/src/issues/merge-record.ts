@@ -447,9 +447,11 @@ export async function recordMergeTarget(
     .where(and(eq(issues.id, issueId), isNotNull(issues.mergedAt), isNull(issues.mergedTarget)));
 }
 
+/** The earliest merge the host reports of a change request linking the issue, into `base` where named. */
 export async function observedMergeForIssue(
   executor: MergeRecordExecutor,
   issueId: string,
+  base?: string,
 ): Promise<{ commitSha: string; mergedAt: Date } | null> {
   const [row] = await executor
     .select({ sha: repoPullRequests.mergeCommitSha, at: repoPullRequests.mergedAt })
@@ -461,6 +463,7 @@ export async function observedMergeForIssue(
         eq(repoPullRequests.state, 'merged'),
         isNotNull(repoPullRequests.mergeCommitSha),
         isNotNull(repoPullRequests.mergedAt),
+        base === undefined ? undefined : eq(repoPullRequests.baseRef, base),
       ),
     )
     .orderBy(asc(repoPullRequests.mergedAt))

@@ -12,25 +12,32 @@ export const releasesThroughChangeRequestsSql = (i: SQL): SQL => sql`EXISTS (
    WHERE cfg.project_id = ${i}.project_id
      AND (cfg.document -> 'release' ->> 'changeRequests') = 'true')`;
 
+/** The branch the issue row `i`'s project lands work on: its document's `source.git.defaultBranch`. */
+const targetBranchSql = (i: SQL): SQL => sql`(
+  SELECT tc.document -> 'source' -> 'git' ->> 'defaultBranch' FROM project_config_documents tc
+   WHERE tc.project_id = ${i}.project_id)`;
+
 /**
  * The host's record that the issue row `i` landed: the merge commit the host-merge stamp or the
  * merge route wrote (`host-merge.ts:stampHostMerge`, `merged_commit_sha`), or a linked change
- * request the host reports merged no earlier than the issue's stamp. A request merged before the
- * stamp is an earlier delivery that a reopen superseded, not this one.
+ * request the host reports merged into the project's target branch no earlier than the issue's
+ * stamp. A request merged before the stamp is an earlier delivery that a reopen superseded, and one
+ * merged into any other branch landed nothing (ISS-672).
  */
 const hostLandedSql = (i: SQL): SQL => sql`(${i}.merged_commit_sha IS NOT NULL OR EXISTS (
   SELECT 1 FROM repo_pull_request_issues hl
     JOIN repo_pull_requests hp ON hp.id = hl.pull_request_id
-   WHERE hl.issue_id = ${i}.id AND hp.state = 'merged'
+   WHERE hl.issue_id = ${i}.id AND hp.state = 'merged' AND hp.base_ref = ${targetBranchSql(i)}
      AND hp.merged_at IS NOT NULL AND hp.merged_at >= ${i}.merged_at))`;
 
 /**
- * The host's merge `commit` names on this project: a change request the host reports merged with
- * that merge commit, whatever issue it links. Null where no merged request carries it.
+ * The host's merge `commit` names on this project: a change request the host reports merged into
+ * `target` with that merge commit, whatever issue it links. Null where no such request carries it.
  */
 export async function hostMergeNamed(
   projectId: string,
   commit: string | undefined,
+  target: string,
 ): Promise<{ commitSha: string; mergedAt: Date } | null> {
   const sha = commit?.trim().toLowerCase();
   if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return null;
@@ -41,6 +48,7 @@ export async function hostMergeNamed(
       and(
         eq(repoPullRequests.projectId, projectId),
         eq(repoPullRequests.state, 'merged'),
+        eq(repoPullRequests.baseRef, target),
         sql`lower(${repoPullRequests.mergeCommitSha}) = ${sha}`,
       ),
     )

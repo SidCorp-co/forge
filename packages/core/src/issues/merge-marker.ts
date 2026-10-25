@@ -200,7 +200,8 @@ async function stampMark(
 ): Promise<Stamp> {
   const { shape, fromRepository } = preflight;
   const issueId = args.issue.id;
-  const observed = (await observedMergeForIssue(tx, issueId)) ?? hostMerge;
+  // a change-request project's host merge was read on its target branch, so it outranks any other
+  const observed = hostMerge ?? (await observedMergeForIssue(tx, issueId));
   const landing = args.landing ?? null;
   const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
   if (refused) throw refuse(refused.code, refused.detail, '/landing');
