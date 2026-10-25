@@ -721,21 +721,41 @@ fn counted_activity(
     pane: &str,
     seen: Option<agent_activity::Activity>,
     ledger: Option<&Ledger>,
-    proc_root: &std::path::Path,
+    table: master_children::Table<'_>,
 ) -> Option<agent_activity::Activity> {
     let mut seen = seen?;
     if seen.doing() != agent_activity::Doing::AwaitingChildren {
         masters.absent_for(project_id, &[]);
         masters.lost_news(project_id, &[]);
+        masters.held_news(project_id, &[]);
         return Some(seen);
     }
-    let children = master_children::read_children(&seen, ledger, proc_root);
+    let children = master_children::read_children(&seen, ledger, table);
     let read: Vec<(String, Option<bool>)> = children
         .iter()
         .map(|c| (c.agent_id.clone(), c.absent()))
         .collect();
     let absent = masters.absent_for(project_id, &read);
     let now = agent_activity::now_ms();
+    let held: Vec<_> = children
+        .iter()
+        .filter_map(|c| master_children::held_by(c, now).map(|(why, silent)| (c, why, silent)))
+        .collect();
+    let news = masters.held_news(
+        project_id,
+        &held
+            .iter()
+            .map(|(c, why, _)| (c.agent_id.clone(), why.to_string()))
+            .collect::<Vec<_>>(),
+    );
+    for (child, why, silent) in &held {
+        if news.contains(&child.agent_id) {
+            tracing::warn!(
+                "{}",
+                master_children::held_line(slug, pane, child, why, *silent)
+            );
+        }
+    }
     let lost: Vec<_> = children
         .iter()
         .filter_map(|child| {
@@ -1127,6 +1147,13 @@ impl Masters {
     fn lost_news(&self, project_id: &str, lost: &[String]) -> Vec<String> {
         let mut reg = self.0.lock().expect("masters poisoned");
         reg.ask.lost_news(project_id, lost)
+    }
+
+    /// Which of the children held counting by an unread worktree have not been
+    /// said to for their present reason.
+    fn held_news(&self, project_id: &str, held: &[(String, String)]) -> Vec<String> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.ask.held_news(project_id, held)
     }
 
     /// The admissible set this sweep read, or `None` where the read failed.
@@ -1573,6 +1600,7 @@ async fn sweep(
         ..
     } = *shared;
     masters.new_sweep();
+    let anchors = master_children::Anchors::read().await;
     let now_unix = master_limit::now_unix();
     let mut account_said: Vec<master_limit::Decisive> = Vec::new();
     let mut deaf_found: Vec<Deaf> = Vec::new();
@@ -1723,7 +1751,10 @@ async fn sweep(
                 .as_ref()
                 .and_then(|(session_id, _)| activity.get(session_id)),
             ledger.as_ref(),
-            proc_root,
+            master_children::Table {
+                proc_root,
+                anchors: &anchors,
+            },
         );
         let working = counted.as_ref().is_some_and(|a| {
             matches!(
@@ -2019,7 +2050,10 @@ async fn sweep(
                 .get(&runner.project_id)
                 .and_then(|(session_id, _)| activity.get(&session_id)),
             ledger.as_ref(),
-            proc_root,
+            master_children::Table {
+                proc_root,
+                anchors: &anchors,
+            },
         );
         let held = held_by_limit(
             last_said.as_ref(),
@@ -8792,6 +8826,82 @@ mod give_back_tests {
         acts.get("s1").unwrap()
     }
 
+    /// Anchors no planted pid descends from.
+    fn test_anchors() -> master_children::Anchors {
+        master_children::Anchors {
+            server: Ok(u32::MAX - 1),
+            daemon: u32::MAX,
+        }
+    }
+
+    /// Criterion 30: a run kept counting only because its worktree could not
+    /// be read, its transcript silent past the floor, is said once per reason
+    /// at WARN, naming why; one whose transcript is inside the floor is not.
+    #[test]
+    fn a_run_held_by_an_unread_worktree_is_said_once_per_reason() {
+        let scratch = crate::test_scratch::Scratch::new("iss1306-held-child");
+        let mut led = Ledger::open(&scratch.path().join("ledger.sqlite")).unwrap();
+        let tree = scratch.path().join("w").join("iss-1");
+        std::fs::create_dir_all(&tree).unwrap();
+        led.create_run_group(crate::runner::ledger::NewRun {
+            run_id: "run-1".into(),
+            project_id: "p".into(),
+            master_session_id: "s1".into(),
+            worktree_path: tree,
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        assert!(led.bind_agent("run-1", "a1").unwrap());
+        let proc_root = scratch.path().join("proc");
+        std::fs::write(&proc_root, "not a directory").unwrap();
+        let masters = Masters::new();
+        let sweep = |seen: &agent_activity::Activity| {
+            counted_activity(
+                &masters,
+                "p",
+                "proj",
+                "forge-master-proj",
+                Some(seen.clone()),
+                Some(&led),
+                master_children::Table {
+                    proc_root: &proc_root,
+                    anchors: &test_anchors(),
+                },
+            )
+        };
+        let fresh = over_a_child(
+            scratch.path(),
+            master_ask::ASK_FLOOR - Duration::from_secs(60),
+        );
+        let quiet = crate::log_capture::logged_while(|| {
+            sweep(&fresh);
+        });
+        assert!(!quiet.contains("still counting"), "{quiet}");
+        let silent = over_a_child(
+            scratch.path(),
+            master_ask::ASK_FLOOR + Duration::from_secs(60),
+        );
+        let said = crate::log_capture::logged_while(|| {
+            sweep(&silent);
+            sweep(&silent);
+        });
+        assert_eq!(
+            said.matches("still counting run run-1 (subagent a1)")
+                .count(),
+            1,
+            "{said}"
+        );
+        assert!(said.contains("WARN"), "{said}");
+        assert!(said.contains("could not be listed"), "{said}");
+        std::fs::remove_file(&proc_root).unwrap();
+        std::fs::create_dir_all(&proc_root).unwrap();
+        let cleared = crate::log_capture::logged_while(|| {
+            sweep(&silent);
+        });
+        assert!(!cleared.contains("still counting"), "{cleared}");
+    }
+
     /// Seed the absence clock as though every sweep for `for_` had read `a1`
     /// absent.
     fn absent_since(masters: &Masters, for_: Duration) {
@@ -8830,7 +8940,10 @@ mod give_back_tests {
                 "forge-master-proj",
                 Some(seen.clone()),
                 Some(&led),
-                &proc_root,
+                master_children::Table {
+                    proc_root: &proc_root,
+                    anchors: &test_anchors(),
+                },
             )
             .unwrap();
             assert_eq!(counted.doing(), agent_activity::Doing::Idle);
@@ -8843,7 +8956,10 @@ mod give_back_tests {
                 "forge-master-proj",
                 Some(seen.clone()),
                 Some(&led),
-                &proc_root,
+                master_children::Table {
+                    proc_root: &proc_root,
+                    anchors: &test_anchors(),
+                },
             );
         });
         assert_eq!(
@@ -8873,7 +8989,10 @@ mod give_back_tests {
             "forge-master-proj",
             Some(seen),
             Some(&led),
-            &proc_root,
+            master_children::Table {
+                proc_root: &proc_root,
+                anchors: &test_anchors(),
+            },
         )
         .unwrap();
         assert!(!counted.children.contains("a1"), "a1 is lost");
@@ -8899,7 +9018,10 @@ mod give_back_tests {
             "forge-master-proj",
             Some(seen),
             Some(&led),
-            &proc_root,
+            master_children::Table {
+                proc_root: &proc_root,
+                anchors: &test_anchors(),
+            },
         )
         .unwrap();
         assert_eq!(counted.doing(), agent_activity::Doing::AwaitingChildren);
@@ -8940,7 +9062,10 @@ mod give_back_tests {
             "forge-master-proj",
             Some(seen),
             Some(&led),
-            &proc_root,
+            master_children::Table {
+                proc_root: &proc_root,
+                anchors: &test_anchors(),
+            },
         )
         .unwrap();
         assert_eq!(counted.doing(), agent_activity::Doing::AwaitingChildren);
@@ -8978,7 +9103,10 @@ mod give_back_tests {
             "forge-master-proj",
             Some(seen),
             Some(&led),
-            &proc_root,
+            master_children::Table {
+                proc_root: &proc_root,
+                anchors: &test_anchors(),
+            },
         )
         .unwrap();
         assert_eq!(counted.doing(), agent_activity::Doing::AwaitingChildren);

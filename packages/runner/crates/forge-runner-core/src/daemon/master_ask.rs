@@ -56,6 +56,9 @@ pub(crate) struct AskClocks {
     absent: HashMap<String, HashMap<String, Absence>>,
     /// Per project, the children already said to have stopped counting.
     lost_said: HashMap<String, BTreeSet<String>>,
+    /// Per project, per child, the last reason said for why it still counts
+    /// only because its worktree could not be read.
+    held_said: HashMap<String, HashMap<String, String>>,
     /// Which sweep this is, so a child's absence runs unbroken only across
     /// sweeps that each read it.
     sweep: u64,
@@ -180,6 +183,24 @@ impl AskClocks {
         let now: BTreeSet<String> = lost.iter().cloned().collect();
         if !now.is_empty() {
             self.lost_said.insert(project_id.to_string(), now);
+        }
+        news
+    }
+
+    /// The children of this project's master held counting by something this
+    /// box could not read, whose reason has not been said: each is said once
+    /// per reason, again when the reason changes, and again if it leaves the
+    /// list and comes back.
+    pub(crate) fn held_news(&mut self, project_id: &str, held: &[(String, String)]) -> Vec<String> {
+        let said = self.held_said.remove(project_id).unwrap_or_default();
+        let news = held
+            .iter()
+            .filter(|(id, why)| said.get(id) != Some(why))
+            .map(|(id, _)| id.clone())
+            .collect();
+        let now: HashMap<String, String> = held.iter().cloned().collect();
+        if !now.is_empty() {
+            self.held_said.insert(project_id.to_string(), now);
         }
         news
     }
@@ -614,6 +635,27 @@ mod tests {
         assert!(c.lost_news("p", &one).is_empty());
         assert!(c.lost_news("p", &[]).is_empty());
         assert_eq!(c.lost_news("p", &one), one, "lost again is news again");
+    }
+
+    /// Criterion 30: once per child per reason.
+    #[test]
+    fn a_held_child_is_said_once_per_reason() {
+        let mut c = AskClocks::default();
+        let held = |why: &str| vec![("a1".to_string(), why.to_string())];
+        let a1 = vec!["a1".to_string()];
+        assert_eq!(c.held_news("p", &held("pid 7 (ssh)")), a1);
+        assert!(c.held_news("p", &held("pid 7 (ssh)")).is_empty());
+        assert_eq!(
+            c.held_news("p", &held("pid 9 (sudo)")),
+            a1,
+            "a new reason is news"
+        );
+        assert!(c.held_news("p", &[]).is_empty());
+        assert_eq!(
+            c.held_news("p", &held("pid 9 (sudo)")),
+            a1,
+            "held again is news again"
+        );
     }
 
     #[test]

@@ -3243,6 +3243,7 @@
 - **`forge-runner master status` gives an attach command that reaches the pane.** It left out the socket master panes run on, so it reached a server holding no master. (ISS-1306)
 - **A master whose run's end never reached the box is asked again.** A run with no process of its own in its worktree and no transcript write for 30 minutes stops counting as busy; the journal names it once. (ISS-1306)
 - **A failed update check shows in the runner's journal**, once per reason, saying where Forge was sought and why. A manifest answered with an error names the full address it was requested at, path included, and its status. (ISS-1306)
+- **An open ssh login no longer keeps a master's lost run busy.** A hidden process from outside the master panes' server and the runner is not the run's; the journal names a hidden one that might be. (ISS-1306)
 - **The runner's journal says Forge answered when its live connection got an answer that was not an upgrade.** It said no connection could be made while the address was answering. (ISS-1306)
 - **A reply the reply check withdrew still says so after a reload**, and to anyone who opens the room later, with the withdrawn text under its technical details. (ISS-1229)
 - **A viewer who tries to rename, archive, delete or post in a room is told they hold the viewer role**, and that a viewer cannot change a room or post in it. (ISS-1229)

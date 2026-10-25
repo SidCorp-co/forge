@@ -823,6 +823,57 @@ fn parent_of(proc_root: &Path, pid: u32) -> Option<u32> {
         .and_then(|v| v.trim().parse::<u32>().ok())
 }
 
+/// Where a process's parent chain led, read up from the process itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Lineage {
+    /// It met this pid of the set it was read against.
+    Reaches(u32),
+    /// It ran out at pid 1 or 0 without meeting one.
+    Outside,
+    /// A link on the way could not be read, and why.
+    Untraced(String),
+}
+
+/// The longest chain [`lineage`] walks before calling it untraced.
+const LINEAGE_STEPS: usize = 4096;
+
+/// Walk `pid`'s parent chain under `proc_root` until it meets one of
+/// `anchors`. `/proc/<pid>/status` names the parent of every process, another
+/// user's and a non-dumpable one's alike, so a link that cannot be read is a
+/// process that went mid-walk, and that chain is not read as leading anywhere.
+pub fn lineage(proc_root: &Path, pid: u32, anchors: &[u32]) -> Lineage {
+    let mut at = pid;
+    for _ in 0..LINEAGE_STEPS {
+        if anchors.contains(&at) {
+            return Lineage::Reaches(at);
+        }
+        if at <= 1 {
+            return Lineage::Outside;
+        }
+        let Some(parent) = parent_of(proc_root, at) else {
+            return Lineage::Untraced(format!(
+                "the parent of pid {at} could not be read off {}",
+                proc_root.join(at.to_string()).join("status").display()
+            ));
+        };
+        at = parent;
+    }
+    Lineage::Untraced(format!(
+        "the parent chain of pid {pid} did not end within {LINEAGE_STEPS} steps"
+    ))
+}
+
+/// The command name the kernel keeps for `pid` (`Name:` of its `status`),
+/// readable whoever owns the process.
+pub fn command_name(proc_root: &Path, pid: u32) -> Option<String> {
+    let status = std::fs::read_to_string(proc_root.join(pid.to_string()).join("status")).ok()?;
+    status
+        .lines()
+        .find_map(|l| l.strip_prefix("Name:"))
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
 /// What the walk up from a resident found above it.
 #[derive(Debug, PartialEq, Eq)]
 enum Above {
