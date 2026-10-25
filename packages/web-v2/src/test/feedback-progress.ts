@@ -23,7 +23,7 @@ export const work = (over: Partial<FeedbackWork> = {}): FeedbackWork => ({
   ...over,
 });
 
-const none = (reason: Extract<FeedbackEstimate, { kind: "none" }>["reason"], over: Partial<Extract<FeedbackEstimate, { kind: "none" }>> = {}): FeedbackEstimate => ({
+export const none = (reason: Extract<FeedbackEstimate, { kind: "none" }>["reason"], over: Partial<Extract<FeedbackEstimate, { kind: "none" }>> = {}): FeedbackEstimate => ({
   kind: "none",
   reason,
   waits: null,

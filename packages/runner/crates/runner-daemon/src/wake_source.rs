@@ -24,7 +24,8 @@ pub enum WakeSource {
     /// A requirement was agreed, or re-agreed at a new head, and the master owes its breakdown; or
     /// an agent-written revision was returned, and the master owes its revise.
     Requirement,
-    /// Feedback was filed, at whatever severity.
+    /// Feedback was filed, at whatever severity; or a release shipped an item an agent of the
+    /// project reported, which owes that agent's confirm (`owes: confirm`).
     Feedback,
     /// The project's steward asks the master to act on an item: nobody serves it, or its act is
     /// overdue (REQ-48 BC-5). Core keeps the ask among the owed work until the item's standing moves.

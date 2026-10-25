@@ -73,6 +73,7 @@
     "feedback.fact.recordHeld": "Waiting on a triager: {why}",
     "feedback.fact.reporter": "Reporter",
     "feedback.fact.reporterTold": "Reporter told",
+    "feedback.fact.askedToConfirm": "Asked to confirm",
     "feedback.fact.seenAt": "Seen at {where}",
     "feedback.fact.step": "Step: {step}",
     "feedback.fact.link": "Link: {from} to {to}",

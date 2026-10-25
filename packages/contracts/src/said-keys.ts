@@ -52,18 +52,18 @@ export const SAID = {
 	},
 	"feedback.told.relayedUnnamed": { en: "a member told them outside Forge" },
 	"feedback.told.agentAsked": {
-		en: "the agent is asked on its own read of the item",
+		en: "asked to confirm the fix",
 	},
 	"feedback.evidence.passes": {
 		en: "{ref} passes on the running build.",
 		vars: { ref: "key" },
 	},
-	"feedback.evidence.reads": {
-		en: "{ref} reads {verdict} on the running build.",
-		vars: { ref: "key", verdict: "code" },
+	"feedback.evidence.notYet": {
+		en: "{ref} does not pass on the running build yet.",
+		vars: { ref: "key" },
 	},
 	"feedback.evidence.noCriterion": {
-		en: "Its triage named no criterion, so no verdict shows the fix.",
+		en: "This item names no criterion, so there is no check to show.",
 	},
 	"feedback.act.tellNow": { en: "Tell the reporter now" },
 	"feedback.notice.noDedup": {
@@ -1216,7 +1216,7 @@ export const SAID = {
 		en: "resolved: it names no criterion, so only a person can verify it",
 	},
 	"feedback.rule.agentConfirms": {
-		en: "resolved: the agent reporter confirms or reopens with evidence",
+		en: "resolved: the reporter checks the fix, then confirms or reopens it",
 	},
 	"feedback.rule.verifyHeld": {
 		en: "resolved: past its window, a triager answers: {why}",

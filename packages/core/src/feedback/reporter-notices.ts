@@ -54,10 +54,7 @@ function evidenceLines(language: NoticeLanguage, e: FeedbackShipEvidence | null)
   const verdict =
     e.verdict === 'passing'
       ? noticeCopy(language, 'shipped.evidencePasses', { ref: e.criterion })
-      : noticeCopy(language, 'shipped.evidenceReads', {
-          ref: e.criterion,
-          verdict: e.verdict ?? 'not_judged',
-        });
+      : noticeCopy(language, 'shipped.evidenceNotYet', { ref: e.criterion });
   return e.clip
     ? [verdict, noticeCopy(language, 'shipped.clip', { name: e.clip.name })]
     : [verdict];

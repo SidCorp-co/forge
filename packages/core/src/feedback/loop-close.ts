@@ -96,7 +96,7 @@ export async function shipEvidenceOf(row: {
     ? say('feedback.evidence.noCriterion')
     : c.verdict === 'passing'
       ? say('feedback.evidence.passes', { ref: c.ref })
-      : say('feedback.evidence.reads', { ref: c.ref, verdict: c.verdict ?? 'not_judged' });
+      : say('feedback.evidence.notYet', { ref: c.ref });
   return {
     criterion: c?.ref ?? null,
     verdict: c?.verdict ?? null,

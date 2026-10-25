@@ -63,6 +63,7 @@ const none = {
   revisions: [],
   breakdowns: [],
   triages: [],
+  confirms: [] as Parameters<typeof owedLine>[0]['confirms'],
   comments: [],
   documents: [],
   builderRuns: [],
@@ -86,6 +87,10 @@ const OWED_KINDS = {
   revisions: { item: { key: 'REQ-2', revision: 2 }, guide: 'requirement-lifecycle' },
   breakdowns: { item: { key: 'REQ-3', overdue: true }, guide: 'suggestions' },
   triages: { item: { key: 'FB-2' }, guide: 'feedback-triage' },
+  confirms: {
+    item: { key: 'FB-3', feedbackId: 'f3', reporter: 'catalog-fe', itemProjectId: 'h', home: true },
+    guide: 'feedback-triage',
+  },
   comments: { item: { issueKey: 'ISS-7', commentId: 'c1' }, guide: 'ecosystem-inbox' },
   documents: { item: { id: 'd1', number: '12' }, guide: 'ecosystem-inbox' },
   builderRuns: { item: { id: 'b1', ecosystem: 'e' }, guide: 'ecosystem-inbox' },

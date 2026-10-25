@@ -69,7 +69,7 @@ describe("feedback follows its work to the release", () => {
   });
 
   // REQ-66 BC-8: an agent reporter hears through its own read of the item, and the evidence is shown
-  it("reads an agent reporter as asked on its own read, and shows the verdict and clip it confirms from", () => {
+  it("reads an agent reporter as asked to confirm, with when, and shows the verdict and clip it confirms from", () => {
     const told = say("feedback.told.agentAsked");
     const f = view({
       shipNotice: { state: "told", how: "asked", at: at(-5), release: "0.1.0", by: null, shipped: { at: at(-5), release: "0.1.0" }, told: sentence(told), says: { told } },
@@ -83,7 +83,10 @@ describe("feedback follows its work to the release", () => {
       },
     });
     renderWithQuery(<LinkedFeedback f={f} slug="hop" />);
-    expect(screen.getByTestId("ship-notice-how").textContent).toContain("asked on its own read of the item");
+    const row = screen.getByTestId("facts-ship-notice");
+    expect(row.textContent).toContain("Asked to confirm");
+    expect(row.textContent).toMatch(/Asked to confirm\d+\w+ ago$/);
+    expect(row.textContent, "no plumbing on a person's page").not.toMatch(/own read|reporter told/i);
     expect(screen.getByTestId("ship-evidence").textContent).toContain("REQ-3 BC-2 passes on the running build.");
     expect(screen.getByTestId("ship-evidence-clip")).toHaveAttribute("href", "/api/attachments/a1/download");
   });

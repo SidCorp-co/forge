@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { FeedbackPage } from "@/features/feedback/components/feedback-detail";
 import type { FeedbackView } from "@/features/feedback/types";
+import { none, progress, work } from "@/test/feedback-progress";
 import { RULE, say, sentence, waitingOn } from "@/test/said";
 import "./entry";
 import { InRouter } from "./router";
@@ -92,7 +93,23 @@ const shipped = {
   clarification: null,
 } as unknown as FeedbackView;
 
-window.fetch = () => new Promise<Response>(() => {});
+// every read the page makes is answered, so no section stands on a loading placeholder in the shots
+const PROGRESS = {
+  "FB-61": progress("FB-61", work(), none("untriaged")),
+  "FB-62": progress("FB-62", work({ state: "shipped", total: 1, issues: [{ key: "ISS-654", title: "Free leases are claimable", status: "closed" }] }), {
+    kind: "shipped",
+    version: "0.4.0-dev.309",
+    at: AT,
+  }),
+} as const;
+const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+window.fetch = async (input: RequestInfo | URL) => {
+  const path = new URL(String(input), "http://forge.test").pathname;
+  const fb = /\/forecast\/feedback\/(FB-\d+)$/.exec(path)?.[1];
+  if (fb && fb in PROGRESS) return json(PROGRESS[fb as keyof typeof PROGRESS]);
+  if (/\/feedback\/FB-\d+\/similar$/.test(path)) return json({ status: "ok", hits: [{ key: "FB-40", title: "Claim refuses a lease after a restart", phase: "resolved", similarity: 0.71 }] });
+  return new Promise<Response>(() => {});
+};
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const root = createRoot(document.getElementById("root") as HTMLElement);
 function show(item: FeedbackView) {
@@ -119,21 +136,29 @@ const openFacts = async () => {
   if (toggle && toggle.getAttribute("aria-expanded") !== "true") toggle.click();
   await settle();
 };
+/** A loading placeholder left standing is a section the shot does not show. */
+const placeholders = () =>
+  [...document.querySelectorAll<HTMLElement>("[data-testid=feedback-progress], [data-testid=feedback-similar]")]
+    .filter((s) => s.querySelector(".skeleton") || /checking for similar/i.test(s.textContent ?? ""))
+    .map((s) => `${s.dataset.testid} is still loading`);
 const sideways = () =>
   document.documentElement.scrollWidth > window.innerWidth ? [`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`] : [];
 
 function recommended(): string[] {
-  const wrong = sideways();
+  const wrong = [...sideways(), ...placeholders()];
   const line = q("[data-testid=feedback-clarification-recommended]");
   if (!line?.textContent?.includes("Recommended: Chrome 130 on macOS")) wrong.push(`the open question reads its recommendation as "${line?.textContent ?? "nothing"}"`);
   if (line && line.scrollWidth > line.clientWidth + 0.5) wrong.push("the recommendation is cut");
+  const badge = q("[data-testid=feedback-clarification] > *");
+  const box = q("[data-testid=feedback-clarification]");
+  if (badge && box && badge.getBoundingClientRect().width >= box.getBoundingClientRect().width - 1) wrong.push("the question's status badge stretches across the row");
   return wrong;
 }
 
 function confirmFrom(): string[] {
-  const wrong = sideways();
-  const how = q("[data-testid=ship-notice-how]")?.textContent ?? "";
-  if (!how.includes("asked on its own read of the item")) wrong.push(`the reporter-told row reads "${how}"`);
+  const wrong = [...sideways(), ...placeholders()];
+  const asked = q("[data-testid=facts-ship-notice]")?.textContent ?? "";
+  if (!/^Asked to confirm\d+\w+ ago$/.test(asked)) wrong.push(`the asked row reads "${asked}"`);
   const ev = q("[data-testid=ship-evidence]")?.textContent ?? "";
   if (!ev.includes("REQ-3 BC-2 passes on the running build.")) wrong.push(`the evidence reads "${ev}"`);
   const clip = q("[data-testid=ship-evidence-clip]");

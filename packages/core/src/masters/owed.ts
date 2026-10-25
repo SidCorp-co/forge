@@ -10,7 +10,12 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
-import { mastersPorts, type ReleaseMergeOwed, type StewardAsk } from './ports.js';
+import {
+  type AgentConfirmOwed,
+  mastersPorts,
+  type ReleaseMergeOwed,
+  type StewardAsk,
+} from './ports.js';
 
 /** The edge kind that gates dispatch, the one whose blocker's state changes what a master can take. */
 const GATING_KIND = 'blocks';
@@ -26,6 +31,8 @@ interface Owed {
   revisions: { key: string; revision: number }[];
   breakdowns: { key: string; overdue: boolean }[];
   triages: { key: string }[];
+  /** Shipped feedback items an agent of this project reported, each owing that agent's confirm (REQ-66 BC-8). */
+  confirms: AgentConfirmOwed[];
   comments: { issueKey: string; commentId: string }[];
   documents: { id: string; number: string | null }[];
   builderRuns: { id: string; ecosystem: string }[];
@@ -116,6 +123,19 @@ function stewardAsksLine(asks: Owed['stewardAsks']): string {
   return ` The project's steward asks you to act on ${asks.length} item${plural(asks.length, '', 's')} (${asks.map((a) => a.ask).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on that item, at its own door: ${kinds.join('; ')} (other text there is a condition, held until the standing moves); the ask stands until the item's standing moves or such a decision answers it.`;
 }
 
+/** The door an item's reporter confirms it through: the Forge door for an item about Forge, else its own project's. */
+const confirmDoor = (c: AgentConfirmOwed) =>
+  c.home
+    ? `forge-runner api forge/feedback/${c.key}/verify -X POST`
+    : `forge-runner api projects/${c.itemProjectId}/feedback/${c.key}/verify -X POST`;
+
+/** REQ-66 BC-8: an agent reporter has no bell, so the master that acts for it is asked to confirm. */
+function confirmsLine(confirms: Owed['confirms']): string {
+  if (confirms.length === 0) return '';
+  const items = confirms.map((c) => `${c.key} from ${c.reporter}, \`${confirmDoor(c)}\``);
+  return ` ${confirms.length} shipped feedback item${plural(confirms.length, ' an agent of this project reported owes its', 's agents of this project reported owe their')} confirm (${items.join('; ')}): each one's fix shipped and the item waits on the agent that reported it. Check on the running build what each reported, then confirm it as that account with what you ran and saw (\`-d '{"evidence":"<what you ran and saw>"}'\` on the Forge door, \`{"note":…}\` on a project's), or reopen it the same way with \`/reopen\` (\`reason\` on a project's door) where it is not fixed; ${method('feedback-triage')} (verify and reopen) is how.`;
+}
+
 function answersLine(answers: Owed['answers']): string {
   if (answers.length === 0) return '';
   const keys = answers.map(
@@ -137,7 +157,8 @@ export function owedLine(owed: Owed): string {
     returnedLine(owed) +
     answersLine(owed.answers) +
     stewardAsksLine(owed.stewardAsks) +
-    landedWorkLine(owed.landedWork);
+    landedWorkLine(owed.landedWork) +
+    confirmsLine(owed.confirms);
   const {
     breakdowns,
     triages,
@@ -222,6 +243,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.revisions.map((r) => `revision:${r.key}#r${r.revision}`),
     ...owed.breakdowns.map((b) => `breakdown:${b.key}`),
     ...owed.triages.map((t) => `triage:${t.key}`),
+    ...owed.confirms.map((c) => `confirm:${c.feedbackId}`),
     ...owed.comments.map((c) => `comment:${c.commentId}`),
     ...owed.answers.map((a) => `answer:${a.questionId}|${a.outcome?.kind ?? ''}`),
     ...owed.stewardAsks.map((a) => `steward-ask:${a.actId}`),
@@ -272,7 +294,8 @@ export function masterWork(admissible: Admissible[], owed: Owed): MasterWork {
 
 /**
  * Everything a project's master on `deviceId` is owed this sweep: the issues it could open a wave
- * over, and the channel, threads, requirements, feedback, returned designs and release notes that owe it a turn.
+ * over, and the channel, threads, requirements, feedback (a triage, or an agent reporter's confirm), returned
+ * designs and release notes that owe it a turn.
  * A read that fails fails the verdict, which the box says and acts on nothing: none is skipped.
  */
 export async function readMasterWork(deviceId: string, projectId: string): Promise<MasterWork> {
@@ -284,6 +307,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     breakdowns,
     revisions,
     triages,
+    confirms,
     designs,
     releaseNotes,
     unnamedReleases,
@@ -299,6 +323,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.breakdownsOwed(projectId),
     ports.revisionsOwed(projectId),
     ports.triagesOwed(projectId),
+    ports.confirmsOwed(projectId),
     ports.designsOwed(projectId),
     ports.releaseNotesOwed(projectId),
     releasesTheMasterNames(projectId),
@@ -318,6 +343,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     revisions,
     breakdowns: breakdownsDue,
     triages,
+    confirms,
     comments: comments.items,
     documents: channel.documents,
     builderRuns: channel.builderRuns,

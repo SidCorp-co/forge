@@ -147,6 +147,16 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
   if (!notice) return null;
+  if (notice.state === "told" && notice.how === "asked") {
+    // a reporter that reads the item itself was asked to confirm when the fix shipped: that, and when
+    return (
+      <Fact label={t("feedback.fact.askedToConfirm")} testId="facts-ship-notice">
+        <span className="fg-body-sm" title={time.dateTime(notice.at)} data-testid="ship-notice-asked">
+          {time.relative(notice.at)}
+        </span>
+      </Fact>
+    );
+  }
   if (notice.state === "told") {
     return (
       <Fact label={t("feedback.fact.reporterTold")} testId="facts-ship-notice">
@@ -377,7 +387,7 @@ export function LinkedFeedback({
         {f.origin ? <WhereReportedFrom origin={f.origin} /> : null}
         {f.clarification ? (
           <Fact label={tr("feedback.fact.clarification")}>
-            <span className="grid gap-0.5" data-testid="feedback-clarification">
+            <span className="grid justify-items-start gap-0.5" data-testid="feedback-clarification">
               <StatusBadge family="question" value={f.clarification.status} />
               {f.clarification.prompt ? <span className="text-13 text-fg">{f.clarification.prompt}</span> : null}
               {f.clarification.recommended && !f.clarification.answer ? (

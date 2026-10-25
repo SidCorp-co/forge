@@ -122,7 +122,7 @@ describe('the release that ships an item tells its reporter', () => {
   });
 
   // REQ-66 BC-8: an agent has no bell; its own read of the item asks it, and nobody owes it a relay
-  it('asks a reporter that is an agent on its own read of the item, never through a bell', async () => {
+  it('asks a reporter that is an agent to confirm through its own read of the item, never through a bell', async () => {
     const carrier = await closed({ mergedAt: new Date() });
     const fb = await feedback(w, [carrier.id]);
     await db.execute(sql`

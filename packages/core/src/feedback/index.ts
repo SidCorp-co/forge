@@ -36,6 +36,7 @@ export { linkedOf, phaseIn } from './list-read.js';
 export { sweepResolvedFeedback } from './loop-check.js';
 export { shipEvidenceOf, shipEvidenceOfShipped } from './loop-close.js';
 export { owedTriages } from './owed-triage.js';
+export { confirmsOwedByShip, type OwedAgentConfirm, owedAgentConfirms } from './owed-verify.js';
 export { detailAs, rowIn } from './read.js';
 export { forgeRecordingTool } from './recording-tool.js';
 export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';

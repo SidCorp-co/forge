@@ -12,6 +12,15 @@ export interface ReleaseMergeOwed {
   total: number;
 }
 
+/** A shipped feedback item an agent of this project reported, owing its confirm (`feedback/owed-verify.ts`). */
+export interface AgentConfirmOwed {
+  key: string;
+  feedbackId: string;
+  reporter: string;
+  itemProjectId: string;
+  home: boolean;
+}
+
 // What a master is owed from the modules above execution, handed in by the process entry at boot
 // (ADR 0008: a domain imports only its own context or one before it). Read only inside a call.
 
@@ -34,6 +43,8 @@ interface MastersPorts {
   revisionsOwed(projectId: string): Promise<{ key: string; revision: number }[]>;
   /** Feedback items owed a triage. */
   triagesOwed(projectId: string): Promise<{ key: string }[]>;
+  /** Shipped feedback items an agent of this project reported, owing that agent's confirm or reopen (REQ-66 BC-8). */
+  confirmsOwed(projectId: string): Promise<AgentConfirmOwed[]>;
   /** Returned workflow designs no live issue carries, owed a revision. */
   designsOwed(projectId: string): Promise<{ workflowId: string; flow: string; revision: number }[]>;
   /** Issues waiting at the release gate with no release note, which the draft release refuses. */
