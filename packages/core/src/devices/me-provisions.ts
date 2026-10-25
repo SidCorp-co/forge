@@ -29,7 +29,9 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   const settled = await Promise.allSettled(
     rows.map(async (r) => {
       const { repository, defaultBranch } = await devicesPorts().readDeclaredSource(r.projectId);
-      const repoUrl = repository ? devicesPorts().remoteOf(repository) : null;
+      const repoUrl = repository
+        ? await devicesPorts().checkoutRemoteOf(r.projectId, repository)
+        : null;
       return buildProvisionRow(
         { ...r, repoUrl, baseBranch: defaultBranch },
         {

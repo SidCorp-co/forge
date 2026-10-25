@@ -250,6 +250,9 @@ pub struct Bound {
     pub repo: PathBuf,
     /// What core served for the project; `None` where it was not reached.
     pub orientation: Option<String>,
+    /// Forge's git relay URL where core reaches the repository only through it (REQ-73 BC-5): a
+    /// checkout still cloned from the host itself is pointed there under the same lock.
+    pub relay_remote: Option<String>,
 }
 
 async fn converge_one(b: &Bound, lock_dir: Option<&Path>) -> Outcome {
@@ -269,6 +272,7 @@ async fn converge_one(b: &Bound, lock_dir: Option<&Path>) -> Outcome {
         Ok(None) => return Outcome::Held,
         Err(detail) => return Outcome::Failed { detail },
     };
+    crate::git_cred::reach_through_relay(&b.slug, &b.repo, b.relay_remote.as_deref()).await;
     Outcome::of(&orientation::write_orientation(
         &b.repo,
         b.orientation.as_deref(),

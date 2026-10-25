@@ -44,7 +44,13 @@ interface DevicesPorts {
   readDeclaredSource(
     projectId: string,
   ): Promise<{ repository: string | null; defaultBranch: string | null }>;
-  remoteOf(repository: string): string;
+  /**
+   * Where a project's checkout clones its repository from: the host's own https URL, or Forge's git
+   * relay where the binding's provider reaches git only through it (REQ-73 BC-5).
+   */
+  checkoutRemoteOf(projectId: string, repository: string): Promise<string>;
+  /** Forge's git relay URL where the binding is relayed, else null: what `bind --path` points origin at. */
+  relayRemoteOf(projectId: string, repository: string): Promise<string | null>;
   withDeclaredSource<T extends { projectId: string }>(
     rows: readonly T[],
   ): Promise<

@@ -213,8 +213,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt
     field:json:readWhen field:json:timeZone field:json:until field:json:validUntil
     field:json:startedAt field:json:version`,
-  'a git name: a branch, a commit, a path in a repository': words`
-    field:json:agentCommit field:json:atSha field:json:base field:json:branch field:json:commit
+  'a git name: a branch, a commit, a path in a repository, the smart-HTTP service git asks for': words`
+    param:rest field:query:service field:json:agentCommit field:json:atSha field:json:base field:json:branch field:json:commit
     field:json:head field:json:repoPath field:json:sha`,
   'what a box says about itself: its name, its platform, a machine id core hashes': words`
     field:json:device_hostname field:json:device_label field:json:device_platform
@@ -222,7 +222,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
   'a third party’s token core stores or forwards to that service; it checks no caller': words`
     field:json:apiToken field:json:authToken field:json:clientSecret field:json:secrets`,
   'an address: a mailbox, a service URL, a git host, where to go after sign-in': words`
-    field:json:baseUrl field:json:serverUrl field:json:host field:json:protocol
+    param:host field:json:baseUrl field:json:serverUrl field:json:host field:json:protocol
     field:json:email field:query:email field:query:redirect`,
   'an MCP client’s OAuth request: who it is, where to send the answer, a PKCE challenge (a hash, never its verifier), the reach asked for and its own opaque state': words`
     field:form:client_id field:form:grant_type field:form:redirect_uri field:form:resource
@@ -406,6 +406,10 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integrations/mcp-relay.ts Headers.get(name) in relayToUpstream
     integration-door/mcp-relay-routes.ts HonoRequest.arrayBuffer in module code
     integration-door/mcp-relay-routes.ts HonoRequest.header(name) in module code`,
+  'the git relay, once its relay ticket verified: the smart-HTTP headers it passes by name and git’s pack relayed as sent, with only the headers core builds': lines`
+    integration-door/git-relay-routes.ts Headers handed to hono:proxy in module code
+    integration-door/git-relay-routes.ts HonoRequest.header(name) in module code
+    integration-door/git-relay-routes.ts Request handed to hono:proxy in module code`,
   'a socket ws/server.ts opened for a person or a box, and its frames: subscribe, runner': lines`
     previews/tunnel.ts IncomingMessage handed to @types/ws:handleUpgrade in acceptTunnelUpgrade
     previews/tunnel.ts WebSocket.on(message) in adoptTunnel
@@ -431,6 +435,10 @@ export const FRAMEWORK_IMPORTS: Readonly<Record<string, { credential: boolean; w
   '@hono/node-server/serve-static:serveStatic': {
     credential: false,
     why: 'serves a file of the web build by its path',
+  },
+  'hono/proxy:proxy': {
+    credential: false,
+    why: 'sends a request on to a host with the headers its caller builds, never the request’s own',
   },
   'hono/compress:compress': { credential: false, why: 'gzips an answer by Accept-Encoding' },
   '@hono/zod-validator:zValidator': {

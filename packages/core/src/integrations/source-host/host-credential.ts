@@ -1,10 +1,13 @@
 /**
- * Git over HTTPS, authenticated by a short-lived credential minted per ask (ISS-50 made it any host's).
+ * Git over HTTPS, authenticated by a short-lived credential handed out per ask (ISS-50 made it any host's).
  *
  * It hands a runner nothing to keep: the runner's git credential helper asks here once per git invocation, and what the device is
  * allowed to reach is decided on every ask from the bindings of the projects it actually runs. Each
- * source host provider says which repository a binding reaches and how its credential is minted
- * (`types.ts:GitCredentialMint`) — a GitHub App installation token, a GitLab access token.
+ * source host provider says which repository a binding reaches and how git is let in
+ * (`types.ts:GitCredentialMint`): a GitHub App mints an hour-long installation token for its one
+ * repository; a GitLab connection mints nothing a box may hold, so its git goes through Forge's
+ * relay (`git-relay.ts`) and the box is handed an hour-long relay ticket instead. The connection's
+ * own token is never handed out, whatever is asked (REQ-73 BC-5).
  *
  * Resolution is by host and repository path, not by project: git knows the URL it is fetching and
  * nothing else.
@@ -23,8 +26,16 @@ import {
   forgeReads,
   type GitCredentialMint,
   listIntegrations,
+  type RelayedGitCredential,
 } from '../index.js';
 import { SourceHostCallError } from './errors.js';
+import {
+  GIT_RELAY_TICKET_SECONDS,
+  type GitRelayGrant,
+  gitRelayUrlFor,
+  relayedAskOf,
+  signGitRelayTicket,
+} from './git-relay.js';
 
 const refuse = refuser<GitRefusalCode>('GIT_REFUSED');
 
@@ -64,17 +75,49 @@ async function activeHostPairs(byProvider: Map<string, GitCredentialMint>, proje
     .orderBy(asc(integrationBindings.createdAt));
 }
 
+type HostPair = Awaited<ReturnType<typeof activeHostPairs>>[number];
+
+/** The active binding of a project this device runs that reaches `host`/`path`, or a refusal naming what is missing. */
+async function pairReaching(
+  byProvider: Map<string, GitCredentialMint>,
+  deviceId: string,
+  host: string,
+  path: string,
+): Promise<{ pair: HostPair; cred: GitCredentialMint; config: Record<string, unknown> }> {
+  const rows = await activeHostPairs(byProvider, await forgeReads().deviceProjects(deviceId));
+  const pair = rows.find((r) =>
+    byProvider.get(r.binding.provider)?.reaches(effectiveConfig(r), host, path),
+  );
+  if (!pair) {
+    throw new HTTPException(404, {
+      message: `no active source host binding reaching ${host}/${path.replace(/\.git$/i, '')} on any project this device runs — bind the repository on the project's Integrations page, and assign this device a runner there`,
+      cause: { code: 'NOT_FOUND' },
+    });
+  }
+  const cred = byProvider.get(pair.binding.provider) as GitCredentialMint;
+  const config = effectiveConfig(pair);
+  if (!pair.connection.active) {
+    throw refuse(
+      'GIT_CONNECTION_INACTIVE',
+      `the ${pair.binding.provider} connection behind ${cred.repositoryOf(config)} is gone or deactivated; reconnect it on the project's Integrations page.`,
+    );
+  }
+  return { pair, cred, config };
+}
+
+const repoPathOf = (raw: string): string => raw.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+
 /**
- * Mint a git credential for one device and one repository, or refuse saying which thing is missing:
- * a path git did not send, a binding on no project this device runs, a switched-off connection, or a
- * binding the provider cannot mint for.
+ * Hand out a git credential for one device and one repository, or refuse saying which thing is
+ * missing: a path git did not send, a binding on no project this device runs, a switched-off
+ * connection, a binding the provider cannot mint for, or a relayed host asked for directly.
  */
 export async function mintGitCredentialForDevice(args: {
   deviceId: string;
   host: string;
   path: string;
 }): Promise<GitCredentialGrant> {
-  const path = args.path.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+  const path = repoPathOf(args.path);
   if (!path.includes('/')) {
     throw new HTTPException(400, {
       message: `"${args.path}" is not a repository path — git must be configured with credential.useHttpPath=true for this helper to resolve a repository`,
@@ -82,29 +125,22 @@ export async function mintGitCredentialForDevice(args: {
     });
   }
   const byProvider = mints();
-  const rows = await activeHostPairs(byProvider, await forgeReads().deviceProjects(args.deviceId));
-  const pair = rows.find((r) =>
-    byProvider.get(r.binding.provider)?.reaches(effectiveConfig(r), args.host, path),
-  );
-  const asked = `${args.host}/${path.replace(/\.git$/i, '')}`;
-  if (!pair) {
-    throw new HTTPException(404, {
-      message: `no active source host binding reaching ${asked} on any project this device runs — bind the repository on the project's Integrations page, and assign this device a runner there`,
-      cause: { code: 'NOT_FOUND' },
-    });
-  }
-  const mint = byProvider.get(pair.binding.provider) as GitCredentialMint;
-  const config = effectiveConfig(pair);
-  const repository = mint.repositoryOf(config);
-  if (!pair.connection.active) {
+  const relayed = relayedAskOf(args.host, path);
+  if (relayed) return relayTicketFor(byProvider, args.deviceId, relayed);
+
+  const { pair, cred, config } = await pairReaching(byProvider, args.deviceId, args.host, path);
+  const repository = cred.repositoryOf(config);
+  if (cred.kind === 'relayed') {
+    const through = gitRelayUrlFor(args.host, path);
+    if (!through) throw relayUnavailable(repository);
     throw refuse(
-      'GIT_CONNECTION_INACTIVE',
-      `the ${pair.binding.provider} connection behind ${repository} is gone or deactivated; reconnect it on the project's Integrations page.`,
+      'GIT_THROUGH_FORGE',
+      `${repository} is reached through Forge, and its connection's token is never handed out: this checkout's origin still names ${args.host} directly. Point it at ${through} (git remote set-url origin ${through}), or let the runner re-provision the checkout, which does it.`,
     );
   }
   let minted: { username: string; password: string; expiresAt: string };
   try {
-    minted = await mint.mint({ config, secrets: decryptConnectionSecrets(pair.connection) });
+    minted = await cred.mint({ config, secrets: decryptConnectionSecrets(pair.connection) });
   } catch (err) {
     throw providerRefused(
       `${pair.binding.provider} did not mint a credential for ${repository}: ${err instanceof Error ? err.message : String(err)}`,
@@ -113,6 +149,96 @@ export async function mintGitCredentialForDevice(args: {
     );
   }
   return { ...minted, repository, projectId: pair.binding.projectId };
+}
+
+const relayUnavailable = (repository: string) =>
+  refuse(
+    'GIT_RELAY_UNAVAILABLE',
+    `${repository} is reached only through Forge's git relay, and this server knows no public API origin to relay through; an operator sets PUBLIC_API_BASE_URL. No credential is handed out meanwhile.`,
+  );
+
+/** A relay ticket for a relayed repository this device may reach: what git holds instead of the token. */
+async function relayTicketFor(
+  byProvider: Map<string, GitCredentialMint>,
+  deviceId: string,
+  asked: { host: string; path: string },
+): Promise<GitCredentialGrant> {
+  const { pair, cred, config } = await pairReaching(byProvider, deviceId, asked.host, asked.path);
+  const repository = cred.repositoryOf(config);
+  if (cred.kind !== 'relayed') {
+    throw new HTTPException(404, {
+      message: `${repository} is not relayed through Forge: its ${pair.binding.provider} binding hands git its own short-lived credential, so clone it from ${asked.host} directly`,
+      cause: { code: 'NOT_FOUND' },
+    });
+  }
+  const now = Date.now();
+  return {
+    username: 'forge-relay',
+    password: await signGitRelayTicket({ deviceId, bindingId: pair.binding.id }, now),
+    expiresAt: new Date(now + GIT_RELAY_TICKET_SECONDS * 1000).toISOString(),
+    repository,
+    projectId: pair.binding.projectId,
+  };
+}
+
+/** What a relayed request goes out to: the repository's smart-HTTP base and the headers that open it. */
+export interface RelayedGitUpstream {
+  url: string;
+  headers: Record<string, string>;
+  repository: string;
+  projectId: string;
+}
+
+/**
+ * The upstream a live relay ticket opens for `host`/`repository`, decided again now: the ticket's
+ * binding must still be active, on a project its device runs, and reach that repository. Null where
+ * any of that no longer holds, which the door refuses by name.
+ */
+export async function relayedGitUpstream(
+  grant: GitRelayGrant,
+  host: string,
+  repository: string,
+): Promise<RelayedGitUpstream | null> {
+  const byProvider = mints();
+  const rows = await activeHostPairs(byProvider, await forgeReads().deviceProjects(grant.deviceId));
+  const pair = rows.find((r) => r.binding.id === grant.bindingId);
+  const cred = pair ? byProvider.get(pair.binding.provider) : undefined;
+  if (!pair || cred?.kind !== 'relayed' || !pair.connection.active) return null;
+  const config = effectiveConfig(pair);
+  if (!cred.reaches(config, host, repository)) return null;
+  const named = cred.repositoryOf(config);
+  let upstream: { url: string; headers: Record<string, string> };
+  try {
+    upstream = (cred as RelayedGitCredential).upstream({
+      config,
+      secrets: decryptConnectionSecrets(pair.connection),
+    });
+  } catch (err) {
+    throw refuse(
+      'GIT_RELAY_UPSTREAM_REFUSED',
+      `${named} cannot be relayed: ${err instanceof Error ? err.message : String(err)}; a project admin reconnects it on the project's Integrations page`,
+    );
+  }
+  return { ...upstream, repository: named, projectId: pair.binding.projectId };
+}
+
+/**
+ * The remote a project's checkout clones from when its repository is relayed through Forge, or null
+ * where it is not (or core knows no public origin), so the caller keeps the host's own URL.
+ */
+export async function gitRemoteThroughForge(
+  projectId: string,
+  repository: { host: string; path: string },
+): Promise<string | null> {
+  const byProvider = mints();
+  const rows = await activeHostPairs(byProvider, [projectId]);
+  const relayed = rows.some((r) => {
+    const cred = byProvider.get(r.binding.provider);
+    return (
+      cred?.kind === 'relayed' && cred.reaches(effectiveConfig(r), repository.host, repository.path)
+    );
+  });
+  return relayed ? gitRelayUrlFor(repository.host, repository.path) : null;
 }
 
 /**

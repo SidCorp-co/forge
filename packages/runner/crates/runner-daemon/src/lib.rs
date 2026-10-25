@@ -469,6 +469,7 @@ async fn converge_orientations(
                 .or_else(|| cfg.bindings.get(&slug).and_then(|b| b.project_id.clone()));
             Bound {
                 orientation: row.and_then(|r| r.orientation.clone()),
+                relay_remote: row.and_then(|r| r.relay_remote.clone()),
                 slug,
                 project_id,
                 repo,

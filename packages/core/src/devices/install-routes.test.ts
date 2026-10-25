@@ -304,3 +304,22 @@ describe('a download that fails is refused by name, and the box keeps what it ha
     }
   });
 });
+
+describe('REQ-73 BC-5: the runners and pairing screens show one command that installs and pairs', () => {
+  it('--setup goes straight on to forge-runner setup with the installed build, leaving no scratch', async () => {
+    const run = await w.install('setup', 'Linux', 'x86_64', { args: ['--setup'] });
+    expect(run.stderr).toBe('');
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain('Running forge-runner setup');
+    // the stand-in build echoes its arguments: setup ran, and it was the build just installed
+    expect(run.stdout.trimEnd().endsWith('forge-runner 9.9.9-test setup')).toBe(true);
+    expect(run.stdout).not.toContain('Next:  forge-runner setup');
+  });
+
+  it('without --setup the script stops at the install and names the next command', async () => {
+    const run = await w.install('no-setup', 'Linux', 'x86_64');
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain('Next:  forge-runner setup');
+    expect(run.stdout).not.toContain('forge-runner 9.9.9-test setup');
+  });
+});

@@ -44,11 +44,15 @@ export async function listDeviceAssignments(deviceId: string) {
     ...new Set(rows.map((r) => r.projectId)),
   ]);
   // `bind --path` installs the same credential helper a provision does, so it is told the
-  // declared repository (whose host it checks the checkout's origin against) and whether core mints for it
+  // declared repository (whose host it checks the checkout's origin against), whether core mints for
+  // it, and the relay URL its origin must name where git reaches that repository only through Forge
   return Promise.all(
     declared.map(async (r) => ({
       ...r,
       hostCredential: credentialed.has(r.projectId),
+      relayRemote: r.repository
+        ? await devicesPorts().relayRemoteOf(r.projectId, r.repository)
+        : null,
       orientation: await devicesPorts().checkoutOrientation(r.projectId, r.slug),
     })),
   );

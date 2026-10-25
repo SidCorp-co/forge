@@ -35,6 +35,9 @@ your repo. There is no desktop app — pairing is done from the command line.
    The agent installs to `~/.local/bin`. If that isn't on your `PATH`, the
    installer prints the line to add — run it, or open a new shell.
 
+   The **Runners** page and the pairing page show this as one command that goes
+   straight on to step 2: `curl -fsSL https://<your-forge-host>/api/install.sh | sh -s -- --setup`.
+
 2. **Run setup** (does the rest of this page for you)
 
    ```bash

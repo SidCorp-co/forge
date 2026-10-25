@@ -136,7 +136,10 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision, contended
 
     // 3. Clone, or recognise a deliberately repo-less workspace.
     match classify_workspace(&repo_path, p.repo_url.as_deref()) {
-        WorkspaceMode::AlreadyRepo => {}
+        // a checkout cloned from the host before its binding was relayed reaches it through Forge now
+        WorkspaceMode::AlreadyRepo => {
+            git_cred::reach_through_relay(&p.slug, &repo_path, p.repo_url.as_deref()).await;
+        }
         WorkspaceMode::RepoLess => {
             if let Err(detail) = ensure_repo_less_dir(&repo_path) {
                 report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;

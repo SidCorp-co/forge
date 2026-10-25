@@ -41,7 +41,7 @@ Size: functions stay under 100 lines (`clippy.toml`), files under 800 (`scripts/
 | `logs` | Say where this box's runner log is read |
 | `config` | Inspect or edit local config |
 | `doctor` | Diagnose the environment (claude CLI, git, cred store, core reachability) |
-| `git-credential` | git credential helper: hand git a GitHub App token for one repository |
+| `git-credential` | git credential helper: hand git an hour-long credential for one repository — a GitHub App token, or a ticket for Forge's git relay where the host (GitLab) is reached only through Forge |
 | `hook` | Report a Claude Code hook event from inside a pane this daemon spawned |
 | `gate` | Answer a pane's `PreToolUse`: has the work it is handing out been declared? |
 | `service` | Install/uninstall the OS service (systemd/launchd) |

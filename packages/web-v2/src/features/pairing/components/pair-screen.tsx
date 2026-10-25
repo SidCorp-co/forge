@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useSearchParams } from "@/lib/navigation/router";
 import { Banner, Button, EmptyState, enumLabel, Field, Icon, PageTitle, Property, PropertyList, Section, Select } from "@/design";
 import { agentAddress, agentLabel } from "@/features/agent-accounts";
+import { SetupCommand } from "@/features/runners";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useApproveDevice, usePairIdentities } from "../hooks";
@@ -38,7 +39,15 @@ export function PairScreen() {
     <div className="mx-auto flex w-full max-w-140 flex-col gap-4 px-6 py-8">
       <PageTitle>{t("pairing.title")}</PageTitle>
       {!code ? (
-        <EmptyState message={t("pairing.noCode")} />
+        <>
+          <EmptyState message={t("pairing.noCode")} />
+          <Section title={t("pairing.install.title")}>
+            <span className="fg-label">{t("pairing.install.runOn")}</span>
+            <div className="mt-1.5">
+              <SetupCommand />
+            </div>
+          </Section>
+        </>
       ) : approve.data?.approved === true ? (
         <PairApproved chosen={chosen} device={approve.data.device} />
       ) : denied ? (

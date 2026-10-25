@@ -45,8 +45,12 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     };
 
     // Before anything is saved: a checkout of another host's repository is refused, not bound.
+    let origin = if given {
+        runner_platform::git::origin_url(&path).await
+    } else {
+        None
+    };
     let helper_host = if given {
-        let origin = runner_platform::git::origin_url(&path).await;
         checkout_credential_host(&args.slug, &path, &assignment, origin.as_deref())?
     } else {
         None
@@ -79,6 +83,17 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 "bound, but core refused to queue the provision for {}, so nothing is queued and this checkout's orientation, skills and .mcp.json were not refreshed: {why}",
                 args.slug
             ),
+        }
+    }
+    if let Some(relay) = assignment
+        .relay_remote
+        .as_deref()
+        .filter(|_| helper_host.is_some())
+    {
+        if git_cred::point_origin_at_relay(&bound, origin.as_deref(), relay)
+            .map_err(|e| anyhow::anyhow!("bound, but origin was not pointed at {relay}: {e}"))?
+        {
+            println!("origin: {relay} (git reaches this repository through Forge)");
         }
     }
     if let Some(host) = helper_host {
@@ -249,7 +264,14 @@ fn checkout_credential_host(
         (Place::Local(a), Some(Place::Local(b))) => a == b,
         _ => false,
     };
-    if !same {
+    // where git reaches the repository only through Forge, a checkout cloned from the relay is one too
+    let relay = assignment.relay_remote.as_deref();
+    let through_relay = relay.is_some_and(|r| {
+        url.trim()
+            .trim_end_matches('/')
+            .eq_ignore_ascii_case(r.trim())
+    });
+    if !same && !through_relay {
         anyhow::bail!(
             "BIND_SOURCE_HOST_MISMATCH: {} has origin {url} ({}), and project {slug} declares its source at {repository} ({declared}) — bind a checkout whose origin is {repository}, or change `source.git.repository` with PUT /api/projects/:id/config",
             path.display(),
@@ -267,6 +289,10 @@ fn checkout_credential_host(
             "note: origin {url} is not HTTPS, so git reaches it with this box's own access (its SSH key) and no Forge credential helper is installed"
         );
         return Ok(None);
+    }
+    if let Some(relay) = relay {
+        // the helper answers for Forge's own host; origin is pointed at the relay after the bind
+        return Ok(git_cred::https_host(relay));
     }
     if !assignment.host_credential {
         eprintln!(
@@ -430,6 +456,7 @@ mod tests {
             master_policy: None,
             repository: Some(repository.into()),
             host_credential,
+            relay_remote: None,
             rate_limited_for_seconds: None,
             limit_reason: None,
             orientation: None,
@@ -532,6 +559,33 @@ mod tests {
             assert!(said.contains(doc) && said.contains(origin), "{said}");
             assert!(!said.contains("set-url"), "{said}");
         }
+    }
+
+    #[test]
+    fn a_relayed_repository_binds_from_its_host_or_its_relay_and_helps_for_forge() {
+        let checkout = std::env::temp_dir();
+        let relay = "https://forge.example/api/git/gitlab.com/sidcorp-it/canawan-api.git";
+        let a = MeRunner {
+            relay_remote: Some(relay.into()),
+            ..assignment("gitlab.com/sidcorp-it/canawan-api", true)
+        };
+        for origin in ["https://gitlab.com/sidcorp-it/canawan-api.git", relay] {
+            let got = checkout_credential_host("hub", &checkout, &a, Some(origin)).unwrap();
+            assert_eq!(got.as_deref(), Some("forge.example"), "{origin}");
+        }
+        // another repository behind the same relay prefix is still a mismatch
+        let other = "https://forge.example/api/git/gitlab.com/sidcorp-it/other.git";
+        let said = checkout_credential_host("hub", &checkout, &a, Some(other))
+            .err()
+            .map(|e| e.to_string())
+            .expect("refused");
+        assert!(said.contains("BIND_SOURCE_HOST_MISMATCH"), "{said}");
+        // an SSH origin keeps the box's own access, relayed or not
+        let ssh = "git@gitlab.com:sidcorp-it/canawan-api.git";
+        assert_eq!(
+            checkout_credential_host("hub", &checkout, &a, Some(ssh)).unwrap(),
+            None
+        );
     }
 
     #[test]

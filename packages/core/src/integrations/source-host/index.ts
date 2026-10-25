@@ -1,9 +1,16 @@
 export { sourceHostMismatch } from './bind.js';
 export { SourceHostCallError, SourceHostInputRefusal, SourceHostUnavailable } from './errors.js';
 export {
+  GIT_RELAY_PREFIX,
+  gitRelayRequestOf,
+  readGitRelayTicket,
+} from './git-relay.js';
+export {
+  gitRemoteThroughForge,
   isHttpsGitUrl,
   mintGitCredentialForDevice,
   projectsWithHostCredential,
+  relayedGitUpstream,
 } from './host-credential.js';
 export {
   CHANGE_REQUEST_MERGE_METHODS,

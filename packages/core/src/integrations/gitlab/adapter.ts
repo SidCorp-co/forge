@@ -268,7 +268,7 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
 /**
  * GitLab's declaration (ISS-50): a GitLab project as the source host a project's whole lifecycle
  * runs on — change requests, merges, the push that lands them, the pipeline that gates them — and
- * the token a runner's git credential helper is served for it.
+ * the relay its runners' git goes through, so a box never holds the connection's token (REQ-73 BC-5).
  */
 export const gitlabIntegration = declareIntegration<GitLabConfig, GitLabSecrets>({
   provider: 'gitlab',

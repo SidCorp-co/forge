@@ -75,6 +75,9 @@ curl -fsSL http://localhost:8080/install.sh | sh
 forge-runner setup
 ```
 
+`sh -s -- --setup` does both in one command, the form the Runners page shows:
+`curl -fsSL http://localhost:8080/api/install.sh | sh -s -- --setup`.
+
 `setup` checks `claude`/`git`/`tmux` before it pairs, prints the approval URL
 (`--open` launches a browser), waits for the device to be assigned a project in
 the web UI, has the server provision a checkout under `projects_root` — or

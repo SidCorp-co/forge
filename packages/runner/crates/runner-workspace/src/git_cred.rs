@@ -151,3 +151,141 @@ pub fn set_repo_credential_helper(
 fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
+
+/// Whether `relay` is Forge's git relay URL for the repository an HTTPS `origin` names on its host:
+/// `https://host/owner/repo` and `https://<core>/…/api/git/host/owner/repo.git` (REQ-73 BC-5). An
+/// SSH or local origin is never relayed — the box reaches it with its own access.
+pub fn relays_origin(origin: &str, relay: &str) -> bool {
+    let Some((authority, path)) = origin
+        .trim()
+        .strip_prefix("https://")
+        .and_then(|rest| rest.split_once('/'))
+    else {
+        return false;
+    };
+    let host = authority.rsplit('@').next().unwrap_or(authority);
+    let path = path.trim_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    if host.is_empty() || !path.contains('/') {
+        return false;
+    }
+    let relay = relay.trim().to_ascii_lowercase();
+    let tail = format!("/api/git/{host}/{path}.git").to_ascii_lowercase();
+    relay.starts_with("https://") && relay.ends_with(&tail)
+}
+
+/// Points a checkout whose origin still names the host itself at Forge's relay for the same
+/// repository, since core hands no credential for that host directly once its binding is relayed.
+/// `Ok(true)` when origin was moved; any other origin is left as it is.
+pub fn point_origin_at_relay(
+    repo_path: &std::path::Path,
+    origin: Option<&str>,
+    relay: &str,
+) -> std::result::Result<bool, String> {
+    if !origin.is_some_and(|o| relays_origin(o, relay)) {
+        return Ok(false);
+    }
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .args(["remote", "set-url", "origin", relay.trim()])
+        .output()
+        .map_err(|e| format!("spawn git remote set-url origin: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git remote set-url origin {} in {} failed: {}",
+            relay.trim(),
+            repo_path.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(true)
+}
+
+/// Points a checkout whose origin is still its host at Forge's relay, and its credential helper at
+/// Forge's host, so the box's next fetch asks core for a relay ticket rather than the host's token.
+pub async fn reach_through_relay(slug: &str, repo: &std::path::Path, relay: Option<&str>) {
+    let Some(relay) = relay else { return };
+    let origin = runner_platform::git::origin_url(repo).await;
+    let moved = match point_origin_at_relay(repo, origin.as_deref(), relay) {
+        Ok(moved) => moved,
+        Err(e) => return tracing::warn!("[relay] {slug}: {e}"),
+    };
+    if !moved {
+        return;
+    }
+    let helped = https_host(relay)
+        .ok_or_else(|| format!("{relay} is not HTTPS, so no credential helper answers for it"))
+        .and_then(|host| set_repo_credential_helper(repo, &host));
+    match helped {
+        Ok(()) => tracing::info!(
+            "[relay] {slug}: origin now reaches its repository through Forge ({relay})"
+        ),
+        Err(e) => tracing::warn!("[relay] {slug}: origin moved to {relay}, but {e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RELAY: &str = "https://forge.example/api/git/gitlab.com/acme/api.git";
+
+    #[test]
+    fn the_relay_of_the_same_repository_is_recognised_in_every_https_spelling() {
+        for origin in [
+            "https://gitlab.com/acme/api",
+            "https://gitlab.com/acme/api.git",
+            "https://oauth2:secret@gitlab.com/acme/api.git",
+            "https://GitLab.com/Acme/API.git/",
+        ] {
+            assert!(relays_origin(origin, RELAY), "{origin}");
+        }
+        assert!(relays_origin(
+            "https://gitlab.com/acme/api.git",
+            "https://forge.example/base/api/git/gitlab.com/acme/api.git"
+        ));
+    }
+
+    #[test]
+    fn another_repository_transport_or_relay_scheme_is_left_alone() {
+        for origin in [
+            "https://gitlab.com/acme/other.git",
+            "https://github.com/acme/api.git",
+            "git@gitlab.com:acme/api.git",
+            "ssh://git@gitlab.com/acme/api.git",
+            "/srv/git/api.git",
+            RELAY,
+        ] {
+            assert!(!relays_origin(origin, RELAY), "{origin}");
+        }
+        assert!(!relays_origin(
+            "https://gitlab.com/acme/api.git",
+            "http://forge.example/api/git/gitlab.com/acme/api.git"
+        ));
+    }
+
+    #[test]
+    fn a_checkout_on_the_host_is_moved_to_the_relay_and_only_that_one() {
+        let dir = std::env::temp_dir().join(format!("forge-relay-origin-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| {
+            let o = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&o.stdout).trim().to_string()
+        };
+        git(&["init", "-q"]);
+        git(&["remote", "add", "origin", "https://gitlab.com/acme/api.git"]);
+        let origin = git(&["remote", "get-url", "origin"]);
+        assert_eq!(point_origin_at_relay(&dir, Some(&origin), RELAY), Ok(true));
+        assert_eq!(git(&["remote", "get-url", "origin"]), RELAY);
+        // already the relay: nothing to move
+        assert_eq!(point_origin_at_relay(&dir, Some(RELAY), RELAY), Ok(false));
+        assert_eq!(point_origin_at_relay(&dir, None, RELAY), Ok(false));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

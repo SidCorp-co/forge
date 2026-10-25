@@ -1,12 +1,13 @@
 /**
  * `POST /api/devices/me/git-credential` — the runner's git credential helper
- * asks here, once per git invocation, for a token that reaches one repository.
+ * asks here, once per git invocation, for an hour-long credential that reaches one repository.
  *
- * A helper is the only shape that works: an installation token expires in an
- * hour, jobs do not, and the provision side-channel delivers once. Any source host that declares a
- * `gitCredential` is served here (ISS-50). Nothing is
- * stored on the box and nothing is stored here — the grant is computed from the
- * device's runners and the project's binding every time it is asked for.
+ * A helper is the only shape that works: the credential expires in an hour, jobs do not, and the
+ * provision side-channel delivers once. Any source host that declares a `gitCredential` is served
+ * here (ISS-50): a GitHub App's installation token, or for a host reached only through Forge's git
+ * relay (GitLab), a relay ticket — a connection's own token is never answered (REQ-73 BC-5).
+ * Nothing is stored on the box and nothing is stored here — the grant is computed from the device's
+ * runners and the project's binding every time it is asked for.
  */
 
 import { withArticle } from '@forge/contracts/articles';
@@ -50,7 +51,7 @@ deviceGitCredentialRoutes.post(
         repository: grant.repository,
         expiresAt: grant.expiresAt,
       },
-      'git-credential: minted a host credential',
+      'git-credential: handed out an hour-long git credential',
     );
     return c.json({
       username: grant.username,
