@@ -328,7 +328,8 @@ fails to close the same way and says only the others close.
 Every repository read a release takes — the carried range above, and the weighing the automatic
 release judges a verdict with (`packages/core/src/release-batch/runtime-weighing.ts:readWeighingNow`:
 whether what production serves descends from the commit a verdict was judged at, the files the two
-differ in, and the files a landing changed) — goes through one port,
+differ in, the files a landing changed, and whether the repository holds the commit an issue
+records as its landing, `docs/modules/issues/merge-mark.md` saying when) — goes through one port,
 `packages/core/src/projects/repository-reader.ts:RepositoryReader`, which
 `packages/core/src/projects/repository-access.ts:withRepository` hands out:
 

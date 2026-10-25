@@ -59,13 +59,14 @@ describe('issueIdentities', () => {
   it('reads the source off the landing head', () => {
     expect(issueIdentities({ sessionContext: { landing: { head: SOURCE } } })).toEqual({
       source: SOURCE,
+      from: 'landing',
     });
   });
 
   it('lets an observed merge outrank the head a run captured', () => {
     expect(
       issueIdentities({ sessionContext: { landing: { head: SOURCE } }, mergedCommitSha: OTHER }),
-    ).toEqual({ source: OTHER });
+    ).toEqual({ source: OTHER, from: 'merge' });
   });
 
   it('names nothing where the issue carries no landing block at all', () => {
@@ -78,7 +79,7 @@ describe('issueIdentities', () => {
   // ISS-1286 — landing.deployment reaches no identity, whatever a caller wrote there.
   it('reads nothing out of landing.deployment, whatever it holds', () => {
     const row = { sessionContext: { landing: { head: SOURCE, deployment: OTHER } } };
-    expect(issueIdentities(row)).toEqual({ source: SOURCE });
+    expect(issueIdentities(row)).toEqual({ source: SOURCE, from: 'landing' });
     expect(JSON.stringify(issueIdentities(row))).not.toContain(OTHER);
   });
 });
@@ -298,6 +299,34 @@ describe('standingSentence', () => {
     expect(standingSentence('unanchored', null, undeclared, has(null))).toContain(
       'without naming what it was judged against',
     );
+  });
+});
+
+// ISS-1300 — a recorded commit the repository was read and does not hold anchors no verdict.
+describe('a recorded commit the repository does not hold', () => {
+  const absent = (from: 'merge' | 'landing'): IssueIdentities => ({
+    source: OTHER,
+    from,
+    unresolvedIn: 'SidCorp-co/forge',
+  });
+
+  it('anchors nothing, whether the verdict names it or another commit', () => {
+    for (const judged of [SOURCE, OTHER]) {
+      expect(verdictStanding(at('source', judged), undeclared, absent('merge'))).toBe('unanchored');
+    }
+  });
+
+  it('says the same sentence for each, naming the commit, the repository and the record', () => {
+    const said = [SOURCE, OTHER].map((judged) =>
+      standingSentence('unanchored', at('source', judged), undeclared, absent('merge')),
+    );
+    expect(new Set(said).size).toBe(1);
+    expect(said[0]).toBe(
+      `the commit this issue records as landed, ${OTHER}, is not a commit SidCorp-co/forge holds, so no verdict can be weighed against it until its merge mark names the commit that landed`,
+    );
+    expect(
+      standingSentence('unanchored', at('source', SOURCE), undeclared, absent('landing')),
+    ).toContain('until its landing record names the commit that landed');
   });
 });
 

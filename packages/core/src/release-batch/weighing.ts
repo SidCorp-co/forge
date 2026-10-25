@@ -16,6 +16,18 @@ export interface Weighing {
   readonly runtimes: readonly RuntimeReading[];
   readonly changed: ReadonlyMap<string, ChangedPaths>;
   readonly carriage: ReadonlyMap<string, Carriage>;
+  /** Recorded landings the repository was read and lacks, by `landingKey`; a failed read adds none. */
+  readonly unresolved?: ReadonlyMap<string, UnresolvedLanding>;
+}
+
+/** A recorded landing commit the project's repository was read for and holds no commit under (ISS-1300). */
+export interface UnresolvedLanding {
+  readonly commit: string;
+  readonly repository: string;
+}
+
+export function landingKey(commit: string): string {
+  return commit.trim().toLowerCase();
 }
 
 /** Nothing read: equality alone decides, which can hold a verdict and never earn one. */

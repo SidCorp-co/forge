@@ -289,6 +289,32 @@ so no migration carries this rule backwards. The sha in such a mark's note is pr
 forge-plugin CLI reads; it sends the commit it marks at in the note and not as `data.commit`, so
 until it does, this check sees only what reaches `data.commit`.
 
+## A recorded commit the repository does not hold, when verdicts are weighed (ISS-1300)
+
+The write side above keeps a commit the repository lacks out of `merged_commit_sha`. The read side
+does not trust that alone: a value can predate the rule, the project's repository can be rebound or
+rewritten, and a verdict's source is also weighed against the landing head a run captured
+(`packages/core/src/issues/verdict-standing.ts:issueIdentities`, the merge's commit first), which
+no mark writer checks. So where a source verdict is weighed against that recorded commit — only
+where nothing reads what the project serves, a served commit answering a source verdict first —
+the weighing asks the repository once whether it holds it
+(`packages/core/src/release-batch/runtime-weighing.ts:readWeighingNow`, through the same reader
+the carriage takes; a commit found is trusted for an hour, since a rewrite can take it away, and
+one absent is asked again on the next weighing).
+
+A repository that was read and holds no such commit anchors no verdict: each criterion it holds
+back carries one sentence word for word, naming the commit, the repository and the record to
+correct, whatever commit each verdict names, the same commit included
+(`packages/core/src/issues/verdict-standing.ts:unresolvedSentence`). The criteria report carries it
+once as `unresolvedLanding`, with `from` saying whether it came from the merge mark or the landing
+record, and the automatic release's hold leads with it and names correcting that record, never a
+verdict on each criterion (`packages/core/src/pipeline/release-hold-kinds.ts:criteriaHold`). A
+repository that could not be read names nothing absent: the verdicts are weighed against the
+recorded commit as before, and stay held by equality.
+
+The forge-plugin CLI's own check of a verdict against the merged commit reads that commit out of
+the mark's note, not off these columns, so it is not covered here.
+
 ## What counts as landed depends on the issue's lane
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides

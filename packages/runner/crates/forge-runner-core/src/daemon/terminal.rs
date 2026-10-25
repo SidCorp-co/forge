@@ -2288,6 +2288,31 @@ mod tests {
         );
     }
 
+    /// Criterion 13 through the command the callers use (judge-109: dropping
+    /// the socket from `attach_command` itself left every test green): where
+    /// this box resolves the masters' socket, the command names it.
+    #[cfg(unix)]
+    #[test]
+    fn the_attach_command_callers_use_carries_the_resolved_socket() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = super::testing::IsolatedServer::new("attachcmd");
+        if !iso.took() {
+            super::testing::cannot_run(
+                "this box does not resolve its tmux socket from the config dir, so there is no socket of the test's own to see named",
+            );
+            return;
+        }
+        let sock = super::socket_path().expect("the isolated socket");
+        let said = super::attach_command("forge-master-p");
+        assert_eq!(
+            said,
+            format!("tmux -S {} attach -t forge-master-p", sock.display()),
+            "the command names the socket the masters' server listens on"
+        );
+    }
+
     /// Criterion 15: every place that tells a person how to open a master
     /// pane builds the command here, so none can drop the socket.
     #[test]
