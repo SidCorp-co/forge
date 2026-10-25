@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.316] - 2026-10-25
+
+The Delivery page lists what holds work back and who acts next
+
+### Added
+
+- **The Delivery page lists what holds delivery back.** Release holds, job holds, blocked and failed runs show per issue and per release, each with a plain cause and who acts next; a release hold names who clears it.
+
 ## [0.4.0-dev.315] - 2026-10-25
 
 Merge-request projects count work landed only once merged on the host
