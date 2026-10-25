@@ -1,6 +1,15 @@
 import type { RelayedGitCredential } from '../index.js';
 import { GITLAB_DEFAULT_BASE_URL, gitlabHostOf } from './types.js';
 
+/** How long a pre-relay helper answer is good for before git asks again; the token is the connection's. */
+const ASK_AGAIN_MS = 60 * 60_000;
+
+function tokenOf(secrets: Record<string, unknown>, repository: string): string {
+  const token = typeof secrets.token === 'string' ? secrets.token : '';
+  if (!token) throw new Error(`the connection behind ${repository} holds no GitLab access token`);
+  return token;
+}
+
 function pathOf(raw: string): string {
   return raw
     .trim()
@@ -32,11 +41,7 @@ export const gitlabGitCredential: RelayedGitCredential = {
     return `${gitlabHostOf(config)}/${String(config.projectPath ?? config.projectId ?? '(no project)')}`;
   },
   upstream({ config, secrets }) {
-    const token = typeof secrets.token === 'string' ? secrets.token : '';
-    if (!token)
-      throw new Error(
-        `the connection behind ${this.repositoryOf(config)} holds no GitLab access token`,
-      );
+    const token = tokenOf(secrets, this.repositoryOf(config));
     const base = (
       typeof config.baseUrl === 'string' ? config.baseUrl : GITLAB_DEFAULT_BASE_URL
     ).replace(/\/+$/, '');
@@ -45,6 +50,13 @@ export const gitlabGitCredential: RelayedGitCredential = {
     return {
       url: `${base}/${String(config.projectPath)}.git`,
       headers: { Authorization: `Basic ${basic}` },
+    };
+  },
+  preRelayCredential({ config, secrets }) {
+    return {
+      username: 'oauth2',
+      password: tokenOf(secrets, this.repositoryOf(config)),
+      expiresAt: new Date(Date.now() + ASK_AGAIN_MS).toISOString(),
     };
   },
 };

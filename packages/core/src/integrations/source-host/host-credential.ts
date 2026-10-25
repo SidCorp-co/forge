@@ -7,7 +7,8 @@
  * (`types.ts:GitCredentialMint`): a GitHub App mints an hour-long installation token for its one
  * repository; a GitLab connection mints nothing a box may hold, so its git goes through Forge's
  * relay (`git-relay.ts`) and the box is handed an hour-long relay ticket instead. The connection's
- * own token is never handed out, whatever is asked (REQ-73 BC-5).
+ * own token is never handed to a runner at or past the relay, whatever it asks (REQ-73 BC-5); an
+ * older one keeps it until it updates (`PRE_RELAY_RUNNER_AMNESTY`).
  *
  * Resolution is by host and repository path, not by project: git knows the URL it is fetching and
  * nothing else.
@@ -38,6 +39,32 @@ import {
 } from './git-relay.js';
 
 const refuse = refuser<GitRefusalCode>('GIT_REFUSED');
+
+/**
+ * AMNESTY — cm:hack ISS-685 until:every online device reports forge-runner 0.18.0 or later — then
+ * delete this constant, `preRelayCredential` and the branch reading it, so every direct ask for a
+ * relayed host is refused GIT_THROUGH_FORGE.
+ *
+ * The first runner release that moves a checkout's origin to the relay: 0.18 is the runner line this
+ * change ships on (`packages/runner/Cargo.toml`), and every runner live today is 0.17.x. A device
+ * reporting an older version, or none, still asks GitLab directly and picks a release up only at its
+ * update check, so refusing it would cut its masters off fetch and push for hours.
+ *   Traded: such a runner is still served the connection's long-lived token on a direct ask, logged.
+ *   Costs: that token sits on every box that has not updated.
+ */
+export const PRE_RELAY_RUNNER_AMNESTY = '0.18.0';
+
+/** Whether a device's reported runner version (`a.b.c`) is at or past the relay; none is not. */
+export function relayCapableRunner(version: string | null | undefined): boolean {
+  const got = /^(\d+)\.(\d+)\.(\d+)$/.exec(version?.trim() ?? '');
+  if (!got) return false;
+  const floor = PRE_RELAY_RUNNER_AMNESTY.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = Number(got[i + 1]) - (floor[i] as number);
+    if (d !== 0) return d > 0;
+  }
+  return true;
+}
 
 interface GitCredentialGrant {
   username: string;
@@ -114,9 +141,11 @@ const repoPathOf = (raw: string): string => raw.trim().replace(/^\/+/, '').repla
  */
 export async function mintGitCredentialForDevice(args: {
   deviceId: string;
+  /** The runner version the device last reported (`devices.agent_version`), or null. */
+  agentVersion: string | null;
   host: string;
   path: string;
-}): Promise<GitCredentialGrant> {
+}): Promise<GitCredentialGrant & { preRelay?: true }> {
   const path = repoPathOf(args.path);
   if (!path.includes('/')) {
     throw new HTTPException(400, {
@@ -131,6 +160,13 @@ export async function mintGitCredentialForDevice(args: {
   const { pair, cred, config } = await pairReaching(byProvider, args.deviceId, args.host, path);
   const repository = cred.repositoryOf(config);
   if (cred.kind === 'relayed') {
+    if (!relayCapableRunner(args.agentVersion)) {
+      const served = cred.preRelayCredential({
+        config,
+        secrets: decryptConnectionSecrets(pair.connection),
+      });
+      return { ...served, repository, projectId: pair.binding.projectId, preRelay: true };
+    }
     const through = gitRelayUrlFor(args.host, path);
     if (!through) throw relayUnavailable(repository);
     throw refuse(

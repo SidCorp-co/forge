@@ -5,7 +5,8 @@
  * A helper is the only shape that works: the credential expires in an hour, jobs do not, and the
  * provision side-channel delivers once. Any source host that declares a `gitCredential` is served
  * here (ISS-50): a GitHub App's installation token, or for a host reached only through Forge's git
- * relay (GitLab), a relay ticket — a connection's own token is never answered (REQ-73 BC-5).
+ * relay (GitLab), a relay ticket — a connection's own token is never answered to a runner at or
+ * past the relay (REQ-73 BC-5; older ones under `host-credential.ts:PRE_RELAY_RUNNER_AMNESTY`).
  * Nothing is stored on the box and nothing is stored here — the grant is computed from the device's
  * runners and the project's binding every time it is asked for.
  */
@@ -43,7 +44,22 @@ deviceGitCredentialRoutes.post(
       });
     }
 
-    const grant = await mintGitCredentialForDevice({ deviceId: device.id, host, path });
+    const grant = await mintGitCredentialForDevice({
+      deviceId: device.id,
+      agentVersion: device.agentVersion ?? null,
+      host,
+      path,
+    });
+    if (grant.preRelay) {
+      logger.warn(
+        {
+          deviceId: device.id,
+          agentVersion: device.agentVersion ?? null,
+          repository: grant.repository,
+        },
+        'git-credential: served the connection token to a runner older than the relay (PRE_RELAY_RUNNER_AMNESTY)',
+      );
+    }
     logger.info(
       {
         deviceId: device.id,

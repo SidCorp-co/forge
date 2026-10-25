@@ -1,1 +1,1 @@
-**A runner's git reaches GitLab through Forge, and boxes never hold the connection's token.** The credential helper gets an hour-long relay ticket, existing checkouts move their origin to the relay, and one pasted command installs and pairs a runner.
+**A runner's git reaches GitLab through Forge, so boxes stop holding the connection's token.** The helper gets an hour-long relay ticket and checkouts move their origin; runners older than 0.18.0 keep the token until they update.

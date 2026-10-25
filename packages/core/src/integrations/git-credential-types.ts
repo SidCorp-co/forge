@@ -32,6 +32,15 @@ export interface RelayedGitCredential extends GitCredentialReach {
     url: string;
     headers: Record<string, string>;
   };
+  /**
+   * The connection's own credential as a runner released before the relay was served it. Read only
+   * under `source-host/host-credential.ts:PRE_RELAY_RUNNER_AMNESTY`, and deleted with it.
+   */
+  preRelayCredential(args: { config: Record<string, unknown>; secrets: Record<string, unknown> }): {
+    username: string;
+    password: string;
+    expiresAt: string;
+  };
 }
 
 export type GitCredentialMint = MintedGitCredential | RelayedGitCredential;

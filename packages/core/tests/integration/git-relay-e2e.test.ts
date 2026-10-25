@@ -9,22 +9,15 @@
  * host is a planted `fetch` that records what reached it.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mintPat } from '../../src/credentials/pat.js';
 import { db } from '../../src/db/client.js';
 import { app } from '../../src/index.js';
 import { registerAllIntegrations } from '../../src/integration-registry.js';
+import { PRE_RELAY_RUNNER_AMNESTY } from '../../src/integrations/source-host/host-credential.js';
 import { encryptJson } from '../../src/integrations/vault.js';
 import { api } from '../helpers/api.js';
-import {
-  createTestDevice,
-  createTestProject,
-  createTestUser,
-  truncateAll,
-} from '../helpers/factories.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+import { HOST, REPO, seedRelayWorld, TOKEN } from '../helpers/git-relay-world.js';
 
 vi.hoisted(() => {
   // the connection's token is sealed in the integration vault
@@ -33,9 +26,6 @@ vi.hoisted(() => {
   process.env.PUBLIC_API_BASE_URL = 'https://forge.example';
 });
 
-const TOKEN = 'glpat-the-connections-own-token';
-const HOST = 'gitlab.test';
-const REPO = 'acme/canawan-api';
 const RELAY = `https://forge.example/api/git/${HOST}/${REPO}.git`;
 
 interface Reached {
@@ -47,6 +37,7 @@ interface Reached {
 }
 
 const world = { projectId: '', deviceId: '', boxToken: '', bindingId: '', connectionId: '' };
+
 let reached: Reached[] = [];
 let hostAnswers = 200;
 
@@ -55,40 +46,9 @@ beforeAll(() => {
 });
 
 beforeEach(async () => {
-  await truncateAll();
   reached = [];
   hostAnswers = 200;
-  const owner = (await createTestUser({ verified: true })).id;
-  world.projectId = (await createTestProject(owner)).id;
-  await seedProjectDocument(world.projectId, owner, {
-    environments: {},
-    source: {
-      type: 'git',
-      git: { repository: `${HOST}/${REPO}`, defaultBranch: 'main', branches: ['main'] },
-    },
-  });
-  world.deviceId = await createTestDevice(owner);
-  // a runner waiting for its checkout, as a fresh assignment is born
-  await db.execute(sql`
-    INSERT INTO runners (id, project_id, device_id, name, type, status, repo_path, provision_status, provision_requested_at)
-    VALUES (${randomUUID()}, ${world.projectId}, ${world.deviceId}, 'hub box', 'claude-code', 'online',
-            '/srv/checkout', 'queued', now())
-  `);
-  world.boxToken = (
-    await mintPat({ permissions: ['*'], userId: owner, name: 'box', deviceId: world.deviceId })
-  ).plaintext;
-  world.connectionId = randomUUID();
-  world.bindingId = randomUUID();
-  await db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config, secrets_enc)
-    VALUES (${world.connectionId}, 'user', ${owner}, 'gitlab', true,
-            ${JSON.stringify({ baseUrl: `https://${HOST}` })}::jsonb, ${encryptJson({ token: TOKEN })})
-  `);
-  await db.execute(sql`
-    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, active, config)
-    VALUES (${world.bindingId}, ${world.connectionId}, ${world.projectId}, 'gitlab', 'source', true,
-            ${JSON.stringify({ projectPath: REPO })}::jsonb)
-  `);
+  Object.assign(world, await seedRelayWorld());
 
   // the GitLab host: records every request the relay sends it, answers as smart HTTP does
   const real = globalThis.fetch;
@@ -182,6 +142,37 @@ describe('REQ-73 BC-5: the GitLab connection token never leaves Forge', () => {
     }>;
     expect(assignment?.repository).toBe(`${HOST}/${REPO}`);
     expect(assignment?.relayRemote).toBe(RELAY);
+  });
+});
+
+describe('REQ-73 BC-5 transition: a runner older than the relay keeps git until it updates (PRE_RELAY_RUNNER_AMNESTY)', () => {
+  const reporting = (version: string | null) =>
+    db.execute(sql`UPDATE devices SET agent_version = ${version} WHERE id = ${world.deviceId}`);
+
+  it('a runner reporting 0.17.x is still served the connection token on a direct ask', async () => {
+    await reporting('0.17.142');
+    const res = await ask(HOST, `${REPO}.git`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ username: 'oauth2', password: TOKEN });
+  });
+
+  it('a device that reports no version counts as old, and an unreadable one too', async () => {
+    for (const version of [null, 'dev-build']) {
+      await reporting(version);
+      const res = await ask(HOST, `${REPO}.git`);
+      expect(res.status, `${version}: ${JSON.stringify(res.body)}`).toBe(200);
+      expect(res.body.password).toBe(TOKEN);
+    }
+  });
+
+  it('a runner at or past the floor is refused GIT_THROUGH_FORGE, whatever patch it is on', async () => {
+    for (const version of [PRE_RELAY_RUNNER_AMNESTY, '0.18.7', '1.0.0']) {
+      await reporting(version);
+      const res = await ask(HOST, `${REPO}.git`);
+      expect(res.status, version).toBe(409);
+      expect(res.body.code).toBe('GIT_THROUGH_FORGE');
+      expect(JSON.stringify(res.body)).not.toContain(TOKEN);
+    }
   });
 });
 
