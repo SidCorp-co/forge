@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { GithubLanded, githubLandedWords } from "./github-landed";
+
+afterEach(cleanup);
 
 describe("GithubLanded — GitHub's return when Forge could not finish (ISS-1421 r27)", () => {
   it("says in words why nothing was recorded, by the refusal's code", () => {
