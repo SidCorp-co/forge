@@ -1299,6 +1299,25 @@ async fn served() -> Option<(std::path::PathBuf, u32)> {
     Some((std::path::PathBuf::from(path), pid.parse().ok()?))
 }
 
+/// The pid of the tmux server the master panes run on, which every process a
+/// dispatched run starts descends from, or why it could not be asked.
+pub async fn server_pid() -> std::result::Result<u32, String> {
+    let out = tmux(&["display-message", "-p", "#{pid}"])
+        .await
+        .map_err(|e| e.to_string())?;
+    let said = String::from_utf8_lossy(&out.stdout);
+    if !out.status.success() {
+        return Err(format!(
+            "tmux answered {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    said.trim()
+        .parse()
+        .map_err(|_| format!("tmux answered {:?} for its server's pid", said.trim()))
+}
+
 async fn pipe_pane(name: &str, path: &std::path::Path) {
     let target = pane_target(name);
     let shell = format!("cat >> {}", shell_quote(&path.to_string_lossy()));
