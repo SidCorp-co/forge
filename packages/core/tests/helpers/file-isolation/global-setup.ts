@@ -1,12 +1,11 @@
 import postgres from 'postgres';
 import { mintRunToken, sweepRunScratchDbs } from '../scratch-db.js';
 
-// A nested run is a run of its own: it mints its own token, so its workers are handed slot databases
-// of their own and never one the outer run's workers are using. The template is the outer run's.
+// A run of its own: the token the outer case minted (ISOLATION_TOKEN), over the outer template.
 let token: string | null = null;
 
 export function setup(): void {
-  token = mintRunToken();
+  token = process.env.ISOLATION_TOKEN || mintRunToken();
   process.env.TEST_PG_RUN_TOKEN = token;
   process.env.TEST_PG_RUN_OWNER = String(process.pid);
 }

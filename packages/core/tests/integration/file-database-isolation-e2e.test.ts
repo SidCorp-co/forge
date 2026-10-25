@@ -4,7 +4,9 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import postgres from 'postgres';
 import { describe, expect, it } from 'vitest';
+import { mintedBy, mintRunToken, retireScratchDb } from '../helpers/scratch-db.js';
 
 // A worker slot hands its one database to every file it runs (`tests/helpers/slot-db.ts`), so what
 // keeps one file's rows from the next is the reset between them, not a database apiece. This runs
@@ -44,6 +46,7 @@ async function runNested(
   { inherit = false } = {},
 ): Promise<Nested> {
   const dir = mkdtempSync(join(tmpdir(), 'file-isolation-'));
+  const token = mintRunToken();
   const env: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (!k.startsWith('VITEST') && k !== 'NODE_V8_COVERAGE') env[k] = v;
@@ -55,6 +58,7 @@ async function runNested(
     ISOLATION_OVERLAP: workers > 1 ? '1' : '0',
     ISOLATION_MARKER: String(1000 + Math.floor(Math.random() * 1_000_000)),
     ISOLATION_INHERIT: inherit ? '1' : '0',
+    ISOLATION_TOKEN: token,
   });
   const out = join(dir, 'report.json');
   try {
@@ -86,6 +90,22 @@ async function runNested(
     };
   } finally {
     rmSync(dir, { recursive: true, force: true });
+    await giveBack(token);
+  }
+}
+
+/** Hand the drain whatever the nested run's teardown left under its token, e.g. when it was killed. */
+async function giveBack(token: string): Promise<void> {
+  const adminUrl = process.env.TEST_PG_ADMIN_URL as string;
+  const admin = postgres(adminUrl, { max: 1, onnotice: () => {} });
+  try {
+    const rows = await admin<{ datname: string }[]>`
+      SELECT datname FROM pg_database WHERE strpos(datname, ${token}) > 0
+    `;
+    for (const { datname } of rows)
+      if (mintedBy(datname, token)) retireScratchDb(adminUrl, datname);
+  } finally {
+    await admin.end({ timeout: 5 });
   }
 }
 
