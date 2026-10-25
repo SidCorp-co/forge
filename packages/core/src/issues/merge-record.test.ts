@@ -219,6 +219,14 @@ describe('recordIssueMerge — a commit a person stated', () => {
     expect(renderedSql(whereCall.mock.calls[0]?.[0])).toContain('"merged_commit_sha" is null');
   });
 
+  it('lets an observed merge at the same commit turn a stated one into its own record', async () => {
+    const { executor, whereCall } = buildExecutor();
+    await recordIssueMerge(executor, { issueId: 'iss-1', evidence: OBSERVED });
+    const gated = renderedSql(whereCall.mock.calls[0]?.[0]);
+    expect(gated).toContain('"merged_commit_stated" =');
+    expect(gated).toContain('lower("issues"."merged_commit_sha") = lower(');
+  });
+
   it('replaces only the commit it was told the repository lacks', async () => {
     const { executor, whereCall } = buildExecutor();
     await recordIssueMerge(executor, {

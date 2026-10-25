@@ -291,7 +291,11 @@ and in the repository. It is no work evidence
 (`packages/core/src/pipeline/work-evidence.ts:collectWorkEvidence`), as it was not before. A landing Forge
 holds that does resolve, or that the repository could not be read for, keeps the rules above and
 below: a person's other commit is read as a later landing, and an agent's commit is never stated. A
-later merge Forge observes moves a stated commit forward like any other and clears the flag.
+later merge Forge observes moves a stated commit forward like any other and clears the flag, and a
+merge Forge reads at that very commit (a merged pull request, or an agent's mark the repository
+reads as this issue's landing) makes the mark `observed`. Only the very commit leaves a stated
+correction unneeded: an abbreviation the repository cannot resolve is replaced by the full commit
+that begins with it.
 
 Where the caller names no commit, the mark records none. No step handoff is read for one: the
 work-evidence gate reads the issue's own row and nothing else (`packages/core/src/pipeline/work-evidence.ts:collectWorkEvidence`),

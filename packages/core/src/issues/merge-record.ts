@@ -284,10 +284,20 @@ export async function recordIssueMerge(
     evidence.kind === 'stated';
   const withCommit = evidence.kind === 'observed' || evidence.kind === 'stated';
   const supersedes = withCommit ? (evidence.supersedes ?? null) : null;
+  // A merge Forge reads at the very commit a person stated turns their claim into its record.
+  const promotes =
+    evidence.kind === 'observed'
+      ? and(
+          eq(issues.mergedCommitStated, true),
+          sql`lower(${issues.mergedCommitSha}) = lower(${evidence.commitSha})`,
+        )
+      : undefined;
   const gate = withCommit
     ? supersedes
       ? eq(issues.mergedCommitSha, supersedes)
-      : isNull(issues.mergedCommitSha)
+      : promotes
+        ? or(isNull(issues.mergedCommitSha), promotes)
+        : isNull(issues.mergedCommitSha)
     : claimsOnly
       ? or(
           isNull(issues.mergedAt),

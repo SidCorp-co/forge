@@ -3,7 +3,6 @@
 import { db } from '../db/client.js';
 import type { ActorAgency } from './actor-agency.js';
 import { resolveMarkCommit } from './commit-landing.js';
-import { sameCommit } from './landing-advance.js';
 import type { LandingShape } from './landing-evidence.js';
 import { type MergeRecord, readMergeColumns, recordIssueMerge } from './merge-record.js';
 
@@ -39,7 +38,8 @@ export async function statedLanding(args: {
   const held = (await readMergeColumns(db, args.issueId)).commitSha?.trim() || null;
   const forge = held ?? args.observed?.commitSha ?? null;
   if (!forge) return { ...said, supersedes: null };
-  if (sameCommit(forge, said.commit)) return null;
+  // Only the very commit short-circuits: an abbreviation the repository cannot resolve is replaced.
+  if (forge.toLowerCase() === said.commit.toLowerCase()) return null;
   if (!(await absentFrom(args.projectId, forge))) return null;
   return { ...said, supersedes: held };
 }

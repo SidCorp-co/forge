@@ -4,6 +4,7 @@
  * against a real Postgres and the repository stand-in in `tests/helpers/commit-landing-fixture.ts`.
  */
 
+import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 
 process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
@@ -24,7 +25,7 @@ vi.mock('../../src/integrations/github/client.js', async (importOriginal) =>
   (await import('../helpers/commit-landing-fixture.js')).fakeGitHubClient(await importOriginal()),
 );
 
-const { seed, mark, row, comments, handoff } = useCommitLandingWorld();
+const { seed, mark, row, comments, handoff, current } = useCommitLandingWorld();
 
 /** sid-desk ISS-578's mark: a real commit's first eight characters, then a tail no commit has. */
 const ISS_578_PAIR = `${OWN.slice(0, 8)}0e1cf5dadf2b1b3be9ba1b81c5e9cb40`;
@@ -121,6 +122,41 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     expect(res.markDetail).toBe(
       `Commit ${OWN.slice(0, 7)} is in ${repo.fullName}, and is recorded as where this work landed. Forge did not see this merge, so the mark is a claim.`,
     );
+  });
+
+  // ISS-1300 r3 review F1 — an agent's mark that reads the very commit a person stated as this
+  // issue's landing turns the claim into Forge's own record, and it counts as work evidence then.
+  it("turns a person's stated commit into an observed mark once an agent's mark reads it as the landing", async () => {
+    const issue = await seed({ sessionContext: {} });
+    await mark(issue, OWN, 'human');
+    const { db } = current();
+    const stated = await db.execute<{ merged_commit_stated: boolean }>(
+      sql`SELECT merged_commit_stated FROM issues WHERE id = ${issue.id}`,
+    );
+    expect(stated[0]?.merged_commit_stated).toBe(true);
+
+    const res = await mark({ ...issue, mergedAt: new Date() }, OWN, 'agent');
+
+    expect(res.mark).toBe('observed');
+    const after = await db.execute<{ merged_commit_stated: boolean; merged_commit_sha: string }>(
+      sql`SELECT merged_commit_stated, merged_commit_sha FROM issues WHERE id = ${issue.id}`,
+    );
+    expect(after[0]).toMatchObject({ merged_commit_stated: false, merged_commit_sha: OWN });
+  });
+
+  // ISS-1300 r3 review F2 — a stored abbreviation the repository cannot resolve is replaced by the
+  // full commit a person names, though that commit begins with it.
+  it('replaces a stored abbreviation the repository cannot resolve with the full commit a person names', async () => {
+    const issue = await seed({ sessionContext: {} });
+    const { db } = current();
+    await db.execute(
+      sql`UPDATE issues SET merged_at = now(), merged_commit_sha = ${OWN.slice(0, 7)} WHERE id = ${issue.id}`,
+    );
+
+    const res = await mark({ ...issue, mergedAt: new Date() }, OWN, 'human');
+
+    expect(res.action).toBe('merged');
+    expect((await row(issue.id)).merged_commit_sha).toBe(OWN);
   });
 
   it('records no commit from a handoff on a mark naming none, even one the repository holds (ISS-1133 criterion 5)', async () => {
