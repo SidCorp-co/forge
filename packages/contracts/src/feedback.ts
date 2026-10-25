@@ -302,6 +302,8 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_CLARIFICATION_ALREADY_OPEN",
 	"FEEDBACK_CLARIFICATION_CLOSED",
 	"FEEDBACK_ATTACHMENT_INVALID",
+	/** A report the agent could not read for its kind, and the reporter named none (REQ-66 BC-1). */
+	"FEEDBACK_KIND_NEEDED",
 	/** A diagnosis rides only the issue route, and names a recording of this item (REQ-41 BC-19). */
 	"FEEDBACK_DIAGNOSIS_INVALID",
 	/** A violated criterion that is not "none", not a REQ-n BC-m standing now, or not of the item's requirement. */
@@ -365,6 +367,56 @@ export const createFeedbackRequestSchema = z.strictObject({
 });
 export type CreateFeedbackRequest = z.infer<typeof createFeedbackRequestSchema>;
 export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | mockup | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), ${WRITTEN_LANG_SHAPE} }`;
+
+/** The kinds a person reports; `contract_change` is core's own. */
+export const FEEDBACK_REPORT_KINDS = [
+	"bug",
+	"change_request",
+	"question",
+	"idea",
+] as const satisfies readonly Exclude<FeedbackKind, "contract_change">[];
+
+/**
+ * A screenshot taken on the page a report was made from. `redacted` is the reporter's word that
+ * nothing personal shows in it (they blacked it out, or there was none): on a project that redacts,
+ * only such a screenshot reaches a model, since no scrubber reads an image (REQ-66 BC-7).
+ */
+export const feedbackScreenshotSchema = z.strictObject({
+	name: z.string().trim().min(1).max(200),
+	mime: z.string().trim().min(1).max(100),
+	contentBase64: z.string().min(1),
+	redacted: z.boolean(),
+});
+export type FeedbackScreenshot = z.infer<typeof feedbackScreenshotSchema>;
+
+/**
+ * `POST /api/projects/:id/feedback/report` (REQ-66 BC-1): one sentence and a screenshot, filed as the
+ * person into the project. The agent fills the kind and severity and names the open item it repeats,
+ * which it then joins as an occurrence (BC-3); the target is the page it was seen on. `kind` is the
+ * reporter's own where the agent could not read it (`FEEDBACK_KIND_NEEDED`).
+ */
+export const feedbackReportRequestSchema = z.strictObject({
+	said: titleText(FEEDBACK_LIMITS.title),
+	whereSeen: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen),
+	kind: z.enum(FEEDBACK_REPORT_KINDS).optional(),
+	screenshot: feedbackScreenshotSchema.optional(),
+	writtenLang: writtenLangSchema.optional(),
+});
+export type FeedbackReportRequest = z.infer<typeof feedbackReportRequestSchema>;
+/** What a report answers: the item it filed or joined, and how its screenshot fared. */
+export interface FeedbackReportResponse {
+	feedback: FeedbackView;
+	/** False where the report joined an open item as an occurrence (REQ-66 BC-3). */
+	created: boolean;
+	/** Whose the kind and severity are: the agent's reading of the sentence, or the reporter's own. */
+	filledBy: "agent" | "reporter";
+	screenshot:
+		| { state: "kept" | "none" }
+		/** Joined an item that already holds the most attachments it keeps: the report stands without it. */
+		| { state: "not_kept"; why: string };
+}
+
+export const FEEDBACK_REPORT_SHAPE = `{ said, whereSeen, kind?: ${FEEDBACK_REPORT_KINDS.join(" | ")}, screenshot?: { name, mime, contentBase64, redacted }, ${WRITTEN_LANG_SHAPE} }`;
 
 const carrierFields = {
 	/** One issue that carries the route, or every one of them as a list (ISS-265). */
@@ -557,8 +609,10 @@ export const feedbackAttachmentRequestSchema = z.strictObject({
 	name: z.string().trim().min(1).max(200),
 	mime: z.string().trim().min(3).max(200),
 	contentBase64: z.string().min(4),
+	/** The attacher's word that nothing personal shows in it (REQ-66 BC-7); absent, it is not. */
+	redacted: z.boolean().optional(),
 });
-export const FEEDBACK_ATTACHMENT_SHAPE = "{ name, mime, contentBase64 }";
+export const FEEDBACK_ATTACHMENT_SHAPE = "{ name, mime, contentBase64, redacted? }";
 
 /** `GET /api/projects/:id/feedback` — `phase` is comma-separated. */
 export const listFeedbackQuerySchema = z.strictObject({
@@ -640,6 +694,19 @@ export interface FeedbackReporterView {
 	from: string | null;
 }
 
+/** One report of the item after its filing: a repeat that joined it rather than becoming an item (REQ-66 BC-3). */
+export interface FeedbackOccurrenceView {
+	id: string;
+	reporter: { id: string; name: string | null; agency: "human" | "agent" };
+	/** What they said, scrubbed as the item's own text is; null on a report that said nothing new. */
+	said: string | null;
+	/** The screenshot taken with it, one of the item's attachments; null where none was kept. */
+	attachmentId: string | null;
+	/** The project it was reported from, where that is not the item's own. */
+	from: { slug: string; name: string } | null;
+	at: string;
+}
+
 /** What a reader sees of one message: a notice a reporter received, or an internal note members keep. */
 export interface FeedbackMessageView {
 	id: string;
@@ -688,6 +755,8 @@ export interface FeedbackOriginView {
 
 export interface FeedbackAttachmentView {
 	id: string;
+	/** The reporter's word that nothing personal shows in it; on a project that redacts, only such bytes reach a model. */
+	redacted: boolean;
 	/** The duplicate this evidence was filed on, when it moved here with it; null on the item's own. */
 	from: string | null;
 	name: string;
@@ -856,8 +925,10 @@ export interface FeedbackView extends FeedbackSummary {
 	duplicates: string[];
 	decisions: FeedbackDecisionView[];
 	attachments: FeedbackAttachmentView[];
-	/** Everyone who reported it: its own reporter first, then the reporters of the duplicates merged into it. */
+	/** Everyone who reported it: its own reporter first, then those of its occurrences and of the duplicates merged into it. */
 	reporters: FeedbackReporterView[];
+	/** Every later report that joined it, oldest first. */
+	occurrences: FeedbackOccurrenceView[];
 	/** Messages sent to reporters, and the internal notes the viewer may read, oldest first. */
 	messages: FeedbackMessageView[];
 	clarification: {

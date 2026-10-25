@@ -7,18 +7,21 @@ import {
   FEEDBACK_MESSAGE_SHAPE,
   FEEDBACK_PHASES,
   FEEDBACK_REASON_SHAPE,
+  FEEDBACK_REPORT_SHAPE,
   FEEDBACK_RETARGET_SHAPE,
   FEEDBACK_SNOOZE_SHAPE,
   FEEDBACK_TRIAGE_SHAPE,
   FEEDBACK_VERIFY_SHAPE,
   type FeedbackEndpointsResponse,
   type FeedbackMessagePreviewResponse,
+  type FeedbackReportResponse,
   type FeedbackResponse,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
   feedbackEmptyRequestSchema,
   feedbackMessageRequestSchema,
   feedbackReasonRequestSchema,
+  feedbackReportRequestSchema,
   feedbackRetargetRequestSchema,
   feedbackSnoozeRequestSchema,
   feedbackTriageSchema,
@@ -42,6 +45,7 @@ import { listFeedbackAs } from './list-page-read.js';
 import { previewMessage, sendMessage } from './messages.js';
 import { detailAs, type FeedbackActor } from './read.js';
 import { redactReporterData } from './redact.js';
+import { fileFeedbackReport } from './report.js';
 import { retargetFeedback } from './retarget.js';
 import {
   askReporterToVerify,
@@ -128,6 +132,25 @@ feedbackRoutes.post(
         request: c.req.valid('json'),
       }),
     ),
+);
+
+// one sentence and a screenshot from any page (REQ-66 BC-1): before `/:fb`, which would read
+// `report` as an item key
+feedbackRoutes.post(
+  '/:id/feedback/report',
+  projectParam,
+  strictBody(feedbackReportRequestSchema, FEEDBACK_REPORT_SHAPE),
+  holdChatWrite('feedback'),
+  async (c) => {
+    const out = await fileFeedbackReport({
+      projectId: c.req.valid('param').id,
+      actor: actorOf(c),
+      request: c.req.valid('json'),
+    });
+    if (!out.ok) return refused(c, out.refusals, 'FEEDBACK_REFUSED');
+    const { ok: _ok, ...body } = out;
+    return c.json(body satisfies FeedbackReportResponse, out.created ? 201 : 200);
+  },
 );
 
 // a draft not yet filed: before `/:fb`, which would read `similar` as an item key

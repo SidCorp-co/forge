@@ -393,7 +393,7 @@ export async function triageIn(
   return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route, carriers } };
 }
 
-/** An item merged into its original tells its own reporter, once, which item carries their report. */
+/** A merged item tells its own reporters and its repeats', once, which item carries their report. */
 async function tellDuplicateReporters(tx: Tx, row: Row, original: string) {
   const told = withBell((await reportersOf(tx, row)).filter((r) => r.from === null)).map(
     (r) => r.id,

@@ -13,21 +13,17 @@ import type {
 } from '@forge/contracts/forge-feedback';
 import { and, desc, eq } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { feedback, feedbackOccurrences } from '../db/schema-feedback.js';
+import { feedback } from '../db/schema-feedback.js';
 import { forgeHomeProject } from '../instance-settings/index.js';
 import type { Refusal } from '../lib/refusal.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { linkedOf, phaseIn } from './list-read.js';
+import { addOccurrenceIn, type OccurrenceSource } from './occurrences.js';
 import type { FeedbackActor, Row } from './read.js';
 import { insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
 
 /** Where one report came from, already checked against what its reporter may read. */
-export interface ForgeSource {
-  projectId: string | null;
-  issueId: string | null;
-  runId: string | null;
-  clientVersion: string | null;
-}
+export type ForgeSource = OccurrenceSource;
 
 export const forgeRefusal = (
   code: ForgeFeedbackRefusalCode,
@@ -77,27 +73,6 @@ export async function openItemOf(tx: Tx, homeId: string, signalKey: string): Pro
     if (!CLOSED.includes(phase)) return item;
   }
   return null;
-}
-
-export async function addOccurrenceIn(
-  tx: Tx,
-  feedbackId: string,
-  actor: FeedbackActor,
-  source: ForgeSource,
-  extra: { dedupKey?: string | null; at?: Date } = {},
-): Promise<void> {
-  await tx.insert(feedbackOccurrences).values({
-    feedbackId,
-    reportedBy: actor.userId,
-    reporterAgency: actor.agency,
-    sourceProjectId: source.projectId,
-    sourceIssueId: source.issueId,
-    sourceRunId: source.runId,
-    clientVersion: source.clientVersion,
-    dedupKey: extra.dedupKey ?? null,
-    ...(extra.at ? { createdAt: extra.at } : {}),
-  });
-  await tx.update(feedback).set({ updatedAt: new Date() }).where(eq(feedback.id, feedbackId));
 }
 
 export type ForgeFiling =

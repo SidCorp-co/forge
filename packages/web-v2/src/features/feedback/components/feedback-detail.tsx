@@ -42,6 +42,7 @@ import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";
 import { FeedbackAnswer } from "./feedback-answer";
+import { FeedbackOccurrences } from "./feedback-occurrences";
 import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackEvidence } from "./feedback-evidence";
 import { FeedbackQuestions } from "./feedback-questions";
@@ -93,6 +94,7 @@ function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
         </p>
       )}
       <FeedbackAttachments projectId={projectId} f={f} />
+      <FeedbackOccurrences f={f} />
     </section>
   );
 }

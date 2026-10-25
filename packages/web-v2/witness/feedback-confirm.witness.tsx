@@ -36,7 +36,7 @@ const base = {
   verifyHeld: null,
   whereSeen: null,
   duplicateOf: null,
-  duplicates: [],
+  duplicates: [],  occurrences: [],
   origin: null,
   decisions: [],
   attachments: [],

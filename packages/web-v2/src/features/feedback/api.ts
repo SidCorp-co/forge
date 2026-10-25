@@ -6,6 +6,8 @@ import type {
   FeedbackListResponse,
   FeedbackMessageAudience,
   FeedbackMessagePreviewResponse,
+  FeedbackReportRequest,
+  FeedbackReportResponse,
   FeedbackResponse,
   SimilarFeedbackDraft,
   SimilarFeedbackResponse,
@@ -82,6 +84,8 @@ export const feedbackApi = {
   similarToDraft: (projectId: string, draft: SimilarFeedbackDraft) => apiClient<SimilarFeedbackResponse>(`${base(projectId)}/similar`, post(draft)),
   endpoints: (projectId: string) => apiClient<FeedbackEndpointsResponse>(`${base(projectId)}/endpoints`),
   create: (projectId: string, body: CreateFeedbackRequest) => apiClient<FeedbackResponse>(base(projectId), post(body)),
+  /** One sentence and a screenshot from the page (REQ-66 BC-1): a new item, or the open one it repeats. */
+  report: (projectId: string, body: FeedbackReportRequest) => apiClient<FeedbackReportResponse>(`${base(projectId)}/report`, post(body)),
   /** The exact notice a send would deliver, and to whom; nothing is written. */
   previewMessage: (projectId: string, key: string, body: { audience: Exclude<FeedbackMessageAudience, "internal">; text: string }) =>
     apiClient<FeedbackMessagePreviewResponse>(`${one(projectId, key)}/messages/preview`, post(body)),

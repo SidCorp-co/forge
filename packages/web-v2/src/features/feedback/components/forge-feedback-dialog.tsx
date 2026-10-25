@@ -20,7 +20,7 @@ const FIELDS = { title: ["/title"], kind: ["/kind"], body: ["/body"], where: ["/
 /** Where "your feedback to Forge" lives. */
 export const MY_FORGE_FEEDBACK_HREF = "/forge-feedback";
 
-function ForgeFeedbackForm({ clientVersion, onFiled, onCancel }: { clientVersion?: string; onFiled: (filed: ForgeFeedbackFiled) => void; onCancel: () => void }) {
+export function ForgeFeedbackForm({ clientVersion, onFiled, onCancel }: { clientVersion?: string; onFiled: (filed: ForgeFeedbackFiled) => void; onCancel: () => void }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const write = useSubmitForgeFeedback();
@@ -81,7 +81,7 @@ function ForgeFeedbackForm({ clientVersion, onFiled, onCancel }: { clientVersion
   );
 }
 
-function ForgeFeedbackFiledNote({ filed, onClose }: { filed: ForgeFeedbackFiled; onClose: () => void }) {
+export function ForgeFeedbackFiledNote({ filed, onClose }: { filed: ForgeFeedbackFiled; onClose: () => void }) {
   const t = useCopy();
   const key = filed.feedback.key;
   return (

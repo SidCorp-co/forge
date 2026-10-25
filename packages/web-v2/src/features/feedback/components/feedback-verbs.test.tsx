@@ -30,7 +30,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     route: null,
     reporter: { id: "u9", name: "Ana", agency: "human" },
     whereSeen: null,
-    duplicates: [],
+    duplicates: [],    occurrences: [],
     origin: null,
     createdAt: "2026-10-01T00:00:00.000Z",
     updatedAt: "2026-10-01T00:00:00.000Z",
