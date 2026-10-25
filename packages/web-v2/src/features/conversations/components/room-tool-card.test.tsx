@@ -59,7 +59,7 @@ describe("a room's tool card", () => {
       />,
     );
     expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent(
-      "The assistant can't do that from a room. Here it can read, file and comment on issues.",
+      "The assistant can't do that from a room. That is done at a terminal.",
     );
     expect(screen.getByTestId("room-tool-card").textContent).not.toMatch(/\bforge\b|`|command/);
     fireEvent.click(screen.getByRole("button", { name: "Technical details" }));

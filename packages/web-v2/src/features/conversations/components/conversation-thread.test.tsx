@@ -191,6 +191,48 @@ describe("a turn somebody stopped", () => {
   });
 });
 
+// ISS-1229 r40, judge-111 at abdd0d7: the reply check blocked a false reply outright (solo seq 7), and
+// the room read "The agent said nothing here — screen-refused" over a window line saying the agent "had
+// nothing to add" and the code "nothing-to-say".
+describe("a reply the reply check withheld", () => {
+  const WITHHELD = /reply was withheld: the reply check found it said something the tracker does not show/;
+  const blocked = said({ id: "m2", seq: 1, role: "assistant", authorUserId: null, content: "", silenceReason: "screen-refused" });
+
+  it("says in words that the reply was withheld and why, never a stored code", () => {
+    render(<ConversationThread messages={[said(), blocked]} windows={[]} />);
+    const line = screen.getByTestId("message-silence");
+    expect(line).toHaveTextContent(WITHHELD);
+    expect(line).not.toHaveTextContent(/screen-refused|nothing to add/);
+  });
+
+  it("reads the window it closed the same way", () => {
+    render(
+      <ConversationThread
+        messages={[said()]}
+        windows={[window({ decision: "nothing-to-say", decisionDetail: { reason: "screen-refused" } })]}
+      />,
+    );
+    const line = screen.getByTestId("thread-silence");
+    expect(line).toHaveTextContent(WITHHELD);
+    expect(line).not.toHaveTextContent(/nothing-to-say|screen-refused|nothing to add/);
+  });
+
+  it("keeps 'nothing to add' for a turn that chose silence, in words", () => {
+    render(<ConversationThread messages={[said(), { ...blocked, silenceReason: "nothing-to-say" }]} windows={[]} />);
+    expect(screen.getByTestId("message-silence")).toHaveTextContent("The agent read this and had nothing to add.");
+    expect(screen.getByTestId("message-silence")).not.toHaveTextContent("nothing-to-say");
+  });
+
+  it("says an empty reply and a turn that ended without one as what they are", () => {
+    render(<ConversationThread messages={[said(), { ...blocked, silenceReason: "empty-reply" }]} windows={[]} />);
+    expect(screen.getByTestId("message-silence")).toHaveTextContent("The agent's reply came back empty, so nothing was posted.");
+    cleanup();
+    render(<ConversationThread messages={[said(), { ...blocked, silenceReason: "gateway timed out (504)" }]} windows={[]} />);
+    expect(screen.getByTestId("message-silence")).toHaveTextContent("The agent's turn ended before it wrote a reply, so nothing was posted.");
+    expect(screen.getByTestId("message-silence")).not.toHaveTextContent("504");
+  });
+});
+
 // ISS-1229 r34, judge-93: a room's tool cards read "forge" over "Object · 3 fields", which tells a person
 // nothing. A room's turn says what its assistant did; the run thread keeps its technical cards.
 describe("a tool call in a room's turn", () => {

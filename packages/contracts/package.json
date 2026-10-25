@@ -69,6 +69,10 @@
     "./document-patch": {
       "types": "./dist/document-patch.d.ts",
       "default": "./dist/document-patch.js"
+    },
+    "./room-verbs": {
+      "types": "./dist/room-verbs.d.ts",
+      "default": "./dist/room-verbs.js"
     }
   },
   "types": "./src/index.ts",

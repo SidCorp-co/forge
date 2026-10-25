@@ -24,7 +24,8 @@ import { USER_BUBBLE } from "@/features/session/layout";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import {
   AGENT_TURN_LABEL,
-  SILENCE_REASON,
+  silencedWords,
+  silenceWords,
   type AgentTurn,
   type AgentTurnState,
   type ConversationMessage,
@@ -215,8 +216,8 @@ function Said({
     return (
       <div className="flex items-start gap-2 text-muted">
         <Icon name="dot" size={13} className="mt-1 flex-none" />
-        <p className="fg-body-sm italic">
-          The agent said nothing here — {message.silenceReason}
+        <p className="fg-body-sm italic" data-testid="message-silence">
+          {silencedWords(message.silenceReason)}
         </p>
       </div>
     );
@@ -392,8 +393,7 @@ export function ConversationThread({
             data-testid="thread-silence"
             className="rounded-md border border-line bg-surface px-3 py-2"
           >
-            <p className="fg-body-sm text-muted">{SILENCE_REASON[entry.decision]}</p>
-            <p className="fg-caption mt-0.5 font-mono text-subtle">{entry.decision}</p>
+            <p className="fg-body-sm text-muted">{silenceWords(entry.decision, entry.detail)}</p>
           </div>
         );
       })}

@@ -330,12 +330,14 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     return { send: false, reason: 'nothing-to-say', declined: true };
   }
   if (!screenedMessage) {
+    // The screen passes an empty first reply untouched, so only a written one was refused (ISS-1229 r40).
+    const reason = result.reply.trim() ? 'screen-refused' : 'empty-reply';
     await recordSilence({
       conversationId: ctx.conversationId,
       projectId: req.venue.projectId,
-      reason: 'screen-refused',
+      reason,
     });
-    return { send: false, reason: 'screen-refused', declined: true };
+    return { send: false, reason, declined: true };
   }
   const screenReplaced = screenedMessage.text.trim() !== result.reply.trim();
   return { send: true, message: screenedMessage, screenReplaced };

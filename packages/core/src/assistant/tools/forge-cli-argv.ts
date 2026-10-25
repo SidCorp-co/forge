@@ -5,44 +5,34 @@
 
 /// <reference path="./forge-plugin-visibility.d.ts" />
 
+import {
+  ROOM_KNOWLEDGE_READS,
+  ROOM_VERBS,
+  roomOpens,
+  whereItIsDone,
+} from '@forge/contracts/room-verbs';
 import { withheldForJob } from 'forge-plugin/plugin/src/resolve/visibility.mjs';
 
 export const CHAT_JOB = 'ba';
-export const CHAT_JOB_VERBS: readonly string[] = [
-  'issue',
-  'new',
-  'comment',
-  'attach',
-  'next',
-  'spec',
-  'guide',
-  'project',
-  'knowledge',
-];
-
-/** `forge knowledge` sub-verbs a room may reach: the reads. `write` and `delete` are a run's, not a room's. */
-const KNOWLEDGE_READS: ReadonlySet<string> = new Set(['list', 'get', 'search']);
+export const CHAT_JOB_VERBS = ROOM_VERBS;
 
 /** What the per-turn config's `withheld` carries: every CLI verb the job does not offer. */
 export function chatWithheld(): string[] {
   return withheldForJob(CHAT_JOB_VERBS);
 }
 
-/** Null when the argv may run; otherwise the refusal, naming what is open. */
+/** Null when the argv may run; otherwise the refusal, naming what is open and where the act is done. */
 export function admitVerb(argv: readonly string[]): string | null {
   const [verb, sub] = argv;
   if (verb === undefined) return 'nothing to run: give at least a verb, or `-h`.';
-  if (verb === '-h' || verb === '--help') return null;
-  if (!CHAT_JOB_VERBS.includes(verb)) {
-    return (
-      `\`forge ${verb}\` is not open from chat. What is: ${CHAT_JOB_VERBS.join(', ')}, and \`-h\` on any of them. ` +
-      'Configuring a machine or driving a deploy is done at a terminal.'
-    );
+  if (roomOpens(verb, sub)) return null;
+  if (verb === 'knowledge') {
+    return `\`forge knowledge ${sub}\` is not open from chat; ${ROOM_KNOWLEDGE_READS.join('/')} are. ${whereItIsDone(verb)}`;
   }
-  if (verb === 'knowledge' && sub !== undefined && sub !== '-h' && !KNOWLEDGE_READS.has(sub)) {
-    return `\`forge knowledge ${sub}\` is not open from chat; ${[...KNOWLEDGE_READS].join('/')} are.`;
-  }
-  return null;
+  return (
+    `\`forge ${verb}\` is not open from chat. What is: ${CHAT_JOB_VERBS.join(', ')}, and \`-h\` on any of them. ` +
+    whereItIsDone(verb)
+  );
 }
 
 export function placeBody(

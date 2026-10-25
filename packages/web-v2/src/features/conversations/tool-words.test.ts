@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeToolOutput } from "@/features/session/result-summary";
 import type { ToolCallData } from "@/features/session/types";
+import { DONE_AT_A_TERMINAL, ROOM_KNOWLEDGE_READS, ROOM_VERBS, whereItIsDone } from "@forge/contracts/room-verbs";
 import { DOOR_OF_TOOL, PUT_IT_RIGHT, refusalReason, TOOK_ANOTHER_WAY, toolWords } from "./tool-words";
 
 const cli = (argv: string[], out: { exitCode: number; stdout: string; stderr: string }, body = ""): ToolCallData => ({
@@ -185,9 +186,7 @@ describe("a refused card's reason", () => {
       result: { exitCode: 2, stdout: "", stderr: "`forge deploy` is not open from chat. What is: issue, new." },
       isError: true,
     };
-    expect(toolWords(closed).refusal).toBe(
-      "The assistant can't do that from a room. Here it can read, file and comment on issues.",
-    );
+    expect(toolWords(closed).refusal).toBe(`The assistant can't do that from a room. ${DONE_AT_A_TERMINAL}`);
     const stopped = { ...closed, result: { exitCode: 1, stdout: "", stderr: "forge was stopped after 30s with no answer." } };
     expect(toolWords(stopped).refusal).toBe(
       "The tracker did not answer in time. Ask the assistant to check whether it went through before trying again.",
@@ -336,14 +335,18 @@ describe("a refusal's reason", () => {
   });
 
   it("says the wrong before the remedy, and the agent's remedy as one the person can ask for", () => {
-    expect(refusalReason("Run `forge claim` first. The issue is leased by another run.", "forge")).toBe(
+    expect(refusalReason("Run `forge comment ISS-1 -` first. The issue is leased by another run.", "forge")).toBe(
       "The issue is leased by another run. Ask the assistant to put it right and try again.",
+    );
+    // r40: `forge claim` is no act a room opens, so asking the assistant again could not work (judge-111).
+    expect(refusalReason("Run `forge claim` first. The issue is leased by another run.", "forge")).toBe(
+      "The issue is leased by another run. That is done at a terminal.",
     );
   });
 
   it("says a refusal about what the assistant may do from a room in the person's words", () => {
     expect(refusalReason("`forge knowledge write` is not open from chat; list/get/search are.", "forge")).toBe(
-      "The assistant can't do that from a room. Here it can read, file and comment on issues.",
+      `The assistant can't do that from a room. ${DONE_AT_A_TERMINAL}`,
     );
   });
 });
@@ -371,7 +374,7 @@ describe("a refused card in whole sentences", () => {
 
   it("says what was wrong as a whole clause, without the command's own prefix", () => {
     const line = toolWords(claim).refusal as string;
-    expect(line).toBe(`Status is not a field an update writes. ${PUT_IT_RIGHT}`);
+    expect(line).toBe("Status is not a field an update writes. A status is moved on the issue's page.");
     expect(line).not.toMatch(/…|failed:|tracker issue|forge/);
   });
 
@@ -444,5 +447,62 @@ describe("one act, one identity across its doors", () => {
       const elsewhere = { ...through, name: "forge_memory_note" };
       expect(toolWords(refused, false, [elsewhere]).refusal, tool).toMatch(/Ask the assistant to put it right/);
     }
+  });
+});
+
+// ISS-1229 r40, judge-111 at abdd0d7: a status change tried the wrong way read "Status is not a field an
+// update writes. Ask the assistant to put it right and try again." The person asked; the assistant's
+// retry through `forge advance` was refused as not open from a room, which no room ever opens. A card's
+// way out comes from the table the room's door refuses by, so it is one that works where it is shown.
+describe("a refused card's way out works where the card is shown", () => {
+  const statusRefusal =
+    "forge issue failed: status is not a field an update writes: the tracker moves it on a route of its own and refuses it here, and the fields of one call go up together, so nothing of this one was sent. Move it with:\n  forge advance ISS-1 --set in_progress --why <w>\n";
+  const MOVED_ON_THE_PAGE = "A status is moved on the issue's page.";
+
+  it("says where a status is moved, never to ask the assistant again, for judge-111's two cards", () => {
+    const claim = cli(["issue", "ISS-1", "--set", "status=in_progress"], { exitCode: 1, stdout: "", stderr: statusRefusal });
+    expect(toolWords(claim).refusal).toBe(`Status is not a field an update writes. ${MOVED_ON_THE_PAGE}`);
+    const retry = cli(["advance", "ISS-1", "--set", "in_progress", "--why", "x"], {
+      exitCode: 2,
+      stdout: "",
+      stderr: "`forge advance` is not open from chat. What is: issue, new, comment. A status is moved on the issue's page.",
+    });
+    expect(toolWords(retry).refusal).toBe(`The assistant can't do that from a room. ${MOVED_ON_THE_PAGE}`);
+    for (const card of [claim, retry]) expect(toolWords(card).refusal).not.toMatch(/put it right|tried another way/);
+  });
+
+  it("names where it is done even where a later call of the same act went through", () => {
+    const claim = cli(["issue", "ISS-1", "--set", "status=in_progress"], { exitCode: 1, stdout: "", stderr: statusRefusal });
+    const later = cli(["issue", "ISS-1", "--set", "priority=high"], { exitCode: 0, stdout: "{}", stderr: "" });
+    expect(toolWords(claim, false, [later]).refusal).toBe(`Status is not a field an update writes. ${MOVED_ON_THE_PAGE}`);
+  });
+
+  it("walks the table: a command a room does not open is never offered back to the assistant", () => {
+    for (const verb of ["advance", "claim", "record", "deploy", "coolify", "doctor"]) {
+      expect(ROOM_VERBS).not.toContain(verb);
+      const line = refusalReason(`The move was refused. Do it with:\n  forge ${verb} ISS-1\n`, "forge");
+      expect(line, verb).toBe(`The move was refused. ${whereItIsDone(verb)}`);
+    }
+    expect(refusalReason("The entry was not written. Write it with `forge knowledge write billing -`.", "forge")).toBe(
+      `The entry was not written. ${DONE_AT_A_TERMINAL}`,
+    );
+  });
+
+  it("keeps the assistant's way out where every command the refusal names is one a room opens", () => {
+    for (const verb of ROOM_VERBS) {
+      const sub = verb === "knowledge" ? ` ${ROOM_KNOWLEDGE_READS[0]}` : "";
+      expect(refusalReason(`The call was refused. Try:\n  forge ${verb}${sub} ISS-1\n`, "forge"), verb).toBe(
+        `The call was refused. ${PUT_IT_RIGHT}`,
+      );
+    }
+  });
+
+  it("reads a tool's own failure prefix, and a sentence opening on the tool's name, as no command", () => {
+    expect(refusalReason("forge knowledge failed: the store did not answer.", "forge")).toBe(
+      `The store did not answer. ${PUT_IT_RIGHT}`,
+    );
+    expect(refusalReason("forge was stopped before the store answered.", "forge")).toBe(
+      `The tracker was stopped before the store answered. ${PUT_IT_RIGHT}`,
+    );
   });
 });

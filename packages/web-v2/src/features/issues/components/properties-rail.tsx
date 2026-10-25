@@ -250,6 +250,18 @@ interface PropertiesRailProps {
   runAsOf?: string | null;
   /** A read of the rail's that failed, said as such with a way to read it again, never drawn as none (ISS-1228). */
   unread?: { deps?: UnreadRead | undefined; cost?: UnreadRead | undefined };
+  /** A reader who cannot write reads Priority and Complexity as text, not in a disabled control (ISS-1229 r40). */
+  readOnly?: boolean;
+}
+
+/** A field's value as text, by its option's label; an unset one reads "Not set". */
+function ReadValue({ label, value, options }: { label: string; value: string; options: readonly { value: string; label: string }[] }) {
+  const shown = value ? options.find((o) => o.value === value)?.label : undefined;
+  return (
+    <span className={`text-13-5 leading-normal ${shown ? "text-fg" : "text-muted"}`} data-testid={`read-${label.toLowerCase()}`}>
+      {shown ?? "Not set"}
+    </span>
+  );
 }
 
 export function PropertiesRail({
@@ -266,6 +278,7 @@ export function PropertiesRail({
   runWord = null,
   runAsOf = null,
   unread = {},
+  readOnly = false,
 }: PropertiesRailProps) {
   const viewerId = useAuth().user?.id;
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
@@ -306,24 +319,32 @@ export function PropertiesRail({
         </Row>
       )}
       <Row label="Priority">
-        <InlineSelect
-          ariaLabel="Priority"
-          value={issue.priority}
-          options={PRIORITY_OPTIONS}
-          disabled={pending || held}
-          onCommit={(p) => onPatch({ priority: p as IssuePriority })}
-          className="w-36"
-        />
+        {readOnly ? (
+          <ReadValue label="Priority" value={issue.priority} options={PRIORITY_OPTIONS} />
+        ) : (
+          <InlineSelect
+            ariaLabel="Priority"
+            value={issue.priority}
+            options={PRIORITY_OPTIONS}
+            disabled={pending || held}
+            onCommit={(p) => onPatch({ priority: p as IssuePriority })}
+            className="w-36"
+          />
+        )}
       </Row>
       <Row label="Complexity">
-        <InlineSelect
-          ariaLabel="Complexity"
-          value={issue.complexity ?? ""}
-          options={COMPLEXITY_OPTIONS}
-          disabled={pending || held}
-          onCommit={(c) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) })}
-          className="w-36"
-        />
+        {readOnly ? (
+          <ReadValue label="Complexity" value={issue.complexity ?? ""} options={COMPLEXITY_OPTIONS} />
+        ) : (
+          <InlineSelect
+            ariaLabel="Complexity"
+            value={issue.complexity ?? ""}
+            options={COMPLEXITY_OPTIONS}
+            disabled={pending || held}
+            onCommit={(c) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) })}
+            className="w-36"
+          />
+        )}
       </Row>
       <Row label="Creator">
         <div className="flex items-center justify-end gap-2">

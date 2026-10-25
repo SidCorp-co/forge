@@ -6,6 +6,7 @@
 // under the card's technical details. The run thread keeps its own technical cards.
 
 import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
+import { roomOpens, whereItIsDone } from "@forge/contracts/room-verbs";
 import type { ToolCallData } from "@/features/session/types";
 
 export interface ToolWords {
@@ -278,6 +279,17 @@ const PERSON_KINDS: readonly { says: RegExp; wrong?: string; remedy: string }[] 
     remedy: "Ask the assistant to check whether it went through before trying again.",
   },
 ];
+/** A `forge` command, in backticks or on an indented line, that a room does not open (ISS-1229 r40). */
+const NAMED_COMMAND = /`forge ([\w-]+)(?: ([\w-]+))?|^[ \t]+forge ([\w-]+)(?: ([\w-]+))?/gm;
+
+function closedCommand(text: string): string | null {
+  for (const m of text.matchAll(NAMED_COMMAND)) {
+    const verb = m[1] ?? m[3];
+    if (verb && !roomOpens(verb, m[2] ?? m[4])) return verb;
+  }
+  return null;
+}
+
 export const PUT_IT_RIGHT = "Ask the assistant to put it right and try again.";
 export const TOOK_ANOTHER_WAY = "The assistant tried another way below, and its answer says how it went.";
 
@@ -406,14 +418,16 @@ function fitting(wrong: readonly string[], room: number): string {
  * The refusal's reason, one line, written for the person reading the room: what went wrong, read off
  * its gaps where it lists them, else its first sentence not written for the agent, after any opening
  * that only says it held the call ("Hold — …", r35). The way out is chosen by the refusal's kind, never
- * by its suggestion's wording: the person's own where the refusal is one of `PERSON_KINDS`; else, the
- * call being the assistant's, that it tried another way later in the same reply, claiming no more than its
- * answer does, else that they can ask it to put it right (r38). No command, flag or backtick reaches it.
+ * by its suggestion's wording: where it names a command a room does not open, where a person does that
+ * act (r40); the person's own where the refusal is one of `PERSON_KINDS`; else, the call being the
+ * assistant's, that it tried another way later in the same reply, claiming no more than its answer does,
+ * else that they can ask it to put it right (r38). No command, flag or backtick reaches it.
  */
 export function refusalReason(result: unknown, tool?: string, recovered = false): string {
   const text = refusalText(result);
   const known = PERSON_KINDS.find((p) => p.says.test(text));
-  const remedy = known?.remedy ?? (recovered ? TOOK_ANOTHER_WAY : PUT_IT_RIGHT);
+  const closed = closedCommand(text);
+  const remedy = closed ? whereItIsDone(closed) : (known?.remedy ?? (recovered ? TOOK_ANOTHER_WAY : PUT_IT_RIGHT));
   const paragraphs = text.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const held = paragraphs.length > 1 && /^Hold\b/.test(paragraphs[0] as string);
   // A machine code ("NOT_FOUND: …") or a tool's failure prefix leading a sentence is the technical view's.
@@ -442,7 +456,7 @@ function said(line: string, tool: string | undefined): string {
 /** The reason with the tool's stored name taken out, which only the technical details show. */
 function unnamed(reason: string, name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const word = new RegExp(`\\b${escaped}\\b`, "g");
+  const word = new RegExp(`\\b${escaped}\\b`, "gi");
   const out = name === "forge"
     ? reason.replace(/`forge ([^`]+)`/g, "the tracker's $1 command").replace(word, "the tracker")
     : reason.replace(word, "the tool");
