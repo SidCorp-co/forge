@@ -158,6 +158,30 @@ describe('a sentence held by a rule naming no read is cut, and the rest still an
     );
     expect(part).toEqual({ shown: CHECKED, held: [{ claim: 'figure', count: 1 }] });
   });
+
+  it('cuts the whole sentence past an abbreviation, never leaving "e.g." or "v.v." before the next one (judge K66, ISS-624 c5)', async () => {
+    const { checkedPart } = await import('./screened-reply.js');
+    const held = (quote: string) => ({
+      rule: 'figures-name-source',
+      why: `the reply states the figure in "${quote}" and names no read it came from`,
+      quote,
+      shape: 's',
+      example: 'e',
+    });
+    const pass = async () => ({ ok: true }) as never;
+    const en = await checkedPart(
+      'Several decisions wait, e.g. 12 on drafts from last week. ISS-5 is open.',
+      [held('12 on drafts')],
+      pass,
+    );
+    expect(en?.shown).toBe('ISS-5 is open.');
+    const vi = await checkedPart(
+      'Có 12 quyết định: ISS-1, ISS-2, v.v. đang chờ bạn. ISS-5 đang mở.', // i18n-allow: a Vietnamese reply the trim reads
+      [held('12 quyết định')], // i18n-allow: a Vietnamese reply the trim reads
+      pass,
+    );
+    expect(vi?.shown).toBe('ISS-5 đang mở.'); // i18n-allow: a Vietnamese reply the trim reads
+  });
 });
 
 describe('a false opening no rewrite drops is taken off, and the answer goes out whole (REQ-41 BC-30)', () => {

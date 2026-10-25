@@ -115,7 +115,42 @@ describe("a decision made on the word is not drawn again, and a press is answere
     expect(await screen.findByTestId("decision-follow-up-failed")).toHaveTextContent("The chat could not say what this changed");
     const follow = calls.find((c) => c.url.includes("/decision-outcomes"));
     expect(follow?.url).toContain("/conversations/c0ffee00-0000-4000-8000-000000000001/decision-outcomes");
-    expect(follow?.body).toEqual({ decision: "issue:ISS-613:question.answer", opens: { kind: "issue", key: "ISS-613" }, ok: true });
+    expect(follow?.body).toEqual({ decision: "issue:ISS-613:question.answer", opens: { kind: "issue", key: "ISS-613" }, ok: true, refusal: null });
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the refusal a failed press got, so core says why it failed (judge K66, ISS-624 c2)", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init: RequestInit) => {
+        calls.push({ url, body: typeof init.body === "string" ? JSON.parse(init.body) : null });
+        if (url.endsWith("/answer")) {
+          const envelope = {
+            error: {
+              code: "ISSUE_NOT_READY",
+              message: "refused, nothing written",
+              refusals: [{ code: "ISSUE_NOT_READY", path: "/status", detail: "ISS-613 has no plan:\nwrite one first" }],
+            },
+          };
+          return Promise.resolve(new Response(JSON.stringify(envelope), { status: 422, headers: { "content-type": "application/json" } }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ content: "x", state: null }), { headers: { "content-type": "application/json" } }));
+      }),
+    );
+    const { default: userEvent } = await import("@testing-library/user-event");
+    renderWithQuery(
+      <TurnDecisions blocks={[block("forge_needs_you", { ...CLUSTER, decisions: [steward(613)], total: 1 })] as never} slug="forge" conversationId="c0ffee00-0000-4000-8000-000000000001" />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "At the next release" }));
+    await vi.waitFor(() => expect(calls.some((c) => c.url.includes("/decision-outcomes"))).toBe(true));
+    const follow = calls.find((c) => c.url.includes("/decision-outcomes"));
+    expect(follow?.body).toEqual({
+      decision: "issue:ISS-613:question.answer",
+      opens: { kind: "issue", key: "ISS-613" },
+      ok: false,
+      refusal: { code: "ISSUE_NOT_READY", detail: "ISS-613 has no plan: write one first" },
+    });
     vi.unstubAllGlobals();
   });
 });

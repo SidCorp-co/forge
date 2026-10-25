@@ -116,3 +116,36 @@ describe('a trim never leaves a cut timestamp, a dangling marker or a bare list 
     expect(cutHeldSentences(text, ['2.5 issues'])).toBe('ISS-5 is open.');
   });
 });
+
+describe('a stop that ends no sentence is read past, so a trim keeps whole sentences (REQ-41 BC-3, judge K66 c5)', () => {
+  it('reads "e.g.", "i.e.", "approx." and "vs." as part of their sentence', () => {
+    const text = 'Several decisions wait, e.g. 12 on drafts from last week. ISS-5 is open.';
+    expect(cutHeldSentences(text, ['12 on drafts'])).toBe('ISS-5 is open.');
+    const ie = 'One owner decides, i.e. 3 people wait on Ann. ISS-5 is open.';
+    expect(cutHeldSentences(ie, ['3 people'])).toBe('ISS-5 is open.');
+    const approx = 'It took approx. 40 minutes vs. 10 last week. ISS-5 is open.';
+    expect(cutHeldSentences(approx, ['40 minutes'])).toBe('ISS-5 is open.');
+  });
+
+  it('reads the Vietnamese "v.v." and "etc." as part of their sentence', () => {
+    const text = 'Có 12 quyết định: ISS-1, ISS-2, v.v. đang chờ bạn. ISS-5 đang mở.'; // i18n-allow: a Vietnamese reply the trim reads
+    expect(cutHeldSentences(text, ['12 quyết định'])).toBe('ISS-5 đang mở.'); // i18n-allow: a Vietnamese reply the trim reads
+    const etc = 'Three areas wait: billing, intake, etc. and 7 more are stale. ISS-5 is open.';
+    expect(cutHeldSentences(etc, ['7 more'])).toBe('ISS-5 is open.');
+  });
+
+  it('reads a stop inside a code span as part of the span', () => {
+    const text = 'The flag `--since 2.` is set and 4 runs used it. ISS-5 is open.';
+    expect(cutHeldSentences(text, ['4 runs'])).toBe('ISS-5 is open.');
+  });
+
+  it('cuts one sentence of a bold span that covers two, keeping the other in its bold', () => {
+    const text = '**Needs you holds 59 decisions. Most are old.** ISS-5 is open.';
+    expect(cutHeldSentences(text, ['59'])).toBe('**Most are old.** ISS-5 is open.');
+  });
+
+  it('takes the list an intro line introduced when the intro is cut, never leaving the bare list', () => {
+    const text = 'The 9 issues agreed:\n- ISS-1\n- ISS-2\n\nISS-5 is open.';
+    expect(cutHeldSentences(text, ['9 issues'])).toBe('ISS-5 is open.');
+  });
+});

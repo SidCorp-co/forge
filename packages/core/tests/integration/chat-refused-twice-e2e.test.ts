@@ -170,7 +170,7 @@ describe('an act refused twice on one target is not offered a third time (REQ-41
     const items = await homeItems(home.id);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
-      title: "The chat's Feedback item on this project failed each time it was pressed",
+      title: "The chat's Feedback item on this project failed each time it was tried",
       signal_key: 'chat:refused-twice:feedback:FEEDBACK_TARGET_NOT_ONE',
       occurrences: 2,
     });

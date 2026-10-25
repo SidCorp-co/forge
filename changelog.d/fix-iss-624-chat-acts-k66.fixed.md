@@ -1,0 +1,1 @@
+**Chat decisions stay exact and say why one failed.** Core refuses a decision outside the set agreed, a failed card press says why and what next, a twice-refused decision is not tried again, and a trim never cuts after "e.g.".

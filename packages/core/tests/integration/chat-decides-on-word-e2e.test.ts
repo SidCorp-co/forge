@@ -7,6 +7,7 @@
 // @direct-test-of packages/core/src/assistant/item-state.ts
 // @direct-test-of packages/core/src/assistant/decision-outcome-routes.ts
 // @direct-test-of packages/core/src/assistant/decision-outcome.ts
+// @direct-test-of packages/core/src/assistant/decision-memory.ts
 
 import { STEWARD_DECISION_OPTION_IDS as IDS } from '@forge/contracts/steward';
 import { eq, sql } from 'drizzle-orm';
@@ -123,12 +124,19 @@ afterAll(async () => {
 describe("the chat makes the agreed decisions on the person's word, as them (REQ-41 BC-25, BC-27, BC-24)", () => {
   const LATEST = 'Tôi bảo là mở giúp tôi đi'; // i18n-allow: the owner's word on dev
   const WORD = 'mở giúp tôi đi'; // i18n-allow: the owner's word on dev
-  const toolset = async (latest: string) => {
-    const { buildDecideToolset } = await import('../../src/assistant/tools/decide-tool.js');
-    return buildDecideToolset({ projectId, userId: ownerId, latestMessage: () => latest });
-  };
+  /** The toolset as a turn builds it, the reply the person answered naming the decisions asked. */
   const call = async (latest: string, args: unknown) => {
-    const r = await (await toolset(latest)).execute('act_on_decisions', JSON.stringify(args));
+    const { buildDecideToolset } = await import('../../src/assistant/tools/decide-tool.js');
+    const named = (args as { decisions?: { decision: string }[] }).decisions ?? [];
+    const set = buildDecideToolset({
+      projectId,
+      userId: ownerId,
+      latestMessage: () => latest,
+      answeredReply: async () => `Agreed: ${named.map((d) => d.decision).join(', ')}.`,
+      failures: async () => new Map(),
+      fileDefect: async () => 'not filed',
+    });
+    const r = await set.execute('act_on_decisions', JSON.stringify(args));
     return {
       isError: r.isError === true,
       body: JSON.parse((r.content[0] as { text: string }).text) as Doc,
@@ -180,6 +188,9 @@ describe("the chat makes the agreed decisions on the person's word, as them (REQ
         movedBy: name,
         movedAt: new Date(String(move?.created_at)).toISOString(),
       },
+      said: expect.stringMatching(
+        new RegExp(`^${byHand.key} needed nothing: it was already done\\.`),
+      ),
     });
     for (const [i, issue] of [a, b].entries()) {
       expect(results[i + 1]).toMatchObject({
@@ -214,6 +225,7 @@ describe("the chat makes the agreed decisions on the person's word, as them (REQ
       decision: `issue:${issue.key}:question.answer`,
       opens: { kind: 'issue', key: issue.key },
       ok: true,
+      refusal: null,
     };
 
     const early = await outcome(pressed);
@@ -236,5 +248,128 @@ describe("the chat makes the agreed decisions on the person's word, as them (REQ
     expect(bad.status).toBe(400);
     const stranger = await outcome({ ...pressed, ok: false, extra: 'Done: everything' });
     expect(stranger.status).toBe(400);
+    const unsaid = await outcome({ ...pressed, ok: false });
+    expect(unsaid.status, 'a failed press names the refusal it got').toBe(400);
+  });
+});
+
+// Judge K66 on dev.304 (ISS-624 c2, c4): a failed press says why and what next, and is kept in the
+// room; a decision tried and refused twice is not tried a third time, from chat or from its card.
+describe('a refused decision says why, and is not tried a third time (REQ-41 BC-24, BC-28)', () => {
+  const LATEST = 'Tôi bảo là mở giúp tôi đi'; // i18n-allow: the owner's word on dev
+  const WORD = 'mở giúp tôi đi'; // i18n-allow: the owner's word on dev
+  const call = async (args: unknown, roomId: string) => {
+    const { buildDecideToolset } = await import('../../src/assistant/tools/decide-tool.js');
+    const memory = await import('../../src/assistant/decision-memory.js');
+    const at = { projectId, conversationId: roomId, personId: ownerId };
+    const named = (args as { decisions: { decision: string }[] }).decisions;
+    const set = buildDecideToolset({
+      projectId,
+      userId: ownerId,
+      latestMessage: () => LATEST,
+      answeredReply: async () => `Agreed: ${named.map((d) => d.decision).join(', ')}.`,
+      failures: () => memory.decisionFailuresIn(roomId),
+      fileDefect: (key, failures) => memory.fileDecisionDefect(at, key, failures),
+    });
+    const r = await set.execute('act_on_decisions', JSON.stringify(args));
+    return {
+      isError: r.isError === true,
+      body: JSON.parse((r.content[0] as { text: string }).text) as Doc,
+    };
+  };
+
+  /** A room whose newest turn answered about this project, so cards drawn in it can be reported on. */
+  async function roomWithTurn(): Promise<string> {
+    const room = ok(
+      await say('owner', 'POST', '/api/conversations', { projectId, title: 'k66' }),
+      201,
+    );
+    await rows(sql`
+      INSERT INTO conversation_windows (conversation_id, project_id, adapter, first_seq, last_seq)
+      VALUES (${String(room.id)}, ${projectId}, 'web', 1, 1)`);
+    return String(room.id);
+  }
+
+  it('says why a failed press failed and what to do next, and keeps it in the room (judge K66 c2)', async () => {
+    const issue = await readyDraft(199);
+    await asked(issue);
+    const roomId = await roomWithTurn();
+    const told = ok(
+      await say('owner', 'POST', `/api/conversations/${roomId}/decision-outcomes`, {
+        decision: `issue:${issue.key}:question.answer`,
+        opens: { kind: 'issue', key: issue.key },
+        ok: false,
+        refusal: { code: 'ISSUE_NOT_READY', detail: `${issue.key} has no plan; write one first.` },
+      }),
+    );
+    expect(told.content).toMatch(
+      new RegExp(
+        `^Your answer on ${issue.key} did not go through: ${issue.key} has no plan; write one first \\(ISSUE_NOT_READY\\)\\. ${issue.key} is draft.*\\. It still waits on you: press it again once that is fixed, or open ${issue.key} and decide it there\\.$`,
+      ),
+    );
+    const [kept] = await rows<{ blocks: { type: string; toolCall: Doc }[] }>(sql`
+      SELECT blocks FROM conversation_messages WHERE conversation_id = ${roomId} ORDER BY seq DESC LIMIT 1`);
+    expect(kept?.blocks[0]).toMatchObject({
+      type: 'tool',
+      toolCall: {
+        name: 'decision_card',
+        input: { key: issue.key, code: 'ISSUE_NOT_READY' },
+        isError: true,
+      },
+    });
+  });
+
+  it('refuses a third try of a decision refused twice from its card, files the defect, and draws its card no more (judge K66 c4)', async () => {
+    const home = await createTestProject(ownerId);
+    await rows(sql`
+      INSERT INTO instance_settings (id, forge_home_project_id, revision, updated_by)
+      VALUES (1, ${home.id}, 1, ${ownerId})
+      ON CONFLICT (id) DO UPDATE SET forge_home_project_id = EXCLUDED.forge_home_project_id`);
+    const issue = await readyDraft(200);
+    await asked(issue);
+    const roomId = await roomWithTurn();
+    const press = {
+      decision: `issue:${issue.key}:question.answer`,
+      opens: { kind: 'issue', key: issue.key },
+      ok: false,
+      refusal: { code: 'ISSUE_NOT_READY', detail: 'no plan' },
+    };
+    for (let i = 0; i < 2; i += 1) {
+      ok(await say('owner', 'POST', `/api/conversations/${roomId}/decision-outcomes`, press));
+    }
+    const { isError, body } = await call(
+      { word: WORD, decisions: [{ decision: issue.key }] },
+      roomId,
+    );
+    expect(isError, JSON.stringify(body)).toBe(false);
+    const [third] = body.results as Doc[];
+    expect(third).toMatchObject({ outcome: 'refused', code: 'DECISION_REFUSED_TWICE' });
+    expect(String(third?.detail)).toMatch(
+      /Forge recorded the defect in its own feedback as FB-\d+/,
+    );
+    expect(await statusOf(issue.id), 'nothing was tried a third time').toBe('draft');
+    const [filed] = await rows<{ title: string }>(sql`
+      SELECT title FROM feedback WHERE project_id = ${home.id} ORDER BY fb_seq DESC LIMIT 1`);
+    expect(filed?.title).toBe(`The chat's decision on ${issue.key} failed each time it was tried`);
+
+    // the read the reply draws its cards from leaves the decision out
+    const { withTwiceRefusedDecisionsWithheld } = await import(
+      '../../src/assistant/decision-memory.js'
+    );
+    const read = ok(await say('owner', 'GET', `/api/projects/${projectId}/needs-you/decisions`));
+    expect((read.decisions as Doc[]).some((d) => d.key === issue.key)).toBe(true);
+    const wrapped = withTwiceRefusedDecisionsWithheld(
+      {
+        tools: [],
+        ranAs: () => ownerId,
+        execute: async () => ({ content: [{ type: 'text', text: JSON.stringify(read) }] }),
+      },
+      { projectId, conversationId: roomId, personId: ownerId },
+    );
+    const drawn = JSON.parse(
+      ((await wrapped.execute('forge_needs_you', '{}')).content[0] as { text: string }).text,
+    ) as Doc;
+    expect((drawn.decisions as Doc[]).some((d) => d.key === issue.key)).toBe(false);
+    expect(drawn.total).toBe(Number(read.total) - 1);
   });
 });

@@ -103,18 +103,33 @@ const opened = (key: string, by: string | null, at: string | null) => ({
   movedAt: at,
 });
 
+// the reply the owner answered on dev: the cluster it agreed, a range among it
+const AGREED_REPLY =
+  'Cụm đã thống nhất để mở: ISS-603, ISS-606, ISS-608, ISS-609 và ISS-612–ISS-615.'; // i18n-allow: the assistant's reply on dev
+let answered = AGREED_REPLY;
+let failures = new Map<string, { by: string; code: string; detail: string }[]>();
+const fileDefect = vi.fn(async (key: string) => `Forge recorded the defect as FB-9 for ${key}.`);
+
+const scopeOf = (latest: string) => ({
+  projectId: PROJECT,
+  userId: OWNER,
+  latestMessage: () => latest,
+  answeredReply: async () => answered,
+  failures: async () => failures,
+  fileDefect,
+});
+
 const run = async (latest: string, args: unknown) => {
-  const set = buildDecideToolset({
-    projectId: PROJECT,
-    userId: OWNER,
-    latestMessage: () => latest,
-  });
+  const set = buildDecideToolset(scopeOf(latest));
   const r = await set.execute('act_on_decisions', JSON.stringify(args));
   const text = (r.content[0] as { text: string }).text;
   return { isError: r.isError === true, body: JSON.parse(text) as Record<string, unknown> };
 };
 
 beforeEach(() => {
+  answered = AGREED_REPLY;
+  failures = new Map();
+  fileDefect.mockClear();
   answerAs.mockReset().mockResolvedValue({});
   itemStateOf.mockReset().mockImplementation(async (_p: string, item: { key: string }) => {
     if (['ISS-603', 'ISS-606', 'ISS-608'].includes(item.key)) {
@@ -150,6 +165,7 @@ describe("the person's word is in their latest message, or no decision is made (
         id: 'issue:ISS-609:question.answer',
         answer: 'Open it: admit it for work',
         state: opened('ISS-609', 'Darrel', '2026-10-22T07:52:00.000Z'),
+        said: 'Open it: admit it for work on ISS-609: done. ISS-609 is open; last moved by Darrel at 2026-10-22 07:52 UTC.',
       },
       expect.objectContaining({ outcome: 'done', id: 'issue:ISS-612:question.answer' }),
     ]);
@@ -204,6 +220,7 @@ describe('an item that needed no act is named done, with who moved it and when (
         outcome: 'already_done',
         decision: key,
         state: opened(key, 'Darrel', '2026-10-22T07:48:04.924Z'),
+        said: `${key} needed nothing: it was already done. ${key} is open; last moved by Darrel at 2026-10-22 07:48 UTC.`,
       })),
     );
     expect(results[3]?.outcome).toBe('done');
@@ -227,6 +244,7 @@ describe('an item that needed no act is named done, with who moved it and when (
 
 describe('a decision is made only as its card would make it, and refused by name otherwise', () => {
   it('leaves a decision that is not a question answer to its card, naming its act', async () => {
+    answered = 'The requirement-to-delivery re-pin waits on you.';
     const { body } = await run('approve it for me', {
       word: 'approve it for me',
       decisions: [{ decision: 'repin:wf-1' }],
@@ -266,6 +284,7 @@ describe('a decision is made only as its card would make it, and refused by name
       noRecommendation: 'The asker gave none.',
     };
     waiting = [...waiting, bare as NeedsYouDecision];
+    answered = `${AGREED_REPLY} ISS-620 waits too.`;
     const { body } = await run('open them', {
       word: 'open them',
       decisions: [{ decision: 'ISS-609', answer: 'steward.merge' }, { decision: 'ISS-620' }],
@@ -316,7 +335,98 @@ describe('a decision is made only as its card would make it, and refused by name
   });
 
   it('runs as the person the turn answers, and never as anyone else', () => {
-    const set = buildDecideToolset({ projectId: PROJECT, userId: OWNER, latestMessage: () => '' });
+    const set = buildDecideToolset(scopeOf(''));
     expect(set.ranAs('act_on_decisions')).toBe(OWNER);
+  });
+});
+
+describe('core holds the set the person agreed, not the prompt (REQ-41 BC-25, judge K66 c1)', () => {
+  it('opens the agreed drafts and refuses the ones the model added, ISS-616 and 617, by name', async () => {
+    const { body } = await run(LATEST, {
+      word: WORD, // i18n-allow: the owner's word on dev
+      decisions: ['ISS-609', 'ISS-612', 'ISS-613', 'ISS-614', 'ISS-615', 'ISS-616', 'ISS-617'].map(
+        (decision) => ({ decision }),
+      ),
+    });
+    const results = body.results as {
+      outcome: string;
+      decision: string;
+      code?: string;
+      said: string;
+    }[];
+    expect(results.map((r) => [r.decision, r.outcome, r.code ?? null])).toEqual([
+      ['ISS-609', 'done', null],
+      ['ISS-612', 'done', null],
+      ['ISS-613', 'done', null],
+      ['ISS-614', 'done', null],
+      ['ISS-615', 'done', null],
+      ['ISS-616', 'refused', 'DECISION_NOT_AGREED'],
+      ['ISS-617', 'refused', 'DECISION_NOT_AGREED'],
+    ]);
+    expect(answerAs).toHaveBeenCalledTimes(5);
+    expect(results[5]?.said).toBe(
+      "ISS-616 was not changed: ISS-616 is named in neither the person's latest message nor the reply they answered, so it is not in the set they agreed; ask them before acting on it.",
+    );
+  });
+
+  it('takes an item the person names in their own latest message, though the reply did not', async () => {
+    const word = 'open ISS-616 too';
+    const { body } = await run(word, { word, decisions: [{ decision: 'ISS-616' }] });
+    expect(body.results).toEqual([
+      expect.objectContaining({ outcome: 'done', decision: 'ISS-616' }),
+    ]);
+  });
+
+  it('reads a range as each key in it, and never a range wider than fifty', async () => {
+    const { keysNamedIn } = await import('../decision-memory.js');
+    expect([...keysNamedIn('ISS-612–ISS-615 and ISS-620-622')]).toEqual(
+      expect.arrayContaining([
+        'ISS-612',
+        'ISS-613',
+        'ISS-614',
+        'ISS-615',
+        'ISS-620',
+        'ISS-621',
+        'ISS-622',
+      ]),
+    );
+    expect(keysNamedIn('ISS-1–ISS-400').has('ISS-200')).toBe(false);
+  });
+});
+
+describe('a decision refused twice in the conversation is not tried a third time (REQ-41 BC-28, judge K66 c4)', () => {
+  it('refuses the third try by name, naming both refusals, files the defect, and makes the rest', async () => {
+    failures = new Map([
+      [
+        'ISS-613',
+        [
+          { by: 'card issue:ISS-613:question.answer', code: 'ISSUE_NOT_READY', detail: 'no plan' },
+          { by: 'chat ISS-613', code: 'DECISION_REFUSED', detail: 'ISSUE_NOT_READY: no plan' },
+        ],
+      ],
+    ]);
+    const { body } = await run(LATEST, {
+      word: WORD, // i18n-allow: the owner's word on dev
+      decisions: [{ decision: 'ISS-613' }, { decision: 'ISS-614' }],
+    });
+    const [third, next] = body.results as { outcome: string; code?: string; detail?: string }[];
+    expect(third).toMatchObject({ outcome: 'refused', code: 'DECISION_REFUSED_TWICE' });
+    expect(third?.detail).toContain('ISSUE_NOT_READY, DECISION_REFUSED');
+    expect(third?.detail).toContain('Forge recorded the defect as FB-9 for ISS-613.');
+    expect(next?.outcome).toBe('done');
+    expect(fileDefect).toHaveBeenCalledTimes(1);
+    expect(answerAs).toHaveBeenCalledTimes(1);
+  });
+
+  it('tries an item refused once again', async () => {
+    failures = new Map([
+      ['ISS-613', [{ by: 'chat ISS-613', code: 'DECISION_REFUSED', detail: 'x' }]],
+    ]);
+    const { body } = await run(LATEST, {
+      word: WORD, // i18n-allow: the owner's word on dev
+      decisions: [{ decision: 'ISS-613' }],
+    });
+    expect(body.results).toEqual([expect.objectContaining({ outcome: 'done' })]);
+    expect(fileDefect).not.toHaveBeenCalled();
   });
 });

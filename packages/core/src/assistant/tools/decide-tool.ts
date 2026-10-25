@@ -6,6 +6,12 @@
 // in their latest message. Only a decision answered by a question's own answer route is made here;
 // any other act is refused by name and its card stays. Every item is read back after the act, and
 // an item that needed no act is named done with who moved it and when (BC-24, BC-27).
+//
+// Judge K66 on dev.304 (ISS-624): core, not the prompt, holds the agreed set. A decision is made only
+// where the reply the person answered or their latest message names it, so a set the model widens is
+// refused item by item (DECISION_NOT_AGREED). An item tried and refused twice in the conversation,
+// from chat or from its card, is refused a third time with the defect filed (BC-28). Each result
+// carries the sentence core writes for it, which the reply relays as written.
 
 import {
   CHAT_DECIDE_TOOL,
@@ -18,14 +24,17 @@ import type { DecisionAnswer, NeedsYouDecision } from '@forge/contracts/needs-yo
 import { z } from 'zod';
 import { isRefusal } from '../../lib/refusal.js';
 import { answerAs } from '../../questions/index.js';
-import { type ItemKind, itemKindOf, itemStateOf } from '../item-state.js';
+import type { ChatFailure } from '../agreement/refused-twice.js';
+import { DECISION_TRIES_ALLOWED, keysNamedIn } from '../decision-memory.js';
+import { type ItemKind, itemKindOf, itemStateOf, stateSentence } from '../item-state.js';
 import { type ChatToolset, thrownMessage, toolError } from './mcp-adapter.js';
 
 const DESCRIPTION = [
   'Make the Needs-you decisions this conversation agreed, as the person and with their own access, when their CURRENT message tells you to (e.g. "open them for me", "mở giúp tôi đi").', // i18n-allow: the Vietnamese instruction the model must recognise
   'word: their instruction, quoted exactly from their latest message; the call is refused unless it is there.',
   'decisions: exactly the decisions agreed, each by its forge_needs_you id or the key it opens (ISS-603), with answer (an answer id; left out, the recommended one) and reason where the answer takes one. Never add one they did not agree to.',
-  'Each result is read back: done with the item state, already_done with who moved it and when, or refused with why. Report every one as it says.',
+  'Only a decision your reply named (by its key, a key range or its id) or their latest message names is made; any other is refused as not agreed.',
+  'Each result is read back with the sentence core wrote for it, in said: relay every said line as written.',
   'Without their word in this message, do not call it: the decision cards under your reply are theirs to press.',
 ].join(' ');
 
@@ -42,7 +51,11 @@ export function provideNeedsYouDecisionRead(read: NeedsYouDecisionRead): void {
   decisionsOf = read;
 }
 
-function readDecisions(projectId: string, userId: string): Promise<readonly NeedsYouDecision[]> {
+/** The decisions waiting on a person now, as their Needs-you page reads them. */
+export function readDecisions(
+  projectId: string,
+  userId: string,
+): Promise<readonly NeedsYouDecision[]> {
   if (!decisionsOf) {
     throw new Error(
       'act_on_decisions: no Needs-you read was provided, so no decision can be found to make; index.ts wires provideNeedsYouDecisionRead',
@@ -107,19 +120,71 @@ interface Scope {
   userId: string;
   /** The person's latest message in this conversation: the word an act stands on. */
   latestMessage: () => string;
+  /** The reply the person's latest message answers: with it, what names the set they agreed. */
+  answeredReply: () => Promise<string>;
+  /** Every decision tried and refused in this conversation, from chat or a card, by item key. */
+  failures: () => Promise<ReadonlyMap<string, readonly ChatFailure[]>>;
+  /** Files an item tried and refused too often as a defect; the sentence the model is told. */
+  fileDefect: (key: string, failures: readonly ChatFailure[]) => Promise<string>;
 }
+
+/** What the person agreed: the item keys and decision ids the reply they answered and their message name. */
+interface Agreed {
+  keys: ReadonlySet<string>;
+  text: string;
+}
+
+const agreedTo = (agreed: Agreed, d: NeedsYouDecision): boolean =>
+  agreed.keys.has(d.key.toUpperCase()) ||
+  (d.opens !== null && agreed.keys.has(d.opens.key.toUpperCase())) ||
+  agreed.text.includes(d.id.toUpperCase()) ||
+  // a key that is no KEY-n (a workflow's flow) is agreed where it is named as written
+  new RegExp(
+    `(^|[^\\w-])${d.key.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\w-])`,
+  ).test(agreed.text);
+
+/** A result before core writes its sentence, one variant at a time. */
+type Unsaid = ChatDecisionResult extends infer R
+  ? R extends unknown
+    ? Omit<R, 'said'>
+    : never
+  : never;
+
+/** The sentence core writes for one result. */
+function saidOf(r: Unsaid): string {
+  const read = r.state ? ` ${stateSentence(r.state)}` : '';
+  if (r.outcome === 'done') return `${r.answer} on ${r.state?.key ?? r.decision}: done.${read}`;
+  if (r.outcome === 'already_done')
+    return `${r.state.key} needed nothing: it was already done.${read}`;
+  return `${r.decision} was not changed: ${r.detail}${read}`;
+}
+
+const withSaid = (r: Unsaid): ChatDecisionResult =>
+  ({ ...r, said: saidOf(r) }) as ChatDecisionResult;
 
 async function decideOne(
   scope: Scope,
   decisions: readonly NeedsYouDecision[],
+  agreed: Agreed,
+  failures: ReadonlyMap<string, readonly ChatFailure[]>,
   item: { decision: string; answer?: string | undefined; reason?: string | undefined },
 ): Promise<ChatDecisionResult> {
+  return withSaid(await decided(scope, decisions, agreed, failures, item));
+}
+
+async function decided(
+  scope: Scope,
+  decisions: readonly NeedsYouDecision[],
+  agreed: Agreed,
+  failures: ReadonlyMap<string, readonly ChatFailure[]>,
+  item: { decision: string; answer?: string | undefined; reason?: string | undefined },
+): Promise<Unsaid> {
   const target = item.decision;
   const no = (
     code: ChatDecisionRefusalCode,
     detail: string,
     state = null as ChatDecisionResult['state'],
-  ) => ({ outcome: 'refused', decision: target, code, detail, state }) as ChatDecisionResult;
+  ) => ({ outcome: 'refused', decision: target, code, detail, state }) as const;
   const found = matching(decisions, target);
   if (found.length > 1) {
     return no(
@@ -135,6 +200,22 @@ async function decideOne(
     return no(
       'DECISION_UNKNOWN',
       `${target} names no decision waiting on the person and no item of this project.`,
+    );
+  }
+  if (!agreedTo(agreed, d)) {
+    return no(
+      'DECISION_NOT_AGREED',
+      `${d.opens?.key ?? d.key} is named in neither the person's latest message nor the reply they answered, so it is not in the set they agreed; ask them before acting on it.`,
+    );
+  }
+  const onKey = (d.opens?.key ?? d.key).toUpperCase();
+  const tried = failures.get(onKey) ?? [];
+  if (tried.length >= DECISION_TRIES_ALLOWED) {
+    const told = await scope.fileDefect(onKey, tried);
+    return no(
+      'DECISION_REFUSED_TWICE',
+      `${onKey} was tried ${tried.length} times in this conversation and each was refused (${tried.map((f) => f.code).join(', ')}); a third try would fail the same way, so none was made. ${told}`,
+      item_ ? await itemStateOf(scope.projectId, item_) : null,
     );
   }
   const answerId = item.answer ?? d.recommended?.answerId;
@@ -231,15 +312,20 @@ export function buildDecideToolset(scope: Scope): ChatToolset {
         );
       }
       const waiting = await readDecisions(scope.projectId, scope.userId);
+      const agreedText = `${await scope.answeredReply()}\n${scope.latestMessage()}`;
+      const agreed = { keys: keysNamedIn(agreedText), text: agreedText.toUpperCase() };
+      const failures = await scope.failures();
       const results: ChatDecisionResult[] = [];
-      for (const one of asked) results.push(await decideOne(scope, waiting, one));
+      for (const one of asked) {
+        results.push(await decideOne(scope, waiting, agreed, failures, one));
+      }
       return {
         content: [
           {
             type: 'text',
             text: JSON.stringify({
               results,
-              note: 'Report each item exactly as read back here: done in the state shown, already_done named done with who moved it and when, refused with its reason and what the person can do next. Add no item they did not agree to, and do not say anything else was done.',
+              note: 'Report each item by its said line, as written: done in the state shown, already_done named done with who moved it and when, refused with its reason and what the person can do next. Add no item they did not agree to, and do not say anything else was done.',
             }),
           },
         ],

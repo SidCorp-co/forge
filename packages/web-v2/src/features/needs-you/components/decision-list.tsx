@@ -27,6 +27,8 @@ import { decisionHref } from "../routes";
 export interface DecisionSettled {
   decision: NeedsYouDecision;
   ok: boolean;
+  /** What a failed press was refused with, as its route answered. */
+  error?: unknown;
 }
 
 function OwedDecision({
@@ -50,7 +52,7 @@ function OwedDecision({
       void qc.invalidateQueries({ queryKey: NEEDS_YOU_ROOT });
       onSettled?.({ decision: d, ok: true });
     },
-    onError: () => onSettled?.({ decision: d, ok: false }),
+    onError: (error) => onSettled?.({ decision: d, ok: false, error }),
   });
   const href = slug ? decisionHref(slug, d.opens) : null;
   const recommended = d.recommended ? d.answers.find((a) => a.id === d.recommended?.answerId) : undefined;

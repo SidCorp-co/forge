@@ -3797,14 +3797,45 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "refusal": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "code": {
+                            "pattern": "^[A-Z][A-Z0-9_]{1,79}$",
+                            "type": "string"
+                          },
+                          "detail": {
+                            "maxLength": 500,
+                            "minLength": 1,
+                            "pattern": "^[^\\r\\n]*$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "detail"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
                   "decision",
                   "opens",
-                  "ok"
+                  "ok",
+                  "refusal"
                 ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "a press that went through carries no refusal, and one that failed carries the one its route answered"
+                ]
               }
             }
           },

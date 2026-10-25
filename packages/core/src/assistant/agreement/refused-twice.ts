@@ -93,30 +93,51 @@ interface Offer {
   target: string;
 }
 
-/** Files the defect into Forge's own feedback; the sentence the model is told, recorded or not. */
-async function recordDefect(offer: Offer, failed: readonly ChatProposalRow[]): Promise<string> {
-  const reasons = failed.map((r) => failureOf(r.failure));
-  const about = offer.target === 'project' ? 'this project' : offer.target;
+/** One refused try, as it is told: what refused it, and why. */
+export interface ChatFailure {
+  /** The record the try is kept by: a proposal's id, or the decision it pressed. */
+  by: string;
+  code: string;
+  detail: string;
+}
+
+/**
+ * Files a chat act that failed each time it was tried into Forge's own feedback, joined to an open
+ * item for the same failure by its signal key; the sentence the model is told, recorded or not.
+ */
+export async function fileChatDefect(defect: {
+  projectId: string;
+  conversationId: string;
+  personId: string;
+  /** The act as a person reads it ("Feedback item", "Open it decision"). */
+  kindWords: string;
+  /** The item tried, or `project` for an act that makes a new record. */
+  target: string;
+  /** What groups the same defect across conversations (`chat:refused-twice:<signal>:<code>`). */
+  signal: string;
+  failures: readonly ChatFailure[];
+}): Promise<string> {
+  const about = defect.target === 'project' ? 'this project' : defect.target;
   // read when a defect is filed, so a gate that never meets one never loads the feedback module
   const { fileForgeFeedback } = await import('../../feedback/index.js');
   const filed = await fileForgeFeedback({
-    actor: { userId: offer.personId, agency: 'agent' },
+    actor: { userId: defect.personId, agency: 'agent' },
     request: {
       kind: 'bug',
       severity: 'high',
-      title: `The chat's ${offer.kindWords} on ${about} failed each time it was pressed`.slice(
+      title: `The chat's ${defect.kindWords} on ${about} failed each time it was tried`.slice(
         0,
         300,
       ),
       body: [
-        `In conversation ${offer.conversationId}, the person pressed Record it on the chat's ${offer.kindWords} on ${about} ${failed.length} times and each press failed:`,
-        ...failed.map((r, i) => `- proposal ${r.id}: ${reasons[i]?.code}: ${reasons[i]?.detail}`),
-        'A further offer was refused (REQ-41 BC-28): the card the chat builds for this act fails when pressed.',
+        `In conversation ${defect.conversationId}, the chat's ${defect.kindWords} on ${about} was tried ${defect.failures.length} times and each try was refused:`,
+        ...defect.failures.map((f) => `- ${f.by}: ${f.code}: ${f.detail}`),
+        'A further try was refused (REQ-41 BC-28): it would fail the same way.',
       ].join('\n'),
-      whereSeen: `Assistant chat, conversation ${offer.conversationId}`,
-      signalKey: `chat:refused-twice:${offer.kind}:${reasons[0]?.code ?? 'UNNAMED'}`,
+      whereSeen: `Assistant chat, conversation ${defect.conversationId}`,
+      signalKey: `chat:refused-twice:${defect.signal}:${defect.failures[0]?.code ?? 'UNNAMED'}`,
     },
-    source: { projectId: offer.projectId, issueId: null, runId: null, clientVersion: null },
+    source: { projectId: defect.projectId, issueId: null, runId: null, clientVersion: null },
   });
   if (!filed.ok) {
     const why = filed.refusals.map((r) => `${r.code}: ${r.detail}`).join('; ');
@@ -131,6 +152,19 @@ async function recordDefect(offer: Offer, failed: readonly ChatProposalRow[]): P
   return filed.created
     ? `Forge recorded the defect in its own feedback as ${key}; tell the person so, naming ${key}.`
     : `Forge added this to ${key}, already open in its own feedback for the same failure; tell the person so, naming ${key}.`;
+}
+
+/** Files a held act's defect: the presses of Record it that each failed. */
+function recordDefect(offer: Offer, failed: readonly ChatProposalRow[]): Promise<string> {
+  return fileChatDefect({
+    projectId: offer.projectId,
+    conversationId: offer.conversationId,
+    personId: offer.personId,
+    kindWords: offer.kindWords,
+    target: offer.target,
+    signal: offer.kind,
+    failures: failed.map((r) => ({ by: `proposal ${r.id}`, ...failureOf(r.failure) })),
+  });
 }
 
 /**

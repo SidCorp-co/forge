@@ -10,6 +10,7 @@ import { type DecisionSettled, DecisionList } from "@/features/needs-you";
 import type { CanonicalBlock } from "@/features/session";
 import { useMutation } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
+import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { toolOutputText } from "@/lib/tool-output";
 import { conversationsApi } from "./api";
@@ -54,14 +55,22 @@ export function decisionsIn(blocks: readonly CanonicalBlock[] | null | undefined
   return { ...found, decisions: left, total: found.total - (found.decisions.length - left.length) };
 }
 
-/** The follow-up a settled press asks core for: the decision, the item it opens, and whether it went through. */
-export function outcomeOf({ decision, ok }: DecisionSettled): DecisionOutcomeRequest {
+/** The refusal a failed press got, as its route named it, cut to the one line core takes. */
+function refusalOf(error: unknown): DecisionOutcomeRequest["refusal"] {
+  const lead = refusalsOf(error)[0];
+  const code = lead && /^[A-Z][A-Z0-9_]{1,79}$/.test(lead.code) ? lead.code : "REQUEST_FAILED";
+  const detail = (lead?.detail ?? "").replace(/\s+/g, " ").trim().slice(0, 500) || "the request failed";
+  return { code, detail };
+}
+
+/** The follow-up a settled press asks core for: the decision, the item it opens, whether it went through, and why not. */
+export function outcomeOf({ decision, ok, error }: DecisionSettled): DecisionOutcomeRequest {
   const opens = decision.opens;
   const item =
     opens && (opens.kind === "issue" || opens.kind === "requirement" || opens.kind === "feedback")
       ? { kind: opens.kind, key: opens.key }
       : null;
-  return { decision: decision.id, opens: item, ok };
+  return { decision: decision.id, opens: item, ok, refusal: ok ? null : refusalOf(error) };
 }
 
 /** The list, its presses answered in `conversationId`'s room. */

@@ -13,6 +13,12 @@ import { requirements } from '../db/schema-requirements.js';
 import { firstRequirementsOnboardingOf } from '../onboarding/index.js';
 import { makeConversationImageResolver } from './conversation-images.js';
 import {
+  answeredReplyOf,
+  decisionFailuresIn,
+  fileDecisionDefect,
+  withTwiceRefusedDecisionsWithheld,
+} from './decision-memory.js';
+import {
   baDoorPersona,
   baFirstRequirementsPersona,
   webConversationPersona,
@@ -148,6 +154,8 @@ async function prepareWebTurn(
       ),
     };
   }
+  // the decisions this conversation tried: the set agreed, and what was refused twice (REQ-41 BC-25, BC-28)
+  const at = { projectId: args.project.id, conversationId, personId: authority.userId };
   return {
     persona: webConversationPersona(args.project.name, args.project.slug, asker),
     resolveImage: makeConversationImageResolver(conversationId),
@@ -157,24 +165,30 @@ async function prepareWebTurn(
       projectId: args.project.id,
       userId: authority.userId,
     }),
-    tools: mergeToolsets(
-      buildProjectToolset(ctx),
-      buildRequirementDraftToolset(ctx, args.project.id),
-      buildUiActionToolset(
-        { snapshot: () => latestUiSnapshot(conversationId) },
-        args.window.question,
+    tools: withTwiceRefusedDecisionsWithheld(
+      mergeToolsets(
+        buildProjectToolset(ctx),
+        buildRequirementDraftToolset(ctx, args.project.id),
+        buildUiActionToolset(
+          { snapshot: () => latestUiSnapshot(conversationId) },
+          args.window.question,
+        ),
+        buildOfferActToolset({
+          projectId: args.project.id,
+          userId: authority.userId,
+          language: await askerLineLanguage(args),
+        }),
+        buildOfferPreviewToolset({ projectId: args.project.id, userId: authority.userId }),
+        buildDecideToolset({
+          projectId: args.project.id,
+          userId: authority.userId,
+          latestMessage: () => args.window.latest,
+          answeredReply: () => answeredReplyOf(conversationId),
+          failures: () => decisionFailuresIn(conversationId),
+          fileDefect: (key, failures) => fileDecisionDefect(at, key, failures),
+        }),
       ),
-      buildOfferActToolset({
-        projectId: args.project.id,
-        userId: authority.userId,
-        language: await askerLineLanguage(args),
-      }),
-      buildOfferPreviewToolset({ projectId: args.project.id, userId: authority.userId }),
-      buildDecideToolset({
-        projectId: args.project.id,
-        userId: authority.userId,
-        latestMessage: () => args.window.latest,
-      }),
+      at,
     ),
   };
 }

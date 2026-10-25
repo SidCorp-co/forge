@@ -84,9 +84,30 @@ function itemAt(text: string, line: Span): Span {
   return { start: line.start, stop };
 }
 
+/**
+ * Abbreviations whose stop ends no sentence, in either language the asker reads ("v.v." is the
+ * Vietnamese "etc."): read past, a trim over-cuts a sentence that ends on one rather than leaving
+ * half of one that does not (judge K66 on ISS-624).
+ */
+const ABBREVIATION_END =
+  /(?:^|[^\p{L}])(?:e\.g|i\.e|v\.v|etc|vs|cf|approx|incl|resp|ca|esp|no|dr|mr|mrs|ms|st)\.$/iu;
+
+/** Whether `text[i]` sits inside a code span opened earlier on its line. */
+function inCodeSpan(text: string, i: number, lineStart: number): boolean {
+  return ((text.slice(lineStart, i).match(/`/g) ?? []).length & 1) === 1;
+}
+
 /** Where a sentence stops at `i`: its stop, then any closing marks, before a space or the line's end. */
 function sentenceStopAt(text: string, i: number, lineStop: number): number | null {
   if (!/[.!?…]/.test(text.charAt(i))) return null;
+  const lineStart = text.lastIndexOf('\n', i - 1) + 1;
+  if (inCodeSpan(text, i, lineStart)) return null;
+  if (text.charAt(i) === '.' && ABBREVIATION_END.test(text.slice(lineStart, i + 1))) {
+    // at the line's end an abbreviation still closes what the line said
+    let k = i + 1;
+    while (k < lineStop && /[ \t]/.test(text.charAt(k))) k += 1;
+    if (k < lineStop && text.charAt(k) !== '\n') return null;
+  }
   let j = i + 1;
   while (j < lineStop && CLOSERS.test(text.charAt(j))) j += 1;
   return j === lineStop || /\s/.test(text.charAt(j)) ? j : null;
@@ -205,6 +226,38 @@ function withoutBareHeadings(text: string): string {
 }
 
 /**
+ * A cut sentence that opens a bold span running on past it keeps the span's opener for the sentence
+ * after it: `**A. B.**` held on A leaves `**B.**`, not an open `B.**` the line would go with.
+ */
+function keepingOpener(text: string, cut: Span): Span {
+  const body = text.slice(cut.start, cut.stop);
+  const bold = (body.match(/\*\*/g) ?? []).length;
+  return bold % 2 === 1 && body.startsWith('**') ? { ...cut, start: cut.start + 2 } : cut;
+}
+
+/** List lines: an item, or a line nested under one. */
+const LIST_LINE = /^\s*(?:[-*+]\s|\d+[.)]\s)/;
+
+/**
+ * Where a cut ends once it takes the whole of a line that introduces a list (`The 9 issues agreed:`
+ * above `- ISS-1`): the list goes with it, since a list without what it is a list of says nothing
+ * (judge K66 on ISS-624).
+ */
+function withIntroducedList(text: string, cut: Span, line: Span): Span {
+  const own = text.slice(line.start, line.stop);
+  if (cut.start > line.start + indentOf(own) || text.slice(cut.stop, line.stop).trim()) return cut;
+  if (!own.trimEnd().endsWith(':')) return cut;
+  let stop = line.stop;
+  while (stop < text.length) {
+    const next = lineAt(text, stop);
+    const body = text.slice(next.start, next.stop);
+    if (!LIST_LINE.test(body) && !(body.trim() && indentOf(body) > 0)) break;
+    stop = next.stop;
+  }
+  return stop === line.stop ? cut : { ...cut, stop };
+}
+
+/**
  * The reply with each sentence, list item (and the items nested under it) or heading holding one of
  * `quotes` cut whole, or null where a quote is not in the reply: a claim that cannot be found cannot
  * be cut. Where cutting a sentence would leave its line with no word or with a bold or code span
@@ -220,7 +273,13 @@ export function cutHeldSentences(text: string, quotes: readonly string[]): strin
     const line = lineAt(text, at);
     const own = text.slice(line.start, line.stop);
     spans.push(
-      ITEM_LINE.test(own) ? itemAt(text, line) : sentenceAt(text, at, at + quote.length, line),
+      ITEM_LINE.test(own)
+        ? itemAt(text, line)
+        : withIntroducedList(
+            text,
+            keepingOpener(text, sentenceAt(text, at, at + quote.length, line)),
+            line,
+          ),
     );
   }
   let cuts = merged(spans);
