@@ -17,9 +17,19 @@ export function documentTitle(subject: string | null, count: number): string {
   return `${prefix}${subject ? `${subject} · ` : ""}${BASE_TITLE}`;
 }
 
+let guard: MutationObserver | null = null;
+
+/** Next writes its metadata `<title>` when a streamed head commits, after any effect; the composed title is put back. */
 function apply(): void {
   if (typeof document === "undefined") return;
-  document.title = documentTitle(pageSubject, openCount);
+  const title = documentTitle(pageSubject, openCount);
+  if (document.title !== title) document.title = title;
+  if (guard || typeof MutationObserver === "undefined") return;
+  guard = new MutationObserver(() => {
+    const wanted = documentTitle(pageSubject, openCount);
+    if (document.title !== wanted) document.title = wanted;
+  });
+  guard.observe(document.head, { childList: true, subtree: true, characterData: true });
 }
 
 export function setTitleCount(count: number): void {

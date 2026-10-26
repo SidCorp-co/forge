@@ -29,6 +29,13 @@ describe("the tab title", () => {
     setTitleOpenCount(2);
     expect(document.title).toBe("(2) Forge");
   });
+
+  it("is put back when something else writes the head's title, as Next's streamed metadata does", async () => {
+    renderHook(() => usePageTitle("This issue is not in Desk"));
+    document.title = "Forge";
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.title).toBe("This issue is not in Desk · Forge");
+  });
 });
 
 describe("a count as the bell shows it", () => {
