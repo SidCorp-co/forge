@@ -120,6 +120,31 @@ const cases = {
     out.second = code(await outcome(reserved`SELECT 1`));
   },
 
+  async reservedReleased() {
+    // A reserved connection the server ended, handed back: the pool serves every later statement.
+    const client = postgres(url, { max: 2 });
+    const reserved = await client.reserve();
+    const [{ pid }] = await reserved`SELECT pg_backend_pid() AS pid`;
+    await admin`SELECT pg_terminate_backend(${pid})`;
+    await sleep(300);
+    reserved.release();
+    const after = await Promise.all(Array.from({ length: 20 }, () => outcome(client`SELECT 1`)));
+    out.refused = after.filter((r) => r !== 'ran').map(code);
+  },
+
+  async reservedReconnected() {
+    const client = postgres(url, { max: 1 });
+    const reserved = await client.reserve();
+    const [{ pid }] = await reserved`SELECT pg_backend_pid() AS pid`;
+    const queued = client`SELECT pg_backend_pid() AS pid`;
+    await admin`SELECT pg_terminate_backend(${pid})`;
+    const [{ pid: poolPid }] = await queued;
+    out.next = code(await outcome(reserved`SELECT pg_backend_pid() AS pid`));
+    out.poolMoved = poolPid !== pid;
+    reserved.release();
+    out.after = code(await outcome(client`SELECT 1`));
+  },
+
   async staleError() {
     const client = postgres(url, { max: 1 });
     const [{ pid }] = await client`SELECT pg_backend_pid() AS pid`;

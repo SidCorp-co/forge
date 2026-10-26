@@ -99,6 +99,22 @@ describe('a transaction whose connection the server ended', () => {
     });
   });
 
+  it('serves every later statement from the pool once a reserved connection the server ended is released', async () => {
+    expect(await outcome(harness.url, 'reservedReleased')).toEqual({
+      kind: 'reservedReleased',
+      refused: [],
+    });
+  });
+
+  it('runs none of a reserved connection’s statements on the session the pool reconnects it for', async () => {
+    expect(await outcome(harness.url, 'reservedReconnected')).toEqual({
+      kind: 'reservedReconnected',
+      next: 'CONNECTION_CLOSED',
+      poolMoved: true,
+      after: 'ran',
+    });
+  });
+
   it('runs the first statement on a reconnected session rather than rejecting it with the ended session’s FATAL', async () => {
     expect(await outcome(harness.url, 'staleError')).toEqual({
       kind: 'staleError',
