@@ -156,6 +156,7 @@ describe('a single criterion is read and corrected by its number or its id', () 
       ],
     });
     expect(codes(put)).toContain('CRITERIA_LOCKED');
+    expect(JSON.stringify(put.body)).toContain('PATCH /api/issues/:id/criteria/:n');
     const res = await ok(
       api(token, 'PATCH', `/api/issues/${issue.id}/criteria/3`, {
         statement: RIGHT,

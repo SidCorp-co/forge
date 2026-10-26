@@ -1,7 +1,8 @@
 /**
  * ISS-55 — reads and writes of `issue_criteria` and `criterion_verdicts`.
  *
- * Criteria are written whole (a plan's PUT, or a write of `acceptance_criteria` text). Each criterion
+ * Criteria are written whole (a plan's PUT, or a write of `acceptance_criteria` text), or one wording
+ * is corrected in place, keeping its row and verdicts (`criterion-reword.ts`). Each criterion
  * written is matched to a live row by its wording before its number (`match.ts:matchCriteria`,
  * ISS-567): an unchanged wording keeps its row, its trace and its verdicts even where its number
  * moved, a reworded one is retired and re-added so the verdicts on the old wording stop counting,
@@ -131,7 +132,7 @@ async function applyCriteria(
   if (!same && LOCKED_STATUSES.has(issue.status)) {
     throw refuseCriteria(
       'CRITERIA_LOCKED',
-      `this issue is at \`${issue.status}\`, where its criteria are the ones its verdicts were earned on; reopen it to change them`,
+      `this issue is at \`${issue.status}\`, where its criteria are the ones its verdicts were earned on; reopen it to change them, or correct one wording with PATCH /api/issues/:id/criteria/:n, which keeps its verdicts`,
     );
   }
   const match = matchCriteria(live, desired);
