@@ -68,9 +68,13 @@ describe("bindingForRow", () => {
     expect(bindingForRow(items, "sentry", "new")?.id).toBe("new");
   });
 
-  it("takes the one in use where no row names one, or the named one is not this provider's", () => {
+  it("takes the one in use only where no row names one", () => {
     expect(bindingForRow(items, "sentry", undefined)?.id).toBe("new");
-    expect(bindingForRow(items, "sentry", "pm")?.id).toBe("new");
+  });
+
+  it("takes none where the named binding is gone or is another provider's, never another binding", () => {
+    expect(bindingForRow(items, "sentry", "gone")).toBeUndefined();
+    expect(bindingForRow(items, "sentry", "pm")).toBeUndefined();
   });
 
   it("reads the binding a card names, and none from a card that names none", () => {

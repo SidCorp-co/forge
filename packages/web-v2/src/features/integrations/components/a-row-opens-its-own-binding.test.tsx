@@ -186,3 +186,14 @@ describe("the switched-on row beside it", () => {
     expect(deletes()).toEqual([{ method: "DELETE", path: `/projects/${PROJECT}/integrations/${IN_USE}` }]);
   });
 });
+
+describe("a row naming a binding the list no longer holds", () => {
+  it.each(PROVIDERS)("%s: its drawer says so and offers no other binding's controls", async (name) => {
+    provider = name;
+    await open("0badc0de-0000-4000-8000-000000000000");
+    await waitFor(() => expect(screen.getByText(/binding is no longer on this project\./)).toBeInTheDocument());
+    expect(screen.queryByRole("switch", { name: /Enabled for this project/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: DISCONNECT_FROM_PROJECT })).toBeNull();
+    expect(screen.queryByDisplayValue(/new-in-use/)).toBeNull();
+  });
+});

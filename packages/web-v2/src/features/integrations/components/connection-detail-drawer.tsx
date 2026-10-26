@@ -89,8 +89,7 @@ function useBindingForCard(
   const list = useIntegrationsList(projectId);
   return useMemo(() => {
     const rows = (list.data?.items ?? []).filter((i) => i.provider === provider);
-    const named = bindingId ? rows.find((r) => r.id === bindingId) : undefined;
-    if (named) return named;
+    if (bindingId) return rows.find((r) => r.id === bindingId);
     if (stageHint) return rows.find((r) => r.stages.includes(stageHint));
     return rows[0];
   }, [list.data, provider, stageHint, bindingId]);
@@ -215,12 +214,14 @@ function DeliveryLogPane({
     () => (list.data?.items ?? []).filter((i) => i.provider === provider),
     [list.data, provider],
   );
-  const named = rows.find((r) => r.id === bindingId);
-  const binding = canDeploy
-    ? named?.stages.includes(stage)
+  const named = bindingId ? rows.find((r) => r.id === bindingId) : undefined;
+  const binding = !canDeploy
+    ? bindingId
       ? named
-      : rows.find((r) => r.stages.includes(stage))
-    : (named ?? rows[0]);
+      : rows[0]
+    : named?.stages.includes(stage)
+      ? named
+      : rows.find((r) => r.stages.includes(stage));
 
   return (
     <div className="flex flex-col gap-3">
@@ -253,6 +254,14 @@ function ConfigPane({
   // A provider this project has not connected is offered to a reader who may connect one, and
   // anyone else is told who may, rather than shown a form core refuses (ISS-1421 r27).
   const connected = (list.data?.items ?? []).some((i) => i.provider === provider);
+  // A row naming a binding the list no longer holds opens nothing, never another binding's controls.
+  if (bindingId && list.data && !binding) {
+    return (
+      <p className="fg-body-sm border-b border-line pb-2 text-muted">
+        {`This ${providerLabel(provider)} binding is no longer on this project. Close this drawer and open its row again.`}
+      </p>
+    );
+  }
   if (!connected && may && !may.connect) {
     return (
       <p className="fg-body-sm border-b border-line pb-2 text-muted">
