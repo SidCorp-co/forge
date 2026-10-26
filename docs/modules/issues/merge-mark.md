@@ -120,8 +120,10 @@ through the relay, the answer timed out, and the route answered 500, which a cal
 again". Where the host's merge call throws, or refuses in words that leave the merge unknown, core
 reads the change request back (`packages/core/src/integrations/source-host/merge-unknown.ts`):
 merged answers success with the landing it observed (`observedAfter` names what the call hit), and
-its stamp is the commit's to identify; unmerged is refused `merge-unconfirmed`; and a read that fails
-too is refused `merge-outcome-unknown`, which says not to send the merge again. A call on a request
+its stamp is the commit's to identify; unmerged is refused `merge-unconfirmed`, naming the state the
+read showed and never promising it will not land, since a merge the host is still making can land
+after the read; and a read that fails too is refused `merge-outcome-unknown`, which says not to send
+the merge again. A call on a request
 already merged answers it merged (`alreadyMerged`) without merging again.
 
 ## A mark a merge check is owed for

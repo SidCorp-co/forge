@@ -88,7 +88,7 @@ describe('a merge the host took and whose answer was lost', () => {
 });
 
 describe('a merge whose answer was lost before the host took it', () => {
-  it('is refused by name, saying it did not land and that merging again is safe', async () => {
+  it('is refused by name, saying what the read showed and not promising it never lands', async () => {
     const id = await waiting(51);
     callFails.set(1994, 'before');
 
@@ -98,9 +98,27 @@ describe('a merge whose answer was lost before the host took it', () => {
     const [refusal] = refusalsOf(res.body);
     expect(refusal?.code).toBe('MERGE_REFUSED');
     expect(refusal?.detail).toContain('(merge-unconfirmed)');
-    expect(refusal?.detail).toContain('is `open`, not merged, so nothing landed');
-    expect(refusal?.detail).toContain('sending the merge again is safe');
+    expect(refusal?.detail).toContain('it is `open`, not merged, so it had not landed when read');
+    expect(refusal?.detail).toContain('Read merge request !1994 again before merging');
+    expect(refusal?.detail).not.toContain('safe');
     expect((await issueRow(id))?.merged_at).toBeNull();
+    expect(merges).toEqual([]);
+  });
+});
+
+describe('a host refusal that leaves the merge unknown', () => {
+  it('is read back and named merge-unconfirmed, the host’s own words kept', async () => {
+    const id = await waiting(53);
+    callFails.set(1994, 'host-error');
+
+    const res = await mergeOf(id, 1994);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const [refusal] = refusalsOf(res.body);
+    expect(refusal?.detail).toContain('(merge-unconfirmed)');
+    expect(refusal?.detail).toContain(
+      'host-error: GitLab answered HTTP 502 merging merge request !1994',
+    );
     expect(merges).toEqual([]);
   });
 });

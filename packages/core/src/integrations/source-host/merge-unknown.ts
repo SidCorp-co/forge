@@ -72,11 +72,11 @@ export async function readBackMerge(
       detail: `${host.provider} did not confirm the merge of ${named} (${failure}); read back, it is merged, but ${host.provider} named no merge commit, merge time or base branch, so there is no landing to record. Do not send the merge again: its merged event records the landing.`,
     };
   }
-  const now = `Forge read ${named} back and it is \`${read.state}\`, not merged, so nothing landed`;
-  if (refused) return { ...refused, detail: `${refused.detail} ${now}.` };
+  // a read can race a merge the host is still making, so what it shows is said, never promised
+  const cause = refused ? `${refused.reason}: ${refused.detail}` : failure;
   return {
     kind: 'refused',
     reason: 'merge-unconfirmed',
-    detail: `${host.provider} did not answer the merge of ${named} (${failure}). ${now}; sending the merge again is safe.`,
+    detail: `${host.provider} did not confirm the merge of ${named} (${cause}). Read back, it is \`${read.state}\`, not merged, so it had not landed when read; a merge the host was still making can land after that read. Read ${named} again before merging: one that merged is answered merged by this verb, never merged twice.`,
   };
 }

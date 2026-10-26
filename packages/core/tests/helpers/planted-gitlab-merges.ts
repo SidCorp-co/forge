@@ -17,9 +17,9 @@ export const alreadyMerged = new Map<number, string>();
 /**
  * How the planted merge call fails, by request: `after` merges and then loses the answer, as the
  * relay did for adminhub-fe !1994; `before` loses it without merging; `unreadable` also fails the
- * read back.
+ * read back; `host-error` is GitLab's 5xx refusal, which leaves the merge unknown.
  */
-export const callFails = new Map<number, 'after' | 'before' | 'unreadable'>();
+export const callFails = new Map<number, 'after' | 'before' | 'unreadable' | 'host-error'>();
 
 export const mergeMessage = (number: number, headRef: string) =>
   `Merge branch '${headRef}' into 'release/stg'\n\nMR ${number}\n\nSee merge request acme/canawan-api!${number}`;
@@ -78,6 +78,13 @@ export const plantedSourceHost = () => ({
     const fails = callFails.get(number);
     if (fails === 'before' || fails === 'unreadable')
       throw new DOMException(TIMEOUT, 'TimeoutError');
+    if (fails === 'host-error') {
+      return {
+        kind: 'refused',
+        reason: 'host-error',
+        detail: `GitLab answered HTTP 502 merging merge request !${number}.`,
+      };
+    }
     merges.push(number);
     const commitSha = `${String(number).padStart(4, '0')}${'c'.repeat(36)}`;
     merged.set(number, commitSha);
