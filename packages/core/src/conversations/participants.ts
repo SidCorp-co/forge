@@ -45,6 +45,8 @@ export function answersHere(
   return kind === 'handle' ? projectRole !== null : null;
 }
 
+/** A room's members in one stated order: when added, then the room's opener first, then the row id, so
+ *  people added at one moment are told apart the same way on every read (ISS-1229 r45). */
 export async function listParticipants(
   conversationId: string,
   tx: Executor = defaultDb,
@@ -68,11 +70,17 @@ export async function listParticipants(
         eq(projectMembers.projectId, conversationParticipants.projectId),
       ),
     )
+    .innerJoin(conversations, eq(conversations.id, conversationParticipants.conversationId))
     .where(
       and(
         eq(conversationParticipants.conversationId, conversationId),
         isNull(conversationParticipants.removedAt),
       ),
+    )
+    .orderBy(
+      conversationParticipants.addedAt,
+      sql`COALESCE(${conversationParticipants.userId} = ${conversations.createdBy}, false) DESC`,
+      conversationParticipants.id,
     );
 
   return rows.map((row) => ({

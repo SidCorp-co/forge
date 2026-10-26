@@ -17,6 +17,11 @@ const archived = {
 };
 
 const desk = { id: "p1", name: "Desk", slug: "desk", orgId: "o1", role: "member" };
+/** What the room's own read answers for an id no list holds (ISS-1229 r45). */
+const roomRead = vi.hoisted(() => ({
+  answers: {} as Record<string, { data?: unknown; error?: unknown }>,
+  refetched: 0,
+}));
 const reader = { role: "member", loading: false };
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ ...desk, role: reader.role }], isLoading: false }),
@@ -34,6 +39,18 @@ vi.mock("../hooks", () => ({
     error: null,
     refetch: () => {},
   }),
+  useConversation: (id: string | undefined) => {
+    const answer = id ? roomRead.answers[id] : undefined;
+    return {
+      data: answer?.data,
+      error: answer?.error ?? null,
+      isError: answer?.error !== undefined,
+      isLoading: id !== undefined && answer === undefined,
+      refetch: () => {
+        roomRead.refetched += 1;
+      },
+    };
+  },
   useArchiveConversation: () => ({ mutate: () => {} }),
   useDeleteConversation: () => ({ mutate: () => {} }),
   useRenameConversation: () => ({ mutate: () => {} }),
@@ -83,10 +100,13 @@ vi.mock("./orphan-room-view", () => ({ OrphanRoomView: () => null }));
 vi.mock("./start-conversation", () => ({ StartConversation: () => <div data-testid="chooser" /> }));
 
 const { ConversationsScreen } = await import("./conversations-screen");
+const { ApiError } = await import("@/lib/api/client");
 
 beforeEach(() => {
   reader.role = "member";
   reader.loading = false;
+  roomRead.answers = {};
+  roomRead.refetched = 0;
   window.matchMedia = ((query: string) => ({
     matches: query === "(min-width: 768px)",
     media: query,
@@ -120,11 +140,12 @@ describe("the open room, across a reload", () => {
     expect(window.location.search).toBe("?room=r9&archived=1");
   });
 
-  it("shows the chooser for a room the address names that no list holds, and drops it from the address", () => {
-    at("/conversations?room=gone");
+  it("opens an archived room no list holds from its own read, though the address does not mark it archived", () => {
+    roomRead.answers.old = { data: { id: "old", scope: ["p1"], archivedAt: "2026-09-01T00:00:00Z" } };
+    at("/conversations?room=old");
     render(<ConversationsScreen />);
-    expect(screen.getByTestId("chooser")).toBeTruthy();
-    expect(window.location.search).toBe("");
+    expect(screen.getByTestId("open-room").textContent).toBe("old");
+    expect(window.location.search).toBe("?room=old&archived=1");
   });
 
   it("keeps an open room's own list in the address when the other list is shown", () => {
@@ -179,5 +200,54 @@ describe("the offer of a new room", () => {
     at("/conversations");
     render(<ConversationsScreen />);
     expect(screen.queryByRole("button", { name: "New conversation" })).toBeNull();
+  });
+});
+
+// ISS-1229 r45, judge-129: an address naming a room that does not exist opened the chooser, kept the dead
+// id and titled the tab "Forge"; the person who followed the link was never told.
+describe("an address naming a room the reader cannot open", () => {
+  for (const [why, status] of [
+    ["was deleted", 404],
+    ["is not theirs to open", 403],
+  ] as const) {
+    it(`says the conversation was not found where the room ${why}, in the heading and the tab`, () => {
+      roomRead.answers.gone = { error: new ApiError(status, "This room no longer exists.") };
+      at("/conversations?room=gone");
+      render(<ConversationsScreen />);
+      expect(screen.getByRole("heading", { level: 1, name: "Conversation not found" })).toBeTruthy();
+      expect(document.title).toBe("Conversation not found · Forge");
+      expect(screen.queryByTestId("chooser")).toBeNull();
+      expect(window.location.search).toBe("?room=gone");
+    });
+  }
+
+  it("lets go of the address once the reader starts a new conversation", () => {
+    roomRead.answers.gone = { error: new ApiError(404, "This room no longer exists.") };
+    at("/conversations?room=gone");
+    render(<ConversationsScreen />);
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+    });
+    expect(screen.getByTestId("chooser")).toBeTruthy();
+    expect(window.location.search).toBe("");
+  });
+
+  it("offers a retry where the room could not be read, and never says it was not found", () => {
+    roomRead.answers.flaky = { error: new ApiError(503, "Service unavailable") };
+    at("/conversations?room=flaky");
+    render(<ConversationsScreen />);
+    expect(screen.getByRole("heading", { level: 1, name: "Couldn't load this conversation" })).toBeTruthy();
+    expect(screen.queryByText("Conversation not found")).toBeNull();
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    });
+    expect(roomRead.refetched).toBe(1);
+  });
+
+  it("says where a room about no project is opened from", () => {
+    roomRead.answers.orphan = { data: { id: "orphan", scope: [], archivedAt: null } };
+    at("/conversations?room=orphan");
+    render(<ConversationsScreen />);
+    expect(screen.getByRole("heading", { level: 1, name: "This conversation is about no project" })).toBeTruthy();
   });
 });

@@ -4,8 +4,7 @@ import { Button } from "./button";
 import { ForgeMascot } from "@/design/patterns/forge-mascot";
 import { TabTitle } from "./tab-title";
 
-export interface EmptyStateProps {
-  title?: string;
+interface EmptyStateBase {
   /** One calm line — never cute, never apologetic. */
   message: ReactNode;
   /** `icon` is drawn only where named: a plus says "add", and most ways forward add nothing. */
@@ -14,8 +13,11 @@ export interface EmptyStateProps {
   mascot?: boolean;
   /** Id for the headline, which also makes it programmatically focusable. */
   titleId?: string;
-  level?: 1 | 2 | 3;
 }
+
+/** A state that is the whole page is headed by its title, which names the tab too. */
+export type EmptyStateProps = EmptyStateBase &
+  ({ level: 1; title: string } | { level?: 2 | 3; title?: string });
 
 /** Mascot + one calm line + one way forward; at level 1 the title heads the page and names the tab. */
 export function EmptyState({ title, message, action, mascot = true, titleId, level = 2 }: EmptyStateProps) {

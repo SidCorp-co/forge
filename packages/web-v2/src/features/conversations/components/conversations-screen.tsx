@@ -1,14 +1,19 @@
 "use client";
 
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ConfirmDialog,
+  EmptyState,
+  ErrorState,
   IconButton,
   PageTitle,
+  ProjectLoader,
   SlideOver,
   useMediaQuery,
 } from "@/design";
+import { ApiError } from "@/lib/api/client";
+import { formatApiError } from "@/lib/api/error";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { useOrgScopedProjects, useProjects } from "@/features/projects/hooks";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
@@ -17,6 +22,7 @@ import { useRoom } from "@/lib/ws/use-room";
 import {
   type ListedConversation,
   useArchiveConversation,
+  useConversation,
   useConversationsAcrossProjects,
   useDeleteConversation,
   useRenameConversation,
@@ -67,6 +73,11 @@ function addressRoom(room: string | null, archived: boolean) {
   if (next !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(null, "", next);
 }
 
+/** A read of a room refused as gone or not the reader's: the address names no room they can open. */
+function notTheirs(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 404 || err.status === 403);
+}
+
 /** Zero-render WS room subscription, so a reply anywhere shows up live. */
 function RoomSub({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
@@ -85,6 +96,15 @@ export function ConversationsScreen() {
   const [selection, setSelection] = useState<Selection | null>(null);
   /** A room whose project was deleted, opened read-only in place of a chat (ISS-1229 r24). */
   const [orphan, setOrphan] = useState<{ room: RoomWithoutAProject; facts: OrphanFacts } | null>(null);
+  /** A room the address names that the list shown does not hold, read by its own id (ISS-1229 r45). */
+  const [lookup, setLookupState] = useState<string | null>(null);
+  // Read in the same commit the lookup starts in, before its state lands, so the address keeps the id.
+  const lookupRef = useRef<string | null>(null);
+  const setLookup = useCallback((room: string | null) => {
+    lookupRef.current = room;
+    setLookupState(room);
+  }, []);
+  const roomRead = useConversation(lookup ?? undefined);
   const selectionKeyRef = useRef(0);
   const [collapsed, setCollapsed] = usePersistedState<boolean>(SIDEBAR_COLLAPSED_KEY, false, {
     syncTabs: false,
@@ -109,6 +129,7 @@ export function ConversationsScreen() {
 
   const openRow = useCallback((row: ListedConversation) => {
     setOrphan(null);
+    setLookup(null);
     selectionKeyRef.current += 1;
     setSelection({
       key: selectionKeyRef.current,
@@ -117,13 +138,14 @@ export function ConversationsScreen() {
       archived: row.archivedAt !== null,
     });
     setMobileHistoryOpen(false);
-  }, []);
+  }, [setLookup]);
 
   const startNew = useCallback(() => {
     setOrphan(null);
+    setLookup(null);
     setSelection(null);
     setMobileHistoryOpen(false);
-  }, []);
+  }, [setLookup]);
 
   const dropIfOpen = useCallback((conversationId: string) => {
     setSelection((s) => (s?.conversationId === conversationId ? null : s));
@@ -131,11 +153,13 @@ export function ConversationsScreen() {
 
   const openStarted = useCallback((conversationId: string, projectId: string) => {
     setOrphan(null);
+    setLookup(null);
     selectionKeyRef.current += 1;
     setSelection({ key: selectionKeyRef.current, projectId, conversationId, archived: false });
-  }, []);
+  }, [setLookup]);
 
-  // The room the address named opens once the list holds it; one the list never holds is let go.
+  // The room the address named opens from the list; one the list does not hold (lists are capped) is
+  // read by its own id, and only that read can say it is gone (ISS-1229 r45, judge-129).
   useEffect(() => {
     const room = addressed.current.room;
     // Until the projects are read there is no list to find it in, only an empty one.
@@ -143,14 +167,26 @@ export function ConversationsScreen() {
     addressed.current = { room: null, archived: false };
     const row = conversations.rows.find((r) => r.id === room);
     if (row) openRow(row);
-  }, [projectsQ.isLoading, projectIdList.length, conversations.isLoading, conversations.rows, openRow]);
+    else setLookup(room);
+  }, [projectsQ.isLoading, projectIdList.length, conversations.isLoading, conversations.rows, openRow, setLookup]);
+
+  const read = roomRead.data;
+  const readProject = read ? (read.scope.find((id) => orgProjectIds.has(id)) ?? read.scope[0]) : undefined;
+  useEffect(() => {
+    if (!lookup || !read || !readProject) return;
+    const archived = read.archivedAt !== null;
+    setShowArchived(archived);
+    selectionKeyRef.current += 1;
+    setSelection({ key: selectionKeyRef.current, projectId: readProject, conversationId: lookup, archived });
+    setLookup(null);
+  }, [lookup, read, readProject, setLookup]);
 
   const openRoomId = selection?.conversationId ?? null;
   const openArchived = selection?.archived === true;
   useEffect(() => {
-    if (addressed.current.room) return;
+    if (addressed.current.room || lookup || lookupRef.current) return;
     addressRoom(openRoomId, openArchived);
-  }, [openRoomId, openArchived]);
+  }, [openRoomId, openArchived, lookup]);
 
   const sidebar = (inDrawer: boolean) => (
     <ConversationSidebar
@@ -179,6 +215,7 @@ export function ConversationsScreen() {
             onDeleted={(id) => setOrphan((o) => (o?.room.id === id ? null : o))}
             onOpen={(room, facts) => {
               setSelection(null);
+              setLookup(null);
               setOrphan({ room, facts });
               setMobileHistoryOpen(false);
             }}
@@ -238,6 +275,13 @@ export function ConversationsScreen() {
                 if (!wide) setMobileHistoryOpen(true);
               }}
             />
+          ) : lookup ? (
+            <AddressedRoom
+              error={roomRead.error}
+              read={read !== undefined}
+              startsNone={startsNone}
+              onRetry={() => void roomRead.refetch()}
+            />
           ) : (
             <StartConversation onStarted={openStarted} />
           )}
@@ -275,4 +319,41 @@ export function ConversationsScreen() {
       />
     </div>
   );
+}
+
+/** The room pane while the address names a room the list does not hold: its read, and what it said. */
+function AddressedRoom({
+  error,
+  read,
+  startsNone,
+  onRetry,
+}: {
+  error: unknown;
+  read: boolean;
+  startsNone: boolean;
+  onRetry: () => void;
+}) {
+  const pane = (state: ReactNode) => <div className="grid h-full place-items-center">{state}</div>;
+  if (notTheirs(error)) {
+    return pane(
+      <ErrorState
+        level={1}
+        title="Conversation not found"
+        message={`It was deleted, or you are not one of its people. ${startsNone ? "Pick a conversation from the list." : "Pick a conversation from the list, or start one."}`}
+      />,
+    );
+  }
+  if (error) {
+    return pane(<ErrorState level={1} title="Couldn't load this conversation" message={formatApiError(error)} onRetry={onRetry} />);
+  }
+  if (read) {
+    return pane(
+      <EmptyState
+        level={1}
+        title="This conversation is about no project"
+        message="Its project was deleted. Open it from Rooms without a project, under the list."
+      />,
+    );
+  }
+  return pane(<ProjectLoader label="loading conversation…" />);
 }

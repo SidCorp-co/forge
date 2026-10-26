@@ -114,6 +114,7 @@ export function OpsMonitor() {
       <div className="grid min-h-[60vh] place-items-center">
         <ErrorState
           level={1}
+          title={projectsError ? "Couldn't load your projects" : "Couldn't load the projects' health"}
           message={formatApiError(projectsError ?? healthQ.error)}
           onRetry={() => healthQ.refetch()}
         />

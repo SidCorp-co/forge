@@ -3,10 +3,11 @@
 // ISS-1229 r16, judge-41: an archived project's own page said "This project doesn't exist", so a
 // person who had archived it could not tell it was there, or how to bring it back. Every page under a
 // project's slug answers a slug the live list lacks here: archived, saying when, or not found.
-import { EmptyState, ProjectLoader } from "@/design";
+import { EmptyState, ErrorState, ProjectLoader } from "@/design";
 import { useUnarchiveProject } from "@/features/project-settings/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import type { ProjectListItem } from "@/features/projects/types";
+import { formatApiError } from "@/lib/api/error";
 
 const NOT_FOUND = "This project doesn't exist or you don't have access to it.";
 
@@ -60,4 +61,9 @@ export function ProjectMissing({
     return <EmptyState level={1} title="This project is archived" message={archivedProjectWords(archived)} />;
   }
   return <EmptyState level={1} title={title} message={message} />;
+}
+
+/** A page under a project's slug whose read of the project list failed: what failed, and a retry. */
+export function ProjectUnread({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return <ErrorState level={1} title="Couldn't load this project" message={formatApiError(error)} onRetry={onRetry} />;
 }

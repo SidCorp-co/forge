@@ -1,11 +1,9 @@
 // The one order every list of people takes, and the words that tell two unnamed people apart (ISS-1229 r28).
 
-import { type ListedPerson, listedKey as keyOf } from "@forge/contracts/people-apart";
+import { compareAdded, type ListedPerson } from "@forge/contracts/people-apart";
 import { givenName } from "@forge/contracts/person-name";
 
 export type { ListedPerson };
-
-const NEVER = "\uffff";
 
 function rank(person: ListedPerson, viewerId: string | null | undefined): number {
   if (person.userId && person.userId === viewerId) return 0;
@@ -23,7 +21,7 @@ export function comparePeople(viewerId?: string | null) {
       });
       if (byName !== 0) return byName;
     }
-    return (a.addedAt ?? NEVER).localeCompare(b.addedAt ?? NEVER) || keyOf(a).localeCompare(keyOf(b));
+    return compareAdded(a, b);
   };
 }
 

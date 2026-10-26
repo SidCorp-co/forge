@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addedApart, listedAs } from './people-apart.js';
+import { addedApart, compareAdded, listedAs } from './people-apart.js';
 
 const person = (userId: string, displayName: string | null, addedAt: string) => ({
   userId,
@@ -61,5 +61,33 @@ describe('addedApart — the same person behind the same words for every reader'
     const pair = [a, person('b', null, `${minute}02Z`)];
     expect(addedApart(pair[1] as never, pair, 'a')).toBeNull();
     expect(addedApart(pair[1] as never, pair, 'outsider')).toMatch(/, the second$/);
+  });
+});
+
+// ISS-1229 r45, judge-129: a room's people are added in one transaction, so they share one moment, and
+// the tie fell to each row's random id: the person who opened the room could read as "the second".
+describe('addedApart — people added at one moment', () => {
+  const at = '2026-10-26T09:00:00Z';
+  const served = (key: string, place: number) => ({ userId: `u-${key}`, displayName: null, addedAt: at, key, place });
+  // Row ids that sort against the order the room serves them in.
+  const opener = served('z-row', 0);
+  const second = served('m-row', 1);
+  const third = served('a-row', 2);
+  const room = [third, opener, second];
+
+  it('takes the order the room serves them in before the row id', () => {
+    expect(addedApart(opener, room, 'outsider')).toMatch(/, the first$/);
+    expect(addedApart(second, room, 'outsider')).toMatch(/, the second$/);
+    expect(addedApart(third, room, 'outsider')).toMatch(/, the third$/);
+  });
+
+  it('sorts by that same order wherever a list of people is ordered', () => {
+    expect([...room].sort(compareAdded).map((p) => p.key)).toEqual(['z-row', 'm-row', 'a-row']);
+  });
+
+  it('falls back to the row id where nothing serves an order', () => {
+    const { place: _a, ...a } = served('b-row', 0);
+    const { place: _b, ...b } = served('a-row', 1);
+    expect([a, b].sort(compareAdded).map((p) => p.key)).toEqual(['a-row', 'b-row']);
   });
 });

@@ -62,3 +62,10 @@ it("leaves the tab as the page named it where it sits inside a section", () => {
   render(<EmptyState title="No runs on this project" message="A run appears here." mascot={false} />);
   expect(document.title).toBe("Forge");
 });
+
+// ISS-1229 r45: a page made of one empty state is headed by its title, so it cannot be left out.
+it("refuses, by the type check, a page-level empty state with no title", () => {
+  // @ts-expect-error a page-level state is headed by its title
+  render(<EmptyState level={1} message="Nothing here." mascot={false} />);
+  expect(screen.queryByRole("heading")).toBeNull();
+});

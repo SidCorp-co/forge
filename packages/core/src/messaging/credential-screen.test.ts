@@ -63,6 +63,18 @@ describe('screenedText', () => {
     const text = stdoutOf({ description: `a\nDB_PASSWORD=${SECRET}\nb` });
     expect(screenedText(text)).toBe('[Filtered]');
   });
+
+  // ISS-1229 r45, judge-129: a project read's tool output showed `"testCredentials": [Filtered]`.
+  it('shows a project read with no test credentials as it is', () => {
+    const text = stdoutOf({ id: 'p1', name: 'Desk', testCredentials: [] });
+    expect(screenedText(text)).toBe(text);
+  });
+
+  it('keeps a scrubbed project read valid JSON, its credentials replaced whole', () => {
+    const read = { id: 'p1', testCredentials: [{ label: 'qa', password: SECRET }], slug: 'desk' };
+    const shown = JSON.parse(screenedText(stdoutOf(read))) as { stdout: string };
+    expect(JSON.parse(shown.stdout)).toEqual({ ...read, testCredentials: '[Filtered]' });
+  });
 });
 
 describe('screened and screenedBlocks', () => {

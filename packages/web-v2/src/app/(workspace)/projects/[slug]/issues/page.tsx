@@ -5,11 +5,10 @@
 // then render the scoped screen. NavRail `proj-issues` is wired in the
 // workspace layout.
 import { useParams } from "next/navigation";
-import { ErrorState, ProjectLoader } from "@/design";
+import { ProjectLoader } from "@/design";
 import { IssuesScreen } from "@/features/issues/components/issues-screen";
 import { useProjects } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
-import { ProjectMissing } from "@/features/projects/components/project-missing";
+import { ProjectMissing, ProjectUnread } from "@/features/projects/components/project-missing";
 
 export default function ProjectIssuesPage() {
   const params = useParams<{ slug: string }>();
@@ -27,7 +26,7 @@ export default function ProjectIssuesPage() {
   if (isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState level={1} message={formatApiError(error)} onRetry={() => refetch()} />
+        <ProjectUnread error={error} onRetry={() => refetch()} />
       </div>
     );
   }

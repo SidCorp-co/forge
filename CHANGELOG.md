@@ -3199,6 +3199,7 @@
 
 ### Fixed
 
+- **A link to a conversation that is gone says so, and the rail shows your organization's whole name.** Pages that fail to load name what failed, technical details stay readable, and the room's opener is "the first". (ISS-1229)
 - **A page that is only an error, such as Page not found or Project not found, is headed by it and names the browser tab.** (ISS-1229)
 - **In a room, "the first" and "the second" name the same person for everyone reading it.** (ISS-1229)
 - **A reply held back for looking like it held a password, key or token says so**, and the left rail keeps every label on a 900-pixel-high screen. (ISS-1229)

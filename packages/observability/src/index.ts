@@ -175,7 +175,17 @@ export function scrubPatInString(s: string): string {
     .replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED);
 }
 
-/** Key-named secrets in `obj` censored in place: true only if each one held. */
+/** A field's own data value with nothing in it: no secret to censor. A getter is never run to ask. */
+function holdsNothing(obj: object, key: string): boolean {
+  const field = Object.getOwnPropertyDescriptor(obj, key);
+  if (!field || !('value' in field)) return false;
+  const v: unknown = field.value;
+  if (v === null || v === '') return true;
+  if (Array.isArray(v)) return v.length === 0;
+  return typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype && Object.keys(v).length === 0;
+}
+
+/** Key-named secrets in `obj` censored in place, an empty one left as it is: true only if each one held. */
 export function scrubBodyKeys(obj: unknown, depth = 0, held?: Holding): boolean {
   if (depth > 8 || !obj || (typeof obj !== 'object' && typeof obj !== 'function')) return true;
   let whole = true;
@@ -183,7 +193,7 @@ export function scrubBodyKeys(obj: unknown, depth = 0, held?: Holding): boolean 
   const keys = array ? obj.map((_, i) => String(i)) : Object.keys(obj);
   for (const key of keys) {
     if (!array && (SCRUB_BODY_KEYS.has(key) || SCRUB_BODY_KEYS.has(key.toLowerCase()))) {
-      if (!put(obj, key, FILTERED)) whole = false;
+      if (!holdsNothing(obj, key) && !put(obj, key, FILTERED)) whole = false;
       continue;
     }
     const field = readField(obj, key, held, false);
@@ -211,34 +221,108 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Where a value quoted `depth` escapes deep closes: the first quote behind as many backslashes as
+ * its opening, plus any whole escaped pairs at that depth (`"`, `\"`, `\\\"` …). -1 where none does.
+ */
+function closingQuote(text: string, start: number, depth: number): number {
+  const pair = 2 * (depth + 1);
+  for (let i = start; i < text.length && text[i] !== '\n'; i++) {
+    if (text[i] !== '"') continue;
+    let slashes = 0;
+    while (i - 1 - slashes >= start && text[i - 1 - slashes] === '\\') slashes++;
+    if (slashes >= depth && (slashes - depth) % pair === 0) return i - depth;
+  }
+  return -1;
+}
+
+/** The end of the array or object opening at `start`, brackets counted; its line's end where they never close. */
+function closingBracket(text: string, start: number): number {
+  let level = 0;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '[' || ch === '{') level++;
+    else if (ch === ']' || ch === '}') {
+      level--;
+      if (level === 0) return i + 1;
+    }
+  }
+  return lineEnd(text, start);
+}
+
+function lineEnd(text: string, from: number): number {
+  const at = text.indexOf('\n', from);
+  return at < 0 ? text.length : at;
+}
+
+const OPENING_QUOTE = /^(\\*)"/;
+const KEPT_AS_IT_IS = /^(?:\[\s*\]|\{\s*\}|(?:null|true|false)(?![\w-]))/;
+const BARE_VALUE = /^[^\s",}\]&\\]+/;
+
+/**
+ * `text` with the value after each `name:` / `name=` replaced, read by its shape so JSON stays JSON
+ * (ISS-1229 r45): a quoted value inside its own quotes, at any depth of escaping; an array or object
+ * whole, as a quoted marker where the name was quoted; a bare value up to its delimiter. An empty
+ * value, `null`, `true` and `false` hold no secret and are left as they are. `toLineEnd` is a header
+ * line's rule: an unquoted value takes the rest of the line.
+ */
+function scrubNamedValues(text: string, name: string, toLineEnd: boolean): string {
+  const re = new RegExp(`\\b${escapeRegExp(name)}\\b(\\\\*")?\\s*[:=]\\s*`, 'gi');
+  let out = '';
+  let from = 0;
+  for (let found = re.exec(text); found; found = re.exec(text)) {
+    const at = found.index + found[0].length;
+    const nameQuote = found[1] ?? '';
+    const marker = `${nameQuote}${FILTERED}${nameQuote}`;
+    const rest = text.slice(at);
+    const quoted = OPENING_QUOTE.exec(rest);
+    let end: number;
+    let shown: string;
+    if (quoted) {
+      const opening = quoted[0];
+      const close = closingQuote(text, at + opening.length, (quoted[1] as string).length);
+      if (close === at + opening.length) continue;
+      end = close < 0 ? lineEnd(text, at) : close + opening.length;
+      shown = close < 0 ? `${opening}${FILTERED}` : `${opening}${FILTERED}${opening}`;
+    } else if (toLineEnd) {
+      end = lineEnd(text, at);
+      shown = FILTERED;
+    } else if (KEPT_AS_IT_IS.test(rest)) {
+      continue;
+    } else if (rest.startsWith('[') || rest.startsWith('{')) {
+      end = closingBracket(text, at);
+      shown = marker;
+    } else {
+      const bare = BARE_VALUE.exec(rest);
+      if (!bare) continue;
+      end = at + bare[0].length;
+      shown = marker;
+    }
+    out += text.slice(from, at) + shown;
+    from = end;
+    re.lastIndex = end;
+  }
+  return out + text.slice(from);
+}
+
 export function scrubLogText(text: string, extraSecrets: string[] = []): string {
-  const headerKeys = Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join('|');
-  const headerRe = new RegExp(`\\b(${headerKeys})((?:\\\\*")?\\s*[:=]\\s*).+`, 'gi');
-  // Value stops at whitespace, quote, comma, brace, or `&` — the `&` guard
-  // keeps a key=value match from swallowing the rest of a URL query string
-  // (e.g. `access_token=...&id=7` must not lose the `&id=7`). A key may close
-  // a JSON quote, plain or escaped, before its colon: `"password": "…"` and
-  // `\"token\": \"…\"` are the same secret as `password: …` (ISS-1229 r44).
-  const bodyRes = Array.from(SCRUB_BODY_KEYS).map(
-    (k) =>
-      new RegExp(
-        `(\\b${escapeRegExp(k)}\\b(?:\\\\*")?\\s*[:=]\\s*(?:\\\\*")?)([^\\s",}&]+)`,
-        'gi',
-      ),
-  );
-  return text
+  let out = text
     .replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
     .replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
     .split('\n')
+    .map((line) => scrubPatInString(scrubUrl(line)))
+    .join('\n');
+  // Over the whole text, not line by line: an array or object JSON spreads over lines goes whole.
+  for (const name of SCRUB_HEADER_KEYS) out = scrubNamedValues(out, name, true);
+  for (const name of SCRUB_BODY_KEYS) out = scrubNamedValues(out, name, false);
+  return out
+    .split('\n')
     .map((line) => {
-      let out = scrubPatInString(scrubUrl(line));
-      out = out.replace(headerRe, `$1$2${FILTERED}`);
-      for (const re of bodyRes) out = out.replace(re, `$1${FILTERED}`);
+      let shown = line;
       for (const s of extraSecrets) {
-        if (s && s.length >= 6) out = out.split(s).join(FILTERED);
+        if (s && s.length >= 6) shown = shown.split(s).join(FILTERED);
       }
-      out = out.replace(ENV_SECRET_ASSIGNMENT_PATTERN, `$1=${FILTERED}`);
-      return out;
+      return shown.replace(ENV_SECRET_ASSIGNMENT_PATTERN, `$1=${FILTERED}`);
     })
     .join('\n');
 }

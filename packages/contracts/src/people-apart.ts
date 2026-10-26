@@ -8,9 +8,22 @@ export interface ListedPerson {
   displayName: string | null | undefined;
   addedAt: string | null | undefined;
   key?: string | undefined;
+  /** Where the list that holds this person serves them; a room serves its opener first (ISS-1229 r45). */
+  place?: number | undefined;
 }
 
 export const listedKey = (p: ListedPerson): string => p.key ?? p.userId ?? '';
+
+const NEVER = '\uffff';
+
+/** The one order of people by when each was added: the moment, then the place served, then the key. */
+export function compareAdded(a: ListedPerson, b: ListedPerson): number {
+  return (
+    (a.addedAt ?? NEVER).localeCompare(b.addedAt ?? NEVER) ||
+    (a.place ?? Number.MAX_SAFE_INTEGER) - (b.place ?? Number.MAX_SAFE_INTEGER) ||
+    listedKey(a).localeCompare(listedKey(b))
+  );
+}
 
 const addedDay = (iso: string) =>
   new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(
@@ -32,13 +45,7 @@ export function addedApart(
 ): string | null {
   if (!person.addedAt || (person.userId && person.userId === viewerId)) return null;
   const base = (p: ListedPerson) => personName(p.displayName).toLowerCase();
-  const alike = everyone
-    .filter((p) => p.addedAt && base(p) === base(person))
-    .sort(
-      (a, b) =>
-        (a.addedAt as string).localeCompare(b.addedAt as string) ||
-        listedKey(a).localeCompare(listedKey(b)),
-    );
+  const alike = everyone.filter((p) => p.addedAt && base(p) === base(person)).sort(compareAdded);
   if (alike.filter((p) => !p.userId || p.userId !== viewerId).length < 2) return null;
   const day = (p: ListedPerson) => addedDay(p.addedAt as string);
   const minute = (p: ListedPerson) => `${day(p)}, ${addedTime(p.addedAt as string)}`;
