@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { runners, runnerTypes } from '../db/schema.js';
 import { ownerHoldsProject } from '../devices/bind-authority.js';
+import { resolveDeviceUnbound } from '../devices/unbound-notice.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -148,6 +149,7 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     }
   }
 
+  await resolveDeviceUnbound(input.projectId, principal.deviceId);
   roomManager.publish(projectRoom(input.projectId), {
     event: 'runner.status',
     data: { runnerId, status: 'online', deviceId: principal.deviceId, type: input.type },

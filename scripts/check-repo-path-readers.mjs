@@ -121,9 +121,14 @@ function literalText(node, source) {
   const at = node.getStart();
   let body = source.slice(at, node.end);
   for (const span of node.templateSpans) {
-    const from = span.expression.getFullStart() - at;
-    const to = span.expression.end - at;
-    body = body.slice(0, from) + body.slice(from, to).replace(/[^\n]/g, ' ') + body.slice(to);
+    const from = span.expression.getFullStart() - 2 - at;
+    const to = span.literal.getStart() + 1 - at;
+    // `${projects}` is the table itself, interpolated by drizzle: kept as its name, so the text
+    // still says which table it reads.
+    const kept = isProjects(span.expression)
+      ? 'projects'.padStart(to - from)
+      : body.slice(from, to).replace(/[^\n]/g, ' ');
+    body = body.slice(0, from) + kept + body.slice(to);
   }
   return { at, body };
 }
@@ -137,8 +142,17 @@ function sqlReads(body) {
     named = true;
     if (hit[1] && !SQL_WORDS.has(hit[1].toLowerCase())) aliases.add(hit[1]);
   }
-  if (!named) return reads;
   aliases.add('projects');
+  if (!named) {
+    for (const hit of body.matchAll(/\bprojects\.(?:repo_path\b|\*)/g)) {
+      reads.push({
+        index: hit.index,
+        how:
+          hit[0] === 'projects.*' ? 'a whole row of projects (projects.*)' : 'projects.repo_path',
+      });
+    }
+    return reads;
+  }
   for (const hit of body.matchAll(/(?<![\w."])"?repo_path\b/g)) {
     reads.push({ index: hit.index, how: 'repo_path (in SQL over projects)' });
   }

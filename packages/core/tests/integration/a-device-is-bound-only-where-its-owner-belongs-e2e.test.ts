@@ -120,6 +120,42 @@ describe("the project's admins hear of an unbound device, once, until it is boun
     expect(bound.status, await bound.clone().text()).toBe(201);
     expect(await openNotices()).toHaveLength(0);
   });
+
+  it.each([
+    [
+      'POST /api/runners',
+      async () => {
+        const res = await as(ownerId, '/api/runners', 'POST', {
+          projectId,
+          type: 'claude-code',
+          name: 'judge-d1',
+          deviceId: defaultDeviceId,
+        });
+        expect(res.status, await res.clone().text()).toBe(201);
+      },
+    ],
+    [
+      'runner:register',
+      async () => {
+        const { handleRunnerRegister } = await import('../../src/runners/heartbeat-ws.js');
+        const own = { principal: { type: 'device', deviceId: defaultDeviceId, ownerId } };
+        await handleRunnerRegister(own as never, {
+          data: { type: 'claude-code', name: 'judge-d1', projectId },
+        });
+      },
+    ],
+  ])('resolves the notice when the device is bound through %s (review F2)', async (_door, bind) => {
+    const { tellAdminsDeviceUnbound } = await import('../../src/devices/unbound-notice.js');
+    await tellAdminsDeviceUnbound({
+      projectId,
+      deviceId: defaultDeviceId,
+      refusal: 'Device judge-d1 is not bound to project judge-p.',
+      where: 'Forgie in Rocket.Chat',
+    });
+    expect(await openNotices()).toHaveLength(1);
+    await bind();
+    expect(await openNotices()).toHaveLength(0);
+  });
 });
 
 describe('a device another tenant paired is never bound to this project', () => {

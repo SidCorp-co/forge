@@ -65,6 +65,19 @@ describe('check-repo-path-readers — a working directory is the device binding'
     ]);
   });
 
+  it('finds a read through the table drizzle interpolates, named or bare (review F1)', () => {
+    const found = reads(
+      'sql`SELECT ${projects}.repo_path FROM ${projects}`;\n' +
+        'sql`SELECT projects.repo_path FROM ${table}`;\n' +
+        'sql`SELECT repo_path FROM ${projects} WHERE id = ${id}`;\n',
+    );
+    expect(found.map((r) => [r.line, r.how])).toEqual([
+      [1, 'projects.repo_path'],
+      [2, 'projects.repo_path'],
+      [3, 'repo_path (in SQL over projects)'],
+    ]);
+  });
+
   it('passes SQL over projects that names its columns, a count, and a bare column of another table', () => {
     expect(
       reads(
