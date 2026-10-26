@@ -131,6 +131,27 @@ describe('the slot digest names every kind of schema change a file can leave beh
     expect(await driftAfter(statements)).toContain(names);
   });
 
+  it('names both tables when two swap their TOAST storage options', async () => {
+    let drift: string[] = [];
+    await t.client
+      .begin(async (tx) => {
+        await tx.unsafe('ALTER TABLE projects SET (toast.autovacuum_enabled = false)');
+        await tx.unsafe('ALTER TABLE labels SET (toast.autovacuum_enabled = true)');
+        const set = await readSchemaOn(tx, true);
+        await tx.unsafe('ALTER TABLE projects SET (toast.autovacuum_enabled = true)');
+        await tx.unsafe('ALTER TABLE labels SET (toast.autovacuum_enabled = false)');
+        drift = await schemaChangesOn(tx, set.hash, () => set.objects ?? {});
+        throw ROLLBACK;
+      })
+      .catch((err) => {
+        if (err !== ROLLBACK) throw err;
+      });
+    expect(drift).toEqual([
+      'changed toast options of table labels',
+      'changed toast options of table projects',
+    ]);
+  });
+
   it('names nothing for what a file does by using the schema: rows, statistics, truncation, sequences', async () => {
     const drift = await driftAfter([
       'INSERT INTO admin_thresholds DEFAULT VALUES',

@@ -125,7 +125,7 @@ const SESSION_ROWS: Record<string, string> = {
 const TOAST_RELATIONS = "SELECT oid FROM pg_class WHERE relnamespace = 'pg_toast'::regnamespace";
 
 const TOAST_OPTIONS =
-  "SELECT 'pg_class', 'toast options of ', 'pg_class'::regclass, c.oid, t.reloptions::text " +
+  "SELECT 'pg_class', 'toast options of ', 'pg_class'::regclass, c.oid, ROW(c.oid, t.reloptions)::text " +
   'FROM pg_class c JOIN pg_class t ON t.oid = c.reltoastrelid WHERE t.reloptions IS NOT NULL';
 
 /** The first oid `initdb` does not hand out (`FirstNormalObjectId`): below it, a built-in object. */
