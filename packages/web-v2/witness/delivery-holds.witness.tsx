@@ -20,6 +20,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const path = new URL(String(input), "http://forge.test").pathname.replace(/^\/api/, "");
   if (path === `/projects/${P}/development/overview`) return json(LIVE);
   if (path === `/projects/${P}/needs-you`) return json({ items: [] });
+  if (path === `/projects/${P}/needs-you/decisions`) return json({ generatedAt: "2026-10-26T06:00:00.000Z", decisions: [], total: 0, notDecisions: [] });
   // the activity below the held list, read empty: this witness is about the holds
   const empty: Record<string, unknown> = {
     "/agent-sessions/queue-stats": { devices: [] },

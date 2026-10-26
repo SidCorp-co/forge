@@ -76,14 +76,14 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
               {d.flow.total === 0 && (decisions?.total ?? 0) === 0 && opsRows.length === 0 && d.stuck.count === 0 && d.moving.count === 0 && d.holds.count === 0 ? (
                 <EmptyState message={t("overview.dev.emptyTitle")} />
               ) : null}
-              <section id="needs-you" aria-label={t("issues.attention.needs_you")} className="scroll-mt-4" data-testid="needs-you">
+              <Section id="needs-you" testId="needs-you" title={t("issues.attention.needs_you")} right={<Count n={decisions?.total ?? 0} />} className="px-5 max-md:px-3">
                 {decisions ? (
                   <DecisionList read={decisions} slug={scope.slug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(scope.slug)} />
                 ) : null}
                 {opsRows.length > 0 ? (
                   <NeedsYouList items={opsRows} slug={scope.slug} foldKey="web-v2:development-overview:fold" empty={t("overview.dev.needsYouEmpty")} />
                 ) : null}
-              </section>
+              </Section>
             </>
           )}
         </QueryBoundary>
