@@ -200,7 +200,10 @@ describe('a credential a tool call carries', () => {
     });
 
   const PLANTED = [
-    ['a token URL in an issue description', issueRead(`Build at https://ci.test/run?token=${SECRET}`)],
+    [
+      'a token URL in an issue description',
+      issueRead(`Build at https://ci.test/run?token=${SECRET}`),
+    ],
     ['a quoted JSON key', JSON.stringify({ environments: [{ password: SECRET }] })],
     ['an environment line inside the read', issueRead(`Set\nDB_PASSWORD=${SECRET}\nthen run it.`)],
   ] as const;
@@ -219,16 +222,22 @@ describe('a credential a tool call carries', () => {
     progress.onTurnEvent({ type: 'tool_call', id: 't1', name: 'forge', arguments: input });
     progress.onTurnEvent({ type: 'tool_result', id: 't1', result: output });
     progress.onTurnEvent({ type: 'chunk', text: ' It needs a build link.' });
-    progress.onSettled({ text: 'Reading the issue. It needs a build link.', screenReplaced: false });
+    progress.onSettled({
+      text: 'Reading the issue. It needs a build link.',
+      screenReplaced: false,
+    });
     await progress.close();
     return { progress, frames };
   }
 
-  it.each(PLANTED)('reaches no reader, in any frame, from the output: %s', async (_what, output) => {
-    const { frames } = await toolTurn('{"argv":["issue","ISS-2"]}', output);
-    expect(frames.length).toBeGreaterThan(1);
-    for (const frame of frames) expect(JSON.stringify(frame)).not.toContain(SECRET);
-  });
+  it.each(PLANTED)(
+    'reaches no reader, in any frame, from the output: %s',
+    async (_what, output) => {
+      const { frames } = await toolTurn('{"argv":["issue","ISS-2"]}', output);
+      expect(frames.length).toBeGreaterThan(1);
+      for (const frame of frames) expect(JSON.stringify(frame)).not.toContain(SECRET);
+    },
+  );
 
   it.each(PLANTED)('is not stored beside the reply, from the output: %s', async (_what, output) => {
     const { progress } = await toolTurn('{"argv":["issue","ISS-2"]}', output);
@@ -241,7 +250,9 @@ describe('a credential a tool call carries', () => {
     const input = JSON.stringify({ argv: ['comment', 'ISS-2'], body: `password: ${SECRET}` });
     const { progress, frames } = await toolTurn(input, '{"exitCode":0}');
     for (const frame of frames) expect(JSON.stringify(frame)).not.toContain(SECRET);
-    expect(JSON.stringify(progress.blocksForRecord('Reading the issue. It needs a build link.'))).not.toContain(SECRET);
+    expect(
+      JSON.stringify(progress.blocksForRecord('Reading the issue. It needs a build link.')),
+    ).not.toContain(SECRET);
   });
 
   it('leaves a tool output that holds no credential as the tool wrote it', async () => {

@@ -13,12 +13,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  JSON_SHAPED,
-  PROSE,
-  SECRET,
-  UNDECODABLE_IN_SQL,
-} from '../helpers/credential-corpus.js';
+import { JSON_SHAPED, PROSE, SECRET, UNDECODABLE_IN_SQL } from '../helpers/credential-corpus.js';
 import {
   createTestProject,
   createTestUser,
@@ -74,9 +69,8 @@ beforeEach(async () => {
   await harness.db.execute(
     sql`INSERT INTO organization_members (org_id, user_id, role) VALUES (${orgId}, ${member.id}, 'member')`,
   );
-  projectId = (
-    await createTestProject(harness.db, ownerId, { slug: 'desk', name: 'Desk', orgId })
-  ).id;
+  projectId = (await createTestProject(harness.db, ownerId, { slug: 'desk', name: 'Desk', orgId }))
+    .id;
   await harness.db.execute(
     sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${member.id}, 'member')`,
   );
@@ -164,7 +158,8 @@ describe('migration 0380 — every stored block passes the one screen', () => {
 
   it('clears whole, unread, JSON that Postgres cannot decode, holding none it could find', async () => {
     const ids = [];
-    for (const [i, text] of UNDECODABLE_IN_SQL.entries()) ids.push(await stored(i, everyKind(text)));
+    for (const [i, text] of UNDECODABLE_IN_SQL.entries())
+      ids.push(await stored(i, everyKind(text)));
     const plain = await stored(UNDECODABLE_IN_SQL.length, everyKind('{"note": "plain"}'));
 
     await migrate();
@@ -191,8 +186,14 @@ describe('migration 0380 — every stored block passes the one screen', () => {
   });
 
   it('clears the withdrawn drafts the widened predicate reads as a credential', async () => {
-    const quotedKey = await stored(0, null, { messageId: null, withdrawnDraft: `{"password": "${SECRET}"}` });
-    const harmless = await stored(1, null, { messageId: null, withdrawnDraft: 'ISS-4242 shipped in v9.2.' });
+    const quotedKey = await stored(0, null, {
+      messageId: null,
+      withdrawnDraft: `{"password": "${SECRET}"}`,
+    });
+    const harmless = await stored(1, null, {
+      messageId: null,
+      withdrawnDraft: 'ISS-4242 shipped in v9.2.',
+    });
 
     await migrate();
 

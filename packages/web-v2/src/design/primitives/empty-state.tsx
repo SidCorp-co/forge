@@ -14,11 +14,10 @@ export interface EmptyStateProps {
   mascot?: boolean;
   /** Id for the headline, which also makes it programmatically focusable. */
   titleId?: string;
-  /** 1 where the empty state is the whole page: its title is then the page's heading and the tab's title. */
   level?: 1 | 2 | 3;
 }
 
-/** Design-system empty state: mascot + one calm line + one way forward; its title is always a heading. */
+/** Mascot + one calm line + one way forward; at level 1 the title heads the page and names the tab. */
 export function EmptyState({ title, message, action, mascot = true, titleId, level = 2 }: EmptyStateProps) {
   const Heading = `h${level}` as const;
   return (

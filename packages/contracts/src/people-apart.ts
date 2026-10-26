@@ -21,11 +21,9 @@ const addedTime = (iso: string) =>
 const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth'];
 
 /**
- * What tells a person apart from the others in `everyone` who gave the same name: the day they were
- * added, then the minute, then their place in the order added (ISS-1229 r24). Worked out over all of
- * them, the reader included, so the same words name the same person to every reader (r44); null where
- * this reader sees nobody else who reads alike, for the reader's own row ("You"), and where when they
- * were added is not known.
+ * What tells a person apart from others who gave the same name: the day, the minute, then their place
+ * in the order added, worked out over all of them, reader included, so the words mean one person to
+ * every reader (ISS-1229 r44). Null for the reader, or where this reader sees nobody else alike.
  */
 export function addedApart(
   person: ListedPerson,

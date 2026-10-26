@@ -174,7 +174,12 @@ describe('a reply that posts nothing', () => {
     ['ISS-4242 shipped in v9.2.', 'screen-refused'],
   ])('records a refused reply by why it was refused: %s', async (reply, reason) => {
     refused.add(reply);
-    runExternalChatTurn.mockResolvedValue({ terminal: 'done', reply, toolCalls: [], iterations: 1 });
+    runExternalChatTurn.mockResolvedValue({
+      terminal: 'done',
+      reply,
+      toolCalls: [],
+      iterations: 1,
+    });
 
     const outcome = await runConversationTurn(request() as never);
 

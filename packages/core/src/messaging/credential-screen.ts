@@ -1,13 +1,9 @@
-/**
- * The one credential screen: what the reply check refuses, and what nothing a reader receives or a room
- * stores may carry, whatever kind of block holds it (ISS-1229 r43, r44).
- */
+// The one credential screen: what the reply check refuses and no frame or stored block carries (ISS-1229 r44).
 import { FILTERED, scrubLogText } from '@forge/observability';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 
 const JSON_CONTAINER = /^[ \t\n\r]*[[{]/;
 
-/** Every string a JSON object or array written as `text` holds, at any depth, and inside those in turn. */
 function stringsWithin(text: string): string[] {
   if (!JSON_CONTAINER.test(text)) return [];
   let parsed: unknown;
@@ -27,20 +23,14 @@ function stringsWithin(text: string): string[] {
 
 const scrubbed = (text: string): boolean => scrubLogText(text) !== text;
 
-/**
- * Whether the reply check reads `text` as holding a credential: the secret scrubber changes it, or a string
- * it holds as JSON. The refusal, a withdrawn draft and every block a reader is sent answer to this alone.
- */
+/** The secret scrubber changes `text`, or a string it holds as JSON at any depth. */
 export function readsAsCredential(text: string): boolean {
   return scrubbed(text) || stringsWithin(text).some(scrubbed);
 }
 
 const PEM_HEADER = /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/;
 
-/**
- * Prose as a reader may see it while it is still being written: scrubbed, and cut at a private key's
- * header, whose body the scrubber only matches once 16 characters of it exist.
- */
+/** Scrubbed, and cut at a key header: the scrubber matches a key's body only from 16 characters. */
 export function shownWhileWritten(text: string): string {
   const key = PEM_HEADER.exec(text);
   return scrubLogText(key ? text.slice(0, key.index) + FILTERED : text);
@@ -53,24 +43,18 @@ export function screenedText(text: string): string {
   return readsAsCredential(shown) ? FILTERED : shown;
 }
 
-/** A copy of `value` with every string it holds, at any depth, through the screen; keys are kept. */
 export function screened<T>(value: T, text: (s: string) => string = screenedText): T {
   if (typeof value === 'string') return text(value) as T;
   if (Array.isArray(value)) return value.map((v) => screened(v, text)) as T;
   if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, screened(v, text)]),
-    ) as T;
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, screened(v, text)])) as T;
   }
   return value;
 }
 
 type ProseKind = 'text' | 'thinking';
 
-/**
- * Blocks of every kind through the screen. A tool call splits one run of prose into blocks, so a key and
- * its value can sit in two: where the run joined up reads as a credential, it is one block after the others.
- */
+/** Every block through the screen; prose a tool call split is screened joined up, as one block. */
 export function screenedBlocks(
   blocks: readonly ContentBlock[],
   text: (s: string) => string = screenedText,

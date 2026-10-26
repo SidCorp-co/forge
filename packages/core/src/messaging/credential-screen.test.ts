@@ -20,8 +20,14 @@ describe('readsAsCredential — the one predicate', () => {
     ['a quoted key with a space before its value', `{"accessToken": "${SECRET}"}`],
     ['an escaped quoted key inside a JSON string', stdoutOf({ token: SECRET })],
     ['a secret header as a JSON key', asJson({ Authorization: `Bearer ${SECRET}` })],
-    ['an environment line inside a JSON string', stdoutOf({ description: `a\nDB_PASSWORD=${SECRET}\nb` })],
-    ['a token URL inside a JSON string', stdoutOf({ description: `see https://x.test/cb?token=${SECRET}` })],
+    [
+      'an environment line inside a JSON string',
+      stdoutOf({ description: `a\nDB_PASSWORD=${SECRET}\nb` }),
+    ],
+    [
+      'a token URL inside a JSON string',
+      stdoutOf({ description: `see https://x.test/cb?token=${SECRET}` }),
+    ],
     ['a JSON array of strings', asJson(['ok', `export GH_TOKEN=${SECRET}`])],
   ])('reads %s as a credential', (_what, text) => {
     expect(readsAsCredential(text)).toBe(true);
@@ -31,7 +37,10 @@ describe('readsAsCredential — the one predicate', () => {
   it.each([
     ['a key that only starts like one', asJson({ tokens: 5, tokenizer: 'words' })],
     ['an empty password', asJson({ password: '' })],
-    ['an issue read with no secret', stdoutOf({ issueId: 'ISS-2', title: 'Build link for the nightly run' })],
+    [
+      'an issue read with no secret',
+      stdoutOf({ issueId: 'ISS-2', title: 'Build link for the nightly run' }),
+    ],
     ['prose that is not JSON', '{this} is not JSON, and password reset is on the login page.'],
     ['a number', '42'],
   ])('reads %s as none', (_what, text) => {
