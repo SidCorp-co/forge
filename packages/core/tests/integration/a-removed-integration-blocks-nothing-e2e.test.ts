@@ -7,7 +7,7 @@
  * Postgres, every migration applied.
  */
 
-import { randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -214,5 +214,39 @@ describe('a project integration removed and connected again', () => {
       'This project still has a Sentry integration switched on, over a connection that was removed. Disconnect that one from this project before connecting another.',
     ]);
     expect(await connectionCount()).toBe(before);
+  });
+});
+
+// Whole-set review: a second GitHub App beside a GitHub binding switched on here would have no
+// binding to land on, and its installation would be written onto the one already there.
+describe('starting a GitHub App on a project', () => {
+  const { privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+  });
+  const start = () => call('POST', `/api/projects/${projectId}/integrations/github/connect`);
+
+  it('is refused by name where GitHub is connected to the project, and not once its connection was removed', async () => {
+    const made = await call('POST', `/api/projects/${projectId}/integrations`, {
+      provider: 'github',
+      role: 'service',
+      config: {},
+      secrets: { appId: '900001', webhookSecret: 'scratch-webhook-r32', privateKey },
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const refused = await start();
+    expect([refused.status, refused.body.code, refused.body.message]).toEqual([
+      409,
+      'ALREADY_EXISTS',
+      'GitHub is already connected to this project. Disconnect it from this project before creating another GitHub App.',
+    ]);
+    const connectionId = (made.body.integration as { connectionId: string }).connectionId;
+    await harness.db.execute(sql`
+      UPDATE integration_connections SET active = false, secrets_enc = NULL WHERE id = ${connectionId}`);
+    // Past this guard, the removed connection is judged by its own rule: here an App created on
+    // this org project would not belong to the person who owns it.
+    const started = await start();
+    expect([started.status, started.body.code]).toEqual([409, 'REMOVED_CONNECTION_OTHER_OWNER']);
   });
 });
