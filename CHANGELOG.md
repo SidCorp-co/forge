@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.327] - 2026-10-26
+
+The steward answers handoffs quickly, and owed decisions are reminded then escalated
+
+### Added
+
+- **A Rocket.Chat group can be answered by a support session Forge manages.** It answers in thread with sources, runs the checks a project grants, runs a fix only when the asker confirms, and files code needs as Feedback.
+
+### Fixed
+
+- **A filed item gets its steward note even when the day's runner jobs are spent.** Its triage waits for the next UTC day as a queued run, and a run nothing fits today is deferred instead of ended.
+- **Every unanswered decision is reminded on day 3 and gets a proposal on day 14.** A question on an issue or feedback item proposes its drop or its requirement's defer, and sign-offs and proposals now age too.
+- **A decision shows what answers it and what each answer does, and its recommended answer sends in one press.** A free-text question carries the asker's need whole, and words prefilled from the recommendation are sent without a second press.
+
 ## [0.4.0-dev.326] - 2026-10-26
 
 Host merges record their landing; API contract served and versioned
