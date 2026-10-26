@@ -35,3 +35,14 @@ export function prefillOf(answer: DecisionAnswer): string {
   const words = answer.act !== "question.answer" ? body.reason : "optionId" in body ? body.note : undefined;
   return typeof words === "string" ? words : "";
 }
+
+/**
+ * The words a press sends without asking (REQ-68 BC-2, one click): the recommended answer's own,
+ * which core prefilled from the recommendation's why. Null where the person is asked for them: an
+ * answer that is not the recommended one, or one core gave no words to.
+ */
+export function wordsAsItStands(answer: DecisionAnswer): string | null {
+  if (!answer.needsReason || !answer.recommended) return null;
+  const words = prefillOf(answer).trim();
+  return words ? words : null;
+}

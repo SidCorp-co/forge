@@ -165,6 +165,46 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     });
   });
 
+  // REQ-68 BC-2, judged short on dev.325 (K98): a recommended answer whose rule takes a reason opened
+  // a words box prefilled with the recommendation, and a second press sent it
+  it("sends a recommended answer that takes a reason in one press, with the words core gave it", async () => {
+    const calls = fakeCore(() => ({ body: { ok: true } }));
+    const keep = needsYouDecisionsSchema.parse({
+      ...READ,
+      total: 1,
+      decisions: [
+        {
+          ...READ.decisions[0],
+          question: "Keep ISS-933 or drop it?",
+          recommended: { answerId: "keep", why: "It carries open feedback.", by: "steward" },
+          answers: [
+            { id: "keep", label: "Keep it", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "keep", note: "It carries open feedback." }, needsReason: true, declines: false, effect: "Keeps ISS-933 as it is.", recommended: true },
+            { id: "drop", label: "Drop it", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "drop" }, needsReason: true, declines: true, effect: "Drops ISS-933.", recommended: false },
+          ],
+        },
+      ],
+    });
+    renderWithQuery(<DecisionList read={keep} slug="hop" />);
+    fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(screen.queryByTestId("needs-you-decision-typed")).toBeNull();
+    expect(calls[0]).toEqual({
+      method: "POST",
+      path: `/questions/${Q}/answer`,
+      body: { round: 1, optionId: "keep", note: "It carries open feedback." },
+    });
+  });
+
+  // REQ-68 BC-1, judged red on dev.325 (K98): what an answer does was a hover title, so a phone never showed it
+  it("draws what each answer does as text beside the buttons, not only as a hover title", () => {
+    renderWithQuery(<DecisionList read={READ} slug="hop" />);
+    const first = screen.getAllByTestId("needs-you-decision")[0];
+    if (!first) throw new Error("no decision drawn");
+    expect(within(first).getByTestId("needs-you-decision-effects")).toHaveTextContent(
+      "Move to the new one: Sends this answer to the run that asked.",
+    );
+  });
+
   it("shows the route's own refusal where the press is refused", async () => {
     fakeCore(() => ({ status: 409, body: { error: { code: "QUESTION_NOT_OPEN", message: "the question was answered already" } } }));
     renderWithQuery(<DecisionList read={READ} slug="hop" />);

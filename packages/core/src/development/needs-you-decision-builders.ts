@@ -39,6 +39,29 @@ export type Built = { decision: DecisionBody; questionId: string | null };
 export const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 
+/** `text` cut to `max` at the last whitespace before it, its line breaks kept: never mid-word. */
+export function clipAtWord(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const head = text.slice(0, max - 1);
+  const space = head.search(/\s\S*$/);
+  return `${(space > 0 ? head.slice(0, space) : head).trimEnd()}…`;
+}
+
+/** The room a free-text round's need keeps in its question, however long its prompt. */
+const NEED_MAX = 1200;
+
+/**
+ * A free-text round's question: what was asked, then what answers it, as the asker wrote both (REQ-68
+ * BC-1). The need is where an asker lists the choices it weighs, so it is part of what every surface
+ * draws at every width, said once, never a button's hover title cut at 200 characters (K98, ISS-673).
+ */
+function askedWithNeed(asked: string, needed: string): string {
+  const need = needed.trim();
+  if (!need) return clipAtWord(asked, QUESTION_MAX);
+  const line = `What answers it: ${clipAtWord(need, NEED_MAX)}`;
+  return `${clipAtWord(asked, QUESTION_MAX - line.length - 2)}\n\n${line}`;
+}
+
 export function filled(
   act: DecisionAct,
   params: Record<string, string | number | undefined>,
@@ -318,7 +341,9 @@ export function questionDecision(
     // a question asked on nothing is titled by its prompt, which the question already says (REQ-48 r3 BC-14)
     title: row.entity === 'question' ? sayEn(say('needsYou.title.question')) : clip(row.title, 500),
     opens,
-    question: clip(step.prompt.trim() || row.title || 'A run asked a question', QUESTION_MAX),
+    question: isChoiceStep(step)
+      ? clip(step.prompt.trim() || row.title || 'A run asked a question', QUESTION_MAX)
+      : askedWithNeed(step.prompt.trim() || row.title || 'A run asked a question', step.needed),
     changes: `What the run that asked ${opens ? `on ${opens.key} ` : ''}goes on with`,
     impact: impactOf(row, 'it goes on once it has your answer', opens?.key ?? 'The run that asked'),
     touchedAt: q.at,
@@ -381,7 +406,7 @@ export function questionDecision(
     path,
     body: { round: step.round },
     needsReason: true,
-    effect: `Sends what you write to the run that asked. It needs: ${clip(step.needed, 200)}`,
+    effect: 'Sends what you write to the run that asked.',
   });
   if (!step.recommended) return unrecommendedDecision(base, q, step, typed, path);
   return {

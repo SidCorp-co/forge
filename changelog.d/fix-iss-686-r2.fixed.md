@@ -1,0 +1,1 @@
+**A decision shows what answers it and what each answer does, and its recommended answer sends in one press.** A free-text question carries the asker's need whole, and words prefilled from the recommendation are sent without a second press.
