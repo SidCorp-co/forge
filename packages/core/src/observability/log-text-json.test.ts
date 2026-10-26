@@ -110,6 +110,12 @@ describe('a log line, which is not JSON', () => {
     expect(scrubLogText('password=[]\\t!hunter2 user=ana')).toBe(`password=${FILTERED} user=ana`);
   });
 
+  it('loses a bare secret that reads like a JSON literal, which an unquoted name gives no type', () => {
+    for (const value of ['true', 'false', 'null', '[]', '{}']) {
+      expect(scrubLogText(`password=${value} user=ana`)).toBe(`password=${FILTERED} user=ana`);
+    }
+  });
+
   it('still loses a bare secret and keeps what follows', () => {
     expect(scrubLogText('password=hunter2 user=ana')).toBe(`password=${FILTERED} user=ana`);
     expect(scrubLogText('access_token=abc&id=7')).toBe(`access_token=${FILTERED}&id=7`);

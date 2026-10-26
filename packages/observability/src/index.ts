@@ -279,9 +279,10 @@ const VALUE_END = {
   quoted: new RegExp(`^(?:${ENDS.quoted})`),
   unquoted: new RegExp(`^(?:${ENDS.unquoted})`),
 };
+// Only JSON types a value as empty or a literal; under an unquoted name `null` may be the password.
 const KEPT_AS_IT_IS = {
   quoted: new RegExp(String.raw`^(?:\[\s*\]|\{\s*\}|null|true|false)(?=${ENDS.quoted})`),
-  unquoted: new RegExp(String.raw`^(?:\[\s*\]|\{\s*\}|null|true|false)(?=${ENDS.unquoted})`),
+  unquoted: /(?!)/,
 };
 // A backslash is the value's own, unless its run ends in a quote: that is the string around it closing.
 const BARE_VALUE = /^(?:[^\s",}\]&\\]|\\+(?!\\*"))+/;
@@ -290,8 +291,8 @@ const BARE_UNQUOTED = /^(?:[^\s",&\\]|\\+(?!\\*"))+/;
 /**
  * `text` with the value after each `name:` / `name=` replaced, read by its shape so JSON stays JSON
  * (ISS-1229 r45): a quoted value inside its own quotes, at any depth of escaping; an array or object
- * whole, as a quoted marker where the name was quoted; a bare value up to its delimiter. An empty
- * value, `null`, `true` and `false` hold no secret and are left as they are. `toLineEnd` is a header
+ * whole, as a quoted marker where the name was quoted; a bare value up to its delimiter. In JSON an
+ * empty value, `null`, `true` and `false` hold no secret and are left as they are. `toLineEnd` is a header
  * line's rule: an unquoted value takes the rest of the line.
  */
 function scrubNamedValues(text: string, name: string, toLineEnd: boolean): string {

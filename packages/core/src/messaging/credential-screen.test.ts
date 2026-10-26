@@ -65,6 +65,10 @@ describe('screenedText', () => {
   });
 
   // ISS-1229 r45, judge-129: a project read's tool output showed `"testCredentials": [Filtered]`.
+  it('reads a password set to a JSON literal in a plain line as a credential', () => {
+    expect(readsAsCredential('password=null user=ana')).toBe(true);
+  });
+
   it('shows a project read with no test credentials as it is', () => {
     const text = stdoutOf({ id: 'p1', name: 'Desk', testCredentials: [] });
     expect(screenedText(text)).toBe(text);
