@@ -15,7 +15,8 @@ import {
 
 // ISS-1229 r41 (judge-115, criterion 395): an issue of a project the reader holds no role on, read under the
 // address of a project they belong to, is refused naming the issue's project as far as the reader may see it
-// and saying the address's project is not the issue's — never "Not a project member." alone.
+// and saying the address's project is not the issue's where the reader holds a role on it — never "Not a
+// project member." alone.
 
 describe('GET /api/issues/:id — the refusal names the project', () => {
   let harness: TestDatabase;
@@ -127,20 +128,33 @@ describe('GET /api/issues/:id — the refusal names the project', () => {
     expect(JSON.stringify(r.body)).not.toContain('R41 vault');
   });
 
-  it('never names an address project the reader may not see', async () => {
+  // ISS-1229 r42 (judge-118): the "not in" sentence went quiet only where the address named the issue's own
+  // project, so a caller holding an issue's uuid learned which project held it by trying project ids.
+  it('refuses a reader with no role on the address the same, whatever project it names', async () => {
     const s = await seed({ readerInOrg: true });
-
-    const r = await read(`/api/issues/${s.vaultIssue}?projectId=${s.elsewhere.id}`, s.reader.id);
-
-    expect(r.status).toBe(403);
-    expect(r.body.message).toBe(
-      'This issue belongs to R41 vault, a project you are not a member of. It is not in the project this address names.',
-    );
-    expect(JSON.stringify(r.body)).not.toContain('Elsewhere');
-    expect(r.body.details).toEqual({
-      issueProject: { name: 'R41 vault' },
-      addressProject: { id: s.elsewhere.id, name: null },
+    const ops = await createTestProject(harness.db, s.owner.id, {
+      name: 'R42 ops',
+      orgId: s.desk.orgId,
     });
+
+    const bodies = [];
+    for (const query of [
+      '',
+      `?projectId=${s.vault.id}`,
+      `?projectId=${ops.id}`,
+      `?projectId=${s.elsewhere.id}`,
+    ]) {
+      const r = await read(`/api/issues/${s.vaultIssue}${query}`, s.reader.id);
+      expect(r.status).toBe(403);
+      bodies.push(r.body);
+    }
+    for (const body of bodies) {
+      expect(body).toEqual({
+        code: 'FORBIDDEN',
+        message: 'This issue belongs to R41 vault, a project you are not a member of.',
+        details: { issueProject: { name: 'R41 vault' }, addressProject: null },
+      });
+    }
   });
 
   it('still answers an issue the reader may read, whatever project the address names', async () => {

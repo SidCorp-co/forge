@@ -80,14 +80,14 @@ const MEASURE = `
 })()`;
 
 /**
- * Lays `markup` out inside a column with a 16px gutter, in a frame `viewport` px wide (a frame is
- * its own viewport, so the responsive utilities answer for that screen), and reads each `<section>`
- * that is a direct child of the column.
+ * Lays `markup` out inside a column (`#col`) with a 16px gutter, in a frame `viewport` px wide (a frame
+ * is its own viewport, so the responsive utilities answer for that screen), and returns what `measure`,
+ * an expression run in the frame once it is laid out, evaluates to.
  */
-export async function drawnAt(markup: string, viewport: number): Promise<Drawn> {
+export async function measuredAt<T extends { viewport: number }>(markup: string, viewport: number, measure: string): Promise<T> {
   const chrome = await warmChrome();
   const css = await appStylesheet();
-  const inner = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${css}</style></head><body style="margin:0"><div id="col" style="padding:0 16px">${markup}</div><script>parent.postMessage(btoa(unescape(encodeURIComponent(JSON.stringify(${MEASURE})))), "*");</script></body></html>`;
+  const inner = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${css}</style></head><body style="margin:0"><div id="col" style="padding:0 16px">${markup}</div><script>parent.postMessage(btoa(unescape(encodeURIComponent(JSON.stringify(${measure})))), "*");</script></body></html>`;
   const outer = `<!doctype html><html><body style="margin:0"><iframe src="inner.html" style="width:${viewport}px;height:1200px;border:0"></iframe><pre id="drawn"></pre><script>addEventListener("message", function (e) { document.getElementById("drawn").textContent = e.data; });</script></body></html>`;
   const dir = mkdtempSync(join(tmpdir(), "forge-chrome-flat-"));
   try {
@@ -95,12 +95,16 @@ export async function drawnAt(markup: string, viewport: number): Promise<Drawn> 
     writeFileSync(join(dir, "outer.html"), outer);
     const body = await chrome.evaluateWhenReady(`file://${join(dir, "outer.html")}`, 'document.getElementById("drawn")?.textContent ?? ""', 20_000);
     if (!body) throw new Error("Chrome laid the page out but reported nothing: the frame's script did not run.");
-    const drawn = JSON.parse(Buffer.from(body, "base64").toString("utf8")) as Drawn;
-    if (drawn.viewport !== viewport) {
-      throw new Error(`Chrome laid the page out in a ${drawn.viewport}px viewport, not the ${viewport}px asked for, so the responsive classes answered for another screen.`);
+    const measured = JSON.parse(Buffer.from(body, "base64").toString("utf8")) as T;
+    if (measured.viewport !== viewport) {
+      throw new Error(`Chrome laid the page out in a ${measured.viewport}px viewport, not the ${viewport}px asked for, so the responsive classes answered for another screen.`);
     }
-    return drawn;
+    return measured;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+export function drawnAt(markup: string, viewport: number): Promise<Drawn> {
+  return measuredAt<Drawn>(markup, viewport, MEASURE);
 }

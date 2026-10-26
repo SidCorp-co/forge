@@ -228,12 +228,14 @@ export function IssueDetailScreen({
   const closed = issue ? null : closedIssueRead(issueQ.error);
   if (closed) {
     const here = projectsQ.data?.find((p) => p.id === projectId)?.name ?? slug;
-    const owner = closed.issueProject.name ? `${closed.issueProject.name}, a project` : "a project";
+    const name = closed.issueProject.name;
+    const owner = name ? `${name}, a project` : "a project";
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <ErrorState
           title={`This issue is not in ${here}`}
-          message={`It belongs to ${owner} you are not a member of.`}
+          message={`It belongs to ${owner} you are not a member of. An admin of ${name ?? "that project"}, or an owner or admin of its organization, can add you.`}
+          action={{ label: `Back to ${here}'s issues`, href: `/projects/${slug}/issues` }}
         />
       </div>
     );

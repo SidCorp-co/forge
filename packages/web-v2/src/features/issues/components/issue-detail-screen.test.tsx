@@ -878,7 +878,7 @@ describe("an issue of a project closed to the reader, opened under one they belo
     refusedWith({ issueProject: { name: "Vault" }, addressProject: { id: "p1", name: "Forge dev" } });
     renderScreen();
     expect(screen.getByText("This issue is not in Forge dev")).toBeInTheDocument();
-    expect(screen.getByText("It belongs to Vault, a project you are not a member of.")).toBeInTheDocument();
+    expect(screen.getByText(/^It belongs to Vault, a project you are not a member of\./)).toBeInTheDocument();
     expect(screen.queryByText(/Not a project member/)).toBeNull();
     expect(screen.queryByText("Couldn't load issue")).toBeNull();
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
@@ -888,7 +888,35 @@ describe("an issue of a project closed to the reader, opened under one they belo
     refusedWith({ issueProject: { name: null }, addressProject: { id: "p1", name: "Forge dev" } });
     renderScreen();
     expect(screen.getByText("This issue is not in Forge dev")).toBeInTheDocument();
-    expect(screen.getByText("It belongs to a project you are not a member of.")).toBeInTheDocument();
+    expect(screen.getByText(/^It belongs to a project you are not a member of\./)).toBeInTheDocument();
+  });
+
+  // ISS-1229 r42, judge-118: the page was a dead end, with no way onward and no word on who can let the reader in.
+  it("offers a way back to the address's issue list", () => {
+    refusedWith({ issueProject: { name: "Vault" }, addressProject: { id: "p1", name: "Forge dev" } });
+    renderScreen();
+    const back = screen.getByRole("link", { name: "Back to Forge dev's issues" });
+    expect(back).toHaveAttribute("href", "/projects/forge-dev/issues");
+  });
+
+  it("says who may add the reader, naming the issue's project where core does", () => {
+    refusedWith({ issueProject: { name: "Vault" }, addressProject: { id: "p1", name: "Forge dev" } });
+    renderScreen();
+    expect(
+      screen.getByText(
+        "It belongs to Vault, a project you are not a member of. An admin of Vault, or an owner or admin of its organization, can add you.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says who may add the reader without a name where core gives none", () => {
+    refusedWith({ issueProject: { name: null }, addressProject: { id: "p1", name: "Forge dev" } });
+    renderScreen();
+    expect(
+      screen.getByText(
+        "It belongs to a project you are not a member of. An admin of that project, or an owner or admin of its organization, can add you.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("keeps any other refused read as the load failure it is", () => {
