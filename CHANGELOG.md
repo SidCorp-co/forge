@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.331] - 2026-10-26
+
+Runtime verdicts refused on projects with no production environment
+
+### Fixed
+
+- **A runtime verdict on a project without production is refused by name.** The verdict door answers `VERDICT_RUNTIME_UNOBSERVED`, naming the commit verdict at the landing that counts there, instead of keeping a verdict that never could.
+
 ## [0.4.0-dev.330] - 2026-10-26
 
 Staging landings read as landed, unplaced runtime verdicts stop hiding passes, faster releases page
