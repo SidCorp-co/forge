@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.333] - 2026-10-26
+
+Merged work stays merged when a run ends
+
+### Fixed
+
+- **A merge whose answer the host lost is read back, never answered 500.** If the request merged, `merge-pull-request` answers success with the observed landing; otherwise a named refusal. Calling it on a merged request never merges again.
+- **A run's end no longer sends merged work back.** Closing a builder run hands back its lease only: an issue whose merge was recorded while the run held it stays where it stands, and the issue records why (`issue.handBackKept`).
+
 ## [0.4.0-dev.332] - 2026-10-26
 
 Judge runs stop holding project scope; queued runs cannot file verdicts

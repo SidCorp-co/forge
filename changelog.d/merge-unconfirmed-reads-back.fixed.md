@@ -1,1 +1,0 @@
-**A merge whose answer the host lost is read back, never answered 500.** If the request merged, `merge-pull-request` answers success with the observed landing; otherwise a named refusal. Calling it on a merged request never merges again.

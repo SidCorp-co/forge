@@ -1,1 +1,0 @@
-**A run's end no longer sends merged work back.** Closing a builder run hands back its lease only: an issue whose merge was recorded while the run held it stays where it stands, and the issue records why (`issue.handBackKept`).
