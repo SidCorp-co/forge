@@ -9,222 +9,46 @@
  *
  * NOTHING HERE MERGES. Merging is `POST /api/issues/:id/merge-pull-request`, where the operation that
  * merges also records the merge and the commit it landed at — one writer for one truth. No route here
- * closes a change request or deletes a branch either.
+ * deletes a branch either. Editing, closing and re-reading a change request, and a commit's or a
+ * branch's checks, are `source-projection-routes.ts`'s: each writes what the host answers onto
+ * Forge's projection, for a binding no webhook reaches.
  *
  * `:number` is the number the host shows: a pull request number on GitHub, a merge request IID (the
- * `!12`) on GitLab. Authorization is membership, raised to writer for the four routes that change
- * something on the host and the two that change which issues a change request delivers; every route
- * but the binding list also asks the binding's `agent_access`.
+ * `!12`) on GitLab. Authorization is membership, raised to writer for every route that changes
+ * something on the host or on Forge's record of it, including which issues a change request
+ * delivers (`source-link-routes.ts`, ISS-705); every route but the binding list also asks the binding's `agent_access`.
  *
  * Registered ONTO `integrationsRoutes` for the reason coolify-routes.ts gives.
  */
 
-import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
-import type { Context, Hono, MiddlewareHandler } from 'hono';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { noteReviewOnIssue } from '../comments/index.js';
 import { listIntegrations } from '../integrations/index.js';
 import {
-  type ChangeRequestLinks,
   OpenedPullRequestIncomplete,
   projectOpenedPullRequest,
-  readChangeRequestLinks,
-  relinkChangeRequestIssue,
-  resolveSourceHost,
   type SourceHost,
-  SourceHostCallError,
-  SourceHostInputRefusal,
-  SourceHostUnavailable,
-  unlinkChangeRequestIssue,
 } from '../integrations/source-host/index.js';
-import { issueKeysAndTitles } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { refuser } from '../lib/refusal.js';
-import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { changeRequestIssueOf } from './change-request-issue.js';
-
-const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
-
-const numberParamSchema = z.object({ number: z.coerce.number().int().positive() });
-
-const linkParamSchema = z.object({
-  number: z.coerce.number().int().positive(),
-  issue: z.string().trim().min(1).max(200),
-});
-
-const checkLogParamSchema = z.object({ checkRunId: z.coerce.number().int().positive() });
-
-/** `lines` is how many trailing lines to keep: rejected outside 1..1000, never clamped. */
-const checkLogQuerySchema = z
-  .object({ lines: z.coerce.number().int().min(1).max(1000).optional() })
-  .strict();
-
-const commentBodySchema = z.object({ body: z.string().min(1).max(60_000) }).strict();
-
-/** The branch carrying the change, and the branch it lands on. Push the branch with git first. */
-const openBodySchema = z
-  .object({
-    head: z.string().min(1).max(300),
-    base: z.string().min(1).max(300),
-    title: z.string().min(1).max(500),
-    body: z.string().min(1).max(60_000).optional(),
-    draft: z.boolean().optional(),
-  })
-  .strict();
-
-/** Host usernames, and GitHub team slugs: GitLab has no team reviewers and refuses them by name. */
-const reviewersBodySchema = z
-  .object({
-    reviewers: z.array(z.string().min(1).max(100)).min(1).max(25).optional(),
-    teamReviewers: z.array(z.string().min(1).max(100)).min(1).max(25).optional(),
-  })
-  .strict()
-  .refine((b) => b.reviewers || b.teamReviewers, {
-    message:
-      'name `reviewers` (host usernames) or `teamReviewers` (team slugs) — nobody is guessed',
-  });
-
-/** On GitLab APPROVE is an approval plus a note, COMMENT a note; REQUEST_CHANGES is refused by name. */
-const reviewBodySchema = z
-  .object({
-    verdict: z.enum(['APPROVE', 'REQUEST_CHANGES', 'COMMENT']),
-    body: z.string().min(1).max(60_000),
-  })
-  .strict();
-
-const can =
-  (level: 'project.read' | 'project.write'): MiddlewareHandler<{ Variables: AuthVars }> =>
-  async (c, next) => {
-    await requireCan(
-      actorFor(c.get('userId')),
-      level,
-      projectResource(c.req.param('projectId') ?? ''),
-    );
-    await next();
-  };
-
-/**
- * The project's source host for an agent, then the call. A binding that is missing, switched off,
- * on another host or not granted to agents is refused by name, and so is the host failing: a retry
- * of HOST_UNAVAILABLE may succeed.
- */
-async function onHost<T>(projectId: string, call: (host: SourceHost) => Promise<T>): Promise<T> {
-  try {
-    return await call(await resolveSourceHost(projectId, 'agent'));
-  } catch (err) {
-    if (err instanceof SourceHostUnavailable) {
-      throw refuse('SOURCE_HOST_UNAVAILABLE', `${err.message} (${err.reason})`);
-    }
-    if (err instanceof SourceHostInputRefusal)
-      throw refuse('SOURCE_HOST_INPUT_REFUSED', err.message);
-    if (err instanceof SourceHostCallError) {
-      const said = err.detail ? ` The host said: ${err.detail}` : '';
-      throw refuse('HOST_UNAVAILABLE', `${err.message}.${said}`);
-    }
-    throw err;
-  }
-}
-
-type Routes = Hono<{ Variables: AuthVars }>;
+import { can, onHost, type Routes } from './source-door.js';
+import { registerChangeRequestLinks } from './source-link-routes.js';
+import { registerSourceProjectionRoutes } from './source-projection-routes.js';
+import {
+  checkLogParamSchema,
+  checkLogQuerySchema,
+  commentBodySchema,
+  numberParamSchema,
+  openBodySchema,
+  reviewBodySchema,
+  reviewersBodySchema,
+} from './source-schemas.js';
 
 export function registerSourceRoutes(routes: Routes): void {
   registerSourceReads(routes);
   registerSourceWrites(routes);
+  registerSourceProjectionRoutes(routes);
   registerChangeRequestLinks(routes);
-}
-
-/** The link state as a person reads it: issues by key, the primary first, no uuid on screen. */
-async function linksAnswer(projectId: string, links: ChangeRequestLinks) {
-  const ids = [...links.linked, ...links.unlinked].map((l) => l.issueId);
-  const named = await issueKeysAndTitles(projectId, ids);
-  const keyOf = (id: string) => named.get(id)?.key ?? id;
-  return {
-    number: links.number,
-    state: links.state,
-    primary: links.linked[0] ? keyOf(links.linked[0].issueId) : null,
-    linked: links.linked.map((l) => ({
-      issue: keyOf(l.issueId),
-      title: named.get(l.issueId)?.title ?? null,
-      linkedBy: l.linkedBy,
-    })),
-    unlinked: links.unlinked.map((u) => ({
-      issue: keyOf(u.issueId),
-      title: named.get(u.issueId)?.title ?? null,
-      linkedBy: u.linkedBy,
-      unlinkedAt: u.unlinkedAt,
-    })),
-  };
-}
-
-type LinksOutcome = Awaited<ReturnType<typeof readChangeRequestLinks>>;
-
-async function answerLinks(projectId: string, outcome: LinksOutcome) {
-  if (!outcome.ok) throw refuse(outcome.code, outcome.detail);
-  return linksAnswer(projectId, outcome.links);
-}
-
-type LinkAct = typeof unlinkChangeRequestIssue;
-
-/** An unlink or a relink of the issue the path names on the request it names. */
-async function correctLink(
-  c: Context<{ Variables: AuthVars }>,
-  { number, issue }: z.infer<typeof linkParamSchema>,
-  act: LinkAct,
-): Promise<Awaited<ReturnType<typeof linksAnswer>>> {
-  const projectId = c.req.param('projectId') ?? '';
-  const host = await onHost(projectId, async (h) => h);
-  const label = `${host.words.sigil}${number}`;
-  const target = await changeRequestIssueOf(projectId, issue, label);
-  const actor = restActor(c);
-  return answerLinks(
-    projectId,
-    await act({
-      bindingId: host.bindingId,
-      number,
-      label,
-      issueId: target.id,
-      issueKey: target.key,
-      actor: { id: actor.id, agency: actor.agency },
-    }),
-  );
-}
-
-/**
- * ISS-705: which issues a change request delivers, and a person's correction of it. The binding is
- * the one an agent's verbs resolve; nothing is sent to the host.
- */
-function registerChangeRequestLinks(routes: Routes): void {
-  routes.get(
-    '/:projectId/integrations/source/change-requests/:number/issues',
-    can('project.read'),
-    zValidator('param', numberParamSchema),
-    async (c) => {
-      const projectId = c.req.param('projectId');
-      const { number } = c.req.valid('param');
-      const host = await onHost(projectId, async (h) => h);
-      const label = `${host.words.sigil}${number}`;
-      return c.json(
-        await answerLinks(
-          projectId,
-          await readChangeRequestLinks({ bindingId: host.bindingId, number, label }),
-        ),
-      );
-    },
-  );
-  routes.delete(
-    '/:projectId/integrations/source/change-requests/:number/issues/:issue',
-    can('project.write'),
-    zValidator('param', linkParamSchema),
-    async (c) => c.json(await correctLink(c, c.req.valid('param'), unlinkChangeRequestIssue)),
-  );
-  routes.put(
-    '/:projectId/integrations/source/change-requests/:number/issues/:issue',
-    can('project.write'),
-    zValidator('param', linkParamSchema),
-    async (c) => c.json(await correctLink(c, c.req.valid('param'), relinkChangeRequestIssue)),
-  );
 }
 
 function registerSourceReads(routes: Routes): void {

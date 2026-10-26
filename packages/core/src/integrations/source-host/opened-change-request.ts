@@ -12,14 +12,9 @@
  * and nothing here calls GitHub — the answer the creation call already returned is all it reads.
  */
 
-import { and, asc, eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import {
-  type ChangeRequestHost,
-  repoPullRequestIssues,
-  repoPullRequests,
-} from '../../db/schema-repo-projection.js';
+import type { ChangeRequestHost } from '../../db/schema-repo-projection.js';
 import { applyPullRequestEvent, type PullRequestPayload } from './projection.js';
+import { linkedIssuesOfNumber } from './repo-projection.js';
 import type { OpenedChangeRequest } from './types.js';
 
 type OpenedProjectionOutcome =
@@ -144,25 +139,6 @@ function payloadFor(args: {
   };
 }
 
-/** The stored row for this number, read back rather than resolved a second time. */
-async function storedRow(
-  bindingId: string,
-  number: number,
-): Promise<{ issueIds: string[] } | undefined> {
-  const [row] = await db
-    .select({ id: repoPullRequests.id })
-    .from(repoPullRequests)
-    .where(and(eq(repoPullRequests.bindingId, bindingId), eq(repoPullRequests.number, number)))
-    .limit(1);
-  if (!row) return undefined;
-  const links = await db
-    .select({ issueId: repoPullRequestIssues.issueId })
-    .from(repoPullRequestIssues)
-    .where(eq(repoPullRequestIssues.pullRequestId, row.id))
-    .orderBy(asc(repoPullRequestIssues.position), asc(repoPullRequestIssues.issueId));
-  return { issueIds: links.map((l) => l.issueId) };
-}
-
 /**
  * Record a pull request the agent face just opened, through the projection's own writer.
  *
@@ -208,7 +184,7 @@ export async function projectOpenedPullRequest(args: {
   let row: { issueIds: string[] } | undefined;
   let unread: string | null = null;
   try {
-    row = await storedRow(args.bindingId, identity.number);
+    row = await linkedIssuesOfNumber(args.bindingId, identity.number);
   } catch (err) {
     unread =
       `the row for #${identity.number} on ${args.repository} could not be read back (${String(err)}), ` +

@@ -38,9 +38,10 @@ timestamp is `unmarked`.
 
 ## What `POST /api/issues/:id/merge` writes, on each path
 
-`applyMergeMarker` looks for a merged pull request Forge has projected
-(`observedMergeForIssue`). Where it finds one it stamps `merged_at` AND
-`merged_commit_sha`, from that record. Where it finds none it stamps `merged_at` alone.
+`applyMergeMarker` looks for a merged pull request Forge has projected whose commit is this issue's
+landing (`packages/core/src/issues/merge-identity.ts:identifiedMergeForIssue`, below). Where it
+finds one it stamps `merged_at` AND `merged_commit_sha`, from that record. Where it finds none it
+stamps `merged_at` alone.
 
 Where an agent marks an issue on the `git` shape that holds no other work evidence
 (`findMissingWorkEvidence`) and the call carries `commit`, the commit is the only trace
@@ -91,6 +92,26 @@ lands after the stamp moves it, since an issue delivered across several requests
 (`packages/core/src/issues/merge-record.ts:recordIssueMerge`). A `200` that kept the old landing while the caller was told it had sent the
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.
+
+## A merge stamps only the issues it landed
+
+A link is what a change request says it delivers; the commit is what landed. Every stamp a change
+request's merge would write — Forge's own merge (`POST /api/issues/:id/merge-pull-request`), a merge
+the host reports (`source.merged`, from a hook or from `POST …/change-requests/:number/refresh`), and
+the projected merge a mark rests on — is taken only where the commit is the issue's landing
+(`packages/core/src/issues/merge-identity.ts:mergeIdentityOf`): its subject declares the issue by
+`declaredIssueSeqs`, the rule above, or it names the change request it merged (GitLab's `See merge
+request …!12`, GitHub's `Merge pull request #12` or `(#12)`) and that request links the issue, as one
+request delivers every issue it names (REQ-63 BC-4). The request Forge merged itself is named by the
+merge. A commit the repository cannot read is not checked and stamps nothing.
+
+Anything else is refused by name and written on the issue as an `issue.mergeStampRefused` activity
+row with the commit, the target, the route and the reason (`recordRefusedStamp`); the merge route
+answers each beside the merge as `refusedStamps`. So a request GitLab marks merged because its
+commits landed through another one — sharing its head, its links naming issues renumbered since
+(adminhub-fe !1979 and !1982, 2026-10-26) — stamps nothing that is not its commit, and never
+supersedes the mark an issue holds from its own merge. Every stamp written carries its actor, so its
+`issue.updated` row is written too.
 
 ## A mark a merge check is owed for
 
@@ -369,7 +390,7 @@ Where the project document declares `release.changeRequests`, only the host's me
 request into the project's target branch (`source.git.defaultBranch`) lands, and the amnesty
 below does not reach it (REQ-71, ISS-672). The mark writer
 (`packages/core/src/issues/host-mark.ts:hostMergeOfMark`) takes a mark only over a host merge into
-that branch: the merged request linking the issue (`observedMergeForIssue`), a `commit` that is the
+that branch: the merged request linking the issue whose commit is its landing (`identifiedMergeForIssue`), a `commit` that is the
 merge commit of a request the host reported merged into it (`packages/core/src/issues/host-landing.ts:hostMergeNamed`), or a `commit`
 the branch contains, read through the binding's source host (`hostBranchLanding`: GitLab's commit
 refs, GitHub's compare), as catalog-api ISS-3's c988d627 on GitLab `dev` was. Each is stamped
@@ -392,7 +413,7 @@ asks nobody to judge a landing that never happened, and the `merged` guard refus
 
 On the `git` shape the mark writer and the close accept `asserted`: `LANDINGS_ACCEPTED.git`.
 
-That is an amnesty and this is its price. `observedMergeForIssue` needs a
+That is an amnesty and this is its price. `identifiedMergeForIssue` needs a
 `repo_pull_requests` row in state `merged`; until ISS-1123 (`9a78b0c93`) nothing but an
 inbound webhook could write one, and as of 2026-09-20 no inbound delivery had been recorded
 on this project's binding. Refusing asserted marks then would have failed the criterion on

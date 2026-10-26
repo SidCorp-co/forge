@@ -293,6 +293,8 @@ export const gitlabIntegration = declareIntegration<GitLabConfig, GitLabSecrets>
       routes: [
         '/api/projects/:id/integrations/source/change-requests',
         '/api/projects/:id/integrations/source/checks',
+        '/api/projects/:id/integrations/source/commits',
+        '/api/projects/:id/integrations/source/branches',
       ],
     },
   },
@@ -309,7 +311,7 @@ export const gitlabIntegration = declareIntegration<GitLabConfig, GitLabSecrets>
     bindingConfigKeys: GITLAB_BINDING_CONFIG_KEYS,
   },
   usage: {
-    hint: "Read and write merge requests at `/api/projects/:id/integrations/source/…` — a diff, a failing job's trace, a note, a new merge request, reviewers, an approval. Never `glab`: Forge holds the token. Nothing there merges.",
+    hint: "Read and write merge requests at `/api/projects/:id/integrations/source/…` — a commit's or a branch's pipelines (`commits/:sha/checks`, `branches/:ref/checks`), a diff, a failing job's trace, a note, a new merge request, an edit or a close (`PATCH change-requests/:number`, `…/close`), Forge's record of one re-read (`…/refresh`, for a binding no webhook reaches), reviewers, an approval. Never `glab`: Forge holds the token. Nothing there merges.",
   },
   presentation: {
     label: 'GitLab',

@@ -8,7 +8,7 @@
  * `resolve.ts`.
  */
 
-import type { ChangeRequestHost } from '../../db/schema-repo-projection.js';
+import type { ChangeRequestHost, ProjectedCheckRun } from '../../db/schema-repo-projection.js';
 
 export interface WaitingCommit {
   sha: string;
@@ -102,6 +102,25 @@ export interface OpenedChangeRequest {
   baseSha: string | null;
   updatedAt: string | null;
 }
+
+/**
+ * A change request as its host answers for it now — the request a projection row is written from
+ * when no webhook delivered it. `state` is `open`, `closed` or `merged`, merged kept apart from closed.
+ */
+export interface ReadChangeRequest extends OpenedChangeRequest {
+  /** Its description: every issue key it names is an issue the request delivers (REQ-63 BC-4). */
+  body: string | null;
+  mergedAt: string | null;
+  /** What landed, and only once it merged: GitHub names a test merge on an open request too. */
+  mergeCommitSha: string | null;
+}
+
+/**
+ * One check on a commit as its host reports it, in the shape the projection stores a webhook's:
+ * a GitHub check run or commit status, a GitLab pipeline. One shape, so no reader forks on whether
+ * a delivery or a read wrote it.
+ */
+export type HostCheck = ProjectedCheckRun;
 
 export interface RequestedReview {
   number: number;
@@ -200,6 +219,22 @@ export interface SourceHost {
     body: string;
   }): Promise<SubmittedReview>;
   merge(args: HostMergeArgs): Promise<HostMergeResult>;
+
+  /** Every check the host holds on one commit, each re-run its own entry; empty where none ran. */
+  readChecks(sha: string): Promise<HostCheck[]>;
+  /** One change request by the number the host shows, whoever opened it. */
+  readChangeRequest(number: number): Promise<ReadChangeRequest>;
+  /** A new title, description or both, and the request as the host answers after the write. */
+  updateChangeRequest(args: {
+    number: number;
+    title?: string;
+    body?: string;
+  }): Promise<ReadChangeRequest>;
+  /**
+   * Close an open change request without merging it. One already closed is answered as it stands;
+   * a merged one is refused by name, since closing cannot undo a landing.
+   */
+  closeChangeRequest(args: { number: number }): Promise<ReadChangeRequest>;
 }
 
 /** What a declaration offers to build a host from a binding's own config and credential. */

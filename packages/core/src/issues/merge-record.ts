@@ -504,15 +504,17 @@ export async function recordMergeTarget(
 }
 
 /**
- * The latest merge the host reports of a change request linking the issue, into `base` where named,
- * with the branch it merged into: an issue delivered across several requests lands at the last.
+ * Every merge the host reports of a change request linking the issue, into `base` where named, with
+ * the branch it merged into, latest first: an issue delivered across several requests lands at the
+ * last. A link is what a request says it delivers, so a reader takes the first whose commit is the
+ * issue's landing (`merge-identity.ts:identifiedMergeForIssue`), never the first alone.
  */
-export async function observedMergeForIssue(
+export async function observedMergesForIssue(
   executor: MergeRecordExecutor,
   issueId: string,
   base?: string,
-): Promise<{ commitSha: string; mergedAt: Date; target: string } | null> {
-  const [row] = await executor
+): Promise<Array<{ commitSha: string; mergedAt: Date; target: string }>> {
+  const rows = await executor
     .select({
       sha: repoPullRequests.mergeCommitSha,
       at: repoPullRequests.mergedAt,
@@ -529,8 +531,8 @@ export async function observedMergeForIssue(
         base === undefined ? undefined : eq(repoPullRequests.baseRef, base),
       ),
     )
-    .orderBy(desc(repoPullRequests.mergedAt))
-    .limit(1);
-  if (!row?.sha || !row.at) return null;
-  return { commitSha: row.sha, mergedAt: row.at, target: row.base };
+    .orderBy(desc(repoPullRequests.mergedAt));
+  return rows.flatMap((r) =>
+    r.sha && r.at ? [{ commitSha: r.sha, mergedAt: r.at, target: r.base }] : [],
+  );
 }

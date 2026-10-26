@@ -43220,6 +43220,48 @@
         "x-forge-validated": []
       }
     },
+    "/api/projects/{projectId}/integrations/source/branches/{ref}/checks": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
     "/api/projects/{projectId}/integrations/source/change-requests": {
       "post": {
         "parameters": [
@@ -43290,6 +43332,116 @@
         ],
         "x-forge-validated": [
           "json"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/integrations/source/change-requests/{number}": {
+      "patch": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "maxLength": 60000,
+                    "type": "string"
+                  },
+                  "title": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "type": "object",
+                "x-forge-refinements": [
+                  "name `title`, `body` or both — an edit that changes nothing is not sent"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/integrations/source/change-requests/{number}/close": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
         ]
       }
     },
@@ -43543,6 +43695,48 @@
         ]
       }
     },
+    "/api/projects/{projectId}/integrations/source/change-requests/{number}/refresh": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
     "/api/projects/{projectId}/integrations/source/change-requests/{number}/reviewers": {
       "post": {
         "parameters": [
@@ -43746,6 +43940,47 @@
         "x-forge-validated": [
           "param",
           "query"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/integrations/source/commits/{sha}/checks": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sha",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-fA-F]{7,64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
         ]
       }
     },

@@ -6,6 +6,7 @@ import { forgeReads, recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
 import { readMergedHead } from './merged-head.js';
 import { markPullRequestMerged } from './projection.js';
+import { projectChecksAfterMerge } from './read-projection.js';
 import { issuesOfPullRequest } from './repo-projection.js';
 import { sourceHostForBinding } from './resolve.js';
 import type { SourceHost } from './types.js';
@@ -19,11 +20,19 @@ type ChangeRequestMergeMethod = (typeof CHANGE_REQUEST_MERGE_METHODS)[number];
 
 /**
  * Writes the issue's merge stamp in the transaction that marks the projection row, and answers whether
- * it wrote. Supplied by the caller, which owns the stamp; the adapter owns only the row.
+ * it wrote — or why the commit was refused as this issue's landing, which the caller records on the
+ * issue. Supplied by the caller, which owns the stamp; the adapter owns only the row.
  */
 export type IssueMergeStamp = (
   tx: Tx,
   args: {
+    /** The stored request whose merge this is, whose links named the issue. */
+    pullRequestId: string;
+    /**
+     * Whether Forge's own call merged it now. False where the host answered it already merged —
+     * possibly through another request's commits — so whose landing it is is the commit's to say.
+     */
+    performed: boolean;
     issueId: string;
     commitSha: string;
     mergedAt: Date;
@@ -31,7 +40,14 @@ export type IssueMergeStamp = (
     /** The request's head and whether its tree is the landing's, read from the host at the merge. */
     head: MergedHead | null;
   },
-) => Promise<{ wrote: boolean }>;
+) => Promise<{ wrote: boolean; refused?: { code: string; detail: string } | null }>;
+
+/** An issue the merged request links whose stamp was refused, and why. */
+interface RefusedStamp {
+  issueId: string;
+  code: string;
+  detail: string;
+}
 
 interface MergeRequest {
   /** The `repo_pull_requests` row to merge. */
@@ -45,6 +61,9 @@ interface MergeRequest {
   method?: ChangeRequestMergeMethod | undefined;
 }
 
+/** The checks on the merged request's head, read once it landed, or why they were not. */
+type MergeChecks = Awaited<ReturnType<typeof projectChecksAfterMerge>>;
+
 type MergeOutcome =
   | {
       kind: 'merged';
@@ -57,6 +76,9 @@ type MergeOutcome =
       stamped: boolean;
       /** Every issue this merge stamped: each one the request delivers (REQ-63 BC-4). */
       stampedIssues: string[];
+      /** Every linked issue the commit is not the landing of, refused rather than stamped. */
+      refusedStamps: RefusedStamp[];
+      checks: MergeChecks;
     }
   | {
       kind: 'already-merged';
@@ -66,6 +88,8 @@ type MergeOutcome =
       target: string;
       stamped: boolean;
       stampedIssues: string[];
+      refusedStamps: RefusedStamp[];
+      checks: MergeChecks;
     }
   | { kind: 'refused'; deliveryId: string; reason: string; detail: string };
 
@@ -93,6 +117,7 @@ interface StoredRow {
   issueIds: string[];
   number: number;
   state: string;
+  headSha: string;
 }
 
 async function storedRow(pullRequestId: string): Promise<StoredRow | null> {
@@ -103,6 +128,7 @@ async function storedRow(pullRequestId: string): Promise<StoredRow | null> {
       bindingId: repoPullRequests.bindingId,
       number: repoPullRequests.number,
       state: repoPullRequests.state,
+      headSha: repoPullRequests.headSha,
     })
     .from(repoPullRequests)
     .where(eq(repoPullRequests.id, pullRequestId))
@@ -144,23 +170,34 @@ async function assertCaller(req: MergeRequest, projectId: string): Promise<void>
 /** The evidence write: the issue's stamp and the projection row, together or not at all. */
 async function writeEvidence(args: {
   row: StoredRow;
+  performed: boolean;
   host: SourceHost;
   commitSha: string;
   mergedAt: Date;
   target: string;
   head: MergedHead | null;
   stampIssue: IssueMergeStamp;
-}): Promise<{ stamped: boolean; stampedIssues: string[] }> {
-  const { row, host, commitSha, mergedAt, target, head, stampIssue } = args;
+}): Promise<{ stamped: boolean; stampedIssues: string[]; refusedStamps: RefusedStamp[] }> {
+  const { row, host, commitSha, mergedAt, target, head, stampIssue, performed } = args;
   try {
     return await db.transaction(async (tx) => {
       const stampedIssues: string[] = [];
+      const refusedStamps: RefusedStamp[] = [];
       for (const issueId of row.issueIds) {
-        const stamp = await stampIssue(tx, { issueId, commitSha, mergedAt, target, head });
+        const stamp = await stampIssue(tx, {
+          pullRequestId: row.id,
+          performed,
+          issueId,
+          commitSha,
+          mergedAt,
+          target,
+          head,
+        });
         if (stamp.wrote) stampedIssues.push(issueId);
+        if (stamp.refused) refusedStamps.push({ issueId, ...stamp.refused });
       }
       await markPullRequestMerged(tx, row.id, { commitSha, mergedAt });
-      return { stamped: stampedIssues.length > 0, stampedIssues };
+      return { stamped: stampedIssues.length > 0, stampedIssues, refusedStamps };
     });
   } catch (err) {
     throw new Error(
@@ -250,14 +287,21 @@ export async function mergeStoredChangeRequest(
     if (result.kind === 'refused') return refuse(deliveryId, result.reason, result.detail);
 
     const head = await readMergedHead((a, b) => host.sameTree(a, b), result.head, result.commitSha);
-    const { stamped, stampedIssues } = await writeEvidence({
+    const { stamped, stampedIssues, refusedStamps } = await writeEvidence({
       row,
+      performed: result.kind === 'merged',
       host,
       commitSha: result.commitSha,
       mergedAt: result.mergedAt,
       target: result.target,
       head,
       stampIssue,
+    });
+    // a binding no webhook reaches learns its checks only by asking; the landing is recorded by
+    // here, so a read that fails is reported on the outcome and never undoes it
+    const checks = await projectChecksAfterMerge(host, {
+      id: row.id,
+      headSha: result.head ?? row.headSha,
     });
     await updateDelivery(deliveryId, {
       status: 'ok',
@@ -269,6 +313,7 @@ export async function mergeStoredChangeRequest(
               target: result.target,
               stamped,
               stampedIssues,
+              refusedStamps,
             }
           : {
               commitSha: result.commitSha,
@@ -276,6 +321,7 @@ export async function mergeStoredChangeRequest(
               requestedBy: req.requestedBy,
               stamped,
               stampedIssues,
+              refusedStamps,
             },
       completedAt: new Date(),
     });
@@ -287,6 +333,8 @@ export async function mergeStoredChangeRequest(
       target: result.target,
       stamped,
       stampedIssues,
+      refusedStamps,
+      checks,
     };
   } catch (err) {
     await updateDelivery(deliveryId, {

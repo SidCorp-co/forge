@@ -317,6 +317,8 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
       routes: [
         '/api/projects/:id/integrations/source/change-requests',
         '/api/projects/:id/integrations/source/checks',
+        '/api/projects/:id/integrations/source/commits',
+        '/api/projects/:id/integrations/source/branches',
       ],
     },
   },
@@ -333,7 +335,7 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     bindingConfigKeys: GITHUB_BINDING_CONFIG_KEYS,
   },
   usage: {
-    hint: "Read and write pull requests at `/api/projects/:id/integrations/source/…` — a diff, a failing check run's log, a comment, a new pull request, reviewers, a verdict. Never `gh`: the App is the identity, and no credential reaches this box. Nothing there merges.",
+    hint: "Read and write pull requests at `/api/projects/:id/integrations/source/…` — a commit's or a branch's checks (`commits/:sha/checks`, `branches/:ref/checks`), a diff, a failing check run's log, a comment, a new pull request, an edit or a close (`PATCH change-requests/:number`, `…/close`), Forge's record of one re-read (`…/refresh`), reviewers, a verdict. Never `gh`: the App is the identity, and no credential reaches this box. Nothing there merges.",
   },
   presentation: {
     label: 'GitHub',

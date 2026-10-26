@@ -13,14 +13,18 @@ const stamped = {
   mergedCommitSha: null,
   mergedLanding: null,
 };
-// Each awaited query on the transaction takes the next answer: observed merge, prior row, stamp, target.
+// Each awaited query takes the next answer: the observed merge (read before the transaction), then
+// the transaction's prior row, stamp and target.
 const answers: unknown[][] = [];
 const chain: unknown = new Proxy(() => {}, {
   get: (_t, p) =>
     p === 'then' ? (res: (v: unknown) => void) => res(answers.shift() ?? []) : () => chain,
 });
 vi.mock('../db/client.js', () => ({
-  db: { transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(chain) },
+  db: {
+    select: () => chain,
+    transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(chain),
+  },
 }));
 
 const emitted: { type: string; payload: Record<string, unknown> }[] = [];

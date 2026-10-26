@@ -48,6 +48,8 @@ export {
   storeRefreshRefusal,
 } from './projection.js';
 export { describeEmptyProjection, projectionPipeReport } from './projection-health.js';
+export { rollupOf } from './projection-shape.js';
+export { projectReadChangeRequest } from './read-projection.js';
 export {
   issuesOfPullRequest,
   openPullRequestsForIssue,
