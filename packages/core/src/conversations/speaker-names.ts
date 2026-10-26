@@ -5,7 +5,7 @@ import { and, eq, isNotNull, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { conversationMessages } from '../db/schema-conversations.js';
 import { userLabels } from '../issues/actor-resolution.js';
-import { personName, personNameSql } from '../lib/person-name.js';
+import { personName, personNameSql, readerName } from '../lib/person-name.js';
 
 interface Spoken {
   role: string;
@@ -13,11 +13,23 @@ interface Spoken {
   authorLabel: string | null;
 }
 
-/** Each person's message named by its author's current name; every other message as it was. */
-export async function nameSpeakers<T extends Spoken>(messages: readonly T[]): Promise<T[]> {
+/**
+ * Each person's message named by its author's current name, and the reader's own as "You", the word
+ * the web thread uses for them (ISS-1236); every other message as it was. No reader, no "You".
+ */
+export async function nameSpeakers<T extends Spoken>(
+  messages: readonly T[],
+  readerId: string | null = null,
+): Promise<T[]> {
   const ids = [...new Set(messages.flatMap((m) => (spokenByAPerson(m) ? [m.authorUserId] : [])))];
   const names = await userLabels(ids, 'start');
-  return messages.map((m) => ({ ...m, authorLabel: speakerOf(m, names) }));
+  return messages.map((m) => ({
+    ...m,
+    authorLabel:
+      readerId !== null && spokenByAPerson(m) && m.authorUserId === readerId
+        ? readerName(m.authorUserId, readerId, null)
+        : speakerOf(m, names),
+  }));
 }
 
 /** What everyone who has spoken in this room is called now, for a reader that names them later. */

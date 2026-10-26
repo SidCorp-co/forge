@@ -187,6 +187,38 @@ describe("a speaker's name, read when the room is read", () => {
     expect(await conversationsNeedingIndex(10)).not.toContain(roomId);
   });
 
+  // ISS-1236 round 4: the room read named every person by their name, so a reader who set none read
+  // their own line as "Another member", which the web's own thread never says of the viewer.
+  it("is \"You\" to the reader who sent it, and the speaker's name to everyone else", async () => {
+    await said(1, null);
+    await said(2, null, ownerId);
+    const read = async (reader: string) => {
+      const res = await as(reader, `/api/conversations/${roomId}`);
+      expect(res.status, await res.clone().text()).toBe(200);
+      const body = (await res.json()) as {
+        messages: Array<{ role: string; authorLabel: string | null }>;
+      };
+      return body.messages.filter((m) => m.role === 'user').map((m) => m.authorLabel);
+    };
+    expect(await read(speakerId)).toEqual(['You', 'Another member']);
+    expect(await read(ownerId)).toEqual(['Another member', 'You']);
+    await named('Mai Tran');
+    expect(await read(speakerId)).toEqual(['You', 'Another member']);
+    expect(await read(ownerId)).toEqual(['Mai Tran', 'You']);
+  });
+
+  it('is "You" to the sender in the message door\'s own answer', async () => {
+    const sent = await as(speakerId, `/api/conversations/${roomId}/messages`, 'POST', {
+      content: 'hello',
+    });
+    expect(sent.status, await sent.clone().text()).toBeLessThan(300);
+    const body = (await sent.json()) as {
+      messages: Array<{ role: string; authorUserId: string | null; authorLabel: string | null }>;
+    };
+    const mine = body.messages.filter((m) => m.role === 'user' && m.authorUserId === speakerId);
+    expect(mine.map((m) => m.authorLabel)).toEqual(['You']);
+  });
+
   it('can never be an address the database stores', async () => {
     const refused = await said(1, speakerEmail, null).then(
       () => null,

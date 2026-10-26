@@ -59,7 +59,7 @@ import {
   writableConversation,
 } from './conversation-access.js';
 import { deleteAndTellReaders } from './conversation-adapter.js';
-import { agentModeOffer } from './conversation-agent-offer.js';
+import { agentModeOffer, projectAgentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
 import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
@@ -234,15 +234,7 @@ conversationRoutes.get(
     const { projectId } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     assertRoleFor(access, 'viewer', 'read whether it offers Agent mode');
-    const device = await conversationAgentDeviceAvailable(projectId);
-    return c.json(
-      answer(
-        agentModeOfferSchema,
-        device.available
-          ? { available: true, reason: null }
-          : { available: false, reason: device.reason },
-      ),
-    );
+    return c.json(answer(agentModeOfferSchema, await projectAgentModeOffer(projectId)));
   },
 );
 
@@ -314,7 +306,7 @@ conversationRoutes.get(
     const conversation = await readableConversation(id, userId);
     const [participants, messages, scope, windows, agentTurns] = await Promise.all([
       listParticipants(id),
-      readMessages(id, READ_WINDOW).then(nameSpeakers),
+      readMessages(id, READ_WINDOW).then((read) => nameSpeakers(read, userId)),
       derivedScope(id),
       listWindowsForConversation(id, WINDOW_PAGE),
       readConversationAgentTurns(id),
@@ -483,7 +475,7 @@ conversationRoutes.post(
     }
 
     const [messages, windows, agentTurns] = await Promise.all([
-      readMessages(id, READ_WINDOW).then(nameSpeakers),
+      readMessages(id, READ_WINDOW).then((read) => nameSpeakers(read, userId)),
       listWindowsForConversation(id, WINDOW_PAGE),
       readConversationAgentTurns(id),
     ]);

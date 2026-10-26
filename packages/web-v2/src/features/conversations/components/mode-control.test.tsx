@@ -32,10 +32,11 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-const FREE: AgentModeOffer = { available: true, reason: null };
+const FREE: AgentModeOffer = { available: true, reason: null, unbound: null };
 const BLOCKED: AgentModeOffer = {
   available: false,
   reason: "this project has no runner paired",
+  unbound: null,
 };
 
 function renderControl(over: Partial<Parameters<typeof ConversationModeControl>[0]> = {}) {

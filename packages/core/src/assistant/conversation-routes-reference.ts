@@ -140,9 +140,8 @@ export const agentModeOfferSchema = z.object({
       projectSlug: z.string().nullable(),
     })
     .nullable()
-    .optional()
     .describe(
-      "The device the project would use, paired but not assigned to it, so a person can be shown where to assign it. A room's own offer carries it; `GET /agent-mode` does not yet.",
+      'The device the project would use, paired but not assigned to it, so a person can be shown where to assign it; null where Agent is available or unavailable for another reason.',
     ),
 });
 

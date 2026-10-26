@@ -126,9 +126,11 @@ describe('a read that asks whether a device is available is answered, never refu
       projectSlug: 'judge-p',
     });
 
+    // A room not yet opened reads this door, and it answers the same offer the opened room does
+    // (round 4): the same device named, so both rooms show the same panel.
     const offer = await as(ownerId, `/api/conversations/agent-mode?projectId=${projectId}`);
     expect(offer.status, await offer.clone().text()).toBe(200);
-    expect(await offer.json()).toMatchObject({ available: false });
+    expect(await offer.json()).toEqual(agentMode);
   });
 
   it('refuses the message door, which dispatches a turn, DEVICE_NOT_BOUND with the sentence', async () => {
@@ -147,7 +149,7 @@ describe('a read that asks whether a device is available is answered, never refu
   it('answers agent mode available once a device is bound', async () => {
     await bindOnline(defaultDeviceId, '/srv/judge-d1');
     const offer = await as(ownerId, `/api/conversations/agent-mode?projectId=${projectId}`);
-    expect(await offer.json()).toMatchObject({ available: true, reason: null });
+    expect(await offer.json()).toEqual({ available: true, reason: null, unbound: null });
   });
 });
 

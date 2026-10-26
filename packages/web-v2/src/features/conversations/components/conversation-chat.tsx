@@ -239,7 +239,7 @@ export function ConversationChat({
   const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
   const agentOffer =
     roomQ.data?.agentMode ??
-    draftOfferQ.data ?? { available: false, reason: "checking whether a box is free" };
+    draftOfferQ.data ?? { available: false, reason: "checking whether a box is free", unbound: null };
 
   const refusal = roomQ.data ? composerRefusal(roomQ.data, { canPost: canWrite }) : null;
   // A room no agent can answer, or one the reader cannot post in, says so rather than inviting (r34); a

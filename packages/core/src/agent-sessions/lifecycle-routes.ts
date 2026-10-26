@@ -12,6 +12,7 @@ import { assertRoleFor, loadProjectAccess, loadVisibleProjectIds } from '../lib/
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
+  nameOfDevice,
   readDeviceBinding,
 } from '../lib/device-pool.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -102,11 +103,14 @@ agentSessionLifecycleRoutes.post(
     );
     if (!client.isLocal && !client.deviceId) throw noClaudeClient('project');
     if (!client.isLocal && input.repoPath != null) {
+      // The device came through the project's own binding, so its name is the project's to show.
+      const named = client.deviceId ? await nameOfDevice(client.deviceId) : null;
+      const device = named ?? 'the runner device this project picked';
       const runsIn = client.checkout
         ? `the checkout its binding records, ${client.checkout}`
         : `the checkout the device itself keeps for ${project.slug}, since its binding records no path`;
       throw badRequest({
-        repoPath: `names a checkout, which only a local client chooses: this session runs on a runner device, in ${runsIn}. Leave repoPath out. To move that checkout, change the path on ${project.slug}'s Runners page, or run \`forge-runner bind ${project.slug} --path <dir>\` on that device`,
+        repoPath: `names a checkout, which only a local client chooses: this session runs on ${device}, in ${runsIn}. Leave repoPath out. To move that checkout, change the path on ${project.slug}'s Runners page, or run \`forge-runner bind ${project.slug} --path <dir>\` on ${device}`,
       });
     }
 
