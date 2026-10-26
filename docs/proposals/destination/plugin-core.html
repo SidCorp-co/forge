@@ -90,7 +90,7 @@ directly.</p>
 <tr><td>the five driver statuses</td><td><code>AUTONOMOUS_DRIVER_STATUSES</code> — open · in_progress · needs_info · closed · dropped</td><td class="bad">nothing</td></tr>
 <tr><td>the phase endpoints</td><td><code>POST /:id/phases</code> · <code>/phases/end</code> · <code>/resume-point</code></td><td class="bad">nothing</td></tr>
 <tr><td>which plugins a box installs</td><td><code>GET /api/devices/me/plugins</code></td><td class="ok"><code>pinnedRef</code>, a commit SHA — the only version in the list</td></tr>
-<tr><td>the data surface</td><td>the REST API, and nine MCP tools</td><td class="bad">nothing the plugin sends. <code>packages/core/contracts/</code> holds the generated route and tool contracts, held to the code by <code>scripts/check-api-contracts.mjs</code>, but no version of them reaches the plugin</td></tr>
+<tr><td>the data surface</td><td>the REST API, and nine MCP tools</td><td class="bad">nothing the plugin sends. <code>packages/core/contracts/</code> holds the generated route and tool contracts, held to the code by <code>scripts/check-api-contracts.mjs</code> and served with a semver version at <code>/api/openapi.json</code> and <code>/api/mcp-tools.json</code>, but nothing in the plugin reads them</td></tr>
 </tbody>
 </table>
 

@@ -11,6 +11,10 @@
 //
 // A route or tool the generator cannot describe is its refusal, red here rather than omitted.
 //
+// Each artifact carries a semver number the generator derives from the one committed at the base
+// this change lands on (scripts/lib/contract-base.mjs), so a contract that moved without its
+// number moving, or a number taken against a base that has since moved, is drift here too.
+//
 // Exit codes: 0 committed = generated, 1 drift or a refusal, 2 could not run.
 
 import { spawnSync } from 'node:child_process';
@@ -26,6 +30,7 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { API, artifactDrift, MCP, memberCount } from './lib/api-contracts.mjs';
+import { contractBase } from './lib/contract-base.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
@@ -46,6 +51,9 @@ const missing = absentPrerequisites(ROOT, ['deps', 'observability-build', 'contr
 if (missing.length > 0) die(`could not run — ${remedyLines(missing)[0]}`);
 if (!existsSync(GENERATOR)) die('packages/core/src/contracts-generate.ts not found');
 
+const BASE = contractBase(ROOT);
+if (BASE.refusal) die(`no base to number the contracts after — ${BASE.refusal}`);
+
 function git(args) {
   const r = spawnSync('git', args, { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
   return r.status === 0 ? r.stdout : null;
@@ -56,7 +64,7 @@ function treeStamp() {
   const diff = git(['diff', 'HEAD', '--binary']);
   const untracked = git(['ls-files', '--others', '--exclude-standard', '-z']);
   if (head === null || diff === null || untracked === null) return null;
-  const hash = createHash('sha256').update(head).update(diff);
+  const hash = createHash('sha256').update(BASE.rev).update(head).update(diff);
   for (const file of untracked.toString('utf8').split('\0').filter(Boolean).sort()) {
     hash.update(file).update(existsSync(join(ROOT, file)) ? readFileSync(join(ROOT, file)) : '');
   }
@@ -94,7 +102,8 @@ function generate() {
   // the package every other checker's tree walk skips.
   const out = mkdtempSync(join(CORE, 'node_modules', '.forge-api-contracts-'));
   try {
-    const r = spawnSync(TSX, [GENERATOR, '--out', out], {
+    const args = ['--out', out, '--base-rev', BASE.rev, '--base-basis', BASE.basis];
+    const r = spawnSync(TSX, [GENERATOR, ...args], {
       cwd: CORE,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
@@ -158,7 +167,11 @@ if (findings.length === 0) process.exit(0);
 console.error(`\ncheck-api-contracts: ${findings.length} difference(s) from the code:`);
 for (const finding of findings) console.error(`  ${finding}`);
 console.error(
+  `\nThe generator numbered what the code serves:\n${`${result.stdout ?? ''}`.trimEnd()}`,
+);
+console.error(
   `\nThe committed contract is what a differ reads, so it has to be what the code serves.\n` +
-    `If the change is intended, regenerate and commit both files:\n  ${REGENERATE}\n`,
+    `If the change is intended, regenerate and commit both files:\n  ${REGENERATE}\n` +
+    `They were numbered after ${BASE.basis}; \`GITHUB_BASE_REF=<branch>\` in front names another.\n`,
 );
 process.exit(1);

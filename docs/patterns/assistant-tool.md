@@ -20,7 +20,7 @@ read functions as the route, and [Core module](core-module.md) (Doors) for where
 - `packages/core/src/lib/tool-call-guard.ts` — `toolCallRefusal`, the refusal both doors give a call its grant or reach does not cover
 - `packages/core/src/mcp/input-gate.ts` — `gatedTool` and `actionRefusal`, the one answer every `/mcp` tool gives a wrong argument its own handler lets escape: BAD_REQUEST at each fault's path with the valid shape, never a validator dump or a value the call sent
 - `packages/core/src/lib/tool.ts` — the factory and context types every tool is built on
-- `packages/core/contracts/forge-mcp.tools.json` — the published tool contract, regenerated with `pnpm --filter @forge/core contracts:generate`
+- `packages/core/contracts/forge-mcp.tools.json` — the published tool contract, regenerated with `pnpm --filter @forge/core contracts:generate`, which also derives its semver `version`; core serves it as committed at `GET /api/mcp-tools.json`
 
 ## Test shape
 
