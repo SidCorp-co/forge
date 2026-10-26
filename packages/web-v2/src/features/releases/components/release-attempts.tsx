@@ -36,7 +36,7 @@ function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slu
   const t = useCopy();
   const language = useInterfaceLanguage();
   const time = useTimeFormat();
-  const ended = c.outcome === "aborted" || c.outcome === "failed" || c.outcome === "shipped";
+  const ended = c.outcome === "aborted" || c.outcome === "failed" || c.outcome === "shipped" || c.outcome === "landed";
   const carried = carriedLine(c, t);
   return (
     <li className="grid gap-1 border-b border-line-subtle py-2.5 text-13" data-testid="release-cut" data-n={c.n} data-outcome={c.outcome}>
@@ -52,7 +52,7 @@ function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slu
           {time.relative(c.cutAt)}
         </span>
         {c.cutBy ? <span className="text-12 text-muted">{t("releases.attemptCutBy", { who: c.cutBy.name })}</span> : null}
-        {ended && c.outcome !== "shipped" ? (
+        {ended && c.outcome !== "shipped" && c.outcome !== "landed" ? (
           <span className="text-12 text-muted" data-testid="cut-decided-by">
             {c.decidedBy ? t("releases.attemptEndedBy", { who: c.decidedBy.name }) : t("releases.attemptEndedByForge")}
           </span>

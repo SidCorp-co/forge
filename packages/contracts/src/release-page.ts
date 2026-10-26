@@ -241,11 +241,16 @@ export const ReleaseShownHighlightSchema = z.union([
 export type ReleaseShownHighlight = ReleaseHighlight | ReleaseHighlightKept;
 
 /**
- * The release states that end a release: it shipped, failed or was aborted. Its page is history from
+ * The release states that end a release: it shipped, landed, failed or was aborted. Its page is history from
  * then on, so a rule tightened after it ended never changes it (REQ-70): it keeps the highlights and
  * reads the notes it ended with, and nothing drafts its highlights again.
  */
-export const RELEASE_ENDED_STATES = ["shipped", "failed", "aborted"] as const;
+export const RELEASE_ENDED_STATES = [
+	"shipped",
+	"landed",
+	"failed",
+	"aborted",
+] as const;
 export const releaseEnded = (state: ReleaseState): boolean =>
 	(RELEASE_ENDED_STATES as readonly string[]).includes(state);
 

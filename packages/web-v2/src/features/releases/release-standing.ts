@@ -16,7 +16,7 @@ export interface ReleaseStanding {
   next: string | null;
 }
 
-type Standing = Pick<ReleaseDetail, "state" | "releasedAt" | "approval" | "approvalRequired" | "production" | "ownerDeploys" | "verified">;
+type Standing = Pick<ReleaseDetail, "state" | "releasedAt" | "approval" | "approvalRequired" | "production" | "ownerDeploys" | "verified" | "landedOn">;
 
 function statusOf(r: Standing, t: Copy, date: (iso: string) => string): string {
   if (r.state === "shipped" && r.ownerDeploys) {
@@ -24,6 +24,8 @@ function statusOf(r: Standing, t: Copy, date: (iso: string) => string): string {
   }
   if (r.state === "in_progress" && r.ownerDeploys) return t("releases.standing.status.merging");
   if (r.state === "shipped" && r.releasedAt) return t("releases.standing.status.shippedAt", { at: date(r.releasedAt) });
+  // a landing on a branch production does not deploy from: production does not serve it
+  if (r.state === "landed" && r.landedOn) return t("releases.standing.status.landedOn", { branch: r.landedOn });
   return t(`releases.standing.status.${r.state}`);
 }
 
@@ -43,6 +45,7 @@ const ENDED: readonly ReleaseState[] = ["failed", "aborted"];
 
 function nextOf(r: Standing, t: Copy, goesSomewhere: boolean): string | null {
   if (r.state === "shipped") return null;
+  if (r.state === "landed") return r.approvalRequired ? t("releases.standing.next.promote") : null;
   if (ENDED.includes(r.state)) return t("releases.standing.next.cutAgain");
   if (r.state === "returned") return t("releases.standing.next.returned");
   // a release the owner deploys ends at its last merge: once accepted, the agent merges it

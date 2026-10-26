@@ -80,14 +80,43 @@ function owedVerdictsReopenSql(issueId: SQL): SQL<boolean> {
   )`;
 }
 
+/** The canonical key of `issueId`, which a run's group and a lease name it by. */
+const keyOf = (issueId: SQL) =>
+  sql`(SELECT ${canonicalIssueKeySql(sql`bi.iss_seq`)} FROM issues bi WHERE bi.id = ${issueId})`;
+
+/** Whether run `r`'s group holds `issueId`: its key, read inside the run's own project, since an
+ *  issue of another project answers to the same key (`lib/issue-run-group.ts:runGroupHoldsIssue`). */
+const runHoldsIssue = (issueId: SQL) =>
+  sql`r.project_id = (SELECT bp.project_id FROM issues bp WHERE bp.id = ${issueId})
+       AND ${runGroupHolds(sql`r.metadata`, keyOf(issueId))}`;
+
+/**
+ * Every session `builtBySessionSql` could answer yes for on `issueId`: one that recorded a check on it
+ * other than a review's, a run session whose run's group holds it, or one holding its lease. A box's
+ * verdict is weighed against these alone, never against every session the box ever ran (dev's one box
+ * ran 12,979: the release list read each verdict against all of them, 2 ms a verdict).
+ */
+function builderCandidatesSql(issueId: SQL): SQL {
+  return sql`(
+    SELECT k.run_session_id FROM issue_check_runs k
+     WHERE k.issue_id = ${issueId} AND k.kind <> 'review' AND k.run_session_id IS NOT NULL
+    UNION ALL
+    SELECT ds.id FROM agent_sessions ds JOIN pipeline_runs r ON r.id = ds.pipeline_run_id
+     WHERE ds.kind = ${RUN_SESSION_KIND} AND ${runHoldsIssue(issueId)}
+    UNION ALL
+    SELECT l.session_id FROM issue_leases l JOIN issues bi ON bi.id = ${issueId}
+     WHERE l.project_id = bi.project_id AND l.issue_key = ${canonicalIssueKeySql(sql`bi.iss_seq`)}
+  )`;
+}
+
 /** True where session `session` built issue `issueId`. */
 function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
-  const key = sql`(SELECT ${canonicalIssueKeySql(sql`bi.iss_seq`)} FROM issues bi WHERE bi.id = ${issueId})`;
+  const key = keyOf(issueId);
   const opened = sql`(r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY} ->> ${key})`;
   const declaredAfterLanding = sql`EXISTS (
     SELECT 1 FROM agent_sessions ds JOIN pipeline_runs r ON r.id = ds.pipeline_run_id
      WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
-       AND ${runGroupHolds(sql`r.metadata`, key)}
+       AND ${runHoldsIssue(issueId)}
        AND (${opened} IN (${LANDED_LIST})
             OR (${opened} = 'reopen' AND ${owedVerdictsReopenSql(issueId)}))
   )`;
@@ -99,7 +128,7 @@ function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
     OR EXISTS (
       SELECT 1 FROM agent_sessions ds JOIN pipeline_runs r ON r.id = ds.pipeline_run_id
        WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
-         AND ${runGroupHolds(sql`r.metadata`, key)}
+         AND ${runHoldsIssue(issueId)}
          AND COALESCE(${opened}, '') NOT IN (${LANDED_LIST})
          AND NOT (COALESCE(${opened}, '') = 'reopen' AND ${owedVerdictsReopenSql(issueId)})
     )
@@ -128,7 +157,8 @@ export function verdictByBuilderSql(args: {
     (${runSession} IS NOT NULL AND ${builtBySessionSql(issueId, runSession)})
     OR (${runSession} IS NULL AND ${authorDevice} IS NOT NULL AND EXISTS (
       SELECT 1 FROM agent_sessions s
-       WHERE s.device_id = ${authorDevice}
+       WHERE s.id IN ${builderCandidatesSql(issueId)}
+         AND s.device_id = ${authorDevice}
          -- a building session live on the box when the verdict was recorded
          AND s.created_at <= ${at}
          AND (s.status NOT IN (${TERMINAL}) OR s.updated_at >= ${at})

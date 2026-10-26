@@ -29,8 +29,13 @@ const ACCOUNT = 'Merged into release/stg and judged on the box at that head by Q
 /** The project, its admin and the admin's token, seeded fresh by `seedLandedWorld`. */
 export const world = { projectId: '', ownerId: '', token: '' };
 
-/** Seeds the world; `verdictsRequired: false` is adminhub-api's and catalog's own delivery policy. */
-export async function seedLandedWorld(opts: { verdictsRequired?: boolean } = {}): Promise<void> {
+/**
+ * Seeds the world; `verdictsRequired: false` is adminhub-api's and catalog's own delivery policy, and
+ * `approvalRequired: true` their release rule since 2026-10-26: the owner reviews production.
+ */
+export async function seedLandedWorld(
+  opts: { verdictsRequired?: boolean; approvalRequired?: boolean } = {},
+): Promise<void> {
   await truncateAll();
   world.ownerId = (await createTestUser({ verified: true })).id;
   world.projectId = (await createTestProject(world.ownerId)).id;
@@ -39,9 +44,14 @@ export async function seedLandedWorld(opts: { verdictsRequired?: boolean } = {})
   await seedProjectDocument(world.projectId, world.ownerId, {
     environments: {},
     defaultBranch: BRANCH,
-    ...(opts.verdictsRequired === undefined
-      ? {}
-      : { extra: { delivery: { verdictsRequired: opts.verdictsRequired } } }),
+    extra: {
+      ...(opts.verdictsRequired === undefined
+        ? {}
+        : { delivery: { verdictsRequired: opts.verdictsRequired } }),
+      ...(opts.approvalRequired === undefined
+        ? {}
+        : { release: { approval: { required: opts.approvalRequired }, changeRequests: false } }),
+    },
   });
 }
 

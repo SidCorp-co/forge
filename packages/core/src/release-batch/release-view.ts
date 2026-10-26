@@ -39,6 +39,10 @@ interface TurnFacts {
   runId: string | null;
   /** The requests a change-request release merges, in order; null on a release that deploys (REQ-71). */
   merges: number | null;
+  /** The branch a recorded landing put it on, off production's branch; null on any other release. */
+  landedOn: string | null;
+  /** `release.approval.required` of the project document. */
+  required: boolean;
   approval: {
     decision: 'approved' | 'returned' | null;
     requestedBy: ReleasePerson;
@@ -187,6 +191,34 @@ function approvalTurn(f: TurnFacts): Turn {
   });
 }
 
+/**
+ * A release that landed on a branch production does not deploy from. Production does not serve it:
+ * where the project requires a release approval, a holder of releases.approve reviews it and
+ * promotes it, and until then it is theirs. Where none is required and no production is declared,
+ * the landing is the delivery (owner ruling 2026-10-22) and nobody owes anything.
+ */
+function landedTurn(f: TurnFacts): Turn {
+  const branch = f.landedOn ?? '';
+  if (!f.required) {
+    return {
+      attentionGroup: 'done',
+      waitingOn: nobodyWaits(say('releases.rule.landedDelivered', { branch })),
+    };
+  }
+  const rule = say('releases.rule.landedOwesProduction', { branch });
+  const act = say('standing.act.reviewAndPromote', { v: f.version });
+  if (f.viewer?.mayApprove) return turn('needs_you', 'you', { who: YOU, act, rule });
+  const approvers = f.approvers.map((a) => a.name);
+  if (approvers.length === 0) {
+    return turn('stuck', 'none', {
+      who: holdersWho(approvers),
+      act: nobodyHoldsAct(act, 'releases.approve'),
+      rule,
+    });
+  }
+  return turn('waiting', 'person', { who: holdersWho(approvers), act, rule });
+}
+
 export function turnOf(f: TurnFacts): Turn {
   switch (f.state) {
     case 'draft':
@@ -220,6 +252,8 @@ export function turnOf(f: TurnFacts): Turn {
       });
     case 'shipped':
       return { attentionGroup: 'done', waitingOn: NOBODY };
+    case 'landed':
+      return landedTurn(f);
     case 'failed':
     case 'aborted':
       return { attentionGroup: 'stopped', waitingOn: NOBODY };

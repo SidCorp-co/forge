@@ -26,7 +26,6 @@ import {
   type VerdictValue,
 } from '../../db/schema-issue-criteria.js';
 import { refuser } from '../../lib/refusal.js';
-import { verdictByBuilderSql } from '../built-by.js';
 import { tracedCodesOf, traceWordingsOf } from '../ports.js';
 import {
   parseCriteriaText,
@@ -381,7 +380,7 @@ const LIST_SQL = (issueIds: readonly string[]) => sql`
    )}) AND c.retired_at IS NULL
    ORDER BY c.issue_id, c.position, c.n`;
 
-type ListRow = {
+export type ListRow = {
   issue_id: string;
   id: string;
   n: number;
@@ -410,7 +409,7 @@ type ListRow = {
   v_created_at: Date | string | null;
 };
 
-function latestOf(row: ListRow): LatestVerdict | null {
+export function latestOf(row: ListRow): LatestVerdict | null {
   if (row.v_id === null || row.verdict === null) return null;
   return {
     id: row.v_id,
@@ -504,64 +503,6 @@ export async function listRetiredCriteria(
     out.set(row.id, held);
   }
   return [...out.values()];
-}
-
-/** A verdict with who recorded it, as the verified rule reads it (contracts `verified-rule.ts`). */
-export interface AuthoredVerdict extends LatestVerdict {
-  /** Recorded by the issue's builder (`issues/built-by.ts`). */
-  readonly byBuilder: boolean;
-  /** Names who recorded it, an account or a box. */
-  readonly authored: boolean;
-  /** When it was recorded (`createdAt`), as the verified rule reads it. */
-  readonly recordedAt: string;
-}
-
-/**
- * Every verdict on an issue's live criteria, newest first, by criterion number, each with who
- * recorded it: what the criteria hold reads the verdict a criterion stands on from
- * (contracts `verified-rule.ts:judgesVerdict`).
- */
-export async function liveVerdictsOf(
-  executor: Pick<Tx, 'execute'>,
-  issueId: string,
-): Promise<Map<number, AuthoredVerdict[]>> {
-  const byBuilder = verdictByBuilderSql({
-    issueId: sql`c.issue_id`,
-    authorUser: sql`v.author_user_id`,
-    authorDevice: sql`v.author_device_id`,
-    at: sql`v.created_at`,
-    runSession: sql`v.run_session_id`,
-  });
-  const rows = (await executor.execute(sql`
-    SELECT c.n, v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
-           v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
-           v.contract_version, v.storefront_drafts,
-           v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.probe_id,
-           v.author_agency, v.backfilled, v.created_at AS v_created_at,
-           ${byBuilder} AS by_builder,
-           (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored
-      FROM issue_criteria c
-      JOIN criterion_verdicts v ON v.criterion_id = c.id
-      LEFT JOIN project_workflows w ON w.id = v.design_workflow_id
-     WHERE c.issue_id = ${issueId}::uuid AND c.retired_at IS NULL
-     ORDER BY c.n, v.created_at DESC, v.id DESC`)) as unknown as (ListRow & {
-    by_builder: boolean | null;
-    authored: boolean | null;
-  })[];
-  const out = new Map<number, AuthoredVerdict[]>();
-  for (const row of rows) {
-    const verdict = latestOf(row);
-    if (!verdict) continue;
-    const list = out.get(row.n) ?? [];
-    list.push({
-      ...verdict,
-      byBuilder: row.by_builder === true,
-      authored: row.authored === true,
-      recordedAt: verdict.createdAt,
-    });
-    out.set(row.n, list);
-  }
-  return out;
 }
 
 export async function listCriteriaOf(

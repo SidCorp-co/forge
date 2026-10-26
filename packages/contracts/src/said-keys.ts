@@ -692,6 +692,10 @@ export const SAID = {
 		en: "approve design {what}",
 		vars: { what: "name" },
 	},
+	"standing.act.reviewAndPromote": {
+		en: "review {v} and promote it to production",
+		vars: { v: "version" },
+	},
 	"standing.act.approveOrReturn": {
 		en: "approve or return {v}",
 		vars: { v: "version" },
@@ -1418,6 +1422,14 @@ export const SAID = {
 	"releases.rule.acceptedMerges": {
 		en: "accepted: the agent merges its {n} {requests} in order",
 		vars: { n: "count", requests: "agreement" },
+	},
+	"releases.rule.landedOwesProduction": {
+		en: "it landed on {branch}, which production does not deploy from, so production does not serve it until a holder of releases.approve reviews it and promotes it",
+		vars: { branch: "name" },
+	},
+	"releases.rule.landedDelivered": {
+		en: "it landed on {branch}; this project declares no production environment and asks no release approval, so the landing is its delivery",
+		vars: { branch: "name" },
 	},
 	"releases.rule.asked": {
 		en: "{name} asked; a holder of releases.approve approves or returns it",

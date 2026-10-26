@@ -64,7 +64,7 @@ async function viewerFactsOf(ctx: McpContext, projectId: string): Promise<Viewer
 
 /** Progress a cut release's state already decides: the run working, a person owed, or done. */
 function stateProgress(
-  r: Pick<ReleaseSummary, 'state' | 'releasedAt' | 'waitingOn'>,
+  r: Pick<ReleaseSummary, 'state' | 'releasedAt' | 'waitingOn' | 'landedOn'>,
 ): Progress | null {
   const wait = r.waitingOn.kind === 'none' ? null : r.waitingOn;
   const waits = wait ? `It waits on ${wait.who}${wait.act ? ` to ${wait.act}` : ''}.` : null;
@@ -74,6 +74,7 @@ function stateProgress(
     awaiting_approval: `Not running: ${waits ?? 'it waits on an approver.'} No date while it waits.`,
     returned: `Not running: the approver returned it. ${waits ?? ''} No date while it waits.`,
     shipped: `Shipped${r.releasedAt ? ` on ${r.releasedAt.slice(0, 10)}` : ''}. Nothing runs on it.`,
+    landed: `Landed${r.landedOn ? ` on ${r.landedOn}` : ''}${r.releasedAt ? ` on ${r.releasedAt.slice(0, 10)}` : ''}; production does not serve it. ${waits ?? 'Nobody owes anything: the landing is its delivery.'}`,
     failed: 'It failed. Nothing runs on it.',
     aborted: 'It was aborted. Nothing runs on it.',
   };

@@ -1,0 +1,508 @@
+{
+ "releases": [
+  {
+   "key": "0.2.0",
+   "version": "0.2.0",
+   "runId": "9ed968de-4614-44c0-b4aa-49caf3d475a6",
+   "state": "landed",
+   "current": false,
+   "landedOn": "dev",
+   "attentionGroup": "waiting",
+   "waitingOn": {
+    "kind": "you",
+    "who": "You",
+    "act": "review 0.2.0 and promote it to production",
+    "rule": "it landed on dev, which production does not deploy from, so production does not serve it until a holder of releases.approve reviews it and promotes it",
+    "ref": null,
+    "dueAt": null,
+    "says": {
+     "who": {
+      "key": "standing.who.you"
+     },
+     "act": {
+      "key": "standing.act.reviewAndPromote",
+      "vars": {
+       "v": "0.2.0"
+      }
+     },
+     "rule": {
+      "key": "releases.rule.landedOwesProduction",
+      "vars": {
+       "branch": "dev"
+      }
+     }
+    }
+   },
+   "name": "Triển khai lên cửa hàng ePOD",
+   "summary": "Catalog nay triển khai sản phẩm và thiết kế lên cửa hàng ePOD qua GraphQL của ePOD. Triển khai lại một thiết kế sẽ gắn vào đúng sản phẩm đã có theo SKU, không tạo thêm bản trùng.",
+   "issueCount": 2,
+   "requirements": [
+    "REQ-1"
+   ],
+   "criteria": {
+    "proven": 26,
+    "failing": 0,
+    "open": 0,
+    "unproven": 0,
+    "total": 26
+   },
+   "verified": {
+    "level": "criteria",
+    "proven": 26,
+    "total": 26,
+    "check": "landed",
+    "provider": null
+   },
+   "contents": [
+    {
+     "requirement": {
+      "key": "REQ-1",
+      "title": "Catalog triển khai sản phẩm và thiết kế lên cửa hàng ePOD"
+     },
+     "issues": [
+      {
+       "id": "ff0521ce-c3c0-4266-81e4-853f4593f4af",
+       "key": "ISS-1",
+       "title": "ePOD là một platform deploy của Catalog: sản phẩm và catalog design lên cửa hàng ePOD qua GraphQL",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": null
+      },
+      {
+       "id": "1c596eb3-281e-455f-873e-1d1a4ad71031",
+       "key": "ISS-3",
+       "title": "Redeploying an ePOD design reattaches to the product already in the store by exact sku instead of creating a second one",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": null
+      }
+     ]
+    }
+   ],
+   "owner": null,
+   "ownerAct": null,
+   "can": {
+    "cut": false,
+    "decide": false,
+    "split": false
+   },
+   "split": null,
+   "openedAt": "2026-10-26T04:34:05.816Z",
+   "releasedAt": "2026-10-26T04:34:06.200Z",
+   "at": "2026-10-26T04:34:06.200Z",
+   "cutCount": 1,
+   "continuedAs": null
+  },
+  {
+   "key": "0.1.0",
+   "version": "0.1.0",
+   "runId": "6c91e938-8633-4d06-8a3d-705582e0abc6",
+   "state": "shipped",
+   "current": false,
+   "landedOn": null,
+   "attentionGroup": "done",
+   "waitingOn": {
+    "kind": "none",
+    "who": "Nobody",
+    "act": "",
+    "rule": "the release has ended",
+    "ref": null,
+    "dueAt": null,
+    "says": {
+     "who": {
+      "key": "standing.who.nobody"
+     },
+     "act": {
+      "key": "standing.act.none"
+     },
+     "rule": {
+      "key": "releases.rule.ended"
+     }
+    }
+   },
+   "name": "Đồng bộ AdminHub an toàn hơn",
+   "summary": "Người vận hành có thể bật đồng bộ và đối soát site với AdminHub để nhận thay đổi nhanh hơn, xử lý lệch dữ liệu và ghi lại rõ các lần chạy, lỗi cùng xung đột. Catalog nay cập nhật đúng site và tài khoản, bảo vệ khoá kết nối cùng mã bí mật, và tiếp tục xử lý các dữ liệu khác khi một mục gặp lỗi. Người chưa đăng nhập không còn xem dữ liệu Catalog hoặc chi tiết lỗi nội bộ qua API và trang tình trạng.",
+   "issueCount": 9,
+   "requirements": [
+    "REQ-4",
+    "REQ-5"
+   ],
+   "criteria": {
+    "proven": 145,
+    "failing": 0,
+    "open": 21,
+    "unproven": 0,
+    "total": 166
+   },
+   "verified": {
+    "level": "some_criteria",
+    "proven": 145,
+    "total": 166,
+    "check": null,
+    "provider": null
+   },
+   "contents": [
+    {
+     "requirement": {
+      "key": "REQ-4",
+      "title": "Phía Catalog của đồng bộ site hai chiều với AdminHub"
+     },
+     "issues": [
+      {
+       "id": "37fad985-e869-4614-a5fe-d4235cf07456",
+       "key": "ISS-16",
+       "title": "The site sync names no failure and records no run",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": {
+        "label": "!1012",
+        "number": 1012,
+        "title": "REQ-4: Catalog's side of the two-way site sync with AdminHub (ISS-16, 17, 18, 19, 22, 23, 25, 31)",
+        "url": "https://gitlab.com/sidcorp-it/Canawan-API-Reference/-/merge_requests/1012",
+        "state": "merged",
+        "order": 1
+       }
+      },
+      {
+       "id": "ba89e3df-d042-4df1-8ddc-3d39fdad1d18",
+       "key": "ISS-17",
+       "title": "The site sync looks rows up through SoftDeletes and HasSystemScope, so a hidden row collides on insert",
+       "status": "closed",
+       "proof": "open",
+       "changeRequest": {
+        "label": "!1012",
+        "number": 1012,
+        "title": "REQ-4: Catalog's side of the two-way site sync with AdminHub (ISS-16, 17, 18, 19, 22, 23, 25, 31)",
+        "url": "https://gitlab.com/sidcorp-it/Canawan-API-Reference/-/merge_requests/1012",
+        "state": "merged",
+        "order": 1
+       }
+      },
+      {
+       "id": "8bfa2370-a982-425b-84ae-b48654ef1aeb",
+       "key": "ISS-18",
+       "title": "The site sync stores AdminHub platform slugs Catalog has no platform for",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": {
+        "label": "!1012",
+        "number": 1012,
+        "title": "REQ-4: Catalog's side of the two-way site sync with AdminHub (ISS-16, 17, 18, 19, 22, 23, 25, 31)",
+        "url": "https://gitlab.com/sidcorp-it/Canawan-API-Reference/-/merge_requests/1012",
+        "state": "merged",
+        "order": 1
+       }
+      },
+      {
+       "id": "ddc6b550-cca8-4006-8b19-b36b2ba04435",
+       "key": "ISS-19",
+       "title": "The site sync overwrites a stored credential with an empty one",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": {
+        "label": "!1012",
+        "number": 1012,
+        "title": "REQ-4: Catalog's side of the two-way site sync with AdminHub (ISS-16, 17, 18, 19, 22, 23, 25, 31)",
+        "url": "https://gitlab.com/sidcorp-it/Canawan-API-Reference/-/merge_requests/1012",
+        "state": "merged",
+        "order": 1
+       }
+      },
+      {
+       "id": "edda9e8d-f985-46fa-8bc7-e491f7871558",
+       "key": "ISS-22",
+       "title": "Catalog has no endpoint to receive AdminHub changes",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": {
+        "label": "!1012",
+        "number": 1012,
+        "title": "REQ-4: Catalog's side of the two-way site sync with AdminHub (ISS-16, 17, 18, 19, 22, 23, 25, 31)",
+        "url": "https://gitlab.com/sidcorp-it/Canawan-API-Reference/-/merge_requests/1012",
+        "state": "merged",
+        "order": 1
+       }
+      },
+      {
+       "id": "7744ecbb-e3a3-43d1-b217-24c36dd92d79",
+       "key": "ISS-25",
+       "title": "Nothing detects a missed event",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": {
+        "label": "!1012",
+        "number": 1012,
+        "title": "REQ-4: Catalog's side of the two-way site sync with AdminHub (ISS-16, 17, 18, 19, 22, 23, 25, 31)",
+        "url": "https://gitlab.com/sidcorp-it/Canawan-API-Reference/-/merge_requests/1012",
+        "state": "merged",
+        "order": 1
+       }
+      },
+      {
+       "id": "d621f2f1-f252-4a2b-a7e9-250cbddb1233",
+       "key": "ISS-31",
+       "title": "The user sync copies AdminHub's password and tokens, and freezes in silence when they go",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": {
+        "label": "!1012",
+        "number": 1012,
+        "title": "REQ-4: Catalog's side of the two-way site sync with AdminHub (ISS-16, 17, 18, 19, 22, 23, 25, 31)",
+        "url": "https://gitlab.com/sidcorp-it/Canawan-API-Reference/-/merge_requests/1012",
+        "state": "merged",
+        "order": 1
+       }
+      }
+     ]
+    },
+    {
+     "requirement": {
+      "key": "REQ-5",
+      "title": "API Catalog không trả dữ liệu cho người gọi ẩn danh"
+     },
+     "issues": [
+      {
+       "id": "b88dc4c4-09ba-4b38-bb84-14edf33d106a",
+       "key": "ISS-32",
+       "title": "/graphql answers anonymous callers with every user's email, name and role",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": {
+        "label": "!1013",
+        "number": 1013,
+        "title": "REQ-5: Catalog API answers no data to anonymous callers (ISS-32, ISS-33)",
+        "url": "https://gitlab.com/sidcorp-it/Canawan-API-Reference/-/merge_requests/1013",
+        "state": "merged",
+        "order": 2
+       }
+      },
+      {
+       "id": "b6cc6191-0d4a-4e2d-88a8-a19d29ae81b3",
+       "key": "ISS-33",
+       "title": "api/health answers anonymous callers a fixed status with no error text",
+       "status": "closed",
+       "proof": "proven",
+       "changeRequest": {
+        "label": "!1013",
+        "number": 1013,
+        "title": "REQ-5: Catalog API answers no data to anonymous callers (ISS-32, ISS-33)",
+        "url": "https://gitlab.com/sidcorp-it/Canawan-API-Reference/-/merge_requests/1013",
+        "state": "merged",
+        "order": 2
+       }
+      }
+     ]
+    }
+   ],
+   "owner": {
+    "id": "6bdd2f2d-96b0-4018-9668-d58ae9f33207",
+    "name": "orchestrator",
+    "kind": "human"
+   },
+   "ownerAct": "Asked for approval",
+   "can": {
+    "cut": false,
+    "decide": true,
+    "split": false
+   },
+   "split": null,
+   "openedAt": "2026-10-23T12:05:02.693Z",
+   "releasedAt": "2026-10-26T03:46:18.832Z",
+   "at": "2026-10-26T03:46:18.832Z",
+   "cutCount": 1,
+   "continuedAs": null
+  }
+ ],
+ "counts": {
+  "needs_you": 0,
+  "moving": 0,
+  "waiting": 1,
+  "queued": 0,
+  "stuck": 0,
+  "done": 1,
+  "stopped": 0
+ },
+ "approvalRequired": true,
+ "production": {
+  "ok": true,
+  "name": null,
+  "url": null,
+  "serving": null
+ },
+ "landings": [
+  {
+   "runId": "ef3e148c-149f-4444-8c55-fc1880d809e6",
+   "branch": "dev",
+   "commit": "32a7b67ab12304a79a4d4784069f8c0eb25e1991",
+   "at": "2026-10-26T04:47:07.443Z",
+   "issues": [
+    "ISS-17"
+   ]
+  },
+  {
+   "runId": "9ed968de-4614-44c0-b4aa-49caf3d475a6",
+   "branch": "dev",
+   "commit": "dcb7114b8b6558aa0eccfba5105fe123c3a47950",
+   "at": "2026-10-26T04:34:05.816Z",
+   "issues": [
+    "ISS-1",
+    "ISS-3"
+   ]
+  },
+  {
+   "runId": "cd271ff2-615a-488f-a33a-cfc9f28fb842",
+   "branch": "dev",
+   "commit": "a59b05f525a921a3937f6971af70eac9b7042b85",
+   "at": "2026-10-22T20:00:49.542Z",
+   "issues": [
+    "ISS-33"
+   ]
+  },
+  {
+   "runId": "d11c7dcb-0fdb-437a-88e0-10654fc1f455",
+   "branch": "dev",
+   "commit": "a52e6ab856d0b5a7bf16074224574167e1c6ecc6",
+   "at": "2026-10-22T19:40:20.670Z",
+   "issues": [
+    "ISS-32"
+   ]
+  },
+  {
+   "runId": "4c6201f6-0db1-4fb2-ad87-296e97318fe2",
+   "branch": "dev",
+   "commit": "e9963971685772febe89b862f3aecf86dbb37e17",
+   "at": "2026-10-22T19:08:33.768Z",
+   "issues": [
+    "ISS-31"
+   ]
+  },
+  {
+   "runId": "9556522d-4abf-4f1a-9399-b6e70d93a477",
+   "branch": "dev",
+   "commit": "8963bed350bfcdc4c4883d2999ffef85b44fcd7c",
+   "at": "2026-10-22T17:45:19.070Z",
+   "issues": [
+    "ISS-25"
+   ]
+  },
+  {
+   "runId": "3e5d403e-506a-4ff0-9f72-e5b3279a11b7",
+   "branch": "dev",
+   "commit": "f0472d0464be67e8aa594f1e2fdc88e489443473",
+   "at": "2026-10-22T17:18:11.011Z",
+   "issues": [
+    "ISS-22"
+   ]
+  },
+  {
+   "runId": "24d4f1a6-01d2-4518-80ef-4276b4e313e1",
+   "branch": "dev",
+   "commit": "f0472d0464be67e8aa594f1e2fdc88e489443473",
+   "at": "2026-10-22T17:15:59.663Z",
+   "issues": [
+    "ISS-22"
+   ]
+  },
+  {
+   "runId": "e63b29cc-d0a4-4f3f-a8a5-be137c8a0245",
+   "branch": "dev",
+   "commit": "a675c5fa43ed86125bc2ddec7ddfb58a3a79bdb8",
+   "at": "2026-10-22T15:27:23.004Z",
+   "issues": [
+    "ISS-22"
+   ]
+  },
+  {
+   "runId": "0ac7cb80-8439-41cc-a6c1-d5a96cfe3df0",
+   "branch": "dev",
+   "commit": "352ec240340567692bbda6e19d06e31e2d508d75",
+   "at": "2026-10-22T13:52:14.076Z",
+   "issues": [
+    "ISS-19"
+   ]
+  },
+  {
+   "runId": "eb14aef0-fcf7-4201-8e9e-3536d5a242ec",
+   "branch": "dev",
+   "commit": "be1b54b610f56707629349e8c90ebdb4fe29dd6e",
+   "at": "2026-10-22T13:52:10.173Z",
+   "issues": [
+    "ISS-18"
+   ]
+  },
+  {
+   "runId": "73ccbc41-c707-494b-947c-43291220ac8a",
+   "branch": "dev",
+   "commit": "627b682446e6243262d9bebeed329d1a24220850",
+   "at": "2026-10-22T13:52:07.284Z",
+   "issues": [
+    "ISS-17"
+   ]
+  },
+  {
+   "runId": "d6507187-6449-4a58-a63d-0b5e5ab79480",
+   "branch": "dev",
+   "commit": "fba13a8a43e42d529ed02d5032cc98e5b3c705aa",
+   "at": "2026-10-22T13:48:06.864Z",
+   "issues": [
+    "ISS-16"
+   ]
+  },
+  {
+   "runId": "3cf682b5-3ac8-4d4f-bd7d-f69fbadf8d6f",
+   "branch": "dev",
+   "commit": "70ffba7ed17159a5160578777c493d265f47adb0",
+   "at": "2026-10-22T13:48:03.212Z",
+   "issues": [
+    "ISS-9"
+   ]
+  },
+  {
+   "runId": "eb103608-09f0-4969-b19d-8c27c6a8e87c",
+   "branch": "dev",
+   "commit": "5ef8d57dea27262522339b8469815dfc741bcfd9",
+   "at": "2026-10-22T13:48:00.316Z",
+   "issues": [
+    "ISS-8"
+   ]
+  },
+  {
+   "runId": "0ce43ed9-bb18-43fe-ad90-5b45e6244634",
+   "branch": "dev",
+   "commit": "991bdb4d138c7a8aa4f9e5ad593bea7f880bc754",
+   "at": "2026-10-22T13:47:57.279Z",
+   "issues": [
+    "ISS-7"
+   ]
+  },
+  {
+   "runId": "cd8cefe5-0717-4fd0-83fd-878bfa2bf156",
+   "branch": "dev",
+   "commit": "af816fcb0c10b38657f83b8d9327fedde95dfb0d",
+   "at": "2026-10-22T13:47:54.238Z",
+   "issues": [
+    "ISS-5"
+   ]
+  },
+  {
+   "runId": "41198368-dd22-4228-86c4-f30c9763cee3",
+   "branch": "dev",
+   "commit": "477f18a07f016b233714ab412e0939bafdbd333f",
+   "at": "2026-10-22T13:47:50.832Z",
+   "issues": [
+    "ISS-4"
+   ]
+  },
+  {
+   "runId": "598353cd-6c2c-4723-a06a-156378ac2292",
+   "branch": "dev",
+   "commit": "17602bbda7a565098887e44b07d5a4c48956a866",
+   "at": "2026-10-22T13:47:47.558Z",
+   "issues": [
+    "ISS-2",
+    "ISS-6",
+    "ISS-10"
+   ]
+  }
+ ]
+}
