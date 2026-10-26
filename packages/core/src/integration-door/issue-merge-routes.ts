@@ -45,11 +45,13 @@ const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
  */
 const stampKernelMerge =
   (actor: OutboxActor, projectId: string): IssueMergeStamp =>
-  async (tx, { pullRequestId, issueId, commitSha, mergedAt, target, head }) => {
+  async (tx, { pullRequestId, performed, issueId, commitSha, mergedAt, target, head }) => {
+    // only a merge Forge made now names its request; one the host reports already made may have
+    // landed through another request's commits, so the commit answers for it
     const identity = await mergeIdentityOf({
       projectId,
       commitSha,
-      mergedRequestId: pullRequestId,
+      mergedRequestId: performed ? pullRequestId : null,
     })(issueId);
     if (!identity.holds) {
       await recordRefusedStamp(tx, {

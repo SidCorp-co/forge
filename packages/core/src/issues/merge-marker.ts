@@ -200,14 +200,11 @@ async function stampMark(
   tx: Tx,
   args: MergeMarkArgs,
   preflight: { shape: LandingShape; fromRepository: RepositoryLanding | null },
-  hostMerge: HostMerge | null,
+  /** The host merge, else a projected one, whose commit is this issue's landing (`merge-identity.ts`). */
+  observed: HostMerge | null,
 ): Promise<Stamp> {
   const { shape, fromRepository } = preflight;
   const issueId = args.issue.id;
-  // a change-request project's host merge was read on its target branch, so it outranks any other;
-  // either is a merge whose commit is this issue's landing (`merge-identity.ts`), read before the
-  // transaction, since judging it reads the host
-  const observed = hostMerge;
   const landing = args.landing ?? null;
   const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
   if (refused) throw refuse(refused.code, refused.detail, '/landing');
@@ -500,7 +497,8 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   const prior = await findIssueById(input.issue.id);
   if (!prior) throw notFound('issue not found');
   const args = await withCarriers(input, prior);
-  const hostMerge = args.op === 'mark' ? await hostMergeOfMark(args, prior) : null;
+  const hostMerge =
+    args.op === 'mark' ? await hostMergeOfMark(args, prior, args.actor.hookActor) : null;
   const preflight = args.op === 'mark' ? await preflightMark(args, prior, hostMerge) : null;
   // A commit no host or repository resolved is recorded as the caller's claim, so it is whole.
   const unread = preflight && !hostMerge && !preflight.fromRepository;
@@ -509,7 +507,10 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   if (preflight) await refuseUncheckedMerge(args, prior, preflight.shape);
 
   const observed =
-    hostMerge ?? (args.op === 'mark' ? await identifiedMergeForIssue(args.issue.id) : null);
+    hostMerge ??
+    (args.op === 'mark'
+      ? await identifiedMergeForIssue(args.issue.id, args.actor.hookActor)
+      : null);
 
   // The stamp, its audit comment and their events commit together or not at all.
   const { stamp, mark, markDetail } = await db.transaction(async (tx) => {

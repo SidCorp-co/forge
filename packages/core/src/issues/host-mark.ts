@@ -1,8 +1,9 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
+import type { OutboxActor } from '@forge/contracts/outbox-events';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { hostMergeNamed } from './host-landing.js';
-import { identifiedMergeForIssue } from './merge-identity.js';
+import { identifiedMergeForIssue, identifiedNamedMerge } from './merge-identity.js';
 import {
   isSourceHostUnavailable,
   readLandingBranches,
@@ -74,6 +75,7 @@ async function hostBranchLanding(
 export async function hostMergeOfMark(
   args: { commit?: string | undefined; target?: string | undefined },
   prior: Pick<IssueRow, 'id' | 'projectId'>,
+  actor: OutboxActor,
 ): Promise<HostMerge | null> {
   if (!releaseThroughChangeRequests((await readProjectDocument(prior.projectId))?.document)) {
     return null;
@@ -93,10 +95,20 @@ export async function hostMergeOfMark(
       '/target',
     );
   }
-  const host =
-    (await identifiedMergeForIssue(prior.id, target)) ??
-    (await hostMergeNamed(prior.projectId, args.commit, target));
-  if (host) return host;
+  const observed = await identifiedMergeForIssue(prior.id, actor, target);
+  if (observed) return observed;
+  const named = await hostMergeNamed(prior.projectId, args.commit, target);
+  if (named) {
+    // another request's merge commit is not this issue's landing, and the branch holding it does
+    // not make it one: refused here rather than read again as a branch landing
+    const judged = await identifiedNamedMerge(prior.id, prior.projectId, named, actor);
+    if ('merge' in judged) return judged.merge;
+    throw refuse(
+      'MARK_NOT_A_HOST_MERGE',
+      `${HOST_ONLY} ${judged.refused.detail}. ${OPEN_A_REQUEST}`,
+      '/commit',
+    );
+  }
   if (args.commit && args.target) {
     return hostBranchLanding(prior, args.commit, target);
   }

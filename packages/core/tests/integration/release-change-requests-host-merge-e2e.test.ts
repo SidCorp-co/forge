@@ -51,6 +51,17 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
     ...repository(),
     words: { mergeMethods: ['merge', 'squash'], changeRequest: 'merge request', sigil: '!' },
     merge: async ({ number }: { number: number }) => {
+      const landed = alreadyMerged.get(number);
+      if (landed) {
+        // GitLab's answer for a request whose commits landed through another one
+        return {
+          kind: 'already-merged',
+          commitSha: landed,
+          mergedAt: new Date(Date.UTC(2026, 9, 23, 12, 0)),
+          target: 'release/stg',
+          head: null,
+        };
+      }
       merges.push(number);
       const commitSha = `${String(number).padStart(4, '0')}${'c'.repeat(36)}`;
       merged.set(number, commitSha);
@@ -81,6 +92,8 @@ const NOTE = { section: 'Added', userFacing: 'A site writes through to the catal
 const world = { projectId: '', ownerId: '', token: '', bindingId: '' };
 /** Each stored request's branch, as the planted host merges it. */
 const heads = new Map<number, string>();
+/** Requests the planted host answers as already merged, at the commit that landed them. */
+const alreadyMerged = new Map<number, string>();
 
 const rows = async <T>(query: ReturnType<typeof sql>) =>
   [...(await db.execute(query))] as unknown as T[];
@@ -92,6 +105,7 @@ async function seedWorld(release: Record<string, unknown> | null): Promise<void>
   trees.same = true;
   messages.clear();
   heads.clear();
+  alreadyMerged.clear();
   world.ownerId = (await createTestUser({ verified: true })).id;
   world.projectId = (await createTestProject(world.ownerId)).id;
   await addProjectMember(world.projectId, world.ownerId, 'admin');
@@ -417,10 +431,11 @@ describe('a sibling request the host marks merged stamps nothing that is not its
   const HEAD_OWN = 'f6'.repeat(20);
   const OWN_SHA = 'd2'.repeat(20);
 
-  const refusals = (issueId: string) =>
+  const refusals = (issueId: string, via = 'event') =>
     rows<{ action: string; payload: { commitSha: string; code: string; via: string } }>(sql`
       SELECT action, payload FROM activity_log
-       WHERE issue_id = ${issueId} AND action = 'issue.mergeStampRefused'`);
+       WHERE issue_id = ${issueId} AND action = 'issue.mergeStampRefused'
+         AND payload->>'via' = ${via}`);
 
   async function siblings() {
     const five = await issue(5, 'awaiting_release');
@@ -489,5 +504,52 @@ describe('a sibling request the host marks merged stamps nothing that is not its
     });
     expect(mark.status, JSON.stringify(mark.body)).toBe(200);
     expect((await issueRow(stale))?.merged_commit_sha).toBe(OWN_SHA);
+    expect(await refusals(stale, 'mark')).toMatchObject([
+      { payload: { commitSha: landing, code: 'COMMIT_NOT_THIS_ISSUE' } },
+    ]);
+  });
+
+  it('refuses a mark naming another request’s merge commit, and records why', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true }, changeRequests: true });
+    const { stale } = await siblings();
+    const landing = 'a7'.repeat(20);
+    messages.set(landing, mergeMessage(1982, 'fix/login-iss-5'));
+    await hostMerged(1982, 'fix/login-iss-5', landing);
+    await hostMerged(1979, 'iss-37-login', landing);
+
+    const mark = await api(world.token, 'POST', `/api/issues/${stale}/merge`, {
+      commit: landing,
+      target: BRANCH,
+    });
+    expect(mark.status).toBe(422);
+    expect(JSON.stringify(mark.body)).toContain(`is not ISS-37's landing`);
+    expect((await issueRow(stale))?.merged_commit_sha).toBeNull();
+    expect((await refusals(stale, 'mark')).map((r) => r.payload.commitSha)).toContain(landing);
+  });
+
+  it('judges by its commit a merge the host answers already made, not by the request named', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const { five, stale, draft } = await siblings();
+    await mergeRequest(1981, 'iss-37-session', HEAD_OWN, null);
+    await hostMerged(1981, 'iss-37-session', OWN_SHA);
+    expect((await mergeOf(five, 1982)).status).toBe(200);
+    const landing = merged.get(1982) as string;
+    alreadyMerged.set(1979, landing);
+
+    const res = await mergeOf(stale, 1979);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const body = res.body as {
+      alreadyMerged: boolean;
+      refusedStamps: { issueId: string; code: string }[];
+    };
+    expect(body.alreadyMerged).toBe(true);
+    // !1979's links name ISS-37 and the draft ISS-11; neither is the landing's, and both are said
+    expect(body.refusedStamps.map((r) => [r.issueId, r.code]).sort()).toEqual(
+      [stale, draft].map((id) => [id, 'COMMIT_NOT_THIS_ISSUE']).sort(),
+    );
+    expect((await issueRow(stale))?.merged_commit_sha).toBe(OWN_SHA);
+    expect(await refusals(stale, 'kernel')).toMatchObject([{ payload: { commitSha: landing } }]);
   });
 });

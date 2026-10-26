@@ -26,8 +26,13 @@ type ChangeRequestMergeMethod = (typeof CHANGE_REQUEST_MERGE_METHODS)[number];
 export type IssueMergeStamp = (
   tx: Tx,
   args: {
-    /** The stored request Forge merged, whose links named the issue. */
+    /** The stored request whose merge this is, whose links named the issue. */
     pullRequestId: string;
+    /**
+     * Whether Forge's own call merged it now. False where the host answered it already merged —
+     * possibly through another request's commits — so whose landing it is is the commit's to say.
+     */
+    performed: boolean;
     issueId: string;
     commitSha: string;
     mergedAt: Date;
@@ -165,6 +170,7 @@ async function assertCaller(req: MergeRequest, projectId: string): Promise<void>
 /** The evidence write: the issue's stamp and the projection row, together or not at all. */
 async function writeEvidence(args: {
   row: StoredRow;
+  performed: boolean;
   host: SourceHost;
   commitSha: string;
   mergedAt: Date;
@@ -172,7 +178,7 @@ async function writeEvidence(args: {
   head: MergedHead | null;
   stampIssue: IssueMergeStamp;
 }): Promise<{ stamped: boolean; stampedIssues: string[]; refusedStamps: RefusedStamp[] }> {
-  const { row, host, commitSha, mergedAt, target, head, stampIssue } = args;
+  const { row, host, commitSha, mergedAt, target, head, stampIssue, performed } = args;
   try {
     return await db.transaction(async (tx) => {
       const stampedIssues: string[] = [];
@@ -180,6 +186,7 @@ async function writeEvidence(args: {
       for (const issueId of row.issueIds) {
         const stamp = await stampIssue(tx, {
           pullRequestId: row.id,
+          performed,
           issueId,
           commitSha,
           mergedAt,
@@ -282,6 +289,7 @@ export async function mergeStoredChangeRequest(
     const head = await readMergedHead((a, b) => host.sameTree(a, b), result.head, result.commitSha);
     const { stamped, stampedIssues, refusedStamps } = await writeEvidence({
       row,
+      performed: result.kind === 'merged',
       host,
       commitSha: result.commitSha,
       mergedAt: result.mergedAt,

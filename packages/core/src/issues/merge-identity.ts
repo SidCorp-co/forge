@@ -208,10 +208,12 @@ export async function recordRefusedStamp(
 /**
  * The latest host merge of a request linking the issue whose commit is the issue's landing, or null.
  * A sibling request the host marked merged at another request's commit is passed over, so a mark
- * resting on the issue's own merge is never put back to that commit.
+ * resting on the issue's own merge is never put back to that commit; each one passed over is
+ * recorded on the issue under `actor`, whatever the mark then does.
  */
 export async function identifiedMergeForIssue(
   issueId: string,
+  actor: OutboxActor,
   base?: string,
 ): Promise<{ commitSha: string; mergedAt: Date; target: string } | null> {
   const merges = await observedMergesForIssue(db, issueId, base);
@@ -222,12 +224,60 @@ export async function identifiedMergeForIssue(
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!row) return null;
+  const refused: Array<{
+    merge: (typeof merges)[number];
+    refusal: Extract<MergeIdentity, { holds: false }>;
+  }> = [];
+  let taken: (typeof merges)[number] | null = null;
   for (const merge of merges) {
     const identity = await mergeIdentityOf({
       projectId: row.projectId,
       commitSha: merge.commitSha,
     })(issueId);
-    if (identity.holds) return merge;
+    if (identity.holds) {
+      taken = merge;
+      break;
+    }
+    refused.push({ merge, refusal: identity });
   }
-  return null;
+  if (refused.length > 0) {
+    await db.transaction(async (tx) => {
+      for (const { merge, refusal } of refused) {
+        await recordRefusedStamp(tx, {
+          issueId,
+          actor,
+          commitSha: merge.commitSha,
+          target: merge.target,
+          via: 'mark',
+          refusal,
+        });
+      }
+    });
+  }
+  return taken;
+}
+
+/**
+ * A `commit` a mark names that the host reports as some request's merge, taken only where it is
+ * this issue's landing; otherwise the refusal is recorded on the issue and answered, never stamped.
+ */
+export async function identifiedNamedMerge(
+  issueId: string,
+  projectId: string,
+  merge: { commitSha: string; mergedAt: Date; target: string },
+  actor: OutboxActor,
+): Promise<{ merge: typeof merge } | { refused: Extract<MergeIdentity, { holds: false }> }> {
+  const identity = await mergeIdentityOf({ projectId, commitSha: merge.commitSha })(issueId);
+  if (identity.holds) return { merge };
+  await db.transaction((tx) =>
+    recordRefusedStamp(tx, {
+      issueId,
+      actor,
+      commitSha: merge.commitSha,
+      target: merge.target,
+      via: 'mark',
+      refusal: identity,
+    }),
+  );
+  return { refused: identity };
 }
