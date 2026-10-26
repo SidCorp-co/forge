@@ -6,6 +6,7 @@
  */
 
 import type { ReleaseBlockerCode } from '@forge/contracts';
+import { refusedCheckClause } from '../issues/landing-correction.js';
 import {
   namedHere,
   type RefusedDeclaration,
@@ -56,6 +57,8 @@ function uncheckedSentence(details: Details): string {
       : 'One of the checks that decides whether a release may start could not be run';
   const detail =
     typeof details?.detail === 'string' ? ` (${details.detail.replace(/\.$/, '')})` : '';
+  const refused = refusedCheckClause(details);
+  if (refused) return `${what}${detail}: ${refused}`;
   return `${what}${detail}, so this answer cannot say whether a release would start: whatever that check would have found is missing from this list, and every other reason here was found by a check that did run. Load this page again to retry it.`;
 }
 

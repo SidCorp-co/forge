@@ -1,4 +1,5 @@
 import type { ReleaseBlockerCode } from '@forge/contracts';
+import { refusedCheckClause } from '../issues/landing-correction.js';
 import { statusLabel } from '../issues/status-sets.js';
 import { agree, counted } from './counted.js';
 
@@ -20,7 +21,8 @@ export function carriedUndecidedSentence(
   return `This release promotes \`${String(details.start)}\` at ${shortSha(details.cut)} onto \`${String(details.live)}\`, and that range carries the landing of ${counted(carried.length, 'issue')} this batch does not name: ${each}. ${waysOut(carried.length)}`;
 }
 
-/** The three carried codes, composed from the range and the issues the check named (ISS-1386). */
+/** The three carried codes, composed from the range and the issues the check named (ISS-1386), and
+ *  the range a repository refused to be read for (ISS-1300 r3). */
 export function carriedSentence(
   code: ReleaseBlockerCode,
   details: Record<string, unknown> | undefined,
@@ -32,6 +34,9 @@ export function carriedSentence(
     const refused = details.refused as Array<{ displayId: string; decision: string; why: string }>;
     const each = refused.map((r) => `\`${r.displayId}\` \`${r.decision}\`: ${r.why}`).join('; ');
     return `${counted(refused.length, 'decision')} sent with this batch ${agree(refused.length, 'does', 'do')} not hold — ${each}. Correct ${agree(refused.length, 'it', 'each one')} and send the batch again.`;
+  }
+  if (code === 'RELEASE_CHECK_UNEVALUATED' && details?.check === 'carried') {
+    return refusedCheckClause(details);
   }
   if (code === 'RELEASE_CUT_DROPS_ROSTER' && Array.isArray(details?.displayIds)) {
     const ids = details.displayIds as string[];

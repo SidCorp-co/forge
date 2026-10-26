@@ -3208,7 +3208,7 @@
 - **A Google key whose token address is not Google's is refused for that address**, not as a malformed file, and a retired setting inside a list is named where it sits. (ISS-1421)
 - **An issue recording a landing commit its repository lacks is held for that one reason.** The automatic release used to ask for a verdict on every criterion; it now asks for the merge mark or landing to be corrected. (ISS-1300)
 - **A repository Forge can no longer see no longer reports its commits missing.** Its issues are weighed as before, and the hold and release pages now say Forge cannot read that repository and what restores it. (ISS-1300)
-- **Marking an issue merged can name the commit that landed.** The panel offers Commit on every mark in git; a commit the repository holds becomes the landing, replacing one it lacks, and the release hold clears. (ISS-1300)
+- **Marking an issue merged can name the commit that landed.** The panel offers Commit on every mark in git; a commit the repository holds replaces one it lacks, the release banner names it, and the hold clears. (ISS-1300)
 - **A credential Forge cannot decrypt names the project binding it was read through.** A new key saved from a project reads Not checked yet, and a GitHub App install is no longer refused over another App it cannot read. (ISS-1259)
 - **An integration credential Forge cannot decrypt is named, not a server error.** Verify, Test connection and its webhooks say which connection it is and that entering it again fixes it, and entering it again now works. (ISS-1259)
 - **Saving a new key on a removed connection from a project turns it back on**, and anyone who cannot is told who can; turning one on without a key is refused alike for everyone. (ISS-1421)

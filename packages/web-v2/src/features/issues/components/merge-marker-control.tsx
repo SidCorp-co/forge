@@ -35,8 +35,10 @@ export const LATER_ACTION = LATER_MERGE_ACTION;
 export const LATER_BLURB =
   "A later merge that carries the marked commit moves the mark to it. " +
   `Where the mark names no commit, or one its repository lacks, ${COMMIT_FIELD} records the one that landed.`;
+/** Short enough to read whole in the 390px panel; what happens to the commit is the hint's to say. */
+export const COMMIT_PLACEHOLDER = "e.g. 3f9c2ab, or the whole sha";
 /** A person's commit is checked against the repository and recorded as where the work landed. */
-export const COMMIT_PLACEHOLDER = "e.g. the commit the work landed at, checked against the repository";
+export const COMMIT_HINT = "Checked against the project's repository before it is recorded.";
 /** Said only where Forge holds a merged pull request at another commit than the mark's: anywhere
  *  else an empty Commit has nothing to compare and changes nothing (ISS-1421 r8, criterion 127). */
 export const EMPTY_COMMIT_LINE = "Leave Commit empty to use the newest merged pull request.";
@@ -162,7 +164,7 @@ export function MergeMarkerControl({
               />
             </Field>
             {!outsideGit && (
-              <Field label={COMMIT_FIELD}>
+              <Field label={COMMIT_FIELD} hint={COMMIT_HINT}>
                 <Input
                   value={commit}
                   placeholder={later ? "e.g. the merge commit of the later round" : COMMIT_PLACEHOLDER}

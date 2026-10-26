@@ -475,4 +475,20 @@ describe('a recorded landing its bound repository refuses to be read for', () =>
     expect(out[0]?.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(out[0]?.message).toContain(`Forge cannot read ${REPOSITORY}, and reads it again once`);
   });
+
+  it('says it of the carried range on the readiness page too, never to load the page again', async () => {
+    await fx.declareProduction();
+    await repo.bind(projectId, ownerId);
+    repo.hidden = true;
+    await plant({ merged: JUDGED });
+    const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
+
+    const blockers = (await loadReleaseReadiness(projectId))?.blockers ?? [];
+    const carried = blockers.find((b) => b.details?.check === 'carried');
+
+    expect(carried?.reader).toContain(`Forge cannot read ${REPOSITORY}, and reads it again once`);
+    expect(blockers.map((b) => `${b.reader} ${b.message}`).join(' ')).not.toMatch(
+      /retry|again to/i,
+    );
+  });
 });

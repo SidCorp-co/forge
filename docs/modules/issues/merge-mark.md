@@ -344,7 +344,10 @@ as before, and stay held by equality. Where the project binds a repository and i
 read, each held verdict says so beside its reason, and the hold, the release readiness page and the
 release-create refusal say Forge cannot read that repository and what restores it, through the
 same remedy as any failed repository read
-(`packages/core/src/issues/landing-correction.ts:unreadLandingClears`). A project that binds no
+(`packages/core/src/issues/landing-correction.ts:unreadLandingClears`). The readiness page's
+check of what a release would carry says the same where GitHub refuses the branch head with a 401,
+403 or 404, rather than asking for the page to be loaded again
+(`packages/core/src/issues/landing-correction.ts:refusedCheckClause`). A project that binds no
 repository is not told to bind one here.
 
 The forge-plugin CLI's own check of a verdict against the merged commit reads that commit out of

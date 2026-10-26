@@ -39,6 +39,22 @@ export function unreadLandingClears(landing: UnreadLandingRef): string {
   return `Forge cannot read ${named(landing.repository)}, and reads it again ${landing.clears}`;
 }
 
+/** A release check its repository refused, in the same words; null where the read was not refused. */
+export function refusedCheckClause(details?: {
+  repository?: unknown;
+  clears?: unknown;
+  detail?: unknown;
+}): string | null {
+  if (typeof details?.clears !== 'string') return null;
+  const repository = typeof details.repository === 'string' ? details.repository : null;
+  const cannot = unreadLandingClears({
+    repository,
+    why: String(details.detail ?? ''),
+    clears: details.clears,
+  });
+  return `${cannot}. Until then this answer cannot say whether a release would start: whatever that check would have found is missing from this list.`;
+}
+
 export function landingRecordName(from: LandingRecord): string {
   return from === 'merge' ? 'the merge mark' : 'the landing record';
 }
