@@ -390,10 +390,13 @@ export function ConnectionDetailDrawer({
   // The row's own binding: everything below reads and acts on it, never another of the provider's.
   const bindingId = cardBindingId(card);
 
+  // A row whose binding went reads as not set up (`liveCard`); "Not connected" over it would say the
+  // provider is, while another of its bindings may still be on the project.
+  const goneRow = Boolean(bindingId) && !card.configured;
   const title = (
     <span className="flex items-center gap-2.5">
       <span>{providerLabel(provider)}</span>
-      <StatusPill card={card} />
+      {goneRow ? null : <StatusPill card={card} />}
     </span>
   );
 

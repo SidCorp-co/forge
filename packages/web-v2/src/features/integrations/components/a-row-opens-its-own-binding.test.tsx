@@ -277,6 +277,20 @@ describe("a row naming a binding the list no longer holds", () => {
     await waitFor(() => expect(queries.getQueryState(STATUS_KEY)?.isInvalidated).toBe(true));
     expect(document.body.textContent).not.toMatch(/open its row again/);
   });
+
+  it.each(PROVIDERS)("%s: once the rows say it is gone, the header claims no state for the provider", async (name) => {
+    provider = name;
+    const gone = { ...card(GONE), status: "not_configured", configured: false, detail: "", lastSyncAt: null };
+    render(
+      <QueryClientProvider client={queries}>
+        <LeaveGuardProvider>
+          <ConnectionDetailDrawer projectId={PROJECT} card={gone as never} onClose={() => {}} />
+        </LeaveGuardProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByText(/binding is no longer on this project, so/)).toBeInTheDocument());
+    expect(screen.queryByText("Not connected")).toBeNull();
+  });
 });
 
 // judge-138's other path, met again at r34 on the local stack: a binding cleared from another session
