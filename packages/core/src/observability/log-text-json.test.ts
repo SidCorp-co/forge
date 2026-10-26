@@ -136,6 +136,24 @@ describe('a header line inside a JSON string', () => {
   });
 });
 
+// ISS-1229 r46: a tool output cut off at a length cap is not JSON any more, and a name written straight
+// after an escaped line break (`\nX-Api-Key:`) was read as part of the word before it and left as it was.
+describe('JSON cut off before its end', () => {
+  for (const [what, text] of [
+    [
+      'a header after an escaped line break',
+      '{"stdout":"Request headers:\\nX-Api-Key: k3yplanted998877\\nAcc',
+    ],
+    ['a secret name after an escaped tab', '{"stdout":"user=ana\\tpassword=hunter2\\tnext'],
+  ] as const) {
+    it(`loses the secret: ${what}`, () => {
+      const out = scrubLogText(text);
+      expect(out).not.toMatch(/k3yplanted998877|hunter2/);
+      expect(out).toContain(FILTERED);
+    });
+  }
+});
+
 describe('an empty value under a secret name', () => {
   for (const value of [
     { testCredentials: [] },

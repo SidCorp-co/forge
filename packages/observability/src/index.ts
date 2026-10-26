@@ -270,6 +270,8 @@ function lineEnd(text: string, from: number): number {
   return LINE_BREAK.exec(text)?.index ?? text.length;
 }
 
+// A name starts a word, or follows an escaped line break or tab in text that is no longer JSON (cut off).
+const NAME_START = String.raw`(?:\b|(?<=\\[nrt]))`;
 const OPENING_QUOTE = /^(\\*)"/;
 // Space around a name's `:` or `=` is on its own line; a name with nothing after it on its line holds none.
 const SAME_LINE = String.raw`[^\S\n\r\u2028\u2029]`;
@@ -301,7 +303,7 @@ const BARE_UNQUOTED = /^(?:[^\s",&\\]|\\+(?!\\*"))+/;
  * line's rule: an unquoted value takes the rest of the line.
  */
 function scrubNamedValues(text: string, name: string, toLineEnd: boolean): string {
-  const re = new RegExp(`\\b${escapeRegExp(name)}\\b(\\\\*")?${SAME_LINE}*([:=])${SAME_LINE}*`, 'gi');
+  const re = new RegExp(`${NAME_START}${escapeRegExp(name)}\\b(\\\\*")?${SAME_LINE}*([:=])${SAME_LINE}*`, 'gi');
   let out = '';
   let from = 0;
   for (let found = re.exec(text); found; found = re.exec(text)) {
