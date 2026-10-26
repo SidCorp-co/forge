@@ -16,21 +16,16 @@ import {
   type NeedsYouAreaKey,
 } from '@forge/contracts/needs-you';
 import {
-  byDecisionOrder,
   type DecisionOpens,
   isDecisionActOn,
   type NeedsYouDecision,
-  type NeedsYouDecisions,
   type NeedsYouNotDecisionReason,
   type NotDecisionItem,
-  needsYouDecisionsSchema,
 } from '@forge/contracts/needs-you-decisions';
 import type { NeedsYouTopic } from '@forge/contracts/needs-you-proposal';
-import type { ProjectAccess } from '../lib/authz.js';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
-import { type AttentionRow, type NeedsYouViewer, owedOf, readAttention } from './needs-you.js';
+import { type AttentionRow, owedOf, type readAttention } from './needs-you.js';
 import { acceptDecision, admitDecision, repinDecision } from './needs-you-accept-builders.js';
-import { agentTakesItem, agentTakesOf } from './needs-you-agent-takes.js';
 import {
   agreeDecision,
   type CuttableRelease,
@@ -48,14 +43,8 @@ import {
   prefilledReason,
 } from './needs-you-decision-builders.js';
 import { asked } from './needs-you-escalation.js';
-import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
-import { type Folded, foldedDecisions, unreadableItem } from './needs-you-fold.js';
 import { repinDecision as designRepinDecision } from './needs-you-repin.js';
 import { type DesignRepinGroup, releaseApprovalsOfRuns } from './ports.js';
-
-/** How many decisions one answer carries; `total` counts them all. */
-const DECISIONS_MAX = 200;
-const NOT_DECISION_ITEMS_MAX = 20;
 
 /** The said act keys whose row is the viewer's own work to finish, never a choice. */
 const OWN_WORK: ReadonlySet<string> = new Set([
@@ -334,7 +323,7 @@ export interface OwedDecision {
   decision: NeedsYouDecision;
 }
 
-type Attention = Awaited<ReturnType<typeof readAttention>>;
+export type Attention = Awaited<ReturnType<typeof readAttention>>;
 
 /** The owed rows listed (each a decision or left out by why) and every owed row, ops ones too. */
 interface Classification {
@@ -432,108 +421,4 @@ export async function decisionsOf(
     listed.push({ area, row });
   }
   return { owed, left, listed, owedRows };
-}
-
-/**
- * The one list both Needs you reads are built from (`/needs-you` and `/needs-you/decisions`): every
- * decision of one attention read in the list's order, what was left out by why, and the rows of both.
- */
-export async function needsYouListOf(
-  projectId: string,
-  viewer: NeedsYouViewer,
-  access: ProjectAccess,
-  attention: Attention,
-) {
-  const [{ owed, left, listed, owedRows }, folded] = await Promise.all([
-    decisionsOf(projectId, attention),
-    foldedDecisions(projectId, viewer, access, attention),
-  ]);
-  if (folded.unreadable.length > 0) left.set('unreadable', folded.unreadable.map(unreadableItem));
-  const all = uniqueIds([...owed.map((o) => o.decision), ...folded.decisions]).sort(
-    byDecisionOrder,
-  );
-  const agentTakes = await agentTakesOf(projectId, all);
-  const taken = all.filter(agentTakes);
-  if (taken.length > 0) left.set('agent_takes', taken.map(agentTakesItem));
-  const decisions = all.filter((d) => !agentTakes(d));
-  const ids: EvidenceGroup['ids'] = {
-    issue: new Map(attention.issues.issues.map((i) => [i.key, i.id])),
-    requirement: new Map(attention.requirements.map((r) => [r.key, r.id])),
-  };
-  // the rows of what the agent takes: `/needs-you` lists none of them, as this read lists none (REQ-68 BC-3)
-  const takenRows = new Set(owed.filter((o) => agentTakes(o.decision)).map((o) => o.row));
-  const mine: Folded = {
-    decisions: folded.decisions.filter((d) => !agentTakes(d)),
-    unreadable: folded.unreadable,
-  };
-  return {
-    decisions,
-    left,
-    ids,
-    listed: listed.filter(({ row }) => !takenRows.has(row)),
-    owedRows,
-    folded: mine,
-  };
-}
-
-/** The viewer's whole Needs you from an attention read already made: what the status report counts. */
-export async function needsYouDecisionsOf(
-  projectId: string,
-  viewer: NeedsYouViewer,
-  access: ProjectAccess,
-  attention: Attention,
-): Promise<NeedsYouDecision[]> {
-  return (await needsYouListOf(projectId, viewer, access, attention)).decisions;
-}
-
-/** Each decision's id once in the read, a second built for the same record numbered after it. */
-function uniqueIds(decisions: NeedsYouDecision[]): NeedsYouDecision[] {
-  const seen = new Map<string, number>();
-  return decisions.map((d) => {
-    const n = (seen.get(d.id) ?? 0) + 1;
-    seen.set(d.id, n);
-    return n === 1 ? d : { ...d, id: `${d.id}#${n}` };
-  });
-}
-
-/**
- * One project's Needs you read without the evidence each decision rests on, and the ids its evidence
- * is read by: the cross-project read reads every project's evidence in one call after it.
- */
-export async function readNeedsYouDecisionsBare(
-  projectId: string,
-  viewer: NeedsYouViewer,
-  access: ProjectAccess,
-  now: Date = new Date(),
-): Promise<{ read: NeedsYouDecisions; ids: EvidenceGroup['ids'] }> {
-  const attention = await readAttention(projectId, viewer, now);
-  const { decisions, left, ids } = await needsYouListOf(projectId, viewer, access, attention);
-  const read = needsYouDecisionsSchema.parse({
-    generatedAt: now.toISOString(),
-    decisions: decisions.slice(0, DECISIONS_MAX),
-    total: decisions.length,
-    notDecisions: [...left].map(([reason, items]) => ({
-      reason,
-      count: items.length,
-      items: items.slice(0, NOT_DECISION_ITEMS_MAX),
-    })),
-  });
-  return { read, ids };
-}
-
-/**
- * The one Needs you read (REQ-48 BC-11): the viewer's decisions from their owed rows, and every
- * agent's proposal, mockup and preview waiting on them folded in, each with the evidence it rests on
- * (r3 BC-15). The page, the Dashboard, /attention, the nav and the chat all count `total` from here,
- * so no two surfaces count their own.
- */
-export async function readNeedsYouDecisions(
-  projectId: string,
-  viewer: NeedsYouViewer,
-  access: ProjectAccess,
-  now: Date = new Date(),
-): Promise<NeedsYouDecisions> {
-  const { read, ids } = await readNeedsYouDecisionsBare(projectId, viewer, access, now);
-  const [decisions = []] = await withEvidence([{ decisions: read.decisions, ids }]);
-  return needsYouDecisionsSchema.parse({ ...read, decisions });
 }

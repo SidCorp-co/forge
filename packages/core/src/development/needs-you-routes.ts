@@ -5,7 +5,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { idParamSchema } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { readNeedsYouDecisions } from './needs-you-decisions.js';
+import { readNeedsYouDecisions } from './needs-you-decisions-read.js';
 import { readNeedsYou } from './needs-you-list.js';
 import { needsYouViewerOf } from './needs-you-viewer.js';
 

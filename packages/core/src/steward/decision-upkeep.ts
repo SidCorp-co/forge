@@ -1,9 +1,11 @@
 // What the agent does for a decision nobody takes (REQ-68 BC-7, BC-8):
 // - A decision whose item moved on is voided.
 // - A round unanswered for 3 days reminds the people who owe it.
-// - On day 14, the agent proposes deferring or dropping the requirement the round holds up. The
-//   Needs you decision then offers those two answers, recommending the defer.
-// Each step stamps the round, so it is taken once per round.
+// - On day 14, the agent proposes deferring or dropping the requirement the round holds up (asked
+//   of it, about it, or on an issue planned against it), recommending the defer; where it holds up
+//   none, the drop its own options offer. A round offering neither has nothing to propose.
+// Each step stamps the round, so it is taken once per round. Every other decision (a sign-off, a
+// release, a design, a proposal) is aged by `decision-ages.ts`.
 
 import { logger } from '../lib/logger.js';
 import { emitNotification } from '../notifications/index.js';
@@ -14,6 +16,7 @@ import {
   type DecisionAgeStamp,
   ESCALATE_AFTER_DAYS,
   escalationActs,
+  proposable,
   REMIND_AFTER_DAYS,
   stampAgedRounds,
   sweepMovedDecisions,
@@ -75,12 +78,15 @@ export async function sweepDecisionUpkeep(now: Date = new Date()) {
       body: clipped(r.prompt, 500),
     }),
   );
-  // only a round holding up a requirement has a defer or a drop to propose
+  // a round with a defer or a drop to propose: its requirement's, else its own options' drop
   const due = (
     await agedRounds('escalatedAt', new Date(now.getTime() - ESCALATE_AFTER_DAYS * DAY_MS))
-  ).filter((r) => r.requirement !== null && escalationActs(r.requirement.status).length > 0);
+  ).filter(proposable);
   const escalated = await tell('escalatedAt', due, now, (r) => ({
-    title: `${r.requirement?.key}: defer or drop proposed after ${ESCALATE_AFTER_DAYS} days`,
+    title:
+      r.requirement && escalationActs(r.requirement.status).length > 0
+        ? `${r.requirement.key}: defer or drop proposed after ${ESCALATE_AFTER_DAYS} days`
+        : `${about(r)}: dropping it is proposed after ${ESCALATE_AFTER_DAYS} days`,
     body: clipped(`No answer to: ${r.prompt}`, 500),
   }));
   return { voided: voided.length, reminded: reminded.length, escalated: escalated.length };

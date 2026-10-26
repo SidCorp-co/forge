@@ -1,8 +1,10 @@
 // How long an owed round has waited (REQ-68 BC-8). Day 3 reminds the people who owe it. Day 14 has
-// the agent propose deferring or dropping the requirement it holds up. Each stamp counts only for the
-// round asked before it, so a new round starts its own clock and nothing is reset.
+// the agent propose deferring or dropping the requirement it holds up, or, where it holds up none,
+// the drop its own options offer. Each stamp counts only for the round asked before it, so a new
+// round starts its own clock and nothing is reset.
 
 import { REQUIREMENT_MACHINE } from '@forge/contracts/requirement-machine';
+import { STEWARD_DECISION_OPTION_IDS } from '@forge/contracts/steward';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentQuestions } from '../db/schema-questions.js';
@@ -18,10 +20,28 @@ export type DecisionAgeStamp = 'remindedAt' | 'escalatedAt';
 /** When the current round was asked: its own `askedAt`, else when the question was written. */
 const roundAskedAt = sql`coalesce((${agentQuestions.steps} -> -1 ->> 'askedAt')::timestamptz, ${agentQuestions.createdAt})`;
 
-/** The requirement a round holds up: the one it is asked of, else the one it is about. */
+/**
+ * The requirement a round holds up: the one it is asked of, else the one it is about, else the one
+ * the issue it is asked on is planned against (K98 on dev.325: ISS-933's decision proposed nothing).
+ */
 export const requirementOf = sql`coalesce(${agentQuestions.requirementId},
   case when ${agentQuestions.about} ->> 'kind' = 'requirement'
-    then (${agentQuestions.about} ->> 'requirementId')::uuid end)`;
+    then (${agentQuestions.about} ->> 'requirementId')::uuid end,
+  (select i.requirement_id from issues i where i.id = ${agentQuestions.issueId}))`;
+
+/** The option ids that drop or withdraw the item a steward decision is about: its own decline. */
+export const DECLINE_OPTION_IDS = [
+  STEWARD_DECISION_OPTION_IDS.drop,
+  STEWARD_DECISION_OPTION_IDS.withdraw,
+] as const;
+
+/** Whether the current round offers its item's own drop or withdraw. */
+const offersDecline = sql`exists (select 1 from jsonb_array_elements(
+  coalesce(${agentQuestions.steps} -> -1 -> 'options', '[]'::jsonb)) o
+  where o ->> 'id' in (${sql.join(
+    DECLINE_OPTION_IDS.map((id) => sql`${id}`),
+    sql`, `,
+  )}))`;
 
 export interface AgedRound {
   id: string;
@@ -35,6 +55,8 @@ export interface AgedRound {
   issueId: string | null;
   /** The requirement it holds up, with the status deciding which proposals apply; null where none. */
   requirement: { key: string; status: string } | null;
+  /** Its round offers its item's own drop or withdraw: what day 14 proposes where no requirement applies. */
+  declinable: boolean;
 }
 
 /**
@@ -64,6 +86,7 @@ export async function agedRounds(stamp: DecisionAgeStamp, cutoff: Date): Promise
       requirementStatus: sql<
         string | null
       >`(select r.status from requirements r where r.id = ${requirementOf})`,
+      declinable: sql<boolean>`${offersDecline}`,
     })
     .from(agentQuestions)
     .where(
@@ -110,6 +133,10 @@ export async function stampAgedRounds(
     .returning({ id: agentQuestions.id });
   return rows.map((r) => r.id);
 }
+
+/** Whether day 14 has a proposal for a round: a defer or drop of its requirement, or its own drop. */
+export const proposable = (r: Pick<AgedRound, 'requirement' | 'declinable'>): boolean =>
+  (r.requirement !== null && escalationActs(r.requirement.status).length > 0) || r.declinable;
 
 /**
  * What the agent may propose for a requirement a round has held up 14 days: a defer and a drop, each

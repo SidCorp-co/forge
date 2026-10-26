@@ -11,7 +11,7 @@ import { createLimiter } from '../lib/bounded-concurrency.js';
 import { holds } from '../permissions/index.js';
 import { primeRequirementVerdicts } from '../requirements/verdicts-read.js';
 import type { NeedsYouViewer } from './needs-you.js';
-import { readNeedsYouDecisionsBare } from './needs-you-decisions.js';
+import { readNeedsYouDecisionsBare } from './needs-you-decisions-read.js';
 import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
 import { primeNeedsYouAcross } from './needs-you-fold.js';
 
@@ -37,7 +37,7 @@ export const NEEDS_YOU_ACROSS_CONCURRENCY = 2;
 
 /**
  * The viewer's decisions across every project they can see, each project's the one Needs you read
- * (`needs-you-decisions.ts:readNeedsYouDecisions`), so /attention counts what each project's own
+ * (`needs-you-decisions-read.ts:readNeedsYouDecisions`), so /attention counts what each project's own
  * Needs you page and Dashboard count (REQ-48 BC-11). A project nothing waits in is left out.
  */
 export async function readNeedsYouAcross(

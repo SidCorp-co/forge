@@ -42,7 +42,7 @@ let ask: typeof import('../../src/questions/index.js').askQuestion;
 let readOpen: typeof import('../../src/questions/index.js').readOpenPersonQuestions;
 let sweepMoved: typeof import('../../src/questions/index.js').sweepMovedDecisions;
 let upkeep: typeof import('../../src/steward/index.js').sweepDecisionUpkeep;
-let readDecisions: typeof import('../../src/development/needs-you-decisions.js').readNeedsYouDecisions;
+let readDecisions: typeof import('../../src/development/needs-you-decisions-read.js').readNeedsYouDecisions;
 let accessOf: typeof import('../../src/lib/authz.js').loadProjectAccess;
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 const DAY = 86_400_000;
@@ -142,7 +142,7 @@ beforeAll(async () => {
   } = await import('../../src/questions/index.js'));
   ({ sweepDecisionUpkeep: upkeep } = await import('../../src/steward/index.js'));
   ({ readNeedsYouDecisions: readDecisions } = await import(
-    '../../src/development/needs-you-decisions.js'
+    '../../src/development/needs-you-decisions-read.js'
   ));
   ({ loadProjectAccess: accessOf } = await import('../../src/lib/authz.js'));
   ownerId = (await createTestUser({ verified: true })).id;
@@ -274,8 +274,7 @@ describe('an unanswered decision is reminded, then escalated (REQ-68 BC-8)', () 
     expect((await questionRow(q))?.escalated_at).not.toBeNull();
     expect(await remindersFor('REQ-712: defer or drop proposed')).toHaveLength(1);
     expect((await readOpen(projectId)).find((r) => r.id === q)?.escalated).toEqual({
-      key: 'REQ-712',
-      status: 'draft',
+      requirement: { key: 'REQ-712', status: 'draft' },
     });
     const read = await decisionsNow();
     // the requirement's own question is a decision on it, listed in Needs you (REQ-68 BC-9)

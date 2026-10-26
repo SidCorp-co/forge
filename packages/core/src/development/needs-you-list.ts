@@ -1,6 +1,6 @@
 /**
  * `GET /needs-you` (ISS-75, ISS-164): what waits on the viewer, area by area, built from the one list
- * the decisions read is built from (`needs-you-decisions.ts:needsYouListOf`). Its asks are every row
+ * the decisions read is built from (`needs-you-decisions-read.ts:needsYouListOf`). Its asks are every row
  * that read makes a decision of or leaves out by why, and every folded proposal, mockup and preview,
  * so a menu count, Development's list, the Dashboard and Approvals count one set (REQ-48 BC-11); a
  * decision the agent may take is the master's, so neither read lists it as the viewer's (REQ-68 BC-3).
@@ -26,7 +26,7 @@ import { say } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import type { ProjectAccess } from '../lib/authz.js';
 import { type AttentionRow, type NeedsYouViewer, newestFirst, readAttention } from './needs-you.js';
-import { needsYouListOf } from './needs-you-decisions.js';
+import { needsYouListOf } from './needs-you-decisions-read.js';
 import type { Folded } from './needs-you-fold.js';
 import { writtenTitle } from './row-title.js';
 
@@ -107,7 +107,13 @@ export async function readNeedsYou(
   now: Date = new Date(),
 ): Promise<NeedsYouResponse> {
   const attention = await readAttention(projectId, viewer, now);
-  const { listed, owedRows, folded } = await needsYouListOf(projectId, viewer, access, attention);
+  const { listed, owedRows, folded } = await needsYouListOf(
+    projectId,
+    viewer,
+    access,
+    attention,
+    now,
+  );
   const rows = rowsOfList(listed, owedRows, folded);
   const items = NEEDS_YOU_AREAS.flatMap((area) =>
     rows[area].map(
