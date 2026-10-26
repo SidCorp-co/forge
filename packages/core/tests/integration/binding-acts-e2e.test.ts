@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { freshAppKey } from '../helpers/github-double.js';
 import {
   createTestOrgMember,
   createTestProject,
@@ -355,7 +356,7 @@ describe('every who the list names is who the door takes (criteria 308, 310, 311
           token_uri: 'https://oauth2.googleapis.com/token',
         })
       : provider === 'github'
-        ? `-----BEGIN RSA PRIVATE KEY-----\nscratch-${tag}-${'x'.repeat(100)}\n-----END RSA PRIVATE KEY-----\n`
+        ? freshAppKey()
         : `scratch-key-${tag}`;
 
   type Held = { instructions: unknown; agentAccess: unknown; key: unknown };
@@ -432,7 +433,6 @@ describe('every who the list names is who the door takes (criteria 308, 310, 311
             const said = await patch(reader.token, bindingId, send.body);
             expect(acts.grantAgents, at).toBe(false);
             expect(said.status, at).toBe(400);
-            // ISS-1421 r29: said in the reader's words, naming the provider as the tab labels it (337).
             expect(said.body.message, at).toMatch(/^No agent can use /);
             expect(JSON.stringify(said.body), at).not.toMatch(/agent path|\bcore\b|`/);
             continue;
