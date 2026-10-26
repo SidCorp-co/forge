@@ -68,18 +68,11 @@ and this issue keeps the harder half."* Only timeouts came back. The teardown ch
 and is measured against them alone; a green run under it is not evidence about the four above,
 because no run anyone has taken produced them on demand.
 
-## Two more seen once a box is loaded, and not reproduced alone (ISS-1315, 2026-10-25)
+## One more seen once a box is loaded, and not reproduced alone (ISS-1315, 2026-10-25)
 
-Both appeared only while another whole suite ran on the same box, and neither has a mechanism yet.
-
-- `live-reach-e2e.test.ts`, *places the eight rows off master*: `ISS-419` read `unmeasured` where
-  `not_on_live` was expected, once, on `main` at `308137ce0` with a second suite running; green alone
-  on the same tree.
-- `shared-template-global-setup-e2e.test.ts`: the three cases that run global setup for real each
-  timed out at 180s in 2 of 2 whole runs of the ISS-1315 branch taken beside another suite, and in
-  0 of 2 such runs of `main`; green in both whole runs of the branch taken alone. The Postgres log of
-  a loaded run showed checkpoints syncing 61332 files, which is where a `CREATE` or `DROP DATABASE`
-  waits.
+`live-reach-e2e.test.ts`, *places the eight rows off master*: `ISS-419` read `unmeasured` where
+`not_on_live` was expected, once, on `main` at `308137ce0` while a second whole suite ran on the same
+box; green alone on the same tree. No mechanism yet.
 
 ## Honest costs
 

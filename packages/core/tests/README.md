@@ -160,6 +160,15 @@ leave in a database: a row in a table outside `current_schema()` (of those, the 
 `drizzle.__drizzle_migrations`), table statistics, or a database-level object the digest does not
 read, such as a large object. A file that writes any of those declares `own`.
 
+**What it costs on an instance that syncs to disk.** A database dropped after its file took its
+dirty pages with it; a slot database keeps them, and every `TRUNCATE` a case's `truncateAll` issues
+gives each table and index a new file. On a `fsync=on` instance one whole run left checkpoints
+syncing 400,000 to 600,000 files and taking 360 to 516 seconds, and every `CREATE` or `DROP DATABASE`
+waits on one: `shared-template-e2e` and `shared-template-global-setup-e2e`, whose cases do both, timed
+out at 180s. The container this suite starts runs with `fsync=off` (`container.ts`), and global setup
+prints a line naming the cost when the instance it was given syncs. Point `TEST_DATABASE_URL` at an
+instance started with `-c fsync=off`.
+
 **What it buys**, counted from `log_statement=ddl` over one whole local run at three workers:
 
 | | `e4f44b66c`, a database per file | ISS-1315 on `e4f44b66c`, a database per slot |
@@ -169,7 +178,8 @@ read, such as a large object. A file that writes any of those declares `own`.
 | Wall, solo, `--sequence.shuffle.files --sequence.seed=1315` | 2429s | 2183s |
 
 Both runs: 413 files, the second with 3 more tests (4276 and 4279), green, measured 2026-10-25 on a
-56-core box with `TEST_TEMPLATE_MODE=fresh` against a `pgvector/pgvector:pg17` container of their own.
+56-core box with `TEST_TEMPLATE_MODE=fresh` against a `pgvector/pgvector:pg17` container of their own,
+at its default `fsync=on`.
 
 **What ends it.** The trade holds while every file a slot runs reads only what the reset puts back.
 The day a file has to depend on something the reset does not restore and cannot declare `own` for

@@ -56,6 +56,25 @@ async function buildPrivateTemplate(adminUrl: string, name: string): Promise<voi
   await migrateDatabase(url.toString());
 }
 
+/** Say so where the instance syncs to disk: tests/README.md, *One database per worker slot*. */
+async function reportDurability(adminUrl: string): Promise<void> {
+  const postgres = (await import('postgres')).default;
+  const admin = postgres(adminUrl, { max: 1 });
+  try {
+    const [row] = await admin<{ fsync: string }[]>`SHOW fsync`;
+    if (row?.fsync === 'on') {
+      console.log(
+        '[integration] fsync is on at this instance: every table a case truncates in a slot ' +
+          'database leaves files the next checkpoint must sync, and each CREATE or DROP DATABASE ' +
+          'waits on that checkpoint. Run the test instance with fsync=off, as the container this ' +
+          'suite starts does.',
+      );
+    }
+  } finally {
+    await admin.end({ timeout: 5 });
+  }
+}
+
 /** The count vitest resolved, read off the run that uses it, and the rule that chose it. */
 function reportWorkers(project: TestProject): void {
   const flag = project.vitest.config.cliOptions.maxWorkers;
@@ -76,6 +95,7 @@ export async function setup(project: TestProject): Promise<void> {
 
   const token = mintRunToken();
   await reapLeftovers(adminUrl);
+  await reportDurability(adminUrl);
 
   let name: string;
   if (mode === 'shared') {

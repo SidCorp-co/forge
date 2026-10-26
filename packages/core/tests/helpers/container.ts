@@ -6,9 +6,7 @@ export interface StartedContainer {
 }
 
 /**
- * Boot a throwaway Postgres 17 container for the current test run.
- * Used when TEST_DB_MODE=container (CI, fresh clones).
- *
+ * Boot a throwaway Postgres 17 container for the current test run (TEST_DB_MODE=container).
  * Uses `pgvector/pgvector:pg17` so the ADR-0011 `vector` extension is
  * available — required by migration 0010 (`CREATE EXTENSION vector`).
  */
@@ -19,6 +17,8 @@ export async function startPostgresContainer(): Promise<StartedContainer> {
       .withDatabase('forge_test')
       .withUsername('forge')
       .withPassword('forge')
+      // Slot databases leave every truncated table for a checkpoint to sync: tests/README.md.
+      .withCommand(['postgres', '-c', 'fsync=off'])
       .start();
   } catch (err) {
     throw new Error(
