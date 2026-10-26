@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const makeClient = () => {
   const client = Object.assign(function sql() {}, {
+    options: {} as { socket?: () => unknown },
     end: vi.fn(async () => {}),
     unsafe: vi.fn(),
     begin: vi.fn(),
@@ -137,6 +138,26 @@ describe('db/client', () => {
     await closeDb();
 
     expect(client.end).toHaveBeenCalledWith({ timeout: 5 });
+  });
+
+  it('leaves the client it closes no socket to open, before it ends it', async () => {
+    const { db, closeDb } = await import('./client.js');
+    void db.select;
+    const client = postgresFactory.mock.results[0]?.value as ReturnType<typeof makeClient>;
+    let refusedAtEnd: unknown;
+    client.end.mockImplementation(async () => {
+      refusedAtEnd = (() => {
+        try {
+          client.options.socket?.();
+        } catch (err) {
+          return (err as Error).message;
+        }
+      })();
+    });
+
+    await closeDb();
+
+    expect(refusedAtEnd).toBe('The database client was closed, so it opens no connection.');
   });
 
   it('opens a new client on the next access after closeDb', async () => {

@@ -123,6 +123,11 @@ export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export async function closeDb(): Promise<void> {
   if (queryClient === undefined) return;
+  // postgres.js reopens a connection `end` closed to run a statement still waiting in the pool's
+  // queue, and keeps it open; with no socket to open, the statement is refused instead.
+  (queryClient.options as { socket?: () => never }).socket = () => {
+    throw new Error('The database client was closed, so it opens no connection.');
+  };
   await queryClient.end({ timeout: 5 });
   queryClient = undefined;
   instance = undefined;
