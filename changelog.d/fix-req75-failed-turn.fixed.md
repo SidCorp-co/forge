@@ -1,0 +1,1 @@
+**A support group is told when its assistant's turn fails.** Each thread the failed turn left unanswered is asked once to send its message again, and the failure is recorded on the room as a `turn_failed` refusal instead of the messages reading as delivered.
