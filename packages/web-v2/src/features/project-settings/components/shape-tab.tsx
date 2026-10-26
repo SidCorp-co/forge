@@ -81,7 +81,7 @@ export function ShapeTab({ project, canEdit }: { project: ProjectDetail; canEdit
   if (envQ.isError && envQ.data === undefined) {
     return (
       <SettingsSection>
-        <ErrorState message={formatApiError(envQ.error)} onRetry={() => envQ.refetch()} />
+        <ErrorState title="Couldn't load environments" message={formatApiError(envQ.error)} onRetry={() => envQ.refetch()} />
       </SettingsSection>
     );
   }

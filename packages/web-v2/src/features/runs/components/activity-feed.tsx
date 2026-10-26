@@ -75,7 +75,7 @@ export function ActivityTab({ run, loading, error, onRetry, sessionHref }: Activ
   const { user } = useAuth();
 
   if (loading) return <ActivitySkeleton />;
-  if (error) return <ErrorState message={formatApiError(error)} onRetry={onRetry} />;
+  if (error) return <ErrorState title="Couldn't load activity" message={formatApiError(error)} onRetry={onRetry} />;
 
   // This tab reads a pipeline run's attempts; a session that ran outside one is not "nothing".
   if (!run) {

@@ -37,7 +37,7 @@ export function WhatsNewScreen() {
       <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <PageTitle className="fg-h2">What&apos;s New</PageTitle>
+          <PageTitle className="fg-h2" heads={!isError}>What&apos;s New</PageTitle>
           <p className="fg-body-sm text-muted">
             Forge release notes — newest first.{" "}
             <a
@@ -63,7 +63,7 @@ export function WhatsNewScreen() {
       ) : isError ? (
         <Card>
           <CardContent>
-            <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
+            <ErrorState title="Couldn't load release notes" level={1} message={formatApiError(error)} onRetry={() => refetch()} />
           </CardContent>
         </Card>
       ) : !data || data.length === 0 ? (

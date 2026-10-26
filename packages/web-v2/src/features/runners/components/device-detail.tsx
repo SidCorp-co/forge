@@ -221,7 +221,7 @@ export function DeviceDetail({
 								<Skeleton className="h-14 w-full" />
 							</div>
 						) : runners.isError ? (
-							<ErrorState
+							<ErrorState title="Couldn't load this device's runners"
 								message={formatApiError(runners.error)}
 								onRetry={() => runners.refetch()}
 							/>

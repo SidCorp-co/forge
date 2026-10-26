@@ -3199,6 +3199,10 @@
 
 ### Fixed
 
+- **The narrow rail keeps every label in view whatever the organization is called.** It shows the organization's mark, with the whole name on hover and in the switcher's menu and the phone's menu. (ISS-1229)
+- **A cut-short or mistyped conversation link says the conversation was not found**, instead of offering a retry that could never work. (ISS-1229)
+- **Every load error says what failed to load**, and where it is all a page shows, it heads the page and names the tab; an open conversation names the tab too. (ISS-1229)
+- **A secret inside a tool's JSON output is hidden where it stands.** The rest of the output stays readable, where a header line used to hide everything after it, or the whole result. (ISS-1229)
 - **A viewer refused a room, a room write or a comment change is told who may.** Each refusal names the act and who can take it, as every other door already did. (ISS-1421)
 - **A GitHub App key copied from an indented block is saved whole.** A key with its first line flush and the rest indented was refused as not whole; the indent is now removed. (ISS-1421)
 - **A removed integration can be connected again.** Connecting it was refused as already existing, and each refused attempt left a nameless connection behind; neither happens now. (ISS-1421)

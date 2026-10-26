@@ -33,10 +33,13 @@ const WINDOWS: { value: OperatorWindow; label: string }[] = [
  */
 function Panel<T>({
   query,
+  what,
   skeleton,
   children,
 }: {
   query: UseQueryResult<T>;
+  /** What the panel shows, for the title of its failure: "Couldn't load {what}". */
+  what: string;
   skeleton: React.ReactNode;
   children: (data: T) => React.ReactNode;
 }) {
@@ -44,6 +47,7 @@ function Panel<T>({
   if (query.isError) {
     return (
       <ErrorState
+        title={`Couldn't load ${what}`}
         message={formatApiError(query.error)}
         onRetry={() => void query.refetch()}
         mascot={false}
@@ -71,26 +75,26 @@ export function OperatorOverviewScreen() {
         <SegmentedControl options={WINDOWS} value={window} onChange={setWindow} />
       </div>
 
-      <Panel query={overview} skeleton={<KpiRowSkeleton />}>
+      <Panel query={overview} what="the key figures" skeleton={<KpiRowSkeleton />}>
         {(data) => <KpiRow overview={data} />}
       </Panel>
 
-      <Panel query={alerts} skeleton={<AlertFeedSkeleton />}>
+      <Panel query={alerts} what="alerts" skeleton={<AlertFeedSkeleton />}>
         {(data) => <AlertFeed alerts={data.items} />}
       </Panel>
 
       <section className="flex flex-col gap-3">
         <SectionTitle className="fg-h3">Glance</SectionTitle>
-        <Panel query={overview} skeleton={<GlanceCardsSkeleton />}>
+        <Panel query={overview} what="the glance figures" skeleton={<GlanceCardsSkeleton />}>
           {(data) => <GlanceCards glance={data.glance} />}
         </Panel>
       </section>
 
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
-        <Panel query={adoption} skeleton={<AdoptionPanelSkeleton />}>
+        <Panel query={adoption} what="adoption" skeleton={<AdoptionPanelSkeleton />}>
           {(data) => <AdoptionPanel buckets={data} />}
         </Panel>
-        <Panel query={workspaces} skeleton={<WorkspacesTableSkeleton />}>
+        <Panel query={workspaces} what="workspaces" skeleton={<WorkspacesTableSkeleton />}>
           {(data) => <WorkspacesTable rows={data.items} sort={sort} onSortChange={setSort} busy={workspaces.isPlaceholderData} />}
         </Panel>
       </div>

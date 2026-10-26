@@ -231,7 +231,7 @@ export function ProjectIntegrationsPanel({
           ))}
         </div>
       ) : status.isError && !status.data ? (
-        <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
+        <ErrorState title="Couldn't load this project's integrations" message={formatApiError(status.error)} onRetry={() => status.refetch()} />
       ) : (
         <>
           {readError ? (

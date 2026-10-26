@@ -132,7 +132,7 @@ function BindingsSection({
           <Skeleton className="h-8 w-full" />
         </div>
       ) : bindingsQ.isError ? (
-        <ErrorState
+        <ErrorState title="Couldn't load the projects using this connection"
           message={formatApiError(bindingsQ.error)}
           onRetry={() => bindingsQ.refetch()}
         />
