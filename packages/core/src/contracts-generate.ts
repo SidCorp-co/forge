@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { enterHermeticEnv } from './api-contract/hermetic-env.js';
@@ -23,7 +23,16 @@ function flag(argv: string[], name: string, what: string): string | null {
   return value;
 }
 
-type Base = { rev: string; basis: string; texts: Record<string, string | null> };
+type Floor = { contract: string; version: string; source: string; text: string };
+type Base = {
+  rev: string;
+  basis: string;
+  texts: Record<string, string | null>;
+  floors: Record<string, Floor | null>;
+};
+
+const workingText = (path: string): string | null =>
+  existsSync(join(REPO, path)) ? readFileSync(join(REPO, path), 'utf8') : null;
 
 // the base is read before the environment is replaced: which branch this lands on is the caller's
 // ($GITHUB_BASE_REF, a push payload, origin/HEAD), and scripts/lib/contract-base.mjs is the one reading of it
@@ -37,7 +46,19 @@ async function baseOf(argv: string[]): Promise<Base> {
     console.error(`api-contract: no base to number the contracts after — ${found.refusal}`);
     process.exit(2);
   }
-  return { rev: found.rev, basis: found.basis, texts: lib.contractsAt(REPO, found.rev) };
+  const floor = lib.registryFloor(REPO, workingText);
+  if ('refusal' in floor) {
+    console.error(
+      `api-contract: no registry floor to number the contracts above — ${floor.refusal}`,
+    );
+    process.exit(2);
+  }
+  return {
+    rev: found.rev,
+    basis: found.basis,
+    texts: lib.contractsAt(REPO, found.rev),
+    floors: floor.floors,
+  };
 }
 
 const argv = process.argv.slice(2);
@@ -107,7 +128,7 @@ const INFO_VERSION: VersionField = {
 };
 const TOP_VERSION: VersionField = { get: (d) => d.version, set: (d, v) => ({ ...d, version: v }) };
 
-/** The document numbered after the one the base holds, and the line saying why that number. */
+/** The document numbered after the one the base holds and the registry floor, and the line saying why. */
 async function numbered(
   file: string,
   type: 'openapi' | 'mcp-tools',
@@ -124,6 +145,7 @@ async function numbered(
   }
   const previous = JSON.parse(baseText) as Doc;
   const was = field.get(previous);
+  const floor = base.floors[file] ?? null;
   // a differ that cannot be had (no pinned oasdiff, a fetch that failed) could not run, exit 2, and
   // is never read as the route refusals exit 1 reports
   const derived = await deriveVersion(
@@ -134,6 +156,10 @@ async function numbered(
         text: canonicalJson(field.set(previous, UNNUMBERED)),
       },
       next: canonicalJson(field.set(document, UNNUMBERED)),
+      floor: floor && {
+        version: floor.version,
+        text: canonicalJson(field.set(JSON.parse(floor.text) as Doc, UNNUMBERED)),
+      },
     },
     async (t, a, b) => {
       if (t === 'openapi') await ensureOasdiff();

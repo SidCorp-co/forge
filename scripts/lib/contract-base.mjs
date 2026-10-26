@@ -67,3 +67,71 @@ export function contractsAt(root, rev) {
   }
   return out;
 }
+
+/** The committed file naming what the interface registry already holds for each artifact. */
+export const FLOOR_PATH = 'packages/core/contracts/registry-floor.json';
+
+const SEMVER = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/;
+const COMMIT = /^[0-9a-f]{40}$/;
+const FLOOR_SHAPE =
+  '{ "<artifact file>": { "contract": "<registry slug>", "version": "MAJOR.MINOR.PATCH", "source": "<40-hex commit it was uploaded from>" } }';
+
+function floorFault(file, entry) {
+  if (!(file in CONTRACT_PATHS)) {
+    return `"${file}" is not a published artifact; the artifacts are ${Object.keys(CONTRACT_PATHS).join(', ')}`;
+  }
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+    return `"${file}" is not an object`;
+  }
+  const extra = Object.keys(entry).filter((k) => !['contract', 'version', 'source'].includes(k));
+  if (extra.length > 0) return `"${file}" carries unknown key(s) ${extra.join(', ')}`;
+  if (typeof entry.contract !== 'string' || entry.contract.length === 0) {
+    return `"${file}".contract names no registry contract`;
+  }
+  if (typeof entry.version !== 'string' || !SEMVER.test(entry.version)) {
+    return `"${file}".version ${JSON.stringify(entry.version)} is not MAJOR.MINOR.PATCH`;
+  }
+  if (typeof entry.source !== 'string' || !COMMIT.test(entry.source)) {
+    return `"${file}".source ${JSON.stringify(entry.source)} is not a 40-hex commit`;
+  }
+  return null;
+}
+
+/**
+ * The registry floor for each artifact: the latest number the interface registry holds, approved
+ * or not, and the artifact's text at the commit it was uploaded from, which the registry measures
+ * the next upload against. An artifact the file does not name has no floor; an entry that is
+ * malformed, or whose commit holds no such artifact here, is refused by name.
+ *
+ * @returns {{ floors: Record<string, { contract: string, version: string, source: string, text: string } | null> } | { refusal: string }}
+ */
+export function registryFloor(root, readText) {
+  const floors = Object.fromEntries(Object.keys(CONTRACT_PATHS).map((f) => [f, null]));
+  const raw = readText(FLOOR_PATH);
+  if (raw === null) return { floors };
+  let doc;
+  try {
+    doc = JSON.parse(raw);
+  } catch (err) {
+    return { refusal: `${FLOOR_PATH} is not JSON (${err.message})` };
+  }
+  if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
+    return { refusal: `${FLOOR_PATH} is ${FLOOR_SHAPE}` };
+  }
+  for (const [file, entry] of Object.entries(doc)) {
+    if (file === '$comment') continue;
+    const fault = floorFault(file, entry);
+    if (fault) return { refusal: `${FLOOR_PATH}: ${fault}; the file is ${FLOOR_SHAPE}` };
+    const text = contractsAt(root, entry.source)[file];
+    if (text === null) {
+      return {
+        refusal:
+          `${FLOOR_PATH}: "${file}" names ${entry.source.slice(0, 12)}, which holds no ` +
+          `${CONTRACT_PATHS[file]} here, so the text the registry measures against cannot be read. ` +
+          'Fetch the history (`fetch-depth: 0`) or name the commit the version was uploaded from',
+      };
+    }
+    floors[file] = { ...entry, text };
+  }
+  return { floors };
+}

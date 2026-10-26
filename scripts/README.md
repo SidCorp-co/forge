@@ -531,7 +531,18 @@ is measured by classifies the change (`packages/core/src/ecosystem/contract/deri
 and the rule an upload is held to (`packages/core/src/ecosystem/contract/naming.ts:proposeVersion`) names the bump: breaking a MAJOR, an
 addition a MINOR, anything else a PATCH. A change measured unknown takes a MAJOR, since no differ
 called it safe under a caret pin; a change no differ measured, a base number outside semver and a
-base holding no contract are refused, exit `2`, never numbered. oasdiff is fetched, sha256-checked,
+base holding no contract are refused, exit `2`, never numbered.
+
+**Never below what the registry holds.** `packages/core/contracts/registry-floor.json` names, per
+artifact, the latest number the interface registry already holds, approved or not, and the commit
+it was uploaded from. The registry refuses a number that does not come after its latest, and a
+returned version keeps its number, so a stale proposed version is overtaken, never reused: the
+number is at least the one the change since that commit owes (measured against the artifact at that
+commit, as the registry measures the upload) and strictly after the floor even where nothing
+changed. A number already a MAJOR past the floor stands without measuring. Raise an entry when the
+registry holds a number these files never carried; that is the one change that moves a version
+with no contract change, and the regenerated files must land in the same commit. A malformed entry,
+or a commit that holds no such artifact here, is refused by name, exit `2`. oasdiff is fetched, sha256-checked,
 into `packages/core/node_modules/.cache/oasdiff` the first time the API contract moves, unless
 `OASDIFF_BIN` or the core image already names one. Because the base is the target's commit, two
 branches that each move the contract both take the next number, and whichever lands second is red

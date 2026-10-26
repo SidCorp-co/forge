@@ -11,7 +11,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CONTRACT_PATHS, contractBase, contractsAt } from './contract-base.mjs';
+import {
+  CONTRACT_PATHS,
+  contractBase,
+  contractsAt,
+  FLOOR_PATH,
+  registryFloor,
+} from './contract-base.mjs';
 
 const AUTHOR = {
   GIT_AUTHOR_NAME: 't',
@@ -103,5 +109,51 @@ describe('the contracts a base holds', () => {
     expect(JSON.parse(at['forge-api.openapi.json']).info.version).toBe('1.0.0');
     expect(at['forge-mcp.tools.json']).toBeNull();
     expect(contractsAt(root, shas.empty)['forge-api.openapi.json']).toBeNull();
+  });
+});
+
+describe('the registry floor', () => {
+  const reading = (doc) => (path) =>
+    path === FLOOR_PATH ? (typeof doc === 'string' ? doc : JSON.stringify(doc)) : null;
+  const entry = (over = {}) => ({
+    contract: 'forge-api',
+    version: '1.0.0',
+    source: first,
+    ...over,
+  });
+
+  it('is none for an artifact the file does not name, and none at all without the file', () => {
+    expect(registryFloor(root, () => null).floors).toEqual({
+      'forge-api.openapi.json': null,
+      'forge-mcp.tools.json': null,
+    });
+    const { floors } = registryFloor(
+      root,
+      reading({ $comment: 'why', 'forge-api.openapi.json': entry() }),
+    );
+    expect(floors['forge-mcp.tools.json']).toBeNull();
+    expect(floors['forge-api.openapi.json']).toMatchObject({ version: '1.0.0', source: first });
+    expect(JSON.parse(floors['forge-api.openapi.json'].text).info.version).toBe('1.0.0');
+  });
+
+  it.each([
+    [{ 'forge-api.json': entry() }, /"forge-api\.json" is not a published artifact/],
+    [
+      { 'forge-api.openapi.json': entry({ version: 'v2' }) },
+      /\.version "v2" is not MAJOR\.MINOR\.PATCH/,
+    ],
+    [
+      { 'forge-api.openapi.json': entry({ source: 'abc123' }) },
+      /\.source "abc123" is not a 40-hex commit/,
+    ],
+    [{ 'forge-api.openapi.json': entry({ note: 'x' }) }, /unknown key\(s\) note/],
+    ['{ not json', /is not JSON/],
+  ])('refuses a malformed entry by name: %j', (doc, rule) => {
+    expect(registryFloor(root, reading(doc)).refusal).toMatch(rule);
+  });
+
+  it('refuses a source commit that holds no such artifact, since the registry measures against its text', () => {
+    const out = registryFloor(root, reading({ 'forge-mcp.tools.json': entry({ source: first }) }));
+    expect(out.refusal).toMatch(/holds no packages\/core\/contracts\/forge-mcp\.tools\.json here/);
   });
 });

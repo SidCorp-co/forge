@@ -12,8 +12,9 @@
 // A route or tool the generator cannot describe is its refusal, red here rather than omitted.
 //
 // Each artifact carries a semver number the generator derives from the one committed at the base
-// this change lands on (scripts/lib/contract-base.mjs), so a contract that moved without its
-// number moving, or a number taken against a base that has since moved, is drift here too.
+// this change lands on and strictly after the registry floor (scripts/lib/contract-base.mjs), so a
+// contract that moved without its number moving, a number taken against a base that has since
+// moved, and a number edited without the floor that raises it are drift here too.
 //
 // Exit codes: 0 committed = generated, 1 drift or a refusal, 2 could not run.
 
@@ -30,7 +31,7 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { API, artifactDrift, MCP, memberCount } from './lib/api-contracts.mjs';
-import { contractBase } from './lib/contract-base.mjs';
+import { contractBase, FLOOR_PATH } from './lib/contract-base.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
@@ -172,6 +173,8 @@ console.error(
 console.error(
   `\nThe committed contract is what a differ reads, so it has to be what the code serves.\n` +
     `If the change is intended, regenerate and commit both files:\n  ${REGENERATE}\n` +
-    `They were numbered after ${BASE.basis}; \`GITHUB_BASE_REF=<branch>\` in front names another.\n`,
+    `They were numbered after ${BASE.basis} (\`GITHUB_BASE_REF=<branch>\` in front names another)\n` +
+    `and after ${FLOOR_PATH}, the numbers the interface registry already holds. A version moves\n` +
+    'only with the contract, its base or that floor, so a version edited by hand is drift here.\n',
 );
 process.exit(1);
