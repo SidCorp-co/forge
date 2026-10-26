@@ -279,6 +279,19 @@ describe("a row naming a binding the list no longer holds", () => {
   });
 });
 
+// judge-138's other path, met again at r34 on the local stack: a binding cleared from another session
+// within the list cache's minute opened whole, its controls aimed at a row core no longer holds.
+describe("a row opened on a list read before its binding was cleared", () => {
+  it.each(PROVIDERS)("%s: reads the list again as it opens, and says the binding is gone", async (name) => {
+    provider = name;
+    const cleared = { ...bindings()[0], id: GONE };
+    queries.setQueryData(["integrations", "list", PROJECT], { items: [...bindings(), cleared], bindings: [...bindings(), cleared], may: ALL_MAY });
+    await open(GONE);
+    await waitFor(() => expect(screen.getByText(/binding is no longer on this project, so/)).toBeInTheDocument());
+    expect(screen.queryByRole("switch", { name: /Enabled for this project/ })).toBeNull();
+  });
+});
+
 describe("the delivery log of a row", () => {
   it.each(PROVIDERS)("%s: reads the row's own binding, and none where that binding is gone", async (name) => {
     provider = name;

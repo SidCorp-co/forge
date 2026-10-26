@@ -370,6 +370,14 @@ export function ConnectionDetailDrawer({
     if (failure) noticeRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }, [failure]);
 
+  // The list a drawer acts from is read again as it opens: a binding cleared from another session within
+  // the cache's minute otherwise opened whole, every control aimed at a row core no longer holds (r34).
+  const qc = useQueryClient();
+  const openedOn = card ? `${card.key}:${cardBindingId(card) ?? ""}` : null;
+  useEffect(() => {
+    if (openedOn) void qc.invalidateQueries({ queryKey: ["integrations", "list", projectId] });
+  }, [openedOn, qc, projectId]);
+
   if (!card || !provider) return null;
 
   // Scope suffix on the card key (`coolify:live`, `coolify:preview+live`,
