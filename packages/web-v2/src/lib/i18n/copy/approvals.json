@@ -108,6 +108,7 @@
     "approvals.more": "{shown} of {total} shown",
     "approvals.capMore": "{n} more after these",
     "approvals.leftOut.heading": "Also yours, not counted above: {what}",
+    "approvals.leftOut.agentHeading": "Not yours, the master decides them: {what}",
     "approvals.leftOut.next": "· next: {next}",
     "approvals.leftOut.more": "and {n} more",
     "approvals.peek.merges": "Merges, in order"

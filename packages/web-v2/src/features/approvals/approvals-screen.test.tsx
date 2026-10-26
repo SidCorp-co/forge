@@ -318,6 +318,31 @@ describe("what each row's ✓ and ✕ send", () => {
 });
 
 // REQ-68 BC-2: a reason is asked only where a rule needs one, prefilled from the recommendation
+describe("what the master takes (REQ-68 BC-3)", () => {
+  // REQ-68 BC-3, judged red on dev.325 (K98): the master's decisions were headed "Also yours"
+  it("heads what the master takes as not the viewer's, apart from what is theirs", async () => {
+    fakeCore(({ path, method }) => {
+      if (method === "GET" && path === DECISIONS) {
+        return {
+          body: {
+            ...READ,
+            notDecisions: [
+              ...READ.notDecisions,
+              { reason: "agent_takes", count: 7, items: [{ key: "FB-277", title: "FB-277", next: "the master takes it", opens: { kind: "feedback", key: "FB-277" } }] },
+            ],
+          },
+        };
+      }
+      return undefined;
+    });
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    const taken = screen.getByRole("region", { name: "7 the agent takes itself" });
+    expect(taken).toHaveTextContent("Not yours, the master decides them: 7 the agent takes itself");
+    expect(taken).not.toHaveTextContent("Also yours");
+  });
+});
+
 describe("the reason a rule asks for", () => {
   // REQ-68 BC-2, judged short on dev.325 (K98): the recommended answer opened a words box prefilled
   // from the recommendation, and a second press sent it; one press now sends those words

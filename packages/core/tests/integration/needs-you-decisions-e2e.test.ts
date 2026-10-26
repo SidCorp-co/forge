@@ -213,7 +213,10 @@ describe('GET /api/projects/:id/needs-you/decisions (REQ-41 BC-1)', () => {
       expect(asks.map((i) => i.key)).not.toContain(key);
       expect(byKey(r.decisions, key)).toBeUndefined();
     }
-    const counted = r.total + r.notDecisions.reduce((n, x) => n + x.count, 0);
+    // what the agent takes is the master's, listed on neither read (REQ-68 BC-3)
+    const counted =
+      r.total +
+      r.notDecisions.filter((x) => x.reason !== 'agent_takes').reduce((n, x) => n + x.count, 0);
     expect(counted).toBe(asks.length);
   });
 

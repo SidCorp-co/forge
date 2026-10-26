@@ -8,8 +8,9 @@ import type { DevelopmentOverview } from "../types";
 import { IssueFlow } from "./issue-flow";
 import { LeaseLanes } from "./lease-lanes";
 import { ModuleBars } from "./module-bars";
-import { NeedsYouList } from "@/features/needs-you";
-import { useNeedsYou } from "@/features/needs-you";
+import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
+import { DecisionList, NeedsYouList, useNeedsYou, useNeedsYouDecisions } from "@/features/needs-you";
+import { approvalsHref } from "@/lib/routes/approvals";
 import { DevelopmentSignals } from "./development-signals";
 import { DeliveryHolds } from "./delivery-holds";
 import { StuckChains } from "./stuck-chains";
@@ -34,7 +35,10 @@ function Coverage({ c }: { c: DevelopmentOverview["coverage"] }) {
 
 export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: string; slug: string } }) {
   const q = useDevelopmentOverview(scope.projectId);
-  const needsYou = useNeedsYou(scope.projectId).data?.items ?? [];
+  // the decisions are the one decisions read, three at a time with the rest counted, as the Dashboard
+  // draws them (REQ-68 BC-3); the ops rows that are no decision are listed under them
+  const decisions = useNeedsYouDecisions(scope.projectId).data;
+  const opsRows = (useNeedsYou(scope.projectId).data?.items ?? []).filter((n) => n.space !== "asks");
   const t = useCopy();
   return (
     <>
@@ -69,16 +73,16 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
                   </Section>
                 </div>
               </div>
-              {d.flow.total === 0 && needsYou.length === 0 && d.stuck.count === 0 && d.moving.count === 0 && d.holds.count === 0 ? (
+              {d.flow.total === 0 && (decisions?.total ?? 0) === 0 && opsRows.length === 0 && d.stuck.count === 0 && d.moving.count === 0 && d.holds.count === 0 ? (
                 <EmptyState message={t("overview.dev.emptyTitle")} />
               ) : null}
               <section id="needs-you" aria-label={t("issues.attention.needs_you")} className="scroll-mt-4" data-testid="needs-you">
-                <NeedsYouList
-                  items={needsYou}
-                  slug={scope.slug}
-                  foldKey="web-v2:development-overview:fold"
-                  empty={t("overview.dev.needsYouEmpty")}
-                />
+                {decisions ? (
+                  <DecisionList read={decisions} slug={scope.slug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(scope.slug)} />
+                ) : null}
+                {opsRows.length > 0 ? (
+                  <NeedsYouList items={opsRows} slug={scope.slug} foldKey="web-v2:development-overview:fold" empty={t("overview.dev.needsYouEmpty")} />
+                ) : null}
               </section>
             </>
           )}

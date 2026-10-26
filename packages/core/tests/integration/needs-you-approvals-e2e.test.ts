@@ -248,7 +248,11 @@ describe('the Needs you read lists every approval waiting on the viewer, and onl
       const read = ok(await say(who, 'GET', READ));
       const needs = ok(await say(who, 'GET', '/needs-you'));
       const asks = (needs.items as Doc[]).filter((i) => i.space === 'asks');
-      const counted = read.total + read.notDecisions.reduce((n: number, x: Doc) => n + x.count, 0);
+      const counted =
+        read.total +
+        read.notDecisions
+          .filter((x: Doc) => x.reason !== 'agent_takes')
+          .reduce((n: number, x: Doc) => n + x.count, 0);
       expect({ who, asks: asks.length }).toEqual({ who, asks: counted });
       // and every area's count is its rows: nothing counted is undrawn
       for (const [area, a] of Object.entries(needs.areas as Record<string, { you: number }>)) {

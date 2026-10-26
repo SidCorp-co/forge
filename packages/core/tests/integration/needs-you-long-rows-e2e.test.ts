@@ -233,7 +233,10 @@ describe('a decision is titled by its record’s title, and one long title never
     const needs = expectOk(await api(owner, 'GET', `/api/projects/${w.projectId}/needs-you`));
     const asks = (needs.items as Doc[]).filter((i) => i.space === 'asks');
     expect(asks.length).toBe(
-      read.total + read.notDecisions.reduce((n: number, x: Doc) => n + x.count, 0),
+      read.total +
+        read.notDecisions
+          .filter((x: Doc) => x.reason !== 'agent_takes')
+          .reduce((n: number, x: Doc) => n + x.count, 0),
     );
     expect(read.decisions.map((d: Doc) => d.id)).not.toContain(`suggestion:${made.suggestion.id}`);
     expect(byId(read, 'suggestion:')).toHaveLength(1);

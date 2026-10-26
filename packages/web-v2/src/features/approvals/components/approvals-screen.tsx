@@ -248,7 +248,7 @@ function LeftOut({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
       {read.notDecisions.map((n) => (
         <section key={n.reason} aria-label={t(`needsYou.decisions.reason.${n.reason}`, { n: n.count })}>
           <h2 className="text-12 font-semibold text-muted">
-            {t("approvals.leftOut.heading", { what: t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }) })}
+            {t(n.reason === "agent_takes" ? "approvals.leftOut.agentHeading" : "approvals.leftOut.heading", { what: t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }) })}
           </h2>
           <ul className="mt-1 divide-y divide-line-subtle">
             {n.items.map((item) => {

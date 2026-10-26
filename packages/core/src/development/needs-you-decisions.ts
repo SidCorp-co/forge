@@ -49,7 +49,7 @@ import {
 } from './needs-you-decision-builders.js';
 import { asked } from './needs-you-escalation.js';
 import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
-import { foldedDecisions, unreadableItem } from './needs-you-fold.js';
+import { type Folded, foldedDecisions, unreadableItem } from './needs-you-fold.js';
 import { repinDecision as designRepinDecision } from './needs-you-repin.js';
 import { type DesignRepinGroup, releaseApprovalsOfRuns } from './ports.js';
 
@@ -460,7 +460,20 @@ export async function needsYouListOf(
     issue: new Map(attention.issues.issues.map((i) => [i.key, i.id])),
     requirement: new Map(attention.requirements.map((r) => [r.key, r.id])),
   };
-  return { decisions, left, ids, listed, owedRows, folded };
+  // the rows of what the agent takes: `/needs-you` lists none of them, as this read lists none (REQ-68 BC-3)
+  const takenRows = new Set(owed.filter((o) => agentTakes(o.decision)).map((o) => o.row));
+  const mine: Folded = {
+    decisions: folded.decisions.filter((d) => !agentTakes(d)),
+    unreadable: folded.unreadable,
+  };
+  return {
+    decisions,
+    left,
+    ids,
+    listed: listed.filter(({ row }) => !takenRows.has(row)),
+    owedRows,
+    folded: mine,
+  };
 }
 
 /** The viewer's whole Needs you from an attention read already made: what the status report counts. */
