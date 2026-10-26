@@ -190,6 +190,7 @@ issueMergePullRequestRoutes.post(
         mergedAt: outcome.mergedAt.toISOString(),
         stamped: outcome.stamped,
         stampedIssues: outcome.stampedIssues,
+        checks: outcome.checks,
         release,
         deliveryId: outcome.deliveryId,
       });

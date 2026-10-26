@@ -6,6 +6,7 @@ import { forgeReads, recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
 import { readMergedHead } from './merged-head.js';
 import { markPullRequestMerged } from './projection.js';
+import { projectChecksAfterMerge } from './read-projection.js';
 import { issuesOfPullRequest } from './repo-projection.js';
 import { sourceHostForBinding } from './resolve.js';
 import type { SourceHost } from './types.js';
@@ -45,6 +46,9 @@ interface MergeRequest {
   method?: ChangeRequestMergeMethod | undefined;
 }
 
+/** The checks on the merged request's head, read once it landed, or why they were not. */
+type MergeChecks = Awaited<ReturnType<typeof projectChecksAfterMerge>>;
+
 type MergeOutcome =
   | {
       kind: 'merged';
@@ -57,6 +61,7 @@ type MergeOutcome =
       stamped: boolean;
       /** Every issue this merge stamped: each one the request delivers (REQ-63 BC-4). */
       stampedIssues: string[];
+      checks: MergeChecks;
     }
   | {
       kind: 'already-merged';
@@ -66,6 +71,7 @@ type MergeOutcome =
       target: string;
       stamped: boolean;
       stampedIssues: string[];
+      checks: MergeChecks;
     }
   | { kind: 'refused'; deliveryId: string; reason: string; detail: string };
 
@@ -93,6 +99,7 @@ interface StoredRow {
   issueIds: string[];
   number: number;
   state: string;
+  headSha: string;
 }
 
 async function storedRow(pullRequestId: string): Promise<StoredRow | null> {
@@ -103,6 +110,7 @@ async function storedRow(pullRequestId: string): Promise<StoredRow | null> {
       bindingId: repoPullRequests.bindingId,
       number: repoPullRequests.number,
       state: repoPullRequests.state,
+      headSha: repoPullRequests.headSha,
     })
     .from(repoPullRequests)
     .where(eq(repoPullRequests.id, pullRequestId))
@@ -259,6 +267,12 @@ export async function mergeStoredChangeRequest(
       head,
       stampIssue,
     });
+    // a binding no webhook reaches learns its checks only by asking; the landing is recorded by
+    // here, so a read that fails is reported on the outcome and never undoes it
+    const checks = await projectChecksAfterMerge(host, {
+      id: row.id,
+      headSha: result.head ?? row.headSha,
+    });
     await updateDelivery(deliveryId, {
       status: 'ok',
       response:
@@ -287,6 +301,7 @@ export async function mergeStoredChangeRequest(
       target: result.target,
       stamped,
       stampedIssues,
+      checks,
     };
   } catch (err) {
     await updateDelivery(deliveryId, {

@@ -21,6 +21,7 @@ export interface MergeRequestBody {
   head_pipeline?: { id?: number; status?: string; sha?: string } | null;
   web_url?: string;
   title?: string;
+  description?: string | null;
   updated_at?: string | null;
   diff_refs?: { base_sha?: string | null; head_sha?: string | null } | null;
 }

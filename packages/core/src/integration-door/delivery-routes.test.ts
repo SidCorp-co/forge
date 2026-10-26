@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   host: null as unknown,
   hostError: null as Error | null,
   sentry: null as (() => Promise<unknown>) | null,
+  projected: [] as unknown[],
+  projectError: null as Error | null,
   bindings: [] as unknown[],
   coolifyRows: [] as unknown[],
 }));
@@ -33,6 +35,11 @@ vi.mock('../integrations/source-host/index.js', async (importOriginal) => {
       return state.host;
     },
     projectOpenedPullRequest: async () => ({ outcome: 'recorded', issueId: null }),
+    projectReadChangeRequest: async (args: { read: unknown }) => {
+      if (state.projectError) throw state.projectError;
+      state.projected.push(args.read);
+      return { projection: { outcome: 'recorded', issueIds: [] }, facts: [] };
+    },
   };
 });
 
@@ -117,7 +124,32 @@ const host = {
   requestReview: vi.fn(async (input: unknown) => input),
   openChangeRequest: vi.fn(async () => ({ number: 7, url: 'u' })),
   submitReview: vi.fn(),
+  readCommit: vi.fn(async (ref: string) =>
+    ref.startsWith('abc1234') ? { sha: FULL, message: 'm', committedAt: null } : null,
+  ),
+  branchHead: vi.fn(async () => FULL),
+  readChecks: vi.fn(async (): Promise<unknown[]> => []),
+  readChangeRequest: vi.fn(async (number: number) => ({ number, state: 'open' })),
+  updateChangeRequest: vi.fn(async (input: { number: number }) => ({ ...input, state: 'open' })),
+  closeChangeRequest: vi.fn(async ({ number }: { number: number }) => ({
+    number,
+    state: 'closed',
+  })),
 };
+
+const FULL = `abc1234${'0'.repeat(33)}`;
+
+const check = (id: string, name: string, status: string, conclusion: string | null) => ({
+  id,
+  name,
+  app: 'gitlab-ci',
+  headSha: FULL,
+  status,
+  conclusion,
+  detailsUrl: null,
+  startedAt: `2026-10-26T08:0${id}:00Z`,
+  completedAt: null,
+});
 
 beforeEach(() => {
   state.held = new Set(['project.read', 'project.write']);
@@ -126,6 +158,8 @@ beforeEach(() => {
   state.sentry = null;
   state.bindings = [];
   state.coolifyRows = [];
+  state.projected = [];
+  state.projectError = null;
   vi.clearAllMocks();
 });
 
@@ -192,11 +226,106 @@ describe('the source door', () => {
     expect(JSON.stringify(body)).toContain('not_granted');
   });
 
-  it('serves no merge, close or branch delete', async () => {
+  it('serves no merge or branch delete', async () => {
     const base = `/${P}/integrations/source/change-requests/3`;
-    for (const verb of ['merge', 'close', 'delete-branch']) {
+    for (const verb of ['merge', 'delete-branch']) {
       expect((await post(`${base}/${verb}`, {})).status).toBe(404);
     }
+  });
+});
+
+describe('the source door with no webhook: checks, edit, close and refresh', () => {
+  const base = `/${P}/integrations/source`;
+  const send = (method: string, path: string, body?: unknown) =>
+    app().request(path, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+
+  it('reads a commit’s checks at its whole sha, the latest run per name rolled up', async () => {
+    host.readChecks.mockResolvedValueOnce([
+      check('1', 'pipeline', 'completed', 'failure'),
+      check('2', 'pipeline', 'completed', 'success'),
+      check('3', 'nightly', 'in_progress', null),
+    ]);
+    const res = await app().request(`${base}/commits/abc1234/checks`);
+    expect(res.status).toBe(200);
+    expect(host.readChecks).toHaveBeenCalledWith(FULL);
+    expect(await res.json()).toMatchObject({
+      sha: FULL,
+      state: 'pending',
+      rollup: { total: 2, success: 1, failure: 0, pending: 1 },
+    });
+  });
+
+  it('answers `none`, never a green, where nothing ran on the commit', async () => {
+    const res = await app().request(`${base}/commits/abc1234/checks`);
+    expect(await res.json()).toMatchObject({ state: 'none', rollup: { total: 0 } });
+  });
+
+  it('refuses a sha that names no commit, and one that is no sha, before reading checks', async () => {
+    const unknown = await app().request(`${base}/commits/${'f'.repeat(40)}/checks`);
+    expect(await codeOf(unknown)).toBe('SOURCE_HOST_INPUT_REFUSED');
+    const branch = await app().request(`${base}/commits/release-stg/checks`);
+    expect(branch.status).toBe(400);
+    expect(host.readChecks).not.toHaveBeenCalled();
+  });
+
+  it('reads a branch’s checks at its head, a slash in its name URL-encoded', async () => {
+    host.readChecks.mockResolvedValueOnce([check('1', 'pipeline', 'completed', 'success')]);
+    const res = await app().request(`${base}/branches/release%2Fstg/checks`);
+    expect(res.status).toBe(200);
+    expect(host.branchHead).toHaveBeenCalledWith('release/stg');
+    expect(await res.json()).toMatchObject({ ref: 'release/stg', sha: FULL, state: 'success' });
+  });
+
+  it('holds a writer to edit, close and refresh; a reader may read checks', async () => {
+    state.held = new Set(['project.read']);
+    expect((await send('PATCH', `${base}/change-requests/3`, { title: 't' })).status).toBe(403);
+    expect((await post(`${base}/change-requests/3/close`, {})).status).toBe(403);
+    expect((await post(`${base}/change-requests/3/refresh`, {})).status).toBe(403);
+    expect(host.updateChangeRequest).not.toHaveBeenCalled();
+    expect(host.closeChangeRequest).not.toHaveBeenCalled();
+    expect(host.readChangeRequest).not.toHaveBeenCalled();
+    expect((await app().request(`${base}/branches/main/checks`)).status).toBe(200);
+  });
+
+  it('refuses an edit that changes nothing, and sends nothing', async () => {
+    const res = await send('PATCH', `${base}/change-requests/3`, {});
+    expect(res.status).toBe(400);
+    expect(host.updateChangeRequest).not.toHaveBeenCalled();
+  });
+
+  it('edits, closes and refreshes, projecting what the host answered each time', async () => {
+    const edited = await send('PATCH', `${base}/change-requests/3`, { body: 'pairs with ISS-2' });
+    expect(await edited.json()).toMatchObject({ number: 3, projection: { outcome: 'recorded' } });
+    expect(host.updateChangeRequest).toHaveBeenCalledWith({ number: 3, body: 'pairs with ISS-2' });
+    const closed = await post(`${base}/change-requests/3/close`, {});
+    expect(await closed.json()).toMatchObject({
+      state: 'closed',
+      projection: { outcome: 'recorded' },
+    });
+    const read = await post(`${base}/change-requests/3/refresh`, {});
+    expect(await read.json()).toMatchObject({ number: 3, projection: { outcome: 'recorded' } });
+    expect(state.projected).toHaveLength(3);
+  });
+
+  it('reports a projection that failed after the host took the edit, never an error', async () => {
+    state.projectError = new Error('the row would not write');
+    const res = await post(`${base}/change-requests/3/close`, {});
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { projection: { outcome: string; reason: string } };
+    expect(body.projection.outcome).toBe('not-recorded');
+    expect(body.projection.reason).toContain('STANDS');
+    expect(body.projection.reason).toContain('/refresh');
+  });
+
+  it('refuses a refresh whose projection cannot be written, since nothing else happened', async () => {
+    const { SourceHostCallError } = await import('../integrations/source-host/index.js');
+    state.projectError = new SourceHostCallError(200, 'gitlab answered !3 with no base sha');
+    const res = await post(`${base}/change-requests/3/refresh`, {});
+    expect(await codeOf(res)).toBe('HOST_UNAVAILABLE');
   });
 });
 
