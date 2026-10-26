@@ -406,11 +406,8 @@ describe('POST /api/agent-sessions/start naming a checkout for a remote session'
     expect(said).toContain('forge-runner bind apiflow --path <dir>');
     expect(said).not.toContain('<slug>');
     expect(said).not.toContain('or bind the device');
-    // The device is named as the Runners page names it, never "that device" (round 4, criterion 20).
-    expect(said).toContain('this session runs on xeon-box');
-    expect(said).toContain('--path <dir>` on xeon-box');
-    expect(said).not.toContain('that device');
-    expect(said).not.toContain(DEVICE_ID);
+    expect(said).toMatch(/runs on xeon-box, in .*--path <dir>` on xeon-box/);
+    expect(said).not.toMatch(new RegExp(`that device|${DEVICE_ID}`));
     expect(dbInsert).not.toHaveBeenCalled();
   });
 

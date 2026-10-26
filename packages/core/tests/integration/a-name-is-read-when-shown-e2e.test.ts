@@ -189,7 +189,7 @@ describe("a speaker's name, read when the room is read", () => {
 
   // ISS-1236 round 4: the room read named every person by their name, so a reader who set none read
   // their own line as "Another member", which the web's own thread never says of the viewer.
-  it("is \"You\" to the reader who sent it, and the speaker's name to everyone else", async () => {
+  it('is "You" to the reader who sent it, and the speaker\'s name to everyone else', async () => {
     await said(1, null);
     await said(2, null, ownerId);
     const read = async (reader: string) => {

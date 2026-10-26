@@ -165,10 +165,7 @@ export async function readDeviceBinding(
   return { runnerId: row.id, runnerType: row.type, checkout: checkout.length ? checkout : null };
 }
 
-/**
- * A device's name, as the project's Runners page shows it; null where no such device exists. Only for
- * a device the caller reached through the project's own binding, since a name is its owner's to show.
- */
+/** The name a device's Runners row shows, for a refusal about a device the project already binds. */
 export async function nameOfDevice(deviceId: string): Promise<string | null> {
   const [row] = await db
     .select({ name: devices.name })

@@ -3206,7 +3206,7 @@
 - **A conversation opens while the project's box is not set up.** The room failed to open; it now opens and says why Agent mode is unavailable, and only sending an Agent message is refused. (ISS-1236)
 - **The way to bind a box is told in the order that works.** Assign it on the project's Runners page first; `forge-runner bind` sets its folder only once it is assigned, and the project's name is written in. (ISS-1236)
 - **A Rocket.Chat room is answered in its own words when the project's box is not set up.** It no longer shows the box's name, id or a command; the project's admins are told instead, until it is bound. (ISS-1236)
-- **When a project's box is paired but not assigned, the Agent panel says so**, in a new room as in one already open. It named pairing, which was done; it now names the box, links the project's Runners page and shows the bind command. (ISS-1236)
+- **When a project's box is paired but not assigned, the Agent panel says so**, in new rooms too. It named pairing, which was done; it now names the box, links the project's Runners page and shows the bind command. (ISS-1236)
 - **Starting a session with a folder of your own names the box it will run on**, rather than "that device", and where to move its folder. (ISS-1236)
 - **Your own messages read "You" wherever a room is read through the API**, not "Another member" when you have set no name. (ISS-1236)
 - **Building the Project Brain no longer asks for a template.** Onboarding refused every project that had not applied one, and no template could satisfy it; it now starts on any project with a bound box. (ISS-1236)
