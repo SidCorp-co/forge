@@ -4,12 +4,13 @@ import { db, type Tx } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { forgeReads, recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
+import { outcomeUnconfirmed, readBackMerge } from './merge-unknown.js';
 import { readMergedHead } from './merged-head.js';
 import { markPullRequestMerged } from './projection.js';
 import { projectChecksAfterMerge } from './read-projection.js';
 import { issuesOfPullRequest } from './repo-projection.js';
 import { sourceHostForBinding } from './resolve.js';
-import type { SourceHost } from './types.js';
+import type { HostMergeResult, SourceHost } from './types.js';
 
 /** The delivery event every merge, refusal and already-merged reading is logged under. */
 const MERGE_EVENT = 'pull_request.merge';
@@ -79,6 +80,8 @@ type MergeOutcome =
       /** Every linked issue the commit is not the landing of, refused rather than stamped. */
       refusedStamps: RefusedStamp[];
       checks: MergeChecks;
+      /** Where the merge call went unconfirmed and the request was read back merged: what it hit. */
+      observedAfter: string | null;
     }
   | {
       kind: 'already-merged';
@@ -90,6 +93,7 @@ type MergeOutcome =
       stampedIssues: string[];
       refusedStamps: RefusedStamp[];
       checks: MergeChecks;
+      observedAfter: string | null;
     }
   | { kind: 'refused'; deliveryId: string; reason: string; detail: string };
 
@@ -221,6 +225,27 @@ async function refuse(deliveryId: string, reason: string, detail: string): Promi
 }
 
 /**
+ * The host's merge, or, where its outcome is unknown, what the request reads as now
+ * (`merge-unknown.ts`): never a throw a caller would answer by merging again.
+ */
+async function mergeOrReadBack(
+  host: SourceHost,
+  args: Parameters<SourceHost['merge']>[0],
+): Promise<HostMergeResult | Awaited<ReturnType<typeof readBackMerge>>> {
+  let result: HostMergeResult;
+  try {
+    result = await host.merge(args);
+  } catch (err) {
+    const failure = err instanceof Error ? err.message : String(err);
+    return readBackMerge(host, args.number, failure, null);
+  }
+  if (result.kind === 'refused' && outcomeUnconfirmed(result)) {
+    return readBackMerge(host, args.number, result.reason, result);
+  }
+  return result;
+}
+
+/**
  * Merge one stored change request through the host its binding serves, and record the landing.
  *
  * `expectBindingId` is how a caller authorised for ONE binding says so: a dispatch holding a context
@@ -279,17 +304,19 @@ export async function mergeStoredChangeRequest(
       );
     }
 
-    const result = await host.merge({
+    const result = await mergeOrReadBack(host, {
       number: row.number,
       expectedHeadSha: req.expectedHeadSha,
       method,
     });
     if (result.kind === 'refused') return refuse(deliveryId, result.reason, result.detail);
+    const observedAfter = 'observedAfter' in result ? result.observedAfter : null;
 
     const head = await readMergedHead((a, b) => host.sameTree(a, b), result.head, result.commitSha);
     const { stamped, stampedIssues, refusedStamps } = await writeEvidence({
       row,
-      performed: result.kind === 'merged',
+      // a landing read back after an unconfirmed call may be anyone's: the commit says whose
+      performed: result.kind === 'merged' && observedAfter === null,
       host,
       commitSha: result.commitSha,
       mergedAt: result.mergedAt,
@@ -319,6 +346,7 @@ export async function mergeStoredChangeRequest(
               commitSha: result.commitSha,
               target: result.target,
               requestedBy: req.requestedBy,
+              ...(observedAfter ? { observedAfter } : {}),
               stamped,
               stampedIssues,
               refusedStamps,
@@ -335,6 +363,7 @@ export async function mergeStoredChangeRequest(
       stampedIssues,
       refusedStamps,
       checks,
+      observedAfter,
     };
   } catch (err) {
     await updateDelivery(deliveryId, {

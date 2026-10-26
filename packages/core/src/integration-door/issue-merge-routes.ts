@@ -207,6 +207,8 @@ issueMergePullRequestRoutes.post(
         id: issueId,
         merged: true,
         alreadyMerged: outcome.kind === 'already-merged',
+        // the merge call went unconfirmed and the request read back merged: what that call hit
+        observedAfter: outcome.observedAfter,
         commitSha: outcome.commitSha,
         target: outcome.target,
         mergedAt: outcome.mergedAt.toISOString(),

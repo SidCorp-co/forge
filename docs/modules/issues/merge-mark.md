@@ -113,6 +113,19 @@ commits landed through another one — sharing its head, its links naming issues
 supersedes the mark an issue holds from its own merge. Every stamp written carries its actor, so its
 `issue.updated` row is written too.
 
+## A merge whose answer was lost
+
+Forge's own merge can reach the host and lose its answer: adminhub-fe !1994 merged at 8ab74c9f
+through the relay, the answer timed out, and the route answered 500, which a caller reads as "merge
+again". Where the host's merge call throws, or refuses in words that leave the merge unknown, core
+reads the change request back (`packages/core/src/integrations/source-host/merge-unknown.ts`):
+merged answers success with the landing it observed (`observedAfter` names what the call hit), and
+its stamp is the commit's to identify; unmerged is refused `merge-unconfirmed`, naming the state the
+read showed and never promising it will not land, since a merge the host is still making can land
+after the read; and a read that fails too is refused `merge-outcome-unknown`, which says not to send
+the merge again. A call on a request
+already merged answers it merged (`alreadyMerged`) without merging again.
+
 ## A mark a merge check is owed for
 
 Before the stamp, `refuseUncheckedMerge` (`packages/core/src/issues/merge-marker.ts`) asks
@@ -252,7 +265,11 @@ workflow `issue-lifecycle` rev 8). The run that holds the issue moves it `in_pro
 `awaiting_release` itself, an edge that asks for the recorded merge (`MERGE_NOT_RECORDED`) and no
 verdict: verdicts are judged on the release that carries the work, and a failing one reopens the
 issue (REQ-45 BC-1, BC-2). When the run ends without moving it, the kernel hands the issue back to the
-status the run took it from. `awaiting_release` → `closed` is written by a release that claimed the
+status the run took it from, unless its work landed: a recorded mark the issue was not reopened after
+(`packages/core/src/pipeline/wedge-landed.ts:landedWorkStands`, the reconciler's own reading) keeps it
+where it stands, and the issue records why (`issue.handBackKept`,
+`packages/core/src/devices/run-issue-return.ts`). A run's end hands back its lease and never undoes a
+landing (adminhub-fe ISS-50, 2026-10-26). `awaiting_release` → `closed` is written by a release that claimed the
 issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too (`CLOSE_REQUIRES_SHIPPED`). On a project with
 no production environment that release is the recorded landing
 (`packages/core/src/release-batch/recorded-landing.ts:recordLanding`), which also asks that the
