@@ -866,6 +866,7 @@ export const SAID = {
 	"standing.act.answerSteward": {
 		en: "answer the steward's question",
 	},
+	"standing.act.answerQuestion": { en: "answer a question" },
 	"standing.act.verdictsNotReread": { en: "verdicts not re-read" },
 	"standing.act.verifyFix": { en: "verify the fix" },
 	"standing.act.writeRevision": { en: "write a revision" },
@@ -1522,6 +1523,9 @@ export const SAID = {
 	"requirements.rule.proposed": {
 		en: "a proposed revision waits on a sign-off",
 	},
+	"requirements.rule.questionAsked": {
+		en: "a question asked of it waits on a person",
+	},
 	"requirements.rule.stewardAsked": {
 		en: "the steward asked what to do with this stuck draft",
 	},
@@ -1837,7 +1841,7 @@ export const SAID = {
 		en: "Nothing pending",
 	},
 	"questions.rule.unheld": {
-		en: "a question no issue, requirement or feedback holds: answer it on Agents",
+		en: "a question no issue, requirement or feedback holds: answer it on Approvals",
 	},
 	"designs.who.aPerson": { en: "A person" },
 	"designs.act.settleMarkers": {
@@ -2652,6 +2656,10 @@ export const SAID = {
 		vars: { title: "said", revision: "count" },
 	},
 	"needsYou.title.question": { en: "A question a run asked" },
+	"needsYou.act.decideProposal": { en: "approve or decline what an agent proposed" },
+	"needsYou.rule.proposed": {
+		en: "an agent proposed it, and only a person decides it",
+	},
 	"needsYou.title.release": {
 		en: "Release {version}",
 		vars: { version: "version" },

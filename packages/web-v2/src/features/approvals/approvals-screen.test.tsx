@@ -2,6 +2,7 @@
 // a verb and its object, and tags, never the record's machinery; chips narrow it; a selection states
 // what approving makes before it acts; a decline is refused without a reason; a decision is held five
 // seconds for Undo before anything is posted; and the peek steps on to the next row once one is decided.
+// REQ-68 BC-3: three decisions show at a time, the rest counted, so a test reaches its row by narrowing.
 //
 // @direct-test-of packages/web-v2/src/features/approvals/components/approval-row.tsx
 // @direct-test-of packages/web-v2/src/features/approvals/components/approval-peek.tsx
@@ -44,29 +45,36 @@ const rowOf = (key: string) => {
 };
 const posts = <C extends { method: string }>(calls: C[]): C[] => calls.filter((c) => c.method === "POST");
 
-beforeEach(() => window.history.replaceState(null, "", "/projects/hop/approvals"));
+/** Approvals opened narrowed to `search`, which is how a row past the first three is reached. */
+const openAt = (search = "") => window.history.replaceState(null, "", `/projects/hop/approvals${search}`);
+
+beforeEach(() => openAt());
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("the Approvals page", () => {
-  it("lists every decision once, grouped, each read as its proposal and tags, with the read's own count", async () => {
+  it("shows three decisions at a time, each read as its proposal and tags, the rest counted, with the read's own count", async () => {
     core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
-    expect(screen.getAllByTestId("approval-row")).toHaveLength(READ.total);
+    expect(screen.getAllByTestId("approval-row")).toHaveLength(3);
+    for (const key of ["FB-135", "FB-137", "FB-139"]) expect(rowOf(key)).toBeTruthy();
+    expect(screen.getByTestId("approvals-cap-more")).toHaveTextContent(`${READ.total - 3} more after these`);
     expect(screen.getByTestId("approvals-count")).toHaveTextContent(`Decisions waiting on you: ${READ.total}`);
-    const groups = [...document.querySelectorAll("[data-testid^=approval-group-]")].map((g) => g.getAttribute("data-testid"));
-    expect(groups).toEqual(["approval-group-feedback", "approval-group-breakdown", "approval-group-design_update", "approval-group-mockup", "approval-group-requirement", "approval-group-release", "approval-group-question"]);
 
     const fb = rowOf("FB-135");
     expect(within(fb).getByTestId("approval-proposal")).toHaveTextContent("New issue “Do not reset merged issues as wedges”");
     expect(within(fb).getByTestId("approval-tags")).toHaveTextContent(/Check first.*Bug · medium.*Not reproduced.*≈ FB-163 80%.*REQ-2 BC-10/);
     expect(within(rowOf("FB-137")).getByTestId("approval-tags")).toHaveTextContent(/Agent recommends.*Reproduced/);
+    const search = screen.getByRole("searchbox");
+    fireEvent.change(search, { target: { value: "system-context" } });
     expect(within(rowOf("system-context")).getByTestId("approval-proposal")).toHaveTextContent("Follow r17 2 designs built on it move to its approved revision");
     // a person's question reads as asked, with no proposal tag
+    fireEvent.change(search, { target: { value: "ISS-41" } });
     expect(within(rowOf("ISS-41")).getByTestId("approval-proposal")).toHaveTextContent("Should the export keep the old column order");
+    expect(screen.queryByTestId("approvals-cap-more")).toBeNull();
 
     const text = screen.getByTestId("approvals-screen").textContent ?? "";
     for (const internal of ["Suggestion ·", "Feedback triage", "Re-pin", "Decided on its page", "Asker not recorded", "feedback_triage", "suggestion:"]) expect(text).not.toContain(internal);
@@ -78,7 +86,8 @@ describe("the Approvals page", () => {
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
     fireEvent.click(screen.getByTestId("approval-chip-feedback"));
-    expect(screen.getAllByTestId("approval-row").map((r) => r.dataset.topic)).toEqual(["feedback", "feedback", "feedback", "feedback"]);
+    expect(screen.getAllByTestId("approval-row").map((r) => r.dataset.topic)).toEqual(["feedback", "feedback", "feedback"]);
+    expect(screen.getByTestId("approvals-cap-more")).toHaveTextContent("1 more after these");
     expect(window.location.search).toContain("topic=feedback");
     fireEvent.click(screen.getByTestId("approval-chip-recommends"));
     expect(screen.getAllByTestId("approval-row").map((r) => within(r).getByTestId("approval-tags").textContent)).toEqual([expect.stringContaining("Agent recommends"), expect.stringContaining("Agent recommends")]);
@@ -92,14 +101,17 @@ describe("the Approvals page", () => {
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
     fireEvent.click(within(screen.getByTestId("approval-group-feedback")).getByRole("checkbox", { name: "Select all Feedback" }));
-    expect(screen.getByTestId("approval-bulk")).toHaveTextContent("4 selected");
-    expect(screen.getByTestId("approval-bulk-summary")).toHaveTextContent("Approving makes 2 new issues · 1 requirement revision · 1 closed · 2 marked Check first");
+    // a group selects the three it shows (REQ-68 BC-3), never a fourth the person has not seen
+    expect(screen.getByTestId("approval-bulk")).toHaveTextContent("3 selected");
+    expect(screen.getByTestId("approval-bulk-summary")).toHaveTextContent("Approving makes 2 new issues · 1 requirement revision · 2 marked Check first");
     expect(posts(calls)).toHaveLength(0);
     fireEvent.click(screen.getByTestId("approval-bulk-approve"));
-    expect(screen.queryAllByTestId("approval-row").filter((r) => r.dataset.topic === "feedback")).toHaveLength(0);
-    expect(screen.getByTestId("approval-undo")).toHaveTextContent("4 items approved");
+    // the three leave, and the next decision comes up in their place
+    for (const key of ["FB-135", "FB-137", "FB-139"]) expect(screen.queryAllByText(key, { exact: true })).toHaveLength(0);
+    expect(rowOf("FB-131")).toBeTruthy();
+    expect(screen.getByTestId("approval-undo")).toHaveTextContent("3 items approved");
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
-    await waitFor(() => expect(posts(calls).map((c) => c.path)).toEqual(["s135", "s137", "s139", "s131"].map((s) => `/projects/${P}/suggestions/${s}/accept`)));
+    await waitFor(() => expect(posts(calls).map((c) => c.path)).toEqual(["s135", "s137", "s139"].map((s) => `/projects/${P}/suggestions/${s}/accept`)));
   });
 
   it("refuses a decline with no reason, then sends the reason the person typed", async () => {
@@ -135,6 +147,7 @@ describe("the Approvals page", () => {
 
   it("opens a row in its peek, approves it there, and steps on to the next row", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    openAt("?topic=design_update");
     const calls = core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
@@ -142,8 +155,10 @@ describe("the Approvals page", () => {
     const peek = await screen.findByTestId("approval-peek");
     expect(within(peek).getByTestId("approval-peek-proposal")).toHaveTextContent("Follow r17: 2 designs built on it move to its approved revision");
     expect(within(peek).getByTestId("approval-peek-table")).toHaveTextContent("design-runner");
+    // what deciding changes and its impact, once each, as two properties (REQ-68 BC-1)
+    expect(within(peek).getByTestId("approval-peek-stakes")).toHaveTextContent("ChangesWhat happens next on itImpactIt waits on this until it is decided.");
     fireEvent.click(answerIn(peek, "approve"));
-    await waitFor(() => expect(within(screen.getByTestId("approval-peek")).getByTestId("approval-peek-proposal")).toHaveTextContent("Accept mockup: Approvals page"));
+    await waitFor(() => expect(within(screen.getByTestId("approval-peek")).getByTestId("approval-peek-proposal")).toHaveTextContent("Follow r18: 1 design built on it moves to its approved revision"));
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
     await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/workflows/wf-system-context/design/repins`, body: { revision: 17, designs: [{ workflowId: "wf-design-steward", revision: 10 }, { workflowId: "wf-design-runner", revision: 11 }] } })]));
   });
@@ -154,6 +169,7 @@ describe("the Approvals page", () => {
 describe("what each row's ✓ and ✕ send", () => {
   it("names on a question row the answer its ✓ sends, and opens its other answers in the peek", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    openAt("?q=ISS-41");
     const calls = core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
@@ -213,6 +229,7 @@ describe("what each row's ✓ and ✕ send", () => {
 
   it("presses the answer a digit names, as the peek shows it on that answer", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    openAt("?q=ISS-41");
     const calls = core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
@@ -227,6 +244,7 @@ describe("what each row's ✓ and ✕ send", () => {
 
   it("declines a release with the reason typed, and never sends its approve from the ✕", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    openAt("?q=0.4.0-dev.270");
     const calls = core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
@@ -242,6 +260,7 @@ describe("what each row's ✓ and ✕ send", () => {
 
   it("asks the words a release approval takes before its ✓ sends it", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    openAt("?q=0.4.0-dev.270");
     const calls = core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
@@ -288,8 +307,46 @@ describe("what each row's ✓ and ✕ send", () => {
     core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
-    for (const key of ["FB-135", "REQ-41", "REQ-49", "0.4.0-dev.270"]) expect(within(rowOf(key)).getByTestId("approval-decline")).toBeTruthy();
-    for (const key of ["system-context", "ISS-41"]) expect(within(rowOf(key)).queryByTestId("approval-decline")).toBeNull();
+    const search = screen.getByRole("searchbox");
+    const declines = (key: string) => {
+      fireEvent.change(search, { target: { value: key } });
+      return within(rowOf(key)).queryByTestId("approval-decline");
+    };
+    for (const key of ["FB-135", "REQ-41", "REQ-49", "0.4.0-dev.270"]) expect(declines(key)).toBeTruthy();
+    for (const key of ["system-context", "ISS-41"]) expect(declines(key)).toBeNull();
+  });
+});
+
+// REQ-68 BC-2: a reason is asked only where a rule needs one, prefilled from the recommendation
+describe("the reason a rule asks for", () => {
+  it("asks the reason an agree's rule needs, prefilled with the recommendation's why, and sends it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const base = READ.decisions.find((d) => d.key === "REQ-48");
+    if (!base?.proposal) throw new Error("no proposal row");
+    const path = `/api/projects/${P}/requirements/REQ-72/agree`;
+    const why = "Its designs are approved and it waits only on an agree.";
+    const agree = {
+      ...base,
+      id: "requirement-agree:r72",
+      key: "REQ-72",
+      title: "Referrals reach a clinician",
+      opens: null,
+      recommended: { answerId: "approve", why, by: "rule" as const },
+      answers: [{ id: "approve", label: "Agree", act: "requirement.agree" as const, path, body: { revision: 1, reason: why }, needsReason: true, declines: false, effect: null, recommended: true }],
+    };
+    const calls = fakeCore(({ path: at, method }) => {
+      if (method === "GET" && at === DECISIONS) return { body: { ...READ, total: 1, decisions: [agree] } };
+      if (method === "POST") return { body: { ok: true } };
+      return undefined;
+    });
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    fireEvent.click(within(rowOf("REQ-72")).getByTestId("approval-approve"));
+    const peek = await screen.findByTestId("approval-peek");
+    expect(within(peek).getByTestId("approval-words")).toHaveValue(why);
+    fireEvent.click(within(peek).getByTestId("approval-words-send"));
+    await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
+    await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/requirements/REQ-72/agree`, body: { revision: 1, reason: why } })]));
   });
 });
 

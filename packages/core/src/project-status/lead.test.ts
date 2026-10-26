@@ -2,9 +2,10 @@
 // a stuck item first, and counts the rest as "+n more", never dropping one.
 
 import type { NeedsYouDecision } from '@forge/contracts/needs-you-decisions';
-import { NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
+import { PROJECT_STATUS_ROWS } from '@forge/contracts/project-status';
+import { type ItemStanding, NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
 import { describe, expect, it } from 'vitest';
-import { needsYouOf } from './lead.js';
+import { needsYouOf, stuckOf } from './lead.js';
 
 const decision = (key: string, over: Partial<NeedsYouDecision> = {}): NeedsYouDecision => ({
   group: 'approve',
@@ -14,6 +15,8 @@ const decision = (key: string, over: Partial<NeedsYouDecision> = {}): NeedsYouDe
   title: key,
   opens: { kind: 'requirement', key },
   question: `Agree ${key}?`,
+  changes: `Whether ${key} is built`,
+  impact: `${key} waits on this.`,
   recommended: { answerId: 'agree', why: 'rule', by: 'rule' },
   noRecommendation: null,
   answers: [
@@ -68,5 +71,48 @@ describe('Needs you, capped', () => {
 
   it('says no more where three or fewer are owed', () => {
     expect(needsYouOf(five.slice(0, 2), 'forge-dev', '2026-10-21T09:00:00.000Z').more).toBe(0);
+  });
+});
+
+// ISS-618 c2, judged on dev.276: stuck.count read 106 and the 25 oldest were listed, so 17 of the 34
+// stuck requirements read on no At risk row, REQ-45 and REQ-36 among them
+describe('At risk, capped', () => {
+  const stuckItem = (kind: 'issue' | 'requirement' | 'feedback', n: number, day: number) =>
+    ({
+      subject: { kind, id: `${kind}-${n}`, key: `${kind === 'requirement' ? 'REQ' : 'ISS'}-${n}` },
+      title: `${kind} ${n}`,
+      stuck: {
+        code: 'no_progress',
+        reason: `stuck ${n}`,
+        via: null,
+        since: new Date(Date.UTC(2026, 8, day)).toISOString(),
+        says: { reason: { key: 'standing.stuck.via' } },
+      },
+      note: null,
+    }) as unknown as ItemStanding;
+  // 80 issues stuck before any requirement was, then 34 requirements
+  const standings = [
+    ...Array.from({ length: 80 }, (_, n) => stuckItem('issue', n + 1, 1)),
+    ...Array.from({ length: 34 }, (_, n) => stuckItem('requirement', n + 1, 2 + (n % 20))),
+  ];
+
+  it('lists every stuck requirement, however many older items are stuck, and counts them all', () => {
+    const read = stuckOf(standings, 'forge', '2026-10-22T02:28:59Z');
+    expect(read.count).toBe(114);
+    const reqs = read.items.filter((i) => i.kind === 'requirement');
+    expect(reqs).toHaveLength(34);
+    expect(read.items.slice(0, 34)).toEqual(reqs);
+    expect(reqs.map((r) => r.since)).toEqual([...reqs.map((r) => r.since)].sort());
+  });
+
+  it('fills the rest of the rows with the oldest other items, up to the cap', () => {
+    const few = [...standings.slice(0, 80), ...standings.slice(80, 85)];
+    const read = stuckOf(few, 'forge', '2026-10-22T02:28:59Z');
+    expect(read.items).toHaveLength(PROJECT_STATUS_ROWS);
+    expect(read.items.slice(0, 5).every((i) => i.kind === 'requirement')).toBe(true);
+    expect(read.items.slice(5).map((i) => i.key)).toEqual(
+      Array.from({ length: PROJECT_STATUS_ROWS - 5 }, (_, n) => `ISS-${n + 1}`),
+    );
+    expect(read.count).toBe(85);
   });
 });

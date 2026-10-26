@@ -89,8 +89,8 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
       }
       await args.beforeWrite?.(tx, prior);
     },
-    afterWrite: async (tx, rows) => {
-      await args.afterWrite?.(tx, rows);
+    afterWrite: async (tx, rows, from) => {
+      await args.afterWrite?.(tx, rows, from);
       if (ending) {
         await agentSessionsPorts().settleSessionFires(tx, {
           sessionIds: rows.map((r) => r.id),

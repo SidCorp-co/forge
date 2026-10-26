@@ -26,7 +26,7 @@ import { wakeMastersForSteward } from './ws/index.js';
  * credential's holder is not it: a box paired by a person carries the project's agent in its checkout
  * (ISS-590). A box whose checkout carries no live credential is named unread, never guessed.
  */
-async function masterAccountsOf(projectId: string): Promise<MasterAccounts> {
+export async function masterAccountsOf(projectId: string): Promise<MasterAccounts> {
   const accounts = new Set<string>();
   const unread: string[] = [];
   for (const deviceId of await projectDeviceIds(projectId)) {

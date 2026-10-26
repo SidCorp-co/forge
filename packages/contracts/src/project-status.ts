@@ -158,7 +158,9 @@ export interface StatusStuckItem {
 
 /** Every stuck item of the project, oldest first; the report leads with it (REQ-48 chat report). */
 export interface StatusStuck extends Stamped {
+	/** Every stuck requirement, then other stuck items up to `PROJECT_STATUS_ROWS` rows. */
 	items: StatusStuckItem[];
+	/** Every stuck item, the ones `items` leaves out among them. */
 	count: number;
 }
 

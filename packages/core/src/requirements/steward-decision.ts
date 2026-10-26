@@ -9,7 +9,11 @@
  */
 
 import type { RequirementSpec } from '@forge/contracts/requirements';
-import { requirementKey } from '@forge/contracts/requirements';
+import {
+  REQUIREMENT_LIFECYCLE,
+  REQUIREMENT_STATUSES,
+  requirementKey,
+} from '@forge/contracts/requirements';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { requirementCriteria, requirementRevisions } from '../db/schema-requirements.js';
@@ -27,7 +31,13 @@ export type StewardRequirementAct =
   | { act: 'withdraw'; reason: string; askedAt: Date }
   | { act: 'merge'; into: string; reason: string };
 
-const ENDED = ['dropped', 'deferred'];
+/**
+ * The statuses a merge target has ended in: every stored status off the lifecycle line (dropped,
+ * deferred, refused), so a status added off the line is ended here without a second list.
+ */
+const ENDED: readonly string[] = REQUIREMENT_STATUSES.filter(
+  (s) => !(REQUIREMENT_LIFECYCLE as readonly string[]).includes(s),
+);
 
 const refused = (code: string, detail: string, path = '/optionId'): Refusal => ({
   code,

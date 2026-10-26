@@ -9,12 +9,13 @@ import type {
   StewardCite,
   StewardRefusalCode,
 } from '@forge/contracts/steward';
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type StewardUndo, stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
 import { refuser } from '../lib/refusal.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { stewardAccountOf } from './account.js';
+import { actTouchesSql, itemIdOfKey } from './acts-on-item.js';
 import { mintStewardCredential } from './credential.js';
 import { bearer, callDoor, type DoorAnswer, type DoorMethod } from './door-call.js';
 import { isInverseDoor, overrideOf, personOverrideOf } from './undo-rules.js';
@@ -95,13 +96,21 @@ export async function actsOfRuns(
 /**
  * Every act the steward took on one item, across all its runs, newest first: an item page's Activity
  * reads this, not the runs list, so an act on an old run is never cut off by newer runs (REQ-48 BC-12).
+ * An act is the item's where its run was about the item, or where it changed the item from another
+ * item's run (`actTouchesSql`): ISS-603's plan, written by FB-180's run, reads on ISS-603.
  */
 export async function actsOfSubject(projectId: string, key: string): Promise<StewardActRecord[]> {
+  const itemId = await itemIdOfKey(projectId, key);
   const rows = await db
     .select({ act: stewardActs })
     .from(stewardActs)
     .innerJoin(stewardRuns, eq(stewardRuns.id, stewardActs.runId))
-    .where(and(eq(stewardActs.projectId, projectId), eq(stewardRuns.subjectKey, key)))
+    .where(
+      and(
+        eq(stewardActs.projectId, projectId),
+        or(eq(stewardRuns.subjectKey, key), actTouchesSql(key, itemId)),
+      ),
+    )
     .orderBy(desc(stewardActs.at), desc(stewardActs.id));
   return rows.map((r) => actRecordOf(r.act));
 }

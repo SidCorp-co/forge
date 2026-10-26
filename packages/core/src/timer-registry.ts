@@ -38,6 +38,7 @@ import {
   dispatchStewardRuns,
   type LessonsPassTally,
   runLessonsPass,
+  sweepDecisionUpkeep,
   sweepStandings,
 } from './steward/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
@@ -140,6 +141,25 @@ function stewardTimers(): Timer[] {
             settledAsks: number;
           };
           return stuck > 0 || changed > 0 || settledAsks > 0;
+        },
+      ),
+    },
+    {
+      // REQ-68 BC-7, BC-8: a decision whose item moved is voided, an unanswered round is reminded on
+      // day 3, and on day 14 the agent proposes deferring or dropping the requirement it holds up
+      kind: 'cluster',
+      name: 'decision-upkeep',
+      cron: '*/5 * * * *',
+      run: logged(
+        'decision-upkeep: acted',
+        () => sweepDecisionUpkeep(),
+        (r) => {
+          const { voided, reminded, escalated } = r as {
+            voided: number;
+            reminded: number;
+            escalated: number;
+          };
+          return voided > 0 || reminded > 0 || escalated > 0;
         },
       ),
     },

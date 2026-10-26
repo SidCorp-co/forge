@@ -85,9 +85,10 @@ describe("the needs-you inbox", () => {
 });
 
 describe("where a needs-you row leads", () => {
-  it("opens a question attached to nothing on the Questions tab, focused on that question", () => {
+  // REQ-68 BC-9: there is no Questions page; a question waiting on a person is answered on Approvals
+  it("opens a question attached to nothing on Approvals, its decision in the peek", () => {
     const q = { entity: "question", key: "b2dccb6a-1111-4222-8333-444455556666" } as const;
-    expect(needsYouHref("hop", q)).toBe("/projects/hop/agents?tab=questions&q=b2dccb6a-1111-4222-8333-444455556666");
+    expect(needsYouHref("hop", q)).toBe("/projects/hop/approvals?peek=question%3Ab2dccb6a-1111-4222-8333-444455556666");
     expect(needsYouPeekHref("hop", q)).toBe(needsYouHref("hop", q));
   });
 
@@ -104,7 +105,7 @@ describe("where a needs-you row leads", () => {
     expect(within(row).getByText("Which roles does the catalogue hold?")).toBeTruthy();
     expect(within(row).queryByText("b2dccb6a-1111-4222-8333-444455556666")).toBeNull();
     fireEvent.click(row);
-    expect(push).toHaveBeenLastCalledWith("/projects/hop/agents?tab=questions&q=b2dccb6a-1111-4222-8333-444455556666");
+    expect(push).toHaveBeenLastCalledWith("/projects/hop/approvals?peek=question%3Ab2dccb6a-1111-4222-8333-444455556666");
   });
 
   it("opens its own page for everything but an issue", () => {

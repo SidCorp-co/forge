@@ -137,15 +137,17 @@ interface IssuePorts {
       repointedTo?: string | undefined;
     },
   ) => Promise<string[]>;
-  /** Void the steward's open take-on-or-drop decisions, in the move that takes the issue out of draft. */
-  voidStewardDraftQuestions: (
+  /** Void the steward's open decisions on the issue, in the move that moves it (REQ-68 BC-7). */
+  voidStewardDecisionsOnMove: (
     tx: Tx,
     args: {
-      issueId: string;
-      toStatus: IssueStatus;
+      item: { kind: 'issue'; id: string };
+      fromStatus: string | null;
+      toStatus: string;
       reason: string | null;
       by: string;
       actor: KernelActor;
+      source: string;
     },
   ) => Promise<string[]>;
   /** Each open question the park the issue stands at asked, with the fact that settles it. */
@@ -416,7 +418,7 @@ export const projectCreatorOf = port('projectCreatorOf');
 export const settleOpenQuestions = port('settleOpenQuestions');
 export const masterServingOf = port('masterServingOf');
 export const withdrawParkQuestions = port('withdrawParkQuestions');
-export const voidStewardDraftQuestions = port('voidStewardDraftQuestions');
+export const voidStewardDecisionsOnMove = port('voidStewardDecisionsOnMove');
 export const openParkWaitsOn = port('openParkWaitsOn');
 export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
 export const personOwesAnAnswer = port('personOwesAnAnswer');

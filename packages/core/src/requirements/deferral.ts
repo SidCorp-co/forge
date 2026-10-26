@@ -22,6 +22,7 @@ import {
   lockRequirements,
   type RequirementOutcome,
   requirementKernelActor,
+  voidsItsDecisions,
 } from './write-tx.js';
 
 async function workingIssuesOf(tx: Tx, projectId: string, requirementId: string) {
@@ -75,6 +76,7 @@ export async function deferRequirement(input: {
       where: eq(requirements.id, row.id),
       reason: input.reason.trim(),
       actor: requirementKernelActor(actor),
+      afterWrite: voidsItsDecisions('deferred', actor, input.reason.trim(), 'requirement-deferral'),
       source: 'requirement-deferral',
       returning: ['id'],
     });
@@ -120,6 +122,12 @@ export async function undeferRequirement(input: {
       where: eq(requirements.id, row.id),
       reason: input.reason.trim(),
       actor: requirementKernelActor(actor),
+      afterWrite: voidsItsDecisions(
+        defer.fromStatus,
+        actor,
+        input.reason.trim(),
+        'requirement-deferral',
+      ),
       source: 'requirement-deferral',
       returning: ['id'],
     });

@@ -57,6 +57,8 @@ function suggestion(s: { id: string; kind: "feedback" | "requirement"; key: stri
     title: s.title,
     opens: { kind: s.kind, key: s.key },
     question: s.p.what ? `${s.p.verb}: ${s.p.what}` : s.p.verb,
+    changes: "What happens next on it",
+    impact: "It waits on this until it is decided.",
     recommended: s.p.recommends ? { answerId: "approve", why: "The agent recommends it as proposed.", by: "steward" } : null,
     noRecommendation: s.p.recommends ? null : "The agent asks you to check it first.",
     answers: [approve(`${at}/accept`, s.p.consequences[0] ?? null, s.p.recommends), decline(`${at}/reject`)],
@@ -203,6 +205,8 @@ function repin(base: string, title: string, revision: number, hours: number, mov
     title,
     opens: { kind: "workflow", key: base },
     question: `Move ${designs} built on ${base} to follow r${revision}?`,
+    changes: "What happens next on it",
+    impact: "It waits on this until it is decided.",
     recommended: { answerId: "approve", why: "Each new revision differs only in which revision it follows", by: "rule" },
     noRecommendation: null,
     answers: [
@@ -243,6 +247,8 @@ const MOCKUP: NeedsYouDecision = {
   title: "Mockups on the item",
   opens: { kind: "requirement", key: "REQ-49" },
   question: "Accept mockup: Approvals page",
+  changes: "What happens next on it",
+  impact: "It waits on this until it is decided.",
   recommended: null,
   noRecommendation: "The agent asks you to check it first.",
   answers: [
@@ -274,6 +280,8 @@ const SIGN_OFF: NeedsYouDecision = {
   title: "The dashboard reads as state",
   opens: { kind: "requirement", key: "REQ-41" },
   question: "Accept REQ-41 r3?",
+  changes: "What happens next on it",
+  impact: "It waits on this until it is decided.",
   recommended: null,
   noRecommendation: "Nobody recommended an answer.",
   answers: [
@@ -296,6 +304,8 @@ const QUESTION: NeedsYouDecision = {
   title: "Bulk export",
   opens: { kind: "issue", key: "ISS-41" },
   question: "Should the export keep the old column order for existing reports?",
+  changes: "What happens next on it",
+  impact: "It waits on this until it is decided.",
   recommended: { answerId: "keep", why: "Whoever asked recommends “Keep the old order”.", by: "asker" },
   noRecommendation: null,
   answers: [
@@ -337,6 +347,8 @@ export const STEWARD_DECISION: NeedsYouDecision = needsYouDecisionSchema.parse({
   title: "Export keeps the old column order",
   opens: { kind: "issue", key: "ISS-7" },
   question: stewardDecisionQuestion([STEWARD_DECISION_OPTION_IDS.open, STEWARD_DECISION_OPTION_IDS.keep, STEWARD_DECISION_OPTION_IDS.drop], ISS_7),
+  changes: "What happens next on it",
+  impact: "It waits on this until it is decided.",
   recommended: { answerId: STEWARD_DECISION_OPTION_IDS.open, why: "Its plan and criteria pass the issue-ready check.", by: "steward" },
   noRecommendation: null,
   answers: [stewardAnswer("open", true), stewardAnswer("keep", false), stewardAnswer("drop", false)],
@@ -377,6 +389,8 @@ export const STEWARD_625: NeedsYouDecision = needsYouDecisionSchema.parse({
   title: "Issue criterion BC trace syntax is undocumented; a trailing tag silently traces nothing",
   opens: { kind: "issue", key: "ISS-625" },
   question: stewardDecisionQuestion(ANSWERS_625, ISS_625),
+  changes: "What happens next on it",
+  impact: "It waits on this until it is decided.",
   recommended: { answerId: STEWARD_DECISION_OPTION_IDS.open, why: STEWARD_625_REASON, by: "steward" },
   noRecommendation: null,
   answers: [
@@ -409,6 +423,8 @@ const RELEASE: NeedsYouDecision = {
   title: "Approvals decline round",
   opens: { kind: "release", key: "0.4.0-dev.270" },
   question: "Accept this release, so the master merges !5008, !5009 in that order, or return it to the master?",
+  changes: "What happens next on it",
+  impact: "It waits on this until it is decided.",
   recommended: { answerId: "approve", why: "None of the 4 criteria it carries is failing.", by: "rule" },
   noRecommendation: null,
   answers: [

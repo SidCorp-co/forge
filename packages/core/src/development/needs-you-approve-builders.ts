@@ -17,6 +17,7 @@ import {
   clip,
   type DecisionBody,
   filled,
+  impactOf,
 } from './needs-you-decision-builders.js';
 
 export function revisionDecision(
@@ -36,6 +37,8 @@ export function revisionDecision(
       title: clip(row.title, 500),
       opens: { kind: 'requirement', key: row.key },
       question: `Accept revision ${n} of ${row.key}, or return it to its author?`,
+      changes: `Which revision of ${row.key} is current`,
+      impact: impactOf(row, 'delivery plans from the current revision'),
       recommended: {
         answerId: 'accept',
         why: `Its author proposed revision ${n} for sign-off; accept it unless its change summary is not what you asked for.`,
@@ -85,6 +88,8 @@ export function agreeDecision(
       title: clip(row.title, 500),
       opens: { kind: 'requirement', key: row.key },
       question: `Agree ${row.key} at revision ${head}, or drop it?`,
+      changes: `Whether ${row.key} is built`,
+      impact: impactOf(row, 'only an agreed requirement goes to delivery'),
       recommended: {
         answerId: 'agree',
         why: 'Its linked designs are approved and it waits only on an agree; drop it with a reason if it should not be built.',
@@ -193,6 +198,11 @@ export function releaseDecision(
         merges.length > 0
           ? `Accept this release, so the master merges ${order} in that order, or return it to the master?`
           : 'Approve this release for production, or return it to the master?',
+      changes:
+        merges.length > 0
+          ? `Whether ${row.key}'s change requests merge`
+          : `Whether ${row.key} goes to production`,
+      impact: impactOf(row, 'the work it carries reaches its users only after it'),
       recommended: {
         answerId: clean ? 'approve' : 'return',
         why: clean
@@ -307,6 +317,8 @@ export function cutDecision(
       title: clip(row.title, 500),
       opens: { kind: 'release', key: row.key },
       question: `Cut this release with the ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'} waiting for it?`,
+      changes: `Whether ${release.version} is cut now`,
+      impact: impactOf(row, 'its issues are released only once it is cut'),
       recommended: clean ? { answerId: 'cut', why, by: 'rule' } : null,
       noRecommendation: clean ? null : why,
       answers: [
@@ -347,6 +359,8 @@ export function designDecision(
       title: clip(row.title, 500),
       opens: { kind: 'workflow', key: row.key },
       question: `Approve revision ${n} of ${named}, or return it to its writer?`,
+      changes: `Which revision of ${named} is the approved design`,
+      impact: impactOf(row, 'builders and requirements read the approved design'),
       recommended: {
         answerId: 'approve',
         why: `Its writer proposed revision ${n} for approval; return it with a reason if it does not draw the journey you mean.`,

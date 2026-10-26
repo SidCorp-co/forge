@@ -239,6 +239,7 @@
     "label.notificationType.schedule_report": "Schedule report",
     "label.notificationType.status_report": "Status report",
     "label.notificationType.steward_ask": "Steward asks",
+    "label.notificationType.decision_reminder": "Decision waiting",
     "label.permissionRole.assistant.exec": "Admin",
     "label.permissionRole.charter.write": "Member",
     "label.permissionRole.comments.moderate": "Admin",

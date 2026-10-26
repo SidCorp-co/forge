@@ -418,7 +418,7 @@ export async function askReporterToVerify(input: {
   return answer(projectId, first.id, actor);
 }
 
-/** The reporter confirms the fix, or a holder of feedback.approve on their behalf; never automatic. */
+/** The reporter confirms the fix, or anyone on the project (`project.read`) on their behalf; never automatic. */
 export const verifyFeedback = (input: {
   projectId: string;
   ref: string;

@@ -4,7 +4,7 @@
 
 import type { NeedsYouAreaKey } from '@forge/contracts/needs-you';
 import type { AttentionRow } from './needs-you.js';
-import { answer, type Built, clip, filled } from './needs-you-decision-builders.js';
+import { answer, type Built, clip, filled, impactOf } from './needs-you-decision-builders.js';
 
 /** The BA's check: accept the delivery of `revision`, or defer it with a reason. */
 export function acceptDecision(
@@ -26,6 +26,8 @@ export function acceptDecision(
       title: clip(row.title, 500),
       opens: { kind: 'requirement', key: row.key },
       question: `Accept the delivery of ${row.key} at revision ${revision}?`,
+      changes: `Whether ${row.key} at revision ${revision} reads as delivered`,
+      impact: impactOf(row, 'its readers see Delivered only once it is accepted'),
       recommended: {
         answerId: proven ? 'accept' : 'defer',
         why: proven
@@ -78,6 +80,8 @@ export function repinDecision(
       title: clip(row.title, 500),
       opens: { kind: 'requirement', key: row.key },
       question: `Follow the approved designs and contracts in ${row.key} at revision ${head}?`,
+      changes: `Which design and contract versions ${row.key} pins`,
+      impact: impactOf(row, 'its issues are planned against the versions it pins'),
       recommended: {
         answerId: 'repin',
         why: 'A new baseline pins the approved versions; the wording and criteria stay as they are.',
@@ -121,6 +125,8 @@ export function admitDecision(
       title: clip(row.title, 500),
       opens: { kind: 'requirement', key: row.key },
       question: `Take on ${shown.map((d) => d.key).join(', ')} so ${row.key} can be built?`,
+      changes: `Whether ${row.key}'s draft issues become open work`,
+      impact: impactOf(row, 'the master builds only open issues'),
       recommended: {
         answerId: first.key,
         why: `${row.key} is agreed and only draft issues carry it; nothing takes a draft on by itself.`,

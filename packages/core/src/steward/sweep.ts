@@ -17,7 +17,7 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import { answersOf, openMasterAsks, settleAsks } from './asks.js';
+import { aboutKeyOf, aboutKindOf, asksToSettle, openMasterAsks, settleAsks } from './asks.js';
 import { sharesOf, stewardStanceOf, utcDayStart } from './policy.js';
 import { openStandings } from './ports.js';
 import { ranOnBasis, spentSince, sweepQueued } from './runs-store.js';
@@ -101,9 +101,10 @@ async function sweepRow(
 }
 
 /**
- * Settle each open ask of the master whose item's standing moved off the basis its run read, or that
- * a reasoned decision on the item answered since it was made (ISS-607): an answered ask leaves what
- * the master is owed, and is not made again until the standing moves.
+ * Settle each open ask of the master whose item's standing moved off it, or that a reasoned decision
+ * recorded on that standing answered (ISS-607): an answered ask leaves what the master is owed, and
+ * is not made again until the standing moves. The item is the one the ask is about, whichever run
+ * asked (`asks.ts:aboutKeyOf`).
  */
 async function settleProjectAsks(
   projectId: string,
@@ -111,11 +112,7 @@ async function settleProjectAsks(
   now: Date,
 ): Promise<number> {
   const open = await openMasterAsks(projectId);
-  const basisOf = new Map(rows.map((r) => [r.subject.id, r.basis]));
-  const moved = open.filter((ask) => basisOf.get(ask.subjectId) !== ask.basis);
-  const standing = open.filter((ask) => !moved.includes(ask));
-  const answered = await answersOf(projectId, standing, now);
-  return settleAsks([...moved.map((a) => a.id), ...answered.keys()], now);
+  return settleAsks(await asksToSettle(projectId, open, rows, now), now);
 }
 
 export async function sweepProjectStandings(
@@ -165,9 +162,8 @@ interface StewardAsk {
  * each with the item whose decision answers it, so the nudge names that item's own door (ISS-654).
  */
 export async function openStewardAsks(projectId: string): Promise<StewardAsk[]> {
-  return (await openMasterAsks(projectId)).map((r) => ({
-    actId: r.id,
-    ask: r.masterAsk ?? '',
-    subject: { kind: r.subjectKind, key: r.subjectKey },
-  }));
+  return (await openMasterAsks(projectId)).map((r) => {
+    const key = aboutKeyOf(r);
+    return { actId: r.id, ask: r.masterAsk ?? '', subject: { kind: aboutKindOf(key), key } };
+  });
 }

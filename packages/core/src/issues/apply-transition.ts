@@ -33,7 +33,7 @@ import { repointPark, repointsPark } from './park-repoint.js';
 import {
   readProjectDocument,
   settleOpenQuestions,
-  voidStewardDraftQuestions,
+  voidStewardDecisionsOnMove,
   withdrawParkQuestions,
 } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
@@ -397,17 +397,17 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
         await postRecoveryNotice({ issue, fromStatus, toStatus, actor, recovering, options }, tx);
         await mintParkQuestion({ issue, toStatus, actor, options }, tx);
-        // leaving draft ends the steward's take-on-or-drop decision on it, before a terminal move
-        // meets its open questions: the drop is an answer to that one (REQ-41 BC-26)
-        if (fromStatus === 'draft') {
-          await voidStewardDraftQuestions(tx, {
-            issueId: issue.id,
-            toStatus,
-            reason: options.transitionReason?.trim() || options.reason?.trim() || null,
-            by,
-            actor: kernelActorFor(actor),
-          });
-        }
+        // a move ends every steward decision on the issue it moved, before a terminal move meets its
+        // open questions: the drop is an answer to that one (REQ-41 BC-26, REQ-68 BC-7)
+        await voidStewardDecisionsOnMove(tx, {
+          item: { kind: 'issue', id: issue.id },
+          fromStatus,
+          toStatus,
+          reason: options.transitionReason?.trim() || options.reason?.trim() || null,
+          by,
+          actor: kernelActorFor(actor),
+          source: 'issues',
+        });
         const asked = await settleOpenQuestions(tx, {
           ...options,
           issueId: issue.id,

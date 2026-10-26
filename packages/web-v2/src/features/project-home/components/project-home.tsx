@@ -9,6 +9,7 @@ import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { DecisionList } from "@/features/needs-you";
 import { useNeedsYouDecisions } from "@/features/needs-you";
 import { approvalsHref } from "@/lib/routes/approvals";
+import { issuesHref } from "@/lib/routes/issues";
 import { useProjectStatus } from "@/features/project-status";
 import { StewardBudgetLine } from "@/features/standing";
 import { formatApiError } from "@/lib/api/error";
@@ -42,7 +43,7 @@ export function ProjectHome({ projectId, slug }: { projectId: string; slug: stri
         ) : status ? (
           <>
             <RunningTable rows={runningRows(status)} total={status?.inFlight.runningCount ?? 0} slug={slug} />
-            <AtRiskTable rows={atRiskRows(status, slug)} />
+            <AtRiskTable rows={atRiskRows(status, slug)} unlisted={Math.max((status?.stuck?.count ?? 0) - (status?.stuck?.items.length ?? 0), 0)} moreHref={issuesHref(slug)} />
           </>
         ) : null}
       </div>

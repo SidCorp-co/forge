@@ -52,6 +52,45 @@ export function filled(
   return path.path;
 }
 
+/**
+ * A reason is asked only where a rule needs one, prefilled from the recommendation (REQ-68 BC-2):
+ * the recommended answer that takes a reason carries the recommendation's why in its body, which the
+ * person sends as it stands or edits. Every other answer that takes one asks for the person's own.
+ * A typed free-text answer is the answer itself, never prefilled.
+ */
+export function prefilledReason<T extends Pick<DecisionBody, 'answers' | 'recommended'>>(d: T): T {
+  const why = d.recommended?.why;
+  if (!why) return d;
+  return {
+    ...d,
+    answers: d.answers.map((a) => {
+      if (!a.recommended || !a.needsReason) return a;
+      const body: Record<string, unknown> = { ...(a.body ?? {}) };
+      if (a.act !== 'question.answer') body.reason = why;
+      else if ('optionId' in body) body.note = why;
+      else return a;
+      return { ...a, body };
+    }),
+  };
+}
+
+/**
+ * What waits on a decision, the first half of its impact (REQ-68 BC-1): its item stuck until it is
+ * decided, due on a day, or waiting on it.
+ */
+export function waitsOn(row: Pick<AttentionRow, 'key' | 'due'>, item: string = row.key): string {
+  if (row.due?.stuck) return `${item} is stuck until this is decided`;
+  if (row.due?.dueAt) return `${item} is due ${row.due.dueAt.slice(0, 10)}`;
+  return `${item} waits on this`;
+}
+
+/** A decision's impact: what waits on it, then what follows once it is decided, in one line. */
+export const impactOf = (
+  row: Pick<AttentionRow, 'key' | 'due'>,
+  follows: string,
+  item: string = row.key,
+): string => clip(`${waitsOn(row, item)}; ${follows}.`, 300);
+
 export function answer(
   over: Omit<DecisionAnswer, 'needsReason' | 'declines' | 'effect' | 'recommended' | 'body'> &
     Partial<Pick<DecisionAnswer, 'needsReason' | 'declines' | 'effect' | 'recommended' | 'body'>>,
@@ -82,6 +121,7 @@ function stewardDecision(
   q: OpenPersonQuestion,
   step: ChoiceStep,
   path: string,
+  waits: string,
 ): Built {
   const kind: StewardDecisionSubject = q.issueId
     ? 'issue'
@@ -112,6 +152,7 @@ function stewardDecision(
     questionId: q.id,
     decision: {
       ...base,
+      ...stewardBrief(kind, draft, itemKey, waits),
       question: stewardDecisionQuestion(
         shown.map((o) => o.id),
         item,
@@ -148,6 +189,41 @@ function stewardDecision(
         });
       }),
     },
+  };
+}
+
+/** What a steward decision changes and its impact, by the item it decides (REQ-68 BC-1). */
+function stewardBrief(
+  kind: StewardDecisionSubject,
+  draft: boolean,
+  key: string,
+  waits: string,
+): { changes: string; impact: string } {
+  if (kind === 'issue') {
+    return draft
+      ? {
+          changes: `Whether draft ${key} becomes open work`,
+          impact: clip(`${waits}; only open work is planned and built.`, 300),
+        }
+      : {
+          changes: `Whether ${key} stays open work`,
+          impact: clip(`${waits}; no master serves it now.`, 300),
+        };
+  }
+  if (kind === 'requirement') {
+    return draft
+      ? {
+          changes: `Whether draft ${key} stays a requirement of its own`,
+          impact: clip(`${waits}; its issues and criteria follow the answer.`, 300),
+        }
+      : {
+          changes: `Whether ${key} keeps its draft revision`,
+          impact: clip(`${waits}; delivery goes on reading its current revision.`, 300),
+        };
+  }
+  return {
+    changes: `How ${key} is handled`,
+    impact: clip(`${waits}; its reporter hears back once it is decided.`, 300),
   };
 }
 
@@ -243,12 +319,14 @@ export function questionDecision(
     title: row.entity === 'question' ? sayEn(say('needsYou.title.question')) : clip(row.title, 500),
     opens,
     question: clip(step.prompt.trim() || row.title || 'A run asked a question', QUESTION_MAX),
+    changes: `What the run that asked ${opens ? `on ${opens.key} ` : ''}goes on with`,
+    impact: impactOf(row, 'it goes on once it has your answer', opens?.key ?? 'The run that asked'),
     touchedAt: q.at,
     // what the question is about, so the person answering never asks which requirement (ISS-583)
     ...(q.subject ? { subject: q.subject } : {}),
   };
   if (isChoiceStep(step) && isStewardDecisionQuestion(step.options)) {
-    return stewardDecision(base, q, step, path);
+    return stewardDecision(base, q, step, path, waitsOn(row, base.opens?.key ?? row.key));
   }
   if (isChoiceStep(step)) {
     const asked = step.options.find((o) => o.id === step.recommendedOptionId);
@@ -290,7 +368,6 @@ export function questionDecision(
             act: 'question.answer',
             path,
             body: { round: step.round, optionId: o.id },
-            effect: 'Sends this answer to the run that asked.',
             recommended: o.id === recommended?.id,
           }),
         ),
@@ -370,6 +447,8 @@ export function feedbackDecision(
         settles === 'fix'
           ? `Is ${row.key} fixed in what shipped?`
           : `Does the answer given on ${row.key} settle it?`,
+      changes: `Whether ${row.key} is closed or reopened`,
+      impact: impactOf(row, 'its reporter is told what you decide'),
       recommended: {
         answerId: 'verify',
         why: feedbackWhy(settles, answered),

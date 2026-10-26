@@ -1,7 +1,7 @@
 /**
- * The rows a question attached to nothing owes the viewer on Needs you: a run asked it, no issue,
- * requirement or feedback holds it, and the Agents screen's Questions tab is the only place to answer
- * it. Only whoever may answer is told it waits on them.
+ * The rows a question attached to nothing owes the viewer on Needs you: a run asked it, and no issue,
+ * requirement or feedback holds it, so Approvals is where it is answered (REQ-68 BC-9). Only whoever
+ * may answer is told it waits on them.
  */
 
 import type { NeedsYouEntity } from '@forge/contracts/needs-you';

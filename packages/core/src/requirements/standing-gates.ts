@@ -66,6 +66,29 @@ export const signerWait = (viewer: StandingInput['viewer'], act: Said, rule: Sai
     ? { group: 'needs_you' as const, waitingOn: wait('you', YOU, act, rule) }
     : { group: 'waiting' as const, waitingOn: wait('person', SIGNER, act, rule) };
 
+/**
+ * A question a person owes on the requirement, which its turn waits on before anything else of the
+ * draft: the steward's decision on a stuck draft (REQ-48 BC-5), or any other question asked of it
+ * (REQ-68 BC-9). Null where none is open.
+ */
+export function askedTurn(input: StandingInput, drafting: boolean) {
+  if (input.stewardAsked && drafting) {
+    return signerWait(
+      input.viewer,
+      say('standing.act.answerSteward'),
+      say('requirements.rule.stewardAsked'),
+    );
+  }
+  if (input.questionAsked) {
+    return signerWait(
+      input.viewer,
+      say('standing.act.answerQuestion'),
+      say('requirements.rule.questionAsked'),
+    );
+  }
+  return null;
+}
+
 /** The steps a project switch gates on a requirement's own turn (`@forge/contracts/person-gates`). */
 type TurnGate = Extract<PersonGate, 'agree' | 'revisions' | 'accept' | 'breakdown'>;
 

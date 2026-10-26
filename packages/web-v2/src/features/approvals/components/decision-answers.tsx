@@ -8,12 +8,14 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Kbd, Textarea } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
+import { prefillOf } from "@/features/needs-you";
 import { drawnAnswers } from "../derive";
 
 /** The words an act needs before it is sent, and the send; empty words are refused in place. */
 export function Words({ answer, onSend, onCancel }: { answer: DecisionAnswer; onSend: (words: string) => void; onCancel: () => void }) {
   const t = useCopy();
-  const [words, setWords] = useState("");
+  // a reason a rule asks for starts from the recommendation's why, which the person sends or edits
+  const [words, setWords] = useState(() => prefillOf(answer));
   const [refused, setRefused] = useState(false);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   // the words are asked for because a press asked for them: the caret goes where they are typed

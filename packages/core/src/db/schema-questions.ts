@@ -195,6 +195,10 @@ export const agentQuestions = pgTable(
     about: jsonb('about').$type<QuestionAbout>(),
     /** The assistant's suggested answer for the current round, or why it drafted none (REQ-41 BC-2, migration 0482). */
     suggestion: jsonb('suggestion').$type<QuestionSuggestion>(),
+    /** When the people owing the current round were reminded (day 3, REQ-68 BC-8, migration 0534); counts for the round asked before it. */
+    remindedAt: timestamp('reminded_at', { withTimezone: true }),
+    /** When the agent proposed deferring or dropping the requirement the round holds up (day 14, REQ-68 BC-8). */
+    escalatedAt: timestamp('escalated_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

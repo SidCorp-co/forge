@@ -1,7 +1,8 @@
-// The open questions that stand on no issue, requirement, feedback item or questionnaire: the one
-// kind of question no list of work shows. A run asked it, a person owes the answer, and only the
-// Agents screen can take it, so Needs you reads it from here (a question on an issue is that
-// issue's standing, `holdsOpenHumanQuestion`, and a BA clarification waits on its item).
+// The open questions a person owes, read once for Needs you. A question on an issue is that issue's
+// standing (`holdsOpenHumanQuestion`), and one on a requirement is the requirement's
+// (`requirements/steward-asked.ts`). One that stands on no issue, requirement, feedback item or
+// questionnaire is shown by no list of work, so Needs you reads it from here and Approvals answers
+// it (REQ-68 BC-9).
 
 import type { QuestionSuggestion } from '@forge/contracts/question-suggestion';
 import type { QuestionSubject } from '@forge/contracts/questions';
@@ -9,6 +10,8 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memoizedRead, primeReads } from '../db/read-memo.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
+import { requirementOf } from './decision-age.js';
+import { itemLastMovedAt, movedSinceAsked } from './moved-decisions.js';
 import { subjectsOf } from './subject.js';
 
 export interface DetachedQuestionRow {
@@ -27,6 +30,14 @@ function detachedRowsOf(projectIds: readonly string[]) {
       projectId: agentQuestions.projectId,
       createdAt: agentQuestions.createdAt,
       current: sql<QuestionStep | null>`${agentQuestions.steps} -> -1`,
+      movedAt: itemLastMovedAt,
+      escalatedAt: agentQuestions.escalatedAt,
+      requirementKey: sql<
+        string | null
+      >`(select 'REQ-' || r.req_seq from requirements r where r.id = ${requirementOf})`,
+      requirementStatus: sql<
+        string | null
+      >`(select r.status from requirements r where r.id = ${requirementOf})`,
     })
     .from(agentQuestions)
     .where(
@@ -71,6 +82,11 @@ export interface OpenPersonQuestion {
   suggestion: QuestionSuggestion | null;
   /** When the current round was asked, else when the question was written. */
   at: string;
+  /**
+   * The requirement this round has held up 14 days, once the agent proposed deferring or dropping it
+   * (REQ-68 BC-8), with the status deciding which of the two apply; null before that.
+   */
+  escalated: { key: string; status: string } | null;
 }
 
 /** Every open `human` question of these projects outside a questionnaire, oldest first. */
@@ -89,6 +105,14 @@ function openPersonRowsOf(projectIds: readonly string[]) {
       createdAt: agentQuestions.createdAt,
       suggestion: agentQuestions.suggestion,
       current: sql<QuestionStep | null>`${agentQuestions.steps} -> -1`,
+      movedAt: itemLastMovedAt,
+      escalatedAt: agentQuestions.escalatedAt,
+      requirementKey: sql<
+        string | null
+      >`(select 'REQ-' || r.req_seq from requirements r where r.id = ${requirementOf})`,
+      requirementStatus: sql<
+        string | null
+      >`(select r.status from requirements r where r.id = ${requirementOf})`,
     })
     .from(agentQuestions)
     .where(
@@ -119,10 +143,16 @@ export function primeOpenQuestionReads(projectIds: readonly string[]): void {
  * decision answers the round it shows. A row with no round is a broken row and refused by id.
  */
 export async function readOpenPersonQuestions(projectId: string): Promise<OpenPersonQuestion[]> {
-  const rows = await memoizedRead(openPersonKey(projectId), () => openPersonRowsOf([projectId]));
+  const read = await memoizedRead(openPersonKey(projectId), () => openPersonRowsOf([projectId]));
+  // a steward decision whose item moved since it was asked is gone already, before the sweep voids it
+  const rows = read.filter(
+    (r) =>
+      !r.current || !movedSinceAsked({ ...r, at: r.current.askedAt ?? r.createdAt.toISOString() }),
+  );
   const subjects = await subjectsOf(rows.map((r) => r.about));
   return rows.map((r, i) => {
     if (!r.current) throw new Error(`questions: open question ${r.id} holds no round to answer`);
+    const at = r.current.askedAt ?? r.createdAt.toISOString();
     return {
       id: r.id,
       issueId: r.issueId,
@@ -132,7 +162,11 @@ export async function readOpenPersonQuestions(projectId: string): Promise<OpenPe
       subject: subjects[i] ?? null,
       current: r.current,
       suggestion: r.suggestion,
-      at: r.current.askedAt ?? r.createdAt.toISOString(),
+      at,
+      escalated:
+        r.escalatedAt && r.requirementKey && r.requirementStatus && r.escalatedAt >= new Date(at)
+          ? { key: r.requirementKey, status: r.requirementStatus }
+          : null,
     };
   });
 }

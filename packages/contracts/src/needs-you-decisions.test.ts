@@ -35,6 +35,8 @@ const iss451: NeedsYouDecision = {
 	opens: { kind: "requirement", key: "REQ-34" },
 	question:
 		'REQ-34 lists "hotfix obligations" on the issue-ready checklist but never says what they are. Which reading holds?',
+	changes: "What the issue-ready checklist asks of a hotfix",
+	impact: "REQ-34 waits on this; it goes on once it has your answer.",
 	recommended: {
 		answerId: "a",
 		why: "Issue lifecycle r12 draws it: a hotfix names its revert and its follow-up.",
@@ -60,6 +62,44 @@ const iss451: NeedsYouDecision = {
 describe("a decision shows its question, a recommended answer and a button (BC-2)", () => {
 	it("takes the mockup's ISS-451 decision", () => {
 		expect(needsYouDecisionSchema.safeParse(iss451).success).toBe(true);
+	});
+
+	// REQ-68 BC-1: what changes, its impact, the options and the recommendation, each said once
+	it("refuses a decision that says one thing twice, naming the field that repeats", () => {
+		const r = needsYouDecisionSchema.safeParse({
+			...iss451,
+			impact: `${iss451.changes}.`,
+		});
+		expect(r.success).toBe(false);
+		expect(JSON.stringify(r.error?.issues)).toContain(
+			"a decision says each thing once: impact repeats changes",
+		);
+		const why = needsYouDecisionSchema.safeParse({
+			...iss451,
+			answers: [
+				answer({
+					id: "a",
+					recommended: true,
+					effect: iss451.recommended?.why ?? null,
+				}),
+				answer({
+					id: "b",
+					label: "Another reading",
+					body: { round: 1, optionId: "b" },
+				}),
+			],
+		});
+		expect(JSON.stringify(why.error?.issues)).toContain(
+			"answers.0.effect repeats recommended",
+		);
+	});
+
+	it("refuses a decision missing what changes or its impact", () => {
+		const { changes: _c, ...noChanges } = iss451;
+		expect(needsYouDecisionSchema.safeParse(noChanges).success).toBe(false);
+		expect(
+			needsYouDecisionSchema.safeParse({ ...iss451, impact: " " }).success,
+		).toBe(false);
 	});
 
 	it("refuses one that neither recommends nor says why it cannot", () => {
@@ -178,7 +218,9 @@ describe("no decision is about a lesson", () => {
 				JSON.stringify(over),
 			).toBe(false);
 		}
-		expect(Object.keys(DECISION_ACTS).filter((a) => a.startsWith("lesson"))).toEqual([]);
+		expect(
+			Object.keys(DECISION_ACTS).filter((a) => a.startsWith("lesson")),
+		).toEqual([]);
 	});
 });
 

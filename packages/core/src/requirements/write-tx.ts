@@ -7,6 +7,7 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
+import { voidStewardDecisionsOnMove } from '../questions/index.js';
 import { detailOf, type RequirementActor, type RevisionRow, type Row, rowIn } from './read.js';
 import type { RequirementRefusal } from './rules.js';
 
@@ -35,6 +36,31 @@ export async function answer(
 
 export function requirementKernelActor(actor: RequirementActor): KernelActor {
   return { type: 'user', id: actor.userId, agency: actor.agency };
+}
+
+/**
+ * A requirement move's `afterWrite`: the steward's open decisions on the requirement it moved are
+ * void in the same transaction, the merge, drop and withdraw it asked about gone (REQ-68 BC-7).
+ */
+export function voidsItsDecisions(
+  toStatus: string,
+  actor: RequirementActor,
+  reason: string | null | undefined,
+  source = 'requirements',
+): (tx: Tx, rows: readonly { id: string }[], from: ReadonlyMap<string, string>) => Promise<void> {
+  return async (tx, rows, from) => {
+    for (const row of rows) {
+      await voidStewardDecisionsOnMove(tx, {
+        item: { kind: 'requirement', id: row.id },
+        fromStatus: from.get(row.id) ?? null,
+        toStatus,
+        reason: reason?.trim() || null,
+        by: actor.userId,
+        actor: requirementKernelActor(actor),
+        source,
+      });
+    }
+  };
 }
 
 /** Runs `body` in a transaction; a refusal rolls everything back and comes out as refusals. */

@@ -45,6 +45,8 @@ export const notificationTypes = [
   'status_report',
   // ISS-607: the steward asks the holders of an act the project's master may not take
   'steward_ask',
+  // REQ-68 BC-8: an owed decision is reminded on day 3, and on day 14 the agent proposes defer or drop
+  'decision_reminder',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

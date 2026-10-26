@@ -4,6 +4,7 @@
 
 import { RowItem, RowList, WaitingOn } from "@/design";
 import { spanText } from "@/features/forecast";
+import { Link } from "@/lib/navigation/router";
 import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -51,12 +52,16 @@ function noteOf(r: AtRiskRow): string | null {
   return null;
 }
 
-export function AtRiskTable({ rows }: { rows: AtRiskRow[] }) {
+/**
+ * `unlisted`: stuck issues and feedback the status read counts and does not list (every stuck
+ * requirement is listed), linked to `moreHref`, where the Stuck group lists them.
+ */
+export function AtRiskTable({ rows, unlisted = 0, moreHref }: { rows: AtRiskRow[]; unlisted?: number; moreHref?: string }) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
   return (
     <section aria-label={t("home.atRisk")} data-testid="home-at-risk">
-      <HomeSectionTitle count={rows.length}>{t("home.atRisk")}</HomeSectionTitle>
+      <HomeSectionTitle count={rows.length + unlisted}>{t("home.atRisk")}</HomeSectionTitle>
       {rows.length === 0 ? (
         <p className="text-13 text-muted">{t("home.atRiskEmpty")}</p>
       ) : (
@@ -79,6 +84,16 @@ export function AtRiskTable({ rows }: { rows: AtRiskRow[] }) {
           ))}
         </RowList>
       )}
+      {unlisted > 0 &&
+        (moreHref ? (
+          <Link href={moreHref} className="fg-caption text-fg underline-offset-2 hover:underline" data-testid="home-at-risk-unlisted">
+            {t("home.atRiskUnlisted", { n: unlisted })}
+          </Link>
+        ) : (
+          <p className="fg-caption text-subtle" data-testid="home-at-risk-unlisted">
+            {t("home.atRiskUnlisted", { n: unlisted })}
+          </p>
+        ))}
     </section>
   );
 }

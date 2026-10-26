@@ -6,21 +6,7 @@
  */
 
 import { AUTOMATION_FIRES_DEFAULT } from '@forge/contracts/automation-standing';
-import {
-  countsAsReport,
-  FEEDBACK_UNTRIAGED_PHASES,
-  type FeedbackPhase,
-} from '@forge/contracts/feedback';
-import {
-  NEEDS_YOU_AREA_SPACE,
-  NEEDS_YOU_AREAS,
-  type NeedsYouAct,
-  type NeedsYouArea,
-  type NeedsYouAreaKey,
-  type NeedsYouEntity,
-  type NeedsYouItem,
-  type NeedsYouResponse,
-} from '@forge/contracts/needs-you';
+import type { NeedsYouAreaKey, NeedsYouEntity } from '@forge/contracts/needs-you';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { say } from '@forge/contracts/said';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
@@ -56,26 +42,6 @@ export interface AttentionRow extends RowTitle {
   due?: { stuck: boolean; dueAt: string | null };
 }
 
-function areaOf(rows: readonly AttentionRow[]): NeedsYouArea {
-  // Tallied by what core said, not by its English, so two acts that read alike stay two.
-  const tally = new Map<string, NeedsYouAct>();
-  for (const row of rows) {
-    const w = row.standing.waitingOn;
-    const id = JSON.stringify(w.says.act);
-    const seen = tally.get(id);
-    tally.set(
-      id,
-      seen
-        ? { ...seen, count: seen.count + 1 }
-        : { act: w.act, count: 1, says: { act: w.says.act } },
-    );
-  }
-  const acts = [...tally.values()].sort((a, b) => b.count - a.count || a.act.localeCompare(b.act));
-  return { you: rows.length, acts };
-}
-
-const UNTRIAGED: ReadonlySet<FeedbackPhase> = new Set(FEEDBACK_UNTRIAGED_PHASES);
-
 async function automationOf(projectId: string, userId: string, now: Date) {
   const viewer = await automationViewerOf(projectId, userId);
   if (!viewer)
@@ -107,7 +73,7 @@ const dueOf = (t: Pick<StandingTimes, 'stuck' | 'dueAt'>) => ({
   dueAt: t.dueAt,
 });
 
-const newestFirst = (a: AttentionRow, b: AttentionRow) =>
+export const newestFirst = (a: AttentionRow, b: AttentionRow) =>
   (b.touchedAt ?? '').localeCompare(a.touchedAt ?? '');
 
 /**
@@ -214,37 +180,4 @@ export function owedOf(
       list.filter((r) => needsViewer(r.standing)).sort(newestFirst),
     ]),
   ) as Record<NeedsYouAreaKey, AttentionRow[]>;
-}
-
-export async function readNeedsYou(
-  projectId: string,
-  viewer: NeedsYouViewer,
-  now: Date = new Date(),
-): Promise<NeedsYouResponse> {
-  const { rows, requirements, feedback } = await readAttention(projectId, viewer, now);
-  const owed = owedOf(rows);
-  const items = NEEDS_YOU_AREAS.flatMap((area) =>
-    owed[area].map(
-      (r): NeedsYouItem => ({
-        area,
-        space: NEEDS_YOU_AREA_SPACE[area],
-        entity: r.entity,
-        key: r.key,
-        title: r.title,
-        titleLang: r.titleLang,
-        waitingOn: r.standing.waitingOn,
-        touchedAt: r.touchedAt,
-        says: { title: r.says.title },
-      }),
-    ),
-  );
-  return {
-    generatedAt: now.toISOString(),
-    areas: Object.fromEntries(
-      Object.entries(owed).map(([area, list]) => [area, areaOf(list)]),
-    ) as Record<NeedsYouAreaKey, NeedsYouArea>,
-    items,
-    requirementsInDelivery: requirements.filter((r) => r.standing.state === 'in_delivery').length,
-    untriagedFeedback: feedback.filter((f) => UNTRIAGED.has(f.phase) && countsAsReport(f)).length,
-  };
 }

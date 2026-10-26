@@ -18,7 +18,12 @@ import {
 } from '@forge/contracts/project-status';
 import { type ItemStanding, NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
 
-/** Every item the standing read reads stuck, oldest first, each with why and the steward's line 1. */
+/**
+ * Every item the standing read reads stuck, each with why and the steward's line 1: every stuck
+ * requirement, oldest first, then the other items oldest first up to `PROJECT_STATUS_ROWS` rows, and
+ * `count` all of them. A requirement is what a BA reads the Dashboard for, so the cap never hides one
+ * (ISS-618 c2: 17 of 34 stuck requirements read on no At risk row).
+ */
 export function stuckOf(
   standings: readonly ItemStanding[],
   slug: string,
@@ -43,7 +48,10 @@ export function stuckOf(
       : [],
   );
   stuck.sort((a, b) => a.since.localeCompare(b.since));
-  return { asOf, items: stuck.slice(0, PROJECT_STATUS_ROWS), count: stuck.length };
+  const requirements = stuck.filter((s) => s.kind === 'requirement');
+  const rest = stuck.filter((s) => s.kind !== 'requirement');
+  const room = Math.max(PROJECT_STATUS_ROWS - requirements.length, 0);
+  return { asOf, items: [...requirements, ...rest.slice(0, room)], count: stuck.length };
 }
 
 /** The viewer's decisions, stuck and soonest due first, capped at `NEEDS_YOU_PERSON_CAP` (BC-11). */

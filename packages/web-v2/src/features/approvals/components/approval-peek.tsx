@@ -33,6 +33,17 @@ function Asked({ d, slug }: { d: NeedsYouDecision; slug: string }) {
   );
 }
 
+/** What deciding it changes and its impact (REQ-68 BC-1), each said once, as two properties. */
+function Stakes({ d }: { d: NeedsYouDecision }) {
+  const t = useCopy();
+  return (
+    <dl className="divide-y divide-line-subtle border-y border-line-subtle text-13" data-testid="approval-peek-stakes">
+      <Fact name={t("needsYou.decisions.changes")}>{d.changes}</Fact>
+      <Fact name={t("needsYou.decisions.impact")}>{d.impact}</Fact>
+    </dl>
+  );
+}
+
 /** A fact's row: its name, and the value that opens its page. */
 function Fact({ name, children }: { name: string; children: React.ReactNode }) {
   return (
@@ -215,6 +226,7 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
       />
       <div className="flex flex-col gap-5 px-4.5 pb-5">
         <Asked d={d} slug={slug} />
+        <Stakes d={d} />
         <PeekMockup d={d} itemHref={full.href} />
         <DecisionTags d={d} />
         <Reasons d={d} />

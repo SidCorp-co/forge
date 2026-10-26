@@ -477,6 +477,9 @@ export class PreviewWorld {
         { timeout: 15_000, interval: 100 },
       )
       .toMatchObject({ state: 'live' });
+    // the move to live is written before its outbox event is delivered: settle it, so a socket a
+    // test opens next hears only what the test does
+    await settleOutbox();
     return preview;
   }
 
