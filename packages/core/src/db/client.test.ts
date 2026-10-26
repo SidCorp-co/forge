@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const makeClient = () => {
   const client = Object.assign(function sql() {}, {
+    options: {} as { socket?: () => unknown },
     end: vi.fn(async () => {}),
     unsafe: vi.fn(),
     begin: vi.fn(),
@@ -137,6 +138,57 @@ describe('db/client', () => {
     await closeDb();
 
     expect(client.end).toHaveBeenCalledWith({ timeout: 5 });
+  });
+
+  it('leaves the client it closes no socket to open, before it ends it', async () => {
+    const { db, closeDb } = await import('./client.js');
+    void db.select;
+    const client = postgresFactory.mock.results[0]?.value as ReturnType<typeof makeClient>;
+    let refusedAtEnd: unknown;
+    client.end.mockImplementation(async () => {
+      refusedAtEnd = (() => {
+        try {
+          client.options.socket?.();
+        } catch (err) {
+          return (err as Error).message;
+        }
+      })();
+    });
+
+    await closeDb();
+
+    expect(refusedAtEnd).toBe('The database client was closed, so it opens no connection.');
+  });
+
+  it('opens a new client on the next access after closeDb', async () => {
+    const { db, closeDb } = await import('./client.js');
+    void db.select;
+    await closeDb();
+
+    void db.select;
+
+    expect(postgresFactory).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses an access after closeDbFor, naming why, and opens no new client', async () => {
+    const { db, closeDbFor } = await import('./client.js');
+    void db.select;
+    await closeDbFor('when the plant gave its database back');
+
+    expect(() => db.select).toThrow(
+      'The database client was closed when the plant gave its database back',
+    );
+    expect(postgresFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a client again once reopenDb lifts closeDbFor', async () => {
+    const { db, closeDbFor, reopenDb } = await import('./client.js');
+    await closeDbFor('when the plant gave its database back');
+
+    reopenDb();
+    void db.select;
+
+    expect(postgresFactory).toHaveBeenCalledTimes(1);
   });
 
   it('hands back $client with its own methods intact', async () => {
