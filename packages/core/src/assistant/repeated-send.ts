@@ -26,7 +26,8 @@ export function lostTokenRace(err: unknown): boolean {
  * A send repeating a client token its sender already used in this room is answered with the first
  * message, as that send was answered, and writes nothing (ISS-1236): the web composer's Retry resends
  * under the same token, and a send that was written but whose answer was lost would otherwise be
- * written twice. `null` where the token is new or absent.
+ * written twice. A route asks before its refusals and again before refusing a room as settled, since
+ * the first send may land between the two reads. `null` where the token is new or absent.
  */
 export async function repeatedWebSend(args: {
   conversationId: string;

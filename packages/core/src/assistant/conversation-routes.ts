@@ -412,15 +412,17 @@ conversationRoutes.post(
         { conversationId: id },
       );
     }
-    // Before the refusals below: a retried first message would otherwise read its own mode as settled.
-    const repeat = await repeatedWebSend({ conversationId: id, userId, clientToken });
-    if (repeat) return c.json(await sentAnswer(id, userId, repeat), sentStatus(repeat));
+    const repeat = () => repeatedWebSend({ conversationId: id, userId, clientToken });
+    const early = await repeat();
+    if (early) return c.json(...(await sentAnswer(id, userId, early)));
     const scope = await derivedScope(id);
     const projectId = soleProject(conversation, scope);
 
     const already = await readMessages(id, 1);
     const settled = conversation.mode !== null || already.length > 0;
     if (mode !== undefined && settled) {
+      const late = await repeat();
+      if (late) return c.json(...(await sentAnswer(id, userId, late)));
       throw roomRefusal(
         409,
         'CONVERSATION_MODE_SETTLED',
@@ -454,11 +456,7 @@ conversationRoutes.post(
     let sent: WebSendResult;
     try {
       sent = await sendWebConversationMessage({
-        room: {
-          id: conversation.id,
-          externalId: conversation.externalId,
-          shape: conversation.shape,
-        },
+        room: conversation,
         projectId,
         userId,
         content,
@@ -483,18 +481,17 @@ conversationRoutes.post(
       await renameConversation(id, roomNameFrom(content, attached));
     }
 
-    return c.json(await sentAnswer(id, userId, sent), sentStatus(sent));
+    return c.json(...(await sentAnswer(id, userId, sent)));
   },
 );
 
-/** A send's answer: what it did, and the room as its sender now reads it. */
+/** A send's answer and status: what it did, and the room as its sender now reads it. */
 async function sentAnswer(id: string, userId: string, sent: WebSendResult) {
   const [messages, windows, agentTurns] = await Promise.all([
     readMessages(id, READ_WINDOW).then((read) => nameSpeakers(read, userId)),
     listWindowsForConversation(id, WINDOW_PAGE),
     readConversationAgentTurns(id),
   ]);
-  return answer(sentSchema, { ...sent, messages, windows, agentTurns });
+  const body = answer(sentSchema, { ...sent, messages, windows, agentTurns });
+  return [body, sent.mode === 'agent' ? 202 : 201] as const;
 }
-
-const sentStatus = (sent: WebSendResult) => (sent.mode === 'agent' ? 202 : 201);

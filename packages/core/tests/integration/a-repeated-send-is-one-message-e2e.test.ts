@@ -6,7 +6,8 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { repeatedWebSend } from '../../src/assistant/repeated-send.js';
 import {
   createTestProject,
   createTestUser,
@@ -17,6 +18,11 @@ import {
 } from '../helpers/index.js';
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
+
+vi.mock('../../src/assistant/repeated-send.js', async (real) => {
+  const actual = await real<typeof import('../../src/assistant/repeated-send.js')>();
+  return { ...actual, repeatedWebSend: vi.fn(actual.repeatedWebSend) };
+});
 
 let harness: TestDatabase;
 let app: import('hono').Hono<AppVars>;
@@ -114,6 +120,23 @@ describe('a send repeating its client token', () => {
       send(ownerId, { content: 'race', clientToken: 'tok-r' }),
     ]);
     expect(a).toBe(b);
+    expect(await stored()).toHaveLength(1);
+  });
+
+  it('is answered when the first send lands between its lookup and its read of the room', async () => {
+    const first = await send(ownerId, {
+      content: 'first',
+      mode: 'assistant',
+      clientToken: 'tok-fm',
+    });
+    // The lookup this repeat makes first ran before the first send committed, so it missed.
+    vi.mocked(repeatedWebSend).mockResolvedValueOnce(null);
+    const again = await send(ownerId, {
+      content: 'first',
+      mode: 'assistant',
+      clientToken: 'tok-fm',
+    });
+    expect(again).toBe(first);
     expect(await stored()).toHaveLength(1);
   });
 
