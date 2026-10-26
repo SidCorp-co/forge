@@ -210,3 +210,22 @@ export function refuseNewBinding(
     who,
   );
 }
+
+/**
+ * A project integration create from a reader who may not connect, refused by who may off the body
+ * as sent, before any of its fields is judged (ISS-1421 r31, judge-127: a field check came first).
+ */
+export function refuseNewBindingAsSent(
+  reader: Pick<BindingReader, 'role' | 'projectOrgRole'>,
+  raw: unknown,
+): void {
+  const sent = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const provider = typeof sent.provider === 'string' ? sent.provider : '';
+  // A grant the provider cannot take is a field judged after the role, not before it.
+  const grantable = agentAccessTier(getIntegration(provider)) !== 'refused';
+  refuseNewBinding(reader, provider, {
+    act: 'connect an integration to it',
+    grants: grantable && sent.agentAccess === 'all',
+    orgOwned: Boolean(sent.orgId),
+  });
+}

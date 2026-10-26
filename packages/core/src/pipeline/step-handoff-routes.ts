@@ -83,7 +83,7 @@ stepHandoffRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await assertProjectAccess(body.projectId, userId);
+    await assertProjectAccess(body.projectId, userId, 'member', 'write a step handoff on it');
     try {
       const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
       return c.json(answer(handoffWrittenSchema, r), 201);
@@ -116,7 +116,7 @@ stepHandoffRoutes.get(
   async (c) => {
     const q = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectAccess(q.projectId, userId, 'viewer');
+    await assertProjectAccess(q.projectId, userId, 'viewer', 'read its step handoffs');
     const issueId = await resolveIssueKeyInProject(q.issueId, q.projectId);
     const rows = await getIssueContexts({
       projectId: q.projectId,
@@ -140,7 +140,7 @@ stepHandoffRoutes.delete(
   async (c) => {
     const q = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectAccess(q.projectId, userId);
+    await assertProjectAccess(q.projectId, userId, 'member', 'delete a step handoff on it');
     try {
       return await deleteIssueContext({
         projectId: q.projectId,

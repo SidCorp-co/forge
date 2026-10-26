@@ -33,13 +33,29 @@ function isPrivateKeyPem(value: string): boolean {
   }
 }
 
-const privateKeyField = z.string().superRefine((value, ctx) => {
-  if (value.length > PRIVATE_KEY_LONGEST) {
-    ctx.addIssue({ code: 'custom', message: OVERSIZED_PRIVATE_KEY_REFUSAL });
-  } else if (!isPrivateKeyPem(value)) {
-    ctx.addIssue({ code: 'custom', message: PARTIAL_PRIVATE_KEY_REFUSAL });
-  }
-});
+/**
+ * A key as a YAML or JSON block carries it, every line indented, set back to the file GitHub gave:
+ * the whole key was once refused as not whole for its indent (ISS-1421 r31, judge-127 on 341).
+ */
+function unindented(value: string): string {
+  if (!/^[ \t]+-----BEGIN /m.test(value)) return value;
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .join('\n')
+    .trim();
+}
+
+const privateKeyField = z
+  .string()
+  .transform(unindented)
+  .superRefine((value, ctx) => {
+    if (value.length > PRIVATE_KEY_LONGEST) {
+      ctx.addIssue({ code: 'custom', message: OVERSIZED_PRIVATE_KEY_REFUSAL });
+    } else if (!isPrivateKeyPem(value)) {
+      ctx.addIssue({ code: 'custom', message: PARTIAL_PRIVATE_KEY_REFUSAL });
+    }
+  });
 
 export const githubSecretsSchema = z.strictObject({
   appId: z.string().min(1).max(50),

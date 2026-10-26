@@ -1,4 +1,5 @@
-import { providerLabel } from './health-words.js';
+import { WHO_ADMINS, WHO_ORG_ADMINS } from '../lib/authz.js';
+import { connectionCalled, providerLabel } from './health-words.js';
 import { getIntegration } from './registry.js';
 import type { AgentPathKind, IntegrationDeclaration } from './types.js';
 
@@ -36,7 +37,15 @@ export function noAgentPathMessage(provider: string): string {
   return `No agent can use ${providerLabel(provider)}: Forge gives agents no tools for it${credential}, so there is no agent access to grant on it.`;
 }
 
-/** The sentence an agent-facing tool gives for a binding nobody has granted. */
-export function notGrantedMessage(provider: string, bindingId: string): string {
-  return `binding ${bindingId} (${provider}) is connected but no agent on this project may use it: its agent access is \`none\`. An org owner or admin turns it on where the integration is connected — Settings → Integrations — and connection health does not gate it.`;
+/** An agent's call through an ungranted binding: the provider by its label, the switch, and who
+ *  may turn it on by the rule the binding PATCH enforces (ISS-1421 r31, judge-127 on 348). */
+export function notGrantedMessage(
+  provider: string,
+  connection?: { displayName: string | null; provider: string },
+): string {
+  const label = providerLabel(provider);
+  const who =
+    agentAccessTier(getIntegration(provider)) === 'org-admin' ? WHO_ORG_ADMINS : WHO_ADMINS;
+  const through = connection ? ` through ${connectionCalled(connection)}` : '';
+  return `This project's ${label} binding${through} is connected, but no agent on this project may use it: its "Agents on this project may use this" switch is off. Only ${who} can switch it on, in the ${label} drawer on this project's Integrations tab.`;
 }

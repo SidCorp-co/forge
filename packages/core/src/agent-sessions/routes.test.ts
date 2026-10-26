@@ -100,7 +100,7 @@ vi.mock('../pipeline/runs.js', () => ({
 }));
 
 // Org-level authz: stub the db-touching resolvers; pure helpers
-// (assertProjectRole, projectRoleAtLeast) stay real.
+// (assertRoleFor, projectRoleAtLeast) stay real.
 const projectAccessMock = vi.fn();
 const visibleIdsMock = vi.fn(async (_userId: string) => [] as string[]);
 vi.mock('../lib/authz.js', async (importOriginal) => ({

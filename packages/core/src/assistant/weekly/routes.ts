@@ -37,7 +37,7 @@ assistantWeeklyRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    assertOrgRoleOnProject(access, 'admin', 'run its weekly assistant digest');
     const [row] = await db
       .select({
         id: projects.id,

@@ -125,7 +125,7 @@ speakerLinkProjectRoutes.post(
   async (c) => {
     const userId = c.get('userId');
     const { projectId } = c.req.valid('param');
-    await assertProjectAccess(projectId, userId);
+    await assertProjectAccess(projectId, userId, 'member', 'propose a speaker link on it');
     const body = readBody(await c.req.json<SpeakerBody>().catch(() => ({})));
     if (isRefusal(body)) return c.json({ error: body.message, code: body.code }, 400);
     const found = await profileAndCandidates(projectId, body.source, body.externalId);
@@ -144,7 +144,7 @@ speakerLinkProjectRoutes.post(
   async (c) => {
     const userId = c.get('userId');
     const { projectId } = c.req.valid('param');
-    await assertProjectAccess(projectId, userId);
+    await assertProjectAccess(projectId, userId, 'member', 'link a speaker on it');
     const body = readBody(await c.req.json<SpeakerBody>().catch(() => ({})));
     if (isRefusal(body)) return c.json({ error: body.message, code: body.code }, 400);
     const found = await profileAndCandidates(projectId, body.source, body.externalId);

@@ -10,6 +10,7 @@ import {
   maxProjectRole,
   orgDerivedProjectRole,
   projectRoleAtLeast,
+  projectRoleRefusal,
   projectWriteRefusal,
 } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
@@ -114,6 +115,7 @@ export async function assertPrincipalIsWriter(
 export async function assertPrincipalIsAdmin(
   principal: McpPrincipal,
   projectId: string,
+  act: string,
 ): Promise<void> {
   const allow = patEffectiveProjectIds(principal);
   if (allow !== null && !allow.includes(projectId)) {
@@ -125,7 +127,7 @@ export async function assertPrincipalIsAdmin(
   const role = await loadUserProjectRoleFlags(principal.userId, projectId);
   if (!role) throw new Error('NOT_FOUND: project not found or not accessible');
   if (!role.isAdmin) {
-    throw new Error('FORBIDDEN: requires project admin access');
+    throw new Error(`FORBIDDEN: ${projectRoleRefusal(role.role, 'admin', act)}`);
   }
 }
 

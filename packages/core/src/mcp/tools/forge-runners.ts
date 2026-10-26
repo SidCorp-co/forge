@@ -119,7 +119,7 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.data) {
         throw new Error('BAD_REQUEST: data is required for action=register');
       }
-      await assertPrincipalIsAdmin(ctx.principal, input.data.projectId);
+      await assertPrincipalIsAdmin(ctx.principal, input.data.projectId, 'register a runner for it');
       const caps = parseCapabilitiesOrThrow(input.data.capabilities);
       try {
         const row = await insertRunner({
@@ -147,7 +147,7 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       const runnerId = input.runnerId;
       const ownerProjectId = await findRunnerProjectId(runnerId);
       if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
-      await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
+      await assertPrincipalIsAdmin(ctx.principal, ownerProjectId, 'retire its runners');
       const force = input.force ?? false;
       const inFlight = await countInFlightForOneRunner(runnerId);
       if (inFlight > 0 && !force) {
@@ -181,7 +181,7 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       const runnerId = input.runnerId;
       const ownerProjectId = await findRunnerProjectId(runnerId);
       if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
-      await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
+      await assertPrincipalIsAdmin(ctx.principal, ownerProjectId, 'restore its runners');
       const transition = await auditedSetRunnerStatus({
         runnerId,
         newStatus: 'online',
@@ -202,7 +202,7 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
     const ownerProjectId = await findRunnerProjectId(input.runnerId);
     if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
-    await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
+    await assertPrincipalIsAdmin(ctx.principal, ownerProjectId, "change its runners' capabilities");
     const caps = parseCapabilitiesOrThrow(input.capabilities);
     const row = await setRunnerCapabilities(input.runnerId, caps);
     if (!row) throw new Error('NOT_FOUND: runner not found');

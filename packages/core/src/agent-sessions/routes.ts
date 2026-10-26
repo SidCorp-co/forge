@@ -17,7 +17,7 @@ import {
 import { silenceLimitFrom } from '../devices/session-silence.js';
 import { loadSilenceDeadlines } from '../devices/session-silence-read.js';
 import { isPipelineSessionKind } from '../jobs/session-kinds.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import {
@@ -106,7 +106,7 @@ agentSessionRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionRole(id, userId, 'member');
+    const { session } = await ensureSessionRole(id, userId, 'member', 'retry its sessions');
 
     const meta = (session.metadata ?? {}) as { issueId?: string };
     if (!isPipelineSessionKind(session.kind)) {
@@ -244,7 +244,7 @@ agentSessionRoutes.post(
     const userId = personOrRefuse(c.get('userId'));
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'owner or admin role required');
+    assertRoleFor(access, 'admin', 'sweep its stuck sessions');
 
     // ISS-449 — the loop monitor owns session reaps now; the sweeper's
     // sweepZombieSessions was demoted to an alarm pass.
@@ -426,7 +426,7 @@ agentSessionRoutes.post(
     const userId = personOrRefuse(c.get('userId'));
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'start a session on it');
 
     const clientMetadata = input.metadata as Record<string, unknown> | null | undefined;
     assertCallerDeclaresNoKind(clientMetadata, badRequest);
@@ -554,7 +554,7 @@ agentSessionRoutes.patch(
       assertDeviceOwnsSession(c, existing);
     } else {
       const access = await loadProjectAccess(existing.projectId, userId);
-      assertProjectRole(access, 'member');
+      assertRoleFor(access, 'member', 'change its sessions');
       assertSessionOwnerOrAdmin(existing, access, userId);
     }
 
@@ -789,7 +789,7 @@ agentSessionRoutes.delete(
 
     // ISS-465 — owner-or-admin gate (was admin-only). A user can delete their
     // own chat; project owners/admins can delete any session.
-    const { session: existing } = await ensureSessionOwnerOrAdmin(id, userId);
+    const existing = (await ensureSessionOwnerOrAdmin(id, userId, 'delete its sessions')).session;
 
     await withKernelMarker(db, async (tx) =>
       tx.delete(agentSessions).where(eq(agentSessions.id, id)),
@@ -813,9 +813,9 @@ agentSessionRoutes.post(
     const { event, data } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session: existing } = await ensureSessionRole(id, userId, 'member');
+    const { session } = await ensureSessionRole(id, userId, 'member', 'relay to its sessions');
 
-    broadcastSession(existing, `agent-session.relay.${event}`, { payload: data });
+    broadcastSession(session, `agent-session.relay.${event}`, { payload: data });
     return c.json(answer(ref.relayedSchema, { relayed: true }));
   },
 );

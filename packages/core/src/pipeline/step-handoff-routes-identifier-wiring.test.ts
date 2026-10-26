@@ -65,7 +65,12 @@ describe('GET /api/issue-step-contexts — the display key this issue reported (
       `/api/issue-step-contexts?projectId=${PROJECT_ID}&issueId=ISS-1185`,
     );
     expect(res.status).toBe(200);
-    expect(assertProjectAccess).toHaveBeenCalledWith(PROJECT_ID, undefined, 'viewer');
+    expect(assertProjectAccess).toHaveBeenCalledWith(
+      PROJECT_ID,
+      undefined,
+      'viewer',
+      'read its step handoffs',
+    );
     expect(resolveIssueKeyInProject).toHaveBeenCalledWith('ISS-1185', PROJECT_ID);
     expect(getIssueContexts).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: PROJECT_ID, issueId: ISSUE_ID }),

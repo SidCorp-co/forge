@@ -13,7 +13,7 @@ import {
   projects,
   users,
 } from '../db/schema.js';
-import { assertProjectRole, loadOrgRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadOrgRole, loadProjectAccess } from '../lib/authz.js';
 import { personName } from '../lib/person-name.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -124,7 +124,7 @@ memberRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    assertRoleFor(access, 'admin', 'read its invitations');
 
     const rows = await db
       .select({
@@ -167,7 +167,7 @@ memberRoutes.post(
     const callerId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, callerId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    assertRoleFor(access, 'admin', 'add members to it');
     await refuseNonPersonAsMember({ userId: targetUserId });
 
     // Same-org guard: direct-add skips the email handshake, which is only
@@ -224,7 +224,7 @@ memberRoutes.post(
     const inviterId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, inviterId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    assertRoleFor(access, 'admin', 'invite people to it');
     await refuseNonPersonAsMember({ email });
     const [project] = await db
       .select({ name: projects.name })
@@ -318,7 +318,7 @@ memberRoutes.patch(
     const callerId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, callerId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    assertRoleFor(access, 'admin', "change its members' roles");
 
     const [target] = await db
       .select({ role: projectMembers.role })
@@ -358,7 +358,7 @@ memberRoutes.delete(
     const callerId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, callerId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    assertRoleFor(access, 'admin', 'withdraw its invitations');
 
     const deleted = await db
       .delete(projectInvitations)
@@ -390,7 +390,7 @@ memberRoutes.delete(
     const access = await loadProjectAccess(projectId, callerId);
     const selfLeave = targetUserId === callerId;
     if (!selfLeave) {
-      assertProjectRole(access, 'admin', 'requires project admin');
+      assertRoleFor(access, 'admin', 'remove its members');
     }
 
     const [target] = await db

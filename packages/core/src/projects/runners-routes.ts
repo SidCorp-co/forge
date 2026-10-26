@@ -12,7 +12,7 @@ import { residentMasterSql } from '../devices/master-session.js';
 import { readRunnerPoolRead } from '../devices/pool-read-report.js';
 import { resolveDeviceUnbound } from '../devices/unbound-notice.js';
 import { refusedRepoPath, repoPathField } from '../lib/absolute-path.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
@@ -74,7 +74,7 @@ projectRunnerRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'viewer', 'project member required');
+    assertRoleFor(access, 'viewer', 'list its runners');
 
     const rows = await db
       .select({
@@ -154,7 +154,7 @@ projectRunnerRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', 'add a runner to it');
 
     const [device] = await db
       .select({
@@ -297,7 +297,7 @@ projectRunnerRoutes.patch(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', 'change its runners');
 
     const [runner] = await db
       .update(runners)
@@ -341,7 +341,7 @@ projectRunnerRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', "clear its runners' errors");
 
     const [target] = await db
       .select({ id: runners.id })
@@ -371,7 +371,7 @@ projectRunnerRoutes.delete(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', 'remove its runners');
 
     // Idempotent: 204 whether the runner existed or not, mirroring the old
     // PUT/DELETE /:id/devices/:deviceId contract.

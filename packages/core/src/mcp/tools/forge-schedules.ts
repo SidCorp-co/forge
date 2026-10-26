@@ -102,7 +102,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (kind === 'prompt' && !input.prompt) {
           throw new Error('BAD_REQUEST: prompt is required for action=create when kind="prompt"');
         }
-        await assertPrincipalIsAdmin(principal, input.projectId);
+        await assertPrincipalIsAdmin(principal, input.projectId, 'create its schedules');
         const inserted = await createSchedule(
           {
             projectId: input.projectId,
@@ -127,7 +127,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=update');
         const projectId = await readScheduleProjectId(input.scheduleId);
-        await assertPrincipalIsAdmin(principal, projectId);
+        await assertPrincipalIsAdmin(principal, projectId, 'change its schedules');
         const updated = await updateSchedule(
           input.scheduleId,
           {
@@ -152,7 +152,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=delete');
         const projectId = await readScheduleProjectId(input.scheduleId);
-        await assertPrincipalIsAdmin(principal, projectId);
+        await assertPrincipalIsAdmin(principal, projectId, 'delete its schedules');
         await deleteSchedule(input.scheduleId, userId);
         return { deleted: true };
       }

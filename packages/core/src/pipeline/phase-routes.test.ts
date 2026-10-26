@@ -35,7 +35,7 @@ vi.mock('./phase-journal.js', () => ({
 }));
 vi.mock('../lib/authz.js', () => ({
   loadProjectAccess,
-  assertProjectRole: (access: { role?: string }, need: 'viewer' | 'member') => {
+  assertRoleFor: (access: { role?: string }, need: 'viewer' | 'member') => {
     const rank: Record<string, number> = { viewer: 1, member: 2, admin: 3 };
     if ((rank[access.role ?? ''] ?? 0) < (rank[need] ?? 0)) {
       throw new Error(`FORBIDDEN: needs ${need}`);

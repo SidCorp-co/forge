@@ -13,7 +13,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { overfetch } from '../mcp/tools/list-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { decodeSessionCursor, SessionCursorInvalidError } from './cursor.js';
@@ -33,7 +33,7 @@ agentSessionProjectReadRoutes.use(
 
 async function assertMember(projectId: string, userId: string): Promise<void> {
   const access = await loadProjectAccess(projectId, userId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  assertRoleFor(access, 'viewer', 'read its sessions');
 }
 
 agentSessionProjectReadRoutes.get(

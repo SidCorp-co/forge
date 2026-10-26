@@ -64,7 +64,7 @@ masterCharterRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await assertProjectAccess(id, c.get('userId'), 'viewer', 'read its master charter');
 
     const charter = await readCurrentCharter(id);
     if (!charter) return c.json(answer(charterReadSchema, UNDECLARED));
@@ -80,7 +80,7 @@ masterCharterRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await assertProjectAccess(id, c.get('userId'), 'viewer', 'read its master charter');
 
     const versions = await readCharterVersions(id);
     return c.json(
@@ -105,7 +105,7 @@ masterCharterRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertProjectAccess(id, userId);
+    await assertProjectAccess(id, userId, 'member', 'write its master charter');
 
     if (restAuthored(c) === 'agent') {
       throw new HTTPException(403, {

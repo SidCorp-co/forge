@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { chatLogs, type ProjectMemberRole, projects, qaRatings } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { findProjectIdBySlug } from '../projects/service.js';
@@ -65,12 +65,13 @@ const notFound = (message: string) =>
 async function assertChatLogAccess(
   projectSlug: string,
   userId: string,
-  minRole: ProjectMemberRole = 'viewer',
+  minRole: ProjectMemberRole,
+  act: string,
 ): Promise<void> {
   const projectId = await findProjectIdBySlug(projectSlug);
   if (!projectId) throw notFound('project not found');
   const access = await loadProjectAccess(projectId, userId);
-  assertProjectRole(access, minRole, 'not a project member');
+  assertRoleFor(access, minRole, act);
 }
 
 export const chatLogRoutes = new Hono<{ Variables: AuthVars }>();
@@ -90,7 +91,7 @@ chatLogRoutes.get(
     const conditions: SQL[] = [];
 
     if (projectSlug) {
-      await assertChatLogAccess(projectSlug, userId);
+      await assertChatLogAccess(projectSlug, userId, 'viewer', 'read its chat logs');
       conditions.push(eq(chatLogs.projectSlug, projectSlug));
     } else {
       // Cross-project view: restrict to caller-visible projects (explicit
@@ -158,7 +159,7 @@ chatLogRoutes.get(
     const { projectSlug, limit } = c.req.valid('query');
     const userId = c.get('userId');
 
-    await assertChatLogAccess(projectSlug, userId);
+    await assertChatLogAccess(projectSlug, userId, 'viewer', 'read its chat logs');
 
     const rows = await db
       .select()
@@ -189,7 +190,7 @@ chatLogRoutes.get(
     const { projectSlug, limit } = c.req.valid('query');
     const userId = c.get('userId');
 
-    await assertChatLogAccess(projectSlug, userId);
+    await assertChatLogAccess(projectSlug, userId, 'viewer', 'read its chat logs');
 
     const rows = await db
       .select()
@@ -217,7 +218,7 @@ chatLogRoutes.get(
     const [row] = await db.select().from(chatLogs).where(eq(chatLogs.id, id)).limit(1);
     if (!row) throw notFound('chat log not found');
 
-    await assertChatLogAccess(row.projectSlug, userId);
+    await assertChatLogAccess(row.projectSlug, userId, 'viewer', 'read its chat logs');
     return c.json(answer(chatLogSchema, row));
   },
 );
@@ -243,7 +244,7 @@ chatLogRoutes.patch(
       .limit(1);
     if (!row) throw notFound('chat log not found');
 
-    await assertChatLogAccess(row.projectSlug, userId, 'admin');
+    await assertChatLogAccess(row.projectSlug, userId, 'admin', 'review its chat logs');
 
     const updates: Record<string, unknown> = {};
     if (patch.qaRating !== undefined) updates.qaRating = patch.qaRating;

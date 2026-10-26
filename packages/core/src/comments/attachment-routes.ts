@@ -16,7 +16,7 @@ import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
@@ -99,7 +99,7 @@ commentAttachmentRoutes.post(
     if (!comment) throw notFound('comment not found');
 
     const access = await loadProjectAccess(comment.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'attach a file to its comments');
 
     const body = await c.req.parseBody();
     const file = body.file;

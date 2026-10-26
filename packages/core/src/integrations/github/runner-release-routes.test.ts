@@ -28,7 +28,7 @@ vi.mock('../../middleware/auth.js', () => ({
 }));
 const authz = vi.hoisted(() => ({
   loadProjectAccess: vi.fn(async () => ({ role: 'admin' }) as unknown),
-  assertProjectRole: vi.fn(),
+  assertRoleFor: vi.fn(),
 }));
 vi.mock('../../lib/authz.js', () => authz);
 
@@ -166,6 +166,10 @@ describe('reading them back', () => {
   it('asks for an admin before it starts one', async () => {
     service.startRunnerRelease.mockResolvedValue({ started: true, release });
     await post({ version: '0.13.3' });
-    expect(authz.assertProjectRole).toHaveBeenCalledWith({ role: 'admin' }, 'admin');
+    expect(authz.assertRoleFor).toHaveBeenCalledWith(
+      { role: 'admin' },
+      'admin',
+      'cut a runner release for it',
+    );
   });
 });

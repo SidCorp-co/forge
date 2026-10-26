@@ -377,6 +377,8 @@ function StagePanel({
           <ProdGateSection
             projectId={projectId}
             binding={existing}
+            isLive={isLive}
+            whoConfirms={bindingLocked ? existing.acts.whoChanges : null}
             confirmPending={confirmProd.isPending}
             onConfirm={() => confirmProd.mutate(existing.id)}
           />
@@ -419,11 +421,17 @@ function useGateConnection(binding: IntegrationSummary): string {
 function ProdGateSection({
   projectId,
   binding,
+  isLive,
+  whoConfirms,
   confirmPending,
   onConfirm,
 }: {
   projectId: string;
   binding: IntegrationSummary;
+  /** False on a preview binding the gate holds because it deploys what a live binding deploys. */
+  isLive: boolean;
+  /** Who may confirm, where this reader may not; core confirms only for them (ISS-1421 r31). */
+  whoConfirms: string | null;
   confirmPending: boolean;
   onConfirm: () => void;
 }) {
@@ -498,6 +506,8 @@ function ProdGateSection({
       ) : (
         <ProdConfirmBanner
           through={through}
+          isLive={isLive}
+          whoConfirms={whoConfirms}
           pending={confirmPending}
           onConfirm={onConfirm}
         />
@@ -524,10 +534,14 @@ function DeployConfirmationHint() {
 
 function ProdConfirmBanner({
   through,
+  isLive,
+  whoConfirms,
   pending,
   onConfirm,
 }: {
   through: string;
+  isLive: boolean;
+  whoConfirms: string | null;
   pending: boolean;
   onConfirm: () => void;
 }) {
@@ -535,6 +549,12 @@ function ProdConfirmBanner({
     <Banner tone="attention">
       <div className="flex flex-col gap-2">
         <span className="fg-label">Live approval gate</span>
+        {!isLive && (
+          <span className="fg-body-sm" data-testid="preview-gate-why">
+            This preview binding deploys an application a live binding deploys, so its deploys wait
+            here for a confirm as live ones do.
+          </span>
+        )}
         <span className="fg-body-sm">
           Live deploys never auto-dispatch. Click confirm when ready to release
           the gate for an in-flight pipeline run.
@@ -542,6 +562,9 @@ function ProdConfirmBanner({
         <Button size="sm" loading={pending} onClick={onConfirm} className="self-start">
           Confirm live deploy
         </Button>
+        {whoConfirms && (
+          <span className="fg-body-sm text-muted" data-testid="confirm-who">{`${onlyWho(whoConfirms)} can confirm a live deploy.`}</span>
+        )}
         <span className="fg-body-sm text-subtle">{`Through ${through}.`}</span>
       </div>
     </Banner>

@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { domainTemplates } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { applyTemplate, TemplateInvalidManifestError, TemplateNotFoundError } from './apply.js';
 import {
@@ -69,7 +69,7 @@ domainTemplateRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    assertRoleFor(access, 'admin', 'apply a domain template to it');
 
     try {
       const result = await applyTemplate({ projectId, templateKey, actorUserId: userId });

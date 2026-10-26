@@ -125,7 +125,7 @@ export async function resolveGrantedSentryBinding(
     );
   }
   if (!grantHolds(getIntegration('sentry'), usable.binding)) {
-    throw new SentryRefusal('not_granted', notGrantedMessage('sentry', usable.binding.id), {
+    throw new SentryRefusal('not_granted', notGrantedMessage('sentry'), {
       bindingId: usable.binding.id,
     });
   }

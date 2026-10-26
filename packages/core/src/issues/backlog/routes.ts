@@ -125,7 +125,7 @@ backlogStreamRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const q = c.req.valid('query');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await assertProjectAccess(id, c.get('userId'), 'viewer', 'read its backlog');
 
     const statuses = q.status ?? TAKEABLE_STATUSES;
     const total = await countMatching(id, statuses);
@@ -157,7 +157,7 @@ backlogStreamRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const q = c.req.valid('query');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await assertProjectAccess(id, c.get('userId'), 'viewer', 'read its backlog');
 
     const statuses = q.status ?? UNSETTLED_STATUSES;
     const total = await countMatching(id, statuses);

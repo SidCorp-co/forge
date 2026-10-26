@@ -8,6 +8,7 @@ import {
   resolveGuideIndex,
   upsertIntegrationGuide,
 } from '../../guides/integration-guides.js';
+import { providerValuesInWords } from '../../integrations/health-words.js';
 import { INTEGRATION_PROVIDERS } from '../../integrations/types.js';
 import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
 import { findProjectOrgId } from '../../projects/service.js';
@@ -89,7 +90,7 @@ export const forgeGuideTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
     if (!INTEGRATION_PROVIDERS.includes(provider as (typeof INTEGRATION_PROVIDERS)[number])) {
       throw new Error(
-        `BAD_REQUEST: unknown integration provider '${provider}'. Known: ${INTEGRATION_PROVIDERS.join(', ')}`,
+        `BAD_REQUEST: \`${provider}\` is not an integration this deployment declares. Send one of ${providerValuesInWords(INTEGRATION_PROVIDERS)}.`,
       );
     }
 

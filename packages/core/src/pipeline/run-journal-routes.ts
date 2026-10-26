@@ -134,7 +134,7 @@ runJournalRoutes.get(
   }),
   async (c) => {
     const q = c.req.valid('query');
-    await assertProjectAccess(q.projectId, c.get('userId'), 'viewer');
+    await assertProjectAccess(q.projectId, c.get('userId'), 'viewer', 'read its run journal');
     const issueId = await resolveIssueKeyInProject(q.issueId, q.projectId);
     const [issue] = await db
       .select({ issSeq: issues.issSeq })

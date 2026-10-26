@@ -98,7 +98,7 @@ export function registerBacklogIndexRoutes(router: Hono<{ Variables: AuthVars }>
     async (c) => {
       const { id } = c.req.valid('param');
       const q = c.req.valid('query');
-      await assertProjectAccess(id, c.get('userId'), 'viewer');
+      await assertProjectAccess(id, c.get('userId'), 'viewer', 'read its backlog');
       return c.json(
         answer(
           rankingSchema,
@@ -125,7 +125,7 @@ export function registerBacklogIndexRoutes(router: Hono<{ Variables: AuthVars }>
     async (c) => {
       const { id } = c.req.valid('param');
       const q = c.req.valid('query');
-      await assertProjectAccess(id, c.get('userId'), 'viewer');
+      await assertProjectAccess(id, c.get('userId'), 'viewer', 'read its backlog');
       return c.json(
         answer(
           neighboursSchema,

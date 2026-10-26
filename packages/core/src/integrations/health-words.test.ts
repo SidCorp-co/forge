@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-const { healthAnswer } = await import('./health-words.js');
+const { connectionCalled, healthAnswer, labelsInWords, providerValuesInWords } = await import(
+  './health-words.js'
+);
 
 // ISS-1421 r14 — judge-61 read Postman's and Epodsystem's Test answer as the adapter's own words,
 // "invalid Postman API key": lower case, no full stop, and nothing saying whose words they were.
@@ -100,6 +102,31 @@ describe('healthAnswer', () => {
   it('leaves a passing answer in its own words, made a sentence', () => {
     expect(healthAnswer('postman', { status: 'ok', message: 'Authenticated as ann' }).message).toBe(
       'Authenticated as ann.',
+    );
+  });
+});
+
+// ISS-1421 r31, judge-127 on 348: a connection with no name read "this rocketchat connection".
+describe('a provider named in a sentence', () => {
+  it("names a connection with no name by its provider's label", () => {
+    expect(connectionCalled({ displayName: null, provider: 'rocketchat' })).toBe(
+      'this Rocket.Chat connection',
+    );
+    expect(connectionCalled({ displayName: 'google · Ops sheet', provider: 'google' })).toBe(
+      'the connection "Ops sheet"',
+    );
+  });
+
+  it('lists providers by their labels', () => {
+    expect(labelsInWords(['coolify', 'epodsystem', 'agent'])).toBe(
+      'Coolify, Epodsystem and Agent release channel',
+    );
+    expect(labelsInWords(['github'])).toBe('GitHub');
+  });
+
+  it('gives each value a caller sends beside its label', () => {
+    expect(providerValuesInWords(['google', 'rocketchat'])).toBe(
+      '`google` (Google Sheets), `rocketchat` (Rocket.Chat)',
     );
   });
 });

@@ -13,7 +13,7 @@ import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { sourceCommit } from '../observability/source-commit.js';
 import {
@@ -81,7 +81,7 @@ opsHealthProjectRoutes.get(
     const { id: projectId } = c.req.valid('param');
     const { staleJobThresholdSeconds } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'member', 'not a project member');
+    assertRoleFor(access, 'member', 'read its operations health');
 
     return c.json(
       answer(

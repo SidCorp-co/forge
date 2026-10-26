@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   type ImprovementMessage,
@@ -59,7 +59,7 @@ improvementMessageRoutes.get(
     }
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its improvement messages');
 
     const enabledRows = await db
       .select({

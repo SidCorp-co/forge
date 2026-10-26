@@ -85,7 +85,9 @@ export async function keywordSearchKnowledge(
     )
     .orderBy(desc(sql`rank`))
     .limit(k);
-  return rows.map((r) => ({ ...r, score: Number(r.rank) }));
+  // The rank is said as `score` alone: the search answer declares no `rank`, and a hit carrying one
+  // was answered 500 by the response check (ISS-1421 r31).
+  return rows.map(({ rank, ...r }) => ({ ...r, score: Number(rank) }));
 }
 
 const RRF_K = 60;

@@ -9,7 +9,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess, projectWriteRefusal } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readJobGate } from './job-queries.js';
 import {
@@ -45,7 +45,7 @@ jobRetryUserRoutes.post(
     if (!job)
       throw new HTTPException(404, { message: 'job not found', cause: { code: 'NOT_FOUND' } });
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'member', projectWriteRefusal(access.role, 'retry this job'));
+    assertRoleFor(access, 'member', 'retry this job');
 
     const { reason } = await readReasonBody(c.req);
 

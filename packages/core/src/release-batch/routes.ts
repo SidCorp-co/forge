@@ -2,12 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
-import {
-  assertProjectRole,
-  loadProjectAccess,
-  type ProjectAccess,
-  refusedForRole,
-} from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, type ProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { resolveReleaseChannels } from './channel.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
@@ -104,8 +99,7 @@ import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from
 export const releaseBatchRoutes = new Hono<{ Variables: AuthVars }>();
 releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
 
-const mayRelease = (access: ProjectAccess, act: string) =>
-  assertProjectRole(access, 'admin', refusedForRole(access.role, act, 'an admin of this project'));
+const mayRelease = (access: ProjectAccess, act: string) => assertRoleFor(access, 'admin', act);
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches',
@@ -169,7 +163,7 @@ releaseBatchRoutes.get(
 
     const access = await loadProjectAccess(projectId, userId);
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'read its release batches');
 
     const active = await getActiveReleaseBatch(projectId);
     return c.json(answer(activeSchema, active ?? null));
@@ -188,7 +182,7 @@ releaseBatchRoutes.get(
 
     const access = await loadProjectAccess(projectId, userId);
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'read its release roster');
 
     try {
       return c.json(answer(rosterSchema, await loadReleaseRoster(projectId)));
@@ -210,7 +204,7 @@ releaseBatchRoutes.get(
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'read its release readiness');
 
     const readiness = await loadReleaseReadiness(projectId);
     if (!readiness) throw notFound('project not found');
@@ -228,7 +222,7 @@ releaseBatchRoutes.get(
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'read its deployment');
 
     // cm:edge protocol -> packages/core/src/release-batch/readiness.ts — readiness answers the
     // DECLARATION and makes no outbound request; this one reads the probes, so they stay apart
@@ -241,13 +235,13 @@ releaseBatchRoutes.get(
   },
 );
 
-async function loadRunForProject(runId: string, projectId: string, userId: string) {
+async function loadRunForProject(runId: string, projectId: string, userId: string, act: string) {
   const run = await findReleaseBatchRun(runId);
   if (!run || run.projectId !== projectId) throw notFound('release batch not found');
 
   const access = await loadProjectAccess(projectId, userId);
   if (!access) throw notFound('project not found');
-  assertProjectRole(access, 'member');
+  assertRoleFor(access, 'member', act);
 }
 
 releaseBatchRoutes.get(
@@ -258,7 +252,7 @@ releaseBatchRoutes.get(
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    await loadRunForProject(runId, projectId, c.get('userId'));
+    await loadRunForProject(runId, projectId, c.get('userId'), 'read its release batches');
     return c.json(answer(batchContextSchema, await loadReleaseBatchContext(runId)));
   },
 );
@@ -275,7 +269,7 @@ releaseBatchRoutes.post(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const userId = c.get('userId');
-    await loadRunForProject(runId, projectId, userId);
+    await loadRunForProject(runId, projectId, userId, 'finish its release batches');
 
     try {
       const accepted = await acceptReleaseBatchFinish(
@@ -308,7 +302,7 @@ releaseBatchRoutes.post(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const userId = c.get('userId');
-    await loadRunForProject(runId, projectId, userId);
+    await loadRunForProject(runId, projectId, userId, 'record readings on its release batches');
 
     try {
       return c.json(
@@ -336,7 +330,7 @@ releaseBatchRoutes.post(
     const { projectId, runId } = c.req.valid('param');
     const { reason, promotedRoster } = c.req.valid('json');
     const userId = c.get('userId');
-    await loadRunForProject(runId, projectId, userId);
+    await loadRunForProject(runId, projectId, userId, 'abort its release batches');
 
     const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId, {
       promotedRoster,
@@ -355,7 +349,7 @@ releaseBatchRoutes.get(
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    await loadRunForProject(runId, projectId, c.get('userId'));
+    await loadRunForProject(runId, projectId, c.get('userId'), 'read its release batches');
     const state = await readReleaseRunState(runId);
     if (!state) throw notFound('release batch not found');
     return c.json(answer(stateSchema, state));
@@ -373,7 +367,7 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    await loadRunForProject(runId, projectId, c.get('userId'));
+    await loadRunForProject(runId, projectId, c.get('userId'), 'announce its release method');
     return c.json(answer(methodSchema, await announceMethod({ runId, ...c.req.valid('json') })));
   },
 );
@@ -392,7 +386,7 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    await loadRunForProject(runId, projectId, c.get('userId'));
+    await loadRunForProject(runId, projectId, c.get('userId'), 'open its release attempts');
     const body = c.req.valid('json') as Record<string, unknown>;
     refuseMachineKeys(body);
     try {
@@ -425,7 +419,7 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId, runId, key } = c.req.valid('param');
-    await loadRunForProject(runId, projectId, c.get('userId'));
+    await loadRunForProject(runId, projectId, c.get('userId'), 'account for release attempts');
     const body = c.req.valid('json') as Record<string, unknown>;
     refuseMachineKeys(body);
     const existing = await readAttempt(runId, key);
@@ -491,7 +485,7 @@ releaseBatchRoutes.get(
     const { projectId, runId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'read its release records');
 
     const record = await readReleaseRecord(projectId, runId);
     if (!record) throw notFound('no release record under this id on this project');

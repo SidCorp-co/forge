@@ -460,6 +460,42 @@ describe("the live approval gate", () => {
     appsOf = {};
   });
 
+  // ISS-1421 r31, judge-127: a plain member saw Confirm live deploy greyed, with nothing saying who
+  // may confirm; core confirms only for an admin of the project.
+  it("says who may confirm a live deploy to a reader who may not", async () => {
+    acts = { ...ALL_ACTS, change: false };
+    drawLive();
+    await waitFor(() =>
+      expect(screen.getByTestId("confirm-who")).toHaveTextContent(
+        "Only an admin of this project can confirm a live deploy.",
+      ),
+    );
+  });
+
+  it("says nothing of who may confirm to a reader who may", async () => {
+    drawLive();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm live deploy" })).toBeInTheDocument());
+    expect(screen.queryByTestId("confirm-who")).toBeNull();
+  });
+
+  // ISS-1421 r31, judge-127: on a preview binding the gate stood with no word on why it was there.
+  it("says on a preview binding why it holds that binding's deploys", async () => {
+    appsOf = { preview: "made-up-app", live: "made-up-app" };
+    drawPreview();
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-gate-why")).toHaveTextContent(
+        "This preview binding deploys an application a live binding deploys",
+      ),
+    );
+    appsOf = {};
+  });
+
+  it("gives a live binding's gate no preview reason", async () => {
+    drawLive();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm live deploy" })).toBeInTheDocument());
+    expect(screen.queryByTestId("preview-gate-why")).toBeNull();
+  });
+
   it("names it by where it points where the reader's list does not hold it", async () => {
     drawLive();
     await waitFor(() => expect(screen.getByText("Through the connection at stub.example.com.")).toBeInTheDocument());
@@ -483,5 +519,21 @@ describe("Rocket.Chat's bot personality field", () => {
     await waitFor(() => expect(screen.getByText("Bot personality")).toBeInTheDocument());
     const example = screen.getByPlaceholderText(/^e\.g\./).getAttribute("placeholder") ?? "";
     expect(example).toMatch(/^e\.g\. "[\x20-\x7E]+"$/);
+  });
+
+  // ISS-1421 r31, judge-127: the field and the room input were named by nothing but placeholders.
+  it("gives the personality field and the room field accessible names", async () => {
+    provider = "rocketchat";
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: "rocketchat", status: "connected", meta: {} } as never}
+          onClose={() => {}}
+        />
+      </Page>,
+    );
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Bot personality" })).toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "Room to add" })).toBeInTheDocument();
   });
 });

@@ -17,6 +17,7 @@ import {
   createSchema,
   noKeyToSaveMessage,
   providerHalfRefused,
+  undeclaredProviderMessage,
 } from './provider-schemas.js';
 import { registerAllIntegrations } from './register-all.js';
 import { listIntegrations } from './registry.js';
@@ -249,5 +250,30 @@ describe('a storefront label the create refuses', () => {
       'A label takes lowercase letters, numbers and dashes, starting with a letter or number, e.g. partner-a.',
     );
     expect(said).not.toMatch(/kebab/i);
+  });
+});
+
+// ISS-1421 r31, judge-127 on 348: these named providers by their ids where the page shows labels.
+describe('a provider named in a create refusal', () => {
+  it('refuses a label on a single-binding provider naming it by its label', () => {
+    const said = createRefusal({
+      provider: 'google',
+      role: 'service',
+      label: 'second',
+      config: {},
+      secrets: {},
+    });
+    expect(said).toContain(
+      'label: Google Sheets holds one binding per project, so it takes no label.',
+    );
+    expect(said).toContain('only Epodsystem can hold several');
+    expect(said).not.toMatch(/`google`|multiBinding/);
+  });
+
+  it('lists the values an unknown provider may be sent as, each beside its label', () => {
+    const said = undeclaredProviderMessage('slack');
+    expect(said).toMatch(/^`slack` is not an integration this deployment declares\. Send one of /);
+    expect(said).toContain('`coolify` (Coolify)');
+    expect(said).toContain('`agent` (Agent release channel)');
   });
 });

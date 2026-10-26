@@ -56,7 +56,7 @@ memoryMineRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     const mine = await findMine(userId, id);
-    if (mine) await assertProjectAccess(mine.projectId, userId);
+    if (mine) await assertProjectAccess(mine.projectId, userId, 'member', 'delete its memory');
     const removed = mine ? await deleteMine(userId, id) : false;
     if (!removed) {
       throw new HTTPException(404, {

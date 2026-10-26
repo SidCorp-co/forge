@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { SkillContentBlockedError } from '../security/findings.js';
 import {
@@ -241,7 +241,7 @@ skillCrudRoutes.post(
     }
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can create skills');
+    assertRoleFor(access, 'admin', 'create skills in it');
 
     try {
       const inserted = await createProjectSkill({
@@ -297,7 +297,7 @@ skillCrudRoutes.put(
 
     if (row.projectId) {
       const access = await loadProjectAccess(row.projectId, userId);
-      assertProjectRole(access, 'admin', 'only a project admin can update skills');
+      assertRoleFor(access, 'admin', 'change its skills');
     } else {
       // Global skills: only allow CEO/admin via existing admin route.
       throw forbidden('global skills cannot be updated via this endpoint');
@@ -349,7 +349,7 @@ skillCrudRoutes.delete(
 
     if (row.projectId) {
       const access = await loadProjectAccess(row.projectId, userId);
-      assertProjectRole(access, 'admin', 'only a project admin can delete skills');
+      assertRoleFor(access, 'admin', 'delete its skills');
     } else {
       throw forbidden('global skills cannot be deleted via this endpoint');
     }
@@ -435,7 +435,7 @@ skillCrudRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can push skills');
+    assertRoleFor(access, 'admin', 'push its skills');
 
     // Explicit push: signal device-bound runners (or one `deviceId`) over WS;
     // each pulls its effective manifest and reports installed hashes back.

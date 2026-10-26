@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
 import { feedbackKinds, feedbackSeverities, feedbackTargets } from '../db/feedback-vocabulary.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   feedbackReportSchema,
@@ -87,7 +87,7 @@ feedbackReportRoutes.get(
     }
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its feedback');
 
     const rows = await listReports([projectId], filters, limit ?? 50);
     // REST endpoint is human-facing (web UI); React escapes all text on render.
@@ -123,7 +123,7 @@ feedbackReportRoutes.post(
     if (!existing) throw notFound('feedback report not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    assertRoleFor(access, 'member', 'review its feedback');
 
     if (reviewed && linkedIssueId) {
       const visibleIds = await loadVisibleProjectIds(userId);

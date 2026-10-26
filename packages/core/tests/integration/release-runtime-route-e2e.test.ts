@@ -276,7 +276,7 @@ describe('a project nothing can read is told once', () => {
     for (const id of [oldest, middle, newest]) {
       const hold = await holdOf(id);
       expect(hold?.code).toBe('RELEASE_RUNTIME_UNROUTED');
-      expect(String(hold?.reason)).toContain('epodsystem');
+      expect(String(hold?.reason)).toContain('Epodsystem');
     }
     expect(await holdComments(oldest)).toBe(1);
     expect(await holdComments(middle)).toBe(0);
@@ -313,7 +313,7 @@ describe('a project nothing can read is told once', () => {
     expect(codes.filter((c) => c === 'RELEASE_RUNTIME_UNROUTED')).toHaveLength(1);
     expect(codes).not.toContain('RELEASE_CRITERIA_UNEARNED');
     const unrouted = readiness?.blockers.find((b) => b.code === 'RELEASE_RUNTIME_UNROUTED');
-    expect(unrouted?.message).toContain('epodsystem');
+    expect(unrouted?.message).toContain('Epodsystem');
     expect(unrouted?.message).not.toContain('Held: 2 issue(s)');
     expect(unrouted?.message.match(/`ISS-\d+` owes criteria 1 and 2/g)).toHaveLength(2);
     // Judge r2 finding 5: held rows are listed oldest merge first, not in the order Postgres returns.
@@ -333,7 +333,7 @@ describe('a project nothing can read is told once', () => {
 
     const said = readiness?.warnings.find((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK')?.message;
     expect(said).toContain(`\`${(await fx.displayIds([owing]))[0]}\` owes criteria 1 and 2`);
-    expect(said).toContain('What is missing: its deploy bindings go through epodsystem');
+    expect(said).toContain('What is missing: its deploy bindings go through Epodsystem');
     expect(said).toContain('The way to give it one: declare `verify.probes`');
     expect(said).toContain('no judging run can earn one until the project can be read');
     expect(said).not.toContain('still owes a judging run');

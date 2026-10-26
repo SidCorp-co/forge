@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { issueLabels, labelKinds, labels } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { moduleDrift } from './module-drift.js';
 import { DEFAULT_ACTIVE_WITHIN_DAYS, moduleRollup } from './module-rollup.js';
@@ -120,7 +120,7 @@ labelProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    assertRoleFor(access, 'admin', 'create labels in it');
 
     const isModule = (kind ?? 'label') === 'module';
     try {
@@ -169,7 +169,7 @@ labelProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its labels');
 
     const rows = await db.select(labelColumns).from(labels).where(eq(labels.projectId, projectId));
 
@@ -192,7 +192,7 @@ labelProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its modules');
 
     return c.json(
       answer(
@@ -222,7 +222,7 @@ labelProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its modules');
 
     return c.json(answer(moduleDriftSchema, await moduleDrift(projectId, { minCoOccurrence })));
   },
@@ -263,7 +263,7 @@ labelRoutes.patch(
 
     const label = await loadLabel(id);
     const access = await loadProjectAccess(label.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    assertRoleFor(access, 'admin', 'change its labels');
 
     const nextKind = patch.kind ?? label.kind;
     const nextParentId = patch.parentId !== undefined ? patch.parentId : label.parentId;
@@ -321,7 +321,7 @@ labelRoutes.delete(
 
     const label = await loadLabel(id);
     const access = await loadProjectAccess(label.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    assertRoleFor(access, 'admin', 'delete its labels');
 
     const [attached] = await db
       .select({ n: count() })

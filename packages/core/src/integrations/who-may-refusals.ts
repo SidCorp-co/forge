@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { refusedForRole, roleHeldWords } from '../lib/authz.js';
 import { UNNAMED_PERSON } from '../lib/person-name.js';
 import { type ProjectRole, WHO_CHANGES, WHO_GRANTS_A_BOX } from './binding-acts.js';
-import { providerLabel } from './health-words.js';
+import { connectionCalled, providerLabel } from './health-words.js';
 import { whoSavesKey } from './held-key.js';
 import type { ListedOwner } from './owner-names.js';
 
@@ -45,17 +45,6 @@ export const orgCredentialNotYours = (act: string) =>
     message: `Only an owner or admin of the organization can ${act} a connection it owns. Make it your own connection instead, or ask one of them.`,
     cause: { code: 'FORBIDDEN' },
   });
-
-/** A connection as a sentence names it: by the name its owner gave it, never by its id. */
-function connectionCalled(connection: { displayName: string | null; provider: string }): string {
-  const prefix = `${connection.provider} · `;
-  const given = connection.displayName?.startsWith(prefix)
-    ? connection.displayName.slice(prefix.length)
-    : connection.displayName;
-  return given?.trim()
-    ? `the connection "${given.trim()}"`
-    : `this ${connection.provider} connection`;
-}
 
 /** What a connection's own door was asked to do, said after "not" and after "can" (ISS-1421 r28). */
 export type ConnectionAct = string;

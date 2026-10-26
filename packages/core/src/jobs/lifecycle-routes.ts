@@ -7,7 +7,7 @@ import { declaresInput, zValidator } from '../api-reference/declare/validator.js
 import { db } from '../db/client.js';
 import { type JobStatus, jobEvents, jobs, skills } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -570,7 +570,7 @@ jobLifecycleUserRoutes.post(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    assertRoleFor(access, 'member', 'resume its jobs');
 
     const { reason } = await readReasonBody(c.req);
 

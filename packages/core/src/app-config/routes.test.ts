@@ -19,7 +19,7 @@ vi.mock('../db/client.js', () => ({
 }));
 vi.mock('../lib/authz.js', () => ({
   loadProjectAccess: vi.fn(async () => ({ role: 'admin' })),
-  assertProjectRole: vi.fn(),
+  assertRoleFor: vi.fn(),
 }));
 vi.mock('../middleware/auth.js', () => ({
   requireAuth: () => async (c: import('hono').Context, next: () => Promise<void>) => {

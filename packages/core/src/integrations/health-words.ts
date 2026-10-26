@@ -15,6 +15,33 @@ export function providerLabel(provider: string): string {
   return LABELS[provider as IntegrationProvider] ?? provider;
 }
 
+/** Providers in a sentence, each as the Integrations page labels it: "Coolify, Epodsystem and Sentry". */
+export function labelsInWords(providers: readonly string[]): string {
+  const words = providers.map(providerLabel);
+  return words.length < 2
+    ? (words[0] ?? '')
+    : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`;
+}
+
+/** The values a caller sends for providers, each beside its label: "`coolify` (Coolify), …". */
+export function providerValuesInWords(providers: readonly string[]): string {
+  return providers.map((p) => `\`${p}\` (${providerLabel(p)})`).join(', ');
+}
+
+/** A connection as a sentence names it: by the name its owner gave it, never by its id. */
+export function connectionCalled(connection: {
+  displayName: string | null;
+  provider: string;
+}): string {
+  const prefix = `${connection.provider} · `;
+  const given = connection.displayName?.startsWith(prefix)
+    ? connection.displayName.slice(prefix.length)
+    : connection.displayName;
+  return given?.trim()
+    ? `the connection "${given.trim()}"`
+    : `this ${providerLabel(connection.provider)} connection`;
+}
+
 /**
  * A check's answer as a person reads it: sentences Forge owns saying what the check found, and the
  * text the adapter or provider gave kept under `diagnostics.checkSaid` (ISS-1421 r14). Nothing is

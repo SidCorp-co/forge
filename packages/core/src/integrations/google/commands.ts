@@ -76,7 +76,7 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
     );
   }
   if (!grantHolds(getIntegration('google'), usable[0].binding)) {
-    throw new GoogleCommandError('NOT_GRANTED', notGrantedMessage('google', usable[0].binding.id));
+    throw new GoogleCommandError('NOT_GRANTED', notGrantedMessage('google'));
   }
   return usable[0];
 }

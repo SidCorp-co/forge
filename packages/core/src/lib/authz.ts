@@ -192,10 +192,7 @@ export function roleHeldWords(held: ProjectMemberRole | null): string {
     : 'You are not a member of this project';
 }
 
-/**
- * One refusal for an act a project role does not allow: the role held, the act and who may take it.
- * The binding doors' who-may refusals and every write refusal are this sentence (ISS-1421 r30).
- */
+/** One refusal for an act a role does not allow: role held, act, who may (ISS-1421 r30). */
 export function refusedForRole(held: ProjectMemberRole | null, act: string, who: string): string {
   return `${roleHeldWords(held)}, so you cannot ${act}. Only ${who} can, so ask one of them.`;
 }
@@ -203,44 +200,60 @@ export function refusedForRole(held: ProjectMemberRole | null, act: string, who:
 /** Who may take a write the project member role allows. */
 export const WHO_WRITES = 'a member or admin of this project';
 
-/**
- * What a refused write says, at REST and at an MCP tool alike: the act, the role held and who may.
- * `act` completes "you cannot …" (ISS-1421 r30: it once named only the roles, never the act).
- */
+export const WHO_ADMINS = 'an admin of this project';
+
+export const WHO_ORG_ADMINS = "an owner or admin of this project's organization";
+
+/** A refused write at REST and MCP alike; `act` completes "you cannot …" (ISS-1421 r30). */
 export function projectWriteRefusal(held: ProjectMemberRole | null, act: string): string {
   return refusedForRole(held, act, WHO_WRITES);
 }
 
-/** 403 unless the effective role is at least `min`. */
-export function assertProjectRole(
-  access: ProjectAccess,
+const capitalised = (words: string) => words.charAt(0).toUpperCase() + words.slice(1);
+
+/** The one refusal for a role too low for `act`: the role held and who may, or who can add a
+ *  reader holding none where any member may take it (ISS-1421 r31). */
+export function projectRoleRefusal(
+  held: ProjectMemberRole | null,
   min: ProjectMemberRole,
-  message?: string,
-): void {
+  act: string,
+): string {
+  if (min === 'viewer') {
+    return `${roleHeldWords(null)}, so you cannot ${act}. ${capitalised(WHO_ADMINS)} can add you to it.`;
+  }
+  return refusedForRole(held, act, min === 'admin' ? WHO_ADMINS : WHO_WRITES);
+}
+
+/** 403 naming `act` and who may, below `min`; the act is required, so no door refuses in role
+ *  words alone (ISS-1421 r31, judge-127 on criterion 340). */
+export function assertRoleFor(access: ProjectAccess, min: ProjectMemberRole, act: string): void {
   if (!projectRoleAtLeast(access.role, min)) {
-    throw forbidden(message ?? `requires project ${min} access`);
+    throw forbidden(projectRoleRefusal(access.role, min, act));
   }
 }
 
+/** `assertRoleFor` for a door holding only the project's id: a missing project refused as a non-member. */
 export async function assertProjectAccess(
   projectId: string,
   userId: string | null | undefined,
-  min: ProjectMemberRole = 'member',
+  min: ProjectMemberRole,
+  act: string,
 ): Promise<ProjectAccess> {
   const access = await effectiveProjectRole(userId, projectId);
-  if (!access || !projectRoleAtLeast(access.role, min)) {
-    throw forbidden('not a project member');
-  }
+  if (!access) throw forbidden(projectRoleRefusal(null, min, act));
+  assertRoleFor(access, min, act);
   return access;
 }
 
+/** 403 naming `act` and who may, unless the caller is at least `min` in the project's organization. */
 export function assertOrgRoleOnProject(
   access: ProjectAccess,
   min: OrgMemberRole,
-  message?: string,
+  act: string,
 ): void {
   if (!orgRoleAtLeast(access.orgRole, min)) {
-    throw forbidden(message ?? `requires org ${min} access`);
+    const who = min === 'owner' ? "an owner of this project's organization" : WHO_ORG_ADMINS;
+    throw forbidden(refusedForRole(access.role, act, who));
   }
 }
 

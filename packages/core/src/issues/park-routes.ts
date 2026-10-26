@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { issueParkSchema, readIssuePark } from './park-routes-reference.js';
 import { loadIssuePark } from './park-view.js';
@@ -40,7 +40,7 @@ issueParkRoutes.get(
       throw new HTTPException(404, { message: 'issue not found', cause: { code: 'NOT_FOUND' } });
     }
     const access = await loadProjectAccess(issue.projectId, c.get('userId'));
-    assertProjectRole(access, 'viewer');
+    assertRoleFor(access, 'viewer', 'read why its issues are parked');
     return c.json(answer(issueParkSchema, { park: await loadIssuePark(id) }));
   },
 );

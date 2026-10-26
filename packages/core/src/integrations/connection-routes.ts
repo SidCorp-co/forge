@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
@@ -168,9 +168,25 @@ integrationConnectionsRoutes.get(
   },
 );
 
+/**
+ * An organization's connection asked of someone who is not its owner or admin is refused by who may
+ * before any field of the body is judged; a field check once answered first (ISS-1421 r31).
+ */
+const refuseOrgCreateByRoleFirst: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
+  const raw: unknown = await c.req.json().catch(() => undefined);
+  const orgId = raw && typeof raw === 'object' ? (raw as { orgId?: unknown }).orgId : undefined;
+  if (typeof orgId === 'string' && z.uuid().safeParse(orgId).success) {
+    const orgRole = await loadOrgRole(orgId, c.get('userId'));
+    if (!orgRole) throw notFound('org');
+    if (!orgRoleAtLeast(orgRole, 'admin')) throw orgCredentialNotYours('create');
+  }
+  await next();
+};
+
 integrationConnectionsRoutes.post(
   '/',
   storeConnection,
+  refuseOrgCreateByRoleFirst,
   zValidator('json', connectionCreateSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),

@@ -119,7 +119,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.projectId) {
         throw new Error('BAD_REQUEST: projectId is required for action=update');
       }
-      await assertPrincipalIsAdmin(ctx.principal, input.projectId);
+      await assertPrincipalIsAdmin(ctx.principal, input.projectId, 'change its configuration');
       if (input.pipelineConfig) {
         if (!input.pipelineConfigBase) {
           throw new Error(`BAD_REQUEST: CONFIG_PATCH_SHAPE: ${PIPELINE_CONFIG_BASE_MESSAGE}`);

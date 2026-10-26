@@ -9,7 +9,7 @@ import { commentMentions, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
 import { resolveActors } from '../issues/actor-resolution.js';
 import { issueRouteIdParamSchema, resolveIssueRouteRef } from '../issues/issue-route-ref.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -121,7 +121,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
 
       const issue = await loadIssue(issueId);
       const access = await loadProjectAccess(issue.projectId, userId);
-      assertProjectRole(access, 'member');
+      assertRoleFor(access, 'member', 'comment on its issues');
 
       let written: Awaited<ReturnType<typeof insertComment>> | undefined;
       try {

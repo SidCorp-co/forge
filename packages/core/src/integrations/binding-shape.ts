@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type BindingRole, bindingRoles, type DeployStage, deployStages } from '../db/schema.js';
+import { labelsInWords, providerLabel } from './health-words.js';
 import { deployCapableProviders, providerCanDeploy } from './registry.js';
 
 export const roleSchema = z.enum(bindingRoles);
@@ -48,9 +49,13 @@ export function checkRoleStagesPairing(
   }
 }
 
-/** The sentence a caller gets for `role: 'deploy'` on a provider Forge cannot deploy to. */
+/**
+ * The sentence a caller gets for `role: 'deploy'` on a provider Forge cannot deploy to, each
+ * provider named as the Integrations page labels it (ISS-1421 r31, judge-127 on 348).
+ */
 export function cannotDeployMessage(provider: string): string {
-  return `Forge cannot deploy to \`${provider}\` — it has no deploy adapter, so this binding can only be \`role: "service"\`. Deploy-capable providers: ${deployCapableProviders().join(', ')}.`;
+  const deployable = labelsInWords(deployCapableProviders());
+  return `Forge cannot deploy to ${providerLabel(provider)}, so a binding of it can only be a service binding, \`role: "service"\`. Forge deploys to ${deployable}.`;
 }
 
 /**

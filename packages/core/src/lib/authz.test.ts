@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -9,7 +11,8 @@ vi.mock('../db/client.js', () => ({ db: dbMock }));
 
 import {
   assertOrgRoleOnProject,
-  assertProjectRole,
+  assertProjectAccess,
+  assertRoleFor,
   effectiveProjectRole,
   loadOrgRole,
   loadPersonalOrgId,
@@ -19,6 +22,7 @@ import {
   orgRoleAtLeast,
   type ProjectAccess,
   projectRoleAtLeast,
+  projectRoleRefusal,
   projectWriteRefusal,
   refusedForRole,
 } from './authz.js';
@@ -101,26 +105,108 @@ describe('projectWriteRefusal', () => {
   });
 });
 
-describe('assertProjectRole', () => {
+/** The message a gate refused with, or null where it let the call through. */
+function refusal(gate: () => void): string | null {
+  try {
+    gate();
+    return null;
+  } catch (err) {
+    expect(err).toBeInstanceOf(HTTPException);
+    expect((err as HTTPException).status).toBe(403);
+    return (err as HTTPException).message;
+  }
+}
+
+describe('assertRoleFor', () => {
   it('passes at or above the min role', () => {
-    expect(() => assertProjectRole(access({ role: 'admin' }), 'member')).not.toThrow();
-    expect(() => assertProjectRole(access({ role: 'member' }), 'member')).not.toThrow();
+    expect(refusal(() => assertRoleFor(access({ role: 'admin' }), 'member', 'x'))).toBeNull();
+    expect(refusal(() => assertRoleFor(access({ role: 'member' }), 'member', 'x'))).toBeNull();
+    expect(refusal(() => assertRoleFor(access({ role: 'viewer' }), 'viewer', 'x'))).toBeNull();
   });
 
-  it('403s below the min role and with no role', () => {
-    for (const [role, min] of [
-      ['viewer', 'member'],
-      ['member', 'admin'],
-      [null, 'viewer'],
-    ] as const) {
-      try {
-        assertProjectRole(access({ role }), min);
-        expect.unreachable('expected 403');
-      } catch (err) {
-        expect(err).toBeInstanceOf(HTTPException);
-        expect((err as HTTPException).status).toBe(403);
-      }
+  // ISS-1421 r31, judge-127 on 340: a viewer's REST issue create read "Requires project member
+  // access.", and a viewer's memory write "Not a project member.", which is untrue of a viewer.
+  it('names the act refused, the role held and who may take it, below member and below admin', () => {
+    expect(
+      refusal(() => assertRoleFor(access({ role: 'viewer' }), 'member', 'create an issue in it')),
+    ).toBe(
+      'You are a viewer of this project, so you cannot create an issue in it. Only a member or admin of this project can, so ask one of them.',
+    );
+    expect(
+      refusal(() => assertRoleFor(access({ role: 'member' }), 'admin', 'delete its issues')),
+    ).toBe(
+      'You are a member of this project, so you cannot delete its issues. Only an admin of this project can, so ask one of them.',
+    );
+  });
+
+  it('tells a reader who holds no role that they are not a member, and who can add them', () => {
+    expect(refusal(() => assertRoleFor(access({ role: null }), 'viewer', 'read its jobs'))).toBe(
+      'You are not a member of this project, so you cannot read its jobs. An admin of this project can add you to it.',
+    );
+    expect(
+      refusal(() => assertRoleFor(access({ role: null }), 'member', 'comment on its issues')),
+    ).toBe(
+      'You are not a member of this project, so you cannot comment on its issues. Only a member or admin of this project can, so ask one of them.',
+    );
+  });
+
+  it('never says "not a project member" to a viewer', () => {
+    for (const min of ['member', 'admin'] as const) {
+      expect(projectRoleRefusal('viewer', min, 'write to its memory')).not.toMatch(/not a member/i);
     }
+  });
+});
+
+describe('assertProjectAccess', () => {
+  it('refuses a viewer a member act in the same sentence as assertRoleFor', async () => {
+    dbMock.select = vi.fn(() => ({
+      from: () => ({
+        leftJoin: () => ({
+          leftJoin: () => ({
+            where: () => ({
+              limit: async () => [{ orgId: 'o-1', memberRole: 'viewer', orgRole: 'member' }],
+            }),
+          }),
+        }),
+      }),
+    }));
+    await expect(
+      assertProjectAccess('p-1', 'u-1', 'member', 'write its knowledge'),
+    ).rejects.toThrow(
+      'You are a viewer of this project, so you cannot write its knowledge. Only a member or admin of this project can, so ask one of them.',
+    );
+  });
+});
+
+const SRC = join(import.meta.dirname, '..');
+/** A refusal in role words alone, the form judge-127 found at five doors on criterion 340. */
+const ROLE_WORDS_ONLY =
+  /forbidden\(\s*['"`](project (admin|member|owner)|requires? project|(admin|member) (only|required))/i;
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') ? [path] : [];
+  });
+}
+
+describe('the role gates', () => {
+  it('offer no way to refuse a role without naming the act', async () => {
+    const authz = await import('./authz.js');
+    expect(Object.keys(authz)).not.toContain('assertProjectRole');
+    expect([
+      authz.assertRoleFor.length,
+      authz.assertProjectAccess.length,
+      authz.assertOrgRoleOnProject.length,
+    ]).toEqual([3, 4, 3]);
+  });
+
+  it('are the only refusal of a role too low anywhere in core', () => {
+    const bare = sourceFiles(SRC)
+      .filter((path) => ROLE_WORDS_ONLY.test(readFileSync(path, 'utf8')))
+      .map((path) => relative(SRC, path));
+    expect(bare).toEqual([]);
   });
 });
 
@@ -155,26 +241,29 @@ describe('falsy-userId guards (device principal)', () => {
 
 describe('assertOrgRoleOnProject', () => {
   it('org owner/admin pass; project admin without org role does not', () => {
-    expect(() =>
-      assertOrgRoleOnProject(access({ role: 'admin', orgRole: 'owner' }), 'admin'),
-    ).not.toThrow();
-    expect(() =>
-      assertOrgRoleOnProject(access({ role: 'admin', orgRole: 'admin' }), 'admin'),
-    ).not.toThrow();
-    // The legacy "owner-only" semantics: an invited project admin (no org
-    // role) cannot pass the org-tier gate.
-    try {
-      assertOrgRoleOnProject(access({ role: 'admin', orgRole: null }), 'admin');
-      expect.unreachable('expected 403');
-    } catch (err) {
-      expect((err as HTTPException).status).toBe(403);
-    }
-    // Plain org member is also below the bar.
-    try {
-      assertOrgRoleOnProject(access({ role: 'member', orgRole: 'member' }), 'admin');
-      expect.unreachable('expected 403');
-    } catch (err) {
-      expect((err as HTTPException).status).toBe(403);
-    }
+    const act = 'change its pipeline settings';
+    expect(
+      refusal(() =>
+        assertOrgRoleOnProject(access({ role: 'admin', orgRole: 'owner' }), 'admin', act),
+      ),
+    ).toBeNull();
+    expect(
+      refusal(() =>
+        assertOrgRoleOnProject(access({ role: 'admin', orgRole: 'admin' }), 'admin', act),
+      ),
+    ).toBeNull();
+    // An invited project admin (no org role) and a plain org member are both below the bar.
+    expect(
+      refusal(() => assertOrgRoleOnProject(access({ role: 'admin', orgRole: null }), 'admin', act)),
+    ).toBe(
+      "You are an admin of this project, so you cannot change its pipeline settings. Only an owner or admin of this project's organization can, so ask one of them.",
+    );
+    expect(
+      refusal(() =>
+        assertOrgRoleOnProject(access({ role: 'member', orgRole: 'member' }), 'admin', act),
+      ),
+    ).toBe(
+      "You are a member of this project, so you cannot change its pipeline settings. Only an owner or admin of this project's organization can, so ask one of them.",
+    );
   });
 });

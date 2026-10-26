@@ -125,8 +125,8 @@ function AnswerModePanel({ projectId }: { projectId: string }) {
 // Bot personality (agentConfig.personaStyle — additive style knob)
 // ─────────────────────────────────────────────────────────────
 
-// The example is deliberately in the operator's own language — the knob exists
-// precisely to style the bot in whatever language the channel speaks.
+// The knob styles the bot in whatever language its channel speaks; the example is in English, as
+// Forge is (ISS-1421 r30).
 const STYLE_PLACEHOLDER = `e.g. "Address people by their first name and keep a friendly tone. When you read an alert, end with a suggested next step."`;
 
 function BotPersonalityPanel({ projectId }: { projectId: string }) {
@@ -152,6 +152,7 @@ function BotPersonalityPanel({ projectId }: { projectId: string }) {
       </p>
       <Textarea
         rows={4}
+        aria-label="Bot personality"
         placeholder={STYLE_PLACEHOLDER}
         value={value}
         onChange={(e) => setDraft(e.target.value)}
@@ -319,6 +320,7 @@ function RocketchatBindingPanel({
               {availableRooms.length > 0 ? (
                 <div className="min-w-0 flex-1">
                   <Select
+                    aria-label="Room to add"
                     placeholder="pick a room…"
                     value={newRid}
                     onChange={setNewRid}
@@ -330,6 +332,7 @@ function RocketchatBindingPanel({
                 </div>
               ) : (
                 <Input
+                  aria-label="Room to add"
                   placeholder={
                     roomsQ.isLoading ? "loading rooms…" : "room id (rid)…"
                   }
@@ -536,6 +539,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
           {rooms && rooms.length > 0 ? (
             <div className="min-w-0 flex-1">
               <Select
+                aria-label="Room"
                 placeholder="pick a room…"
                 value={rid}
                 onChange={setRid}
@@ -547,6 +551,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
             </div>
           ) : (
             <Input
+              aria-label="Room"
               placeholder="room id (rid)…"
               value={rid}
               onChange={(e) => setRid(e.target.value)}

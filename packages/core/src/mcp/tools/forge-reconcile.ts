@@ -80,7 +80,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     const actorUserId = principalUserId(ctx.principal);
 
     if (input.action === 'trigger') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      await assertPrincipalIsAdmin(ctx.principal, projectId, 'reconcile its skills');
       if (!input.packetId) throw new Error('BAD_REQUEST: packetId is required for action=trigger');
       if (!input.skillId) throw new Error('BAD_REQUEST: skillId is required for action=trigger');
 
@@ -112,7 +112,11 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'record_verdict') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      await assertPrincipalIsAdmin(
+        ctx.principal,
+        projectId,
+        'record verdicts on its skill reconciles',
+      );
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=record_verdict');
       if (!input.verdict)
         throw new Error('BAD_REQUEST: verdict is required for action=record_verdict');
@@ -164,7 +168,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'apply') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      await assertPrincipalIsAdmin(ctx.principal, projectId, 'apply its skill reconciles');
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=apply');
 
       const applyRun = await getReconcileRun(input.runId);
@@ -182,7 +186,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'reject') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      await assertPrincipalIsAdmin(ctx.principal, projectId, 'reject its skill reconciles');
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=reject');
       if (!input.rejectReason)
         throw new Error('BAD_REQUEST: rejectReason is required for action=reject');
@@ -202,7 +206,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'acknowledge') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      await assertPrincipalIsAdmin(ctx.principal, projectId, 'acknowledge its skill reconciles');
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=acknowledge');
 
       const ackRun = await getReconcileRun(input.runId);

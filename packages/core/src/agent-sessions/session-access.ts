@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, type ProjectMemberRole } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 
 export const idParamSchema = z.object({ id: z.uuid() });
@@ -58,7 +58,7 @@ export async function ensureSessionMember(sessionId: string, userId: string) {
   const session = await loadSessionOr404(sessionId);
   const access = await loadProjectAccess(session.projectId, userId);
   // Reads are project-visible: any effective role (incl. viewer) may see the
-  // session. Mutating callers must additionally gate via assertProjectRole.
+  // session. Mutating callers must additionally gate via assertRoleFor.
   if (!access.role) throw forbidden('not a project member');
   return { session, access };
 }
@@ -67,12 +67,12 @@ export async function ensureSessionRole(
   sessionId: string,
   userId: string,
   min: ProjectMemberRole,
-  message?: string,
+  act: string,
 ) {
   personOrRefuse(userId);
   const session = await loadSessionOr404(sessionId);
   const access = await loadProjectAccess(session.projectId, userId);
-  assertProjectRole(access, min, message);
+  assertRoleFor(access, min, act);
   return { session, access };
 }
 
@@ -95,8 +95,8 @@ export function assertSessionOwnerOrAdmin(
  * Full mutate guard used by /send, /abort, /cancel and DELETE: member-role
  * gate + session-owner-or-admin check on a freshly loaded session row.
  */
-export async function ensureSessionOwnerOrAdmin(sessionId: string, userId: string) {
-  const { session, access } = await ensureSessionRole(sessionId, userId, 'member');
+export async function ensureSessionOwnerOrAdmin(sessionId: string, userId: string, act: string) {
+  const { session, access } = await ensureSessionRole(sessionId, userId, 'member', act);
   assertSessionOwnerOrAdmin(session, access, userId);
   return { session, access };
 }

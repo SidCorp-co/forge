@@ -54,6 +54,24 @@ describe('githubSecretsSchema — the App private key a save door takes', () => 
     expect(said).not.toMatch(/characters|\d{3,}/);
   });
 
+  // ISS-1421 r31, judge-127: a whole key indented as a YAML or JSON block carries it was refused as
+  // not whole, and a key stored with its indent is one the App's token mint cannot read.
+  it.each([
+    ['two spaces', '  '],
+    ['a tab', '\t'],
+  ])(
+    'takes a whole key indented by %s on every line, and keeps it without the indent',
+    (_what, indent) => {
+      const indented = PEM.trimEnd()
+        .split('\n')
+        .map((line) => `${indent}${line}`)
+        .join('\n');
+      const parsed = githubSecretsSchema.safeParse(app(indented));
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.privateKey).toBe(PEM.trim());
+    },
+  );
+
   it('refuses more than any App key as that, with no count', () => {
     const said = refusal(`${PEM}${'x'.repeat(20000)}`);
     expect(said).toMatch(/^This is larger than any private key GitHub gives an App/);

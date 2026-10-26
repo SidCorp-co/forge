@@ -14,11 +14,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
-import { zValidator } from '../api-reference/declare/validator.js';
+import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
 import { bindingActs, bindingReaderOf, projectIntegrationActs } from './binding-acts.js';
@@ -27,6 +28,7 @@ import {
   mergedTiers,
   refuseByTier,
   refuseNewBinding,
+  refuseNewBindingAsSent,
 } from './binding-doors.js';
 import { checkBindingHealth } from './binding-health.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
@@ -128,14 +130,17 @@ integrationsRoutes.get('/:projectId/integrations', ...listIntegrations, async (c
 integrationsRoutes.post(
   '/:projectId/integrations',
   ...createIntegration,
-  zValidator('json', createSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
+  declaresInput('json', createSchema),
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
     const role = await assertProjectMember(projectId, userId);
-    const body = c.req.valid('json');
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    if (role !== 'admin')
+      refuseNewBindingAsSent(await bindingReaderOf(userId, projectId, role), raw);
+    const parsed = createSchema.safeParse(raw);
+    if (!parsed.success) throw schemaRefused(parsed.error, createSchema, raw);
+    const body = parsed.data;
     if (body.orgId) {
       const access = await effectiveProjectRole(userId, projectId);
       if (!access || access.orgId !== body.orgId) {

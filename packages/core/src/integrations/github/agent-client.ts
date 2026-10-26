@@ -212,11 +212,7 @@ export async function resolveGrantedGitHubBinding(
     );
   }
   if (!grantHolds(getIntegration('github'), first.binding)) {
-    throw new GitHubAgentRefusal(
-      'not_granted',
-      notGrantedMessage('github', first.binding.id),
-      first.binding.id,
-    );
+    throw new GitHubAgentRefusal('not_granted', notGrantedMessage('github'), first.binding.id);
   }
   return first;
 }

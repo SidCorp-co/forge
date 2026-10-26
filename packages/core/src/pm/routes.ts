@@ -7,7 +7,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
@@ -101,7 +101,7 @@ pmRoutes.post(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    assertRoleFor(access, 'member', 'run its project manager');
     const result = await spawnPmSession({
       projectId,
       cause: 'operator',
@@ -137,7 +137,7 @@ pmRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    assertRoleFor(access, 'member', "answer its project manager's escalations");
 
     const [decision] = await db
       .select({ id: pmDecisions.id, eventRef: pmDecisions.eventRef })
@@ -202,7 +202,7 @@ pmRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', "read its project manager's settings");
 
     const [existing] = await db
       .select()
@@ -244,7 +244,7 @@ pmRoutes.put(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', "change its project manager's settings");
 
     await db
       .insert(pmConfig)
@@ -273,7 +273,7 @@ pmRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', "read its project manager's policies");
 
     const rows = await db
       .select({
@@ -309,7 +309,7 @@ pmRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', 'add a project manager policy to it');
 
     const [inserted] = await db
       .insert(pmPolicies)
@@ -362,7 +362,7 @@ pmRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', "change its project manager's policies");
 
     const [updated] = await db
       .update(pmPolicies)
@@ -408,7 +408,7 @@ pmRoutes.delete(
     const { projectId, id } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', "delete its project manager's policies");
 
     const deleted = await db
       .delete(pmPolicies)
@@ -439,7 +439,7 @@ pmRoutes.get(
     const { page, pageSize, cause } = c.req.valid('query');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', "read its project manager's decisions");
 
     const conditions = [eq(pmDecisions.projectId, projectId)];
     if (cause) conditions.push(eq(pmDecisions.cause, cause));

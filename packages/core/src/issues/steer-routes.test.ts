@@ -30,7 +30,7 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('../lib/authz.js', () => ({
   loadProjectAccess: async () => ({}),
-  assertProjectRole: () => undefined,
+  assertRoleFor: () => undefined,
 }));
 
 const steerIssue = vi.fn();

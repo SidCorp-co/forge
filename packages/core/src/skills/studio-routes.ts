@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { skills } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { skillSchema } from './crud-routes-reference.js';
 import { globalEffectiveMd } from './effective.js';
@@ -112,7 +112,7 @@ skillStudioRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can apply a default skill');
+    assertRoleFor(access, 'admin', 'apply a default skill to it');
 
     const [global] = await db.select().from(skills).where(eq(skills.id, globalSkillId)).limit(1);
     if (!global) throw notFound('skill not found');

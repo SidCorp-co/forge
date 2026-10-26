@@ -9,7 +9,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { pinnedSchema, pinSkill } from './pin-routes-reference.js';
 import { setSkillPinned } from './pin-service.js';
@@ -45,7 +45,7 @@ skillPinRoutes.put(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    assertRoleFor(access, 'admin', 'pin its skills');
 
     try {
       return c.json(

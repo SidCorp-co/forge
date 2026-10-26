@@ -15,7 +15,7 @@ import {
   sessionRuntimeStates,
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -72,7 +72,7 @@ jobEventsListRoutes.get(
     if (!job) throw notFound('job not found');
 
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its job events');
 
     const whereClauses = [eq(jobEvents.jobId, jobId)];
     if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));

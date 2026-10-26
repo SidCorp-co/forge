@@ -7,7 +7,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { chatTurnKinds, listProviders } from '../assistant/providers/registry.js';
 import { db } from '../db/client.js';
 import { appConfig } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { configRowSchema, putAppConfig, readAppConfig } from './routes-reference.js';
 
@@ -63,7 +63,7 @@ appConfigRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its app settings');
 
     const [row] = await db
       .select()
@@ -89,7 +89,7 @@ appConfigRoutes.put(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    assertRoleFor(access, 'admin', 'change its app settings');
     if (patch.chatProviderId) refuseUnknownChatProvider(patch.chatProviderId);
 
     const updates: Record<string, unknown> = {};

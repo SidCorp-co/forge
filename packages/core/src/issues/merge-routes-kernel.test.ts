@@ -37,7 +37,7 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('../lib/authz.js', () => ({
   loadProjectAccess: async () => ({ role: 'member' }),
-  assertProjectRole: () => undefined,
+  assertRoleFor: () => undefined,
 }));
 
 vi.mock('../middleware/auth.js', () => ({

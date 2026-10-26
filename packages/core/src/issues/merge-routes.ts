@@ -39,7 +39,7 @@ import {
   describeEmptyProjection,
   projectionPipeReport,
 } from '../integrations/github/projection-health.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { markInputRefusal } from './merge-input-refusal.js';
@@ -100,7 +100,7 @@ async function runMergeMarker(
   if (!issue) throw notFound('issue not found');
 
   const access = await loadProjectAccess(issue.projectId, userId);
-  assertProjectRole(access, 'member');
+  assertRoleFor(access, 'member', 'change its merged marks');
 
   const actor = restActor(c);
   try {
@@ -255,7 +255,7 @@ issueMergeRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'merge its pull requests');
 
     const stored = await resolveStoredPullRequest(issue.projectId, issueId, body.pullRequest);
     if ('refusal' in stored) {
