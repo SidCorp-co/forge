@@ -25,12 +25,14 @@ import {
 import { lastUnmarkedAt, markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
 import { uncheckedMergeRefusal } from './merge-check.js';
 import {
-  clearIssueMerge,
   describeMergeMark,
   designOnlyStamp,
   type MergeMarkKind,
-  type MergeRecord,
   mergeMarkKindOf,
+} from './merge-mark-kind.js';
+import {
+  clearIssueMerge,
+  type MergeRecord,
   observedMergeForIssue,
   recordIssueMerge,
   recordMergeTarget,
@@ -131,6 +133,8 @@ type Stamp = {
   claimedCommit: string | null;
   /** Set only where the repository's commit is the one stamped, never beside a pull request's. */
   readFrom: RepositoryLanding | null;
+  /** The target this call named, which an observed row's own target outranks. */
+  claimedTarget?: string | null;
 };
 
 /** The refusals a mark meets before its transaction: the landing shape, the target, contract
@@ -227,6 +231,7 @@ async function stampMark(
           kind: 'observed',
           commitSha: observed.commitSha,
           mergedAt: observed.mergedAt,
+          target: observed.target,
           landing,
           artifacts,
         },
@@ -245,6 +250,7 @@ async function stampMark(
           kind: 'observed',
           commitSha: fromRepository.sha,
           mergedAt: fromRepository.committedAt,
+          target: fromRepository.branch,
         },
       }),
       claimedCommit: null,
@@ -293,7 +299,7 @@ async function stampMark(
   }
   if (read.paths) await recordStampPaths(tx, issueId, read.paths, args.actor.hookActor);
   if (args.target) await recordMergeTarget(tx, issueId, args.target);
-  return stamp;
+  return { ...stamp, claimedTarget: args.target ?? null };
 }
 
 /** The box's reading of the landing commit, or the refusal where the row already holds another's. */
@@ -362,6 +368,8 @@ async function writeMarkTrail(
     claimedCommit,
     landing: result.landing,
     ...(readFrom && result.wrote ? { readFrom } : {}),
+    target: result.target,
+    claimedTarget: stamp.claimedTarget ?? null,
   });
   const audit = await writeAuditComment(
     issueId,
@@ -501,7 +509,14 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   // The stamp, its audit comment and their events commit together or not at all.
   const { stamp, mark, markDetail } = await db.transaction(async (tx) => {
     let stamp: Stamp = {
-      result: { wrote: true, mergedAt: null, commitSha: null, landing: null, artifacts: null },
+      result: {
+        wrote: true,
+        mergedAt: null,
+        commitSha: null,
+        landing: null,
+        artifacts: null,
+        target: null,
+      },
       claimedCommit: null,
       readFrom: null,
     };

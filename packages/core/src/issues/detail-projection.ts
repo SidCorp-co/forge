@@ -5,7 +5,7 @@ import type { BodyNode } from '../body/parse.js';
 import { bodyNodes } from '../body/prepare.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { LandingShape } from './landing-evidence.js';
-import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
+import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-mark-kind.js';
 
 interface IssueBodyColumns {
   description?: string | null;

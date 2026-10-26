@@ -1,3 +1,4 @@
+import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { and, eq } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
@@ -24,7 +25,8 @@ async function issuesDelivered(executor: Tx, projectId: string, headRef: string)
  * The merge a source host reports, on the row the kernel's own merge writes: the one stamp for GitHub
  * and GitLab alike. Somebody pressing Merge on the host and Forge merging are one landing arriving by
  * two routes, and they produce one record because both write through `recordIssueMerge` under
- * `merged_commit_sha IS NULL`. It records the merge on every issue the request delivers and moves no
+ * the same gate (`merged_commit_sha IS NULL`, or an earlier landing a later merge supersedes). It records
+ * the commit, the base branch and the head's tree identity on every issue the request delivers and moves no
  * status; a change-request release it was the last merge of is closed by the release's own consumer
  * (`release-batch/change-request-settle.ts`). Answers which issues this call stamped.
  */
@@ -32,8 +34,10 @@ async function stampHostMerge(
   args: {
     projectId: string;
     headRef: string;
+    baseRef: string | undefined;
     commitSha: string;
     mergedAt: Date;
+    head: MergedHead | null | undefined;
   },
   executor: Tx,
 ): Promise<string[]> {
@@ -42,6 +46,12 @@ async function stampHostMerge(
       `source.merged for ${args.headRef} carries a mergedAt that is not a time; the merge stamp is kernel evidence and is not written without one`,
     );
   }
+  if (!args.baseRef?.trim()) {
+    throw new Error(
+      `source.merged for ${args.headRef} at ${args.commitSha} carries no baseRef; the merge stamp names the branch the merge landed on and is not written without one`,
+    );
+  }
+  const target = args.baseRef;
   const delivered = await issuesDelivered(executor, args.projectId, args.headRef);
   const creator = await projectCreatorOf(args.projectId);
   const stamped: string[] = [];
@@ -55,6 +65,8 @@ async function stampHostMerge(
         kind: 'observed',
         commitSha: args.commitSha,
         mergedAt: args.mergedAt,
+        target,
+        hostMerge: { head: args.head ?? null },
       },
     });
     if (stamp.wrote) stamped.push(issueId);

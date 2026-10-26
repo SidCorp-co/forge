@@ -144,7 +144,7 @@ export function coverageOf(
           verdictAt: ic.verdictAt?.toISOString() ?? null,
           note: ic.verdict === null ? null : (ic.note ?? null),
           files: ic.verdict === null ? [] : [...(ic.files ?? [])],
-          identity: ic.verdict === null ? null : identityWords(ic.identity),
+          identity: ic.verdict === null ? null : (r?.countedAs ?? identityWords(ic.identity)),
           commit: r?.commit ?? null,
           inLiveBuild: r?.inLiveBuild ?? null,
           notCounted: judged ? (r?.notCounted ?? unverifiedWhy(ic, input.judge)) : null,
@@ -230,17 +230,15 @@ function requirementVerdictsOn(
 // With no production environment a commit names the build exactly, so a reopen voids nothing a
 // commit check does not: the issue's own door reads a criterion's newest verdict however old
 // (`issues/criteria-verdicts.ts:standingOn`), and the record that closed the issue counted it. A
-// newest verdict older than the reopen stands here only where it was judged at the issue's landed
-// commit, so coverage and the record read one issue's verdicts by one rule; anywhere else it stays
-// voided.
+// newest verdict at a commit older than the reopen stands here as it stands there, and the commit
+// check decides whether it counts (`standing-identity.ts:atLanding`), naming why where it does not:
+// voiding it read the issue's own pass as no verdict at all (adminhub-api ISS-10, 2026-10-26).
 function standsAtLanding(
   traced: StandingIssueCriterion,
   landed: ReadonlyMap<string, LandedHolds> | undefined,
 ): StandingIssueCriterion {
   const kept = traced.beforeReopen;
   if (!landed || !kept || kept.identity?.kind !== 'commit') return traced;
-  const sha = landed.get(traced.issueId.toLowerCase())?.sha;
-  if (!sha || kept.identity.sha.toLowerCase() !== sha) return traced;
   return { ...traced, ...kept };
 }
 

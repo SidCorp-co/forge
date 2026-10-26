@@ -1,8 +1,10 @@
+import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { forgeReads, recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
+import { readMergedHead } from './merged-head.js';
 import { markPullRequestMerged } from './projection.js';
 import { issuesOfPullRequest } from './repo-projection.js';
 import { sourceHostForBinding } from './resolve.js';
@@ -21,7 +23,14 @@ type ChangeRequestMergeMethod = (typeof CHANGE_REQUEST_MERGE_METHODS)[number];
  */
 export type IssueMergeStamp = (
   tx: Tx,
-  args: { issueId: string; commitSha: string; mergedAt: Date },
+  args: {
+    issueId: string;
+    commitSha: string;
+    mergedAt: Date;
+    target: string;
+    /** The request's head and whether its tree is the landing's, read from the host at the merge. */
+    head: MergedHead | null;
+  },
 ) => Promise<{ wrote: boolean }>;
 
 interface MergeRequest {
@@ -42,6 +51,8 @@ type MergeOutcome =
       deliveryId: string;
       commitSha: string;
       mergedAt: Date;
+      /** The branch the host merged into, which every stamped issue records as its target. */
+      target: string;
       /** False where the row already carried this evidence — a second reading of one merge. */
       stamped: boolean;
       /** Every issue this merge stamped: each one the request delivers (REQ-63 BC-4). */
@@ -52,6 +63,7 @@ type MergeOutcome =
       deliveryId: string;
       commitSha: string;
       mergedAt: Date;
+      target: string;
       stamped: boolean;
       stampedIssues: string[];
     }
@@ -135,14 +147,16 @@ async function writeEvidence(args: {
   host: SourceHost;
   commitSha: string;
   mergedAt: Date;
+  target: string;
+  head: MergedHead | null;
   stampIssue: IssueMergeStamp;
 }): Promise<{ stamped: boolean; stampedIssues: string[] }> {
-  const { row, host, commitSha, mergedAt, stampIssue } = args;
+  const { row, host, commitSha, mergedAt, target, head, stampIssue } = args;
   try {
     return await db.transaction(async (tx) => {
       const stampedIssues: string[] = [];
       for (const issueId of row.issueIds) {
-        const stamp = await stampIssue(tx, { issueId, commitSha, mergedAt });
+        const stamp = await stampIssue(tx, { issueId, commitSha, mergedAt, target, head });
         if (stamp.wrote) stampedIssues.push(issueId);
       }
       await markPullRequestMerged(tx, row.id, { commitSha, mergedAt });
@@ -235,19 +249,34 @@ export async function mergeStoredChangeRequest(
     });
     if (result.kind === 'refused') return refuse(deliveryId, result.reason, result.detail);
 
+    const head = await readMergedHead((a, b) => host.sameTree(a, b), result.head, result.commitSha);
     const { stamped, stampedIssues } = await writeEvidence({
       row,
       host,
       commitSha: result.commitSha,
       mergedAt: result.mergedAt,
+      target: result.target,
+      head,
       stampIssue,
     });
     await updateDelivery(deliveryId, {
       status: 'ok',
       response:
         result.kind === 'already-merged'
-          ? { alreadyMerged: true, commitSha: result.commitSha, stamped, stampedIssues }
-          : { commitSha: result.commitSha, requestedBy: req.requestedBy, stamped, stampedIssues },
+          ? {
+              alreadyMerged: true,
+              commitSha: result.commitSha,
+              target: result.target,
+              stamped,
+              stampedIssues,
+            }
+          : {
+              commitSha: result.commitSha,
+              target: result.target,
+              requestedBy: req.requestedBy,
+              stamped,
+              stampedIssues,
+            },
       completedAt: new Date(),
     });
     return {
@@ -255,6 +284,7 @@ export async function mergeStoredChangeRequest(
       deliveryId,
       commitSha: result.commitSha,
       mergedAt: result.mergedAt,
+      target: result.target,
       stamped,
       stampedIssues,
     };

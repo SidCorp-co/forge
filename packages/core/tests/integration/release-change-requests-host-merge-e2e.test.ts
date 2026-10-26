@@ -24,6 +24,8 @@ import { seedProjectDocument } from '../helpers/release-world.js';
 
 const merged = new Map<number, string>();
 const merges: number[] = [];
+/** What the planted host answers: whether a head's tree is its merge commit's, or a read failure. */
+const trees: { same: boolean | Error } = { same: true };
 
 vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/integrations/source-host/resolve.js')>()),
@@ -34,7 +36,18 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
       merges.push(number);
       const commitSha = `${String(number).padStart(4, '0')}${'c'.repeat(36)}`;
       merged.set(number, commitSha);
-      return { kind: 'merged', commitSha, mergedAt: new Date('2026-10-23T09:00:00Z') };
+      // each request merges a minute after the one numbered below it, into release/stg, at its head
+      return {
+        kind: 'merged',
+        commitSha,
+        mergedAt: new Date(Date.UTC(2026, 9, 23, 9, number)),
+        target: 'release/stg',
+        head: `${String(number).padStart(4, '0')}${'a'.repeat(36)}`,
+      };
+    },
+    sameTree: async () => {
+      if (trees.same instanceof Error) throw trees.same;
+      return trees.same;
     },
   }),
 }));
@@ -54,6 +67,7 @@ async function seedWorld(release: Record<string, unknown> | null): Promise<void>
   await truncateAll();
   merged.clear();
   merges.length = 0;
+  trees.same = true;
   world.ownerId = (await createTestUser({ verified: true })).id;
   world.projectId = (await createTestProject(world.ownerId)).id;
   await addProjectMember(world.projectId, world.ownerId, 'admin');
@@ -129,8 +143,14 @@ const _linkedTo = (number: number) =>
 
 const issueRow = async (id: string) =>
   (
-    await rows<{ status: string; merged_at: Date | null; merged_commit_sha: string | null }>(sql`
-      SELECT status, merged_at, merged_commit_sha FROM issues WHERE id = ${id}`)
+    await rows<{
+      status: string;
+      merged_at: Date | null;
+      merged_commit_sha: string | null;
+      merged_target: string | null;
+      merged_head: { sha: string; treeIdentical: boolean | null; why: string | null } | null;
+    }>(sql`
+      SELECT status, merged_at, merged_commit_sha, merged_target, merged_head FROM issues WHERE id = ${id}`)
   )[0];
 
 const cut = (issueIds: string[], changeRequests?: number[]) =>
@@ -192,8 +212,10 @@ async function hostMerged(number: number, headRef: string, commitSha: string) {
   await emitEvent(db, 'source.merged', {
     projectId: world.projectId,
     headRef,
+    baseRef: BRANCH,
     commitSha,
     mergedAt: '2026-10-23T10:00:00.000Z',
+    head: null,
   });
   await settleOutbox();
   // the settle that ran before its stamp was written is retried later; bring that retry to now
@@ -233,5 +255,123 @@ describe('BC-4: a merge the host reports stamps every issue its request delivers
     const [run] = await rows<{ status: string }>(sql`
       SELECT status FROM pipeline_runs WHERE id = ${runId}`);
     expect(run?.status).toBe('completed');
+  });
+});
+
+// adminhub-api ISS-1, 2026-10-26: merged through Forge as !5008 into release/stg at cf94a1e6, and the
+// stamp held merged_at with no target; 21 of 22 issues stamped by the route read the same.
+describe('a merge through Forge records the target and the head on every issue it stamps', () => {
+  it('stamps the base branch and the head, with its tree read identical, on ISS-1, ISS-2 and ISS-3', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const { one, two, three, four } = await stack();
+
+    const res = await mergeOf(one, 10);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ target: BRANCH });
+
+    for (const id of [one, two, three]) {
+      expect(await issueRow(id)).toMatchObject({
+        merged_commit_sha: merged.get(10),
+        merged_target: BRANCH,
+        merged_head: { sha: `0010${'a'.repeat(36)}`, treeIdentical: true, why: null },
+      });
+    }
+    expect((await issueRow(four))?.merged_target).toBeNull();
+  });
+
+  it('keeps the head unread, with why, where the host could not say whether the trees match', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const { one } = await stack();
+    trees.same = new Error('GitLab answered 503');
+
+    expect((await mergeOf(one, 10)).status).toBe(200);
+
+    const row = await issueRow(one);
+    expect(row?.merged_head?.treeIdentical).toBeNull();
+    expect(row?.merged_head?.why).toContain('GitLab answered 503');
+  });
+
+  it('keeps a tree reading when the host replays the same merge with no head or an unread one', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const { one } = await stack();
+    expect((await mergeOf(one, 10)).status).toBe(200);
+    const read = { sha: `0010${'a'.repeat(36)}`, treeIdentical: true, why: null };
+
+    for (const head of [
+      {
+        ...read,
+        treeIdentical: null,
+        why: 'GitLab answered 503',
+        readAt: new Date().toISOString(),
+      },
+      null,
+    ]) {
+      await emitEvent(db, 'source.merged', {
+        projectId: world.projectId,
+        headRef: 'feat/req3-site-write-iss-1-2',
+        baseRef: BRANCH,
+        commitSha: merged.get(10) as string,
+        mergedAt: '2026-10-25T09:10:00.000Z',
+        head,
+      });
+      await settleOutbox();
+      expect((await issueRow(one))?.merged_head).toMatchObject(read);
+    }
+  });
+
+  // catalog-fe ISS-11..19, 2026-10-26: !312 and !313 merged into `dev`, and the column read
+  // `release/stg`, which a mark wrote into the column the route had left empty
+  it('keeps the target the merge read when a later mark names another branch', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const { one } = await stack();
+    expect((await mergeOf(one, 10)).status).toBe(200);
+
+    const mark = await api(world.token, 'POST', `/api/issues/${one}/merge`, {
+      target: 'release/prod',
+      commit: merged.get(10),
+    });
+    expect(mark.status, JSON.stringify(mark.body)).toBe(200);
+
+    expect((await issueRow(one))?.merged_target).toBe(BRANCH);
+    expect(String(mark.body.detail)).toContain(
+      '`release/prod`, which this call named, is recorded as its claim',
+    );
+  });
+
+  // adminhub-api ISS-2, 2026-10-26: linked to !5011 and !5012; the first-wins stamp kept !5011
+  // (68153bdf) though its work finished in !5012 (62bf8d33)
+  it('lands an issue delivered across two requests at the later merge', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const one = await issue(1, 'awaiting_release');
+    await mergeRequest(10, 'feat/req3-site-write-iss-1', HEAD_A, null);
+    await mergeRequest(12, 'fix/req3-site-write-rest-iss-1', HEAD_B, null);
+
+    const first = await mergeOf(one, 10);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect((await issueRow(one))?.merged_commit_sha).toBe(merged.get(10));
+    expect((await mergeOf(one, 12)).status).toBe(200);
+
+    const row = await issueRow(one);
+    expect(row?.merged_commit_sha).toBe(merged.get(12));
+    expect(new Date(String(row?.merged_at)).toISOString()).toBe('2026-10-23T09:12:00.000Z');
+    expect(row?.merged_head?.sha).toBe(`0012${'a'.repeat(36)}`);
+  });
+
+  it('records the base branch a merge the host reports names', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const { one } = await stack();
+
+    await hostMerged(10, 'feat/req3-site-write-iss-1-2', HOST_SHA);
+
+    expect(await issueRow(one)).toMatchObject({
+      merged_commit_sha: HOST_SHA,
+      merged_target: BRANCH,
+    });
   });
 });

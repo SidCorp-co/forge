@@ -53,6 +53,7 @@ export async function landedCompleteFact(issueId: string): Promise<string | null
     [issueId],
     () => sha,
     () => build.via ?? null,
+    () => build.head ?? null,
   );
   if (!standing?.owes || standing.criteria.length === 0) return null;
   if (standing.criteria.some((c) => !c.counts)) return null;
@@ -100,6 +101,7 @@ export async function landedVerdictsOwedFact(issueId: string): Promise<string | 
     [issueId],
     () => sha,
     () => build.via ?? null,
+    () => build.head ?? null,
   );
   const owed = (weighed?.criteria ?? []).flatMap((c) =>
     c.counts ? [] : [`criterion ${c.criterion}: ${c.why}`],

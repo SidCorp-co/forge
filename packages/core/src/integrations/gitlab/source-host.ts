@@ -44,6 +44,24 @@ function notFound(err: unknown): boolean {
   return err instanceof SourceHostCallError && err.phase === 'request' && err.status === 404;
 }
 
+/**
+ * Whether two commits carry one tree, read through GitLab's straight compare (`from..to`, no merge
+ * base): no diff between them is the same tree. A compare GitLab cut short answers nothing.
+ */
+export async function gitlabSameTree(client: GitLabClient, a: string, b: string): Promise<boolean> {
+  const read = await client.json<CompareBody & { compare_timeout?: boolean }>(
+    'GET',
+    client.project(`/repository/compare?from=${enc(a)}&to=${enc(b)}&straight=true`),
+  );
+  if (read.compare_timeout === true || !Array.isArray(read.diffs)) {
+    throw new SourceHostCallError(
+      200,
+      `${client.fullName} answered the compare of ${a} and ${b} ${read.compare_timeout ? 'timed out' : 'with no diffs list'}`,
+    );
+  }
+  return read.diffs.length === 0;
+}
+
 /** The GitLab host over one binding's client. */
 function gitlabSourceHostOf(client: GitLabClient): SourceHost {
   const commitsBetween = async (from: string, to: string): Promise<CommitBody[]> =>
@@ -148,6 +166,8 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
       const read = await compareFiles(parent, sha);
       return 'why' in read ? read : { files: read.files, changes: read.changes };
     },
+
+    sameTree: (a, b) => gitlabSameTree(client, a, b),
 
     async branchContains(branch, sha) {
       const refs = await client.pages<{ type?: string; name?: string }>(

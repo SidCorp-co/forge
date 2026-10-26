@@ -14,12 +14,8 @@ import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { Actor } from './activity.js';
 import { readLandingShape, SOURCE_UNDECLARED } from './landing-evidence.js';
-import {
-  type MergeMarkColumns,
-  type MergeMarkKind,
-  mergeMarkKindOf,
-  recordDesignLanding,
-} from './merge-record.js';
+import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-mark-kind.js';
+import { recordDesignLanding } from './merge-record.js';
 
 export interface DesignLandingOutcome {
   /** `marked` over no mark, `added` beside the other designs a design-only mark names, `repointed`

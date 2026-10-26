@@ -1,11 +1,17 @@
-import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
+import type { LandingArtifact, MergedHead, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { MergeStampVia, OutboxActor } from '@forge/contracts/outbox-events';
-import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db, Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { emitEvent } from '../outbox/index.js';
+import {
+  designOnlyStamp,
+  joinedDesignArtifacts,
+  keptMergedHead,
+  type MergeMarkColumns,
+} from './merge-mark-kind.js';
 import { answerMergeQuestions } from './ports.js';
 
 /** The pool or a caller's open transaction. A close stamps inside one; a mark does not. */
@@ -16,6 +22,18 @@ type MergeEvidence =
       kind: 'observed';
       commitSha: string;
       mergedAt: Date;
+      /**
+       * The branch the commit landed on, read where the commit was: the request's base for a host
+       * merge, the branch the repository holds it on otherwise. An observed stamp names its commit
+       * and its target together, and a blank one is refused rather than written (`observedTarget`).
+       */
+      target: string;
+      /**
+       * A host's merge of a change request delivering the issue. A later one supersedes the stamp an
+       * earlier merge (or any earlier mark) left, since an issue delivered across several requests
+       * lands at the last of them; any other observed stamp stands first.
+       */
+      hostMerge?: { head: MergedHead | null } | null;
       /** Where the work also landed outside git, on a project whose landing is named. */
       landing?: string | null;
       artifacts?: LandingArtifact[] | null;
@@ -31,73 +49,8 @@ export interface MergeRecord {
   landing: string | null;
   /** What the landing names it changed; null where it names nothing structured. */
   artifacts: LandingArtifact[] | null;
-}
-
-/** The one name for what the pair of columns means, and the ONLY reading of it:
- *  docs/modules/issues/merge-mark.md. */
-export type MergeMarkKind = 'unmarked' | 'asserted' | 'landed' | 'observed';
-
-/** The two columns, as any row carrying them spells them. */
-export interface MergeMarkColumns {
-  mergedAt: Date | string | null;
-  mergedCommitSha: string | null;
-  mergedLanding: string | null;
-}
-
-export function mergeMarkKindOf(row: MergeMarkColumns): MergeMarkKind {
-  if (row.mergedAt == null) return 'unmarked';
-  // `''` is representable and is not a commit; the doc says why it reads as a claim.
-  if ((row.mergedCommitSha ?? '').trim() !== '') return 'observed';
-  return (row.mergedLanding ?? '').trim() === '' ? 'asserted' : 'landed';
-}
-
-/** The stamp a design approval alone wrote on a git row (`recordDesignLanding`): no commit, no
- *  landing, no box-read paths, and every artifact a `design` one. A code mark is never shadowed by it. */
-export function designOnlyStamp(
-  row: MergeMarkColumns & {
-    mergedArtifacts: readonly LandingArtifact[] | null;
-    mergedPaths: ReadPaths | null;
-  },
-): string[] | null {
-  if (mergeMarkKindOf(row) !== 'asserted' || row.mergedPaths) return null;
-  const artifacts = row.mergedArtifacts ?? [];
-  if (artifacts.length === 0 || artifacts.some((a) => a.surface !== 'design')) return null;
-  return artifacts.map((a) => a.ref);
-}
-
-/** The sentence saying which kind this is, written once: the audit comment and the caller's
- *  answer are both built from it. `claimedCommit` is the caller's word, not the column. */
-export function describeMergeMark(args: {
-  kind: MergeMarkKind;
-  commitSha?: string | null;
-  claimedCommit?: string | null;
-  landing?: string | null;
-  /** Where this call read an `observed` commit from the repository rather than a pull request. */
-  readFrom?: { repository: string; branch: string } | null;
-}): string {
-  if (args.kind === 'unmarked') {
-    return 'this issue carries no merged mark: `merged_at` is empty, so nothing here says the work landed';
-  }
-  if (args.kind === 'landed') {
-    return `this mark names where the work landed outside git: \`merged_landing\` holds ${args.landing ?? 'the landing it was given'}. It is the word of whoever marked it, not a merge Forge observed`;
-  }
-  if (args.kind === 'observed') {
-    // Against the COLUMN, not the row this call selected: docs/modules/issues/merge-mark.md.
-    const differs =
-      !!args.claimedCommit &&
-      args.claimedCommit.toLowerCase() !== (args.commitSha ?? '').toLowerCase();
-    const overruled = differs
-      ? `. Commit ${args.claimedCommit}, which this call named, is recorded as its claim and is not what the column holds`
-      : '';
-    const source = args.readFrom
-      ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue by its subject and holds it on ${args.readFrom.branch}`
-      : "read by Forge itself, from its record of the pull request or from the project's repository";
-    return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}`;
-  }
-  const claim = args.claimedCommit
-    ? `commit ${args.claimedCommit} is recorded here as this call's claim and is NOT in \`merged_commit_sha\``
-    : 'no commit is recorded in `merged_commit_sha`';
-  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue`;
+  /** The branch the row says the work landed on. */
+  target: string | null;
 }
 
 async function readBack(
@@ -110,6 +63,7 @@ async function readBack(
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
       mergedArtifacts: issues.mergedArtifacts,
+      mergedTarget: issues.mergedTarget,
     })
     .from(issues)
     .where(eq(issues.id, issueId))
@@ -119,10 +73,12 @@ async function readBack(
     commitSha: row?.mergedCommitSha ?? null,
     landing: row?.mergedLanding ?? null,
     artifacts: row?.mergedArtifacts ?? null,
+    target: row?.mergedTarget ?? null,
   };
 }
 
 const STAMP_FIELDS = ['mergedAt', 'mergedCommitSha', 'mergedLanding', 'mergedArtifacts'];
+const OBSERVED_FIELDS = [...STAMP_FIELDS, 'mergedTarget', 'mergedHead'];
 
 const stampColumns = {
   mergedAt: issues.mergedAt,
@@ -130,6 +86,69 @@ const stampColumns = {
   mergedLanding: issues.mergedLanding,
   mergedArtifacts: issues.mergedArtifacts,
 };
+
+const observedColumns = {
+  ...stampColumns,
+  mergedTarget: issues.mergedTarget,
+  mergedHead: issues.mergedHead,
+};
+
+/** The target an observed stamp writes, refused by name where the caller read none: kernel input. */
+function observedTarget(issueId: string, evidence: { commitSha: string; target: string }): string {
+  const target = typeof evidence.target === 'string' ? evidence.target.trim() : '';
+  if (target === '') {
+    throw new Error(
+      `recordIssueMerge: an observed merge of issue ${issueId} at ${evidence.commitSha} names no target branch; ` +
+        'the stamp records the commit and the branch it landed on together, so it is not written without one',
+    );
+  }
+  return target;
+}
+
+/**
+ * Where the row already holds this very commit, the target and head the observation read are
+ * written over what it holds: a stamp left with no target (or a mark's word for one) beside a commit
+ * the host merged into another branch is corrected by the next reading of that merge, never kept.
+ */
+async function correctObserved(
+  executor: Tx,
+  args: { issueId: string; commitSha: string; target: string; head: MergedHead | null | undefined },
+  actor: OutboxActor | null,
+  via: MergeStampVia,
+): Promise<void> {
+  const [prior] = await executor
+    .select({
+      projectId: issues.projectId,
+      mergedTarget: issues.mergedTarget,
+      mergedHead: issues.mergedHead,
+    })
+    .from(issues)
+    .where(
+      and(
+        eq(issues.id, args.issueId),
+        sql`lower(${issues.mergedCommitSha}) = ${args.commitSha.toLowerCase()}`,
+      ),
+    )
+    .limit(1);
+  if (!prior) return;
+  const head = keptMergedHead(prior.mergedHead ?? null, args.head);
+  const sameHead = JSON.stringify(head ?? null) === JSON.stringify(prior.mergedHead ?? null);
+  if (prior.mergedTarget === args.target && sameHead) return;
+  await executor
+    .update(issues)
+    .set({ mergedTarget: args.target, mergedHead: head ?? null, updatedAt: sql`now()` })
+    .where(eq(issues.id, args.issueId));
+  if (!actor) return;
+  await emitEvent(executor, 'issue.updated', {
+    issueId: args.issueId,
+    projectId: prior.projectId,
+    actor,
+    fields: ['mergedTarget', 'mergedHead'],
+    via,
+    before: { mergedTarget: prior.mergedTarget, mergedHead: prior.mergedHead },
+    after: { mergedTarget: args.target, mergedHead: head ?? null },
+  });
+}
 
 /**
  * Write the merge onto the issue, or report the stamp that was already there. A stamp written
@@ -150,8 +169,11 @@ export async function recordIssueMerge(
   },
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
+  const observed = evidence.kind === 'observed';
+  const target = observed ? observedTarget(issueId, evidence) : null;
+  const hostMerge = observed ? (evidence.hostMerge ?? null) : null;
   const [prior] = await executor
-    .select({ projectId: issues.projectId, ...stampColumns })
+    .select({ projectId: issues.projectId, ...observedColumns })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
@@ -162,8 +184,20 @@ export async function recordIssueMerge(
         ? sqlTimestamp(evidence.at)
         : sql`now()`;
 
+  // a later host merge of another commit supersedes what the row holds (REQ-63: the last request
+  // delivering an issue is its landing); every other observed stamp is first-wins, as before
   const gate =
-    evidence.kind === 'observed' ? isNull(issues.mergedCommitSha) : isNull(issues.mergedAt);
+    evidence.kind !== 'observed'
+      ? isNull(issues.mergedAt)
+      : hostMerge
+        ? or(
+            isNull(issues.mergedCommitSha),
+            and(
+              sql`${issues.mergedAt} < ${stampExpr}`,
+              sql`lower(${issues.mergedCommitSha}) <> ${evidence.commitSha.toLowerCase()}`,
+            ),
+          )
+        : isNull(issues.mergedCommitSha);
   const landing = evidence.kind === 'asserted' ? null : (evidence.landing ?? null);
   const artifacts = evidence.kind === 'asserted' ? null : (evidence.artifacts ?? null);
 
@@ -171,26 +205,46 @@ export async function recordIssueMerge(
     .update(issues)
     .set({
       mergedAt: stampExpr,
-      ...(evidence.kind === 'observed' ? { mergedCommitSha: evidence.commitSha } : {}),
+      ...(evidence.kind === 'observed'
+        ? {
+            mergedCommitSha: evidence.commitSha,
+            mergedTarget: target,
+            mergedHead: hostMerge?.head ?? null,
+          }
+        : {}),
       ...(landing ? { mergedLanding: landing } : {}),
       ...(artifacts ? { mergedArtifacts: artifacts } : {}),
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), gate))
-    .returning(stampColumns);
+    .returning(observedColumns);
 
   if (wrote && prior && args.actor) {
     // every writer of the stamp tells its readers in the stamp's own transaction
-    const { projectId, ...before } = prior;
+    const { projectId, mergedTarget, mergedHead, ...before } = prior;
+    const { mergedTarget: afterTarget, mergedHead: afterHead, ...after } = wrote;
     await emitEvent(executor, 'issue.updated', {
       issueId,
       projectId,
       actor: args.actor,
-      fields: STAMP_FIELDS,
+      fields: observed ? OBSERVED_FIELDS : STAMP_FIELDS,
       via: args.via,
-      before,
-      after: { ...wrote },
+      before: observed ? { ...before, mergedTarget, mergedHead } : before,
+      after: observed ? { ...after, mergedTarget: afterTarget, mergedHead: afterHead } : after,
     });
+  }
+  if (!wrote && evidence.kind === 'observed' && target) {
+    await correctObserved(
+      executor,
+      {
+        issueId,
+        commitSha: evidence.commitSha,
+        target,
+        head: hostMerge ? hostMerge.head : undefined,
+      },
+      args.actor,
+      args.via,
+    );
   }
   if (wrote) {
     await answerMergeQuestions(executor, {
@@ -208,28 +262,11 @@ export async function recordIssueMerge(
       commitSha: wrote.mergedCommitSha,
       landing: wrote.mergedLanding,
       artifacts: wrote.mergedArtifacts,
+      target: wrote.mergedTarget,
     };
   }
   const held = await readBack(executor, issueId);
   return { wrote: false, ...held };
-}
-
-/** The flow a design artifact's `<flow>@rev<n>` ref names. */
-const flowOfRef = (ref: string) => ref.replace(/@rev\d+$/u, '');
-
-/**
- * The design artifacts a mark carries once `artifact` joins them: where the mark already names design
- * revisions alone, the approved one is added beside them, replacing only the earlier revision of its
- * own flow (FB-140); any other mark is replaced by the approved revision alone.
- */
-export function joinedDesignArtifacts(
-  held: readonly LandingArtifact[] | null,
-  artifact: LandingArtifact,
-): LandingArtifact[] {
-  const designs = held ?? [];
-  if (designs.length === 0 || designs.some((a) => a.surface !== 'design')) return [artifact];
-  const flow = flowOfRef(artifact.ref);
-  return [...designs.filter((a) => flowOfRef(a.ref) !== flow), artifact];
 }
 
 /**
@@ -258,7 +295,12 @@ export async function recordDesignLanding(
 ): Promise<MergeRecord & { before: MergeMarkColumns & { artifacts: LandingArtifact[] | null } }> {
   const { issueId, landingOf } = args;
   const [prior] = await executor
-    .select({ projectId: issues.projectId, mergedPaths: issues.mergedPaths, ...stampColumns })
+    .select({
+      projectId: issues.projectId,
+      mergedPaths: issues.mergedPaths,
+      mergedTarget: issues.mergedTarget,
+      ...stampColumns,
+    })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
@@ -332,6 +374,7 @@ export async function recordDesignLanding(
     commitSha: wrote.mergedCommitSha,
     landing: wrote.mergedLanding,
     artifacts: wrote.mergedArtifacts,
+    target: prior?.mergedTarget ?? null,
     before,
   };
 }
@@ -386,6 +429,7 @@ export async function clearIssueMerge(
       mergedArtifacts: null,
       mergedPaths: null,
       mergedTarget: null,
+      mergedHead: null,
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), ne(issues.status, 'closed')))
@@ -407,6 +451,7 @@ export async function supersedeMergeOnReopen(
       projectId: issues.projectId,
       mergedPaths: issues.mergedPaths,
       mergedTarget: issues.mergedTarget,
+      mergedHead: issues.mergedHead,
       ...stampColumns,
     })
     .from(issues)
@@ -420,7 +465,7 @@ export async function supersedeMergeOnReopen(
     issueId: args.issueId,
     projectId,
     actor: args.actor,
-    fields: [...STAMP_FIELDS, 'mergedPaths', 'mergedTarget'],
+    fields: [...STAMP_FIELDS, 'mergedPaths', 'mergedTarget', 'mergedHead'],
     before,
     after: {
       mergedAt: null,
@@ -429,13 +474,17 @@ export async function supersedeMergeOnReopen(
       mergedArtifacts: null,
       mergedPaths: null,
       mergedTarget: null,
+      mergedHead: null,
     },
   });
   return true;
 }
 
-// the first target named on a standing mark is the branch the work landed on; a later mark
-// with another target does not move it, as a later stamp does not move merged_at.
+// the first target named on a standing mark that Forge did not observe is the branch the work
+// landed on; a later mark with another target does not move it, as a later stamp does not move
+// merged_at. A row holding an observed commit holds the target that observation read
+// (`recordIssueMerge`), and a mark's word never stands in for it (catalog-fe ISS-11..19, 2026-10-26:
+// `release/stg` written by a mark beside merges GitLab made into `dev`).
 export async function recordMergeTarget(
   executor: MergeRecordExecutor,
   issueId: string,
@@ -444,17 +493,31 @@ export async function recordMergeTarget(
   await executor
     .update(issues)
     .set({ mergedTarget: target })
-    .where(and(eq(issues.id, issueId), isNotNull(issues.mergedAt), isNull(issues.mergedTarget)));
+    .where(
+      and(
+        eq(issues.id, issueId),
+        isNotNull(issues.mergedAt),
+        isNull(issues.mergedTarget),
+        sql`coalesce(trim(${issues.mergedCommitSha}), '') = ''`,
+      ),
+    );
 }
 
-/** The earliest merge the host reports of a change request linking the issue, into `base` where named. */
+/**
+ * The latest merge the host reports of a change request linking the issue, into `base` where named,
+ * with the branch it merged into: an issue delivered across several requests lands at the last.
+ */
 export async function observedMergeForIssue(
   executor: MergeRecordExecutor,
   issueId: string,
   base?: string,
-): Promise<{ commitSha: string; mergedAt: Date } | null> {
+): Promise<{ commitSha: string; mergedAt: Date; target: string } | null> {
   const [row] = await executor
-    .select({ sha: repoPullRequests.mergeCommitSha, at: repoPullRequests.mergedAt })
+    .select({
+      sha: repoPullRequests.mergeCommitSha,
+      at: repoPullRequests.mergedAt,
+      base: repoPullRequests.baseRef,
+    })
     .from(repoPullRequestIssues)
     .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
     .where(
@@ -466,8 +529,8 @@ export async function observedMergeForIssue(
         base === undefined ? undefined : eq(repoPullRequests.baseRef, base),
       ),
     )
-    .orderBy(asc(repoPullRequests.mergedAt))
+    .orderBy(desc(repoPullRequests.mergedAt))
     .limit(1);
   if (!row?.sha || !row.at) return null;
-  return { commitSha: row.sha, mergedAt: row.at };
+  return { commitSha: row.sha, mergedAt: row.at, target: row.base };
 }

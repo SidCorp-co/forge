@@ -26,6 +26,26 @@ import { readCompareCommits, readLiveDivergence } from './live-divergence.js';
 import { MERGE_METHODS, mergeGitHubPullRequest } from './merge.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
+/** Whether two commits carry one tree: GitHub names each commit's tree by its git object id. */
+export async function githubSameTree(
+  client: GitHubRepoClient,
+  a: string,
+  b: string,
+): Promise<boolean> {
+  const repo = `/repos/${client.fullName}`;
+  const [x, y] = await Promise.all(
+    [a, b].map((sha) =>
+      client.get<{ tree?: { sha?: string } }>(`${repo}/git/commits/${encodeURIComponent(sha)}`),
+    ),
+  );
+  const tx = x?.tree?.sha;
+  const ty = y?.tree?.sha;
+  if (!tx || !ty) {
+    throw new GitHubReadError(200, `${client.fullName} answered no tree for ${tx ? b : a}`);
+  }
+  return tx === ty;
+}
+
 /** How GitHub writes a pull request's number: `#12`. */
 const PR_SIGIL = '#';
 const COMPARE_STATES: readonly HostCompare[] = ['ahead', 'behind', 'identical', 'diverged'];
@@ -188,6 +208,7 @@ function githubSourceHostOf(
     compare,
     compareFiles,
     commitFiles,
+    sameTree: (a, b) => githubSameTree(client, a, b),
     async branchContains(branch, sha) {
       const status = await compare(sha, branch);
       return status === 'ahead' || status === 'identical';

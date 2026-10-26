@@ -1,0 +1,1 @@
+**A merge through Forge records the branch it landed on and the head it merged.** GitLab merges wait out an undecided mergeability, a push during a builder run opens one run at the latest head, and recorded landings take versions.

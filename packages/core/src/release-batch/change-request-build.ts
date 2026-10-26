@@ -13,6 +13,7 @@
  * merge (`change-request-merge.ts`), through `changeRequestHeadWhy`.
  */
 
+import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -41,6 +42,8 @@ export type ChangeRequestBuild =
       via: string | null;
       /** The branch that request merges from; null for a merge commit. */
       branch: string | null;
+      /** For a merge commit: the merged request's head and whether its tree is this one's. */
+      head?: MergedHead | null;
     }
   | { sha: null; why: string; unread?: true };
 
@@ -61,6 +64,7 @@ export function otherHeadWhy(judged: string, build: string, via: string): string
 interface Claimed {
   key: string;
   merged: string | null;
+  head: MergedHead | null;
   /** Whether a merge is stamped on it, a box's mark among them. */
   stamped: boolean;
   steps: ReleaseMergeStep[] | null;
@@ -72,6 +76,7 @@ async function claimedOf(ids: readonly string[]): Promise<Map<string, Claimed>> 
       .select({
         id: issues.id,
         merged: issues.mergedCommitSha,
+        head: issues.mergedHead,
         mergedAt: issues.mergedAt,
         runStatus: pipelineRuns.status,
         metadata: pipelineRuns.metadata,
@@ -87,6 +92,7 @@ async function claimedOf(ids: readonly string[]): Promise<Map<string, Claimed>> 
       {
         key: shown.get(r.id) ?? r.id,
         merged: r.merged?.trim().toLowerCase() ?? null,
+        head: r.head ?? null,
         stamped: r.mergedAt !== null,
         steps: r.runStatus === 'running' ? mergeStepsOf(r.metadata) : null,
       },
@@ -216,6 +222,7 @@ export async function changeRequestBuildsOf(
         via: null,
         branch: null,
         basis: `${c.key} merged on its host as \`${short(c.merged)}\`, so that merge commit is its landing`,
+        head: c.head,
       });
       continue;
     }

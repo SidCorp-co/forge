@@ -32,13 +32,14 @@ const hostLandedSql = (i: SQL): SQL => sql`(${i}.merged_commit_sha IS NOT NULL O
 
 /**
  * The host's merge `commit` names on this project: a change request the host reports merged into
- * `target` with that merge commit, whatever issue it links. Null where no such request carries it.
+ * `target` with that merge commit, whatever issue it links, answered with that target. Null where no
+ * such request carries it.
  */
 export async function hostMergeNamed(
   projectId: string,
   commit: string | undefined,
   target: string,
-): Promise<{ commitSha: string; mergedAt: Date } | null> {
+): Promise<{ commitSha: string; mergedAt: Date; target: string } | null> {
   const sha = commit?.trim().toLowerCase();
   if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return null;
   const [row] = await db
@@ -53,7 +54,7 @@ export async function hostMergeNamed(
       ),
     )
     .limit(1);
-  return row?.sha && row.at ? { commitSha: row.sha, mergedAt: row.at } : null;
+  return row?.sha && row.at ? { commitSha: row.sha, mergedAt: row.at, target } : null;
 }
 
 /**

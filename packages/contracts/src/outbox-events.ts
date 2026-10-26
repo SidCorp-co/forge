@@ -4,6 +4,7 @@
 
 import type { FeedbackSeverity } from "./feedback.js";
 import type { LessonEventPayloads } from "./lessons.js";
+import type { MergedHead } from "./landing-artifacts.js";
 import type { MachineEntity, StateOf } from "./machines.js";
 import type { StewardEventPayloads } from "./steward.js";
 
@@ -381,9 +382,13 @@ export interface OutboxEventPayloads
 	"source.merged": {
 		projectId: string;
 		headRef: string;
+		/** The branch the request merged into: the target the issue's merge stamp records. */
+		baseRef: string;
 		commitSha: string;
 		/** ISO 8601. */
 		mergedAt: string;
+		/** The request's head and whether its tree is the landing's, read from the host when the merge was reported. */
+		head: MergedHead | null;
 	};
 	/** A review was submitted on a change request, on the host or through Forge. */
 	"source.reviewed": {

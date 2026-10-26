@@ -34,15 +34,20 @@ import { admitChangeRequestMerge, settleChangeRequestRelease } from '../release-
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
-/** The stamp Forge's own merge writes, in the transaction that marks the projection row. */
+/**
+ * The stamp Forge's own merge writes, in the transaction that marks the projection row: the host's
+ * landing commit, its time, the branch it landed on and the request's head with whether its tree is
+ * the landing's, each read from the host. A later merge of another request delivering the issue
+ * supersedes it (`recordIssueMerge`).
+ */
 const stampKernelMerge =
   (actor: OutboxActor): IssueMergeStamp =>
-  (tx, { issueId, commitSha, mergedAt }) =>
+  (tx, { issueId, commitSha, mergedAt, target, head }) =>
     recordIssueMerge(tx, {
       issueId,
       actor,
       via: 'kernel',
-      evidence: { kind: 'observed', commitSha, mergedAt },
+      evidence: { kind: 'observed', commitSha, mergedAt, target, hostMerge: { head } },
     });
 
 /**
@@ -181,6 +186,7 @@ issueMergePullRequestRoutes.post(
         merged: true,
         alreadyMerged: outcome.kind === 'already-merged',
         commitSha: outcome.commitSha,
+        target: outcome.target,
         mergedAt: outcome.mergedAt.toISOString(),
         stamped: outcome.stamped,
         stampedIssues: outcome.stampedIssues,

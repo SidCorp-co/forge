@@ -14,6 +14,7 @@ import { db, type Tx } from '../db/client.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { stampReleaseVersion, writeRunMetadata } from '../pipeline/index.js';
 import { readProjectDocument } from '../project-config/index.js';
+import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
 import { formatReleaseVersion, type PrereleaseLine, parseReleaseVersion } from './version.js';
 import {
@@ -55,7 +56,11 @@ export async function lockRunVersions(tx: Tx, runId: string): Promise<void> {
 const idsIn = (list: unknown): string[] =>
   Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : [];
 
-/** Every release-batch run of the project the rule decides over, `except` the one being cut. */
+/**
+ * Every versioned release run of the project the rule decides over, `except` the one being cut: a
+ * release batch's, and a recorded landing's, which takes the next version as any release does
+ * (`recorded-landing.ts:recordLanding`), so the two never hand out one number twice.
+ */
 export async function readLineageRuns(
   executor: Pick<Tx, 'execute'>,
   projectId: string,
@@ -79,7 +84,7 @@ export async function readLineageRuns(
     FROM pipeline_runs r
     WHERE r.project_id = ${projectId}
       AND r.release_version IS NOT NULL
-      AND r.metadata ->> 'source' = 'release-batch'
+      AND r.metadata ->> 'source' IN ('release-batch', ${RELEASE_RECORD_SOURCE})
       AND (${except}::uuid IS NULL OR r.id <> ${except}::uuid)
   `);
   return rows.map((r) => {

@@ -2,9 +2,11 @@
 // @direct-test-of packages/core/src/ecosystem/source-push.ts
 // @direct-test-of packages/core/src/ecosystem/builder-supersede.ts
 // @direct-test-of packages/core/src/ecosystem/link-routes.ts
+// @direct-test-of packages/core/src/ecosystem/link-service.ts
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { projectHead } from '../../src/ecosystem/builder-head.js';
 import { logger } from '../../src/lib/logger.js';
 import { consumerOf } from '../../src/outbox/consumers.js';
 import {
@@ -49,8 +51,13 @@ async function openRun(p: ProjectKey): Promise<Doc | undefined> {
 
 /** Ends the project's open run as its master would, every step skipped, so a push may open the next. */
 async function finishOpenRun(p: ProjectKey): Promise<void> {
+  await finishedAnswer(p);
+}
+
+/** The answer to the write that finishes the project's open run; null where none is open. */
+async function finishedAnswer(p: ProjectKey): Promise<Doc | null> {
   const open = await openRun(p);
-  if (!open) return;
+  if (!open) return null;
   const document = structuredClone(open.document);
   for (const k of ['id', 'createdAt', 'updatedAt']) delete document[k];
   document.steps = document.steps.map((s: Doc) => ({
@@ -58,7 +65,7 @@ async function finishOpenRun(p: ProjectKey): Promise<void> {
     status: 'skipped',
     detail: 'closed by the test',
   }));
-  ok(
+  return ok(
     await say(masterOf[p], 'PUT', `${runsOf(p)}/${open.document.id}`, {
       baseRevision: open.revision,
       document,
@@ -202,5 +209,85 @@ describe("the project's master replaces an invalid run through its own project (
     expect((await runsList('plugin')).filter((r) => !r.document.supersededBy)).toHaveLength(
       (await runsList('plugin')).length - 1,
     );
+  });
+});
+
+// adminhub-api, 2026-10-26: the push to release/stg at cf94a1e6 opened builder run 2e1e876c, and the
+// five pushes that landed while it was open (89b3ce31 .. e47af8c8) opened nothing, nor did the run's
+// finish: the branch head stayed unmapped with nothing owed.
+describe('pushes that land while a run is open are mapped once, at the head, when it finishes (c4)', () => {
+  const headAt = (sha: string) =>
+    vi.spyOn(projectHead, 'read').mockResolvedValue({
+      ok: true,
+      value: { sha, ref: 'refs/heads/dev', readAt: new Date().toISOString(), via: 'source-host' },
+    });
+
+  beforeAll(async () => {
+    await seedProjectDocument(w.project.forge, w.user.platform, {
+      environments: {},
+      defaultBranch: 'dev',
+    });
+  });
+
+  /** Finishes whatever run is open at a head that has not moved, so nothing follows it. */
+  async function finishWhereItMapped(p: ProjectKey): Promise<void> {
+    const open = await openRun(p);
+    if (!open) return;
+    const spy = headAt(open.document.trigger.sha);
+    await finishOpenRun(p);
+    spy.mockRestore();
+  }
+
+  it('opens exactly one run at the latest head, however many pushes landed meanwhile', async () => {
+    await finishWhereItMapped('forge');
+    expect(await openRun('forge')).toBeUndefined();
+    await push('forge', 'dev', COMMIT(20));
+    const first = await openRun('forge');
+    expect(first?.document.trigger.sha).toBe(COMMIT(20));
+    const before = (await runsList('forge')).length;
+    for (const n of [21, 22, 23]) await push('forge', 'dev', COMMIT(n));
+    expect((await runsList('forge')).length).toBe(before);
+
+    const spy = headAt(COMMIT(23));
+    const answer = await finishedAnswer('forge');
+    spy.mockRestore();
+
+    expect(answer?.report?.next).toMatchObject({ at: COMMIT(23), mapped: COMMIT(20) });
+    const runs = await runsList('forge');
+    expect(runs.length).toBe(before + 1);
+    const next = await openRun('forge');
+    expect(next?.document.id).toBe(answer?.report?.next?.opened);
+    expect(next?.document.trigger).toMatchObject({
+      kind: 'push',
+      sha: COMMIT(23),
+      head: { ref: 'refs/heads/dev', via: 'source-host' },
+    });
+  });
+
+  it('opens nothing when the run finishes at the head it mapped', async () => {
+    const spy = headAt(COMMIT(23));
+    const before = (await runsList('forge')).length;
+    const answer = await finishedAnswer('forge');
+    spy.mockRestore();
+
+    expect(answer?.report?.next).toBeUndefined();
+    expect((await runsList('forge')).length).toBe(before);
+    expect(await openRun('forge')).toBeUndefined();
+  });
+
+  it('says in the answer why none opened where the head cannot be read, and the next push opens it', async () => {
+    await push('forge', 'dev', COMMIT(30));
+    await push('forge', 'dev', COMMIT(31));
+    const spy = vi
+      .spyOn(projectHead, 'read')
+      .mockResolvedValue({ ok: false, why: 'the binding answered 503' });
+    const answer = await finishedAnswer('forge');
+    spy.mockRestore();
+
+    expect(answer?.report?.next?.opened).toBeNull();
+    expect(answer?.report?.next?.why).toContain('the binding answered 503');
+    expect(await openRun('forge')).toBeUndefined();
+    await push('forge', 'dev', COMMIT(32));
+    expect((await openRun('forge'))?.document.trigger.sha).toBe(COMMIT(32));
   });
 });

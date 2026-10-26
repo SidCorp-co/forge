@@ -12,8 +12,8 @@ import {
 } from './ports.js';
 import type { IssueRow } from './read-service.js';
 
-/** A landing the host holds: the commit, and when it landed there. */
-export type HostMerge = { commitSha: string; mergedAt: Date };
+/** A landing the host holds: the commit, when it landed there, and the branch it landed on. */
+export type HostMerge = { commitSha: string; mergedAt: Date; target: string };
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
@@ -49,7 +49,7 @@ async function hostBranchLanding(
   try {
     const read = await host.readCommit(commit);
     if (read && (await host.branchContains(target, read.sha))) {
-      return { commitSha: read.sha, mergedAt: new Date() };
+      return { commitSha: read.sha, mergedAt: new Date(), target };
     }
     throw refuse(
       'MARK_NOT_A_HOST_MERGE',

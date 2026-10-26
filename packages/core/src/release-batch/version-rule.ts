@@ -25,7 +25,7 @@ import {
   type ReleaseVersion,
 } from './version.js';
 
-/** One release-batch run as the rule reads it. */
+/** One versioned release run as the rule reads it: a release batch's, or a recorded landing's. */
 export interface LineageRun {
   id: string;
   version: string;
@@ -59,8 +59,13 @@ export const isEnded = (r: Pick<LineageRun, 'status' | 'releasedAt'>) =>
 
 const endedUnshipped = (r: LineageRun) => !shipped(r) && isEnded(r);
 
-/** An ended run with no release job was refused before it was attempted: it claims no number. */
-const attempted = (r: LineageRun) => r.hasJob || !isEnded(r);
+/**
+ * An ended run with no release job was refused before it was attempted: it claims no number. A run
+ * that SHIPPED claims its number for good whether or not a job ever ran it: a change-request release
+ * the master merged by hand and a recorded landing have none (catalog-api 0.1.0, run 6c91e938,
+ * 2026-10-26, shipped and read as never attempted, so the next draft read 0.1.0 again).
+ */
+const attempted = (r: LineageRun) => r.hasJob || shipped(r) || !ENDED.has(r.status);
 
 /** The roster as a set, spelled once: order and duplicates never make two rosters differ. */
 export const rosterKey = (ids: readonly string[]): string => [...new Set(ids)].sort().join(',');

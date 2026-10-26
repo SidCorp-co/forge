@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { designOnlyMarkSql } from './design-delivery.js';
-import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
+import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-mark-kind.js';
 import { type WorkStateListView, workStateListSql } from './work-state.js';
 
 /**

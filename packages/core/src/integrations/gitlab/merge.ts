@@ -81,13 +81,80 @@ function mergedResult(
 ): HostMergeResult {
   const commitSha = landingOf(mr);
   const mergedAt = mr.merged_at ? new Date(mr.merged_at) : null;
-  if (!commitSha || !mergedAt || Number.isNaN(mergedAt.getTime())) {
+  const target = mr.target_branch?.trim() ?? '';
+  if (!commitSha || !mergedAt || Number.isNaN(mergedAt.getTime()) || !target) {
+    const missing = [
+      commitSha ? null : 'no landing commit',
+      mergedAt && !Number.isNaN(mergedAt.getTime()) ? null : 'no merge time',
+      target ? null : 'no target branch',
+    ].filter(Boolean);
     return refused(
       'merged-without-evidence',
-      `GitLab reports !${iid} merged but sent no landing commit or no merge time, so there is nothing to record as evidence`,
+      `GitLab reports !${iid} merged but sent ${missing.join(' and ')}, so there is no landing to record as evidence: an issue's merge stamp names the commit, when it landed and the branch it landed on`,
     );
   }
-  return { kind, commitSha, mergedAt };
+  return { kind, commitSha, mergedAt, target, head: mr.sha ?? null };
+}
+
+/** How long a merge waits for GitLab to decide a request's mergeability, and how it waits. */
+export interface MergeabilityWait {
+  /** The whole wait, from the first read. */
+  budgetMs: number;
+  /** The first pause; each later one doubles, the last cut to what is left of the budget. */
+  firstDelayMs: number;
+  sleep(ms: number): Promise<void>;
+  now(): number;
+}
+
+/**
+ * About thirty seconds: GitLab decided each request of a stack it had just reported `unchecked`
+ * within 20–40s of the merge below it (canawan-api !5010–!5013, 2026-10-26), and a read waiting
+ * longer than this holds the caller's request open past what a caller can tell from a hang.
+ */
+export const MERGEABILITY_WAIT: MergeabilityWait = {
+  budgetMs: 30_000,
+  firstDelayMs: 1_000,
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now: () => Date.now(),
+};
+
+/**
+ * The request as GitLab answers for it now. `with_merge_status_recheck=true` asks GitLab to
+ * recalculate the mergeability asynchronously (it is honoured for a credential allowed to update
+ * the request; the single read already asks for that recheck, and the parameter says so
+ * explicitly), so a read after a base moved does not stand on the reading from before it.
+ */
+const readRequest = (client: GitLabClient, path: string) =>
+  client.json<MergeRequestBody>('GET', `${path}?with_merge_status_recheck=true`);
+
+const undecided = (mr: MergeRequestBody) =>
+  mr.state === 'opened' && UNDECIDED.has(mr.detailed_merge_status ?? '');
+
+/**
+ * Re-read an open request while GitLab is still deciding whether it can merge (`UNDECIDED`): after
+ * the request below it in a stack merges, GitLab reports `unchecked` until its recheck finishes. The
+ * pauses back off from `firstDelayMs` and the whole wait stops at `budgetMs`; what it answers is the
+ * last reading and how long it waited, so a refusal can say both.
+ */
+async function awaitDecision(
+  client: GitLabClient,
+  path: string,
+  first: MergeRequestBody,
+  wait: MergeabilityWait,
+): Promise<{ mr: MergeRequestBody; waitedMs: number; reads: number }> {
+  const started = wait.now();
+  let mr = first;
+  let reads = 1;
+  let delay = wait.firstDelayMs;
+  while (undecided(mr)) {
+    const left = wait.budgetMs - (wait.now() - started);
+    if (left <= 0) break;
+    await wait.sleep(Math.min(delay, left));
+    delay *= 2;
+    mr = await readRequest(client, path);
+    reads += 1;
+  }
+  return { mr, waitedMs: wait.now() - started, reads };
 }
 
 /**
@@ -95,18 +162,23 @@ function mergedResult(
  *
  * Refused before anything is sent: a request that is not open, a draft, a head that moved since the
  * caller judged it, an approval rule still owed, a head pipeline that is not green, and any
- * `detailed_merge_status` but `mergeable`. The merge itself is conditional on the judged head
+ * `detailed_merge_status` but `mergeable` — one GitLab is still deciding only once `wait` is spent
+ * (`awaitDecision`). The merge itself is conditional on the judged head
  * (`sha`), so a push landing between the read and the merge is refused by GitLab rather than merged.
  */
 export async function mergeGitLabMergeRequest(
   client: GitLabClient,
   args: HostMergeArgs,
+  wait: MergeabilityWait = MERGEABILITY_WAIT,
 ): Promise<HostMergeResult> {
   const iid = args.number;
   const path = client.project(`/merge_requests/${iid}`);
   let mr: MergeRequestBody;
+  let waited: { waitedMs: number; reads: number };
   try {
-    mr = await client.json<MergeRequestBody>('GET', path);
+    const decided = await awaitDecision(client, path, await readRequest(client, path), wait);
+    mr = decided.mr;
+    waited = decided;
   } catch (err) {
     return callRefusal(err, iid, 'reading');
   }
@@ -172,9 +244,13 @@ export async function mergeGitLabMergeRequest(
             : status && CHECKS.has(status)
               ? 'checks-not-green'
               : 'not-mergeable';
+    const stillDeciding =
+      reason === 'mergeability-unknown'
+        ? ` — GitLab was asked to recheck it and was read ${waited.reads} time${waited.reads === 1 ? '' : 's'} over ${Math.round(waited.waitedMs / 1000)}s without deciding; merge again once GitLab shows it mergeable`
+        : '';
     return refused(
       reason,
-      `GitLab reports merge request !${iid} as \`${status ?? 'no detailed_merge_status'}\`, not \`mergeable\`, so it is not merged`,
+      `GitLab reports merge request !${iid} as \`${status ?? 'no detailed_merge_status'}\`, not \`mergeable\`, so it is not merged${stillDeciding}`,
     );
   }
 

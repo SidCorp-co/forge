@@ -128,9 +128,22 @@ export interface HostMergeArgs {
   method?: string | undefined;
 }
 
+/**
+ * A landing as the host reports it: the commit that landed, when, and the branch it landed on (the
+ * request's base). All three are the evidence an issue's merge stamp is written from, so a host that
+ * reports a merge without one of them refuses `merged-without-evidence` rather than answer this.
+ */
+interface HostLanding {
+  commitSha: string;
+  mergedAt: Date;
+  target: string;
+  /** The request's head as the host reported it at the merge; null where it named none. */
+  head: string | null;
+}
+
 export type HostMergeResult =
-  | { kind: 'merged'; commitSha: string; mergedAt: Date }
-  | { kind: 'already-merged'; commitSha: string; mergedAt: Date }
+  | ({ kind: 'merged' } & HostLanding)
+  | ({ kind: 'already-merged' } & HostLanding)
   | { kind: 'refused'; reason: string; detail: string };
 
 /** The host's own words, so a sentence about a change request says what a person sees there. */
@@ -158,6 +171,8 @@ export interface SourceHost {
   commitFiles(sha: string): Promise<HostCommitFiles>;
   /** Whether `branch` contains `sha`. */
   branchContains(branch: string, sha: string): Promise<boolean>;
+  /** Whether two commits carry the same tree: the same files with the same bytes, whatever their history. */
+  sameTree(a: string, b: string): Promise<boolean>;
   readDivergence(refs: BranchRefs): Promise<LiveDivergence>;
   /** The commits between two commits (any refs the host resolves), never named by branch. */
   readRange(base: string, head: string): Promise<HostRange>;
