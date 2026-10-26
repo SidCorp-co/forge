@@ -29,6 +29,7 @@ import {
 } from '../held-key.js';
 import { findReachableConnection } from '../reach.js';
 import {
+  alreadyExists,
   assertAdmin,
   assertProjectMember,
   assertVaultConfigured,
@@ -42,6 +43,7 @@ import {
   createBinding,
   createConnection,
   decryptConnectionSecrets,
+  findSwitchedOnServiceBindingAtLabel,
   type IntegrationConnectionRow,
   listActiveBindingsForProjectProvider,
   listBindingsForConnection,
@@ -217,6 +219,9 @@ githubConnectRoutes.post(
       asked: asked ?? null,
       userId,
     });
+    // A second App beside a GitHub binding switched on here would have no binding to land on (ISS-1421 r32).
+    if ((await findSwitchedOnServiceBindingAtLabel(projectId, 'github', ''))?.connection.active)
+      throw alreadyExists(GITHUB_ALREADY_CONNECTED);
     await assertRemovedConnectionTakesTheApp(
       projectId,
       orgId ? { ownerType: 'org', ownerId: orgId } : { ownerType: 'user', ownerId: userId },
@@ -252,6 +257,9 @@ githubConnectRoutes.post(
  * before anything is created (ISS-1421 r22). Disconnecting leaves the binding holding that slot, so
  * the refusal names the owner's Clear, which deletes it, and never Disconnect (ISS-1421 r24).
  */
+const GITHUB_ALREADY_CONNECTED =
+  'GitHub is already connected to this project. Disconnect it from this project before creating another GitHub App.';
+
 async function assertRemovedConnectionTakesTheApp(
   projectId: string,
   owner: { ownerType: 'user' | 'org'; ownerId: string },

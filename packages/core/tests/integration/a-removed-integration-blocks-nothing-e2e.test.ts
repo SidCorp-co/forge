@@ -180,6 +180,28 @@ describe('a project integration removed and connected again', () => {
     expect(await connectionCount()).toBe(before);
   });
 
+  // Whole-set review F2: a create refused after its connection was made deletes that connection.
+  it('leaves no connection behind when the binding insert is refused after the connection was made', async () => {
+    await harness.db.execute(
+      sql.raw(`
+      CREATE OR REPLACE FUNCTION refuse_binding_r32() RETURNS trigger LANGUAGE plpgsql AS $f$
+      BEGIN RAISE EXCEPTION 'planted' USING ERRCODE = '23505'; END $f$`),
+    );
+    await harness.db.execute(
+      sql.raw(`CREATE TRIGGER refuse_binding BEFORE INSERT ON integration_bindings
+               FOR EACH ROW EXECUTE FUNCTION refuse_binding_r32()`),
+    );
+    try {
+      const before = await connectionCount();
+      const refused = await connectSentry();
+      expect(refused.status).toBe(409);
+      expect(await connectionCount()).toBe(before);
+    } finally {
+      await harness.db.execute(sql.raw('DROP TRIGGER refuse_binding ON integration_bindings'));
+      await harness.db.execute(sql.raw('DROP FUNCTION refuse_binding_r32()'));
+    }
+  });
+
   it('names a binding still switched on over a removed connection, and leaves no connection behind', async () => {
     const first = await createdId();
     await harness.db.execute(sql`

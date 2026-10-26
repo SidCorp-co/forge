@@ -80,6 +80,8 @@ const helpers = vi.hoisted(() => ({
   projectRole: 'admin' as 'admin' | 'member' | 'viewer' | null,
 }));
 vi.mock('../route-helpers.js', () => ({
+  alreadyExists: (message: string) =>
+    new HTTPException(409, { message, cause: { code: 'ALREADY_EXISTS' } }),
   badRequest: (details: unknown) =>
     new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } }),
   forbidden: (message = 'forbidden') =>
@@ -106,6 +108,7 @@ vi.mock('../route-helpers.js', () => ({
 const store = vi.hoisted(() => ({
   createBinding: vi.fn(async () => ({ id: 'binding-new' })),
   createConnection: vi.fn(async () => ({ id: CONNECTION_ID })),
+  findSwitchedOnServiceBindingAtLabel: vi.fn(async (): Promise<unknown> => null),
   decryptConnectionSecrets: vi.fn((): { appId?: string; privateKey?: string } => ({
     appId: '42',
     privateKey: 'pk',
@@ -310,6 +313,34 @@ describe('POST /:projectId/integrations/github/connect — who the App will belo
 
     expect(res.status).toBe(200);
     expect(ownerOfSignedState(await bodyOf(res)).orgId).toBe(ORG_ID);
+  });
+
+  // ISS-1421 r32: with GitHub switched on here, a second App would have no binding to land on, and
+  // the installation would be written onto the binding already there.
+  it('refuses starting an App where GitHub is already connected to the project, before GitHub is reached', async () => {
+    store.findSwitchedOnServiceBindingAtLabel.mockResolvedValueOnce({
+      binding: { id: 'binding-live' },
+      connection: { active: true },
+    });
+
+    const res = await connect();
+    const body = await bodyOf(res);
+
+    expect([res.status, body.code, body.message]).toEqual([
+      409,
+      'ALREADY_EXISTS',
+      'GitHub is already connected to this project. Disconnect it from this project before creating another GitHub App.',
+    ]);
+    expect(body.state).toBeUndefined();
+  });
+
+  it('starts an App where the GitHub binding switched on here is over a removed connection', async () => {
+    store.findSwitchedOnServiceBindingAtLabel.mockResolvedValueOnce({
+      binding: { id: 'binding-removed' },
+      connection: { active: false },
+    });
+
+    expect((await connect()).status).toBe(200);
   });
 
   it('refuses a project admin who is not an org admin, naming the org and the way round', async () => {
