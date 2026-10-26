@@ -671,7 +671,7 @@
       "name": "forge_questions"
     },
     {
-      "description": "A project's releases: what shipped, what is drafted, what waits on approval, and the acts a person takes on one. Every answer about a release still moving carries `progress`: whether work is running now, and when it is likely done (the forecast's dates), or plainly why there is no date.\n- action=list { projectId, state?, limit? }: releases newest first, each with version, state (draft | in_progress | awaiting_approval | returned | shipped | failed | aborted), name, summary, releasedAt, issue count, requirements, what was verified, and whom it waits on. `draft` is the release now gathering issues: how many are still to land, which an agent is working on, and when it is likely in people's hands.\n- action=get { projectId, version }: one release in full: what users get (notes by section), the requirements it completes, its issues with their proof, what stands in the way, the approval, every attempt at it.\n- action=page { projectId, version, view? }: the release page a reader reads (user view, or developer for the technical notes).\n- action=name { projectId, version, name, summary }: name a drafted or cut release. Needs project admin, as cutting does.\n- action=decide { projectId, version, decision: approve | return, reason? }: decide the approval request the release run is waiting on. This is a person's act: it needs releases.approve on the project, and an approval is judged by the release approval checklist (refused CHECKLIST_INCOMPLETE naming the gap). A return must say why. Read the release (get) before you decide, and decide only when the person asked you to.",
+      "description": "A project's releases: what shipped, what is drafted, what waits on approval, and the acts a person takes on one. Every answer about a release still moving carries `progress`: whether work is running now, and when it is likely done (the forecast's dates), or plainly why there is no date.\n- action=list { projectId, state?, limit? }: releases newest first, each with version, state (draft | in_progress | awaiting_approval | returned | shipped | landed | failed | aborted), name, summary, releasedAt, issue count, requirements, what was verified, and whom it waits on. `draft` is the release now gathering issues: how many are still to land, which an agent is working on, and when it is likely in people's hands.\n- action=get { projectId, version }: one release in full: what users get (notes by section), the requirements it completes, its issues with their proof, what stands in the way, the approval, every attempt at it.\n- action=page { projectId, version, view? }: the release page a reader reads (user view, or developer for the technical notes).\n- action=name { projectId, version, name, summary }: name a drafted or cut release. Needs project admin, as cutting does.\n- action=decide { projectId, version, decision: approve | return, reason? }: decide the approval request the release run is waiting on. This is a person's act: it needs releases.approve on the project, and an approval is judged by the release approval checklist (refused CHECKLIST_INCOMPLETE naming the gap). A return must say why. Read the release (get) before you decide, and decide only when the person asked you to.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -719,6 +719,7 @@
               "awaiting_approval",
               "returned",
               "shipped",
+              "landed",
               "failed",
               "aborted"
             ],
@@ -1692,5 +1693,5 @@
       "name": "project_feedback"
     }
   ],
-  "version": "2.1.0"
+  "version": "2.1.1"
 }

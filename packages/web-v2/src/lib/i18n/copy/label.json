@@ -133,7 +133,7 @@
     "label.hintReleaseState.draft": "merged issues wait at the gate; no version holds them yet",
     "label.hintReleaseState.failed": "the release run ended without shipping",
     "label.hintReleaseState.in_progress": "a release run is promoting, deploying or verifying the version",
-    "label.hintReleaseState.landed": "it landed on a branch production does not deploy from, so production does not serve it",
+    "label.hintReleaseState.landed": "it landed on a branch production does not deploy from",
     "label.hintReleaseState.returned": "an admin sent it back; the master answers before asking again",
     "label.hintReleaseState.shipped": "the release run stamped the version released",
     "label.hintRequirementState.accepted": "delivered and accepted",

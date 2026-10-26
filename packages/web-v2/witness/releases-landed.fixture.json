@@ -12,7 +12,7 @@
     "kind": "you",
     "who": "You",
     "act": "review 0.2.0 and promote it to production",
-    "rule": "it landed on dev, which production does not deploy from, so production does not serve it until a holder of releases.approve reviews it and promotes it",
+    "rule": "landed on dev; production serves it once a release approver promotes it",
     "ref": null,
     "dueAt": null,
     "says": {

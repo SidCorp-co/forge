@@ -1424,11 +1424,11 @@ export const SAID = {
 		vars: { n: "count", requests: "agreement" },
 	},
 	"releases.rule.landedOwesProduction": {
-		en: "it landed on {branch}, which production does not deploy from, so production does not serve it until a holder of releases.approve reviews it and promotes it",
+		en: "landed on {branch}; production serves it once a release approver promotes it",
 		vars: { branch: "name" },
 	},
 	"releases.rule.landedDelivered": {
-		en: "it landed on {branch}; this project declares no production environment and asks no release approval, so the landing is its delivery",
+		en: "landed on {branch}, its delivery: no production and no approval asked",
 		vars: { branch: "name" },
 	},
 	"releases.rule.asked": {

@@ -74,7 +74,7 @@ describe('a landing on a staging branch, on a project that requires a release ap
         kind: 'you',
         who: 'You',
         act: `review ${version} and promote it to production`,
-        rule: `it landed on ${BRANCH}, which production does not deploy from, so production does not serve it until a holder of releases.approve reviews it and promotes it`,
+        rule: `landed on ${BRANCH}; production serves it once a release approver promotes it`,
       },
     });
     expect(body.counts).toMatchObject({ done: 0 });
@@ -124,9 +124,21 @@ describe('a landing on a project that asks no release approval', () => {
       attentionGroup: 'done',
       waitingOn: {
         kind: 'none',
-        rule: `it landed on ${BRANCH}; this project declares no production environment and asks no release approval, so the landing is its delivery`,
+        rule: `landed on ${BRANCH}, its delivery: no production and no approval asked`,
       },
     });
     expect((body.production as { serving: unknown }).serving).toBeNull();
+  });
+
+  // adminhub-fe ISS-50 (runs 8337a338, 8ab74c9f): the record read "owe no verdict" over 3 passes at its commit
+  it('names the passes recorded at the commit where no verdict is owed', async () => {
+    const issue = await landedIssue(5, F4);
+    await judgedAll(issue, F4);
+    const res = await record([issue], F4);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.readings).toContain(
+      `ISS-5: the project's document says its issues owe no verdict; 3 of 3 live criteria stand on a pass judged at \`${F4.slice(0, 12)}\``,
+    );
   });
 });

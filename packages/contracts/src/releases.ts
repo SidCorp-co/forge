@@ -82,7 +82,7 @@ export const RELEASE_STATE_HINTS: Record<ReleaseState, string> = {
 		"returned: an admin sent it back; the master answers before asking again",
 	shipped: "shipped: the release run stamped the version released",
 	landed:
-		"landed: it landed on a branch production does not deploy from, so production does not serve it",
+		"landed: it landed on a branch production does not deploy from",
 	failed: "failed: the release run ended without shipping",
 	aborted: "aborted: the release run was stopped on purpose",
 };

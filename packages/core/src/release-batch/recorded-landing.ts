@@ -166,7 +166,8 @@ export async function recordLanding(
       const key = shown.get(s.issueId) ?? s.issueId;
       return s.owes
         ? `${key}: every live criterion (${s.criteria.length}) stands on a pass judged at \`${short(commit)}\``
-        : `${key}: the project's document says its issues owe no verdict`;
+        : // owed or not, a pass recorded at the commit is named (adminhub-fe ISS-50 read "owe no verdict" over 3 passes)
+          `${key}: the project's document says its issues owe no verdict; ${s.passing} of ${s.live} live criteria stand on a pass judged at \`${short(commit)}\``;
     }),
   ];
   const onBranch = await branchReading(projectId, branch, commit);
