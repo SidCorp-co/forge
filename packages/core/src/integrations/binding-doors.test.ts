@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 (await import('./register-all.js')).registerAllIntegrations();
 
 const { refuseByTier, refuseNewBinding } = await import('./binding-doors.js');
-const { agentAccessTier } = await import('./agent-access.js');
+const { agentAccessTier, noAgentPathMessage } = await import('./agent-access.js');
 const { getIntegration, listIntegrations } = await import('./registry.js');
+const { noKeyToSaveMessage } = await import('./provider-schemas.js');
 
 type Role = 'admin' | 'member' | 'viewer';
 type OrgRole = 'owner' | 'admin' | 'member';
@@ -110,11 +111,14 @@ describe('refuseByTier — the acts a binding PATCH carries (ISS-1421 r28)', () 
         refuseByTier(r, { provider: none }, orgs, { agentAccess: 'all', active: false }, noTiers),
       );
       expect(said?.status).toBe(400);
-      expect(said?.message).toContain('declares no agent path');
+      expect(said?.message).toBe(noAgentPathMessage(none));
+      // ISS-1421 r29: it read "`rocketchat` declares no agent path … a provider core answers tools from".
+      expect(said?.message).not.toMatch(/`|\bcore\b|agent path/);
+      expect(said?.message).toContain(getIntegration(none)?.presentation?.label ?? none);
     }
   });
 
-  it('refuses a key sent to a provider that keeps none, whoever asks, and takes an empty one', () => {
+  it('refuses a key sent to a provider that keeps none, whoever asks, an empty one included', () => {
     const keyless = listIntegrations().find((d) => !d.schemas.primaryCredentialField)?.provider;
     if (!keyless) throw new Error('no provider keeps no key');
     for (const r of [reader('admin', 'owner'), reader('member', 'member')]) {
@@ -122,12 +126,24 @@ describe('refuseByTier — the acts a binding PATCH carries (ISS-1421 r28)', () 
         refuseByTier(r, { provider: keyless }, orgs, { secrets: { token: 'x' } }, noTiers),
       );
       expect(said?.status).toBe(400);
-      expect(said?.message).toContain(`${keyless} keeps no key or secret`);
+      expect(said?.message).toBe(noKeyToSaveMessage(keyless));
     }
+    // ISS-1421 r29: an empty set of keys was answered 200; it is refused like any key.
     const empty = { active: true, secrets: {} };
+    const said = refusal(() =>
+      refuseByTier(reader('admin', 'owner'), { provider: keyless }, orgs, empty, noTiers),
+    );
+    expect(said?.status).toBe(400);
+    expect(said?.message).toBe(noKeyToSaveMessage(keyless));
     expect(
       refusal(() =>
-        refuseByTier(reader('admin', 'owner'), { provider: keyless }, orgs, empty, noTiers),
+        refuseByTier(
+          reader('admin', 'owner'),
+          { provider: keyless },
+          orgs,
+          { active: true },
+          noTiers,
+        ),
       ),
     ).toBeNull();
   });

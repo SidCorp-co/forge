@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Button, CardTitle, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useUpdateConnection, useUpdateProviderIntegration } from "../hooks";
+import { onlyWho } from "./integration-enabled-control";
 import type { BindingSummary, ConnectionSummary, IntegrationSummary } from "../types";
 
 /** The config key itself, so no screen spells it differently from the API. */
@@ -129,11 +130,9 @@ function Editor({
 export function BindingReleaseRunnerField({
   projectId,
   binding,
-  canEdit,
 }: {
   projectId: string;
-  binding: Pick<IntegrationSummary, "id" | "role" | "stages" | "config" | "bindingConfig">;
-  canEdit: boolean;
+  binding: Pick<IntegrationSummary, "id" | "role" | "stages" | "config" | "bindingConfig" | "acts">;
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const [failure, setFailure] = useState<string | null>(null);
@@ -157,8 +156,9 @@ export function BindingReleaseRunnerField({
       key={declared ?? ""}
       declared={declared}
       inherited={declared === null ? effective : null}
-      canEdit={canEdit}
-      disabledReason="Only a project admin can change this."
+      canEdit={binding.acts.change}
+      // Who may is the binding's acts' answer for this reader, never fixed text (ISS-1421 r29).
+      disabledReason={`${onlyWho(binding.acts.whoChanges)} can change this.`}
       hint="Which box this project's releases should prefer, matched against a runner's labels under Settings → Runners. Clearing it falls back to the shared connection's label where that declares one, and otherwise to any box in this project's pool."
       none={NO_RELEASE_RUNNER_LABEL}
       busy={update.isPending}
@@ -179,10 +179,13 @@ export function ConnectionReleaseRunnerField({
   connection,
   bindings,
   canManage,
+  whoChanges,
 }: {
   connection: Pick<ConnectionSummary, "id" | "config">;
   bindings: BindingSummary[];
   canManage: boolean;
+  /** Who may change the credential, as the drawer's own read-only line names them. */
+  whoChanges: string;
 }) {
   const update = useUpdateConnection();
   const [failure, setFailure] = useState<string | null>(null);
@@ -204,7 +207,8 @@ export function ConnectionReleaseRunnerField({
       key={declared ?? ""}
       declared={declared}
       canEdit={canManage}
-      disabledReason="Only the credential's owner, or an org owner or admin, can change this."
+      // It named an org admin on a person's connection, which the server refuses (judge-119 on 332).
+      disabledReason={`${onlyWho(whoChanges)} can change this.`}
       hint="The release runner every project bound to this credential prefers. A project's own live deploy binding overrides it."
       none={NO_CONNECTION_RUNNER_LABEL}
       busy={update.isPending}

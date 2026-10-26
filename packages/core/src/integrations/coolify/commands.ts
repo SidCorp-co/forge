@@ -23,9 +23,15 @@ import {
 import { readRunMethod } from '../../release-batch/method.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
+import { WHO_CHANGES } from '../binding-acts.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../deliveries.js';
+import { isRemovedConnection, offBindingWords } from '../held-key.js';
 import { getIntegration } from '../registry.js';
-import { effectiveConfig, listActiveDeployBindingsForProvider } from '../store.js';
+import {
+  effectiveConfig,
+  listActiveDeployBindingsForProvider,
+  listBindingsForProject,
+} from '../store.js';
 import type { CoolifyConfig } from './types.js';
 
 export class CoolifyCommandError extends Error {
@@ -75,28 +81,62 @@ export function assertAgentMayDeployCoolify(
   );
 }
 
+/** A Coolify call over a binding whose connection was removed: answered as the application list is. */
+export class CoolifyConnectionRemovedError extends CoolifyCommandError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CoolifyConnectionRemovedError';
+  }
+}
+
+const NOTHING_ASKED = 'Nothing was asked of Coolify.';
+
 /**
- * Pick the one integration the caller means: an explicit `integrationId`, else
- * the project's sole active integration. Returns null when the project has
- * none — the only case the caller must shape itself, because each command's
- * "nothing configured" payload names different fields.
+ * Pick the one integration the caller means: an explicit `integrationId`, else the project's sole
+ * active integration. Null where the project has no Coolify binding at all, the one case a caller
+ * shapes itself. Anything else that answers nothing is refused saying why and who may put it back,
+ * read off the bindings and their connections (ISS-1421 r29, judge-119 on 316): it said "no active
+ * Coolify integration with that integrationId" over a removed connection the project still binds.
  */
-export function resolveIntegrationRow<T extends { id: string }>(
+export async function resolveIntegrationRow<T extends { id: string }>(
+  projectId: string,
   rows: T[],
   input: { integrationId?: string | undefined },
-): T | null {
+): Promise<T | null> {
   const row = input.integrationId
     ? rows.find((r) => r.id === input.integrationId)
     : rows.length === 1
       ? rows[0]
       : undefined;
   if (row) return row;
-  if (input.integrationId) {
-    throw new CoolifyCommandError('no active Coolify integration with that integrationId');
+  if (rows.length > 1 && !input.integrationId) {
+    throw new CoolifyCommandError(
+      `This project has ${rows.length} Coolify bindings switched on, so Forge cannot tell which one is meant. Name it by its integrationId. ${NOTHING_ASKED}`,
+    );
   }
-  if (rows.length === 0) return null;
-  throw new CoolifyCommandError('multiple active Coolify integrations — pass integrationId');
+  const bound = (await listBindingsForProject(projectId)).filter(
+    (p) => p.binding.provider === 'coolify' && p.binding.role === 'deploy',
+  );
+  const dead = input.integrationId
+    ? bound.find((p) => p.binding.id === input.integrationId)
+    : bound.find((p) => !(p.binding.active && p.connection.active));
+  if (dead) {
+    const why = await offBindingWords(dead, projectId);
+    const said = `This project's Coolify binding answers nothing: ${why} ${NOTHING_ASKED}`;
+    throw isRemovedConnection(dead.connection)
+      ? new CoolifyConnectionRemovedError(said)
+      : new CoolifyCommandError(said);
+  }
+  if (input.integrationId) {
+    throw new CoolifyCommandError(
+      `None of this project's Coolify bindings has the integrationId that was named; its Integrations tab lists the ones it has. ${NOTHING_ASKED}`,
+    );
+  }
+  return null;
 }
+
+/** The project's Coolify said absent: who may connect one, and where (ISS-1421 r29). */
+export const NO_COOLIFY = `This project has no Coolify connected. Only ${WHO_CHANGES} can connect it, on the project's Integrations tab. ${NOTHING_ASKED}`;
 
 export async function listCoolifyIntegrations(projectId: string) {
   const rows = await activeCoolifyIntegrations(projectId);
@@ -195,7 +235,11 @@ export async function runCoolifyDeploy(input: {
     );
   }
 
-  const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
+  const row = await resolveIntegrationRow(
+    projectId,
+    await activeCoolifyIntegrations(projectId),
+    input,
+  );
   if (!row) {
     return {
       dispatched: false,

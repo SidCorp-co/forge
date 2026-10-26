@@ -5,6 +5,7 @@ import { fieldsNear, schemaRefusalWords } from '../lib/zod-sentences.js';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { bindingShapeFields, checkBindingShape, stagesSchema } from './binding-shape.js';
 import { CredentialUnreadable, SEND_WHOLE } from './credential-unreadable.js';
+import { providerLabel } from './health-words.js';
 import { getIntegration, providerNames } from './registry.js';
 import { mergeRotatedSecrets } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
@@ -156,7 +157,7 @@ export const createSchema = z
     provider: z.string().min(1).max(60),
     ...bindingShapeFields,
     config: z.record(z.string(), z.unknown()).default({}),
-    secrets: z.record(z.string(), z.unknown()).default({}),
+    secrets: z.record(z.string(), z.unknown()).optional(),
     orgId: z.uuid().optional(),
     label: z
       .string()
@@ -178,8 +179,9 @@ export const createSchema = z
       });
       return z.NEVER;
     }
+    if (refuseKeyToKeyless(decl, value.secrets, ctx)) return z.NEVER;
     const config = parseInto(decl.schemas.bindingConfig, value.config, 'config', ctx);
-    const secrets = parseInto(decl.schemas.secrets, value.secrets, 'secrets', ctx);
+    const secrets = parseInto(decl.schemas.secrets, value.secrets ?? {}, 'secrets', ctx);
     if (config === undefined || secrets === undefined) return z.NEVER;
     return { ...value, provider: decl.provider, config, secrets };
   });
@@ -202,14 +204,15 @@ export const connectionCreateSchema = z
     provider: z.string().min(1).max(60),
     displayName: z.string().min(1).max(200).optional(),
     config: z.record(z.string(), z.unknown()).default({}),
-    secrets: z.record(z.string(), z.unknown()).default({}),
+    secrets: z.record(z.string(), z.unknown()).optional(),
     orgId: z.uuid().optional(),
   })
   .transform((value, ctx) => {
     const decl = declarationOrIssue(value.provider, ctx);
     if (!decl) return z.NEVER;
+    if (refuseKeyToKeyless(decl, value.secrets, ctx)) return z.NEVER;
     const config = parseInto(decl.schemas.connectionConfig, value.config, 'config', ctx);
-    const secrets = parseInto(decl.schemas.secrets, value.secrets, 'secrets', ctx);
+    const secrets = parseInto(decl.schemas.secrets, value.secrets ?? {}, 'secrets', ctx);
     if (config === undefined || secrets === undefined) return z.NEVER;
     return { ...value, provider: decl.provider, config, secrets };
   });
@@ -257,11 +260,28 @@ async function storedSecretsOrWhole(
   }
 }
 
-/** A key sent to a provider that keeps none, which was once answered 200 and saved nowhere. */
+/**
+ * A key sent to a provider that keeps none, which was once answered 200 and saved nowhere. One
+ * sentence for every door, the creates' schema refusal included, so it opens "This " and is kept
+ * whole there (ISS-1421 r29).
+ */
+export function noKeyToSaveMessage(provider: string): string {
+  return `This is the ${providerLabel(provider)} integration, which keeps no key or secret, so there is nothing for one to be saved to. Send the write without one.`;
+}
+
 export function noKeyToSave(provider: string): HTTPException {
-  return badRequest(
-    `${provider} keeps no key or secret, so there is nothing here for one to be saved to. Send the write without one.`,
-  );
+  return badRequest(noKeyToSaveMessage(provider));
+}
+
+/** Keys sent to a create for a provider that keeps none, an empty set of them included. */
+function refuseKeyToKeyless(
+  decl: IntegrationDeclaration,
+  secrets: Record<string, unknown> | undefined,
+  ctx: z.RefinementCtx,
+): boolean {
+  if (decl.schemas.primaryCredentialField || secrets === undefined) return false;
+  ctx.addIssue({ code: 'custom', path: ['secrets'], message: noKeyToSaveMessage(decl.provider) });
+  return true;
 }
 
 export async function applySecretsPatch(opts: {
@@ -275,10 +295,8 @@ export async function applySecretsPatch(opts: {
   const decl = getIntegration(opts.provider);
   const primaryField = decl?.schemas.primaryCredentialField;
   if (!decl) return undefined;
-  if (!primaryField) {
-    if (Object.keys(opts.rawSecrets).length > 0) throw noKeyToSave(opts.provider);
-    return undefined;
-  }
+  // Sent at all is refused: an empty set of keys was once answered 200 (ISS-1421 r29).
+  if (!primaryField) throw noKeyToSave(opts.provider);
   if (opts.vaultGuardTiming === 'before-parse') assertVaultConfigured();
   const parsedSecrets = decl.schemas.patchSecrets.safeParse(opts.rawSecrets);
   if (!parsedSecrets.success)

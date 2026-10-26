@@ -135,7 +135,13 @@ export {
 
 const commandRefused = fail(
   'BAD_REQUEST',
-  'the project has no active Coolify integration (or several and none was named), or Coolify refused the action',
+  'the project has no Coolify connected, its binding or the connection behind it is switched off, several are on and none was named, or Coolify refused the action',
+);
+
+/** A binding whose connection was removed answers as the application list does (ISS-1421 r29). */
+const connectionRemoved = fail(
+  'CONNECTION_REMOVED',
+  'the connection behind the binding was removed and holds no key to ask Coolify with',
 );
 const coolifyAnswered = fail(
   'COOLIFY_API_ERROR',
@@ -157,6 +163,7 @@ export const readCoolifyStatus = onProject(
       400: commandRefused,
       403: noRoleOnProject,
       404: noSuchBinding,
+      409: connectionRemoved,
       502: coolifyAnswered,
     },
   }),
@@ -175,6 +182,7 @@ export const deployCoolify = onProject(
       ),
       403: fail('FORBIDDEN', 'the caller is below the project member role'),
       404: noSuchBinding,
+      409: connectionRemoved,
       502: coolifyAnswered,
     },
   }),
@@ -193,6 +201,7 @@ export const cancelCoolify = onProject(
       ),
       403: fail('FORBIDDEN', 'the caller is below the project member role'),
       404: noSuchBinding,
+      409: connectionRemoved,
       502: coolifyAnswered,
     },
   }),
@@ -211,6 +220,7 @@ export const rollbackCoolify = onProject(
       ),
       403: fail('FORBIDDEN', 'the caller is below the project member role'),
       404: noSuchBinding,
+      409: connectionRemoved,
       502: coolifyAnswered,
     },
   }),
@@ -233,6 +243,7 @@ export const readRollbackImages = onProject(
       400: commandRefused,
       403: noRoleOnProject,
       404: noSuchBinding,
+      409: connectionRemoved,
       424: coolifyReadFailed,
       502: coolifyAnswered,
     },
@@ -266,6 +277,7 @@ export const readTargets = onProject(
       400: commandRefused,
       403: noRoleOnProject,
       404: noSuchBinding,
+      409: connectionRemoved,
       424: coolifyReadFailed,
     },
   }),

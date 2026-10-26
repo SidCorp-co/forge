@@ -432,7 +432,9 @@ describe('every who the list names is who the door takes (criteria 308, 310, 311
             const said = await patch(reader.token, bindingId, send.body);
             expect(acts.grantAgents, at).toBe(false);
             expect(said.status, at).toBe(400);
-            expect(JSON.stringify(said.body), at).toContain('declares no agent path');
+            // ISS-1421 r29: said in the reader's words, naming the provider as the tab labels it (337).
+            expect(said.body.message, at).toMatch(/^No agent can use /);
+            expect(JSON.stringify(said.body), at).not.toMatch(/agent path|\bcore\b|`/);
             continue;
           }
           if (acts[send.act]) {

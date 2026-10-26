@@ -23,6 +23,7 @@ import {
   activeCoolifyIntegrations,
   CoolifyCommandError,
   type CoolifyIntegrationRow,
+  NO_COOLIFY,
   resolveIntegrationRow,
 } from './commands.js';
 import { enqueueCoolifyConfirm } from './confirm.js';
@@ -117,17 +118,14 @@ export async function listApplicationsForIntegration(input: {
   };
 }
 
-function requireRow(rows: CoolifyIntegrationRow[], input: { integrationId?: string | undefined }) {
-  const row = resolveIntegrationRow(rows, input);
-  if (!row) throw new CoolifyCommandError('project has no active Coolify integration');
-  return row;
-}
-
 async function requireIntegration(input: {
   projectId: string;
   integrationId?: string | undefined;
-}) {
-  return requireRow(await activeCoolifyIntegrations(input.projectId), input);
+}): Promise<CoolifyIntegrationRow> {
+  const rows = await activeCoolifyIntegrations(input.projectId);
+  const row = await resolveIntegrationRow(input.projectId, rows, input);
+  if (!row) throw new CoolifyCommandError(NO_COOLIFY);
+  return row;
 }
 
 function targetsOf(row: CoolifyIntegrationRow): CoolifyTarget[] {

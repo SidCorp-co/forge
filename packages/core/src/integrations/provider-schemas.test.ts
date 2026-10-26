@@ -6,14 +6,20 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { refusalMessage } from '../lib/refusal-sentence.js';
+import { schemaRefusalWords } from '../lib/zod-sentences.js';
 import {
+  applySecretsPatch,
   configSchemaForProvider,
   connectionConfigSchemaForProvider,
+  connectionCreateSchema,
   createSchema,
+  noKeyToSaveMessage,
   providerHalfRefused,
 } from './provider-schemas.js';
 import { registerAllIntegrations } from './register-all.js';
 import { listIntegrations } from './registry.js';
+import type { IntegrationConnectionRow } from './store.js';
 
 registerAllIntegrations();
 
@@ -131,5 +137,65 @@ describe('a provider config field the provider does not take', () => {
       verify: { probes: [{ url: 'https://x.example.com/v', commitPath: 'sha' }] },
     });
     expect(r.success).toBe(true);
+  });
+});
+
+// ISS-1421 r29: the creates refused a key to a provider that keeps none in their strict schema's
+// words, the PATCH in its own, and an empty set of keys was taken 200 at the PATCH.
+describe('a key sent to a provider that keeps none', () => {
+  const keyless = listIntegrations().find((d) => !d.schemas.primaryCredentialField)?.provider;
+  if (!keyless) throw new Error('no provider keeps no key');
+
+  const createWords = (
+    schema: typeof createSchema | typeof connectionCreateSchema,
+    body: unknown,
+  ) => {
+    const r = schema.safeParse(body);
+    if (r.success) throw new Error('expected the create body to be refused');
+    return schemaRefusalWords(r.error.issues, {
+      valuesAre: 'listed in details.accepted',
+      input: body,
+    }).sentences.join(' ');
+  };
+
+  it.each([{ token: 'x' }, {}])('is refused at both creates in the one sentence: %j', (secrets) => {
+    const project = { provider: keyless, role: 'deploy', stages: ['live'], secrets };
+    expect(createWords(createSchema, project)).toBe(noKeyToSaveMessage(keyless));
+    expect(createWords(connectionCreateSchema, { provider: keyless, secrets })).toBe(
+      noKeyToSaveMessage(keyless),
+    );
+  });
+
+  it('takes a create that sends no key', () => {
+    expect(
+      createSchema.safeParse({ provider: keyless, role: 'deploy', stages: ['live'] }).success,
+    ).toBe(true);
+    expect(connectionCreateSchema.safeParse({ provider: keyless }).success).toBe(true);
+  });
+
+  it.each([{ token: 'x' }, {}])(
+    'is refused at a PATCH in the same sentence: %j',
+    async (rawSecrets) => {
+      const said = await applySecretsPatch({
+        provider: keyless,
+        rawSecrets,
+        connection: {} as IntegrationConnectionRow,
+        vaultGuardTiming: 'on-secret-input',
+      }).then(
+        () => null,
+        (err: { status: number; message: string; cause: { details: unknown } }) => err,
+      );
+      expect(said?.status).toBe(400);
+      // The words the error handler answers with, as the HTTP answer carries them.
+      expect(refusalMessage(said?.message ?? '', said?.cause.details)).toBe(
+        noKeyToSaveMessage(keyless),
+      );
+    },
+  );
+
+  it('names the provider by its label and no field', () => {
+    const said = noKeyToSaveMessage(keyless);
+    expect(said).toMatch(/^This is the \S+ integration, which keeps no key or secret/);
+    expect(said).not.toContain('secrets');
   });
 });

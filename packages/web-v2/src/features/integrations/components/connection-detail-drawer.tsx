@@ -262,7 +262,6 @@ function ConfigPane({
               <BindingVerifyProbeField
                 projectId={projectId}
                 binding={binding}
-                canEdit={binding.acts.change}
                 focus={focus === VERIFY_PROBE_SECTION}
                 onDirtyChange={onProbeDirty}
               />
@@ -282,11 +281,7 @@ function ConfigPane({
           that carries no live stage. */}
       {binding && (
         <section className="mt-4">
-          <BindingReleaseRunnerField
-            projectId={projectId}
-            binding={binding}
-            canEdit={binding.acts.change}
-          />
+          <BindingReleaseRunnerField projectId={projectId} binding={binding} />
         </section>
       )}
       {binding?.connectionId && (

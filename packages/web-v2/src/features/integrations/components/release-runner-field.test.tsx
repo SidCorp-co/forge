@@ -14,7 +14,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BindingSummary } from "../types";
+import { ALL_ACTS } from "../test-acts";
+import type { ProjectBinding } from "../types";
 
 expect.extend(matchers);
 
@@ -44,7 +45,7 @@ const BINDING_ID = "b1111111-1111-4111-8111-111111111111";
 const CONNECTION_ID = "c1111111-1111-4111-8111-111111111111";
 
 /** The two config views the list route returns: `config` merged, `bindingConfig` this project's own. */
-function binding(over: Partial<BindingSummary> = {}): BindingSummary {
+function binding(over: Partial<ProjectBinding> = {}): ProjectBinding {
 	return {
 		id: BINDING_ID,
 		connectionId: CONNECTION_ID,
@@ -67,8 +68,9 @@ function binding(over: Partial<BindingSummary> = {}): BindingSummary {
 		agentPathKind: "core-mediated",
 		createdAt: "2026-09-01T00:00:00.000Z",
 		updatedAt: "2026-09-01T00:00:00.000Z",
+		acts: ALL_ACTS,
 		...over,
-	} as BindingSummary;
+	} as ProjectBinding;
 }
 
 beforeEach(() => {
@@ -87,7 +89,6 @@ describe("the release runner label on a deploy binding", () => {
 					bindingConfig: { releaseRunnerLabel: "release" },
 					config: { releaseRunnerLabel: "release" },
 				})}
-				canEdit
 			/>,
 		);
 
@@ -101,7 +102,6 @@ describe("the release runner label on a deploy binding", () => {
 			<BindingReleaseRunnerField
 				projectId={PROJECT_ID}
 				binding={binding({ bindingConfig: {}, config: { releaseRunnerLabel: "other" } })}
-				canEdit
 			/>,
 		);
 
@@ -112,7 +112,7 @@ describe("the release runner label on a deploy binding", () => {
 
 	it("states where a release goes where neither tier declares a label", () => {
 		draw(
-			<BindingReleaseRunnerField projectId={PROJECT_ID} binding={binding()} canEdit />,
+			<BindingReleaseRunnerField projectId={PROJECT_ID} binding={binding()} />,
 		);
 
 		expect(
@@ -131,7 +131,6 @@ describe("the release runner label on a deploy binding", () => {
 					bindingConfig: { releaseRunnerLabel: "release" },
 					config: { releaseRunnerLabel: "release" },
 				})}
-				canEdit
 			/>,
 		);
 
@@ -142,7 +141,7 @@ describe("the release runner label on a deploy binding", () => {
 
 	it("sends the typed label on the binding PATCH", () => {
 		draw(
-			<BindingReleaseRunnerField projectId={PROJECT_ID} binding={binding()} canEdit />,
+			<BindingReleaseRunnerField projectId={PROJECT_ID} binding={binding()} />,
 		);
 
 		fireEvent.change(screen.getByLabelText("Release runner label"), {
@@ -166,7 +165,6 @@ describe("the release runner label on a deploy binding", () => {
 					bindingConfig: { releaseRunnerLabel: "release" },
 					config: { releaseRunnerLabel: "release" },
 				})}
-				canEdit
 			/>,
 		);
 
@@ -185,20 +183,23 @@ describe("the release runner label on a deploy binding", () => {
 			<BindingReleaseRunnerField
 				projectId={PROJECT_ID}
 				binding={binding({ stages: ["preview"] })}
-				canEdit
 			/>,
 		);
 
 		expect(container).toBeEmptyDOMElement();
 	});
 
-	it("offers no control to a caller who may not edit this project's integrations", () => {
+	// ISS-1421 r29: who may was fixed text; it is the binding's acts' answer for this reader.
+	it("offers no control to a caller the binding's acts withhold it from, and names who may", () => {
 		draw(
-			<BindingReleaseRunnerField projectId={PROJECT_ID} binding={binding()} canEdit={false} />,
+			<BindingReleaseRunnerField
+				projectId={PROJECT_ID}
+				binding={binding({ acts: { ...ALL_ACTS, change: false, whoChanges: "an admin of this project" } })}
+			/>,
 		);
 
 		expect(screen.queryByLabelText("Release runner label")).not.toBeInTheDocument();
-		expect(screen.getByText("Only a project admin can change this.")).toBeInTheDocument();
+		expect(screen.getByText("Only an admin of this project can change this.")).toBeInTheDocument();
 	});
 });
 
@@ -209,6 +210,7 @@ describe("the release runner label on a shared connection", () => {
 				connection={{ id: CONNECTION_ID, config: { releaseRunnerLabel: "other" } }}
 				bindings={[binding()]}
 				canManage
+				whoChanges="an owner or admin of Acme"
 			/>,
 		);
 
@@ -223,6 +225,7 @@ describe("the release runner label on a shared connection", () => {
 				connection={{ id: CONNECTION_ID, config: {} }}
 				bindings={[binding()]}
 				canManage
+				whoChanges="an owner or admin of Acme"
 			/>,
 		);
 
@@ -239,6 +242,7 @@ describe("the release runner label on a shared connection", () => {
 				connection={{ id: CONNECTION_ID, config: {} }}
 				bindings={[binding({ role: "service", stages: [] })]}
 				canManage
+				whoChanges="an owner or admin of Acme"
 			/>,
 		);
 
@@ -251,6 +255,7 @@ describe("the release runner label on a shared connection", () => {
 				connection={{ id: CONNECTION_ID, config: { releaseRunnerLabel: "other" } }}
 				bindings={[binding()]}
 				canManage
+				whoChanges="an owner or admin of Acme"
 			/>,
 		);
 
@@ -262,20 +267,23 @@ describe("the release runner label on a shared connection", () => {
 		});
 	});
 
-	it("offers no control to a caller who may not manage the credential", () => {
+	// ISS-1421 r29, judge-119 on 332: every Coolify drawer named "an org owner or admin", whom the
+	// server refuses on a person's connection, beside a first line saying only its owner may.
+	it.each([
+		["a person's connection", "the member who owns it", "Only the member who owns it can change this."],
+		["an organization's", "an owner or admin of Acme", "Only an owner or admin of Acme can change this."],
+	])("offers no control to a caller who may not manage %s, naming only who may", (_of, who, said) => {
 		draw(
 			<ConnectionReleaseRunnerField
 				connection={{ id: CONNECTION_ID, config: {} }}
 				bindings={[binding()]}
 				canManage={false}
+				whoChanges={who}
 			/>,
 		);
 
 		expect(screen.queryByLabelText("Release runner label")).not.toBeInTheDocument();
-		expect(
-			screen.getByText(
-				"Only the credential's owner, or an org owner or admin, can change this.",
-			),
-		).toBeInTheDocument();
+		expect(screen.getByText(said)).toBeInTheDocument();
+		expect(screen.queryByText(/org owner or admin/)).not.toBeInTheDocument();
 	});
 });

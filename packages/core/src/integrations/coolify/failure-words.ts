@@ -1,3 +1,4 @@
+import { CHECK_ADDRESS } from '../unreached.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyAnswer } from './client.js';
 
 interface CoolifyFailureVerdict {
@@ -24,8 +25,7 @@ export function classifyCoolifyFailure(err: unknown): CoolifyFailureVerdict {
 export function checkFailureWords(err: unknown): string {
   if (!(err instanceof Error)) return 'unknown error';
   if (!(err instanceof CoolifyApiError)) return err.message;
-  if (err.addressSuspect)
-    return `${err.message} Check the address saved on this connection, then test again.`;
+  if (err.addressSuspect) return `${err.message} ${CHECK_ADDRESS.thenTest}`;
   return err.status >= 500 ? `${err.message} Test again once it answers.` : err.message;
 }
 

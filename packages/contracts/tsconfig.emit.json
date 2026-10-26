@@ -15,6 +15,7 @@
     "src/stuck-words.ts",
     "src/deploy-key-words.ts",
     "src/person-name.ts",
+    "src/people-apart.ts",
     "src/room-verbs.ts"
   ]
 }

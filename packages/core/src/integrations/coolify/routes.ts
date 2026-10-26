@@ -25,6 +25,7 @@ import { declaresInput } from '../../api-reference/declare/validator.js';
 import { schemaRefused } from '../../lib/zod-sentences.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
+import { bindingActs, bindingReaderOf } from '../binding-acts.js';
 import {
   assertAdmin,
   assertNotRemoved,
@@ -34,6 +35,7 @@ import {
   notFound,
 } from '../route-helpers.js';
 import { buildContextFromBinding, findBindingWithConnectionById } from '../store.js';
+import { addressForReader } from '../unreached.js';
 import {
   CoolifyApiError,
   describeCoolifyAnswer,
@@ -41,6 +43,7 @@ import {
 } from './client.js';
 import {
   CoolifyCommandError,
+  CoolifyConnectionRemovedError,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
   runCoolifyDeploy,
@@ -86,6 +89,10 @@ export const asSentence = (message: string): string =>
   /[.!?]$/.test(message.trimEnd()) ? message.trimEnd() : `${message.trimEnd()}.`;
 
 const asHttp = (err: unknown): never => {
+  // A removed connection is answered as every other door over it answers (ISS-1421 r29).
+  if (err instanceof CoolifyConnectionRemovedError) {
+    throw new HTTPException(409, { message: err.message, cause: { code: 'CONNECTION_REMOVED' } });
+  }
   if (err instanceof CoolifyCommandError) {
     throw new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
   }
@@ -121,10 +128,16 @@ const lockedAsHttp = (err: unknown): never => {
  * origin 502's body with its own `error code: 502`, so the refusal named here never reached a
  * caller (ISS-1194).
  */
-const readAsHttp = (err: unknown, describe: (e: CoolifyApiError) => string): never => {
+const readAsHttp = (
+  err: unknown,
+  describe: (e: CoolifyApiError) => string,
+  addressWhoMay: string | null = null,
+): never => {
+  const forReader = (said: string) =>
+    addressWhoMay === null ? said : addressForReader(said, addressWhoMay);
   if (err instanceof CoolifyApiError) {
     throw new HTTPException(424, {
-      message: asSentence(describe(err)),
+      message: forReader(asSentence(describe(err))),
       cause: { code: 'COOLIFY_API_ERROR' },
     });
   }
@@ -132,7 +145,7 @@ const readAsHttp = (err: unknown, describe: (e: CoolifyApiError) => string): nev
     // Coolify answering something that is not JSON did reach Coolify: its own code, so a caller
     // acting on the code is not told Forge could not connect.
     const code = err.kind === 'not-json' ? 'COOLIFY_ANSWER_NOT_JSON' : 'COOLIFY_UNREACHABLE';
-    throw new HTTPException(424, { message: asSentence(err.message), cause: { code } });
+    throw new HTTPException(424, { message: forReader(asSentence(err.message)), cause: { code } });
   }
   return asHttp(err);
 };
@@ -272,6 +285,8 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
       if (!parsed.success) throw invalidBody(parsed.error, applicationsBodySchema, raw);
       const body = parsed.data;
       let auth: { baseUrl: string; apiToken: string; previousApiToken?: string };
+      // Who may change the saved address, where this reader may not; a typed address is the reader's own.
+      let addressWhoMay: string | null = null;
       if ('integrationId' in body) {
         const existing = await findBindingWithConnectionById(body.integrationId);
         if (
@@ -287,6 +302,12 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
           role,
           projectId,
         });
+        const acts = bindingActs(
+          await bindingReaderOf(userId, projectId, role),
+          existing.connection,
+          existing.binding.provider,
+        );
+        addressWhoMay = acts.saveKey ? null : acts.whoSavesKey;
         const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(existing);
         if (!ctx.config?.baseUrl || !ctx.secrets?.apiToken) {
           throw new HTTPException(409, {
@@ -305,7 +326,7 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
           }),
         );
       } catch (err) {
-        return readAsHttp(err, describeCoolifyAnswer);
+        return readAsHttp(err, describeCoolifyAnswer, addressWhoMay);
       }
     },
   );

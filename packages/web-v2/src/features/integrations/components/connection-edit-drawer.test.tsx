@@ -431,4 +431,27 @@ describe("the drawer for a reader who may not change the connection", () => {
     mount({ access: { reach: "owner", canManage: true, ownerName: null } });
     expect(screen.queryByTestId("connection-read-only")).toBeNull();
   });
+
+  // ISS-1421 r29, judge-119 on 332: every Coolify drawer said "Only the credential's owner, or an org
+  // owner or admin, can change this." under its runner label, though the server refuses an org admin
+  // a person's connection and the drawer's first line said only its owner may.
+  it.each([
+    [
+      "a person's",
+      { ownerType: "user" as const, access: { reach: "binding" as const, canManage: false, ownerName: "another member" } },
+      "Only the member who owns it can change this.",
+    ],
+    [
+      "an organization's",
+      { ownerType: "org" as const, ownerId: "org-acme", access: { reach: "org" as const, canManage: false, ownerName: "Acme" } },
+      "Only an owner or admin of Acme can change this.",
+    ],
+  ])("names under the runner label of %s Coolify only who its first line names", (_of, over, said) => {
+    bindingsData = {
+      items: [{ id: "b1", projectId: "p-store", active: true, bindingActive: true, role: "deploy", stages: ["live"] }],
+    };
+    mount({ ...over, provider: "coolify" });
+    expect(screen.getByText(said)).toBeInTheDocument();
+    expect(screen.queryByText(/org owner or admin/)).toBeNull();
+  });
 });

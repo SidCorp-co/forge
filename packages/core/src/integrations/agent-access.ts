@@ -1,3 +1,4 @@
+import { providerLabel } from './health-words.js';
 import type { AgentPathKind, IntegrationDeclaration } from './types.js';
 
 export const AGENT_ACCESS_VALUES = ['none', 'all'] as const;
@@ -27,9 +28,9 @@ export function agentAccessTier(
   return kind === 'direct-mcp' ? 'org-admin' : 'project-admin';
 }
 
-/** The sentence a caller gets for granting access on a provider no agent can reach. */
+/** The sentence a caller gets for granting access on a provider no agent can reach, in a reader's words. */
 export function noAgentPathMessage(provider: string): string {
-  return `\`${provider}\` declares no agent path, so there is nothing for an agent to be granted. Whether agents may use an integration is only a question for a provider core answers tools from, or one whose credential reaches the runner.`;
+  return `No agent can use ${providerLabel(provider)}: Forge gives agents no tools for it and never sends its credential to a runner box, so there is no agent access to grant on it.`;
 }
 
 /** The sentence an agent-facing tool gives for a binding nobody has granted. */

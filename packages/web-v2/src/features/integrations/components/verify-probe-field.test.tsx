@@ -12,7 +12,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import type { ReactElement } from "react";
 import { LeaveGuardProvider, useLeaveGuardAttempt } from "@/design";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BindingSummary } from "../types";
+import { ALL_ACTS } from "../test-acts";
+import type { BindingSummary, ProjectBinding } from "../types";
 
 expect.extend(matchers);
 
@@ -49,7 +50,7 @@ const PROJECT_ID = "55555555-5555-4555-8555-555555555555";
 const BINDING_ID = "b1111111-1111-4111-8111-111111111111";
 const PROBE = { url: "https://api.example.com/version", commitPath: "sourceCommit" };
 
-function binding(over: Partial<BindingSummary> = {}): BindingSummary {
+function binding(over: Partial<ProjectBinding> = {}): ProjectBinding {
 	return {
 		id: BINDING_ID,
 		connectionId: "c1111111-1111-4111-8111-111111111111",
@@ -72,12 +73,13 @@ function binding(over: Partial<BindingSummary> = {}): BindingSummary {
 		agentPathKind: "core-mediated",
 		createdAt: "2026-09-01T00:00:00.000Z",
 		updatedAt: "2026-09-01T00:00:00.000Z",
+		acts: ALL_ACTS,
 		...over,
-	} as BindingSummary;
+	} as ProjectBinding;
 }
 
 /** A binding declaring `verify` on its own tier, which `config` shows merged. */
-function declaring(verify: Record<string, unknown>, over: Partial<BindingSummary> = {}): BindingSummary {
+function declaring(verify: Record<string, unknown>, over: Partial<ProjectBinding> = {}): ProjectBinding {
 	return binding({ config: { verify }, bindingConfig: { verify }, ...over });
 }
 
@@ -95,7 +97,6 @@ describe("what the section says is declared", () => {
 			<BindingVerifyProbeField
 				projectId={PROJECT_ID}
 				binding={declaring({ probes: [PROBE, { url: "https://www.example.com/build-info" }] })}
-				canEdit
 			/>,
 		);
 		const listed = screen.getByRole("list", { name: "Declared probes" });
@@ -104,14 +105,14 @@ describe("what the section says is declared", () => {
 	});
 
 	it("says none is declared, and what a release then records", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		expect(screen.getByText(/None declared — a release reads nothing on this binding/)).toBeInTheDocument();
 		expect(screen.getByText(/the release closes unverified/)).toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "Remove all probes" })).toBeNull();
 	});
 
 	it("says a stored block names no probe a release can read", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [] })} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [] })} />);
 		expect(screen.getByText(/names no probe a release can read/)).toBeInTheDocument();
 	});
 
@@ -120,7 +121,6 @@ describe("what the section says is declared", () => {
 			<BindingVerifyProbeField
 				projectId={PROJECT_ID}
 				binding={binding({ config: { verify: { probes: [PROBE] } } })}
-				canEdit
 			/>,
 		);
 		expect(screen.getByText(/Inherited from the shared connection/)).toBeInTheDocument();
@@ -132,20 +132,22 @@ describe("what the section says is declared", () => {
 		["a binding that serves only Preview", binding({ stages: ["preview"] })],
 		["a service binding", binding({ role: "service", stages: [] })],
 	])("is not drawn on %s, whose probe no release reads", (_, b) => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={b} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={b} />);
 		expect(screen.queryByText("Verify probe")).toBeNull();
 	});
 
-	it("offers no edit to a reader who may not make one", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit={false} />);
+	// ISS-1421 r29: who may was fixed text; it is the binding's acts' answer for this reader.
+	it("offers no edit to a reader the binding's acts withhold it from, naming who may", () => {
+		const withheld = { ...ALL_ACTS, change: false, whoChanges: "an admin of this project" };
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] }, { acts: withheld })} />);
 		expect(screen.queryByLabelText("Probe 1 URL")).toBeNull();
-		expect(screen.getByText("Only a project admin can change this.")).toBeInTheDocument();
+		expect(screen.getByText("Only an admin of this project can change this.")).toBeInTheDocument();
 	});
 });
 
 describe("the write each act sends", () => {
 	it("declares a probe as config.verify through the binding write", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: " https://api.example.com/version " } });
 		fireEvent.change(screen.getByLabelText("Probe 1 commit field"), { target: { value: "sourceCommit" } });
 		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
@@ -157,7 +159,6 @@ describe("the write each act sends", () => {
 			<BindingVerifyProbeField
 				projectId={PROJECT_ID}
 				binding={declaring({ probes: [PROBE], stableReads: 3 })}
-				canEdit
 			/>,
 		);
 		expect(screen.getByLabelText("Probe 1 URL")).toHaveValue(PROBE.url);
@@ -177,7 +178,7 @@ describe("the write each act sends", () => {
 	});
 
 	it("sends a blank commit field as no commitPath, which reads the whole answer", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
 		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
 		expect(sent()).toEqual([
@@ -190,7 +191,6 @@ describe("the write each act sends", () => {
 			<BindingVerifyProbeField
 				projectId={PROJECT_ID}
 				binding={declaring({ probes: [PROBE], stableReads: 2, timeoutSeconds: 300 })}
-				canEdit
 			/>,
 		);
 		expect(screen.getByText(/which no release reads any more. Saving here leaves it out./)).toBeInTheDocument();
@@ -201,7 +201,7 @@ describe("the write each act sends", () => {
 	});
 
 	it("declares a second probe beside the first", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} />);
 		fireEvent.click(screen.getByRole("button", { name: "Add another probe" }));
 		fireEvent.change(screen.getByLabelText("Probe 2 URL"), { target: { value: "https://www.example.com/build-info" } });
 		fireEvent.change(screen.getByLabelText("Probe 2 commit field"), { target: { value: "commit" } });
@@ -213,7 +213,7 @@ describe("the write each act sends", () => {
 	});
 
 	it("removes every probe by sending null, once the person has confirmed it", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove the probe" }));
 		expect(sent()).toEqual([]);
 		fireEvent.click(within(screen.getAllByRole("dialog").at(-1) as HTMLElement).getByRole("button", { name: "Remove the probe" }));
@@ -225,7 +225,6 @@ describe("the write each act sends", () => {
 			<BindingVerifyProbeField
 				projectId={PROJECT_ID}
 				binding={declaring({ probes: [PROBE, { url: "https://www.example.com/build-info" }], stableReads: 3 })}
-				canEdit
 			/>,
 		);
 		fireEvent.click(screen.getByRole("button", { name: "Remove probe 1" }));
@@ -239,7 +238,7 @@ describe("the write each act sends", () => {
 	});
 
 	it("sends one write for two presses of Save before the first answers", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
 		const save = screen.getByRole("button", { name: "Save probe" });
 		fireEvent.click(save);
@@ -248,7 +247,7 @@ describe("the write each act sends", () => {
 	});
 
 	it("takes a second save once the first has answered", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
 		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
 		act(() => updateBinding.mock.calls[0]?.[1]?.onSettled?.());
@@ -263,7 +262,7 @@ describe("removing every probe asks once, and says what goes", () => {
 
 	it("names how many probes go and that a release then closes unverified", () => {
 		listed = [declaring(TWO)];
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
 		expect(dialog()).toHaveTextContent("Remove all 2 probes?");
 		expect(dialog()).toHaveTextContent("This removes all 2 probes this binding declares.");
@@ -274,7 +273,7 @@ describe("removing every probe asks once, and says what goes", () => {
 	it("says a release reads the other live binding's probes where one declares them", () => {
 		const other = declaring({ probes: [PROBE] }, { id: "b2222222-2222-4222-8222-222222222222", provider: "epodsystem" });
 		listed = [declaring(TWO), other];
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
 		expect(dialog()).toHaveTextContent("A release then reads only the probes the project's other live bindings declare.");
 	});
@@ -282,7 +281,7 @@ describe("removing every probe asks once, and says what goes", () => {
 	it("says a release is refused where another live binding declares a probe it cannot read", () => {
 		const other = declaring({ probes: [] }, { id: "b3333333-3333-4333-8333-333333333333", provider: "epodsystem" });
 		listed = [declaring(TWO), declaring({ probes: [PROBE] }, { id: "b2222222-2222-4222-8222-222222222222" }), other];
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
 		expect(dialog()).toHaveTextContent("Another live binding declares a probe a release cannot read, so a release is refused until that probe is corrected.");
 		expect(dialog()).not.toHaveTextContent("closes unverified");
@@ -290,7 +289,7 @@ describe("removing every probe asks once, and says what goes", () => {
 
 	// ISS-1421 r25, judge-102 (c): the question named the stored key rather than what it does.
 	it("says what a stored stableReads does, in words, as removed with them", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ ...TWO, stableReads: 3 })} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ ...TWO, stableReads: 3 })} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
 		expect(dialog()).toHaveTextContent(
 			"The rule that a release believes a probe only after 3 matching readings in a row goes with them, as it applies only while a probe is declared.",
@@ -300,14 +299,14 @@ describe("removing every probe asks once, and says what goes", () => {
 
 	// ISS-1421 r25, judge-102 (d): a toast repeated the refusal the question shows, over its title at 390.
 	it("asks the update for no toast, since the field and the question show a refusal themselves", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		expect(updateOptions).toEqual({ failureSaidHere: true });
 	});
 
 	// ISS-1421 r26, judge-105 (4): one probe's question read "Keep them", "Remove all probes" and "goes
 	// with them", and its refusal "The probes were not removed".
 	it("speaks of one probe in every word of the question that removes the only one", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE], stableReads: 3 })} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE], stableReads: 3 })} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove the probe" }));
 		expect(dialog()).toHaveTextContent("Remove the probe?");
 		expect(dialog()).toHaveTextContent("goes with it, as it applies");
@@ -328,7 +327,7 @@ describe("removing every probe asks once, and says what goes", () => {
 	});
 
 	it("sends nothing on Keep them, and leaves an unsaved edit as it was", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/edited" } });
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
 		fireEvent.click(within(dialog()).getByRole("button", { name: "Keep them" }));
@@ -339,7 +338,7 @@ describe("removing every probe asks once, and says what goes", () => {
 	});
 
 	it("says a refused removal inside the confirmation, which stays open to try again", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
 		fireEvent.click(within(dialog()).getByRole("button", { name: "Remove all probes" }));
 		act(() => {
@@ -354,7 +353,7 @@ describe("removing every probe asks once, and says what goes", () => {
 	});
 
 	it("sends one write for two presses of the confirmation", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
 		const confirm = within(dialog()).getByRole("button", { name: "Remove all probes" });
 		fireEvent.click(confirm);
@@ -365,7 +364,7 @@ describe("removing every probe asks once, and says what goes", () => {
 
 describe("the rows say what each input is", () => {
 	it("labels each input on screen, and the labels stay once both are filled", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} />);
 		fireEvent.click(screen.getByRole("button", { name: "Add another probe" }));
 		fireEvent.change(screen.getByLabelText("Probe 2 URL"), { target: { value: "https://www.example.com/build-info" } });
 		fireEvent.change(screen.getByLabelText("Probe 2 commit field"), { target: { value: "commit" } });
@@ -377,13 +376,13 @@ describe("the rows say what each input is", () => {
 	});
 
 	it("shows no placeholder in either input", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		expect(screen.getByLabelText("Probe 1 URL")).not.toHaveAttribute("placeholder");
 		expect(screen.getByLabelText("Probe 1 commit field")).not.toHaveAttribute("placeholder");
 	});
 
 	it("gives the example address and what a blank commit field reads in its help text", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		const help = screen.getByText(/The URL answers with the commit the live deployment is serving/);
 		expect(help).toHaveTextContent("such as https://api.example.com/version");
 		expect(help).toHaveTextContent("Left blank, the whole answer is read as the commit.");
@@ -397,7 +396,7 @@ describe("a probe typed wrong is refused on the section, before any write", () =
 		["a url on another scheme", "ftp://api.example.com/version", "", "Probe 1's URL is not an http or https address"],
 		["nothing typed at all", "", "", "Type the address the live deployment answers its commit on"],
 	])("%s", (_, url, commitPath, said) => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: url } });
 		fireEvent.change(screen.getByLabelText("Probe 1 commit field"), { target: { value: commitPath } });
 		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
@@ -406,7 +405,7 @@ describe("a probe typed wrong is refused on the section, before any write", () =
 	});
 
 	it("names the row at fault among several", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} />);
 		fireEvent.click(screen.getByRole("button", { name: "Add another probe" }));
 		fireEvent.change(screen.getByLabelText("Probe 2 URL"), { target: { value: "not a url" } });
 		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
@@ -418,7 +417,7 @@ describe("a probe typed wrong is refused on the section, before any write", () =
 	});
 
 	it("draws a row's error under that row, and removing the row removes it", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} />);
 		fireEvent.click(screen.getByRole("button", { name: "Add another probe" }));
 		fireEvent.change(screen.getByLabelText("Probe 2 URL"), { target: { value: "not a url" } });
 		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
@@ -434,7 +433,6 @@ describe("a probe typed wrong is refused on the section, before any write", () =
 			<BindingVerifyProbeField
 				projectId={PROJECT_ID}
 				binding={declaring({ probes: [PROBE, { url: "https://www.example.com/build-info" }] })}
-				canEdit
 			/>,
 		);
 		fireEvent.click(screen.getByRole("button", { name: "Add another probe" }));
@@ -446,7 +444,7 @@ describe("a probe typed wrong is refused on the section, before any write", () =
 	});
 
 	it("drops a row's error once the row is typed in again", () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "not a url" } });
 		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
 		expect(screen.getByRole("alert")).toBeInTheDocument();
@@ -472,7 +470,7 @@ describe("an unsaved edit is one the page knows about", () => {
 		draw(
 			<>
 				<SettingsTab onMove={moved} />
-				<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />
+				<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />
 			</>,
 		);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
@@ -486,7 +484,7 @@ describe("an unsaved edit is one the page knows about", () => {
 		draw(
 			<>
 				<SettingsTab onMove={moved} />
-				<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />
+				<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} />
 			</>,
 		);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: ` ${PROBE.url} ` } });
@@ -496,7 +494,7 @@ describe("an unsaved edit is one the page knows about", () => {
 
 	it("tells the drawer when it holds one, and when it no longer does", () => {
 		const dirty = vi.fn();
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit onDirtyChange={dirty} />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} onDirtyChange={dirty} />);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
 		expect(dirty).toHaveBeenLastCalledWith(true);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "" } });
@@ -510,14 +508,14 @@ describe("focus after a row is removed", () => {
 	};
 
 	it("lands in the URL of the row that took the removed one's place", async () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(THREE)} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(THREE)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove probe 2" }));
 		await waitFor(() => expect(screen.getByLabelText("Probe 2 URL")).toHaveFocus());
 		expect(screen.getByLabelText("Probe 2 URL")).toHaveValue("https://c.example.com/v");
 	});
 
 	it("lands in the last row's URL where the removed row was last", async () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(THREE)} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(THREE)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove probe 3" }));
 		await waitFor(() => expect(screen.getByLabelText("Probe 2 URL")).toHaveFocus());
 		expect(screen.getByLabelText("Probe 2 URL")).toHaveValue("https://b.example.com/v");
@@ -529,7 +527,7 @@ describe("focus after a save or a removal lands", () => {
 	const TWO = { probes: [PROBE, { url: "https://www.example.com/build-info" }] };
 	const dialog = () => screen.getAllByRole("dialog").at(-1) as HTMLElement;
 	it("returns to Save probe once a save lands, the rows drawn afresh from what was stored", async () => {
-		const { rerender } = draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		const { rerender } = draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/v3" } });
 		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
 		(document.activeElement as HTMLElement | null)?.blur();
@@ -538,7 +536,7 @@ describe("focus after a save or a removal lands", () => {
 		rerender(
 			<QueryClientProvider client={new QueryClient()}>
 				<LeaveGuardProvider>
-					<BindingVerifyProbeField projectId={PROJECT_ID} binding={stored} canEdit />
+					<BindingVerifyProbeField projectId={PROJECT_ID} binding={stored} />
 				</LeaveGuardProvider>
 			</QueryClientProvider>,
 		);
@@ -546,14 +544,14 @@ describe("focus after a save or a removal lands", () => {
 	});
 
 	it("lands in the first probe's URL once every probe is removed", async () => {
-		const { rerender } = draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		const { rerender } = draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
 		fireEvent.click(within(dialog()).getByRole("button", { name: "Remove all probes" }));
 		act(() => updateBinding.mock.calls[0]?.[1]?.onSuccess?.());
 		rerender(
 			<QueryClientProvider client={new QueryClient()}>
 				<LeaveGuardProvider>
-					<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />
+					<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />
 				</LeaveGuardProvider>
 			</QueryClientProvider>,
 		);
@@ -564,14 +562,14 @@ describe("focus after a save or a removal lands", () => {
 
 describe("a link that names the section lands on it", () => {
 	it("puts the cursor in the first probe's url, after whatever took focus as it was drawn", async () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit focus />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} focus />);
 		// What the drawer around it does once it opens: focus its first control.
 		screen.getByRole("button", { name: "Save probe" }).focus();
 		await waitFor(() => expect(screen.getByLabelText("Probe 1 URL")).toHaveFocus());
 	});
 
 	it("leaves the cursor where it was without one", async () => {
-		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
 		await new Promise((r) => setTimeout(r, 10));
 		expect(screen.getByLabelText("Probe 1 URL")).not.toHaveFocus();
 	});

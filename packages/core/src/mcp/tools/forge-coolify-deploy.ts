@@ -249,7 +249,11 @@ async function dispatchAction(
 
       // Resolve the integration row. Explicit integrationId wins; otherwise
       // require exactly one active Coolify integration (multiple is ambiguous).
-      const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
+      const row = await resolveIntegrationRow(
+        projectId,
+        await activeCoolifyIntegrations(projectId),
+        input,
+      );
       if (!row) {
         return {
           integrationId: null,
@@ -297,7 +301,11 @@ async function dispatchAction(
       const projectId = await resolveProjectId(input, ctx);
       await assertPrincipalIsMember(principal, projectId);
 
-      const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
+      const row = await resolveIntegrationRow(
+        projectId,
+        await activeCoolifyIntegrations(projectId),
+        input,
+      );
       if (!row) {
         return { integrationId: null, resourceUuid: null, logs: null, reason: 'no-integration' };
       }

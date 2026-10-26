@@ -36,14 +36,16 @@ export function connectionOwnerLabel(
 }
 
 /**
- * Why a row or a drawer offers no controls, and who may change the credential: a person by the name
- * core gives them, or as the member who owns it where they have none to show (ISS-1421 r28).
+ * Who may change a credential, as a sentence's subject: the people `managesConnection` admits, never
+ * an organization's admins over a person's (ISS-1421 r28, r29).
  */
-export function readOnlyNote(connection: ConnectionDirectoryItem, ownerLabel: string): string {
-  if (connection.ownerType === "org")
-    return `Read-only — only an owner or admin of ${ownerLabel} can change this credential.`;
+export function whoChangesConnection(connection: ConnectionDirectoryItem, ownerLabel: string): string {
+  if (connection.ownerType === "org") return `an owner or admin of ${ownerLabel}`;
   const named = connection.access.ownerName;
-  return named && named !== UNNAMED_PERSON
-    ? `Read-only — only its owner, ${named}, can change this credential.`
-    : "Read-only — only the member who owns it can change this credential.";
+  return named && named !== UNNAMED_PERSON ? `its owner, ${named},` : "the member who owns it";
+}
+
+/** Why a row or a drawer offers no controls, and who may change the credential. */
+export function readOnlyNote(connection: ConnectionDirectoryItem, ownerLabel: string): string {
+  return `Read-only — only ${whoChangesConnection(connection, ownerLabel)} can change this credential.`;
 }

@@ -79,11 +79,44 @@ export function unreachedBecause(reason: UnreachedReason): string {
   return BECAUSE[reason];
 }
 
+/**
+ * What a failed check or read tells its reader to do about the address the connection saves, each
+ * said once here so a reader who may not change that address is told who may instead (ISS-1421 r29).
+ */
+export const CHECK_ADDRESS = {
+  thenTest: 'Check the address saved on this connection, then test again.',
+  answering: 'Check that the address on this connection is right and answering, then test again.',
+  alone: 'Check the address saved on this connection.',
+  ifNot: 'If it is not, check the address saved on this connection.',
+  first: 'so check the address saved on this connection first.',
+} as const;
+
+const ASK_WHO: Record<keyof typeof CHECK_ADDRESS, (only: string) => string> = {
+  thenTest: (only) =>
+    `${only} can change the address saved on this connection, so ask one of them, then test again.`,
+  answering: (only) =>
+    `${only} can change the address on this connection, so ask one of them to check it is right and answering, then test again.`,
+  alone: (only) => `${only} can change the address saved on this connection, so ask one of them.`,
+  ifNot: (only) =>
+    `If it is not, ${only.charAt(0).toLowerCase()}${only.slice(1)} can change the address saved on this connection, so ask one of them.`,
+  first: (only) =>
+    `so the address saved on this connection is the first thing to check; ${only.charAt(0).toLowerCase()}${only.slice(1)} can change it, so ask one of them.`,
+};
+
+/**
+ * `text` as a reader who may not change the connection's address reads it: each `CHECK_ADDRESS`
+ * sentence becomes who may change it, `who` being `BindingActs.whoSavesKey` ("its owner or …").
+ */
+export function addressForReader(text: string, who: string): string {
+  let said = text;
+  for (const key of Object.keys(CHECK_ADDRESS) as (keyof typeof CHECK_ADDRESS)[]) {
+    said = said.split(CHECK_ADDRESS[key]).join(ASK_WHO[key](`Only ${who}`));
+  }
+  return said;
+}
+
 export function unreachedWords(label: string, reason: UnreachedReason): string {
-  const check =
-    reason === 'timed_out'
-      ? 'Check that the address on this connection is right and answering, then test again.'
-      : 'Check the address saved on this connection, then test again.';
+  const check = reason === 'timed_out' ? CHECK_ADDRESS.answering : CHECK_ADDRESS.thenTest;
   return `Forge could not reach ${label}, because ${BECAUSE[reason]}. ${check}`;
 }
 

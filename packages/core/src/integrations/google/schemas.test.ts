@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { providerHalfRefused } from '../provider-schemas.js';
 import { googleSecretsSchema } from './schemas.js';
 
 const keyFile = (extra: Record<string, unknown>) =>
@@ -11,7 +12,10 @@ const keyFile = (extra: Record<string, unknown>) =>
 
 const refusal = (serviceAccountJson: string) => {
   const parsed = googleSecretsSchema.safeParse({ serviceAccountJson });
-  return parsed.success ? null : parsed.error.issues.map((i) => i.message).join(' ');
+  if (parsed.success) return null;
+  // The words every save door answers with, so a field path zod's own wording adds is seen here.
+  return providerHalfRefused(parsed.error, googleSecretsSchema, 'secrets', { serviceAccountJson })
+    .message;
 };
 
 describe('googleSecretsSchema — the key file a save door takes', () => {
@@ -31,6 +35,26 @@ describe('googleSecretsSchema — the key file a save door takes', () => {
   it('still refuses what is not a key file as not a key file', () => {
     const said = refusal(JSON.stringify({ type: 'authorized_user', padding: 'x'.repeat(120) }));
     expect(said).toMatch(/^This is not the whole service-account key file Google issued/);
+    expect(said).not.toContain('serviceAccountJson');
+  });
+
+  // ISS-1421 r29, judge-119 on 328: anything under 100 characters was refused by zod's count, naming the field.
+  it.each([
+    ['an empty object', '{}'],
+    ['an array', '[1,2]'],
+    ['text that is not JSON', 'not a key file'],
+    ['nothing', ''],
+  ])('refuses %s as not the key file, naming no field and no count', (_what, sent) => {
+    const said = refusal(sent);
+    expect(said).toMatch(/^This is not the whole service-account key file Google issued/);
+    expect(said).not.toContain('serviceAccountJson');
+    expect(said).not.toMatch(/characters/);
+  });
+
+  it('refuses a file larger than any key file Google issues as that, with no count', () => {
+    const said = refusal(keyFile({ padding: 'x'.repeat(20001) }));
+    expect(said).toMatch(/^This is larger than any service-account key file Google issues/);
+    expect(said).not.toMatch(/\d{3,}/);
     expect(said).not.toContain('serviceAccountJson');
   });
 });

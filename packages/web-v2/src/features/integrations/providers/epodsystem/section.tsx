@@ -39,6 +39,7 @@ import {
   bindsRemovedConnection,
   IntegrationEnabledControl,
   keyLockedLine,
+  onlyWho,
   removedKeyHint,
 } from "../../components/integration-enabled-control";
 import { bindingBadge, bindingConnected } from "../../derive";
@@ -83,6 +84,10 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
   // Only a binding whose last check passed is connected: a key the provider refused is not.
   const connectedCount = epodsystemBindings.filter(bindingConnected).length;
   const [showAddForm, setShowAddForm] = useState(false);
+  // Adding a storefront is a connect: offered by the answer the create door refuses by, and withdrawn
+  // when a refusal's re-read of the list says the reader may not (ISS-1421 r29, judge-119 on 313, 319).
+  const may = useProjectIntegrationActs(projectId);
+  const mayAdd = may?.connect === true;
 
   return (
     <SettingsSection>
@@ -121,7 +126,13 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
           />
         ))}
 
-        {showAddForm ? (
+        {!mayAdd ? (
+          may && (
+            <p className="fg-body-sm text-muted">
+              {`${onlyWho(may.whoConnects)} can add a storefront to this project.`}
+            </p>
+          )
+        ) : showAddForm ? (
           <AddEpodsystemForm
             projectId={projectId}
             hasDefault={epodsystemBindings.length > 0}

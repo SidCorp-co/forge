@@ -128,7 +128,8 @@ export function refuseByTier(
     throw noAgentPath(binding.provider);
   }
   const keyless = !getIntegration(binding.provider)?.schemas.primaryCredentialField;
-  if (keyless && Object.keys(patch.secrets ?? {}).length > 0) throw noKeyToSave(binding.provider);
+  // An empty set of keys is a key sent all the same, and was once answered 200 (ISS-1421 r29).
+  if (keyless && patch.secrets !== undefined) throw noKeyToSave(binding.provider);
   const refused = carried.filter((act) => !acts[act]);
   const [only] = refused;
   if (!only) return;

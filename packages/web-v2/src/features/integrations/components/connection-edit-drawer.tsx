@@ -37,7 +37,7 @@ import {
 } from "../hooks";
 import { takesTheApp } from "../app-owner";
 import { connectionTitle, projectCalled } from "../connection-identity";
-import { readOnlyNote } from "../connection-space";
+import { readOnlyNote, whoChangesConnection } from "../connection-space";
 import { deriveConnectionStatus } from "../derive";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { DangerZone, isRemovedConnection } from "./connection-danger-zone";
@@ -421,6 +421,7 @@ export function ConnectionEditDrawer({
   }, [bindings, projects, bindingsRead, projectsRead, connection]);
 
   if (!connection) return null;
+  const ownerLabel = connection.access.ownerName ?? "the organization that owns it";
 
   return (
     <SlideOver
@@ -433,7 +434,7 @@ export function ConnectionEditDrawer({
         {/* Said for as long as the drawer is open, not only in a refusal's toast (ISS-1421 r28). */}
         {!canManage && (
           <p className="fg-body-sm text-muted" data-testid="connection-read-only">
-            {readOnlyNote(connection, connection.access.ownerName ?? "the organization that owns it")}
+            {readOnlyNote(connection, ownerLabel)}
           </p>
         )}
         <CredentialSection connection={connection} canManage={canManage} />
@@ -450,6 +451,7 @@ export function ConnectionEditDrawer({
           connection={connection}
           bindings={bindings}
           canManage={canManage}
+          whoChanges={whoChangesConnection(connection, ownerLabel)}
         />
         <Divider />
         <ProjectsSection
