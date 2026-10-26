@@ -82,25 +82,31 @@ async function digestOn(client: Sql): Promise<Record<string, string>> {
        FROM pg_trigger t WHERE t.tgrelid = c.oid AND NOT t.tgisinternal),
       (SELECT string_agg(polname || ' ' || coalesce(pg_get_expr(polqual, polrelid), ''), E'\n' ORDER BY 1)
        FROM pg_policy WHERE polrelid = c.oid),
-      CASE WHEN c.relkind IN ('v', 'm') THEN pg_get_viewdef(c.oid) END
+      CASE WHEN c.relkind IN ('v', 'm') THEN pg_get_viewdef(c.oid) END,
+      (SELECT concat_ws(' ', seqtypid, seqstart, seqincrement, seqmax, seqmin, seqcache, seqcycle)
+       FROM pg_sequence WHERE seqrelid = c.oid)
     )) AS digest
     FROM pg_class c JOIN ns ON ns.oid = c.relnamespace
     WHERE c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f', 'c')
     UNION ALL
-    SELECT 'function ' || p.oid::regprocedure::text, md5(pg_get_functiondef(p.oid))
+    SELECT 'function ' || p.oid::regprocedure::text,
+      md5(pg_get_functiondef(p.oid) || coalesce(p.proacl::text, ''))
     FROM pg_proc p JOIN ns ON ns.oid = p.pronamespace
     WHERE p.prokind IN ('f', 'p')
       AND NOT EXISTS (SELECT 1 FROM pg_depend e WHERE e.objid = p.oid AND e.deptype = 'e')
     UNION ALL
     SELECT 'type ' || t.oid::regtype::text, md5(concat_ws(E'\n', t.typtype,
       (SELECT string_agg(enumlabel, ',' ORDER BY enumsortorder) FROM pg_enum WHERE enumtypid = t.oid),
-      format_type(t.typbasetype, t.typtypmod)))
+      format_type(t.typbasetype, t.typtypmod), t.typnotnull, t.typdefault,
+      (SELECT string_agg(conname || ' ' || pg_get_constraintdef(oid), E'\n' ORDER BY conname)
+       FROM pg_constraint WHERE contypid = t.oid)))
     FROM pg_type t JOIN ns ON ns.oid = t.typnamespace
     WHERE t.typtype IN ('e', 'd')
     UNION ALL
     SELECT 'extension ' || extname, md5(extversion) FROM pg_extension
     UNION ALL
-    SELECT 'schema ' || nspname, '' FROM ns
+    SELECT 'schema ' || ns.nspname, md5(coalesce(n.nspacl::text, ''))
+    FROM ns JOIN pg_namespace n ON n.oid = ns.oid
     UNION ALL
     SELECT 'database settings', md5(coalesce((SELECT setconfig::text FROM pg_db_role_setting
       WHERE setdatabase = (SELECT oid FROM pg_database WHERE datname = current_database())), ''))
@@ -212,13 +218,24 @@ async function writeRecord(admin: Sql, name: string, record: SlotRecord): Promis
   await admin.unsafe(`COMMENT ON DATABASE "${name}" IS ${literal(JSON.stringify(record))}`);
 }
 
-/** End every connection to `name` but the caller's, waiting until each has gone; how many there were. */
+/**
+ * End every connection to `name` but the caller's and answer how many there were, refusing by pid
+ * any that is still there after its termination was waited on.
+ */
 export async function sever(admin: Sql, name: string): Promise<number> {
-  const rows = await admin<{ pid: number }[]>`
+  const others = () => admin<{ pid: number }[]>`
     SELECT pid FROM pg_stat_activity WHERE datname = ${name} AND pid <> pg_backend_pid()
   `;
+  const rows = await others();
   for (const { pid } of rows) {
     await admin`SELECT pg_terminate_backend(${pid}, 5000)`.catch(() => {});
+  }
+  const left = rows.length > 0 ? await others() : [];
+  if (left.length > 0) {
+    throw new Error(
+      `[db] ${name}: connection(s) ${left.map((r) => r.pid).join(', ')} outlived a terminate ` +
+        'waited on for 5s, so the database cannot be reset or handed on while they can still write.',
+    );
   }
   return rows.length;
 }
@@ -320,6 +337,7 @@ export async function claimSlotDatabase(
     if (fresh || prior === null) {
       record = await snapshot(client, url, holder);
     } else {
+      record = { ...prior, holder };
       const drift = schemaDrift(prior.schema, await schemaDigest(url));
       if (drift.length > 0) {
         await client.end({ timeout: 5 }).catch(() => {});
@@ -332,9 +350,8 @@ export async function claimSlotDatabase(
             `database is set aside and the next file in this slot gets a fresh clone. ${DECLARE}`,
         );
       }
-      await resetSlot(client, prior);
-      record = { ...prior, holder };
     }
+    await resetSlot(client, record);
     await writeRecord(admin, name, record);
   } catch (err) {
     await client?.end({ timeout: 5 }).catch(() => {});

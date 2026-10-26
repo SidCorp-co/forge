@@ -15,5 +15,6 @@ afterAll(async () => {
 
 it('creates a table in its shared slot database without declaring it', async () => {
   await t.client`CREATE TABLE isolation_probe (v text NOT NULL)`;
+  await t.client`ALTER SEQUENCE drizzle.__drizzle_migrations_id_seq INCREMENT BY 7`;
   leave('schema-writer-db', await databaseOf(t.client));
 });

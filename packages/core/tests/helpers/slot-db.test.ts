@@ -10,6 +10,7 @@ import {
   WORKER_PREFIX,
   workerDbName,
 } from './scratch-db.js';
+import { sever } from './slot-db.js';
 
 const TOKEN = mintRunToken();
 
@@ -99,5 +100,52 @@ describe('setupTestDatabase({ own })', () => {
         `setupTestDatabase({ own }) takes the reason this file cannot share its worker slot's database`,
       );
     }
+  });
+});
+
+/** An admin whose catalog keeps answering `pids` connected, and whose terminate does `terminate`. */
+function stubbornAdmin(pids: number[], terminate: () => Promise<unknown>) {
+  const asked: string[] = [];
+  const admin = ((strings: TemplateStringsArray) => {
+    const text = strings.join('?');
+    asked.push(text);
+    return text.includes('pg_terminate_backend')
+      ? terminate()
+      : Promise.resolve(pids.map((pid) => ({ pid })));
+  }) as unknown;
+  return { admin, asked };
+}
+
+describe('sever', () => {
+  it('refuses by pid a connection that outlived a terminate that answered false', async () => {
+    const { admin } = stubbornAdmin([41, 42], async () => [{ pg_terminate_backend: false }]);
+    // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+    await expect(sever(admin as any, 'test_w_1_x')).rejects.toThrow(
+      'connection(s) 41, 42 outlived',
+    );
+  });
+
+  it('refuses by pid a connection whose terminate threw', async () => {
+    const { admin } = stubbornAdmin([43], async () => {
+      throw new Error('permission denied');
+    });
+    // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+    await expect(sever(admin as any, 'test_w_1_x')).rejects.toThrow('connection(s) 43 outlived');
+  });
+
+  it('answers how many it ended when none is left', async () => {
+    let left = [44];
+    const asked: string[] = [];
+    const admin = ((strings: TemplateStringsArray) => {
+      const text = strings.join('?');
+      asked.push(text);
+      if (text.includes('pg_terminate_backend')) {
+        left = [];
+        return Promise.resolve([]);
+      }
+      return Promise.resolve(left.map((pid) => ({ pid })));
+    }) as unknown;
+    // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+    await expect(sever(admin as any, 'test_w_1_x')).resolves.toBe(1);
   });
 });

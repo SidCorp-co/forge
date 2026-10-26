@@ -172,6 +172,7 @@ describe('a test file cannot see what another test file left behind', () => {
       expect(writer.status, 'the file that wrote schema undeclared').toBe('failed');
       expect(said).toContain('schema-writer.fixture.ts changed the schema of the slot database');
       expect(said).toContain('added relation public.isolation_probe');
+      expect(said).toContain('changed relation drizzle.__drizzle_migrations_id_seq');
       expect(said).toContain('own:');
       expect(nested.file('after-schema').status, 'the file after it').toBe('passed');
     },

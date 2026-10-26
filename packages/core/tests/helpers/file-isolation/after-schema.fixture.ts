@@ -19,3 +19,11 @@ it('is handed a database without the table a file before it created', async () =
   `;
   expect(table?.t, 'the table the earlier file created').toBeNull();
 });
+
+it('is handed the sequence as the template defines it', async () => {
+  const [seq] = await t.client<{ step: string }[]>`
+    SELECT increment_by::text AS step FROM pg_sequences
+    WHERE schemaname = 'drizzle' AND sequencename = '__drizzle_migrations_id_seq'
+  `;
+  expect(seq?.step, 'the sequence step').toBe('1');
+});
