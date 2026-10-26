@@ -5,8 +5,9 @@
  * The reproduction was a batch whose verification could not settle inside its window: a finish that
  * awaited its own work held its response for the whole window, which behind the edge is a 524 and a
  * batch that never learns its verdict. Since ISS-1282 the finish judges readings the agent asked
- * Forge to keep and waits on no clock, so the door answers inside a bound that has nothing to do
- * with the roster, refuses a deploy no reading shows live, and the verdict is readable off the batch.
+ * Forge to keep and waits on no clock, so the door answers without asking the probe, whatever the
+ * roster, refuses a deploy no reading shows live, and the verdict is readable off the batch. The
+ * probe answers nobody while the door is called, so a door that waited on it is caught by the asking.
  */
 
 import { createServer, type Server } from 'node:http';
@@ -28,8 +29,6 @@ import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 const BEFORE = '1111111111111111111111111111111111111111';
 const PUSHED = '2222222222222222222222222222222222222222';
 const OTHER = '3333333333333333333333333333333333333333';
-/** The door's bound. */
-const DOOR_MS = 2_000;
 
 let harness: TestDatabase;
 let server: TestServer;
@@ -39,6 +38,9 @@ let jwt: string;
 let serving = BEFORE;
 let probe: Server;
 let probeUrl: string;
+/** Set while a door call is in flight: the probe holds its answer and says it was asked. */
+let asked: (() => void) | null = null;
+const held: Array<() => void> = [];
 
 const fx = releaseBatchFixture(
   () => harness,
@@ -54,7 +56,11 @@ beforeAll(async () => {
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
   await registerIntegrationsForTest();
-  probe = createServer((_req, res) => res.end(serving));
+  probe = createServer((_req, res) => {
+    if (asked === null) return void res.end(serving);
+    held.push(() => res.end(serving));
+    asked();
+  });
   await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
   probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
   server = await startTestServer();
@@ -128,7 +134,6 @@ interface FinishBody {
 }
 
 async function finish(runId: string, body: Record<string, unknown> = {}) {
-  const started = Date.now();
   const res = await fetch(
     `${server.baseUrl}/api/projects/${projectId}/release-batches/${runId}/finish`,
     {
@@ -137,7 +142,25 @@ async function finish(runId: string, body: Record<string, unknown> = {}) {
       body: JSON.stringify(body),
     },
   );
-  return { status: res.status, ms: Date.now() - started, body: (await res.json()) as FinishBody };
+  return { status: res.status, body: (await res.json()) as FinishBody };
+}
+
+/**
+ * A door call made while the probe answers nobody, refused the moment the probe is asked: a door
+ * that waits on a reading is caught by the asking, not by how long it took to answer.
+ */
+async function withoutProbe<T>(call: () => Promise<T>): Promise<T> {
+  const probed = new Promise<'probed'>((resolve) => {
+    asked = () => resolve('probed');
+  });
+  try {
+    const first = await Promise.race([call(), probed]);
+    if (first === 'probed') throw new Error('the door asked the probe before it answered');
+    return first;
+  } finally {
+    asked = null;
+    for (const answer of held.splice(0)) answer();
+  }
 }
 
 async function state(runId: string) {
@@ -175,15 +198,14 @@ async function closesOf(issueId: string): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
-describe('the door answers inside its own bound (the reproduction)', () => {
+describe('the door answers without waiting on the probe (the reproduction)', () => {
   it('refuses a deploy no reading shows live at once, writing no attempt and closing nothing', async () => {
     const { runId, ids } = await batch(1);
     await fx.look(runId);
 
-    const res = await finish(runId, { commit: PUSHED });
+    const res = await withoutProbe(() => finish(runId, { commit: PUSHED }));
 
     expect(res.status).toBe(409);
-    expect(res.ms).toBeLessThan(DOOR_MS);
     expect(res.body.code).toBe('RELEASE_NOT_VERIFIED');
     expect(res.body.message).toBe(
       `The live build is unchanged (${BEFORE}) — the site is healthy and still serving the pre-release commit, and the release pushed ${PUSHED}.`,
@@ -193,24 +215,22 @@ describe('the door answers inside its own bound (the reproduction)', () => {
     expect((await fx.stored(ids[0] as string)).status).toBe('releasing');
   });
 
-  it('answers 202 at `accepted` inside the bound once a reading shows the deploy live', async () => {
+  it('answers 202 at `accepted` without the probe once a reading shows the deploy live', async () => {
     const { runId } = await readyBatch(1);
 
-    const res = await finish(runId, { commit: PUSHED });
+    const res = await withoutProbe(() => finish(runId, { commit: PUSHED }));
 
     expect(res.status).toBe(202);
-    expect(res.ms).toBeLessThan(DOOR_MS);
     expect(res.body.finish?.state).toBe('accepted');
     await until(() => state(runId), settled, 20_000);
   }, 40_000);
 
-  it('answers a roster of twenty inside the same bound as a roster of one', async () => {
+  it('answers a roster of twenty without the probe, as it answers a roster of one', async () => {
     const { runId } = await readyBatch(20);
 
-    const res = await finish(runId, { commit: PUSHED });
+    const res = await withoutProbe(() => finish(runId, { commit: PUSHED }));
 
     expect(res.status).toBe(202);
-    expect(res.ms).toBeLessThan(DOOR_MS);
     await until(() => state(runId), settled, 20_000);
   }, 60_000);
 });
