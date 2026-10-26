@@ -692,6 +692,10 @@ export const SAID = {
 		en: "approve design {what}",
 		vars: { what: "name" },
 	},
+	"standing.act.reviewAndPromote": {
+		en: "review {v} and promote it to production",
+		vars: { v: "version" },
+	},
 	"standing.act.approveOrReturn": {
 		en: "approve or return {v}",
 		vars: { v: "version" },
@@ -1418,6 +1422,14 @@ export const SAID = {
 	"releases.rule.acceptedMerges": {
 		en: "accepted: the agent merges its {n} {requests} in order",
 		vars: { n: "count", requests: "agreement" },
+	},
+	"releases.rule.landedOwesProduction": {
+		en: "landed on {branch}; production serves it once a release approver promotes it",
+		vars: { branch: "name" },
+	},
+	"releases.rule.landedDelivered": {
+		en: "landed on {branch}, its delivery: no production and no approval asked",
+		vars: { branch: "name" },
 	},
 	"releases.rule.asked": {
 		en: "{name} asked; a holder of releases.approve approves or returns it",

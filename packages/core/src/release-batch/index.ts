@@ -33,6 +33,7 @@ export { createReleaseBatch } from './create.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { nextDraftVersion } from './draft-version.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
+export { runningBuildObserved } from './gate.js';
 export { abortBlockedIssues, releaseHoldsOf } from './hold.js';
 export { judgedBuildOf, liveBuildHolds } from './judged-build.js';
 export { deliveryHeadsOf, landedBuildHolds } from './landed-build.js';

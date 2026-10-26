@@ -14,6 +14,8 @@ const draftTurn = (blockers: ReturnType<typeof blocker>[]) =>
     projectId: 'p1',
     runId: null,
     merges: null,
+    landedOn: null,
+    required: false,
     approval: null,
     approvers: [],
     admins: ['Ada'],

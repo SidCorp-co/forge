@@ -78,7 +78,8 @@ describe('a landing is recorded as the release of a project with no production e
     ]);
     // catalog-api run 9ed968de, 2026-10-26: a recorded landing is a release like any other
     expect(res.body.version).toBe('0.1.0');
-    expect(list.releases).toMatchObject([{ version: '0.1.0', state: 'shipped' }]);
+    // a landing on release/stg is not production: it reads landed there (owner, 2026-10-26)
+    expect(list.releases).toMatchObject([{ version: '0.1.0', state: 'landed', landedOn: BRANCH }]);
 
     const detail = await ok(api(token, 'GET', `/api/issues/${issue}`));
     expect(detail.landedIn).toEqual({ branch: BRANCH, commit: F4, at: expect.any(String) });

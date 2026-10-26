@@ -47,7 +47,13 @@ import type { ViewerFacts } from './release-view.js';
 import { parseReleaseVersion, RELEASE_VERSION_SHAPE } from './version.js';
 import type { LineageRun } from './version-rule.js';
 import { currentReleaseVersion, decideRosterVersion, readLineage } from './version-store.js';
-import { attemptsOf, issueIdsOf, versionRuns, versionStatus } from './versions.js';
+import {
+  attemptsOf,
+  issueIdsOf,
+  landedOffProduction,
+  versionRuns,
+  versionStatus,
+} from './versions.js';
 
 interface DraftPart {
   part: Part;
@@ -82,6 +88,7 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       continuedAs: null,
       naming: await draftNaming(projectId, version),
       mergeSteps: null,
+      landedOn: null,
     },
   };
 }
@@ -134,11 +141,12 @@ function runPart(
   attempts: ReleaseAttemptRow[],
   approvals: ApprovalView[],
   required: boolean,
+  deploysFrom: string | null,
 ): Part {
   return {
     version: run.version,
     runId: run.id,
-    state: versionStatus(run, approvals[0] ?? null, required),
+    state: versionStatus(run, approvals[0] ?? null, required, deploysFrom),
     issueIds: issueIdsOf(run.metadata),
     openedAt: run.startedAt,
     releasedAt: run.releasedAt,
@@ -151,6 +159,7 @@ function runPart(
     continuedAs: null,
     naming: readReleaseNaming(run.metadata),
     mergeSteps: mergeStepsOf(run.metadata),
+    landedOn: run.releasedAt ? landedOffProduction(run.metadata, deploysFrom) : null,
   };
 }
 
@@ -172,6 +181,12 @@ async function productionOf(projectId: string, current: string | null): Promise<
     url: prod?.declaration.url ?? null,
     serving: current,
   };
+}
+
+/** The branch production deploys from, as the project document declares it; null where it declares no production. */
+async function deploysFromOf(projectId: string): Promise<string | null> {
+  const read = await readReleasePath(projectId);
+  return read.ok ? (read.path.production?.declaration.deploysFrom ?? null) : null;
 }
 
 async function sharedFor(
@@ -216,7 +231,10 @@ async function sharedFor(
 }
 
 async function runParts(projectId: string, version: string | undefined, required: boolean) {
-  const runs = await versionRuns(projectId, version);
+  const [runs, deploysFrom] = await Promise.all([
+    versionRuns(projectId, version),
+    deploysFromOf(projectId),
+  ]);
   const ids = runs.map((r) => r.id);
   const [attempts, rows] = await Promise.all([attemptsOf(ids), approvalsOfRuns(ids)]);
   const approvals = await approvalViews(rows);
@@ -226,6 +244,7 @@ async function runParts(projectId: string, version: string | undefined, required
       attempts.filter((a) => a.runId === run.id),
       approvals.filter((a) => a.runId === run.id),
       required,
+      deploysFrom,
     ),
   );
 }
@@ -344,7 +363,8 @@ export async function readRelease(
   const feedbackAnswered = await feedbackAnsweredBy(
     projectId,
     part.issueIds,
-    { runId: part.runId, shipped: part.state === 'shipped' },
+    // a landing closed its issues and told who asked as a shipped release does (`run-records.ts`)
+    { runId: part.runId, shipped: part.state === 'shipped' || part.state === 'landed' },
     viewer?.agency ?? 'human',
   );
   return detailOf(

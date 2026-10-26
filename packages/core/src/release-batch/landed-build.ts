@@ -408,6 +408,9 @@ export interface LandedStanding {
   /** False where the project's document says its issues owe no verdict. */
   owes: boolean;
   criteria: LandedCriterion[];
+  /** How many live criteria it has, and how many stand on a pass that counts at its build, owed or not. */
+  live: number;
+  passing: number;
 }
 
 /** Every live criterion of `issueIds` weighed on the build `buildOf` names for its issue. */
@@ -422,13 +425,14 @@ export async function landedStandings(
     const s = standing.get(issueId);
     if (!s) return [];
     const build = buildOf(issueId);
+    const weighed = s.criteria.map((c) => weighOnLanded(build, c, viaOf(issueId), headOf(issueId)));
     return [
       {
         issueId,
         owes: s.owes,
-        criteria: s.owes
-          ? s.criteria.map((c) => weighOnLanded(build, c, viaOf(issueId), headOf(issueId)))
-          : heldWhereNoneOwed(build, s.criteria),
+        criteria: s.owes ? weighed : heldWhereNoneOwed(build, s.criteria),
+        live: s.criteria.length,
+        passing: weighed.filter((c) => c.counts).length,
       },
     ];
   });

@@ -18,6 +18,7 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { insertAndEnqueueJob, openOneShotRun } from '../pipeline/index.js';
 import { stewardAccountOf } from './account.js';
 import { mintStewardCredential } from './credential.js';
+import { stewardPorts } from './ports.js';
 import { actContext, actPrompt } from './prompts.js';
 import { endRun, liveStewardJobOf, type RunRow, runOfProject } from './runs-store.js';
 
@@ -52,10 +53,19 @@ export const jobDoneStep = (run: RunRow) =>
     'This is what ends the job. Without it the box reads a finished agent as a failed job a quarter hour later, and the run fails with it.',
   ].join('\n');
 
-function brief(run: RunRow, acts: readonly StewardAct[]): string {
+/**
+ * The job's brief: each act's method, chosen by whether the project has a running build Forge
+ * observes, and the release facts a gateway turn is given too, so a job never restates the project's
+ * release otherwise (adminhub-fe ISS-36: a follow-through told nothing judged a runtime nothing runs).
+ */
+async function brief(run: RunRow, acts: readonly StewardAct[]): Promise<string> {
+  const [observed, facts] = await Promise.all([
+    stewardPorts().runningBuildObserved(run.projectId),
+    run.subjectKind === 'issue' ? stewardPorts().releaseFacts(run.projectId, run.subjectId) : null,
+  ]);
   return [
-    ...acts.map((a) => actPrompt(a)),
-    actContext(run, null),
+    ...acts.map((a) => actPrompt(a, observed)),
+    actContext(run, null, facts),
     `Project id: ${run.projectId}. Steward run: ${run.id}.`,
     jobDoneStep(run),
   ].join('\n\n');
@@ -85,7 +95,7 @@ export async function enqueueStewardJob(
     createdBy: stewardId,
     type: 'steward',
     skillName: `steward-${acts.join('-')}`,
-    promptString: brief(run, acts),
+    promptString: await brief(run, acts),
     payloadExtras: {
       stewardRunId: run.id,
       stewardActs: [...acts],

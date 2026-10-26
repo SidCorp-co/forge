@@ -30,6 +30,7 @@ export const VERSION_STATUSES = [
 	"awaiting_approval",
 	"returned",
 	"shipped",
+	"landed",
 	"failed",
 	"aborted",
 ] as const;
@@ -44,6 +45,7 @@ export const RELEASE_STATE_LABELS: Record<ReleaseState, string> = {
 	awaiting_approval: "Awaiting approval",
 	returned: "Returned",
 	shipped: "Shipped",
+	landed: "Landed",
 	failed: "Failed",
 	aborted: "Aborted",
 };
@@ -54,6 +56,7 @@ export const RELEASE_STATE_TONES: Record<ReleaseState, IssueStatusTone> = {
 	awaiting_approval: "you",
 	returned: "err",
 	shipped: "ready",
+	landed: "neutral",
 	failed: "err",
 	aborted: "neutral",
 };
@@ -64,6 +67,7 @@ export const RELEASE_STATE_GLYPHS: Record<ReleaseState, string> = {
 	awaiting_approval: "↑",
 	returned: "↺",
 	shipped: "✓",
+	landed: "↓",
 	failed: "×",
 	aborted: "–",
 };
@@ -77,6 +81,8 @@ export const RELEASE_STATE_HINTS: Record<ReleaseState, string> = {
 	returned:
 		"returned: an admin sent it back; the master answers before asking again",
 	shipped: "shipped: the release run stamped the version released",
+	landed:
+		"landed: it landed on a branch production does not deploy from",
 	failed: "failed: the release run ended without shipping",
 	aborted: "aborted: the release run was stopped on purpose",
 };
@@ -294,6 +300,11 @@ export interface ReleaseSummary
 	runId: string | null;
 	state: ReleaseState;
 	current: boolean;
+	/**
+	 * The branch a recorded landing put it on, where that is not the branch production deploys from
+	 * (state `landed`): production does not serve it. Null on every other release.
+	 */
+	landedOn: string | null;
 	/** The release's name and its two-to-three-sentence summary, written when it was cut (REQ-40 BC-14); null until written, and on a draft nobody cut. */
 	name: string | null;
 	summary: string | null;
