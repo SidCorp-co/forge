@@ -367,12 +367,7 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    await loadRunForProject(
-      runId,
-      projectId,
-      c.get('userId'),
-      'announce how its release batches deploy',
-    );
+    await loadRunForProject(runId, projectId, c.get('userId'), 'announce its release method');
     return c.json(answer(methodSchema, await announceMethod({ runId, ...c.req.valid('json') })));
   },
 );
@@ -391,12 +386,7 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    await loadRunForProject(
-      runId,
-      projectId,
-      c.get('userId'),
-      'open attempts on its release batches',
-    );
+    await loadRunForProject(runId, projectId, c.get('userId'), 'open its release attempts');
     const body = c.req.valid('json') as Record<string, unknown>;
     refuseMachineKeys(body);
     try {
@@ -429,12 +419,7 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId, runId, key } = c.req.valid('param');
-    await loadRunForProject(
-      runId,
-      projectId,
-      c.get('userId'),
-      'account for attempts on its release batches',
-    );
+    await loadRunForProject(runId, projectId, c.get('userId'), 'account for release attempts');
     const body = c.req.valid('json') as Record<string, unknown>;
     refuseMachineKeys(body);
     const existing = await readAttempt(runId, key);
