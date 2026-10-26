@@ -1365,7 +1365,7 @@
       "name": "forge_requirements"
     },
     {
-      "description": "Answer a Rocket.Chat support group as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the group. search {query}: the project knowledge and its published OpenAPI contracts; each hit carries `cite`, which you put in brackets after what it supports. thread {thread}: the thread so far, oldest first. tools {}: the checks (diagnose) and changes (fix) this group grants you. reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite. run {thread, tool, args}: run a granted diagnose check; the thread is shown what was checked, and you get what came back. propose_fix {thread, tool, args, asker}: offer a granted fix to the person who asked (`from.id`). It runs only when that person confirms in the thread; you are told the result as a later message. record {thread, kind, title, summary, asker?}: what needs code or a decision is offered as Feedback for the team (kind defect | feature | request); the thread is shown the route, the title and its link, and it is filed only when the asker (the thread's first writer unless named) confirms. You are told the key when it is filed; the thread is told its progress until it ships. Never promise a date. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: search { query }; thread { thread }; tools {}; reply { thread, text }; run { thread, tool, args? }; propose_fix { thread, tool, args?, asker }; record { thread, kind: defect | feature | request, title, summary, whereSeen?, asker? }.",
+      "description": "Answer a Rocket.Chat support group, or an operations room, as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the room. search {query}: the project knowledge and its published OpenAPI contracts; each hit carries `cite`, which you put in brackets after what it supports. thread {thread}: the thread so far, oldest first. tools {}: the checks (diagnose) and changes (fix) this group grants you. reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite. run {thread, tool, args}: run a granted diagnose check; the thread is shown what was checked, and you get what came back. propose_fix {thread, tool, args, asker}: offer a granted fix to the person who asked (`from.id`). It runs only when that person confirms in the thread; you are told the result as a later message. record {thread, kind, title, summary, asker?}: what needs code or a decision is offered as Feedback for the team (kind defect | feature | request); the thread is shown the route, the title and its link, and it is filed only when the asker (the thread's first writer unless named) confirms. You are told the key when it is filed; the thread is told its progress until it ships. Never promise a date. In an operations room (your brief says which room you answer) the acts are your role's: projects, issues and releases read the projects of the room's scope; move changes an issue's status, and draft_requirement and draft_feedback draft product direction for a person to decide, each as the member who wrote last in the thread and under their own Forge permissions; research reads one public https page. An act your role is not granted, a project outside the scope, or a member Forge cannot name is refused by name: tell the thread what the refusal says. The support group acts (search, tools, run, propose_fix, record) are refused there, as these are in a support group. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: search { query }; thread { thread }; tools {}; reply { thread, text }; run { thread, tool, args? }; propose_fix { thread, tool, args?, asker }; record { thread, kind: defect | feature | request, title, summary, whereSeen?, asker? }; projects {}; issues { project, status?, key? }; releases { project }; move { thread, issue, to, reason?, project? }; draft_requirement { thread, project, title, summary }; draft_feedback { thread, project, kind: defect | feature | request, title, summary, one of requirement | issue | screen }; research { thread, url }.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -1378,7 +1378,14 @@
               "reply",
               "run",
               "propose_fix",
-              "record"
+              "record",
+              "projects",
+              "issues",
+              "releases",
+              "move",
+              "draft_requirement",
+              "draft_feedback",
+              "research"
             ],
             "type": "string"
           },
@@ -1400,6 +1407,16 @@
             "minLength": 1,
             "type": "string"
           },
+          "issue": {
+            "description": "an issue key as `projects` and `issues` show it, e.g. ISS-12",
+            "pattern": "^[A-Za-z][A-Za-z0-9]{0,15}-\\d{1,9}$",
+            "type": "string"
+          },
+          "key": {
+            "description": "an issue key as `projects` and `issues` show it, e.g. ISS-12",
+            "pattern": "^[A-Za-z][A-Za-z0-9]{0,15}-\\d{1,9}$",
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "defect",
@@ -1408,9 +1425,45 @@
             ],
             "type": "string"
           },
+          "project": {
+            "description": "a project of this room's scope, by slug",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
           "query": {
             "maxLength": 300,
             "minLength": 2,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "requirement": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "screen": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "open",
+              "reopen",
+              "in_progress",
+              "approved",
+              "needs_info",
+              "on_hold",
+              "awaiting_release",
+              "closed",
+              "dropped"
+            ],
             "type": "string"
           },
           "summary": {
@@ -1435,9 +1488,29 @@
             "minLength": 3,
             "type": "string"
           },
+          "to": {
+            "enum": [
+              "draft",
+              "open",
+              "reopen",
+              "in_progress",
+              "approved",
+              "needs_info",
+              "on_hold",
+              "awaiting_release",
+              "closed",
+              "dropped"
+            ],
+            "type": "string"
+          },
           "tool": {
             "maxLength": 48,
             "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 2000,
+            "pattern": "^https:\\/\\/",
             "type": "string"
           },
           "whereSeen": {
@@ -1693,5 +1766,5 @@
       "name": "project_feedback"
     }
   ],
-  "version": "2.1.2"
+  "version": "2.2.0"
 }

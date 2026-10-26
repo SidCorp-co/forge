@@ -1,0 +1,1 @@
+**Rocket.Chat operations rooms answer under their bot's role.** Babo coordinates delivery and Sy drafts product direction, each refused what its role lacks; a command runs as the member who asked, with their own Forge permissions.

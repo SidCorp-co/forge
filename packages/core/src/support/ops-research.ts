@@ -38,7 +38,6 @@ const NOT_PUBLIC = (() => {
   for (const [net, bits] of [
     ['::', 128],
     ['::1', 128],
-    ['::ffff:0:0', 96],
     ['64:ff9b::', 96],
     ['100::', 64],
     ['2001:db8::', 32],
@@ -52,6 +51,9 @@ const NOT_PUBLIC = (() => {
 })();
 
 export function isPublicAddress(address: string): boolean {
+  // an IPv4 address written as IPv6 is judged as the IPv4 address it is; a hex-written one is refused
+  const mapped = /^::ffff:(.+)$/i.exec(address);
+  if (mapped) return isIP(mapped[1] ?? '') === 4 && isPublicAddress(mapped[1] ?? '');
   const family = isIP(address);
   if (family === 0) return false;
   return !NOT_PUBLIC.check(address, family === 4 ? 'ipv4' : 'ipv6');
@@ -71,7 +73,8 @@ export function pageText(html: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/[ \t\f\r]+/g, ' ')
-    .replace(/\n\s*\n+/g, '\n')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n\n+/g, '\n')
     .trim();
 }
 
