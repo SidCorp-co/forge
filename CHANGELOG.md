@@ -3199,6 +3199,7 @@
 
 ### Fixed
 
+- **Forge no longer goes down when the database ends a transaction under it.** A database restart, a dropped connection or a long wait used to stop the server or save half a change; now the action fails whole. (ISS-1315)
 - **The narrow rail keeps every label in view whatever the organization is called.** It shows the organization's mark, with the whole name on hover and in the switcher's menu and the phone's menu. (ISS-1229)
 - **A cut-short or mistyped conversation link says the conversation was not found**, instead of offering a retry that could never work. (ISS-1229)
 - **Every load error says what failed to load**, and where it is all a page shows, it heads the page and names the tab; an open conversation names the tab too. (ISS-1229)

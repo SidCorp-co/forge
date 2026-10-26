@@ -13,6 +13,8 @@ ENV PATH="$PNPM_HOME:$PATH"
 FROM base AS build
 WORKDIR /repo
 COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+# The patches package.json's patchedDependencies names; a frozen install refuses without them.
+COPY patches ./patches
 COPY packages ./packages
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter @forge/core...

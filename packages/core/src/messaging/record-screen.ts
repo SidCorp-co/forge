@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { rethrowInTransaction } from '../db/in-transaction.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import { ROLE_PRODUCT, ROLE_TECHNICAL } from './audiences.js';
 import type { Audience, MessageRefusal, MessageVerdict } from './contract.js';
@@ -138,7 +139,8 @@ export async function projectLens(projectId: string, executor?: Tx): Promise<Rec
       );
     const technical = rows.some((r) => ((r.lenses ?? []) as string[]).includes('technical'));
     return technical ? 'technical' : 'product';
-  } catch {
+  } catch (err) {
+    rethrowInTransaction(err, handle);
     return 'product';
   }
 }
