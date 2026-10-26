@@ -36,8 +36,15 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
       merges.push(number);
       const commitSha = `${String(number).padStart(4, '0')}${'c'.repeat(36)}`;
       merged.set(number, commitSha);
-      return { kind: 'merged', commitSha, mergedAt: new Date('2026-10-23T09:00:00Z') };
+      return {
+        kind: 'merged',
+        commitSha,
+        mergedAt: new Date('2026-10-23T09:00:00Z'),
+        target: 'release/stg',
+        head: null,
+      };
     },
+    sameTree: async () => true,
   }),
 }));
 

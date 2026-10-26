@@ -14,11 +14,13 @@ import {
   type PullRequestPayload,
   type PushPayload,
   type ReviewPayload,
+  readMergedHead,
   stateOf,
   storeRefreshRefusal,
 } from '../source-host/index.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
 import { refreshStoredPullRequest } from './projection-refresh.js';
+import { githubSameTree } from './source-host.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
 /** The events this projection is built from. Anything else falls through. */
@@ -70,25 +72,40 @@ const REFRESHING_PR_ACTIONS = new Set([
   'ready_for_review',
 ]);
 
-/** A merge a person made on GitHub, reported for the issue's merge stamp. */
-function reportMerged(ctx: DeliveryContext, payload: PullRequestPayload): void {
+/**
+ * A merge a person made on GitHub, reported for the issue's merge stamp: the merge commit, its time,
+ * the base branch it landed on, and the head with whether its tree is the landing's, read now.
+ */
+async function reportMerged(ctx: DeliveryContext, payload: PullRequestPayload): Promise<void> {
   const pr = payload.pull_request;
   if (!pr || stateOf(pr) !== 'merged') return;
-  if (!pr.merge_commit_sha || !pr.merged_at || !pr.head?.ref) return;
+  if (!pr.merge_commit_sha || !pr.merged_at || !pr.head?.ref || !pr.base?.ref) return;
+  const landing = pr.merge_commit_sha;
+  const head = await readMergedHead(
+    async (a, b) => {
+      const got = clientFor(ctx);
+      if (!got.client) throw new Error(got.reason);
+      return githubSameTree(got.client, a, b);
+    },
+    pr.head.sha ?? null,
+    landing,
+  );
   ctx.facts.push({
     type: 'source.merged',
     payload: {
       projectId: ctx.projectId,
       headRef: pr.head.ref,
-      commitSha: pr.merge_commit_sha,
+      baseRef: pr.base.ref,
+      commitSha: landing,
       mergedAt: pr.merged_at,
+      head,
     },
   });
 }
 
 async function onPullRequest(ctx: DeliveryContext, payload: PullRequestPayload): Promise<number> {
   const written = await applyPullRequestEvent(ctx, payload);
-  reportMerged(ctx, payload);
+  await reportMerged(ctx, payload);
   if (written === 0) return 0;
   if (!REFRESHING_PR_ACTIONS.has(payload.action ?? '')) return written;
   const number = payload.pull_request?.number;

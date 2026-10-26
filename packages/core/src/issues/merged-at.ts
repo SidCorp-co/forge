@@ -10,7 +10,8 @@ import {
   landingShortfall,
   readLandingEvidence,
 } from './landing-evidence.js';
-import { type MergeMarkKind, type MergeRecordExecutor, mergeMarkKindOf } from './merge-record.js';
+import { type MergeMarkKind, mergeMarkKindOf } from './merge-mark-kind.js';
+import type { MergeRecordExecutor } from './merge-record.js';
 
 /** What a refusal under the shipped-work rule says, or `null` where the call may proceed. */
 interface ShippedRuleRefusal {
@@ -35,7 +36,7 @@ function closedMeansShipped(shape: LandingShape | null, held?: MergeMarkKind): s
  * one. Recording it moves no status. Null where the merge stands.
  *
  * Whatever the project's shape, a mark that is a design approval's stamp alone — design artifacts and
- * nothing else: no commit, no paths, no landing of code (`merge-record.ts:designOnlyStamp`,
+ * nothing else: no commit, no paths, no landing of code (`merge-mark-kind.ts:designOnlyStamp`,
  * `design-delivery.ts:designOnlyMarkSql`) — stands for the `design_delivered` close and never for
  * `awaiting_release`: that status waits for a release, and no release carries a design-only issue
  * (`release-batch/create.ts:withoutDesignOnly`, REQ-45 BC-4). On git, taken as a merge, it passed a

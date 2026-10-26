@@ -11,9 +11,11 @@
 // the record by name. Whether the commit is on the branch is read only where a source host is bound;
 // the box answers commit pairs, never a branch, and the record says which.
 
+import { db } from '../db/client.js';
 import { issueDisplayIds, releaseRunClaims } from '../issues/index.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { closeRunIfOneShot, openOneShotRun } from '../pipeline/index.js';
+import { emitEvent } from '../outbox/index.js';
+import { closeRunIfOneShot, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
 import { pairKey } from '../runners/index.js';
 import { admitRoster } from './blockers.js';
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
@@ -27,6 +29,7 @@ import {
   landedStandings,
   readHolding,
 } from './landed-build.js';
+import { carryNaming } from './naming.js';
 import {
   admissibleIssues,
   closeRecorded,
@@ -36,6 +39,7 @@ import {
 } from './recorded.js';
 import { refuseRelease } from './refuse.js';
 import { ancestrySourceFor } from './shipped-earlier.js';
+import { cutReleaseVersion } from './version-store.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
 const short = (sha: string) => sha.slice(0, 12);
@@ -176,21 +180,37 @@ export async function recordLanding(
   readings.push(onBranch.reading);
 
   const roster = await admissibleIssues(projectId, issueIds);
-  const run = await openOneShotRun({
-    projectId,
-    kind: 'system',
-    metadata: {
-      source: RELEASE_RECORD_SOURCE,
-      gateStatus: RELEASE_GATE_STATUS,
-      issueIds,
-      commit,
-      branch,
-      identity: commit,
-      verification: LANDED_VERIFICATION,
-      providerRef,
-      recordedBy: userId,
-      issues: roster,
-    },
+  // A recorded landing is a release like any other: it takes the next version and its name in the
+  // transaction that opens it (catalog-api run 9ed968de, 2026-10-26, recorded with no version, which
+  // no release page could show and the naming door could not name).
+  const { run, version } = await db.transaction(async (tx) => {
+    const row = await insertOneShotRun(tx, {
+      projectId,
+      kind: 'system',
+      metadata: {
+        source: RELEASE_RECORD_SOURCE,
+        gateStatus: RELEASE_GATE_STATUS,
+        issueIds,
+        commit,
+        branch,
+        identity: commit,
+        verification: LANDED_VERIFICATION,
+        providerRef,
+        recordedBy: userId,
+        issues: roster,
+      },
+    });
+    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
+    await carryNaming(tx, {
+      projectId,
+      version: cut,
+      runId: row.id,
+      given: null,
+      by: userId,
+      roster: issueIds,
+    });
+    await emitEvent(tx, 'release.cut', { projectId, runId: row.id, version: cut });
+    return { run: row, version: cut };
   });
   await claimRoster(projectId, issueIds, run.id);
   await writeLedger(run.id, {
@@ -217,9 +237,12 @@ export async function recordLanding(
       .map((f) => `${f.id} (${f.reason})`)
       .join('; ')}`,
   });
+  // the landing is the delivery: a record that closed what it claimed shipped, as a finished release
+  if (failed.length === 0) await stampReleaseShipped(run.id);
 
   return {
     runId: run.id,
+    version,
     commit,
     identity: commit,
     readings,

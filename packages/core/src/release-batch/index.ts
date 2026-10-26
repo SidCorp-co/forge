@@ -35,7 +35,7 @@ export { nextDraftVersion } from './draft-version.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
 export { abortBlockedIssues, releaseHoldsOf } from './hold.js';
 export { judgedBuildOf, liveBuildHolds } from './judged-build.js';
-export { deliveryHeadsOf, landedBuildHolds, landedReopenRefusal } from './landed-build.js';
+export { deliveryHeadsOf, landedBuildHolds } from './landed-build.js';
 export {
   type IssueLanding,
   landedRecordOf,
@@ -72,13 +72,9 @@ export { type CarriedVerdict, carriedVerdictsOf } from './release-facts.js';
 export { listReleases, readRelease } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export type { ViewerFacts } from './release-view.js';
-export {
-  type ReopenRefusal,
-  stewardReleaseFacts,
-  stewardReopenRefusal,
-} from './reopen-guard.js';
 export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-earlier.js';
 export { type RangeChange, type RangeReading, readRange } from './shipped-range.js';
+export { stewardReleaseFacts } from './steward-release-facts.js';
 export { releaseToolView } from './tool-view.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
 export { deploymentConfirms } from './verify.js';

@@ -28,7 +28,7 @@ import { OWNER } from './door-owner.js';
 import { PREPARE } from './door-prepare.js';
 import { WAKE } from './door-wake.js';
 import { noteWriteOf } from './note.js';
-import { openStandings, stewardPorts } from './ports.js';
+import { openStandings } from './ports.js';
 
 const optionsParam = z
   .array(
@@ -211,17 +211,19 @@ const REJECT: DoorSpec<z.infer<typeof rejectParams>> = {
   },
 };
 
+// The steward sends no issue back: a status moves only by an explicit act (owner ruling), and its
+// output check reopening landed work over verdicts owed at the landing bounced catalog-fe ISS-16..19
+// back to `reopen` each time a person moved them to the gate (2026-10-26). What the output check
+// finds missing goes in its note, and the master or a person reopens by their own act.
 const moveParams = z.strictObject({
   issue: issueKey,
-  to: z
-    .enum(['open', 'reopen'])
-    .describe('open: take a ready draft on; reopen: send it back naming the missing evidence'),
+  to: z.enum(['open']).describe('open: take a ready draft on'),
   reason,
 });
 const MOVE: DoorSpec<z.infer<typeof moveParams>> = {
   name: 'steward_move_issue',
   describe:
-    'Move an issue: `open` a draft carrier whose ready checklist is complete, or send an issue at awaiting_release back to `reopen`, naming each criterion and the evidence missing.',
+    'Open a draft carrier whose ready checklist is complete. It sends no issue back: name the evidence an issue lacks in the note, and wake the master.',
   params: moveParams,
   write: true,
   async call(args, ctx) {
@@ -233,15 +235,6 @@ const MOVE: DoorSpec<z.infer<typeof moveParams>> = {
       path: `/api/issues/${issueId}/transition`,
       body: { toStatus: args.to, reason: args.reason },
     };
-    // A fact that makes a reopen false is kernel input: it is refused here, by name, before the
-    // move is sent, whatever the output check concluded (`release-batch/reopen-guard.ts`).
-    const refused = args.to === 'reopen' ? await stewardPorts().reopenRefusal(issueId) : null;
-    if (refused) {
-      return {
-        request,
-        answer: { status: 409, ok: false, json: refused, text: JSON.stringify(refused) },
-      };
-    }
     const sent = await send(request, ctx);
     return {
       ...sent,

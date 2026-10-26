@@ -437,7 +437,12 @@ async function cutChangeRequestRelease(
  */
 async function stampHostLandings(
   projectId: string,
-  landed: ReadonlyArray<{ issueId: string; commit: string; from: 'host-merge' | 'branch' }>,
+  landed: ReadonlyArray<{
+    issueId: string;
+    branch: string;
+    commit: string;
+    from: 'host-merge' | 'branch';
+  }>,
 ): Promise<void> {
   const read = landed.filter((l) => l.from === 'branch');
   if (read.length === 0) return;
@@ -449,7 +454,7 @@ async function stampHostLandings(
         issueId: l.issueId,
         via: 'repository',
         actor: owner ? { type: 'user', id: owner, agency: 'agent' } : null,
-        evidence: { kind: 'observed', commitSha: l.commit, mergedAt: at },
+        evidence: { kind: 'observed', commitSha: l.commit, mergedAt: at, target: l.branch },
       });
     }
   });

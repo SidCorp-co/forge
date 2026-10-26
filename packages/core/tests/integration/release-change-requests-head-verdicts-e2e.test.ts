@@ -1,7 +1,7 @@
 /**
  * REQ-63 BC-6: on a project that releases by merging its change requests, a pass judged at the head
  * of an open change request linked to the issue counts while that head is unchanged, and the steward
- * does not send the issue back for a landing it has none of. Planted from adminhub-api ISS-10 on
+ * is told so and sends nothing back (it sends no issue back at all since 2026-10-26). Planted from adminhub-api ISS-10 on
  * dev.293 (2026-10-23): reopened to re-ship through !5009, judged pass at !5009's head with commit
  * identity, moved to awaiting_release, and reopened by the steward two minutes later for "no
  * recorded landing on its working branch". The reopen had cleared the local stamp, as BC-3 asks, so
@@ -14,6 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
 import { replaceCriteria } from '../../src/issues/criteria/service.js';
+import { stewardReleaseFacts } from '../../src/release-batch/index.js';
 import { api, userToken } from '../helpers/api.js';
 import { testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -176,16 +177,16 @@ const judgedBuild = async (id: string) => {
 };
 
 describe('BC-6: a pass at an open linked change request’s unchanged head counts', () => {
-  it('refuses the steward’s reopen of ISS-10 when every criterion passes at !5009’s head', async () => {
+  it('tells the steward ISS-10 misses nothing when every criterion passes at !5009’s head, and it sends nothing back', async () => {
     const issue = await iss10();
     await mr5009(HEAD);
     await judgedAll(issue, HEAD);
 
+    const facts = await stewardReleaseFacts(world.projectId, issue);
+    expect(facts).toContain('!5009');
+    expect(facts).toContain('No evidence is missing: wake the master to cut the release');
     const answer = await stewardReopens(issue);
-
     expect(answer.ok, answer.text).toBe(false);
-    expect(answer.text).toContain('STEWARD_REOPEN_COUNTED');
-    expect(answer.text).toContain('!5009');
     expect(await statusOf(issue)).toBe('awaiting_release');
   });
 
@@ -207,9 +208,10 @@ describe('BC-6: a pass at an open linked change request’s unchanged head count
     expect(build.basis).toContain(`\`${HEAD.slice(0, 12)}\``);
     expect(build.basis).toContain('moved');
 
+    // the steward sends nothing back (`steward/door-writes.ts:MOVE`): the note names the moved head
     const answer = await stewardReopens(issue);
-    expect(answer.ok, answer.text).toBe(true);
-    expect(await statusOf(issue)).toBe('reopen');
+    expect(answer.ok, answer.text).toBe(false);
+    expect(await statusOf(issue)).toBe('awaiting_release');
   });
 
   it('takes the host merge commit as the landing once !5009 merges', async () => {

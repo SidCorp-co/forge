@@ -38,7 +38,10 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
       kind: 'merged',
       commitSha: `${String(number).padStart(4, '0')}${'c'.repeat(36)}`,
       mergedAt: new Date(),
+      target: 'release/stg',
+      head: null,
     }),
+    sameTree: async () => true,
   }),
 }));
 

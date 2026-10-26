@@ -135,6 +135,21 @@ export interface ReadPaths {
 	changes: FileChange[];
 }
 
+/**
+ * What `issues.merged_head` holds: the head of the change request a host merge landed, and whether
+ * Forge read from the host, at the merge, that its tree is the merge commit's tree. A verdict judged
+ * at that head counts for the landing only where `treeIdentical` is `true`; `false` and `null` (the
+ * trees could not be read, `why` naming it) never count.
+ */
+export interface MergedHead {
+	sha: string;
+	treeIdentical: boolean | null;
+	/** Why the trees were not read; null where they were. */
+	why: string | null;
+	/** ISO 8601: when the host was read. */
+	readAt: string;
+}
+
 const DESIGN_TOKEN = /^forge-workflow:([^\s@()]+@rev\d+)/;
 const DESIGN_SENTENCE = /^workflow design `([^`]+)` revision (\d+), approved$/;
 

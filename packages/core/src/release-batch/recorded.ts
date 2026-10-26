@@ -68,6 +68,8 @@ export interface RecordPerformedReleaseResult {
   verification: RecordedVerification;
   /** The working branch a landing record names; absent on a release production serves. */
   branch?: string;
+  /** The version a landing record took, as every release does; absent on a release production serves. */
+  version?: string;
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
   issues: RecordedIssue[];

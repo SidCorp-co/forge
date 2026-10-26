@@ -1,8 +1,11 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { db, type Tx } from '../db/client.js';
+import { logger } from '../lib/logger.js';
+import { emitEvent } from '../outbox/index.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { readProjectDocument, staleBase } from '../project-config/index.js';
 import { notFound } from './access.js';
+import { type HeadRead, projectHead } from './builder-head.js';
 import {
   type BuilderRunWorld,
   builderRunIdentityRefusals,
@@ -63,7 +66,14 @@ export interface Held<W> {
 }
 
 export type RecordOutcome<W> =
-  | { ok: true; held: Held<W>; created: boolean; report?: RunReport }
+  | {
+      ok: true;
+      held: Held<W>;
+      created: boolean;
+      /** What an update replaced: the stored document before this write. */
+      previous?: W;
+      report?: RunReport;
+    }
   | { ok: false; refusals: EcosystemRefusal[] };
 
 interface RecordKind<W> {
@@ -146,10 +156,10 @@ async function updateRecord<W>(
     const refusals = [...kind.identity(stored, doc), ...(await kind.check(tx, doc, row.id))];
     if (refusals.length > 0) return { ok: false, refusals };
     if (JSON.stringify(stored) === JSON.stringify(doc)) {
-      return { ok: true, held: { row, document: stored }, created: false };
+      return { ok: true, held: { row, document: stored }, created: false, previous: stored };
     }
     const next = await kind.replace(tx, { id, revision: row.revision, doc, userId: writer.userId });
-    return { ok: true, held: { row: next, document: doc }, created: false };
+    return { ok: true, held: { row: next, document: doc }, created: false, previous: stored };
   });
 }
 
@@ -243,19 +253,93 @@ const BUILDER_RUN: RecordKind<BuilderRunWrite> = {
 
 export const createLink = (input: WriteInput) => createRecord(LINK, input);
 export const updateLink = (input: WriteInput & { id: string }) => updateRecord(LINK, input);
-export type RunReport = Awaited<ReturnType<typeof finishedRunReport>>;
+export type RunReport = Awaited<ReturnType<typeof finishedRunReport>> & {
+  /** Where this write finished the run: the run opened at the head that moved past it, or why none did. */
+  next?: NextRun;
+};
+
+/** What finishing a run left owed: a run at the branch head it did not map, or why none opened. */
+export type NextRun =
+  | { opened: string; at: string; mapped: string }
+  | { opened: null; why: string };
 
 async function reported(
   outcome: RecordOutcome<BuilderRunWrite>,
+  writer: RecordWriter,
 ): Promise<RecordOutcome<BuilderRunWrite>> {
   if (!outcome.ok) return outcome;
-  return { ...outcome, report: await finishedRunReport(outcome.held.document) };
+  const report: RunReport = await finishedRunReport(outcome.held.document);
+  const doc = outcome.held.document;
+  const finished = outcome.previous !== undefined && isOpenRun(outcome.previous) && !isOpenRun(doc);
+  if (finished && !doc.supersededBy) {
+    const next = await openAtMovedHead(doc, writer.userId);
+    if (next) report.next = next;
+  }
+  return { ...outcome, report };
 }
 
 export const createBuilderRun = async (input: WriteInput) =>
-  reported(await createRecord(BUILDER_RUN, input));
+  reported(await createRecord(BUILDER_RUN, input), input.writer);
 export const updateBuilderRun = async (input: WriteInput & { id: string }) =>
-  reported(await updateRecord(BUILDER_RUN, input));
+  reported(await updateRecord(BUILDER_RUN, input), input.writer);
+
+/**
+ * The run a finished one leaves owed: a push landing while a run is open opens nothing
+ * (`openOwedRun` answers the open run), so when the run finishes its project's build branch is read
+ * again, and where its head is no longer the commit the run mapped, exactly one run opens at that
+ * head (trigger `push`): however many pushes landed meanwhile, they are mapped once, at the latest.
+ * Null where nothing is owed (a storefront run names no commit, or the head is still the one mapped).
+ * A head that cannot be read opens nothing and says so in the answer, and the next push opens the run.
+ */
+export async function openAtMovedHead(
+  doc: BuilderRunWrite,
+  userId: string,
+  read: (projectId: string) => Promise<HeadRead> = (id) => projectHead.read(id),
+): Promise<NextRun | null> {
+  const mapped = doc.trigger.sha;
+  if (mapped === null) return null;
+  const projectId = doc.project;
+  let head: HeadRead;
+  try {
+    head = await read(projectId);
+  } catch (err) {
+    head = { ok: false, why: err instanceof Error ? err.message : String(err) };
+  }
+  if (!head.ok) {
+    const why = `the branch this project builds from could not be read after run finished at ${mapped.slice(0, 12)}, so no run opened at a later head: ${head.why}. The next push to it opens one`;
+    logger.warn({ projectId, ecosystemId: doc.ecosystem, mapped }, why);
+    return { opened: null, why };
+  }
+  const at = head.value.sha.toLowerCase();
+  if (at === mapped.toLowerCase()) return null;
+  return db.transaction(async (tx): Promise<NextRun> => {
+    const active = await activeEcosystemIdsOf(tx, [projectId]);
+    if (!active.some((a) => a.ecosystemId === doc.ecosystem)) {
+      return {
+        opened: null,
+        why: `the head moved to ${at.slice(0, 12)}, and project ${projectId} is no longer an active member of ecosystem ${doc.ecosystem}, so no run opens there`,
+      };
+    }
+    const run = await openOwedRun(tx, {
+      ecosystemId: doc.ecosystem,
+      projectId,
+      trigger: {
+        kind: 'push',
+        sha: at,
+        head: { ref: head.value.ref, readAt: head.value.readAt, via: head.value.via },
+      },
+      userId,
+    });
+    await emitEvent(tx, 'ecosystem.buildOwed', { projectId });
+    if (!run.opened) {
+      return {
+        opened: null,
+        why: `the head moved to ${at.slice(0, 12)}, and run ${run.id} is already open (a push or a supersede opened it since this one finished), so it is the one that maps the branch`,
+      };
+    }
+    return { opened: run.id, at, mapped };
+  });
+}
 
 export const storedLink = LINK.stored;
 export const storedBuilderRun = BUILDER_RUN.stored;
@@ -263,7 +347,8 @@ export const storedBuilderRun = BUILDER_RUN.stored;
 /**
  * Open the run a join or a push owes this project, inside the caller's transaction, or answer
  * the run already open: a project works one run per ecosystem at a time, so a push landing
- * while one is open is folded into it rather than stacked beside it.
+ * while one is open opens nothing beside it. The head it brought is mapped when that run finishes
+ * (`openAtMovedHead`), once, at whatever the branch holds then.
  */
 export async function openOwedRun(
   tx: Tx,

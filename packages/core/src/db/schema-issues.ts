@@ -1,5 +1,5 @@
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
-import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
+import type { LandingArtifact, MergedHead, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { WRITTEN_LANGS } from '@forge/contracts/written-lang';
 import { relations, type SQL, sql } from 'drizzle-orm';
@@ -134,7 +134,10 @@ export const issues = pgTable(
     mergedArtifacts: jsonb('merged_artifacts').$type<LandingArtifact[] | null>(),
     /** The paths the landing commit changed as a box read them from its checkout; NULL where none sent them. */
     mergedPaths: jsonb('merged_paths').$type<ReadPaths | null>(),
+    /** The branch the landing went into: the host's base where Forge observed the merge, else the mark's word. */
     mergedTarget: text('merged_target'),
+    /** The merged request's head and whether its tree is the landing's, read from the host at the merge; NULL elsewhere. */
+    mergedHead: jsonb('merged_head').$type<MergedHead | null>(),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),
@@ -207,6 +210,10 @@ export const issues = pgTable(
     mergedPathsChk: check(
       'issues_merged_paths_chk',
       sql`${t.mergedPaths} IS NULL OR (${t.mergedAt} IS NOT NULL AND jsonb_typeof(${t.mergedPaths}) = 'object')`,
+    ),
+    mergedHeadChk: check(
+      'issues_merged_head_chk',
+      sql`${t.mergedHead} IS NULL OR (${t.mergedCommitSha} IS NOT NULL AND jsonb_typeof(${t.mergedHead}) = 'object')`,
     ),
     projectIssSeqUq: uniqueIndex('issues_project_iss_seq_uq').on(t.projectId, t.issSeq),
     projectStatusIdx: index('issues_project_status_idx').on(t.projectId, t.status),

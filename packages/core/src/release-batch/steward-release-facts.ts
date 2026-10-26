@@ -1,23 +1,9 @@
 /**
- * Why the steward may not send an issue back from the release gate, by name, or null where it may.
- * Kernel input (`VISION: kernel-hard-policy-soft`), read by the steward's move door
- * (`steward/door-writes.ts`) before any reopen is sent, so its output check cannot talk its way past
- * a fact. Three facts each refuse a reopen at `awaiting_release`:
- *
- *   code                               the issue
- *   STEWARD_REOPEN_RELEASING           is a member of a release batch still running: its code ships
- *                                      with that release whatever its status says, so a reopen would
- *                                      leave it reading `reopen` over shipped code (forge-dev ISS-635,
- *                                      dev.287)
- *   STEWARD_REOPEN_COUNTED             stands on passes at its landing, with no production environment,
- *                                      or on a change-request project at its open request's unchanged
- *                                      head (`landed-build.ts:landedReopenRefusal`, REQ-63 BC-6)
- *   STEWARD_REOPEN_JUDGED_AFTER_RELEASE is on a project whose document says its issues owe no verdict
- *                                      at the gate (`delivery.verdictsRequired: false`), and no failing
- *                                      verdict stands: a missing verdict there is the post-release
- *                                      judge's to write, not evidence that anything is wrong
- *
- * A failing verdict that stands is evidence on any project, so it never meets the third.
+ * The facts the steward's acts read about an issue at the release gate, which it may not restate
+ * otherwise: where its running build is, what the delivery policy owes, whether a live release batch
+ * claims it, its head on a change-request project, and on a project with no production environment
+ * whether its landed work is missing nothing or which verdicts it still owes at the landing. The
+ * steward moves no issue back (`steward/door-writes.ts`): what an issue lacks goes in its note.
  */
 
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
@@ -26,56 +12,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { issueWorkState } from '../db/schema-issue-work-state.js';
-import { issueDisplayIds, standingCriteriaOf } from '../issues/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { resolveReleaseDeclaration } from './gate.js';
-import { deliveryHeadsOf, landedReopenRefusal } from './landed-build.js';
-
-export const STEWARD_REOPEN_RELEASING = 'STEWARD_REOPEN_RELEASING';
-export const STEWARD_REOPEN_COUNTED = 'STEWARD_REOPEN_COUNTED';
-export const STEWARD_REOPEN_JUDGED_AFTER_RELEASE = 'STEWARD_REOPEN_JUDGED_AFTER_RELEASE';
-
-export interface ReopenRefusal {
-  code: string;
-  detail: string;
-}
-
-export async function stewardReopenRefusal(issueId: string): Promise<ReopenRefusal | null> {
-  const [row] = await db
-    .select({
-      projectId: issues.projectId,
-      status: issues.status,
-      claim: issues.releaseBatchRunId,
-      claimStatus: pipelineRuns.status,
-    })
-    .from(issues)
-    .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (row?.status !== 'awaiting_release') return null;
-  const key = (await issueDisplayIds([issueId])).get(issueId) ?? issueId;
-  const releasing =
-    row.claim !== null &&
-    row.claimStatus !== null &&
-    (LIVE_PIPELINE_RUN_STATUSES as readonly string[]).includes(row.claimStatus);
-  if (releasing) {
-    return {
-      code: STEWARD_REOPEN_RELEASING,
-      detail: `${key} is a member of release batch ${row.claim}, which is still ${row.claimStatus}: its code ships with that release whatever its status says, so a reopen now would leave it reading reopen over shipped code. Nothing is sent back mid-release; judge the build the release ships once it finishes, and reopen then with a failing verdict if one fails.`,
-    };
-  }
-  const counted = await landedReopenRefusal(issueId);
-  if (counted) return { code: STEWARD_REOPEN_COUNTED, detail: counted };
-  const document = await readProjectDocument(row.projectId);
-  if (verdictsRequiredOf(document?.document.delivery)) return null;
-  const standing = (await standingCriteriaOf([issueId])).get(issueId);
-  const failing = (standing?.criteria ?? []).filter((c) => c.verdict?.verdict === 'fail');
-  if (failing.length > 0) return null;
-  return {
-    code: STEWARD_REOPEN_JUDGED_AFTER_RELEASE,
-    detail: `${key}: this project's delivery policy says its issues owe no verdict at awaiting_release (delivery.verdictsRequired: false), so its criteria are judged on the build the release ships, by the judge that follows the release. A missing verdict or release proof here is owed after the release, not evidence for sending it back, and no failing verdict stands on it. Leave it at the gate; reopen it only over a criterion judged fail.`,
-  };
-}
+import { deliveryHeadsOf } from './landed-build.js';
+import { landedCompleteFact, landedVerdictsOwedFact } from './landed-facts.js';
 
 /**
  * What the steward is told of the project's release and of the issue's place in it, as facts its
@@ -104,10 +44,13 @@ export async function stewardReleaseFacts(
     : 'Its delivery policy owes no verdict at awaiting_release (delivery.verdictsRequired: false): criteria are judged on the build the release ships, by the judge that follows the release, so a missing verdict or proof at the gate is not a reason to send an issue back.';
   const claim = issueId ? await liveClaimOf(issueId) : null;
   const member = claim
-    ? `This issue is a member of release batch ${claim.run}, still ${claim.status}: nothing sends it back until that release finishes.`
+    ? `This issue is a member of release batch ${claim.run}, still ${claim.status}: its code ships with that release whatever its status says.`
     : null;
   const head = issueId ? await headFact(projectId, issueId) : null;
-  return [where, owes, member, head].filter(Boolean).join('\n');
+  const landed = issueId
+    ? ((await landedCompleteFact(issueId)) ?? (await landedVerdictsOwedFact(issueId)))
+    : null;
+  return [where, owes, member, head, landed].filter(Boolean).join('\n');
 }
 
 /**

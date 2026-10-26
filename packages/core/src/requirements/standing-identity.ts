@@ -5,6 +5,7 @@
  * Pure, so every rule below is a unit test (`standing-coverage.test.ts`).
  */
 
+import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import {
   landedIdentityWhy,
   type StorefrontDraftPart,
@@ -49,6 +50,8 @@ export interface LiveBuildHolds {
 export interface LandedHolds {
   sha: string | null;
   why: string | null;
+  /** Where the build is a host merge commit: the merged request's head and whether its tree is the build's. */
+  head?: MergedHead | null;
 }
 
 export const short = (sha: string) => sha.slice(0, 12);
@@ -94,6 +97,8 @@ export interface Resolved {
   commit: string | null;
   inLiveBuild: boolean | null;
   notCounted: string | null;
+  /** Where it counts on a build other than the commit it names, the words saying on what. */
+  countedAs?: string;
 }
 
 // Kernel input (`VISION: kernel-hard-policy-soft`): every identity a verdict can name is either
@@ -188,10 +193,13 @@ export function resolve(
 }
 
 // With no production environment the build a verdict counts on is its issue's landing
-// (`release-batch/landed-build.ts`), and only a verdict at that very commit counts: one at an earlier
-// commit, such as the branch's head before the merge, judged another build, and one at a later head
-// counts once a landing is recorded there, or before any record where every live criterion of the
-// issue passes at that one head and it holds the landing (`release-batch/landed-build.ts:aheadBuildsOf`).
+// (`release-batch/landed-build.ts`), and only a verdict at that very commit counts, or at the head of
+// the request that merged as it where Forge read from the host, at the merge, that the two trees are
+// identical (`issues.merged_head`): a head whose tree differs, or whose tree was not read, judged
+// another build as far as anyone can say. One at any other earlier commit judged another build, and
+// one at a later head counts once a landing is recorded there, or before any record where every live
+// criterion of the issue passes at that one head and it holds the landing
+// (`release-batch/landed-build.ts:aheadBuildsOf`).
 function atLanding(commit: string, landed: LandedHolds | null): Resolved {
   const judged = `judged at commit ${short(commit)}`;
   if (!landed) {
@@ -205,6 +213,26 @@ function atLanding(commit: string, landed: LandedHolds | null): Resolved {
     return { commit, inLiveBuild: null, notCounted: `${judged}, and ${landed.why}` };
   }
   if (commit.toLowerCase() === landed.sha) return { commit, inLiveBuild: true, notCounted: null };
+  const head = landed.head;
+  if (head && head.sha.toLowerCase() === commit.toLowerCase()) {
+    const merged = `the head of the request that landed as ${short(landed.sha)}`;
+    if (head.treeIdentical === true) {
+      return {
+        commit,
+        inLiveBuild: true,
+        notCounted: null,
+        countedAs: `${judged}, tree-identical to landing ${short(landed.sha)}`,
+      };
+    }
+    return {
+      commit,
+      inLiveBuild: false,
+      notCounted:
+        head.treeIdentical === false
+          ? `${judged}, ${merged}, and the host shows its tree differs from the landing's: judge it again at ${short(landed.sha)}`
+          : `${judged}, ${merged}, and whether its tree is the landing's was not read (${head.why ?? 'nothing says why'}): judge it again at ${short(landed.sha)}`,
+    };
+  }
   return {
     commit,
     inLiveBuild: false,

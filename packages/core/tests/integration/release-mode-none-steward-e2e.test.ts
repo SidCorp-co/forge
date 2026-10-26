@@ -2,15 +2,18 @@
  * The steward's output check on a project of release mode `none` reads the build it weighs from the
  * one definition the record and coverage read (`release-batch/landed-build.ts`): both of its reasons,
  * a verdict counting on the running build and the design's proof plan, are met by passes at the
- * landed commit, and its reopen over them is refused `STEWARD_REOPEN_COUNTED`. Planted from
- * adminhub-api ISS-5 (reopened at 10:46:37 on 2026-10-22 with passes at its landed head f4e5fb6) and
- * ISS-1 (reopened at 11:30 with 17 passes at its landed head), through the steward's own door.
+ * landed commit, and its facts say so (`stewardReleaseFacts`). It sends no issue back
+ * (`steward/door-writes.ts:MOVE`): landed work that only owes verdicts at its landing stays at the
+ * gate, its facts naming what is owed. Planted from adminhub-api ISS-5 and ISS-1 (reopened on
+ * 2026-10-22 with passes at their landed heads) and catalog-fe ISS-11 and ISS-14..19 (reopened on
+ * 2026-10-26 over verdicts owed at the landing, and bounced back to `reopen` when moved to the gate).
  */
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { stewardReleaseFacts } from '../../src/release-batch/index.js';
 import {
   ASIDE,
   D9,
@@ -42,125 +45,127 @@ beforeEach(async () => {
   ({ projectId, ownerId, token } = world);
 });
 
-describe("the steward's output check reads the same landed build", () => {
-  async function stewardReopens(
-    issueId: string,
-    issueKey: string,
-    reason = 'Criterion 1 has no counting verdict on a running build and no release proof.',
-  ) {
-    const { callStewardDoor } = await import('../../src/steward/doors.js');
-    const [run] = (await db.execute(sql`
-      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
-                                acts_to_run, state, not_before, started_at)
-      VALUES (${projectId}, 'issue', ${issueId}, ${issueKey}, 'release.asked', '[]'::jsonb,
-              ARRAY['output_check']::text[], 'running', now(), now())
-      RETURNING id`)) as unknown as Array<{ id: string }>;
-    const ctx = {
-      projectId,
-      runId: run?.id ?? '',
-      act: 'output_check' as const,
-      subject: { kind: 'issue', id: issueId, key: issueKey },
-      standing: null,
-      token,
-      refused: [] as string[],
-      broken: [] as string[],
-      acts: [] as string[],
-    };
-    const answer = await callStewardDoor(
-      'steward_move_issue',
-      JSON.stringify({
-        issue: issueKey,
-        to: 'reopen',
-        reason,
-      }),
-      ctx,
-    );
-    return { answer, refused: ctx.refused };
-  }
+/** The steward's own door, asked to send `issueKey` back as its output check would. */
+async function stewardReopens(
+  issueId: string,
+  issueKey: string,
+  reason = 'Criterion 1 has no counting verdict on a running build and no release proof.',
+) {
+  const { callStewardDoor } = await import('../../src/steward/doors.js');
+  const [run] = (await db.execute(sql`
+    INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
+                              acts_to_run, state, not_before, started_at)
+    VALUES (${projectId}, 'issue', ${issueId}, ${issueKey}, 'release.asked', '[]'::jsonb,
+            ARRAY['output_check']::text[], 'running', now(), now())
+    RETURNING id`)) as unknown as Array<{ id: string }>;
+  const ctx = {
+    projectId,
+    runId: run?.id ?? '',
+    act: 'output_check' as const,
+    subject: { kind: 'issue', id: issueId, key: issueKey },
+    standing: null,
+    token,
+    refused: [] as string[],
+    broken: [] as string[],
+    acts: [] as string[],
+  };
+  const answer = await callStewardDoor(
+    'steward_move_issue',
+    JSON.stringify({ issue: issueKey, to: 'reopen', reason }),
+    ctx,
+  );
+  return { answer, refused: ctx.refused };
+}
 
-  it('refuses to send back ISS-5 when every criterion passes at the landed head', async () => {
+/** The door refuses the move by its field, and the issue stays at the gate. */
+async function sendsNothingBack(issueId: string, issueKey: string) {
+  const { answer } = await stewardReopens(issueId, issueKey);
+  expect(answer.ok).toBe(false);
+  expect(answer.text).toContain('to');
+  expect(await statusOf(issueId)).toBe('awaiting_release');
+}
+
+const facts = (issueId: string) => stewardReleaseFacts(projectId, issueId);
+
+describe("the steward's output check reads the same landed build", () => {
+  it('says ISS-5 misses nothing when every criterion passes at the landed head', async () => {
     const issue = await landedIssue(5, F4);
     await judgedAll(issue, F4);
 
-    const { answer, refused } = await stewardReopens(issue, 'ISS-5');
-
-    expect(answer.ok).toBe(false);
-    expect(answer.text).toContain('STEWARD_REOPEN_COUNTED');
-    expect(refused[0]).toContain('STEWARD_REOPEN_COUNTED');
-    expect(await statusOf(issue)).toBe('awaiting_release');
+    expect(await facts(issue)).toContain(
+      'No evidence is missing: wake the master to record the landing',
+    );
+    await sendsNothingBack(issue, 'ISS-5');
   });
 
-  it('still sends it back when its passes stand only at the pre-merge head d9fd508', async () => {
+  // catalog-fe ISS-11, 2026-10-26 03:53Z: landed, its passes at an earlier commit, and reopened as if
+  // its code were wrong; a judge declared over the reopen then read as its builder
+  it('keeps ISS-5 at the gate when its passes stand only at the pre-merge head, naming the verdicts owed at the landing', async () => {
     const issue = await landedIssue(5, F4);
     await judgedAll(issue, D9);
 
-    const { answer } = await stewardReopens(issue, 'ISS-5');
-
-    expect(answer.ok, answer.text).toBe(true);
-    expect(await statusOf(issue)).toBe('reopen');
+    const said = await facts(issue);
+    expect(said).toContain(
+      'its work has landed, and what it lacks is a counting verdict at that landing',
+    );
+    expect(said).toContain('criterion 1:');
+    expect(said).toContain(`dispatch a judge at \`${F4.slice(0, 12)}\``);
+    await sendsNothingBack(issue, 'ISS-5');
   });
 
   // catalog-fe ISS-1, 2026-10-22: marked at its landing, every criterion re-judged at a later head
   // holding it, reopened before the record at that head that then went through
-  it('refuses to send it back when every criterion passes at a later head holding the landing, which it then records at', async () => {
+  it('reads every criterion passing at a later head holding the landing, which it then records at', async () => {
     const issue = await landedIssue(1, F4);
     await judgedAll(issue, LATER);
 
-    const { answer } = await stewardReopens(issue, 'ISS-1');
-
-    expect(answer.ok).toBe(false);
-    expect(answer.text).toContain('STEWARD_REOPEN_COUNTED');
-    expect(answer.text).toContain(`every live criterion passes at \`${LATER.slice(0, 12)}\``);
-    expect(await statusOf(issue)).toBe('awaiting_release');
+    expect(await facts(issue)).toContain(
+      `every live criterion passes at \`${LATER.slice(0, 12)}\``,
+    );
+    await sendsNothingBack(issue, 'ISS-1');
     const recorded = await record([issue], LATER);
     expect(recorded.status, JSON.stringify(recorded.body)).toBe(201);
     expect(await statusOf(issue)).toBe('closed');
   });
 
-  it('still sends it back when its passes split between the landing and a later head', async () => {
+  it('names the verdicts owed when its passes split between the landing and a later head', async () => {
     const issue = await landedIssue(1, F4);
     await verdict(issue, 1, 'pass', F4);
     await verdict(issue, 2, 'pass', LATER);
     await verdict(issue, 3, 'pass', LATER);
 
-    const { answer } = await stewardReopens(issue, 'ISS-1');
-
-    expect(answer.ok, answer.text).toBe(true);
-    expect(await statusOf(issue)).toBe('reopen');
+    const said = await facts(issue);
+    expect(said).toContain('criterion 2:');
+    expect(said).not.toContain('criterion 1:');
+    await sendsNothingBack(issue, 'ISS-1');
   });
 
-  it('still sends it back when every pass sits at a commit not holding the landing', async () => {
+  it('names the verdicts owed when every pass sits at a commit not holding the landing', async () => {
     const issue = await landedIssue(1, F4);
     await judgedAll(issue, ASIDE);
 
-    const { answer } = await stewardReopens(issue, 'ISS-1');
-
-    expect(answer.ok, answer.text).toBe(true);
-    expect(await statusOf(issue)).toBe('reopen');
+    expect(await facts(issue)).toContain('owing: criterion 1:');
+    await sendsNothingBack(issue, 'ISS-1');
   });
 
-  it('still sends it back when a verdict at the landed head fails', async () => {
+  it('names no verdict owed where a verdict at the landed head fails: the fail reopens it, not the steward', async () => {
     const issue = await landedIssue(5, F4);
     await verdict(issue, 1, 'pass', F4);
     await verdict(issue, 2, 'fail', F4);
     await verdict(issue, 3, 'pass', F4);
 
-    const { answer } = await stewardReopens(issue, 'ISS-5');
-
-    expect(answer.ok, answer.text).toBe(true);
-    expect(await statusOf(issue)).toBe('reopen');
+    const said = await facts(issue);
+    expect(said).not.toContain('owing:');
+    expect(said).not.toContain('No evidence is missing');
+    await sendsNothingBack(issue, 'ISS-5');
   });
 });
 
 describe("the steward's second reason, the design's proof plan, reads the landed build too", () => {
   // adminhub-api ISS-1, reopened at 11:30 on 2026-10-22 with all 17 criteria passing at the
-  // release/stg head it landed on: "every criterion has a verdict only at 5da145a1a260, none counting
-  // on the running build, whose source cannot be read; and no evidence the release will run the
-  // design's proof plan".
+  // release/stg head it landed on
   const HEAD = '5da145a1a2600000000000000000000000000000';
   const BEFORE = '5da145a1a2610000000000000000000000000000';
-  const REASON =
-    "Criteria 1-17 have verdicts only at commit 5da145a1a260 and none counting on the running build, whose source cannot be read; nothing shows the release will run the design's proof plan.";
   const STATEMENTS = Array.from({ length: 17 }, (_, i) => `Criterion ${i + 1} holds on the box`);
 
   /** The design's line for every live criterion, each naming its proof. */
@@ -176,55 +181,26 @@ describe("the steward's second reason, the design's proof plan, reads the landed
     `);
   }
 
-  async function stewardOn(issueId: string) {
-    const { callStewardDoor } = await import('../../src/steward/doors.js');
-    const [run] = (await db.execute(sql`
-      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
-                                acts_to_run, state, not_before, started_at)
-      VALUES (${projectId}, 'issue', ${issueId}, 'ISS-1', 'release.asked', '[]'::jsonb,
-              ARRAY['output_check']::text[], 'running', now(), now())
-      RETURNING id`)) as unknown as Array<{ id: string }>;
-    return callStewardDoor(
-      'steward_move_issue',
-      JSON.stringify({ issue: 'ISS-1', to: 'reopen', reason: REASON }),
-      {
-        projectId,
-        runId: run?.id ?? '',
-        act: 'output_check',
-        subject: { kind: 'issue', id: issueId, key: 'ISS-1' },
-        standing: null,
-        token,
-        refused: [],
-        broken: [],
-        acts: [],
-      },
-    );
-  }
-
-  it('does not reopen ISS-1 with 17 passes at its landed head, by either reason', async () => {
+  it('says ISS-1 with 17 passes at its landed head misses nothing, by either reason', async () => {
     const issue = await landedIssue(1, HEAD, STATEMENTS);
     await proofPlan(issue);
     for (let n = 1; n <= 17; n += 1) await verdict(issue, n, 'pass', HEAD);
 
-    const answer = await stewardOn(issue);
-
-    expect(answer.ok).toBe(false);
-    expect(answer.text).toContain('STEWARD_REOPEN_COUNTED');
-    expect(answer.text).toContain(
+    expect(await facts(issue)).toContain(
       "The design's proof plan is met the same way: each of the 17 criteria",
     );
-    expect(await statusOf(issue)).toBe('awaiting_release');
+    await sendsNothingBack(issue, 'ISS-1');
   });
 
-  it('still reopens it where one planned criterion passes only before the landed head', async () => {
+  it('names criterion 17 owed where it passes only before the landed head', async () => {
     const issue = await landedIssue(1, HEAD, STATEMENTS);
     await proofPlan(issue);
     for (let n = 1; n <= 16; n += 1) await verdict(issue, n, 'pass', HEAD);
     await verdict(issue, 17, 'pass', BEFORE);
 
-    const answer = await stewardOn(issue);
-
-    expect(answer.ok, answer.text).toBe(true);
-    expect(await statusOf(issue)).toBe('reopen');
+    const said = await facts(issue);
+    expect(said).toContain('criterion 17:');
+    expect(said).not.toContain('criterion 16:');
+    await sendsNothingBack(issue, 'ISS-1');
   });
 });

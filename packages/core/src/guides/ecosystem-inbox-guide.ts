@@ -77,8 +77,13 @@ change notice owes nothing and is not listed; read it in \`GET /api/projects/:id
 ### Working a builder run
 Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to the
 branch it builds from (its project document's \`source.git.defaultBranch\`, never the host's default
-branch) opens another (trigger \`push\`, at the pushed commit, its \`head.ref\` naming that branch) once
-the last one is finished. A push to any other branch opens nothing.
+branch) opens another (trigger \`push\`, at the pushed commit, its \`head.ref\` naming that branch)
+where none is open. A push landing while a run is open opens nothing beside it; instead, the write
+that finishes the run reads that branch's head again, and where it is no longer the commit the run
+mapped, exactly one run opens at it (trigger \`push\`), however many pushes landed meanwhile. The
+answer to that write says so in \`report.next\`: \`{ opened, at, mapped }\`, or \`{ opened: null, why }\`
+where none opened (the head could not be read, which the next push repairs, or a run is already
+open). A push to any other branch opens nothing.
 A git project's joined run names its default branch's head as its host binding reports it, or, with
 no host binding (or a local-path repository), as a connected box reads it from its bound checkout
 with its own git access; the trigger's \`head\` says which (\`via\`), on which \`ref\`, and when
@@ -118,7 +123,8 @@ The box sees an open run in the same sweep (\`builderRuns\` beside the channel's
      provider's own. A finding's \`site\` follows the same rule.
 4. Finish every step. The answer to the write that finishes the run carries
    \`report.declaredWithoutCallSite\`: each consumption the interface declares in this ecosystem that no
-   link of yours calls. Either write the link the code uses or take the consumption out of the
+   link of yours calls, and \`report.next\` where the branch moved past the commit the run mapped (the
+   run opened there is the next one to work). Either write the link the code uses or take the consumption out of the
    interface — it is never left standing silently.
 
 A project works one run per ecosystem at a time: opening another while one is open is refused

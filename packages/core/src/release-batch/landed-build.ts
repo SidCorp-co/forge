@@ -3,29 +3,33 @@
  * no production environment. Landing on the project's working branch IS the delivery there (owner
  * ruling 2026-10-22), so the build its verdicts count on is the landing, never a production probe
  * that cannot exist. One definition, read by the record that closes the issue (`recorded.ts`), a
- * requirement's coverage (`requirements/standing-coverage.ts`), the steward's output check
- * (`steward/door-writes.ts`) and the build a verdict defaults to (`judged-build.ts`).
+ * requirement's coverage (`requirements/standing-coverage.ts`), the steward's release facts
+ * (`landed-facts.ts`) and the build a verdict defaults to (`judged-build.ts`).
  *
- * The landed build is, first found: the commit the landing record that closed the issue names; the
- * merge commit Forge observed (`merged_commit_sha`); the commit the current merge mark claims
- * (`issues/mark-trail.ts`). None of them is no landed build, named, never a guess. A judgement counts
- * on it only where it was judged at that very commit. One at an earlier commit judged another build,
- * even a branch head before the merge whose tree is the same; one at a later head judged a newer
- * build, and counts only on a record made at that head. Before that record, the steward and coverage
- * read such a head as the build where every live criterion passes there (`aheadBuildsOf`).
+ * The landed build is, first found: the merge commit Forge observed (`merged_commit_sha`) where it
+ * was stamped after the landing record that closed the issue (a host merge supersedes a landing
+ * recorded in an earlier era: adminhub-api ISS-15, 2026-10-26), else that record's commit; the
+ * observed merge commit; the commit the current merge mark claims (`issues/mark-trail.ts`). None of
+ * them is no landed build, named, never a guess. A judgement counts on it only where it was judged at
+ * that very commit, or at the head of the request that merged as it where Forge read from the host,
+ * at the merge, that the two trees are identical (`issues.merged_head`, `atMergedHead`). One at any
+ * other earlier commit judged another build; one at a later head judged a newer build, and counts
+ * only on a record made at that head. Before that record, the steward and coverage read such a head
+ * as the build where every live criterion passes there (`aheadBuildsOf`).
  *
  * A project that releases by merging its change requests has no production either, and its build is
  * read by the same doors through `deliveredBuildsOf`: the unchanged head of the open request linked
  * to the issue until the host merges it, then the host's merge commit (`change-request-build.ts`).
  */
 
+import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import {
   type JudgedBuild,
   landedIdentityWhy,
   verdictEarns,
 } from '@forge/contracts/verdict-identity';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
@@ -54,6 +58,8 @@ export type LandedBuild =
       basis: string;
       /** The change request whose head this is (`!12`), which a verdict elsewhere is weighed against. */
       via?: string | null;
+      /** Where this is a host merge commit: the request's head and whether its tree is this one's. */
+      head?: MergedHead | null;
     }
   | {
       sha: null;
@@ -109,10 +115,13 @@ export type Holding = boolean | { unread: string };
 
 const short = (sha: string) => sha.slice(0, 12);
 
-/** The commit the landing record that closed each issue names, for the issues standing closed. */
-async function recordedLandings(ids: readonly string[]): Promise<Map<string, string>> {
+/** The commit the landing record that closed each issue names and when, for the issues standing closed. */
+async function recordedLandings(
+  ids: readonly string[],
+): Promise<Map<string, { commit: string; at: Date }>> {
   const rows = (await db.execute(sql`
-    SELECT DISTINCT ON (i.id) i.id::text AS id, r.metadata ->> 'commit' AS commit
+    SELECT DISTINCT ON (i.id) i.id::text AS id, r.metadata ->> 'commit' AS commit,
+           r.started_at AS at
       FROM issues i
       JOIN pipeline_runs r
         ON r.project_id = i.project_id
@@ -125,11 +134,11 @@ async function recordedLandings(ids: readonly string[]): Promise<Map<string, str
      )})
        AND i.status = 'closed'
      ORDER BY i.id, r.started_at DESC
-  `)) as unknown as Array<{ id: string; commit: string | null }>;
-  const out = new Map<string, string>();
+  `)) as unknown as Array<{ id: string; commit: string | null; at: Date | string }>;
+  const out = new Map<string, { commit: string; at: Date }>();
   for (const r of rows) {
     const commit = r.commit?.trim().toLowerCase() ?? '';
-    if (WHOLE.test(commit)) out.set(r.id, commit);
+    if (WHOLE.test(commit)) out.set(r.id, { commit, at: new Date(r.at) });
   }
   return out;
 }
@@ -142,7 +151,12 @@ export async function landedBuildsOf(
   const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
   if (ids.length === 0) return out;
   const rows = await db
-    .select({ id: issues.id, mergedAt: issues.mergedAt, sha: issues.mergedCommitSha })
+    .select({
+      id: issues.id,
+      mergedAt: issues.mergedAt,
+      sha: issues.mergedCommitSha,
+      head: issues.mergedHead,
+    })
     .from(issues)
     .where(inArray(issues.id, ids));
   const [recorded, claims, shown] = await Promise.all([
@@ -155,17 +169,28 @@ export async function landedBuildsOf(
     const record = recorded.get(row.id);
     const merged = row.sha?.trim().toLowerCase() ?? '';
     const claimed = claims.get(row.id);
-    if (record) {
+    const observed = WHOLE.test(merged);
+    // a merge Forge observed after the record supersedes it: the record named an earlier landing
+    const superseded =
+      record !== undefined &&
+      observed &&
+      merged !== record.commit &&
+      row.mergedAt !== null &&
+      row.mergedAt.getTime() > record.at.getTime();
+    if (record && !superseded) {
       out.set(row.id, {
-        sha: record,
+        sha: record.commit,
         from: 'record',
-        basis: `${key} was closed by a landing record at \`${short(record)}\``,
+        basis: `${key} was closed by a landing record at \`${short(record.commit)}\``,
       });
-    } else if (WHOLE.test(merged)) {
+    } else if (observed) {
       out.set(row.id, {
         sha: merged,
         from: 'merge',
-        basis: `${key} merged as \`${short(merged)}\`, which Forge observed`,
+        basis: record
+          ? `${key} merged as \`${short(merged)}\`, which Forge observed after the landing record at \`${short(record.commit)}\` and which supersedes it`
+          : `${key} merged as \`${short(merged)}\`, which Forge observed`,
+        head: row.head ?? null,
       });
     } else if (claimed) {
       out.set(row.id, {
@@ -284,6 +309,35 @@ export function otherBuildWhy(judged: string, build: string): string {
 }
 
 /**
+ * A verdict judged at the head of the request that merged as `build`: it counts for `build` only
+ * where Forge read from the host, at the merge, that the head's tree is `build`'s
+ * (`issues.merged_head`). Null where `judged` is not that head; otherwise whether it counts, in words.
+ */
+export function atMergedHead(
+  judged: string,
+  build: string,
+  head: MergedHead | null | undefined,
+): { counts: true; words: string } | { counts: false; why: string } | null {
+  if (!head || head.sha.toLowerCase() !== judged.toLowerCase()) return null;
+  if (head.treeIdentical === true) {
+    return {
+      counts: true,
+      words: `judged at \`${short(judged)}\`, tree-identical to landing \`${short(build)}\``,
+    };
+  }
+  if (head.treeIdentical === false) {
+    return {
+      counts: false,
+      why: `it was judged at \`${short(judged)}\`, the head of the request that landed as \`${short(build)}\`, and the host shows the two trees differ (the base moved under it), so it judged another build`,
+    };
+  }
+  return {
+    counts: false,
+    why: `it was judged at \`${short(judged)}\`, the head of the request that landed as \`${short(build)}\`, and whether the two trees are identical was not read: ${head.why ?? 'nothing says why'}`,
+  };
+}
+
+/**
  * One criterion's standing on `build`: a pass or short the verified rule counts, judged at `build`
  * itself. Every other answer says what it lacks, where its verdict sits and the commit it needed.
  */
@@ -291,6 +345,7 @@ export function weighOnLanded(
   build: string,
   { criterion, verdict }: StandingCriterion,
   via: string | null = null,
+  head: MergedHead | null = null,
 ): LandedCriterion {
   const no = (why: string): LandedCriterion => ({
     criterion,
@@ -303,6 +358,9 @@ export function weighOnLanded(
   const judged = judgedCommit(verdict);
   if ('why' in judged) return no(judged.why);
   if (judged.sha !== build.toLowerCase()) {
+    const atHead = atMergedHead(judged.sha, build, head);
+    if (atHead?.counts) return { criterion, counts: true, at: judged.sha };
+    if (atHead) return no(atHead.why);
     return no(via ? otherHeadWhy(judged.sha, build, via) : otherBuildWhy(judged.sha, build));
   }
   return { criterion, counts: true, at: judged.sha };
@@ -357,6 +415,7 @@ export async function landedStandings(
   issueIds: readonly string[],
   buildOf: (issueId: string) => string,
   viaOf: (issueId: string) => string | null = () => null,
+  headOf: (issueId: string) => MergedHead | null = () => null,
 ): Promise<LandedStanding[]> {
   const standing = await standingCriteriaOf(issueIds);
   return issueIds.flatMap((issueId) => {
@@ -368,7 +427,7 @@ export async function landedStandings(
         issueId,
         owes: s.owes,
         criteria: s.owes
-          ? s.criteria.map((c) => weighOnLanded(build, c, viaOf(issueId)))
+          ? s.criteria.map((c) => weighOnLanded(build, c, viaOf(issueId), headOf(issueId)))
           : heldWhereNoneOwed(build, s.criteria),
       },
     ];
@@ -420,70 +479,13 @@ export async function aheadBuildsOf(
   return out;
 }
 
-/** The live criteria the issue's design plans a proof for, by number. */
-async function proofPlanned(issueId: string): Promise<number[]> {
-  const rows = (await db.execute(sql`
-    SELECT c.n FROM issue_design_criteria d
-      JOIN issue_criteria c ON c.id = d.criterion_id AND c.retired_at IS NULL
-     WHERE d.issue_id = ${issueId}::uuid
-     ORDER BY c.n
-  `)) as unknown as Array<{ n: number }>;
-  return rows.map((r) => Number(r.n));
-}
-
-/**
- * Why the steward's output check may not send this issue back, or null where it may. Under release
- * mode `none` both of its reasons read the landed build: a verdict counts on the running build where
- * it was judged at the landed commit, and since no release run replays a probe there, the design's
- * proof plan is met where each criterion it plans to prove has that pass. So an issue at the gate
- * whose landing is recorded and whose every live criterion, every planned one among them, passes at
- * that commit is missing nothing.
- */
-export async function landedReopenRefusal(issueId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ projectId: issues.projectId, status: issues.status })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (row?.status !== 'awaiting_release') return null;
-  const delivery = await deliveryOf(row.projectId);
-  if (!delivery) return null;
-  const build = (await deliveredBuildsOf(row.projectId, delivery, [issueId])).get(
-    issueId.toLowerCase(),
-  );
-  if (build?.sha === null && build.unread) {
-    return `${build.why}. Nothing is sent back on a read that failed: its work may already be on that branch. Read it again once the host answers.`;
-  }
-  if (!build?.sha) return null;
-  const sha = build.sha;
-  const [standing] = await landedStandings(
-    [issueId],
-    () => sha,
-    () => build.via ?? null,
-  );
-  if (!standing?.owes || standing.criteria.length === 0) return null;
-  if (standing.criteria.some((c) => !c.counts)) return null;
-  const counted = new Set(standing.criteria.map((c) => c.criterion));
-  const planned = await proofPlanned(issueId);
-  if (planned.some((n) => !counted.has(n))) return null;
-  const plan =
-    planned.length > 0
-      ? ` The design's proof plan is met the same way: each of the ${planned.length} criteria it plans to prove passes at that commit, and with no production environment no release run replays a probe.`
-      : '';
-  if (delivery === 'change-request' && (build.from === 'landed' || build.from === 'ahead')) {
-    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. Its work is already on the branch this project releases from, with no change request left to merge, so it is landed, and no evidence is missing.${plan} Wake the master to cut the release that carries it (POST /api/projects/${row.projectId}/release-batches) instead of sending it back.`;
-  }
-  if (delivery === 'change-request') {
-    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project releases by merging its change requests, with no production environment: until the request merges its unchanged head is the build its verdicts are read on, and no landing record is owed (REQ-63 BC-6).${plan} No evidence is missing: wake the master to cut the release that merges it (POST /api/projects/${row.projectId}/release-batches) instead of sending it back.`;
-  }
-  return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project declares no production environment, so that landing is the running build and its verdicts are read there.${plan} No evidence is missing: wake the master to record the landing (POST /api/projects/${row.projectId}/release-records) instead of sending it back.`;
-}
-
 /** One issue's landed build, or why it has none. */
 export interface LandedHolds {
   sha: string | null;
   /** Why the issue has no landed build; null where it has one. */
   why: string | null;
+  /** Where the build is a host merge commit: the request's head and whether its tree is the build's. */
+  head?: MergedHead | null;
 }
 
 /**
@@ -509,7 +511,11 @@ export async function landedBuildHolds(
   const builds = await deliveredBuildsOf(projectId, delivery, ids);
   const landed = new Map<string, LandedHolds>();
   for (const [issueId, build] of builds) {
-    landed.set(issueId, { sha: build.sha, why: build.sha === null ? build.why : null });
+    landed.set(issueId, {
+      sha: build.sha,
+      why: build.sha === null ? build.why : null,
+      ...(build.sha !== null && build.head ? { head: build.head } : {}),
+    });
   }
   return { sha: null, holds: new Map(), runtimes: new Map(), unanswered: new Map(), landed };
 }

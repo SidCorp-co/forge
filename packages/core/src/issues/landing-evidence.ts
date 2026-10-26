@@ -24,7 +24,7 @@ import {
   type MergeMarkColumns,
   type MergeMarkKind,
   mergeMarkKindOf,
-} from './merge-record.js';
+} from './merge-mark-kind.js';
 
 /** The act that clears a standing mark, as every refusal naming the mark as standing words it. */
 export const CLEAR_THE_MARK =

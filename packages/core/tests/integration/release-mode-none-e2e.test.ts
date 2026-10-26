@@ -76,17 +76,45 @@ describe('a landing is recorded as the release of a project with no production e
     expect(list.landings).toEqual([
       { runId, branch: BRANCH, commit: F4, at: expect.any(String), issues: ['ISS-5'] },
     ]);
-    expect(list.releases).toEqual([]);
+    // catalog-api run 9ed968de, 2026-10-26: a recorded landing is a release like any other
+    expect(res.body.version).toBe('0.1.0');
+    expect(list.releases).toMatchObject([{ version: '0.1.0', state: 'shipped' }]);
 
     const detail = await ok(api(token, 'GET', `/api/issues/${issue}`));
     expect(detail.landedIn).toEqual({ branch: BRANCH, commit: F4, at: expect.any(String) });
-    expect(detail.shippedIn).toBeNull();
+    expect(detail.shippedIn).toEqual({ version: '0.1.0', at: expect.any(String) });
 
     const [note] = (await db.execute(sql`
       SELECT body FROM comments WHERE issue_id = ${issue} AND body LIKE 'Landed on%'
     `)) as unknown as Array<{ body: string }>;
     expect(note?.body).toContain(`Landed on \`${BRANCH}\` at \`${F4}\` — no environment.`);
     expect(note?.body).not.toMatch(/deployed to|serving/);
+  });
+
+  // catalog-api, 2026-10-26: release 0.1.0 shipped through its change requests, then a landing
+  // recorded as run 9ed968de took no version: GET /releases/0.2.0 answered 404 and the naming door
+  // could not name it
+  it('gives a recorded landing the next version, which its page reads and the naming door names', async () => {
+    await db.execute(sql`
+      INSERT INTO pipeline_runs (project_id, kind, status, metadata, release_version, release_released_at, finished_at)
+      VALUES (${projectId}, 'system', 'completed',
+              ${JSON.stringify({ source: 'release-batch', issueIds: [], changeRequests: [] })}::jsonb,
+              '0.1.0', now() - interval '1 hour', now() - interval '1 hour')`);
+    const issue = await landedIssue(5, F4);
+    await judgedAll(issue, F4);
+
+    const res = await record([issue], F4);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.version).toBe('0.2.0');
+
+    const page = await api(token, 'GET', `/api/projects/${projectId}/releases/0.2.0`);
+    expect(page.status, JSON.stringify(page.body)).toBe(200);
+    const named = await api(token, 'PUT', `/api/projects/${projectId}/releases/0.2.0/naming`, {
+      name: 'Triển khai lên cửa hàng ePOD',
+      summary: 'The store receives the release. Drivers see the new delivery screens.',
+    });
+    expect(named.status, JSON.stringify(named.body)).toBe(200);
+    expect(named.body).toMatchObject({ version: '0.2.0', state: 'cut', runId: res.body.runId });
   });
 
   it("closes on the box's claim, as adminhub-api re-marked ISS-5: no observed merge, paths read at the sha", async () => {

@@ -86,7 +86,9 @@ is not the one it names — a corrected typo, or a landing sent over a mark nami
 refused `MARK_ALREADY_STANDS` (`standingMarkRefusal`), naming what stands and, as the correction,
 clearing the mark with `DELETE /api/issues/:id/merge` (`packages/core/src/issues/landing-evidence.ts:CLEAR_THE_MARK`, which
 every such refusal words it with) then marking again, and neither the row nor the thread is written. The first stamp wins for the landing
-as for `merged_at`; a `200` that kept the old landing while the caller was told it had sent the
+as for `merged_at`, with one exception: a host merge of a change request delivering the issue that
+lands after the stamp moves it, since an issue delivered across several requests lands at the last
+(`packages/core/src/issues/merge-record.ts:recordIssueMerge`). A `200` that kept the old landing while the caller was told it had sent the
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.
 
@@ -155,7 +157,7 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
   with no observed commit and no box-read paths the revision is named and the rest reads unread, so
   the issue is listed under `unclassified` and the release never reads as shipping nothing. A mark
   naming a `commit` over that design-only stamp is read from the repository whoever marks it
-  (`packages/core/src/issues/merge-record.ts:designOnlyStamp`,
+  (`packages/core/src/issues/merge-mark-kind.ts:designOnlyStamp`,
   `packages/core/src/issues/merge-marker.ts:overDesign`) and stamped `observed` beside the revision;
   where the repository cannot vouch for the commit and no box-read `changedPaths` came with it, the
   mark is refused `MARK_ALREADY_STANDS` naming the revision and the read's refusal, never answered
@@ -177,7 +179,7 @@ the decision's own transaction through `markApprovedDesign` (`packages/core/src/
 whose one write is `recordDesignLanding` here, its `issue.updated` carrying `via: 'design'`. Where it
 writes, it sets `merged_artifacts` to the design artifacts the mark carries with the revision's own,
 `<flow>@rev<n>`: over a mark naming design artifacts alone the revision joins them, replacing only an
-earlier revision of its own flow (`packages/core/src/issues/merge-record.ts:joinedDesignArtifacts`), so an issue drawing several
+earlier revision of its own flow (`packages/core/src/issues/merge-mark-kind.ts:joinedDesignArtifacts`), so an issue drawing several
 designs keeps each approved one (FB-140); over any other mark it is the one artifact.
 
 An issue linked as the build of a workflow (`workflow_builds`, `POST …/workflows/:workflow/builds`) is a
@@ -200,7 +202,7 @@ design issue the table below holds:
 | `outside_git` | a mark whose artifacts name a surface other than `design` | keeps it: that is the code the issue landed, and taking it for the design would make the issue design-only |
 | `outside_git` | a merge Forge `observed` | keeps it |
 | `git` | no mark | stamps `merged_at` (`asserted`: a git mark names no revision; the notice names it) |
-| `git` | the stamp a design approval alone wrote (`packages/core/src/issues/merge-record.ts:designOnlyStamp`) | keeps its `merged_at` and joins the revision to its artifacts — `added` or `repointed` as outside git |
+| `git` | the stamp a design approval alone wrote (`packages/core/src/issues/merge-mark-kind.ts:designOnlyStamp`) | keeps its `merged_at` and joins the revision to its artifacts — `added` or `repointed` as outside git |
 | `git` | any other mark | keeps it |
 
 A dropped, closed or archived issue, and a project with no project document, are not marked; the
@@ -336,6 +338,15 @@ deployed, and forge-dev is such a project and lands every change in git.
 
 `target` names the branch a mark merged through, so it is owed on `git` alone
 (`markTargetRequired`); each door answers a missing one in the words it always used.
+
+An observed stamp names its target with its commit, read where the commit was: the merged request's
+base branch, or the branch the repository holds the commit on. A mark's `target` fills
+`merged_target` only where no observed commit stands; beside one it is recorded as the mark's claim
+(`packages/core/src/issues/merge-record.ts:recordMergeTarget`; catalog-fe ISS-11..19 held
+`release/stg` for merges into `dev` before this). A host merge also records the request's head in
+`merged_head`, with whether Forge read from the host at the merge that the head's tree is the merge
+commit's; a verdict judged at that head counts for the landing only where it did
+(`packages/core/src/release-batch/landed-build.ts:atMergedHead`).
 
 A close refusal names the route the shape has (`landingRoute`): `POST /api/issues/:id/merge` for
 `git`, and the same route carrying `landing` for `outside_git`, where no commit is asked for. The issue detail

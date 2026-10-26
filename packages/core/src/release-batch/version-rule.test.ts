@@ -173,3 +173,31 @@ describe('the releases a project lists', () => {
     expect([...lines.groups.keys()].sort()).toEqual(['0.1.0', '0.2.0']);
   });
 });
+
+// catalog-api, 2026-10-26: release 0.1.0 (run 6c91e938) shipped through its change requests, which the
+// master merged by hand, so no job ever ran it; the draft after it read 0.1.0 again, and a recorded
+// landing, which has no job either, must not take a number another shipped release wears.
+describe('a release that shipped with no job', () => {
+  it('claims its version for good: the next release takes its successor', () => {
+    const settled = run({
+      version: '0.1.0',
+      status: 'completed',
+      releasedAt: new Date(clock + 1),
+      hasJob: false,
+      reachedBox: false,
+      roster: ['x', 'y'],
+    });
+    expect(decideVersion([settled], ['a', 'b'], null)).toMatchObject({
+      kind: 'first',
+      version: '0.2.0',
+    });
+  });
+
+  it('still claims nothing where a run ended unshipped with no job: it was refused at the door', () => {
+    const refused = run({ version: '0.1.0', status: 'cancelled', hasJob: false, roster: ['x'] });
+    expect(decideVersion([refused], ['a'], null)).toMatchObject({
+      kind: 'first',
+      version: '0.1.0',
+    });
+  });
+});

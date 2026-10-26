@@ -41,13 +41,19 @@ export async function mergeGitHubPullRequest(
   if (pull.merged) {
     const commitSha = pull.mergeCommitSha;
     const mergedAt = pull.mergedAt ? new Date(pull.mergedAt) : null;
-    if (!commitSha || !mergedAt || Number.isNaN(mergedAt.getTime())) {
+    if (!commitSha || !mergedAt || Number.isNaN(mergedAt.getTime()) || !pull.baseRef) {
       return refused(
         'merged-without-evidence',
-        `GitHub reports #${number} merged but sent no merge commit or no merge time, so there is nothing to record as evidence`,
+        `GitHub reports #${number} merged but sent no merge commit, no merge time or no base branch, so there is no landing to record as evidence: an issue's merge stamp names the commit, when it landed and the branch it landed on`,
       );
     }
-    return { kind: 'already-merged', commitSha, mergedAt };
+    return {
+      kind: 'already-merged',
+      commitSha,
+      mergedAt,
+      target: pull.baseRef,
+      head: pull.headSha || null,
+    };
   }
 
   let decision: ReturnType<typeof decideMerge>;
@@ -102,10 +108,19 @@ export async function mergeGitHubPullRequest(
     if (!reported || Number.isNaN(reported.getTime())) {
       throw new Error(`GitHub reported no \`merged_at\` for #${number} after merging it`);
     }
-    return { kind: 'merged', commitSha: answer.sha, mergedAt: reported };
+    if (!after.baseRef) {
+      throw new Error(`GitHub reported no base branch for #${number} after merging it`);
+    }
+    return {
+      kind: 'merged',
+      commitSha: answer.sha,
+      mergedAt: reported,
+      target: after.baseRef,
+      head: pull.headSha || null,
+    };
   } catch (err) {
     throw new Error(
-      `github: pull request #${number} MERGED at ${answer.sha}, and reading back when GitHub ` +
+      `github: pull request #${number} MERGED at ${answer.sha}, and reading back when and where GitHub ` +
         `merged it failed — the commit is on the base branch and Forge's record of it is not. The ` +
         `\`pull_request.closed\` delivery, or another call to this verb, writes the same evidence ` +
         `without merging again. Underlying failure: ${err instanceof Error ? err.message : String(err)}`,

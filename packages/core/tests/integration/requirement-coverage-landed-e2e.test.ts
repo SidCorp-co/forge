@@ -8,7 +8,9 @@
  * two read one issue's verdicts by two rules.
  */
 
+import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { db } from '../../src/db/client.js';
 import {
   agreedRequirement,
   bcOf,
@@ -84,7 +86,11 @@ describe('a requirement whose issues all closed by landing records', () => {
       'ISS-7': { branch: BRANCH, commit: F4, at: expect.any(String) },
       'ISS-23': { branch: BRANCH, commit: LATER, at: expect.any(String) },
     });
-    expect(read.issues.every((i) => i.shippedIn === null)).toBe(true);
+    // a recorded landing is a release like any other (catalog-api run 9ed968de, 2026-10-26)
+    const shippedIn = Object.fromEntries(
+      read.issues.map((i) => [i.displayId, (i.shippedIn as { version?: string } | null)?.version]),
+    );
+    expect(shippedIn).toEqual({ 'ISS-6': '0.1.0', 'ISS-7': '0.1.0', 'ISS-23': '0.2.0' });
 
     const acceptance = (await checklistsOf(req)).checklists.find((c) => c.id.includes('accept'));
     const said = JSON.stringify(acceptance?.now);
@@ -114,6 +120,29 @@ describe('a requirement whose issues all closed by landing records', () => {
     expect(await bcOf(req)).toMatchObject({ verdict: 'passing' });
   });
 
+  // adminhub-api ISS-15, 2026-10-26: closed by a landing record, then delivered again through a
+  // request the host merged; coverage kept reading the record's commit as its landing
+  it('reads a host merge observed after the landing record as the landing, superseding it', async () => {
+    const req = await agreedRequirement(BCS.slice(0, 1));
+    const issue = await landedIssue(6, F4);
+    await traced(req, issue, 6);
+    await passedAll(issue, F4);
+    expect((await record([issue], F4)).status).toBe(201);
+    expect(await bcOf(req)).toMatchObject({ verdict: 'passing' });
+
+    await db.execute(sql`
+      UPDATE issues SET merged_commit_sha = ${LATER}, merged_at = now() + interval '1 minute'
+       WHERE id = ${issue}`);
+    const moved = await bcOf(req);
+    expect(moved.verdict).toBe('not_live');
+    expect(moved.issues[0]?.notCounted).toContain(
+      `judged at commit ${F4.slice(0, 12)}, not at its issue's landing ${LATER.slice(0, 12)}`,
+    );
+
+    await passedAll(issue, LATER);
+    expect(await bcOf(req)).toMatchObject({ verdict: 'passing' });
+  });
+
   it('reads a fail at the recorded commit as failing, not passing', async () => {
     const req = await agreedRequirement(BCS.slice(0, 1));
     const issue = await landedIssue(6, F4);
@@ -123,14 +152,20 @@ describe('a requirement whose issues all closed by landing records', () => {
     expect(await bcOf(req)).toMatchObject({ verdict: 'failing' });
   });
 
-  it('does not count a pass before a reopen at a commit other than the landing', async () => {
+  // catalog-fe REQ-3, 2026-10-26: the pass the reopen voided read as no verdict at all, so the line
+  // said nothing of why it did not count
+  it('does not count a pass before a reopen at a commit other than the landing, and says which commit it was', async () => {
     const req = await agreedRequirement(BCS.slice(0, 1));
     const issue = await landedIssue(6, F4);
     await traced(req, issue, 6);
     await verdict(issue, 1, 'pass', D9);
     await reopenedNow(issue);
 
-    expect(await bcOf(req)).toMatchObject({ verdict: 'not_judged' });
+    const bc = await bcOf(req);
+    expect(bc.verdict).toBe('not_live');
+    expect(bc.issues[0]?.notCounted).toContain(
+      `judged at commit ${D9.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)}`,
+    );
   });
 
   it('does not count a pass at another commit, naming the landing it needs', async () => {

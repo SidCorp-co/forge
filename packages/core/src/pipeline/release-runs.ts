@@ -42,7 +42,8 @@ export async function releaseRunsByVersion(
       and(
         eq(pipelineRuns.projectId, projectId),
         sql`${pipelineRuns.releaseVersion} IS NOT NULL`,
-        sql`${pipelineRuns.metadata}->>'source' = 'release-batch'`,
+        // a recorded landing is a release with a version too (`release-batch/recorded-landing.ts`)
+        sql`${pipelineRuns.metadata}->>'source' IN ('release-batch', 'release-record')`,
         ...(version ? [eq(pipelineRuns.releaseVersion, version)] : []),
       ),
     );
