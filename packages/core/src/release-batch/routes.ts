@@ -118,7 +118,11 @@ releaseBatchRoutes.post(
 
     const access = await loadProjectAccess(projectId, userId);
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'admin', refusedForRole(access.role, 'release its issues', WHO_RELEASES));
+    assertProjectRole(
+      access,
+      'admin',
+      refusedForRole(access.role, 'release its issues', WHO_RELEASES),
+    );
 
     try {
       const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf, carried });
@@ -465,7 +469,11 @@ releaseBatchRoutes.post(
 
     const access = await loadProjectAccess(projectId, userId);
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'admin', refusedForRole(access.role, 'record a release', WHO_RELEASES));
+    assertProjectRole(
+      access,
+      'admin',
+      refusedForRole(access.role, 'record a release', WHO_RELEASES),
+    );
 
     try {
       const result = await recordPerformedRelease({ projectId, userId, ...c.req.valid('json') });

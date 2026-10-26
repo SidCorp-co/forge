@@ -381,7 +381,7 @@ weigh against (`packages/core/src/issues/stated-landing.ts:commitWouldStand`). A
 Mark merged with Commit left blank over such a landing would answer success and leave the next
 sweep weighing the same commit, so it is refused `LANDING_COMMIT_REQUIRED`, naming the record, the
 commit and the repository, and writes nothing
-(`packages/core/src/issues/merge-marker.ts:refuseNamingNoCommit`). A repository that could not be
+(`packages/core/src/issues/merge-marker.ts:applyMergeMarker`). A repository that could not be
 read names nothing absent, so neither applies there. Over a landing that resolves, the blank repeat
 still names Unmark, then Mark merged. The banner on an issue not marked merged in git names the same
 act: fill in Where it landed and name the commit that landed under Commit
