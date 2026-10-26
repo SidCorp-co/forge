@@ -24,7 +24,7 @@ import type { WindowCut, WindowTurnInputs } from '../../conversations/route-wind
 import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
-import { tellAdminsDeviceUnbound } from '../../devices/unbound-notice.js';
+import { tellAdminsDeviceUnbound } from '../../devices/tell-admins-unbound.js';
 import {
   AGENT_CHAT_DEDUP_REPLY,
   AGENT_CHAT_NO_DEVICE_REPLY,

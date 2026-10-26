@@ -99,7 +99,7 @@ describe("the project's admins hear of an unbound device, once, until it is boun
   }
 
   it('raises one notice naming the device and how to bind it, and a bind resolves it', async () => {
-    const { tellAdminsDeviceUnbound } = await import('../../src/devices/unbound-notice.js');
+    const { tellAdminsDeviceUnbound } = await import('../../src/devices/tell-admins-unbound.js');
     const refusal = `Device judge-d1 (${defaultDeviceId}) is not bound to project judge-p. Assign the device on judge-p's Runners page.`;
     for (let i = 0; i < 2; i++) {
       await tellAdminsDeviceUnbound({
@@ -145,7 +145,7 @@ describe("the project's admins hear of an unbound device, once, until it is boun
       },
     ],
   ])('resolves the notice when the device is bound through %s (review F2)', async (_door, bind) => {
-    const { tellAdminsDeviceUnbound } = await import('../../src/devices/unbound-notice.js');
+    const { tellAdminsDeviceUnbound } = await import('../../src/devices/tell-admins-unbound.js');
     await tellAdminsDeviceUnbound({
       projectId,
       deviceId: defaultDeviceId,

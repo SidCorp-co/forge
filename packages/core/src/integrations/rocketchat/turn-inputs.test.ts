@@ -27,7 +27,7 @@ vi.mock('./escalation.js', async (orig) => ({
 }));
 
 const tellAdminsDeviceUnbound = vi.fn();
-vi.mock('../../devices/unbound-notice.js', () => ({
+vi.mock('../../devices/tell-admins-unbound.js', () => ({
   tellAdminsDeviceUnbound: (...args: unknown[]) => tellAdminsDeviceUnbound(...args),
 }));
 
