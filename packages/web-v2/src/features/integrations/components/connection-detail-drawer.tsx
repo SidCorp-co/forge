@@ -256,7 +256,6 @@ function ConfigPane({
   // A provider this project has not connected is offered to a reader who may connect one, and
   // anyone else is told who may, rather than shown a form core refuses (ISS-1421 r27).
   const connected = (list.data?.items ?? []).some((i) => i.provider === provider);
-  // A row naming a binding the list no longer holds opens nothing, never another binding's controls.
   if (bindingId && list.data && !binding) {
     return (
       <p className="fg-body-sm border-b border-line pb-2 text-muted">

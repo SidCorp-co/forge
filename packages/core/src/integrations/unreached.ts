@@ -159,7 +159,6 @@ export function thrownDiagnostics(err: unknown, at?: UnreachedHost): Record<stri
   };
 }
 
-/** The host `thrownDiagnostics` recorded, read back for the answer's words. */
 export function unreachedHostOf(diagnostics: Record<string, unknown>): UnreachedHost | undefined {
   const host = diagnostics.unreachedHost;
   if (typeof host !== 'string' || !host) return undefined;
