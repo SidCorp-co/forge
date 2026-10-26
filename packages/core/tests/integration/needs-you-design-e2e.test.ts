@@ -1,5 +1,5 @@
 // A design revision proposed and waiting on a person who may decide it is a Workflows row of that
-// person's Needs you, through the real read (readNeedsYou over designHealthOf), and on no one else's.
+// person's Needs you, through the real read (needs-you-list.ts readNeedsYou over designHealthOf), and on no one else's.
 // ISS-330 shipped the row with only designRowOf under unit test, and the Dashboard counted a row it
 // did not draw; this is the end-to-end the read had no test for.
 
@@ -21,7 +21,11 @@ let projectId: string;
 let ownerId: string;
 let memberId: string;
 let say: (who: 'owner' | 'master', method: string, path: string, body?: unknown) => Promise<Reply>;
-let readNeedsYou: typeof import('../../src/development/needs-you.js').readNeedsYou;
+let readList: typeof import('../../src/development/needs-you-list.js').readNeedsYou;
+let accessOf: typeof import('../../src/lib/authz.js').loadProjectAccess;
+type Viewer = Parameters<typeof readList>[1];
+const readNeedsYou = async (pid: string, v: Viewer) =>
+  readList(pid, v, await accessOf(pid, v.userId));
 
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 
@@ -31,7 +35,8 @@ beforeAll(async () => {
   await startQueue();
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   const { mintPat } = await import('../../src/credentials/pat.js');
-  ({ readNeedsYou } = await import('../../src/development/needs-you.js'));
+  ({ readNeedsYou: readList } = await import('../../src/development/needs-you-list.js'));
+  ({ loadProjectAccess: accessOf } = await import('../../src/lib/authz.js'));
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   memberId = (await createTestUser({ verified: true })).id;

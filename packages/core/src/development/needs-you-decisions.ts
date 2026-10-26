@@ -30,6 +30,7 @@ import type { ProjectAccess } from '../lib/authz.js';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
 import { type AttentionRow, type NeedsYouViewer, owedOf, readAttention } from './needs-you.js';
 import { acceptDecision, admitDecision, repinDecision } from './needs-you-accept-builders.js';
+import { agentTakesItem, agentTakesOf } from './needs-you-agent-takes.js';
 import {
   agreeDecision,
   type CuttableRelease,
@@ -44,10 +45,11 @@ import {
   type Built,
   type DecisionBody,
   feedbackDecision,
-  questionDecision,
+  prefilledReason,
 } from './needs-you-decision-builders.js';
+import { asked } from './needs-you-escalation.js';
 import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
-import { foldedDecisions } from './needs-you-fold.js';
+import { foldedDecisions, unreadableItem } from './needs-you-fold.js';
 import { repinDecision as designRepinDecision } from './needs-you-repin.js';
 import { type DesignRepinGroup, releaseApprovalsOfRuns } from './ports.js';
 
@@ -68,8 +70,8 @@ const OWN_WORK: ReadonlySet<string> = new Set([
 /** A draft nobody has asked to merge, drop or keep yet (BC-12): not a decision until the steward asks it. */
 const AWAITING_PROPOSAL: ReadonlySet<string> = new Set(['issues.standing.act.takeOnOrDrop']);
 
-/** A requirement the steward asked a decision on (REQ-48 BC-5): its question is the decision. */
-const STEWARD_ASKED = 'standing.act.answerSteward';
+/** A requirement holding a question a person owes, the steward's decision or any other (REQ-48 BC-5, REQ-68 BC-9): its question is the decision. */
+const REQUIREMENT_ASKED = new Set(['standing.act.answerSteward', 'standing.act.answerQuestion']);
 
 /** A design revision proposed to its approver (`workflows/design-standing.ts:proposedWait`). */
 const DESIGN_PROPOSED = 'designs.act.approveOrReturn';
@@ -179,10 +181,10 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
   if (row.entity !== 'question' && !isDecisionActOn(row.entity, row.standing.waitingOn.says.act)) {
     return { reason: 'work' };
   }
-  if (act.key === STEWARD_ASKED && row.entity === 'requirement') {
+  if (REQUIREMENT_ASKED.has(act.key) && row.entity === 'requirement') {
     const q = questionOf(row, f, null);
     if (!q) return { reason: 'work' };
-    return questionDecision(row, area, q, { kind: 'requirement', key: row.key });
+    return asked(row, area, q, { kind: 'requirement', key: row.key }, f.projectId);
   }
   if (row.entity === 'question' || (row.entity === 'issue' && ANSWER_ACTS.has(act.key))) {
     const q = questionOf(row, f, row.entity === 'issue' ? row.key : null);
@@ -194,13 +196,13 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
         : q.aboutFeedback
           ? { kind: 'feedback' as const, key: q.aboutFeedback }
           : null;
-    return questionDecision(row, area, q, opens);
+    return asked(row, area, q, opens, f.projectId);
   }
   if (act.key === 'standing.act.onIssue' && act.inner && act.ref) {
     if (!ANSWER_ACTS.has(act.inner)) return { reason: 'work' };
     const q = questionOf(row, f, act.ref);
     if (!q) return { reason: 'work' };
-    return questionDecision(row, area, q, { kind: 'issue', key: act.ref });
+    return asked(row, area, q, { kind: 'issue', key: act.ref }, f.projectId);
   }
   if (row.entity === 'requirement') {
     const req = f.requirementOf.get(row.key);
@@ -273,7 +275,7 @@ function completed(
   due: { stuck: boolean; dueAt: string | null },
 ): NeedsYouDecision {
   return {
-    ...d,
+    ...prefilledReason(d),
     ...due,
     id: d.id ?? `${d.entity}:${d.key}:${d.answers[0]?.act ?? 'none'}`,
     topic: d.topic ?? topicOf(d),
@@ -334,6 +336,14 @@ export interface OwedDecision {
 
 type Attention = Awaited<ReturnType<typeof readAttention>>;
 
+/** The owed rows listed (each a decision or left out by why) and every owed row, ops ones too. */
+interface Classification {
+  owed: OwedDecision[];
+  left: Map<NeedsYouNotDecisionReason, NotDecisionItem[]>;
+  listed: { area: NeedsYouAreaKey; row: AttentionRow }[];
+  owedRows: Record<NeedsYouAreaKey, AttentionRow[]>;
+}
+
 /**
  * The viewer's owed rows of one attention read, each a decision or counted under why it is not one:
  * the one classification the needs-me read and the approval inbox both take.
@@ -341,7 +351,7 @@ type Attention = Awaited<ReturnType<typeof readAttention>>;
 export async function decisionsOf(
   projectId: string,
   attention: Attention,
-): Promise<{ owed: OwedDecision[]; left: Map<NeedsYouNotDecisionReason, NotDecisionItem[]> }> {
+): Promise<Classification> {
   const owedRows = owedOf(attention.rows);
   const runIds = attention.releases.releases.flatMap((r) =>
     r.state === 'awaiting_approval' && r.runId ? [r.runId] : [],
@@ -396,6 +406,7 @@ export async function decisionsOf(
     ),
   };
   const owed: OwedDecision[] = [];
+  const listed: { area: NeedsYouAreaKey; row: AttentionRow }[] = [];
   const asked = new Set<string>();
   const left = new Map<NeedsYouNotDecisionReason, NotDecisionItem[]>();
   const asks = NEEDS_YOU_AREAS.filter((a) => NEEDS_YOU_AREA_SPACE[a] === 'asks').flatMap((area) =>
@@ -411,47 +422,45 @@ export async function decisionsOf(
     if ('folded' in c) continue;
     if ('reason' in c) {
       left.set(c.reason, [...(left.get(c.reason) ?? []), leftItem(row)]);
+      listed.push({ area, row });
       continue;
     }
     // a requirement held up by an issue's question and the issue itself are one decision
     if (c.questionId && asked.has(c.questionId)) continue;
     if (c.questionId) asked.add(c.questionId);
     owed.push({ area, row, decision: completed(c.decision, dueOfRow(row)) });
+    listed.push({ area, row });
   }
-  return { owed, left };
+  return { owed, left, listed, owedRows };
 }
 
-/** Every decision of one attention read, in the list's order, and what was left out by why. */
-async function allDecisionsOf(
+/**
+ * The one list both Needs you reads are built from (`/needs-you` and `/needs-you/decisions`): every
+ * decision of one attention read in the list's order, what was left out by why, and the rows of both.
+ */
+export async function needsYouListOf(
   projectId: string,
   viewer: NeedsYouViewer,
   access: ProjectAccess,
   attention: Attention,
 ) {
-  const [{ owed, left }, folded] = await Promise.all([
+  const [{ owed, left, listed, owedRows }, folded] = await Promise.all([
     decisionsOf(projectId, attention),
     foldedDecisions(projectId, viewer, access, attention),
   ]);
-  if (folded.unreadable.length > 0) {
-    // a record no decision could be made of is opened on its own page, named by its key alone
-    left.set(
-      'unreadable',
-      folded.unreadable.map((key) => ({
-        key,
-        title: key,
-        next: 'open it on its own page',
-        opens: null,
-      })),
-    );
-  }
-  const decisions = uniqueIds([...owed.map((o) => o.decision), ...folded.decisions]).sort(
+  if (folded.unreadable.length > 0) left.set('unreadable', folded.unreadable.map(unreadableItem));
+  const all = uniqueIds([...owed.map((o) => o.decision), ...folded.decisions]).sort(
     byDecisionOrder,
   );
+  const agentTakes = await agentTakesOf(projectId, all);
+  const taken = all.filter(agentTakes);
+  if (taken.length > 0) left.set('agent_takes', taken.map(agentTakesItem));
+  const decisions = all.filter((d) => !agentTakes(d));
   const ids: EvidenceGroup['ids'] = {
     issue: new Map(attention.issues.issues.map((i) => [i.key, i.id])),
     requirement: new Map(attention.requirements.map((r) => [r.key, r.id])),
   };
-  return { decisions, left, ids };
+  return { decisions, left, ids, listed, owedRows, folded };
 }
 
 /** The viewer's whole Needs you from an attention read already made: what the status report counts. */
@@ -461,7 +470,7 @@ export async function needsYouDecisionsOf(
   access: ProjectAccess,
   attention: Attention,
 ): Promise<NeedsYouDecision[]> {
-  return (await allDecisionsOf(projectId, viewer, access, attention)).decisions;
+  return (await needsYouListOf(projectId, viewer, access, attention)).decisions;
 }
 
 /** Each decision's id once in the read, a second built for the same record numbered after it. */
@@ -485,7 +494,7 @@ export async function readNeedsYouDecisionsBare(
   now: Date = new Date(),
 ): Promise<{ read: NeedsYouDecisions; ids: EvidenceGroup['ids'] }> {
   const attention = await readAttention(projectId, viewer, now);
-  const { decisions, left, ids } = await allDecisionsOf(projectId, viewer, access, attention);
+  const { decisions, left, ids } = await needsYouListOf(projectId, viewer, access, attention);
   const read = needsYouDecisionsSchema.parse({
     generatedAt: now.toISOString(),
     decisions: decisions.slice(0, DECISIONS_MAX),

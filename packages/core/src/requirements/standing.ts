@@ -42,6 +42,7 @@ import {
 } from './standing-follow.js';
 import {
   actWait,
+  askedTurn,
   nextStepOf,
   ownerWait,
   signerInsteadOfMaster,
@@ -127,6 +128,8 @@ export interface StandingInput {
   tracedChanges?: readonly TracedChange[];
   /** An open steward decision on this stuck draft or its draft revision (REQ-48 BC-5, `steward/door-decide.ts`). */
   stewardAsked?: boolean;
+  /** Whether any other open question asked of it waits on a person (REQ-68 BC-9). */
+  questionAsked?: boolean;
   /** Linked designs holding no approved revision, which an agree refuses (REQUIREMENT_DESIGN_UNAPPROVED). */
   unapprovedDesigns: readonly { flow: string; title: string; designStatus: string | null }[];
   feedback: { open: number; untriaged: readonly string[] };
@@ -263,13 +266,8 @@ function turnOf(
     );
   }
   const draft = input.revisions.find((r) => r.state === 'draft');
-  if (input.stewardAsked && (draft || status === 'draft')) {
-    return signerWait(
-      viewer,
-      say('standing.act.answerSteward'),
-      say('requirements.rule.stewardAsked'),
-    );
-  }
+  const asked = askedTurn(input, Boolean(draft) || status === 'draft');
+  if (asked) return asked;
   if (draft) return draftTurn(draft, viewer);
   if (status === 'draft') {
     const head = input.currentRevision;

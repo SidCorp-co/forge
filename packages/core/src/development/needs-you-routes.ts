@@ -5,8 +5,8 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { idParamSchema } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { readNeedsYou } from './needs-you.js';
 import { readNeedsYouDecisions } from './needs-you-decisions.js';
+import { readNeedsYou } from './needs-you-list.js';
 import { needsYouViewerOf } from './needs-you-viewer.js';
 
 const noQuery = z.strictObject({});
@@ -30,7 +30,7 @@ needsYouRoutes.get(
     if (!agency) throw new Error('needs-you: a request reached its handler without an auth gate');
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
-    return c.json(await readNeedsYou(projectId, needsYouViewerOf(access, userId, agency)));
+    return c.json(await readNeedsYou(projectId, needsYouViewerOf(access, userId, agency), access));
   },
 );
 

@@ -58,7 +58,7 @@ export async function endUnmovedDiagnosis(ctx: DoorContext): Promise<void> {
   if (ctx.act !== 'stuck_diagnosis' || !standing?.stuck) return;
   if ((await doorsOf(ctx.acts)).some(endsDiagnosis)) return;
   // an ask already made on this standing still holds it, or a decision answered it: nothing to add
-  if (await askedAlready(ctx.projectId, ctx.subject, standing.basis, new Date())) return;
+  if (await askedAlready(ctx.projectId, standing, new Date())) return;
   const key = ctx.subject.key.toUpperCase();
   const failed = ctx.refused.length + ctx.broken.length;
   const out = await callStewardDoor(

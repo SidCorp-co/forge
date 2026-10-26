@@ -20,7 +20,7 @@ lives in that module's **rules.ts** and **service.ts**.
 - `packages/core/src/lib/refusal.ts` — `refused`, the one refusal envelope
 - `packages/core/src/route-registry.ts` — the one place a module's router is mounted
 - `packages/core/src/credentials/pat-permissions.ts` — `PAT_PERMISSION_RESOURCES`, where a new prefix is made grantable to a token
-- `packages/core/contracts/forge-api.openapi.json` — the published contract, regenerated with `pnpm --filter @forge/core contracts:generate`
+- `packages/core/contracts/forge-api.openapi.json` — the published contract, regenerated with `pnpm --filter @forge/core contracts:generate`, which also derives its semver `info.version`; core serves it as committed at `GET /api/openapi.json`
 
 ## Test shape
 
@@ -42,7 +42,7 @@ to the code, so a route whose contract file was not regenerated fails `pnpm veri
 3. Every refusal is a code declared in contracts, answered in the envelope through `refused`, with a status that says what the client should do.
 4. The service asks `can()` for the permission the act needs; the route reads no role, grant or token itself.
 5. A new prefix is listed in `PAT_PERMISSION_RESOURCES`, and the router is mounted only in **route-registry.ts**.
-6. `forge-api.openapi.json` (and `forge-mcp.tools.json` where a tool changed) is regenerated in the same change.
+6. `forge-api.openapi.json` (and `forge-mcp.tools.json` where a tool changed) is regenerated in the same change, against the branch it lands on, so its version is the one the change owes.
 7. A write answers what it changed; a list answers summaries and a whole document comes only from a get.
 8. A refusal's detail names what was wrong and what is valid, and names another entity by its key, never by uuid.
 9. A wrong input is refused by name; no schema was widened and no compatibility branch added to accept it.

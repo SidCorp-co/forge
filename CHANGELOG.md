@@ -9,6 +9,23 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.325] - 2026-10-26
+
+The steward stops re-asking for decisions already recorded; decisions show their impact
+
+### Digest
+
+- <!-- digest: 2026-W43 --> **A Delivery page, feedback from any page with a screenshot, and releases that play a clip.** The Delivery page lists what holds work back and who acts next. Feedback is filed from any page with one sentence and a screenshot. Mockups run full screen with pinned comments. Every release has a name, and its highlights play a QA clip. Approvals is the one list of what needs you, questions included; the dashboard opens on it, and Ask Agent stays open and acts on your word. New requests pass one value check, onboarding asks at most three questions, and a release can ship by merging its change requests. Fixes cover Workflows at all widths, sign-in returns and runner install errors.
+
+### Changed
+
+- **A decision says what changes and its impact, and takes one click.** Needs you and Approvals show three at a time. A moved item voids its decision. Day 3 reminds; day 14 proposes a defer. Questions are answered on Approvals.
+
+### Fixed
+
+- **The steward asks once per item standing, whichever item's run asks.** A decision recorded on that standing answers it, made before the first ask or after, so asks on ISS-498 from feedback runs settle.
+- **A filed item starts its steward run within minutes, and steward acts show on every item they changed.** Needs you lists the same items as Approvals, and At risk lists every stuck requirement.
+
 ## [0.4.0-dev.324] - 2026-10-25
 
 Agents act on permissions like people; release highlights carry a clip

@@ -9,6 +9,7 @@ import {
   agentSessionProjectReadRoutes,
   agentSessionRoutes,
 } from './agent-sessions/routes.js';
+import { publishedContractRoutes } from './api-contract/routes.js';
 import { baDoorRoutes, conversationRoutes, speakerLinkProjectRoutes } from './assistant/routes.js';
 import {
   authRoutes,
@@ -197,7 +198,7 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   mountRemainingRoutes(app);
 }
 
-/** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the build's trace, the feedback widget and the root. */
+/** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the published API and tool contracts, the build's trace, the feedback widget and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
@@ -209,6 +210,7 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
 
   for (const at of ['/', '/api']) app.route(at, installRoutes);
   for (const at of ['/', '/api']) app.route(at, guideRoutes);
+  app.route('/api', publishedContractRoutes());
   app.route('/api', codeTraceRoutes);
   // a client site's visitor, never a Forge user: the site key, the session token or the status link
   app.route('/api/widget', widgetRoutes);

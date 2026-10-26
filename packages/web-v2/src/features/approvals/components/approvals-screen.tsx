@@ -1,10 +1,12 @@
 // Approvals, the full Needs you page (REQ-48 BC-11): every decision waiting on the viewer in one
 // project, from the one Needs you read the Dashboard, the menu badge and /attention count from, so
-// the page's number is theirs. Chips narrow it by topic and to what the agent recommends; a selection
+// the page's number is theirs. At most three are shown at a time (REQ-68 BC-3), the next coming up as
+// one is decided. Chips narrow it by topic and to what the agent recommends; a selection
 // replaces the chips with a bar that states what approving makes before it acts; a row opens its
 // peek, decides in place with ✓ / ✕, and every decision is held five seconds for Undo.
 
 import type { DecisionAnswer, NeedsYouDecision, NeedsYouDecisions } from "@forge/contracts/needs-you-decisions";
+import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { useMemo, useState } from "react";
 import { Checkbox, EmptyState, FilterChip, ListLayout, ListSearch, ListToolbar, PageTitle, usePeek, usePeekKeys, useUrlChoice, useUrlParams } from "@/design";
 import { decisionHref, useNeedsYouDecisions } from "@/features/needs-you";
@@ -86,7 +88,8 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
   const [typing, setTyping] = useState<Typing | null>(null);
 
   const all = useMemo(() => read.decisions.filter((d) => !decide.held.has(d.id)), [read.decisions, decide.held]);
-  const rows = drawnOrder(narrowed(all, { chip, recommends: rec, query }));
+  const matching = drawnOrder(narrowed(all, { chip, recommends: rec, query }));
+  const rows = matching.slice(0, NEEDS_YOU_PERSON_CAP);
   const ids = rows.map((d) => d.id);
   const peek = usePeek(ids, all.map((d) => d.id));
   const open = all.find((d) => d.id === peek.open) ?? null;
@@ -213,6 +216,11 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
           })
         )}
         {all.length > 0 && rows.length === 0 ? <p className="px-5 py-6 text-13 text-muted">{t("approvals.noMatch")}</p> : null}
+        {matching.length > rows.length ? (
+          <p className="border-b border-line-subtle px-5 py-3 text-13 text-muted" data-testid="approvals-cap-more">
+            {t("approvals.capMore", { n: matching.length - rows.length })}
+          </p>
+        ) : null}
         <LeftOut read={read} slug={slug} />
       </div>
       <DecidedBar decide={decide} />

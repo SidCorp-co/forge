@@ -106,6 +106,7 @@
     "approvals.failed": "{key} was not decided: {error}",
     "approvals.dismiss": "Dismiss",
     "approvals.more": "{shown} of {total} shown",
+    "approvals.capMore": "{n} more after these",
     "approvals.leftOut.heading": "Also yours, not counted above: {what}",
     "approvals.leftOut.next": "· next: {next}",
     "approvals.leftOut.more": "and {n} more",

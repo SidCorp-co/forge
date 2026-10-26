@@ -13,6 +13,7 @@
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import {
   STEWARD_DECISIONS_WITH_REASON,
+  type StewardCite,
   type StewardDecision,
   type StewardRefusalCode,
   stewardLinkOf,
@@ -51,7 +52,13 @@ const TAKES: Record<StewardDecisionAnswer['subject']['kind'], readonly StewardDe
 /** The decisions that act on a draft alone. */
 const DRAFT_ONLY: readonly StewardDecision[] = ['open', 'link', 'requirement', 'merge'];
 
-export type Logged = { door: string; did: string; undo?: { door: string; body: null } | null };
+export type Logged = {
+  door: string;
+  did: string;
+  undo?: { door: string; body: null } | null;
+  /** The record the act made, where it is not the question answered. */
+  wrote?: StewardCite;
+};
 
 /** What every kind's carrying needs: the item's key, the said source, and the act log in `tx`. */
 export interface Carry {
@@ -97,7 +104,7 @@ export async function carryStewardDecision<R>(
           act: 'stuck_diagnosis',
           door: act.door,
           did: act.did,
-          wrote: { kind: 'question', ref: d.questionId },
+          wrote: act.wrote ?? { kind: 'question', ref: d.questionId },
           undo: act.undo ?? null,
         },
         tx,
@@ -194,6 +201,8 @@ export async function carryStewardDecision<R>(
       await logged(tx, {
         door: `POST /api/projects/${d.projectId}/requirements`,
         did: `Started ${made} from ${from} for ${key} on ${said}`,
+        // the record it made, so the new requirement's own page lists the act (REQ-48 BC-12)
+        wrote: { kind: 'requirement', ref: made },
       });
       return { answered, id };
     });

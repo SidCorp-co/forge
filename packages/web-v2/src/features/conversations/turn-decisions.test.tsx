@@ -25,6 +25,8 @@ const READ = needsYouDecisionsSchema.parse({
       title: "Rotate the webhook secret now or at the next release?",
       opens: null,
       question: "Rotate the webhook secret now or at the next release?",
+      changes: "What happens next on it",
+      impact: "It waits on this until it is decided.",
       recommended: { answerId: "later", why: 'Whoever asked recommends "At the next release".', by: "asker" },
       noRecommendation: null,
       answers: [

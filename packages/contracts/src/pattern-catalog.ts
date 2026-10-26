@@ -33,7 +33,7 @@ export const PATTERN_CATALOG: readonly PatternEntry[] = [
 			"Every refusal is a code declared in contracts, answered in the envelope through `refused`, with a status that says what the client should do.",
 			"The service asks `can()` for the permission the act needs; the route reads no role, grant or token itself.",
 			"A new prefix is listed in `PAT_PERMISSION_RESOURCES`, and the router is mounted only in **route-registry.ts**.",
-			"`forge-api.openapi.json` (and `forge-mcp.tools.json` where a tool changed) is regenerated in the same change.",
+			"`forge-api.openapi.json` (and `forge-mcp.tools.json` where a tool changed) is regenerated in the same change, against the branch it lands on, so its version is the one the change owes.",
 			"A write answers what it changed; a list answers summaries and a whole document comes only from a get.",
 			"A refusal's detail names what was wrong and what is valid, and names another entity by its key, never by uuid.",
 			"A wrong input is refused by name; no schema was widened and no compatibility branch added to accept it."

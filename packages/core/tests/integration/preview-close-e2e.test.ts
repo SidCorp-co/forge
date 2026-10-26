@@ -100,8 +100,11 @@ it('closes approved with what the approver saw, and its link says so (BC-9)', as
     previewId: preview.id,
     why: 'approved',
   });
-  // the issue and chat showing it hear the move and refetch
-  await poll(async () => changes.find((c) => c.previewId === preview.id)?.state).toBe('approved');
+  // the issue and chat showing it hear the move and refetch: the newest frame of this preview, since
+  // the frame of its earlier move to live is an outbox delivery that may reach the watcher first
+  await poll(async () => changes.filter((c) => c.previewId === preview.id).at(-1)?.state).toBe(
+    'approved',
+  );
   watcher.close();
   const closed = await atPreview(core, preview.url, '/', { cookie });
   expect(closed.status).toBe(410);

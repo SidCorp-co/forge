@@ -52,7 +52,11 @@ let projectId = '';
 let ownerId = '';
 let stewardId = '';
 let lastRunId = '';
-let diagnose: (issue: { id: string; key: string }, calls: Call[]) => Promise<string[]>;
+let diagnose: (
+  issue: { id: string; key: string },
+  calls: Call[],
+  from?: { kind: 'feedback'; id: string; key: string },
+) => Promise<string[]>;
 let dispatch: (at?: Date) => Promise<unknown>;
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 
@@ -151,11 +155,12 @@ beforeAll(async () => {
   const { runGatewayAct } = await import('../../src/steward/turn.js');
   const { dispatchStewardRuns } = await import('../../src/steward/dispatch.js');
   dispatch = (at = new Date(Date.now() + STEWARD_DEBOUNCE_MS + 30_000)) => dispatchStewardRuns(at);
-  diagnose = async (issue, calls) => {
+  diagnose = async (issue, calls, from) => {
+    const subject = from ?? { kind: 'issue', ...issue };
     const [made] = await rows<{ id: string }>(sql`
       INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
                                 state, not_before, started_at, ended_at)
-      VALUES (${projectId}, 'issue', ${issue.id}, ${issue.key}, 'standing.stuck', '[]'::jsonb,
+      VALUES (${projectId}, ${subject.kind}, ${subject.id}, ${subject.key}, 'standing.stuck', '[]'::jsonb,
               ARRAY['stuck_diagnosis']::text[], 'done', now(), now(), now())
       RETURNING id`);
     lastRunId = made?.id ?? '';
@@ -219,6 +224,44 @@ describe('the steward prepares a draft before it asks anything (REQ-48 BC-5)', (
     const row = await issueRow(issue.id);
     expect([row?.requirement_id, row?.plan]).toEqual([null, null]);
     expect(await criteriaOf(issue.id)).toEqual([]);
+  });
+
+  // ISS-618 c4, judged on dev.276: FB-180's run linked ISS-603 to REQ-10, planned it, wrote its
+  // criteria and asked on it, and ISS-603 and REQ-10 each read 0 acts: acts were read by run subject
+  it("lists a feedback run's acts on the issue and requirement they changed, each undone there", async () => {
+    const req = await agreedRequirement(921);
+    const issue = await draftIssue(121);
+    const fbKey = await createTestFeedback(projectId, ownerId, 180);
+    const [fb] = await rows<{ id: string }>(sql`
+      SELECT id FROM feedback WHERE project_id = ${projectId} AND fb_seq = 180`);
+    await diagnose(issue, [prepare(issue.key, req), decide(issue.key, 'open')], {
+      kind: 'feedback',
+      id: fb?.id ?? '',
+      key: fbKey,
+    });
+    const actsAt = async (key: string) =>
+      (ok(await say('owner', 'GET', at(`/steward-acts?subject=${key}`))).acts as Doc[]).map(
+        (a) => a.door as string,
+      );
+    const all = [
+      `POST /api/projects/${projectId}/requirements/${req}/issues`,
+      `PATCH /api/issues/${issue.id}`,
+      `PUT /api/issues/${issue.id}/criteria`,
+      `POST /api/projects/${projectId}/steward-runs/${lastRunId}/decisions`,
+    ];
+    expect(new Set(await actsAt(fbKey))).toEqual(new Set(all));
+    expect(new Set(await actsAt(issue.key))).toEqual(new Set(all));
+    expect(await actsAt(req)).toEqual([all[0]]);
+    // an act read on the issue is undone from the issue: its criteria go, its plan stays
+    const onIssue = ok(await say('owner', 'GET', at(`/steward-acts?subject=${issue.key}`)))
+      .acts as Doc[];
+    const criteria = onIssue.find((a) => a.door === all[2]);
+    ok(await say('owner', 'POST', at(`/steward-acts/${criteria?.id}/undo`), {}));
+    expect(await criteriaOf(issue.id)).toEqual([]);
+    expect((await issueRow(issue.id))?.plan).toContain('saved board');
+    const after = ok(await say('owner', 'GET', at(`/steward-acts?subject=${issue.key}`)))
+      .acts as Doc[];
+    expect(after.find((a) => a.id === criteria?.id)?.undoneAt).not.toBeNull();
   });
 
   it('refuses a criterion that is an instruction, a requirement not agreed, and a BC it lacks', async () => {
@@ -327,14 +370,18 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect((step.options as Doc[]).map((o) => o.id)).toEqual([IDS.requirement, IDS.drop]);
     const done = await answer(id, { optionId: IDS.requirement });
     expect(done.status, JSON.stringify(done.json)).toBe(200);
-    const [made] = await rows<{ title: string; status: string; reason: string }>(sql`
-      SELECT r.title, r.status, v.reason FROM requirements r
+    const [made] = await rows<{ title: string; status: string; reason: string; seq: number }>(sql`
+      SELECT r.title, r.status, v.reason, r.req_seq AS seq FROM requirements r
         JOIN requirement_revisions v ON v.requirement_id = r.id
        WHERE r.project_id = ${projectId} AND r.title = 'feedback 77'`);
     expect(made?.status).toBe('draft');
     expect(made?.reason).toContain(`Started from ${fb}, carried by ${issue.key}`);
     const acts = await actsOn(lastRunId);
     expect(acts.at(-1)?.door).toBe(`POST /api/projects/${projectId}/requirements`);
+    // and the requirement it started lists that act (ISS-618 c4: REQ-56 never read FB-78's start)
+    const onMade = ok(await say('owner', 'GET', at(`/steward-acts?subject=REQ-${made?.seq}`)))
+      .acts as Doc[];
+    expect(onMade.map((a) => a.door)).toContain(`POST /api/projects/${projectId}/requirements`);
     expect((await issueRow(issue.id))?.status).toBe('draft');
   });
 

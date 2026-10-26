@@ -3,7 +3,7 @@
 // once, so a trigger is acted on within 2 minutes and 30 seconds however long the backlog, and it
 // ends the runs nothing else will (a cancelled job sends no event; a gateway run whose process died).
 // A run takes its acts in `STEWARD_ACTS` order: the gateway acts as turns, then its runner acts as
-// one job.
+// one job; behind its project's live job, its turns now and its job in the run its end queues.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -19,6 +19,7 @@ import { budgetNote, judgeOwedNote } from './note.js';
 import { admitRun, nextUtcDay, slotsFor, stewardStanceOf } from './policy.js';
 import { openStandings } from './ports.js';
 import {
+  carryActs,
   claimDueRuns,
   deferSweepRun,
   endRun,
@@ -93,10 +94,17 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
     return 'ended';
   }
   const gateway = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'gateway_turn');
-  const runner = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
-  // one steward job live per project: a run owing one waits, before it spends a turn
-  if (runner.length > 0 && (await stewardJobLive(run.projectId))) return 'job_live';
-  const refused = await admitRun(run, acts, now);
+  // one steward job live per project: a run owing only a job waits, before it spends a turn; one
+  // owing turns too starts with them, and its job waits in the run its end queues (ISS-618 c1)
+  const behindJob =
+    acts.some((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job') &&
+    (await stewardJobLive(run.projectId));
+  if (behindJob && gateway.length === 0) return 'job_live';
+  const taken = behindJob ? gateway : acts;
+  const runner = taken.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
+  const refused = await admitRun(run, taken, now);
+  // a refused turn never ends the job it was carrying: the run waits for the job, and is read whole
+  if (refused && behindJob) return 'job_live';
   if (refused === 'next_day') {
     // the sweep's share of today is spent: the run waits for tomorrow's, in its place in the queue,
     // unless a handoff arrived while it was claimed
@@ -117,6 +125,11 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
     return 'ended';
   }
   await stampRun(run.id, { actsToRun: acts, basis: standing?.basis ?? run.basis });
+  if (behindJob)
+    await carryActs(
+      run.id,
+      acts.filter((a) => !taken.includes(a)),
+    );
   const ran = gateway.length > 0 ? await runGatewayActs(run, gateway, standing) : null;
   if (ran && ran.failures.length > 0) {
     await endRun(run.id, { state: 'failed', failure: ran.failures.join('\n'), kind: ran.kind });

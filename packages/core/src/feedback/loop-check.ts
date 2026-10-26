@@ -4,8 +4,9 @@
  * (`resolved_seen_at`). Once the project's verify window (`feedback.verifyWindowDays`) has run from
  * that date, the sweep reads what the record says about "is the problem gone?"
  * (`loop-close.ts:goneByRecord`) and writes it on the item with its time (`verifyHeldAt`,
- * `verifyHeldWhy`), so the item waits on a holder of feedback.approve, who verifies or reopens it
- * through the item's own verify and reopen, and is never held in silence. Nothing here verifies an
+ * `verifyHeldWhy`), so the item waits on a person, who verifies it (anyone on the project,
+ * `project.read`) or reopens it (a holder of feedback.approve) through the item's own verify and
+ * reopen, and is never held in silence. Nothing here verifies an
  * item by itself: a record that reads it gone is what that person answers from, not an answer. An
  * item that stops reading resolved loses its date and that note, so a reopen or a re-route starts
  * the count again; a reporter who says "not fixed" reopens it as before.

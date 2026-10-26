@@ -5,5 +5,5 @@ export { needsYouHint } from "./hint";
 export { useNeedsYou, useNeedsYouDecisions } from "./hooks";
 export { decisionHref, needsYouHref, needsYouKeyLabel } from "./routes";
 export { type NeedsYouAreaKey, type NeedsYouResponse } from "./types";
-export { needsYouApi, pressBody } from "./api";
+export { needsYouApi, prefillOf, pressBody } from "./api";
 export { NEEDS_YOU_ROOT } from "./hooks";

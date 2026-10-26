@@ -52,7 +52,7 @@ import {
   unapprovedDesignsOf,
 } from './standing-facts.js';
 import { awaitsReleaseOnly, type OwnStanding } from './standing-work.js';
-import { stewardAskedOf } from './steward-asked.js';
+import { askedOf } from './steward-asked.js';
 import { requirementVerdictsIn } from './verdicts-read.js';
 
 interface StandingRow {
@@ -178,7 +178,7 @@ async function besideFactsOf(ids: readonly string[]) {
   const [uncovered, follows, asked, { since: statusSince, decisions }] = await Promise.all([
     uncoveredOf(ids),
     followReadsOf(db, ids),
-    stewardAskedOf(ids),
+    askedOf(ids),
     statusFactsOf(ids),
   ]);
   return (id: string) => ({
@@ -186,7 +186,8 @@ async function besideFactsOf(ids: readonly string[]) {
     acceptedByDecision: decisions.get(id) ?? null,
     uncovered: uncovered.get(id) ?? new Map<string, string>(),
     tracedChanges: (follows.get(id) ?? []).flatMap((f) => f.changes),
-    stewardAsked: asked.has(id),
+    stewardAsked: asked.steward.has(id),
+    questionAsked: asked.person.has(id),
   });
 }
 

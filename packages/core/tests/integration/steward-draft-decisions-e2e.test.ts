@@ -216,6 +216,39 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
   });
 });
 
+describe('a merge target that ended since the ask', () => {
+  it('refuses a merge into a requirement its value check has since refused, by name, the draft kept', async () => {
+    const into = await agreedRequirement('Call list print', { personas: ['Call centre lead'] }, [
+      { body: 'The call list prints on one page.' },
+    ]);
+    const req = await draftRequirement('Print the call list', {}, [
+      { body: 'The call list prints.' },
+    ]);
+    world.standings = [stuck(req, 'standing.act.proposeR')];
+    await diagnose(req, {
+      recommended: 'merge',
+      into: into.key,
+      shares: 'printing the call list.',
+      why: 'it repeats the print',
+    });
+    const q = await questionOn(req);
+    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`UPDATE requirements SET status = 'refused' WHERE id = ${into.id}`),
+    );
+    const refused = await answer(q?.id ?? '', { optionId: stewardMergeOptionId(into.key) });
+    expect([refused.status, refused.json.code], JSON.stringify(refused.json)).toEqual([
+      409,
+      'STEWARD_MERGE_TARGET_ENDED',
+    ]);
+    expect(refused.json.detail).toContain(`${into.key} is refused`);
+    const [row] = await rows<{ status: string }>(
+      sql`SELECT status FROM requirements WHERE id = ${req.id}`,
+    );
+    expect(row?.status).toBe('draft');
+  });
+});
+
 describe('a draft issue that repeats a live issue is asked merge', () => {
   it('copies its text to the live issue as a comment and drops it, naming that issue', async () => {
     const draft = await issueAt(711, 'Export calls from the list', 'draft');

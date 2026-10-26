@@ -40,6 +40,8 @@ const decision = (key: string, group: "answer" | "approve", question: string) =>
   title: key,
   opens: { kind: "issue", key },
   question,
+  changes: "What happens next on it",
+  impact: "It waits on this until it is decided.",
   recommended: { answerId: "yes", why: "The run that asked recommends it.", by: "asker" },
   noRecommendation: null,
   answers: [answer("yes", "Yes", true), answer("no", "No", false)],
@@ -144,6 +146,25 @@ describe("the project home (REQ-41 BC-13)", () => {
     await screen.findAllByTestId("needs-you-decision");
     const needs = calls.map((c) => c.path).filter((p) => p.includes("needs-you"));
     expect(needs).toEqual([`/projects/${PROJECT}/needs-you/decisions`]);
+  });
+
+  // ISS-618 c2: "At risk 25" on 106 stuck items, with no word of the other 81 and no way to them
+  it("counts every stuck item core counts, and links the ones it does not list to Issues", async () => {
+    core(status({ stuck: { asOf: STATUS.asOf, count: 106, items: [stuckItem("REQ-7"), stuckItem("REQ-45")] } }));
+    renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
+    const more = await screen.findByTestId("home-at-risk-unlisted");
+    expect(more).toHaveTextContent("104 more stuck issues and feedback · open Issues");
+    expect(more.getAttribute("href")).toBe("/projects/hop/issues");
+    // the two listed stuck rows, and REQ-4 late, under a title counting all 107
+    expect(screen.getAllByTestId("home-at-risk-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["REQ-7", "REQ-45", "REQ-4"]);
+    expect(within(screen.getByTestId("home-at-risk")).getByRole("heading")).toHaveTextContent("At risk107");
+  });
+
+  it("says nothing more where core lists every stuck item", async () => {
+    core();
+    renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
+    await screen.findAllByTestId("home-at-risk-row");
+    expect(screen.queryByTestId("home-at-risk-unlisted")).toBeNull();
   });
 
   it("says so when nothing runs and nothing is at risk, and when no decision waits", async () => {

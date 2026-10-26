@@ -1,7 +1,10 @@
 export { doorOf, tokenIdOf } from './channel-author.js';
 export { decideChannelGate } from './channel-gate.js';
 export { documentTypeWithArticle } from './channel-schema.js';
+export { deriveVersion, UNNUMBERED } from './contract/derive-version.js';
 export { landingDriftRefusal, landingWorld } from './contract/drift.js';
+export { measureChange } from './contract/measure.js';
+export { fetchOasdiff } from './contract/oasdiff.js';
 export { pathsNamedIn, renderContractContext } from './contract/run-context.js';
 export { loadContractContext, recordContractContext } from './contract/run-context-service.js';
 export { contractVersionReads } from './contract/version-read.js';

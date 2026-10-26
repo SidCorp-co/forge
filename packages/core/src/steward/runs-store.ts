@@ -52,10 +52,22 @@ export interface TriggerIn {
 
 export type Folded = { runId: string; into: 'new' | 'queued' | 'follow_up' };
 
+/**
+ * The acts a trigger owes. A handoff whose act is a runner job also owes the item's note, a gateway
+ * turn, so its run starts within the bound while the project's one steward job is taken (ISS-618 c1:
+ * FB-211 waited queued behind 16 filed items' triage jobs, one at a time, past 5 minutes).
+ */
+export function triggerActs(trigger: StewardTrigger): StewardAct[] {
+  const act = STEWARD_TRIGGER_ACT[trigger];
+  return STEWARD_ACT_RUNTIME[act] === 'runner_job' && !isSweepTrigger(trigger)
+    ? orderedActs(['note', act])
+    : [act];
+}
+
 /** Insert the subject's run, or fold the trigger into the live one; inside the delivery's transaction. */
 export async function foldTrigger(tx: Tx, t: TriggerIn): Promise<Folded> {
   await lockXact(tx, 'stewardRun', `${t.subject.kind}:${t.subject.id}`);
-  const act = STEWARD_TRIGGER_ACT[t.trigger];
+  const acts = triggerActs(t.trigger);
   const event: StewardRunEvent = {
     trigger: t.trigger,
     outboxId: t.outboxId,
@@ -82,7 +94,7 @@ export async function foldTrigger(tx: Tx, t: TriggerIn): Promise<Folded> {
         subjectKey: t.subject.key,
         trigger: t.trigger,
         events: [event],
-        actsToRun: [act],
+        actsToRun: acts,
         basis: t.basis ?? null,
         notBefore: new Date(t.at.getTime() + STEWARD_DEBOUNCE_MS),
       })
@@ -98,7 +110,7 @@ export async function foldTrigger(tx: Tx, t: TriggerIn): Promise<Folded> {
     await tx
       .update(stewardRuns)
       .set({
-        actsToRun: orderedActs([...live.actsToRun, act]),
+        actsToRun: orderedActs([...live.actsToRun, ...acts]),
         events: withEvent(live.events, event),
         basis: t.basis ?? live.basis,
         ...(handoff
@@ -111,7 +123,7 @@ export async function foldTrigger(tx: Tx, t: TriggerIn): Promise<Folded> {
   await tx
     .update(stewardRuns)
     .set({
-      followUp: orderedActs([...live.followUp, act]),
+      followUp: orderedActs([...live.followUp, ...acts]),
       followUpEvents: withEvent(live.followUpEvents, event),
     })
     .where(eq(stewardRuns.id, live.id));
@@ -143,7 +155,8 @@ export const liveStewardJobOf = (projectRef: ReturnType<typeof sql>) => sql`
 /**
  * Claim at most `limit` queued runs whose start has come as `running`: a handoff event's run first,
  * then the standing's backlog, each oldest first, so a sweep's hundred runs never starve a filed
- * item. A run owing a runner act is left queued while its project has a steward job live. The pick
+ * item. A run owing only runner acts is left queued while its project has a steward job live; one
+ * owing a gateway act beside them is taken, and starts with its turns (`dispatch.ts:runOne`). The pick
  * is materialized: an `IN (… LIMIT … SKIP LOCKED)` subquery the planner rescans claims past its
  * limit. A claim is not a start: `started_at` is stamped by `markStarted` when the run is taken up.
  */
@@ -155,7 +168,7 @@ export async function claimDueRuns(now: Date, limit: number): Promise<RunRow[]> 
     WITH picked AS MATERIALIZED (
       SELECT r.id FROM steward_runs r
        WHERE r.state = 'queued' AND r.not_before <= ${sqlTimestamp(now)}
-         AND NOT (r.acts_to_run && ${runnerActs} AND ${liveStewardJobOf(sql`r.project_id`)})
+         AND NOT (r.acts_to_run <@ ${runnerActs} AND ${liveStewardJobOf(sql`r.project_id`)})
        ORDER BY (r.trigger = ANY(${standing})), r.not_before, r.queued_at
        LIMIT ${limit}
        FOR UPDATE SKIP LOCKED)
@@ -181,6 +194,30 @@ export async function claimDueRuns(now: Date, limit: number): Promise<RunRow[]> 
       a.notBefore.getTime() - b.notBefore.getTime() ||
       a.queuedAt.getTime() - b.queuedAt.getTime(),
   );
+}
+
+/**
+ * Carry a running run's runner acts into the run its end queues, with the events that asked for
+ * them: the run took its gateway turns while its project's steward job was taken, and its job waits
+ * for the next one (`endRun`).
+ */
+export async function carryActs(runId: string, acts: readonly StewardAct[]): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [run] = await tx.select().from(stewardRuns).where(eq(stewardRuns.id, runId)).limit(1);
+    if (!run) throw new Error(`steward: run ${runId} is gone`);
+    await lockXact(tx, 'stewardRun', `${run.subjectKind}:${run.subjectId}`);
+    const events = [...run.events, ...run.followUpEvents].filter(
+      (e, i, all) => all.findIndex((o) => o.outboxId === e.outboxId) === i,
+    );
+    await tx
+      .update(stewardRuns)
+      .set({
+        actsToRun: run.actsToRun.filter((a) => !acts.includes(a)),
+        followUp: orderedActs([...acts, ...run.followUp]),
+        followUpEvents: events,
+      })
+      .where(and(eq(stewardRuns.id, runId), eq(stewardRuns.state, 'running')));
+  });
 }
 
 /** Stamp the claimed run started, at the moment it is taken up. */

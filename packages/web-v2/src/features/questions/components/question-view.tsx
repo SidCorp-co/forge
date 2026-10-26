@@ -1,6 +1,6 @@
 
-// One `agent_questions` row, rendered wherever it is reached from — the issue's
-// own panel and the project-wide queue on the Agents screen.
+// One `agent_questions` row, rendered wherever it is reached from: the issue's own panel, and a
+// requirement's unclear points.
 //
 // The card owns the rules that make an irreversible submit safe, and it owns
 // them BECAUSE it is shared: whoever mounts it supplies only a way to send and a

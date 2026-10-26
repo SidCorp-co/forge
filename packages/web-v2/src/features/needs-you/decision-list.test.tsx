@@ -26,6 +26,8 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
       title: "Export",
       opens: { kind: "issue", key: "ISS-1" },
       question: "Keep the old export format or move to the new one?",
+      changes: "What happens next on it",
+      impact: "It waits on this until it is decided.",
       recommended: { answerId: "move", why: 'Whoever asked recommends "Move to the new one".', by: "asker" },
       noRecommendation: null,
       answers: [
@@ -47,6 +49,8 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
       title: "Checkout",
       opens: { kind: "requirement", key: "REQ-1" },
       question: "Accept revision 2 of REQ-1, or return it to its author?",
+      changes: "What happens next on it",
+      impact: "It waits on this until it is decided.",
       recommended: { answerId: "accept", why: "Its author proposed revision 2 for sign-off.", by: "rule" },
       noRecommendation: null,
       answers: [
@@ -99,6 +103,8 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
           title: "Import",
           opens: { kind: "issue", key: "ISS-1" },
           question: "Which identifier should the referral import match on?",
+          changes: "What happens next on it",
+          impact: "It waits on this until it is decided.",
           recommended: { answerId: "suggested", why: `"${text}" REQ-1 says referrals match by clinic code. (read ISS-1, REQ-1)`, by: "assistant" },
           noRecommendation: null,
           answers: [
@@ -124,6 +130,16 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send the suggested answer" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === `/questions/${Q}/answer`)).toBe(true));
     expect(calls.find((c) => c.method === "POST")?.body).toEqual({ round: 1, text });
+  });
+
+  // REQ-68 BC-1: what deciding changes and its impact, each said once, as properties of the decision
+  it("says what each decision changes and its impact, once each", () => {
+    renderWithQuery(<DecisionList read={READ} slug="hop" />);
+    const first = screen.getAllByTestId("needs-you-decision")[0];
+    if (!first) throw new Error("no decision drawn");
+    const stakes = within(first).getByTestId("needs-you-decision-stakes");
+    expect(stakes).toHaveTextContent("ChangesWhat happens next on itImpactIt waits on this until it is decided.");
+    expect(first.textContent?.split("What happens next on it").length).toBe(2);
   });
 
   it("posts the button's own body to its route as the person, and says it was sent", async () => {

@@ -239,6 +239,34 @@ describe('the Needs you read lists every approval waiting on the viewer, and onl
     });
   }, 60_000);
 
+  // ISS-618 c3: /needs-you listed 17 asks while the decisions read counted 52, its 35 folded
+  // proposals and mockups in the one read only
+  it('lists on /needs-you exactly what the decisions read counts, folded kinds included', async () => {
+    const w = await world();
+    for (const who of ['owner', 'member'] as const) {
+      const say = as(w.projectId);
+      const read = ok(await say(who, 'GET', READ));
+      const needs = ok(await say(who, 'GET', '/needs-you'));
+      const asks = (needs.items as Doc[]).filter((i) => i.space === 'asks');
+      const counted = read.total + read.notDecisions.reduce((n: number, x: Doc) => n + x.count, 0);
+      expect({ who, asks: asks.length }).toEqual({ who, asks: counted });
+      // and every area's count is its rows: nothing counted is undrawn
+      for (const [area, a] of Object.entries(needs.areas as Record<string, { you: number }>)) {
+        expect((needs.items as Doc[]).filter((i) => i.area === area)).toHaveLength(a.you);
+      }
+    }
+    const needs = ok(await as(w.projectId)('owner', 'GET', '/needs-you'));
+    const rows = (needs.items as Doc[]).map((i) => `${i.area} ${i.entity} ${i.key}`);
+    // the suggestion, the mockup and the preview each open the issue they wait on
+    expect(rows.filter((r) => r === `issues issue ${w.issueKey}`)).toHaveLength(3);
+    const proposed = (needs.items as Doc[]).find((i) => i.title === 'checkout.html');
+    expect(proposed).toMatchObject({
+      entity: 'issue',
+      key: w.issueKey,
+      waitingOn: { kind: 'you', act: 'approve or decline what an agent proposed' },
+    });
+  }, 60_000);
+
   it('answers an empty read on a project where nothing waits', async () => {
     const { id } = await createTestProject(ownerId);
     expect(ok(await as(id)('owner', 'GET', READ))).toMatchObject({

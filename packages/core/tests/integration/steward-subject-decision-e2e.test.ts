@@ -1,8 +1,8 @@
 // ISS-654 (REQ-48 BC-5): the steward's ask of the master about a feedback item or a requirement is
-// answered on that item. A steward ask is keyed to its run's subject, an issue, a feedback item or a
-// requirement; the master's nudge names, for each, the door that records a decision on it, and the
-// steward reads a reasoned decision written there after the ask as its answer, as it does an issue's
-// `decision` record (ISS-607). The issue door answers 404 for a feedback item, so a nudge naming it
+// answered on that item. A steward ask is keyed to the item it is about, an issue, a feedback item or
+// a requirement; the master's nudge names, for each, the door that records a decision on it, and the
+// steward reads a reasoned decision written there on the item's standing as its answer, as it does an
+// issue's `decision` record (ISS-607). The issue door answers 404 for a feedback item, so a nudge naming it
 // for every ask left a feedback or requirement ask with no way to be answered on record.
 // Driven through the real app, outbox and steward runtime on a throwaway Postgres, the gateway a
 // scripted provider and the standing read a scripted one, as steward-release-ask-e2e does.

@@ -9,6 +9,15 @@ export {
   answeredSinceSql,
   recordAnswerResume,
 } from './answer-outcome.js';
+export {
+  type AgedRound,
+  agedRounds,
+  type DecisionAgeStamp,
+  ESCALATE_AFTER_DAYS,
+  escalationActs,
+  REMIND_AFTER_DAYS,
+  stampAgedRounds,
+} from './decision-age.js';
 export { type AwaitedDesign, answerDesignQuestions } from './design-wait.js';
 export {
   holdsOpenHumanQuestion,
@@ -18,10 +27,13 @@ export {
   personOwesAnAnswer,
   settleOpenQuestions,
   voidCancelledRunQuestions,
-  voidStewardDraftQuestions,
   withdrawParkQuestions,
 } from './issue-coupling.js';
 export { type AwaitedMerge, answerMergeQuestions } from './merge-wait.js';
+export {
+  sweepMovedDecisions,
+  voidStewardDecisionsOnMove,
+} from './moved-decisions.js';
 export {
   type DetachedQuestionRow,
   type OpenPersonQuestion,

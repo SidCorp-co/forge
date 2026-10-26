@@ -1,6 +1,6 @@
 // A question a run asked that no issue, requirement or feedback holds can be answered only on the
 // Agents screen, which nothing pointed to. It is a Questions row of Needs you for whoever may answer
-// it, through the real read (readNeedsYou over readDetachedOpenQuestions), and on no one else's.
+// it, through the real read (needs-you-list.ts readNeedsYou over readDetachedOpenQuestions), and on no one else's.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -17,7 +17,11 @@ let ownerId: string;
 let readerId: string;
 let issueId: string;
 let ask: typeof import('../../src/questions/index.js').askQuestion;
-let readNeedsYou: typeof import('../../src/development/needs-you.js').readNeedsYou;
+let readList: typeof import('../../src/development/needs-you-list.js').readNeedsYou;
+let accessOf: typeof import('../../src/lib/authz.js').loadProjectAccess;
+type Viewer = Parameters<typeof readList>[1];
+const readNeedsYou = async (pid: string, v: Viewer) =>
+  readList(pid, v, await accessOf(pid, v.userId));
 
 const viewer = (userId: string, mayWrite: boolean) => ({
   userId,
@@ -42,7 +46,8 @@ beforeAll(async () => {
   await import('../../src/index.js');
   await startQueue();
   ({ askQuestion: ask } = await import('../../src/questions/index.js'));
-  ({ readNeedsYou } = await import('../../src/development/needs-you.js'));
+  ({ readNeedsYou: readList } = await import('../../src/development/needs-you-list.js'));
+  ({ loadProjectAccess: accessOf } = await import('../../src/lib/authz.js'));
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   readerId = (await createTestUser({ verified: true })).id;

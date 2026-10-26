@@ -8,7 +8,6 @@ import { AgentsScreen } from "@/features/agents/components/agents-screen";
 import { MasterItemScreen, RunItemScreen } from "@/features/agents/components/agents-item-screens";
 import { MasterPeek } from "@/features/agents/components/master-views";
 import { RunPeek } from "@/features/agents/components/run-views";
-import { QuestionsPane } from "@/features/agents/components/questions-pane";
 import { IssueQuestions } from "@/features/questions/components/issue-questions";
 import type { AgentQuestion } from "@/features/questions/types";
 import { Seeded } from "./vi-chrome-requirements";
@@ -174,7 +173,6 @@ export const data = (): [QueryKey, unknown][] => [
   [["runs-standing", P, "master"], MASTER],
   [["runs-standing", P, "passes"], { generatedAt: AT, projectId: P, items: [MASTER.pass, MASTER.lastPass, { ...(MASTER.lastPass as object), id: "pass-7", refused: { reason: "usage_limit", detail: "r" }, dispatched: [], skipped: [], parked: [], closeReason: "abandoned_quiet" }, { ...(MASTER.lastPass as object), id: "pass-6", recovers: { refusedSince: AT, refusedPasses: 2, reason: "usage_limit" }, closeReason: "session_gone" }], limit: 50, hasMore: true, next: "c" }],
   [["runs-standing", P, "charter"], { declared: true, version: 3, goal: "Muc tieu cua master", rules: ["Quy tac mot", "Quy tac hai"], declaredBy: "Lan", declaredAt: AT }],
-  [["questions", "project", P], { pages: [{ questions: [question("q1"), freeText("q2"), answered("q3"), voided("q4")], total: 4, hasMore: false, nextCursor: null }], pageParams: [null] }],
   [["questions", { issue: "i1", project: null }], { questions: [{ ...freeText("q5"), issueId: "i1" }, { ...answered("q6"), issueId: "i1" }, { ...voided("q7"), issueId: "i1" }] }],
   [["project", P], { id: P, slug: "hop", name: "Hop", devicePool: [] }],
   [["agent-sessions", "list", { projectId: P, page: 1 }], { items: [], totalCount: 0 }],
@@ -192,8 +190,6 @@ export const SCREENS = [
   { name: "Agents · runs by box", render: () => withUrl("?group=box&scope=all", <AgentsScreen access={access} />) },
   { name: "Agents · runs by lane", render: () => withUrl("?group=lane&scope=all", <AgentsScreen access={access} />) },
   { name: "Agents · runs filtered", render: () => withUrl("?f=you,stuck&q=zzz", <AgentsScreen access={access} />) },
-  { name: "Agents · questions", render: () => withUrl("?tab=questions", <AgentsScreen access={access} />) },
-  { name: "Agents · questions pane", render: () => wrap(<QuestionsPane scope={access} />) },
   { name: "Agents · sessions tab", render: () => withUrl("?tab=sessions", <AgentsScreen access={access} />) },
   ...RUNS.filter((_, i) => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12].includes(i)).map((r, i) => ({
     name: `Run peek · ${r.state} ${i}`,
