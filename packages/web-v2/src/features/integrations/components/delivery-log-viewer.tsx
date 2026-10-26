@@ -10,10 +10,14 @@ import {
   type IconName,
   Skeleton,
 } from "@/design";
+import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useIntegrationDeliveries, useRetryDelivery } from "../hooks";
 import { redactSensitive } from "../derive";
+import { providerLabel } from "../providers/registry";
 import type { IntegrationDelivery } from "../types";
 
 /** Read-only audit of recent webhook/dispatch deliveries for one binding
@@ -106,12 +110,23 @@ function DeliveryRow({
 
 export function DeliveryLogViewer({
   projectId,
+  provider,
   bindingId,
 }: {
   projectId: string;
+  provider: string;
   bindingId: string | null;
 }) {
   const deliveries = useIntegrationDeliveries(projectId, bindingId);
+  const qc = useQueryClient();
+  // A 404 is the binding gone from under a list read before it went: no retry can find it, so the
+  // list and the rows are read again instead of offering one (ISS-1421 r34, judge-138).
+  const gone = deliveries.error instanceof ApiError && deliveries.error.status === 404;
+  useEffect(() => {
+    if (!gone) return;
+    void qc.invalidateQueries({ queryKey: ["integrations", "list", projectId] });
+    void qc.invalidateQueries({ queryKey: ["integrations", "status", projectId] });
+  }, [gone, qc, projectId]);
 
   if (!bindingId) {
     return (
@@ -129,6 +144,13 @@ export function DeliveryLogViewer({
           <Skeleton key={i} className="h-[44px] w-full" />
         ))}
       </div>
+    );
+  }
+  if (gone) {
+    return (
+      <p className="fg-body-sm text-muted">
+        {`This ${providerLabel(provider)} binding is no longer on this project, so it has no delivery log to show.`}
+      </p>
     );
   }
   if (deliveries.isError) {

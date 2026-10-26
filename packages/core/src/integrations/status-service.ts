@@ -103,6 +103,8 @@ interface ProviderRow {
   role: string;
   stages: string[];
   config: Record<string, unknown>;
+  /** The binding's label; empty for the unlabelled one, which the card then names nothing by. */
+  label?: string;
   active: boolean;
   lastHealthStatus: string | null;
   lastHealthAt: Date | null;
@@ -160,6 +162,7 @@ export function buildProviderCards(opts: {
       breakerOpen: row.breakerOpenedAt !== null,
       lastHealthStatus: row.lastHealthStatus,
       capabilities: caps,
+      ...(row.label ? { label: row.label } : {}),
       ...(opts.extraMeta?.(row) ?? {}),
     },
   }));
@@ -183,6 +186,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     role: pair.binding.role,
     stages: (pair.binding.stages ?? []) as string[],
     config: effectiveConfig(pair),
+    label: pair.binding.label,
     active: pair.binding.active && pair.connection.active,
     lastHealthStatus: pair.connection.lastHealthStatus,
     lastHealthAt: pair.connection.lastHealthAt,

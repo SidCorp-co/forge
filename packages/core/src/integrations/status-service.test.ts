@@ -52,3 +52,13 @@ describe('the words a status card shows a person', () => {
     expect(sentence).not.toMatch(/\bno sync|transport|configured\b|bound\b/);
   });
 });
+
+// ISS-1421 r34, judge-138: two storefronts of one project read the same on the tab, so a removed one
+// and the one connected again, or two labelled ones, could not be told apart by their rows.
+describe('the name a binding card carries beside its state', () => {
+  it('carries a labelled binding label, and none for the unlabelled one', () => {
+    const cards = cardsFor([row({ id: 'b-1', label: '' }), row({ id: 'b-2', label: 'partner-a' })]);
+    expect(cards.find((c) => c.meta?.bindingId === 'b-1')?.meta).not.toHaveProperty('label');
+    expect(cards.find((c) => c.meta?.bindingId === 'b-2')?.meta?.label).toBe('partner-a');
+  });
+});
