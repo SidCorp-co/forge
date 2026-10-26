@@ -9,6 +9,17 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.330] - 2026-10-26
+
+Staging landings read as landed, unplaced runtime verdicts stop hiding passes, faster releases page
+
+### Fixed
+
+- **A landing on a staging branch no longer reads as production.** It reads landed on its branch, production serves nothing Forge read, and where approval is required it waits on the approver to review and promote it.
+- **A landing recorded where no verdict is owed names its passes.** Its reading counts the live criteria standing on a pass at the commit, rather than saying only that none is owed.
+- **The Releases list answers in a fraction of a second.** Verdict reads weigh only the issue's own sessions, read every issue in one statement, and skip Postgres compilation: catalog-api's list spent 10 s in the database, now 0.2 s.
+- **A runtime verdict nothing runs to observe no longer hides a counting pass.** The steward judges nothing on a project without production, and a builder is read only from runs of its own project.
+
 ## [0.4.0-dev.329] - 2026-10-26
 
 Merges stamp only their own issues; webhookless sources read checks and change requests

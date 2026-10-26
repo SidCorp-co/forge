@@ -1,1 +1,0 @@
-**The Releases list answers in a fraction of a second.** Verdict reads weigh only the issue's own sessions, read every issue in one statement, and skip Postgres compilation: catalog-api's list spent 10 s in the database, now 0.2 s.
