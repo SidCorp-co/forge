@@ -59,9 +59,15 @@ afterEach(() => {
 
 /** A run session on the box holding `key`'s lease, as a box opens one; answers its session id. */
 async function runHolding(key: string): Promise<string> {
+  return (await runWithId(key)).session;
+}
+
+/** As `runHolding`, also answering the box's own run id, which a verdict names in `run`. */
+async function runWithId(key: string): Promise<{ session: string; boxRunId: string }> {
   const runId = randomUUID();
+  const boxRunId = randomUUID();
   const metadata = {
-    boxRunId: randomUUID(),
+    boxRunId,
     [RUN_GROUP_METADATA_KEY]: [key],
     [RUN_ISSUE_STATUSES_METADATA_KEY]: { [key]: 'in_progress' },
   };
@@ -79,7 +85,7 @@ async function runHolding(key: string): Promise<string> {
     ON CONFLICT (project_id, issue_key)
     DO UPDATE SET device_id = EXCLUDED.device_id, session_id = EXCLUDED.session_id,
                   run_id = EXCLUDED.run_id, acquired_at = now()`);
-  return s.id;
+  return { session: s.id, boxRunId };
 }
 
 async function issue(): Promise<{ id: string; key: string }> {
@@ -152,5 +158,43 @@ describe('the same run sending the same verdict again', () => {
     const two = await runHolding(made.key);
     expect((await verdict(made.id)).status).toBe(201);
     expect((await stored(made.id)).map((r) => r.run_session_id)).toEqual([one, two]);
+  });
+
+  it('writes one row when the resend races the first write, the second answered as its duplicate', async () => {
+    const made = await issue();
+    await runHolding(made.key);
+    const both = await Promise.all([verdict(made.id), verdict(made.id)]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 201]);
+    expect(new Set(both.map((r) => (r.body as Doc).verdictId)).size).toBe(1);
+    expect(await stored(made.id)).toHaveLength(1);
+  });
+});
+
+describe('the probe a resend rests on is part of what it repeats', () => {
+  const probe = (word: string) => ({
+    kind: 'command',
+    command: { argv: ['pnpm', 'test', word] },
+    expect: { exitCode: 0 },
+  });
+
+  it("answers a resend without a probe as the duplicate while the run's probe is still the kept one", async () => {
+    const made = await issue();
+    await runHolding(made.key);
+    const first = await verdict(made.id, { probe: probe('orders') });
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    const again = await verdict(made.id);
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect((again.body as Doc).verdictId).toBe((first.body as Doc).verdictId);
+  });
+
+  it('writes a resend without a probe once another run has kept a different one, since it rests on that', async () => {
+    const made = await issue();
+    const a = await runWithId(made.key);
+    expect((await verdict(made.id, { probe: probe('orders') })).status).toBe(201);
+    await runHolding(made.key);
+    expect((await verdict(made.id, { probe: probe('orders-again') })).status).toBe(201);
+    const resent = await verdict(made.id, { run: a.boxRunId });
+    expect(resent.status, JSON.stringify(resent.body)).toBe(201);
+    expect(await stored(made.id)).toHaveLength(3);
   });
 });

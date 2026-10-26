@@ -4,9 +4,10 @@
 // a lost answer does: the door answers the row it already holds, `duplicate: true`, and writes
 // nothing. Only a run session's verdict is matched; a person's or an unnamed box's is written.
 
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { criterionProbes, criterionVerdicts } from '../../db/schema-issue-criteria.js';
+import { keptProbeIdOf } from './probes.js';
 import type { VerdictDraft } from './verdict-input.js';
 
 type VerdictColumns = Partial<typeof criterionVerdicts.$inferInsert>;
@@ -37,8 +38,11 @@ function canonical(value: unknown): string {
 
 /**
  * The id of `runSessionId`'s latest verdict on the criterion where this one repeats it: the same
- * verdict, identity, reason, evidence and judge, and the same probe where one is sent. Null where the
- * run has none, where its latest differs in any of them, or where no run session records it.
+ * verdict, identity, reason, evidence and judge, and the same probe it would rest on (the one sent,
+ * else the criterion's kept one, as `probes.ts:probeOfVerdict` resolves it). Null where the run has
+ * none, where its latest differs in any of them, or where no run session records it. The criterion
+ * is locked for the rest of the transaction first, so a resend racing the first write waits for it
+ * and reads it rather than both inserting.
  */
 export async function repeatedVerdict(
   tx: Tx,
@@ -57,6 +61,9 @@ export async function repeatedVerdict(
     evidence: args.draft.evidence,
     probe: args.draft.probe ?? null,
   };
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`verdict-repeat:${args.criterionId}`}, 0))`,
+  );
   const [latest] = await tx
     .select()
     .from(criterionVerdicts)
@@ -78,14 +85,14 @@ export async function repeatedVerdict(
   if (canonical(latest.storefrontDrafts) !== canonical(args.identity.storefrontDrafts ?? null)) {
     return null;
   }
-  if (sent.probe != null) {
-    if (!latest.probeId) return null;
-    const [kept] = await tx
-      .select({ spec: criterionProbes.spec })
-      .from(criterionProbes)
-      .where(eq(criterionProbes.id, latest.probeId))
-      .limit(1);
-    if (!kept || canonical(kept.spec) !== canonical(sent.probe)) return null;
+  if (sent.probe == null) {
+    return (await keptProbeIdOf(tx, args.criterionId)) === latest.probeId ? latest.id : null;
   }
-  return latest.id;
+  if (!latest.probeId) return null;
+  const [kept] = await tx
+    .select({ spec: criterionProbes.spec })
+    .from(criterionProbes)
+    .where(eq(criterionProbes.id, latest.probeId))
+    .limit(1);
+  return kept && canonical(kept.spec) === canonical(sent.probe) ? latest.id : null;
 }
