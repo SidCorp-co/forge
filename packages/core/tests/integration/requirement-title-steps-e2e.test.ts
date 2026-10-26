@@ -245,6 +245,31 @@ describe('Needs you lists a gated step only for the member who must take it (BC-
     expect(await asks(admin, key)).toEqual([]);
   });
 
+  // the reason question is the one a revision marks not blocking; a question no revision names still
+  // takes the requirement's turn, so the exclusion above cannot swallow REQ-68 BC-9
+  it('a question asked of it that no revision marks not blocking is the turn the signer is asked', async () => {
+    const { key, id } = await readyByMember('Cards sort by size');
+    const { insertAskedQuestion } = await import('../../src/questions/index.js');
+    const { randomUUID } = await import('node:crypto');
+    await db.transaction((tx) =>
+      insertAskedQuestion(tx, {
+        id: randomUUID(),
+        projectId,
+        requirementId: id,
+        prompt: 'Which date: created or due?',
+        blockerKind: 'human',
+        answer: { shape: 'free_text', needed: 'The date cards sort by' },
+      }),
+    );
+    const turn = (await detail(admin, key)).standing as Body;
+    expect(turn.waitingOn).toMatchObject({
+      kind: 'you',
+      says: { act: { key: 'standing.act.answerQuestion' } },
+    });
+    expect(await asks(admin, key)).toHaveLength(1);
+    expect(await asks(member, key)).toEqual([]);
+  });
+
   it('approvals.agree on: only the admin holds requirements.approve, so only the admin is asked', async () => {
     await setApprovals({ agree: true });
     const { key } = await readyByMember('Cards sort by owner');
