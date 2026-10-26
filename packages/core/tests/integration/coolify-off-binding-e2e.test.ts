@@ -246,7 +246,8 @@ describe('Test connection names who may change the address its reader may not (c
     const stub = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) =>
-        String(input instanceof Request ? input.url : input).startsWith(REFUSES_TOKEN)
+        new URL(input instanceof Request ? input.url : String(input)).host ===
+        new URL(REFUSES_TOKEN).host
           ? new Response('{"message":"Unauthenticated."}', { status: 401 })
           : realFetch(input, init),
       );
