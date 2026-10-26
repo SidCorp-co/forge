@@ -11,7 +11,7 @@ import { Banner, Button, ErrorState, Icon, type IconName, SectionTitle, Skeleton
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
-import { cardProvider, groupCardsByProvider, isProviderCard } from "../derive";
+import { cardBindingId, cardProvider, groupCardsByProvider, isProviderCard } from "../derive";
 import { providerIcon as registryIcon } from "../providers/registry";
 import type { DeployStage, StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
@@ -106,6 +106,11 @@ function IntegrationRow({ card, onOpen }: { card: StatusCard; onOpen?: () => voi
   );
 }
 
+/** Whether a card's key names `stage` among the stages its binding serves (`coolify:preview+live`). */
+function servesStage(card: StatusCard, stage: string): boolean {
+  return card.key.split(":")[1]?.split("+").includes(stage) === true;
+}
+
 /** Provider label with the stage parenthetical stripped (`Coolify (prod)` → `Coolify`). */
 function baseProviderLabel(card: StatusCard): string {
   return card.label.replace(/\s*\(.*\)$/, "");
@@ -118,6 +123,16 @@ function scopeOf(card: StatusCard): string {
     return scopeLabel(role, Array.isArray(stages) ? (stages as DeployStage[]) : []);
   }
   return card.key.split(":")[1] ?? "";
+}
+
+/** What tells one binding's row from another's beside it: its label, else the store its card names, so
+ *  a removed storefront and the one connected again read apart (ISS-1421 r34, judge-138). */
+function boundName(card: StatusCard): string | null {
+  for (const key of ["label", "storeName"] as const) {
+    const value = card.meta?.[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return null;
 }
 
 /**
@@ -149,7 +164,9 @@ function GroupedIntegrationRows({
               {...openable(card.label, open)}
             >
               <div className="min-w-0 flex-1 basis-[200px]">
-                <p className="fg-body-sm font-semibold text-fg">{scopeOf(card)}</p>
+                <p className="fg-body-sm font-semibold text-fg">
+                  {boundName(card) ? `${scopeOf(card)} · ${boundName(card)}` : scopeOf(card)}
+                </p>
                 <p className="fg-body-sm text-muted">{card.detail}</p>
               </div>
               <div className="flex items-center gap-4">
@@ -172,21 +189,46 @@ function GroupedIntegrationRows({
  */
 /**
  * The card the drawer shows, read from the current list rather than kept from the click that opened
- * it: a save refetches the list, and a kept copy went on reading Not connected (ISS-1421). A key the
- * list no longer has is found by provider and stage — `coolify` becomes `coolify:preview` once
- * connected — and a stage no card serves reads as not set up, never as another stage's state.
+ * it: a save refetches the list, and a kept copy went on reading Not connected (ISS-1421). A card
+ * naming a binding is followed by that binding under the key it was opened at, whatever key the list
+ * gives it now — `sentry:service:<id>` becomes `sentry` once its sibling goes — and one the list no
+ * longer holds reads as not set up, never as another binding serving the same stage (ISS-1421 r34).
+ * Otherwise it is found by provider and stage — `coolify` becomes `coolify:preview` once connected —
+ * and a stage no card serves reads as not set up.
  */
 export function liveCard(opened: StatusCard | null, cards: StatusCard[]): StatusCard | null {
   if (!opened) return null;
+  const notSetUp = { ...opened, status: "not_configured" as const, configured: false, detail: "", lastSyncAt: null };
+  const bindingId = cardBindingId(opened);
+  if (bindingId) {
+    const same = cards.find((c) => cardBindingId(c) === bindingId);
+    return same ? { ...same, key: opened.key } : notSetUp;
+  }
   const exact = cards.find((c) => c.key === opened.key);
   if (exact) return exact;
   const provider = cardProvider(opened.key);
   const same = cards.filter((c) => cardProvider(c.key) === provider);
   const stage = opened.key.split(":")[1];
   if (!stage) return same.length === 1 ? same[0] : opened;
-  const serving = same.find((c) => c.key.split(":")[1]?.split("+").includes(stage));
+  const serving = same.find((c) => servesStage(c, stage));
   if (serving) return { ...serving, key: opened.key };
-  return { ...opened, status: "not_configured", configured: false, detail: "", lastSyncAt: null };
+  return notSetUp;
+}
+
+/**
+ * The card a link opens the drawer on: the provider's card serving the stage the link names, under that
+ * stage's key, which the drawer reads its stage off (`coolify:live`). Where no card serves it, the
+ * provider's first lends its state and never its binding, so the drawer follows no other stage's
+ * binding and the stage reads as not set up (ISS-1421 r34).
+ */
+export function cardForLink(cards: StatusCard[], provider: string, stage?: DeployStage): StatusCard | null {
+  const ofProvider = cards.filter((c) => cardProvider(c.key) === provider);
+  const serving = stage ? ofProvider.find((c) => servesStage(c, stage)) : undefined;
+  const card = serving ?? ofProvider[0];
+  if (!card) return null;
+  if (!stage) return card;
+  const { bindingId: _other, ...meta } = card.meta ?? {};
+  return { ...card, key: `${provider}:${stage}`, meta: serving ? card.meta : meta };
 }
 
 export function ProjectIntegrationsPanel({
@@ -213,11 +255,9 @@ export function ProjectIntegrationsPanel({
 
   useEffect(() => {
     if (!openProvider) return;
-    const card = cards.find((c) => cardProvider(c.key) === openProvider.provider);
+    const card = cardForLink(cards, openProvider.provider, openProvider.stage);
     if (!card) return;
-    // The drawer reads the stage it opens at off the card's key suffix (`coolify:live`).
-    const { stage } = openProvider;
-    setSelectedCard(stage ? { ...card, key: `${openProvider.provider}:${stage}` } : card);
+    setSelectedCard(card);
     setFocus(openProvider.focus ?? null);
     onOpenProvider?.();
   }, [openProvider, cards, onOpenProvider]);

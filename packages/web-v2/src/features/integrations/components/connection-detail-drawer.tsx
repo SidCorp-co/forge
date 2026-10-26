@@ -13,6 +13,7 @@ import {
   Tabs,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useQueryClient } from "@tanstack/react-query";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { projectCalled } from "../connection-identity";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
@@ -197,6 +198,23 @@ export function BindingsList({
   );
 }
 
+/**
+ * A row whose binding the list no longer holds: the rows behind the drawer are read again, so the
+ * stale row leaves the list rather than opening to this sentence each time it is pressed (ISS-1421
+ * r34, judge-138: "Close this drawer and open its row again" repeated until Refresh).
+ */
+function GoneBinding({ provider, projectId, what }: { provider: string; projectId: string; what: string }) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    void qc.invalidateQueries({ queryKey: ["integrations", "status", projectId] });
+  }, [qc, projectId]);
+  return (
+    <p className="fg-body-sm border-b border-line pb-2 text-muted">
+      {`This ${providerLabel(provider)} binding is no longer on this project, so ${what}`}
+    </p>
+  );
+}
+
 function DeliveryLogPane({
   provider,
   projectId,
@@ -225,12 +243,15 @@ function DeliveryLogPane({
         ? named
         : rows.find((r) => r.stages.includes(stage));
 
+  if (gone && list.data) {
+    return <GoneBinding provider={provider} projectId={projectId} what="it has no delivery log to show." />;
+  }
   return (
     <div className="flex flex-col gap-3">
       {canDeploy && (
         <SegmentedControl<DeployStage> value={stage} onChange={setStage} options={STAGE_OPTIONS} />
       )}
-      <DeliveryLogViewer projectId={projectId} bindingId={binding?.id ?? null} />
+      <DeliveryLogViewer projectId={projectId} provider={provider} bindingId={binding?.id ?? null} />
     </div>
   );
 }
@@ -257,11 +278,7 @@ function ConfigPane({
   // anyone else is told who may, rather than shown a form core refuses (ISS-1421 r27).
   const connected = (list.data?.items ?? []).some((i) => i.provider === provider);
   if (bindingId && list.data && !binding) {
-    return (
-      <p className="fg-body-sm border-b border-line pb-2 text-muted">
-        {`This ${providerLabel(provider)} binding is no longer on this project. Close this drawer and open its row again.`}
-      </p>
-    );
+    return <GoneBinding provider={provider} projectId={projectId} what="there is nothing here to change." />;
   }
   if (!connected && may && !may.connect) {
     return (
@@ -353,6 +370,14 @@ export function ConnectionDetailDrawer({
     if (failure) noticeRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }, [failure]);
 
+  // The list a drawer acts from is read again as it opens: a binding cleared from another session within
+  // the cache's minute otherwise opened whole, every control aimed at a row core no longer holds (r34).
+  const qc = useQueryClient();
+  const openedOn = card ? `${card.key}:${cardBindingId(card) ?? ""}` : null;
+  useEffect(() => {
+    if (openedOn) void qc.invalidateQueries({ queryKey: ["integrations", "list", projectId] });
+  }, [openedOn, qc, projectId]);
+
   if (!card || !provider) return null;
 
   // Scope suffix on the card key (`coolify:live`, `coolify:preview+live`,
@@ -365,10 +390,13 @@ export function ConnectionDetailDrawer({
   // The row's own binding: everything below reads and acts on it, never another of the provider's.
   const bindingId = cardBindingId(card);
 
+  // A row whose binding went reads as not set up (`liveCard`); "Not connected" over it would say the
+  // provider is, while another of its bindings may still be on the project.
+  const goneRow = Boolean(bindingId) && !card.configured;
   const title = (
     <span className="flex items-center gap-2.5">
       <span>{providerLabel(provider)}</span>
-      <StatusPill card={card} />
+      {goneRow ? null : <StatusPill card={card} />}
     </span>
   );
 

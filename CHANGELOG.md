@@ -3204,6 +3204,8 @@
 - **A cut-short or mistyped conversation link says the conversation was not found**, instead of offering a retry that could never work. (ISS-1229)
 - **Every load error says what failed to load**, and where it is all a page shows, it heads the page and names the tab; an open conversation names the tab too. (ISS-1229)
 - **A secret inside a tool's JSON output is hidden where it stands.** The rest of the output stays readable, where a header line used to hide everything after it, or the whole result. (ISS-1229)
+- **Each Epodsystem row opens its own storefront.** Its drawer showed every storefront, the switched-off one first; storefronts are now named by label or store, and the default chip marks the one agents get. (ISS-1421)
+- **A row whose integration is gone leaves the list.** Its drawer no longer sends you back to the same row, and its delivery log offers no Retry that cannot work. (ISS-1421)
 - **Each integration row opens its own settings.** After an integration was removed and connected again, its Turned off row opened the one in use, and Disconnect there took the live one off the project. (ISS-1421)
 - **Someone with no role on a room's project is told what they cannot do there and who can add them.** (ISS-1421)
 - **GitHub's Test connection names the host it could not reach and why**, instead of "Fetch failed." (ISS-1421)

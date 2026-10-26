@@ -42,7 +42,7 @@ import {
   onlyWho,
   removedKeyHint,
 } from "../../components/integration-enabled-control";
-import { bindingBadge, bindingConnected } from "../../derive";
+import { bindingBadge, bindingConnected, bindingForRow } from "../../derive";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 // Scopes a website build needs to publish themes + toggle commerce/cache.
@@ -62,28 +62,45 @@ const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
   { value: "live", label: "Live", hint: "the published theme real customers are on" },
 ];
 
+/** What a storefront is called: its label, else the store it reaches, so a removed storefront and the
+ *  one connected again in its place are told apart (ISS-1421 r34, judge-138). */
+export function storefrontName(binding: IntegrationSummary): string {
+  const config = binding.config as EpodsystemReadConfig;
+  return binding.label || config.storeName || config.storeSlug || "Unlabelled storefront";
+}
+
+/** The storefront an agent gets when it names none: the oldest switched on, as core's
+ *  `forge_storefront_target` picks it from `listActiveBindingsForProjectProvider`. */
+export function defaultStorefrontId(bindings: readonly IntegrationSummary[]): string | undefined {
+  return [...bindings]
+    .filter((b) => b.active)
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0]?.id;
+}
+
 /**
  * ISS-395 / ISS-387 / ISS-558 — Epodsystem storefront integration config.
- * ISS-558: supports multiple stores per project — renders a list of bindings
- * plus an Add form. Each binding has its own label (empty = default).
+ * ISS-558: supports multiple stores per project, each binding with its own label (empty = default).
+ * A row's drawer holds that row's storefront alone, so every control in it acts on the binding the
+ * row showed (ISS-1421 r34); with no row named, every storefront is listed.
  */
-export function EpodsystemSection({ projectId }: { projectId: string }) {
+export function EpodsystemSection({ projectId, bindingId }: { projectId: string; bindingId?: string }) {
   const list = useIntegrationsList(projectId);
 
-  // All epodsystem bindings, oldest first (matches resolver ordering).
-  const epodsystemBindings = useMemo(
-    () =>
-      (list.data?.items ?? [])
-        .filter((i) => i.provider === "epodsystem")
-        .sort(
-          (a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-        ),
+  const all = useMemo(
+    () => (list.data?.items ?? []).filter((i) => i.provider === "epodsystem"),
     [list.data],
   );
+  const shown = useMemo(() => {
+    if (bindingId) {
+      const row = bindingForRow(all, "epodsystem", bindingId);
+      return row ? [row] : [];
+    }
+    return [...all].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  }, [all, bindingId]);
+  const defaultId = defaultStorefrontId(all);
 
   // Only a binding whose last check passed is connected: a key the provider refused is not.
-  const connectedCount = epodsystemBindings.filter(bindingConnected).length;
+  const connectedCount = bindingId ? 0 : shown.filter(bindingConnected).length;
   const [showAddForm, setShowAddForm] = useState(false);
   // Adding a storefront is a connect: offered by the answer the create door refuses by, and withdrawn
   // when a refusal's re-read of the list says the reader may not (ISS-1421 r29, judge-119 on 313, 319).
@@ -102,8 +119,8 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
         <p className="fg-body-sm text-muted">
           {mayAdd ? "Connect one or more Epodsystem storefronts to this project." : "This project's Epodsystem storefronts."}{" "}
           Each storefront has its own{" "}
-          <span className="font-mono">crmk_</span> API key, and the first
-          (unlabeled) one is the default.
+          <span className="font-mono">crmk_</span> API key, and the oldest one switched on is the
+          default an agent gets when it names none.
           {mayAdd && (
             <>
               {" "}Each one after it needs a label of its own, in {LABEL_RULE} (e.g.{" "}
@@ -116,18 +133,18 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
           <p className="fg-body-sm text-muted">Loading…</p>
         )}
 
-        {!list.isLoading && epodsystemBindings.length === 0 && (
+        {!list.isLoading && all.length === 0 && (
           <p className="fg-body-sm text-muted italic">
             No Epodsystem storefronts configured.
           </p>
         )}
 
-        {epodsystemBindings.map((binding, idx) => (
+        {shown.map((binding) => (
           <EpodsystemBindingRow
             key={binding.id}
             projectId={projectId}
             binding={binding}
-            isDefault={idx === 0}
+            isDefault={binding.id === defaultId}
           />
         ))}
 
@@ -140,7 +157,7 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
         ) : showAddForm ? (
           <AddEpodsystemForm
             projectId={projectId}
-            hasDefault={epodsystemBindings.length > 0}
+            hasDefault={all.length > 0}
             onCancel={() => setShowAddForm(false)}
             onCreated={() => setShowAddForm(false)}
           />
@@ -182,7 +199,7 @@ function EpodsystemBindingRow({
 
   const badge = bindingBadge(binding);
   const storeName = (binding.config as EpodsystemReadConfig).storeName;
-  const bindingLabel = (binding as { label?: string }).label ?? "";
+  const name = storefrontName(binding);
 
   async function handleSaveKey() {
     if (!apiKey.trim()) return;
@@ -217,15 +234,7 @@ function EpodsystemBindingRow({
     <div className="flex flex-col gap-3 border-t border-subtle pt-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {bindingLabel ? (
-            <span className="font-mono text-sm font-semibold">
-              {bindingLabel}
-            </span>
-          ) : (
-            <span className="fg-body-sm font-semibold text-muted">
-              default
-            </span>
-          )}
+          <span className={`text-sm font-semibold ${binding.label ? "font-mono" : ""}`}>{name}</span>
           {isDefault && (
             <Badge tone="neutral">default</Badge>
           )}
@@ -306,7 +315,7 @@ function EpodsystemBindingRow({
         <DisconnectFromProject
           projectId={projectId}
           binding={binding}
-          subject={`the "${bindingLabel || "default"}" Epodsystem integration`}
+          subject={`the "${name}" Epodsystem storefront`}
         />
       </div>
 
