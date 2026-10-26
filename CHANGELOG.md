@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.328] - 2026-10-26
+
+Merge requests link only the issues they deliver; wrong links can be removed
+
+### Fixed
+
+- **A change request links only the issues it delivers.** The branch issue comes first; a description key counts alone on its line or after `Closes`, never in prose. A stray link can be unlinked, and merging skips it.
+
 ## [0.4.0-dev.327] - 2026-10-26
 
 The steward answers handoffs quickly, and owed decisions are reminded then escalated

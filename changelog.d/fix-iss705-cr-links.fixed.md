@@ -1,1 +1,0 @@
-**A change request links only the issues it delivers.** The branch issue comes first; a description key counts alone on its line or after `Closes`, never in prose. A stray link can be unlinked, and merging skips it.
