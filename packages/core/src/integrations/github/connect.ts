@@ -20,8 +20,6 @@ export interface ConnectState {
    *  App. Absent = personal. The choice is made at connect time but spent in
    *  the callback, which sees nothing but this state. */
   orgId?: string;
-  /** The binding the App was stored on, carried to the install so it is recorded there and on no
-   *  other binding switched on since (ISS-1421 r32). Set only by the manifest callback. */
   bindingId?: string;
 }
 
