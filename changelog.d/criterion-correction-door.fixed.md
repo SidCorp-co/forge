@@ -1,0 +1,1 @@
+**One criterion's wording is corrected without losing its verdicts.** `PATCH /api/issues/:id/criteria/:n` keeps its id, trace and verdicts at any status and records old and new text on its history; the whole-list PUT names the verdicts it kept and voided.

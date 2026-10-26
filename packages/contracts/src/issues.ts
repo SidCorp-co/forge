@@ -23,6 +23,10 @@ export const CRITERIA_REFUSAL_CODES = [
 	"CRITERIA_RENUMBER_AMBIGUOUS",
 	/** A trace taking up a criterion that stands failed on the issue that delivered it, named (REQ-74 BC-3). */
 	"CRITERION_FAILURE_OWNED",
+	/** A single-criterion write naming no live criterion of the issue, with the ones it has. */
+	"CRITERION_UNKNOWN",
+	/** A wording correction that changes the criterion's trace, which only the whole-list write may. */
+	"CRITERION_REWORD_TRACE",
 ] as const;
 export type CriteriaRefusalCode = (typeof CRITERIA_REFUSAL_CODES)[number];
 

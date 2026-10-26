@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.334] - 2026-10-26
+
+Support chat answers within a second and records only what the asker confirms
+
+### Changed
+
+- **A Rocket.Chat support group answers in real time, and files only what its asker confirms.** Messages reach the warm session at once, mid-turn ones join the running turn, and rooms show answer latency at p50 and p95.
+
 ## [0.4.0-dev.333] - 2026-10-26
 
 Merged work stays merged when a run ends

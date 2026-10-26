@@ -26,7 +26,9 @@ makes it with the pane's credential, so a judge needs no other tool to follow th
    sent to; read the code afterwards only to give a finding its location.
 2. **Each verdict goes up the moment it is judged.** The verdicts are the one part of a judging run
    that outlives it. A set held back for one write at the end is lost with the run.
-3. **You do not edit the criteria you judge, and you do not fix what you find.** Say what you saw.
+3. **You do not edit the criteria you judge, and you do not fix what you find.** Say what you saw;
+   a criterion whose wording is wrong is said so in your verdict's reason, and corrected by whoever
+   owns the issue (\`PATCH /api/issues/:id/criteria/:n\`, which keeps its verdicts).
 4. **Only a demonstrated harm blocks.** The task cannot be done, its result is materially wrong, work
    is lost, or the way round it is one nobody would find. Anything else is a note, not a fail.
 

@@ -95,7 +95,14 @@ field and its words are text; one sent without it is read like a line of the fie
 unchanged wording keeps its row and its trace, so rewording or removing a traced line without
 restating its trace is refused \`CRITERIA_TRACE_DROPPED\`, naming each line and its BC: open the line
 with its tag, or send \`requirementCriterionId\` on it. To drop a trace on purpose, PUT every
-criterion with \`requirementCriterionId\` stated (\`null\` for none).
+criterion with \`requirementCriterionId\` stated (\`null\` for none). The PUT answers \`verdicts\`:
+\`kept\` names the verdicts on unchanged wordings, \`voided\` those on reworded or removed ones, which
+stop counting.
+
+To correct one criterion's wording and keep its verdicts, at any status:
+\`PATCH /api/issues/:id/criteria/:n\` (or its id) \`{ statement, reason }\`. It keeps the criterion's id
+and trace, records the old and new text on its history (\`GET /api/issues/:id/criteria/:n\`), and is
+refused \`CRITERION_REWORD_TRACE\` where the correction changes the lead tag.
 
 The plan names the files it will change and the goal it serves. A file it does not name is a
 \`correction\` record (\`POST /api/issues/:id/events\`) written before the file is. A criterion found
@@ -239,7 +246,9 @@ and on an issue past its build it sends the issue back to \`reopen\`: the correc
 never in a new issue. The building run is the one that took the issue before its work landed (it
 holds the lease or recorded the checks); each verdict names the run that wrote it, the run holding
 the issue on the caller's box unless the body names another in \`run\` (the box's run id), and an
-unknown \`run\` is refused \`VERDICT_RUN_UNKNOWN\`.
+unknown \`run\` is refused \`VERDICT_RUN_UNKNOWN\`. A run sending its own latest verdict on a criterion
+again, the same in every field, is answered \`200\` with that row and \`duplicate: true\`, and nothing
+is written; it is safe to resend after a lost answer.
 
 Judge each criterion at the head you will land and write its verdict as you judge it:
 \`POST /api/issues/:id/verdicts\` \`{ criterion, verdict, reason, identity: { kind: 'commit', sha }, evidence, withoutClip?, run? }\`,

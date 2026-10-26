@@ -43,7 +43,8 @@ async function productionRouting(projectId: string): Promise<ProbeRouting | null
   return { environment, url: e.url ?? null, services: e.services ?? {}, routes: e.routes ?? null };
 }
 
-async function keptProbeIdOf(tx: Tx, criterionId: string): Promise<string | null> {
+/** The probe a criterion keeps: its newest, which a verdict sending none rests on. */
+export async function keptProbeIdOf(tx: Tx, criterionId: string): Promise<string | null> {
   const [row] = await tx
     .select({ id: criterionProbes.id })
     .from(criterionProbes)

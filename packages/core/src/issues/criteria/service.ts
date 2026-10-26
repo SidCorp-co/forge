@@ -1,8 +1,22 @@
 import { db } from '../../db/client.js';
 import { criterionRoutesOf } from '../design-record.js';
+import {
+  type CriterionRef,
+  criterionNamed,
+  rewordCriterion,
+  rewordingsOf,
+  verdictsAcrossPut,
+} from './criterion-reword.js';
 import { underCutoverOf } from './cutover-marks.js';
 import { keptProbesOf } from './probes.js';
-import { type CriterionInput, listCriteria, listRetiredCriteria, putCriteria } from './store.js';
+import {
+  type CriterionInput,
+  listCriteria,
+  listRetiredCriteria,
+  liveRows,
+  lockIssue,
+  putCriteria,
+} from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
 import { appendTracedCriteria } from './tie.js';
 import { recordVerdict } from './verdict-record.js';
@@ -43,9 +57,30 @@ export async function readCriteriaAndRetired(issue: { id: string; projectId: str
   return { criteria, retired };
 }
 
-/** Replaces an issue's criteria in one transaction. */
+/**
+ * Replaces an issue's criteria in one transaction, answering which verdicts already recorded it kept
+ * and which it voided; null where the issue is gone.
+ */
 export async function replaceCriteria(issueId: string, criteria: readonly CriterionInput[]) {
-  return db.transaction((tx) => putCriteria(tx, issueId, criteria));
+  return db.transaction(async (tx) => {
+    if (!(await lockIssue(tx, issueId))) return null;
+    const before = await liveRows(tx, issueId);
+    if (!(await putCriteria(tx, issueId, criteria))) return null;
+    const after = new Set((await liveRows(tx, issueId)).map((r) => r.id));
+    return verdictsAcrossPut(tx, before, after);
+  });
+}
+
+/** Corrects one criterion's wording in one transaction, keeping its id and its verdicts. */
+export async function correctCriterion(args: Parameters<typeof rewordCriterion>[1]) {
+  return db.transaction((tx) => rewordCriterion(tx, args));
+}
+
+/** One live criterion as the criteria read shows it, with the history of its wording. */
+export async function readCriterion(issue: { id: string; projectId: string }, ref: CriterionRef) {
+  const live = await readCriteriaWithDrafts(issue);
+  const criterion = criterionNamed(live, ref);
+  return { criterion, history: await rewordingsOf(db, issue.id, criterion.id) };
 }
 
 /** Records one verdict in its own transaction. */
