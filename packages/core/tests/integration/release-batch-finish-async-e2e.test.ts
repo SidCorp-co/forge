@@ -6,8 +6,7 @@
  * awaited its own work held its response for the whole window, which behind the edge is a 524 and a
  * batch that never learns its verdict. Since ISS-1282 the finish judges readings the agent asked
  * Forge to keep and waits on no clock, so the door answers without asking the probe, whatever the
- * roster, refuses a deploy no reading shows live, and the verdict is readable off the batch. The
- * probe answers nobody while the door is called, so a door that waited on it is caught by the asking.
+ * roster, refuses a deploy no reading shows live, and the verdict is readable off the batch.
  */
 
 import { createServer, type Server } from 'node:http';
