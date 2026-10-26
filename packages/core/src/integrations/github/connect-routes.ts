@@ -17,6 +17,7 @@ import { answer } from '../../api-reference/declare/describe.js';
 import { db } from '../../db/client.js';
 import { organizations, projects } from '../../db/schema.js';
 import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
+import { isUniqueViolation } from '../../lib/db-errors.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { recordInstallation } from '../binding-installation.js';
@@ -41,7 +42,6 @@ import {
   createBinding,
   createConnection,
   decryptConnectionSecrets,
-  findSwitchedOnServiceBindingAtLabel,
   type IntegrationConnectionRow,
   listActiveBindingsForProjectProvider,
   listBindingsForConnection,
@@ -449,21 +449,18 @@ async function reattach(
   // Every binding of the connection takes the new App's webhook secret and loses the old App's
   // installation, which is not the new App's: the install step records the new one on each of them.
   // Each keeps its own switch but the one this install was run from, which is turned on.
-  // A binding switched on since, beside it, keeps this one off rather than two standing on (ISS-1421 r32).
+  // A binding switched on since, beside it, keeps this one off: the index refuses the switch-on and
+  // the rest is written without it (ISS-1421 r32).
   for (const { binding } of await listBindingsForConnection(removed.connection.id)) {
     const { installationId: _old, ...config } = binding.config as Record<string, unknown>;
-    const turnOn =
-      binding.id === removed.binding.id &&
-      !(await findSwitchedOnServiceBindingAtLabel(
-        binding.projectId,
-        'github',
-        binding.label,
-        binding.id,
-      ));
-    await updateBinding(binding.id, {
-      config,
-      integrationSecret: next.webhookSecret,
-      ...(turnOn ? { active: true } : {}),
+    const patch = { config, integrationSecret: next.webhookSecret };
+    if (binding.id !== removed.binding.id) {
+      await updateBinding(binding.id, patch);
+      continue;
+    }
+    await updateBinding(binding.id, { ...patch, active: true }).catch(async (err: unknown) => {
+      if (!isUniqueViolation(err)) throw err;
+      await updateBinding(binding.id, patch);
     });
   }
   return { id: updated?.id ?? removed.connection.id };

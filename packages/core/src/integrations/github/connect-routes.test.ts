@@ -106,7 +106,6 @@ vi.mock('../route-helpers.js', () => ({
 const store = vi.hoisted(() => ({
   createBinding: vi.fn(async () => ({ id: 'binding-new' })),
   createConnection: vi.fn(async () => ({ id: CONNECTION_ID })),
-  findSwitchedOnServiceBindingAtLabel: vi.fn(async (): Promise<unknown> => null),
   decryptConnectionSecrets: vi.fn((): { appId?: string; privateKey?: string } => ({
     appId: '42',
     privateKey: 'pk',
@@ -478,32 +477,33 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
     });
   });
 
-  // ISS-1421 r32: a GitHub binding switched on since, beside the removed one, keeps it off.
-  it('leaves the removed binding off where another GitHub binding is switched on for the project', async () => {
+  // ISS-1421 r32: a GitHub binding switched on since, beside the removed one, keeps it off. The index
+  // refuses the switch-on, whenever the other was switched on, and the rest is written without it.
+  it('leaves the removed binding off where the index refuses switching it on beside another', async () => {
     const old = { id: 'binding-old', projectId: PROJECT_ID, label: '', config: {} };
     store.removedConnectionBoundTo.mockResolvedValueOnce({
       binding: old,
       connection: { id: 'connection-removed' },
     });
     store.listBindingsForConnection.mockResolvedValueOnce([{ binding: old }]);
-    store.findSwitchedOnServiceBindingAtLabel.mockResolvedValueOnce({
-      binding: { id: 'binding-new' },
-    });
+    store.updateBinding.mockRejectedValueOnce(
+      Object.assign(new Error('update failed'), { cause: { code: '23505' } }),
+    );
     const state = signConnectState(process.env.JWT_SECRET as string, {
       projectId: PROJECT_ID,
       userId: ADMIN_B,
       orgId: ORG_ID,
     });
 
-    await callback(state);
+    const res = await callback(state);
 
-    expect(store.findSwitchedOnServiceBindingAtLabel).toHaveBeenCalledWith(
-      PROJECT_ID,
-      'github',
-      '',
-      'binding-old',
-    );
-    expect(store.updateBinding).toHaveBeenCalledWith('binding-old', {
+    expect(res.status).toBe(302);
+    expect(store.updateBinding).toHaveBeenNthCalledWith(1, 'binding-old', {
+      config: {},
+      integrationSecret: 'whsec_x',
+      active: true,
+    });
+    expect(store.updateBinding).toHaveBeenNthCalledWith(2, 'binding-old', {
       config: {},
       integrationSecret: 'whsec_x',
     });
