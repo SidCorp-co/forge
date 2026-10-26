@@ -273,6 +273,7 @@ const VALUE_END = /^(?:$|[\s,}\]&"]|\\+(?:"|[nrt](?![A-Za-z0-9])))/;
 const KEPT_AS_IT_IS = /^(?:\[\s*\]|\{\s*\}|null|true|false)(?=$|[\s,}\]&"]|\\+(?:"|[nrt](?![A-Za-z0-9])))/;
 // A backslash is the value's own, unless its run ends in a quote: that is the string around it closing.
 const BARE_VALUE = /^(?:[^\s",}\]&\\]|\\+(?!\\*"))+/;
+const BARE_UNQUOTED = /^(?:[^\s",&\\]|\\+(?!\\*"))+/;
 
 /**
  * `text` with the value after each `name:` / `name=` replaced, read by its shape so JSON stays JSON
@@ -309,7 +310,7 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
       if (!VALUE_END.test(text.slice(end, end + 8))) end = at + (/^\S+/.exec(rest)?.[0].length ?? 0);
       shown = marker;
     } else {
-      const bare = BARE_VALUE.exec(rest);
+      const bare = (nameQuote ? BARE_VALUE : BARE_UNQUOTED).exec(rest);
       if (!bare) continue;
       end = at + bare[0].length;
       shown = marker;

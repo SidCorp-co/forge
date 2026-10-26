@@ -5,6 +5,7 @@
 // archived one too, whose list is not the one shown by default.
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const live = { id: "r1", projectId: "p1", title: "Desk triage", updatedAt: "2026-10-22T02:00:00Z", archivedAt: null };
@@ -66,13 +67,16 @@ vi.mock("./conversation-sidebar", () => ({
     onOpen,
     onNew,
     onToggleArchived,
+    below,
   }: {
     rows: Array<{ id: string; title: string }>;
     onOpen: (row: unknown) => void;
     onNew?: () => void;
     onToggleArchived: () => void;
+    below?: ReactNode;
   }) => (
     <ul>
+      {below && <li>{below}</li>}
       {onNew && (
         <li>
           <button type="button" onClick={onNew}>
@@ -95,7 +99,7 @@ vi.mock("./conversation-sidebar", () => ({
     </ul>
   ),
 }));
-vi.mock("./orphan-rooms", () => ({ RoomsWithoutAProject: () => null }));
+vi.mock("./orphan-rooms", () => ({ RoomsWithoutAProject: () => <div data-testid="orphan-section" /> }));
 vi.mock("./orphan-room-view", () => ({ OrphanRoomView: () => null }));
 vi.mock("./start-conversation", () => ({ StartConversation: () => <div data-testid="chooser" /> }));
 
@@ -252,10 +256,12 @@ describe("an address naming a room the reader cannot open", () => {
     expect(roomRead.refetched).toBe(1);
   });
 
-  it("says where a room about no project is opened from", () => {
+  it("says where a room about no project is opened from, and shows the list that holds it", () => {
     roomRead.answers.orphan = { data: { id: "orphan", scope: [], archivedAt: null } };
-    at("/conversations?room=orphan");
+    at("/conversations?room=orphan&archived=1");
     render(<ConversationsScreen />);
     expect(screen.getByRole("heading", { level: 1, name: "This conversation is about no project" })).toBeTruthy();
+    expect(screen.getByText(/Open it from Project deleted/)).toBeTruthy();
+    expect(screen.getByTestId("orphan-section")).toBeTruthy();
   });
 });

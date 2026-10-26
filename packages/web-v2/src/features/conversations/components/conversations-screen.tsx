@@ -171,7 +171,12 @@ export function ConversationsScreen() {
   const read = lookup ? roomRead.data : undefined;
   const readProject = read ? (read.scope.find((id) => orgProjectIds.has(id)) ?? read.scope[0]) : undefined;
   useEffect(() => {
-    if (!lookup || !read || !readProject) return;
+    if (!lookup || !read) return;
+    // A room about no project is listed under Project deleted, which only the live list shows.
+    if (!readProject) {
+      setShowArchived(false);
+      return;
+    }
     const archived = read.archivedAt !== null;
     setShowArchived(archived);
     selectionKeyRef.current += 1;
@@ -349,7 +354,7 @@ function AddressedRoom({
       <EmptyState
         level={1}
         title="This conversation is about no project"
-        message="Its project was deleted. Open it from Rooms without a project, under the list."
+        message="Its project was deleted. Open it from Project deleted, under the list of conversations."
       />,
     );
   }

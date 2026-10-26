@@ -94,6 +94,11 @@ describe('a log line, which is not JSON', () => {
     }
   });
 
+  it('loses a bare secret that opens with a closing bracket whole', () => {
+    expect(scrubLogText('password=]hunter2 user=ana')).toBe(`password=${FILTERED} user=ana`);
+    expect(scrubLogText('password=}x] user=ana')).toBe(`password=${FILTERED} user=ana`);
+  });
+
   it('still loses a bare secret and keeps what follows', () => {
     expect(scrubLogText('password=hunter2 user=ana')).toBe(`password=${FILTERED} user=ana`);
     expect(scrubLogText('access_token=abc&id=7')).toBe(`access_token=${FILTERED}&id=7`);
@@ -132,7 +137,7 @@ describe('a structured body', () => {
     expect(JSON.stringify(body)).toBe(`{"password":"${FILTERED}","secret":"${FILTERED}"}`);
   });
 
-  it('censors a secret field a getter answers without asking the getter', () => {
+  it('reports a secret field a getter answers as not censored, without asking the getter', () => {
     let asked = 0;
     const body = {
       get password() {
@@ -140,7 +145,7 @@ describe('a structured body', () => {
         return '';
       },
     };
-    scrubBodyKeys(body);
+    expect(scrubBodyKeys(body)).toBe(false);
     expect(asked).toBe(0);
   });
 });
