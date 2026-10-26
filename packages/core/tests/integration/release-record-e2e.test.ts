@@ -183,6 +183,38 @@ describe('a release that happened is recorded although no batch could be created
     expect((await causeOf(res)).code).toBe('RELEASE_POOL_EMPTY');
   });
 
+  // ISS-1300 r5 (judge-125, X2): a plain member read "Requires project admin access." and no more.
+  it('refuses a member at both release doors naming the role held, the act and who may', async () => {
+    const w = await seed();
+    const a = await insertIssue(w);
+    const member = await createTestUser(harness.db);
+    await harness.db.execute(
+      sql`UPDATE users SET email_verified_at = now() WHERE id = ${member.id}`,
+    );
+    await createTestProjectMember(harness.db, {
+      userId: member.id,
+      projectId: w.projectId,
+      role: 'member',
+    });
+    const token = await signUserToken(member.id);
+
+    const batch = await call(`/api/projects/${w.projectId}/release-batches`, token, {
+      method: 'POST',
+      body: JSON.stringify({ issueIds: [a] }),
+    });
+    const recorded = await record(w, { issueIds: [a], commit: RELEASED, account: ACCOUNT }, token);
+
+    expect(batch.status).toBe(403);
+    expect((await causeOf(batch)).message).toBe(
+      'You are a member of this project, so you cannot release its issues. Only an admin of this project can, so ask one of them.',
+    );
+    expect(recorded.status).toBe(403);
+    expect((await causeOf(recorded)).message).toBe(
+      'You are a member of this project, so you cannot record a release. Only an admin of this project can, so ask one of them.',
+    );
+    expect((await stored(a)).status).toBe('awaiting_release');
+  });
+
   it('records the release and closes every issue it carried', async () => {
     const w = await seed();
     const a = await insertIssue(w);

@@ -3,10 +3,12 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import type { BranchRefs } from '../git/remote-divergence.js';
 import type { LiveDivergence } from '../integrations/github/live-divergence.js';
+import { unreadLandingClears } from '../issues/landing-correction.js';
 import { logger } from '../logger.js';
 import type { LiveReading } from './live-reach.js';
 import { readProjectDivergence } from './live-source.js';
 import { chainCrossesByCherryPick, chainLiveBranch, type ReleaseChain } from './release-chain.js';
+import { readableThrough } from './repository-access.js';
 
 /** How long one reading answers for a project before the next read takes another. */
 export const LIVE_READING_HOLD_MS = 5 * 60_000;
@@ -57,17 +59,47 @@ export function forgetAllLiveReadings(): void {
   inFlight.clear();
 }
 
+/**
+ * A failed comparison in the words the release readiness page uses for the same read: a repository
+ * Forge cannot read, a branch it lacks, or a read that failed otherwise, with the request behind it
+ * kept as `detail` (ISS-1300 r5). A route that words its own refusal is said as it came.
+ */
+function failedComparison(
+  d: Extract<LiveDivergence, { ok: false }>,
+  refs: { baseBranch: string; liveBranch: string },
+): { reason: string; detail?: string } {
+  const failed = d.failure;
+  if (!failed) return { reason: d.reason };
+  const { repository } = failed;
+  if (failed.missingBranch) {
+    const b = failed.missingBranch;
+    return {
+      reason: `${repository} has no branch ${b}, so whether ${refs.baseBranch}'s commits reached ${refs.liveBranch} cannot be read. It is read again once ${repository} has a branch ${b}, or the project's release chain names only branches it has`,
+      detail: d.reason,
+    };
+  }
+  if (!failed.refused) {
+    return {
+      reason: `Comparing ${refs.baseBranch} with ${refs.liveBranch} on ${repository} failed, so whether ${refs.baseBranch}'s commits reached ${refs.liveBranch} cannot be read until the next reading`,
+      detail: d.reason,
+    };
+  }
+  const clears = readableThrough('binding', repository);
+  return { reason: unreadLandingClears({ repository, why: d.reason, clears }), detail: d.reason };
+}
+
 /** Take one reading now. Never throws: a failure is a `refused` reading carrying its reason. */
 export async function takeLiveReading(
   row: ProjectReleaseRow & { liveBranch: string },
   deps: LiveReadingDeps = defaultDeps,
 ): Promise<LiveReading> {
   const startedAt = deps.now();
-  const refused = (reason: string): LiveReading => ({
+  const refused = (reason: string, detail?: string): LiveReading => ({
     baseBranch: row.baseBranch,
     liveBranch: row.liveBranch,
     kind: 'refused',
     reason,
+    ...(detail ? { detail } : {}),
     startedAt,
   });
   const baseBranch = row.baseBranch;
@@ -83,7 +115,10 @@ export async function takeLiveReading(
   }
   try {
     const d = await deps.divergenceFor(row.id, { baseRef: baseBranch, liveRef: row.liveBranch });
-    if (!d.ok) return refused(d.reason);
+    if (!d.ok) {
+      const said = failedComparison(d, { baseBranch, liveBranch: row.liveBranch });
+      return refused(said.reason, said.detail);
+    }
     const { baseSha, liveSha, aheadBy, commits, complete } = d;
     const liveBranch = row.liveBranch;
     return {

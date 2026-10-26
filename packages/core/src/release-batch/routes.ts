@@ -2,7 +2,12 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import {
+  assertProjectRole,
+  loadProjectAccess,
+  type ProjectAccess,
+  refusedForRole,
+} from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { resolveReleaseChannels } from './channel.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
@@ -99,6 +104,9 @@ import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from
 export const releaseBatchRoutes = new Hono<{ Variables: AuthVars }>();
 releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
 
+const mayRelease = (access: ProjectAccess, act: string) =>
+  assertProjectRole(access, 'admin', refusedForRole(access.role, act, 'an admin of this project'));
+
 releaseBatchRoutes.post(
   '/:projectId/release-batches',
   createBatch,
@@ -115,7 +123,7 @@ releaseBatchRoutes.post(
 
     const access = await loadProjectAccess(projectId, userId);
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'admin');
+    mayRelease(access, 'release its issues');
 
     try {
       const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf, carried });
@@ -462,7 +470,7 @@ releaseBatchRoutes.post(
 
     const access = await loadProjectAccess(projectId, userId);
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'admin');
+    mayRelease(access, 'record a release');
 
     try {
       const result = await recordPerformedRelease({ projectId, userId, ...c.req.valid('json') });

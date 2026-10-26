@@ -73,13 +73,34 @@ beforeEach(async () => {
   forgetCarriage();
 });
 
-/** Two criteria judged at JUDGED; the row then made to record `merged`, past any writer. */
-async function plant(record: { merged: string | null }): Promise<string> {
+/** Two criteria judged at JUDGED; the row then made to record `merged`, past any writer, and
+ *  `head` as its landing record where one is given; `marked: false` leaves no mark at all. */
+async function plant(record: {
+  merged: string | null;
+  head?: string;
+  marked?: boolean;
+}): Promise<string> {
   const id = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
   await harness.db.execute(
     sql`UPDATE issues SET merged_commit_sha = ${record.merged} WHERE id = ${id}`,
   );
+  if (record.head) {
+    await harness.db.execute(sql`
+      UPDATE issues
+         SET session_context = jsonb_set(COALESCE(session_context, '{}'::jsonb), '{landing}',
+               COALESCE(session_context->'landing', '{}'::jsonb) || jsonb_build_object('head', ${record.head}::text))
+       WHERE id = ${id}`);
+  }
+  if (record.marked === false) {
+    await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${id}`);
+  }
   return id;
+}
+
+async function mergedAt(id: string): Promise<unknown> {
+  const r = await harness.db.execute(sql`SELECT merged_at FROM issues WHERE id = ${id}`);
+  const rows = (r as unknown as { rows?: unknown[] }).rows ?? (r as unknown as unknown[]);
+  return (rows[0] as { merged_at: unknown }).merged_at;
 }
 
 async function weigh(id: string) {
@@ -216,14 +237,88 @@ describe('the words a mark answers with, about a commit the repository lacks', (
     );
   });
 
-  // ISS-1300 r4 (judge-121, F2): seven characters of ABSENT name JUDGED, which the repository holds.
-  it('names a commit the repository lacks by twelve characters, so it reads apart from its neighbour', async () => {
+  // ISS-1300 r5 (judge-125, N1): twelve characters of a typo in the tail equal the real commit's,
+  // so the refusal quotes the whole value typed.
+  it('quotes the whole commit typed where the repository holds none, so a typo in the tail shows', async () => {
     await repo.bind(projectId, ownerId);
     const id = await plant({ merged: null });
+    const typo = `${JUDGED.slice(0, 39)}3`;
 
-    await expect(personMarks(id, ABSENT, false)).rejects.toMatchObject({
-      code: 'COMMIT_NOT_IN_REPOSITORY',
-      message: expect.stringContaining(`${REPOSITORY} holds no commit 0d018a9a0e1c.`),
+    for (const typed of [ABSENT, typo]) {
+      await expect(personMarks(id, typed, false)).rejects.toMatchObject({
+        code: 'COMMIT_NOT_IN_REPOSITORY',
+        message: expect.stringContaining(`${REPOSITORY} holds no commit ${typed}.`),
+      });
+    }
+  });
+});
+
+// ISS-1300 r5 (judge-125, F1) — the mark's answer reads the commit the weighing reads, whichever
+// record names it, so a blank Commit over a landing record the repository lacks names the act the
+// hold names, and an answer of success changes what the next weighing reads, or is refused.
+describe('a landing record naming a commit the repository lacks', () => {
+  it('answers a blank Commit on a marked issue with the act the hold names, never Unmark', async () => {
+    await repo.bind(projectId, ownerId);
+    const id = await plant({ merged: null, head: ABSENT });
+    expect((await weigh(id)).unresolvedLanding?.from).toBe('landing');
+
+    const answer = await personMarks(id, undefined);
+
+    expect(answer.action).toBe('already_merged');
+    expect(answer.markDetail).toBe(
+      'Already marked merged on 1 Oct 2026, so this call changed nothing. ' +
+        'The landing record names commit 0d018a9a0e1c, which its repository does not hold. ' +
+        'To record the commit that landed, use Mark a later merge and name it under Commit.',
+    );
+    expect(answer.markDetail).not.toMatch(/Unmark/);
+  });
+
+  it('refuses a first mark naming no commit by name, and writes nothing', async () => {
+    await repo.bind(projectId, ownerId);
+    const id = await plant({ merged: null, head: ABSENT, marked: false });
+
+    await expect(personMarks(id, undefined, false)).rejects.toMatchObject({
+      code: 'LANDING_COMMIT_REQUIRED',
+      message:
+        "Nothing was marked, because this issue's landing record names commit 0d018a9a0e1c, " +
+        `which ${REPOSITORY} does not hold, and a mark naming no commit leaves that record as it is. ` +
+        'Name the commit that landed under Commit.',
+      details: { commit: ABSENT, record: 'landing', repository: REPOSITORY },
     });
+    expect(await mergedAt(id)).toBeNull();
+    expect((await weigh(id)).unresolvedLanding?.commit).toBe(ABSENT);
+  });
+
+  it('takes the commit named under Commit, and the next weighing no longer holds the issue on it', async () => {
+    await repo.bind(projectId, ownerId);
+    for (const marked of [false, true]) {
+      const id = await plant({ merged: null, head: ABSENT, marked });
+
+      const answer = await personMarks(id, JUDGED, marked);
+
+      expect(answer.action).toBe('merged');
+      expect(await mergedCommit(id)).toBe(JUDGED);
+      expect((await weigh(id)).unresolvedLanding).toBeUndefined();
+    }
+  });
+
+  it('still marks with no commit where the landing record names a commit the repository holds', async () => {
+    await repo.bind(projectId, ownerId);
+    const id = await plant({ merged: null, head: JUDGED, marked: false });
+
+    const answer = await personMarks(id, undefined, false);
+
+    expect(answer.action).toBe('merged');
+    expect(await mergedAt(id)).not.toBeNull();
+  });
+
+  it('still marks with no commit where the repository cannot be read, which names nothing absent', async () => {
+    await repo.bind(projectId, ownerId);
+    repo.hidden = true;
+    const id = await plant({ merged: null, head: ABSENT, marked: false });
+
+    const answer = await personMarks(id, undefined, false);
+
+    expect(answer.action).toBe('merged');
   });
 });

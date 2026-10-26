@@ -90,6 +90,27 @@ describe("the Production row", () => {
     expect(screen.queryByText("Not on production")).not.toBeInTheDocument();
   });
 
+  // ISS-1300 r5 (judge-125, X1): the raw request a 404 came back on was the row's whole sentence.
+  it("folds the request behind a reason said in words under Technical details", () => {
+    const request = "GET /repos/SidCorp-co/forge/branches/main on SidCorp-co/forge returned HTTP 404";
+    render(
+      rail({
+        state: "unmeasured",
+        baseBranch: "main",
+        liveBranch: "production",
+        measuredAt: "2026-10-26T07:40:00.000Z",
+        reason: "Forge cannot read SidCorp-co/forge, and checks again once Forge can read SidCorp-co/forge again",
+        detail: `SidCorp-co/forge could not read the head of main: ${request}`,
+      }),
+    );
+    expect(screen.getByText(/^Forge cannot read SidCorp-co\/forge/)).toBeVisible();
+    const summary = screen.getByText("Technical details");
+    const detail = screen.getByText(new RegExp(request));
+    expect(detail).not.toBeVisible();
+    fireEvent.click(summary);
+    expect(detail).toBeVisible();
+  });
+
   it("says only that nothing is waiting when no waiting commit is this issue's", () => {
     render(rail({ ...measured, state: "none_waiting", unowned: [] }));
     const value = screen.getByText("Nothing waiting for master");

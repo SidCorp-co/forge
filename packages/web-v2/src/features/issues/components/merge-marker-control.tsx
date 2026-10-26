@@ -168,9 +168,19 @@ export function MergeMarkerControl({
             </Field>
             {!outsideGit && (
               <Field label={COMMIT_FIELD} hint={COMMIT_HINT}>
-                <Input
+                {/* Wraps rather than scrolls, so a whole sha shows at phone width and a refusal
+                    quoting it can be read against every digit typed (ISS-1300 r5). */}
+                <Textarea
+                  rows={2}
                   value={commit}
                   placeholder={later ? CORRECTION_PLACEHOLDER : COMMIT_PLACEHOLDER}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoComplete="off"
+                  className="resize-none break-all font-mono"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.preventDefault();
+                  }}
                   onChange={(e) => {
                     setCommit(e.target.value);
                     setRefusal(null);

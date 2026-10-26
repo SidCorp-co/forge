@@ -110,9 +110,40 @@ describe('readLiveDivergence', () => {
   it('refuses rather than comparing against an empty head', async () => {
     const c = client((path) => (path.includes('/branches/') ? { commit: {} } : { ahead_by: 0 }));
     const d = await readLiveDivergence(c, refs);
+    const why = 'SidCorp-co/sid-desk answered no commit for staging';
     expect(d).toEqual({
       ok: false,
-      reason: 'SidCorp-co/sid-desk answered no commit for staging',
+      reason: why,
+      failure: { why, repository: 'SidCorp-co/sid-desk' },
+    });
+  });
+
+  // ISS-1300 r5 (judge-125, X1): a branch head GitHub would not give is told apart the way the
+  // repository reader tells it, so the Production row can say it in a person's words.
+  it('tells a repository refusing the read from a branch it lacks', async () => {
+    // GitHub answers both with 404 on the branch; its commit lookup answers 404 and 422 apart.
+    const failing = (commitStatus: number) =>
+      client((path) => {
+        if (path.endsWith('/branches/master')) {
+          throw new GitHubReadError(404, `GET ${path} on SidCorp-co/sid-desk returned HTTP 404`);
+        }
+        if (path.endsWith('/commits/master')) {
+          throw new GitHubReadError(commitStatus, `GET ${path} returned HTTP ${commitStatus}`);
+        }
+        return heads(path);
+      });
+    const hidden = await readLiveDivergence(failing(404), refs);
+    const lacking = await readLiveDivergence(failing(422), refs);
+
+    expect(!hidden.ok && hidden.failure).toEqual({
+      why: expect.stringMatching(/branches\/master on SidCorp-co\/sid-desk returned HTTP 404/),
+      refused: true,
+      repository: 'SidCorp-co/sid-desk',
+    });
+    expect(!lacking.ok && lacking.failure).toEqual({
+      why: expect.stringMatching(/branches\/master on SidCorp-co\/sid-desk returned HTTP 404/),
+      missingBranch: 'master',
+      repository: 'SidCorp-co/sid-desk',
     });
   });
 

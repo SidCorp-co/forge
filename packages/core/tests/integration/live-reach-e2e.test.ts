@@ -72,6 +72,8 @@ vi.mock('../../src/git/remote-divergence.js', async (importOriginal) => {
 });
 
 const unbound = new Set<string>();
+/** Projects whose installation cannot see the repository: GitHub answers every read 404. */
+const hiddenFrom = new Set<string>();
 let compares = 0;
 let aheadOverride: number | null = null;
 
@@ -90,6 +92,12 @@ vi.mock('../../src/integrations/github/client.js', async (importOriginal) => {
         repo: 'sid-desk',
         fullName: 'SidCorp-co/sid-desk',
         get: async (path: string) => {
+          if (hiddenFrom.has(projectId)) {
+            throw new real.GitHubReadError(
+              404,
+              `GET ${path} on SidCorp-co/sid-desk returned HTTP 404`,
+            );
+          }
           if (path.endsWith('/branches/staging')) return { commit: { sha: STAGING } };
           if (path.endsWith('/branches/master')) return { commit: { sha: MASTER } };
           compares += 1;
@@ -271,6 +279,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await truncateAll(harness.db);
   unbound.clear();
+  hiddenFrom.clear();
   gitReads.length = 0;
   compares = 0;
   aheadOverride = null;
@@ -280,6 +289,7 @@ type Reach = {
   state: string;
   evidence?: Array<{ sha: string; via: string }>;
   reason?: string;
+  detail?: string;
 } | null;
 
 describe('a closed issue whose work never reached the live branch (ISS-1217)', () => {
@@ -367,6 +377,26 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
     ]);
     expect(pulse.work.notOnLive.total).toBe(0);
     expect(gitReads).toEqual([]);
+  });
+
+  // ISS-1300 r5 (judge-125, X1): the issue page's Production row printed the raw request.
+  it('says a repository the installation cannot see in the readiness page words, the request behind them', async () => {
+    const { user, token } = await signedIn();
+    const desk = await project(user.id, 'promote');
+    hiddenFrom.add(desk.id);
+    const row = await issue({ projectId: desk.id, userId: user.id, seq: 419 });
+
+    const reach = (await get<{ liveReach: Reach }>(`/api/issues/${row}`, token)).liveReach;
+
+    expect(reach).toMatchObject({
+      state: 'unmeasured',
+      reason:
+        "Forge cannot read SidCorp-co/sid-desk, and checks again once Forge can read SidCorp-co/sid-desk again: give the GitHub App installation behind this project's binding access to it, or bind the project to where it now lives",
+    });
+    expect(reach?.reason).not.toMatch(/GET \/repos|HTTP 404/);
+    expect(reach?.detail).toMatch(
+      /GET \/repos\/SidCorp-co\/sid-desk\/branches\/\w+ on SidCorp-co\/sid-desk returned HTTP 404/,
+    );
   });
 
   it('compares again after a push delivery for the project, and not after a review delivery', async () => {

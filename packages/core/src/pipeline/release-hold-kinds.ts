@@ -5,11 +5,15 @@
  * the comment itself are `release-hold.ts`'s.
  */
 
-import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD } from '@forge/contracts/mark-merged-words';
+import {
+  MARK_MERGED_ACTION,
+  NAME_THE_LANDED_COMMIT,
+  WHERE_IT_LANDED_FIELD,
+} from '@forge/contracts/mark-merged-words';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { landingCorrection, landingRecordName } from '../issues/landing-correction.js';
 import { type ServingReading, servingClause } from '../release-batch/serving-reading.js';
-import { shortfallSentence } from '../release-batch/shortfall-words.js';
+import { landingShortfallWords, shortfallSentence } from '../release-batch/shortfall-words.js';
 import type { RuntimeReading } from '../release-batch/weighing.js';
 import type { HoldWords, ReleaseHold } from './release-hold.js';
 
@@ -206,8 +210,11 @@ function shortfallStep(s: Shortfall): string {
       : 'answer the questions in the Decision waiting cards above';
   }
   if (s.code === 'CLOSE_REQUIRES_SHIPPED') {
-    // The panel Mark merged opens says what Where it landed takes; the step stays one short clause.
-    return `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}`;
+    // The panel Mark merged opens says what Where it landed takes; the step stays one short clause,
+    // and in git names Commit, as the banner and the landing hold do (ISS-1300 r5).
+    return s.reason === landingShortfallWords(true).reason
+      ? `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}`
+      : `use ${MARK_MERGED_ACTION} in its properties, fill in ${WHERE_IT_LANDED_FIELD} and ${NAME_THE_LANDED_COMMIT}`;
   }
   const act = s.clearsHere ?? s.clears;
   if (s.code === 'ENTRY_CRITERIA_UNMET') {

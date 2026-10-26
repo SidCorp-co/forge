@@ -131,7 +131,7 @@ function Page() {
   const marker = useMergeMarker(ISSUE);
   return (
     <div>
-      <AwaitingReleaseBanner projectId={PROJECT} issueId={ISSUE} canWrite />
+      <AwaitingReleaseBanner projectId={PROJECT} issueId={ISSUE} canRelease />
       <Thread />
       <button type="button" onClick={() => marker.mark({ target: "main" })}>
         mark

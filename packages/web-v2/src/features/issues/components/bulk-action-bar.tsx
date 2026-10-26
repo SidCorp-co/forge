@@ -24,6 +24,7 @@ import {
 } from "../derive";
 import { agentHoldsSelection, heldInSelection } from "../edit-lock";
 import { type BulkUpdate, useBulkUpdateIssues, useStatusExits } from "../hooks";
+import { askWhoReleases } from "../release-who";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 import { TransitionReasonDialog } from "./transition-reason-dialog";
@@ -57,7 +58,10 @@ function RefusedAction({
   );
 }
 
-function canBatchRelease(rows: IssueRow[]): { enabled: boolean; reason?: string } {
+function canBatchRelease(
+  rows: IssueRow[],
+  mayRelease: boolean,
+): { enabled: boolean; reason?: string; whoMay?: true } {
   if (rows.length === 0) return { enabled: false };
   const notAtGate = rows.filter((r) => r.status !== BATCH_RELEASE_GATE);
   if (notAtGate.length > 0) {
@@ -67,6 +71,8 @@ function canBatchRelease(rows: IssueRow[]): { enabled: boolean; reason?: string 
   if (claimed.length > 0) {
     return { enabled: false, reason: `${claimed.length} issue${claimed.length > 1 ? "s are" : " is"} already claimed by a batch release` };
   }
+  // Said beside the button, not only in its title, so a touch or keyboard reader gets it too.
+  if (!mayRelease) return { enabled: false, reason: askWhoReleases("them"), whoMay: true };
   return { enabled: true };
 }
 
@@ -74,8 +80,11 @@ export function BulkActionBar({
   projectId,
   selectedRows,
   onCleared,
+  canRelease,
 }: {
   projectId: string;
+  /** Whether the reader holds the role the release door takes (ISS-1300 r5). */
+  canRelease: boolean;
   /** The currently-selected rows (page-scoped). */
   selectedRows: IssueRow[];
   /** Clear the selection — called on Clear and after a successful apply. */
@@ -86,6 +95,7 @@ export function BulkActionBar({
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [holdOpen, setHoldOpen] = useState(false);
   const statusReasonId = useId();
+  const releaseReasonId = useId();
   const count = selectedRows.length;
   if (count === 0) return null;
 
@@ -97,7 +107,7 @@ export function BulkActionBar({
     ? "Loading the status moves…"
     : exitsFailure;
   const noCommonStatus = statusTargets.length === 0;
-  const batchRelease = canBatchRelease(selectedRows);
+  const batchRelease = canBatchRelease(selectedRows, canRelease);
 
   const run = (update: BulkUpdate) =>
     bulk.mutate({ ids, update }, { onSuccess: onCleared });
@@ -170,10 +180,16 @@ export function BulkActionBar({
             size="sm"
             disabled={!batchRelease.enabled || bulk.isPending}
             title={batchRelease.reason ?? "Release selected issues as a batch"}
+            aria-describedby={batchRelease.whoMay ? releaseReasonId : undefined}
             onClick={() => setBatchDialogOpen(true)}
           >
             Batch release
           </Button>
+          {batchRelease.whoMay && (
+            <span id={releaseReasonId} className="fg-body-sm text-subtle">
+              {batchRelease.reason}
+            </span>
+          )}
           <Button
             variant="ghost"
             size="sm"

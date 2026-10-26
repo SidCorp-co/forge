@@ -38,6 +38,7 @@ import {
   type MergeRecord,
   mergeMarkKindOf,
   NAME_THE_COMMIT,
+  namesNoCommitRefusal,
   observedMergeForIssue,
   readMergeColumns,
   recordIssueMerge,
@@ -113,12 +114,14 @@ export class MergeMarkerError extends Error {
       | 'PROJECT_KIND_UNKNOWN'
       | 'LANDING_SHAPE_MOVED'
       | 'LANDING_NOT_DESCENDANT'
+      | 'LANDING_COMMIT_REQUIRED'
       | Exclude<CommitLanding, { ok: true }>['code'],
     message: string,
     readonly details?: Record<string, unknown>,
   ) {
-    // A person reads seven characters of a commit; `details` keeps the whole sha (ISS-1421).
-    super(shortenCommits(message));
+    // A person reads seven characters of a commit; `details` keeps the whole sha (ISS-1421). A
+    // commit the repository lacks is quoted as typed: seven or twelve can equal a real one's (ISS-1300 r5).
+    super(code === 'COMMIT_NOT_IN_REPOSITORY' ? message : shortenCommits(message));
     this.name = 'MergeMarkerError';
   }
 }
@@ -367,7 +370,6 @@ export async function applyMergeMarker(args: {
   let namedUnread: { commit: string; why: string } | null = null;
   /** A person's commit stamped as the landing, where this call stamped one. */
   let stated: Stated | null = null;
-  let blankObserved: { commitSha: string } | null = null;
   if (args.op === 'mark') {
     const lane = await markLane(before);
     const shape = lane.shape;
@@ -382,10 +384,18 @@ export async function applyMergeMarker(args: {
       if (evidence?.kind === 'unverified') unverified = evidence;
     }
     const observed = await observedMergeForIssue(db, before.id);
-    blankObserved = observed;
     const landing = args.landing ?? null;
     const refused = landingMarkRefusal({ lane, landing, observed: observed !== null, door });
     if (refused) throw new MergeMarkerError(refused.code, refused.detail);
+    // A first mark naming no commit over a landing the repository lacks would leave the next
+    // sweep weighing it, so it is refused naming the act that clears it (ISS-1300 r5).
+    const absent = shape === 'git' && !args.commit && !observed && !before.mergedAt;
+    const lacking = absent ? await commitWouldStand(before, args.actor.agency) : null;
+    if (lacking) {
+      const { commit, from: record, repository } = lacking;
+      const details = { commit, record, repository };
+      throw new MergeMarkerError('LANDING_COMMIT_REQUIRED', namesNoCommitRefusal(lacking), details);
+    }
     // Every read is taken before the first write, so a refusal leaves the row as it found it.
     const recorded =
       shape === 'git' && !fromRepository && !unverified
@@ -479,7 +489,7 @@ export async function applyMergeMarker(args: {
   const repeated = args.op === 'mark' && !stampResult.wrote;
   const correctable =
     repeated && !args.commit && !later && !namedUnread && !stampResult.landing
-      ? await commitWouldStand(before, args.actor.agency, blankObserved)
+      ? await commitWouldStand(before, args.actor.agency)
       : null;
 
   // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.

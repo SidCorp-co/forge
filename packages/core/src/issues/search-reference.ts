@@ -139,6 +139,8 @@ export const liveReachSchema = z.union([
     liveBranch: z.string(),
     measuredAt: z.string().nullable(),
     reason: z.string(),
+    /** The read the reason was taken from, where the reason is said in a person's words. */
+    detail: z.string().optional(),
   }),
 ]);
 

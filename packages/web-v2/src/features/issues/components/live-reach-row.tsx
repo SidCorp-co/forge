@@ -77,6 +77,13 @@ export function LiveReachValue({ reach }: { reach: LiveReach }) {
     <div className="flex flex-col items-end gap-1">
       <Badge tone="amber">Not measured</Badge>
       <span className="fg-caption">{reach.reason}</span>
+      {reach.detail && (
+        // The request the reason was read from, for whoever reports it, as the readiness page folds it.
+        <details className="fg-caption text-muted self-stretch text-right">
+          <summary className="cursor-pointer">Technical details</summary>
+          <p className="mt-1 break-words text-left font-mono [overflow-wrap:anywhere]">{reach.detail}</p>
+        </details>
+      )}
     </div>
   );
 }

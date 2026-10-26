@@ -15,7 +15,7 @@ import {
   saying,
 } from '../projects/repository-reader.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
-import { absentCommit, checkStep, shortCommit, withReason } from './merge-record.js';
+import { checkStep, shortCommit, withReason } from './merge-record.js';
 
 export type CommitLandingRefusalCode =
   | 'COMMIT_NOT_IN_REPOSITORY'
@@ -92,7 +92,8 @@ function uncheckedCommit(
   return withReason(said, why);
 }
 
-/** A commit the repository does not hold, in our words, naming the repository and what was typed. */
+/** A commit the repository does not hold, in our words, naming the repository and the whole value
+ *  typed: a typo past the twelfth digit reads as its real neighbour otherwise (ISS-1300 r5). */
 function notInRepository(
   commit: string,
   looked: { detail: string; details: Record<string, unknown> },
@@ -100,8 +101,8 @@ function notInRepository(
   const where =
     typeof looked.details.repository === 'string' ? ` ${looked.details.repository}` : '';
   const said = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(commit)
-    ? `The repository${where} holds no commit ${absentCommit(commit)}. Mark it with the commit the work landed at.`
-    : `The repository${where} resolves no single commit from ${commit.length < 40 ? commit : shortCommit(commit)}. Mark it with the full sha the work landed at.`;
+    ? `The repository${where} holds no commit ${commit}. Mark it with the commit the work landed at.`
+    : `The repository${where} resolves no single commit from ${commit}. Mark it with the full sha the work landed at.`;
   // Only an overlong name's reason says more than the sentence above does.
   return {
     detail: withReason(said, /hex digits/.test(looked.detail) ? looked.detail : null),

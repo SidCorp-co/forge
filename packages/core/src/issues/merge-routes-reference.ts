@@ -41,6 +41,8 @@ const MARK_REFUSALS = {
   COMMIT_UNVERIFIED: 'Forge cannot read the repository to check the commit',
   LANDING_NOT_DESCENDANT:
     "the commit does not descend from the one the issue's mark holds, so it is a different landing",
+  LANDING_COMMIT_REQUIRED:
+    "a person's first mark named no commit, and the landing the issue records is a commit its repository does not hold",
 };
 
 const describeMark = (summary: string, description: string) =>

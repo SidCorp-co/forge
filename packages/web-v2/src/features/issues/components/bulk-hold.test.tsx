@@ -35,14 +35,14 @@ const EXITS = {
 const row = (over: Partial<IssueRow>): IssueRow =>
   ({ id: "i1", issueId: "ISS-1", displayId: "ISS-1", title: "t", status: "open", priority: "medium", ...over }) as IssueRow;
 
-function bar(rows: IssueRow[], onCleared = vi.fn()) {
+function bar(rows: IssueRow[], onCleared = vi.fn(), canRelease = true) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrap = (ui: ReactNode) => (
     <QueryClientProvider client={qc}>
       <ToastProvider>{ui}</ToastProvider>
     </QueryClientProvider>
   );
-  render(wrap(<BulkActionBar projectId="p1" selectedRows={rows} onCleared={onCleared} />));
+  render(wrap(<BulkActionBar projectId="p1" selectedRows={rows} onCleared={onCleared} canRelease={canRelease} />));
   return { onCleared };
 }
 
@@ -142,5 +142,31 @@ describe("the bulk bar's On hold", () => {
       ids: ["a", "b"],
       update: { kind: "status", toStatus: "dropped" },
     });
+  });
+});
+
+// ISS-1300 r5 (judge-125, X2): the release door takes a project admin; the bar offers Batch release
+// to nobody else, and says who may where it would have been pressed.
+describe("Batch release on the bulk bar", () => {
+  const waiting = [row({ status: "awaiting_release" }), row({ id: "i2", status: "awaiting_release" })];
+
+  it("is offered to a reader who may release", () => {
+    bar(waiting);
+    expect(screen.getByRole("button", { name: "Batch release" })).not.toBeDisabled();
+  });
+
+  it("is held from a reader who may not, naming who may", () => {
+    bar(waiting, vi.fn(), false);
+    const button = screen.getByRole("button", { name: "Batch release" });
+    expect(button).toBeDisabled();
+    const said = "Only an admin of this project can release them, so ask one of them.";
+    expect(button).toHaveAttribute("title", said);
+    expect(screen.getByText(said)).toBeVisible();
+    expect(button).toHaveAccessibleDescription(said);
+  });
+
+  it("says nothing about who may where the selection could not be released by anyone", () => {
+    bar([row({ status: "open" })], vi.fn(), false);
+    expect(screen.queryByText(/Only an admin of this project/)).not.toBeInTheDocument();
   });
 });

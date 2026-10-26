@@ -4,7 +4,14 @@ import { db } from '../db/client.js';
 import type { ActorAgency } from './actor-agency.js';
 import { resolveMarkCommit } from './commit-landing.js';
 import type { LandingShape } from './landing-evidence.js';
-import { type MergeRecord, readMergeColumns, recordIssueMerge } from './merge-record.js';
+import {
+  type AbsentRecord,
+  type MergeRecord,
+  readMergeColumns,
+  recordIssueMerge,
+} from './merge-record.js';
+import { findIssueById } from './read-service.js';
+import { issueIdentities, type LandingRecord } from './verdict-standing.js';
 
 /** A person's commit the repository holds, and the held commit it replaces, if any. */
 export interface Stated {
@@ -43,16 +50,34 @@ export async function statedLanding(args: {
   return { ...said, supersedes: held };
 }
 
-/** The landing a person's Commit would replace on a blank repeat: one the repository lacks (ISS-1300 r4). */
+export interface AbsentLanding extends AbsentRecord {
+  readonly from: LandingRecord;
+}
+
+/**
+ * The commit the weighing reads as this issue's landing (`issueIdentities`: the merge mark, else
+ * the landing record), where the repository was read and lacks it. The mark's answers read it here,
+ * so they and the hold always name one commit and one act (ISS-1300 r5).
+ */
+export async function recordedAbsent(issue: {
+  id: string;
+  projectId: string;
+}): Promise<AbsentLanding | null> {
+  const row = await findIssueById(issue.id);
+  const { source, from } = row ? issueIdentities(row) : { source: null, from: undefined };
+  if (!source || !from) return null;
+  const read = await resolveMarkCommit({ projectId: issue.projectId, commit: source });
+  if (read.ok || read.code !== 'COMMIT_NOT_IN_REPOSITORY') return null;
+  const repository = typeof read.details.repository === 'string' ? read.details.repository : null;
+  return { commit: source, from, repository };
+}
+
+/** The landing a person's Commit would replace on a blank repeat: one the repository lacks. */
 export async function commitWouldStand(
   issue: { id: string; projectId: string },
   agency: ActorAgency,
-  observed: { commitSha: string } | null,
-): Promise<string | null> {
-  if (agency !== 'human') return null;
-  const held = (await readMergeColumns(db, issue.id)).commitSha?.trim() || null;
-  const forge = held ?? observed?.commitSha ?? null;
-  return forge && (await absentFrom(issue.projectId, forge)) ? forge : null;
+): Promise<AbsentLanding | null> {
+  return agency === 'human' ? recordedAbsent(issue) : null;
 }
 
 /** True where `commit` is the stated commit this row already keeps. */

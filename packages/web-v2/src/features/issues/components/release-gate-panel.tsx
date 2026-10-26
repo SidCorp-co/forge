@@ -19,6 +19,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useReleaseRoster } from "../hooks";
 import type { ReleaseRosterEntry } from "../api";
+import { askWhoReleases } from "../release-who";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 
 /** Flush with the list under it: hairlines above and below, no card surface (the owner's flat rule). */
@@ -58,7 +59,16 @@ export function whatReleases(nextCutAt: string | null, automatic: boolean): stri
  * could not close is shown with what clears it rather than as selectable, so
  * a press never hands it straight back (ISS-1337).
  */
-export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug: string }) {
+export function ReleaseGatePanel({
+  projectId,
+  slug,
+  canRelease,
+}: {
+  projectId: string;
+  slug: string;
+  /** Whether the reader holds the role the release door takes; anyone else reads who may (ISS-1300 r5). */
+  canRelease: boolean;
+}) {
   const { data, isLoading, isError, error, refetch } = useReleaseRoster(projectId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -128,19 +138,23 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
             {oldest ? ` · oldest merged ${formatRelativeTime(oldest)}` : ""}
           </p>
         </div>
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={chosen.length === 0}
-          title={
-            chosen.length === 0
-              ? "Select at least one issue to release"
-              : "Merge, deploy and close the selected issues"
-          }
-          onClick={() => setConfirmOpen(true)}
-        >
-          Release {chosen.length > 0 ? `${chosen.length} ` : ""}now
-        </Button>
+        {canRelease ? (
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={chosen.length === 0}
+            title={
+              chosen.length === 0
+                ? "Select at least one issue to release"
+                : "Merge, deploy and close the selected issues"
+            }
+            onClick={() => setConfirmOpen(true)}
+          >
+            Release {chosen.length > 0 ? `${chosen.length} ` : ""}now
+          </Button>
+        ) : (
+          <p className="fg-caption text-muted">{askWhoReleases("these issues")}</p>
+        )}
       </div>
 
       <div>

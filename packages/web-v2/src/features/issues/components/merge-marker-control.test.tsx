@@ -71,6 +71,16 @@ describe("MergeMarkerControl", () => {
 
   // ISS-1300 r3 shots: at 390px the placeholder was cut at "checked a", hiding that the commit is
   // checked. The check is said under the field, and the example is short enough to read whole.
+  // ISS-1300 r5 (judge-125, N1): at 390 a one-line field hid the digit a refusal was about.
+  it("wraps Commit rather than scrolling it, so a whole sha shows at any width", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt="2026-10-20T09:00:00Z" landingShape="git" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark a later merge" }));
+    const field = screen.getByRole("textbox", { name: /^Commit/ });
+    expect(field.tagName).toBe("TEXTAREA");
+    expect(field).toHaveClass("break-all", "font-mono");
+    expect(fireEvent.keyDown(field, { key: "Enter" })).toBe(false);
+  });
+
   it.each([null, "2026-10-20T09:00:00Z"])("says under Commit that it is checked (mergedAt %s)", (mergedAt) => {
     render(<MergeMarkerControl issueId="i1" mergedAt={mergedAt} landingShape="git" />);
     fireEvent.click(screen.getByRole("button", { name: mergedAt ? "Mark a later merge" : "Mark merged" }));

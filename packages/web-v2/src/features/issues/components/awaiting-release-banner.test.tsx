@@ -53,7 +53,7 @@ function state(
 }
 
 const renderBanner = (canWrite = true) =>
-  render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite={canWrite} />);
+  render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canRelease={canWrite} />);
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -74,7 +74,7 @@ describe("AwaitingReleaseBanner", () => {
   // ISS-1421 r14 — judge-61 read "Merged into main" over a mark that was only a claim naming no commit.
   it("says a mark that is only a claim is claimed, never merged into the base branch", () => {
     state({});
-    render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite mergeMark="asserted" />);
+    render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canRelease mergeMark="asserted" />);
     expect(screen.getByText(/Claimed as merged 3h ago, naming no commit — not shipped yet\./)).toBeInTheDocument();
     expect(screen.queryByText(/Merged into/)).not.toBeInTheDocument();
   });
@@ -84,12 +84,12 @@ describe("AwaitingReleaseBanner", () => {
     state({});
     const sha = "0d018a9ac5897cd4ef3fe299f9c13e4c252162e2";
     const { unmount } = render(
-      <AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite mergeMark="asserted" mergedCommitSha={sha} />,
+      <AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canRelease mergeMark="asserted" mergedCommitSha={sha} />,
     );
     expect(screen.getByText(/Claimed as merged at 0d018a9 3h ago, a commit the repository holds/)).toBeInTheDocument();
     unmount();
     render(
-      <AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite mergeMark="asserted" mergedClaimedCommit={sha} />,
+      <AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canRelease mergeMark="asserted" mergedClaimedCommit={sha} />,
     );
     expect(screen.getByText(/at 0d018a9 3h ago, not checked against the repository/)).toBeInTheDocument();
     expect(screen.queryByText(/naming no commit/)).not.toBeInTheDocument();
@@ -97,7 +97,7 @@ describe("AwaitingReleaseBanner", () => {
 
   it("names a merge Forge saw as merged into the base branch", () => {
     state({});
-    render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite mergeMark="observed" />);
+    render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canRelease mergeMark="observed" />);
     expect(screen.getByText(/Merged into main 3h ago/)).toBeInTheDocument();
   });
 
@@ -156,9 +156,9 @@ describe("AwaitingReleaseBanner — an issue a release could not close", () => {
   const NOT_MERGED = {
     code: "CLOSE_REQUIRES_SHIPPED",
     reason: "not marked merged",
-    clears: "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
-    said: "It is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
-    saidHere: "It is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
+    clears: "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
+    said: "It is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
+    saidHere: "It is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
   };
 
   it("offers no Release now and says what the close is refused for and what clears it", () => {
@@ -202,10 +202,18 @@ describe("AwaitingReleaseBanner — an issue a release could not close", () => {
     expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
 
     state({}, null, []);
-    rerender(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite />);
+    rerender(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canRelease />);
     fireEvent.click(screen.getByRole("button", { name: /release now/i }));
 
     expect(release).toHaveBeenCalledWith({ issueIds: ["iss-1"] });
+  });
+
+  // ISS-1300 r5 (judge-125, X2): the release door takes a project admin; anyone else is told who may.
+  it("names who may release where the reader may not, and offers no button that would be refused", () => {
+    state({}, null, []);
+    render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canRelease={false} askWhoReleases />);
+    expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Only an admin of this project can release it, so ask one of them\./)).toBeInTheDocument();
   });
 
   it("still offers Release now on an issue whose close stands", () => {

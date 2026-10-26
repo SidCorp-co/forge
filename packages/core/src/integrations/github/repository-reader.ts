@@ -175,7 +175,7 @@ const statusOf = (err: unknown): number | null =>
 
 /** A branch head GitHub would not give: a branch a repository it shows lacks (422, as for a commit),
  *  or the repository refusing the read; anything else is unread for a reason of its own. */
-function headFailure(err: unknown, repository: string, branch: string): ReadFailure {
+export function headFailure(err: unknown, repository: string, branch: string): ReadFailure {
   const failed = `${repository} could not read the head of ${branch}: ${why(err)}`;
   if (statusOf(err) === COMMIT_UNKNOWN) return { why: failed, missingBranch: branch };
   return { why: failed, ...refusedBy(err, [401, 403, REPOSITORY_HIDDEN]) };

@@ -140,12 +140,15 @@ interface IssuesListViewProps {
    *  (transition / priority / complexity) are hidden. Optional, defaults
    *  true so other callers keep their behaviour. */
   canWrite?: boolean;
+  /** Whether the reader holds the role the release door takes; nobody else is offered a release. */
+  canRelease?: boolean;
 }
 
 export function IssuesListView({
   scope,
   onNewIssue,
   canWrite = true,
+  canRelease = false,
 }: IssuesListViewProps) {
   const { projectId, slug } = scope;
   const pathname = usePathname() || `/projects/${slug}/issues`;
@@ -706,12 +709,17 @@ export function IssuesListView({
 
       {filter === "awaiting_release" && (
         <div className="mb-4">
-          <ReleaseGatePanel projectId={projectId} slug={slug} />
+          <ReleaseGatePanel projectId={projectId} slug={slug} canRelease={canRelease} />
         </div>
       )}
 
       {bulkEnabled && (
-        <BulkActionBar projectId={projectId} selectedRows={selectedRows} onCleared={clearSelection} />
+        <BulkActionBar
+          projectId={projectId}
+          selectedRows={selectedRows}
+          onCleared={clearSelection}
+          canRelease={canRelease}
+        />
       )}
 
       {issuesQ.isLoading && (
