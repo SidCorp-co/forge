@@ -1,1 +1,1 @@
-**A project with no source webhook reads its checks and fixes its change requests through Forge.** Commit and branch checks read live; a change request is edited, closed or re-read by number; another project's issue key links nothing here.
+**A project with no source webhook reads its checks and fixes its change requests through Forge.** Commit and branch checks are read live, and a change request is edited, closed or re-read onto Forge's record by its number.
