@@ -10,8 +10,13 @@
  * with no process behind it, and ISS-410 queued behind it the whole time.
  *
  * So an ended run returns each issue it left there to the status it held when
- * the run opened. A landing the run recorded does not keep it: recording a merge
- * moves no status, and the run that claims it next moves it to `awaiting_release`. That floor bounds what this module can do, in both directions: it
+ * the run opened. A landing recorded while the run held it keeps it where it
+ * stands: a run's end hands back its lease and nothing else, and it never moves
+ * an issue back past a merge mark (coordinator ruling 2026-10-26, adminhub-fe
+ * ISS-50: merged at 8ab74c9f, its builder's run ended 32 s later and returned
+ * it to `open`). The return is skipped and the reason recorded on the issue
+ * (`issue.handBackKept`); moving it on to `awaiting_release` is whoever claims
+ * it next. That floor bounds what this module can do, in both directions: it
  * can never put an issue behind the status it was standing on at claim time,
  * and it can never lift one off a status that was already stuck — a master may
  * open a run over an issue already `in_progress`, and the floor is then the defect.
@@ -34,10 +39,11 @@ import {
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
-import { transitionIssueStatus } from '../issues/index.js';
+import { safeRecordActivity, transitionIssueStatus } from '../issues/index.js';
 import { canonicalIssueKey, seqOfCanonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
+import { type LandedWork, landedWorkStands } from '../pipeline/index.js';
 
 interface ReturnedIssue {
   issueKey: string;
@@ -70,6 +76,38 @@ async function readRun(runId: string): Promise<RunRow | null> {
     keys: (row.keys ?? []) as string[],
     statuses: (row.statuses ?? {}) as Record<string, string>,
   };
+}
+
+/**
+ * Landed work stays where it stands, and the issue says why: the return would undo a landing, which
+ * no run's end may do. Landed is the reconciler's own reading (`pipeline/wedge-landed.ts:
+ * landedWorkStands`): a recorded mark the issue was not reopened after.
+ */
+async function keepLanded(
+  runId: string,
+  issue: { id: string; status: string },
+  landed: LandedWork,
+  args: { key: string; target: IssueStatus; reason: string; actor: TransitionActor },
+): Promise<void> {
+  const at = landed.commit ? ` at ${landed.commit}` : '';
+  const why = `${args.reason}, and its work landed${at}, so it stays at ${issue.status} rather than going back to ${args.target}: a run's end hands back its lease and never undoes a landing`;
+  logger.info(
+    { runId, issueKey: args.key, status: issue.status, mergedAt: landed.mergedAt },
+    'run-issue-return: kept landed work where it stands',
+  );
+  await safeRecordActivity({
+    issueId: issue.id,
+    actor: { type: 'device', id: args.actor.id, agency: 'agent' },
+    action: 'issue.handBackKept',
+    payload: {
+      runId,
+      status: issue.status,
+      wouldReturnTo: args.target,
+      mergedAt: landed.mergedAt.toISOString(),
+      mergedCommitSha: landed.commit,
+      reason: why,
+    },
+  });
 }
 
 /**
@@ -116,6 +154,7 @@ export async function returnIssuesForRun(
       issSeq: issues.issSeq,
       status: issues.status,
       reopenCount: issues.reopenCount,
+      mergedAt: issues.mergedAt,
     })
     .from(issues)
     .where(and(eq(issues.projectId, run.projectId), inArray(issues.issSeq, seqs)));
@@ -172,6 +211,11 @@ export async function returnIssuesForRun(
         { runId, issueKey: key, status: issue.status },
         'run-issue-return: left a human park alone',
       );
+      continue;
+    }
+    const landed = issue.mergedAt ? await landedWorkStands(db, issue.id) : null;
+    if (landed) {
+      await keepLanded(runId, issue, landed, { key, target, reason: opts.reason, actor });
       continue;
     }
     try {
