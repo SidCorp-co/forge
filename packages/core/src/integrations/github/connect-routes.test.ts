@@ -117,6 +117,7 @@ const store = vi.hoisted(() => ({
   listBindingsForConnection: vi.fn(async (): Promise<unknown[]> => []),
   listBindingsForProject: vi.fn(async (): Promise<unknown[]> => []),
   removedConnectionBoundTo: vi.fn(async (): Promise<unknown> => null),
+  switchedOnThenNewest: () => 0,
   updateBinding: vi.fn(async () => ({})),
   updateConnection: vi.fn(async (id: string) => ({ id })),
 }));
@@ -162,7 +163,7 @@ vi.mock('./connect.js', async (importOriginal) => ({
 vi.mock('./install-resolve.js', () => ({ findBindingOwningInstallation: vi.fn(async () => null) }));
 
 const { githubConnectRoutes, githubCallbackRoutes } = await import('./connect-routes.js');
-const { signConnectState } = await import('./connect.js');
+const { signConnectState, verifyConnectState } = await import('./connect.js');
 const { errorHandler } = await import('../../middleware/error.js');
 const { requestId } = await import('../../middleware/request-id.js');
 
@@ -482,7 +483,7 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
 
   // ISS-1421 r32: a GitHub binding switched on since, beside the removed one, keeps it off. The index
   // refuses the switch-on, whenever the other was switched on, and the rest is written without it.
-  it('keeps the removed binding off and sends nobody to install where the index refuses switching it on', async () => {
+  it('keeps the removed binding off where the index refuses switching it on, and sends the install to it', async () => {
     const old = { id: 'binding-old', config: {} };
     const removed = { binding: old, connection: { id: 'c-r' } };
     store.removedConnectionBoundTo.mockResolvedValueOnce(removed);
@@ -499,10 +500,11 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
     const res = await callback(state);
 
     const written = { config: {}, integrationSecret: 'whsec_x' };
-    expect([res.status, (await bodyOf(res)).message]).toEqual([
-      409,
-      'GitHub was connected to this project while this App was being created, so the App is kept off. Disconnect GitHub from this project, then switch this App on.',
-    ]);
+    expect(res.status).toBe(302);
+    const carried = new URL(res.headers.get('location') as string).searchParams.get('state');
+    expect(verifyConnectState(process.env.JWT_SECRET as string, carried ?? '')?.bindingId).toBe(
+      'binding-old',
+    );
     const on = { ...written, active: true };
     expect(store.updateBinding).toHaveBeenNthCalledWith(1, 'binding-old', on);
     expect(store.updateBinding).toHaveBeenNthCalledWith(2, 'binding-old', written);

@@ -49,6 +49,7 @@ import {
   listBindingsForConnection,
   listBindingsForProject,
   removedConnectionBoundTo,
+  switchedOnThenNewest,
   updateBinding,
   updateConnection,
 } from '../store.js';
@@ -259,20 +260,20 @@ githubConnectRoutes.post(
  */
 const GITHUB_ALREADY_CONNECTED =
   'GitHub is already connected to this project. Disconnect it from this project before creating another GitHub App.';
-const GITHUB_CONNECTED_MEANWHILE =
-  'GitHub was connected to this project while this App was being created, so the App is kept off. Disconnect GitHub from this project, then switch this App on.';
 
 async function assertRemovedConnectionTakesTheApp(
   projectId: string,
   owner: { ownerType: 'user' | 'org'; ownerId: string },
   userId: string,
 ): Promise<void> {
-  const removed = (await listBindingsForProject(projectId)).find(
-    (p) =>
-      p.binding.provider === 'github' &&
-      p.binding.role === 'service' &&
-      isRemovedConnection(p.connection),
-  );
+  const removed = (await listBindingsForProject(projectId))
+    .filter(
+      (p) =>
+        p.binding.provider === 'github' &&
+        p.binding.role === 'service' &&
+        isRemovedConnection(p.connection),
+    )
+    .sort(switchedOnThenNewest)[0];
   if (!removed) return;
   const { ownerType, ownerId } = removed.connection;
   if (ownerType === owner.ownerType && ownerId === owner.ownerId) return;
@@ -461,9 +462,9 @@ async function reattach(
   // Every binding of the connection takes the new App's webhook secret and loses the old App's
   // installation, which is not the new App's: the install step records the new one on each of them.
   // Each keeps its own switch but the one this install was run from, which is turned on.
-  // A binding switched on since, beside it, keeps this one off: the index refuses the switch-on, the
-  // rest is written without it, and nobody is sent on to install onto the other (ISS-1421 r32).
-  let keptOff = false;
+  // A binding switched on since, beside it, keeps this one off: the index refuses the switch-on and
+  // the rest is written without it; the install still lands here, by the binding its state names
+  // (ISS-1421 r32).
   for (const { binding } of await listBindingsForConnection(removed.connection.id)) {
     const { installationId: _old, ...config } = binding.config as Record<string, unknown>;
     const patch = { config, integrationSecret: next.webhookSecret };
@@ -474,10 +475,8 @@ async function reattach(
     await updateBinding(binding.id, { ...patch, active: true }).catch(async (err: unknown) => {
       if (!isUniqueViolation(err)) throw err;
       await updateBinding(binding.id, patch);
-      keptOff = true;
     });
   }
-  if (keptOff) throw alreadyExists(GITHUB_CONNECTED_MEANWHILE);
   return { id: updated?.id ?? removed.connection.id };
 }
 

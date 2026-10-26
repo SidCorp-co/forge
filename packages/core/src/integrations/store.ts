@@ -415,8 +415,15 @@ export async function removedConnectionBoundTo(
         eq(integrationConnections.ownerId, owner.ownerId),
       ),
     )
+    .orderBy(desc(integrationBindings.active), desc(integrationBindings.createdAt))
     .limit(1);
   return pair ?? null;
+}
+
+/** The order a removed GitHub connection is chosen in: the binding switched on, then the newest. */
+export function switchedOnThenNewest(a: BindingWithConnection, b: BindingWithConnection): number {
+  if (a.binding.active !== b.binding.active) return a.binding.active ? -1 : 1;
+  return b.binding.createdAt.getTime() - a.binding.createdAt.getTime();
 }
 
 export async function softDeleteBinding(id: string): Promise<void> {

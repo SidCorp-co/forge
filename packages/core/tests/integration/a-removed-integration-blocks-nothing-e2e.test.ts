@@ -250,3 +250,37 @@ describe('starting a GitHub App on a project', () => {
     expect([started.status, started.body.code]).toEqual([409, 'REMOVED_CONNECTION_OTHER_OWNER']);
   });
 });
+
+// Whole-set review: two removed GitHub connections of one owner bound to the project, one binding
+// switched off and the other on; the App flow takes the one switched on back.
+describe('choosing which removed GitHub connection a new App takes', () => {
+  it('takes the binding switched on, though an older switched-off one stands beside it', async () => {
+    const store = await import('../../src/integrations/store.js');
+    const removed = async (active: boolean) => {
+      const connection = await store.createConnection({
+        ownerType: 'user',
+        ownerId,
+        provider: 'github',
+        displayName: `removed ${active}`,
+        config: {},
+        secrets: { appId: '1', privateKey: 'k', webhookSecret: 'scratch-hook' },
+      });
+      const binding = await store.createBinding({
+        connectionId: connection.id,
+        projectId,
+        provider: 'github',
+        role: 'service',
+      });
+      await store.updateBinding(binding.id, { active });
+      await store.softDeleteConnection(connection.id);
+      return binding.id;
+    };
+    await removed(false);
+    const on = await removed(true);
+    const chosen = await store.removedConnectionBoundTo(projectId, 'github', {
+      ownerType: 'user',
+      ownerId,
+    });
+    expect(chosen?.binding.id).toBe(on);
+  });
+});
