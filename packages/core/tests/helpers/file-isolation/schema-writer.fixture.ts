@@ -16,5 +16,7 @@ afterAll(async () => {
 it('creates a table in its shared slot database without declaring it', async () => {
   await t.client`CREATE TABLE isolation_probe (v text NOT NULL)`;
   await t.client`ALTER SEQUENCE drizzle.__drizzle_migrations_id_seq INCREMENT BY 7`;
+  // No table and no column: a rule a later file's insert would vanish into.
+  await t.client`CREATE RULE isolation_swallow AS ON INSERT TO admin_thresholds DO INSTEAD NOTHING`;
   leave('schema-writer-db', await databaseOf(t.client));
 });

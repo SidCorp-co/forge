@@ -1,6 +1,7 @@
 import { relative } from 'node:path';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres, { type Sql } from 'postgres';
+import postgres, { type Sql, type TransactionSql } from 'postgres';
 import { expect } from 'vitest';
 import type { TestDatabase } from './db.js';
 import { ownDbName, retireScratchDb, slotRefusal, workerDbName } from './scratch-db.js';
@@ -12,8 +13,8 @@ import { truncateAll } from './truncate.js';
  * rows the template seeds and the sequences' values, which is what a reset puts back.
  */
 interface SlotRecord {
-  v: 1;
-  schema: Record<string, string>;
+  v: 2;
+  schema: { hash: string; objects: string };
   seed: Record<string, unknown[]>;
   sequences: Record<string, string | null>;
   holder: string;
@@ -26,9 +27,15 @@ const quiet = { onnotice: () => {} };
 
 /**
  * Schemas the application creates when a file starts the queue (`src/queue/boss.ts`), not by
- * migration: runtime state, so the digest leaves them out and the reset drops them.
+ * migration: runtime state, so the digest and the reset both drop them first.
  */
 const RUNTIME_SCHEMAS = ['pgboss', 'pgboss_v10'];
+
+async function dropRuntimeSchemas(client: Sql): Promise<void> {
+  await client.unsafe(
+    `DROP SCHEMA IF EXISTS ${RUNTIME_SCHEMAS.map((n) => `"${n}"`).join(', ')} CASCADE`,
+  );
+}
 
 /** The test file this process is running, as the path a reader of a refusal would open. */
 function currentFile(): string {
@@ -47,77 +54,231 @@ function literal(text: string): string {
 }
 
 /**
- * One line per schema object of this database, mapped to a digest of its definition. Rows are not
- * in it; everything a migration could write is: relations with their columns, constraints, indexes,
- * triggers, policies and grants, functions, enums and domains, extensions, schemas, the database's
- * own settings, and how many migrations it has applied.
+ * Catalog columns that move by use rather than by DDL: storage, planner statistics, freeze
+ * horizons, and the `relhas*` flags vacuum clears lazily (the rows they summarise are read anyway).
  */
-export async function schemaDigest(url: string): Promise<Record<string, string>> {
-  // A connection of its own, so nothing a test set on its sessions changes how a definition reads.
+const MOVES_BY_USE: Record<string, string[]> = {
+  pg_class: [
+    'relfilenode',
+    'relpages',
+    'reltuples',
+    'relallvisible',
+    'relallfrozen',
+    'relfrozenxid',
+    'relminmxid',
+    'relhasindex',
+    'relhasrules',
+    'relhastriggers',
+    'relhassubclass',
+  ],
+};
+
+/**
+ * Catalogs whose rows are data rather than schema: what ANALYZE writes, and large objects, which
+ * the reset removes as it removes rows.
+ */
+const DATA_CATALOGS = [
+  'pg_statistic',
+  'pg_statistic_ext_data',
+  'pg_largeobject',
+  'pg_largeobject_metadata',
+];
+
+/**
+ * For a catalog with no `oid` of its own, the object a row belongs to — its catalog and its oid —
+ * and what the row is of that object. A catalog neither here nor carrying an `oid` is digested
+ * whole, under its own name, so a catalog a later Postgres adds is still read.
+ */
+const BELONGS_TO: Record<string, { cls: string; obj: string; what: string }> = {
+  pg_attribute: { cls: "'pg_class'::regclass", obj: 'attrelid', what: 'columns of ' },
+  pg_index: { cls: "'pg_class'::regclass", obj: 'indexrelid', what: '' },
+  pg_inherits: { cls: "'pg_class'::regclass", obj: 'inhrelid', what: 'inheritance of ' },
+  pg_sequence: { cls: "'pg_class'::regclass", obj: 'seqrelid', what: 'options of ' },
+  pg_partitioned_table: { cls: "'pg_class'::regclass", obj: 'partrelid', what: 'partitioning of ' },
+  pg_foreign_table: { cls: "'pg_class'::regclass", obj: 'ftrelid', what: 'foreign options of ' },
+  pg_subscription_rel: { cls: "'pg_class'::regclass", obj: 'srrelid', what: 'subscription of ' },
+  pg_aggregate: { cls: "'pg_proc'::regclass", obj: 'aggfnoid', what: 'aggregate ' },
+  pg_range: { cls: "'pg_type'::regclass", obj: 'rngtypid', what: 'range of ' },
+  // An enum label has an oid, but no description of its own (`pg_describe_object` refuses it).
+  pg_enum: { cls: "'pg_type'::regclass", obj: 'enumtypid', what: 'labels of ' },
+  pg_ts_config_map: { cls: "'pg_ts_config'::regclass", obj: 'mapcfg', what: 'mapping of ' },
+  pg_depend: { cls: 'classid', obj: 'objid', what: 'dependencies of ' },
+  pg_description: { cls: 'classoid', obj: 'objoid', what: 'comment on ' },
+  pg_init_privs: { cls: 'classoid', obj: 'objoid', what: 'initial privileges of ' },
+  pg_seclabel: { cls: 'classoid', obj: 'objoid', what: 'security label on ' },
+};
+
+/** Rows of a catalog that are a session's and not the database's: the namespaces temp tables use. */
+const SESSION_ROWS: Record<string, string> = {
+  pg_namespace: "nspname !~ '^pg_(toast_)?temp_'",
+};
+
+/** The first oid `initdb` does not hand out (`FirstNormalObjectId`): below it, a built-in object. */
+const FIRST_NORMAL_OID = 16384;
+
+/** A connection, or a transaction on one: a digest reads either as it stands. */
+type Reader = Sql | TransactionSql;
+
+/** Every database-local catalog and its columns, less those that move by use. */
+function catalogs(client: Reader): Promise<{ name: string; columns: string[] }[]> {
+  // One server per run and no DDL reaches pg_catalog, so a process reads the list once.
+  catalogList ??= listCatalogs(client);
+  return catalogList;
+}
+
+let catalogList: Promise<{ name: string; columns: string[] }[]> | undefined;
+
+async function listCatalogs(client: Reader): Promise<{ name: string; columns: string[] }[]> {
+  const rows = await client<{ name: string; columns: string[] }[]>`
+    SELECT c.relname AS name, array_agg(a.attname::text ORDER BY a.attnum) AS columns
+    FROM pg_class c
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+    WHERE c.relnamespace = 'pg_catalog'::regnamespace AND c.relkind = 'r' AND NOT c.relisshared
+      AND c.relname <> ALL(${DATA_CATALOGS})
+    GROUP BY c.relname
+    ORDER BY c.relname
+  `;
+  return rows.map(({ name, columns }) => ({
+    name,
+    columns: columns.filter((col) => !(MOVES_BY_USE[name] ?? []).includes(col)),
+  }));
+}
+
+/** One select per catalog: the object each row belongs to, and the row as text. */
+function catalogRows({ name, columns }: { name: string; columns: string[] }): string {
+  const owner = BELONGS_TO[name];
+  const [label, cls, obj] = owner
+    ? [owner.what, owner.cls, `t.${owner.obj}`]
+    : columns.includes('oid')
+      ? ['', `'pg_catalog.${name}'::regclass`, 't.oid']
+      : [`catalog ${name}`, 'NULL', 'NULL'];
+  const row = `ROW(${columns.map((col) => `t."${col}"`).join(', ')})::text`;
+  const where = SESSION_ROWS[name] ? ` WHERE ${SESSION_ROWS[name]}` : '';
+  return (
+    `SELECT ${literal(name)} AS catalog, ${literal(label)} AS label, (${cls})::oid AS cls, ` +
+    `(${obj})::oid AS obj, ${row} AS r FROM pg_catalog."${name}" t${where}`
+  );
+}
+
+/** Every catalog row of the database `client` is on, with what is not in a catalog of its own. */
+async function everyRow(client: Reader): Promise<string> {
+  const rows = (await catalogs(client)).map(catalogRows);
+  rows.push(
+    "SELECT 'pg_database', 'this database''s grants and settings', NULL, NULL, " +
+      "concat_ws(E'\\n', datacl::text, datconnlimit, datallowconn, (SELECT string_agg(" +
+      "setrole::regrole::text || ' ' || setconfig::text, E'\\n' ORDER BY setrole) " +
+      'FROM pg_db_role_setting WHERE setdatabase = d.oid)) ' +
+      'FROM pg_database d WHERE datname = current_database()',
+    "SELECT 'drizzle', 'migrations applied', NULL, NULL, count(*)::text FROM drizzle.__drizzle_migrations",
+  );
+  return rows.join('\nUNION ALL\n');
+}
+
+/**
+ * One hash over every catalog row of the database `client` is on, which any schema change moves:
+ * it reads every catalog rather than a list of object kinds, so a rule, an aggregate, a comment, a
+ * collation, a statistics object or a storage option is a change as a table is. Rows of a table
+ * are not in it; how many migrations it applied, its own settings and its grants are. The rows of
+ * one catalog are summed by hash, so where Postgres keeps them does not move it.
+ */
+async function schemaHashOn(client: Reader): Promise<string> {
+  const [row] = await client.unsafe<{ hash: string }[]>(`
+    WITH r AS (${await everyRow(client)})
+    SELECT md5(string_agg(catalog || ' ' || label || ' ' || n || ' ' || s, E'\\n'
+      ORDER BY catalog, label)) AS hash
+    FROM (
+      SELECT catalog, CASE WHEN cls IS NULL THEN label ELSE '' END AS label, count(*) AS n,
+        sum(hashtextextended(r, 0)::numeric) AS s
+      FROM r GROUP BY 1, 2
+    ) x
+  `);
+  return row?.hash ?? '';
+}
+
+/**
+ * The same catalog rows as `schemaHashOn`, by the object each belongs to and named the way Postgres
+ * names it (`pg_describe_object`), so a difference names what changed. Objects `initdb` made are
+ * read one catalog at a time.
+ */
+async function schemaDigestOn(client: Reader): Promise<Record<string, string>> {
+  const rows = await client.unsafe<{ object: string; digest: string }[]>(`
+    WITH r AS (${await everyRow(client)}),
+    grouped AS (
+      SELECT catalog, label, cls, CASE WHEN obj >= ${FIRST_NORMAL_OID} THEN obj END AS obj,
+        md5(string_agg(r, E'\\n' ORDER BY r)) AS digest
+      FROM r GROUP BY 1, 2, 3, 4
+    ),
+    named AS (
+      SELECT CASE
+        WHEN cls IS NULL THEN label
+        WHEN obj IS NULL THEN 'built-in rows of ' || catalog
+        ELSE label || coalesce(pg_describe_object(cls, obj, 0), catalog || ' row ' || obj)
+      END AS object, digest
+      FROM grouped
+    )
+    SELECT object, left(md5(string_agg(digest, '' ORDER BY digest)), 12) AS digest
+    FROM named GROUP BY object
+  `);
+  return Object.fromEntries(rows.map((r) => [r.object, r.digest]));
+}
+
+/** What a schema read answers: the hash, and the digest of every object where it was asked for. */
+interface SchemaRead {
+  hash: string;
+  objects?: Record<string, string>;
+}
+
+/** The schema `client` reads as it stands, a transaction's own changes included. */
+export async function readSchemaOn(client: Reader, named: boolean): Promise<SchemaRead> {
+  const hash = await schemaHashOn(client);
+  return named ? { hash, objects: await schemaDigestOn(client) } : { hash };
+}
+
+/**
+ * The objects added, dropped or changed since a read that hashed to `hash`, named against its
+ * digest, `objects`, which is unpacked only once the hash says something moved.
+ */
+export async function schemaChangesOn(
+  client: Reader,
+  hash: string,
+  objects: () => Record<string, string>,
+): Promise<string[]> {
+  if ((await schemaHashOn(client)) === hash) return [];
+  const drift = schemaDrift(objects(), await schemaDigestOn(client));
+  return drift.length > 0 ? drift : ['changed a catalog row no named object owns'];
+}
+
+/**
+ * Open the database at `url` on a connection of its own, so nothing a test set on its sessions
+ * changes how a definition reads, and drop the schemas the queue makes at runtime, as the reset
+ * would, since no migration makes them; then answer what `read` reads there.
+ */
+async function settled<T>(url: string, read: (client: Sql) => Promise<T>): Promise<T> {
   const client = postgres(url, { max: 1, ...quiet });
   try {
-    return await digestOn(client);
+    await dropRuntimeSchemas(client);
+    return await read(client);
   } finally {
     await client.end({ timeout: 5 });
   }
 }
 
-async function digestOn(client: Sql): Promise<Record<string, string>> {
-  const rows = await client<{ object: string; digest: string }[]>`
-    WITH ns AS (
-      SELECT oid, nspname FROM pg_namespace
-      WHERE nspname <> 'information_schema' AND NOT starts_with(nspname, 'pg_')
-        AND nspname <> ALL(${RUNTIME_SCHEMAS})
-    )
-    SELECT 'relation ' || ns.nspname || '.' || c.relname AS object, md5(concat_ws(E'\n',
-      c.relkind, c.relrowsecurity, c.relacl::text,
-      (SELECT string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod) || ' ' ||
-         a.attnotnull || ' ' || coalesce(pg_get_expr(d.adbin, d.adrelid), ''), E'\n' ORDER BY a.attnum)
-       FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-       WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped),
-      (SELECT string_agg(conname || ' ' || pg_get_constraintdef(oid), E'\n' ORDER BY conname)
-       FROM pg_constraint WHERE conrelid = c.oid),
-      (SELECT string_agg(pg_get_indexdef(indexrelid), E'\n' ORDER BY 1) FROM pg_index WHERE indrelid = c.oid),
-      (SELECT string_agg(pg_get_triggerdef(t.oid) || ' ' || t.tgenabled::text, E'\n' ORDER BY 1)
-       FROM pg_trigger t WHERE t.tgrelid = c.oid AND NOT t.tgisinternal),
-      (SELECT string_agg(polname || ' ' || coalesce(pg_get_expr(polqual, polrelid), ''), E'\n' ORDER BY 1)
-       FROM pg_policy WHERE polrelid = c.oid),
-      CASE WHEN c.relkind IN ('v', 'm') THEN pg_get_viewdef(c.oid) END,
-      (SELECT concat_ws(' ', seqtypid, seqstart, seqincrement, seqmax, seqmin, seqcache, seqcycle)
-       FROM pg_sequence WHERE seqrelid = c.oid)
-    )) AS digest
-    FROM pg_class c JOIN ns ON ns.oid = c.relnamespace
-    WHERE c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f', 'c')
-    UNION ALL
-    SELECT 'function ' || p.oid::regprocedure::text,
-      md5(pg_get_functiondef(p.oid) || coalesce(p.proacl::text, ''))
-    FROM pg_proc p JOIN ns ON ns.oid = p.pronamespace
-    WHERE p.prokind IN ('f', 'p')
-      AND NOT EXISTS (SELECT 1 FROM pg_depend e WHERE e.objid = p.oid AND e.deptype = 'e')
-    UNION ALL
-    SELECT 'type ' || t.oid::regtype::text, md5(concat_ws(E'\n', t.typtype,
-      (SELECT string_agg(enumlabel, ',' ORDER BY enumsortorder) FROM pg_enum WHERE enumtypid = t.oid),
-      format_type(t.typbasetype, t.typtypmod), t.typnotnull, t.typdefault,
-      (SELECT string_agg(conname || ' ' || pg_get_constraintdef(oid), E'\n' ORDER BY conname)
-       FROM pg_constraint WHERE contypid = t.oid)))
-    FROM pg_type t JOIN ns ON ns.oid = t.typnamespace
-    WHERE t.typtype IN ('e', 'd')
-    UNION ALL
-    SELECT 'extension ' || extname, md5(extversion) FROM pg_extension
-    UNION ALL
-    SELECT 'schema ' || ns.nspname, md5(coalesce(n.nspacl::text, ''))
-    FROM ns JOIN pg_namespace n ON n.oid = ns.oid
-    UNION ALL
-    SELECT 'database settings', md5(coalesce((SELECT setconfig::text FROM pg_db_role_setting
-      WHERE setdatabase = (SELECT oid FROM pg_database WHERE datname = current_database())), ''))
-    UNION ALL
-    SELECT 'migrations applied', md5((SELECT count(*) FROM drizzle.__drizzle_migrations)::text)
-  `;
-  return Object.fromEntries(rows.map((r) => [r.object, r.digest]));
+/** The objects added, dropped or changed in the database at `url` since `was` was read. */
+function driftSince(was: SlotRecord['schema'], url: string): Promise<string[]> {
+  return settled(url, (client) => schemaChangesOn(client, was.hash, () => unpack(was.objects)));
+}
+
+/** The per-object digest as the slot's record keeps it: compressed, since it runs to thousands. */
+function pack(objects: Record<string, string>): string {
+  return gzipSync(JSON.stringify(objects)).toString('base64');
+}
+
+function unpack(packed: string): Record<string, string> {
+  return JSON.parse(gunzipSync(Buffer.from(packed, 'base64')).toString('utf8'));
 }
 
 /** Every object `now` adds to, drops from or changes in `was`, one line each. */
-export function schemaDrift(was: Record<string, string>, now: Record<string, string>): string[] {
+function schemaDrift(was: Record<string, string>, now: Record<string, string>): string[] {
   const drift: string[] = [];
   for (const [object, digest] of Object.entries(now)) {
     if (!(object in was)) drift.push(`added ${object}`);
@@ -127,9 +288,32 @@ export function schemaDrift(was: Record<string, string>, now: Record<string, str
   return drift.sort();
 }
 
+/** The prefix a row of `BELONGS_TO` puts before the object it belongs to, where `object` has one. */
+function belongsPrefix(object: string): string | undefined {
+  return Object.values(BELONGS_TO).find((b) => b.what && object.startsWith(b.what))?.what;
+}
+
+/**
+ * The drift as a reader acts on it: what belongs to an object added or dropped with it is left out,
+ * since naming the object says it; then the objects themselves, what belongs to the others, and
+ * TOAST last.
+ */
 function describeDrift(drift: string[]): string {
-  const shown = drift.slice(0, 8).join('; ');
-  return drift.length > 8 ? `${shown}; and ${drift.length - 8} more` : shown;
+  const said = new Set(drift);
+  const weight = (line: string): number => {
+    const object = line.slice(line.indexOf(' ') + 1);
+    if (object.includes('pg_toast.')) return 2;
+    return belongsPrefix(object) ? 1 : 0;
+  };
+  const kept = drift.filter((line) => {
+    const [verb] = line.split(' ', 1);
+    const object = line.slice(line.indexOf(' ') + 1);
+    const prefix = belongsPrefix(object);
+    return !prefix || verb === 'changed' || !said.has(`${verb} ${object.slice(prefix.length)}`);
+  });
+  const ordered = kept.sort((a, b) => weight(a) - weight(b) || a.localeCompare(b));
+  const shown = ordered.slice(0, 8).join('; ');
+  return ordered.length > 8 ? `${shown}; and ${ordered.length - 8} more` : shown;
 }
 
 const DECLARE =
@@ -162,9 +346,10 @@ async function snapshot(client: Sql, url: string, holder: string): Promise<SlotR
     WHERE schemaname <> 'information_schema' AND NOT starts_with(schemaname, 'pg_')
       AND schemaname <> ALL(${RUNTIME_SCHEMAS})
   `;
+  const read = await settled(url, (client) => readSchemaOn(client, true));
   return {
-    v: 1,
-    schema: await schemaDigest(url),
+    v: 2,
+    schema: { hash: read.hash, objects: pack(read.objects ?? {}) },
     seed,
     sequences: Object.fromEntries(sequences.map((s) => [s.name, s.last])),
     holder,
@@ -178,10 +363,9 @@ async function snapshot(client: Sql, url: string, holder: string): Promise<SlotR
  * nothing else, so no file is cleaned apart.
  */
 async function resetSlot(client: Sql, record: SlotRecord): Promise<void> {
-  await client.unsafe(
-    `DROP SCHEMA IF EXISTS ${RUNTIME_SCHEMAS.map((n) => `"${n}"`).join(', ')} CASCADE`,
-  );
+  await dropRuntimeSchemas(client);
   await truncateAll(drizzle(client, {}));
+  await client`SELECT lo_unlink(oid) FROM pg_largeobject_metadata`;
   for (const [table, rows] of Object.entries(record.seed)) {
     const columns = await client<{ name: string }[]>`
       SELECT attname AS name FROM pg_attribute
@@ -208,7 +392,7 @@ async function readRecord(admin: Sql, name: string): Promise<SlotRecord | null> 
   if (!row?.comment) return null;
   try {
     const record = JSON.parse(row.comment) as SlotRecord;
-    return record.v === 1 ? record : null;
+    return record.v === 2 ? record : null;
   } catch {
     return null;
   }
@@ -338,7 +522,7 @@ export async function claimSlotDatabase(
       record = await snapshot(client, url, holder);
     } else {
       record = { ...prior, holder };
-      const drift = schemaDrift(prior.schema, await schemaDigest(url));
+      const drift = await driftSince(prior.schema, url);
       if (drift.length > 0) {
         await client.end({ timeout: 5 }).catch(() => {});
         client = undefined;
@@ -371,13 +555,14 @@ export async function claimSlotDatabase(
       let drift: string[] = [];
       try {
         await quiesce();
-        drift = schemaDrift(record.schema, await schemaDigest(url));
       } finally {
         await live.end({ timeout: 5 }).catch(() => {});
         const reporter = postgres(adminUrl, { max: 1, ...quiet });
         try {
           await reportLingeringConnections(reporter, name);
           await sever(reporter, name);
+          // Read once nothing else is connected: a temp table goes with its session, a rule does not.
+          drift = await driftSince(record.schema, url);
           if (drift.length > 0) await setAside(reporter, adminUrl, name);
         } finally {
           await reporter.end({ timeout: 5 });
