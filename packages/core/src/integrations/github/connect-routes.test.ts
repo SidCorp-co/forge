@@ -106,6 +106,7 @@ vi.mock('../route-helpers.js', () => ({
 const store = vi.hoisted(() => ({
   createBinding: vi.fn(async () => ({ id: 'binding-new' })),
   createConnection: vi.fn(async () => ({ id: CONNECTION_ID })),
+  findSwitchedOnServiceBindingAtLabel: vi.fn(async (): Promise<unknown> => null),
   decryptConnectionSecrets: vi.fn((): { appId?: string; privateKey?: string } => ({
     appId: '42',
     privateKey: 'pk',
@@ -428,7 +429,12 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
   // ISS-1421 r21 — judge-89: a removed GitHub connection stayed listed, and a fresh install stood a
   // second one beside it that nothing could turn on.
   it('turns the removed connection the project is bound to back on with the new App', async () => {
-    const old = { id: 'binding-old', config: { installationId: 7, repository: 'acme/app' } };
+    const old = {
+      id: 'binding-old',
+      projectId: PROJECT_ID,
+      label: '',
+      config: { installationId: 7, repository: 'acme/app' },
+    };
     store.removedConnectionBoundTo.mockResolvedValueOnce({
       binding: old,
       connection: { id: 'connection-removed' },
@@ -467,6 +473,37 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
     // Whole-set review F1: a second project on the same App keeps neither the old installation nor
     // the old secret, and keeps its own switch.
     expect(store.updateBinding).toHaveBeenCalledWith('binding-other', {
+      config: {},
+      integrationSecret: 'whsec_x',
+    });
+  });
+
+  // ISS-1421 r32: a GitHub binding switched on since, beside the removed one, keeps it off.
+  it('leaves the removed binding off where another GitHub binding is switched on for the project', async () => {
+    const old = { id: 'binding-old', projectId: PROJECT_ID, label: '', config: {} };
+    store.removedConnectionBoundTo.mockResolvedValueOnce({
+      binding: old,
+      connection: { id: 'connection-removed' },
+    });
+    store.listBindingsForConnection.mockResolvedValueOnce([{ binding: old }]);
+    store.findSwitchedOnServiceBindingAtLabel.mockResolvedValueOnce({
+      binding: { id: 'binding-new' },
+    });
+    const state = signConnectState(process.env.JWT_SECRET as string, {
+      projectId: PROJECT_ID,
+      userId: ADMIN_B,
+      orgId: ORG_ID,
+    });
+
+    await callback(state);
+
+    expect(store.findSwitchedOnServiceBindingAtLabel).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'github',
+      '',
+      'binding-old',
+    );
+    expect(store.updateBinding).toHaveBeenCalledWith('binding-old', {
       config: {},
       integrationSecret: 'whsec_x',
     });

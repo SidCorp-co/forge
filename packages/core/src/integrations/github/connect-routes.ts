@@ -41,6 +41,7 @@ import {
   createBinding,
   createConnection,
   decryptConnectionSecrets,
+  findSwitchedOnServiceBindingAtLabel,
   type IntegrationConnectionRow,
   listActiveBindingsForProjectProvider,
   listBindingsForConnection,
@@ -448,12 +449,21 @@ async function reattach(
   // Every binding of the connection takes the new App's webhook secret and loses the old App's
   // installation, which is not the new App's: the install step records the new one on each of them.
   // Each keeps its own switch but the one this install was run from, which is turned on.
+  // A binding switched on since, beside it, keeps this one off rather than two standing on (ISS-1421 r32).
   for (const { binding } of await listBindingsForConnection(removed.connection.id)) {
     const { installationId: _old, ...config } = binding.config as Record<string, unknown>;
+    const turnOn =
+      binding.id === removed.binding.id &&
+      !(await findSwitchedOnServiceBindingAtLabel(
+        binding.projectId,
+        'github',
+        binding.label,
+        binding.id,
+      ));
     await updateBinding(binding.id, {
       config,
       integrationSecret: next.webhookSecret,
-      ...(binding.id === removed.binding.id ? { active: true } : {}),
+      ...(turnOn ? { active: true } : {}),
     });
   }
   return { id: updated?.id ?? removed.connection.id };

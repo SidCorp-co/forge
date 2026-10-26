@@ -203,10 +203,10 @@ function RepositoryField({
 /**
  * Write a repository onto a binding this project ALREADY holds.
  *
- * Not the bind route: `integration_bindings_service_uq` is on
- * (project, provider, label) with no `active` predicate, so a row left behind by
- * a Disconnect still holds the slot and a create against it is refused 409. The
- * PATCH merges binding-tier config onto the surviving row instead, and sends
+ * Not the bind route: a Disconnect leaves the binding's row behind, switched
+ * off, and the bind route makes a second row beside it rather than taking that
+ * one back with its installation. The PATCH merges binding-tier config onto the
+ * surviving row instead, and sends
  * `active` only when the row is switched off, so a write that changes nothing
  * about whether the binding resolves does not say it does.
  */
