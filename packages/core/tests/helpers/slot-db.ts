@@ -263,7 +263,6 @@ async function settled<T>(url: string, read: (client: Sql) => Promise<T>): Promi
   }
 }
 
-/** The objects added, dropped or changed in the database at `url` since `was` was read. */
 function driftSince(was: SlotRecord['schema'], url: string): Promise<string[]> {
   return settled(url, (client) => schemaChangesOn(client, was.hash, () => unpack(was.objects)));
 }
