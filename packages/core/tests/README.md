@@ -162,7 +162,8 @@ Postgres names it (`pg_describe_object`), to say what changed.
 What it was cloned as — that hash with the named digest, the seed rows, the sequence values — is
 kept on the database's own comment, read without connecting to it. The file's `cleanup()` closes
 the app's pool for good (`src/db/client.ts:closeDbFor`, lifted by the next `setupTestDatabase`), so
-work the app left running cannot open another one, ends its own client, and only then terminates
+work the app left running cannot open another one, and leaves the closed pool no socket to open, so
+a statement still in its queue is refused rather than run on a reopened connection; it ends its own client, and only then terminates
 whatever is still connected, naming it, since a connection cut off from the server's side under a
 transaction is one postgres.js goes on writing to. It then reads the schema again, so a file that changes it is refused at its own teardown,
 naming the file and the objects it added, dropped or changed; the database is then renamed out of
