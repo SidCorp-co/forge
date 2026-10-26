@@ -12,7 +12,7 @@ import {
   issues,
   waitingKinds,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -244,7 +244,7 @@ transitionRoutes.post(
     const fromStatus = issue.status as IssueStatus;
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'move its issues');
 
     let result: StatusTransitionResult;
     try {

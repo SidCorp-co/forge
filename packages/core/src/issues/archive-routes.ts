@@ -9,7 +9,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import {
@@ -38,7 +38,11 @@ function archiveHandler(direction: ArchiveDirection) {
     const parsed = issueArchiveRequestSchema.safeParse(raw);
     if (!parsed.success) throw schemaRefused(parsed.error, issueArchiveRequestSchema, raw);
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'admin', `${direction} requires project admin access`);
+    assertRoleFor(
+      access,
+      'admin',
+      direction === 'archive' ? 'archive its issues' : 'unarchive its issues',
+    );
     try {
       const report = await runIssueArchive({
         projectId,

@@ -5,16 +5,19 @@ import { fieldsNear, schemaRefusalWords } from '../lib/zod-sentences.js';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { bindingShapeFields, checkBindingShape, stagesSchema } from './binding-shape.js';
 import { CredentialUnreadable, SEND_WHOLE } from './credential-unreadable.js';
-import { providerLabel } from './health-words.js';
+import { labelsInWords, providerLabel, providerValuesInWords } from './health-words.js';
 import { getIntegration, providerNames } from './registry.js';
 import { mergeRotatedSecrets } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
 import type { IntegrationConnectionRow } from './store.js';
 import type { IntegrationDeclaration } from './types.js';
 
-/** The sentence a caller gets for a provider this deployment does not declare. */
+/**
+ * The sentence a caller gets for a provider this deployment does not declare: each value it may
+ * send beside the label the Integrations page shows (ISS-1421 r31).
+ */
 export function undeclaredProviderMessage(provider: string): string {
-  return `\`${provider}\` is not an integration this deployment declares. Declared providers: ${providerNames().join(', ')}.`;
+  return `\`${provider}\` is not an integration this deployment declares. Send one of ${providerValuesInWords(providerNames())}.`;
 }
 
 /**
@@ -178,7 +181,7 @@ export const createSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['label'],
-        message: `\`${decl.provider}\` holds one binding per project, so it takes no \`label\`. A label names one of several bindings of the same provider, which only a provider declaring \`multiBinding\` has.`,
+        message: `${providerLabel(decl.provider)} holds one binding per project, so it takes no label. A label tells apart several bindings of one provider, and only ${labelsInWords(providerNames().filter((p) => getIntegration(p)?.capabilities.multiBinding))} can hold several.`,
       });
       return z.NEVER;
     }

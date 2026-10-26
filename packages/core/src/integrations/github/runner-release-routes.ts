@@ -18,7 +18,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../../api-reference/declare/describe.js';
 import { zValidator } from '../../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { startRunnerRelease } from './runner-release.js';
 import {
@@ -72,7 +72,7 @@ runnerReleaseRoutes.post(
 
     const access = await loadProjectAccess(projectId, userId);
     if (!access) throw notFound('project not found');
-    assertProjectRole(access, 'admin');
+    assertRoleFor(access, 'admin', 'cut a runner release for it');
 
     const outcome = await startRunnerRelease({
       projectId,

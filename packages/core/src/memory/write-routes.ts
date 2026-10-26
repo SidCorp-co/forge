@@ -46,7 +46,7 @@ memoryWriteRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await assertProjectAccess(body.projectId, userId);
+    await assertProjectAccess(body.projectId, userId, 'member', 'write to its memory');
 
     try {
       const result = await runMemoryWrite(body);
@@ -78,7 +78,7 @@ memoryWriteRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await assertProjectAccess(body.projectId, userId);
+    await assertProjectAccess(body.projectId, userId, 'member', 'rate its memory');
 
     try {
       const result = await runMemoryFeedback(body);

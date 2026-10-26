@@ -43,7 +43,7 @@ memorySearchRoutes.post(
     const body = c.req.valid('json');
     const userId = c.get('userId');
 
-    await assertProjectAccess(body.projectId, userId, 'viewer');
+    await assertProjectAccess(body.projectId, userId, 'viewer', 'search its memory');
 
     let result: Awaited<ReturnType<typeof runMemorySearch>>;
     try {

@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { agentApprovalModes, agentSchedules, agents } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { wholeList } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
@@ -120,7 +120,7 @@ agentRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'create an agent in it');
 
     const [inserted] = await db
       .insert(agents)
@@ -188,7 +188,7 @@ agentRoutes.patch(
     if (!existing) throw notFound('agent not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'change its agents');
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.name !== undefined) updates.name = patch.name;
@@ -233,7 +233,7 @@ agentRoutes.delete(
     if (!existing) throw notFound('agent not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    assertRoleFor(access, 'admin', 'delete its agents');
 
     await db.delete(agents).where(eq(agents.id, id));
     return c.body(null, 204);

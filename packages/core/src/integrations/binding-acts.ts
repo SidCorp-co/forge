@@ -8,7 +8,7 @@
 
 import type { BindingActs, ProjectIntegrationActs } from '@forge/contracts';
 import type { OrgMemberRole } from '../db/schema.js';
-import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole, orgRoleAtLeast, WHO_ADMINS, WHO_ORG_ADMINS } from '../lib/authz.js';
 import { agentAccessTier } from './agent-access.js';
 import { whoManages, whoSavesKey } from './held-key.js';
 import { managesConnection, orgRolesOf } from './reach.js';
@@ -26,8 +26,8 @@ export interface BindingReader {
   orgRoles: ReadonlyMap<string, OrgMemberRole>;
 }
 
-export const WHO_CHANGES = 'an admin of this project';
-export const WHO_GRANTS_A_BOX = "an owner or admin of this project's organization";
+export const WHO_CHANGES = WHO_ADMINS;
+export const WHO_GRANTS_A_BOX = WHO_ORG_ADMINS;
 
 export async function bindingReaderOf(
   userId: string,

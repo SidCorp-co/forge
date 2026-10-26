@@ -57,7 +57,7 @@ memoryListRoutes.get(
   async (c) => {
     const { projectId, source, sourceRef, limit, offset, includeArchived } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectAccess(projectId, userId, 'viewer');
+    await assertProjectAccess(projectId, userId, 'viewer', 'read its memory');
 
     const { rows, total } = await runMemoryGet({
       projectId,
@@ -83,7 +83,7 @@ memoryListRoutes.get(
   async (c) => {
     const { projectId, memoryId, source, sourceRef, limit, offset } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectAccess(projectId, userId, 'viewer');
+    await assertProjectAccess(projectId, userId, 'viewer', 'read its memory');
 
     const { rows, total } = await runMemoryRevisions({
       projectId,
@@ -109,7 +109,7 @@ memoryListRoutes.delete(
   async (c) => {
     const { projectId, source, sourceRef } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectAccess(projectId, userId);
+    await assertProjectAccess(projectId, userId, 'member', 'delete its memory');
 
     return c.json(
       answer(memoryDeletedSchema, { deleted: await deleteMemory(projectId, source, sourceRef) }),
@@ -140,7 +140,7 @@ memoryListRoutes.delete(
     if (!row) return c.body(null, 204);
 
     try {
-      await assertProjectAccess(row.projectId, userId);
+      await assertProjectAccess(row.projectId, userId, 'member', 'delete its memory');
     } catch {
       return c.body(null, 204);
     }

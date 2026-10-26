@@ -7,7 +7,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
-import { assertProjectRole } from '../lib/authz.js';
+import { assertRoleFor } from '../lib/authz.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import {
@@ -95,7 +95,7 @@ agentSessionTurnsRoutes.patch(
     const userId = c.get('userId');
 
     const { session, access } = await ensureSessionMember(id, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'edit a turn of its sessions');
     assertSessionOwnerOrAdmin(session, access, userId);
 
     if (session.status === 'running' || session.status === 'queued') {
@@ -182,7 +182,7 @@ agentSessionTurnsRoutes.post(
     const userId = c.get('userId');
 
     const { session, access } = await ensureSessionMember(id, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'regenerate a turn of its sessions');
     assertSessionOwnerOrAdmin(session, access, userId);
 
     if (session.status === 'running' || session.status === 'queued') {
@@ -277,7 +277,7 @@ agentSessionTurnsRoutes.post(
     const userId = c.get('userId');
 
     const { session, access } = await ensureSessionMember(id, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'fork its sessions');
     const turn = await findTurnInSession(id, fromTurnId);
     if (!turn) throw notFound('turn not found');
 
@@ -344,7 +344,7 @@ agentSessionTurnsRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionOwnerOrAdmin(id, userId);
+    const { session } = await ensureSessionOwnerOrAdmin(id, userId, 'rerun its sessions');
     if (session.status === 'running' || session.status === 'queued') {
       throw new HTTPException(409, {
         message: 'wait for the in-flight turn before rerunning',

@@ -171,8 +171,7 @@ describe('which refusal a caller meets', () => {
     );
   });
 
-  // ISS-1421 r26: a binding off over a connection that is off too is answered by the connection first,
-  // since Enabled cannot turn a binding on until the connection is on.
+  // ISS-1421 r26: an off connection answers first; Enabled cannot turn a binding on before it.
   it('says the connection first where the binding and the connection are both off', async () => {
     listBindingsForProjectMock.mockResolvedValue([
       row({ bindingActive: false, connectionActive: false }),
@@ -182,18 +181,21 @@ describe('which refusal a caller meets', () => {
     );
   });
 
-  // ISS-1074 criterion 14. The distinction this asserts is the whole reason discovery and
-  // authorization are two steps: a granted-only lookup would answer `no_binding` here, and send an
-  // operator to bind a repository that is already bound.
-  it('refuses an ungranted binding BY NAME, naming the binding and where the switch is', async () => {
+  // ISS-1074 c14: a granted-only lookup would answer `no_binding` for a bound repository (r31: named by label).
+  it('refuses an ungranted binding BY NAME, naming the provider and where the switch is', async () => {
     listBindingsForProjectMock.mockResolvedValue([
       row({ id: 'bind-ungranted', agentAccess: 'none' }),
     ]);
     const caught = await resolveGrantedGitHubBinding(PROJECT).catch((e: unknown) => e);
     expect(caught).toBeInstanceOf(GitHubAgentRefusal);
     expect((caught as InstanceType<typeof GitHubAgentRefusal>).reason).toBe('not_granted');
-    expect((caught as Error).message).toContain('bind-ungranted');
-    expect((caught as Error).message).toContain('Settings → Integrations');
+    expect((caught as Error).message).toContain("This project's GitHub binding");
+    expect((caught as Error).message).toContain(
+      '"Agents on this project may use this" switch is off',
+    );
+    expect((caught as Error).message).toContain("on this project's Integrations tab");
+    expect((caught as Error).message).not.toContain('bind-ungranted');
+    expect((caught as Error).message).not.toMatch(/`none`|Settings →/);
     expect((caught as Error).message).not.toMatch(/no GitHub binding/);
   });
 

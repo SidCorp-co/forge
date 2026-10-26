@@ -7,7 +7,7 @@ import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.
 import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { restActor } from '../middleware/auth.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
@@ -75,7 +75,7 @@ issueAttachmentRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'attach a file to its issues');
 
     const body = await c.req.parseBody();
     const file = body.file;
@@ -218,7 +218,7 @@ attachmentRoutes.delete(
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    assertRoleFor(access, 'member', 'remove a file from its issues');
 
     const isUploader = row.uploaderId === userId;
     const isAdmin = projectRoleAtLeast(access.role, 'admin');

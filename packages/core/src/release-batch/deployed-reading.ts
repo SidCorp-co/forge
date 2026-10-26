@@ -4,6 +4,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { labelsInWords } from '../integrations/health-words.js';
 import { getAdapter } from '../integrations/registry.js';
 import {
   type BindingWithConnection,
@@ -169,7 +170,7 @@ function unroutedWhy(pairs: readonly BindingWithConnection[]): string {
   if (pairs.length === 0) {
     return 'this project has no active deploy binding, so Forge makes no deployment it could read a commit from';
   }
-  const providers = [...new Set(pairs.map((p) => p.binding.provider))].join(', ');
+  const providers = labelsInWords([...new Set(pairs.map((p) => p.binding.provider))]);
   return `its deploy bindings go through ${providers}, and none of them reports the commit a deployment built`;
 }
 

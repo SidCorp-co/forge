@@ -75,9 +75,10 @@ export function assertAgentMayDeployCoolify(
   // agent an ungranted binding's deliveries — a per-binding switch that only holds per project.
   const ungranted = candidates.find((r) => !grantHolds(decl, r.pair.binding));
   if (!ungranted) return;
-  if (integrationId) throw new CoolifyCommandError(notGrantedMessage('coolify', ungranted.id));
+  const refused = notGrantedMessage('coolify', ungranted.pair.connection);
+  if (integrationId) throw new CoolifyCommandError(refused);
   throw new CoolifyCommandError(
-    `${notGrantedMessage('coolify', ungranted.id)} This call named no integrationId, so it would have read every Coolify binding on the project, that one included. Name the binding you mean with integrationId and a granted one still answers.`,
+    `${refused} This call named no integrationId, so it would have read every Coolify binding on the project, that one included. Name the binding you mean with integrationId and a granted one still answers.`,
   );
 }
 

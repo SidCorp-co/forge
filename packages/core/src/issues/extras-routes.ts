@@ -7,7 +7,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { activityLog, type IssueStatus, issues, jobs, usageRecords } from '../db/schema.js';
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -296,7 +296,7 @@ issueExtrasRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'enrich its issues');
 
     // No enrich prompt is built anywhere, and the job pool runs only the prompt a
     // job is minted with (ISS-1135).
@@ -325,7 +325,7 @@ issueExtrasRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'start a pipeline step on it');
 
     try {
       const done = await triggerPipelineStepManual({

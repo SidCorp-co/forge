@@ -16,7 +16,7 @@ import { answer } from '../../api-reference/declare/describe.js';
 import { zValidator } from '../../api-reference/declare/validator.js';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { loadIssueAttributes } from './read.js';
 import {
@@ -79,7 +79,7 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
       const { attributes } = c.req.valid('json');
       const issue = await loadIssueRow(issueId);
       const access = await loadProjectAccess(issue.projectId, c.get('userId'));
-      assertProjectRole(access, 'member');
+      assertRoleFor(access, 'member', 'set attributes on its issues');
 
       try {
         const result = await setIssueAttributes(
@@ -109,7 +109,7 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
       const { id: issueId } = c.req.valid('param');
       const issue = await loadIssueRow(issueId);
       const access = await loadProjectAccess(issue.projectId, c.get('userId'));
-      assertProjectRole(access, 'viewer');
+      assertRoleFor(access, 'viewer', "read its issues' attributes");
       return c.json(answer(attributesSchema, { attributes: await loadIssueAttributes(issue.id) }));
     },
   );

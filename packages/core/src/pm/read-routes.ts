@@ -11,7 +11,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from './graph-service.js';
 import {
@@ -42,7 +42,7 @@ pmReadRoutes.use('/:id/pm/runner-load', requireAuth(), assertEmailVerified());
 
 async function assertMember(projectId: string, userId: string): Promise<void> {
   const access = await loadProjectAccess(projectId, userId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  assertRoleFor(access, 'viewer', 'read its planning views');
 }
 
 pmReadRoutes.get(

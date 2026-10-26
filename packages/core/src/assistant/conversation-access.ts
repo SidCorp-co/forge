@@ -14,7 +14,7 @@ import { assertConversationReadable, assertConversationWritable } from '../conve
 import { type ConversationRow, getConversation } from '../conversations/store.js';
 import { db as defaultDb } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 
 /**
  * A room is started by somebody holding the member role or above on its project. A viewer is one of
@@ -32,7 +32,7 @@ export async function assertMayStartRoom(projectId: string, userId: string): Pro
       { projectId },
     );
   }
-  assertProjectRole(access, 'member', 'not a project member');
+  assertRoleFor(access, 'member', 'start a conversation about it');
 }
 
 /**

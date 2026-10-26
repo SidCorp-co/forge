@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { knowledgeEdges } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   createKnowledgeEdge,
@@ -94,7 +94,7 @@ knowledgeEdgeRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can create edges');
+    assertRoleFor(access, 'admin', 'link its knowledge entries');
 
     // Application-layer dedup on (project_id, subject, predicate, object, value).
     // Without this an extraction pipeline that re-runs on the same source memory
@@ -157,7 +157,7 @@ knowledgeEdgeRoutes.delete(
     if (!row) throw notFound('knowledge edge not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can delete edges');
+    assertRoleFor(access, 'admin', 'unlink its knowledge entries');
 
     await db.delete(knowledgeEdges).where(eq(knowledgeEdges.id, id));
     return c.body(null, 204);

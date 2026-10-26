@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { issueStatuses } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   buildSmokeVerifyReport,
@@ -69,7 +69,7 @@ skillSmokeVerifyRoutes.post(
 
     const access = await loadProjectAccess(projectId, userId);
     if (tier === 2) {
-      assertProjectRole(access, 'admin', 'only a project admin can run a tier-2 canary');
+      assertRoleFor(access, 'admin', 'run a skill canary on it');
     } else if (!access.role) {
       throw forbidden('not a project member');
     }

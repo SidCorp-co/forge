@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   activityPageSchema,
@@ -184,7 +184,7 @@ issueActivityRoutes.patch(
     if (!activity || activity.issueId !== issueId) throw notFound('activity not found');
 
     const access = await loadProjectAccess(activity.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', "evaluate its issues' activity");
 
     const previous = (activity.payload as Record<string, unknown> | null) ?? {};
     const nextPayload = {
@@ -225,7 +225,7 @@ issueActivityRoutes.delete(
     if (!activity || activity.issueId !== issueId) throw notFound('activity not found');
 
     const access = await loadProjectAccess(activity.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    assertRoleFor(access, 'admin', "delete its issues' activity");
 
     await db.delete(activityLog).where(eq(activityLog.id, activityId));
     return c.body(null, 204);

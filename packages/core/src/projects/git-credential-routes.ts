@@ -9,7 +9,7 @@ import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.
 import { classifyGitRemote } from '../git/provision-credential.js';
 import { testStoredSshKey } from '../git/ssh-keys.js';
 import { isVaultConfigured } from '../integrations/vault.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { getOrgSshKey } from '../orgs/ssh-keys-service.js';
@@ -36,7 +36,7 @@ gitCredentialRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'project member required');
+    assertRoleFor(access, 'viewer', 'read its git access');
 
     const [project] = await db
       .select({ repoUrl: projects.repoUrl })
@@ -73,7 +73,7 @@ gitCredentialRoutes.put(
     const { sshKeyId } = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', 'change its git access');
 
     const key = await getOrgSshKey(access.orgId, sshKeyId);
     if (!key) {
@@ -118,7 +118,7 @@ gitCredentialRoutes.post(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'project member required');
+    assertRoleFor(access, 'viewer', 'test its git access');
 
     if (!isVaultConfigured()) {
       throw new HTTPException(503, {
@@ -171,7 +171,7 @@ gitCredentialRoutes.delete(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', 'remove its git access');
 
     await db.delete(projectGitCredentials).where(eq(projectGitCredentials.projectId, projectId));
     return c.body(null, 204);

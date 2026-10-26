@@ -12,7 +12,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   readCharterSchema,
@@ -47,7 +47,7 @@ divergenceCharterRoutes.get(
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'member', 'not a project member');
+    assertRoleFor(access, 'member', 'read its divergence charter');
 
     return c.json(answer(readCharterSchema, { charter: await readCharter(projectId) }));
   },
@@ -68,7 +68,7 @@ divergenceCharterRoutes.put(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    assertRoleFor(access, 'admin', 'change its divergence charter');
 
     const charter = await upsertCharterAtomic({
       projectId,

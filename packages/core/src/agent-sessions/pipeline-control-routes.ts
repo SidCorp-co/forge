@@ -72,7 +72,7 @@ agentSessionPipelineControlRoutes.post(
       id,
       userId,
       'admin',
-      'owner or admin role required',
+      "pause or resume its sessions' pipelines",
     );
 
     const prev = existing.pipelineControl as PipelineControl | null;
@@ -150,7 +150,12 @@ agentSessionPipelineControlRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session: existing } = await ensureSessionRole(id, userId, 'member');
+    const { session: existing } = await ensureSessionRole(
+      id,
+      userId,
+      'member',
+      "report its sessions' pipeline health",
+    );
 
     const merged = buildPipelineHealth(existing.pipelineHealth as PipelineHealth | null, input);
 
@@ -196,7 +201,7 @@ agentSessionPipelineControlRoutes.post(
     const { telemetry } = c.req.valid('json');
     const userId = c.get('userId');
 
-    await ensureSessionRole(id, userId, 'member');
+    await ensureSessionRole(id, userId, 'member', "report its sessions' pipeline telemetry");
 
     const [updated] = await db
       .update(agentSessions)

@@ -90,6 +90,14 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
     <>
       <PageContainer className="min-h-dvh">
         {header}
+        {/* New issue opened by a reader who may not create one, from the top bar or ⌘K: said, never
+            an empty page (ISS-1421 r31, judge-127), in the words core refuses the create with. */}
+        {wantsNew && !canWrite && (
+          <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="new-issue-refused">
+            You are a viewer of this project, so you cannot create an issue in it. Only a member or
+            admin of this project can, so ask one of them.
+          </p>
+        )}
         {legacy.kind === "unknown" && (
           <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="unknown-tab-line">
             This link names the view <code className="font-mono">{legacy.value}</code>, which the

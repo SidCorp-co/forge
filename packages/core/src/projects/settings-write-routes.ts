@@ -81,7 +81,7 @@ projectSettingsWriteRoutes.patch(
     const { base, patch } = c.req.valid('json');
 
     const access = await loadProjectAccess(id, c.get('userId'));
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    assertOrgRoleOnProject(access, 'admin', 'change its pipeline settings');
 
     try {
       return c.json(
@@ -133,7 +133,7 @@ projectSettingsWriteRoutes.patch(
     const { id } = c.req.valid('param');
     const { base, patch } = c.req.valid('json');
     const access = await loadProjectAccess(id, c.get('userId'));
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    assertOrgRoleOnProject(access, 'admin', 'change its environments');
     try {
       return c.json(
         answer(environmentsWrittenSchema, await updateEnvironments({ projectId: id, patch, base })),

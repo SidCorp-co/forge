@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readSessionsAndHolds, type SessionsAndHolds } from './sessions-and-holds.js';
 import {
@@ -38,7 +38,7 @@ sessionsAndHoldsRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its sessions and holds');
     return c.json(answer(sessionsAndHoldsSchema, await readSessionsAndHolds(id)));
   },
 );

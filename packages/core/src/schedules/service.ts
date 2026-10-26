@@ -10,7 +10,7 @@ import {
   scheduleRuns,
   schedules,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
@@ -48,7 +48,7 @@ export async function assertTargetProjectAccess(
     });
   }
   const access = await loadProjectAccess(target.id, userId);
-  assertProjectRole(access, 'member', 'not a member of target project');
+  assertRoleFor(access, 'member', 'point a schedule at it');
   return target;
 }
 
@@ -92,7 +92,7 @@ export async function writeBackScheduleLastStatus(
 
 export async function listSchedules(projectId: string, actorUserId: string, enabled?: boolean) {
   const access = await loadProjectAccess(projectId, actorUserId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  assertRoleFor(access, 'viewer', 'read its schedules');
 
   const conditions = [eq(schedules.projectId, projectId)];
   if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
@@ -146,7 +146,7 @@ export async function getSchedule(id: string, actorUserId: string) {
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  assertRoleFor(access, 'viewer', 'read its schedules');
 
   return row;
 }
@@ -160,7 +160,7 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
   if (!schedule) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(schedule.projectId, actorUserId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  assertRoleFor(access, 'viewer', 'read its schedule runs');
 
   if (isRunnerLessScheduleKind(schedule.kind)) {
     const scriptRows = await db
@@ -263,7 +263,7 @@ export interface CreateScheduleInput {
 
 export async function createSchedule(input: CreateScheduleInput, actorUserId: string) {
   const access = await loadProjectAccess(input.projectId, actorUserId);
-  assertProjectRole(access, 'admin', 'not a project admin');
+  assertRoleFor(access, 'admin', 'create a schedule on it');
 
   const validation = validateCron(input.cron);
   if (!validation.ok) {
@@ -342,7 +342,7 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  assertProjectRole(access, 'admin', 'not a project admin');
+  assertRoleFor(access, 'admin', 'change its schedules');
 
   if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
     await assertTargetProjectAccess(patch.targetProjectSlug, actorUserId);
@@ -414,7 +414,7 @@ export async function deleteSchedule(id: string, actorUserId: string): Promise<v
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  assertProjectRole(access, 'admin', 'not a project admin');
+  assertRoleFor(access, 'admin', 'delete its schedules');
 
   await db.delete(schedules).where(eq(schedules.id, id));
 }
@@ -427,7 +427,7 @@ export async function runScheduleNow(
   if (!schedule) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(schedule.projectId, actorUserId);
-  assertProjectRole(access, 'member', 'not a project member');
+  assertRoleFor(access, 'member', 'run its schedules');
 
   // Defensive re-check: rows persisted before the create/update gate landed
   // could carry a `targetProjectSlug` the actor has no business triggering.

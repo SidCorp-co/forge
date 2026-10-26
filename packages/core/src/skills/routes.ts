@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { issueStatuses, skillRegistrations, skills } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -214,7 +214,7 @@ skillRegisterRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin');
+    assertRoleFor(access, 'admin', 'register its skills');
 
     const skill = await getSkillForProject(skillId, projectId);
     if (!skill) throw notFound('NOT_FOUND', 'skill not found');
@@ -292,7 +292,7 @@ skillRegisterRoutes.delete(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin');
+    assertRoleFor(access, 'admin', 'remove its skill registrations');
 
     const [row] = await db
       .select({ skillId: skillRegistrations.skillId })

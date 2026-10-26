@@ -8,7 +8,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { devices, pairingCodes, projects, runners } from '../db/schema.js';
-import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertOrgAccess, assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
@@ -345,7 +345,7 @@ deviceUserRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'pair a device with it');
 
     // 5-minute TTL, server-minted. Retry on unique-violation (collision).
     const expiresAt = new Date(Date.now() + PAIR_CODE_TTL_MS);

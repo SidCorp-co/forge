@@ -12,7 +12,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { readPipelineRun } from './runs.js';
@@ -43,11 +43,15 @@ const notFound = (message: string) =>
 const runConflict = (message: string) =>
   new HTTPException(409, { message, cause: { code: 'run_terminal' } });
 
-async function loadRunWithAccess(runId: string, userId: string): Promise<PipelineRunRow> {
+async function loadRunWithAccess(
+  runId: string,
+  userId: string,
+  act: string,
+): Promise<PipelineRunRow> {
   const row = await readPipelineRun(runId);
   if (!row) throw notFound('pipeline run not found');
   const access = await loadProjectAccess(row.projectId, userId);
-  assertProjectRole(access, 'member');
+  assertRoleFor(access, 'member', act);
   return row;
 }
 
@@ -74,7 +78,7 @@ pipelineRunRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await loadRunWithAccess(id, userId);
+    await loadRunWithAccess(id, userId, 'pause its pipeline runs');
     try {
       const run = await pausePipelineRun(id);
       return c.json(answer(pipelineRunRowSchema, run));
@@ -93,7 +97,7 @@ pipelineRunRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await loadRunWithAccess(id, userId);
+    await loadRunWithAccess(id, userId, 'resume its pipeline runs');
     try {
       const run = await resumePipelineRun(id);
       return c.json(answer(pipelineRunRowSchema, run));
@@ -113,7 +117,7 @@ pipelineRunRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await loadRunWithAccess(id, userId);
+    await loadRunWithAccess(id, userId, 'cancel its pipeline runs');
     const raw = await c.req.json().catch(() => ({}));
     const body = cancelBodySchema.safeParse(raw);
     if (!body.success) throw schemaRefused(body.error, cancelBodySchema, raw);

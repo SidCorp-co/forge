@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { usageRecords, usageSources } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -103,7 +103,7 @@ usageRecordRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its usage records');
 
     const conditions: SQL[] = [eq(usageRecords.projectId, projectId)];
     if (source) conditions.push(eq(usageRecords.source, source));
@@ -147,7 +147,7 @@ usageRecordRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its usage summary');
 
     const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -230,7 +230,7 @@ usageRecordRoutes.get(
     if (!row.projectId) throw notFound('usage record not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its usage records');
 
     return c.json(answer(usageRecordRowSchema, row));
   },
@@ -250,7 +250,7 @@ usageRecordRoutes.post(
       throw badRequest({ projectId: 'required' });
     }
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    assertRoleFor(access, 'member', 'record its usage');
 
     const cost =
       input.estimatedCost ??
@@ -299,7 +299,7 @@ usageRecordRoutes.post(
     );
     for (const projectId of projectIds) {
       const access = await loadProjectAccess(projectId, userId);
-      assertProjectRole(access, 'member', 'not a project member');
+      assertRoleFor(access, 'member', 'record its usage');
     }
 
     const values = records.map((r) => ({
@@ -347,7 +347,7 @@ usageRecordRoutes.post(
     );
     for (const projectId of projectIds) {
       const access = await loadProjectAccess(projectId, userId);
-      assertProjectRole(access, 'member', 'not a project member');
+      assertRoleFor(access, 'member', 'record its usage');
     }
 
     const values = records.map((r) => ({

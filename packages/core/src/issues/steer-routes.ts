@@ -18,7 +18,7 @@ import { bodyRefusalHttp } from '../body/http-error.js';
 import { messageRefusalHttp } from '../comments/screen.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { steerIssueRoute, steerResultSchema } from './steer-routes-reference.js';
 
@@ -71,7 +71,7 @@ issueSteerRoutes.post(
     if (!issue) throw new HTTPException(404, { message: 'issue not found' });
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'steer its issues');
 
     try {
       return c.json(

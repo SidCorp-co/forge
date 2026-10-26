@@ -7,7 +7,7 @@ import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
@@ -60,6 +60,7 @@ agentSessionAttachmentRoutes.use('*', requireUserOrDevice(), assertEmailVerified
 async function authorizeSession(
   c: Context<{ Variables: AuthVars }>,
   sessionId: string,
+  act: string,
 ): Promise<{ id: string; projectId: string; deviceId: string | null }> {
   const [session] = await db
     .select({
@@ -78,7 +79,7 @@ async function authorizeSession(
     }
   } else {
     const access = await loadProjectAccess(session.projectId, c.get('userId'));
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', act);
   }
   return session;
 }
@@ -97,7 +98,7 @@ agentSessionAttachmentRoutes.post(
     const { sessionId } = c.req.valid('param');
     // Uploading a chat attachment is a person's act; a box only downloads a turn's files.
     personOrRefuse(c.get('userId'));
-    await authorizeSession(c, sessionId);
+    await authorizeSession(c, sessionId, 'add a file to its sessions');
 
     const body = await c.req.parseBody();
     const file = body.file;
@@ -130,7 +131,7 @@ agentSessionAttachmentRoutes.get(
   }),
   async (c) => {
     const { sessionId, id } = c.req.valid('param');
-    await authorizeSession(c, sessionId);
+    await authorizeSession(c, sessionId, 'download a file from its sessions');
 
     const row = await loadSessionAttachment(id);
     if (!row || row.sessionId !== sessionId) throw notFound('attachment not found');

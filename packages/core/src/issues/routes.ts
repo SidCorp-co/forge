@@ -11,7 +11,7 @@ import { bodyInvalidHttp } from '../body/http-error.js';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import { issues, jobTypes, projectMembers } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
@@ -144,7 +144,7 @@ issueProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'create an issue in it');
 
     if (input.assigneeId) await assertAssigneeIsMember(projectId, input.assigneeId);
 
@@ -466,7 +466,7 @@ issueRoutes.patch(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'change its issues');
 
     if (patch.assigneeId) await assertAssigneeIsMember(issue.projectId, patch.assigneeId);
     let resolvedLabelIds: ResolvedLabelAttach[] | undefined;
@@ -566,7 +566,7 @@ issueRoutes.delete(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    assertRoleFor(access, 'admin', 'delete its issues');
 
     await withKernelMarker(db, async (tx) => tx.delete(issues).where(eq(issues.id, id)));
 

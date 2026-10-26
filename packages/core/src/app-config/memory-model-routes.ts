@@ -10,7 +10,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { appConfig, memoryModels } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import {
   countPending,
   enqueueChunkPurge,
@@ -50,7 +50,7 @@ memoryModelRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its memory model');
     return c.json(answer(reindexEstimateSchema, await estimateReindex(projectId)));
   },
 );
@@ -62,7 +62,7 @@ memoryModelRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its memory reindex');
     const [cfg] = await db
       .select({ model: appConfig.memoryModel })
       .from(appConfig)
@@ -88,7 +88,7 @@ memoryModelRoutes.post(
     const { projectId } = c.req.valid('param');
     const { model } = c.req.valid('json');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    assertRoleFor(access, 'admin', 'change its memory model');
 
     const current = await readReindex(projectId);
     if (model === 'chunked') {
@@ -141,7 +141,7 @@ memoryModelRoutes.delete(
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    assertRoleFor(access, 'admin', 'cancel its memory reindex');
     const current = await readReindex(projectId);
     if (!isLive(current)) {
       throw new HTTPException(409, {

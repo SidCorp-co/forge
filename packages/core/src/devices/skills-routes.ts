@@ -392,7 +392,7 @@ deviceSkillStatusRoutes.get(
   async (c) => {
     const { projectId, deviceId } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertProjectAccess(projectId, userId, 'viewer');
+    await assertProjectAccess(projectId, userId, 'viewer', "read a device's skills on it");
 
     const status = await loadDeviceSkillStatus(projectId, deviceId);
     return c.json(answer(skillStatusSchema, { skills: status }));
