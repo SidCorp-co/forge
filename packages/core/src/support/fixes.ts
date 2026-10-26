@@ -13,14 +13,14 @@ import {
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
 import { changeName, nothingDone } from './propose.js';
-import { fileRecord, RECORD_CHANGE, type RecordRequest } from './record.js';
+import { fileRecord, type RecordRequest } from './record.js';
 import { confirmRefusal, fixResultLine, limitsOf } from './rules.js';
 import {
   decideFix,
   expiredPendingFixes,
-  type FixRow,
   fixesConfirmedSince,
   insertAction,
+  type ProposalRow,
   pendingFixByCode,
   type RoomRow,
   roomById,
@@ -31,7 +31,7 @@ import { postInThread } from './thread.js';
 /** Tell the session what became of a fix, as a message of its own in the next turn. */
 async function tellSession(
   room: RoomRow,
-  fix: FixRow,
+  fix: ProposalRow,
   conversationId: string,
   note: string,
 ): Promise<void> {
@@ -44,7 +44,7 @@ async function tellSession(
     actorKind: 'core',
     input: { note },
     externalId: `fix:${fix.id}:${note.slice(0, 24)}`,
-    fixId: fix.id,
+    proposalId: fix.id,
   });
 }
 
@@ -64,7 +64,7 @@ export async function answerConfirm(input: {
   const { room, author } = input;
   const record = (
     kind: Parameters<typeof insertAction>[0]['kind'],
-    fix: FixRow | null,
+    fix: ProposalRow | null,
     output: unknown,
   ) =>
     insertAction({
@@ -79,7 +79,7 @@ export async function answerConfirm(input: {
       tool: fix?.tool ?? null,
       input: { verb: input.verb, code: input.code },
       output,
-      fixId: fix?.id ?? null,
+      proposalId: fix?.id ?? null,
     });
   const fix = await pendingFixByCode(room.id, input.code);
   if (!fix) {
@@ -143,14 +143,14 @@ export async function answerConfirm(input: {
   const claimed = await decideFix(fix.id, 'ran', now);
   if (!claimed) return 'unknown';
   await record('fix_confirmed', fix, null);
-  if (fix.tool === RECORD_CHANGE) return recordConfirmed(room, fix, input.conversationId);
+  if (fix.kind === 'filing') return recordConfirmed(room, fix, input.conversationId);
   return runFix(room, fix, limits.responseMaxBytes, input.conversationId);
 }
 
 /** A filing its asker confirmed: filed now, and the session told the key or why it was not. */
 async function recordConfirmed(
   room: RoomRow,
-  fix: FixRow,
+  fix: ProposalRow,
   conversationId: string,
 ): Promise<'ran' | 'failed'> {
   const filed = await fileRecord(room, {
@@ -170,7 +170,7 @@ async function recordConfirmed(
       tool: fix.tool,
       input: fix.args,
       output: { refused: detail },
-      fixId: fix.id,
+      proposalId: fix.id,
     });
     await postInThread({ room, thread: fix.thread, text: `It was not recorded: ${detail}.` });
     await tellSession(
@@ -193,15 +193,16 @@ async function recordConfirmed(
 
 async function runFix(
   room: RoomRow,
-  fix: FixRow,
+  fix: ProposalRow,
   maxBytes: number,
   conversationId: string,
 ): Promise<'ran' | 'failed'> {
   const api = await activeSupportApi(room.projectId);
   const args = (fix.args ?? {}) as SupportCallArgs;
-  const planned = api
-    ? planCall({ config: api.config, tools: api.tools, name: fix.tool, kind: 'fix', args })
-    : null;
+  const planned =
+    api && fix.tool
+      ? planCall({ config: api.config, tools: api.tools, name: fix.tool, kind: 'fix', args })
+      : null;
   if (!api || !planned || 'refusal' in planned) {
     // the grant changed between the proposal and the confirm: refused now, by the grant as it stands
     const detail = !api
@@ -220,7 +221,7 @@ async function runFix(
       tool: fix.tool,
       input: args,
       output: { refused: detail },
-      fixId: fix.id,
+      proposalId: fix.id,
     });
     await postInThread({ room, thread: fix.thread, text: `The change was not run: ${detail}.` });
     await tellSession(
@@ -259,7 +260,7 @@ async function runFix(
     input: args,
     output: result,
     externalId: posted.messageId,
-    fixId: fix.id,
+    proposalId: fix.id,
   });
   await tellSession(
     room,
@@ -290,7 +291,7 @@ export async function expireSupportFixes(): Promise<void> {
       kind: 'fix_expired',
       actorKind: 'core',
       tool: fix.tool,
-      fixId: fix.id,
+      proposalId: fix.id,
       externalId: posted?.messageId ?? null,
     });
   }

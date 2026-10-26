@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { oauthAccounts, users } from '../db/schema.js';
 
@@ -6,6 +6,19 @@ import { oauthAccounts, users } from '../db/schema.js';
 export async function userByEmail(email: string) {
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   return user;
+}
+
+/**
+ * The account a verified address names, or null: an address its owner has not verified names nobody,
+ * since anyone may type one. Matched without case, as a sign-in matches it.
+ */
+export async function verifiedUserIdByEmail(email: string): Promise<string | null> {
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(sql`lower(${users.email}) = lower(${email})`, isNotNull(users.emailVerifiedAt)))
+    .limit(1);
+  return user?.id ?? null;
 }
 
 /** A user's id and local password hash, or undefined when the account is gone. */

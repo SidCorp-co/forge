@@ -6,6 +6,7 @@
  */
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
+import type { OperationsRoomConfig } from '@forge/contracts/support-operations';
 import { logger } from '../../lib/logger.js';
 import { forgeReads, listBindingsForConnection } from '../index.js';
 import type { RocketChatBindingConfig } from './types.js';
@@ -20,6 +21,8 @@ export interface Route {
   bindingId: string;
   /** Set where the binding makes the room a support group, answered by its session (REQ-75). */
   support: SupportRoomConfig | null;
+  /** Set where the binding makes the room an operations room, answered under the bot's role (REQ-75 BC-20). */
+  operations: OperationsRoomConfig | null;
 }
 
 export async function buildRoutes(connectionId: string): Promise<Map<string, Route>> {
@@ -55,6 +58,7 @@ export async function buildRoutes(connectionId: string): Promise<Map<string, Rou
         projectName: proj.name,
         bindingId: b.id,
         support: (b.config as RocketChatBindingConfig | null)?.support ?? null,
+        operations: (b.config as RocketChatBindingConfig | null)?.operations ?? null,
       });
     }
   }

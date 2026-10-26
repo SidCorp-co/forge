@@ -1202,7 +1202,7 @@
     "support": {
       "kind": "domain",
       "context": "conversations",
-      "owns": ["supportRooms", "supportActions", "supportFixes", "supportFeedbackLinks"],
+      "owns": ["supportRooms", "supportActions", "supportProposals", "supportFeedbackLinks"],
       "serves": ["REQ-75"]
     },
     "uploads": {

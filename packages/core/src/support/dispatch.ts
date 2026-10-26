@@ -8,6 +8,7 @@
 // so, and those messages are not handed to a turn again.
 
 import type { SupportDeliveryPath, SupportTool } from '@forge/contracts/support';
+import type { ChatRole } from '@forge/contracts/support-operations';
 import {
   dispatchChatTurn,
   mintFencedSessionCredential,
@@ -29,6 +30,9 @@ import {
   unclaim,
 } from './delivery.js';
 import { injectWaiting, settleInjects } from './inject.js';
+import { operationsBrief } from './ops-prompt.js';
+import { roleOfRoom } from './ops-role.js';
+import { projectsInScope } from './ops-scope.js';
 import { coldThreads, supportBrief, turnMessages } from './prompt.js';
 import { ensureSupportRoom } from './rooms.js';
 import { insertAction, offlineToldSince, type RoomRow, roomById } from './store.js';
@@ -68,6 +72,11 @@ export function toldTools(roomId: string): string | undefined {
 export function noteTools(roomId: string, tools: readonly SupportTool[]): void {
   briefedTools.set(roomId, toolsKey(tools));
 }
+/** What an operations room's session was briefed with: its role, which a connection edit can change. */
+export const roleKey = (role: ChatRole) => JSON.stringify([role.name, role.persona, role.grants]);
+export function noteRole(roomId: string, role: ChatRole): void {
+  briefedTools.set(roomId, roleKey(role));
+}
 
 export type SessionRow = typeof agentSessions.$inferSelect;
 export type TurnClient = Awaited<ReturnType<typeof turnCredentialChatDevice>>;
@@ -76,19 +85,27 @@ export async function sessionOf(room: RoomRow): Promise<SessionRow | null> {
   return room.sessionId ? sessionRowById(room.sessionId) : null;
 }
 
-/** The room as it stands, its session declared if its binding still names it a support group. */
+/** The room as it stands, its session declared if its binding still names it as it was declared. */
 export async function roomWithSession(roomId: string): Promise<RoomRow | null> {
   const room = await roomById(roomId);
   if (!room || room.sessionId) return room;
   const pair = await findBindingWithConnectionById(room.bindingId);
   const config = (pair?.binding.config ?? null) as RocketChatBindingConfig | null;
-  if (!config?.support) return room;
+  const declared =
+    room.kind === 'operations'
+      ? config?.operations && (config.rids ?? []).includes(room.rid)
+        ? ({ kind: 'operations', scope: config.operations.scope } as const)
+        : null
+      : config?.support
+        ? ({ kind: 'support', support: config.support } as const)
+        : null;
+  if (!declared) return room;
   return ensureSupportRoom({
     projectId: room.projectId,
     bindingId: room.bindingId,
     connectionId: room.connectionId,
     rid: room.rid,
-    support: config.support,
+    room: declared,
   });
 }
 
@@ -98,6 +115,27 @@ async function roomProduct(room: RoomRow): Promise<string | null> {
   return (
     ((pair?.binding.config ?? null) as RocketChatBindingConfig | null)?.support?.product ?? null
   );
+}
+
+/**
+ * A cold session's brief: a support group's (the product, its granted tools), or an operations
+ * room's (its role's persona and grants, its reach). An operations room whose bot has no role it can
+ * read is not briefed at all: the turn throws, naming why, and its messages wait.
+ */
+async function briefOf(room: RoomRow, projectName: string): Promise<string> {
+  if (room.kind === 'operations') {
+    const role = await roleOfRoom(room);
+    if (!role.ok) throw new Error(`support: ${role.refusals[0]?.detail ?? 'no role'}`);
+    noteRole(room.id, role.value);
+    return operationsBrief({
+      role: role.value,
+      scope: room.scope ?? 'project',
+      reach: await projectsInScope(room),
+    });
+  }
+  const api = await activeSupportApi(room.projectId);
+  noteTools(room.id, api?.tools ?? []);
+  return supportBrief({ projectName, product: await roomProduct(room), tools: api?.tools ?? [] });
 }
 
 /** Whether a turn of this session starts Claude Code cold (no session of its own to resume). */
@@ -119,15 +157,7 @@ export async function handTurn(
   if (!project) throw new Error(`support: room ${room.id}'s project ${room.projectId} is gone`);
   const parts: string[] = [];
   if (startsCold(session, client)) {
-    const api = await activeSupportApi(room.projectId);
-    noteTools(room.id, api?.tools ?? []);
-    parts.push(
-      supportBrief({
-        projectName: project.name,
-        product: await roomProduct(room),
-        tools: api?.tools ?? [],
-      }),
-    );
+    parts.push(await briefOf(room, project.name));
     const history = await coldThreads(room);
     if (history) parts.push(history);
     if ('messages' in body) parts.push('New messages:');

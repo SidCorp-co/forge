@@ -1,4 +1,4 @@
-// A support group's session is warm before anyone writes (REQ-75 BC-11): its Claude Code process is
+// A support group's or an operations room's session is warm before anyone writes (REQ-75 BC-11): its Claude Code process is
 // spawned, briefed and left resident on the box when the room is bound, when a box of the project
 // comes online, and whenever the sweep finds it not resident, so a member's first message is
 // written into a running process instead of waiting on a cold start. Warming is one short turn
@@ -13,15 +13,21 @@ import { hasUndelivered, roomsOfProjects, roomsWithSessions } from './delivery.j
 import {
   deliverWaiting,
   handTurn,
+  noteRole,
   noteTools,
   noteTurn,
+  roleKey,
   roomWithSession,
   sessionOf,
   toldTools,
   toolsKey,
 } from './dispatch.js';
+import { operationsBrief } from './ops-prompt.js';
+import { roleOfRoom } from './ops-role.js';
+import { projectsInScope } from './ops-scope.js';
 import { toolsLine } from './prompt.js';
 import { declareSupportRooms } from './rooms.js';
+import type { RoomRow } from './store.js';
 
 /** What the warm-up turn says: no member is waiting, so the session answers nothing. */
 export const WARM_UP_LINE =
@@ -77,11 +83,10 @@ async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
   const box = { ...client, deviceId: client.deviceId };
   if (resident && why === 'sweep') return 'resident';
   if (resident && why === 'bindings') {
-    const tools = (await activeSupportApi(room.projectId))?.tools ?? [];
-    if (toldTools(room.id) === toolsKey(tools)) return 'resident';
-    noteTools(room.id, tools);
+    const retell = await retellOf(room);
+    if (!retell) return 'resident';
     noteTurn(room.id, new Date());
-    await handTurn(room, session, box, { warmUp: `${toolsLine(tools)}\n\n${WARM_UP_LINE}` });
+    await handTurn(room, session, box, { warmUp: `${retell}\n\n${WARM_UP_LINE}` });
     return 'retold';
   }
   lastTried.set(room.id, Date.now());
@@ -89,6 +94,27 @@ async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
   noteTurn(room.id, new Date());
   await handTurn(room, session, box, { warmUp: WARM_UP_LINE });
   return 'warmed';
+}
+
+/**
+ * What a resident session is told after a binding or connection change, noted as told; null when
+ * it already holds it. A support group is told its granted tools; an operations room, its role.
+ */
+async function retellOf(room: RoomRow): Promise<string | null> {
+  if (room.kind === 'operations') {
+    const role = await roleOfRoom(room);
+    if (!role.ok || toldTools(room.id) === roleKey(role.value)) return null;
+    noteRole(room.id, role.value);
+    return `Your role was changed; from now on:\n\n${operationsBrief({
+      role: role.value,
+      scope: room.scope ?? 'project',
+      reach: await projectsInScope(room),
+    })}`;
+  }
+  const tools = (await activeSupportApi(room.projectId))?.tools ?? [];
+  if (toldTools(room.id) === toolsKey(tools)) return null;
+  noteTools(room.id, tools);
+  return toolsLine(tools);
 }
 
 /** Warm every room of a project, as its binding is saved. */

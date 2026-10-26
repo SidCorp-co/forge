@@ -1,7 +1,10 @@
 import type { SupportRoomConfig } from '@forge/contracts/support';
+import type { ChatRole, OperationsRoomConfig } from '@forge/contracts/support-operations';
 
 export interface RocketChatConfig extends Record<string, unknown> {
   serverUrl: string;
+  /** The bot account's role, where it answers operations rooms (REQ-75 BC-22). */
+  role?: ChatRole;
 }
 
 export interface RocketChatSecrets extends Record<string, unknown> {
@@ -14,4 +17,6 @@ export interface RocketChatBindingConfig extends Record<string, unknown> {
   rids?: string[];
   /** Present, the one room is a support group answered by its session (REQ-75). */
   support?: SupportRoomConfig;
+  /** Present, each room is an operations room answered under the connection's role (REQ-75 BC-20). */
+  operations?: OperationsRoomConfig;
 }

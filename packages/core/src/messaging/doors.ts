@@ -84,6 +84,12 @@ export const DOORS: readonly DoorPolicy[] = [
     ending: 'refusal',
     why: "a Rocket.Chat support group's session posting into a thread whose readers are a product's users, who hold no role and are never Forge users — the reader `public:report` is written for. A refusal, because the session is on the line when it calls `forge_support reply` and writes again: nothing is posted for a refused reply, and a stand-in would be words the session did not write (REQ-75)",
   },
+  {
+    id: 'operations-reply',
+    cell: 'role:chat',
+    ending: 'refusal',
+    why: "a Rocket.Chat operations room's session posting into a thread whose readers are the team a project admin bound the room for — issue keys, statuses and release names are what they ask for, so `public:report`'s `no-developer-detail` would refuse the answer itself; the reader `web-chat-reply` argues for. A refusal for `support-reply`'s reason: the session is on the line when it calls `forge_support reply` (REQ-75 BC-20)",
+  },
 ];
 
 const byId = new Map<DoorId, DoorPolicy>(DOORS.map((d) => [d.id, d]));

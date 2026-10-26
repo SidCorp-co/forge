@@ -3445,6 +3445,13 @@
       "when": 1829433600000,
       "tag": "0538_a_change_request_link_keeps_its_order_and_its_unlink",
       "breakpoints": true
+    },
+    {
+      "idx": 539,
+      "version": "7",
+      "when": 1829520000000,
+      "tag": "0539_an_operations_room_answers_under_its_bots_role",
+      "breakpoints": true
     }
   ]
 }

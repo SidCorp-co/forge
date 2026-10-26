@@ -11,21 +11,26 @@ import { db, type Tx } from '../db/client.js';
 import {
   supportActions,
   supportFeedbackLinks,
-  supportFixes,
+  supportProposals,
   supportRooms,
 } from '../db/schema-support.js';
 
 export type RoomRow = typeof supportRooms.$inferSelect;
 export type ActionRow = typeof supportActions.$inferSelect;
-export type FixRow = typeof supportFixes.$inferSelect;
+export type ProposalRow = typeof supportProposals.$inferSelect;
 export type LinkRow = typeof supportFeedbackLinks.$inferSelect;
 type Exec = Tx | typeof db;
 
-export async function roomOfBinding(bindingId: string, exec: Exec = db): Promise<RoomRow | null> {
+/** The room a binding attaches at `rid`: a support group's one, or one of an operations binding's. */
+export async function roomOfBinding(
+  bindingId: string,
+  rid: string,
+  exec: Exec = db,
+): Promise<RoomRow | null> {
   const [row] = await exec
     .select()
     .from(supportRooms)
-    .where(eq(supportRooms.bindingId, bindingId))
+    .where(and(eq(supportRooms.bindingId, bindingId), eq(supportRooms.rid, rid)))
     .limit(1);
   return row ?? null;
 }
@@ -78,7 +83,7 @@ export interface NewAction {
   input?: unknown;
   output?: unknown;
   externalId?: string | null;
-  fixId?: string | null;
+  proposalId?: string | null;
   feedbackId?: string | null;
   /** A `message_in` that is not for the session (a confirm, one past the limit) is taken at once. */
   deliveredAt?: Date | null;
@@ -95,7 +100,7 @@ export async function insertAction(action: NewAction, exec: Exec = db): Promise<
       input: action.input ?? null,
       output: action.output ?? null,
       externalId: action.externalId ?? null,
-      fixId: action.fixId ?? null,
+      proposalId: action.proposalId ?? null,
       feedbackId: action.feedbackId ?? null,
       deliveredAt: action.deliveredAt ?? null,
     })
@@ -168,6 +173,27 @@ export async function threadMembers(
   return [...seen].map(([key, label]) => ({ key, label }));
 }
 
+/** The member who wrote last in a thread: whom an operations room's act in it runs for. */
+export async function latestThreadWriter(
+  roomId: string,
+  thread: string,
+): Promise<{ key: string; label: string | null } | null> {
+  const [row] = await db
+    .select({ key: supportActions.actorKey, label: supportActions.actorLabel })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.thread, thread),
+        eq(supportActions.kind, 'message_in'),
+        eq(supportActions.actorKind, 'member'),
+      ),
+    )
+    .orderBy(desc(supportActions.createdAt))
+    .limit(1);
+  return row?.key ? { key: row.key, label: row.label } : null;
+}
+
 /** The conversation one thread is recorded in, read off its first action. */
 export async function threadConversation(roomId: string, thread: string): Promise<string | null> {
   const [row] = await db
@@ -201,21 +227,21 @@ export async function actionsOfRoom(roomId: string, limit: number): Promise<Acti
 }
 
 export async function insertFix(
-  values: Omit<typeof supportFixes.$inferInsert, 'state' | 'decidedAt' | 'result'>,
-): Promise<FixRow | null> {
-  const [row] = await db.insert(supportFixes).values(values).onConflictDoNothing().returning();
+  values: Omit<typeof supportProposals.$inferInsert, 'state' | 'decidedAt' | 'result'>,
+): Promise<ProposalRow | null> {
+  const [row] = await db.insert(supportProposals).values(values).onConflictDoNothing().returning();
   return row ?? null;
 }
 
-export async function pendingFixByCode(roomId: string, code: string): Promise<FixRow | null> {
+export async function pendingFixByCode(roomId: string, code: string): Promise<ProposalRow | null> {
   const [row] = await db
     .select()
-    .from(supportFixes)
+    .from(supportProposals)
     .where(
       and(
-        eq(supportFixes.roomId, roomId),
-        eq(supportFixes.code, code),
-        eq(supportFixes.state, 'pending'),
+        eq(supportProposals.roomId, roomId),
+        eq(supportProposals.code, code),
+        eq(supportProposals.state, 'pending'),
       ),
     )
     .limit(1);
@@ -227,11 +253,11 @@ export async function decideFix(
   fixId: string,
   to: Exclude<SupportFixState, 'pending'>,
   at: Date,
-): Promise<FixRow | null> {
+): Promise<ProposalRow | null> {
   const [row] = await db
-    .update(supportFixes)
+    .update(supportProposals)
     .set({ state: to, decidedAt: at })
-    .where(and(eq(supportFixes.id, fixId), eq(supportFixes.state, 'pending')))
+    .where(and(eq(supportProposals.id, fixId), eq(supportProposals.state, 'pending')))
     .returning();
   return row ?? null;
 }
@@ -241,7 +267,7 @@ export async function settleFixResult(
   state: 'ran' | 'failed',
   result: unknown,
 ): Promise<void> {
-  await db.update(supportFixes).set({ state, result }).where(eq(supportFixes.id, fixId));
+  await db.update(supportProposals).set({ state, result }).where(eq(supportProposals.id, fixId));
 }
 
 /** Fixes a member confirmed since a time, for the daily limit. */
@@ -252,24 +278,24 @@ export async function fixesConfirmedSince(
 ): Promise<number> {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
-    .from(supportFixes)
+    .from(supportProposals)
     .where(
       and(
-        eq(supportFixes.roomId, roomId),
-        eq(supportFixes.askerKey, askerKey),
-        inArray(supportFixes.state, ['ran', 'failed']),
-        gte(supportFixes.decidedAt, since),
+        eq(supportProposals.roomId, roomId),
+        eq(supportProposals.askerKey, askerKey),
+        inArray(supportProposals.state, ['ran', 'failed']),
+        gte(supportProposals.decidedAt, since),
       ),
     );
   return row?.n ?? 0;
 }
 
 /** Pending fixes past their expiry. */
-export async function expiredPendingFixes(now: Date): Promise<FixRow[]> {
+export async function expiredPendingFixes(now: Date): Promise<ProposalRow[]> {
   return db
     .select()
-    .from(supportFixes)
-    .where(and(eq(supportFixes.state, 'pending'), lt(supportFixes.expiresAt, now)));
+    .from(supportProposals)
+    .where(and(eq(supportProposals.state, 'pending'), lt(supportProposals.expiresAt, now)));
 }
 
 export async function insertLink(
