@@ -10,6 +10,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import {
   BLURB,
+  COMMIT_HINT,
+  COMMIT_PLACEHOLDER,
   EMPTY_COMMIT_LINE,
   LANDING_BLURB,
   LATER_BLURB,
@@ -44,6 +46,41 @@ describe("MergeMarkerControl", () => {
 
     expect(mark).toHaveBeenCalledWith({ target: "main" }, expect.anything());
     expect(unmark).not.toHaveBeenCalled();
+  });
+
+  // ISS-1300 r3: the hold asks a person to name the commit that landed, and judge-117 found the first
+  // mark's panel had no field to name it in, so the commit could only be sent through the API.
+  it("offers Commit on a first mark in git, and sends the commit named there", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} landingShape="git" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /Where it landed/ }), {
+      target: { value: "main" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /^Commit/ }), {
+      target: { value: " 0d018a9ac5897cd4ef3fe299f9c13e4c252162e2 " },
+    });
+    const buttons = screen.getAllByRole("button", { name: "Mark merged" });
+    fireEvent.click(buttons[1] as HTMLElement);
+
+    expect(mark).toHaveBeenCalledWith(
+      { target: "main", commit: "0d018a9ac5897cd4ef3fe299f9c13e4c252162e2" },
+      expect.anything(),
+    );
+  });
+
+  // ISS-1300 r3 shots: at 390px the placeholder was cut at "checked a", hiding that the commit is
+  // checked. The check is said under the field, and the example is short enough to read whole.
+  it.each([null, "2026-10-20T09:00:00Z"])("says under Commit that it is checked (mergedAt %s)", (mergedAt) => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={mergedAt} landingShape="git" />);
+    fireEvent.click(screen.getByRole("button", { name: mergedAt ? "Mark a later merge" : "Mark merged" }));
+    expect(screen.getByRole("textbox", { name: /^Commit/ })).toHaveAccessibleDescription(COMMIT_HINT);
+    expect(COMMIT_PLACEHOLDER.length).toBeLessThanOrEqual(32);
+  });
+
+  it("offers no Commit on a first mark outside git, where nothing lands at a commit", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} landingShape="outside_git" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    expect(screen.queryByRole("textbox", { name: /^Commit/ })).toBeNull();
   });
 
   // ISS-1421 round 5: the field once opened holding the issue's own key, so one click marked the

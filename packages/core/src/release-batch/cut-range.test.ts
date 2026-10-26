@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { GitHubClientError, type GitHubRepoClient } from '../integrations/github/client.js';
+import {
+  GitHubClientError,
+  GitHubReadError,
+  type GitHubRepoClient,
+} from '../integrations/github/client.js';
 import { resolveLiveSource } from '../projects/live-source.js';
 import type { ReleaseChain } from '../projects/release-chain.js';
+import { readableThrough } from '../projects/repository-access.js';
 import { readRangeTo } from './cut-range.js';
 
 const PROMOTE: ReleaseChain = [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' }];
@@ -112,6 +117,50 @@ describe('readRangeTo (ISS-1386)', () => {
     expect(unbound.kind === 'unbound' && unbound.why).not.toContain('bind a repository');
     expect(failed.kind).toBe('unread');
     expect(failed.kind === 'unread' && failed.why).toContain('502 from GitHub');
+  });
+
+  // ISS-1300 r3: a repository that refuses the read names itself and what restores it, as the
+  // weighing of a criterion does; a failure GitHub may answer otherwise next time names neither.
+  it.each([
+    [404, 'Not Found'],
+    [401, 'Bad credentials'],
+    [403, 'Resource not accessible by integration'],
+  ])(
+    'names the repository and what restores it where GitHub refuses the read with %i',
+    async (status, message) => {
+      const range = await readRangeTo(
+        'p',
+        PROMOTE,
+        null,
+        via(async () =>
+          client(() => {
+            throw new GitHubReadError(status, message);
+          }),
+        ),
+      );
+
+      expect(range).toMatchObject({
+        kind: 'unread',
+        repository: 'o/r',
+        clears: readableThrough('binding'),
+      });
+    },
+  );
+
+  it('names neither where GitHub fails the read for a reason of its own', async () => {
+    const range = await readRangeTo(
+      'p',
+      PROMOTE,
+      null,
+      via(async () =>
+        client(() => {
+          throw new GitHubReadError(502, 'Bad Gateway');
+        }),
+      ),
+    );
+
+    expect(range.kind).toBe('unread');
+    expect(range).not.toHaveProperty('clears');
   });
 
   it('answers unread where a page comes back empty before the reported total is read', async () => {

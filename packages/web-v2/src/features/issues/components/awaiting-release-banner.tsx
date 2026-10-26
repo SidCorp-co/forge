@@ -6,6 +6,13 @@ import { failedCloseLead } from "@/features/releases/roster";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
 import type { MergeMarkKind } from "../types";
 
+/** A claim, by the commit it names: one the repository holds, one nobody checked, or none. */
+function claimedAs(when: string, held?: string | null, unchecked?: string | null): string {
+	if (held) return `Claimed as merged at ${held.slice(0, 7)}${when}, a commit the repository holds`;
+	if (unchecked) return `Claimed as merged at ${unchecked.slice(0, 7)}${when}, not checked against the repository`;
+	return `Claimed as merged${when}, naming no commit`;
+}
+
 /**
  * What "awaiting release" means, on the issue a person is actually reading:
  * it is merged, it is not shipped, and here is when that changes.
@@ -15,12 +22,18 @@ export function AwaitingReleaseBanner({
 	issueId,
 	canWrite,
 	mergeMark,
+	mergedCommitSha,
+	mergedClaimedCommit,
 }: {
 	projectId: string;
 	issueId: string;
 	canWrite: boolean;
 	/** Which record the mark is: a claim naming no commit is never said to be a merge (ISS-1421 r14). */
 	mergeMark?: MergeMarkKind;
+	/** The commit a person's mark names, checked against the repository (ISS-1300 r3). */
+	mergedCommitSha?: string | null;
+	/** A commit a claim names that Forge could not check, as the properties rail says it. */
+	mergedClaimedCommit?: string | null;
 }) {
 	const { data } = useReleaseRoster(projectId);
 	const batch = useBatchRelease(projectId);
@@ -32,7 +45,7 @@ export function AwaitingReleaseBanner({
 	const when = entry.mergedAt ? ` ${formatRelativeTime(entry.mergedAt)}` : "";
 	const merged =
 		mergeMark === "asserted"
-			? `Claimed as merged${when}, naming no commit`
+			? claimedAs(when, mergedCommitSha, mergedClaimedCommit)
 			: mergeMark === "landed"
 				? `Marked as landed${when}`
 				: entry.mergedAt

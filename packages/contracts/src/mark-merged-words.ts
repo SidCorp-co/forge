@@ -2,6 +2,8 @@
 
 export const MARK_MERGED_ACTION = 'Mark merged';
 export const UNMARK_ACTION = 'Unmark';
+export const LATER_MERGE_ACTION = 'Mark a later merge';
+export const COMMIT_FIELD = 'Commit';
 export const WHERE_IT_LANDED_FIELD = 'Where it landed';
 export const WORK_LANDS_ROW = 'Work lands';
 

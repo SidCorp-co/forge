@@ -79,6 +79,22 @@ describe("AwaitingReleaseBanner", () => {
     expect(screen.queryByText(/Merged into/)).not.toBeInTheDocument();
   });
 
+  // ISS-1300 r3: a person's mark naming a commit the repository holds read "naming no commit".
+  it("names the commit a claim carries, and whether the repository was asked about it", () => {
+    state({});
+    const sha = "0d018a9ac5897cd4ef3fe299f9c13e4c252162e2";
+    const { unmount } = render(
+      <AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite mergeMark="asserted" mergedCommitSha={sha} />,
+    );
+    expect(screen.getByText(/Claimed as merged at 0d018a9 3h ago, a commit the repository holds/)).toBeInTheDocument();
+    unmount();
+    render(
+      <AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite mergeMark="asserted" mergedClaimedCommit={sha} />,
+    );
+    expect(screen.getByText(/at 0d018a9 3h ago, not checked against the repository/)).toBeInTheDocument();
+    expect(screen.queryByText(/naming no commit/)).not.toBeInTheDocument();
+  });
+
   it("names a merge Forge saw as merged into the base branch", () => {
     state({});
     render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite mergeMark="observed" />);

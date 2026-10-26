@@ -476,6 +476,8 @@ export function IssueDetailScreen({
             issueId={issue.id}
             canWrite={mayWrite}
             mergeMark={issue.mergeMark}
+            mergedCommitSha={issue.mergedCommitSha}
+            mergedClaimedCommit={issue.mergedClaimedCommit}
           />
 
           {reasonDialog}

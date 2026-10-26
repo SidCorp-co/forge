@@ -121,6 +121,9 @@ export interface IssueCriteriaReport {
     readonly repository: string;
     readonly from: LandingRecord;
   };
+  /** The repository a recorded landing could not be read in, once for the issue, where it was
+   *  bound and refused: its verdicts are weighed as before (ISS-1300 r3). */
+  readonly unreadLanding?: { readonly commit: string; readonly repository: string | null };
 }
 
 /** Every name the tracker holds an attachment under for this issue, its comments' included. */
@@ -278,11 +281,13 @@ async function reportFor(
   const held = await heldAttachmentNames(row.id);
   const owed = owedRuntimes(row.id, weighing);
   const found = findingsFor(numbers, latest, { serving, owed, weighing }, identities, held);
-  const { source, from, unresolvedIn } = identities;
+  const { source, from, unresolvedIn, unread } = identities;
   const unresolved =
     source && from && unresolvedIn
       ? { unresolvedLanding: { commit: source, repository: unresolvedIn, from } }
-      : {};
+      : source && unread
+        ? { unreadLanding: { commit: source, repository: unread.repository } }
+        : {};
   return {
     issueId: row.id,
     unearned: found.unearned,
@@ -294,11 +299,17 @@ async function reportFor(
   };
 }
 
-/** The identities, marked where the weighing read the repository and found no commit at the source. */
+/** The identities, marked where the weighing read the repository and found no commit at the
+ *  source, or where a bound repository refused to be read for it. */
 function withUnresolved(identities: IssueIdentities, weighing: Weighing): IssueIdentities {
   const { source } = identities;
-  const absent = source ? weighing.unresolved?.get(landingKey(source)) : undefined;
-  return absent ? { ...identities, unresolvedIn: absent.repository } : identities;
+  if (!source) return identities;
+  const absent = weighing.unresolved?.get(landingKey(source));
+  if (absent) return { ...identities, unresolvedIn: absent.repository };
+  const unread = weighing.unreadLandings?.get(landingKey(source));
+  if (!unread) return identities;
+  const { repository, why, clears } = unread;
+  return { ...identities, unread: { repository, why, clears } };
 }
 
 /**

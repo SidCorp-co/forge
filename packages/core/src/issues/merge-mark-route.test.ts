@@ -172,11 +172,19 @@ describe('POST /api/issues/:id/merge', () => {
     expect(claimed.action).toBe(witnessed.action);
   });
 
-  it('tells a caller whose merge was not witnessed that what it wrote is a claim', async () => {
+  // ISS-1300 r3: a person's commit the repository holds is recorded as where the work landed, and
+  // the mark is still a claim, since Forge did not see it land.
+  it("records a person's commit as the landing and still calls the mark a claim", async () => {
+    const whole = 'abc1234'.padEnd(40, '0');
+    stampedRows = [
+      { mergedAt: AT, mergedCommitSha: whole, mergedLanding: null, mergedCommitStated: true },
+    ];
     const claimed = await mark({ target: 'main', commit: 'abc1234' });
-    expect(claimed.detail).toContain('Forge did not see this merge');
-    expect(claimed.detail).toContain('abc1234');
-    expect(claimed.detail).toContain('so the mark is a claim that names no commit');
+    expect(claimed.mark).toBe('asserted');
+    expect(claimed.detail).toBe(
+      'Commit abc1234 is in SidCorp-co/specimen, and is recorded as where this work landed. ' +
+        'Forge did not see this merge, so the mark is a claim.',
+    );
   });
 
   it('names the sha it witnessed in seven characters, so a person can read it (ISS-1421)', async () => {

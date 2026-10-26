@@ -54,7 +54,12 @@ export interface RefusedDecision {
   why: string;
 }
 
-type Unread = { kind: 'not-read' | 'unbound' | 'unread'; why: string };
+type Unread = {
+  kind: 'not-read' | 'unbound' | 'unread';
+  why: string;
+  repository?: string;
+  clears?: string;
+};
 
 export type CarriedReading =
   | Unread

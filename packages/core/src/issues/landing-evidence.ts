@@ -312,6 +312,7 @@ export async function readLandingEvidence(
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
+      mergedCommitStated: issues.mergedCommitStated,
       declared: issues.declaredLandingShape,
       kind: projects.kind,
       projectId: projects.id,

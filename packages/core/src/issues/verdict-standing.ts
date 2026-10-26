@@ -23,6 +23,12 @@ export interface IssueIdentities {
   readonly from?: LandingRecord;
   /** The repository that was read and holds no commit `source` names (ISS-1300). */
   readonly unresolvedIn?: string;
+  /** A bound repository that refused to be read for `source`: weighed as before, named beside. */
+  readonly unread?: {
+    readonly repository: string | null;
+    readonly why: string;
+    readonly clears: string;
+  };
 }
 
 export type LandingRecord = 'merge' | 'landing';

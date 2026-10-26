@@ -21,12 +21,17 @@ import {
   type ReleaseRuntimesConfig,
   releaseRuntimesSchema,
 } from '../pipeline/pipeline-config-schema.js';
-import { type RepositoryAccessDeps, withRepository } from '../projects/repository-access.js';
+import {
+  type RepositoryAccessDeps,
+  readableThrough,
+  withRepository,
+} from '../projects/repository-access.js';
 import type {
   Carriage,
   ChangedPaths,
   RepositoryAccess,
   RepositoryReader,
+  RepositoryRoute,
 } from '../projects/repository-reader.js';
 import { carriageOf, changedPathsOf, landingHeld } from './carriage.js';
 import { type ServingReading, servedCommits } from './serving-reading.js';
@@ -35,6 +40,7 @@ import {
   landingKey,
   type RuntimeReading,
   rotated,
+  type UnreadLanding,
   type UnresolvedLanding,
   type Weighing,
 } from './weighing.js';
@@ -158,30 +164,54 @@ function comparedLandings(
   return [...out.values()];
 }
 
-/** Each recorded landing the repository was read and does not hold; a failed read names none. */
+interface LandingReads {
+  unresolved: Map<string, UnresolvedLanding>;
+  unread: Map<string, UnreadLanding>;
+}
+
+/** Each recorded landing the repository was read and does not hold, and each a bound repository
+ *  refused to be read for, with why and what clears it. A spent budget names neither, and neither
+ *  does a project that binds no repository: nothing was refused there (ISS-1409). */
 async function readLandings(
   landings: readonly string[],
   reader: Reader,
   spend: () => string | null,
-): Promise<Map<string, UnresolvedLanding>> {
-  const out = new Map<string, UnresolvedLanding>();
-  if ('unread' in reader) return out;
+): Promise<LandingReads> {
+  const out: LandingReads = { unresolved: new Map(), unread: new Map() };
+  if ('unread' in reader) {
+    if (reader.unbound) return out;
+    const clears = reader.unread.clears ?? readableThrough(reader.route);
+    for (const commit of landings) {
+      const why = reader.unread.why;
+      out.unread.set(landingKey(commit), { commit, repository: null, why, clears });
+    }
+    return out;
+  }
+  const repository = reader.reader.name;
   for (const commit of rotated(landings, passes)) {
-    if ((await landingHeld(reader.reader, commit, spend)) !== 'absent') continue;
-    out.set(landingKey(commit), { commit, repository: reader.reader.name });
+    const held = await landingHeld(reader.reader, commit, spend);
+    if (held === 'absent') out.unresolved.set(landingKey(commit), { commit, repository });
+    if (typeof held === 'object') {
+      const clears = readableThrough(reader.reader.route);
+      out.unread.set(landingKey(commit), { commit, repository, why: held.unreadable, clears });
+    }
   }
   return out;
 }
 
 type Unread = Extract<Carriage, { kind: 'unread' }>;
 
-type Reader = { reader: RepositoryReader } | { unread: Unread };
+type Reader =
+  | { reader: RepositoryReader }
+  | { unread: Unread; route: RepositoryRoute; unbound: boolean };
 
 function readerOf(access: RepositoryAccess): Reader {
   if (access.kind === 'reader') return { reader: access.reader };
-  const { cause: why, clears } = access;
+  const { cause: why, clears, route, unbound } = access;
   return {
     unread: clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears },
+    route,
+    unbound,
   };
 }
 
@@ -272,8 +302,8 @@ export async function readWeighingNow(
       const reader = readerOf(access);
       const changed = runtimes.length > 0 ? await readChanged(rows, reader, budget()) : new Map();
       const carriage = await readCarriage(judged, served, reader, budget());
-      const unresolved = await readLandings(landings, reader, budget());
-      return { read: true, runtimes, changed, carriage, unresolved };
+      const { unresolved, unread } = await readLandings(landings, reader, budget());
+      return { read: true, runtimes, changed, carriage, unresolved, unreadLandings: unread };
     },
     deps.repository,
   );

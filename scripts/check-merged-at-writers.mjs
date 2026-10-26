@@ -8,7 +8,13 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OWNER = 'packages/core/src/issues/merge-record.ts';
 const ROOTS = ['packages/core/src', 'packages/web-v2/src'];
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.next', '.turbo', 'drizzle']);
-const COLUMNS = ['mergedAt', 'mergedCommitSha', 'mergedLanding', 'mergedClaimedCommit'];
+const COLUMNS = [
+  'mergedAt',
+  'mergedCommitSha',
+  'mergedLanding',
+  'mergedClaimedCommit',
+  'mergedCommitStated',
+];
 
 function die(message) {
   console.error(`check-merged-at-writers: ${message}`);
@@ -45,7 +51,7 @@ export function faultsIn(rel, source) {
 
   // B — raw SQL updating the table.
   for (const hit of text.matchAll(
-    /update\s+(?:only\s+)?"?issues"?[\s\S]{0,400}?\bset\b[\s\S]{0,600}?\bmerged_(?:at|commit_sha|landing|claimed_commit)\b/gi,
+    /update\s+(?:only\s+)?"?issues"?[\s\S]{0,400}?\bset\b[\s\S]{0,600}?\bmerged_(?:at|commit_sha|landing|claimed_commit|commit_stated)\b/gi,
   )) {
     faults.push({ rel, line: lineOf(text, hit.index), how: 'raw SQL updates issues.merged_*' });
   }

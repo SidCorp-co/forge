@@ -63,10 +63,11 @@ export type CommitLookup =
   | { kind: 'absent'; detail: string; details: Record<string, unknown> }
   | { kind: 'unreadable'; why: string };
 
-/** A read that failed; `missingBranch` where the cause is a branch the repository does not have. */
+/** A read that failed: on a branch the repository lacks (`missingBranch`), or refused by it (`refused`). */
 export interface ReadFailure {
   why: string;
   missingBranch?: string;
+  refused?: true;
 }
 
 export type BranchRead = { sha: string } | ReadFailure;
@@ -95,7 +96,7 @@ export interface RangeCommit {
 }
 
 /** Every commit `head` holds that `base` does not, oldest first. */
-export type RangeRead = { commits: RangeCommit[] } | { why: string };
+export type RangeRead = { commits: RangeCommit[] } | ReadFailure;
 
 export interface RepositoryReader {
   readonly name: string;

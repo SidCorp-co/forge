@@ -171,7 +171,7 @@ describe('a recorded merged commit the repository does not hold (ISS-1300)', () 
       'The automatic release leaves this issue out, because the commit it records as landed is not in its repository.',
     );
     expect(hold.words?.[1]).toBe(
-      "A person uses Unmark in the issue's properties, then Mark merged at the commit that landed.",
+      "A person uses Mark a later merge in the issue's properties, and names the commit that landed under Commit.",
     );
     expect(hold.words?.join(' ')).not.toContain('records a verdict on each');
     expect(hold.reason).toContain(ABSENT);
@@ -191,7 +191,7 @@ describe('a recorded merged commit the repository does not hold (ISS-1300)', () 
     });
     expect(got.unearned[0]?.why).toContain('its landing record');
     expect(criteriaHold(got).words?.[1]).toBe(
-      "A person uses Mark merged in the issue's properties, at the commit that landed.",
+      'A person uses Mark merged, or Mark a later merge once marked, and names the commit that landed under Commit.',
     );
   });
 
@@ -299,5 +299,196 @@ describe('a recorded merged commit the repository does not hold (ISS-1300)', () 
     });
 
     expect(askedFor(ABSENT)).toHaveLength(0);
+  });
+});
+
+const person = () => ({
+  agency: 'human' as const,
+  commentAuthorId: ownerId,
+  hookActor: { type: 'user' as const, id: ownerId, agency: 'human' as const },
+});
+
+async function columns(id: string) {
+  const r = await harness.db.execute(sql`
+    SELECT merged_at, merged_commit_sha, merged_commit_stated FROM issues WHERE id = ${id}
+  `);
+  const rows = (r as unknown as { rows?: unknown[] }).rows ?? (r as unknown as unknown[]);
+  return rows[0] as {
+    merged_at: unknown;
+    merged_commit_sha: string | null;
+    merged_commit_stated: boolean;
+  };
+}
+
+/** A person's mark through the one writer the page and the API share, as the page sends it. */
+async function personMarks(id: string, commit: string, marked = true) {
+  const { applyMergeMarker } = await import('../../src/issues/merge-marker.js');
+  const { forgetCarriage } = await import('../../src/release-batch/carriage.js');
+  const at = marked ? new Date('2026-10-01T09:00:00Z') : null;
+  const answer = await applyMergeMarker({
+    issue: { id, projectId, mergedAt: at, declaredLandingShape: null },
+    op: 'mark',
+    target: 'main',
+    commit,
+    actor: person(),
+  });
+  forgetCarriage();
+  return answer;
+}
+
+/** A merged pull request Forge projected for the issue, merged at `sha`. */
+async function observedPull(id: string, sha: string): Promise<void> {
+  await harness.db.execute(sql`
+    INSERT INTO repo_pull_requests (project_id, binding_id, issue_id, number, repo_full_name, title,
+      state, head_ref, head_sha, base_ref, base_sha, merged_at, merge_commit_sha)
+    SELECT ${projectId}, b.id, ${id}, 578, ${REPOSITORY}, 'the pull', 'merged', 'feature', ${PARENT},
+      'main', ${PARENT}, '2026-10-01T09:00:00Z'::timestamptz, ${sha}
+      FROM integration_bindings b WHERE b.project_id = ${projectId} LIMIT 1
+  `);
+}
+
+// ISS-1300 r3 — judge-117 found the act the hold names could not carry a commit: a person's mark
+// kept none, so the hold came back or every criterion fell to `unanchored`. A person's commit the
+// repository holds is now the landing the weighing reads, ahead of the head and a pull request's.
+describe('the act the hold names clears it (criteria 5, 6)', () => {
+  async function cleared(id: string) {
+    const { criteriaHold } = await import('../../src/pipeline/release-hold-kinds.js');
+    const got = await weigh(id);
+    expect(got.unresolvedLanding).toBeUndefined();
+    expect(got.unearned.map((c) => c.standing)).toEqual(['unwitnessed', 'unwitnessed']);
+    expect(criteriaHold(got).words?.join(' ')).not.toContain('not in its repository');
+  }
+
+  it('stamps the commit a person names over a merge mark the repository lacks (criterion 5)', async () => {
+    await repo.bind(projectId, ownerId);
+    const id = await plant({ merged: ABSENT });
+
+    const answer = await personMarks(id, JUDGED);
+
+    expect(answer.action).toBe('merged');
+    expect(answer.mark).toBe('asserted');
+    expect(answer.markDetail).toBe(
+      `Commit 0d018a9, which ${REPOSITORY} holds, replaces commit 0d018a9, which it does not. ` +
+        'Forge did not see this merge, so the mark is a claim.',
+    );
+    expect(await columns(id)).toMatchObject({
+      merged_commit_sha: JUDGED,
+      merged_commit_stated: true,
+    });
+    await cleared(id);
+  });
+
+  it('stamps it where a landing record the repository lacks is all the issue records, marked or not (criterion 6)', async () => {
+    await repo.bind(projectId, ownerId);
+    const marked = await plant({ merged: null, head: ABSENT });
+    const unmarked = await plant({ merged: null, head: ABSENT });
+    await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${unmarked}`);
+
+    expect((await personMarks(marked, JUDGED)).action).toBe('merged');
+    expect((await personMarks(unmarked, JUDGED, false)).action).toBe('merged');
+
+    for (const id of [marked, unmarked]) {
+      expect(await columns(id)).toMatchObject({
+        merged_commit_sha: JUDGED,
+        merged_commit_stated: true,
+      });
+      await cleared(id);
+    }
+  });
+
+  it('stamps it ahead of a merged pull request whose merge commit the repository lacks', async () => {
+    await repo.bind(projectId, ownerId);
+    const id = await plant({ merged: ABSENT });
+    await observedPull(id, ABSENT);
+
+    await personMarks(id, JUDGED);
+
+    expect((await columns(id)).merged_commit_sha).toBe(JUDGED);
+    await cleared(id);
+  });
+
+  it('refuses a named commit the repository lacks by name, and writes nothing', async () => {
+    await repo.bind(projectId, ownerId);
+    const id = await plant({ merged: ABSENT });
+    const OTHER = '3333333333333333333333333333333333333333';
+
+    await expect(personMarks(id, OTHER)).rejects.toMatchObject({
+      code: 'COMMIT_NOT_IN_REPOSITORY',
+    });
+    expect(await columns(id)).toMatchObject({
+      merged_commit_sha: ABSENT,
+      merged_commit_stated: false,
+    });
+  });
+
+  it('leaves a merge mark the repository holds to its own rules: a person names no other commit over it', async () => {
+    await repo.bind(projectId, ownerId);
+    const HELD = '2222222222222222222222222222222222222222';
+    repo.parents.set(HELD, PARENT);
+    const id = await plant({ merged: HELD });
+
+    await personMarks(id, JUDGED).catch(() => undefined);
+
+    expect(await columns(id)).toMatchObject({
+      merged_commit_sha: HELD,
+      merged_commit_stated: false,
+    });
+  });
+});
+
+// ISS-1300 r3 — a bound repository that refuses the read (404, 401, 403) holds no verdict back as
+// absent, and the hold, the readiness page and the release-create refusal name it and what restores it.
+describe('a recorded landing its bound repository refuses to be read for', () => {
+  it('names the repository Forge cannot read in the hold, and the act that restores it', async () => {
+    await repo.bind(projectId, ownerId);
+    repo.hidden = true;
+    const id = await plant({ merged: JUDGED });
+    const { criteriaHold } = await import('../../src/pipeline/release-hold-kinds.js');
+
+    const got = await weigh(id);
+    const hold = criteriaHold(got);
+
+    expect(got.unearned.map((c) => c.standing)).toEqual(['unwitnessed', 'unwitnessed']);
+    expect(got.unreadLanding).toEqual({ commit: JUDGED, repository: REPOSITORY });
+    expect(got.unearned[0]?.why).toContain(`whether ${REPOSITORY} holds ${JUDGED}`);
+    expect(hold.words?.[0]).toBe(
+      `The automatic release leaves this issue out, because criteria 1 and 2 are unearned and Forge cannot read ${REPOSITORY}.`,
+    );
+    expect(hold.words?.[1]).toBe(
+      `A person makes ${REPOSITORY} readable to Forge again, then records a verdict on each or closes the issue.`,
+    );
+    expect(hold.reason).toContain(`Forge cannot read ${REPOSITORY}, and reads it again once`);
+    expect(hold.words?.join(' ')).not.toContain('at the running deployment');
+  });
+
+  it('says the same on the release readiness page and in the release-create refusal', async () => {
+    await repo.bind(projectId, ownerId);
+    repo.hidden = true;
+    const id = await plant({ merged: JUDGED });
+    const { readWeighingNow } = await import('../../src/release-batch/runtime-weighing.js');
+    const { criteriaHold } = await import('../../src/release-batch/criteria-hold.js');
+    const out: Array<{ code: string; message: string }> = [];
+
+    const weighing = await readWeighingNow(projectId, UNREADABLE, [id]);
+    await criteriaHold(projectId, [id], out as never, [], UNREADABLE, weighing);
+
+    expect(out[0]?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(out[0]?.message).toContain(`Forge cannot read ${REPOSITORY}, and reads it again once`);
+  });
+
+  it('says it of the carried range on the readiness page too, never to load the page again', async () => {
+    await fx.declareProduction();
+    await repo.bind(projectId, ownerId);
+    repo.hidden = true;
+    await plant({ merged: JUDGED });
+    const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
+
+    const blockers = (await loadReleaseReadiness(projectId))?.blockers ?? [];
+    const carried = blockers.find((b) => b.details?.check === 'carried');
+
+    expect(carried?.reader).toContain(`Forge cannot read ${REPOSITORY}, and reads it again once`);
+    expect(blockers.map((b) => `${b.reader} ${b.message}`).join(' ')).not.toMatch(
+      /retry|again to/i,
+    );
   });
 });

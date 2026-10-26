@@ -52,6 +52,8 @@ export type IssueListRow = {
   mergedLanding: string | null;
   /** ISS-1409 — the commit an `asserted` mark names that Forge could not verify; null on every other mark. */
   mergedClaimedCommit: string | null;
+  /** ISS-1300 r3 — whether `mergedCommitSha` is a person's word rather than a merge Forge saw. */
+  mergedCommitStated: boolean;
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -117,6 +119,7 @@ export async function listIssueRows(
     mergedCommitSha: issues.mergedCommitSha,
     mergedLanding: issues.mergedLanding,
     mergedClaimedCommit: issues.mergedClaimedCommit,
+    mergedCommitStated: issues.mergedCommitStated,
     archivedAt: issues.archivedAt,
     createdAt: issues.createdAt,
     updatedAt: issues.updatedAt,

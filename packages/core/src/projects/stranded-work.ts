@@ -126,6 +126,7 @@ export async function strandedWorkFor(
         mergedCommitSha: issues.mergedCommitSha,
         mergedLanding: issues.mergedLanding,
         mergedClaimedCommit: issues.mergedClaimedCommit,
+        mergedCommitStated: issues.mergedCommitStated,
       })
       .from(issues)
       .where(

@@ -105,6 +105,9 @@ export function forgeIssuesDescription(refClause: string): string {
     'counts as the work evidence, the answer naming the cause and the setting that fixes it; ' +
     'mark again once the repository can be read and Forge checks the claim, upgrading it to ' +
     'observed or refusing it by name. ' +
+    "A person's mark (never an agent's) naming a commit the repository holds is stored there as " +
+    'their claim, mergedCommitStated true and the mark asserted, wherever Forge holds no landing ' +
+    'that resolves: none, or one the repository lacks, which it replaces. ' +
     'Anywhere else your commit never reaches the column: it ' +
     'reaches the audit trail as YOUR CLAIM, and on a git issue only once the repository ' +
     'resolves it, recorded by the full sha it resolves to - refused COMMIT_NOT_IN_REPOSITORY ' +

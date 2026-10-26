@@ -40,6 +40,24 @@ describe('a check that could not be run, as a person reads it', () => {
     expect(reader).not.toContain('`criteria`');
   });
 
+  // ISS-1300 r3: loading the page again reads the same refusal, so neither door says to retry.
+  it('says the repository Forge cannot read, and what restores it, where the repository refused the read', () => {
+    const details = {
+      check: 'carried',
+      detail: 'o/r could not read the head of main: Not Found',
+      repository: 'o/r',
+      clears: 'once the tracker can read the repository',
+    };
+    const cannot =
+      'Forge cannot read o/r, and reads it again once the tracker can read the repository.';
+    const reader = releaseBlockerReaderSentence('RELEASE_CHECK_UNEVALUATED', details);
+    const caller = releaseBlockerSentence('RELEASE_CHECK_UNEVALUATED', details);
+
+    expect(reader).toContain(`(o/r could not read the head of main: Not Found): ${cannot}`);
+    expect(caller.startsWith(cannot)).toBe(true);
+    for (const said of [reader, caller]) expect(said).not.toMatch(/retry|Load this page again/i);
+  });
+
   it('leaves the caller its own instruction', () => {
     expect(releaseBlockerSentence('RELEASE_CHECK_UNEVALUATED')).toContain(
       'act on the ones carrying `evaluated: true`',

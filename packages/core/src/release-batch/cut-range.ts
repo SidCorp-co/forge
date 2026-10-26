@@ -9,8 +9,17 @@ import {
   chainStartBranch,
   type ReleaseChain,
 } from '../projects/release-chain.js';
-import { type RepositoryAccessDeps, withRepository } from '../projects/repository-access.js';
-import { type RangeCommit, saying } from '../projects/repository-reader.js';
+import {
+  type RepositoryAccessDeps,
+  readableThrough,
+  withRepository,
+} from '../projects/repository-access.js';
+import {
+  type RangeCommit,
+  type ReadFailure,
+  type RepositoryReader,
+  saying,
+} from '../projects/repository-reader.js';
 import { readProjectBranches } from '../projects/service.js';
 
 /** One read of `live...head`: every commit the head holds that the live branch does not. */
@@ -28,9 +37,17 @@ export type CutRange =
   | { kind: 'not-read'; why: string }
   /** No route to read it was declared: no GitHub binding, and no deploy key beside an SSH URL. */
   | { kind: 'unbound'; why: string }
-  | { kind: 'unread'; why: string };
+  /** `repository` and `clears` where the repository refused the read (ISS-1300 r3). */
+  | { kind: 'unread'; why: string; repository?: string; clears?: string };
 
 export type CutRangeDeps = Partial<RepositoryAccessDeps>;
+
+/** A read the repository refused names it and what makes it readable, as a criterion's weighing does. */
+function unread(reader: RepositoryReader, failed: ReadFailure): CutRange {
+  if (!failed.refused) return { kind: 'unread', why: failed.why };
+  const clears = readableThrough(reader.route);
+  return { kind: 'unread', why: failed.why, repository: reader.name, clears };
+}
 
 /** The range a promotion of `head` onto the live branch carries; `head` defaults to the start branch. */
 export async function readRangeTo(
@@ -64,11 +81,11 @@ export async function readRangeTo(
       let cut = head;
       if (!cut) {
         const tip = await reader.branchHead(start);
-        if ('why' in tip) return { kind: 'unread', why: tip.why };
+        if ('why' in tip) return unread(reader, tip);
         cut = tip.sha;
       }
       const read = await reader.range(live, cut);
-      if ('why' in read) return { kind: 'unread', why: read.why };
+      if ('why' in read) return unread(reader, read);
       return { kind: 'read', live, start, cut, commits: read.commits };
     },
     deps,

@@ -173,6 +173,7 @@ describe('the words a mark answers with (ISS-1421)', () => {
       commitSha: null,
       landing: null,
       claimedCommit: null,
+      stated: false,
     };
     const base = { stamp, claimedCommit: null, unread: null, after: '' };
     const note = 'Merged by hand after CI went green.';

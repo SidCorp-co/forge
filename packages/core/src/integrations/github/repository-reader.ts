@@ -76,6 +76,13 @@ function why(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** GitHub refusing the repository itself: no token, no permission, or a repository it hides. A 404
+ *  says that only where the path names no branch or range that may be missing. */
+function refusedBy(err: unknown, statuses: readonly number[]): { refused?: true } {
+  const status = err instanceof GitHubReadError && err.phase === 'request' ? err.status : null;
+  return status !== null && statuses.includes(status) ? { refused: true } : {};
+}
+
 /** Each file a compare names, a rename by both its names: the old path no longer holds it either.
  *  A reason where the list cannot be taken whole, since a missing list is not an empty one. */
 function filesOf(read: CompareRead): string[] | string {
@@ -286,7 +293,8 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
           ? { sha: read.sha.toLowerCase() }
           : { why: `${repository} answered no head commit for ${branch}` };
       } catch (err) {
-        return { why: `${repository} could not read the head of ${branch}: ${why(err)}` };
+        const failed = `${repository} could not read the head of ${branch}: ${why(err)}`;
+        return { why: failed, ...refusedBy(err, [401, 403, REPOSITORY_HIDDEN]) };
       }
     },
 
@@ -368,7 +376,8 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
       try {
         return await pages(base, head);
       } catch (err) {
-        return { why: `${repository} could not compare ${base} with ${head}: ${why(err)}` };
+        const failed = `${repository} could not compare ${base} with ${head}: ${why(err)}`;
+        return { why: failed, ...refusedBy(err, [401, 403]) };
       }
     },
   };

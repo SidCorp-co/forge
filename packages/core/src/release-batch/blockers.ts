@@ -177,7 +177,10 @@ function carriedBlockers(
       });
     }
     if (check.kind === 'unread') {
-      out.push(blocker('RELEASE_CHECK_UNEVALUATED', { check: 'carried', detail: check.why }));
+      const { why: detail, repository, clears } = check;
+      out.push(
+        blocker('RELEASE_CHECK_UNEVALUATED', { check: 'carried', detail, repository, clears }),
+      );
     }
     return;
   }

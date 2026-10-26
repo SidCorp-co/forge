@@ -182,27 +182,27 @@ describe('after a mark moves, the release roster and live reach read the later c
 });
 
 describe("a person's mark naming a commit the repository holds (criterion 122)", () => {
-  it('says the commit is noted in the comment only and the mark names none, as a repeat says', async () => {
+  // ISS-1300 r3 — a person's mark carries the commit that landed: the row keeps it as their claim.
+  it('records the commit as where the work landed, and a repeat says the mark stays at it', async () => {
     const issue = await seed({ sessionContext: {} });
 
     const res = await mark(issue, (at.other as string).slice(0, 10), 'human');
 
-    const noted = `Commit ${s(at.other)} is in \`${GITLAB_URL}\`, and is noted in the comment only. Forge did not see this merge, so the mark is a claim that names no commit.`;
+    const noted = `Commit ${s(at.other)} is in \`${GITLAB_URL}\`, and is recorded as where this work landed. Forge did not see this merge, so the mark is a claim.`;
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toBe(noted.replace(`\`${GITLAB_URL}\``, GITLAB_URL));
-    expect(res.namedCommit).toBe(at.other);
-    // The row keeps no commit of a person's: the rail reads a claim naming none.
+    expect(res.namedCommit).toBeNull();
     const held = await row(issue.id);
-    expect(held.merged_commit_sha).toBeNull();
+    expect(held.merged_commit_sha).toBe(at.other);
     expect(held.merged_claimed_commit).toBeNull();
-    expect(res.issue.mergedCommitSha).toBeNull();
+    expect(res.issue.mergedCommitSha).toBe(at.other);
     const said = (await comments(issue.id)).at(-1) as string;
     expect(said).toBe(`Marked merged into main.\n${noted}`);
     readsShort(said);
 
     const again = await mark({ ...issue, mergedAt: new Date() }, undefined, 'human');
     expect(again.action).toBe('already_merged');
-    expect(again.markDetail).toContain('The mark stays a claim that names no commit.');
+    expect(again.markDetail).toContain(`The mark stays at commit ${s(at.other)}.`);
   }, 60_000);
 });
 

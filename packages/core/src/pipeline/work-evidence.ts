@@ -18,7 +18,7 @@ type EvidenceExecutor = Pick<Db, 'select'>;
 
 export interface WorkEvidence {
   branch: string | null;
-  /** `issues.merged_commit_sha`: a merge Forge read for itself, from a pull request or the repository. */
+  /** `issues.merged_commit_sha` Forge read for itself; a person's stated one never counts (ISS-1318). */
   mergedCommitSha: string | null;
   /** `issues.merged_landing` where a mark stands on an `outside_git` lane: where the work now is,
    *  that lane's own record of having landed. Null on a `git` lane, which records a commit. */
@@ -41,6 +41,7 @@ export async function collectWorkEvidence(
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
       mergedClaimedCommit: issues.mergedClaimedCommit,
+      mergedCommitStated: issues.mergedCommitStated,
       declaredLandingShape: issues.declaredLandingShape,
       baseBranch: projects.baseBranch,
       releaseChain: projects.releaseChain,
@@ -63,7 +64,8 @@ export async function collectWorkEvidence(
   const marked = row?.mergedAt != null;
   return {
     branch,
-    mergedCommitSha: marked ? row?.mergedCommitSha?.trim() || null : null,
+    mergedCommitSha:
+      marked && !row?.mergedCommitStated ? row?.mergedCommitSha?.trim() || null : null,
     mergedLanding:
       marked && lane?.shape === 'outside_git' ? row?.mergedLanding?.trim() || null : null,
     claimedCommit: marked ? row?.mergedClaimedCommit?.trim() || null : null,

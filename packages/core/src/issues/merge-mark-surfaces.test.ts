@@ -187,6 +187,7 @@ describe('the projections an agent reads an issue through', () => {
     reopenCount: 0,
     mergedAt: AT,
     mergedLanding: null,
+    mergedCommitStated: false,
     createdAt: AT,
     updatedAt: AT,
   };

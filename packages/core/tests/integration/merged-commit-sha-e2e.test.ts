@@ -210,21 +210,20 @@ beforeEach(async () => {
 });
 
 describe('ISS-959 B — the merged mark records its commit', () => {
-  it('records a caller-named commit in the audit trail and not in the column', async () => {
+  it("records a person's commit the repository holds in the column, and the trail says so", async () => {
     const { id, token } = await seed();
     const res = await mark(id, token, { target: 'base', commit: SHA });
     expect(res.status).toBe(200);
     const answer = await res.json();
     expect(answer.action).toBe('merged');
-    // ISS-1421 — the trail shows seven characters; the answer carries the whole commit it named.
-    expect(answer.namedCommit).toBe(SHA);
+    // ISS-1300 r3 — a person's mark carries the commit that landed, so the column keeps it.
+    expect(answer.mark).toBe('asserted');
     const row = await storedMark(id);
-    expect(row.merged_commit_sha).toBeNull();
+    expect(row.merged_commit_sha).toBe(SHA);
     expect(row.merged_at).not.toBeNull();
     const said = (await commentsOn(id)).join('\n');
-    // ISS-1421 r8 — the row keeps no commit a person names, so the trail says where it lives.
     expect(said).toContain(`Commit ${SHA.slice(0, 7)} is in `);
-    expect(said).toContain('and is noted in the comment only');
+    expect(said).toContain('and is recorded as where this work landed');
     expect(said).not.toContain('kept');
     // ISS-1126 — and the trail now names which kind of record this is, not only what it holds.
     expect(said).toContain('Forge did not see this merge');
@@ -391,7 +390,7 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
     const short = await seed();
     const answered = await mark(short.id, short.token, { target: 'base', commit: 'abc1234' });
     expect(answered.status).toBe(200);
-    expect((await answered.json()).namedCommit).toBe(ABC);
+    expect((await storedMark(short.id)).merged_commit_sha).toBe(ABC);
     expect((await commentsOn(short.id)).join('\n')).toContain(`Commit ${ABC.slice(0, 7)} is in `);
 
     const tooShort = await seed();
