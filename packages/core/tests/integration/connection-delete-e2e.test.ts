@@ -343,6 +343,27 @@ describe('a removed connection (criterion 216)', () => {
     expect(install.pathname).toBe('/apps/forge-reattached/installations/new');
     const carried = install.searchParams.get('state');
     expect(carried, 'the install redirect carries state for the setup URL').toBeTruthy();
+    // ISS-1421 r32 review: the install lands on the binding the App was stored on, though that one
+    // was switched off and another GitHub binding switched on here before the install came back.
+    await harness.db.execute(
+      sql`UPDATE integration_bindings SET active = false WHERE id = ${binding.id}`,
+    );
+    const elsewhere = await store.createConnection({
+      ownerType: 'org',
+      ownerId: org.id,
+      provider: 'github',
+      displayName: 'Another App',
+      config: {},
+      secrets: { appId: '9', privateKey: 'k', webhookSecret: 'scratch-other-hook' },
+    });
+    const competitor = await store.createBinding({
+      connectionId: elsewhere.id,
+      projectId: project.id,
+      provider: 'github',
+      role: 'service',
+      config: { installationId: 999 },
+      integrationSecret: 'scratch-other-hook',
+    });
     const installed = await app.request(
       `/api/integrations/github/installed?installation_id=555&state=${encodeURIComponent(carried as string)}`,
       { headers: { authorization: `Bearer ${token}` } },
@@ -361,6 +382,19 @@ describe('a removed connection (criterion 216)', () => {
         [otherBinding.id]: 555,
       },
     );
+    const [held999] = [
+      ...(await harness.db.execute(
+        sql`SELECT config FROM integration_bindings WHERE id = ${competitor.id}`,
+      )),
+    ] as { config: Record<string, unknown> }[];
+    expect(held999?.config.installationId).toBe(999);
+
+    // A state naming no binding (the one the start signs) was not issued for an install.
+    const unnamed = await app.request(
+      `/api/integrations/github/installed?installation_id=556&state=${encodeURIComponent(state)}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(unnamed.status).toBe(400);
 
     // Criterion 227: a later install from one project replaces no installation another holds.
     const third = await createTestProject(harness.db, ownerId, { orgId: org.id });

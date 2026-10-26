@@ -20,6 +20,9 @@ export interface ConnectState {
    *  App. Absent = personal. The choice is made at connect time but spent in
    *  the callback, which sees nothing but this state. */
   orgId?: string;
+  /** The binding the App was stored on, carried to the install so it is recorded there and on no
+   *  other binding switched on since (ISS-1421 r32). Set only by the manifest callback. */
+  bindingId?: string;
 }
 
 export function signConnectState(secret: string, state: ConnectState, nowMs = Date.now()): string {
@@ -53,6 +56,7 @@ export function verifyConnectState(
     projectId: parsed.projectId,
     userId: parsed.userId,
     ...(parsed.orgId ? { orgId: parsed.orgId } : {}),
+    ...(typeof parsed.bindingId === 'string' ? { bindingId: parsed.bindingId } : {}),
   };
 }
 
