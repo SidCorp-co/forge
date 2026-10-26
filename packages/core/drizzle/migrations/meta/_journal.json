@@ -2283,6 +2283,13 @@
       "when": 1815609600000,
       "tag": "0377_a_person_states_the_landing",
       "breakpoints": true
+    },
+    {
+      "idx": 378,
+      "version": "7",
+      "when": 1815696000000,
+      "tag": "0378_a_withheld_secret_is_not_kept",
+      "breakpoints": true
     }
   ]
 }

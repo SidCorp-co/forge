@@ -39,6 +39,7 @@ const projectAccess = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
+  effectiveProjectRole: (userId: unknown, projectId: unknown) => projectAccess(projectId, userId),
 }));
 
 beforeEach(() => {

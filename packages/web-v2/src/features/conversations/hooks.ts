@@ -10,6 +10,7 @@ import type {
   ConversationMode,
   ConversationProgressEntry,
   ListedRoom,
+  WithdrawnReply,
 } from "./types";
 import { failureToast } from "@/lib/api/failure-toast";
 
@@ -305,7 +306,7 @@ function useSocketWrittenKey<T>(key: readonly unknown[], empty: T): T {
 /** Nothing has arrived yet — one reference, for the guard above. */
 const NO_PROGRESS = null;
 const NO_ACCEPTED: Record<string, { messageId: string; seq: number }> = {};
-const NO_WITHDRAWN: Record<string, string> = {};
+const NO_WITHDRAWN: Record<string, WithdrawnReply> = {};
 
 /**
  * The turn running in this room right now, as the socket's frames have it.
@@ -331,7 +332,7 @@ export function useAcceptedMessages(id: string | undefined) {
  * The drafts the reply screen refused in this room, by the entry that replaced each.
  */
 export function useWithdrawnDrafts(id: string | undefined) {
-  return useSocketWrittenKey<Record<string, string>>(
+  return useSocketWrittenKey<Record<string, WithdrawnReply>>(
     ["conversations", id, "withdrawn"],
     NO_WITHDRAWN,
   );

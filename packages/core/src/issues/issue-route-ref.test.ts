@@ -163,18 +163,34 @@ describe('resolveIssueRouteRef — the refusal names the project (ISS-1229 r41)'
   });
 
   it('refuses a display key under a closed project by naming that project as the caller may see it', async () => {
-    loadProjectAccess.mockResolvedValueOnce(ORG_MEMBER_ONLY);
+    effectiveProjectRole.mockResolvedValueOnce(ORG_MEMBER_ONLY);
     const seen = await refusalOf(resolveIssueRouteRef('ISS-4', PROJECT_ID, USER_ID));
     expect(seen.message).toBe(
       'Vault is a project you are not a member of, so none of its issues can be read.',
     );
 
-    loadProjectAccess.mockResolvedValueOnce(NO_ACCESS);
+    effectiveProjectRole.mockResolvedValueOnce(NO_ACCESS);
     const unseen = await refusalOf(resolveIssueRouteRef('ISS-4', PROJECT_ID, USER_ID));
     expect(unseen.message).toBe(
-      'This address names a project you are not a member of, so none of its issues can be read.',
+      'This address names no project you are a member of, so none of its issues can be read.',
     );
     expect(unseen.details).toEqual({ issueProject: { name: null }, addressProject: null });
+  });
+
+  // ISS-1229 r43, judge-120: an id that is no project answered 404 "Project not found" where another
+  // organization's project answered 403, which told a caller whether a uuid is a project.
+  it('refuses a display key under an id that is no project exactly as under a project it may not see', async () => {
+    const UNSEEN = { projectId: PROJECT_ID, orgId: 'org-2', role: null, orgRole: null };
+    effectiveProjectRole.mockResolvedValueOnce(UNSEEN);
+    const another = await refusalOf(resolveIssueRouteRef('ISS-1', PROJECT_ID, USER_ID));
+    effectiveProjectRole.mockResolvedValueOnce(null);
+    const none = await refusalOf(resolveIssueRouteRef('ISS-1', OTHER_PROJECT_ID, USER_ID));
+
+    expect(none).toEqual(another);
+    expect(none).toMatchObject({ status: 403, code: 'FORBIDDEN' });
+    expect(none.details).toEqual({ issueProject: { name: null }, addressProject: null });
+    expect(none.message).not.toMatch(/Vault|Desk|not found/);
+    expect(findIssueByDisplaySeq).not.toHaveBeenCalled();
   });
 });
 
@@ -202,7 +218,7 @@ describe('resolveIssueRouteRef — happy path', () => {
   });
 
   it('a display key resolves the same row, scoped to the named project the caller can read', async () => {
-    loadProjectAccess.mockResolvedValueOnce(MEMBER_ACCESS);
+    effectiveProjectRole.mockResolvedValueOnce(MEMBER_ACCESS);
     findIssueByDisplaySeq.mockResolvedValueOnce({ id: ISSUE_UUID, projectId: PROJECT_ID });
 
     const issue = await resolveIssueRouteRef('ISS-1097', PROJECT_ID, USER_ID);
@@ -212,7 +228,7 @@ describe('resolveIssueRouteRef — happy path', () => {
   });
 
   it('a bare sequence number resolves the same as its legacy-prefixed key', async () => {
-    loadProjectAccess.mockResolvedValueOnce(MEMBER_ACCESS);
+    effectiveProjectRole.mockResolvedValueOnce(MEMBER_ACCESS);
     findIssueByDisplaySeq.mockResolvedValueOnce({ id: ISSUE_UUID, projectId: PROJECT_ID });
 
     const issue = await resolveIssueRouteRef('1097', PROJECT_ID, USER_ID);
@@ -252,7 +268,7 @@ describe('resolveIssueRouteRef — the negative case is the whole point', () => 
       const details = (err as { cause?: { details?: { formErrors?: string[] } } }).cause?.details;
       expect(details?.formErrors?.join(' ')).toMatch(/projectId=/);
     }
-    expect(loadProjectAccess).not.toHaveBeenCalled();
+    expect(effectiveProjectRole).not.toHaveBeenCalled();
     expect(findIssueByDisplaySeq).not.toHaveBeenCalled();
   });
 
@@ -269,18 +285,18 @@ describe('resolveIssueRouteRef — the negative case is the whole point', () => 
       expect(message).toMatch(/ISS-\d+/);
       expect(message).toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
     }
-    expect(loadProjectAccess).not.toHaveBeenCalled();
+    expect(effectiveProjectRole).not.toHaveBeenCalled();
   });
 
   it('refuses a malformed identifier even when a project IS given — it never reaches the lookup', async () => {
     await expect(resolveIssueRouteRef('##nope##', PROJECT_ID, USER_ID)).rejects.toMatchObject({
       status: 400,
     });
-    expect(loadProjectAccess).not.toHaveBeenCalled();
+    expect(effectiveProjectRole).not.toHaveBeenCalled();
   });
 
   it('refuses a key on a project the caller cannot read — 403, asserted BEFORE the key is looked up', async () => {
-    loadProjectAccess.mockResolvedValueOnce(NO_ACCESS);
+    effectiveProjectRole.mockResolvedValueOnce(NO_ACCESS);
 
     await expect(resolveIssueRouteRef('ISS-1097', PROJECT_ID, USER_ID)).rejects.toMatchObject({
       status: 403,
@@ -292,11 +308,11 @@ describe('resolveIssueRouteRef — the negative case is the whole point', () => 
     await expect(resolveIssueRouteRef('ISS-1097', 'not-a-uuid', USER_ID)).rejects.toMatchObject({
       status: 400,
     });
-    expect(loadProjectAccess).not.toHaveBeenCalled();
+    expect(effectiveProjectRole).not.toHaveBeenCalled();
   });
 
   it('answers 404 naming the KEY, never the uuid the request never sent, when the project holds nothing there', async () => {
-    loadProjectAccess.mockResolvedValueOnce(MEMBER_ACCESS);
+    effectiveProjectRole.mockResolvedValueOnce(MEMBER_ACCESS);
     findIssueByDisplaySeq.mockResolvedValueOnce(null);
 
     await expect(resolveIssueRouteRef('ISS-1097', PROJECT_ID, USER_ID)).rejects.toMatchObject({
@@ -306,7 +322,7 @@ describe('resolveIssueRouteRef — the negative case is the whole point', () => 
   });
 
   it('a key naming an issue in a DIFFERENT project than the one named is 404 there, not a cross-project hit', async () => {
-    loadProjectAccess.mockResolvedValueOnce(MEMBER_ACCESS);
+    effectiveProjectRole.mockResolvedValueOnce(MEMBER_ACCESS);
     // The mock stands in for `issues_project_iss_seq_uq`: issSeq 1097 exists
     // only under OTHER_PROJECT_ID, so a lookup scoped to PROJECT_ID finds nothing.
     findIssueByDisplaySeq.mockImplementationOnce(async (projectId: string) =>

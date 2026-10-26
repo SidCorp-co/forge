@@ -74,6 +74,7 @@ export interface ConversationMessage {
   blocks?: CanonicalBlock[] | null;
   /** The draft the reply check withdrew before this reply, kept so a reload still says so (ISS-1229 r36). */
   withdrawnDraft?: string | null;
+  withdrawnFor?: "credential" | null;
   /** Set INSTEAD of text: this turn ran and chose to say nothing. */
   silenceReason: string | null;
   createdAt: string;
@@ -91,7 +92,13 @@ export interface ConversationProgressEntry {
   /**
    * Set when the text that went out is NOT the prose these frames streamed.
    */
-  replaced?: { draft: string };
+  replaced?: { draft: string | null; for?: "credential" };
+}
+
+/** A withdrawn reply: its draft, or only that it looked like it held a credential (ISS-1229 r43). */
+export interface WithdrawnReply {
+  draft: string | null;
+  for: "credential" | null;
 }
 
 export interface ConversationWindow {

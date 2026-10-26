@@ -227,8 +227,20 @@ describe("a turn's progress frames are written, never fetched (ISS-1078)", () =>
 
     expect(c.at(["conversations", "c1", "progress"])).toBeNull();
     expect(c.at(["conversations", "c1", "withdrawn"])).toEqual({
-      m1: "ISS-99999 is the blocker",
+      m1: { draft: "ISS-99999 is the blocker", for: null },
     });
+  });
+
+  // ISS-1229 r43, judge-120: a draft withdrawn for looking like it held a credential carries no text, only why.
+  it("records a withdrawal for a credential as the reason alone", () => {
+    const c = cache();
+    c.frame("conversation.progress", {
+      conversationId: "c1",
+      rev: 6,
+      entry: entry("I can't share that here."),
+      replaced: { draft: null, for: "credential" },
+    });
+    expect(c.at(["conversations", "c1", "withdrawn"])).toEqual({ m1: { draft: null, for: "credential" } });
   });
 
   it("keeps one withdrawal per turn", () => {
@@ -246,8 +258,8 @@ describe("a turn's progress frames are written, never fetched (ISS-1078)", () =>
       replaced: { draft: "second draft" },
     });
     expect(c.at(["conversations", "c1", "withdrawn"])).toEqual({
-      m1: "first draft",
-      m9: "second draft",
+      m1: { draft: "first draft", for: null },
+      m9: { draft: "second draft", for: null },
     });
   });
 

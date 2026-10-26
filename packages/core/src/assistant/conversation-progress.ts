@@ -1,5 +1,7 @@
+import { FILTERED, scrubLogText } from '@forge/observability';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
+import { readsAsCredential } from '../messaging/text-rules.js';
 import {
   publishToConversationReaders,
   WEB_CONVERSATION_PROGRESS_EVENT,
@@ -19,9 +21,10 @@ export interface ConversationProgress {
   blocksForRecord: (deliveredText: string) => ContentBlock[] | null;
   /**
    * The draft the reply screen withdrew in this turn, stored beside the reply that replaced it so the
-   * room still says so after a reload (ISS-1229 r36, judge-97); null where nothing was withdrawn.
+   * room still says so after a reload (ISS-1229 r36, judge-97); null where nothing was kept.
    */
   withdrawnDraft: () => string | null;
+  withdrawnFor: () => WithdrawnFor | null;
   /** The one id the frames, the delivered message and the stored row all share. */
   entryId: string;
   /**
@@ -29,6 +32,9 @@ export interface ConversationProgress {
    */
   close: () => Promise<void>;
 }
+
+/** Why a withdrawn draft keeps no text: it read as a credential (ISS-1229 r43). */
+export type WithdrawnFor = 'credential';
 
 /** Everything published under one conversation, so a client can order what it receives. */
 export interface ConversationProgressFrame {
@@ -39,7 +45,40 @@ export interface ConversationProgressFrame {
   /**
    * Set when the text that went out is NOT the prose these frames streamed.
    */
-  replaced?: { draft: string };
+  replaced?: { draft: string } | { draft: null; for: WithdrawnFor };
+}
+
+const PEM_HEADER = /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/;
+
+/**
+ * Prose as a reader may see it while it is still being written: scrubbed, and cut at a private key's
+ * header, whose body the scrubber only matches once 16 characters of it exist (ISS-1229 r43).
+ */
+function shownWhileWritten(text: string): string {
+  const key = PEM_HEADER.exec(text);
+  return scrubLogText(key ? text.slice(0, key.index) + FILTERED : text);
+}
+
+type ProseKind = 'text' | 'thinking';
+
+/**
+ * Blocks with no credential in their prose. A tool call splits one run of prose into blocks, so a key
+ * and its value can sit in two: where the run joined up reads as a credential, it is shown as one
+ * scrubbed block after the others rather than block by block.
+ */
+function withoutCredentials(blocks: readonly ContentBlock[]): ContentBlock[] {
+  let out = blocks.map((b) => ({ ...b }));
+  for (const kind of ['text', 'thinking'] as const satisfies readonly ProseKind[]) {
+    const prose = out.filter((b) => b.type === kind && b[kind] !== undefined);
+    const joined = prose.map((b) => b[kind]).join('');
+    const shown = shownWhileWritten(joined);
+    if (shown !== joined && prose.length > 1) {
+      out = [...out.filter((b) => !prose.includes(b)), { type: kind, [kind]: shown }];
+    } else {
+      for (const b of prose) b[kind] = shownWhileWritten(b[kind] as string);
+    }
+  }
+  return out;
 }
 
 /**
@@ -59,12 +98,14 @@ export function startConversationProgress(args: {
   let rev = 0;
   let closed = false;
   let withdrawn: string | null = null;
+  let withdrawnFor: WithdrawnFor | null = null;
   let tail: Promise<unknown> = Promise.resolve();
 
   /** The entry as it stands right now, detached from the accumulator that keeps folding into it. */
   const freeze = (entry: AgentMessage): AgentMessage => ({
     ...entry,
-    blocks: (entry.blocks ?? []).map((b) => ({
+    ...(entry.content !== undefined ? { content: shownWhileWritten(entry.content) } : {}),
+    blocks: withoutCredentials(entry.blocks ?? []).map((b) => ({
       ...b,
       ...(b.toolCall ? { toolCall: { ...b.toolCall } } : {}),
       ...(b.todos ? { todos: b.todos.map((t) => ({ ...t })) } : {}),
@@ -119,9 +160,14 @@ export function startConversationProgress(args: {
       await tail;
     },
 
-    blocksForRecord: (deliveredText) => blocksFor(deliveredText),
+    blocksForRecord: (deliveredText) => {
+      const blocks = blocksFor(deliveredText);
+      return blocks ? withoutCredentials(blocks) : null;
+    },
 
     withdrawnDraft: () => withdrawn,
+
+    withdrawnFor: () => withdrawnFor,
 
     onTurnEvent: (event) => {
       acc.apply(event);
@@ -140,8 +186,17 @@ export function startConversationProgress(args: {
         content: settled,
         blocks: blocksFor(settled) ?? [{ type: 'text', text: settled }],
       };
-      if (screenReplaced) withdrawn = draft;
-      send({ entry: corrected, ...(screenReplaced ? { replaced: { draft } } : {}) });
+      if (!screenReplaced) {
+        send({ entry: corrected });
+        return;
+      }
+      if (readsAsCredential(draft)) {
+        withdrawnFor = 'credential';
+        send({ entry: corrected, replaced: { draft: null, for: 'credential' } });
+        return;
+      }
+      withdrawn = draft;
+      send({ entry: corrected, replaced: { draft } });
     },
   };
 }

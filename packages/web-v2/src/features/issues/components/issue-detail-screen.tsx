@@ -37,6 +37,7 @@ import { ApiError } from "@/lib/api/client";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { clockAt, couldNotRefresh, heldThroughFailure, offersRetry, projectGone } from "@/lib/api/read-failed";
 import { useAskAgainWhenAccessReturns } from "@/lib/api/ask-again-when-access-returns";
+import { usePageTitle } from "@/lib/document-title";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
@@ -106,6 +107,12 @@ function closedIssueRead(err: unknown): IssueReadRefusalDetails | null {
   if (!(err instanceof ApiError) || err.status !== 403) return null;
   const d = err.details as Partial<IssueReadRefusalDetails> | undefined;
   return d?.issueProject && typeof d.issueProject === "object" && d.addressProject ? (d as IssueReadRefusalDetails) : null;
+}
+
+/** The not-in-project page: its title is the page's heading and the tab's title (ISS-1229 r43, judge-120). */
+function NotInThisProject({ title, message, action }: { title: string; message: string; action: { label: string; href: string } }) {
+  usePageTitle(title);
+  return <ErrorState level={1} title={title} message={message} action={action} />;
 }
 
 export function IssueDetailScreen({
@@ -232,7 +239,7 @@ export function IssueDetailScreen({
     const owner = name ? `${name}, a project` : "a project";
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState
+        <NotInThisProject
           title={`This issue is not in ${here}`}
           message={`It belongs to ${owner} you are not a member of. An admin of ${name ?? "that project"}, or an owner or admin of its organization, can add you.`}
           action={{ label: `Back to ${here}'s issues`, href: `/projects/${slug}/issues` }}

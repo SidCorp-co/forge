@@ -116,6 +116,14 @@ export const NO_OPTION_LINE: MessageRule = {
 };
 
 /**
+ * Whether the reply check reads `text` as holding a credential: the one predicate the refusal below and
+ * what a withdrawn draft may keep both answer to (ISS-1229 r43), so the two cannot drift apart.
+ */
+export function readsAsCredential(text: string): boolean {
+  return scrubLogText(text) !== text;
+}
+
+/**
  * The scrubber is the DETECTOR here, not the fixer: redacting on the way out
  * would post `[redacted]` and leave the question unanswerable rather than
  * refused. Compare, and refuse.
@@ -126,7 +134,7 @@ export const NO_REDACTED_SECRET: MessageRule = {
   example: 'the deploy credential this project holds',
   needs: [],
   check: (text) =>
-    scrubLogText(text) !== text ? one('text carries something the secret scrubber redacts') : none,
+    readsAsCredential(text) ? one('text carries something the secret scrubber redacts') : none,
 };
 
 const CODE_FENCE_RE = /```/;

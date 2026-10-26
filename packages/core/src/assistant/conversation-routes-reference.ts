@@ -76,7 +76,13 @@ export const messageSchema = z.object({
     .string()
     .nullable()
     .describe(
-      'The draft the reply check withdrew before this reply went out, where it withdrew one',
+      'The draft the reply check withdrew before this reply went out, where it withdrew one and kept its text',
+    ),
+  withdrawnFor: z
+    .enum(['credential'])
+    .nullable()
+    .describe(
+      'Why a draft the reply check withdrew keeps no text: `credential` where it read as holding one, so none of it is stored',
     ),
   silenceReason: z.string().nullable(),
   createdAt: z.date(),

@@ -919,6 +919,21 @@ describe("an issue of a project closed to the reader, opened under one they belo
     ).toBeInTheDocument();
   });
 
+  // ISS-1229 r43, judge-120: the title was a <p>, so heading navigation found nothing, and the tab stayed "Forge".
+  it("heads the page with its title, as its one top-level heading", () => {
+    refusedWith({ issueProject: { name: "Vault" }, addressProject: { id: "p1", name: "Forge dev" } });
+    renderScreen();
+    expect(screen.getByRole("heading", { level: 1, name: "This issue is not in Forge dev" })).toBeInTheDocument();
+  });
+
+  it("names the tab for what the page says, and gives the name back when the page goes", () => {
+    refusedWith({ issueProject: { name: "Vault" }, addressProject: { id: "p1", name: "Forge dev" } });
+    const { unmount } = renderScreen();
+    expect(document.title).toBe("This issue is not in Forge dev · Forge");
+    unmount();
+    expect(document.title).toBe("Forge");
+  });
+
   it("keeps any other refused read as the load failure it is", () => {
     issueRead = {
       data: undefined,

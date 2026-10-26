@@ -397,7 +397,7 @@ describe("a reply the reply check withdrew", () => {
       <ConversationThread
         messages={[said({ id: "a1", role: "assistant", authorLabel: null, content: "The answer" })]}
         windows={[]}
-        withdrawn={{ a1: "the withdrawn draft" }}
+        withdrawn={{ a1: { draft: "the withdrawn draft", for: null } }}
       />,
     );
     expect(screen.getByTestId("thread-reply-withdrawn")).toHaveTextContent(
@@ -447,8 +447,85 @@ describe("a withdrawn reply read back after a reload", () => {
     expect(draft.querySelector("strong")?.textContent).toBe("ISS-999");
   });
 
+  // ISS-1229 r43, judge-120: a draft withdrawn for holding a token-looking URL was kept whole and shown
+  // under its technical details.
+  it("says why a draft that looked like it held a credential was withdrawn, and offers none of it", () => {
+    render(
+      <ConversationThread
+        messages={[said({ id: "a1", role: "assistant", authorLabel: null, content: "The answer", withdrawnFor: "credential" })]}
+        windows={[]}
+      />,
+    );
+    expect(screen.getByTestId("thread-reply-withdrawn")).toHaveTextContent(
+      "A reply was withdrawn by the reply check because it looked like it held a password, key or token, and answered again below.",
+    );
+    expect(screen.queryByRole("button", { name: /Technical details/ })).toBeNull();
+  });
+
+  it("says the same while the turn is live, from the frame that withdrew it", () => {
+    render(
+      <ConversationThread
+        messages={[said({ id: "a1", role: "assistant", authorLabel: null, content: "The answer" })]}
+        windows={[]}
+        withdrawn={{ a1: { draft: null, for: "credential" } }}
+      />,
+    );
+    expect(screen.getByTestId("thread-reply-withdrawn")).toHaveTextContent(/looked like it held a password, key or token/);
+    expect(screen.queryByRole("button", { name: /Technical details/ })).toBeNull();
+  });
+
   it("says nothing of a withdrawal for a reply the check let through", () => {
     render(<ConversationThread messages={[said({ id: "a2", role: "assistant", authorLabel: null, content: "Fine", withdrawnDraft: null })]} windows={[]} />);
     expect(screen.queryByTestId("thread-reply-withdrawn")).toBeNull();
+  });
+});
+
+// ISS-1229 r43, judge-120: in a group room every other person read "Another member", so with three people
+// nobody could tell who said what. Each message names its author as the room's members list does.
+describe("who said each message in a room of people none of whom set a name", () => {
+  const person = (id: string, userId: string, addedAt: string) => ({
+    id,
+    kind: "person" as const,
+    userId,
+    projectId: null,
+    label: null,
+    displayName: null,
+    reachable: null,
+    addedAt,
+  });
+  const participants = [
+    person("pm", "me", "2026-10-26T03:30:00.000Z"),
+    person("p2", "u2", "2026-10-26T03:31:00.000Z"),
+    person("p3", "u3", "2026-10-26T03:32:00.000Z"),
+  ];
+
+  it("names each person as the members list does, so no two read alike", () => {
+    render(
+      <ConversationThread
+        participants={participants}
+        messages={[
+          said({ id: "m1", seq: 0, authorUserId: "u2", authorLabel: "Another member" }),
+          said({ id: "m2", seq: 1, authorUserId: "u3", authorLabel: "Another member" }),
+          said({ id: "m3", seq: 2, authorUserId: "me", authorLabel: "Another member" }),
+        ]}
+        windows={[]}
+      />,
+    );
+    const authors = screen.getAllByTestId("message-actions").map((el) => el.querySelector("span")?.textContent);
+    expect(authors[0]).toMatch(/^Another member \(added .+\)$/);
+    expect(authors[1]).toMatch(/^Another member \(added .+\)$/);
+    expect(authors[2]).toBe("You");
+    expect(new Set(authors).size).toBe(3);
+  });
+
+  it("keeps core's name for somebody who is no longer in the room", () => {
+    render(
+      <ConversationThread
+        participants={participants}
+        messages={[said({ id: "m1", authorUserId: "gone", authorLabel: "Lan Pham" })]}
+        windows={[]}
+      />,
+    );
+    expect(screen.getByTestId("message-actions").querySelector("span")?.textContent).toBe("Lan Pham");
   });
 });

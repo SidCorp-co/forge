@@ -106,6 +106,7 @@ export function webConversationTurn(args: {
       id: args.progress.entryId,
       blocks: args.progress.blocksForRecord(deliveredText),
       withdrawnDraft: args.progress.withdrawnDraft(),
+      withdrawnFor: args.progress.withdrawnFor(),
     }),
 
     divertBeforeTurn: async ({ setPhase }) => {
