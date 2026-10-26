@@ -49,7 +49,7 @@ import {
   type OrgRole,
 } from "../types";
 import { ConfirmDialog, PanelFailure, type PanelFailureView } from "@/design/primitives/confirm-dialog";
-import { addedApart, orderPeople } from "@/lib/people/order-people";
+import { listedAs, orderPeople } from "@/lib/people/order-people";
 import { readOrgName } from "../org-name";
 
 /**
@@ -168,12 +168,9 @@ export function OrgMembersCard({
     user?.id,
     listed,
   );
-  // Two who read the same name are told apart by when each joined, as the issue groups do (ISS-1229 r29).
-  const nameApart = (m: OrgMemberRow) => {
-    const name = readerName(m.userId, user?.id, m.displayName);
-    const apart = addedApart(listed(m), people.map(listed), user?.id);
-    return apart ? `${name} (${apart})` : name;
-  };
+  // Two who read the same name are told apart by when each joined, as the issue groups do (ISS-1229
+  // r29), by the rule core names a nameless connection owner with (ISS-1421 r29).
+  const nameApart = (m: OrgMemberRow) => listedAs(listed(m), people.map(listed), user?.id);
   const agents = members
     .filter((m) => m.kind === "agent" && (m.projects ?? []).length > 0)
     .sort((a, b) => agentName(a).localeCompare(agentName(b)));

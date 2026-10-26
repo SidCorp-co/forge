@@ -50,6 +50,10 @@
       "types": "./dist/person-name.d.ts",
       "default": "./dist/person-name.js"
     },
+    "./people-apart": {
+      "types": "./dist/people-apart.d.ts",
+      "default": "./dist/people-apart.js"
+    },
     "./deploy-capability": {
       "types": "./src/deploy-capability.ts",
       "default": "./src/deploy-capability.ts"

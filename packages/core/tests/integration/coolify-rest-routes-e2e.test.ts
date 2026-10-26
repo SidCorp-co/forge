@@ -146,9 +146,11 @@ describe('Coolify commands over REST', () => {
     );
 
     expect(res.status).toBe(400);
+    // ISS-1421 r29: it said "Project has no active Coolify integration.", naming nobody who may act.
     expect(await res.json()).toMatchObject({
       code: 'BAD_REQUEST',
-      message: 'Project has no active Coolify integration.',
+      message:
+        "This project has no Coolify connected. Only an admin of this project can connect it, on the project's Integrations tab. Nothing was asked of Coolify.",
     });
   });
 

@@ -44,12 +44,17 @@ vi.mock('../store.js', () => ({
   buildContextFromBinding: () => ({ config: {}, secrets: {} }),
 }));
 
-vi.mock('./commands.js', () => ({
-  CoolifyCommandError: class extends Error {},
-  coolifyDeliveryStatus: vi.fn(),
-  listCoolifyIntegrations: vi.fn(),
-  runCoolifyDeploy: vi.fn(),
-}));
+vi.mock('./commands.js', () => {
+  class CoolifyCommandError extends Error {}
+  return {
+    CoolifyCommandError,
+    CoolifyConnectionRemovedError: class extends CoolifyCommandError {},
+    activeCoolifyIntegrations: async () => [],
+    coolifyDeliveryStatus: vi.fn(),
+    listCoolifyIntegrations: vi.fn(),
+    runCoolifyDeploy: vi.fn(),
+  };
+});
 
 vi.mock('./controls.js', () => ({
   credentialFromSecrets: vi.fn(),
@@ -269,6 +274,23 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
       new CoolifyCommandError('project has no active Coolify integration'),
     );
     expect((await images()).status).toBe(400);
+  });
+
+  // ISS-1421 r29, judge-119 on 316: over a removed connection this read said 400 "No active Coolify
+  // integration with that integrationId." while the application list answered 409 CONNECTION_REMOVED.
+  it('answers 409 CONNECTION_REMOVED over a removed connection, as the application list does', async () => {
+    const { listCoolifyRollbackImages } = await import('./controls.js');
+    const { CoolifyConnectionRemovedError } = await import('./commands.js');
+    const said =
+      "This project's Coolify binding answers nothing: the connection behind it was removed.";
+    vi.mocked(listCoolifyRollbackImages).mockRejectedValueOnce(
+      new CoolifyConnectionRemovedError(said),
+    );
+    const res = await images();
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('CONNECTION_REMOVED');
+    expect(body.message).toBe(said);
   });
 
   it('answers 200 with the images when Coolify lists them', async () => {

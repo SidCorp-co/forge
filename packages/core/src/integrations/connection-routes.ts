@@ -9,6 +9,7 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { UNNAMED_PERSON } from '../lib/person-name.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { AGENT_ACCESS_CLOSED, AGENT_ACCESS_VALUES, type AgentAccess } from './agent-access.js';
 import { bindingReaderOf } from './binding-acts.js';
@@ -38,7 +39,7 @@ import {
 } from './connection-routes-reference.js';
 import { healthAnswer } from './health-words.js';
 import { holdsKey, isRemovedConnection, keyIn, MANAGES_IT } from './held-key.js';
-import { ownerNamesOf } from './owner-names.js';
+import { namelessOwnerListing, ownerNamesOf } from './owner-names.js';
 import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
@@ -47,6 +48,7 @@ import {
   connectionCreateSchema,
   connectionUpdateSchema,
   parseProviderHalf,
+  SHARE_TAKES_NO_KEY,
   splitProviderConfig,
 } from './provider-schemas.js';
 import {
@@ -112,21 +114,23 @@ async function loadManageableConnection(
   userId: string,
   act: ConnectionAct,
 ): Promise<IntegrationConnectionRow> {
-  return manageable(await loadVisibleConnection(id, userId), act);
+  return manageable(await loadVisibleConnection(id, userId), act, userId);
 }
 
-/** The connection, or the refusal naming the act it was asked (ISS-1421 r28). */
+/** The connection, or the refusal naming the act it was asked and who to ask (ISS-1421 r28, r29). */
 async function manageable(
   reached: ReachedConnection,
   act: ConnectionAct,
+  userId: string,
 ): Promise<IntegrationConnectionRow> {
   if (!reached.canManage) {
-    const names = await ownerNamesOf([reached.connection]);
-    throw connectionNotManageable(
-      reached.connection,
-      names.get(reached.connection.id) ?? null,
-      act,
-    );
+    const { connection } = reached;
+    const ownerName = (await ownerNamesOf([connection])).get(connection.id) ?? null;
+    const listed =
+      connection.ownerType === 'user' && ownerName === UNNAMED_PERSON
+        ? await namelessOwnerListing(connection.ownerId, userId)
+        : null;
+    throw connectionNotManageable(connection, ownerName, act, listed);
   }
   return reached.connection;
 }
@@ -214,8 +218,12 @@ const bindExistingSchema = z
     // existing credential into a project is still a connect, and whether agents there may use it is
     // still a property of the binding it creates rather than of a map somewhere else.
     agentAccess: z.enum(AGENT_ACCESS_VALUES).optional(),
+    secrets: z.unknown().optional(),
   })
   .superRefine((body, ctx) => {
+    if (body.secrets !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['secrets'], message: SHARE_TAKES_NO_KEY });
+    }
     checkRoleStagesPairing(body, ctx);
   });
 
@@ -454,7 +462,7 @@ async function noKeyRefusal(connection: Parameters<typeof turnsBackOn>[0]): Prom
 async function loadDeletableConnection(id: string, userId: string) {
   const reached = await findReachableConnection(userId, id);
   if (!reached) throw connectionGoneOrNotReachable(id);
-  return manageable(reached, 'remove it');
+  return manageable(reached, 'remove it', userId);
 }
 
 integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {

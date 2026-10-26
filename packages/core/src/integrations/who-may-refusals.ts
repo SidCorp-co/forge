@@ -5,6 +5,7 @@ import { UNNAMED_PERSON } from '../lib/person-name.js';
 import { type ProjectRole, WHO_CHANGES, WHO_GRANTS_A_BOX } from './binding-acts.js';
 import { providerLabel } from './health-words.js';
 import { whoSavesKey } from './held-key.js';
+import type { ListedOwner } from './owner-names.js';
 
 /** The connection tier of a binding PATCH, naming who may change what the asker sent (ISS-1421 r26, r27). */
 export const keyNotYours = (connection: { ownerType: 'user' | 'org' }) =>
@@ -80,8 +81,14 @@ export function connectionPatchAct(patch: {
   return acts.length > 0 ? acts.join(' or ') : 'change it';
 }
 
-/** Who to ask about a person's connection: their name, or "the member who owns it". */
-function askAboutPersons(ownerName: string | null): { owner: string; ask: string } {
+/**
+ * Who to ask about a person's connection: their name, or where they set none, the row an
+ * organization's Members list draws for them, so the reader can find them (ISS-1421 r29).
+ */
+function askAboutPersons(
+  ownerName: string | null,
+  listed: ListedOwner | null,
+): { owner: string; ask: string } {
   if (ownerName === null) {
     return {
       owner: 'a user who can no longer be found',
@@ -91,7 +98,9 @@ function askAboutPersons(ownerName: string | null): { owner: string; ask: string
   if (ownerName === UNNAMED_PERSON) {
     return {
       owner: 'a member who has set no name Forge can show',
-      ask: 'the member who owns it',
+      ask: listed
+        ? `the member listed as "${listed.listed}" under Members in ${listed.orgName}`
+        : 'the member who owns it',
     };
   }
   return { owner: ownerName, ask: ownerName };
@@ -105,6 +114,7 @@ export const connectionNotManageable = (
   connection: { ownerType: string; displayName: string | null; provider: string },
   ownerName: string | null,
   act: ConnectionAct,
+  listed: ListedOwner | null = null,
 ) => {
   const opening = `You can see ${connectionCalled(connection)} but not ${act}`;
   if (connection.ownerType === 'org') {
@@ -116,7 +126,7 @@ export const connectionNotManageable = (
       cause: { code: 'CONNECTION_NOT_MANAGEABLE' },
     });
   }
-  const { owner, ask } = askAboutPersons(ownerName);
+  const { owner, ask } = askAboutPersons(ownerName, listed);
   return new HTTPException(403, {
     message: `${opening}: it is owned by ${owner}, and only its owner can ${act}. Ask ${ask}, or create a connection of your own.`,
     cause: { code: 'CONNECTION_NOT_MANAGEABLE' },

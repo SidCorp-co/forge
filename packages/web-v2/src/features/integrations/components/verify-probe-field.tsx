@@ -20,6 +20,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useIntegrationsList, useUpdateProviderIntegration } from "../hooks";
 import type { IntegrationSummary } from "../types";
+import { onlyWho } from "./integration-enabled-control";
 import { labelDecidesFor } from "./release-runner-field";
 
 /** The config key itself, so no screen spells it differently from the API. */
@@ -220,13 +221,11 @@ function useOtherLiveProbe(projectId: string, bindingId: string): OtherProbes {
 export function BindingVerifyProbeField({
   projectId,
   binding,
-  canEdit,
   focus = false,
   onDirtyChange,
 }: {
   projectId: string;
-  binding: Pick<IntegrationSummary, "id" | "role" | "stages" | "config" | "bindingConfig">;
-  canEdit: boolean;
+  binding: Pick<IntegrationSummary, "id" | "role" | "stages" | "config" | "bindingConfig" | "acts">;
   /** Arrived from a link that names this section: scroll to it and put the cursor in its URL. */
   focus?: boolean;
   /** Told whenever the rows start or stop differing from what is stored. */
@@ -315,7 +314,7 @@ export function BindingVerifyProbeField({
         inherited={!ownDeclared && declared.length > 0}
         unusable={present && declared.length === 0}
       />
-      {canEdit ? (
+      {binding.acts.change ? (
         <Editor
           // Re-seeds the rows when a save lands or the read arrives after the mount.
           key={JSON.stringify(effective ?? null)}
@@ -333,7 +332,7 @@ export function BindingVerifyProbeField({
           onDirtyChange={onDirtyChange}
         />
       ) : (
-        <p className="fg-body-sm text-subtle">Only a project admin can change this.</p>
+        <p className="fg-body-sm text-subtle">{`${onlyWho(binding.acts.whoChanges)} can change this.`}</p>
       )}
       {failure && (
         <p role="alert" className="fg-body-sm" style={FIELD_ERROR}>

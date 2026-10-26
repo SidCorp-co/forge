@@ -19,12 +19,12 @@
 
 import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { z } from 'zod';
 import { answer } from '../../api-reference/declare/describe.js';
 import { declaresInput } from '../../api-reference/declare/validator.js';
 import { schemaRefused } from '../../lib/zod-sentences.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
+import { bindingActs, bindingReaderOf, type ProjectRole } from '../binding-acts.js';
 import {
   assertAdmin,
   assertNotRemoved,
@@ -34,13 +34,16 @@ import {
   notFound,
 } from '../route-helpers.js';
 import { buildContextFromBinding, findBindingWithConnectionById } from '../store.js';
+import { addressForReader } from '../unreached.js';
 import {
   CoolifyApiError,
   describeCoolifyAnswer,
   describeCoolifyRollbackImagesRefusal,
 } from './client.js';
 import {
+  activeCoolifyIntegrations,
   CoolifyCommandError,
+  CoolifyConnectionRemovedError,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
   runCoolifyDeploy,
@@ -86,6 +89,10 @@ export const asSentence = (message: string): string =>
   /[.!?]$/.test(message.trimEnd()) ? message.trimEnd() : `${message.trimEnd()}.`;
 
 const asHttp = (err: unknown): never => {
+  // A removed connection is answered as every other door over it answers (ISS-1421 r29).
+  if (err instanceof CoolifyConnectionRemovedError) {
+    throw new HTTPException(409, { message: err.message, cause: { code: 'CONNECTION_REMOVED' } });
+  }
   if (err instanceof CoolifyCommandError) {
     throw new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
   }
@@ -121,10 +128,16 @@ const lockedAsHttp = (err: unknown): never => {
  * origin 502's body with its own `error code: 502`, so the refusal named here never reached a
  * caller (ISS-1194).
  */
-const readAsHttp = (err: unknown, describe: (e: CoolifyApiError) => string): never => {
+const readAsHttp = (
+  err: unknown,
+  describe: (e: CoolifyApiError) => string,
+  addressWhoMay: string | null = null,
+): never => {
+  const forReader = (said: string) =>
+    addressWhoMay === null ? said : addressForReader(said, addressWhoMay);
   if (err instanceof CoolifyApiError) {
     throw new HTTPException(424, {
-      message: asSentence(describe(err)),
+      message: forReader(asSentence(describe(err))),
       cause: { code: 'COOLIFY_API_ERROR' },
     });
   }
@@ -132,13 +145,35 @@ const readAsHttp = (err: unknown, describe: (e: CoolifyApiError) => string): nev
     // Coolify answering something that is not JSON did reach Coolify: its own code, so a caller
     // acting on the code is not told Forge could not connect.
     const code = err.kind === 'not-json' ? 'COOLIFY_ANSWER_NOT_JSON' : 'COOLIFY_UNREACHABLE';
-    throw new HTTPException(424, { message: asSentence(err.message), cause: { code } });
+    throw new HTTPException(424, { message: forReader(asSentence(err.message)), cause: { code } });
   }
   return asHttp(err);
 };
 
-const invalidBody = (error: z.core.$ZodError, schema: z.ZodType, sent: unknown) =>
-  schemaRefused(error, schema, sent);
+/**
+ * Who may change the saved address of the binding a failed read went through, where this reader may
+ * not; null for any other failure, or where the read resolved no one binding.
+ */
+async function addressWhoMayOver(
+  err: unknown,
+  reader: { userId: string; projectId: string; role: ProjectRole },
+  integrationId: string | undefined,
+): Promise<string | null> {
+  if (!(err instanceof CoolifyApiError || err instanceof CoolifyReadFailedError)) return null;
+  const rows = await activeCoolifyIntegrations(reader.projectId);
+  const row = integrationId
+    ? rows.find((r) => r.id === integrationId)
+    : rows.length === 1
+      ? rows[0]
+      : undefined;
+  if (!row) return null;
+  const acts = bindingActs(
+    await bindingReaderOf(reader.userId, reader.projectId, reader.role),
+    row.pair.connection,
+    'coolify',
+  );
+  return acts.saveKey ? null : acts.whoSavesKey;
+}
 
 function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): void {
   routes.get('/:projectId/integrations/coolify', ...listCoolify, async (c) => {
@@ -181,7 +216,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
 
       const raw = await c.req.json().catch(() => ({}));
       const parsed = deployBodySchema.safeParse(raw ?? {});
-      if (!parsed.success) throw invalidBody(parsed.error, deployBodySchema, raw);
+      if (!parsed.success) throw schemaRefused(parsed.error, deployBodySchema, raw);
 
       try {
         return c.json(
@@ -202,7 +237,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
       await assertProjectWriter(projectId, c.get('userId'));
       const raw = await c.req.json().catch(() => ({}));
       const parsed = cancelBodySchema.safeParse(raw ?? {});
-      if (!parsed.success) throw invalidBody(parsed.error, cancelBodySchema, raw);
+      if (!parsed.success) throw schemaRefused(parsed.error, cancelBodySchema, raw);
       try {
         return c.json(answer(controlSchema, await runCoolifyCancel({ projectId, ...parsed.data })));
       } catch (err) {
@@ -217,7 +252,8 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
     declaresInput('query', rollbackImagesQuerySchema),
     async (c) => {
       const projectId = c.req.param('projectId');
-      await assertProjectMember(projectId, c.get('userId'));
+      const userId = c.get('userId');
+      const role = await assertProjectMember(projectId, userId);
       const integrationId = c.req.query('integrationId');
       const resourceUuid = c.req.query('resourceUuid');
       try {
@@ -232,7 +268,8 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
           ),
         );
       } catch (err) {
-        return readAsHttp(err, describeCoolifyRollbackImagesRefusal);
+        const who = await addressWhoMayOver(err, { userId, projectId, role }, integrationId);
+        return readAsHttp(err, describeCoolifyRollbackImagesRefusal, who);
       }
     },
   );
@@ -246,7 +283,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
       await assertProjectWriter(projectId, c.get('userId'));
       const raw = await c.req.json().catch(() => ({}));
       const parsed = rollbackBodySchema.safeParse(raw ?? {});
-      if (!parsed.success) throw invalidBody(parsed.error, rollbackBodySchema, raw);
+      if (!parsed.success) throw schemaRefused(parsed.error, rollbackBodySchema, raw);
       try {
         return c.json(
           answer(controlSchema, await runCoolifyRollback({ projectId, ...parsed.data })),
@@ -269,9 +306,11 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
       const role = await assertProjectMember(projectId, userId);
       const raw = await c.req.json().catch(() => ({}));
       const parsed = applicationsBodySchema.safeParse(raw ?? {});
-      if (!parsed.success) throw invalidBody(parsed.error, applicationsBodySchema, raw);
+      if (!parsed.success) throw schemaRefused(parsed.error, applicationsBodySchema, raw);
       const body = parsed.data;
       let auth: { baseUrl: string; apiToken: string; previousApiToken?: string };
+      // Who may change the saved address, where this reader may not; a typed address is the reader's own.
+      let addressWhoMay: string | null = null;
       if ('integrationId' in body) {
         const existing = await findBindingWithConnectionById(body.integrationId);
         if (
@@ -287,6 +326,12 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
           role,
           projectId,
         });
+        const acts = bindingActs(
+          await bindingReaderOf(userId, projectId, role),
+          existing.connection,
+          existing.binding.provider,
+        );
+        addressWhoMay = acts.saveKey ? null : acts.whoSavesKey;
         const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(existing);
         if (!ctx.config?.baseUrl || !ctx.secrets?.apiToken) {
           throw new HTTPException(409, {
@@ -305,7 +350,7 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
           }),
         );
       } catch (err) {
-        return readAsHttp(err, describeCoolifyAnswer);
+        return readAsHttp(err, describeCoolifyAnswer, addressWhoMay);
       }
     },
   );
@@ -316,7 +361,8 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
     declaresInput('query', integrationQuerySchema),
     async (c) => {
       const projectId = c.req.param('projectId');
-      await assertProjectMember(projectId, c.get('userId'));
+      const userId = c.get('userId');
+      const role = await assertProjectMember(projectId, userId);
       const integrationId = c.req.query('integrationId');
       try {
         return c.json(
@@ -329,7 +375,8 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
           ),
         );
       } catch (err) {
-        return readAsHttp(err, describeCoolifyAnswer);
+        const who = await addressWhoMayOver(err, { userId, projectId, role }, integrationId);
+        return readAsHttp(err, describeCoolifyAnswer, who);
       }
     },
   );

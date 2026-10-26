@@ -1,4 +1,5 @@
 import { STATUS_CODES } from 'node:http';
+import { CHECK_ADDRESS, SAVE_NEW_KEY } from '../unreached.js';
 import type {
   CoolifyApplicationLogsResponse,
   CoolifyApplicationResponse,
@@ -138,7 +139,7 @@ export function describeCoolifyForbidden(err: CoolifyApiError): string {
  */
 export function describeCoolifyUnauthorized(err: CoolifyApiError): string {
   const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
-  return `${said} If this is Coolify, it refused the stored API token, so save a new token from Keys & Tokens in Coolify. If it is not, check the address saved on this connection.`;
+  return `${said} If this is Coolify, it refused the stored API token, ${SAVE_NEW_KEY.coolify} ${CHECK_ADDRESS.ifNot}`;
 }
 
 /** Every refusal reading a Coolify answer words it here, so none says "Coolify answered" (ISS-1421 r17). */
@@ -146,7 +147,7 @@ export function describeCoolifyAnswer(err: CoolifyApiError): string {
   if (err.status === 401) return describeCoolifyUnauthorized(err);
   if (err.status === 403) return describeCoolifyForbidden(err);
   const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
-  return err.addressSuspect ? `${said} Check the address saved on this connection.` : said;
+  return err.addressSuspect ? `${said} ${CHECK_ADDRESS.alone}` : said;
 }
 
 /** A 404 here does not say whether the route or the application is missing, so the refusal says that and quotes the body. */
@@ -159,7 +160,7 @@ export function describeCoolifyRollbackImagesRefusal(err: CoolifyApiError): stri
     : body
       ? ` The body it sent: ${body.slice(0, 200)}`
       : '';
-  return `${said} Forge has no rollback image list to read and no tag to roll back to. A 404 here reads the same whether the server lacks the route or does not know the application (the targets read says whether it lists it), so check the address saved on this connection first.${sent}`;
+  return `${said} Forge has no rollback image list to read and no tag to roll back to. A 404 here reads the same whether the server lacks the route or does not know the application (the targets read says whether it lists it), ${CHECK_ADDRESS.first}${sent}`;
 }
 
 export interface CoolifyClientOptions {

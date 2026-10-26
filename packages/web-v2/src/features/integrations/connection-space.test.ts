@@ -1,6 +1,6 @@
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { describe, expect, it } from "vitest";
-import { connectionInSpace, connectionOwnerLabel, readOnlyNote } from "./connection-space";
+import { connectionInSpace, connectionOwnerLabel, readOnlyNote, whoChangesConnection } from "./connection-space";
 
 const TEAM = { id: "org-team", isPersonal: false };
 const PERSONAL = { id: "org-me", isPersonal: true };
@@ -110,5 +110,19 @@ describe("how a row names its owner and why it is read-only", () => {
     );
     const owned = item({ ownerType: "org", ownerId: "o1" });
     expect(readOnlyNote(owned, "Sidcorp")).toMatch(/owner or admin of Sidcorp/);
+  });
+});
+
+// ISS-1421 r29: the drawer's runner-label line named "an org owner or admin" on a person's
+// connection; every who-may line there now reads this one answer.
+describe("who may change a connection", () => {
+  it("is its owner alone on a person's, and an organization's owners and admins on its own", () => {
+    const person = item({ access: { reach: "binding", canManage: false, ownerName: "another member" } });
+    expect(whoChangesConnection(person, "Another member")).toBe("the member who owns it");
+    const named = item({ access: { reach: "binding", canManage: false, ownerName: "Mai Tran" } });
+    expect(whoChangesConnection(named, "Mai Tran")).toBe("its owner, Mai Tran,");
+    const owned = item({ ownerType: "org", ownerId: "o1" });
+    expect(whoChangesConnection(owned, "Sidcorp")).toBe("an owner or admin of Sidcorp");
+    expect(whoChangesConnection(person, "x")).not.toMatch(/org/);
   });
 });

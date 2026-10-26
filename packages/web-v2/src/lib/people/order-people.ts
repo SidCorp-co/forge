@@ -1,15 +1,9 @@
 // The one order every list of people takes, and the words that tell two unnamed people apart (ISS-1229 r28).
 
-import { givenName, readerName } from "@forge/contracts/person-name";
+import { type ListedPerson, listedKey as keyOf } from "@forge/contracts/people-apart";
+import { givenName } from "@forge/contracts/person-name";
 
-export interface ListedPerson {
-  userId: string | null | undefined;
-  displayName: string | null | undefined;
-  addedAt: string | null | undefined;
-  key?: string | undefined;
-}
-
-const keyOf = (p: ListedPerson) => p.key ?? p.userId ?? "";
+export type { ListedPerson };
 
 const NEVER = "\uffff";
 
@@ -42,36 +36,6 @@ export function orderPeople<T>(
   return [...people].sort((a, b) => compare(listed(a), listed(b)));
 }
 
-const addedDay = (iso: string) =>
-  new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
-const addedTime = (iso: string) =>
-  new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-const ORDINALS = ["first", "second", "third", "fourth", "fifth"];
-
-/**
- * What tells a person apart from the others in `everyone` who read the same name to this reader: the
- * day they were added, then the minute, then their place in the order added (ISS-1229 r24). Null
- * where nobody else reads like them, or where when they were added is not known.
- */
-export function addedApart(
-  person: ListedPerson,
-  everyone: readonly ListedPerson[],
-  viewerId?: string | null,
-): string | null {
-  if (!person.addedAt) return null;
-  const base = (p: ListedPerson) => readerName(p.userId, viewerId, p.displayName).toLowerCase();
-  const alike = everyone
-    .filter((p) => p.addedAt && base(p) === base(person))
-    .sort(
-      (a, b) =>
-        (a.addedAt as string).localeCompare(b.addedAt as string) || keyOf(a).localeCompare(keyOf(b)),
-    );
-  if (alike.length < 2) return null;
-  const day = (p: ListedPerson) => addedDay(p.addedAt as string);
-  const minute = (p: ListedPerson) => `${day(p)}, ${addedTime(p.addedAt as string)}`;
-  if (alike.filter((p) => day(p) === day(person)).length < 2) return `added ${day(person)}`;
-  const sameMinute = alike.filter((p) => minute(p) === minute(person));
-  if (sameMinute.length < 2) return `added ${minute(person)}`;
-  const place = sameMinute.findIndex((p) => keyOf(p) === keyOf(person));
-  return `added ${minute(person)}, the ${ORDINALS[place] ?? `number ${place + 1}`}`;
-}
+// How two people who read alike are told apart is contracts', so core's sentences name a person as
+// these lists do (ISS-1421 r29).
+export { addedApart, listedAs } from "@forge/contracts/people-apart";

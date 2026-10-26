@@ -35,23 +35,31 @@ const SERVICE_ACCOUNT_SHAPE_REFUSAL =
 const FOREIGN_TOKEN_URI_SAVE_REFUSAL =
   'This key file\'s "token_uri" is not Google\'s (https://oauth2.googleapis.com/token), so Forge will not send a signed assertion there. Re-download the key from the Google Cloud console and paste it unchanged.';
 
+// The most a key file Google issues holds, said of the file and never as a count (ISS-1421 r29).
+const KEY_FILE_MOST = 20000;
+
+const OVERSIZED_KEY_FILE_REFUSAL =
+  'This is larger than any service-account key file Google issues, so it holds more than the key file. Download the key again from the Google Cloud console under IAM & Admin → Service Accounts → Keys → Add key → JSON, and paste the file unchanged.';
+
 export const googleSecretsSchema = z.strictObject({
-  serviceAccountJson: z
-    .string()
-    .min(100)
-    .max(20000)
-    .superRefine((value, ctx) => {
-      try {
-        parseServiceAccountKey(value);
-      } catch (err) {
-        // A whole key file naming another token endpoint is refused for that, not as no key file (ISS-1421 r27).
-        const foreign = err instanceof Error && err.message === FOREIGN_TOKEN_URI_REFUSAL;
-        ctx.addIssue({
-          code: 'custom',
-          message: foreign ? FOREIGN_TOKEN_URI_SAVE_REFUSAL : SERVICE_ACCOUNT_SHAPE_REFUSAL,
-        });
-      }
-    }),
+  // No `.min`/`.max`: zod words those as a count of the field's characters, and a person pasting a
+  // file counts nothing (judge-119 on 328). A short value fails the parse and is refused as no key file.
+  serviceAccountJson: z.string().superRefine((value, ctx) => {
+    if (value.length > KEY_FILE_MOST) {
+      ctx.addIssue({ code: 'custom', message: OVERSIZED_KEY_FILE_REFUSAL });
+      return;
+    }
+    try {
+      parseServiceAccountKey(value);
+    } catch (err) {
+      // A whole key file naming another token endpoint is refused for that, not as no key file (ISS-1421 r27).
+      const foreign = err instanceof Error && err.message === FOREIGN_TOKEN_URI_REFUSAL;
+      ctx.addIssue({
+        code: 'custom',
+        message: foreign ? FOREIGN_TOKEN_URI_SAVE_REFUSAL : SERVICE_ACCOUNT_SHAPE_REFUSAL,
+      });
+    }
+  }),
 });
 
 export const GOOGLE_BINDING_CONFIG_KEYS = [

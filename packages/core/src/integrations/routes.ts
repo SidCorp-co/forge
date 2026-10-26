@@ -21,7 +21,7 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
-import { bindingReaderOf, projectIntegrationActs } from './binding-acts.js';
+import { bindingActs, bindingReaderOf, projectIntegrationActs } from './binding-acts.js';
 import {
   assertMayDisconnect,
   mergedTiers,
@@ -98,6 +98,7 @@ import {
   updateBinding,
   updateConnection,
 } from './store.js';
+import { addressForReader } from './unreached.js';
 
 // Owner-scoped connection CRUD lives in its own module; re-exported so
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
@@ -328,7 +329,18 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', ...testIntegration,
     });
   }
   const result = await checkBindingHealth(adapter, existing);
-  return c.json(answer(healthResultSchema, healthAnswer(existing.binding.provider, result)));
+  const answered = healthAnswer(existing.binding.provider, result);
+  // A reader who may not change the connection's address is told who may (ISS-1421 r29).
+  const acts = bindingActs(
+    await bindingReaderOf(userId, projectId, role),
+    existing.connection,
+    existing.binding.provider,
+  );
+  const said =
+    acts.saveKey || !answered.message
+      ? answered
+      : { ...answered, message: addressForReader(answered.message, acts.whoSavesKey) };
+  return c.json(answer(healthResultSchema, said));
 });
 
 integrationsRoutes.post(

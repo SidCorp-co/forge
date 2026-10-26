@@ -132,6 +132,10 @@ export function grantOnConnectWho(pathKind: AgentPathKind, may: ProjectIntegrati
   );
 }
 
+type Editable =
+  | { canEdit: true; disabledReason?: string }
+  | { canEdit: false; disabledReason: string };
+
 /**
  * The control itself, with no opinion about where the value is stored — the connect forms drive it
  * from their own state, the binding rows drive it from a PATCH.
@@ -154,9 +158,6 @@ export function AgentAccessChoice({
   value: AgentAccess;
   onChange: (next: AgentAccess) => void;
   pathKind: AgentPathKind;
-  canEdit: boolean;
-  /** Who may change it, shown whenever `canEdit` is false. */
-  disabledReason?: string;
   busy?: boolean;
   failure?: string | null;
   /** A saved binding that is turned off: what the grant would do is not what happens now. */
@@ -164,7 +165,7 @@ export function AgentAccessChoice({
   readFrom?: ReadFrom;
   /** Who turns each tier back on, so the way back offers no control this reader is not shown. */
   credentialOn?: WhoTurnsOn;
-}) {
+} & Editable) {
   const kind = pathKind === "none" ? undefined : KIND_COPY[pathKind];
   const copy = kind && turnedOff ? turnedOffCopy(turnedOff, readFrom, credentialOn) : kind;
   if (!copy) return null;
@@ -183,11 +184,7 @@ export function AgentAccessChoice({
         <span className="fg-body-sm text-fg">{GRANT_LABEL}</span>
       </span>
       <p className="fg-body-sm text-muted">{granted ? copy.granted : copy.withheld}</p>
-      {!canEdit && (
-        <p className="fg-body-sm text-subtle">
-          {disabledReason ?? "Only a project admin can change this."}
-        </p>
-      )}
+      {!canEdit && <p className="fg-body-sm text-subtle">{disabledReason}</p>}
       {failure && <p className="fg-body-sm text-[var(--red-600)]">{failure}</p>}
     </div>
   );
