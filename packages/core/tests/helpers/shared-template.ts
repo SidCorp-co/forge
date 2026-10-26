@@ -89,12 +89,13 @@ export function resolveTemplateMode(
   }
   if (raw === 'shared' && !hasInstance) {
     throw new Error(
-      'TEST_TEMPLATE_MODE=shared needs an instance that outlives the run, and TEST_DATABASE_URL ' +
-        'is unset, so this run would start a container of its own and share with nothing.',
+      'TEST_TEMPLATE_MODE=shared needs an instance that outlives the run, and this run starts a ' +
+        'container of its own (TEST_DB_MODE=container, or no TEST_DATABASE_URL), so it would ' +
+        'share with nothing.',
     );
   }
   if (raw === 'shared' || raw === 'fresh') return { mode: raw, rule: `TEST_TEMPLATE_MODE=${raw}` };
-  if (!hasInstance) return { mode: 'fresh', rule: 'no TEST_DATABASE_URL, a container of its own' };
+  if (!hasInstance) return { mode: 'fresh', rule: 'a container of its own' };
   if (onCi(env)) return { mode: 'fresh', rule: 'CI is set' };
   return { mode: 'shared', rule: 'TEST_DATABASE_URL is set and CI is not' };
 }

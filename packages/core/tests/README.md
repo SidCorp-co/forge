@@ -14,7 +14,11 @@ Where the database comes from is chosen by `TEST_DB_MODE`:
 | `schema`    | Local dev (preferred) | Use the Postgres already running at `TEST_DATABASE_URL`.                                          |
 
 Unset defaults to `schema` when `TEST_DATABASE_URL` is set, `container`
-otherwise. **Testcontainers needs a docker daemon this user can reach**; where
+otherwise. A mode that is set is the one taken, in global setup as in
+`setupTestDatabase` (`tests/helpers/schema-mode.ts:resolveDbSource`): `container`
+boots one even where `TEST_DATABASE_URL` is set, and `schema` with no
+`TEST_DATABASE_URL`, or a value that is neither mode, is refused by name rather
+than met with a container. **Testcontainers needs a docker daemon this user can reach**; where
 it does not have one, `TEST_DATABASE_URL` is the only route into the suite, and
 `startPostgresContainer` says so by name rather than letting an unreachable
 socket surface as a broken suite.
@@ -145,16 +149,22 @@ resets it, the same way for every file:
 The schema is read from every catalog the database holds, not from a list of object kinds
 (`slot-db.ts:schemaChangesOn`): one hash over every row of every database-local table in
 `pg_catalog`, less the planner's statistics, large objects, the `pg_class` columns that move by
-use (storage, row estimates, freeze horizons) and a column's missing value (`atthasmissing`,
-`attmissingval`), which `VACUUM FULL` and `CLUSTER` write into the rows. A rule, an aggregate, a comment, a collation, a
+use (storage, row estimates, freeze horizons) and what a rewrite (`VACUUM FULL`, `CLUSTER`) moves
+without changing the schema: a column's missing value (`atthasmissing`, `attmissingval`), which it
+writes into the rows, and a TOAST table, which it drops where no live column needs one. Every row
+belonging to a TOAST table is left out, and the storage options a table set on its TOAST table are
+read as the table's. A rule, an aggregate, a comment, a collation, a
 statistics object or a storage option is a difference as a table is;
 `tests/integration/slot-digest-names-every-change-e2e.test.ts` plants each kind and the use that is
 not one. Only once the hash moved are the rows grouped by the object they belong to and named the way
 Postgres names it (`pg_describe_object`), to say what changed.
 
 What it was cloned as — that hash with the named digest, the seed rows, the sequence values — is
-kept on the database's own comment, read without connecting to it. The file's `cleanup()` ends its
-connections and reads the schema again, so a file that changes it is refused at its own teardown,
+kept on the database's own comment, read without connecting to it. The file's `cleanup()` closes
+the app's pool for good (`src/db/client.ts:closeDbFor`, lifted by the next `setupTestDatabase`), so
+work the app left running cannot open another one, ends its own client, and only then terminates
+whatever is still connected, naming it, since a connection cut off from the server's side under a
+transaction is one postgres.js goes on writing to. It then reads the schema again, so a file that changes it is refused at its own teardown,
 naming the file and the objects it added, dropped or changed; the database is then renamed out of
 the slot and dropped behind the run, and the next file in the slot gets a fresh clone. A file that
 gave its database back without `cleanup()` is caught by the next file's step 2, which names it.

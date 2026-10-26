@@ -2,7 +2,7 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
 import { startPostgresContainer } from './container.js';
 import { runMigrations } from './migrate.js';
-import { createTestSchema } from './schema-mode.js';
+import { createTestSchema, resolveDbSource } from './schema-mode.js';
 import { drainRetiredScratchDbs, ownDbName, retireScratchDb } from './scratch-db.js';
 import { claimSlotDatabase, reportLingeringConnections } from './slot-db.js';
 
@@ -10,12 +10,11 @@ export type TestDb = PostgresJsDatabase<Record<string, unknown>>;
 
 export interface TestDatabase {
   db: TestDb;
-  /** Mode actually used (resolved after TEST_DB_MODE defaulting). */
+  /** Mode actually used (`schema-mode.ts:resolveDbSource`). */
   mode: 'container' | 'schema';
   /** Raw postgres-js client — exposed for `end()` and advanced uses. */
   client: Sql;
-  /** Connection URL the harness is pinned to — useful for wiring
-   * `process.env.DATABASE_URL` before importing the app under test. */
+  /** The URL to set as `process.env.DATABASE_URL` before importing the app under test. */
   url: string;
   /** Stop the connection + tear down the container / drop the schema. */
   cleanup: () => Promise<void>;
@@ -31,8 +30,10 @@ export interface SetupOptions {
 }
 
 export async function setupTestDatabase(options: SetupOptions = {}): Promise<TestDatabase> {
-  const mode = resolveMode();
+  const source = resolveDbSource(process.env);
   const own = ownReason(options);
+  const { reopenAfterQuiesce } = await import('./quiesce.js');
+  await reopenAfterQuiesce();
 
   const workerId = process.env.VITEST_POOL_ID ?? '0';
 
@@ -42,22 +43,12 @@ export async function setupTestDatabase(options: SetupOptions = {}): Promise<Tes
   let url: string;
   let teardown: () => Promise<void>;
 
-  if (mode === 'container') {
+  if (source.mode === 'container') {
     const container = await startPostgresContainer();
     url = container.url;
     teardown = container.stop;
   } else {
-    const baseUrl = process.env.TEST_DATABASE_URL;
-    if (!baseUrl) {
-      throw new Error(
-        'TEST_DATABASE_URL is required when TEST_DB_MODE=schema. Start the test-only Postgres ' +
-          'packages/core/tests/README.md runs under "Integration tests — local" ' +
-          '(pgvector/pgvector:pg17 -c fsync=off on port 5433) and export ' +
-          'TEST_DATABASE_URL=postgres://forge:forge_secret@localhost:5433/forge. ' +
-          'Not the compose `postgres`: it keeps the dev data and syncs to disk.',
-      );
-    }
-    const schema = await createTestSchema(baseUrl, workerId);
+    const schema = await createTestSchema(source.url, workerId);
     url = schema.url;
     teardown = schema.drop;
   }
@@ -75,7 +66,7 @@ export async function setupTestDatabase(options: SetupOptions = {}): Promise<Tes
 
   return {
     db,
-    mode,
+    mode: source.mode,
     client,
     url,
     cleanup: async () => {
@@ -106,9 +97,8 @@ function ownReason(options: SetupOptions): string | undefined {
  * clones one for it alone. Postgres copies a template at the file level, so either replaces a
  * container boot AND a full migration replay with one `CREATE DATABASE`.
  *
- * Returns null when global setup did not run (e.g. a test invoked through a
- * config without `globalSetup`), so the original container/schema paths stay
- * as the fallback.
+ * Null where global setup did not run (a config without `globalSetup`): the container or schema
+ * path is then the fallback.
  */
 async function cloneFromTemplate(own: string | undefined): Promise<TestDatabase | null> {
   const adminUrl = process.env.TEST_PG_ADMIN_URL;
@@ -190,10 +180,4 @@ function explainCloneFailure(template: string, err: unknown): string {
 async function quiesce(): Promise<void> {
   const { quiesceBackgroundWork } = await import('./quiesce.js');
   await quiesceBackgroundWork();
-}
-
-function resolveMode(): 'container' | 'schema' {
-  const raw = process.env.TEST_DB_MODE;
-  if (raw === 'container' || raw === 'schema') return raw;
-  return process.env.TEST_DATABASE_URL ? 'schema' : 'container';
 }

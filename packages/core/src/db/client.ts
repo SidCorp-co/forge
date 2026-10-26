@@ -90,8 +90,15 @@ export type Db = ReturnType<typeof buildDb>;
 
 let instance: Db | undefined;
 const bound = new Map<string | symbol, unknown>();
+let closedFor: string | undefined;
 
 function currentDb(): Db {
+  if (closedFor !== undefined) {
+    throw new Error(
+      `The database client was closed ${closedFor}, so this access opens no new one: whatever ` +
+        'made it is work that outlived that close.',
+    );
+  }
   instance ??= buildDb();
   return instance;
 }
@@ -120,4 +127,18 @@ export async function closeDb(): Promise<void> {
   queryClient = undefined;
   instance = undefined;
   bound.clear();
+}
+
+/**
+ * Close the client and keep it closed: where an access after `closeDb` opens a new pool nobody
+ * will close, one after this is refused naming `why`, until `reopenDb`.
+ */
+export async function closeDbFor(why: string): Promise<void> {
+  closedFor = why;
+  await closeDb();
+}
+
+/** Let the next access open a client again, after `closeDbFor`. */
+export function reopenDb(): void {
+  closedFor = undefined;
 }

@@ -139,6 +139,37 @@ describe('db/client', () => {
     expect(client.end).toHaveBeenCalledWith({ timeout: 5 });
   });
 
+  it('opens a new client on the next access after closeDb', async () => {
+    const { db, closeDb } = await import('./client.js');
+    void db.select;
+    await closeDb();
+
+    void db.select;
+
+    expect(postgresFactory).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses an access after closeDbFor, naming why, and opens no new client', async () => {
+    const { db, closeDbFor } = await import('./client.js');
+    void db.select;
+    await closeDbFor('when the plant gave its database back');
+
+    expect(() => db.select).toThrow(
+      'The database client was closed when the plant gave its database back',
+    );
+    expect(postgresFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a client again once reopenDb lifts closeDbFor', async () => {
+    const { db, closeDbFor, reopenDb } = await import('./client.js');
+    await closeDbFor('when the plant gave its database back');
+
+    reopenDb();
+    void db.select;
+
+    expect(postgresFactory).toHaveBeenCalledTimes(1);
+  });
+
   it('hands back $client with its own methods intact', async () => {
     const { db } = await import('./client.js');
 

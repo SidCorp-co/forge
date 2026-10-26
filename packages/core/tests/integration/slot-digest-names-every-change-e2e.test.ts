@@ -96,6 +96,11 @@ describe('the slot digest names every kind of schema change a file can leave beh
       names: 'changed table admin_thresholds',
     },
     {
+      kind: 'a TOAST storage option',
+      statements: ['ALTER TABLE projects SET (toast.autovacuum_enabled = false)'],
+      names: 'added toast options of table projects',
+    },
+    {
       kind: 'a grant',
       statements: ['GRANT SELECT ON admin_thresholds TO PUBLIC'],
       names: 'changed table admin_thresholds',
@@ -154,6 +159,37 @@ describe('the slot digest names every kind of schema change a file can leave beh
     expect(await driftAfter(['ALTER TABLE projects ALTER COLUMN name SET STATISTICS 500'])).toEqual(
       ['changed columns of table projects'],
     );
+  });
+
+  it('names nothing for VACUUM FULL of a table whose dropped columns left it a TOAST table no live column needs', async () => {
+    const storage = () =>
+      t.client<{ dropped: number; toast: boolean }[]>`
+        SELECT (SELECT count(*)::int FROM pg_attribute WHERE attrelid = c.oid AND attisdropped) AS dropped,
+          c.reltoastrelid <> 0 AS toast
+        FROM pg_class c WHERE c.oid = 'project_git_credentials'::regclass
+      `.then(([row]) => row);
+    const cloned = await storage();
+    expect(cloned?.dropped, 'the template dropped no column of the table').toBeGreaterThan(0);
+    expect(cloned?.toast, 'the template gave the table no TOAST table').toBe(true);
+    await t.client.unsafe('VACUUM FULL project_git_credentials');
+    expect((await storage())?.toast, 'the rewrite kept the TOAST table').toBe(false);
+    expect(await schemaChangesOn(t.client, clone.hash, () => clone.objects ?? {})).toEqual([]);
+    expect(
+      await driftAfter(['ALTER TABLE project_git_credentials ADD COLUMN plant_note text']),
+    ).toContain('changed columns of table project_git_credentials');
+  });
+
+  it('names nothing for a whole-database VACUUM FULL', async () => {
+    const whole = await setupTestDatabase({ own: 'rewrites every table with VACUUM FULL' });
+    try {
+      const before = await readSchemaOn(whole.client, true);
+      await whole.client.unsafe('VACUUM FULL');
+      expect(await schemaChangesOn(whole.client, before.hash, () => before.objects ?? {})).toEqual(
+        [],
+      );
+    } finally {
+      await whole.cleanup();
+    }
   });
 
   it('names only the index CLUSTER marks, and none of the columns its rewrite touched', async () => {

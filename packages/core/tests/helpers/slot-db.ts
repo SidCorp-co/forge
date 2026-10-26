@@ -56,12 +56,14 @@ function literal(text: string): string {
 /**
  * Catalog columns that move by use rather than by DDL: storage, planner statistics, freeze
  * horizons, the `relhas*` flags vacuum clears lazily (the rows they summarise are read anyway), and
- * a column's missing value, which a table rewrite (VACUUM FULL, CLUSTER) writes into the rows.
+ * what a table rewrite (VACUUM FULL, CLUSTER) moves: a column's missing value, which it writes into
+ * the rows, and the table's TOAST table, which it drops where no live column needs one.
  */
 const MOVES_BY_USE: Record<string, string[]> = {
   pg_attribute: ['atthasmissing', 'attmissingval'],
   pg_class: [
     'relfilenode',
+    'reltoastrelid',
     'relpages',
     'reltuples',
     'relallvisible',
@@ -115,6 +117,17 @@ const SESSION_ROWS: Record<string, string> = {
   pg_namespace: "nspname !~ '^pg_(toast_)?temp_'",
 };
 
+/**
+ * A TOAST table and its index are storage Postgres makes and drops with a rewrite, which `pg_dump
+ * -s` never prints: every row belonging to one is left out, and the storage options a table set on
+ * its TOAST table are read as the table's (`TOAST_OPTIONS`).
+ */
+const TOAST_RELATIONS = "SELECT oid FROM pg_class WHERE relnamespace = 'pg_toast'::regnamespace";
+
+const TOAST_OPTIONS =
+  "SELECT 'pg_class', 'toast options of ', 'pg_class'::regclass, c.oid, t.reloptions::text " +
+  'FROM pg_class c JOIN pg_class t ON t.oid = c.reltoastrelid WHERE t.reloptions IS NOT NULL';
+
 /** The first oid `initdb` does not hand out (`FirstNormalObjectId`): below it, a built-in object. */
 const FIRST_NORMAL_OID = 16384;
 
@@ -155,7 +168,14 @@ function catalogRows({ name, columns }: { name: string; columns: string[] }): st
       ? ['', `'pg_catalog.${name}'::regclass`, 't.oid']
       : [`catalog ${name}`, 'NULL', 'NULL'];
   const row = `ROW(${columns.map((col) => `t."${col}"`).join(', ')})::text`;
-  const where = SESSION_ROWS[name] ? ` WHERE ${SESSION_ROWS[name]}` : '';
+  const kept =
+    cls === 'NULL'
+      ? []
+      : [
+          `NOT ((${cls})::oid = 'pg_class'::regclass::oid AND (${obj})::oid IN (${TOAST_RELATIONS}))`,
+        ];
+  if (SESSION_ROWS[name]) kept.push(SESSION_ROWS[name]);
+  const where = kept.length > 0 ? ` WHERE ${kept.join(' AND ')}` : '';
   return (
     `SELECT ${literal(name)} AS catalog, ${literal(label)} AS label, (${cls})::oid AS cls, ` +
     `(${obj})::oid AS obj, ${row} AS r FROM pg_catalog."${name}" t${where}`
@@ -166,6 +186,7 @@ function catalogRows({ name, columns }: { name: string; columns: string[] }): st
 async function everyRow(client: Reader): Promise<string> {
   const rows = (await catalogs(client)).map(catalogRows);
   rows.push(
+    TOAST_OPTIONS,
     "SELECT 'pg_database', 'this database''s grants and settings', NULL, NULL, " +
       "concat_ws(E'\\n', datacl::text, datconnlimit, datallowconn, (SELECT string_agg(" +
       "setrole::regrole::text || ' ' || setconfig::text, E'\\n' ORDER BY setrole) " +
@@ -296,16 +317,12 @@ function belongsPrefix(object: string): string | undefined {
 
 /**
  * The drift as a reader acts on it: what belongs to an object added or dropped with it is left out,
- * since naming the object says it; then the objects themselves, what belongs to the others, and
- * TOAST last.
+ * since naming the object says it; then the objects themselves, and what belongs to the others.
  */
 function describeDrift(drift: string[]): string {
   const said = new Set(drift);
-  const weight = (line: string): number => {
-    const object = line.slice(line.indexOf(' ') + 1);
-    if (object.includes('pg_toast.')) return 2;
-    return belongsPrefix(object) ? 1 : 0;
-  };
+  const weight = (line: string): number =>
+    belongsPrefix(line.slice(line.indexOf(' ') + 1)) ? 1 : 0;
   const kept = drift.filter((line) => {
     const [verb] = line.split(' ', 1);
     const object = line.slice(line.indexOf(' ') + 1);
