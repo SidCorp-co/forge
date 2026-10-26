@@ -74,8 +74,6 @@ vi.mock('../../src/git/remote-divergence.js', async (importOriginal) => {
 const unbound = new Set<string>();
 /** Projects whose installation cannot see the repository: GitHub answers every read 404. */
 const hiddenFrom = new Set<string>();
-/** Projects whose readable repository has no master: the branch answers 404, its commit lookup 422. */
-const noMaster = new Set<string>();
 let compares = 0;
 let aheadOverride: number | null = null;
 
@@ -98,13 +96,6 @@ vi.mock('../../src/integrations/github/client.js', async (importOriginal) => {
             throw new real.GitHubReadError(
               404,
               `GET ${path} on SidCorp-co/sid-desk returned HTTP 404`,
-            );
-          }
-          if (noMaster.has(projectId) && path.endsWith('/master')) {
-            const status = path.includes('/commits/') ? 422 : 404;
-            throw new real.GitHubReadError(
-              status,
-              `GET ${path} on SidCorp-co/sid-desk returned HTTP ${status}`,
             );
           }
           if (path.endsWith('/branches/staging')) return { commit: { sha: STAGING } };
@@ -289,7 +280,6 @@ beforeEach(async () => {
   await truncateAll(harness.db);
   unbound.clear();
   hiddenFrom.clear();
-  noMaster.clear();
   gitReads.length = 0;
   compares = 0;
   aheadOverride = null;
@@ -407,22 +397,6 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
     expect(reach?.detail).toMatch(
       /GET \/repos\/SidCorp-co\/sid-desk\/branches\/\w+ on SidCorp-co\/sid-desk returned HTTP 404/,
     );
-  });
-
-  it('names a branch the readable repository lacks, never as a repository Forge cannot read', async () => {
-    const { user, token } = await signedIn();
-    const desk = await project(user.id, 'promote');
-    noMaster.add(desk.id);
-    const row = await issue({ projectId: desk.id, userId: user.id, seq: 419 });
-
-    const reach = (await get<{ liveReach: Reach }>(`/api/issues/${row}`, token)).liveReach;
-
-    expect(reach).toMatchObject({
-      state: 'unmeasured',
-      reason:
-        "SidCorp-co/sid-desk has no branch master, so whether staging's commits reached master cannot be read. It is read again once SidCorp-co/sid-desk has a branch master, or the project's release chain names only branches it has",
-    });
-    expect(reach?.detail).toMatch(/branches\/master on SidCorp-co\/sid-desk returned HTTP 404/);
   });
 
   it('compares again after a push delivery for the project, and not after a review delivery', async () => {

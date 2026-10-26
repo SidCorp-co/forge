@@ -188,7 +188,19 @@ describe('liveReadingForRow', () => {
     expect(r).toMatchObject({ kind: 'refused', reason: 'the repository has no branch staging' });
   });
 
-  // ISS-1300 r5 (judge-125, X1): the Production row printed the raw request a 404 came back on.
+  it('refuses with the error itself when reading the branches throws', async () => {
+    const r = await liveReadingForRow(
+      row,
+      deps(async () => {
+        throw new Error('the database went away');
+      }),
+    );
+    expect(r).toMatchObject({ kind: 'refused', reason: 'the database went away' });
+  });
+});
+
+// ISS-1300 r5 (judge-125, X1): the Production row printed the raw request a 404 came back on.
+describe("a comparison GitHub refused, in a person's words", () => {
   it('says a repository Forge cannot read as the readiness page does, the request kept as the detail', async () => {
     const request =
       'GET /repos/SidCorp-co/forge/branches/staging on SidCorp-co/forge returned HTTP 404';
@@ -244,15 +256,5 @@ describe('liveReadingForRow', () => {
         "Comparing staging with master on SidCorp-co/forge failed, so whether staging's commits reached master cannot be read until the next reading",
       detail: why,
     });
-  });
-
-  it('refuses with the error itself when reading the branches throws', async () => {
-    const r = await liveReadingForRow(
-      row,
-      deps(async () => {
-        throw new Error('the database went away');
-      }),
-    );
-    expect(r).toMatchObject({ kind: 'refused', reason: 'the database went away' });
   });
 });
