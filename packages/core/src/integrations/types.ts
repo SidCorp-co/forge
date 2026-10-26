@@ -17,7 +17,8 @@ export type IntegrationProvider =
   | 'gitlab'
   | 'agent'
   | 'autoflow'
-  | 'widget';
+  | 'widget'
+  | 'support-api';
 
 export const INTEGRATION_PROVIDERS = [
   'coolify',
@@ -29,6 +30,7 @@ export const INTEGRATION_PROVIDERS = [
   'agent',
   'autoflow',
   'widget',
+  'support-api',
 ] as const satisfies readonly IntegrationProvider[];
 
 const _providersExhaustive: IntegrationProvider =
@@ -388,7 +390,8 @@ export interface BindingTargetRefusal {
     | 'SOURCE_REPOSITORY_LOCAL'
     | 'GITHUB_INSTALLATION_NOT_RECORDED'
     | 'WIDGET_SITE_KEY_MINTED'
-    | 'WIDGET_SITE_KEY_TAKEN';
+    | 'WIDGET_SITE_KEY_TAKEN'
+    | 'SUPPORT_ROOM_NOT_ONE_GROUP';
   path: string;
   detail: string;
 }

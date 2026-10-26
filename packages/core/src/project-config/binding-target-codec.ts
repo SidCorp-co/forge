@@ -20,7 +20,8 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   github: ['installationId', 'owner', 'repo'],
   gitlab: ['projectPath', 'projectId'],
   sentry: [],
-  rocketchat: ['rids'],
+  rocketchat: ['rids', 'support'],
+  'support-api': ['tools'],
   agent: [],
   widget: ['siteKey', 'allowedOrigins', 'identity', 'title', 'greeting', 'accent', 'limits'],
 };
@@ -38,6 +39,16 @@ function pick(source: Record<string, unknown>, keys: readonly string[]): Record<
 
 export function encodeTarget(target: Target): Encoded {
   const { provider, label, releaseRunnerLabel, ...rest } = target;
+  // a field the target schema takes and FIELDS does not name would be dropped on write, in silence
+  const unmapped =
+    provider === 'coolify'
+      ? []
+      : Object.keys(rest).filter((k) => !(FIELDS[provider] ?? []).includes(k));
+  if (unmapped.length > 0) {
+    throw new Error(
+      `binding-target-codec: the ${provider} target's ${unmapped.join(', ')} has no entry in FIELDS, so writing it would drop it; name it there`,
+    );
+  }
   const config =
     target.provider === 'coolify'
       ? {

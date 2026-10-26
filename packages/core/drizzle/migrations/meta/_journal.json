@@ -3431,6 +3431,13 @@
       "when": 1829174400000,
       "tag": "0535_a_host_merge_names_its_target_and_head",
       "breakpoints": true
+    },
+    {
+      "idx": 537,
+      "version": "7",
+      "when": 1829347200000,
+      "tag": "0537_a_support_group_is_answered_by_a_session_forge_manages",
+      "breakpoints": true
     }
   ]
 }

@@ -7,11 +7,11 @@
  "requirements": {
   "REQ-1": {
    "title": "A job is given the approved design and requirement it builds",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-2": {
    "title": "Issue status says who the issue waits on",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-3": {
    "title": "Agent narration is separated from human conversation",
@@ -19,11 +19,11 @@
   },
   "REQ-4": {
    "title": "Business intent has a versioned home",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-5": {
    "title": "A project can agree an interface with itself before building both sides",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-6": {
    "title": "Verdicts are typed records, not comment prose",
@@ -31,31 +31,31 @@
   },
   "REQ-7": {
    "title": "Product feedback is a first-class item, triaged and verified by people",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-8": {
    "title": "Assistant proposals wait for a person",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-9": {
    "title": "Cross-project work waits on a contract version",
-   "status": "agreed"
+   "status": "dropped"
   },
   "REQ-10": {
    "title": "A new project gets its key journeys drawn with the user before building",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-11": {
    "title": "Development: a person sees what is running, what is stuck and what waits on them, per issue, module, contract and release",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-12": {
    "title": "Every Forge screen and entity is built to one set of conventions",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-13": {
    "title": "What an agent writes for a project follows that project's rules, not Forge's",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-14": {
    "title": "The Development area and Releases are built to the prototype",
@@ -71,87 +71,87 @@
   },
   "REQ-17": {
    "title": "A workflow design shows which steps and lines are outdated, need an update, have a problem or are proposed for removal, each derived from its evidence",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-18": {
    "title": "Design is the root; code is reconciled to it, by observation, marking, decision and rewrite",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-19": {
    "title": "Chat has two modes: assistant mode answers from a model with the key set in the instance environment, and agent mode runs on the team's runner",
-   "status": "agreed"
+   "status": "dropped"
   },
   "REQ-20": {
    "title": "A question an agent parks reaches the people who owe the answer in the team's chat channel, and their reply there answers it",
-   "status": "agreed"
+   "status": "dropped"
   },
   "REQ-21": {
    "title": "A project connects its storefront — Autoflow by OAuth, or ePodSystem — and its agents read shop, theme and draft data and publish drafts through Forge without ever holding the credential",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-22": {
    "title": "An operator reads Forge's own service health — alert levels, pipeline health and the MCP audit trail — on one console, and is notified when an alert crosses into warn or crit",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-23": {
    "title": "A person or an agent reads how each Forge capability is used from one guide corpus Forge serves publicly, and the prompts Forge composes point at the guide instead of restating it",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-24": {
    "title": "A member reads each project's health and its trend — throughput, step failures, retries and interventions — on the project dashboard, derived from records Forge already keeps",
-   "status": "agreed"
+   "status": "dropped"
   },
   "REQ-25": {
    "title": "A person installs the runner on a box with one command Forge serves, which fetches the published build for that box's platform",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-26": {
    "title": "A project pins the plugin version its runs use, and a box serving several projects reports a conflicting pin instead of silently picking one",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-27": {
    "title": "People sign in with a password or Google and agents act with personal access tokens, and invitations and notices reach people by mail",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-28": {
    "title": "Every design template carries structured cross-design refs, checked to resolve to an approved revision step",
-   "status": "agreed"
+   "status": "dropped"
   },
   "REQ-29": {
    "title": "Requirements carry an area the list groups and filters by",
-   "status": "agreed"
+   "status": "dropped"
   },
   "REQ-30": {
    "title": "Assistant and Agent chat: role, routing and limits",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-31": {
    "title": "The Ask Agent panel opens at its largest width, toggles to half of it, and the page beside it stays usable at either size",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-32": {
    "title": "Chat answers visually: reports, diagrams, templates, share links",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-33": {
    "title": "Decisions, roadmap and memory are read inside the item they are about, not on pages of their own",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-34": {
    "title": "Every lifecycle step is a checklist contract that people and agents must complete, and the kernel enforces it",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-35": {
    "title": "Every Product item reads as a picture first",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-36": {
    "title": "Delivery: each role designs and tests only its own scope",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-37": {
    "title": "Scripts read Forge with GET only, under a short-lived token of their owner",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-38": {
    "title": "QA probe 209: a person can see the build version in the footer",
@@ -159,15 +159,15 @@
   },
   "REQ-39": {
    "title": "See a change live before it ships",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-40": {
    "title": "Every release is a readable page, led by the Product",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-41": {
    "title": "Chat is the way in: it answers what needs you and drives the page beside it",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-42": {
    "title": "Throwaway for the ISS-460 judge: dropped at the end of its run",
@@ -175,39 +175,135 @@
   },
   "REQ-43": {
    "title": "Pages read as state, not prose",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-44": {
    "title": "POC rooms: build live with the owner, deliver only what is settled",
-   "status": "agreed"
+   "status": "dropped"
   },
   "REQ-45": {
    "title": "An issue moves on when its work lands",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-46": {
    "title": "Connect an outside system",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-47": {
    "title": "Feedback to Forge is filed by whoever reports it, from any project",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-48": {
    "title": "An agent stands at every Product and Delivery handoff",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-49": {
    "title": "A mockup is proposed, tried and discussed on the item it shapes",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-50": {
    "title": "Forge learns from every correction and stops to ask when a lesson confuses",
-   "status": "agreed"
+   "status": "accepted"
+  },
+  "REQ-51": {
+   "title": "[judge K9 test] throwaway draft for a criterion step-trace check",
+   "status": "dropped"
+  },
+  "REQ-52": {
+   "title": "[judge k17 test] BC-3/BC-4 probe, drop after reading",
+   "status": "dropped"
+  },
+  "REQ-53": {
+   "title": "[judge k18 test] A saved filter keeps its name",
+   "status": "dropped"
+  },
+  "REQ-54": {
+   "title": "A CI job's paths filter is not checked against the files its tests read outside their package, so a change to only that file skips the job and ci-passed goes green",
+   "status": "dropped"
+  },
+  "REQ-55": {
+   "title": "@forge/contracts declares @forge/core as a runtime dependency although its surface is type-only, so turbo has no build order and core's tsc can read a half-emitted contracts dist",
+   "status": "dropped"
+  },
+  "REQ-56": {
+   "title": "epod onboarding jobs go to a box whose tokens cannot see epod, so each attempt draws the designs, 404s on every write, and is retried as 'reported nothing'",
+   "status": "dropped"
+  },
+  "REQ-57": {
+   "title": "A release waited 15 minutes in queue behind project onboarding jobs because it shares the box's two job slots with them",
+   "status": "dropped"
+  },
+  "REQ-58": {
+   "title": "Review time is never counted, so after four recorded reviews the Runs tab says \"None recorded\" for review on every issue",
+   "status": "dropped"
+  },
+  "REQ-59": {
+   "title": "Unchanged workflow PUT silently drops its issue field",
+   "status": "dropped"
+  },
+  "REQ-60": {
+   "title": "Onboarding reads done while its last analysis job failed after ten attempts, and nobody is told",
+   "status": "dropped"
+  },
+  "REQ-61": {
+   "title": "Master pane drains as outdated on every pass because its mcp placement hash changes before it can declare a run",
+   "status": "dropped"
+  },
+  "REQ-62": {
+   "title": "[judge K47 test] Mỗi lượt chạy có cơ sở dữ liệu riêng",
+   "status": "dropped"
+  },
+  "REQ-63": {
+   "title": "A release can be the owner's go to merge a project's merge requests, in order",
+   "status": "accepted"
+  },
+  "REQ-64": {
+   "title": "A run is refused at rest and a reclaim never publishes or destroys live work",
+   "status": "accepted"
   },
   "REQ-65": {
    "title": "Value is agreed with the assistant before a requirement exists",
    "status": "agreed"
+  },
+  "REQ-66": {
+   "title": "Feedback is clarified and filtered before it reaches a person",
+   "status": "agreed"
+  },
+  "REQ-67": {
+   "title": "Requirements and feedback are clear enough that delivery does not stall",
+   "status": "agreed"
+  },
+  "REQ-68": {
+   "title": "A person decides once, clearly, and never works an issue",
+   "status": "agreed"
+  },
+  "REQ-69": {
+   "title": "Chat operates the page beside it",
+   "status": "agreed"
+  },
+  "REQ-70": {
+   "title": "Every release is rewritten clearly, with pictures or a clip",
+   "status": "agreed"
+  },
+  "REQ-71": {
+   "title": "Each project releases automatically or on the owner's accept",
+   "status": "agreed"
+  },
+  "REQ-72": {
+   "title": "People and agents work in a project with the same permissions",
+   "status": "agreed"
+  },
+  "REQ-73": {
+   "title": "A project connects its repository, runner and outside systems in one flow",
+   "status": "agreed"
+  },
+  "REQ-74": {
+   "title": "Delivery moves on by itself and shows where each item stands",
+   "status": "agreed"
+  },
+  "REQ-75": {
+   "title": "A project's Rocket.Chat group has an assistant that supports users and resolves their problems",
+   "status": "draft"
   }
  },
  "workflows": {

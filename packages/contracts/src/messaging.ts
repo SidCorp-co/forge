@@ -15,7 +15,8 @@ export type DoorId =
 	| "escalation-synthesis"
 	| "agent-chat-completion"
 	| "web-agent-completion"
-	| "widget-chat-reply";
+	| "widget-chat-reply"
+	| "support-reply";
 
 declare const admittedByADoor: unique symbol;
 

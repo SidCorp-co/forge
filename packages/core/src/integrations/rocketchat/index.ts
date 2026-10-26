@@ -26,13 +26,14 @@ export {
   fetchRoomHistory,
   fetchThreadMessages,
   fetchUserProfile,
+  type RocketChatButtonAttachment,
   type RocketChatImageRef,
   type RocketChatRestAuth,
   type RocketChatRestMessage,
   reactToMessage,
 } from './rest-client.js';
 export { resolveRoomPostAuth, roomStillBoundTo } from './room-auth.js';
-export { provideRoomHandlers } from './room-handlers.js';
+export { provideRoomHandlers, provideSupportRoomHandler } from './room-handlers.js';
 export type { Route } from './room-routing.js';
 export { type RoomShape, resolveRoomShape } from './room-shape.js';
 export { questionThread, registerThread, releaseQuestionThread } from './thread-registry.js';

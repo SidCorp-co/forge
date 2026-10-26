@@ -72,6 +72,7 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"GITHUB_INSTALLATION_NOT_RECORDED",
 	"WIDGET_SITE_KEY_MINTED",
 	"WIDGET_SITE_KEY_TAKEN",
+	"SUPPORT_ROOM_NOT_ONE_GROUP",
 ] as const;
 
 /** Every code a project-config document write answers with. */

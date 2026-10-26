@@ -13,6 +13,7 @@ import {
   forgeQuestionsTool,
   forgeReleasesProductTool,
 } from '../product-door/tool.js';
+import { forgeSupportTool } from '../support/tool.js';
 import { forgeUploadsTool } from '../uploads/tool.js';
 import { projectFeedbackMcpTool } from './feedback-tool.js';
 import { forgeRequirementsMcpTool } from './requirements-tool.js';
@@ -39,4 +40,7 @@ export const MCP_TOOLS = {
   forge_design: (ctx) => forgeDesignTool(ctx),
   forge_questions: (ctx) => forgeQuestionsTool(ctx),
   forge_issues: (ctx) => forgeIssuesTool(ctx),
+  // A Rocket.Chat support group's session answers its group through this tool alone (REQ-75); only
+  // that session, under its current turn's token, is admitted.
+  forge_support: (ctx) => forgeSupportTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;

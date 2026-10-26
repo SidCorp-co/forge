@@ -200,7 +200,8 @@
         "gitlab",
         "google",
         "autoflow",
-        "widget"
+        "widget",
+        "support-api"
       ],
       "unscannable": [
         {
@@ -336,6 +337,14 @@
         {
           "glob": "packages/core/src/assistant/identity/directory.ts",
           "why": "The speaker directory switches on the conversation adapter, whose `widget` value is the visitor channel; it says by name that a widget visitor is never linked to a Forge account."
+        },
+        {
+          "glob": "packages/core/src/integrations/support-api/**",
+          "why": "The provider's own directory, the one place ISS-1071 puts a provider's name. Everything here is ABOUT support-api and no generic path reads it."
+        },
+        {
+          "glob": "packages/core/src/support/**",
+          "why": "REQ-75's support group: a Rocket.Chat group answered by a session Forge manages, whose checks and fixes go through the project's support-api grant. It names both providers by design (the rocketchat bindings it reads, the rocketchat channel its Feedback is filed under, the support-api grant its tools come from), and no generic path reads it."
         }
       ],
       "egress": {

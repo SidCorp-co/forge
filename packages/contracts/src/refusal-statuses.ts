@@ -44,6 +44,7 @@ import { SHARE_REFUSAL_STATUSES } from "./shares.js";
 import { STATE_MACHINE_REFUSAL_STATUSES } from "./state-machine.js";
 import { LESSON_REFUSAL_STATUSES } from "./lessons.js";
 import { STEWARD_REFUSAL_STATUSES } from "./steward.js";
+import { SUPPORT_REFUSAL_STATUSES } from "./support.js";
 import { STATUS_REPORT_REFUSAL_STATUSES } from "./status-reports.js";
 import { SUGGESTION_REFUSAL_STATUSES } from "./suggestions.js";
 import { WHATS_NEW_REFUSAL_STATUSES } from "./whats-new.js";
@@ -99,6 +100,7 @@ const DECLARED: ReadonlyArray<
 	SHARE_REFUSAL_STATUSES,
 	STATE_MACHINE_REFUSAL_STATUSES,
 	STEWARD_REFUSAL_STATUSES,
+	SUPPORT_REFUSAL_STATUSES,
 	STATUS_REPORT_REFUSAL_STATUSES,
 	SUGGESTION_REFUSAL_STATUSES,
 	DESIGN_REFUSAL_STATUSES,

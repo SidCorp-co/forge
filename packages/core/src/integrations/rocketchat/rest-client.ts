@@ -302,8 +302,14 @@ export async function postRoomMessage(
   roomId: string,
   text: string,
   tmid?: string,
+  attachments?: readonly RocketChatButtonAttachment[],
 ): Promise<string | null> {
-  const res = await rcPost(auth, 'chat.postMessage', { roomId, text, ...(tmid ? { tmid } : {}) });
+  const res = await rcPost(auth, 'chat.postMessage', {
+    roomId,
+    text,
+    ...(tmid ? { tmid } : {}),
+    ...(attachments?.length ? { attachments } : {}),
+  });
   if (!res.ok) throw new Error(`chat.postMessage failed with status ${res.status}`);
   if (res.body === undefined) throw new Error('chat.postMessage answered a body that is not JSON');
   if (res.body?.success === false) {
@@ -313,6 +319,21 @@ export async function postRoomMessage(
   }
   const id = (res.body?.message as { _id?: unknown } | undefined)?._id;
   return typeof id === 'string' ? id : null;
+}
+
+/**
+ * A legacy attachment carrying buttons. A button with `msg_in_chat_window` posts its `msg` into the
+ * room as the person who pressed it: the server, not the bot, says who that was.
+ */
+export interface RocketChatButtonAttachment {
+  text?: string;
+  actions: {
+    type: 'button';
+    text: string;
+    msg: string;
+    msg_in_chat_window: true;
+    msg_processing_type: 'sendMessage';
+  }[];
 }
 
 /** Uploads are big and slow next to a JSON read; give them their own budget. */

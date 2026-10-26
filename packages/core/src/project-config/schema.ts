@@ -11,6 +11,7 @@ import { previewSettingsSchema } from '@forge/contracts/preview';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import { stewardPolicySchema } from '@forge/contracts/steward-runtime';
+import { supportApiBindingConfigSchema, supportRoomConfigSchema } from '@forge/contracts/support';
 import { widgetBindingConfigSchema } from '@forge/contracts/widget';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
 import {
@@ -367,7 +368,13 @@ const BINDING_TARGETS = [
     projectId: z.number().int().positive().optional(),
   }),
   targetOf('sentry', {}),
-  targetOf('rocketchat', { rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional() }),
+  targetOf('rocketchat', {
+    rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
+    // the room is a support group answered by its session (REQ-75); exactly one room, refused by
+    // name otherwise (`integrations/rocketchat/support-binding.ts`)
+    support: supportRoomConfigSchema.optional(),
+  }),
+  targetOf('support-api', { ...supportApiBindingConfigSchema.shape }),
   targetOf('agent', {}),
   // the site key is minted on bind (`integrations/widget/site-key.ts`): a document leaves it out or
   // sends back the one it read

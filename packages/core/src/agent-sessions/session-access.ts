@@ -1,5 +1,5 @@
 import { CONVERSATION_AGENT_MARKER, readSessionAsker } from '@forge/contracts/agent-sessions';
-import { eq, type SQL, sql } from 'drizzle-orm';
+import { eq, inArray, type SQL, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -22,6 +22,26 @@ export async function withTranscript<T extends { id: string }>(
   messages?: readonly unknown[],
 ): Promise<T & { messages: readonly unknown[] }> {
   return { ...row, messages: messages ?? (await readTranscript(row.id)) };
+}
+
+/** A session's row, or null when there is none: for a module that holds a session's id as its own. */
+export async function sessionRowById(sessionId: string) {
+  const [session] = await db
+    .select()
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  return session ?? null;
+}
+
+/** The status of each named session that exists. */
+export async function sessionStatusesByIds(ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: agentSessions.id, status: agentSessions.status })
+    .from(agentSessions)
+    .where(inArray(agentSessions.id, [...ids]));
+  return new Map(rows.map((r) => [r.id, r.status]));
 }
 
 /** Load the session row or 404 — the shared first step of every per-session guard. */

@@ -25,7 +25,7 @@ import { createSeenTracker, decideSkip, type SeenTracker } from './inbound-gate.
 import { registerLiveConnection, unregisterLiveConnection } from './live-connections.js';
 import { namespaceFromServerUrl } from './namespace.js';
 import { fetchOwnIdentity } from './rest-client.js';
-import { roomHandlers } from './room-handlers.js';
+import { roomHandlers, supportRoomHandler } from './room-handlers.js';
 import { buildRoutes, type Route } from './room-routing.js';
 import { resolveRoomShape } from './room-shape.js';
 import { subjectForThread } from './thread-registry.js';
@@ -268,6 +268,20 @@ class RocketChatConnectionManager {
     if (!shape) {
       const ctx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
       logger.error(ctx, 'rocketchat: room type unresolved; refusing the message, not assuming one');
+      return;
+    }
+    if (route.support) {
+      if (ac.seenMessage(m.id)) return;
+      await supportRoomHandler()
+        .handle({ connectionId, ac, route, m, shape })
+        .catch((err) => {
+          ac.seenMessage.forget(m.id);
+          logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: support message failed');
+          reportFailure(err, {
+            tags: { area: 'rocketchat', phase: 'support' },
+            extra: { connectionId, rid: m.rid, projectId: route.projectId },
+          });
+        });
       return;
     }
     const owned = m.tmid

@@ -1,9 +1,12 @@
+import { supportRoomConfigSchema } from '@forge/contracts/support';
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../index.js';
 
 export const rocketchatConfigBase = z.object({
   serverUrl: z.string().url().max(500),
   rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
+  /** Present, the binding's one room is a support group answered by its session (REQ-75). */
+  support: supportRoomConfigSchema.optional(),
   ...releaseChannelFields,
 });
 
@@ -12,4 +15,4 @@ export const rocketchatSecretsSchema = z.object({
   userId: z.string().min(1).max(200),
 });
 
-export const ROCKETCHAT_BINDING_CONFIG_KEYS = ['rids', ...RELEASE_CHANNEL_KEYS] as const;
+export const ROCKETCHAT_BINDING_CONFIG_KEYS = ['rids', 'support', ...RELEASE_CHANNEL_KEYS] as const;

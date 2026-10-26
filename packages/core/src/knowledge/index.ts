@@ -22,7 +22,7 @@ export {
   setLessonEntryInjection,
 } from './lesson-entries.js';
 export { provideKnowledgePorts } from './ports.js';
-export { searchKnowledge } from './search.js';
+export { keywordSearchKnowledge, searchKnowledge } from './search.js';
 export {
   type AlwaysInjectFact,
   getKnowledgeEntry,

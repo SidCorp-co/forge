@@ -30,3 +30,23 @@ interface RoomHandlers {
 const slot = portSlot<RoomHandlers>('rocketchat', 'provideRoomHandlers');
 export const provideRoomHandlers = slot.provide;
 export const roomHandlers = slot.get;
+
+/**
+ * What a support group's message is handed to (REQ-75): recorded and given to the group's session,
+ * never to the team assistant, whose turns act as a Forge person a group member never is. Its own
+ * slot, provided by the support module, so neither application imports the other. A throw un-sees
+ * the message.
+ */
+interface SupportRoomHandler {
+  handle(input: {
+    connectionId: string;
+    ac: ActiveConnection;
+    route: Route;
+    m: RocketChatIncomingMessage;
+    shape: RoomShape;
+  }): Promise<void>;
+}
+
+const supportSlot = portSlot<SupportRoomHandler>('rocketchat', 'provideSupportRoomHandler');
+export const provideSupportRoomHandler = supportSlot.provide;
+export const supportRoomHandler = supportSlot.get;

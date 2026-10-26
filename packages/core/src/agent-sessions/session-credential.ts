@@ -5,7 +5,7 @@
  */
 
 import { readSessionAsker, type SessionAsker } from '@forge/contracts/agent-sessions';
-import { revokeLiveTokens } from '../credentials/pat.js';
+import { mintPat, revokeLiveTokens } from '../credentials/pat.js';
 import { turnTokenNameFor } from '../credentials/pat-format.js';
 import type { PatPermission } from '../credentials/pat-permissions.js';
 import {
@@ -23,6 +23,7 @@ import {
   type PermissionFacts,
   resolveTurnAuthority,
 } from '../permissions/index.js';
+import { resolveChatDevice } from './chat-device.js';
 import { agentSessionsPorts } from './ports.js';
 
 /** The capability a runner declares on its heartbeat when it runs a session under the token it is handed. */
@@ -119,6 +120,40 @@ export async function mintSessionCredential(args: {
     deviceId: args.deviceId,
   });
   return minted.token;
+}
+
+/**
+ * The token a session that answers nobody in Forge acts under: minted for its own agent account,
+ * fenced to its project, cut to the stated grant and tied to the box, superseding any it holds. A
+ * Rocket.Chat support group's session is the one (REQ-75): its account is a member of nothing, so
+ * the grant reaches only the routes that check for that session themselves.
+ */
+export async function mintFencedSessionCredential(args: {
+  sessionId: string;
+  deviceId: string;
+  userId: string;
+  projectId: string;
+  permissions: readonly [PatPermission, ...PatPermission[]];
+  ttlMs?: number;
+}): Promise<string> {
+  await revokeSessionCredential(args.sessionId);
+  const minted = await mintPat({
+    userId: args.userId,
+    name: turnTokenNameFor(args.sessionId),
+    permissions: args.permissions,
+    projectIds: [args.projectId],
+    scopes: ['read', 'write'],
+    deviceId: args.deviceId,
+    expiresAt: new Date(Date.now() + (args.ttlMs ?? SESSION_CREDENTIAL_TTL_MS)),
+  });
+  return minted.plaintext;
+}
+
+/** The box a session's next turn runs on, among those that carry the token they are handed. */
+export function turnCredentialChatDevice(
+  session: Parameters<typeof resolveChatDevice>[0],
+): ReturnType<typeof resolveChatDevice> {
+  return resolveChatDevice(session, null, TURN_CREDENTIAL_CAPABILITY);
 }
 
 /** Revoke whatever token a session was handed; a session that was handed none revokes nothing. */

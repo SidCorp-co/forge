@@ -13,6 +13,7 @@ export {
   type ExternalFeedbackStatus,
   type ExternalReporter,
   externalFeedbackStatus,
+  externalItemPhases,
   fileExternalFeedback,
 } from './external.js';
 export { carryAgentReports } from './forge-carry.js';

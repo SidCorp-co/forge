@@ -42,6 +42,7 @@ import {
   sweepStandings,
 } from './steward/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
+import { drainSupportRooms, expireSupportFixes, followAllItems } from './support/index.js';
 import { drainWidgetConversationWindows } from './widget/index.js';
 
 /** The memory half of the re-embed sweep, then the knowledge half unless the provider is down. */
@@ -223,6 +224,27 @@ function conversationDrains(): Timer[] {
       everyMs: 1_500,
       runAtStart: true,
       run: drainRoomWindows,
+    },
+    {
+      // a support group's waiting messages, for a room whose turn end was missed (REQ-75)
+      kind: 'process',
+      name: 'support.room-drain',
+      everyMs: 2_000,
+      runAtStart: true,
+      run: drainSupportRooms,
+    },
+    {
+      kind: 'process',
+      name: 'support.fix-expiry',
+      everyMs: 60_000,
+      run: expireSupportFixes,
+    },
+    {
+      // a triage or a decline moves a recorded item with no event; read each again (REQ-75 BC-15)
+      kind: 'process',
+      name: 'support.progress-follow',
+      everyMs: 60_000,
+      run: followAllItems,
     },
     {
       kind: 'process',
