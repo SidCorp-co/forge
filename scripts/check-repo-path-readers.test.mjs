@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DECLARED, readsIn } from './check-repo-path-readers.mjs';
+import { DECLARED, MAY_READ_TABLE, readsIn } from './check-repo-path-readers.mjs';
 
 // The fixtures are FIXTURE TEXT — source this checker parses, not source this file runs.
 const reads = (source, relations) => readsIn('packages/core/src/fixture.ts', source, relations);
@@ -230,6 +230,14 @@ describe('check-repo-path-readers — a working directory is the device binding'
           'sql`SELECT repo_path FROM projects_archive`;\n',
       ),
     ).toEqual([]);
+  });
+
+  it('binds a file whose SQL names the table in capitals, which PostgreSQL reads as projects (review F1)', () => {
+    const source = 'await db.execute(sql`SELECT repo_path FROM PROJECTS WHERE id = ${id}`);\n';
+    expect(MAY_READ_TABLE.test(source)).toBe(true);
+    expect(reads(source).map((r) => [r.line, r.how])).toEqual([
+      [1, 'repo_path (in SQL over projects)'],
+    ]);
   });
 
   it('passes a comment that names the column', () => {

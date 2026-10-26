@@ -484,6 +484,13 @@ export function readsIn(rel, source, relations = new Set()) {
   return readsOf(rel, built.file(rel), built.checker, relations);
 }
 
+/**
+ * Text every read this check reports contains: every shape spells `projects`, in
+ * SQL in any case, or is a relational find. A file holding neither is not bound — four in five,
+ * and most of the run's time.
+ */
+export const MAY_READ_TABLE = /projects|find(?:First|Many)/i;
+
 function walk(rel, acc) {
   const abs = join(ROOT, rel);
   if (!existsSync(abs)) return acc;
@@ -514,12 +521,10 @@ function main() {
   const files = walk(SOURCE, []);
   if (files.length === 0) die(`no source files found under ${SOURCE}`);
 
-  // Every shape this check reports spells `projects` or is a relational find, so a file holding
-  // neither is not bound: four files in five, and most of the run's time.
   const sources = new Map(
     files
       .map((rel) => [rel, readFileSync(join(ROOT, rel), 'utf8')])
-      .filter(([, text]) => /projects|find(?:First|Many)/.test(text)),
+      .filter(([, text]) => MAY_READ_TABLE.test(text)),
   );
   const built = program(sources);
   const relations = relationsToTable(
