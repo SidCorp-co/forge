@@ -78,6 +78,8 @@ export class SessionBox {
   ) => Promise<void> = async () => {};
   /** Set false to keep a turn running (a message then waits for the next turn). */
   finishTurns = true;
+  /** How the box reports a turn's end: completed, or failed as a crashed process is. */
+  turnEnd: 'completed' | 'failed' = 'completed';
   private turnSeq = 0;
 
   constructor(
@@ -161,12 +163,16 @@ export class SessionBox {
     );
   }
 
-  /** The turn ends as the runner reports it: the session completed, Claude's session id kept. */
+  /** The turn ends as the runner reports it: completed with Claude's session id kept, or failed. */
   async finish(sessionId: string, claudeSessionId: string): Promise<void> {
     const res = await fetch(`${this.base}/api/agent-sessions/${sessionId}`, {
       method: 'PATCH',
       headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ status: 'completed', claudeSessionId }),
+      body: JSON.stringify(
+        this.turnEnd === 'completed'
+          ? { status: 'completed', claudeSessionId }
+          : { status: 'failed' },
+      ),
     });
     if (!res.ok)
       throw new Error(`the box could not end the turn: ${res.status} ${await res.text()}`);
