@@ -225,7 +225,7 @@ async function dispatchAction(
 
     case 'deploy': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsWriter(principal, projectId);
+      await assertPrincipalIsWriter(principal, projectId, 'deploy it through Coolify');
       return runCoolifyDeploy({
         projectId,
         ...(input.issueId ? { issueId: input.issueId } : {}),
@@ -361,7 +361,7 @@ async function dispatchControlAction(
   switch (input.action) {
     case 'cancel': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsWriter(principal, projectId);
+      await assertPrincipalIsWriter(principal, projectId, 'cancel a Coolify deploy for it');
       return runCoolifyCancel({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -379,7 +379,7 @@ async function dispatchControlAction(
     }
     case 'rollback': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsWriter(principal, projectId);
+      await assertPrincipalIsWriter(principal, projectId, 'roll it back through Coolify');
       if (!input.commit) {
         throw new Error(
           'BAD_REQUEST: rollback needs `commit` — the image tag from rollback-images',

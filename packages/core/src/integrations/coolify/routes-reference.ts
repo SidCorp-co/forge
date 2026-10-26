@@ -178,7 +178,7 @@ export const deployCoolify = onProject(
       200: json(dispatchedSchema, 'Whether anything was dispatched, and why not where it was not'),
       400: fail(
         'BAD_REQUEST',
-        'the body does not fit, no integration is named where several are active, the run is not an open release batch of the project, the release run announced no method, or the environment is locked by another release',
+        'the body does not fit, the project has no Coolify, the binding named or the only one is switched off, no integration is named where several are active, the run is not an open release batch of the project, the release run announced no method, or the environment is locked by another release',
       ),
       403: fail('FORBIDDEN', 'the caller is below the project member role'),
       404: noSuchBinding,
@@ -257,6 +257,10 @@ export const listCoolifyApplications = onProject(
       'Give `integrationId` to use the stored credential, or `baseUrl` and `apiToken` before anything is saved. At most 500 applications.',
     responses: {
       200: json(applicationsSchema),
+      400: fail(
+        'BAD_REQUEST',
+        'the binding or its connection is switched off; nothing is sent to Coolify',
+      ),
       403: noRoleOnProject,
       404: fail('NOT_FOUND', 'the integration is not a Coolify binding of this project'),
       409: fail({
@@ -290,7 +294,7 @@ export const confirmProdDeploy = onBinding(
       200: json(confirmedSchema, 'Whether a pending deploy was confirmed and queued'),
       400: fail(
         'NOT_LIVE_BINDING',
-        'the binding carries no live stage, so no production deploy awaits a person',
+        'the binding neither carries a live stage nor deploys an application a live binding deploys',
       ),
       403: notProjectAdmin,
       404: noSuchBinding,

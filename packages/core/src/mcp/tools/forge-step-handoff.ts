@@ -53,7 +53,7 @@ export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ princip
   inputSchema: zodToMcpSchema(writeInputSchema),
   handler: async (args) => {
     const input = writeInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await assertPrincipalIsWriter(principal, input.projectId, 'write a step handoff on it');
     try {
       return await writeIssueContext({
         ...input,
@@ -98,7 +98,7 @@ export const forgeStepHandoffDeleteTool: ContextScopedMcpToolFactory = ({ princi
   inputSchema: zodToMcpSchema(deleteInputSchema),
   handler: async (args) => {
     const input = deleteInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await assertPrincipalIsWriter(principal, input.projectId, 'delete a step handoff on it');
     try {
       return await deleteIssueContext({ ...input, kind: 'handoff' });
     } catch (err) {

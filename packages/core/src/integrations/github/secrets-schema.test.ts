@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { providerHalfRefused } from '../provider-schemas.js';
 import { githubSecretsSchema } from './schemas.js';
@@ -15,7 +16,12 @@ const refusal = (privateKey: string): string | null => {
   return providerHalfRefused(parsed.error, githubSecretsSchema, 'secrets', app(privateKey)).message;
 };
 
-const PEM = `-----BEGIN RSA PRIVATE KEY-----\n${'A'.repeat(120)}\n-----END RSA PRIVATE KEY-----\n`;
+// The shape GitHub gives an App's key in: PKCS#1, "BEGIN RSA PRIVATE KEY".
+const { privateKey: PEM, publicKey: PUBLIC_PEM } = generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+});
 
 // ISS-1421 r29: `.min(100)` was worded "The field privateKey takes at least 100 characters."
 describe('githubSecretsSchema — the App private key a save door takes', () => {
@@ -23,9 +29,24 @@ describe('githubSecretsSchema — the App private key a save door takes', () => 
     expect(refusal(PEM)).toBeNull();
   });
 
+  it('takes the same key as PKCS#8, "BEGIN PRIVATE KEY"', () => {
+    const { privateKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+    });
+    expect(refusal(privateKey)).toBeNull();
+  });
+
+  // ISS-1421 r30, judge-122: a PEM cut off with no END line and 150 characters of no key at all were
+  // both saved 201, the key judged by its length alone.
   it.each([
     ['nothing', ''],
     ['the BEGIN line alone', '-----BEGIN RSA PRIVATE KEY-----'],
+    ['a key cut off before its END line', PEM.slice(0, 1000)],
+    ['150 characters that are no key', 'k'.repeat(150)],
+    ['a public key', PUBLIC_PEM],
+    ['a key whose body was altered', PEM.replace(/\n[A-Za-z0-9+/]{20}/, `\n${'!'.repeat(20)}`)],
   ])('refuses %s as not a whole key, naming no field and no count', (_what, sent) => {
     const said = refusal(sent);
     expect(said).toMatch(/^This is not a whole GitHub App private key/);

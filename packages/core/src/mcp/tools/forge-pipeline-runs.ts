@@ -109,7 +109,7 @@ export async function pipelineRunsPauseHandler(
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await assertPrincipalIsWriter(principal, loaded.projectId);
+  await assertPrincipalIsWriter(principal, loaded.projectId, 'pause its pipeline runs');
   const run = await pausePipelineRun(input.runId);
   return { run };
 }
@@ -119,7 +119,7 @@ export async function pipelineRunsResumeHandler(
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await assertPrincipalIsWriter(principal, loaded.projectId);
+  await assertPrincipalIsWriter(principal, loaded.projectId, 'resume its pipeline runs');
   const run = await resumePipelineRun(input.runId);
   return { run };
 }
@@ -129,7 +129,7 @@ export async function pipelineRunsCancelHandler(
   input: z.infer<typeof pipelineRunsCancelInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await assertPrincipalIsWriter(principal, loaded.projectId);
+  await assertPrincipalIsWriter(principal, loaded.projectId, 'cancel its pipeline runs');
   return cancelPipelineRun(input.runId, {
     actorUserId: principalUserId(principal),
     actorAgency: principalAgency(principal),

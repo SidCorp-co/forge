@@ -31,6 +31,7 @@ let signUserToken: (userId: string) => Promise<string>;
 let owner: { id: string; token: string };
 let admin: { id: string; token: string };
 let member: { id: string; token: string };
+let viewer: { id: string; token: string };
 let orgId: string;
 
 /** A host no resolver answers, so a check fails before any network is reached. */
@@ -60,8 +61,11 @@ beforeAll(async () => {
   owner = await person('off-owner');
   admin = await person('off-admin');
   member = await person('off-member');
+  viewer = await person('off-viewer');
   orgId = (await seedOrg(harness.db, owner.id)).id;
-  for (const p of [admin, member]) await createTestOrgMember(harness.db, { orgId, userId: p.id });
+  for (const p of [admin, member, viewer]) {
+    await createTestOrgMember(harness.db, { orgId, userId: p.id });
+  }
 }, 120_000);
 
 afterAll(async () => {
@@ -94,6 +98,7 @@ async function coolifyProject(baseUrl = NOWHERE) {
   const projectId = (await createTestProject(harness.db, owner.id, { orgId })).id;
   await createTestProjectMember(harness.db, { userId: admin.id, projectId, role: 'admin' });
   await createTestProjectMember(harness.db, { userId: member.id, projectId, role: 'member' });
+  await createTestProjectMember(harness.db, { userId: viewer.id, projectId, role: 'viewer' });
   const connection = await store.createConnection({
     ownerType: 'org',
     ownerId: orgId,
@@ -274,5 +279,128 @@ describe('Test connection names who may change the address its reader may not (c
     } finally {
       stub.mockRestore();
     }
+  });
+});
+
+/** Every request this app sends out while `fn` runs, by host. */
+async function hostsAskedDuring(fn: () => Promise<void>): Promise<string[]> {
+  const asked: string[] = [];
+  const realFetch = globalThis.fetch;
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    asked.push(new URL(input instanceof Request ? input.url : String(input)).host);
+    return realFetch(input, init);
+  });
+  try {
+    await fn();
+  } finally {
+    spy.mockRestore();
+  }
+  return asked;
+}
+
+const applications = (bearer: string, projectId: string, bindingId: string) =>
+  callAs(bearer, 'POST', `/api/projects/${projectId}/integrations/coolify/applications`, {
+    integrationId: bindingId,
+  });
+
+// ISS-1421 r30, judge-122 on 316 and 336.
+describe('round 30: every Coolify door says why it refuses, and who may', () => {
+  it('refuses the application list over a switched-off connection as off, sending no token', async () => {
+    const { projectId, connectionId, bindingId } = await coolifyProject();
+    await callAs(owner.token, 'PATCH', `/api/integration-connections/${connectionId}`, {
+      active: false,
+    });
+    let said = { status: 0, body: {} as Json };
+    const asked = await hostsAskedDuring(async () => {
+      said = await applications(member.token, projectId, bindingId);
+    });
+    expect(said.status, JSON.stringify(said.body)).toBe(400);
+    expect(String(said.body.message)).toContain(
+      'the connection behind it is switched off for every project sharing it. Only an owner or admin of the organization that owns it can turn it back on',
+    );
+    expect(asked).not.toContain(new URL(NOWHERE).host);
+  });
+
+  it('refuses the application list over a binding switched off for this project as off, sending no token', async () => {
+    const { projectId, bindingId } = await coolifyProject();
+    await store.updateBinding(bindingId, { active: false });
+    let said = { status: 0, body: {} as Json };
+    const asked = await hostsAskedDuring(async () => {
+      said = await applications(member.token, projectId, bindingId);
+    });
+    expect(said.status, JSON.stringify(said.body)).toBe(400);
+    expect(String(said.body.message)).toContain(
+      'it is switched off for this project, and an admin of this project can switch it back on',
+    );
+    expect(asked).not.toContain(new URL(NOWHERE).host);
+  });
+
+  it('names who may change the address when the application list cannot reach it, and tells the owner to check it', async () => {
+    const { projectId, bindingId } = await coolifyProject();
+    const toMember = await applications(member.token, projectId, bindingId);
+    expect(toMember.status).toBe(424);
+    expect(String(toMember.body.message)).toContain(
+      'Only an owner or admin of the organization that owns it can change the address saved on this connection, so ask one of them.',
+    );
+    expect(String(toMember.body.message)).not.toMatch(/Check the address/);
+    const toOwner = await applications(owner.token, projectId, bindingId);
+    expect(String(toOwner.body.message)).toContain('Check the address saved on this connection.');
+  });
+
+  it.each([
+    ['deploy', {}, 'deploy it through Coolify'],
+    ['cancel', {}, 'cancel a Coolify deploy for it'],
+    ['rollback', { commit: 'made-up-commit' }, 'roll it back through Coolify'],
+  ])("refuses a viewer's %s naming the act and who may take it", async (door, body, act) => {
+    const { projectId } = await coolifyProject();
+    const said = await callAs(
+      viewer.token,
+      'POST',
+      `/api/projects/${projectId}/integrations/coolify/${door}`,
+      body,
+    );
+    expect(said.status).toBe(403);
+    expect(said.body.message).toBe(
+      `You are a viewer of this project, so you cannot ${act}. Only a member or admin of this project can, so ask one of them.`,
+    );
+  });
+});
+
+// ISS-1421 r30, review on 344: a preview binding deploying an application a live binding also
+// deploys is parked for a person to confirm, and the route refused that confirmation for carrying
+// no live stage, so the parked deploy could never go out.
+describe('confirming a live deploy (criterion 344)', () => {
+  const previewOf = (projectId: string, connectionId: string, resourceUuid: string) =>
+    store.createBinding({
+      connectionId,
+      projectId,
+      provider: 'coolify',
+      role: 'deploy',
+      stages: ['preview'],
+      config: { targets: [{ id: 'web', label: 'Web', resourceUuid }] },
+    });
+  const confirm = (projectId: string, bindingId: string) =>
+    callAs(
+      admin.token,
+      'POST',
+      `/api/projects/${projectId}/integrations/${bindingId}/confirm-prod-deploy`,
+    );
+
+  it('takes it on a preview binding that deploys what a live one deploys', async () => {
+    const { projectId, connectionId } = await coolifyProject();
+    const shared = await previewOf(projectId, connectionId, 'made-up-uuid');
+    const said = await confirm(projectId, shared.id);
+    expect(said.status, JSON.stringify(said.body)).toBe(200);
+  });
+
+  it('refuses it in words on a binding that reaches no live environment', async () => {
+    const { projectId, connectionId } = await coolifyProject();
+    const apart = await previewOf(projectId, connectionId, 'another-made-up-uuid');
+    const said = await confirm(projectId, apart.id);
+    expect(said.status).toBe(400);
+    expect(said.body.code).toBe('NOT_LIVE_BINDING');
+    expect(said.body.message).toBe(
+      'This Coolify binding neither deploys to live nor deploys an application a live binding deploys, so no live deploy waits on it to be confirmed.',
+    );
   });
 });

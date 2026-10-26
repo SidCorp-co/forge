@@ -250,8 +250,9 @@ describe('a person retries a failed job', () => {
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error?: { message?: string }; message?: string };
     const said = JSON.stringify(body);
-    expect(said).toContain('Requires the project member role or above');
-    expect(said).toContain('the role held is viewer');
+    expect(said).toContain(
+      'You are a viewer of this project, so you cannot retry this job. Only a member or admin of this project can, so ask one of them.',
+    );
     expect(said).not.toContain('not a project member');
     const [n] = await harness.db.execute<{ n: number }>(
       sql`SELECT count(*)::int AS n FROM jobs WHERE retry_of = ${failed}`,

@@ -8,6 +8,7 @@
  * credential against `GET /api/v1/me`, powering the test-connection UI.
  */
 
+import { PROVIDER_LABELS } from '@forge/contracts/health-words';
 import { updateConnection } from '../store.js';
 import {
   type AdapterContext,
@@ -143,7 +144,7 @@ export const rocketchatIntegration = declareIntegration<RocketChatConfig, Rocket
   },
   usage: null,
   presentation: {
-    label: 'Rocket.Chat',
+    label: PROVIDER_LABELS.rocketchat,
     alwaysStageKeyed: false,
     cardMeta: (config) => {
       const cfg = config as { serverUrl?: string; rids?: string[] };

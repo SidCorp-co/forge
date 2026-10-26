@@ -1,8 +1,9 @@
+import { PROVIDER_LABELS } from "@forge/contracts/health-words";
 import type { ProviderModule } from "../registry";
 
 export const agent: ProviderModule = {
   provider: "agent",
-  label: "Agent release channel",
+  label: PROVIDER_LABELS.agent,
   icon: "agent",
   secretField: null,
   secretPlaceholder: null,

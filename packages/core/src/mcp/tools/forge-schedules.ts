@@ -161,7 +161,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=run');
         const projectId = await readScheduleProjectId(input.scheduleId);
-        await assertPrincipalIsWriter(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId, 'run its schedules');
         return runScheduleNow(input.scheduleId, userId);
       }
 

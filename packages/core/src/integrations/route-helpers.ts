@@ -231,15 +231,19 @@ export async function assertProjectMember(
   return access.role;
 }
 
-/** A write on a project's integrations needs the member role; a viewer reads and is refused here by name. */
+/**
+ * A write on a project's integrations needs the member role; a viewer reads and is refused here by
+ * name. `act` completes "you cannot …", as `assertAdmin`'s does.
+ */
 export async function assertProjectWriter(
   projectId: string,
   userId: string,
+  act: string,
 ): Promise<'admin' | 'member'> {
   const role = await assertProjectMember(projectId, userId);
   if (role === 'viewer') {
     throw new HTTPException(403, {
-      message: projectWriteRefusal(role),
+      message: projectWriteRefusal(role, act),
       cause: { code: 'FORBIDDEN' },
     });
   }

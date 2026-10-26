@@ -174,7 +174,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
       if (!body) throw new Error('BAD_REQUEST: data.body is required for create');
 
       const projectId = await loadIssueProjectId(issueId);
-      await assertPrincipalIsWriter(principal, projectId);
+      await assertPrincipalIsWriter(principal, projectId, 'comment on its issues');
 
       const rawAttachments = input.data?.attachments ?? [];
       const decoded: Array<{ name: string; mime: string; bytes: Buffer }> = [];
@@ -264,7 +264,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
       }
       const comment = await loadCommentForAccess(input.documentId);
 
-      await assertPrincipalIsWriter(principal, comment.projectId);
+      await assertPrincipalIsWriter(principal, comment.projectId, 'delete a comment on it');
       await assertMayChange(principal.userId, comment, 'delete');
 
       await deleteComment(input.documentId);
@@ -286,7 +286,11 @@ type Principal = Parameters<typeof assertPrincipalIsWriter>[0];
 async function listAction(principal: Principal, input: ToolInput): Promise<unknown> {
   const issueId = input.filters?.issue;
   if (!issueId) throw new Error('BAD_REQUEST: filters.issue is required for list');
-  await assertPrincipalIsWriter(principal, await loadIssueProjectId(issueId));
+  await assertPrincipalIsWriter(
+    principal,
+    await loadIssueProjectId(issueId),
+    'read its comments through this tool',
+  );
 
   let after: ReturnType<typeof decodeCommentCursor> | undefined;
   if (input.cursor !== undefined) {
@@ -355,7 +359,7 @@ async function updateAction(principal: Principal, input: ToolInput): Promise<unk
   if (!body) throw new Error('BAD_REQUEST: data.body is required for update');
 
   const comment = await loadCommentForAccess(input.documentId);
-  await assertPrincipalIsWriter(principal, comment.projectId);
+  await assertPrincipalIsWriter(principal, comment.projectId, 'edit a comment on it');
   await assertMayChange(principal.userId, comment, 'edit');
 
   const written = await updateCommentBody(input.documentId, {

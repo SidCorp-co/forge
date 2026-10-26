@@ -46,6 +46,7 @@ import {
   CoolifyConnectionRemovedError,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
+  offBindingRefusal,
   runCoolifyDeploy,
 } from './commands.js';
 import {
@@ -212,7 +213,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
     declaresInput('json', deployBodySchema),
     async (c) => {
       const projectId = c.req.param('projectId');
-      await assertProjectWriter(projectId, c.get('userId'));
+      await assertProjectWriter(projectId, c.get('userId'), 'deploy it through Coolify');
 
       const raw = await c.req.json().catch(() => ({}));
       const parsed = deployBodySchema.safeParse(raw ?? {});
@@ -234,7 +235,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
     declaresInput('json', cancelBodySchema),
     async (c) => {
       const projectId = c.req.param('projectId');
-      await assertProjectWriter(projectId, c.get('userId'));
+      await assertProjectWriter(projectId, c.get('userId'), 'cancel a Coolify deploy for it');
       const raw = await c.req.json().catch(() => ({}));
       const parsed = cancelBodySchema.safeParse(raw ?? {});
       if (!parsed.success) throw schemaRefused(parsed.error, cancelBodySchema, raw);
@@ -280,7 +281,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
     declaresInput('json', rollbackBodySchema),
     async (c) => {
       const projectId = c.req.param('projectId');
-      await assertProjectWriter(projectId, c.get('userId'));
+      await assertProjectWriter(projectId, c.get('userId'), 'roll it back through Coolify');
       const raw = await c.req.json().catch(() => ({}));
       const parsed = rollbackBodySchema.safeParse(raw ?? {});
       if (!parsed.success) throw schemaRefused(parsed.error, rollbackBodySchema, raw);
@@ -326,6 +327,10 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
           role,
           projectId,
         });
+        // Switched off is refused as off, naming who switches it on, before any token leaves.
+        if (!(existing.binding.active && existing.connection.active)) {
+          asHttp(await offBindingRefusal(existing, projectId));
+        }
         const acts = bindingActs(
           await bindingReaderOf(userId, projectId, role),
           existing.connection,
@@ -393,14 +398,16 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
 
       const existing = await findBindingWithConnectionById(id);
       if (!existing || existing.binding.projectId !== projectId) throw notFound();
-      if (!(existing.binding.stages ?? []).includes('live')) {
+      const { bindingReachesLive, confirmPendingProdDeploy } = await import(
+        '../../pipeline/release-coolify.js'
+      );
+      if (!(await bindingReachesLive(projectId, existing.binding))) {
         throw new HTTPException(400, {
           message:
-            'confirm-prod-deploy is only valid on a deploy binding carrying the `live` stage — this binding serves no live environment, so there is no production deploy for a human to confirm',
+            'This Coolify binding neither deploys to live nor deploys an application a live binding deploys, so no live deploy waits on it to be confirmed.',
           cause: { code: 'NOT_LIVE_BINDING' },
         });
       }
-      const { confirmPendingProdDeploy } = await import('../../pipeline/release-coolify.js');
       const result = await confirmPendingProdDeploy(id).catch(lockedAsHttp);
       broadcastIntegrationChanged(projectId, {
         bindingId: id,

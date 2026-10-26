@@ -1,4 +1,4 @@
-import { unreachedBecause, unreachedBy } from '../unreached.js';
+import { CHECK_ADDRESS, unreachedBecause, unreachedBy } from '../unreached.js';
 import { CoolifyApiError, type CoolifyClient } from './client.js';
 import type { CoolifyRollbackImagesResponse } from './types.js';
 
@@ -22,25 +22,27 @@ function failure(
   // and the transport's own text is not a reader's sentence (ISS-1421 r18). What was asked for is
   // said in words; the route is the error's own business (ISS-1421 r28, judge-114).
   const where = address ? `the server at ${address}` : 'the address saved on this connection';
+  // Each ends on the address sentence `addressForReader` turns into who may change it (ISS-1421 r30).
+  const lacking = `Forge has no ${lacks} to read. ${CHECK_ADDRESS.alone}`;
   const name = err instanceof Error ? err.name : '';
   if (name === 'AbortError' || name === 'TimeoutError') {
     return new CoolifyReadFailedError(
       'timeout',
-      `Forge asked ${where} for ${asked} and got no answer in time. Forge has no ${lacks} to read.`,
+      `Forge asked ${where} for ${asked} and got no answer in time. ${lacking}`,
     );
   }
   if (err instanceof SyntaxError) {
     return new CoolifyReadFailedError(
       'not-json',
-      `Forge asked ${where} for ${asked}, and it answered with something that is not JSON, so it may not be Coolify. Forge has no ${lacks} to read.`,
+      `Forge asked ${where} for ${asked}, and it answered with something that is not JSON, so it may not be Coolify. ${lacking}`,
     );
   }
   const unreached = unreachedBy(err);
   return new CoolifyReadFailedError(
     'unreachable',
     unreached
-      ? `Forge could not reach ${where} to ask for ${asked}, because ${unreachedBecause(unreached.reason)}. Forge has no ${lacks} to read.`
-      : `Forge could not read ${asked} from ${where}. Forge has no ${lacks} to read.`,
+      ? `Forge could not reach ${where} to ask for ${asked}, because ${unreachedBecause(unreached.reason)}. ${lacking}`
+      : `Forge could not read ${asked} from ${where}. ${lacking}`,
   );
 }
 

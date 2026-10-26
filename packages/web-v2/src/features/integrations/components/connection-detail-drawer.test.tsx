@@ -27,6 +27,10 @@ let deployTo: string[] = ["coolify"];
 /** What core answers the reader about each binding and the tab: everything, unless a test narrows it. */
 let acts = ALL_ACTS;
 let may = ALL_MAY;
+/** The reader's connections, as the Integrations page lists them. */
+let connections: unknown[] = [];
+/** The Coolify applications each stage's binding deploys, where a test names them. */
+let appsOf: Partial<Record<"preview" | "live", string>> = {};
 
 function binding(stage: "preview" | "live") {
   return {
@@ -37,7 +41,7 @@ function binding(stage: "preview" | "live") {
     role: deployTo.includes(provider) ? "deploy" : "service",
     stages: deployTo.includes(provider) ? [stage] : [],
     config: { baseUrl: "https://stub.example.com", host: "https://sentry.example.com" },
-    bindingConfig: {},
+    bindingConfig: appsOf[stage] ? { targets: [{ id: "web", label: "Web", resourceUuid: appsOf[stage] }] } : {},
     label: "",
     active: true,
     bindingActive: true,
@@ -77,6 +81,7 @@ vi.mock("@/lib/api/client", async () => {
         // One binding per provider, as a drawer opened from one row shows; Coolify's two are its stages.
         return { items: provider === "coolify" ? [binding("preview"), binding("live")] : [binding("live")], may };
       }
+      if (bare === "/integration-connections") return { items: connections };
       if (bare === "/projects") return [PROJECT_ROW];
       if (bare === `/projects/${PROJECT}`) return { ...PROJECT_ROW, agentConfig: {} };
       return { items: [], bindings: [], applications: [], rooms: [], targets: [], repositories: [], truncated: false };
@@ -107,6 +112,7 @@ beforeEach(() => {
   deployTo = ["coolify"];
   acts = ALL_ACTS;
   may = ALL_MAY;
+  connections = [];
   queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 afterEach(cleanup);
@@ -170,9 +176,10 @@ describe("a plain member of the project's drawer offers nothing core refuses the
       // Nothing they may not save is left editable: a field with no Save reads as one that saves.
       for (const box of screen.queryAllByRole("textbox")) expect(box, box.getAttribute("aria-label") ?? box.id).toBeDisabled();
       expect(screen.queryByText(/Enter one to store it|Saving a new key/)).toBeNull();
+      // Said once: Coolify, Google Sheets and Rocket.Chat said it twice (ISS-1421 r30, 342).
       expect(
-        screen.getAllByText(/^Only an admin of this project can switch this integration/).length,
-      ).toBeGreaterThan(0);
+        screen.getAllByText(/^Only an admin of this project can switch this integration/),
+      ).toHaveLength(1);
     },
   );
 });
@@ -362,5 +369,119 @@ describe("a project's list of the projects a connection is bound to", () => {
     expect(screen.getByText("Stub")).toBeInTheDocument();
     expect(screen.getByText("A project you cannot open")).toBeInTheDocument();
     expect(screen.queryByText(/9f1c2d3e/)).toBeNull();
+  });
+});
+
+// ISS-1421 r30, judge-122: the live approval gate printed `integration: <uuid>` under Confirm live
+// deploy, an id no reader can act on.
+describe("the live approval gate", () => {
+  function drawLive() {
+    provider = "coolify";
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: "coolify:live", status: "connected", meta: { capabilities: { canDeploy: true } } } as never}
+          onClose={() => {}}
+        />
+      </Page>,
+    );
+  }
+
+  it("names the connection it deploys through by its name, and no id", async () => {
+    connections = [
+      {
+        id: CONNECTION,
+        provider: "coolify",
+        displayName: "Production box",
+        ownerType: "org",
+        ownerId: PROJECT_ROW.orgId,
+        config: { baseUrl: "https://stub.example.com" },
+        active: true,
+        hasSecrets: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    ];
+    drawLive();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm live deploy" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Through the connection Production box.")).toBeInTheDocument());
+    expect(screen.queryByText(new RegExp(CONNECTION))).toBeNull();
+    expect(screen.queryByText(/^integration:/)).toBeNull();
+  });
+
+  it("tells two connections of the same name apart, as the Connections page does", async () => {
+    const box = (id: string, createdAt: string) => ({
+      id,
+      provider: "coolify",
+      displayName: "Production box",
+      ownerType: "org",
+      ownerId: PROJECT_ROW.orgId,
+      config: { baseUrl: "https://stub.example.com" },
+      active: true,
+      hasSecrets: true,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    connections = [box(CONNECTION, NOW), box("c2d7e8f9-0a1b-4c2d-8e3f-4a5b6c7d8e9f", "2026-10-01T00:00:00.000Z")];
+    drawLive();
+    await waitFor(() =>
+      expect(screen.getByText("Through the connection Production box · added 14 Oct 2026.")).toBeInTheDocument(),
+    );
+  });
+
+  // Review on criterion 344: core parks a preview deploy of the application a live binding also
+  // deploys, so the drawer has to offer that binding the confirmation it is waiting on.
+  function drawPreview() {
+    provider = "coolify";
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: "coolify:preview", status: "connected", meta: { capabilities: { canDeploy: true } } } as never}
+          onClose={() => {}}
+        />
+      </Page>,
+    );
+  }
+
+  it("is offered on a preview binding that deploys the application the live one deploys", async () => {
+    appsOf = { preview: "made-up-app", live: "made-up-app" };
+    drawPreview();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm live deploy" })).toBeInTheDocument());
+    appsOf = {};
+  });
+
+  it("is not offered on a preview binding that deploys an application of its own", async () => {
+    appsOf = { preview: "made-up-preview-app", live: "made-up-app" };
+    drawPreview();
+    await waitFor(() => expect(screen.getByText("Agents on this project may use this")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Confirm live deploy" })).toBeNull();
+    appsOf = {};
+  });
+
+  it("names it by where it points where the reader's list does not hold it", async () => {
+    drawLive();
+    await waitFor(() => expect(screen.getByText("Through the connection at stub.example.com.")).toBeInTheDocument());
+    expect(screen.queryByText(new RegExp(CONNECTION))).toBeNull();
+  });
+});
+
+// ISS-1421 r30: Rocket.Chat's bot personality example was Vietnamese; Forge is written in English.
+describe("Rocket.Chat's bot personality field", () => {
+  it("gives its example in English", async () => {
+    provider = "rocketchat";
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: "rocketchat", status: "connected", meta: {} } as never}
+          onClose={() => {}}
+        />
+      </Page>,
+    );
+    await waitFor(() => expect(screen.getByText("Bot personality")).toBeInTheDocument());
+    const example = screen.getByPlaceholderText(/^e\.g\./).getAttribute("placeholder") ?? "";
+    expect(example).toMatch(/^e\.g\. "[\x20-\x7E]+"$/);
   });
 });

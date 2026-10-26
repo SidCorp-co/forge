@@ -48,7 +48,7 @@ export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalIsWriter(ctx.principal, input.projectId);
+    await assertPrincipalIsWriter(ctx.principal, input.projectId, 'record a phase on its issues');
     const run = await loadRunInProject(input.runId, input.projectId);
 
     if (input.action === 'resume_point') {

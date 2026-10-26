@@ -186,7 +186,7 @@ describe('a webhook to a binding whose credential cannot be decrypted', () => {
     const refusal = (await res.json()) as Refusal;
     expect(refusal.code).toBe('CREDENTIAL_UNREADABLE');
     expect(refusal.message).not.toContain('handler failed');
-    expectNamed(refusal.message, 'Github', [connectionId, bindingId]);
+    expectNamed(refusal.message, 'GitHub', [connectionId, bindingId]);
     expect(refusal.details).toMatchObject({ connectionId, bindingId, provider: 'github' });
     expectNothingSecret(JSON.stringify(refusal), sealed);
   });

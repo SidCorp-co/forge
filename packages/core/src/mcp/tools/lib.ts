@@ -87,9 +87,11 @@ export async function assertPrincipalIsMember(
   }
 }
 
+/** `act` completes "you cannot …": what the tool was asked to do, as its caller would say it. */
 export async function assertPrincipalIsWriter(
   principal: McpPrincipal,
   projectId: string,
+  act: string,
 ): Promise<void> {
   const allow = patEffectiveProjectIds(principal);
   if (allow !== null && !allow.includes(projectId)) {
@@ -100,7 +102,7 @@ export async function assertPrincipalIsWriter(
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
   if (!role.isWriter) {
-    throw new Error(`FORBIDDEN: ${projectWriteRefusal(role.role)}`);
+    throw new Error(`FORBIDDEN: ${projectWriteRefusal(role.role, act)}`);
   }
 }
 

@@ -1,9 +1,10 @@
+import { PROVIDER_LABELS } from "@forge/contracts/health-words";
 import type { ProviderModule } from "../registry";
 import { urlHost } from "../config-read";
 
 export const coolify: ProviderModule = {
   provider: "coolify",
-  label: "Coolify",
+  label: PROVIDER_LABELS.coolify,
   icon: "server",
   secretField: "apiToken",
   secretPlaceholder: "Coolify API token",

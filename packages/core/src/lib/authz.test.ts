@@ -19,6 +19,8 @@ import {
   orgRoleAtLeast,
   type ProjectAccess,
   projectRoleAtLeast,
+  projectWriteRefusal,
+  refusedForRole,
 } from './authz.js';
 
 /** One-shot `db.select().from().where().limit()` chain returning `rows`. */
@@ -72,6 +74,30 @@ describe('maxProjectRole', () => {
     expect(maxProjectRole(null, 'viewer')).toBe('viewer');
     expect(maxProjectRole('member', null)).toBe('member');
     expect(maxProjectRole(null, null)).toBeNull();
+  });
+});
+
+describe('projectWriteRefusal', () => {
+  // ISS-1421 r30, judge-122 on 316: it said "requires the project member role or above to write;
+  // the role held is viewer", naming no act and no one to ask, unlike every binding door.
+  it('names the act refused, the role held and who may take it', () => {
+    expect(projectWriteRefusal('viewer', 'deploy it through Coolify')).toBe(
+      'You are a viewer of this project, so you cannot deploy it through Coolify. Only a member or admin of this project can, so ask one of them.',
+    );
+  });
+
+  it('says a reader holding no role on the project is not a member of it', () => {
+    expect(projectWriteRefusal(null, 'retry this job')).toBe(
+      'You are not a member of this project, so you cannot retry this job. Only a member or admin of this project can, so ask one of them.',
+    );
+  });
+
+  it('is the sentence every who-may refusal is built by, with its own who', () => {
+    expect(
+      refusedForRole('member', 'confirm a live deploy for it', 'an admin of this project'),
+    ).toBe(
+      'You are a member of this project, so you cannot confirm a live deploy for it. Only an admin of this project can, so ask one of them.',
+    );
   });
 });
 

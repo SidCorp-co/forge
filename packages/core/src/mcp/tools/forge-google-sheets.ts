@@ -140,7 +140,7 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
       return googleSheetsRead({ projectId, ...spreadsheet, range: requireRange(input, 'read') });
     }
     case 'update': {
-      await assertPrincipalIsWriter(principal, projectId);
+      await assertPrincipalIsWriter(principal, projectId, 'write to its Google Sheets');
       return googleSheetsUpdate({
         projectId,
         ...spreadsheet,
@@ -149,7 +149,7 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
       });
     }
     case 'append': {
-      await assertPrincipalIsWriter(principal, projectId);
+      await assertPrincipalIsWriter(principal, projectId, 'append to its Google Sheets');
       return googleSheetsAppend({
         projectId,
         ...spreadsheet,

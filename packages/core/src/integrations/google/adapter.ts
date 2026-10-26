@@ -8,6 +8,7 @@
  * the same archetype `sentry/adapter.ts` has.
  */
 
+import { PROVIDER_LABELS } from '@forge/contracts/health-words';
 import { logger } from '../../logger.js';
 import { isPreviousCredentialValid, newKeyRefused } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
@@ -239,7 +240,7 @@ export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>
     guideSlug: 'google-sheets',
   },
   presentation: {
-    label: 'Google Sheets',
+    label: PROVIDER_LABELS.google,
     alwaysStageKeyed: false,
     cardMeta: (config) => {
       const cfg = config as { clientEmail?: string; defaultSpreadsheetId?: string };

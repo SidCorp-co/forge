@@ -26,12 +26,9 @@ describe('the connection config PATCH schema', () => {
     ).toBe(true);
   });
 
-  // The defect itself, kept as a case rather than as prose: the create schema
-  // refuses the same body, and it is what the route read until this change.
-  it('is not the create schema, which refuses that same body', () => {
-    expect(
-      createSchema('coolify').safeParse({ baseUrl: 'https://coolify.example.com' }).success,
-    ).toBe(false);
+  it('is not the create schema, which refuses a body without the base url', () => {
+    expect(patchSchema('coolify').safeParse({ releaseRunnerLabel: null }).success).toBe(true);
+    expect(createSchema('coolify').safeParse({ releaseRunnerLabel: null }).success).toBe(false);
   });
 
   it('takes a coolify body whose only key is a null release runner label', () => {

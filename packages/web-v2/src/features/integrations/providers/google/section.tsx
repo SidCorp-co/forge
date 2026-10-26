@@ -30,7 +30,6 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { google } from "./index";
 import {
-  bindingLockedLine,
   bindsRemovedConnection,
   IntegrationEnabledControl,
   keyLockedLine,
@@ -224,7 +223,6 @@ function GoogleBindingPanel({
       )}
 
       {keyLocked && <p className="fg-body-sm text-muted">{keyLockedLine(binding.acts)}</p>}
-      {bindingLocked && <p className="fg-body-sm text-muted">{bindingLockedLine(binding.acts)}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
         {!keyLocked &&

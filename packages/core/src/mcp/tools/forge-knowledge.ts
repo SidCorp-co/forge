@@ -78,7 +78,7 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.slug) throw new Error('BAD_REQUEST: slug is required for action=upsert');
       if (!input.title) throw new Error('BAD_REQUEST: title is required for action=upsert');
       if (!input.body) throw new Error('BAD_REQUEST: body is required for action=upsert');
-      await assertPrincipalIsWriter(ctx.principal, projectId);
+      await assertPrincipalIsWriter(ctx.principal, projectId, 'write its knowledge');
       try {
         const parsed = upsertKnowledgeInputSchema.parse({
           projectId,
@@ -103,7 +103,7 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     if (action === 'delete') {
       if (!input.slug) throw new Error('BAD_REQUEST: slug is required for action=delete');
-      await assertPrincipalIsWriter(ctx.principal, projectId);
+      await assertPrincipalIsWriter(ctx.principal, projectId, 'delete its knowledge');
       const removed = await deleteKnowledgeEntry(projectId, input.slug);
       return { deleted: removed > 0 };
     }

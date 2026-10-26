@@ -89,7 +89,7 @@ export const forgeMemoryDeleteTool: ContextScopedMcpToolFactory = ({ principal }
   inputSchema: zodToMcpSchema(deleteInputSchema),
   handler: async (args) => {
     const input = deleteInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await assertPrincipalIsWriter(principal, input.projectId, 'delete its memory');
     return { deleted: await deleteMemory(input.projectId, input.source, input.sourceRef) };
   },
 });
@@ -107,7 +107,7 @@ export const forgeMemoryFeedbackTool: ContextScopedMcpToolFactory = ({ principal
   inputSchema: zodToMcpSchema(memoryFeedbackInputSchema),
   handler: async (args) => {
     const input = memoryFeedbackInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await assertPrincipalIsWriter(principal, input.projectId, 'rate its memory');
     try {
       return await runMemoryFeedback(input);
     } catch (err) {
@@ -126,7 +126,7 @@ export const forgeMemoryWriteTool: ContextScopedMcpToolFactory = ({ principal })
   inputSchema: zodToMcpSchema(writeMemoryInputSchema),
   handler: async (args) => {
     const input = writeMemoryInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await assertPrincipalIsWriter(principal, input.projectId, 'write to its memory');
     try {
       return await runMemoryWrite(input);
     } catch (err) {

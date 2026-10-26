@@ -179,13 +179,36 @@ export async function loadProjectAccess(
   return access;
 }
 
+const ROLE_HELD: Record<ProjectMemberRole, string> = {
+  admin: 'an admin',
+  member: 'a member',
+  viewer: 'a viewer',
+};
+
+/** "You are a viewer of this project" — the role a refusal was read off, as its reader holds it. */
+export function roleHeldWords(held: ProjectMemberRole | null): string {
+  return held
+    ? `You are ${ROLE_HELD[held]} of this project`
+    : 'You are not a member of this project';
+}
+
 /**
- * What a refused write says: the role the write needs and the role the caller holds. One wording
- * for every transport, so a viewer turned away at REST and at an MCP tool reads the same sentence
- * and the same fix.
+ * One refusal for an act a project role does not allow: the role held, the act and who may take it.
+ * The binding doors' who-may refusals and every write refusal are this sentence (ISS-1421 r30).
  */
-export function projectWriteRefusal(held: ProjectMemberRole | null): string {
-  return `requires the project member role or above to write; the role held is ${held ?? 'none'}`;
+export function refusedForRole(held: ProjectMemberRole | null, act: string, who: string): string {
+  return `${roleHeldWords(held)}, so you cannot ${act}. Only ${who} can, so ask one of them.`;
+}
+
+/** Who may take a write the project member role allows. */
+export const WHO_WRITES = 'a member or admin of this project';
+
+/**
+ * What a refused write says, at REST and at an MCP tool alike: the act, the role held and who may.
+ * `act` completes "you cannot …" (ISS-1421 r30: it once named only the roles, never the act).
+ */
+export function projectWriteRefusal(held: ProjectMemberRole | null, act: string): string {
+  return refusedForRole(held, act, WHO_WRITES);
 }
 
 /** 403 unless the effective role is at least `min`. */

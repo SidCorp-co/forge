@@ -44,8 +44,18 @@ beforeEach(async () => {
 
 const ACTIONS = ['deploy', 'cancel', 'rollback'] as const;
 
-// What an empty body earns once the role check has passed: deploy takes none, the others name a missing field.
-const PAST_THE_ROLE_CHECK = { deploy: 200, cancel: 400, rollback: 400 } as const;
+// What an empty body earns once the role check has passed on a project with no Coolify: each is
+// refused naming what is missing (ISS-1421 r30: deploy answered 200 and did nothing).
+const PAST_THE_ROLE_CHECK = { deploy: 400, cancel: 400, rollback: 400 } as const;
+
+// The same sentence at both doors, naming the act and who may take it (ISS-1421 r30).
+const REFUSED = {
+  deploy: 'deploy it through Coolify',
+  cancel: 'cancel a Coolify deploy for it',
+  rollback: 'roll it back through Coolify',
+} as const;
+const refusal = (action: (typeof ACTIONS)[number]) =>
+  `You are a viewer of this project, so you cannot ${REFUSED[action]}. Only a member or admin of this project can, so ask one of them.`;
 
 describe.each(ACTIONS)('Coolify %s', (action) => {
   it('is refused to a viewer at the REST route, by name', async () => {
@@ -57,7 +67,7 @@ describe.each(ACTIONS)('Coolify %s', (action) => {
       {},
     );
     expect(res.status).toBe(403);
-    expect(res.refused).toContain('Requires the project member role');
+    expect(res.refused).toContain(refusal(action));
   });
 
   it('is refused to a viewer at the tool', async () => {
@@ -65,7 +75,7 @@ describe.each(ACTIONS)('Coolify %s', (action) => {
       action,
       projectId,
     });
-    expect(refused).toContain('Requires the project member role');
+    expect(refused).toContain(refusal(action));
   });
 
   it.each(['member', 'admin'] as const)(
@@ -80,7 +90,7 @@ describe.each(ACTIONS)('Coolify %s', (action) => {
       );
       expect(
         res.status,
-        'the role check passed, so the answer is the body check, not a refusal',
+        'the role check passed, so what answers is the body or the missing Coolify, not the role',
       ).toBe(PAST_THE_ROLE_CHECK[action]);
     },
   );

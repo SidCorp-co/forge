@@ -1,5 +1,5 @@
-import { getIntegration } from './registry.js';
-import type { HealthCheckResult } from './types.js';
+import { PROVIDER_LABELS } from '@forge/contracts/health-words';
+import type { HealthCheckResult, IntegrationProvider } from './types.js';
 import { isUnreachedReason, unreachedWords } from './unreached.js';
 
 function asSentence(text: string): string {
@@ -9,11 +9,10 @@ function asSentence(text: string): string {
   return /[.!?]$/.test(opened) ? opened : `${opened}.`;
 }
 
+const LABELS: Readonly<Record<IntegrationProvider, string>> = PROVIDER_LABELS;
+
 export function providerLabel(provider: string): string {
-  return (
-    getIntegration(provider)?.presentation?.label ??
-    provider.charAt(0).toUpperCase() + provider.slice(1)
-  );
+  return LABELS[provider as IntegrationProvider] ?? provider;
 }
 
 /**

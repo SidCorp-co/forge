@@ -1,3 +1,4 @@
+import { PROVIDER_LABELS } from '@forge/contracts/health-words';
 import { logger } from '../../logger.js';
 import { isPreviousCredentialValid, newKeyRefused } from '../rotation.js';
 import { updateConnection } from '../store.js';
@@ -204,7 +205,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     },
   },
   presentation: {
-    label: 'Sentry',
+    label: PROVIDER_LABELS.sentry,
     alwaysStageKeyed: false,
     // ISS-526 — the multi-target shape: count plus the first target's org for the card subtitle,
     // with a back-compat read of the legacy single-slug connection.

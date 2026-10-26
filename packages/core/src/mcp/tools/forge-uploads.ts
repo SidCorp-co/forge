@@ -99,7 +99,11 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error('BAD_REQUEST: data.attachmentId is required for fetch');
       }
       const att = await loadAttachmentForFetch(target, attachmentId);
-      await assertPrincipalIsWriter(principal, att.projectId);
+      await assertPrincipalIsWriter(
+        principal,
+        att.projectId,
+        'fetch its attachments through this tool',
+      );
 
       const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);
       const meta = {
@@ -188,7 +192,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         : target === 'session'
           ? await loadSessionProjectId(targetId)
           : await loadCommentProjectId(targetId);
-    await assertPrincipalIsWriter(principal, projectId);
+    await assertPrincipalIsWriter(principal, projectId, 'upload a file to it');
 
     const mime = input.data.mime ?? mimeFromName(name);
 

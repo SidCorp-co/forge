@@ -1,5 +1,6 @@
 /** The shapes a GitHub connection and binding are allowed to hold (moved here by ISS-1071). */
 
+import { createPrivateKey } from 'node:crypto';
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 
@@ -13,7 +14,6 @@ export const githubConfigBase = z.strictObject({
 });
 
 // The App's private key, refused as a key and never by a count of the field's characters (ISS-1421 r29).
-const PRIVATE_KEY_SHORTEST = 100;
 const PRIVATE_KEY_LONGEST = 20000;
 
 const PARTIAL_PRIVATE_KEY_REFUSAL =
@@ -22,11 +22,22 @@ const PARTIAL_PRIVATE_KEY_REFUSAL =
 const OVERSIZED_PRIVATE_KEY_REFUSAL =
   "This is larger than any private key GitHub gives an App, so it holds more than the key. Paste the App's .pem file unchanged.";
 
+/** Whether `value` parses as a PEM private key, which is what GitHub gives an App (ISS-1421 r30). */
+function isPrivateKeyPem(value: string): boolean {
+  if (!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(value)) return false;
+  try {
+    createPrivateKey({ key: value, format: 'pem' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const privateKeyField = z.string().superRefine((value, ctx) => {
-  if (value.length < PRIVATE_KEY_SHORTEST) {
-    ctx.addIssue({ code: 'custom', message: PARTIAL_PRIVATE_KEY_REFUSAL });
-  } else if (value.length > PRIVATE_KEY_LONGEST) {
+  if (value.length > PRIVATE_KEY_LONGEST) {
     ctx.addIssue({ code: 'custom', message: OVERSIZED_PRIVATE_KEY_REFUSAL });
+  } else if (!isPrivateKeyPem(value)) {
+    ctx.addIssue({ code: 'custom', message: PARTIAL_PRIVATE_KEY_REFUSAL });
   }
 });
 

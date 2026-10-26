@@ -208,7 +208,7 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
 
   const reading = input.action === 'diff' || input.action === 'check-log';
   if (reading) await assertPrincipalIsMember(principal, projectId);
-  else await assertPrincipalIsWriter(principal, projectId);
+  else await assertPrincipalIsWriter(principal, projectId, 'write to its GitHub repository');
 
   const client = await githubAgentClient(projectId);
 

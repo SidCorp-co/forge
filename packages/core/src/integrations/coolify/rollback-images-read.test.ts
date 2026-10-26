@@ -25,7 +25,7 @@ describe('readRollbackImagesNamingFailure', () => {
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('unreachable');
     expect(err.message).toBe(
-      'Forge could not reach the server at coolify.example to ask for the rollback images of application app-1, because nothing accepted the connection at its address. Forge has no rollback image list to read.',
+      'Forge could not reach the server at coolify.example to ask for the rollback images of application app-1, because nothing accepted the connection at its address. Forge has no rollback image list to read. Check the address saved on this connection.',
     );
     expect(err.message).not.toMatch(/fetch failed|ECONNREFUSED/);
   });
@@ -41,7 +41,7 @@ describe('readRollbackImagesNamingFailure', () => {
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('timeout');
     expect(err.message).toBe(
-      'Forge asked the server at coolify.example for the rollback images of application app-1 and got no answer in time. Forge has no rollback image list to read.',
+      'Forge asked the server at coolify.example for the rollback images of application app-1 and got no answer in time. Forge has no rollback image list to read. Check the address saved on this connection.',
     );
   });
 
@@ -81,9 +81,40 @@ describe('a read failure says what was asked for in words', () => {
     }) as typeof fetch;
     const apps = await listApplicationsNamingFailure(clientWith(fetchImpl)).catch((e) => e);
     expect(apps.message).toBe(
-      'Forge could not reach the server at coolify.example to ask for its list of applications, because its host name does not resolve. Forge has no application list to read.',
+      'Forge could not reach the server at coolify.example to ask for its list of applications, because its host name does not resolve. Forge has no application list to read. Check the address saved on this connection.',
     );
     const images = await refused(clientWith(fetchImpl));
     for (const said of [apps.message, images.message]) expect(said).not.toMatch(/GET |\/api\//);
+  });
+});
+
+// ISS-1421 r30, judge-122 on 336: the unreachable, timed-out and not-JSON failures carried no address
+// sentence, so a reader who may not change the address was told nothing to do.
+describe('a read failure tells a reader who may not change the address who may', () => {
+  const who = 'an owner or admin of the organization that owns it';
+  const hang = ((_url: string, init: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () =>
+        reject(new DOMException('This operation was aborted', 'AbortError')),
+      );
+    })) as unknown as typeof fetch;
+  it.each([
+    [
+      'unreachable',
+      (async () => {
+        throw new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } });
+      }) as typeof fetch,
+    ],
+    ['timed out', hang],
+    ['not JSON', (async () => new Response('<html>login</html>', { status: 200 })) as typeof fetch],
+  ])('%s', async (_, fetchImpl) => {
+    const { listApplicationsNamingFailure } = await import('./rollback-images-read.js');
+    const { addressForReader } = await import('../unreached.js');
+    const err = await listApplicationsNamingFailure(clientWith(fetchImpl, 5)).catch((e) => e);
+    const said = addressForReader(err.message, who);
+    expect(said).toContain(
+      `Only ${who} can change the address saved on this connection, so ask one of them.`,
+    );
+    expect(said).not.toContain('Check the address');
   });
 });
