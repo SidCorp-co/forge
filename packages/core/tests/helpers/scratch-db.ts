@@ -122,8 +122,15 @@ function isAbandoned(datname: string, now: number): boolean {
   return born !== null && now - born > ABANDONED_AFTER_MS;
 }
 
-/** Drop what crashed runs left, and shared templates no run holds that sat unused for a day. */
-export async function reapAbandoned(admin: Sql, now: number = Date.now()): Promise<string[]> {
+/**
+ * Drop what crashed runs left, and shared templates no run holds that sat unused for a day. A reap
+ * a test triggers passes `scope`, so it never drops what another suite on the instance is aging.
+ */
+export async function reapAbandoned(
+  admin: Sql,
+  now: number = Date.now(),
+  scope: (datname: string) => boolean = () => true,
+): Promise<string[]> {
   const rows = await admin<{ datname: string }[]>`
     SELECT datname FROM pg_database
     WHERE datname LIKE ${`${TEMPLATE_PREFIX}%`}
@@ -133,6 +140,7 @@ export async function reapAbandoned(admin: Sql, now: number = Date.now()): Promi
   `;
   const dropped: string[] = [];
   for (const { datname } of rows) {
+    if (!scope(datname)) continue;
     if (SHARED_TEMPLATE.test(datname)) {
       if (await reapSharedTemplate(admin, datname, now)) dropped.push(datname);
       continue;
