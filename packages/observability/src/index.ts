@@ -268,12 +268,12 @@ function lineEnd(text: string, from: number): number {
 }
 
 const OPENING_QUOTE = /^(\\*)"/;
-// What may end a value: a space, a delimiter, or a backslash escaping a closing quote or line break;
-// a closing bracket or brace only where JSON holds it, under a quoted name.
+// What may end a value: a space or a delimiter; under a quoted name, where JSON holds it, a closing
+// bracket or brace too, or a backslash escaping a closing quote or line break.
 const ESCAPED_END = String.raw`\\+(?:"|[nrt](?![A-Za-z0-9]))`;
 const ENDS = {
   quoted: String.raw`$|[\s,}\]&"]|${ESCAPED_END}`,
-  unquoted: String.raw`$|[\s,&"]|${ESCAPED_END}`,
+  unquoted: String.raw`$|[\s,&"]`,
 };
 const VALUE_END = {
   quoted: new RegExp(`^(?:${ENDS.quoted})`),
