@@ -11,6 +11,7 @@ const base = {
   releasedAt: null,
   approval: null,
   approvalRequired: true,
+  landedOn: null,
   verified: { level: "none", proven: 0, total: 0, check: null, provider: null },
 } as const;
 
@@ -49,5 +50,21 @@ describe("any other release", () => {
     const s = standing({});
     expect(s.goesTo).toBe("No production");
     expect(s.next).toBe("Add a production environment, then approve");
+  });
+});
+
+// catalog-api 0.2.0 (owner, 2026-10-26): a landing on `dev` read "Released" with nothing next, when
+// production review and promotion was still the owner's.
+describe("a release that landed on a branch production does not deploy from", () => {
+  it("says where it landed and that production does not serve it, and asks the approver to promote it", () => {
+    const s = standing({ state: "landed", landedOn: "dev", releasedAt: "2026-10-26T04:34:06Z" });
+    expect(s.status).toBe("Landed on dev, not in production");
+    expect(s.next).toBe("Review it and promote it to production");
+  });
+
+  it("asks nothing where no release approval is required: the landing is its delivery", () => {
+    const s = standing({ state: "landed", landedOn: "dev", approvalRequired: false });
+    expect(s.status).toBe("Landed on dev, not in production");
+    expect(s.next).toBeNull();
   });
 });

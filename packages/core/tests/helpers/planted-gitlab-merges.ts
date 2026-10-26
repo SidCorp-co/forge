@@ -14,6 +14,12 @@ export const messages = new Map<string, string>();
 export const heads = new Map<number, string>();
 /** Requests the planted host answers as already merged, at the commit that landed them. */
 export const alreadyMerged = new Map<number, string>();
+/**
+ * How the planted merge call fails, by request: `after` merges and then loses the answer, as the
+ * relay did for adminhub-fe !1994; `before` loses it without merging; `unreadable` also fails the
+ * read back; `host-error` is GitLab's 5xx refusal, which leaves the merge unknown.
+ */
+export const callFails = new Map<number, 'after' | 'before' | 'unreadable' | 'host-error'>();
 
 export const mergeMessage = (number: number, headRef: string) =>
   `Merge branch '${headRef}' into 'release/stg'\n\nMR ${number}\n\nSee merge request acme/canawan-api!${number}`;
@@ -25,7 +31,10 @@ export function resetPlanted(): void {
   messages.clear();
   heads.clear();
   alreadyMerged.clear();
+  callFails.clear();
 }
+
+const TIMEOUT = 'The operation was aborted due to timeout';
 
 /** The repository read every stamp's identity is judged from (`issues/merge-identity.ts`). */
 export const plantedRepository = () => ({
@@ -55,11 +64,36 @@ export const plantedSourceHost = () => ({
         head: null,
       };
     }
+    const done = merged.get(number);
+    if (done) {
+      // GitLab reads the request before merging, and answers one it already merged as that
+      return {
+        kind: 'already-merged',
+        commitSha: done,
+        mergedAt: new Date(Date.UTC(2026, 9, 23, 9, number)),
+        target: 'release/stg',
+        head: `${String(number).padStart(4, '0')}${'a'.repeat(36)}`,
+      };
+    }
+    const fails = callFails.get(number);
+    if (fails === 'before' || fails === 'unreadable')
+      throw new DOMException(TIMEOUT, 'TimeoutError');
+    if (fails === 'host-error') {
+      return {
+        kind: 'refused',
+        reason: 'host-error',
+        detail: `GitLab answered HTTP 502 merging merge request !${number}.`,
+      };
+    }
     merges.push(number);
     const commitSha = `${String(number).padStart(4, '0')}${'c'.repeat(36)}`;
     merged.set(number, commitSha);
     const headRef = heads.get(number) ?? `mr-${number}`;
     if (!messages.has(commitSha)) messages.set(commitSha, mergeMessage(number, headRef));
+    if (fails === 'after') {
+      callFails.delete(number);
+      throw new DOMException(TIMEOUT, 'TimeoutError');
+    }
     // each request merges a minute after the one numbered below it, into release/stg, at its head
     return {
       kind: 'merged',
@@ -67,6 +101,25 @@ export const plantedSourceHost = () => ({
       mergedAt: new Date(Date.UTC(2026, 9, 23, 9, number)),
       target: 'release/stg',
       head: `${String(number).padStart(4, '0')}${'a'.repeat(36)}`,
+    };
+  },
+  readChangeRequest: async (number: number) => {
+    if (callFails.get(number) === 'unreadable') throw new Error('relay answered 502');
+    const landed = merged.get(number) ?? alreadyMerged.get(number) ?? null;
+    return {
+      number,
+      url: null,
+      title: `MR ${number}`,
+      state: landed ? 'merged' : 'open',
+      draft: false,
+      headRef: heads.get(number) ?? `mr-${number}`,
+      headSha: `${String(number).padStart(4, '0')}${'a'.repeat(36)}`,
+      baseRef: 'release/stg',
+      baseSha: null,
+      updatedAt: null,
+      body: null,
+      mergedAt: landed ? new Date(Date.UTC(2026, 9, 23, 9, number)).toISOString() : null,
+      mergeCommitSha: landed,
     };
   },
   sameTree: async () => {

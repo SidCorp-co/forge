@@ -75,9 +75,27 @@ const METHODS: Record<StewardAct, string> = {
   ].join('\n'),
 };
 
-export function actPrompt(act: StewardAct): string {
+/**
+ * The follow-through of a release on a project whose document declares no production environment
+ * (adminhub-fe ISS-36, 2026-10-26): nothing runs there that Forge observes, so there is no running
+ * build to judge, and a `runtime` verdict there never counts. Told to judge anyway, it recorded a
+ * runtime pass over every criterion its landing's judge had passed at the landed commit.
+ */
+const FOLLOWTHROUGH_UNOBSERVED = [
+  'Act: release follow-through (BC-10). The release closed the issue on a project that declares no production environment: its landing is its build, and nothing runs that Forge observes.',
+  'Judge nothing and record no verdict: there is no running build to judge, the verdicts at its landing are its proof, and the verdict door refuses a `runtime` verdict there (`VERDICT_RUNTIME_UNOBSERVED`): a verdict there is a commit verdict at its landing.',
+  "Tell each requirement it delivers what landed and where, in BA words (`POST /api/projects/<project>/requirements/<key>/comments`), never that it is in production. Each feedback item routed to it asks its reporter to confirm by itself when the release ships; tell an item's reporter (`POST …/feedback/<key>/tell-shipped`) only where its standing still waits on that relay.",
+].join('\n');
+
+/**
+ * What the act is told. `observed` is whether the project has a running build Forge observes (a
+ * production environment its releases deploy to); only there does a follow-through judge one.
+ */
+export function actPrompt(act: StewardAct, observed = true): string {
   const how = STEWARD_ACT_RUNTIME[act] === 'gateway_turn' ? GATEWAY : RUNNER;
-  return `${COMMON}\n${how}\n\n${METHODS[act]}`;
+  const method =
+    act === 'release_followthrough' && !observed ? FOLLOWTHROUGH_UNOBSERVED : METHODS[act];
+  return `${COMMON}\n${how}\n\n${method}`;
 }
 
 /** What the act is about, as the turn reads it: the item, what started the run, and its standing. */

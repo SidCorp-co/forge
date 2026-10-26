@@ -128,7 +128,10 @@ export function coverageOf(
       const wording = byId.get(traced.requirementCriterionId);
       const issue = issues.get(traced.issueId);
       if (!wording || wording.code !== bc.code || !issue) return [];
-      const ic = judgesOf(standsAtLanding(traced, input.liveBuild?.landed), input.judge);
+      const ic = judgesOf(
+        withoutUnplaced(standsAtLanding(traced, input.liveBuild?.landed), input.liveBuild ?? null),
+        input.judge,
+      );
       const judged = verdictExercised(ic.verdict);
       const r =
         ic.verdict === null ? null : resolve(ic.identity, input.liveBuild ?? null, traced.issueId);
@@ -240,6 +243,49 @@ function standsAtLanding(
   const kept = traced.beforeReopen;
   if (!landed || !kept || kept.identity?.kind !== 'commit') return traced;
   return { ...traced, ...kept };
+}
+
+/**
+ * Whether a verdict is a runtime judgement no build Forge holds can be placed under: on a project
+ * with no production environment, where nothing runs that Forge observes and only a verdict at the
+ * landing counts, or where no release Forge verified served that runtime. A fail is everyone's
+ * evidence and is never one of these.
+ */
+function unplaced(v: StandingVerdict, live: LiveBuildHolds | null): boolean {
+  if (v.verdict === null || v.verdict === 'fail' || v.identity?.kind !== 'runtime') return false;
+  if (live?.landed) return true;
+  return live?.runtimes.get(v.identity.ref.toLowerCase()) === null;
+}
+
+// A runtime verdict nothing places on a build is not a judgement on any build Forge holds, so it never
+// hides an older verdict that counts: adminhub-fe ISS-36's judge passed every criterion at its landing
+// d2dd9863, and the steward's follow-through then recorded a runtime pass on a project with no
+// production environment, which, read as the newest, left REQ-3 with no passing criterion. Such
+// verdicts are set aside before the verdict it stands on is read; where nothing else was recorded,
+// they stand and say why they do not count.
+function withoutUnplaced(
+  traced: StandingIssueCriterion,
+  live: LiveBuildHolds | null,
+): StandingIssueCriterion {
+  const all = [traced, ...(traced.earlier ?? [])];
+  const kept = all.filter((v) => !unplaced(v, live));
+  const [head, ...rest] = kept;
+  if (!head || kept.length === all.length) return traced;
+  return { ...traced, ...pickVerdict(head), earlier: rest };
+}
+
+/** A verdict's own fields, without the issue criterion's. */
+function pickVerdict(v: StandingVerdict): StandingVerdict {
+  return {
+    verdict: v.verdict,
+    verdictAt: v.verdictAt,
+    note: v.note ?? null,
+    files: v.files ?? [],
+    identity: v.identity,
+    byBuilder: v.byBuilder,
+    authored: v.authored,
+    recordedAt: v.recordedAt,
+  };
 }
 
 // The verdict an issue criterion stands on. A newer verdict that is not a judge's does not take a

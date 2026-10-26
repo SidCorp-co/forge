@@ -9,6 +9,33 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.332] - 2026-10-26
+
+Judge runs stop holding project scope; queued runs cannot file verdicts
+
+### Fixed
+
+- **A judge run neither holds nor waits on a scope, and a queued run writes no verdict.** Runs declared over landed work skip the scope hold; a verdict from an unadmitted session is refused `VERDICT_SESSION_NOT_ADMITTED`, naming what it waits behind.
+
+## [0.4.0-dev.331] - 2026-10-26
+
+Runtime verdicts refused on projects with no production environment
+
+### Fixed
+
+- **A runtime verdict on a project without production is refused by name.** The verdict door answers `VERDICT_RUNTIME_UNOBSERVED`, naming the commit verdict at the landing that counts there, instead of keeping a verdict that never could.
+
+## [0.4.0-dev.330] - 2026-10-26
+
+Staging landings read as landed, unplaced runtime verdicts stop hiding passes, faster releases page
+
+### Fixed
+
+- **A landing on a staging branch no longer reads as production.** It reads landed on its branch, production serves nothing Forge read, and where approval is required it waits on the approver to review and promote it.
+- **A landing recorded where no verdict is owed names its passes.** Its reading counts the live criteria standing on a pass at the commit, rather than saying only that none is owed.
+- **The Releases list answers in a fraction of a second.** Verdict reads weigh only the issue's own sessions, read every issue in one statement, and skip Postgres compilation: catalog-api's list spent 10 s in the database, now 0.2 s.
+- **A runtime verdict nothing runs to observe no longer hides a counting pass.** The steward judges nothing on a project without production, and a builder is read only from runs of its own project.
+
 ## [0.4.0-dev.329] - 2026-10-26
 
 Merges stamp only their own issues; webhookless sources read checks and change requests

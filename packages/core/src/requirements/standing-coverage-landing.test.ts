@@ -170,3 +170,81 @@ describe('coverage on a landing: the merged head and a voided pass', () => {
     expect(c?.verdict).not.toBe('passing');
   });
 });
+
+// adminhub-fe ISS-36, 2026-10-26: a judge passed every criterion at the landing d2dd9863; at 10:07 the
+// steward's follow-through recorded a runtime pass on each, on a project with no production
+// environment, and REQ-3 read 2 criteria covered, 0 passing. A runtime verdict nothing places on a
+// build never hides an older verdict that counts; a fail is everyone's and is never set aside.
+describe('a runtime verdict nothing places on a build', () => {
+  const M = 'e'.repeat(40);
+  const later = (
+    verdict: 'pass' | 'fail',
+    older: StandingIssueCriterion,
+  ): StandingIssueCriterion => ({
+    ...older,
+    verdict,
+    verdictAt: at('2026-10-26T10:07:16Z'),
+    recordedAt: at('2026-10-26T10:07:16Z'),
+    identity: { kind: 'runtime', ref: M },
+    earlier: [older],
+  });
+  const landedAt = (rows: StandingIssueCriterion[]) =>
+    deriveStanding({
+      ...input([issue(1, 'closed', false)]),
+      criteria: [bc1],
+      issueCriteria: rows,
+      liveBuild: {
+        sha: null,
+        holds: new Map(),
+        runtimes: new Map(),
+        unanswered: new Map(),
+        landed: new Map([['i1', { sha: M, why: null }]]),
+      },
+    }).coverage[0];
+
+  it("keeps the judge's pass at the landing counting under a later runtime pass", () => {
+    const c = landedAt([later('pass', row(1, 'pass', '2026-10-26T09:54:57Z', M))]);
+    expect(c?.verdict).toBe('passing');
+    expect(c?.counts).toMatchObject({ verdict: 'pass', at: '2026-10-26T09:54:57.000Z' });
+  });
+
+  it('reads the runtime pass, not counted and saying why, where nothing else was recorded', () => {
+    const only = {
+      ...row(1, 'pass', '2026-10-26T10:07:16Z'),
+      identity: { kind: 'runtime', ref: M },
+    } as const;
+    const c = landedAt([only]);
+    expect(c?.verdict).not.toBe('passing');
+    expect(c?.issues[0]?.notCounted).toContain('not a commit');
+  });
+
+  it('never sets a runtime fail aside: the pass before it does not count again', () => {
+    const c = landedAt([later('fail', row(1, 'pass', '2026-10-26T09:54:57Z', M))]);
+    expect(c?.verdict).not.toBe('passing');
+    expect(c?.issues[0]?.verdict).toBe('fail');
+  });
+
+  it('sets aside a runtime no release Forge verified served, and never one whose read failed', () => {
+    const R = 'b'.repeat(40);
+    const withLive = (served: string | null | undefined) =>
+      deriveStanding({
+        ...input([issue(1, 'closed', false)]),
+        criteria: [bc1],
+        issueCriteria: [
+          {
+            ...later('pass', row(1, 'pass', '2026-10-26T09:54:57Z', M)),
+            identity: { kind: 'runtime', ref: R },
+          },
+        ],
+        liveBuild: {
+          sha: M,
+          holds: new Map([[M, true]]),
+          runtimes: new Map(served === undefined ? [] : [[R, served]]),
+          unanswered: new Map(),
+        },
+      }).coverage[0];
+    expect(withLive(null)?.verdict).toBe('passing');
+    // an outage reads as unchecked, never as passing (`VISION: state-never-lies`)
+    expect(withLive(undefined)?.verdict).not.toBe('passing');
+  });
+});

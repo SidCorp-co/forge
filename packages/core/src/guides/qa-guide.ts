@@ -35,7 +35,9 @@ Read these before judging anything, while whoever sent you can still equip you.
 - A verdict the run that built the change wrote is that builder's evidence and counts as no
   judgement, whatever \`qa\` (\`GET /api/projects/:id/policy\`) says: yours is the one that counts.
   A verdict answering \`notCounted\` (\`VERDICT_BY_BUILDER\`) was read as the builder's: where the
-  building run is still live on your box, send \`run\` with your box's run id.
+  building run is still live on your box, send \`run\` with your box's run id. A run core has not
+  admitted yet, its declaration still queued, writes no verdict: one naming it is refused
+  \`VERDICT_SESSION_NOT_ADMITTED\` with the refusal it waits behind, and nothing is written.
 - \`GET /api/projects/:id/issues?status=awaiting_release\` lists the issues whose work landed and waits
   on its release. Their criteria are judged on the build the release ships.
 - \`GET /api/issues/:id/criteria\` lists each live criterion: its statement, its \`class\`
@@ -77,7 +79,10 @@ steps, what you expected, what you observed. Captures go outside the checkout yo
 \`POST /api/issues/:id/verdicts\` per criterion, as ${guideRef('issue-flow')} (section 5) gives the
 body: the identity the build serves, written whole, the evidence uploaded first and cited by name, the
 probe an observable criterion keeps, and its clip or \`withoutClip\`. A code-property criterion is the
-review's, and a verdict recorded on it as QA's is refused.
+review's, and a verdict recorded on it as QA's is refused. On a project that declares no production
+environment nothing runs that Forge observes: the build is the commit \`judged-build\` names, its
+identity is \`{ kind: 'commit', sha }\` at that commit, and a \`runtime\` identity there is refused
+\`VERDICT_RUNTIME_UNOBSERVED\`.
 
 ### A design issue
 A criterion judged against a design is written with

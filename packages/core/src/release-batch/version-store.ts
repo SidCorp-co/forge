@@ -13,8 +13,9 @@ import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { stampReleaseVersion, writeRunMetadata } from '../pipeline/index.js';
-import { readProjectDocument } from '../project-config/index.js';
+import { readProjectDocument, readReleasePath } from '../project-config/index.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
+import { LANDED_VERIFICATION } from './landed-build.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
 import { formatReleaseVersion, type PrereleaseLine, parseReleaseVersion } from './version.js';
 import {
@@ -129,13 +130,26 @@ export async function decideRosterVersion(
 }
 
 /** The version the last release to SHIP cut. `null` when no release here has ever shipped. */
+/**
+ * The version production serves: the release shipped last there. A project whose document declares
+ * no production environment has nothing serving production that Forge read, so none; a landing
+ * recorded on a branch production does not deploy from deployed nothing, so it is never the answer
+ * (`versions.ts:landedOffProduction`).
+ */
 export async function currentReleaseVersion(projectId: string): Promise<string | null> {
+  const read = await readReleasePath(projectId);
+  const production = read.ok ? read.path.production : null;
+  if (!production) return null;
+  const branch = production.declaration.deploysFrom ?? null;
   const rows = await db.execute<{ release_version: string }>(sql`
     SELECT r.release_version
     FROM pipeline_runs r
     WHERE r.project_id = ${projectId}
       AND r.release_version IS NOT NULL
       AND r.release_released_at IS NOT NULL
+      AND NOT (r.metadata ->> 'source' = ${RELEASE_RECORD_SOURCE}
+               AND r.metadata ->> 'verification' = ${LANDED_VERIFICATION}
+               AND r.metadata ->> 'branch' IS DISTINCT FROM ${branch})
     ORDER BY r.release_released_at DESC
     LIMIT 1
   `);

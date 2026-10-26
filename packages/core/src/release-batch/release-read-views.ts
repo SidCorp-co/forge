@@ -69,6 +69,8 @@ export interface Part {
   naming: ReleaseNaming | null;
   /** The change requests it merges, in its order (REQ-63); null on a release that deploys and on a draft. */
   mergeSteps: ReleaseMergeStep[] | null;
+  /** The branch a recorded landing put it on, off production's branch (`versions.ts:landedOffProduction`); else null. */
+  landedOn: string | null;
 }
 
 export interface Shared {
@@ -138,6 +140,8 @@ function turnFor(p: Part, s: Shared) {
     projectId: s.projectId,
     runId: p.runId,
     merges: p.mergeSteps ? p.mergeSteps.length : null,
+    landedOn: p.landedOn,
+    required: s.required,
     approval: approvalFacts(p),
     approvers: s.approvers,
     admins: s.admins,
@@ -271,6 +275,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
     runId: p.runId,
     state: p.state,
     current: s.current === p.version,
+    landedOn: p.landedOn,
     ...turn,
     name: p.naming?.name ?? null,
     summary: p.naming?.summary ?? null,
@@ -399,7 +404,13 @@ function issueViews(
           : null,
         proof: proofOf(criteria),
         criteria,
-        waitingOn: i.status === 'closed' || p.state === 'shipped' ? NOBODY : waiting,
+        // a landing closed its issues, and what it waits on next is the release's own turn
+        waitingOn:
+          p.state === 'landed'
+            ? waiting
+            : i.status === 'closed' || p.state === 'shipped'
+              ? NOBODY
+              : waiting,
         surfaces: surfacesOf(landing),
         landing,
         unclassified: gapOf(landing) !== null,

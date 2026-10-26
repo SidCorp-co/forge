@@ -59,6 +59,7 @@ const rowOf =
       r.criteria.total === 0 ? t("releases.noCriteria") : t("releases.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total }),
       ...(r.cutCount > 1 ? [t("releases.attemptsCount", { n: r.cutCount })] : []),
       ...(r.current ? [t("releases.servingProduction")] : []),
+      ...(r.landedOn ? [t("releases.landedNotProduction", { branch: r.landedOn })] : []),
     ],
     state: <StatusBadge family="releaseState" value={r.state} />,
     waitingOn: <WaitingOn w={r.waitingOn} />,

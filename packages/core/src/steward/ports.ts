@@ -24,6 +24,12 @@ interface StewardPorts {
    */
   releaseFacts(projectId: string, issueId: string | null): Promise<string>;
   /**
+   * Whether the project has a running build Forge observes: a production environment its releases
+   * deploy to (the release module's `gate.ts:runningBuildObserved`). Where it has none, nothing a
+   * steward act could judge as running exists.
+   */
+  runningBuildObserved(projectId: string): Promise<boolean>;
+  /**
    * The accounts the project's master acts as, whose permissions decide what an ask of the master can
    * be answered with (ISS-607): for each box serving the project, the holder of the credential its
    * checkout carries, which every write of its pane goes out under (the devices module's

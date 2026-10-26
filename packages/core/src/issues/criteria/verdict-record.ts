@@ -21,12 +21,12 @@ import { emitEvent } from '../../outbox/index.js';
 import type { Actor } from '../activity.js';
 import { verdictByBuilderSql } from '../built-by.js';
 import { criterionRoutesOf } from '../design-record.js';
-import { runOfCall } from '../pattern-runs.js';
 import { readJudge, readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
 import { writeKernelRecord } from '../record-events/store.js';
 import { probeNote } from './probe-rules.js';
 import { probeOfVerdict } from './probes.js';
+import { recordingSessionOf } from './recording-session.js';
 import { liveRows } from './store.js';
 import {
   corroborationOf,
@@ -34,6 +34,7 @@ import {
   environmentFault,
   readSourceDrafts,
 } from './storefront-draft.js';
+import { unobservedRuntimeFault } from './unobserved-runtime.js';
 import { keepFailAsCorrection } from './verdict-correction.js';
 import {
   storefrontPartsOf,
@@ -101,6 +102,7 @@ const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
   VERDICT_CLIP_REQUIRED: '/evidence',
   VERDICT_CRITERION_UNKNOWN: '/criterion',
   VERDICT_RUN_UNKNOWN: '/run',
+  VERDICT_SESSION_NOT_ADMITTED: '/run',
 };
 
 /** The judgements of an observable criterion that owe a clip: every one but a skip, which judged nothing. */
@@ -195,10 +197,11 @@ async function storefrontColumns(
 /** The identity columns a draft writes, the design resolved to its workflow row. */
 async function identityColumns(
   tx: Tx,
-  projectId: string,
+  issue: { id: string; projectId: string },
   draft: VerdictDraft,
   readDraft: DraftReader,
 ): Promise<VerdictColumns> {
+  const { projectId } = issue;
   const identity = draft.identity;
   if (identity === null) return {};
   switch (identity.kind) {
@@ -206,8 +209,12 @@ async function identityColumns(
       return storefrontColumns(projectId, draft.criterion, identity, readDraft);
     case 'commit':
       return { identityKind: 'commit', commitSha: identity.sha.trim().toLowerCase() };
-    case 'runtime':
-      return { identityKind: 'runtime', runtimeRef: identity.ref.trim().toLowerCase() };
+    case 'runtime': {
+      const ref = identity.ref.trim().toLowerCase();
+      const unobserved = await unobservedRuntimeFault(issue, draft.criterion, ref);
+      if (unobserved) throw verdictRefused(unobserved);
+      return { identityKind: 'runtime', runtimeRef: ref };
+    }
     case 'contract': {
       const [project = '', contract = ''] = identity.ref.trim().split('/');
       const held = await contractLookup(tx)(projectId, {
@@ -297,38 +304,14 @@ function probeField(
   return note ? [{ key: 'probe', value: note }] : [];
 }
 
-/**
- * The run session recording a verdict (ISS-475): the one a door already resolved, else the `run` the
- * call names, else the session holding the issue's lease on the author's box (`pattern-runs.ts:runOfCall`,
- * as a review resolves its reviewer). A `run` naming no live session of the box is refused.
- */
+/** The run session recording a verdict, or the refusal naming why none may (`recording-session.ts`). */
 async function recordingSession(
   tx: Tx,
-  args: {
-    issue: { id: string; projectId: string };
-    criterion: number;
-    author: VerdictAuthor;
-    run?: string | undefined;
-    runSession?: string | null | undefined;
-  },
+  args: Parameters<typeof recordingSessionOf>[1],
 ): Promise<string | null> {
-  if (args.runSession !== undefined) return args.runSession;
-  const resolved = await runOfCall(
-    {
-      projectId: args.issue.projectId,
-      issueId: args.issue.id,
-      box: args.author.deviceId,
-      run: args.run,
-    },
-    tx,
-  );
-  if (resolved.ok) return resolved.value.session;
-  const [first] = resolved.refusals;
-  throw verdictRefused({
-    code: 'VERDICT_RUN_UNKNOWN',
-    criterion: args.criterion,
-    detail: first?.detail ?? `\`run\` ${args.run ?? ''} names no live run of this box`,
-  });
+  const found = await recordingSessionOf(tx, args);
+  if (!found.ok) throw verdictRefused(found.refusal);
+  return found.session;
 }
 
 /**
@@ -424,12 +407,7 @@ export async function recordVerdict(
   if (route !== null && route.judge !== judge) {
     throw verdictRefused(misrouted(draft.criterion, route.judge));
   }
-  const identity = await identityColumns(
-    tx,
-    issue.projectId,
-    draft,
-    args.readDraft ?? readSourceDrafts,
-  );
+  const identity = await identityColumns(tx, issue, draft, args.readDraft ?? readSourceDrafts);
   const noClip = await clipFault(tx, issue.id, draft, route?.class ?? null);
   if (noClip) throw verdictRefused(noClip);
   const runSessionId = await recordingSession(tx, {

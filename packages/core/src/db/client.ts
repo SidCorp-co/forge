@@ -67,6 +67,11 @@ function buildDb() {
     connection: {
       statement_timeout: env.DATABASE_STATEMENT_TIMEOUT_MS,
       idle_in_transaction_session_timeout: env.DATABASE_IDLE_IN_TX_TIMEOUT_MS,
+      // Postgres compiles a statement it costs above `jit_above_cost` before running it, and a read
+      // whose correlated subqueries it costs per row crosses that at a few hundred rows. Measured on
+      // dev, 2026-10-26: catalog-api's release list ran a 48 ms verdict read after 2.2 s of compiling,
+      // three times over. Core's statements are short; none is the long analytic scan JIT pays for.
+      jit: 'off',
     },
   });
 

@@ -13,11 +13,12 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
 import { longestSpelling, recognisableIdentity } from '../messaging/verdict-identity.js';
+import { type AuthoredVerdict, liveVerdictsOfIssues } from './criteria/live-verdicts.js';
 import {
   type CriterionWithVerdict,
   type LatestVerdict,
   listCriteria,
-  liveVerdictsOf,
+  listCriteriaOf,
 } from './criteria/store.js';
 import { withCurrentDrafts } from './criteria/storefront-draft.js';
 import { currentContracts, designRevisions, pinnedAnchorsOf } from './criteria-anchors.js';
@@ -118,10 +119,49 @@ async function standingOn(
   judge: Awaited<ReturnType<typeof readJudge>>,
 ): Promise<{ criteria: CriterionWithVerdict[]; unverified: Map<number, string | null> }> {
   const [history, reopened] = await Promise.all([
-    liveVerdictsOf(db, issueId),
+    liveVerdictsOfIssues(db, [issueId]),
     reopenedAtOf(db, [issueId]),
   ]);
-  const since = reopened.get(issueId)?.getTime() ?? Number.NEGATIVE_INFINITY;
+  return standingRead(
+    criteria,
+    history.get(issueId) ?? new Map(),
+    reopened.get(issueId) ?? null,
+    judge,
+  );
+}
+
+type Standing = { criteria: CriterionWithVerdict[]; unverified: Map<number, string | null> };
+
+/** `standingOn` for many issues, each read in one statement for all of them rather than one each. */
+async function standingsOn(
+  issueIds: readonly string[],
+  judgeOf: (issueId: string) => Awaited<ReturnType<typeof readJudge>>,
+): Promise<Map<string, Standing>> {
+  const [criteria, history, reopened] = await Promise.all([
+    listCriteriaOf(db, issueIds),
+    liveVerdictsOfIssues(db, issueIds),
+    reopenedAtOf(db, issueIds),
+  ]);
+  return new Map(
+    issueIds.map((id) => [
+      id,
+      standingRead(
+        criteria.get(id) ?? [],
+        history.get(id) ?? new Map(),
+        reopened.get(id) ?? null,
+        judgeOf(id),
+      ),
+    ]),
+  );
+}
+
+function standingRead(
+  criteria: readonly CriterionWithVerdict[],
+  history: ReadonlyMap<number, readonly AuthoredVerdict[]>,
+  reopenedAt: Date | null,
+  judge: Awaited<ReturnType<typeof readJudge>>,
+): Standing {
+  const since = reopenedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
   const unverified = new Map<number, string | null>();
   const read = criteria.map((c) => {
     const [newest, ...earlier] = history.get(c.n) ?? [];
@@ -436,9 +476,13 @@ export async function standingCriteriaOf(
     const owes = verdictsRequiredOf((await readProjectDocument(projectId))?.document.delivery);
     projects.set(projectId, { owes, judge: await readJudge(projectId) });
   }
+  const standings = await standingsOn(
+    rows.map((r) => r.id),
+    (id) => projects.get(rows.find((r) => r.id === id)?.projectId ?? '')?.judge ?? null,
+  );
   for (const row of rows) {
     const project = projects.get(row.projectId);
-    const stands = await standingOn(row.id, await listCriteria(db, row.id), project?.judge ?? null);
+    const stands = standings.get(row.id) ?? { criteria: [], unverified: new Map() };
     const latest = latestByNumber(stands.criteria, stands.unverified);
     out.set(row.id, {
       owes: project?.owes ?? true,

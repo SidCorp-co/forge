@@ -1,4 +1,6 @@
+import { RUN_ISSUE_STATUSES_METADATA_KEY } from '@forge/contracts/agent-sessions';
 import { CRITERION_CLASSES, DESIGN_LIMITS } from '@forge/contracts/issue-design';
+import { ISSUE_DISPATCH_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { check, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { issues, projects, users } from './schema.js';
@@ -105,6 +107,12 @@ function moduleClosureSql(modules: SQL): SQL {
     SELECT id FROM up`;
 }
 
+/** The statuses a run is declared over once the work has landed: such a run judges, never builds. */
+const LANDED = sql.join(
+  ISSUE_DISPATCH_TERMINAL_STATUSES.map((s) => sql`${s}`),
+  sql`, `,
+);
+
 /**
  * The live runs holding an issue whose declared scope meets `issueId`'s (REQ-36 BC-5): one row per
  * held issue, with the modules and contracts the two designs share. Two designs meet on a module
@@ -115,6 +123,14 @@ function moduleClosureSql(modules: SQL): SQL {
  * asked when the design gate first requires one, at the move into build. The asker's own key is
  * never a holder of it: that is the lease's refusal. Held is `liveIssueLeasesSql`, so the scope and
  * the lease read one holder.
+ *
+ * The hold binds runs that build or change the tree. A judge run writes no code, so it neither holds
+ * a scope nor waits on one (REQ-36 BC-5, adminhub-fe ISS-54/55, 2026-10-26: a judge over ISS-54 held
+ * the whole project and ISS-55's judge queued behind it). Core reads a judge as `built-by.ts` does,
+ * since no declaration names a role: a run declared over an issue whose work had landed
+ * (`ISSUE_DISPATCH_TERMINAL_STATUSES`). An asked issue standing there is a judge's ask and meets
+ * nothing; a lease whose run's declaration stamped its issue there (`runIssueStatuses`) holds
+ * nothing.
  */
 export function scopeHoldersSql(issueId: SQL, filter: ScopeHoldersFilter = {}): SQL {
   const exceptKeys =
@@ -153,6 +169,11 @@ export function scopeHoldersSql(issueId: SQL, filter: ScopeHoldersFilter = {}): 
                  AS whole_project
       ) sc_shared
      WHERE sc_mine.issue_id = ${issueId}
+       AND sc_mi.status NOT IN (${LANDED})
+       AND NOT EXISTS (
+         SELECT 1 FROM pipeline_runs sc_r
+          WHERE sc_r.id = sc_l.run_id
+            AND sc_r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY} ->> sc_l.issue_key IN (${LANDED}))
        AND (sc_shared.whole_project
             OR cardinality(sc_shared.modules) > 0 OR cardinality(sc_shared.contracts) > 0)
        ${exceptKeys}

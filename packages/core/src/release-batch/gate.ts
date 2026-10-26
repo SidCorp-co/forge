@@ -87,6 +87,15 @@ export async function resolveReleaseDeclaration(
 }
 
 /**
+ * Whether the project has a running build Forge observes: a production environment, bound, that its
+ * releases deploy to. A project declaring none — its landing or its change request's merge is the
+ * build — has nothing running a steward act could judge (`steward/prompts.ts`).
+ */
+export async function runningBuildObserved(projectId: string): Promise<boolean> {
+  return (await resolveReleaseDeclaration(projectId))?.kind === 'gated';
+}
+
+/**
  * The status issues must be at to join a batch release, or `null` when the project
  * declares no production environment and the driver's `closed` means what it says. A project that
  * releases through change requests has the gate too: its issues wait there for their merge.
