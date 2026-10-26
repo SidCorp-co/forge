@@ -159,7 +159,7 @@ waits on the other in a circle.
 
 The hold binds runs that build or change the tree. A judge run writes no code,
 so it neither holds a scope nor waits on one (REQ-36 BC-5, revision 5). No
-declaration names a role, so core reads a judge as `issues/built-by.ts` does: a
+declaration names a role, so core reads a judge as `packages/core/src/issues/built-by.ts` does: a
 run declared over an issue whose work had landed (`awaiting_release`, `closed`
 or `dropped`). An asked issue at one of those statuses meets nothing, and a
 lease whose run's `runIssueStatuses` stamped its issue there holds nothing.
