@@ -44,6 +44,7 @@ import {
 } from "../../components/integration-enabled-control";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 import { scopeLabel } from "../../components/status-pill";
+import { bindingInUse } from "../../derive";
 
 function submitManifest(start: GitHubConnectStart): void {
   const form = document.createElement("form");
@@ -602,11 +603,7 @@ export function GitHubSection({ projectId }: { projectId: string }) {
   const [forceCreate, setForceCreate] = useState(false);
   const [changing, setChanging] = useState(false);
 
-  // The one switched on where a switched-off one stands beside it (ISS-1421 r32).
-  const binding = useMemo(() => {
-    const github = (list.data?.items ?? []).filter((i) => i.provider === "github");
-    return github.find((i) => i.bindingActive) ?? github[0];
-  }, [list.data]);
+  const binding = useMemo(() => bindingInUse(list.data?.items, "github"), [list.data]);
 
   // The App this project is offered is one the server would let it bind: managed by the caller
   // and, where an org owns it, owned by this project's own org. Offering any other would walk the

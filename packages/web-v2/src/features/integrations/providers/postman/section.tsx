@@ -40,7 +40,7 @@ import {
   keyLockedLine,
   removedKeyHint,
 } from "../../components/integration-enabled-control";
-import { bindingBadge } from "../../derive";
+import { bindingBadge, bindingInUse } from "../../derive";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
@@ -87,7 +87,7 @@ function toConfig(f: FormState): PostmanConfig {
 export function PostmanSection({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const existing = useMemo(
-    () => list.data?.items.find((i) => i.provider === "postman"),
+    () => bindingInUse(list.data?.items, "postman"),
     [list.data],
   );
 

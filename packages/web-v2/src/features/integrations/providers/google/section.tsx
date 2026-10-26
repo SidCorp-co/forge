@@ -34,7 +34,7 @@ import {
   IntegrationEnabledControl,
   keyLockedLine,
 } from "../../components/integration-enabled-control";
-import { bindingBadge } from "../../derive";
+import { bindingBadge, bindingInUse } from "../../derive";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 /** What Google's own check found, under the badge that names the state as the row does: the five
@@ -66,7 +66,7 @@ function ShareHint({ clientEmail }: { clientEmail: string | null | undefined }) 
 export function GoogleSection({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const binding = useMemo(
-    () => (list.data?.items ?? []).find((i) => i.provider === "google"),
+    () => bindingInUse(list.data?.items, "google"),
     [list.data],
   );
 
