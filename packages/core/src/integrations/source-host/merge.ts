@@ -20,11 +20,14 @@ type ChangeRequestMergeMethod = (typeof CHANGE_REQUEST_MERGE_METHODS)[number];
 
 /**
  * Writes the issue's merge stamp in the transaction that marks the projection row, and answers whether
- * it wrote. Supplied by the caller, which owns the stamp; the adapter owns only the row.
+ * it wrote — or why the commit was refused as this issue's landing, which the caller records on the
+ * issue. Supplied by the caller, which owns the stamp; the adapter owns only the row.
  */
 export type IssueMergeStamp = (
   tx: Tx,
   args: {
+    /** The stored request Forge merged, whose links named the issue. */
+    pullRequestId: string;
     issueId: string;
     commitSha: string;
     mergedAt: Date;
@@ -32,7 +35,14 @@ export type IssueMergeStamp = (
     /** The request's head and whether its tree is the landing's, read from the host at the merge. */
     head: MergedHead | null;
   },
-) => Promise<{ wrote: boolean }>;
+) => Promise<{ wrote: boolean; refused?: { code: string; detail: string } | null }>;
+
+/** An issue the merged request links whose stamp was refused, and why. */
+interface RefusedStamp {
+  issueId: string;
+  code: string;
+  detail: string;
+}
 
 interface MergeRequest {
   /** The `repo_pull_requests` row to merge. */
@@ -61,6 +71,8 @@ type MergeOutcome =
       stamped: boolean;
       /** Every issue this merge stamped: each one the request delivers (REQ-63 BC-4). */
       stampedIssues: string[];
+      /** Every linked issue the commit is not the landing of, refused rather than stamped. */
+      refusedStamps: RefusedStamp[];
       checks: MergeChecks;
     }
   | {
@@ -71,6 +83,7 @@ type MergeOutcome =
       target: string;
       stamped: boolean;
       stampedIssues: string[];
+      refusedStamps: RefusedStamp[];
       checks: MergeChecks;
     }
   | { kind: 'refused'; deliveryId: string; reason: string; detail: string };
@@ -158,17 +171,26 @@ async function writeEvidence(args: {
   target: string;
   head: MergedHead | null;
   stampIssue: IssueMergeStamp;
-}): Promise<{ stamped: boolean; stampedIssues: string[] }> {
+}): Promise<{ stamped: boolean; stampedIssues: string[]; refusedStamps: RefusedStamp[] }> {
   const { row, host, commitSha, mergedAt, target, head, stampIssue } = args;
   try {
     return await db.transaction(async (tx) => {
       const stampedIssues: string[] = [];
+      const refusedStamps: RefusedStamp[] = [];
       for (const issueId of row.issueIds) {
-        const stamp = await stampIssue(tx, { issueId, commitSha, mergedAt, target, head });
+        const stamp = await stampIssue(tx, {
+          pullRequestId: row.id,
+          issueId,
+          commitSha,
+          mergedAt,
+          target,
+          head,
+        });
         if (stamp.wrote) stampedIssues.push(issueId);
+        if (stamp.refused) refusedStamps.push({ issueId, ...stamp.refused });
       }
       await markPullRequestMerged(tx, row.id, { commitSha, mergedAt });
-      return { stamped: stampedIssues.length > 0, stampedIssues };
+      return { stamped: stampedIssues.length > 0, stampedIssues, refusedStamps };
     });
   } catch (err) {
     throw new Error(
@@ -258,7 +280,7 @@ export async function mergeStoredChangeRequest(
     if (result.kind === 'refused') return refuse(deliveryId, result.reason, result.detail);
 
     const head = await readMergedHead((a, b) => host.sameTree(a, b), result.head, result.commitSha);
-    const { stamped, stampedIssues } = await writeEvidence({
+    const { stamped, stampedIssues, refusedStamps } = await writeEvidence({
       row,
       host,
       commitSha: result.commitSha,
@@ -283,6 +305,7 @@ export async function mergeStoredChangeRequest(
               target: result.target,
               stamped,
               stampedIssues,
+              refusedStamps,
             }
           : {
               commitSha: result.commitSha,
@@ -290,6 +313,7 @@ export async function mergeStoredChangeRequest(
               requestedBy: req.requestedBy,
               stamped,
               stampedIssues,
+              refusedStamps,
             },
       completedAt: new Date(),
     });
@@ -301,6 +325,7 @@ export async function mergeStoredChangeRequest(
       target: result.target,
       stamped,
       stampedIssues,
+      refusedStamps,
       checks,
     };
   } catch (err) {

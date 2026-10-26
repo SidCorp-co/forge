@@ -138,6 +138,7 @@ export {
   statusChangesSince,
 } from './memory-reads.js';
 export { draftMergeHolds } from './merge-holds.js';
+export { mergeIdentityOf, recordRefusedStamp } from './merge-identity.js';
 export { mergeMarkKindOf } from './merge-mark-kind.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';

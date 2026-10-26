@@ -24,6 +24,7 @@ import {
 } from './landing-evidence.js';
 import { lastUnmarkedAt, markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
 import { uncheckedMergeRefusal } from './merge-check.js';
+import { identifiedMergeForIssue } from './merge-identity.js';
 import {
   describeMergeMark,
   designOnlyStamp,
@@ -33,7 +34,6 @@ import {
 import {
   clearIssueMerge,
   type MergeRecord,
-  observedMergeForIssue,
   recordIssueMerge,
   recordMergeTarget,
   recordReadPaths,
@@ -204,8 +204,10 @@ async function stampMark(
 ): Promise<Stamp> {
   const { shape, fromRepository } = preflight;
   const issueId = args.issue.id;
-  // a change-request project's host merge was read on its target branch, so it outranks any other
-  const observed = hostMerge ?? (await observedMergeForIssue(tx, issueId));
+  // a change-request project's host merge was read on its target branch, so it outranks any other;
+  // either is a merge whose commit is this issue's landing (`merge-identity.ts`), read before the
+  // transaction, since judging it reads the host
+  const observed = hostMerge;
   const landing = args.landing ?? null;
   const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
   if (refused) throw refuse(refused.code, refused.detail, '/landing');
@@ -506,6 +508,9 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   if (partial) throw refuse(partial.code, partial.detail, '/commit');
   if (preflight) await refuseUncheckedMerge(args, prior, preflight.shape);
 
+  const observed =
+    hostMerge ?? (args.op === 'mark' ? await identifiedMergeForIssue(args.issue.id) : null);
+
   // The stamp, its audit comment and their events commit together or not at all.
   const { stamp, mark, markDetail } = await db.transaction(async (tx) => {
     let stamp: Stamp = {
@@ -520,7 +525,7 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
       claimedCommit: null,
       readFrom: null,
     };
-    if (preflight) stamp = await stampMark(tx, args, preflight, hostMerge);
+    if (preflight) stamp = await stampMark(tx, args, preflight, observed);
     else await clearMark(tx, args.issue.id);
     return { stamp, ...(await writeMarkTrail(tx, args, prior, stamp)) };
   });

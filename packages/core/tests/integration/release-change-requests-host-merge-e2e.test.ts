@@ -26,16 +26,36 @@ const merged = new Map<number, string>();
 const merges: number[] = [];
 /** What the planted host answers: whether a head's tree is its merge commit's, or a read failure. */
 const trees: { same: boolean | Error } = { same: true };
+/** Each merge commit's message, as GitLab writes one: the branch it merged and the request it was. */
+const messages = new Map<string, string>();
+const mergeMessage = (number: number, headRef: string) =>
+  `Merge branch '${headRef}' into 'release/stg'\n\nMR ${number}\n\nSee merge request acme/canawan-api!${number}`;
+
+/** The repository read every stamp's identity is judged from (`issues/merge-identity.ts`). */
+const repository = () => ({
+  provider: 'gitlab',
+  fullName: 'acme/canawan-api',
+  readCommit: async (sha: string) => {
+    const message = messages.get(sha.toLowerCase());
+    return message
+      ? { sha: sha.toLowerCase(), message, committedAt: '2026-10-23T09:00:00Z' }
+      : null;
+  },
+  branchContains: async () => true,
+});
 
 vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/integrations/source-host/resolve.js')>()),
+  resolveSourceHost: async () => repository(),
   sourceHostForBinding: async () => ({
-    provider: 'gitlab',
+    ...repository(),
     words: { mergeMethods: ['merge', 'squash'], changeRequest: 'merge request', sigil: '!' },
     merge: async ({ number }: { number: number }) => {
       merges.push(number);
       const commitSha = `${String(number).padStart(4, '0')}${'c'.repeat(36)}`;
       merged.set(number, commitSha);
+      const headRef = heads.get(number) ?? `mr-${number}`;
+      if (!messages.has(commitSha)) messages.set(commitSha, mergeMessage(number, headRef));
       // each request merges a minute after the one numbered below it, into release/stg, at its head
       return {
         kind: 'merged',
@@ -59,6 +79,8 @@ const _HEAD_C = 'c3'.repeat(20);
 const NOTE = { section: 'Added', userFacing: 'A site writes through to the catalog.' };
 
 const world = { projectId: '', ownerId: '', token: '', bindingId: '' };
+/** Each stored request's branch, as the planted host merges it. */
+const heads = new Map<number, string>();
 
 const rows = async <T>(query: ReturnType<typeof sql>) =>
   [...(await db.execute(query))] as unknown as T[];
@@ -68,6 +90,8 @@ async function seedWorld(release: Record<string, unknown> | null): Promise<void>
   merged.clear();
   merges.length = 0;
   trees.same = true;
+  messages.clear();
+  heads.clear();
   world.ownerId = (await createTestUser({ verified: true })).id;
   world.projectId = (await createTestProject(world.ownerId)).id;
   await addProjectMember(world.projectId, world.ownerId, 'admin');
@@ -114,6 +138,7 @@ async function issue(seq: number, status: string, stamp = false): Promise<string
 
 /** A merge request as the GitLab hook delivers it into the projection. */
 async function mergeRequest(number: number, headRef: string, head: string, body: string | null) {
+  heads.set(number, headRef);
   await applyPullRequestEvent(
     { projectId: world.projectId, bindingId: world.bindingId, host: 'gitlab' },
     {
@@ -205,7 +230,14 @@ afterAll(async () => {
 });
 
 /** GitLab's report that it merged the request on `headRef` at `commitSha`, as its hook emits it. */
-async function hostMerged(number: number, headRef: string, commitSha: string) {
+async function hostMerged(
+  number: number,
+  headRef: string,
+  commitSha: string,
+  mergedAt = '2026-10-23T10:00:00.000Z',
+) {
+  // a commit GitLab made for another request keeps that request's message
+  if (!messages.has(commitSha)) messages.set(commitSha, mergeMessage(number, headRef));
   await db.execute(sql`
     UPDATE repo_pull_requests SET state = 'merged', merge_commit_sha = ${commitSha}, merged_at = now()
      WHERE project_id = ${world.projectId} AND number = ${number}`);
@@ -214,7 +246,7 @@ async function hostMerged(number: number, headRef: string, commitSha: string) {
     headRef,
     baseRef: BRANCH,
     commitSha,
-    mergedAt: '2026-10-23T10:00:00.000Z',
+    mergedAt,
     head: null,
   });
   await settleOutbox();
@@ -373,5 +405,89 @@ describe('a merge through Forge records the target and the head on every issue i
       merged_commit_sha: HOST_SHA,
       merged_target: BRANCH,
     });
+  });
+});
+
+// adminhub-fe, 2026-10-26: !1979 and !1982 carried one head. !1979 was opened under keys later
+// renumbered, so its branch named ISS-37; Forge merged !1982 at 17caff30, GitLab then marked !1979
+// merged too, and ISS-37 (and two drafts) took 17caff30 through !1979's links, superseding the mark
+// ISS-37 held from its own merge, with no activity saying so.
+describe('a sibling request the host marks merged stamps nothing that is not its commit', () => {
+  const HEAD_SHARED = 'e5'.repeat(20);
+  const HEAD_OWN = 'f6'.repeat(20);
+  const OWN_SHA = 'd2'.repeat(20);
+
+  const refusals = (issueId: string) =>
+    rows<{ action: string; payload: { commitSha: string; code: string; via: string } }>(sql`
+      SELECT action, payload FROM activity_log
+       WHERE issue_id = ${issueId} AND action = 'issue.mergeStampRefused'`);
+
+  async function siblings() {
+    const five = await issue(5, 'awaiting_release');
+    const stale = await issue(37, 'awaiting_release');
+    const draft = await issue(11, 'draft');
+    await mergeRequest(1979, 'iss-37-login', HEAD_SHARED, 'Also ISS-11.');
+    await mergeRequest(1982, 'fix/login-iss-5', HEAD_SHARED, null);
+    return { five, stale, draft };
+  }
+
+  it('stamps the merged request’s issue and refuses the sibling’s, on the record', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const { five, stale, draft } = await siblings();
+
+    const res = await mergeOf(five, 1982);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const landing = merged.get(1982) as string;
+    await hostMerged(1979, 'iss-37-login', landing);
+
+    expect((await issueRow(five))?.merged_commit_sha).toBe(landing);
+    const stampedRows = await rows<{ fields: string[] }>(sql`
+      SELECT payload->'fields' AS fields FROM activity_log
+       WHERE issue_id = ${five} AND action = 'issue.updated'`);
+    expect(stampedRows.some((r) => r.fields.includes('mergedCommitSha'))).toBe(true);
+    expect((await issueRow(stale))?.merged_commit_sha).toBeNull();
+    expect((await issueRow(draft))?.merged_at).toBeNull();
+    for (const id of [stale, draft]) {
+      expect(await refusals(id)).toMatchObject([
+        { payload: { commitSha: landing, code: 'COMMIT_NOT_THIS_ISSUE', via: 'event' } },
+      ]);
+    }
+  });
+
+  it('never supersedes the mark an issue holds from its own merge with a sibling’s commit', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const { five, stale } = await siblings();
+    await mergeRequest(1981, 'iss-37-session', HEAD_OWN, null);
+    await hostMerged(1981, 'iss-37-session', OWN_SHA);
+    expect((await issueRow(stale))?.merged_commit_sha).toBe(OWN_SHA);
+
+    expect((await mergeOf(five, 1982)).status).toBe(200);
+    // reported an hour after ISS-37's own merge, so only its identity keeps it from superseding
+    await hostMerged(1979, 'iss-37-login', merged.get(1982) as string, '2026-10-23T11:00:00.000Z');
+
+    expect((await issueRow(stale))?.merged_commit_sha).toBe(OWN_SHA);
+  });
+
+  it('marks an issue at its own merge, not at the commit a sibling was marked merged at', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true }, changeRequests: true });
+    const { stale } = await siblings();
+    await mergeRequest(1981, 'iss-37-session', HEAD_OWN, null);
+    await hostMerged(1981, 'iss-37-session', OWN_SHA);
+    // a merge outside a release is the release door's to refuse here, so GitLab merges !1982
+    const landing = 'a7'.repeat(20);
+    messages.set(landing, mergeMessage(1982, 'fix/login-iss-5'));
+    await hostMerged(1982, 'fix/login-iss-5', landing);
+    await hostMerged(1979, 'iss-37-login', landing);
+
+    expect((await api(world.token, 'DELETE', `/api/issues/${stale}/merge`, {})).status).toBe(200);
+    const mark = await api(world.token, 'POST', `/api/issues/${stale}/merge`, {
+      commit: OWN_SHA,
+      target: BRANCH,
+    });
+    expect(mark.status, JSON.stringify(mark.body)).toBe(200);
+    expect((await issueRow(stale))?.merged_commit_sha).toBe(OWN_SHA);
   });
 });

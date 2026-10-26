@@ -1,9 +1,8 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
-import { db } from '../db/client.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { hostMergeNamed } from './host-landing.js';
-import { observedMergeForIssue } from './merge-record.js';
+import { identifiedMergeForIssue } from './merge-identity.js';
 import {
   isSourceHostUnavailable,
   readLandingBranches,
@@ -95,7 +94,7 @@ export async function hostMergeOfMark(
     );
   }
   const host =
-    (await observedMergeForIssue(db, prior.id, target)) ??
+    (await identifiedMergeForIssue(prior.id, target)) ??
     (await hostMergeNamed(prior.projectId, args.commit, target));
   if (host) return host;
   if (args.commit && args.target) {
