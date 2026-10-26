@@ -482,12 +482,10 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
 
   // ISS-1421 r32: a GitHub binding switched on since, beside the removed one, keeps it off. The index
   // refuses the switch-on, whenever the other was switched on, and the rest is written without it.
-  it('leaves the removed binding off where the index refuses switching it on beside another', async () => {
-    const old = { id: 'binding-old', projectId: PROJECT_ID, label: '', config: {} };
-    store.removedConnectionBoundTo.mockResolvedValueOnce({
-      binding: old,
-      connection: { id: 'connection-removed' },
-    });
+  it('keeps the removed binding off and sends nobody to install where the index refuses switching it on', async () => {
+    const old = { id: 'binding-old', config: {} };
+    const removed = { binding: old, connection: { id: 'c-r' } };
+    store.removedConnectionBoundTo.mockResolvedValueOnce(removed);
     store.listBindingsForConnection.mockResolvedValueOnce([{ binding: old }]);
     store.updateBinding.mockRejectedValueOnce(
       Object.assign(new Error('update failed'), { cause: { code: '23505' } }),
@@ -501,11 +499,12 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
     const res = await callback(state);
 
     const written = { config: {}, integrationSecret: 'whsec_x' };
-    expect(res.status).toBe(302);
-    expect(store.updateBinding).toHaveBeenNthCalledWith(1, 'binding-old', {
-      ...written,
-      active: true,
-    });
+    expect([res.status, (await bodyOf(res)).message]).toEqual([
+      409,
+      'GitHub was connected to this project while this App was being created, so the App is kept off. Disconnect GitHub from this project, then switch this App on.',
+    ]);
+    const on = { ...written, active: true };
+    expect(store.updateBinding).toHaveBeenNthCalledWith(1, 'binding-old', on);
     expect(store.updateBinding).toHaveBeenNthCalledWith(2, 'binding-old', written);
   });
 

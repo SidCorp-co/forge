@@ -105,6 +105,10 @@ export const githubManifestCallback = describeOperation({
       'NOT_FOUND',
       'the project the state names does not exist, or the caller cannot see it',
     ),
+    409: fail(
+      'ALREADY_EXISTS',
+      'GitHub was switched on for the project while the App was created; the App is stored, kept off',
+    ),
     503: vaultMissing,
   },
 });
