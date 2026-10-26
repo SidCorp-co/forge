@@ -124,10 +124,23 @@ describe('withRepository', () => {
 
 describe('readableThrough', () => {
   it('names the route that clears a read, and only a GitHub route names GitHub', () => {
-    expect(readableThrough('binding')).toContain('through a GitHub binding');
+    expect(readableThrough('binding')).toContain('the GitHub App installation behind');
     expect(readableThrough('deploy_key')).toContain(
-      "with the deploy key attached under the project's Settings → Runners → Git access",
+      "attach a deploy key that can read it under the project's Settings → Runners → Git access",
     );
     expect(readableThrough('deploy_key')).not.toMatch(/GitHub|Integrations/);
+  });
+
+  // ISS-1300 r4 — a person reads "once Forge can read <repository> again", never "the tracker".
+  it("names the repository and Forge, in a person's words, on either route", () => {
+    for (const route of ['binding', 'deploy_key'] as const) {
+      expect(readableThrough(route, 'SidCorp-co/forge')).toMatch(
+        /^once Forge can read SidCorp-co\/forge again: /,
+      );
+      expect(readableThrough(route)).toMatch(
+        /^once Forge can read the project's repository again: /,
+      );
+      expect(readableThrough(route)).not.toMatch(/tracker/);
+    }
   });
 });

@@ -115,6 +115,7 @@ export function fakeGitHubClient(real: typeof GitHubClient): typeof GitHubClient
         owner: 'SidCorp-co',
         repo: 'specimen',
         fullName: repo.fullName,
+        reach: 'https://api.github.test/app/1/installations/1',
         publish: async () => {
           throw new Error('no publish in this test');
         },

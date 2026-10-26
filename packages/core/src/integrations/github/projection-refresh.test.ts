@@ -21,6 +21,7 @@ function client(get: GitHubRepoClient['get']): GitHubRepoClient {
     owner: 'SidCorp-co',
     repo: 'forge',
     fullName: 'SidCorp-co/forge',
+    reach: 'https://api.github.test/app/1/installations/1',
     get,
     publish: async () => {
       throw new Error('projection refresh must not publish');

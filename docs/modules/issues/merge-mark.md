@@ -72,8 +72,8 @@ all Forge needs, and says that devices pushing with the same key need write acce
 own line, past any `remote:` banner, stands apart beneath them (`Refused.said`, put on its own line by
 `packages/core/src/projects/repository-reader.ts:saying`).
 What clears it is named beside the cause, in the answer to an agent's mark (the claim's) and in the
-refusal to a person's: mark again once the tracker can read the repository: through the GitHub binding where the project has one, otherwise with the deploy key
-over the SSH clone URL under Git access; where a branch is missing, once the repository has it or
+refusal to a person's: mark again once Forge can read the repository again: by giving the GitHub App installation behind the project's binding access to it where the project has one, otherwise with a deploy key
+under Git access, over the SSH clone URL (`packages/core/src/projects/repository-access.ts:readableThrough`); where a branch is missing, once the repository has it or
 the project's base branch and release chain name only branches it has; and where the project names
 no base branch, once it does. A project with no binding is told to bind GitHub only beside the key,
 and only for a github.com remote. A person's mark naming a commit is checked against the same
@@ -234,7 +234,10 @@ left at an earlier round moves on that issue's next mark or next observed merge.
 ## How a mark answers a person (ISS-1421)
 
 Every human sentence a mark gives — the answer's `detail`, the toast, the audit comment, a refusal's
-message — names a commit by its first seven characters (`packages/core/src/issues/merge-record.ts:shortCommit`; a
+message — names a commit by its first seven characters, or by as many more as tell it apart from
+the other commit the same sentence names (`packages/core/src/issues/merge-record.ts:shortCommit`;
+ISS-1300 r4: sid-desk ISS-578's pair shares its first eight), and a commit the repository was read
+and lacks by twelve (`absentCommit`), since its seven may name one it holds (a
 `MergeMarkerError` shortens any whole sha in its message). The whole sha stays where a caller reads
 it as data: the row (`mergedCommitSha`, `mergedClaimedCommit`), the answer's `movedFrom` and
 `namedCommit` (the commit this mark named where no column keeps it), a refusal's `details`, and the
@@ -344,11 +347,30 @@ as before, and stay held by equality. Where the project binds a repository and i
 read, each held verdict says so beside its reason, and the hold, the release readiness page and the
 release-create refusal say Forge cannot read that repository and what restores it, through the
 same remedy as any failed repository read
-(`packages/core/src/issues/landing-correction.ts:unreadLandingClears`). The readiness page's
-check of what a release would carry says the same where GitHub refuses the branch head with a 401,
-403 or 404, rather than asking for the page to be loaded again
-(`packages/core/src/issues/landing-correction.ts:refusedCheckClause`). A project that binds no
+(`packages/core/src/issues/landing-correction.ts:unreadLandingClears`): "once Forge can read
+<repository> again", then the act. The readiness page's check of what a release would carry says
+the same where GitHub refuses the branch head with a 401, 403 or 404, rather than asking for the
+page to be loaded again (`packages/core/src/issues/landing-correction.ts:refusedCheckClause`), and
+a person reads only that sentence: the request it was read by stays in the reason's `detail`,
+which the page folds under Technical details (ISS-1300 r4). A repository GitHub shows that lacks a
+branch or commit the carried range names (a compare it answers 404, whose refs it then answers 422)
+says which, and what supplies it, never to load the page again
+(`packages/core/src/issues/landing-correction.ts:lackingCheckClause`). A project that binds no
 repository is not told to bind one here.
+
+A repository answer is kept under the reader's `reach` — the API host, the GitHub App and its
+installation, or the deploy key's digest — never under the repository's name alone
+(`packages/core/src/release-batch/carriage.ts`, ISS-1300 r4). Two projects binding one `owner/repo`
+through different installations, or a GitHub Enterprise host and github.com, are each asked
+through their own access, so a commit one installation found never stands for one that cannot see
+the repository.
+
+A person's mark repeated with Commit left blank, over a landing the repository was read and lacks,
+answers with the act the hold names: "To record the
+commit that landed, use Mark a later merge and name it under Commit." It never answers Unmark,
+which would leave the criteria with no commit to weigh against
+(`packages/core/src/issues/stated-landing.ts:commitWouldStand`). Over a landing that resolves, the
+answer still names Unmark, then Mark merged.
 
 The forge-plugin CLI's own check of a verdict against the merged commit reads that commit out of
 the mark's note, not off these columns, so it is not covered here.

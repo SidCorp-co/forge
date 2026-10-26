@@ -13,6 +13,7 @@ function client(get: (path: string) => unknown): GitHubRepoClient {
     owner: 'SidCorp-co',
     repo: 'sid-desk',
     fullName: 'SidCorp-co/sid-desk',
+    reach: 'https://api.github.test/app/1/installations/1',
     get: vi.fn(async (path: string) => get(path)) as unknown as GitHubRepoClient['get'],
     publish: async () => {
       throw new Error('a live reading must not publish');

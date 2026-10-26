@@ -37,16 +37,42 @@ export type CutRange =
   | { kind: 'not-read'; why: string }
   /** No route to read it was declared: no GitHub binding, and no deploy key beside an SSH URL. */
   | { kind: 'unbound'; why: string }
-  /** `repository` and `clears` where the repository refused the read (ISS-1300 r3). */
-  | { kind: 'unread'; why: string; repository?: string; clears?: string };
+  /** `repository` and `clears` where the repository refused the read (ISS-1300 r3), and `lacks`
+   *  beside them where it was read and has no branch or commit the range names (ISS-1300 r4). */
+  | { kind: 'unread'; why: string; repository?: string; clears?: string; lacks?: string };
 
 export type CutRangeDeps = Partial<RepositoryAccessDeps>;
 
-/** A read the repository refused names it and what makes it readable, as a criterion's weighing does. */
+/** A read the repository refused names it and what makes it readable, as a criterion's weighing
+ *  does; one it answered without the branch or commit asked for names that, and what supplies it. */
 function unread(reader: RepositoryReader, failed: ReadFailure): CutRange {
+  const repository = reader.name;
+  // `why` keeps the read it failed on, for the details; `lacks` is what a person reads (ISS-1300 r4).
+  if (failed.missingBranch) {
+    const b = failed.missingBranch;
+    const clears = `once ${repository} has a branch ${b}, or the project's release chain names only branches it has`;
+    return {
+      kind: 'unread',
+      why: failed.why,
+      repository,
+      lacks: `${repository} has no branch ${b}`,
+      clears,
+    };
+  }
+  if (failed.missingCommit) {
+    const c = failed.missingCommit;
+    const lacks = `${repository} holds no commit ${c}`;
+    return {
+      kind: 'unread',
+      why: failed.why,
+      repository,
+      lacks,
+      clears: `once ${repository} holds commit ${c}`,
+    };
+  }
   if (!failed.refused) return { kind: 'unread', why: failed.why };
-  const clears = readableThrough(reader.route);
-  return { kind: 'unread', why: failed.why, repository: reader.name, clears };
+  const clears = readableThrough(reader.route, repository);
+  return { kind: 'unread', why: failed.why, repository, clears };
 }
 
 /** The range a promotion of `head` onto the live branch carries; `head` defaults to the start branch. */

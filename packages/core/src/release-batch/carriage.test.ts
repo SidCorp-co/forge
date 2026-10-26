@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { GitHubReadError, type GitHubRepoClient } from '../integrations/github/client.js';
+import {
+  buildRepoClient,
+  GitHubReadError,
+  type GitHubRepoClient,
+} from '../integrations/github/client.js';
 import { githubRepositoryReader } from '../integrations/github/repository-reader.js';
 import { carriageOf, changedPathsOf, forgetCarriage, landingHeld } from './carriage.js';
 
@@ -19,6 +23,7 @@ function client(answers: Record<string, Answer>): GitHubRepoClient & { asked: st
     owner: 'o',
     repo: 'r',
     fullName: 'o/r',
+    reach: 'https://api.github.test/app/1/installations/1',
     asked,
     async get<T>(path: string): Promise<T> {
       asked.push(path);
@@ -260,5 +265,71 @@ describe('landingHeld', () => {
     const held = await landingHeld(githubRepositoryReader(hidden), J);
     // ISS-1300 r3: the reason is kept, so the hold can name the repository and what restores it.
     expect(held).toEqual({ unreadable: expect.stringContaining('answered HTTP 404') });
+  });
+});
+
+// ISS-1300 r4 (judge-121, E9) — what one installation read never answers for another that was
+// not asked: the same `owner/repo` behind an installation that cannot see it, or on another host.
+describe('an answer kept for one reach', () => {
+  const hiddenFrom = (reach: string): GitHubRepoClient & { asked: string[] } => {
+    const c = client({});
+    return {
+      ...c,
+      reach,
+      async get<T>(path: string): Promise<T> {
+        c.asked.push(path);
+        throw new GitHubReadError(404, `GET ${path} on o/r returned HTTP 404`);
+      },
+    };
+  };
+  const OTHER = 'https://api.github.test/app/1/installations/2';
+
+  it('asks the repository again through an installation that read nothing, and answers its refusal', async () => {
+    const seen = client({ [`/repos/o/r/commits/${J}`]: { sha: J } });
+    expect(await landingHeld(githubRepositoryReader(seen), J)).toBe('found');
+    const hidden = hiddenFrom(OTHER);
+    const held = await landingHeld(githubRepositoryReader(hidden), J);
+    expect(hidden.asked).toEqual([`/repos/o/r/commits/${J}`]);
+    expect(held).toEqual({ unreadable: expect.stringContaining('answered HTTP 404') });
+  });
+
+  it('keeps carriage and changed paths apart by reach as well', async () => {
+    const parent = { [`/repos/o/r/commits/${J}`]: { sha: J, parents: [{ sha: P }] } };
+    const seen = client({
+      ...parent,
+      [cmp(J, S)]: { status: 'ahead', files: files('a.ts') },
+      [cmp(P, J)]: { status: 'ahead', files: files('a.ts') },
+    });
+    await carriageOf(githubRepositoryReader(seen), J, S);
+    await changedPathsOf(githubRepositoryReader(seen), J);
+    const hidden = hiddenFrom(OTHER);
+    expect((await carriageOf(githubRepositoryReader(hidden), J, S)).kind).toBe('unread');
+    expect((await changedPathsOf(githubRepositoryReader(hidden), J)).kind).toBe('unread');
+    expect(hidden.asked).toHaveLength(2);
+  });
+
+  // r4 review F2: the reach `buildRepoClient` gives, where only the installation differs.
+  it('asks again through a second installation of the same App, host and repository', async () => {
+    const built = (installationId: number) =>
+      buildRepoClient({
+        bindingId: `b${installationId}`,
+        config: { owner: 'o', repo: 'r', installationId },
+        secrets: { appId: '7', privateKey: 'unused: nothing here mints a token' },
+      } as Parameters<typeof buildRepoClient>[0]);
+    const seen = { ...built(1), get: client({ [`/repos/o/r/commits/${J}`]: { sha: J } }).get };
+    expect(await landingHeld(githubRepositoryReader(seen), J)).toBe('found');
+    const hidden = { ...hiddenFrom(''), reach: built(2).reach };
+    expect(await landingHeld(githubRepositoryReader(hidden), J)).toEqual({
+      unreadable: expect.stringContaining('answered HTTP 404'),
+    });
+    expect(hidden.asked).toHaveLength(1);
+  });
+
+  it('still answers a second reader of the same reach from what the first found', async () => {
+    const first = client({ [`/repos/o/r/commits/${J}`]: { sha: J } });
+    await landingHeld(githubRepositoryReader(first), J);
+    const second = hiddenFrom(first.reach);
+    expect(await landingHeld(githubRepositoryReader(second), J)).toBe('found');
+    expect(second.asked).toHaveLength(0);
   });
 });

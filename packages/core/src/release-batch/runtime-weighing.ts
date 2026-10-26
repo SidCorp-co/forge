@@ -192,7 +192,7 @@ async function readLandings(
     const held = await landingHeld(reader.reader, commit, spend);
     if (held === 'absent') out.unresolved.set(landingKey(commit), { commit, repository });
     if (typeof held === 'object') {
-      const clears = readableThrough(reader.reader.route);
+      const clears = readableThrough(reader.reader.route, repository);
       out.unread.set(landingKey(commit), { commit, repository, why: held.unreadable, clears });
     }
   }

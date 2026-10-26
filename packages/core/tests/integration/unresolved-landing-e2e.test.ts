@@ -367,8 +367,9 @@ describe('the act the hold names clears it (criteria 5, 6)', () => {
 
     expect(answer.action).toBe('merged');
     expect(answer.mark).toBe('asserted');
+    // ISS-1300 r4 (judge-121): the pair shares eight characters, so each is shown past them.
     expect(answer.markDetail).toBe(
-      `Commit 0d018a9, which ${REPOSITORY} holds, replaces commit 0d018a9, which it does not. ` +
+      `Commit 0d018a9ac, which ${REPOSITORY} holds, replaces commit 0d018a9a0, which it does not. ` +
         'Forge did not see this merge, so the mark is a claim.',
     );
     expect(await columns(id)).toMatchObject({
@@ -457,7 +458,10 @@ describe('a recorded landing its bound repository refuses to be read for', () =>
     expect(hold.words?.[1]).toBe(
       `A person makes ${REPOSITORY} readable to Forge again, then records a verdict on each or closes the issue.`,
     );
-    expect(hold.reason).toContain(`Forge cannot read ${REPOSITORY}, and reads it again once`);
+    expect(hold.reason).toContain(
+      `Forge cannot read ${REPOSITORY}, and checks again once Forge can read ${REPOSITORY} again:`,
+    );
+    expect(hold.reason).not.toMatch(/tracker/);
     expect(hold.words?.join(' ')).not.toContain('at the running deployment');
   });
 
@@ -473,7 +477,9 @@ describe('a recorded landing its bound repository refuses to be read for', () =>
     await criteriaHold(projectId, [id], out as never, [], UNREADABLE, weighing);
 
     expect(out[0]?.code).toBe('RELEASE_CRITERIA_UNEARNED');
-    expect(out[0]?.message).toContain(`Forge cannot read ${REPOSITORY}, and reads it again once`);
+    expect(out[0]?.message).toContain(
+      `Forge cannot read ${REPOSITORY}, and checks again once Forge can read ${REPOSITORY} again:`,
+    );
   });
 
   it('says it of the carried range on the readiness page too, never to load the page again', async () => {
@@ -486,7 +492,9 @@ describe('a recorded landing its bound repository refuses to be read for', () =>
     const blockers = (await loadReleaseReadiness(projectId))?.blockers ?? [];
     const carried = blockers.find((b) => b.details?.check === 'carried');
 
-    expect(carried?.reader).toContain(`Forge cannot read ${REPOSITORY}, and reads it again once`);
+    expect(carried?.reader).toBe(
+      `Reading which landings this release would carry beyond its issues failed: Forge cannot read ${REPOSITORY}, and checks again once Forge can read ${REPOSITORY} again: give the GitHub App installation behind this project's binding access to it, or bind the project to where it now lives. Until then this answer cannot say whether a release would start: whatever that check would have found is missing from this list.`,
+    );
     expect(blockers.map((b) => `${b.reader} ${b.message}`).join(' ')).not.toMatch(
       /retry|again to/i,
     );

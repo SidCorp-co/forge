@@ -12,6 +12,7 @@ import {
   BLURB,
   COMMIT_HINT,
   COMMIT_PLACEHOLDER,
+  CORRECTION_PLACEHOLDER,
   EMPTY_COMMIT_LINE,
   LANDING_BLURB,
   LATER_BLURB,
@@ -75,6 +76,17 @@ describe("MergeMarkerControl", () => {
     fireEvent.click(screen.getByRole("button", { name: mergedAt ? "Mark a later merge" : "Mark merged" }));
     expect(screen.getByRole("textbox", { name: /^Commit/ })).toHaveAccessibleDescription(COMMIT_HINT);
     expect(COMMIT_PLACEHOLDER.length).toBeLessThanOrEqual(32);
+  });
+
+  // ISS-1300 r4 (judge-121): on a marked issue the field corrects where the work landed, so its
+  // example describes that, never "the merge commit of the later round".
+  it("describes a correction in the Commit placeholder once the issue is marked", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt="2026-10-20T09:00:00Z" landingShape="git" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark a later merge" }));
+    const field = screen.getByRole("textbox", { name: /^Commit/ });
+    expect(field).toHaveAttribute("placeholder", "e.g. 3f9c2ab, where it landed");
+    expect(field.getAttribute("placeholder")).not.toMatch(/later round/);
+    expect(CORRECTION_PLACEHOLDER.length).toBeLessThanOrEqual(32);
   });
 
   it("offers no Commit on a first mark outside git, where nothing lands at a commit", () => {

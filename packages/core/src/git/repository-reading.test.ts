@@ -38,7 +38,10 @@ let dirs = 0;
 
 function reader(url = remote, limits = REMOTE_FETCH_LIMITS) {
   dirs += 1;
-  return gitRepositoryReader(url, env, mkdtempSync(join(root, `read-${dirs}-`)), { limits });
+  return gitRepositoryReader(url, env, mkdtempSync(join(root, `read-${dirs}-`)), {
+    reach: `test-key:${url}`,
+    limits,
+  });
 }
 
 beforeAll(() => {

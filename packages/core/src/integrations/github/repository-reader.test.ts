@@ -23,6 +23,7 @@ function github(): GitHubRepoClient & { asked: string[] } {
     owner: 'o',
     repo: 'r',
     fullName: 'o/r',
+    reach: 'https://api.github.test/app/1/installations/1',
     asked,
     async get<T>(path: string): Promise<T> {
       asked.push(path);
@@ -248,6 +249,7 @@ describe('descends, on a GitHub binding', () => {
       owner: 'o',
       repo: 'r',
       fullName: 'o/r',
+      reach: 'https://api.github.test/app/1/installations/1',
       asked,
       async get<T>(path: string): Promise<T> {
         asked.push(path);
@@ -332,5 +334,78 @@ describe('a commit lookup GitHub refuses, on a GitHub binding', () => {
       kind: 'unreadable',
       why: 'o/r could not be read: fetch failed',
     });
+  });
+});
+
+// ISS-1300 r4 (judge-121) — a compare GitHub answers 404 for, on a repository it shows, names what
+// the repository lacks rather than reading as a failure to retry.
+describe('a branch or commit a readable repository lacks, on a GitHub binding', () => {
+  const LIVE = 'production';
+
+  /** GitHub as measured: a ref the repository lacks answers 422, a compare naming one 404. */
+  function lacking(held: readonly string[], hidden = false): GitHubRepoClient {
+    return {
+      ...github(),
+      async get<T>(path: string): Promise<T> {
+        if (hidden || path.includes('/compare/')) {
+          throw new GitHubReadError(404, `GET ${path} on o/r returned HTTP 404`);
+        }
+        const ref = decodeURIComponent(path.split('/commits/')[1] ?? '');
+        if (held.includes(ref)) return { sha: SHA, parents: [] } as T;
+        throw new GitHubReadError(422, `GET ${path} on o/r returned HTTP 422`);
+      },
+    };
+  }
+
+  it('names a branch the repository lacks from a branch head GitHub answers 422 for', async () => {
+    expect(await githubRepositoryReader(lacking([])).branchHead(LIVE)).toEqual({
+      why: 'o/r could not read the head of production: GET /repos/o/r/commits/production on o/r returned HTTP 422',
+      missingBranch: LIVE,
+    });
+  });
+
+  it('names the live branch a range compare could not find', async () => {
+    // The read it failed on stays the reason; what is missing is the field (ISS-1300 r4 repair).
+    expect(await githubRepositoryReader(lacking([SHA])).range(LIVE, SHA)).toEqual({
+      why: `o/r could not compare production with ${SHA}: GET /repos/o/r/compare/production...${SHA}?per_page=100&page=1 on o/r returned HTTP 404`,
+      missingBranch: LIVE,
+    });
+  });
+
+  it('names the commit a range compare could not find, where the branch is there', async () => {
+    expect(await githubRepositoryReader(lacking([LIVE])).range(LIVE, PARENT)).toMatchObject({
+      why: expect.stringContaining(`GET /repos/o/r/compare/production...${PARENT}`),
+      missingCommit: PARENT,
+    });
+  });
+
+  it('says the two share no history where GitHub holds both and still cannot compare them', async () => {
+    const read = await githubRepositoryReader(lacking([LIVE, SHA])).range(LIVE, SHA);
+    expect(read).toEqual({
+      why: `production and ${SHA} share no history in o/r, so they cannot be compared`,
+    });
+  });
+
+  // r4 review F1: a ref read refused between the compare and the lookup is a refusal too.
+  it.each([401, 403])(
+    'reads a ref lookup refused %s after the compare as the repository refusing',
+    async (status) => {
+      const client: GitHubRepoClient = {
+        ...github(),
+        async get<T>(path: string): Promise<T> {
+          const code = path.includes('/compare/') ? 404 : status;
+          throw new GitHubReadError(code, `GET ${path} on o/r returned HTTP ${code}`);
+        },
+      };
+      expect(await githubRepositoryReader(client).range(LIVE, SHA)).toMatchObject({
+        refused: true,
+      });
+    },
+  );
+
+  it('reads the repository as refusing the read where it hides itself, never a branch as missing', async () => {
+    const read = await githubRepositoryReader(lacking([], true)).range(LIVE, SHA);
+    expect(read).toMatchObject({ refused: true });
+    expect(read).not.toHaveProperty('missingBranch');
   });
 });

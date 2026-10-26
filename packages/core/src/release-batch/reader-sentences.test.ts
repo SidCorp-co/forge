@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ReleaseBlockerCode } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
+import { readableThrough } from '../projects/repository-access.js';
 import { blocker } from './blocker-kit.js';
 import { releaseBlockerSentence } from './blocker-sentences.js';
 import {
@@ -41,21 +42,49 @@ describe('a check that could not be run, as a person reads it', () => {
   });
 
   // ISS-1300 r3: loading the page again reads the same refusal, so neither door says to retry.
+  // r4 (judge-121): the request it was read by stays in `details.detail`, out of the sentence.
   it('says the repository Forge cannot read, and what restores it, where the repository refused the read', () => {
     const details = {
       check: 'carried',
-      detail: 'o/r could not read the head of main: Not Found',
+      detail:
+        'o/r could not read the head of main: GET /repos/o/r/commits/main on o/r returned HTTP 404',
       repository: 'o/r',
-      clears: 'once the tracker can read the repository',
+      clears: readableThrough('binding', 'o/r'),
     };
-    const cannot =
-      'Forge cannot read o/r, and reads it again once the tracker can read the repository.';
+    const cannot = `Forge cannot read o/r, and checks again ${readableThrough('binding', 'o/r')}.`;
     const reader = releaseBlockerReaderSentence('RELEASE_CHECK_UNEVALUATED', details);
     const caller = releaseBlockerSentence('RELEASE_CHECK_UNEVALUATED', details);
 
-    expect(reader).toContain(`(o/r could not read the head of main: Not Found): ${cannot}`);
+    expect(
+      reader.startsWith(
+        `Reading which landings this release would carry beyond its issues failed: ${cannot}`,
+      ),
+    ).toBe(true);
     expect(caller.startsWith(cannot)).toBe(true);
-    for (const said of [reader, caller]) expect(said).not.toMatch(/retry|Load this page again/i);
+    for (const said of [reader, caller]) {
+      expect(said).not.toMatch(/retry|Load this page again|GET \/repos|HTTP 404|tracker/i);
+    }
+  });
+
+  // ISS-1300 r4 (judge-121): a repository read and lacking a branch says which, never to retry.
+  it('says which branch a readable repository lacks, and what supplies it', () => {
+    const details = {
+      check: 'carried',
+      detail: 'o/r has no branch production',
+      repository: 'o/r',
+      lacks: 'o/r has no branch production',
+      clears:
+        "once o/r has a branch production, or the project's release chain names only branches it has",
+    };
+    const reader = releaseBlockerReaderSentence('RELEASE_CHECK_UNEVALUATED', details);
+    const caller = releaseBlockerSentence('RELEASE_CHECK_UNEVALUATED', details);
+
+    expect(reader).toBe(
+      "Reading which landings this release would carry beyond its issues failed: o/r has no branch production, so this answer cannot say whether a release would start: whatever that check would have found is missing from this list. It is read again once o/r has a branch production, or the project's release chain names only branches it has.",
+    );
+    for (const said of [reader, caller]) {
+      expect(said).not.toMatch(/retry|Load this page again|Forge cannot read/i);
+    }
   });
 
   it('leaves the caller its own instruction', () => {

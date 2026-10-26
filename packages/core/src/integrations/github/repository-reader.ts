@@ -22,6 +22,7 @@ import {
   RANGE_COMMIT_LIMIT,
   type RangeCommit,
   type RangeRead,
+  type ReadFailure,
   type RepositoryReader,
   type TagContainment,
 } from '../../projects/repository-reader.js';
@@ -36,6 +37,7 @@ const PAGE_LIMIT = RANGE_COMMIT_LIMIT / PAGE_SIZE;
 
 /** GitHub serves SHA-1 repositories, so a whole sha is 40 digits and a shorter name a prefix. */
 const FULL_SHA_LENGTH = 40;
+const FULL_SHA = /^[0-9a-f]{40}$/i;
 
 const TOO_MANY = `${COMPARE_FILE_CEILING} or more files differ, and the repository names no more than that in one compare`;
 
@@ -167,6 +169,47 @@ async function holding(
   return containing;
 }
 
+/** A request GitHub itself answered with `status`; a mint or a network failure answers null. */
+const statusOf = (err: unknown): number | null =>
+  err instanceof GitHubReadError && err.phase === 'request' ? err.status : null;
+
+/** A branch head GitHub would not give: a branch a repository it shows lacks (422, as for a commit),
+ *  or the repository refusing the read; anything else is unread for a reason of its own. */
+function headFailure(err: unknown, repository: string, branch: string): ReadFailure {
+  const failed = `${repository} could not read the head of ${branch}: ${why(err)}`;
+  if (statusOf(err) === COMMIT_UNKNOWN) return { why: failed, missingBranch: branch };
+  return { why: failed, ...refusedBy(err, [401, 403, REPOSITORY_HIDDEN]) };
+}
+
+/** What a compare GitHub answered 404 for lacks, read one ref at a time: a branch or commit the
+ *  repository was read and does not hold (422), or the repository itself hidden (404). Both found,
+ *  the two share no history. A lookup that fails otherwise names nothing (ISS-1300 r4). */
+async function compareMissing(
+  client: GitHubRepoClient,
+  base: string,
+  head: string,
+  failed: string,
+): Promise<ReadFailure> {
+  const repository = client.fullName;
+  for (const ref of [base, head]) {
+    try {
+      await client.get<CommitRead>(`/repos/${repository}/commits/${encodeURIComponent(ref)}`);
+    } catch (err) {
+      const status = statusOf(err);
+      if (status === REPOSITORY_HIDDEN || status === 401 || status === 403) {
+        return { why: failed, refused: true };
+      }
+      if (status !== COMMIT_UNKNOWN) return { why: failed };
+      return FULL_SHA.test(ref)
+        ? { why: failed, missingCommit: ref }
+        : { why: failed, missingBranch: ref };
+    }
+  }
+  return {
+    why: `${base} and ${head} share no history in ${repository}, so they cannot be compared`,
+  };
+}
+
 /** The reader over a GitHub binding's installation. */
 export function githubRepositoryReader(client: GitHubRepoClient): RepositoryReader {
   const repository = client.fullName;
@@ -246,6 +289,7 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
   return {
     name: repository,
     route: 'binding',
+    reach: client.reach,
 
     async commit(ref: string): Promise<CommitLookup> {
       const named = overlong(ref);
@@ -293,8 +337,7 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
           ? { sha: read.sha.toLowerCase() }
           : { why: `${repository} answered no head commit for ${branch}` };
       } catch (err) {
-        const failed = `${repository} could not read the head of ${branch}: ${why(err)}`;
-        return { why: failed, ...refusedBy(err, [401, 403, REPOSITORY_HIDDEN]) };
+        return headFailure(err, repository, branch);
       }
     },
 
@@ -377,6 +420,7 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
         return await pages(base, head);
       } catch (err) {
         const failed = `${repository} could not compare ${base} with ${head}: ${why(err)}`;
+        if (statusOf(err) === REPOSITORY_HIDDEN) return compareMissing(client, base, head, failed);
         return { why: failed, ...refusedBy(err, [401, 403]) };
       }
     },

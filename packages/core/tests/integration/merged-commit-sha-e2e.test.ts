@@ -438,7 +438,7 @@ describe('ISS-1350 — a mark naming a commit the repository does not resolve is
       'COMMIT_NOT_IN_REPOSITORY',
     );
     expect(said).toContain(
-      `The repository ${repo.fullName} holds no commit ${ABSENT.slice(0, 7)}.`,
+      `The repository ${repo.fullName} holds no commit ${ABSENT.slice(0, 12)}.`,
     );
     expect(await storedMark(id)).toEqual({ merged_at: null, merged_commit_sha: null });
     expect(await commentsOn(id)).toEqual([]);

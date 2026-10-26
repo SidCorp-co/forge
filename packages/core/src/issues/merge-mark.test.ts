@@ -121,7 +121,7 @@ describe('the sentence a caller is given', () => {
       unverified: {
         commit: 'abc1234',
         why: "the git host refused this project's deploy key",
-        clears: "once the tracker can read the project's repository with the deploy key",
+        clears: readableThrough('deploy_key'),
         noReader: false,
       },
     });

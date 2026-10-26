@@ -142,7 +142,7 @@ describe('readRangeTo (ISS-1386)', () => {
       expect(range).toMatchObject({
         kind: 'unread',
         repository: 'o/r',
-        clears: readableThrough('binding'),
+        clears: readableThrough('binding', 'o/r'),
       });
     },
   );

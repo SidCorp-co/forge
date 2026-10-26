@@ -6,7 +6,7 @@
  */
 
 import type { ReleaseBlockerCode } from '@forge/contracts';
-import { refusedCheckClause } from '../issues/landing-correction.js';
+import { lackingCheckClause, refusedCheckClause } from '../issues/landing-correction.js';
 import {
   namedHere,
   type RefusedDeclaration,
@@ -49,16 +49,19 @@ type Details = Record<string, unknown> | undefined;
 /** `same`: the caller's sentence already says the act in a person's words. */
 type Reader = 'same' | ((details: Details) => string | null);
 
+/** Where the repository answered why, a person reads only that answer: the request it was read by
+ *  stays in `details.detail`, behind the sentence (ISS-1300 r4). Only a read nothing explained is
+ *  quoted, and only that one is worth loading the page again for. */
 function uncheckedSentence(details: Details): string {
   const check = details?.check;
   const what =
     typeof check === 'string' && Object.hasOwn(RELEASE_CHECK_WORDS, check)
       ? `${RELEASE_CHECK_WORDS[check as ReleaseCheck]} failed`
       : 'One of the checks that decides whether a release may start could not be run';
+  const answered = lackingCheckClause(details) ?? refusedCheckClause(details);
+  if (answered) return `${what}: ${answered}`;
   const detail =
     typeof details?.detail === 'string' ? ` (${details.detail.replace(/\.$/, '')})` : '';
-  const refused = refusedCheckClause(details);
-  if (refused) return `${what}${detail}: ${refused}`;
   return `${what}${detail}, so this answer cannot say whether a release would start: whatever that check would have found is missing from this list, and every other reason here was found by a check that did run. Load this page again to retry it.`;
 }
 

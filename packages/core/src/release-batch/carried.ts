@@ -59,6 +59,7 @@ type Unread = {
   why: string;
   repository?: string;
   clears?: string;
+  lacks?: string;
 };
 
 export type CarriedReading =
