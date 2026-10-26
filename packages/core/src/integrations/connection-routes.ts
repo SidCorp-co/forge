@@ -48,6 +48,7 @@ import {
   connectionCreateSchema,
   connectionUpdateSchema,
   parseProviderHalf,
+  SHARE_TAKES_NO_KEY,
   splitProviderConfig,
 } from './provider-schemas.js';
 import {
@@ -217,8 +218,12 @@ const bindExistingSchema = z
     // existing credential into a project is still a connect, and whether agents there may use it is
     // still a property of the binding it creates rather than of a map somewhere else.
     agentAccess: z.enum(AGENT_ACCESS_VALUES).optional(),
+    secrets: z.unknown().optional(),
   })
   .superRefine((body, ctx) => {
+    if (body.secrets !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['secrets'], message: SHARE_TAKES_NO_KEY });
+    }
     checkRoleStagesPairing(body, ctx);
   });
 

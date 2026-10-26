@@ -269,6 +269,10 @@ export function noKeyToSaveMessage(provider: string): string {
   return `This is the ${providerLabel(provider)} integration, which keeps no key or secret, so there is nothing for one to be saved to. Send the write without one.`;
 }
 
+/** A share binds a connection that holds its own key, so a key sent with one is refused, never dropped. */
+export const SHARE_TAKES_NO_KEY =
+  'This shares a connection that already holds its own key, so a share carries none: whoever may manage the connection changes its key on the connection itself. Send the share without one.';
+
 export function noKeyToSave(provider: string): HTTPException {
   return badRequest(noKeyToSaveMessage(provider));
 }

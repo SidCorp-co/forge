@@ -110,6 +110,23 @@ describe('addressForReader', () => {
     );
   });
 
+  it('says who may save a new token where a 401 told the reader to save one', () => {
+    const refused = new CoolifyApiError(
+      401,
+      '{"message":"Unauthenticated."}',
+      'The server at example.com answered 401 Unauthorized.',
+      'GET /api/v1/applications',
+    );
+    const said = addressForReader(describeCoolifyAnswer(refused), who);
+    expect(said).not.toMatch(/save a new token from|check the address/i);
+    expect(said).toContain(
+      `it refused the stored API token, and only ${who} can save a new one to this connection, so ask one of them.`,
+    );
+    expect(said).toContain(
+      `If it is not, only ${who} can change the address saved on this connection`,
+    );
+  });
+
   it('leaves a sentence that names no address as it was', () => {
     expect(addressForReader('Coolify answered 500. Test again once it answers.', who)).toBe(
       'Coolify answered 500. Test again once it answers.',

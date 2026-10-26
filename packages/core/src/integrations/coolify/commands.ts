@@ -111,7 +111,7 @@ export async function resolveIntegrationRow<T extends { id: string }>(
   if (row) return row;
   if (rows.length > 1 && !input.integrationId) {
     throw new CoolifyCommandError(
-      `This project has ${rows.length} Coolify bindings switched on, so Forge cannot tell which one is meant. Name it by its integrationId. ${NOTHING_ASKED}`,
+      `This project has ${rows.length} Coolify bindings switched on, so Forge cannot tell which one is meant. Name the one meant by its id, which the list of this project's Coolify bindings gives. ${NOTHING_ASKED}`,
     );
   }
   const bound = (await listBindingsForProject(projectId)).filter(
@@ -129,7 +129,7 @@ export async function resolveIntegrationRow<T extends { id: string }>(
   }
   if (input.integrationId) {
     throw new CoolifyCommandError(
-      `None of this project's Coolify bindings has the integrationId that was named; its Integrations tab lists the ones it has. ${NOTHING_ASKED}`,
+      `None of this project's Coolify bindings has the id that was named; the list of this project's Coolify bindings gives the ids it has. ${NOTHING_ASKED}`,
     );
   }
   return null;

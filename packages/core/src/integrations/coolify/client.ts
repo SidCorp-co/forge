@@ -1,5 +1,5 @@
 import { STATUS_CODES } from 'node:http';
-import { CHECK_ADDRESS } from '../unreached.js';
+import { CHECK_ADDRESS, SAVE_NEW_KEY } from '../unreached.js';
 import type {
   CoolifyApplicationLogsResponse,
   CoolifyApplicationResponse,
@@ -139,7 +139,7 @@ export function describeCoolifyForbidden(err: CoolifyApiError): string {
  */
 export function describeCoolifyUnauthorized(err: CoolifyApiError): string {
   const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
-  return `${said} If this is Coolify, it refused the stored API token, so save a new token from Keys & Tokens in Coolify. ${CHECK_ADDRESS.ifNot}`;
+  return `${said} If this is Coolify, it refused the stored API token, ${SAVE_NEW_KEY.coolify} ${CHECK_ADDRESS.ifNot}`;
 }
 
 /** Every refusal reading a Coolify answer words it here, so none says "Coolify answered" (ISS-1421 r17). */

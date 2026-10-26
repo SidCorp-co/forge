@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   createTestOrgMember,
   createTestProject,
@@ -35,6 +35,8 @@ let orgId: string;
 
 /** A host no resolver answers, so a check fails before any network is reached. */
 const NOWHERE = 'https://coolify.iss-1421-r29.invalid';
+/** A host this file's fetch stub answers 401 for, as a Coolify that refuses the stored token. */
+const REFUSES_TOKEN = 'https://coolify-refuses.iss-1421-r29.invalid';
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -88,7 +90,7 @@ async function callAs(bearer: string, method: string, url: string, body?: unknow
 }
 
 /** An organization's live Coolify, bound to a fresh project of the org's as its live deploy target. */
-async function coolifyProject() {
+async function coolifyProject(baseUrl = NOWHERE) {
   const projectId = (await createTestProject(harness.db, owner.id, { orgId })).id;
   await createTestProjectMember(harness.db, { userId: admin.id, projectId, role: 'admin' });
   await createTestProjectMember(harness.db, { userId: member.id, projectId, role: 'member' });
@@ -97,7 +99,7 @@ async function coolifyProject() {
     ownerId: orgId,
     provider: 'coolify',
     displayName: `coolify ${randomUUID().slice(0, 6)}`,
-    config: { baseUrl: NOWHERE },
+    config: { baseUrl },
     secrets: { apiToken: 'scratch-made-up-token' },
   });
   const binding = await store.createBinding({
@@ -199,6 +201,23 @@ describe('a Coolify read over a binding that answers nothing says why and who ma
     const said = await images(owner.token, projectId, randomUUID());
     expect(said.status).toBe(400);
     expect(String(said.body.message)).toContain("None of this project's Coolify bindings has");
+    expect(String(said.body.message)).not.toContain('integrationId');
+  });
+
+  it('says a project with several Coolify bindings and none named cannot tell which, naming no parameter', async () => {
+    const { projectId, connectionId } = await coolifyProject();
+    await store.createBinding({
+      connectionId,
+      projectId,
+      provider: 'coolify',
+      role: 'deploy',
+      stages: ['preview'],
+      config: { targets: [{ id: 'api', label: 'Api', resourceUuid: 'made-up-uuid-2' }] },
+    });
+    const said = await images(owner.token, projectId);
+    expect(said.status).toBe(400);
+    expect(String(said.body.message)).toContain('2 Coolify bindings switched on');
+    expect(String(said.body.message)).not.toContain('integrationId');
   });
 });
 
@@ -219,5 +238,40 @@ describe('Test connection names who may change the address its reader may not (c
     const toOwner = String((await test(owner.token)).body.message);
     expect(toOwner).toMatch(/Check (that )?the address/);
     expect(toOwner).not.toContain('ask one of them');
+  });
+
+  it('tells a plain member reading the bound targets or rollback images who may change the address, never to check it', async () => {
+    const { projectId, bindingId } = await coolifyProject(REFUSES_TOKEN);
+    const realFetch = globalThis.fetch;
+    const stub = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) =>
+        String(input instanceof Request ? input.url : input).startsWith(REFUSES_TOKEN)
+          ? new Response('{"message":"Unauthenticated."}', { status: 401 })
+          : realFetch(input, init),
+      );
+    try {
+      for (const path of ['targets', 'rollback-images']) {
+        for (const named of [bindingId, undefined]) {
+          const at = `${path}, ${named ? 'naming the binding' : 'naming none'}`;
+          const url = `/api/projects/${projectId}/integrations/coolify/${path}${named ? `?integrationId=${named}` : ''}`;
+          const toOwner = String((await callAs(owner.token, 'GET', url)).body.message);
+          expect(toOwner, at).toContain(
+            'If it is not, check the address saved on this connection.',
+          );
+          const toMember = String((await callAs(member.token, 'GET', url)).body.message);
+          expect(toMember, at).toMatch(/refused the stored API token/);
+          expect(toMember, at).not.toMatch(/check the address/i);
+          expect(toMember, at).toContain(
+            'only an owner or admin of the organization that owns it can save a new one to this connection',
+          );
+          expect(toMember, at).toContain(
+            'If it is not, only an owner or admin of the organization that owns it can change the address',
+          );
+        }
+      }
+    } finally {
+      stub.mockRestore();
+    }
   });
 });

@@ -182,6 +182,27 @@ describe('a key sent to a provider that keeps none (criteria 334, 335)', () => {
   });
 });
 
+describe('a key sent with a share is refused, never dropped', () => {
+  it('refuses a share carrying a key, saying the connection keeps its own, and binds nothing', async () => {
+    const { connectionId } = await sentryBinding({ type: 'org', id: orgId });
+    const target = await freshProject();
+    const { SHARE_TAKES_NO_KEY } = await import('../../src/integrations/provider-schemas.js');
+    const said = await callAs(
+      owner.token,
+      'POST',
+      `/api/integration-connections/${connectionId}/bindings`,
+      { projectId: target, role: 'service', secrets: { authToken: 'scratch-other-token' } },
+    );
+    expect(said.status, JSON.stringify(said.body)).toBe(400);
+    expect(said.body.message).toBe(SHARE_TAKES_NO_KEY);
+    expect(String(said.body.message)).not.toMatch(/secrets|field/);
+    const bound = (await store.listBindingsForProject(target)).filter(
+      (p) => p.connection.id === connectionId,
+    );
+    expect(bound).toHaveLength(0);
+  });
+});
+
 // ISS-1421 r29, judge-119 on 331: "Ask the member who owns it" named nobody a reader could find
 // where the owner set no display name (criterion 338).
 describe('a nameless owner is named as the Members list shows them (criterion 338)', () => {

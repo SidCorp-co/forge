@@ -49,6 +49,7 @@ vi.mock('./commands.js', () => {
   return {
     CoolifyCommandError,
     CoolifyConnectionRemovedError: class extends CoolifyCommandError {},
+    activeCoolifyIntegrations: async () => [],
     coolifyDeliveryStatus: vi.fn(),
     listCoolifyIntegrations: vi.fn(),
     runCoolifyDeploy: vi.fn(),

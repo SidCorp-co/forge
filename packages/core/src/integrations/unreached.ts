@@ -103,14 +103,24 @@ const ASK_WHO: Record<keyof typeof CHECK_ADDRESS, (only: string) => string> = {
     `so the address saved on this connection is the first thing to check; ${only.charAt(0).toLowerCase()}${only.slice(1)} can change it, so ask one of them.`,
 };
 
+/** What a refused stored key tells its reader to do, which only the connection's key-savers may. */
+export const SAVE_NEW_KEY = {
+  coolify: 'so save a new token from Keys & Tokens in Coolify.',
+} as const;
+
 /**
- * `text` as a reader who may not change the connection's address reads it: each `CHECK_ADDRESS`
- * sentence becomes who may change it, `who` being `BindingActs.whoSavesKey` ("its owner or …").
+ * `text` as a reader who may not save the connection's key or change its address reads it: each
+ * `CHECK_ADDRESS` and `SAVE_NEW_KEY` sentence becomes who may, `who` being `BindingActs.whoSavesKey`.
  */
 export function addressForReader(text: string, who: string): string {
   let said = text;
   for (const key of Object.keys(CHECK_ADDRESS) as (keyof typeof CHECK_ADDRESS)[]) {
     said = said.split(CHECK_ADDRESS[key]).join(ASK_WHO[key](`Only ${who}`));
+  }
+  for (const own of Object.values(SAVE_NEW_KEY)) {
+    said = said
+      .split(own)
+      .join(`and only ${who} can save a new one to this connection, so ask one of them.`);
   }
   return said;
 }
