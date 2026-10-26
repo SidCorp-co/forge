@@ -335,6 +335,16 @@ describe('releasing a template', () => {
 
 describe('reapAbandoned, over a shared template', () => {
   const DAY = IDLE_REAP_AFTER_MS;
+  // A second suite on this instance reaps on the real clock, planted as `other`: a case's template
+  // aged past the day on it is that suite's to drop, so these age to just short and reap ahead.
+  const SOON = 60 * 1000;
+  let other: postgres.Sql;
+  beforeAll(() => {
+    other = postgres(adminUrl, { max: 1, onnotice: () => {} });
+  });
+  afterAll(async () => {
+    await other.end({ timeout: 5 });
+  });
 
   it(
     'leaves it alone while a run holds it, however long ago anything last touched it',
@@ -370,9 +380,10 @@ describe('reapAbandoned, over a shared template', () => {
       const got = await take(migrations(`idle-${mintRunToken()}`), counted().migrate);
       await got.release();
       held.length = 0;
-      await age(got.name, DAY + 60 * 60 * 1000);
+      await age(got.name, DAY - SOON);
+      await reapAbandoned(other);
 
-      expect(await reapAbandoned(admin)).toContain(got.name);
+      expect(await reapAbandoned(admin, Date.now() + 2 * SOON)).toContain(got.name);
       expect(await existing(got.name)).toBeUndefined();
     },
     SLOW,
