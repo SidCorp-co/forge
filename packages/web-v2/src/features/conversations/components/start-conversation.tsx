@@ -14,7 +14,7 @@ import { personChoice } from "@forge/contracts/person-name";
 import { orderPeople } from "@/lib/people/order-people";
 import { useState } from "react";
 import { useAuth } from "@/providers/auth-provider";
-import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
+import { Button, Checkbox, ErrorState, Icon, PageTitle, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useOpenConversation, useProjectCandidates, useRoomOpeners } from "../hooks";
@@ -28,7 +28,7 @@ const sameHandle = (a: PickedHandle, b: PickedHandle) =>
   a.projectId === b.projectId && a.userId === b.userId;
 
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
-  const { projects: visible, isLoading: projectsLoading } = useOrgScopedProjects();
+  const { projects: visible, isLoading: projectsLoading, error: projectsError, refetch: readProjects } = useOrgScopedProjects();
   // Whose agent can answer is read before anything is offered: a project whose agent lost its role is
   // marked as Add an agent marks it, and cannot be picked (ISS-1229 r36, judge-97).
   const openersQ = useRoomOpeners(visible.some((p) => startsRooms(p.role)));
@@ -78,13 +78,29 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     );
   };
 
+  // Projects that could not be read are not projects there are none of (ISS-1229 r47, judge-137). The pane is
+  // the page's state then, so it heads the page.
+  if (projectsError) {
+    return (
+      <div className="grid h-full min-h-0 place-items-center px-4 py-8" data-testid="start-projects-unread">
+        <ErrorState
+          level={1}
+          title="Couldn't load your projects"
+          message={`${formatApiError(projectsError)} A conversation is about a project, so none can be started or listed until they are read.`}
+          onRetry={readProjects}
+        />
+      </div>
+    );
+  }
+
   // Until the reader's roles are read, nothing is offered: a viewer would be invited first.
   if (isLoading) {
     return (
       <div className="grid h-full min-h-0 place-items-center px-4 py-8">
-        <p role="status" data-testid="start-loading" className="fg-body-sm flex items-center gap-2 text-muted">
-          <Spinner size={14} /> Reading your projects…
-        </p>
+        <div role="status" data-testid="start-loading" className="flex items-center gap-2 text-muted">
+          <Spinner size={14} />
+          <PageTitle className="fg-h3">Reading your projects</PageTitle>
+        </div>
       </div>
     );
   }
@@ -93,9 +109,9 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-4 py-8">
       <div className="flex w-full max-w-sm flex-col gap-4">
         <div className="text-center">
-          <p className="fg-h3">
+          <PageTitle className="fg-h3">
             {onlyViews ? "Conversations you can read" : nothingToStart ? "No project you can see" : "Start a conversation"}
-          </p>
+          </PageTitle>
           <p className="fg-body-sm mt-1 text-muted">
             {onlyViews
               ? "You hold the viewer role on every project here, so their conversations are yours to read from the list."

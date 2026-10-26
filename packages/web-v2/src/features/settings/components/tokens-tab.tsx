@@ -446,6 +446,15 @@ export function TokensTab() {
                   : "Optional. A project-level token works only against the chosen project, and MCP clients can drop the X-Forge-Project-Slug header."
               }
             >
+              {/* Unread projects are not projects there are none of: only "None" would be offered (ISS-1229 r47). */}
+              {projectsQ.isError && projectsQ.data === undefined && (
+                <p className="fg-body-sm mb-1.5" role="alert" data-testid="token-projects-unread">
+                  Your projects could not be read, so none can be chosen: {formatApiError(projectsQ.error)}{" "}
+                  <Button variant="secondary" size="sm" onClick={() => void projectsQ.refetch()}>
+                    Retry
+                  </Button>
+                </p>
+              )}
               <Select
                 options={projectOptions}
                 value={boundProjectId}

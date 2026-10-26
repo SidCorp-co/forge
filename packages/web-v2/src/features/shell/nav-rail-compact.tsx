@@ -14,6 +14,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from '@/design/icons/icon';
 import { badgeFace, type BadgeRead, type QueryRead } from '@/design/patterns/badge-read';
 import { ReadFigure } from '@/features/projects/components/read-figure';
+import { type ProjectsUnread, ProjectsUnreadLine } from '@/features/projects/components/projects-unread';
 import { Menu, type MenuItem } from '@/design/patterns/menu';
 import { Popover } from '@/design/primitives/popover';
 import { ProjectMark } from '@/design/primitives/project-mark';
@@ -61,6 +62,8 @@ export interface NavRailCompactProps {
     liveSessionsRead: QueryRead;
   } | null;
   switcherProjects: SwitcherProject[];
+  /** The projects read failed with no list held: the switcher says so rather than holding none. */
+  projectsUnread?: ProjectsUnread | null;
   onNavigate: (key: string) => void;
   onSelectProject: (slug: string) => void;
   onTogglePin: (id: string) => void;
@@ -166,6 +169,7 @@ export function NavRailCompact({
   activeSlug,
   activeProject,
   switcherProjects,
+  projectsUnread = null,
   onNavigate,
   onSelectProject,
   onTogglePin,
@@ -367,9 +371,12 @@ export function NavRailCompact({
                   </button>
                 </div>
               ))}
-              {rows.length === 0 && (
-                <p className="px-2 py-3 text-13 text-muted">No projects match.</p>
-              )}
+              {rows.length === 0 &&
+                (projectsUnread ? (
+                  <ProjectsUnreadLine unread={projectsUnread} className="px-2 py-3" />
+                ) : (
+                  <p className="px-2 py-3 text-13 text-muted">No projects match.</p>
+                ))}
             </div>
             <div className="my-1.5 mx-1 h-px bg-[color:var(--border-subtle)]" />
             <button
@@ -417,7 +424,28 @@ export function NavRailCompact({
           </>
         )}
 
-        {!activeProject && switcherProjects.length === 0 && (
+        {!activeProject && switcherProjects.length === 0 && projectsUnread && (
+          <>
+            {/* A failed read holds no project to add beside: it is said, with the act that reads again (ISS-1229 r47). */}
+            <button
+              type="button"
+              onClick={projectsUnread.onRetry}
+              aria-label="Couldn't load your projects. Retry"
+              title={projectsUnread.message}
+              data-testid="rail-projects-unread"
+              className="flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle transition-colors hover:bg-hover"
+            >
+              <span className="inline-flex size-[30px] items-center justify-center rounded-md border border-[color:var(--flame-500)]">
+                <Icon name="alert" size={16} className="text-[color:var(--flame-700)]" />
+              </span>
+              <span className="text-10 font-semibold tracking-[-0.01em] text-muted">Retry</span>
+            </button>
+
+            <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
+          </>
+        )}
+
+        {!activeProject && switcherProjects.length === 0 && !projectsUnread && (
           <>
             <button
               type="button"

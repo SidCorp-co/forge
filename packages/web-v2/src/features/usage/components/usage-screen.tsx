@@ -21,13 +21,17 @@ export function UsageScreen() {
   return (
     <PageContainer>
       <header className="mb-4">
-        <PageTitle className="fg-h2">Usage</PageTitle>
+        {/* The state below is the page's only content, so it is the h1 and names the tab (ISS-1229 r47). */}
+        <PageTitle className="fg-h2" heads={false}>
+          Usage
+        </PageTitle>
         <p className="fg-body-sm mt-0.5 text-muted">
           Token spend for {orgName} · self-hosted
         </p>
       </header>
 
       <EmptyState
+        level={1}
         title="Organization usage is coming"
         message={`Spend metering for ${orgName} isn't wired up yet. Per-project token usage is available on each project's dashboard in the meantime.`}
       />

@@ -3,7 +3,7 @@
 // ISS-1229 r35, judge-95: the project drawer offered a viewer of its project a new room, from its
 // history list and its chat alike, which core refuses them.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const reader = { role: "viewer" as string | null };
@@ -11,9 +11,22 @@ vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", name: "Ops", slug: "ops", role: reader.role }] }),
 }));
 vi.mock("./conversation-chat", () => ({
-  ConversationChat: ({ onNew, emptyBody }: { onNew?: () => void; emptyBody?: React.ReactNode }) => (
+  ConversationChat: ({
+    onNew,
+    onOpenHistory,
+    emptyBody,
+  }: {
+    onNew?: () => void;
+    onOpenHistory?: () => void;
+    emptyBody?: React.ReactNode;
+  }) => (
     <div>
       {onNew && <span data-testid="chat-offers-new" />}
+      {onOpenHistory && (
+        <button type="button" onClick={onOpenHistory}>
+          History
+        </button>
+      )}
       {emptyBody}
     </div>
   ),
@@ -44,5 +57,16 @@ describe("the project drawer's offer of a new room", () => {
     reader.role = role;
     render(<ConversationPanel projectId="p1" />);
     expect(offers()).toEqual([true, true]);
+  });
+});
+
+// ISS-1229 r47: the panel sits over a page whose own title is its h1, so its title is never a second one.
+describe("the project drawer's own title", () => {
+  it("is a section heading over the page, never an h1", () => {
+    reader.role = "member";
+    render(<ConversationPanel projectId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Conversations" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
   });
 });

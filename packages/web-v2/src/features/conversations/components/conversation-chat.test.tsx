@@ -149,6 +149,47 @@ describe("the browser tab", () => {
     open();
     expect(document.title).toBe("Issues · Forge");
   });
+
+  // ISS-1229 r47: a docked room's title was a second h1 on whatever page it sat over.
+  it("heads nothing in the dock: a docked room's title is no h1", () => {
+    room = detail({ title: "Desk triage" });
+    open();
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Desk triage" })).toBeInTheDocument();
+  });
+});
+
+// ISS-1229 r47, judge-137: at 390 a room whose read failed showed "Conversation" as the h1, the state as an
+// h2, and the tab "Conversation · Forge".
+describe("a room whose read failed on the Conversations page", () => {
+  const onPage = () =>
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" namesTab />
+      </QueryClientProvider>,
+    );
+
+  it("heads the page with the failure, the one h1, and names the tab after it", () => {
+    roomError = new ApiError(500, "The server ran into a problem.");
+    onPage();
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([
+      "Couldn't load this conversation",
+    ]);
+    expect(document.title).toBe("Couldn't load this conversation · Forge");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("says a room refused for a project role is one the reader has no access to, in core's words", () => {
+    const why =
+      "You hold no role on a project this room is about, so you cannot read this room. An admin of that project can add you to it.";
+    roomError = new ApiError(403, why, "CONVERSATION_OUT_OF_SCOPE");
+    onPage();
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([
+      "No access to this conversation",
+    ]);
+    expect(screen.getByText(why)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
 });
 
 describe("the composer this pane renders", () => {
@@ -654,7 +695,10 @@ describe("an empty room", () => {
     room = detail({ participants: [agent()], scopeProjects: [desk], scope: ["p1"] });
     open();
     expect(emptyPane().getByText("Nothing has been said here yet")).toBeInTheDocument();
-    expect(emptyPane().getByText("You can read this room, not post in it: you hold the viewer role on Desk.")).toBeInTheDocument();
+    expect(emptyPane().getByText("What is said here shows up for you to read.")).toBeInTheDocument();
+    expect(screen.getByTestId("composer-read-only")).toHaveTextContent(
+      "You are a viewer of Desk, so you cannot post here. Only a member or admin of Desk can, so ask one of them.",
+    );
     expect(emptyPane().queryByText("Start a conversation")).not.toBeInTheDocument();
     expect(emptyPane().queryByText(/Ask the agent anything/)).not.toBeInTheDocument();
   });
@@ -665,10 +709,9 @@ describe("an empty room", () => {
     open();
     expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
     expect(
-      emptyPane().getByText(
-        "You can read this room, not post in it: you hold the viewer role on Desk. The reason is in this room's About line, at the top.",
-      ),
+      emptyPane().getByText("The reason is in this room's About line, at the top."),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("composer-read-only")).toHaveTextContent("You are a viewer of Desk, so you cannot post here.");
     expect(whySaid()).toHaveLength(1);
     expect(within(screen.getByTestId("scope-notice")).getByText(/@desk can't answer: it no longer holds a role on Desk/)).toBeInTheDocument();
   });
@@ -796,6 +839,18 @@ describe("a room no agent can answer, and a room its reader cannot post in", () 
     expect(screen.queryByTestId("composer-no-answer")).not.toBeInTheDocument();
   });
 
+  // ISS-1229 r47 (aea8bed8, routed from ISS-1421 r33): a viewer's room with messages said only "Read-only access".
+  it("tells a viewer of a room with messages, where the box would be, why they cannot post and who can", () => {
+    projectRole = "viewer";
+    room = detail({ participants: [agent()], scopeProjects: [desk], scope: ["p1"], messages: [said] });
+    open();
+    expect(screen.queryByLabelText("Message")).not.toBeInTheDocument();
+    expect(screen.getByTestId("composer-read-only")).toHaveTextContent(
+      "You are a viewer of Desk, so you cannot post here. Only a member or admin of Desk can, so ask one of them.",
+    );
+    expect(screen.queryByText("Read-only access")).not.toBeInTheDocument();
+  });
+
   it("never tells a viewer of one of a room's projects to take an agent out", () => {
     projectRole = "member";
     otherProjects = [{ id: "p2", name: "Ops", role: "viewer" }];
@@ -809,11 +864,9 @@ describe("a room no agent can answer, and a room its reader cannot post in", () 
     open();
     expect(screen.queryByText(/[Tt]ake one of its agents out/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Message")).not.toBeInTheDocument();
-    expect(
-      within(screen.getByTestId("conversation-empty")).getByText(
-        "You can read this room, not post in it: you hold the viewer role on Ops.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("composer-read-only")).toHaveTextContent(
+      "You are a viewer of Ops, so you cannot post here. Only a member or admin of Ops can, so ask one of them.",
+    );
   });
 
   it("offers taking an agent out only to a reader who may, and tells any other poster who can", () => {

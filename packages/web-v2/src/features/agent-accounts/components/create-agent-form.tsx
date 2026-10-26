@@ -34,7 +34,7 @@ export function handleProblem(handle: string): string | null {
 }
 
 export function CreateAgentForm({ orgId }: { orgId: string }) {
-  const { projects, isLoading } = useOrgScopedProjects();
+  const { projects, isLoading, error: projectsUnread, refetch: readProjects } = useOrgScopedProjects();
   const create = useCreateAgent(orgId);
   const [handle, setHandle] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
@@ -107,6 +107,14 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
           >
             {isLoading ? (
               <p className="fg-body-sm">Loading projects…</p>
+            ) : projectsUnread ? (
+              // Projects that could not be read are not projects the organization has none of (ISS-1229 r47).
+              <p className="fg-body-sm" role="alert" data-testid="agent-projects-unread">
+                This organization&apos;s projects could not be read: {formatApiError(projectsUnread)}{" "}
+                <Button variant="secondary" size="sm" onClick={readProjects}>
+                  Retry
+                </Button>
+              </p>
             ) : projects.length === 0 ? (
               <p className="fg-body-sm">
                 This organization has no projects yet. An agent needs one to act on.

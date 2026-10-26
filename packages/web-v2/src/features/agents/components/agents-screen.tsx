@@ -1,6 +1,6 @@
 "use client";
 
-import { PageContainer, ScreenTabs, type TabItem } from "@/design";
+import { PageContainer, PageTitle, ScreenTabs, type TabItem } from "@/design";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useTabParam } from "@/lib/utils/use-tab-param";
@@ -26,7 +26,17 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <ScreenTabs tabs={TABS} value={tab} onChange={(v) => setTab(v as AgentsTab)} />
+      {/* The page's one h1 and its tab, whichever pane is open (ISS-1229 r47, judge-137). */}
+      <ScreenTabs
+        tabs={TABS}
+        value={tab}
+        onChange={(v) => setTab(v as AgentsTab)}
+        header={
+          <header className="mb-4">
+            <PageTitle className="fg-h2">Agents</PageTitle>
+          </header>
+        }
+      />
       <div className="min-h-0 flex-1 overflow-auto">
         {/* The panes sit in the column the tab strip draws, so their rows end where its divider ends. */}
         {tab !== "sessions" && (

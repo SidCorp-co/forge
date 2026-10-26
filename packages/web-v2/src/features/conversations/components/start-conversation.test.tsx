@@ -19,8 +19,17 @@ let loading = false;
 let projects: Array<{ id: string; name: string; slug: string; role: string | null }> = [
   { id: "p1", name: "Billing", slug: "billing", role: "member" },
 ];
+let projectsError: unknown = null;
+const readProjects = vi.fn(() => {
+  projectsError = null;
+});
 vi.mock("@/features/projects/hooks", () => ({
-  useOrgScopedProjects: () => ({ projects, isLoading: loading }),
+  useOrgScopedProjects: () => ({
+    projects: projectsError ? [] : projects,
+    isLoading: loading,
+    error: projectsError,
+    refetch: readProjects,
+  }),
 }));
 type Opener = { projectId: string; handle: string; reachable: boolean; blocked: "lost-role" | "taken" | "nameless" | null };
 let openers: Opener[] | null = null;
@@ -44,6 +53,8 @@ const { StartConversation } = await import("./start-conversation");
 afterEach(() => {
   cleanup();
   loading = false;
+  projectsError = null;
+  readProjects.mockClear();
   openers = null;
   openersLoading = false;
   openersFailed = false;
@@ -274,5 +285,23 @@ describe("a project whose own agent lost its role there", () => {
     render(<StartConversation onStarted={vi.fn()} />);
     expect(screen.getByTestId("start-loading")).toBeTruthy();
     expect(screen.queryByRole("combobox")).toBeNull();
+  });
+});
+
+// ISS-1229 r47, judge-137: a failed projects read said "No project you can see ... this organization holds
+// none you can see", which was false, and offered no Retry.
+describe("the chooser when the reader's projects cannot be read", () => {
+  it("says it could not load them, heads the page with it and offers Retry, never that there are none", () => {
+    projectsError = new Error("The server ran into a problem and could not finish the request.");
+    const { rerender } = render(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.getByRole("heading", { level: 1, name: "Couldn't load your projects" })).toBeTruthy();
+    expect(document.title).toBe("Couldn't load your projects · Forge");
+    expect(screen.queryByText(/No project you can see|holds none you can see/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(readProjects).toHaveBeenCalledTimes(1);
+    openers = [{ projectId: "p1", handle: "billing", reachable: true, blocked: null }];
+    rerender(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.queryByRole("heading", { name: "Couldn't load your projects" })).toBeNull();
+    expect(screen.getByText("Start a conversation")).toBeTruthy();
   });
 });

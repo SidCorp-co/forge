@@ -5,7 +5,7 @@
 
 import { Icon } from "@/design";
 import { useDisclosure } from "@/features/session/disclosure";
-import { formatResultBody } from "@/features/session/result-summary";
+import { formatToolBody } from "@/features/session/result-summary";
 import type { ToolCallData } from "@/features/session/types";
 import { toolWords } from "../tool-words";
 
@@ -62,10 +62,10 @@ export function RoomToolCard({
           <dt className="text-muted">tool</dt>
           <dd>{tool.name}</dd>
           <dt className="mt-1 text-muted">arguments</dt>
-          <dd className="whitespace-pre-wrap break-all">{formatResultBody(tool.input ?? {})}</dd>
+          <dd className="whitespace-pre-wrap break-all">{formatToolBody(tool.input ?? {})}</dd>
           <dt className="mt-1 text-muted">result</dt>
           <dd className="whitespace-pre-wrap break-all">
-            {tool.result === undefined ? "none yet" : formatResultBody(tool.result)}
+            {tool.result === undefined ? "none yet" : formatToolBody(tool.result)}
           </dd>
         </dl>
       )}

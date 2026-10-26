@@ -150,6 +150,10 @@ export function IntegrationsScreen() {
     [projectsQ.data, activeOrg],
   );
 
+  // Which connections belong to this space turns on the projects that use them: with those unread and
+  // connections to sort, the page cannot say what is here, nor that nothing is (ISS-1229 r47, judge-137).
+  const scopeUnread = projectsQ.isError && projectsQ.data === undefined && all.length > 0;
+
   const scopeName = activeOrg
     ? activeOrg.isPersonal
       ? "your personal space"
@@ -207,7 +211,7 @@ export function IntegrationsScreen() {
     <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <PageTitle className="fg-h2" heads={!connections.isError}>Integrations</PageTitle>
+          <PageTitle className="fg-h2" heads={!connections.isError && !scopeUnread}>Integrations</PageTitle>
           <p className="fg-body-sm text-muted">
             Credentials in {scopeName}, shared across projects. Configure a project&apos;s
             integrations in its settings → Integrations.
@@ -219,7 +223,7 @@ export function IntegrationsScreen() {
         />
       </div>
 
-      {inScope.length > 1 && (
+      {inScope.length > 1 && !scopeUnread && (
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={query}
@@ -256,6 +260,13 @@ export function IntegrationsScreen() {
         <ErrorState title="Couldn't load your connections" level={1}
           message={formatApiError(connections.error)}
           onRetry={() => connections.refetch()}
+        />
+      ) : scopeUnread ? (
+        <ErrorState
+          level={1}
+          title="Couldn't load your projects"
+          message={`${formatApiError(projectsQ.error)} Which connections belong to ${scopeName} turns on the projects that use them.`}
+          onRetry={() => projectsQ.refetch()}
         />
       ) : items.length === 0 ? (
         <div className="border-y border-line" data-testid="connections-empty">

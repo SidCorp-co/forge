@@ -113,10 +113,11 @@ function bandClass(sticky: boolean, pad: string): string {
 }
 
 /** Rendered in place of the composer for project viewers (read-only role). */
-export function ReadOnlyComposerNote({ sticky = true }: { sticky?: boolean }) {
+/** Where the message box would be for a reader who may not post: why, where the caller can say it. */
+export function ReadOnlyComposerNote({ sticky = true, says = "Read-only access" }: { sticky?: boolean; says?: string }) {
   return (
-    <div className={bandClass(sticky, "px-4 py-4 sm:px-6")}>
-      <p className="fg-body-sm text-center text-muted">Read-only access</p>
+    <div className={bandClass(sticky, "px-4 py-4 sm:px-6")} data-testid="composer-read-only">
+      <p className="fg-body-sm text-center text-muted">{says}</p>
     </div>
   );
 }

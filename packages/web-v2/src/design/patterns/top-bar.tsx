@@ -86,7 +86,8 @@ export function TopBar({
           <Breadcrumb items={breadcrumb} onNavigate={onBreadcrumbNavigate} />
         </div>
       ) : (
-        title && <PageTitle className="fg-h3 mr-2 truncate">{title}</PageTitle>
+        // The bar is chrome over the page: its title never heads the page the bar sits above (ISS-1229 r47).
+        title && <PageTitle className="fg-h3 mr-2 truncate" heads={false}>{title}</PageTitle>
       )}
 
       <div className="ml-auto flex items-center gap-2">

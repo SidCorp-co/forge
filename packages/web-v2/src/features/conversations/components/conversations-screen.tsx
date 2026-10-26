@@ -29,7 +29,7 @@ import {
   useRenameConversation,
 } from "../hooks";
 import { STEPS_ASIDE } from "../composing";
-import { changesRoom, startsRooms } from "../membership";
+import { changesRoom, NO_ACCESS_TITLE, refusedForScope, startsRooms } from "../membership";
 import { conversationTitle, type RoomWithoutAProject } from "../types";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationSidebar } from "./conversation-sidebar";
@@ -74,9 +74,9 @@ function addressRoom(room: string | null, archived: boolean) {
   if (next !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(null, "", next);
 }
 
-/** A read of a room refused as gone or not the reader's: the address names no room they can open. */
+/** A read of a room refused as gone, or as a one-to-one room the reader is not in: the address names no room they can open. */
 function notTheirs(err: unknown): boolean {
-  return err instanceof ApiError && (err.status === 404 || err.status === 403);
+  return err instanceof ApiError && (err.status === 404 || (err.status === 403 && err.code === "NOT_IN_THE_ROOM"));
 }
 
 const roomId = z.uuid();
@@ -94,7 +94,13 @@ function RoomSub({ projectId }: { projectId: string }) {
 
 export function ConversationsScreen() {
   const projectsQ = useProjects();
-  const { projects: orgProjects, projectIds: orgProjectIds, isLoading: orgLoading } = useOrgScopedProjects();
+  const {
+    projects: orgProjects,
+    projectIds: orgProjectIds,
+    isLoading: orgLoading,
+    error: projectsUnread,
+    refetch: readProjects,
+  } = useOrgScopedProjects();
   const projectIdList = useMemo(() => [...orgProjectIds].sort(), [orgProjectIds]);
   const addressed = useRef(addressedRoom());
   const [showArchived, setShowArchived] = useState(addressed.current.archived);
@@ -193,9 +199,6 @@ export function ConversationsScreen() {
     setLookup(null);
   }, [lookup, read, readProject, setLookup]);
 
-  // A room, or a state the addressed room's read left, carries the page's heading in the pane.
-  const paneHeads = Boolean(selection || orphan || (lookup && (malformed || roomRead.error || read)));
-
   const openRoomId = selection?.conversationId ?? null;
   const openArchived = selection?.archived === true;
   useEffect(() => {
@@ -238,8 +241,9 @@ export function ConversationsScreen() {
         )
       }
       loading={conversations.isLoading}
-      error={conversations.error}
-      onRetry={conversations.refetch}
+      // With no projects read there is no list to show, only an empty one (ISS-1229 r47, judge-137).
+      error={projectsUnread ?? conversations.error}
+      onRetry={projectsUnread ? readProjects : conversations.refetch}
     />
   );
 
@@ -255,7 +259,8 @@ export function ConversationsScreen() {
         className="flex flex-none items-center justify-between gap-3 border-b border-line px-4 py-3 md:hidden"
         {...STEPS_ASIDE}
       >
-        <PageTitle className="fg-h2" heads={!paneHeads}>
+        {/* The pane heads the page in every state, at every width: this bar is not there on a desk (ISS-1229 r47). */}
+        <PageTitle className="fg-h2" heads={false}>
           Conversations
         </PageTitle>
         <IconButton
@@ -365,6 +370,8 @@ function AddressedRoom({
       />,
     );
   }
+  // Refused for a project role, the room is there: core's sentence says so and who can add them (ISS-1229 r47).
+  if (refusedForScope(error)) return pane(<ErrorState level={1} title={NO_ACCESS_TITLE} message={error.message} />);
   if (error) {
     return pane(<ErrorState level={1} title="Couldn't load this conversation" message={formatApiError(error)} onRetry={onRetry} />);
   }
@@ -377,5 +384,10 @@ function AddressedRoom({
       />,
     );
   }
-  return pane(<ProjectLoader label="loading conversation…" />);
+  return pane(
+    <div className="flex flex-col items-center gap-3">
+      <PageTitle className="fg-h3">Opening the conversation</PageTitle>
+      <ProjectLoader label="loading conversation…" />
+    </div>,
+  );
 }

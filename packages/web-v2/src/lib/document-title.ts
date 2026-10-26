@@ -5,6 +5,10 @@ const BASE_TITLE = "Forge";
 
 let pageSubject: string | null = null;
 let openCount = 0;
+/** A surface with its own title scheme names the tab whole, over any subject. */
+let wholeTitle: string | null = null;
+
+const wanted = () => wholeTitle ?? documentTitle(pageSubject, openCount);
 
 /** A count as the bell and the tab show it: at most three characters (ISS-1229 r43). */
 export function shortCount(count: number): string {
@@ -22,12 +26,12 @@ let guard: MutationObserver | null = null;
 /** Next writes its metadata `<title>` when a streamed head commits, after any effect; the composed title is put back. */
 function apply(): void {
   if (typeof document === "undefined") return;
-  const title = documentTitle(pageSubject, openCount);
+  const title = wanted();
   if (document.title !== title) document.title = title;
   if (guard || typeof MutationObserver === "undefined") return;
   guard = new MutationObserver(() => {
-    const wanted = documentTitle(pageSubject, openCount);
-    if (document.title !== wanted) document.title = wanted;
+    const title = wanted();
+    if (document.title !== title) document.title = title;
   });
   guard.observe(document.head, { childList: true, subtree: true, characterData: true });
 }
@@ -48,4 +52,17 @@ export function usePageTitle(subject: string | null): void {
       apply();
     };
   }, [subject]);
+}
+
+/** The tab says `title` as it is while the surface is mounted (the public docs' `X — Forge documentation`). */
+export function useWholeTitle(title: string): void {
+  useEffect(() => {
+    wholeTitle = title;
+    apply();
+    return () => {
+      if (wholeTitle !== title) return;
+      wholeTitle = null;
+      apply();
+    };
+  }, [title]);
 }

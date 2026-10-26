@@ -9,6 +9,7 @@ import { EmptyState, PageTitle } from "@/design";
 import { LINK_CLASS } from "@/design/patterns/body-tags";
 import {
   DocsArticle,
+  articleTitle,
   DocsLayout,
   type DocsNavItem,
   DocTitle,
@@ -17,6 +18,7 @@ import {
   DocsSidebar,
 } from "@/features/docs/components/docs-reader";
 import { deriveToc, matchExcerpt, searchDocs } from "@/features/docs/reader";
+import { useWholeTitle } from "@/lib/document-title";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { GuideScope } from "../api";
 import {
@@ -52,18 +54,17 @@ function resultItem(doc: PublicDoc, activeHref: string | null, query: string): D
 /** The tab's title, set on every render: a client-side navigation between `/guides` addresses that
  *  differ only in their query keeps the head of the first one — docs/modules/guides/public-pages.md. */
 function useDocumentTitle(subject: string | null) {
-  const title = documentTitle(subject);
-  useEffect(() => {
-    document.title = title;
-  }, [title]);
+  useWholeTitle(documentTitle(subject));
 }
 
 /** What the tab names for a reader's view: the door, the page, or the refusal it shows. */
 function viewSubject(view: ReaderView, doc: PublicDoc | null): string {
   if (view.kind === "door") return DOORS[view.audience].label;
   if (view.kind === "refused") return view.refusal.heading;
-  return doc?.title ?? view.href;
+  return doc ? articleTitle(doc.body, doc.title) : MISSING_PAGE;
 }
+
+const MISSING_PAGE = "This page is missing from the documentation it was resolved against";
 
 /** Core's own words, with each backticked span set as code; nothing here restates what core says. */
 function Said({ text }: { text: string }) {
@@ -333,7 +334,7 @@ export function PublicReader({
   } else if (!doc) {
     // The server resolved this href from the same corpus, so a miss here is a defect, said so.
     content = (
-      <EmptyState title="This page is missing from the documentation it was resolved against" message={view.href} mascot={false} />
+      <EmptyState level={1} title={MISSING_PAGE} message={view.href} mascot={false} />
     );
   } else {
     const door = { label: DOORS[doc.audience].label, href: doorHref(doc.audience) };
@@ -341,6 +342,7 @@ export function PublicReader({
     content = (
       <DocsArticle
         crumbs={crumbs}
+        title={articleTitle(doc.body, doc.title)}
         body={doc.body}
         docBasePath={doc.audience === "agent" ? undefined : doc.slug}
         docRoute={INDEX_PATH}

@@ -18,6 +18,7 @@ import {
   IconButton,
   PageTitle,
   ProjectLoader,
+  SectionTitle,
   useMediaQuery,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
@@ -30,7 +31,6 @@ import {
 import { NewOutput } from "@/features/session/components/new-output";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { parseMessages } from "@/features/session/types";
-import { TabTitle } from "@/design/primitives/tab-title";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -45,7 +45,16 @@ import {
   useWithdrawnDrafts,
 } from "../hooks";
 import { useComposingMark, useMessageBoxFocus } from "../composing";
-import { composerRefusal, draftHeading, emptyRoomState, NO_AGENT_WILL_ANSWER, noAgentAnswers } from "../membership";
+import {
+  composerRefusal,
+  draftHeading,
+  emptyRoomState,
+  NO_AGENT_WILL_ANSWER,
+  noAgentAnswers,
+  NO_ACCESS_TITLE,
+  refusedForScope,
+  viewerCannotPost,
+} from "../membership";
 import { isRoomGone, type KeptCopy, ROOM_DELETED_TITLE, roomDeletedLine, unsentLine } from "../room-gone";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
@@ -341,12 +350,19 @@ export function ConversationChat({
   ]);
 
   const heading = roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : draftHeading(resolvedId, canWrite);
+  const unread = Boolean(resolvedId && roomQ.isError && outbox.length === 0 && !gone);
   const header = (
     <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <PageTitle className="fg-h2 truncate">{heading}</PageTitle>
-          {namesTab && <TabTitle subject={heading} />}
+          {/* The room heads the page only on Conversations, and not while a state about its read does (ISS-1229 r47). */}
+          {namesTab ? (
+            <PageTitle className="fg-h2 truncate" heads={!unread}>
+              {heading}
+            </PageTitle>
+          ) : (
+            <SectionTitle className="fg-h2 truncate">{heading}</SectionTitle>
+          )}
         </div>
         {onOpenHistory && (
           <IconButton
@@ -396,16 +412,22 @@ export function ConversationChat({
     );
   }
 
-  if (resolvedId && roomQ.isError && outbox.length === 0) {
+  if (unread) {
+    const level = namesTab ? 1 : 2;
     return (
       <div className="flex h-full min-h-0 flex-col">
         {header}
         <div className="grid min-h-0 flex-1 place-items-center px-4 py-12">
-          <ErrorState
-            title="Couldn't load this conversation"
-            message={formatApiError(roomQ.error)}
-            onRetry={() => roomQ.refetch()}
-          />
+          {refusedForScope(roomQ.error) ? (
+            <ErrorState level={level} title={NO_ACCESS_TITLE} message={roomQ.error.message} />
+          ) : (
+            <ErrorState
+              level={level}
+              title="Couldn't load this conversation"
+              message={formatApiError(roomQ.error)}
+              onRetry={() => roomQ.refetch()}
+            />
+          )}
         </div>
       </div>
     );
@@ -458,7 +480,7 @@ export function ConversationChat({
       </div>
 
       {!canWrite ? (
-        <ReadOnlyComposerNote sticky={false} />
+        <ReadOnlyComposerNote sticky={false} says={viewerCannotPost(viewedOnly?.name ?? "this project")} />
       ) : refusal ? (
         <div className="flex-none border-t border-line bg-surface px-4 py-3" data-testid="composer-refused">
           <p className="fg-body-sm text-fg">{refusal.reason}</p>

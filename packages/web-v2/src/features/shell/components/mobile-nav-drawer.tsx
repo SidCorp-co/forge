@@ -10,6 +10,7 @@ import { Icon, ProjectMark } from "@/design";
 import { badgeFace, type BadgeFigure, type BadgeRead } from "@/design/patterns/badge-read";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
+import { type ProjectsUnread, ProjectsUnreadLine } from "@/features/projects/components/projects-unread";
 import type { ProjectListItem } from "@/features/projects/types";
 import { cn } from "@/lib/utils/cn";
 import { PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "../nav-model";
@@ -83,6 +84,8 @@ export interface MobileNavDrawerProps {
   openWork: BadgeFigure;
   /** Projects scoped to the active org (ISS-480). */
   scopedProjects: ProjectListItem[];
+  /** The projects read failed with no list held: the list says so rather than that there are none. */
+  projectsUnread?: ProjectsUnread | null;
   /** Shared key-router from the layout (workspace + proj-* keys). */
   onNavigate: (key: string) => void;
   onOpenProject: (slug: string) => void;
@@ -105,6 +108,7 @@ export function MobileNavDrawer({
   attention,
   openWork,
   scopedProjects,
+  projectsUnread = null,
   onNavigate,
   onOpenProject,
   onCreateProject,
@@ -207,9 +211,12 @@ export function MobileNavDrawer({
           />
         );
       })}
-      {scopedProjects.length === 0 && (
-        <p className="fg-body-sm px-1.5 py-2 text-muted">No projects yet.</p>
-      )}
+      {scopedProjects.length === 0 &&
+        (projectsUnread ? (
+          <ProjectsUnreadLine unread={projectsUnread} className="px-1.5 py-2" />
+        ) : (
+          <p className="fg-body-sm px-1.5 py-2 text-muted">No projects yet.</p>
+        ))}
     </>
   );
 

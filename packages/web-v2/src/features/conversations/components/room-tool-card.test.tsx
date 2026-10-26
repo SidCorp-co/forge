@@ -88,4 +88,24 @@ describe("a room's tool card", () => {
     );
     expect(screen.getByTestId("room-tool-card").textContent).not.toMatch(/`|\bforge\b/);
   });
+
+  // ISS-1229 r47, judge-137: a tool's stdout holding JSON showed as one escaped string (\"documentId\", \n).
+  it("shows JSON text inside a tool's output as indented JSON, never as one escaped string", () => {
+    const stdout = JSON.stringify({ documentId: "d1", rows: [{ title: "Gateway" }] });
+    render(
+      <RoomToolCard
+        tool={{ id: "j", name: "forge", input: { argv: ["issue", "ISS-2"] }, result: { exitCode: 0, stdout, stderr: "" } }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Technical details" }));
+    const technical = screen.getByTestId("room-tool-technical");
+    expect(technical.textContent).not.toContain('\\"documentId\\"');
+    expect(technical.textContent).toContain('"stdout": {\n    "documentId": "d1",\n    "rows": [\n      {\n        "title": "Gateway"');
+  });
+
+  it("shows a result that is JSON text whole as indented JSON, and other text as it is", () => {
+    render(<RoomToolCard tool={{ id: "k", name: "forge", input: { q: "x" }, result: '{"a":1,"b":"[not json"}' }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Technical details" }));
+    expect(screen.getByTestId("room-tool-technical").textContent).toContain('{\n  "a": 1,\n  "b": "[not json"\n}');
+  });
 });
