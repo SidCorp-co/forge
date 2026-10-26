@@ -152,6 +152,20 @@ describe('a send repeating its client token', () => {
     expect(await stored()).toHaveLength(1);
   });
 
+  it('does not name the room from a repeat that lost the insert', async () => {
+    const first = await send(ownerId, { content: 'alpha', clientToken: 'tok-t' });
+    // As the repeat read the room: before the first send had named it, and before it was written.
+    await harness.db.execute(sql`UPDATE conversations SET title = NULL WHERE id = ${roomId}`);
+    vi.mocked(repeatedWebSend).mockResolvedValueOnce(null);
+    const again = await send(ownerId, { content: 'beta', clientToken: 'tok-t' });
+    expect(again).toBe(first);
+    const [room] = (await harness.db.execute(
+      sql`SELECT title FROM conversations WHERE id = ${roomId}`,
+    )) as unknown as Array<{ title: string | null }>;
+    expect(room?.title).toBeNull();
+    expect(await stored()).toHaveLength(1);
+  });
+
   it("writes another person's send under the same token as that person's own message", async () => {
     await send(ownerId, { content: 'mine', clientToken: 'tok-s' });
     await send(memberId, { content: 'theirs', clientToken: 'tok-s' });

@@ -71,11 +71,18 @@ export async function repeatedWebSend(args: {
       'web conversations: the accepted event of a repeated send was not published',
     ),
   );
-  return {
+  const answered: WebSendResult = {
     conversationId: args.conversationId,
     windowId: window.id,
     seq: first.seq,
     decision: null,
     mode: effectiveConversationMode((await getConversation(args.conversationId)) ?? { mode: null }),
   };
+  repeats.add(answered);
+  return answered;
 }
+
+const repeats = new WeakSet<WebSendResult>();
+
+/** Whether a send's result answers an earlier message rather than one this send wrote. */
+export const isRepeat = (sent: WebSendResult): boolean => repeats.has(sent);

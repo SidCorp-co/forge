@@ -15,6 +15,7 @@ import {
   sendWebConversationMessage,
   type WebSendResult,
 } from './conversation-send.js';
+import { isRepeat } from './repeated-send.js';
 
 /** What `POST /api/conversations/:id/messages` carries, as its schema admitted it. */
 export interface WebSendInput {
@@ -116,7 +117,7 @@ export async function takeWebSend(
     throw err;
   }
 
-  if (conversation.title === null && sent.seq === 0) {
+  if (conversation.title === null && sent.seq === 0 && !isRepeat(sent)) {
     await renameConversation(id, roomNameFrom(content, attached));
   }
   return sent;
