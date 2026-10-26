@@ -91,12 +91,27 @@ export async function settleInjects(roomId?: string): Promise<string[]> {
  * reads running, that turn's end settles them (`dispatch.ts:onSupportTurnEnded`), so a refusal and a
  * turn end arriving in either order hand the messages on without waiting for the sweep.
  */
-export async function onInjectRefused(refused: { intentId: string }): Promise<void> {
+export async function onInjectRefused(refused: { intentId: string }, tries = 0): Promise<void> {
   const roomId = await roomOfAction(refused.intentId.slice(INJECT_INTENT.length));
   if (!roomId) return;
   const room = await roomById(roomId);
   const session = room?.sessionId ? await sessionRowById(room.sessionId) : null;
-  if (!session || session.status === 'running') return;
+  if (!session) return;
+  if (session.status === 'running') {
+    // the turn's end may be committing as the refusal lands, or its bridge already ran: read again
+    // until core reads it ended, for as long as the 2 s recovery sweep would otherwise take
+    if (tries < RECHECKS) {
+      setTimeout(
+        () => void onInjectRefused(refused, tries + 1).catch(() => {}),
+        RECHECK_MS,
+      ).unref();
+    }
+    return;
+  }
   await settleInjects(roomId);
   await deliverWaiting(roomId);
 }
+
+/** How often, and how many times, a refusal that found the turn still running reads it again. */
+const RECHECK_MS = 250;
+const RECHECKS = 8;

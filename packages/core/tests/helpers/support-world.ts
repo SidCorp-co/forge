@@ -101,6 +101,11 @@ export class SessionBox {
   private turnSeq = 0;
   private readonly running = new Map<string, Running>();
 
+  /** No turn of any session is running on this box. */
+  idle(): boolean {
+    return this.running.size === 0;
+  }
+
   constructor(
     readonly base: string,
     readonly token: string,
@@ -352,6 +357,28 @@ export class SupportWorld {
     await settleOutbox();
     const { startRocketChatManager } = await import('../../src/integrations/rocketchat/index.js');
     await startRocketChatManager();
+    await this.settleWarm();
+  }
+
+  /**
+   * Binding warms the session, and the two bindings' changes can each start a warm-up turn: wait
+   * until every one has ended (a tools re-tell owed to a busy session paid as the sweep pays it), so
+   * a test's first message meets one idle, resident session and not a warm-up still running.
+   */
+  async settleWarm(ms = 20_000): Promise<void> {
+    const { warmColdRooms } = await import('../../src/support/index.js');
+    const until = Date.now() + ms;
+    let quiet = 0;
+    while (quiet < 3) {
+      if (Date.now() > until) throw new Error(`the room's session was still warming after ${ms}ms`);
+      await settleOutbox();
+      await warmColdRooms();
+      const [room] = await this.rooms();
+      const settled =
+        room?.resident === true && room.sessionStatus === 'completed' && this.box.idle();
+      quiet = settled ? quiet + 1 : 0;
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
 
   /** The project's newest filing, which a group member made: handed no status link (BC-14). */

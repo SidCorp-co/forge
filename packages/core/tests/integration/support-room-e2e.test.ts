@@ -420,6 +420,7 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
     await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(3);
     expect(seen[2]).toMatchObject({ event: 'agent:send', claudeSessionId: 'claude-resident-1' });
     expect(seen[2]?.messages.map((m) => m.text)).toEqual(['Thanks']);
+    await expect.poll(async () => (await w.rooms())[0]?.sessionStatus).toBe('completed');
 
     // the box goes away and another serves the project: the next turn starts cold and re-reads
     const { SessionBox } = await import('../helpers/support-world.js');

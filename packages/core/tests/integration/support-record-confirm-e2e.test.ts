@@ -35,6 +35,8 @@ const filings = async () =>
 
 /** The session offers to record the member's message; answers the code it was handed. */
 async function offered(text: string): Promise<{ id: string; code: string; prompt: BotLine }> {
+  // the last step's turn (a cancel's note to the session) has ended: this message starts its own
+  await w.settleWarm();
   let code = '';
   w.box.model = async (turn, act) => {
     for (const m of turn.messages) {

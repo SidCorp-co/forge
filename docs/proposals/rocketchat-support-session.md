@@ -66,8 +66,12 @@ flight, it is taken after the tool result and answered in the same turn (one `re
 the model writes its last text, the turn ends and the message is answered as a second turn straight
 after. The box ends the turn only when every message it wrote has been replayed back
 (`claude_code/stream.rs`), and reports each write applied. A box with no turn in flight refuses the
-write; core hands the messages back at once — at that turn's end if core still reads it running,
-else on the refusal itself (`inject.ts:onInjectRefused`). The 2 s `support.room-drain` timer only
+write; core hands the messages back at once — on the refusal itself once core reads the turn ended
+(read again every 250 ms for 2 s while it still reads it running), or at that turn's end
+(`inject.ts:onInjectRefused`, `dispatch.ts:onSupportTurnEnded`). A session's end-of-turn bridges
+fire after the write that ended it commits (`agent-sessions/session-transition.ts`); fired inside it,
+the support bridge read the session still running, and a turn it handed over was refused and the
+room backed off 30 s. The 2 s `support.room-drain` timer only
 recovers what a crash left: a write nobody answered, or a message no turn took. A turn that cannot
 reach a box gives its messages back and the room waits 30 s before the next try; a project with no
 capable box is told so in the thread at most every 10 minutes (`support/dispatch.ts:deliverWaiting`).

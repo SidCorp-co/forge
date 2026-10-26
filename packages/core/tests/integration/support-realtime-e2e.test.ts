@@ -62,8 +62,10 @@ describe('REQ-75: a support group in real time (BC-11)', () => {
     expect(turn.at - said).toBeLessThan(1_000);
     expect(turn).toMatchObject({ event: 'agent:send', keepResident: true });
     await w.untilLines((ls) => ls.some((l) => l.tmid === id && l.text.startsWith('Re:')));
-    const l = await latency();
-    expect(l.byPath.send.measured).toBeGreaterThanOrEqual(1);
+    // the latency is settled as the reply's act returns, just after the line is posted
+    await expect
+      .poll(async () => (await latency()).byPath.send.measured, { timeout: 5_000 })
+      .toBeGreaterThanOrEqual(1);
   });
 
   it('reads each answer’s latency from the Rocket.Chat timestamp, and shows p50 and p95 in the room read', async () => {
@@ -147,6 +149,7 @@ describe('REQ-75: a support group in real time (BC-11)', () => {
     expect(w.box.turns.length, 'nothing changed: no turn').toBe(turns);
 
     answerAll();
+    await w.settleWarm();
     w.box.finishTurns = false;
     const started = w.box.asked().length;
     await w.chat.say(w.chat.bob, 'Hello, anyone there?');
