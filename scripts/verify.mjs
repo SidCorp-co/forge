@@ -243,6 +243,28 @@ const CHECKS = [
     needs: ['deps', 'observability-build', 'contracts-build'],
   },
   {
+    axis: 'form',
+    label: 'web typecheck',
+    layer: 'shared',
+    reads:
+      'the whole packages/web-v2 program, the type pass `next build` runs, which nothing else here ran (ISS-1236)',
+    cmd: [
+      'pnpm',
+      '--filter',
+      'web-v2',
+      'exec',
+      'tsc',
+      '--noEmit',
+      '--extendedDiagnostics',
+      '--incremental',
+      'false',
+      '--typeRoots',
+      '../../node_modules/@types',
+    ],
+    scanned: /^Files:\s+(\d+)/m,
+    needs: ['deps', 'observability-build', 'contracts-build'],
+  },
+  {
     axis: 'runner',
     label: 'cargo gates',
     layer: 'entry',

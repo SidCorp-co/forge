@@ -96,6 +96,11 @@ const DECLARED = {
     listed: ['packages/runner'],
     built: BUILT,
   },
+  'web typecheck': {
+    roots: [...PNPM, 'scripts', ...WORKSPACE],
+    listed: ['packages/runner'],
+    built: BUILT,
+  },
   'cargo gates': {
     uncached:
       'it scopes to the runner crates this change touched and runs cargo, whose own target directory is the state it measures',

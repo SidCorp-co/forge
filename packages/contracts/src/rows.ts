@@ -5,7 +5,10 @@ export type User = Pick<
   'id' | 'email' | 'emailVerifiedAt' | 'createdAt'
 >;
 
-export type Project = typeof schema.projects.$inferSelect;
+/** A project as the API answers it: the hint column `repoPathHint` is `repoPath` there (ISS-1236). */
+export type Project = Omit<typeof schema.projects.$inferSelect, 'repoPathHint'> & {
+  repoPath: string | null;
+};
 
 export type PipelineWaitingReason =
   | 'issue_busy'
