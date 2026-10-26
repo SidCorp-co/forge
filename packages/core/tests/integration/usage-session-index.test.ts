@@ -329,39 +329,45 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
     });
   });
 
-  // criteria 13
+  // criteria 13. The two rows the database accepts are taken back behind the case: every other
+  // case reads the fixture's own count and figures, whichever order they run in.
   it('refuses a session_id that is neither null nor a canonical lowercase uuid', async () => {
+    const PROBE = 'criterion-13 probe';
     const refusedBy = (query: ReturnType<typeof sql>) => constraintRefusing(harness.db, query);
     const write = (value: string) =>
       refusedBy(sql`
         INSERT INTO usage_records (id, project_id, source, model, estimated_cost, request_count,
                                    session_id, recorded_at)
-        VALUES (gen_random_uuid(), ${projectId}, 'cli', 'm', 0, 1, ${value}, now())`);
+        VALUES (gen_random_uuid(), ${projectId}, 'cli', ${PROBE}, 0, 1, ${value}, now())`);
 
     const CHK = 'usage_records_session_id_uuid_chk';
-    expect(await write('session-42')).toBe(CHK);
-    expect(await write(sessionId(1).toUpperCase())).toBe(CHK);
-    expect(await write(sessionId(1).replace(/-/g, ''))).toBe(CHK);
-    // 36 characters that pass the regex the old read-side guard used and fail the
-    // cast it was guarding — the hole that guard never closed.
-    expect(await write('-'.repeat(36))).toBe(CHK);
+    try {
+      expect(await write('session-42')).toBe(CHK);
+      expect(await write(sessionId(1).toUpperCase())).toBe(CHK);
+      expect(await write(sessionId(1).replace(/-/g, ''))).toBe(CHK);
+      // 36 characters that pass the regex the old read-side guard used and fail the
+      // cast it was guarding — the hole that guard never closed.
+      expect(await write('-'.repeat(36))).toBe(CHK);
 
-    // and on UPDATE, not only on INSERT
-    expect(
-      await refusedBy(sql`
-        UPDATE usage_records SET session_id = ${sessionId(1).toUpperCase()}
-        WHERE session_id = ${sessionId(1)}`),
-    ).toBe(CHK);
+      // and on UPDATE, not only on INSERT
+      expect(
+        await refusedBy(sql`
+          UPDATE usage_records SET session_id = ${sessionId(1).toUpperCase()}
+          WHERE session_id = ${sessionId(1)}`),
+      ).toBe(CHK);
 
-    // null and a canonical value are still accepted, or the constraint is refusing
-    // everything and the four cases above say nothing.
-    expect(await write(sessionId(1))).toBe(ACCEPTED);
-    expect(
-      await refusedBy(sql`
-        INSERT INTO usage_records (id, project_id, source, model, estimated_cost, request_count,
-                                   session_id, recorded_at)
-        VALUES (gen_random_uuid(), ${projectId}, 'cli', 'm', 0, 1, NULL, now())`),
-    ).toBe(ACCEPTED);
+      // null and a canonical value are still accepted, or the constraint is refusing
+      // everything and the four cases above say nothing.
+      expect(await write(sessionId(1))).toBe(ACCEPTED);
+      expect(
+        await refusedBy(sql`
+          INSERT INTO usage_records (id, project_id, source, model, estimated_cost, request_count,
+                                     session_id, recorded_at)
+          VALUES (gen_random_uuid(), ${projectId}, 'cli', ${PROBE}, 0, 1, NULL, now())`),
+      ).toBe(ACCEPTED);
+    } finally {
+      await harness.db.execute(sql`DELETE FROM usage_records WHERE model = ${PROBE}`);
+    }
   });
 
   // criteria 16

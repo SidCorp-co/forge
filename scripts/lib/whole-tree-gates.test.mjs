@@ -32,7 +32,9 @@ import {
   declarationExit,
   declarationsIn,
   fsListing,
+  GUARD_DIRS,
   globListings,
+  guardDirOwner,
   guardVerdict,
   judgeConfigs,
   judgeDeclarations,
@@ -41,6 +43,7 @@ import {
   logLines,
   pathOf,
   processRunning,
+  reapGuardDirs,
   runDirOf,
   spawnCwd,
   suiteMessage,
@@ -925,7 +928,8 @@ describe('the guard installed in this very run', () => {
 
   it('counts a child it could not put on the log as the root', async () => {
     const saved = state.log;
-    const unwritable = join(mkdtempSync(join(tmpdir(), 'wt-nolog-')), 'missing', 'log.jsonl');
+    const scratch = mkdtempSync(join(tmpdir(), 'wt-nolog-'));
+    const unwritable = join(scratch, 'missing', 'log.jsonl');
     const watch = globalThis[Symbol.for('forge.whole-tree-watch')];
     watch.log = unwritable;
     try {
@@ -933,6 +937,7 @@ describe('the guard installed in this very run', () => {
       await new Promise((done) => child.on('exit', done));
     } finally {
       watch.log = saved;
+      rmSync(scratch, { recursive: true, force: true });
     }
     expect(vias()).toEqual([
       expect.stringMatching(/^child process \d+ could not be put on the log \(ENOENT\)/),
@@ -1502,4 +1507,94 @@ describe('judging the run', () => {
       'failed before any of its cases ran: Error: the tree could not be listed — fix what it imports, evaluates at load or throws in a hook; the declaration stays',
     );
   });
+});
+
+describe('guardDirOwner', () => {
+  it('reads the process off a directory the guard made', () => {
+    expect(guardDirOwner('4321-aB3dEf')).toBe(4321);
+  });
+  it('answers null for a name that carries no process, which no guard made', () => {
+    for (const name of ['whole-tree-guard-aB3dEf', '0-aB3dEf', '-aB3dEf', '4321', 'x4321-aB3dEf'])
+      expect(guardDirOwner(name)).toBeNull();
+  });
+});
+
+describe('reapGuardDirs', () => {
+  const names = ['10-a', '20-b', 'stray', '30-c'];
+  const run = (live) => {
+    const removed = [];
+    const reaped = reapGuardDirs('/tmp/g', (pid) => live.includes(pid), {
+      list: () => names,
+      remove: (path, opts) => removed.push([path, opts]),
+    });
+    return { reaped, removed };
+  };
+
+  it('removes every directory whose process is gone, by its path, and answers their names', () => {
+    const { reaped, removed } = run([20]);
+    expect(reaped).toEqual(['10-a', '30-c']);
+    expect(removed).toEqual([
+      ['/tmp/g/10-a', { recursive: true, force: true }],
+      ['/tmp/g/30-c', { recursive: true, force: true }],
+    ]);
+  });
+
+  it('leaves a directory whose process may still be running, and one that names no process', () => {
+    expect(run([10, 20, 30]).reaped).toEqual([]);
+  });
+});
+
+describe('the directories a run of the guard makes', () => {
+  const REPO = resolve(import.meta.dirname, '..', '..');
+  const parent = join(tmpdir(), GUARD_DIRS);
+  const root = mkdtempSync(join(tmpdir(), 'whole-tree-dirs-'));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(
+    join(root, 'vitest.config.mjs'),
+    `export default { test: { globals: true, include: ['*.test.mjs'], setupFiles: [${JSON.stringify(join(REPO, 'scripts/lib/whole-tree-guard.mjs'))}] } };`,
+  );
+  // Each file writes down the directory its worker's guard made, then does what its name says.
+  const file = (name, then = '') =>
+    writeFileSync(
+      join(root, `${name}.test.mjs`),
+      [
+        "import { appendFileSync } from 'node:fs';",
+        `it('${name}', () => { appendFileSync(process.env.WT_DIRS, globalThis[Symbol.for('forge.whole-tree-guard')].dir + '\\n'); ${then} });`,
+      ].join('\n'),
+    );
+  const vitest = (files, record) => {
+    const r = spawnSync(
+      process.execPath,
+      [join(REPO, 'node_modules/vitest/vitest.mjs'), 'run', '--root', root, ...files],
+      { cwd: root, encoding: 'utf8', env: { ...process.env, WT_DIRS: record, FORCE_COLOR: '0' } },
+    );
+    writeFileSync(globalThis[Symbol.for('forge.whole-tree-guard')].log, '');
+    return r;
+  };
+  const made = (record) => readFileSync(record, 'utf8').trim().split('\n').filter(Boolean);
+
+  it('leaves none of them behind once the run is over', () => {
+    for (const n of ['one', 'two', 'three']) file(n);
+    const record = join(root, 'dirs-ended.txt');
+    const r = vitest(['one', 'two', 'three'], record);
+    expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+    const dirs = made(record);
+    expect(dirs).toHaveLength(3);
+    for (const dir of dirs) {
+      expect(existsSync(dir), `${dir} outlived the worker that made it`).toBe(false);
+      expect(dirname(dir)).toBe(parent);
+    }
+  }, 60_000);
+
+  it('reaps the directory of a worker that was killed, by its name, on the next run', () => {
+    file('killed', "process.kill(process.pid, 'SIGKILL');");
+    file('after');
+    const killed = join(root, 'dirs-killed.txt');
+    vitest(['killed'], killed);
+    const [left] = made(killed);
+    expect(existsSync(left), 'the killed worker could remove nothing').toBe(true);
+    const r = vitest(['after'], join(root, 'dirs-after.txt'));
+    expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+    expect(existsSync(left), `${left} was not reaped by the run after it`).toBe(false);
+  }, 60_000);
 });

@@ -20,11 +20,14 @@ it does not have one, `TEST_DATABASE_URL` is the only route into the suite, and
 socket surface as a broken suite.
 
 Whichever mode resolves the server, `tests/helpers/global-setup.ts` migrates
-**one template database** and every test file clones it
-(`CREATE DATABASE ... TEMPLATE`, a file copy) in `tests/helpers/db.ts`. That
-replaces a container boot plus a full migration replay — measured at ~8.6s —
-per test file. Whose template it is, and whether it outlives the run, is the
-*Shared template* section below.
+**one template database**, and `tests/helpers/db.ts:setupTestDatabase` hands each
+file a clone of it (`CREATE DATABASE ... TEMPLATE`, a file copy): the database
+of the worker slot the file runs in, cloned once per slot and reset between the
+files that share it (*One database per worker slot*), or, for a file that
+declared `own`, a clone no other file is handed. A migration case clones one of
+its own (`scratch-db.ts:caseDbName`). Cloning replaces a container boot plus a
+full migration replay — measured at ~8.6s. Whose template it is, and whether it
+outlives the run, is the *Shared template* section below.
 
 **Why not just Testcontainers everywhere?** Cold boot is 3–5s per run, painful
 on every local edit-test loop.
@@ -134,18 +137,26 @@ and hands the same database to every file the slot runs after that. Before handi
 resets it, the same way for every file:
 
 1. ends every connection the previous file left (`pg_terminate_backend`, waited on),
-2. compares the schema with the digest taken when the database was cloned, and refuses on any
-   difference,
-3. drops the schemas the queue makes at runtime (`slot-db.ts:RUNTIME_SCHEMAS`, which the digest
-   leaves out) and empties every table the way `truncateAll` does between cases,
+2. drops the schemas the queue makes at runtime (`slot-db.ts:RUNTIME_SCHEMAS`, which no migration
+   makes), reads the schema and refuses on any difference from the clone it was,
+3. empties every table the way `truncateAll` does between cases and removes every large object,
 4. writes back the rows the template seeds and sets every sequence to its cloned value.
 
-What it was cloned as — the schema digest, the seed rows, the sequence values — is kept on the
-database's own comment, read without connecting to it. The file's `cleanup()` compares the schema
-again, so a file that changes it is refused at its own teardown, naming the file and the objects
-it added, dropped or changed; the database is then renamed out of the slot and dropped behind the
-run, and the next file in the slot gets a fresh clone. A file that gave its database back without
-`cleanup()` is caught by the next file's step 2, which names it.
+The schema is read from every catalog the database holds, not from a list of object kinds
+(`slot-db.ts:schemaChangesOn`): one hash over every row of every database-local table in
+`pg_catalog`, less the planner's statistics, large objects, and the `pg_class` columns that move by
+use (storage, row estimates, freeze horizons). A rule, an aggregate, a comment, a collation, a
+statistics object or a storage option is a difference as a table is;
+`tests/integration/slot-digest-names-every-change-e2e.test.ts` plants each kind and the use that is
+not one. Only once the hash moved are the rows grouped by the object they belong to and named the way
+Postgres names it (`pg_describe_object`), to say what changed.
+
+What it was cloned as — that hash with the named digest, the seed rows, the sequence values — is
+kept on the database's own comment, read without connecting to it. The file's `cleanup()` ends its
+connections and reads the schema again, so a file that changes it is refused at its own teardown,
+naming the file and the objects it added, dropped or changed; the database is then renamed out of
+the slot and dropped behind the run, and the next file in the slot gets a fresh clone. A file that
+gave its database back without `cleanup()` is caught by the next file's step 2, which names it.
 
 **A file that writes schema or runs a migration declares it** at its own call site,
 `setupTestDatabase({ own: '<what it changes>' })`, and gets a `test_own_` clone nobody else is
@@ -154,11 +165,12 @@ refused. A file asking for a second slot database while its first is still open 
 because the second hand-out would reset the database under the first.
 
 **What is traded.** A database per file isolated everything Postgres keeps per database; a slot
-database isolates what the reset puts back — rows in `current_schema()`, seed rows, sequences — and
-what the digest compares, which is schema and grants. It does not isolate anything else a file can
-leave in a database: a row in a table outside `current_schema()` (of those, the digest counts only
-`drizzle.__drizzle_migrations`), table statistics, or a database-level object the digest does not
-read, such as a large object. A file that writes any of those declares `own`.
+database isolates what the reset puts back — rows in `current_schema()`, seed rows, sequences, large
+objects — and what the schema read compares, which is every catalog row of the database. It does not
+isolate a row in a table outside `current_schema()` (of those, the read counts only
+`drizzle.__drizzle_migrations`), or the planner statistics `ANALYZE` leaves. A file that writes a row
+there, or depends on the statistics, declares `own`. Roles and tablespaces are the cluster's, not a
+database's, and a database per file never isolated them either.
 
 **What it costs on an instance that syncs to disk.** A database dropped after its file took its
 dirty pages with it; a slot database keeps them, and every `TRUNCATE` a case's `truncateAll` issues
@@ -167,20 +179,23 @@ syncing 400,000 to 600,000 files and taking 360 to 516 seconds, and every `CREAT
 waits on one: `shared-template-e2e` and `shared-template-global-setup-e2e`, whose cases do both, timed
 out at 180s. The container this suite starts runs with `fsync=off` (`container.ts`), and global setup
 prints a line naming the cost when the instance it was given syncs. Point `TEST_DATABASE_URL` at an
-instance started with `-c fsync=off`.
+instance started with `-c fsync=off`, as *Running* below does.
 
 **What it buys**, counted from `log_statement=ddl` over one whole local run at three workers:
 
-| | `main` at `e4f44b66c`, a database per file | ISS-1315, a database per slot |
+| | `main` at `e4f44b66c`, a database per file | ISS-1315 at `ea09294f2`, a database per slot |
 | --- | --- | --- |
-| `CREATE DATABASE` | 537 — 405 per file, 108 per migration case, 24 templates | 167 — 3 slots, 6 in the isolation e2e's nested runs, 26 declared `own`, 108 per case, 24 templates |
+| `CREATE DATABASE` | 537 — 405 per file, 108 per migration case, 24 templates | 167 — 3 slots, 6 in the isolation e2e's nested runs, 27 declared `own` (one of them the gone-template refusal, which Postgres rejects), 108 per case, 23 templates |
 | `DROP DATABASE` | 537 | 167, plus 1 slot database renamed aside by the isolation e2e |
-| Files / tests, green | 413 / 4276 | 414 / 4286 (`main` had gained a file by then) |
-| Wall | 2429s, `fsync=on` | 2183s at `fsync=on` before the last rebase; 1312s at `fsync=off` |
+| Files / tests, green | 413 / 4276 | 423 / 4380 |
+| Wall | 2429s at `fsync=on` | 1431s at `fsync=off` |
 
-Each a whole local run at three workers under `--sequence.shuffle.files --sequence.seed=1315`, with
-`TEST_TEMPLATE_MODE=fresh` against a `pgvector/pgvector:pg17` container of its own, on a 56-core box,
-2026-10-25 and 2026-10-26. Nothing carrying either run's token was left in `pg_database` after it.
+The `e4f44b66c` run went under `--sequence.shuffle.files --sequence.seed=1315` on 2026-10-25, the
+`ea09294f2` run under `--sequence.shuffle --sequence.seed=1315` (tests shuffled inside each file
+too) on 2026-10-26; both with `TEST_TEMPLATE_MODE=fresh` against a `pgvector/pgvector:pg17`
+container of their own, on a 56-core box. The two walls ran at different `fsync` settings and are
+not a comparison of the two designs. Nothing carrying either run's token was left in `pg_database`
+after it.
 
 **What ends it.** The trade holds while every file a slot runs reads only what the reset puts back.
 The day a file has to depend on something the reset does not restore and cannot declare `own` for
@@ -207,16 +222,21 @@ pnpm --filter @forge/core test
 ### Integration tests — local (schema mode)
 
 ```bash
-# From repo root: start the shared Postgres once.
-docker compose up -d postgres
+# A Postgres for tests only, started once, that does not sync to disk.
+docker run -d --name forge-test-pg -p 127.0.0.1:5433:5432 \
+  -e POSTGRES_USER=forge -e POSTGRES_PASSWORD=forge_secret -e POSTGRES_DB=forge \
+  pgvector/pgvector:pg17 -c fsync=off
 
-export TEST_DATABASE_URL="postgres://forge:forge_secret@localhost:5432/forge"
+export TEST_DATABASE_URL="postgres://forge:forge_secret@localhost:5433/forge"
 pnpm --filter @forge/core test:integration
 ```
 
-`TEST_DATABASE_URL` can point at any Postgres you have handy — including one
-other runs are using. See *Shared template* and *Concurrent runs on one server* above for what keeps
-them apart.
+It is not the compose `postgres`: that one keeps the dev data on a volume and syncs to disk, and
+against it `shared-template-e2e` and `shared-template-global-setup-e2e` time out (*What it costs on
+an instance that syncs to disk* above). `fsync=off` loses what was written if the server crashes,
+which a test database can afford and the dev one cannot. `TEST_DATABASE_URL` can point at any
+Postgres started that way — including one other runs are using. See *Shared template* and
+*Concurrent runs on one server* above for what keeps them apart.
 
 ### Integration tests — CI-style (Testcontainers)
 

@@ -4,7 +4,7 @@ import { reapSharedTemplate, SHARED_TEMPLATE, stamp, TEMPLATE_PREFIX } from './s
 export { TEMPLATE_PREFIX };
 export const WORKER_PREFIX = 'test_w_';
 export const OWN_PREFIX = 'test_own_';
-export const CASE_PREFIX = 'test_case_';
+const CASE_PREFIX = 'test_case_';
 
 const TAG_SHAPE = /^[a-z0-9]{1,16}$/;
 
@@ -40,7 +40,7 @@ export function freshTemplateName(token: string): string {
 }
 
 /** The token every scratch database of THIS run carries, read off `TEST_PG_RUN_TOKEN`. */
-export function runToken(token: string | undefined = process.env.TEST_PG_RUN_TOKEN): string | null {
+function runToken(token: string | undefined = process.env.TEST_PG_RUN_TOKEN): string | null {
   return token !== undefined && TOKEN_SHAPE.test(token) ? token : null;
 }
 
@@ -117,7 +117,7 @@ export function bornAt(datname: string): number | null {
 }
 
 /** True when `datname` is old enough that no live run can still own it. */
-export function isAbandoned(datname: string, now: number): boolean {
+function isAbandoned(datname: string, now: number): boolean {
   const born = bornAt(datname);
   return born !== null && now - born > ABANDONED_AFTER_MS;
 }
@@ -147,7 +147,7 @@ export async function reapAbandoned(admin: Sql, now: number = Date.now()): Promi
 }
 
 /** How a drain reaches Postgres; a seam, so a held or refused drop can be tested. */
-export type DrainConnect = (url: string) => Sql;
+type DrainConnect = (url: string) => Sql;
 
 /**
  * Hand a scratch database back: dropped, but not on the clock of the hook or case giving it up.

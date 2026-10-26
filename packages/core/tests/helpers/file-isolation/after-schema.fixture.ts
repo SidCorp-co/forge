@@ -27,3 +27,9 @@ it('is handed the sequence as the template defines it', async () => {
   `;
   expect(seq?.step, 'the sequence step').toBe('1');
 });
+
+it('keeps a row it inserts, with no rule a file before it left on the table', async () => {
+  await t.client`INSERT INTO admin_thresholds (stuck_job_seconds) VALUES (4242)`;
+  const rows = await t.client`SELECT 1 FROM admin_thresholds WHERE stuck_job_seconds = 4242`;
+  expect(rows.length, 'the row this file just inserted').toBe(1);
+});

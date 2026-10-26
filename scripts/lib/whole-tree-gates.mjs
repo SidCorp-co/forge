@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { types } from 'node:util';
@@ -114,6 +114,26 @@ export function processRunning(pid, { signal, stat }) {
   } catch (e) {
     return e?.code !== 'ENOENT' || !existsSync('/proc/self');
   }
+}
+
+export const GUARD_DIRS = 'forge-whole-tree-guard';
+
+/** The process a guard log directory `<pid>-<random>` was made by; null for a name no guard made. */
+export function guardDirOwner(name) {
+  const m = /^([1-9]\d*)-[^/]+$/.exec(name);
+  return m ? Number(m[1]) : null;
+}
+
+/** Remove each guard log directory under `parent` whose process `running` rules out; answer them. */
+export function reapGuardDirs(parent, running, { list = readdirSync, remove = rmSync } = {}) {
+  const reaped = [];
+  for (const name of list(parent)) {
+    const pid = guardDirOwner(name);
+    if (pid === null || running(pid)) continue;
+    remove(join(parent, name), { recursive: true, force: true });
+    reaped.push(name);
+  }
+  return reaped;
 }
 
 /**

@@ -47,7 +47,11 @@ let seq = 0;
 /**
  * The Postgres message, not drizzle's wrapper. A failed `db.execute` throws
  * `Failed query: <sql>` and hangs the server's own message off `cause`, so
- * asserting on the outer message would pass for any failure at all.
+ * asserting on the outer message would pass for any failure at all. Each
+ * refusal below is written on `harness.client`, the driver itself: drizzle's
+ * query path is sealed the first time anything in this process builds the
+ * app's db (`db/query-error-seal.ts`, reached here by the unmark cases), and
+ * the seal withholds the bound id the trigger's message names.
  */
 async function refusalFrom(run: () => Promise<unknown>): Promise<string> {
   try {
@@ -138,8 +142,8 @@ describe('no route reaches `closed` without the shipped-work claim (ISS-1108)', 
   it('refuses a raw UPDATE, naming the issue, the rule and the exit', async () => {
     const { id, issSeq } = await seedIssue();
 
-    const message = await refusalFrom(() =>
-      harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${id}`),
+    const message = await refusalFrom(
+      () => harness.client`UPDATE issues SET status = 'closed' WHERE id = ${id}`,
     );
 
     expect(message).toContain('ISS-1108');
@@ -151,11 +155,11 @@ describe('no route reaches `closed` without the shipped-work claim (ISS-1108)', 
   });
 
   it('refuses a row created `closed` with no merged_at, so "no way in" means every way', async () => {
-    const message = await refusalFrom(() =>
-      harness.db.execute(sql`
+    const message = await refusalFrom(
+      () => harness.client`
         INSERT INTO issues (id, project_id, iss_seq, created_by_id, title, description, status)
         VALUES (${randomUUID()}, ${projectId}, ${++seq}, ${userId}, 'born closed', 'fixture', 'closed')
-      `),
+      `,
     );
 
     expect(message).toContain('ISS-1108');
@@ -165,10 +169,9 @@ describe('no route reaches `closed` without the shipped-work claim (ISS-1108)', 
   it('refuses the close even when the same statement sets other columns', async () => {
     const { id } = await seedIssue();
 
-    const message = await refusalFrom(() =>
-      harness.db.execute(
-        sql`UPDATE issues SET title = 'renamed on the way out', status = 'closed' WHERE id = ${id}`,
-      ),
+    const message = await refusalFrom(
+      () =>
+        harness.client`UPDATE issues SET title = 'renamed on the way out', status = 'closed' WHERE id = ${id}`,
     );
 
     expect(message).toContain('ISS-1108');
@@ -229,8 +232,8 @@ describe('migration 0304 carries on over the rows it cannot represent (ISS-1108)
       // And nothing may newly reach the state they stand in.
       const live = await seedIssue();
       expect(
-        await refusalFrom(() =>
-          harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${live.id}`),
+        await refusalFrom(
+          () => harness.client`UPDATE issues SET status = 'closed' WHERE id = ${live.id}`,
         ),
       ).toContain('ISS-1108');
     } finally {
@@ -246,9 +249,7 @@ describe('migration 0304 carries on over the rows it cannot represent (ISS-1108)
 
     const { id } = await seedIssue();
     expect(
-      await refusalFrom(() =>
-        harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${id}`),
-      ),
+      await refusalFrom(() => harness.client`UPDATE issues SET status = 'closed' WHERE id = ${id}`),
     ).toContain('ISS-1108');
   });
 });

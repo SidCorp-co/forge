@@ -4,7 +4,7 @@
 // before the file runs. It cannot see a listing the run never executes, native code, or a listing
 // delegated to a process the test did not start: docs/proposals/a-test-reading-a-named-file-*.md.
 
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -12,10 +12,12 @@ import { afterAll, expect } from 'vitest';
 import {
   declaresWholeTree,
   GLOB_CALL_RE,
+  GUARD_DIRS,
   globListings,
   guardVerdict,
   logLines,
   processRunning,
+  reapGuardDirs,
   unjudgedVerdict,
 } from './whole-tree-gates.mjs';
 import { installWatch, ROOT } from './whole-tree-watch.mjs';
@@ -23,6 +25,12 @@ import { installWatch, ROOT } from './whole-tree-watch.mjs';
 const KEY = Symbol.for('forge.whole-tree-guard');
 /** How long a file's end waits for a process or worker it started to finish before counting it. */
 const GRACE_MS = 5000;
+
+const running = (pid) =>
+  processRunning(pid, {
+    signal: (p) => process.kill(p, 0),
+    stat: (p) => readFileSync(`/proc/${p}/stat`, 'utf8'),
+  });
 
 globalThis[KEY] ??= { installed: false, hits: [], late: [], log: null, dir: null, files: 0 };
 const state = globalThis[KEY];
@@ -34,7 +42,23 @@ state.hits = state.endedDeclared
   : state.late.map((h) => ({ ...h, via: `${h.via} after ${state.ended} ended` }));
 state.late = [];
 state.ended = null;
-state.dir ??= mkdtempSync(join(tmpdir(), 'whole-tree-guard-'));
+if (!state.dir) {
+  // One directory per worker, named for its process so a run that was killed leaves only what the
+  // next run reaps by that name, and removed by the worker that made it when it exits.
+  const parent = join(tmpdir(), GUARD_DIRS);
+  mkdirSync(parent, { recursive: true });
+  reapGuardDirs(parent, running);
+  const made = mkdtempSync(join(parent, `${process.pid}-`));
+  state.dir = made;
+  const remove = () => rmSync(made, { recursive: true, force: true });
+  process.once('exit', remove);
+  // vitest ends a fork with SIGTERM, which runs no exit handler. Where nothing else listens for it,
+  // it is raised again once the directory is gone, so the worker still ends the way it would have.
+  process.once('SIGTERM', () => {
+    remove();
+    if (process.listenerCount('SIGTERM') === 0) process.kill(process.pid, 'SIGTERM');
+  });
+}
 // Each file gets its own log, so a child one file left running writes where no later file reads.
 state.files = (state.files ?? 0) + 1;
 state.log = join(state.dir, `children-${state.files}.jsonl`);
@@ -74,12 +98,6 @@ function readLog() {
   state.pending = pending;
   return lines;
 }
-
-const running = (pid) =>
-  processRunning(pid, {
-    signal: (p) => process.kill(p, 0),
-    stat: (p) => readFileSync(`/proc/${p}/stat`, 'utf8'),
-  });
 
 /** The listings this file's processes and workers made, waiting out any still running; one still
  * running at the end counts as the root, since what it lists afterwards no file reads. */

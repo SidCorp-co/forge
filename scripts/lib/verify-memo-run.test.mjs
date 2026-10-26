@@ -165,11 +165,13 @@ describe('a check taken through the memo', () => {
       declarations: { c: { roots: ['check.mjs', 'src'], blind: ['biome'] } },
       readings: { biome },
     });
-    m.plan(check);
-    m.plan(check);
+    // Each plan is settled unrun, which removes the trace directory a miss makes.
+    const unrun = (plan) => m.settle(plan, 1, '', { code: 1 });
+    unrun(m.plan(check));
+    unrun(m.plan(check));
     expect(asks).toBe(1);
     put('src/a.txt', 'alpha, edited');
-    m.plan(check);
+    unrun(m.plan(check));
     expect(asks).toBe(2);
   });
 
@@ -312,7 +314,10 @@ describe('a check taken through the memo', () => {
     expect(run(asMemo(), { PEEK: peek }).plan.kind).toBe('miss');
     expect(asMemo().plan(check).kind).toBe('hit');
     writeFileSync(peek, 'two');
-    expect(asMemo().plan(check).kind).toBe('miss');
+    const again = asMemo();
+    const missed = again.plan(check);
+    expect(missed.kind).toBe('miss');
+    again.settle(missed, 1, '', { code: 1 });
     rmSync(outside, { recursive: true, force: true });
   });
 

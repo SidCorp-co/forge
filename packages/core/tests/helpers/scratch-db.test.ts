@@ -5,16 +5,13 @@ import { describe, expect, it } from 'vitest';
 import { MIGRATIONS_FOLDER } from './migrate.js';
 import {
   bornAt,
-  CASE_PREFIX,
   caseDbName,
   drainRetiredScratchDbs,
   freshTemplateName,
-  isAbandoned,
   mintRunToken,
   ownDbName,
   reapAbandoned,
   retireScratchDb,
-  runToken,
   sweepRunScratchDbs,
   TEMPLATE_PREFIX,
   WORKER_PREFIX,
@@ -23,6 +20,8 @@ import {
 import { hashMigrations, sharedTemplateName } from './shared-template.js';
 
 const HOUR = 60 * 60 * 1000;
+/** The prefix every case database carries, which the reaper and the sweep find it by. */
+const CASE_PREFIX = 'test_case_';
 
 const TOKEN = mintRunToken();
 const freshTemplate = () => freshTemplateName(mintRunToken());
@@ -56,29 +55,11 @@ describe('names', () => {
   it('refuses to date a template named for its content, so age never claims it', () => {
     const shared = sharedTemplateName(hashMigrations(MIGRATIONS_FOLDER));
     expect(bornAt(shared)).toBeNull();
-    expect(isAbandoned(shared, Date.now() + 1000 * HOUR)).toBe(false);
   });
 
   it('refuses to date the name shape this suite used before', () => {
     expect(bornAt('test_w29_9ed50deb')).toBeNull();
     expect(bornAt('test_w28_2321f868')).toBeNull();
-    expect(isAbandoned('test_w29_9ed50deb', Date.now())).toBe(false);
-  });
-});
-
-describe('isAbandoned', () => {
-  it('leaves a database a live run could still own', () => {
-    const fresh = freshTemplate();
-    expect(isAbandoned(fresh, Date.now())).toBe(false);
-    expect(isAbandoned(fresh, Date.now() + HOUR)).toBe(false);
-  });
-
-  it('claims one no live run can own', () => {
-    expect(isAbandoned(freshTemplate(), Date.now() + 3 * HOUR)).toBe(true);
-  });
-
-  it('never claims a name it cannot date', () => {
-    expect(isAbandoned('forge', Date.now() + 1000 * HOUR)).toBe(false);
   });
 });
 
@@ -100,6 +81,31 @@ function fakeAdmin(datnames: string[]) {
   };
   return { admin, catalog, dropped };
 }
+
+describe('reapAbandoned, by age', () => {
+  const reap = async (datnames: string[], now: number) => {
+    const { admin, dropped } = fakeAdmin(datnames);
+    // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
+    await reapAbandoned(admin as any, now);
+    return dropped;
+  };
+
+  it('leaves a database a live run could still own', async () => {
+    const fresh = freshTemplate();
+    expect(await reap([fresh], Date.now())).toEqual([]);
+    expect(await reap([fresh], Date.now() + HOUR)).toEqual([]);
+  });
+
+  it('claims one no live run can own', async () => {
+    const old = freshTemplate();
+    expect(await reap([old], Date.now() + 3 * HOUR)).toEqual([old]);
+  });
+
+  it('never claims a name it cannot date, whatever its age', async () => {
+    const shape = 'test_w29_9ed50deb';
+    expect(await reap([shape, 'test_own', 'test_case_'], Date.now() + 1000 * HOUR)).toEqual([]);
+  });
+});
 
 describe('reapAbandoned', () => {
   it('drops only what is old and stamped', async () => {
@@ -167,9 +173,18 @@ describe('a database minted for one test case', () => {
     expect(() => caseDbName('iss 1046', TOKEN)).toThrow(/tag/);
   });
 
-  it('refuses to read a token out of a name this suite did not mint', () => {
-    expect(runToken('forge')).toBeNull();
-    expect(runToken(undefined)).toBeNull();
+  it('refuses a run whose TEST_PG_RUN_TOKEN is not a token this suite minted', () => {
+    const was = process.env.TEST_PG_RUN_TOKEN;
+    try {
+      for (const token of ['forge', undefined]) {
+        if (token === undefined) delete process.env.TEST_PG_RUN_TOKEN;
+        else process.env.TEST_PG_RUN_TOKEN = token;
+        expect(() => caseDbName('iss1046')).toThrow(/TEST_PG_RUN_TOKEN/);
+      }
+    } finally {
+      if (was === undefined) delete process.env.TEST_PG_RUN_TOKEN;
+      else process.env.TEST_PG_RUN_TOKEN = was;
+    }
   });
 });
 

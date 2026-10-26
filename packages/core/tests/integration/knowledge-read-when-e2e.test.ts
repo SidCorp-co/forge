@@ -13,7 +13,7 @@
 
 import { sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestProjectMember,
@@ -88,6 +88,16 @@ const put = (slug: string, body: Record<string, unknown>) =>
 const get = (slug: string) => send('GET', `/api/projects/${projectId}/knowledge/${slug}`);
 const list = (query: string) => send('GET', `/api/projects/${projectId}/knowledge${query}`);
 
+/**
+ * The three entries the filter cases read: one per axis and one with no condition. A PUT is an
+ * upsert, so a case that runs after the writing cases above finds the same three.
+ */
+async function putFilterEntries() {
+  await put('verb-entry', { readWhen: { verbs: ['triage'] } });
+  await put('status-entry', { readWhen: { statuses: ['open'] } });
+  await put('bare-entry', {});
+}
+
 /** The list route's `rows`, safely narrowed once so no assertion below reaches through an optional. */
 function rowsOf(res: { json: Record<string, unknown> | null }): Array<Record<string, unknown>> {
   const rows = res.json?.rows;
@@ -130,6 +140,8 @@ describe('writing and reading a condition (criteria 19, 20)', () => {
 });
 
 describe('the list filters (criteria 21, 22, 34)', () => {
+  beforeEach(putFilterEntries);
+
   it('?verb=<verb> returns exactly the entries whose condition names that verb', async () => {
     const res = await list('?verb=triage');
     const slugs = rowsOf(res).map((r) => r.slug);
@@ -198,6 +210,7 @@ describe('an upsert that names no condition leaves the stored one alone; null cl
   });
 
   it('naming the condition as null removes it', async () => {
+    await put('sticky', { readWhen: { verbs: ['judge'] } });
     const cleared = await put('sticky', { readWhen: null });
     expect(cleared.status).toBe(200);
 
@@ -237,6 +250,12 @@ describe('what predates this column keeps behaving as it did (criterion 29)', ()
 });
 
 describe('the database refuses what the route refuses, and shapes the route never sees (criteria 28, 42, 43, 44)', () => {
+  // Every UPDATE below names `bare-entry`: without the row, it would match nothing and no CHECK
+  // would be asked.
+  beforeEach(async () => {
+    await put('bare-entry', {});
+  });
+
   it('refuses a read_when naming a verb outside the declared set', async () => {
     await expect(
       harness.db.execute(sql`

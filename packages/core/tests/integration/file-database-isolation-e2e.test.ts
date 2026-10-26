@@ -171,10 +171,16 @@ describe('a test file cannot see what another test file left behind', () => {
 
       expect(writer.status, 'the file that wrote schema undeclared').toBe('failed');
       expect(said).toContain('schema-writer.fixture.ts changed the schema of the slot database');
-      expect(said).toContain('added relation public.isolation_probe');
-      expect(said).toContain('changed relation drizzle.__drizzle_migrations_id_seq');
+      expect(said).toContain('added table isolation_probe');
+      expect(said).toContain('added rule isolation_swallow on table admin_thresholds');
+      expect(said).toContain('changed options of sequence drizzle.__drizzle_migrations_id_seq');
       expect(said).toContain('own:');
-      expect(nested.file('after-schema').status, 'the file after it').toBe('passed');
+      const after = nested.file('after-schema');
+      expect(after.status, 'the file after it').toBe('passed');
+      expect(
+        assertion(after, 'keeps a row it inserts, with no rule a file before it left on the table')
+          .status,
+      ).toBe('passed');
     },
     SLOW,
   );
