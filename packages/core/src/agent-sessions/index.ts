@@ -34,7 +34,12 @@ export {
   turnCredentialChatDevice,
 } from './session-credential.js';
 export { isPipelineSessionKind } from './session-kinds.js';
-export { requestSessionSend, resolveSessionSend } from './session-send.js';
+export {
+  provideSendRefusedListener,
+  requestSessionSend,
+  resolveSessionSend,
+  sessionSendStanding,
+} from './session-send.js';
 export {
   deriveSessionFinal,
   maybeDeriveIncremental,

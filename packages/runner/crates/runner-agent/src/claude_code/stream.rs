@@ -57,6 +57,11 @@ pub(crate) fn spawn_reader(
                     got_limit = true;
                 }
             }
+            if is_replayed_user_message(&json) {
+                if let Some(s) = sessions.lock().await.get_mut(&job_id) {
+                    s.unreplayed = s.unreplayed.saturating_sub(1);
+                }
+            }
             if json.get("type").and_then(Value::as_str) == Some("result") {
                 let is_error = json
                     .get("is_error")
@@ -70,13 +75,33 @@ pub(crate) fn spawn_reader(
                         o.result_error = Some(result_error_detail(&json));
                     }
                 }
-                // Definitive done marker — wake the completion task.
-                result_notify.notify_one();
+                // Definitive done marker — wake the completion task, unless a message written
+                // into this turn is still queued: Claude Code answers it as a turn of its own
+                // straight after this one, and the caller's turn ends with that one's result.
+                let queued = sessions
+                    .lock()
+                    .await
+                    .get(&job_id)
+                    .map_or(0, |s| s.unreplayed);
+                if queued == 0 {
+                    result_notify.notify_one();
+                } else {
+                    tracing::info!(
+                        "[claude] job={job_id} a result with {queued} message(s) still queued — the turn goes on"
+                    );
+                }
             }
             let tx = turn_tx.lock().await.clone();
             let _ = tx.send(RunnerEvent::Stdout(json)).await;
         }
     })
+}
+
+/// A user message Claude Code echoed back from stdin (`--replay-user-messages`): one written
+/// message taken by the model. A tool result is a `user` line too, and is never a replay.
+pub(crate) fn is_replayed_user_message(json: &Value) -> bool {
+    json.get("type").and_then(Value::as_str) == Some("user")
+        && json.get("isReplay").and_then(Value::as_bool) == Some(true)
 }
 
 /// Everything the completion task owns once the session is spawned.
@@ -92,6 +117,7 @@ pub(crate) struct Completion {
     pub(crate) reader: tokio::task::JoinHandle<()>,
     pub(crate) stderr: tokio::task::JoinHandle<String>,
     pub(crate) mcp_path: std::path::PathBuf,
+    pub(crate) bearer_dir: Option<std::path::PathBuf>,
     /// Held until the process is reaped: a confined session's network ends with it.
     pub(crate) egress: Option<super::EgressGuard>,
     pub(crate) invoked_with_resume: bool,
@@ -141,6 +167,9 @@ pub(crate) async fn complete(c: Completion) {
         .and_then(|r| r.ok())
         .unwrap_or_default();
     let _ = std::fs::remove_file(&c.mcp_path);
+    if let Some(dir) = &c.bearer_dir {
+        let _ = std::fs::remove_dir_all(dir);
+    }
     // The process is reaped: its network goes when this completion ends.
     let _egress = c.egress;
     if !already_reported {
@@ -236,3 +265,7 @@ fn terminal_event(
         ),
     }
 }
+
+#[cfg(test)]
+#[path = "stream_tests.rs"]
+mod tests;

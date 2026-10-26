@@ -27,23 +27,52 @@ the support session instead (`room-routing.ts:Route.support`).
 
 One `agent_sessions` row of kind `chat` per bound group (BC-10), declared when the binding is read
 (`support/rooms.ts:ensureSupportRoom`) and owned by the room's own agent account. Each message is
-handed to it with the existing chat-turn path (`agent-sessions/chat-turn.ts:dispatchChatTurn`): the
-first turn cold-starts Claude Code on a paired box of the project; later turns go as `agent:send`
-with the stored `claudeSessionId`, which the box writes into the resident process or resumes with
-`--resume` after a restart or an idle close (BC-16). A box change re-primes the session with every
-open thread's recent messages from the conversation store (`support/prompt.ts:coldBrief`).
+handed to it with the existing chat-turn path (`agent-sessions/chat-turn.ts:dispatchChatTurn`). The
+session is warm before anyone writes (`support/warm.ts`): a warm-up turn that answers nothing spawns
+and briefs Claude Code when the binding is saved (`integration.changed`), when a box of the project
+comes online (`device.pushed`, status `online`), and from the `support.room-warm` sweep (every 30 s)
+for a room whose session is not resident, so a member's first message is written into a running
+process, not a cold start. A grant change re-tells a warm session the tools it may use (the brief is
+read once), at once or after the turn that is running. Later turns go as `agent:send` with the stored
+`claudeSessionId`, which the box writes into the resident process or resumes with `--resume` after a
+restart (BC-16). A box change re-primes the session with every open thread's recent messages from
+the conversation store (`support/prompt.ts:coldThreads`).
 
 Not the master pane: a master is a tmux pane in `bypassPermissions` that the box itself declares and
 keeps (`runner-daemon/src/master/`). A support session reads text written by strangers; the chat
 host runs it confined (`agent-sessions/chat-door.ts:isChatDoorSession`, ADR 0012), holding only the
 token core hands it, so a prompt injected by a group member reaches nothing the room was not
 granted. The chat host also already lives in the sessions view and resumes by Claude's own session
-id, which is what BC-16 asks; the runner needs no change.
+id, which is what BC-16 asks.
 
-A message that arrives while a turn runs waits as an undelivered `message_in` action and goes in the
-next turn, which the session's own end starts (`terminal-effects.ts` marker `supportRoom`), a
-confirm's answer starts (`support/inbound.ts:handleSupportMessage`), or the `support.room-drain`
-timer (every 2 s, `timer-registry.ts`) does for a room whose turn end was missed. A turn that cannot
+**The resident stays.** Every support turn carries a fresh token fenced to the project, and the box
+closed a resident whose turn carried its own token (`runner-agent/src/chat.rs:resident_disposition`),
+because its MCP config held the spawning turn's token, revoked when that turn ended (migration
+0324). So every support turn respawned Claude Code. A turn frame with `keepResident` (set for a
+`supportRoom` session, `chat-turn.ts`) now spawns Claude Code with an MCP config that reads its bearer
+from a file through `headersHelper` (`runner-workspace/src/mcp/config/mod.rs:write_refreshable`); each
+turn writes its token there before it is written to the process, and Claude Code re-runs the helper
+on a 401 and retries, so one process serves every turn without holding a revoked token. The file is
+bound read-only into the confined session and no token is in its environment. Core's idle-residency
+close (`jobs/park-deadline.ts:closeIdleResidents`) skips a `supportRoom` session: it stays resident
+for as long as the room is bound.
+
+A message goes to the session the moment it is recorded (`support/inbound.ts` →
+`support/dispatch.ts:deliverWaiting`): as a turn of its own when none runs, or, while one runs,
+written into that turn through the session inbox (RFC 0003, `support/inject.ts:injectWaiting`,
+`session.send` kind `inject`), which the box writes into the resident's stdin as a stream-json user
+message. What Claude Code 2.1.310 does with it, measured on this box: written while a tool call is in
+flight, it is taken after the tool result and answered in the same turn (one `result`); written while
+the model writes its last text, the turn ends and the message is answered as a second turn straight
+after. The box ends the turn only when every message it wrote has been replayed back
+(`claude_code/stream.rs`), and reports each write applied. A box with no turn in flight refuses the
+write; core hands the messages back at once — on the refusal itself once core reads the turn ended
+(read again every 250 ms for 2 s while it still reads it running), or at that turn's end
+(`inject.ts:onInjectRefused`, `dispatch.ts:onSupportTurnEnded`). A session's end-of-turn bridges
+fire after the write that ended it commits (`agent-sessions/session-transition.ts`); fired inside it,
+the support bridge read the session still running, and a turn it handed over was refused and the
+room backed off 30 s. The 2 s `support.room-drain` timer only
+recovers what a crash left: a write nobody answered, or a message no turn took. A turn that cannot
 reach a box gives its messages back and the room waits 30 s before the next try; a project with no
 capable box is told so in the thread at most every 10 minutes (`support/dispatch.ts:deliverWaiting`).
 A turn that ends failed or cancelled instead of completed tells each thread it left with no session
@@ -90,7 +119,13 @@ confirmed in 15 minutes expires. Slack bots built on Bolt do the same thing with
 
 ### What needs code is Feedback, linked to the thread, followed to shipped
 
-The session records a defect, a feature or an extra request as Feedback through the external
+Nothing is filed until its asker agrees (REQ-30 BC-4, the owner's confirm-before-recording rule):
+the session's `record` restates the route (defect, feature or request), the title and the thread's
+link in the thread, with the same `confirm <code>` / `cancel <code>` buttons a fix has, and waits as
+a pending change in `support_fixes` under the reserved name `forge:record`, which no granted tool can
+take (`support/propose.ts:proposeRecord`). Only the asker's confirm files it; another member's, a
+cancel or 15 minutes unconfirmed file nothing, and the session is told the key once it is filed.
+Then core records a defect, a feature or an extra request as Feedback through the external
 filing door (`feedback/external.ts:fileExternalFeedback`, channel `rocketchat`), as the room's
 account, with the thread's permalink in the body and the thread told its key. A group member is
 handed no status link — in a group anyone could open it, and the thread's own progress lines are the
@@ -113,6 +148,32 @@ progress post — is a `support_actions` row and a `system` line in that convers
 conversation view shows it and `GET /api/projects/:id/support/rooms/:roomId/actions` lists it
 (BC-18).
 
+### Latency
+
+Each message the session answers carries its latency on its `message_in` action: from the Rocket.Chat
+server's own timestamp (`ts`, EJSON `{ $date }` on DDP) to the session's first post in its thread
+(`support/delivery.ts:settleLatency`), with the path it took — `start` (a cold start), `send` (a turn
+of its own on the resident) or `inject` (written into a running turn). The room read
+(`GET /api/projects/:id/support/rooms`) shows `resident` and p50/p95 over the last 200, overall and by
+path. Before this change the DDP parse dropped `ts` (it read a string, the server sends `{ $date }`),
+so a message's server time was never recorded.
+
+Measured 2026-10-26 on Rocket.Chat 6.13.1 in Docker, core as in the e2e, and a box driving a real
+resident `claude` 2.1.310 through the gateway with the runner's turn rules (bearer by
+`headersHelper`, stdin injection, replay counting), ms from the server's stamp to the first reply:
+
+| Path | Samples (ms) |
+|---|---|
+| Cold first message, no warm-up (`start`) | 20 357, 12 585 |
+| First message after the warm-up (`send`) | 9 671 |
+| Warm message (`send`) | 16 578, 11 855, 8 972, 7 233, 12 708, 7 517 |
+| Mid-turn message, written 1.5 s into a turn that checks the order API (`inject`) | 13 235, 4 861, 9 824 |
+| First message after the box lost its process (`--resume`) | 10 322, 7 200, 7 612 |
+
+Core's part is under a second (the e2e holds the hand-over to it); the rest is the model's turn —
+searching, reading the thread, replying — which varies more than the paths differ. The warm-up takes
+the 2–8 s spawn and brief out of the first reply.
+
 ### How the session acts
 
 One MCP tool, `forge_support` (`support/tool.ts`), with a REST twin per action under
@@ -132,6 +193,19 @@ Actions: `search`, `thread`, `tools`, `reply`, `run`, `propose_fix`, `record`. P
 - **BC-11's 30 s is the box's model, not core.** Core hands a message to the box in milliseconds
   (the e2e measures it); the answer time is Claude Code's turn on the box, which no test here can
   bound.
+- **One resident Claude Code per bound group, for as long as it is bound.** A box holds one process
+  per room whether anyone writes or not; the idle close that frees other chats does not apply.
+- **Warm-ups are model calls.** Each bind, each box coming online, each grant change and each core
+  restart's first grant change spends one short turn per room ("ready"), with no member waiting.
+  Core keeps which tools it told each room in memory only: after a core restart the next grant
+  change re-tells them even if nothing changed.
+- **A box restart inside its heartbeat window is not seen as one.** Core still reads the session
+  resident, the box comes back without its process, and the first message after it resumes cold
+  (`--resume`, the last row above) instead of having been warmed; the `online` warm-up fires only
+  when the box had been marked offline.
+- **Every turn's first tool call pays one 401.** Claude Code opens with the bearer it read last,
+  which the previous turn's end revoked; it re-runs `headersHelper` on the 401 and retries
+  (measured: tens of ms).
 - **The confirm is a typed message.** Legacy attachment buttons post `confirm <CODE>` as the person
   who pressed them; Rocket.Chat's UIKit buttons would need an Apps-Engine app, which this does not
   ship. A member who types the line by hand confirms just the same, and only the asker's account
@@ -236,8 +310,9 @@ The owner's ruling: prove it on dev first. Nothing here is deployed by the lane.
 
 4. **The session on the dev runner**: the dev runner bound to each test project with its checkout
    (`forge-runner bind <slug> --path <dir>`), online, at a version that declares `turnCredential`
-   and `confinedChatNetwork`. Nothing else is started: the first message in a group cold-starts its
-   session there, and it shows in the dev Agents view.
+   and `confinedChatNetwork`, built with this change (an older box ignores `keepResident` and
+   respawns Claude Code every turn). Nothing else is started: binding the group
+   warms its session there, and it shows in the dev Agents view.
 
 5. **Judge BC-10..BC-18** in the groups, reading `support/rooms/<roomId>/actions` and the Feedback
    list. The local proof the same flows hold is `packages/core/tests/integration/support-room-e2e.test.ts`,

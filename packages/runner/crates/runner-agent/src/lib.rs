@@ -43,6 +43,12 @@ pub struct JobSpec {
     /// frame): a POC room's agent, whose edit reaches its preview with no check the checkout declares
     /// run in between (REQ-44 BC-3).
     pub hooks_off: bool,
+    /// Core's word that this session stays resident across turns that each carry their own token
+    /// (`keepResident` on the turn frame): a support group's session (REQ-75 BC-11). Its `forge`
+    /// server reads the bearer from a file the runner rewrites before each turn, and its
+    /// environment holds no Forge credential, so a later turn is written into the same process
+    /// rather than spawning one.
+    pub keep_resident: bool,
 }
 
 /// What a confined session is handed beyond its checkout, its MCP config and Claude Code's

@@ -1,11 +1,13 @@
-// Handing a support group's waiting messages to its session (REQ-75 BC-11, BC-16). The session is a
-// `chat` row the existing chat-turn path drives: a turn cold-starts Claude Code on a paired box of
-// the project, a later one goes as `agent:send` with the stored Claude session id, which the box
-// writes into its resident process or resumes with `--resume`. A message that arrives while a turn
-// runs waits as an undelivered `message_in` row; the turn's end (`supportRoom` bridge) or the drain
-// sends every waiting message as the next turn. A turn that ends without completing tells each
-// thread it left unanswered so, and those messages are not handed to a turn again.
+// Handing a support group's messages to its session (REQ-75 BC-11, BC-16). The session is a `chat`
+// row the existing chat-turn path drives on a paired box of the project, and the box keeps its
+// Claude Code process resident between turns (`keepResident`), so a turn is written into a warm
+// process rather than a fresh spawn. A message goes to the session the moment it is recorded: as a
+// turn of its own when none runs, or written into the running turn (`inject.ts`), which Claude Code
+// takes at its next tool call or answers straight after it. The drain timer only recovers what a
+// crash left undelivered. A turn that ends without completing tells each thread it left unanswered
+// so, and those messages are not handed to a turn again.
 
+import type { SupportDeliveryPath, SupportTool } from '@forge/contracts/support';
 import {
   dispatchChatTurn,
   mintFencedSessionCredential,
@@ -17,19 +19,19 @@ import { findBindingWithConnectionById, forgeReads } from '../integrations/index
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { logger } from '../lib/logger.js';
-import { coldThreads, supportBrief, turnMessages } from './prompt.js';
-import { ensureSupportRoom } from './rooms.js';
 import {
   claimUndelivered,
-  insertAction,
-  offlineToldSince,
+  markDelivery,
   oldestUndelivered,
-  type RoomRow,
-  roomById,
   roomsWithUndelivered,
+  toldFailed,
   unansweredOfLastTurn,
   unclaim,
-} from './store.js';
+} from './delivery.js';
+import { injectWaiting, settleInjects } from './inject.js';
+import { coldThreads, supportBrief, turnMessages } from './prompt.js';
+import { ensureSupportRoom } from './rooms.js';
+import { insertAction, offlineToldSince, type RoomRow, roomById } from './store.js';
 import { postInThread } from './thread.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */
@@ -42,10 +44,52 @@ const OFFLINE_NOTICE_EVERY_MS = 10 * 60_000;
 
 const lastFailure = new Map<string, number>();
 
-type SessionRow = typeof agentSessions.$inferSelect;
+/**
+ * When each room last handed its session a turn. Read when that turn ends, to tell only the threads
+ * it took (and those written into it); core restarting in between leaves it unknown, and the newest
+ * hand-over is read instead.
+ */
+const lastTurn = new Map<string, Date>();
+export function noteTurn(roomId: string, at: Date): void {
+  lastTurn.set(roomId, at);
+}
 
-async function sessionOf(room: RoomRow): Promise<SessionRow | null> {
+/**
+ * The tools each room's session was last told of. A session briefed once and kept warm is told
+ * again when the project's grants change (`warm.ts:retellTools`); core restarting forgets, and the
+ * next grant change tells it again.
+ */
+const briefedTools = new Map<string, string>();
+export const toolsKey = (tools: readonly SupportTool[]) =>
+  JSON.stringify(tools.map((t) => [t.name, t.kind, t.summary]));
+export function toldTools(roomId: string): string | undefined {
+  return briefedTools.get(roomId);
+}
+export function noteTools(roomId: string, tools: readonly SupportTool[]): void {
+  briefedTools.set(roomId, toolsKey(tools));
+}
+
+export type SessionRow = typeof agentSessions.$inferSelect;
+export type TurnClient = Awaited<ReturnType<typeof turnCredentialChatDevice>>;
+
+export async function sessionOf(room: RoomRow): Promise<SessionRow | null> {
   return room.sessionId ? sessionRowById(room.sessionId) : null;
+}
+
+/** The room as it stands, its session declared if its binding still names it a support group. */
+export async function roomWithSession(roomId: string): Promise<RoomRow | null> {
+  const room = await roomById(roomId);
+  if (!room || room.sessionId) return room;
+  const pair = await findBindingWithConnectionById(room.bindingId);
+  const config = (pair?.binding.config ?? null) as RocketChatBindingConfig | null;
+  if (!config?.support) return room;
+  return ensureSupportRoom({
+    projectId: room.projectId,
+    bindingId: room.bindingId,
+    connectionId: room.connectionId,
+    rid: room.rid,
+    support: config.support,
+  });
 }
 
 /** The room's binding config, for the brief's product line. */
@@ -56,36 +100,77 @@ async function roomProduct(room: RoomRow): Promise<string | null> {
   );
 }
 
+/** Whether a turn of this session starts Claude Code cold (no session of its own to resume). */
+export const startsCold = (session: SessionRow, client: TurnClient) =>
+  !session.claudeSessionId || Boolean(client.migrated);
+
+/**
+ * Hand `body` to the session as one turn, under a token fenced to the project and revoked when the
+ * turn ends. A cold turn is briefed first and re-reads its threads. Throws when the turn does not
+ * reach its box.
+ */
+export async function handTurn(
+  room: RoomRow,
+  session: SessionRow,
+  client: TurnClient & { deviceId: string },
+  body: { messages: string } | { warmUp: string },
+): Promise<void> {
+  const [project] = await forgeReads().projectsByIds([room.projectId]);
+  if (!project) throw new Error(`support: room ${room.id}'s project ${room.projectId} is gone`);
+  const parts: string[] = [];
+  if (startsCold(session, client)) {
+    const api = await activeSupportApi(room.projectId);
+    noteTools(room.id, api?.tools ?? []);
+    parts.push(
+      supportBrief({
+        projectName: project.name,
+        product: await roomProduct(room),
+        tools: api?.tools ?? [],
+      }),
+    );
+    const history = await coldThreads(room);
+    if (history) parts.push(history);
+    if ('messages' in body) parts.push('New messages:');
+  }
+  parts.push('messages' in body ? body.messages : body.warmUp);
+  const credential = await mintFencedSessionCredential({
+    sessionId: session.id,
+    deviceId: client.deviceId,
+    userId: room.principalUserId,
+    projectId: room.projectId,
+    permissions: SUPPORT_SESSION_GRANT,
+  });
+  await dispatchChatTurn({
+    session,
+    project: { id: project.id, slug: project.slug },
+    client,
+    message: parts.join('\n\n'),
+    preBuilt: true,
+    credential,
+    actor: { type: 'system' },
+  });
+}
+
 export type DeliverOutcome =
   | 'nothing-waiting'
   | 'turn-running'
+  | 'injected'
   | 'backing-off'
   | 'no-box'
   | 'dispatched'
   | 'dispatch-failed';
 
 /**
- * Send every message waiting in a room as one turn of its session, unless a turn is running (its
- * end sends them). A turn that could not be handed to a box gives its messages back.
+ * Hand every message waiting in a room to its session at once: written into the running turn when
+ * one runs, else as a turn of its own. A turn that could not be handed to a box gives its messages
+ * back.
  */
 export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
-  let room = await roomById(roomId);
+  const room = await roomWithSession(roomId);
   if (!room) return 'nothing-waiting';
-  if (!room.sessionId) {
-    const pair = await findBindingWithConnectionById(room.bindingId);
-    const config = (pair?.binding.config ?? null) as RocketChatBindingConfig | null;
-    if (!config?.support) return 'nothing-waiting';
-    room = await ensureSupportRoom({
-      projectId: room.projectId,
-      bindingId: room.bindingId,
-      connectionId: room.connectionId,
-      rid: room.rid,
-      support: config.support,
-    });
-  }
   const session = await sessionOf(room);
   if (!session) return 'nothing-waiting';
-  if (session.status === 'running') return 'turn-running';
+  if (session.status === 'running') return injectWaiting(room, session);
   const failedAt = lastFailure.get(room.id);
   if (failedAt && Date.now() - failedAt < RETRY_AFTER_MS) return 'backing-off';
 
@@ -99,43 +184,21 @@ export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
   const at = new Date();
   const rows = await claimUndelivered(room.id, at);
   if (rows.length === 0) return 'nothing-waiting';
-  const [project] = await forgeReads().projectsByIds([room.projectId]);
-  if (!project) throw new Error(`support: room ${room.id}'s project ${room.projectId} is gone`);
-
-  // a turn without Claude's own session id starts cold: it is briefed, and re-reads its threads
-  const cold = !session.claudeSessionId || client.migrated;
-  const parts: string[] = [];
-  if (cold) {
-    const api = await activeSupportApi(room.projectId);
-    parts.push(
-      supportBrief({
-        projectName: project.name,
-        product: await roomProduct(room),
-        tools: api?.tools ?? [],
-      }),
-    );
-    const history = await coldThreads(room);
-    if (history) parts.push(history);
-    parts.push('New messages:');
-  }
-  parts.push(turnMessages(rows));
+  const path: SupportDeliveryPath = startsCold(session, client) ? 'start' : 'send';
+  noteTurn(room.id, at);
   try {
-    const credential = await mintFencedSessionCredential({
-      sessionId: session.id,
-      deviceId: client.deviceId,
-      userId: room.principalUserId,
-      projectId: room.projectId,
-      permissions: SUPPORT_SESSION_GRANT,
-    });
-    await dispatchChatTurn({
+    await handTurn(
+      room,
       session,
-      project: { id: project.id, slug: project.slug },
-      client,
-      message: parts.join('\n\n'),
-      preBuilt: true,
-      credential,
-      actor: { type: 'system' },
-    });
+      { ...client, deviceId: client.deviceId },
+      {
+        messages: turnMessages(rows),
+      },
+    );
+    await markDelivery(
+      rows.map((r) => r.id),
+      { path },
+    );
     lastFailure.delete(room.id);
     return 'dispatched';
   } catch (err) {
@@ -176,7 +239,10 @@ async function tellOffline(room: RoomRow): Promise<void> {
   });
 }
 
-/** The drain: every room holding a waiting message is offered a turn (a process timer). */
+/**
+ * The recovery sweep (a process timer): a room still holding a message no turn took is offered one.
+ * On the live path nothing waits here, since a message is handed on as it is recorded.
+ */
 export async function drainSupportRooms(): Promise<void> {
   for (const roomId of await roomsWithUndelivered()) {
     await deliverWaiting(roomId).catch((err) =>
@@ -192,6 +258,8 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
     | undefined;
   if (typeof marker?.roomId !== 'string') return;
   if (!COMPLETED.has(row.status)) await tellTurnFailed(marker.roomId, row.status);
+  // what the box refused to write into the turn now waits again, and goes with the rest
+  await settleInjects(marker.roomId);
   await deliverWaiting(marker.roomId);
 }
 
@@ -203,12 +271,19 @@ const TURN_FAILED_LINE =
 
 /**
  * A turn that failed or was cancelled tells each thread it left unanswered, once, and records why:
- * the messages stay delivered, so a box that fails every turn is never handed them again.
+ * the messages stay delivered, so a box that fails every turn is never handed them again. A message
+ * a failed turn was already reported for is not reported again by a later one; a warm-up that fails
+ * reports only what was written into it.
  */
 async function tellTurnFailed(roomId: string, status: string): Promise<void> {
   const room = await roomById(roomId);
   if (!room) return;
-  const left = await unansweredOfLastTurn(room.id);
+  const taken = await unansweredOfLastTurn(room.id, lastTurn.get(room.id) ?? null);
+  const told = await toldFailed(
+    room.id,
+    taken.map((m) => m.id),
+  );
+  const left = taken.filter((m) => !told.has(m.id));
   const threads = new Map(left.map((m) => [m.thread, m] as const));
   for (const [thread, first] of threads) {
     const posted = await postInThread({ room, thread, text: TURN_FAILED_LINE }).catch((err) => {

@@ -37,9 +37,10 @@ export function parseConfirm(text: string): { verb: 'confirm' | 'cancel'; code: 
 export function confirmRefusal(
   fix: { askerKey: string; askerLabel: string | null },
   authorKey: string,
+  nothingDone = 'Nothing was run.',
 ): string | null {
   if (fix.askerKey === authorKey) return null;
-  return `Only @${fix.askerLabel ?? 'the person who asked'} can confirm this change. Nothing was run.`;
+  return `Only @${fix.askerLabel ?? 'the person who asked'} can confirm this change. ${nothingDone}`;
 }
 
 export type SupportLimitsResolved = { [K in keyof typeof SUPPORT_LIMIT_DEFAULTS]: number };
@@ -137,4 +138,24 @@ export function confirmPrompt(input: {
     .join(', ');
   const who = input.askerLabel ? `@${input.askerLabel} ` : '';
   return `${who}I can make this change: ${input.summary}${shown ? ` (${shown})` : ''}. Reply \`confirm ${input.code}\` to run it, or \`cancel ${input.code}\`. Only you can confirm it; it expires in 15 minutes.`;
+}
+
+/** What the thread is told before anything is filed: the route, the title, and the thread's link. */
+export function recordPrompt(input: {
+  askerLabel: string | null;
+  kind: SupportRecordKind;
+  title: string;
+  link: string;
+  code: string;
+}): string {
+  const who = input.askerLabel ? `@${input.askerLabel} ` : '';
+  return `${who}I would record this for the team as Feedback (${input.kind}): "${input.title}", with a link to this thread (${input.link}). Reply \`confirm ${input.code}\` to record it, or \`cancel ${input.code}\`. Only you can confirm it; it expires in 15 minutes.`;
+}
+
+/** The nearest-rank `p`th percentile of `values`, or null for none. */
+export function percentile(values: readonly number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil((p / 100) * sorted.length);
+  return sorted[Math.min(sorted.length, Math.max(1, rank)) - 1] ?? null;
 }

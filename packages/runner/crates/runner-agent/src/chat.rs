@@ -96,6 +96,10 @@ struct StartFrame {
     /// Core's word that the session runs with every hook off: a POC room's agent (REQ-44 BC-3).
     #[serde(default)]
     ungated: bool,
+    /// Core's word that the session stays resident across turns that each carry their own token:
+    /// a support group's session (REQ-75 BC-11). See `JobSpec::keep_resident`.
+    #[serde(default)]
+    keep_resident: bool,
 }
 
 /// `agent:send` payload (a follow-up turn on an existing session).
@@ -129,6 +133,9 @@ struct SendFrame {
     /// See `StartFrame::ungated`.
     #[serde(default)]
     ungated: bool,
+    /// See `StartFrame::keep_resident`.
+    #[serde(default)]
+    keep_resident: bool,
 }
 
 /// Resolved per-turn parameters fed into one `claude` invocation.
@@ -153,6 +160,8 @@ struct Turn {
     confined: bool,
     /// See `StartFrame::ungated`.
     ungated: bool,
+    /// See `StartFrame::keep_resident`.
+    keep_resident: bool,
 }
 
 /// Download a turn's attachments to a fresh temp dir, authenticated with the
@@ -294,6 +303,7 @@ pub async fn handle_start(
             credential: handed_credential(f.forge_token),
             confined: f.confined,
             ungated: f.ungated,
+            keep_resident: f.keep_resident,
         },
     )
     .await
@@ -337,6 +347,7 @@ pub async fn handle_send(
             credential: handed_credential(f.forge_token),
             confined: f.confined,
             ungated: f.ungated,
+            keep_resident: f.keep_resident,
         },
     )
     .await
@@ -385,6 +396,7 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
             reads: turn.attachment_dir.iter().cloned().collect(),
         }),
         hooks_off: turn.ungated,
+        keep_resident: turn.keep_resident,
     }
 }
 
@@ -396,11 +408,13 @@ enum Disposition {
 }
 
 /// Whether a turn may be written into the session's resident process. One that carries its own
-/// token may not: the resident's MCP config holds the token of the turn that spawned it.
+/// token may not, unless core keeps the session resident and the process reads its bearer from
+/// the file this turn's token is written to first; any other resident's MCP config holds the
+/// token of the turn that spawned it, revoked since.
 fn resident_disposition(resident: Option<&Resident>, turn: &Turn) -> Disposition {
     match resident {
         None => Disposition::Spawn,
-        Some(_) if turn.credential.is_some() => {
+        Some(r) if turn.credential.is_some() && !(turn.keep_resident && r.refreshable) => {
             Disposition::Close("this turn carries its own token")
         }
         Some(r) if r.model == turn.model => Disposition::Reuse,
@@ -468,10 +482,21 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
 
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
     let started = if reuse {
-        match runner.send(&session_id, prompt.clone(), tx.clone()).await {
+        let handed = match &turn.credential {
+            Some(token) => runner.refresh_bearer(&session_id, &token.0).await,
+            None => Ok(()),
+        };
+        let sent = match handed {
+            Ok(()) => runner.send(&session_id, prompt.clone(), tx.clone()).await,
+            Err(e) => Err(e),
+        };
+        match sent {
             Ok(()) => Ok(()),
             Err(e) => {
                 tracing::info!("[chat {session_id}] resident send failed ({e}) — respawning");
+                // the resident may still be alive (its bearer could not be handed over): it is
+                // closed rather than left beside the process that replaces it
+                runner.close(&session_id).await;
                 runner.start(spec, tx).await.map(|_| ())
             }
         }
@@ -866,7 +891,63 @@ mod tests {
             credential: handed_credential(f.forge_token),
             confined: f.confined,
             ungated: f.ungated,
+            keep_resident: f.keep_resident,
         }
+    }
+
+    fn resident(refreshable: bool) -> Resident {
+        Resident {
+            model: None,
+            head_sha: None,
+            refreshable,
+        }
+    }
+
+    fn token_turn(keep_resident: bool) -> Turn {
+        turn_of(
+            serde_json::json!({
+                "sessionId": "s1",
+                "message": "hi",
+                "forgeToken": "turn-token",
+                "confined": true,
+                "keepResident": keep_resident,
+            }),
+            None,
+        )
+    }
+
+    /// A support group's session (REQ-75 BC-11): every turn carries its own token, and core keeps
+    /// the session resident, so the turn is written into the process that reads its bearer from
+    /// the file the token goes to first, never into a fresh spawn.
+    #[test]
+    fn a_kept_resident_turn_with_its_own_token_reuses_the_process_that_reads_its_bearer() {
+        assert_eq!(
+            resident_disposition(Some(&resident(true)), &token_turn(true)),
+            Disposition::Reuse
+        );
+        let spec = chat_spec("s1", "hi", &token_turn(true));
+        assert!(
+            spec.keep_resident,
+            "the spawn was not told to read its bearer from a file"
+        );
+    }
+
+    /// Any other turn carrying its own token closes the resident: that process holds the token of
+    /// the turn that spawned it, revoked since.
+    #[test]
+    fn a_turn_with_its_own_token_closes_a_resident_holding_a_fixed_one() {
+        assert_eq!(
+            resident_disposition(Some(&resident(false)), &token_turn(true)),
+            Disposition::Close("this turn carries its own token")
+        );
+        assert_eq!(
+            resident_disposition(Some(&resident(true)), &token_turn(false)),
+            Disposition::Close("this turn carries its own token")
+        );
+        assert_eq!(
+            resident_disposition(None, &token_turn(true)),
+            Disposition::Spawn
+        );
     }
 
     /// A POC room's agent (REQ-44 BC-3): core marks its turn `ungated`, and the session is spawned

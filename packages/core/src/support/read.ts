@@ -1,11 +1,19 @@
 // What Forge shows of a support group (REQ-75 BC-18): its rooms with their session, and every action
 // taken in one, oldest first. Inputs and outputs were stored scrubbed.
 
-import type { SupportActionView, SupportRoomView } from '@forge/contracts/support';
+import {
+  SUPPORT_DELIVERY_PATHS,
+  SUPPORT_LATENCY_WINDOW,
+  type SupportActionView,
+  type SupportLatencyView,
+  type SupportRoomView,
+} from '@forge/contracts/support';
 import { sessionStatusesByIds } from '../agent-sessions/index.js';
 import { externalItemPhases } from '../feedback/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { latencySamples } from './delivery.js';
+import { percentile } from './rules.js';
 import { type ActionRow, actionsOfRoom, recentThreads, roomById, roomsOfProject } from './store.js';
 
 const ACTIONS_SHOWN = 500;
@@ -22,19 +30,40 @@ export async function supportRoomsOf(
   );
   const api = await activeSupportApi(projectId).catch(() => null);
   return Promise.all(
-    rooms.map(async (r) => ({
-      id: r.id,
-      projectId: r.projectId,
-      bindingId: r.bindingId,
-      rid: r.rid,
-      sessionId: r.sessionId,
-      sessionStatus: r.sessionId ? (statusOf.get(r.sessionId) ?? null) : null,
-      principalUserId: r.principalUserId,
-      toolCount: api?.tools.length ?? 0,
-      threads: (await recentThreads(r.id, 1000)).length,
-      createdAt: r.createdAt.toISOString(),
-    })),
+    rooms.map(async (r) => {
+      const session = r.sessionId ? statusOf.get(r.sessionId) : undefined;
+      return {
+        id: r.id,
+        projectId: r.projectId,
+        bindingId: r.bindingId,
+        rid: r.rid,
+        sessionId: r.sessionId,
+        sessionStatus: session?.status ?? null,
+        resident: session?.status === 'running' || session?.runtimeState === 'awaiting_input',
+        principalUserId: r.principalUserId,
+        toolCount: api?.tools.length ?? 0,
+        threads: (await recentThreads(r.id, 1000)).length,
+        latency: latencyOf(await latencySamples(r.id, SUPPORT_LATENCY_WINDOW)),
+        createdAt: r.createdAt.toISOString(),
+      };
+    }),
   );
+}
+
+/** p50 and p95 of the samples, overall and by how each message reached the session. */
+export function latencyOf(samples: { ms: number; path: string | null }[]): SupportLatencyView {
+  const stats = (ms: number[]) => ({
+    measured: ms.length,
+    p50Ms: percentile(ms, 50),
+    p95Ms: percentile(ms, 95),
+  });
+  const byPath = Object.fromEntries(
+    SUPPORT_DELIVERY_PATHS.map((p) => [
+      p,
+      stats(samples.filter((s) => s.path === p).map((s) => s.ms)),
+    ]),
+  ) as SupportLatencyView['byPath'];
+  return { ...stats(samples.map((s) => s.ms)), byPath };
 }
 
 function viewOf(row: ActionRow, keys: Map<string, string>): SupportActionView {

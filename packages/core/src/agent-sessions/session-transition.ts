@@ -242,7 +242,8 @@ async function fireSessionBridges(
   for (const row of rows) {
     if (!sessionCarriesBridgeMarker((row as { metadata?: unknown }).metadata)) continue;
     const full = whole ? (row as SessionRow) : await hydrateSession(exec, row.id);
-    if (full) void fireTerminalSessionBridges(full);
+    // a bridge acts on what the end wrote (the next turn, a reply): never before that write commits
+    if (full) afterCommit(() => void fireTerminalSessionBridges(full));
   }
 }
 

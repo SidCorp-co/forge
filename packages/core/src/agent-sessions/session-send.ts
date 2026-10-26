@@ -23,6 +23,7 @@ import {
   sessionInbox,
 } from '../db/schema-session-inbox.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { logger } from '../lib/logger.js';
 import { SEND_UNDELIVERED_DEADLINE_MS } from '../lib/session-send-deadline.js';
 import { agentSessionsPorts } from './ports.js';
 import { pushSession } from './push.js';
@@ -181,6 +182,24 @@ export async function requestSessionSend(
   return { row, published: true, duplicate };
 }
 
+/** What a module that writes into running turns does when a box refuses one of its writes. */
+export type SendRefusedListener = (refused: {
+  agentSessionId: string;
+  seq: number;
+  intentId: string;
+}) => Promise<void>;
+
+const refusedListeners = new Map<string, SendRefusedListener>();
+
+/**
+ * A module hears, by the prefix its intent ids carry, a box refusing one of its writes (no turn in
+ * flight there), the moment the box says so: it need not wait for a sweep to send it again.
+ * Registered once at boot by the module that owns the prefix.
+ */
+export function provideSendRefusedListener(intentPrefix: string, listen: SendRefusedListener) {
+  refusedListeners.set(intentPrefix, listen);
+}
+
 /** Record the runner's own answer for one episode. Called by the ack route. */
 export async function confirmSessionSend(
   agentSessionId: string,
@@ -197,8 +216,19 @@ export async function confirmSessionSend(
         sql`(${sessionInbox.sendOutcome} IS NULL OR ${sessionInbox.sendOutcome} = ${outcome})`,
       ),
     )
-    .returning({ seq: sessionInbox.seq });
-  if (!settled.length) await refuseUnsettled(agentSessionId, seq, 'its send outcome');
+    .returning({ seq: sessionInbox.seq, intentId: sessionInbox.intentId });
+  const [row] = settled;
+  if (!row) return refuseUnsettled(agentSessionId, seq, 'its send outcome');
+  if (outcome !== 'gone') return;
+  for (const [prefix, listen] of refusedListeners) {
+    if (!row.intentId.startsWith(prefix)) continue;
+    await listen({ agentSessionId, seq, intentId: row.intentId }).catch((err: unknown) =>
+      logger.error(
+        { err, agentSessionId, seq, intentId: row.intentId },
+        'agent-sessions: a refused write was not handed back to the module that sent it',
+      ),
+    );
+  }
 }
 
 /**
@@ -280,6 +310,25 @@ export async function resolveSessionSend(
     return { outcome: 'gone', applied };
   }
   return { outcome: unknown, applied };
+}
+
+/**
+ * Where one send stands, read by its seq; null where the session never held that seq. `confirmed`
+ * is what the box answered, kept after the episode closes: a write the box took stays taken once a
+ * later turn ends the session's status.
+ */
+export async function sessionSendStanding(
+  agentSessionId: string,
+  seq: number,
+  now: number = Date.now(),
+): Promise<(SendResolution & { confirmed: SessionSendOutcome | null }) | null> {
+  const [row] = await db
+    .select()
+    .from(sessionInbox)
+    .where(and(eq(sessionInbox.agentSessionId, agentSessionId), eq(sessionInbox.seq, seq)))
+    .limit(1);
+  if (!row) return null;
+  return { ...(await resolveSessionSend(row, now)), confirmed: row.sendOutcome };
 }
 
 function undeliveredAfterDeadline(

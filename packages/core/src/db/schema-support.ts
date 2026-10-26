@@ -111,7 +111,10 @@ export const supportActions = pgTable(
   }),
 );
 
-/** A fix the session proposed, waiting on the one account that asked, or what became of it. */
+/**
+ * A change the session proposed, waiting on the one account that asked, or what became of it: a fix
+ * through the product API, or a Feedback filing (tool `forge:record`, `support/propose.ts`).
+ */
 export const supportFixes = pgTable(
   'support_fixes',
   {

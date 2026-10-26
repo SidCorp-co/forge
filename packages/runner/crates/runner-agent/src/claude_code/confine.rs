@@ -95,8 +95,12 @@ fn dirs_home() -> Result<PathBuf> {
 /// What core and the runner handed this one session.
 pub(crate) struct Handed<'a> {
     pub repo: &'a Path,
-    pub credential: &'a str,
+    /// Its `$FORGE_PAT`, where it holds one: a resident session reads its token from
+    /// `bearer_dir` through its MCP config, and its environment holds none.
+    pub credential: Option<&'a str>,
     pub mcp_config: &'a Path,
+    /// A resident session's bearer file directory, bound read-only.
+    pub bearer_dir: Option<&'a Path>,
     pub reads: &'a [PathBuf],
     pub project_slug: Option<&'a str>,
     pub project_id: &'a str,
@@ -218,6 +222,7 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
         .iter()
         .map(PathBuf::as_path)
         .chain([handed.mcp_config])
+        .chain(handed.bearer_dir)
         .chain(handed.reads.iter().map(PathBuf::as_path))
     {
         if file.exists() {
@@ -327,7 +332,9 @@ fn chat_env(view: &BoxView, handed: &Handed<'_>) -> Vec<(OsString, OsString)> {
     };
     set("HOME", view.home.as_os_str());
     set("TMPDIR", OsStr::new("/tmp"));
-    set("FORGE_PAT", OsStr::new(handed.credential));
+    if let Some(credential) = handed.credential {
+        set("FORGE_PAT", OsStr::new(credential));
+    }
     if let Some(slug) = handed.project_slug {
         set("FORGE_PROJECT_SLUG", OsStr::new(slug));
     }

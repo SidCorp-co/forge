@@ -84,6 +84,16 @@ function ddpUrl(serverUrl: string): string {
   return `${serverUrl.replace(/\/+$/, '').replace(/^http/, 'ws')}/websocket`;
 }
 
+/**
+ * A message's server timestamp as an ISO string. DDP sends it as EJSON, `{ $date: <ms> }`, and REST
+ * as an ISO string; a stand-in may send either.
+ */
+function tsOf(ts: unknown): string | undefined {
+  if (typeof ts === 'string') return ts;
+  const ms = (ts as { $date?: unknown } | null)?.$date;
+  return typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
 /** Map a raw `stream-room-messages` arg to our shape, or null if unusable. */
 function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatIncomingMessage | null {
   if (!arg || typeof arg !== 'object') return null;
@@ -97,7 +107,7 @@ function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatIncomingMes
     text: extractMessageText(m as Parameters<typeof extractMessageText>[0], serverUrl),
     userId: u._id,
     username: u.username,
-    ts: typeof m.ts === 'string' ? m.ts : undefined,
+    ts: tsOf(m.ts),
     isSystem: typeof m.t === 'string' && m.t.length > 0,
     isEdited: m.editedAt != null,
     tmid: typeof m.tmid === 'string' ? m.tmid : undefined,
