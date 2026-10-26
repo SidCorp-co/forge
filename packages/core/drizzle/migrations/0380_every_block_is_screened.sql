@@ -15,7 +15,8 @@
 -- 1. A stored `blocks` that is neither a JSON array nor JSON null cannot be read block by block: the deploy
 --    aborts naming it.
 -- 2. Where the text or reasoning a tool call split into blocks reads as a credential joined up, those blocks
---    become one `[Filtered]` block; then every string any block holds that reads as one becomes `[Filtered]`.
+--    become one `[Filtered]` block; then every string any block holds that reads as one becomes `[Filtered]`,
+--    and so does a string or number that reads as one only beside its own key, as `{"password": "x"}` does.
 -- 3. Every withdrawn draft the widened predicate reads as a credential is cleared as 0378 cleared them.
 --
 -- Rollback: none for the cleared text, which is the point of the ruling.
@@ -70,7 +71,14 @@ BEGIN
         FROM jsonb_array_elements(j) WITH ORDINALITY AS a(e, n);
       RETURN out;
     WHEN 'object' THEN
-      SELECT COALESCE(jsonb_object_agg(k, pg_temp.screened_0380(v)), '{}'::jsonb) INTO out
+      SELECT COALESCE(jsonb_object_agg(k, CASE
+               WHEN jsonb_typeof(v) IN ('string', 'number')
+                AND pg_temp.screened_0380(v) = v
+                AND pg_temp.reads_as_credential_0380(jsonb_build_object(k, 'x')::text)
+                AND pg_temp.reads_as_credential_0380(jsonb_build_object(k, v)::text)
+               THEN to_jsonb('[Filtered]'::text)
+               ELSE pg_temp.screened_0380(v)
+             END), '{}'::jsonb) INTO out
         FROM jsonb_each(j) AS o(k, v);
       RETURN out;
     ELSE

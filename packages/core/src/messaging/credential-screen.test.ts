@@ -75,6 +75,27 @@ describe('screened and screenedBlocks', () => {
     expect(input.body.note).toContain(SECRET);
   });
 
+  it('withholds a value its own key names a secret, keeping the key and every other value', () => {
+    const input = {
+      password: SECRET,
+      pin: 'kept',
+      auth: { api_key: SECRET, region: 'eu' },
+      token: 4821,
+    };
+    const out = screened(input);
+    expect(out).toEqual({
+      password: '[Filtered]',
+      pin: 'kept',
+      auth: { api_key: '[Filtered]', region: 'eu' },
+      token: '[Filtered]',
+    });
+  });
+
+  it('keeps an empty value under a secret-named key, and a key that only contains the word', () => {
+    const input = { password: '', max_tokens: 1000, tokens: 'many' };
+    expect(screened(input)).toEqual(input);
+  });
+
   it('screens a tool call input and output as it screens prose', () => {
     const blocks: ContentBlock[] = [
       { type: 'text', text: 'Reading it.' },

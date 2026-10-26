@@ -34,6 +34,7 @@ const FILTERED = '[Filtered]';
 let harness: TestDatabase;
 let app: import('hono').Hono<AppVars>;
 let readsAsCredential: (text: string) => boolean;
+let screened: <T>(value: T) => T;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -47,7 +48,7 @@ beforeAll(async () => {
   ({ app } = (await import('../../src/index.js')) as unknown as {
     app: import('hono').Hono<AppVars>;
   });
-  ({ readsAsCredential } = await import('../../src/messaging/credential-screen.js'));
+  ({ readsAsCredential, screened } = await import('../../src/messaging/credential-screen.js'));
 }, 120_000);
 
 afterAll(async () => {
@@ -166,6 +167,29 @@ describe('migration 0380 — every stored block passes the one screen', () => {
 
     for (const id of ids) expect(await blocksOf(id)).toEqual(everyKind(FILTERED));
     expect(await blocksOf(plain)).toEqual(everyKind('{"note": "plain"}'));
+  });
+
+  it('clears a tool input value its own key names a secret, as the screen does', async () => {
+    const inputs = [
+      { password: SECRET },
+      { auth: { api_key: SECRET, region: 'eu' } },
+      { token: 4821, note: 'kept' },
+      { password: '', max_tokens: 1000, tokens: 'many' },
+    ];
+    const ids = [];
+    for (const [i, input] of inputs.entries())
+      ids.push(await stored(i, [{ type: 'tool', toolCall: { id: 't1', name: 'forge', input } }]));
+
+    await migrate();
+
+    for (const [i, input] of inputs.entries()) {
+      const expected = [
+        { type: 'tool', toolCall: { id: 't1', name: 'forge', input: screened(input) } },
+      ];
+      expect(await blocksOf(ids[i] as string), JSON.stringify(input)).toEqual(expected);
+    }
+    expect(JSON.stringify(await blocksOf(ids[0] as string))).not.toContain(SECRET);
+    expect(JSON.stringify(await blocksOf(ids[1] as string))).not.toContain(SECRET);
   });
 
   it('screens a password whose key and value a tool call split into two text blocks', async () => {

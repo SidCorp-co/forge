@@ -246,8 +246,11 @@ describe('a credential a tool call carries', () => {
     expect(JSON.stringify(stored)).not.toContain(SECRET);
   });
 
-  it('reaches no reader from the input the model wrote', async () => {
-    const input = JSON.stringify({ argv: ['comment', 'ISS-2'], body: `password: ${SECRET}` });
+  it.each([
+    ['inside a value', JSON.stringify({ argv: ['comment', 'ISS-2'], body: `password: ${SECRET}` })],
+    ['named only by its key', JSON.stringify({ password: SECRET })],
+    ['named by a key one level down', JSON.stringify({ auth: { api_key: SECRET } })],
+  ])('reaches no reader from the input the model wrote, the secret %s', async (_what, input) => {
     const { progress, frames } = await toolTurn(input, '{"exitCode":0}');
     for (const frame of frames) expect(JSON.stringify(frame)).not.toContain(SECRET);
     expect(

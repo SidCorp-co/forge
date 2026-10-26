@@ -43,11 +43,23 @@ export function screenedText(text: string): string {
   return readsAsCredential(shown) ? FILTERED : shown;
 }
 
+/** A value that passes alone can still read as a credential beside its key, as `{"password":"x"}` does. */
+function keyedCredential(key: string, value: unknown): boolean {
+  if (typeof value !== 'string' && typeof value !== 'number') return false;
+  if (!readsAsCredential(JSON.stringify({ [key]: 'x' }))) return false;
+  return readsAsCredential(JSON.stringify({ [key]: value }));
+}
+
 export function screened<T>(value: T, text: (s: string) => string = screenedText): T {
   if (typeof value === 'string') return text(value) as T;
   if (Array.isArray(value)) return value.map((v) => screened(v, text)) as T;
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, screened(v, text)])) as T;
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => {
+        const shown = screened(v, text);
+        return [k, shown === v && keyedCredential(k, v) ? FILTERED : shown];
+      }),
+    ) as T;
   }
   return value;
 }

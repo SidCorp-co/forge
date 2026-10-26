@@ -10,7 +10,7 @@
 
 ### Security
 
-- **A tool's reading in a room no longer passes on a password, key or token.** Every part of a reply is checked, a secret written as JSON included, and replies stored earlier are cleared on deploy. (ISS-1229)
+- **A room's tools no longer pass on a password, key or token.** Every part of a reply is checked, tool input included, even a secret in JSON or named by its field; stored replies are cleared on deploy. (ISS-1229)
 - **A reply withdrawn for holding a password, key or token keeps none of it.** The room says why, readers never receive the text, and replies withdrawn earlier lose it on deploy. (ISS-1229)
 - **Asking for an issue under an id that is no project reads the same as under someone else's project**, so the answer no longer tells you whether an id is a project. (ISS-1229)
 - **A stored test credential no longer reaches an issue comment.** A comment written on the web or by an agent tool that carries one is refused, naming where; text Forge writes itself gets a marker saying where it is read.
