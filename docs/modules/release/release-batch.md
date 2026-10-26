@@ -252,7 +252,8 @@ leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComme
   release gate's own button and the list's Batch release are offered only to a reader holding the
   role the release door checks, a project admin; anyone else reads "Only an admin of this project
   can release …, so ask one of them" where the button would be
-  (`packages/web-v2/src/features/issues/release-who.ts`, ISS-1300 r5). It names no move
+  (`packages/web-v2/src/features/issues/release-who.ts`, ISS-1300 r5). Both release doors refuse
+  anyone else with the role held, the act and who may (`packages/core/src/release-batch/routes.ts`). It names no move
   to Closed — the status menu draws `packages/core/src/pipeline/state-machine.ts:transitions`, whose
   `awaiting_release` row holds none — no withdrawal of a question, which no surface there offers,
   and no API route (`docs/proposals/a-shipped-issue-at-the-gate-closes-only-by-another-release.md`).
