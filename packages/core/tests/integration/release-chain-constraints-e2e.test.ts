@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Sql } from 'postgres';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   type Ground,
   ground,
@@ -306,12 +306,19 @@ async function plantProjectPostMigration(sql: Sql, gr: Ground, slug: string): Pr
 }
 
 /**
- * Last, because it changes the function: 0328's way back, run the way an operator runs it
- * (`db/migrate.ts` never reads the folder). It refuses by name while a project still declares a
- * tag, and only then puts the old predicate back, which refuses the key again.
+ * 0328's way back, run the way an operator runs it (`db/migrate.ts` never reads the folder). It
+ * refuses by name while a project still declares a tag, and only then puts the old predicate back,
+ * which refuses the key again. That changes the function every other case is judged against, so
+ * each case here runs 0328 forward again behind it: whichever order the cases run in, every one
+ * outside this block meets the predicate the deployed schema carries, and every one inside it
+ * starts from that predicate too.
  */
 describe('drizzle/rollback/0328_down.sql', () => {
   const DOWN = statementsOf('rollback', '0328_down.sql');
+
+  afterEach(async () => {
+    await runForward(db.sql, statementsOf('migrations', TAG_MIGRATION));
+  });
 
   it('aborts naming the project that still declares a tag, and leaves the predicate alone', async () => {
     await writeChain(db.sql, subject, [{ branch: 'dev', tag: 'v*' }]);

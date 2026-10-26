@@ -37,12 +37,18 @@ describe('POST /api/auth/register for an email already registered', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    const [{ authRoutes }, { errorHandler }, logger, dbErrors] = await Promise.all([
-      import('../../src/auth/register.js'),
-      import('../../src/middleware/error.js'),
-      import('../../src/logger.js'),
-      import('../../src/lib/db-errors.js'),
-    ]);
+    const [{ authRoutes }, { errorHandler }, logger, dbErrors, { installQueryErrorSeal }] =
+      await Promise.all([
+        import('../../src/auth/register.js'),
+        import('../../src/middleware/error.js'),
+        import('../../src/logger.js'),
+        import('../../src/lib/db-errors.js'),
+        import('../../src/db/query-error-seal.js'),
+      ]);
+    // The app seals drizzle's query path the first time anything builds its db (db/client.ts), which
+    // in this file is whichever case reaches the register route first. Sealed here, every case reads
+    // the error production throws, whichever order the cases run in.
+    installQueryErrorSeal();
     capture = () => {
       const lines: string[] = [];
       return { lines, log: logger.createLogger({}, { write: (s: string) => lines.push(s) }) };

@@ -7,10 +7,9 @@
  * every surface back, which is what shows the archive flag — and nothing else — was the cause.
  */
 
-import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestProjectMember,
@@ -22,17 +21,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { connectClientAsPat, parseToolResult } from '../helpers/mcp-harness.js';
-
-const DIM = 1536;
-const TERM = 'staged pipeline clarify';
-
-function vectorFor(seed: number): number[] {
-  const v = new Array<number>(DIM).fill(0);
-  v[seed % DIM] = 1;
-  v[(seed * 7 + 3) % DIM] = 0.5;
-  return v;
-}
-const vec = (seed: number) => `[${vectorFor(seed).join(',')}]`;
+import { ARCHIVED, plantArchiveGround, standAt, TERM, vectorFor } from './issue-archive-ground.js';
 
 let harness: TestDatabase;
 let server: TestServer;
@@ -71,29 +60,6 @@ const archive = (direction: 'archive' | 'unarchive', body: unknown, token?: stri
     body: JSON.stringify(body),
     ...(token ? { token } : {}),
   });
-
-async function seedIssue(seq: number, key: string, title: string, status: string, vecSeed: number) {
-  const issueId = randomUUID();
-  const merged = status === 'closed' ? sql`now()` : sql`NULL`;
-  await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, description, status, created_by_id, merged_at, created_at)
-    VALUES (${issueId}, ${projectId}, ${seq}, ${title}, ${`body of ${title}`}, ${status}, ${adminId},
-            ${merged}, now() + ${`${seq} seconds`}::interval)`);
-  const rows = (await harness.db.execute(sql`
-    INSERT INTO memories (project_id, source, source_ref, text_content, embedding)
-    VALUES (${projectId}, 'issue', ${issueId}, ${title}, ${vec(vecSeed)}::vector) RETURNING id`)) as unknown as {
-    id: string;
-  }[];
-  id[key] = issueId;
-  memoryId[key] = rows[0]?.id ?? '';
-}
-
-async function edge(from: string, to: string, kind: string, expired = false) {
-  const until = expired ? sql`now() - interval '1 day'` : sql`NULL`;
-  await harness.db.execute(sql`
-    INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind, valid_until)
-    VALUES (${projectId}, ${id[from]}, ${id[to]}, ${kind}, ${until})`);
-}
 
 async function archivedAt(key: string): Promise<string | null> {
   const rows = (await harness.db.execute(
@@ -189,23 +155,9 @@ beforeAll(async () => {
     embedBatch: async (ts: string[]) => ts.map((t) => vectorFor(titles.get(t) ?? 99)),
   } as unknown as Parameters<typeof embeddings.resetEmbeddingsClient>[0]);
 
-  await seedIssue(1, 'old', `Legacy ${TERM} step`, 'closed', 1);
-  await seedIssue(2, 'control', `Current ${TERM} replacement`, 'closed', 2);
-  await seedIssue(3, 'open3', 'Planned rewrite of the clarify handoff', 'open', 3);
-  await seedIssue(4, 'loadBearing', 'Closed but related to open work', 'closed', 4);
-  await seedIssue(5, 'pairA', 'Closed pair A', 'closed', 5);
-  await seedIssue(6, 'pairB', 'Closed pair B', 'dropped', 6);
-  await seedIssue(7, 'expired', 'Closed with an expired edge', 'closed', 7);
-  await seedIssue(8, 'neighbour', 'Closed neighbour of the legacy one', 'closed', 8);
-  await edge('open3', 'loadBearing', 'relates');
-  await edge('pairA', 'pairB', 'blocks');
-  await edge('open3', 'expired', 'blocks', true);
-  await edge('neighbour', 'old', 'relates');
-  await harness.db.execute(sql`
-    UPDATE memories SET chunked_at = now(), chunk_generation = 1 WHERE id = ${memoryId.old}`);
-  await harness.db.execute(sql`
-    INSERT INTO memory_chunks (memory_id, chunk_index, text_content, context_prefix, embedding, generation)
-    VALUES (${memoryId.old}, 0, ${`Legacy ${TERM} step`}, 'ISS-1', ${vec(1)}::vector, 1)`);
+  const ground = await plantArchiveGround(harness.db, projectId, adminId);
+  Object.assign(id, ground.id);
+  Object.assign(memoryId, ground.memoryId);
 }, 180_000);
 
 afterAll(async () => {
@@ -216,6 +168,8 @@ afterAll(async () => {
 const q = encodeURIComponent(TERM);
 
 describe('the column and the fixture, before anything is archived', () => {
+  beforeEach(() => standAt(harness.db, projectId, id, []));
+
   it('adds a nullable, indexed archived_at by a migration that writes no row', async () => {
     const cols = (await harness.db.execute(sql`
       SELECT is_nullable FROM information_schema.columns
@@ -277,6 +231,8 @@ describe('the column and the fixture, before anything is archived', () => {
 });
 
 describe('what an archive refuses, writing nothing', () => {
+  beforeEach(() => standAt(harness.db, projectId, id, []));
+
   it('refuses a key the project does not hold, in keys or in exclude, naming it', async () => {
     for (const filter of [{ keys: ['ISS-999'] }, { statuses: ['closed'], exclude: ['ISS-998'] }]) {
       const res = await archive('archive', { filter });
@@ -341,6 +297,8 @@ describe('what an archive refuses, writing nothing', () => {
 });
 
 describe('archiving', () => {
+  beforeEach(() => standAt(harness.db, projectId, id, []));
+
   it('archives a terminal pair and a row whose only edge expired', async () => {
     const res = await archive('archive', { filter: { keys: ['ISS-5', 'ISS-6', 'ISS-7'] } });
     expect(res.status).toBe(200);
@@ -362,6 +320,8 @@ describe('archiving', () => {
 });
 
 describe('an archived issue is out of discovery', () => {
+  beforeEach(() => standAt(harness.db, projectId, id, ARCHIVED));
+
   it('leaves the search, which still returns the control, unless asked for', async () => {
     const res = await api(`/api/projects/${projectId}/issues/search?q=${q}`);
     expect(itemIds(res.body)).toContain(id.control);
@@ -424,6 +384,8 @@ describe('an archived issue is out of discovery', () => {
 });
 
 describe('an archived issue still answers by key, and refuses becoming load-bearing', () => {
+  beforeEach(() => standAt(harness.db, projectId, id, ARCHIVED));
+
   it('answers the list by key, by display id, by id, and forge_issues get, each with archivedAt', async () => {
     const byKey = await api(`/api/projects/${projectId}/issues?key=ISS-1`);
     expect((byKey.body.items as { archivedAt: string | null }[])[0]?.archivedAt).not.toBeNull();
@@ -486,6 +448,8 @@ describe('an archived issue still answers by key, and refuses becoming load-bear
 });
 
 describe('unarchiving brings every surface back', () => {
+  beforeEach(() => standAt(harness.db, projectId, id, ARCHIVED));
+
   it('clears the stamp, answers what it touched, and the search and memory return it again', async () => {
     const res = await archive('unarchive', { filter: { keys: ['ISS-1'] } });
     expect(res.body).toMatchObject({ changed: ['ISS-1'], unchanged: [] });

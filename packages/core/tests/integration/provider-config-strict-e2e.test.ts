@@ -6,7 +6,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestProjectMember,
@@ -21,6 +21,7 @@ type AppVars = { Variables: import('../../src/middleware/request-id.js').Request
 let harness: TestDatabase;
 let app: import('hono').Hono<AppVars>;
 let token: string;
+let ownerId: string;
 let projectId: string;
 
 const target = { label: 'web', resourceUuid: 'app-uuid-1' };
@@ -40,11 +41,17 @@ beforeAll(async () => {
     app: import('hono').Hono<AppVars>;
   });
   const owner = await createTestUser(harness.db);
+  ownerId = owner.id;
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${owner.id}`);
-  projectId = (await createTestProject(harness.db, owner.id)).id;
-  await createTestProjectMember(harness.db, { userId: owner.id, projectId, role: 'admin' });
   token = await (await import('../../src/auth/jwt.js')).signUserToken(owner.id);
 }, 120_000);
+
+// A project of its own for every case: "nothing is bound" reads the project's whole binding list,
+// which a case that shared one would find holding another case's binding.
+beforeEach(async () => {
+  projectId = (await createTestProject(harness.db, ownerId)).id;
+  await createTestProjectMember(harness.db, { userId: ownerId, projectId, role: 'admin' });
+});
 
 afterAll(async () => {
   if (harness) await harness.cleanup();

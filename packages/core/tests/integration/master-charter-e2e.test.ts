@@ -12,7 +12,7 @@
 
 import { sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestProjectMember,
@@ -32,6 +32,9 @@ let humanToken: string;
 let agentToken: string;
 let viewerToken: string;
 let humanId: string;
+let orgId: string;
+let viewerId: string;
+let agentId: string;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -50,9 +53,7 @@ beforeAll(async () => {
   const human = await createTestUser(harness.db, { emailVerifiedAt: new Date() });
   humanId = human.id;
   const org = await seedOrg(harness.db, human.id);
-  const project = await createTestProject(harness.db, human.id, { orgId: org.id });
-  projectId = project.id;
-  await createTestProjectMember(harness.db, { projectId, userId: human.id });
+  orgId = org.id;
 
   const { signUserToken } = await import('../../src/auth/jwt.js');
   humanToken = await signUserToken(human.id);
@@ -61,13 +62,13 @@ beforeAll(async () => {
   // "anything holding access to the project", so a viewer is the floor to prove (criterion 9's
   // neighbour: an agent is refused on the write alone; a viewer must not be refused on the reads).
   const viewer = await createTestUser(harness.db, { emailVerifiedAt: new Date() });
-  await createTestProjectMember(harness.db, { projectId, userId: viewer.id, role: 'viewer' });
+  viewerId = viewer.id;
   viewerToken = await signUserToken(viewer.id);
 
   // An agent credential: a PAT owned by an agent-kind user, granted every permission the
   // route's resource serves, so the refusal it meets is the agency door and nothing narrower.
   const agentUser = await createTestUser(harness.db, { kind: 'agent' });
-  await createTestProjectMember(harness.db, { projectId, userId: agentUser.id });
+  agentId = agentUser.id;
   const { mintPat } = await import('../../src/auth/pat.js');
   agentToken = (
     await mintPat({
@@ -78,6 +79,19 @@ beforeAll(async () => {
   ).plaintext;
 
   ({ app } = await import('../../src/index.js'));
+});
+
+/**
+ * A project of its own for every case, with the person, the viewer and the agent as members: a
+ * charter's versions accumulate per project, so a case that shared one would read whatever the
+ * cases before it wrote.
+ */
+beforeEach(async () => {
+  const project = await createTestProject(harness.db, humanId, { orgId });
+  projectId = project.id;
+  await createTestProjectMember(harness.db, { projectId, userId: humanId });
+  await createTestProjectMember(harness.db, { projectId, userId: viewerId, role: 'viewer' });
+  await createTestProjectMember(harness.db, { projectId, userId: agentId });
 });
 
 afterAll(async () => {
@@ -106,10 +120,35 @@ async function send(method: string, path: string, token: string, body?: unknown)
 const path = (id: string) => `/api/projects/${id}/master-charter`;
 const versionsPath = (id: string) => `/api/projects/${id}/master-charter/versions`;
 
+const FIRST = {
+  goal: 'keep the backlog draining',
+  rules: ['unblock stuck work first', 'never merge for a human'],
+};
+const SECOND = {
+  goal: 'keep the backlog draining, judge before merge',
+  rules: ['unblock stuck work first'],
+};
+
+/** Declare `FIRST` and then `SECOND` on this case's project, as a person: versions 1 and 2. */
+async function declareTwo() {
+  for (const body of [FIRST, SECOND]) {
+    const res = await send('PUT', path(projectId), humanToken, body);
+    if (res.status !== 200) throw new Error(`declaring a charter answered ${res.status}`);
+  }
+}
+
+/** One body per shape the route refuses, each named by the case that sends it. */
+const REFUSED = {
+  blankGoal: { goal: '   ', rules: [] },
+  rulesAsString: { goal: 'g', rules: 'one rule' },
+  blankRule: { goal: 'g', rules: ['fine', '  '] },
+  longGoal: { goal: 'g'.repeat(4001), rules: [] },
+  tooManyRules: { goal: 'g', rules: Array.from({ length: 51 }, (_, i) => `rule ${i}`) },
+  longRule: { goal: 'g', rules: ['r'.repeat(2001)] },
+};
+
 describe('a project that has declared no charter (criterion 1)', () => {
   it('answers 200 with declared: false, not an error and not a 404', async () => {
-    // Runs before any charter is written to `projectId` in this file — order within the file
-    // matters for this one assertion.
     const res = await send('GET', path(projectId), humanToken);
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({ declared: false, version: null, goal: null, rules: [] });
@@ -127,6 +166,11 @@ describe('the agency door (criteria 7, 8, 9)', () => {
   });
 
   it('writes no row for the refused request, so the charter after it is the one from before (criterion 8)', async () => {
+    const refused = await send('PUT', path(projectId), agentToken, {
+      goal: 'an agent writing its own job description',
+      rules: [],
+    });
+    expect(refused.status).toBe(403);
     const res = await send('GET', path(projectId), humanToken);
     expect(res.json).toMatchObject({ declared: false });
   });
@@ -140,10 +184,7 @@ describe('the agency door (criteria 7, 8, 9)', () => {
 
 describe('declaring and revising a charter (criteria 2-6)', () => {
   it('a first write returns version 1 with exactly the goal and rules sent (criterion 2)', async () => {
-    const res = await send('PUT', path(projectId), humanToken, {
-      goal: 'keep the backlog draining',
-      rules: ['unblock stuck work first', 'never merge for a human'],
-    });
+    const res = await send('PUT', path(projectId), humanToken, FIRST);
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({
       declared: true,
@@ -155,10 +196,8 @@ describe('declaring and revising a charter (criteria 2-6)', () => {
   });
 
   it('a second write with different content returns version 2, and the current read is version 2 (criterion 3)', async () => {
-    const write = await send('PUT', path(projectId), humanToken, {
-      goal: 'keep the backlog draining, judge before merge',
-      rules: ['unblock stuck work first'],
-    });
+    await send('PUT', path(projectId), humanToken, FIRST);
+    const write = await send('PUT', path(projectId), humanToken, SECOND);
     expect(write.json).toMatchObject({ version: 2, created: true });
 
     const read = await send('GET', path(projectId), humanToken);
@@ -169,14 +208,13 @@ describe('declaring and revising a charter (criteria 2-6)', () => {
   });
 
   it('a write identical to the current version returns that version and reports no new version (criterion 4)', async () => {
-    const res = await send('PUT', path(projectId), humanToken, {
-      goal: 'keep the backlog draining, judge before merge',
-      rules: ['unblock stuck work first'],
-    });
+    await declareTwo();
+    const res = await send('PUT', path(projectId), humanToken, SECOND);
     expect(res.json).toMatchObject({ version: 2, created: false });
   });
 
   it('lists every version ever written, newest first, each with its writer and when (criterion 5)', async () => {
+    await declareTwo();
     const res = await send('GET', versionsPath(projectId), humanToken);
     expect(res.status).toBe(200);
     const versions = res.json?.versions as Array<Record<string, unknown>>;
@@ -188,6 +226,7 @@ describe('declaring and revising a charter (criteria 2-6)', () => {
   });
 
   it("an earlier version's goal and rules are still readable in full (criterion 6)", async () => {
+    await declareTwo();
     const res = await send('GET', versionsPath(projectId), humanToken);
     const versions = res.json?.versions as Array<Record<string, unknown>>;
     const v1 = versions.find((v) => v.version === 1);
@@ -200,8 +239,9 @@ describe('declaring and revising a charter (criteria 2-6)', () => {
 
 describe('malformed writes leave no row (criteria 10-13, 36-38)', () => {
   it('refuses an empty goal with 400 naming the field and the shape (criterion 10)', async () => {
+    await declareTwo();
     const before = await send('GET', path(projectId), humanToken);
-    const res = await send('PUT', path(projectId), humanToken, { goal: '   ', rules: [] });
+    const res = await send('PUT', path(projectId), humanToken, REFUSED.blankGoal);
     expect(res.status).toBe(400);
     expect(res.json).toMatchObject({ details: { field: 'goal' } });
 
@@ -210,51 +250,44 @@ describe('malformed writes leave no row (criteria 10-13, 36-38)', () => {
   });
 
   it('refuses rules sent as a string rather than a one-rule list (criterion 11)', async () => {
-    const res = await send('PUT', path(projectId), humanToken, { goal: 'g', rules: 'one rule' });
+    const res = await send('PUT', path(projectId), humanToken, REFUSED.rulesAsString);
     expect(res.status).toBe(400);
     expect(res.json).toMatchObject({ details: { field: 'rules' } });
   });
 
   it("refuses a blank rule naming that rule's position rather than dropping it (criterion 12)", async () => {
-    const res = await send('PUT', path(projectId), humanToken, {
-      goal: 'g',
-      rules: ['fine', '  '],
-    });
+    const res = await send('PUT', path(projectId), humanToken, REFUSED.blankRule);
     expect(res.status).toBe(400);
     expect(res.json).toMatchObject({ details: { field: 'rules[1]' } });
   });
 
   it('refuses a goal past the 4000-character limit (criterion 13)', async () => {
-    const res = await send('PUT', path(projectId), humanToken, {
-      goal: 'g'.repeat(4001),
-      rules: [],
-    });
+    const res = await send('PUT', path(projectId), humanToken, REFUSED.longGoal);
     expect(res.status).toBe(400);
     expect(res.json).toMatchObject({ details: { field: 'goal' } });
   });
 
   it('refuses more than 50 rules (criterion 37)', async () => {
-    const rules = Array.from({ length: 51 }, (_, i) => `rule ${i}`);
-    const res = await send('PUT', path(projectId), humanToken, { goal: 'g', rules });
+    const res = await send('PUT', path(projectId), humanToken, REFUSED.tooManyRules);
     expect(res.status).toBe(400);
     expect(res.json).toMatchObject({ details: { field: 'rules' } });
   });
 
   it('refuses a rule past the 2000-character limit (criterion 38)', async () => {
-    const res = await send('PUT', path(projectId), humanToken, {
-      goal: 'g',
-      rules: ['r'.repeat(2001)],
-    });
+    const res = await send('PUT', path(projectId), humanToken, REFUSED.longRule);
     expect(res.status).toBe(400);
     expect(res.json).toMatchObject({ details: { field: 'rules[0]' } });
   });
 
   it('leaves no new row in project_master_charters for any of the refusals above (criterion 36)', async () => {
+    await declareTwo();
+    for (const body of Object.values(REFUSED)) {
+      expect((await send('PUT', path(projectId), humanToken, body)).status).toBe(400);
+    }
     const rows = await harness.db.execute<{ count: string }>(
       sql`SELECT count(*)::text as count FROM project_master_charters WHERE project_id = ${projectId}`,
     );
-    // Exactly the two good writes from the section above landed; every malformed write in this
-    // section landed nothing on top of them.
+    // Exactly the two good writes landed; every malformed write landed nothing on top of them.
     expect(Number(rows[0]?.count)).toBe(2);
   });
 });
@@ -277,6 +310,10 @@ describe('two writers racing (criterion 33)', () => {
 });
 
 describe('the database refuses what the route refuses (criterion 14, 39)', () => {
+  // Each INSERT below copies `declared_by` off a charter row, so one has to exist for the CHECK to
+  // be asked at all: with none, the SELECT inserts nothing and nothing is refused.
+  beforeEach(declareTwo);
+
   it('refuses an INSERT whose goal is blank', async () => {
     await expect(
       harness.db.execute(sql`
@@ -345,6 +382,7 @@ describe('a read-only project member (the route serves both reads to anything wi
 
 describe('the version history is not truncated past a fixed count', () => {
   it('version 1 is still retrievable after 201 versions exist', async () => {
+    await send('PUT', path(projectId), humanToken, FIRST);
     const maxRows = await harness.db.execute<{ max: number | null }>(
       sql`SELECT max(version)::int as max FROM project_master_charters WHERE project_id = ${projectId}`,
     );
