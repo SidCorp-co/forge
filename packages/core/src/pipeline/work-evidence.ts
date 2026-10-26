@@ -1,5 +1,6 @@
 import { and, eq, gt, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
+import { rethrowInTransaction } from '../db/in-transaction.js';
 import { issueDependencies, issues, projectKinds, projects } from '../db/schema.js';
 import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import {
@@ -257,6 +258,7 @@ export async function findMissingWorkEvidence(
   try {
     return await missingWorkEvidenceStrict(issueId, executor, door, via);
   } catch (err) {
+    rethrowInTransaction(err, executor);
     logger.warn({ err, issueId }, 'work-evidence: check failed, allowing (fail open)');
     return null;
   }

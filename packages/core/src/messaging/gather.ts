@@ -8,6 +8,7 @@
 
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { rethrowInTransaction } from '../db/in-transaction.js';
 import { issues } from '../db/schema.js';
 import { activeIssuePrefix, heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { computeProjectProgress } from '../issues/progress.js';
@@ -85,7 +86,8 @@ async function issueRowsFor(
       rows.set(r.issSeq, { seq: r.issSeq, merged: r.mergedAt !== null, status: r.status });
     }
     return { rows, ids: new Set(found.map((r) => r.id)), failed: false };
-  } catch {
+  } catch (err) {
+    rethrowInTransaction(err, tx);
     return { ...empty, failed: true };
   }
 }

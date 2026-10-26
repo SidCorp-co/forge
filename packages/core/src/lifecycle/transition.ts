@@ -11,6 +11,7 @@ import {
   fireTerminalSessionBridges,
   sessionCarriesBridgeMarker,
 } from '../agent-sessions/terminal-effects.js';
+import { rethrowInTransaction } from '../db/in-transaction.js';
 import { type KernelExecutor, stampKernelTxn } from '../db/kernel-marker.js';
 import {
   agentSessions,
@@ -202,6 +203,7 @@ async function hydrateSession(exec: KernelExecutor, sessionId: string): Promise<
     );
     return null;
   } catch (err) {
+    rethrowInTransaction(err, exec);
     logger.error(
       { err, sessionId },
       'lifecycle.transition: re-reading a bridge-marked session after its flip failed; its completion reply was not delivered',
