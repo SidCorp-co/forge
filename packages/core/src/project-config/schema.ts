@@ -374,9 +374,7 @@ const BINDING_TARGETS = [
     // the room is a support group answered by its session (REQ-75); exactly one room, refused by
     // name otherwise (`integrations/rocketchat/support-binding.ts`)
     support: supportRoomConfigSchema.optional(),
-    // each room is an operations room answered under the bot's role (REQ-75 BC-20); never beside
-    // `support` (`SUPPORT_ROOM_TWO_KINDS`)
-    operations: operationsRoomConfigSchema.optional(),
+    operations: operationsRoomConfigSchema.optional(), // operations rooms (REQ-75 BC-20)
   }),
   targetOf('support-api', { ...supportApiBindingConfigSchema.shape }),
   targetOf('agent', {}),

@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { ISSUE_STATUSES } from "./issue-machine.js";
+import { REASON_PARAGRAPH_MAX } from "./reason-text.js";
 import { SUPPORT_RECORD_KINDS } from "./support.js";
 
 /**
@@ -132,7 +133,7 @@ export const operationsMoveRequestSchema = z.strictObject({
 	/** Named only where two projects of the scope share the key's prefix. */
 	project: projectRef.optional(),
 	to: z.enum(ISSUE_STATUSES),
-	reason: z.string().trim().min(1).max(1000).optional(),
+	reason: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX).optional(),
 });
 export const operationsDraftRequirementRequestSchema = z.strictObject({
 	thread: threadId,

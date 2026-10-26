@@ -1437,7 +1437,7 @@
             "type": "string"
           },
           "reason": {
-            "maxLength": 1000,
+            "maxLength": 2000,
             "minLength": 1,
             "type": "string"
           },

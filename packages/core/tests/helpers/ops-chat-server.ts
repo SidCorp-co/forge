@@ -23,10 +23,10 @@ export const MEMBERS: Record<MemberName, { email: (tag: string) => string; verif
   alice: { email: (t) => `alice-${t}@ops.test`, verified: true },
   bob: { email: (t) => `bob-${t}@ops.test`, verified: true },
   carol: { email: (t) => `carol-${t}@elsewhere.test`, verified: true },
-  // dave's address is bob's, which the explicit link must override
-  dave: { email: (t) => `bob-${t}@ops.test`, verified: true },
-  // eve claims alice's address, which the chat server never verified
-  eve: { email: (t) => `alice-${t}@ops.test`, verified: false },
+  // dave's verified address names a Forge viewer; the explicit link, which must win, an admin
+  dave: { email: (t) => `dave-${t}@ops.test`, verified: true },
+  // eve's address names a Forge admin, and the chat server never verified it
+  eve: { email: (t) => `eve-${t}@ops.test`, verified: false },
 };
 
 /** Which bot is in which room, as the setup binds them. */

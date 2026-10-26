@@ -12,6 +12,7 @@ vi.hoisted(() => {
   // each bot's token is sealed in the integration vault
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
+
 import { db } from '../../src/db/client.js';
 import { api, userToken } from '../helpers/api.js';
 import { settleOutbox, startQueue } from '../helpers/ecosystem-world.js';
@@ -71,6 +72,9 @@ beforeAll(async () => {
   const alice = await createTestUser({ verified: true, email: MEMBERS.alice.email(chat.tag) });
   const bob = await createTestUser({ verified: true, email: MEMBERS.bob.email(chat.tag) });
   const dana = await createTestUser({ verified: true });
+  // the address dave's chat account holds names a viewer; eve's, an admin she has not proven she is
+  const daveByMail = await createTestUser({ verified: true, email: MEMBERS.dave.email(chat.tag) });
+  const eveByMail = await createTestUser({ verified: true, email: MEMBERS.eve.email(chat.tag) });
   ids.alice = alice.id;
   ids.bob = bob.id;
   ids.dana = dana.id;
@@ -85,6 +89,8 @@ beforeAll(async () => {
   // bob only reads the catalog; dana administers it
   await addProjectMember(home.catalog, bob.id, 'viewer');
   await addProjectMember(home.catalog, dana.id, 'admin');
+  await addProjectMember(home.catalog, daveByMail.id, 'viewer');
+  await addProjectMember(home.catalog, eveByMail.id, 'admin');
   for (let seq = 1; seq <= 6; seq++) {
     await createTestIssue(home.catalog, alice.id, seq, { status: 'open', createdAt: new Date() });
   }
@@ -110,7 +116,7 @@ beforeAll(async () => {
     }
   };
 
-  // dave's chat address is bob's; the confirmed link names him dana, and the link wins
+  // dave's chat address names a viewer; the confirmed link names him dana, and the link wins
   const namespace = new URL(chat.serverUrl).host;
   await db.execute(sql`
     INSERT INTO assistant_speaker_links (source, external_namespace, external_id, external_label, user_id, confirmed_via)
