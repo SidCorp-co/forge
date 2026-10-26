@@ -160,6 +160,24 @@ export function bindingInUse(
   return newestFirst.find((i) => i.bindingActive) ?? newestFirst[0];
 }
 
+/** The binding a drawer reads and acts on: the one its row named, so a turned-off row never opens
+ *  the binding in use (ISS-1421 r33, judge-136 on 302 and 144), and none where that one is gone;
+ *  `bindingInUse` only where no row names one. */
+export function bindingForRow(
+  items: readonly IntegrationSummary[] | undefined,
+  provider: string,
+  bindingId: string | undefined,
+): IntegrationSummary | undefined {
+  if (!bindingId) return bindingInUse(items, provider);
+  return (items ?? []).find((i) => i.id === bindingId && i.provider === provider);
+}
+
+/** The binding a row's card names, or undefined where the card is not one binding's. */
+export function cardBindingId(card: { meta?: Record<string, unknown> } | null): string | undefined {
+  const id = card?.meta?.bindingId;
+  return typeof id === "string" && id ? id : undefined;
+}
+
 export function bindingConnected(existing: IntegrationSummary): boolean {
   return deriveConnectionStatus(existing) === "connected";
 }

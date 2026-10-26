@@ -16,6 +16,7 @@ import {
   type OutboundDispatchInput,
   type OutboundDispatchResult,
 } from '../types.js';
+import { thrownDiagnostics } from '../unreached.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
 import { CHECK_PUBLISH_EVENT, publishForStoredPullRequest } from './contract-check.js';
@@ -26,6 +27,15 @@ import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } fro
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 8000;
+
+/** The host an API base names, or the base itself where it is not a URL. */
+function hostOf(base: string): string {
+  try {
+    return new URL(base).host;
+  } catch {
+    return base;
+  }
+}
 
 /**
  * The merge payload, or the sentence saying what is wrong with it.
@@ -145,13 +155,21 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
 
     // The sentence goes to the connection beside the status. Until ISS-1140 the sweep dropped it,
     // so an operator reading `error` an hour later had the verdict and not one word of why.
-    const finish = async (status: HealthCheckResult['status'], message?: string) => {
+    const finish = async (
+      status: HealthCheckResult['status'],
+      message?: string,
+      diagnostics?: Record<string, unknown>,
+    ) => {
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: status,
         lastHealthDetail: message ?? null,
         lastHealthAt: new Date(),
       });
-      return message === undefined ? { status } : { status, message };
+      return {
+        status,
+        ...(message === undefined ? {} : { message }),
+        ...(diagnostics ? { diagnostics } : {}),
+      };
     };
 
     if (!appId || !privateKey)
@@ -236,7 +254,12 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       if (err instanceof GitHubAuthError) {
         return finish(err.status === 401 ? 'needs_reauth' : 'error', err.message);
       }
-      return finish('error', err instanceof Error ? err.message : String(err));
+      // A host never reached is said in Forge's words naming it, never as "Fetch failed." (ISS-1421 r33).
+      return finish(
+        'error',
+        err instanceof Error ? err.message : String(err),
+        thrownDiagnostics(err, { host: hostOf(base), saved: Boolean(ctx.config?.apiBaseUrl) }),
+      );
     }
   },
 

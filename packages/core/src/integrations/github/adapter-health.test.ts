@@ -366,3 +366,48 @@ describe('the endpoint matcher the probe assertion is built on (ISS-1153)', () =
     expect(re.test('/repos/SidCorp-co/forge/branches/main/protection')).toBe(false);
   });
 });
+
+describe('a github check that never reached its host', () => {
+  // ISS-1421 r33: a host never reached answered Test with "Forge could not check GitHub. Fetch
+  // failed.", the HTTP client's words; it says why in Forge's words and names the host instead.
+  it('names the host it never reached and why, never the HTTP client text', async () => {
+    const { healthAnswer } = await import('../health-words.js');
+    const unresolved = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('getaddrinfo ENOTFOUND api.github.com'), {
+        code: 'ENOTFOUND',
+      }),
+    });
+    globalThis.fetch = vi.fn(async () => {
+      throw unresolved;
+    }) as unknown as typeof fetch;
+
+    const result = await probe();
+    expect(result?.status).toBe('error');
+    expect(result?.diagnostics).toMatchObject({
+      unreached: 'host_unresolved',
+      unreachedHost: 'api.github.com',
+    });
+    const said = result ? healthAnswer('github', result).message : '';
+    expect(said).toBe(
+      'Forge could not reach GitHub at api.github.com, because its host name does not resolve. Test again once api.github.com answers.',
+    );
+    expect(said).not.toMatch(/fetch failed/i);
+  });
+
+  it('sends a reader to the address this connection saves where it names its own API host', async () => {
+    const { healthAnswer } = await import('../health-words.js');
+    globalThis.fetch = vi.fn(async () => {
+      throw Object.assign(new TypeError('fetch failed'), {
+        cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+      });
+    }) as unknown as typeof fetch;
+    const result = await getAdapter('github')?.healthcheck({
+      ...ctx,
+      config: { ...ctx.config, apiBaseUrl: 'https://ghe.example.test/api/v3' },
+      // biome-ignore lint/suspicious/noExplicitAny: the adapter context is generic over config/secrets
+    } as any);
+    expect(result ? healthAnswer('github', result).message : '').toBe(
+      'Forge could not reach GitHub at ghe.example.test, because nothing accepted the connection at its address. Check the address saved on this connection, then test again.',
+    );
+  });
+});

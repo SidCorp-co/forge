@@ -5,6 +5,7 @@ import {
   CHECK_ADDRESS,
   thrownDiagnostics,
   unreachedBy,
+  unreachedHostOf,
   unreachedWords,
 } from './unreached.js';
 
@@ -54,6 +55,44 @@ describe('thrownDiagnostics', () => {
       unreachedCode: 'ENOTFOUND',
     });
     expect(thrownDiagnostics(new Error('boom'))).toEqual({ thrown: true });
+  });
+
+  // ISS-1421 r33: the host a check was sent to rides with the reason, so the answer can name it.
+  it('carries the host it was sent to where the caller names one, and reads it back', () => {
+    const said = thrownDiagnostics(fetchFailed({ code: 'ENOTFOUND' }), {
+      host: 'api.github.com',
+      saved: false,
+    });
+    expect(said).toMatchObject({ unreachedHost: 'api.github.com', unreachedHostSaved: false });
+    expect(unreachedHostOf(said)).toEqual({ host: 'api.github.com', saved: false });
+    expect(unreachedHostOf({ unreached: 'refused' })).toBeUndefined();
+    expect(thrownDiagnostics(new Error('boom'), { host: 'x', saved: true })).toEqual({
+      thrown: true,
+    });
+  });
+});
+
+describe('unreachedWords naming a host', () => {
+  it('names the host, and sends a reader to the saved address only where the connection saves it', () => {
+    for (const reason of [
+      'host_unresolved',
+      'refused',
+      'timed_out',
+      'certificate',
+      'reset',
+      'unreachable',
+    ] as const) {
+      const fixed = unreachedWords('GitHub', reason, { host: 'api.github.com', saved: false });
+      expect(fixed).toMatch(/^Forge could not reach GitHub at api\.github\.com, because /);
+      expect(fixed).toMatch(/ Test again once api\.github\.com answers\.$/);
+      expect(fixed).not.toMatch(/address saved/);
+      const own = unreachedWords('GitHub', reason, { host: 'ghe.example.test', saved: true });
+      expect(own).toMatch(/^Forge could not reach GitHub at ghe\.example\.test, because /);
+      expect(own).toMatch(/address/);
+      for (const sentence of [...fixed.split(/(?<=\.) /), ...own.split(/(?<=\.) /)]) {
+        expect(sentence.split(/\s+/).length, reason).toBeLessThanOrEqual(25);
+      }
+    }
   });
 });
 

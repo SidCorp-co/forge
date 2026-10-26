@@ -344,8 +344,12 @@ describe('the projects a room may be opened on', () => {
 describe('a write by a viewer of the room', () => {
   const VIEWER_WRITE =
     'You are a viewer of Ledger, so you cannot change this room or post in it. Only a member or admin of Ledger can, so ask one of them.';
-  const ROLELESS =
-    'This room is about a project on which you hold no role; a room is reached only by someone who holds one on every project in it.';
+  // ISS-1421 r33: someone holding no role is told the act refused and who can add them, as every door
+  // refusing a role too low says (criterion 340), and the project is still not named to them.
+  const ROLELESS_WRITE =
+    'You hold no role on a project this room is about, so you cannot change this room or post in it. An admin of that project can add you to it.';
+  const ROLELESS_READ =
+    'You hold no role on a project this room is about, so you cannot read this room. An admin of that project can add you to it.';
 
   async function groupRoom(): Promise<string> {
     const opened = await as(ownerId, '/api/conversations', 'POST', {
@@ -400,9 +404,9 @@ describe('a write by a viewer of the room', () => {
     });
     expect(opened.status, await opened.clone().text()).toBe(201);
     const { id } = (await opened.json()) as { id: string };
-    for (const [method, body] of [
-      ['PATCH', { title: 'Renamed by a viewer' }],
-      ['GET', undefined],
+    for (const [method, body, said] of [
+      ['PATCH', { title: 'Renamed by a viewer' }, ROLELESS_WRITE],
+      ['GET', undefined, ROLELESS_READ],
     ] as const) {
       const res = await as(viewerId, `/api/conversations/${id}`, method, body);
       const refusal = (await res.json()) as Refusal;
@@ -410,22 +414,30 @@ describe('a write by a viewer of the room', () => {
         method,
         403,
         'CONVERSATION_OUT_OF_SCOPE',
-        ROLELESS,
+        said,
       ]);
       expect(refusal.message).not.toMatch(/Desk|Ledger/);
     }
   });
 
-  it('tells somebody holding no role there that they do not reach the room at all', async () => {
+  it('tells somebody holding no role there what they cannot do and who can add them, posting included', async () => {
     const id = await groupRoom();
     const stranger = await verifiedUser();
-    const res = await as(stranger, `/api/conversations/${id}`, 'PATCH', { title: 'x' });
-    const refusal = (await res.json()) as Refusal;
-    expect([res.status, refusal.code, refusal.message]).toEqual([
-      403,
-      'CONVERSATION_OUT_OF_SCOPE',
-      ROLELESS,
-    ]);
+    for (const [path, method, body, said] of [
+      [`/api/conversations/${id}`, 'PATCH', { title: 'x' }, ROLELESS_WRITE],
+      [`/api/conversations/${id}/messages`, 'POST', { content: 'May I?' }, ROLELESS_WRITE],
+      [`/api/conversations/${id}`, 'GET', undefined, ROLELESS_READ],
+    ] as const) {
+      const res = await as(stranger, path, method, body);
+      const refusal = (await res.json()) as Refusal;
+      expect([method, res.status, refusal.code, refusal.message]).toEqual([
+        method,
+        403,
+        'CONVERSATION_OUT_OF_SCOPE',
+        said,
+      ]);
+      expect(refusal.message).not.toMatch(/Ledger/);
+    }
   });
 
   // The review of r36: a viewer outside a one-to-one room cannot read it either, so a refused write

@@ -3,7 +3,9 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  bindingForRow,
   bindingInUse,
+  cardBindingId,
   DIRECTORY_STATUS_META,
   deriveConnectionStatus,
   deriveDirectoryStatus,
@@ -53,5 +55,32 @@ describe("bindingInUse", () => {
     expect(bindingInUse([row("old", "postman", false)], "postman")?.id).toBe("old");
     expect(bindingInUse([row("old", "postman", false)], "google")).toBeUndefined();
     expect(bindingInUse(undefined, "google")).toBeUndefined();
+  });
+});
+
+describe("bindingForRow", () => {
+  const row = (id: string, provider: string, bindingActive: boolean, day = 1) =>
+    ({ id, provider, bindingActive, createdAt: `2026-10-0${day}T00:00:00.000Z` }) as IntegrationSummary;
+  const items = [row("old", "sentry", false, 1), row("new", "sentry", true, 2), row("pm", "postman", true)];
+
+  it("takes the binding the row names, the switched-off one included", () => {
+    expect(bindingForRow(items, "sentry", "old")?.id).toBe("old");
+    expect(bindingForRow(items, "sentry", "new")?.id).toBe("new");
+  });
+
+  it("takes the one in use only where no row names one", () => {
+    expect(bindingForRow(items, "sentry", undefined)?.id).toBe("new");
+  });
+
+  it("takes none where the named binding is gone or is another provider's, never another binding", () => {
+    expect(bindingForRow(items, "sentry", "gone")).toBeUndefined();
+    expect(bindingForRow(items, "sentry", "pm")).toBeUndefined();
+  });
+
+  it("reads the binding a card names, and none from a card that names none", () => {
+    expect(cardBindingId({ meta: { bindingId: "old" } })).toBe("old");
+    expect(cardBindingId({ meta: { bindingId: "" } })).toBeUndefined();
+    expect(cardBindingId({ meta: {} })).toBeUndefined();
+    expect(cardBindingId(null)).toBeUndefined();
   });
 });

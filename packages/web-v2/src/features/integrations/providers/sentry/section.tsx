@@ -39,7 +39,7 @@ import {
   keyLockedLine,
   removedKeyHint,
 } from "../../components/integration-enabled-control";
-import { bindingBadge, bindingInUse } from "../../derive";
+import { bindingBadge, bindingForRow } from "../../derive";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 /** Editable Sentry target row — strings only so inputs stay controlled. */
@@ -145,11 +145,11 @@ function toConfig(f: FormState): SentryConfig {
  * agent's prompt so it queries the right org/project. Test connection validates the token against Sentry
  * `GET /api/0/organizations/`.
  */
-export function SentrySection({ projectId }: { projectId: string }) {
+export function SentrySection({ projectId, bindingId }: { projectId: string; bindingId?: string }) {
   const list = useIntegrationsList(projectId);
   const existing = useMemo(
-    () => bindingInUse(list.data?.items, "sentry"),
-    [list.data],
+    () => bindingForRow(list.data?.items, "sentry", bindingId),
+    [list.data, bindingId],
   );
 
   const create = useCreateProviderIntegration(projectId);

@@ -16,7 +16,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { projectCalled } from "../connection-identity";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
-import { cardProvider, getCapabilities } from "../derive";
+import { cardBindingId, cardProvider, getCapabilities } from "../derive";
 import { PROVIDER_MODULES, providerLabel } from "../providers/registry";
 import type { BindingSummary, DeployStage, ProjectBinding, StatusCard } from "../types";
 import { AgentAccessControl } from "./agent-access-control";
@@ -50,11 +50,13 @@ function ProviderSection({
   provider,
   projectId,
   stage,
+  bindingId,
   after,
 }: {
   provider: string;
   projectId: string;
   stage: DeployStage | null;
+  bindingId: string | undefined;
   after?: ReactNode;
 }) {
   const Section = SECTIONS.get(provider);
@@ -70,27 +72,27 @@ function ProviderSection({
   }
   return (
     <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-      <Section projectId={projectId} {...(stage ? { stage } : {})} />
+      <Section projectId={projectId} {...(stage ? { stage } : {})} {...(bindingId ? { bindingId } : {})} />
       {after}
     </Suspense>
   );
 }
 
-/** Resolve the binding (and therefore the owning connection) the drawer is
- *  currently scoped to. For `canDeploy` providers (Coolify) the card key
- *  carries the env suffix (`coolify:staging`); for the others a single binding
- *  per project covers the provider. */
+/** The binding (and so the connection) the drawer reads: the one its row's card names (ISS-1421
+ *  r33), else the first serving the stage the card key carries (`coolify:live`), else the first. */
 function useBindingForCard(
   projectId: string,
   provider: string,
   stageHint: DeployStage | null,
+  bindingId: string | undefined,
 ): ProjectBinding | undefined {
   const list = useIntegrationsList(projectId);
   return useMemo(() => {
     const rows = (list.data?.items ?? []).filter((i) => i.provider === provider);
+    if (bindingId) return rows.find((r) => r.id === bindingId);
     if (stageHint) return rows.find((r) => r.stages.includes(stageHint));
     return rows[0];
-  }, [list.data, provider, stageHint]);
+  }, [list.data, provider, stageHint, bindingId]);
 }
 
 function BindingsSection({
@@ -199,10 +201,12 @@ function DeliveryLogPane({
   provider,
   projectId,
   canDeploy,
+  bindingId,
 }: {
   provider: string;
   projectId: string;
   canDeploy: boolean;
+  bindingId: string | undefined;
 }) {
   const [stage, setStage] = useState<DeployStage>("preview");
   const list = useIntegrationsList(projectId);
@@ -210,7 +214,16 @@ function DeliveryLogPane({
     () => (list.data?.items ?? []).filter((i) => i.provider === provider),
     [list.data, provider],
   );
-  const binding = canDeploy ? rows.find((r) => r.stages.includes(stage)) : rows[0];
+  const named = bindingId ? rows.find((r) => r.id === bindingId) : undefined;
+  // A row's binding the list no longer holds logs nothing: no other binding stands in for it.
+  const gone = Boolean(bindingId) && !named;
+  const binding = gone
+    ? undefined
+    : !canDeploy
+      ? (named ?? rows[0])
+      : named?.stages.includes(stage)
+        ? named
+        : rows.find((r) => r.stages.includes(stage));
 
   return (
     <div className="flex flex-col gap-3">
@@ -226,21 +239,30 @@ function ConfigPane({
   provider,
   projectId,
   stageFromCardKey,
+  bindingId,
   focus,
   onProbeDirty,
 }: {
   provider: string;
   projectId: string;
   stageFromCardKey: DeployStage | null;
+  bindingId: string | undefined;
   focus: string | null;
   onProbeDirty: (dirty: boolean) => void;
 }) {
-  const binding = useBindingForCard(projectId, provider, stageFromCardKey);
+  const binding = useBindingForCard(projectId, provider, stageFromCardKey, bindingId);
   const list = useIntegrationsList(projectId);
   const may = list.data?.may ?? null;
   // A provider this project has not connected is offered to a reader who may connect one, and
   // anyone else is told who may, rather than shown a form core refuses (ISS-1421 r27).
   const connected = (list.data?.items ?? []).some((i) => i.provider === provider);
+  if (bindingId && list.data && !binding) {
+    return (
+      <p className="fg-body-sm border-b border-line pb-2 text-muted">
+        {`This ${providerLabel(provider)} binding is no longer on this project. Close this drawer and open its row again.`}
+      </p>
+    );
+  }
   if (!connected && may && !may.connect) {
     return (
       <p className="fg-body-sm border-b border-line pb-2 text-muted">
@@ -254,6 +276,7 @@ function ConfigPane({
         provider={provider}
         projectId={projectId}
         stage={stageFromCardKey}
+        bindingId={bindingId}
         after={
           // ISS-1339 r2 — what a release reads to learn the commit production serves, on every live
           // deploy binding whatever its provider; it renders itself away elsewhere.
@@ -339,6 +362,8 @@ export function ConnectionDetailDrawer({
   const scopeSuffix = card.key.includes(":") ? card.key.split(":")[1] : undefined;
   const stageFromCardKey: DeployStage | null =
     caps.canDeploy && (scopeSuffix === "preview" || scopeSuffix === "live") ? scopeSuffix : null;
+  // The row's own binding: everything below reads and acts on it, never another of the provider's.
+  const bindingId = cardBindingId(card);
 
   const title = (
     <span className="flex items-center gap-2.5">
@@ -388,6 +413,7 @@ export function ConnectionDetailDrawer({
                 provider={provider}
                 projectId={projectId}
                 stageFromCardKey={stageFromCardKey}
+                bindingId={bindingId}
                 focus={focus}
                 onProbeDirty={setProbeDirty}
               />
@@ -397,6 +423,7 @@ export function ConnectionDetailDrawer({
                 provider={provider}
                 projectId={projectId}
                 canDeploy={caps.canDeploy}
+                bindingId={bindingId}
               />
             )}
           </>
@@ -405,6 +432,7 @@ export function ConnectionDetailDrawer({
             provider={provider}
             projectId={projectId}
             stageFromCardKey={stageFromCardKey}
+            bindingId={bindingId}
             focus={focus}
             onProbeDirty={setProbeDirty}
           />
