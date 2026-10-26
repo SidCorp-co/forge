@@ -22,6 +22,7 @@ const IN_USE = "81d3773f-6a4b-4b2f-8a1f-7d3b8e9f5a21";
 
 let provider = "sentry";
 const sent: Array<{ method: string; path: string }> = [];
+const read: string[] = [];
 
 /** The removed binding, switched off over a removed connection, and the newer one in use. */
 function bindings() {
@@ -88,6 +89,7 @@ vi.mock("@/lib/api/client", async () => {
     apiClient: async (path: string, init?: { method?: string }) => {
       const bare = path.split("?")[0] ?? path;
       const method = init?.method ?? "GET";
+      if (method === "GET") read.push(bare);
       if (method !== "GET") {
         sent.push({ method, path: bare });
         return { ok: true };
@@ -113,12 +115,13 @@ let queries: QueryClient;
 
 beforeEach(() => {
   sent.length = 0;
+  read.length = 0;
   queries = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
 });
 afterEach(cleanup);
 
 /** The row's card as core's status read builds it for two bindings of one provider. */
-function card(bindingId: string) {
+function card(bindingId: string, logs = false) {
   const deploy = provider === "coolify";
   const removed = bindingId === REMOVED;
   return {
@@ -131,16 +134,16 @@ function card(bindingId: string) {
     meta: {
       bindingId,
       lastHealthStatus: removed ? null : "error",
-      ...(deploy ? { capabilities: { canDeploy: true } } : {}),
+      ...(deploy || logs ? { capabilities: { canDeploy: deploy, hasDeliveryLog: logs } } : {}),
     },
   };
 }
 
-async function open(bindingId: string): Promise<void> {
+async function open(bindingId: string, logs = false): Promise<void> {
   render(
     <QueryClientProvider client={queries}>
       <LeaveGuardProvider>
-        <ConnectionDetailDrawer projectId={PROJECT} card={card(bindingId) as never} onClose={() => {}} />
+        <ConnectionDetailDrawer projectId={PROJECT} card={card(bindingId, logs) as never} onClose={() => {}} />
       </LeaveGuardProvider>
     </QueryClientProvider>,
   );
@@ -195,5 +198,26 @@ describe("a row naming a binding the list no longer holds", () => {
     expect(screen.queryByRole("switch", { name: /Enabled for this project/ })).toBeNull();
     expect(screen.queryByRole("button", { name: DISCONNECT_FROM_PROJECT })).toBeNull();
     expect(screen.queryByDisplayValue(/new-in-use/)).toBeNull();
+  });
+});
+
+describe("the delivery log of a row", () => {
+  it.each(PROVIDERS)("%s: reads the row's own binding, and none where that binding is gone", async (name) => {
+    provider = name;
+    await open(REMOVED, true);
+    fireEvent.click(screen.getByRole("tab", { name: "Delivery log" }));
+    // Coolify's log opens at Preview; its bindings here serve Live, the stage the row was opened at.
+    if (name === "coolify") fireEvent.click(screen.getAllByRole("button", { name: /^Live/ }).at(-1) as HTMLElement);
+    await waitFor(() => expect(read.some((p) => p.endsWith(`/integrations/${REMOVED}/deliveries`))).toBe(true));
+    expect(read.some((p) => p.includes(`/integrations/${IN_USE}/`))).toBe(false);
+    cleanup();
+    read.length = 0;
+    await open("0badc0de-0000-4000-8000-000000000000", true);
+    fireEvent.click(screen.getByRole("tab", { name: "Delivery log" }));
+    if (name === "coolify") fireEvent.click(screen.getAllByRole("button", { name: /^Live/ }).at(-1) as HTMLElement);
+    // The viewer given no binding says so; given another binding, it would read that one's log.
+    await waitFor(() => expect(screen.getByText("No deliveries")).toBeInTheDocument());
+    expect(screen.queryByText("No deliveries yet")).toBeNull();
+    expect(read.some((p) => p.endsWith("/deliveries"))).toBe(false);
   });
 });

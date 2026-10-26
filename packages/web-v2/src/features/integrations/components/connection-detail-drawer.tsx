@@ -215,13 +215,15 @@ function DeliveryLogPane({
     [list.data, provider],
   );
   const named = bindingId ? rows.find((r) => r.id === bindingId) : undefined;
-  const binding = !canDeploy
-    ? bindingId
-      ? named
-      : rows[0]
-    : named?.stages.includes(stage)
-      ? named
-      : rows.find((r) => r.stages.includes(stage));
+  // A row's binding the list no longer holds logs nothing: no other binding stands in for it.
+  const gone = Boolean(bindingId) && !named;
+  const binding = gone
+    ? undefined
+    : !canDeploy
+      ? (named ?? rows[0])
+      : named?.stages.includes(stage)
+        ? named
+        : rows.find((r) => r.stages.includes(stage));
 
   return (
     <div className="flex flex-col gap-3">
