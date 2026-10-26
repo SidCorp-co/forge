@@ -398,14 +398,16 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
 
       const existing = await findBindingWithConnectionById(id);
       if (!existing || existing.binding.projectId !== projectId) throw notFound();
-      if (!(existing.binding.stages ?? []).includes('live')) {
+      const { bindingReachesLive, confirmPendingProdDeploy } = await import(
+        '../../pipeline/release-coolify.js'
+      );
+      if (!(await bindingReachesLive(projectId, existing.binding))) {
         throw new HTTPException(400, {
           message:
-            'This Coolify binding deploys to no live environment, so it has no live deploy to confirm. Only a binding that deploys to live waits for a person to confirm.',
+            'This Coolify binding neither deploys to live nor deploys an application a live binding deploys, so no live deploy waits on it to be confirmed.',
           cause: { code: 'NOT_LIVE_BINDING' },
         });
       }
-      const { confirmPendingProdDeploy } = await import('../../pipeline/release-coolify.js');
       const result = await confirmPendingProdDeploy(id).catch(lockedAsHttp);
       broadcastIntegrationChanged(projectId, {
         bindingId: id,

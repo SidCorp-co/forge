@@ -26,9 +26,6 @@ describe('the connection config PATCH schema', () => {
     ).toBe(true);
   });
 
-  // The defect itself, kept as a case rather than as prose: the create schema refuses a body the
-  // PATCH takes, and it is what the route read until this change. A connection's create takes its
-  // base url alone since ISS-1421 r30, so the body told apart is one without it.
   it('is not the create schema, which refuses a body without the base url', () => {
     expect(patchSchema('coolify').safeParse({ releaseRunnerLabel: null }).success).toBe(true);
     expect(createSchema('coolify').safeParse({ releaseRunnerLabel: null }).success).toBe(false);

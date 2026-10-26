@@ -294,7 +294,7 @@ export const confirmProdDeploy = onBinding(
       200: json(confirmedSchema, 'Whether a pending deploy was confirmed and queued'),
       400: fail(
         'NOT_LIVE_BINDING',
-        'the binding carries no live stage, so no production deploy awaits a person',
+        'the binding neither carries a live stage nor deploys an application a live binding deploys',
       ),
       403: notProjectAdmin,
       404: noSuchBinding,

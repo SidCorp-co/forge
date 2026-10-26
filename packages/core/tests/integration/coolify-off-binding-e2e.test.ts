@@ -365,3 +365,42 @@ describe('round 30: every Coolify door says why it refuses, and who may', () => 
     );
   });
 });
+
+// ISS-1421 r30, review on 344: a preview binding deploying an application a live binding also
+// deploys is parked for a person to confirm, and the route refused that confirmation for carrying
+// no live stage, so the parked deploy could never go out.
+describe('confirming a live deploy (criterion 344)', () => {
+  const previewOf = (projectId: string, connectionId: string, resourceUuid: string) =>
+    store.createBinding({
+      connectionId,
+      projectId,
+      provider: 'coolify',
+      role: 'deploy',
+      stages: ['preview'],
+      config: { targets: [{ id: 'web', label: 'Web', resourceUuid }] },
+    });
+  const confirm = (projectId: string, bindingId: string) =>
+    callAs(
+      admin.token,
+      'POST',
+      `/api/projects/${projectId}/integrations/${bindingId}/confirm-prod-deploy`,
+    );
+
+  it('takes it on a preview binding that deploys what a live one deploys', async () => {
+    const { projectId, connectionId } = await coolifyProject();
+    const shared = await previewOf(projectId, connectionId, 'made-up-uuid');
+    const said = await confirm(projectId, shared.id);
+    expect(said.status, JSON.stringify(said.body)).toBe(200);
+  });
+
+  it('refuses it in words on a binding that reaches no live environment', async () => {
+    const { projectId, connectionId } = await coolifyProject();
+    const apart = await previewOf(projectId, connectionId, 'another-made-up-uuid');
+    const said = await confirm(projectId, apart.id);
+    expect(said.status).toBe(400);
+    expect(said.body.code).toBe('NOT_LIVE_BINDING');
+    expect(said.body.message).toBe(
+      'This Coolify binding neither deploys to live nor deploys an application a live binding deploys, so no live deploy waits on it to be confirmed.',
+    );
+  });
+});

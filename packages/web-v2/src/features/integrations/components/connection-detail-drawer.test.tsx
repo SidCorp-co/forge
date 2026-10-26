@@ -29,6 +29,8 @@ let acts = ALL_ACTS;
 let may = ALL_MAY;
 /** The reader's connections, as the Integrations page lists them. */
 let connections: unknown[] = [];
+/** The Coolify applications each stage's binding deploys, where a test names them. */
+let appsOf: Partial<Record<"preview" | "live", string>> = {};
 
 function binding(stage: "preview" | "live") {
   return {
@@ -39,7 +41,7 @@ function binding(stage: "preview" | "live") {
     role: deployTo.includes(provider) ? "deploy" : "service",
     stages: deployTo.includes(provider) ? [stage] : [],
     config: { baseUrl: "https://stub.example.com", host: "https://sentry.example.com" },
-    bindingConfig: {},
+    bindingConfig: appsOf[stage] ? { targets: [{ id: "web", label: "Web", resourceUuid: appsOf[stage] }] } : {},
     label: "",
     active: true,
     bindingActive: true,
@@ -406,6 +408,56 @@ describe("the live approval gate", () => {
     await waitFor(() => expect(screen.getByText("Through the connection Production box.")).toBeInTheDocument());
     expect(screen.queryByText(new RegExp(CONNECTION))).toBeNull();
     expect(screen.queryByText(/^integration:/)).toBeNull();
+  });
+
+  it("tells two connections of the same name apart, as the Connections page does", async () => {
+    const box = (id: string, createdAt: string) => ({
+      id,
+      provider: "coolify",
+      displayName: "Production box",
+      ownerType: "org",
+      ownerId: PROJECT_ROW.orgId,
+      config: { baseUrl: "https://stub.example.com" },
+      active: true,
+      hasSecrets: true,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    connections = [box(CONNECTION, NOW), box("c2d7e8f9-0a1b-4c2d-8e3f-4a5b6c7d8e9f", "2026-10-01T00:00:00.000Z")];
+    drawLive();
+    await waitFor(() =>
+      expect(screen.getByText("Through the connection Production box · added 14 Oct 2026.")).toBeInTheDocument(),
+    );
+  });
+
+  // Review on criterion 344: core parks a preview deploy of the application a live binding also
+  // deploys, so the drawer has to offer that binding the confirmation it is waiting on.
+  function drawPreview() {
+    provider = "coolify";
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: "coolify:preview", status: "connected", meta: { capabilities: { canDeploy: true } } } as never}
+          onClose={() => {}}
+        />
+      </Page>,
+    );
+  }
+
+  it("is offered on a preview binding that deploys the application the live one deploys", async () => {
+    appsOf = { preview: "made-up-app", live: "made-up-app" };
+    drawPreview();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm live deploy" })).toBeInTheDocument());
+    appsOf = {};
+  });
+
+  it("is not offered on a preview binding that deploys an application of its own", async () => {
+    appsOf = { preview: "made-up-preview-app", live: "made-up-app" };
+    drawPreview();
+    await waitFor(() => expect(screen.getByText("Agents on this project may use this")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Confirm live deploy" })).toBeNull();
+    appsOf = {};
   });
 
   it("names it by where it points where the reader's list does not hold it", async () => {

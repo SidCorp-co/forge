@@ -24,6 +24,8 @@ vi.mock('../../db/client.js', () => ({ db: {} }));
 const confirmMock = vi.fn();
 vi.mock('../../pipeline/release-coolify.js', () => ({
   confirmPendingProdDeploy: (...a: unknown[]) => confirmMock(...(a as [])),
+  bindingReachesLive: async (_p: string, b: { stages: string[] | null }) =>
+    (b.stages ?? []).includes('live'),
 }));
 
 vi.mock('../route-helpers.js', () => ({

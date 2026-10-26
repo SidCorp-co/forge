@@ -58,7 +58,7 @@ import type {
 } from "../../types";
 import type { CoolifyReadConfig } from "./config";
 import { bindingBadge } from "../../derive";
-import { connectionName } from "../../connection-identity";
+import { connectionLabels, connectionName } from "../../connection-identity";
 import { connectionTargetFor } from "../registry";
 
 export function CoolifySection({ projectId, stage: openedAt }: { projectId: string; stage?: DeployStage }) {
@@ -72,6 +72,7 @@ export function CoolifySection({ projectId, stage: openedAt }: { projectId: stri
   // and core never picks among them (ISS-1046 rule 3). This panel edits the
   // first; the connection drawer lists them all.
   const existing = useMemo(() => rows.find((i) => i.stages.includes(stage)), [rows, stage]);
+  const reachesLive = useMemo(() => bindingReachesLive(rows, existing), [rows, existing]);
 
   return (
     <SettingsSection>
@@ -95,6 +96,7 @@ export function CoolifySection({ projectId, stage: openedAt }: { projectId: stri
           projectId={projectId}
           stage={stage}
           existing={existing}
+          reachesLive={reachesLive}
           onRefetch={() => list.refetch()}
         />
       </div>
@@ -106,13 +108,27 @@ interface EnvPanelProps {
   projectId: string;
   stage: DeployStage;
   existing: IntegrationSummary | undefined;
+  reachesLive: boolean;
   onRefetch: () => void;
+}
+
+const appsOf = (binding: IntegrationSummary): string[] =>
+  ((binding.bindingConfig as CoolifyReadConfig).targets ?? []).map((t) => t.resourceUuid).filter(Boolean);
+
+/** Core's own rule for a deploy a person confirms: it carries live, or deploys an application a
+ *  live binding also deploys (`bindingReachesLive`, ISS-1421 r30 review on criterion 344). */
+function bindingReachesLive(rows: IntegrationSummary[], binding: IntegrationSummary | undefined): boolean {
+  if (!binding) return false;
+  if (binding.stages.includes("live")) return true;
+  const live = new Set(rows.filter((r) => r.stages.includes("live")).flatMap(appsOf));
+  return appsOf(binding).some((u) => live.has(u));
 }
 
 function StagePanel({
   projectId,
   stage,
   existing,
+  reachesLive,
   onRefetch,
 }: EnvPanelProps) {
   const create = useCreateProviderIntegration(projectId);
@@ -356,7 +372,7 @@ function StagePanel({
 
       {existing && <DeployConfirmationHint />}
 
-      {isLive && existing && (
+      {reachesLive && existing && (
         <fieldset disabled={bindingLocked} className="contents">
           <ProdGateSection
             projectId={projectId}
@@ -391,10 +407,12 @@ function StagePanel({
  */
 function useGateConnection(binding: IntegrationSummary): string {
   const connections = useConnections();
-  const own = connections.data?.items.find((c) => c.id === binding.connectionId);
-  const name = own ? connectionName(own) : null;
-  if (name) return `the connection ${name}`;
-  const target = connectionTargetFor("coolify", own?.config ?? binding.config);
+  const coolifies = (connections.data?.items ?? []).filter((c) => c.provider === "coolify");
+  const own = coolifies.find((c) => c.id === binding.connectionId);
+  const label = own ? connectionLabels(coolifies, false).get(own.id) : undefined;
+  if (own && label && connectionName(own)) return `the connection ${label}`;
+  if (own && label && connectionTargetFor("coolify", own.config)) return `the connection at ${label}`;
+  const target = connectionTargetFor("coolify", binding.config);
   return target ? `the connection at ${target}` : "this project's Coolify connection";
 }
 

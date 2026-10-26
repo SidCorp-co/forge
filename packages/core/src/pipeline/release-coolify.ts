@@ -113,6 +113,15 @@ function reachesLiveOf(
     resourceUuidsOf(binding.config).some((u) => live.has(u));
 }
 
+/** The question the confirm door asks: the same `reachesLiveOf` rule, for one binding. */
+export async function bindingReachesLive(
+  projectId: string,
+  binding: { stages: string[] | null; config: unknown },
+): Promise<boolean> {
+  if ((binding.stages ?? []).includes('live')) return true;
+  return sharesAResourceWithLive(projectId, resourceUuidsOf(binding.config));
+}
+
 /** The Coolify applications a binding's config names, however sparse it is. */
 function resourceUuidsOf(config: unknown): string[] {
   const targets = (config as { targets?: unknown } | null)?.targets;
