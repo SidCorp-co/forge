@@ -35,3 +35,12 @@ Reproduced on 2026-10-26 against a `pgvector/pgvector:pg17` instance, outside an
 transaction was already rejected with, carried as a `pnpm patch` of `postgres` until the package
 ships the same check, and an integration case that ends a transaction's backend between two
 statements and reads the next statement's refusal.
+
+## Honest costs
+
+- A patch on a dependency is code nobody upstream reviews: every `postgres` upgrade has to re-apply
+  it or show the package now refuses the statement itself.
+- A version that moves `execute` breaks the patch at install, which stops every install until it is
+  rebased, rather than at the crash.
+- The transaction's function sees a rejection where it used to see nothing, so a caller that
+  swallows errors inside a transaction keeps running against a connection that is gone.
