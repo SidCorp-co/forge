@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { baseRef } from './lib/base-branch.mjs';
 import { undeclared } from './lib/check-inputs.mjs';
 import { notRunHereLines } from './lib/not-run-here.mjs';
@@ -879,4 +879,6 @@ async function main() {
   process.exit(report(results, { code: ciParity(true, said), said }, memo));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+// Real paths on both sides: either may name this module through a symlink.
+const entry = process.argv[1];
+if (entry && realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url))) await main();

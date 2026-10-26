@@ -3,7 +3,7 @@
 // on a clean tree with the memo on and an empty store (ISS-1180: `--entry` and `--window` ran
 // comment-budget's `--changed` form, which asks git, against a declaration that said it did not).
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -184,5 +184,20 @@ describe('the whole and the scoped form of a check that asks git, each through t
     expect(bypassed.plan.kind).toBe('bypass');
     expect(bypassed.memo.served).toEqual([]);
     expect(listEntries(dir)).toHaveLength(1);
+  });
+});
+
+describe('verify run by a path that is not its own', () => {
+  it('runs, not exits 0 silently, when launched through a symlink', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'verify-link-'));
+    try {
+      const link = join(dir, 'verify.mjs');
+      symlinkSync(join(HERE, '..', 'verify.mjs'), link);
+      const r = spawnSync(process.execPath, [link, '--no-such-flag'], { encoding: 'utf8' });
+      expect(r.status).toBe(2);
+      expect(r.stderr + r.stdout).toContain('unknown: --no-such-flag');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
