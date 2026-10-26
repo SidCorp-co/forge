@@ -99,7 +99,7 @@ const DECLARED = {
   'web typecheck': {
     roots: [...PNPM, 'scripts', ...WORKSPACE],
     listed: ['packages/runner'],
-    built: BUILT,
+    built: [...BUILT, ...BUILD_READ],
   },
   'cargo gates': {
     uncached:
