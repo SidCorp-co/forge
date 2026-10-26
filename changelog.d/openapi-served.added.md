@@ -1,1 +1,0 @@
-**Forge's own API contract is published.** `GET /api/openapi.json` serves the OpenAPI 3.1 document and `GET /api/mcp-tools.json` the MCP tool list, with no sign-in, each with a semver version that moves only when the contract does.

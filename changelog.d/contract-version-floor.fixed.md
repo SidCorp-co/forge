@@ -1,1 +1,0 @@
-**The published API contract starts above the numbers Forge's interface registry already holds.** `forge-api` and `forge-mcp` are 2.0.0, so the registry accepts them over the 1.0.0 recorded on 2026-10-21.
