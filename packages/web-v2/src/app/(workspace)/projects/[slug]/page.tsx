@@ -118,7 +118,7 @@ export default function ProjectOverviewPage() {
       <div className="grid min-h-[60vh] place-items-center">
         <ErrorState
           level={1}
-          title="Couldn't load project"
+          title="Couldn't load this project"
           message={formatApiError(projectsQ.error ?? healthQ.error)}
           onRetry={() => {
             projectsQ.refetch();

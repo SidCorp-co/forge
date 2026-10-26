@@ -4,11 +4,10 @@
 // Sessions + Chat. Resolve slug → project (issues-page template), then render
 // the scoped shell.
 import { useParams } from "next/navigation";
-import { ErrorState, ProjectLoader } from "@/design";
+import { ProjectLoader } from "@/design";
 import { AgentsScreen } from "@/features/agents/components/agents-screen";
 import { useProjects } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
-import { ProjectMissing } from "@/features/projects/components/project-missing";
+import { ProjectMissing, ProjectUnread } from "@/features/projects/components/project-missing";
 
 export default function ProjectAgentsPage() {
   const params = useParams<{ slug: string }>();
@@ -26,7 +25,7 @@ export default function ProjectAgentsPage() {
   if (isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState level={1} message={formatApiError(error)} onRetry={() => refetch()} />
+        <ProjectUnread error={error} onRetry={() => refetch()} />
       </div>
     );
   }

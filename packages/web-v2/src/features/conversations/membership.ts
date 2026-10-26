@@ -351,13 +351,23 @@ export function personAdditionClaims(args: {
   ];
 }
 
-/** A room's member as a list of people reads them, keyed by its own row. */
-const listedMember = (p: ConversationParticipant): ListedPerson => ({
-  userId: p.userId,
-  displayName: p.displayName,
-  addedAt: p.addedAt,
-  key: p.id,
-});
+/** A room's members as a list of people reads them, keyed by row, in the place core serves each at:
+ *  core serves people added at one moment with the room's opener first (ISS-1229 r45). */
+function listedMembers(
+  room: Partial<Pick<ConversationMembership, "participants">>,
+): (p: ConversationParticipant) => ListedPerson {
+  const people = peopleOf(room);
+  return (p) => {
+    const place = people.findIndex((q) => q.id === p.id);
+    return {
+      userId: p.userId,
+      displayName: p.displayName,
+      addedAt: p.addedAt,
+      key: p.id,
+      ...(place < 0 ? {} : { place }),
+    };
+  };
+}
 
 /**
  * What tells a person apart from others in the room who read the same name (ISS-1229 r24): the day
@@ -369,7 +379,8 @@ function addedWords(
   viewerId?: string | null,
 ): string | null {
   if (participant.kind !== "person") return null;
-  return addedApart(listedMember(participant), peopleOf(room).map(listedMember), viewerId);
+  const listed = listedMembers(room);
+  return addedApart(listed(participant), peopleOf(room).map((p) => listed(p)), viewerId);
 }
 
 /** A room's people in the order every list of people takes: the reader, names, then the unnamed by
@@ -378,7 +389,7 @@ export function orderedPeopleOf(
   room: Partial<Pick<ConversationMembership, "participants">>,
   viewerId?: string | null,
 ): ConversationParticipant[] {
-  return orderPeople(peopleOf(room), viewerId, listedMember);
+  return orderPeople(peopleOf(room), viewerId, listedMembers(room));
 }
 
 /** How a member is named in the room's list: the reader's own row reads "You" (ISS-1229 r23), and

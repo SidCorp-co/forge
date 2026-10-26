@@ -2,8 +2,7 @@ import { Button, ButtonLink } from "./button";
 import { ForgeMascot } from "@/design/patterns/forge-mascot";
 import { TabTitle } from "./tab-title";
 
-export interface ErrorStateProps {
-  title?: string;
+interface ErrorStateBase {
   /** Plain cause + remedy — never apologetic. */
   message: string;
   onRetry?: () => void;
@@ -13,8 +12,11 @@ export interface ErrorStateProps {
   mascot?: boolean;
   /** The server's own code and message, for whoever reports it: folded under Technical details. */
   technical?: string;
-  level?: 1 | 2 | 3;
 }
+
+/** A state that is the whole page names what failed in its title, which heads the page and the tab. */
+export type ErrorStateProps = ErrorStateBase &
+  ({ level: 1; title: string } | { level?: 2 | 3; title?: string });
 
 /** Failure state — mascot (flame stilled), a heading at `level` (1 where it is the whole page, naming the tab too), a retry. */
 export function ErrorState({ title = "Couldn't load", message, onRetry, action, mascot = true, technical, level = 2 }: ErrorStateProps) {

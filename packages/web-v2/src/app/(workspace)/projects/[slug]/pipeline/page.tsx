@@ -4,11 +4,10 @@
 // Resolve slug → projectId via the project console list (same pattern as the
 // issues/sessions pages), then render the screen.
 import { useParams } from "next/navigation";
-import { ErrorState, ProjectLoader } from "@/design";
+import { ProjectLoader } from "@/design";
 import { PipelineScreen } from "@/features/pipeline/components/pipeline-screen";
 import { useProjects } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
-import { ProjectMissing } from "@/features/projects/components/project-missing";
+import { ProjectMissing, ProjectUnread } from "@/features/projects/components/project-missing";
 
 export default function ProjectPipelinePage() {
   const params = useParams<{ slug: string }>();
@@ -26,7 +25,7 @@ export default function ProjectPipelinePage() {
   if (isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState level={1} message={formatApiError(error)} onRetry={() => refetch()} />
+        <ProjectUnread error={error} onRetry={() => refetch()} />
       </div>
     );
   }

@@ -6,9 +6,9 @@
 // loading and error states, so this page is a slug adapter and nothing else.
 import { useParams } from "next/navigation";
 import { ErrorState, ProjectLoader } from "@/design";
+import { ProjectUnread } from "@/features/projects/components/project-missing";
 import { useProjects } from "@/features/projects/hooks";
 import { ReleaseRunScreen } from "@/features/releases/components/release-run-screen";
-import { formatApiError } from "@/lib/api/error";
 
 export default function ProjectReleaseRunPage() {
 	const params = useParams<{ slug: string; runId: string }>();
@@ -27,7 +27,7 @@ export default function ProjectReleaseRunPage() {
 	if (isError) {
 		return (
 			<div className="grid min-h-[60vh] place-items-center">
-				<ErrorState level={1} message={formatApiError(error)} onRetry={() => refetch()} />
+				<ProjectUnread error={error} onRetry={() => refetch()} />
 			</div>
 		);
 	}

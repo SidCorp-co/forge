@@ -33,3 +33,12 @@ describe("an error state that is the whole page", () => {
     expect(document.title).toBe("Forge");
   });
 });
+
+// ISS-1229 r45, judge-129: four page-level load errors fell to the default "Couldn't load".
+describe("an error state that is the whole page, given no title", () => {
+  it("is refused by the type check", () => {
+    // @ts-expect-error a page-level state names what failed in its title
+    render(<ErrorState mascot={false} level={1} message="The server did not answer." />);
+    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
+  });
+});

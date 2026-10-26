@@ -14,7 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         message="Open the verification link we emailed you, then retry."
       />
     );
-  if (result.kind === "error") return <OperatorLoadError message={result.message} />;
+  if (result.kind === "error") return <OperatorLoadError title="Couldn't check your admin access" message={result.message} />;
 
   return (
     <OperatorShell initialWhoami={{ isAdmin: true, email: result.email }}>{children}</OperatorShell>

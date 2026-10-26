@@ -45,6 +45,7 @@ export function answersHere(
   return kind === 'handle' ? projectRole !== null : null;
 }
 
+/** Ordered when added, then the room's opener first, then row id: one order for every read (ISS-1229 r45). */
 export async function listParticipants(
   conversationId: string,
   tx: Executor = defaultDb,
@@ -59,6 +60,7 @@ export async function listParticipants(
       label: conversationParticipants.label,
       addedAt: conversationParticipants.addedAt,
       memberRole: projectMembers.role,
+      openedBy: conversations.createdBy,
     })
     .from(conversationParticipants)
     .leftJoin(
@@ -68,6 +70,7 @@ export async function listParticipants(
         eq(projectMembers.projectId, conversationParticipants.projectId),
       ),
     )
+    .innerJoin(conversations, eq(conversations.id, conversationParticipants.conversationId))
     .where(
       and(
         eq(conversationParticipants.conversationId, conversationId),
@@ -75,6 +78,14 @@ export async function listParticipants(
       ),
     );
 
+  const opener = (row: (typeof rows)[number]) =>
+    row.userId !== null && row.userId === row.openedBy ? 0 : 1;
+  rows.sort(
+    (a, b) =>
+      a.addedAt.getTime() - b.addedAt.getTime() ||
+      opener(a) - opener(b) ||
+      a.id.localeCompare(b.id),
+  );
   return rows.map((row) => ({
     id: row.id,
     kind: row.kind,

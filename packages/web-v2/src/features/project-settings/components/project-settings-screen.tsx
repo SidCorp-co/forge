@@ -96,6 +96,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 			<div className="grid min-h-[60vh] place-items-center">
 				<ErrorState
 					level={1}
+					title="Couldn't load this project"
 					message={formatApiError(projectsQ.error)}
 					onRetry={() => projectsQ.refetch()}
 				/>
@@ -121,6 +122,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 			<div className="grid min-h-[60vh] place-items-center">
 				<ErrorState
 					level={1}
+					title="Couldn't load this project's settings"
 					message={formatApiError(detailQ.error)}
 					onRetry={() => detailQ.refetch()}
 				/>

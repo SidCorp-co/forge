@@ -13,7 +13,7 @@ export default function AdminError({ error, reset }: { error: Error; reset: () =
 
   return (
     <div className="flex h-dvh items-center justify-center bg-app">
-      <ErrorState level={1} message={formatApiError(error)} onRetry={reset} />
+      <ErrorState level={1} title="Couldn't load this admin page" message={formatApiError(error)} onRetry={reset} />
     </div>
   );
 }

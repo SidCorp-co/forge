@@ -43,6 +43,8 @@ describe('readsAsCredential — the one predicate', () => {
     ],
     ['prose that is not JSON', '{this} is not JSON, and password reset is on the login page.'],
     ['a number', '42'],
+    ['a header name with nothing after it on its line', 'authorization:\r\nnext line'],
+    ['a secret name with its value on the next line', 'password:\nhunter2'],
   ])('reads %s as none', (_what, text) => {
     expect(readsAsCredential(text)).toBe(false);
   });
@@ -62,6 +64,22 @@ describe('screenedText', () => {
   it('withholds the whole string where the scrub cannot reach the credential', () => {
     const text = stdoutOf({ description: `a\nDB_PASSWORD=${SECRET}\nb` });
     expect(screenedText(text)).toBe('[Filtered]');
+  });
+
+  // ISS-1229 r45, judge-129: a project read's tool output showed `"testCredentials": [Filtered]`.
+  it('reads a password set to a JSON literal in a plain line as a credential', () => {
+    expect(readsAsCredential('password=null user=ana')).toBe(true);
+  });
+
+  it('shows a project read with no test credentials as it is', () => {
+    const text = stdoutOf({ id: 'p1', name: 'Desk', testCredentials: [] });
+    expect(screenedText(text)).toBe(text);
+  });
+
+  it('keeps a scrubbed project read valid JSON, its credentials replaced whole', () => {
+    const read = { id: 'p1', testCredentials: [{ label: 'qa', password: SECRET }], slug: 'desk' };
+    const shown = JSON.parse(screenedText(stdoutOf(read))) as { stdout: string };
+    expect(JSON.parse(shown.stdout)).toEqual({ ...read, testCredentials: '[Filtered]' });
   });
 });
 

@@ -55,7 +55,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
       </span>
     );
     const labelEl = (
-      <span title={label} className="mt-1 block min-w-0 max-w-full truncate text-center text-10 font-semibold tracking-[-0.01em] text-muted">
+      <span className="mt-1 block min-w-0 max-w-full whitespace-normal text-center text-10 font-semibold leading-tight tracking-[-0.01em] text-muted [overflow-wrap:anywhere]">
         {label}
       </span>
     );
@@ -103,7 +103,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col text-left">
         <span className="text-10 font-semibold uppercase tracking-[0.06em] text-subtle">Organization</span>
-        <span className="fg-label truncate">{label}</span>
+        <span className="fg-label whitespace-normal [overflow-wrap:anywhere]">{label}</span>
       </span>
       {!isSingle && <Icon name="chevronUpDown" size={15} className="flex-none text-subtle" />}
     </>

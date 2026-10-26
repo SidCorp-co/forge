@@ -4,7 +4,7 @@
 // in the same words.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { agentPanelWithoutProject, composerRefusal, issueDoorWithoutProject, emptyRoomState, memberName, removalClaim, removalQuestion, unopenableReason } from "./membership";
+import { agentPanelWithoutProject, composerRefusal, issueDoorWithoutProject, emptyRoomState, memberName, orderedPeopleOf, removalClaim, removalQuestion, unopenableReason } from "./membership";
 import type { ConversationParticipant } from "./types";
 
 // When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
@@ -68,6 +68,32 @@ describe("two people who read the same name", () => {
     );
     // The button answers that question, so it keeps the short name and fits a phone's width.
     expect(removalQuestion(b, "me", room).confirm).toBe("Take another member out");
+  });
+
+  // r45, judge-129: everyone a room opens with is added in one transaction, at one moment, and the tie
+  // fell to each row's random id, so the person who opened the room read "the second".
+  it("call the person who opened the room the first among people added at one moment, whatever their row ids", () => {
+    const moment = "2026-10-03T09:15:10Z";
+    const opener = person("p-zz", "u-opener", moment);
+    const b = person("p-mm", "u-b", moment);
+    const c = person("p-aa", "u-c", moment);
+    const room = roomOf(opener, b, c);
+    for (const reader of ["u-b", "outsider"]) {
+      expect(memberName(opener, reader, "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the first)");
+    }
+    expect(memberName(b, "outsider", "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the second)");
+    expect(orderedPeopleOf(room, "u-c").map((p) => p.userId)).toEqual(["u-c", "u-opener", "u-b"]);
+  });
+
+  it("give the ordinals to the unnamed alone where the opener has a name", () => {
+    const moment = "2026-10-03T09:15:10Z";
+    const opener = person("p-zz", "u-opener", moment, "Mai Tran");
+    const b = person("p-mm", "u-b", moment);
+    const c = person("p-aa", "u-c", moment);
+    const room = roomOf(opener, b, c);
+    expect(memberName(opener, "outsider", "start", room)).toBe("Mai Tran");
+    expect(memberName(b, "outsider", "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the first)");
+    expect(memberName(c, "outsider", "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the second)");
   });
 
   it("leaves a name nobody else in the room reads alone, and the reader as You", () => {
