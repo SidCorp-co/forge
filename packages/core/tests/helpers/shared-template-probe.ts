@@ -11,11 +11,12 @@ export async function templateRow(
   return rows[0];
 }
 
-/** Backend pids holding a shared use lock on `name`, which is what a reaper reads as in use. */
-export async function useLockHolders(admin: Sql, name: string): Promise<number[]> {
-  const rows = await admin<{ pid: number }[]>`
-    SELECT pid FROM pg_locks
-    WHERE locktype = 'advisory' AND mode = 'ShareLock' AND granted
-      AND ((classid::bigint << 32) | objid::bigint) = hashtextextended(${`use:${name}`}, 0)`;
-  return rows.map((r) => r.pid);
+/** Backend pids holding a shared use lock on `name` (what a reaper reads as in use), named `from` if given. */
+export async function useLockHolders(admin: Sql, name: string, from?: string): Promise<number[]> {
+  const rows = await admin<{ pid: number; app: string | null }[]>`
+    SELECT l.pid, a.application_name AS app FROM pg_locks l
+    LEFT JOIN pg_stat_activity a ON a.pid = l.pid
+    WHERE l.locktype = 'advisory' AND l.mode = 'ShareLock' AND l.granted
+      AND ((l.classid::bigint << 32) | l.objid::bigint) = hashtextextended(${`use:${name}`}, 0)`;
+  return rows.filter((r) => from === undefined || r.app === from).map((r) => r.pid);
 }
