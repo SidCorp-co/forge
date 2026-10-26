@@ -4,6 +4,7 @@
  * draft to the row the reply is stored as.
  */
 import { describe, expect, it } from 'vitest';
+import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { startConversationProgress } from './conversation-progress.js';
 
 function watched() {
@@ -183,5 +184,84 @@ describe('a draft the reply check reads as a credential', () => {
     expect(progress.withdrawnDraft()).toBe('ISS-4242 shipped in v9.2.');
     expect(progress.withdrawnFor()).toBeNull();
     expect(frames.at(-1)).toMatchObject({ replaced: { draft: 'ISS-4242 shipped in v9.2.' } });
+  });
+});
+
+/**
+ * ISS-1229 r44, judge-124: a tool that read an issue description holding `?token=…` sent it to every
+ * reader in its output, in every frame after the call, and the stored reply kept it. Every block passes
+ * the one screen, tool input and output included.
+ */
+describe('a credential a tool call carries', () => {
+  const issueRead = (description: string) =>
+    JSON.stringify({
+      exitCode: 0,
+      stdout: JSON.stringify({ issueId: 'ISS-2', description }, null, 2),
+    });
+
+  const PLANTED = [
+    [
+      'a token URL in an issue description',
+      issueRead(`Build at https://ci.test/run?token=${SECRET}`),
+    ],
+    ['a quoted JSON key', JSON.stringify({ environments: [{ password: SECRET }] })],
+    ['an environment line inside the read', issueRead(`Set\nDB_PASSWORD=${SECRET}\nthen run it.`)],
+  ] as const;
+
+  async function toolTurn(input: string, output: string) {
+    const frames: unknown[] = [];
+    const progress = startConversationProgress({
+      conversationId: 'c1',
+      entryId: 'e1',
+      publish: async (_id, envelope) => {
+        frames.push(envelope.data);
+        return 1;
+      },
+    });
+    progress.onTurnEvent({ type: 'chunk', text: 'Reading the issue.' });
+    progress.onTurnEvent({ type: 'tool_call', id: 't1', name: 'forge', arguments: input });
+    progress.onTurnEvent({ type: 'tool_result', id: 't1', result: output });
+    progress.onTurnEvent({ type: 'chunk', text: ' It needs a build link.' });
+    progress.onSettled({
+      text: 'Reading the issue. It needs a build link.',
+      screenReplaced: false,
+    });
+    await progress.close();
+    return { progress, frames };
+  }
+
+  it.each(PLANTED)(
+    'reaches no reader, in any frame, from the output: %s',
+    async (_what, output) => {
+      const { frames } = await toolTurn('{"argv":["issue","ISS-2"]}', output);
+      expect(frames.length).toBeGreaterThan(1);
+      for (const frame of frames) expect(JSON.stringify(frame)).not.toContain(SECRET);
+    },
+  );
+
+  it.each(PLANTED)('is not stored beside the reply, from the output: %s', async (_what, output) => {
+    const { progress } = await toolTurn('{"argv":["issue","ISS-2"]}', output);
+    const stored = progress.blocksForRecord('Reading the issue. It needs a build link.');
+    expect(stored?.some((b) => b.type === 'tool')).toBe(true);
+    expect(JSON.stringify(stored)).not.toContain(SECRET);
+  });
+
+  it.each([
+    ['inside a value', JSON.stringify({ argv: ['comment', 'ISS-2'], body: `password: ${SECRET}` })],
+    ['named only by its key', JSON.stringify({ password: SECRET })],
+    ['named by a key one level down', JSON.stringify({ auth: { api_key: SECRET } })],
+  ])('reaches no reader from the input the model wrote, the secret %s', async (_what, input) => {
+    const { progress, frames } = await toolTurn(input, '{"exitCode":0}');
+    for (const frame of frames) expect(JSON.stringify(frame)).not.toContain(SECRET);
+    expect(
+      JSON.stringify(progress.blocksForRecord('Reading the issue. It needs a build link.')),
+    ).not.toContain(SECRET);
+  });
+
+  it('leaves a tool output that holds no credential as the tool wrote it', async () => {
+    const output = issueRead('Build link for the nightly run');
+    const { frames } = await toolTurn('{"argv":["issue","ISS-2"]}', output);
+    const last = frames.at(-1) as { entry: { blocks: ContentBlock[] } };
+    expect(last.entry.blocks.find((b) => b.type === 'tool')?.toolCall?.output).toBe(output);
   });
 });

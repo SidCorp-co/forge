@@ -12,7 +12,8 @@ import { ConversationThread } from "./conversation-thread";
 
 expect.extend(matchers);
 afterEach(cleanup);
-vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
+const reader = vi.hoisted(() => ({ id: "me" }));
+vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: reader.id } }) }));
 
 const AT = "2026-09-21T10:14:38.790Z";
 
@@ -203,6 +204,24 @@ describe("a reply the reply check withheld", () => {
     const line = screen.getByTestId("message-silence");
     expect(line).toHaveTextContent(WITHHELD);
     expect(line).not.toHaveTextContent(/screen-refused|nothing to add/);
+  });
+
+  // ISS-1229 r44, judge-124: a reply withheld outright for a credential said only that it held something the
+  // tracker does not show.
+  it("says a reply withheld for a credential was withheld because it looked like it held one", () => {
+    const credential = { ...blocked, silenceReason: "screen-refused-credential" };
+    render(
+      <ConversationThread
+        messages={[said(), credential]}
+        windows={[window({ decision: "nothing-to-say", decisionDetail: { reason: "screen-refused-credential" } })]}
+      />,
+    );
+    for (const line of [screen.getByTestId("message-silence"), screen.getByTestId("thread-silence")]) {
+      expect(line).toHaveTextContent(
+        "The agent's reply was withheld because it looked like it held a password, key or token, so nothing was posted.",
+      );
+      expect(line).not.toHaveTextContent(/tracker does not show|screen-refused|nothing to add/);
+    }
   });
 
   it("reads the window it closed the same way", () => {
@@ -516,6 +535,33 @@ describe("who said each message in a room of people none of whom set a name", ()
     expect(authors[1]).toMatch(/^Another member \(added .+\)$/);
     expect(authors[2]).toBe("You");
     expect(new Set(authors).size).toBe(3);
+  });
+
+  // ISS-1229 r44, judge-124: two readers of one room meant different people by "the first", because each
+  // left themself out of the people told apart.
+  it("names the same person by the same words for every reader of the room", () => {
+    const sameMinute = [
+      person("pa", "ua", "2026-10-26T03:30:01.000Z"),
+      person("pb", "ub", "2026-10-26T03:30:02.000Z"),
+      person("pc", "uc", "2026-10-26T03:30:03.000Z"),
+    ];
+    const messages = ["ua", "ub", "uc"].map((userId, seq) =>
+      said({ id: `m${seq}`, seq, authorUserId: userId, authorLabel: "Another member" }),
+    );
+    const heard: Record<string, Record<string, string>> = {};
+    for (const who of ["ua", "ub", "uc"]) {
+      reader.id = who;
+      render(<ConversationThread participants={sameMinute} messages={messages} windows={[]} />);
+      const authors = screen.getAllByTestId("message-actions").map((el) => el.querySelector("span")?.textContent ?? "");
+      heard[who] = Object.fromEntries(["ua", "ub", "uc"].map((id, i) => [id, authors[i] as string]));
+      cleanup();
+    }
+    reader.id = "me";
+    for (const [id, place] of [["ua", "first"], ["ub", "second"], ["uc", "third"]] as const) {
+      for (const who of ["ua", "ub", "uc"]) {
+        expect(heard[who]?.[id], `${who} reading ${id}`).toMatch(who === id ? /^You$/ : new RegExp(`, the ${place}\\)$`));
+      }
+    }
   });
 
   it("keeps core's name for somebody who is no longer in the room", () => {

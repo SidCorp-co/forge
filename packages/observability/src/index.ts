@@ -213,12 +213,18 @@ function escapeRegExp(s: string): string {
 
 export function scrubLogText(text: string, extraSecrets: string[] = []): string {
   const headerKeys = Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join('|');
-  const headerRe = new RegExp(`\\b(${headerKeys})(\\s*[:=]\\s*).+`, 'gi');
+  const headerRe = new RegExp(`\\b(${headerKeys})((?:\\\\*")?\\s*[:=]\\s*).+`, 'gi');
   // Value stops at whitespace, quote, comma, brace, or `&` — the `&` guard
   // keeps a key=value match from swallowing the rest of a URL query string
-  // (e.g. `access_token=...&id=7` must not lose the `&id=7`).
+  // (e.g. `access_token=...&id=7` must not lose the `&id=7`). A key may close
+  // a JSON quote, plain or escaped, before its colon: `"password": "…"` and
+  // `\"token\": \"…\"` are the same secret as `password: …` (ISS-1229 r44).
   const bodyRes = Array.from(SCRUB_BODY_KEYS).map(
-    (k) => new RegExp(`(\\b${escapeRegExp(k)}\\b\\s*[:=]\\s*"?)([^\\s",}&]+)`, 'gi'),
+    (k) =>
+      new RegExp(
+        `(\\b${escapeRegExp(k)}\\b(?:\\\\*")?\\s*[:=]\\s*(?:\\\\*")?)([^\\s",}&]+)`,
+        'gi',
+      ),
   );
   return text
     .replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)

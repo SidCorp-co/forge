@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { JSON_SHAPED, PROSE, SECRET } from '../helpers/credential-corpus.js';
 import {
   createTestProject,
   createTestUser,
@@ -24,44 +25,12 @@ import {
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
 
-const MIGRATION = fileURLToPath(
-  new URL('../../drizzle/migrations/0378_a_withheld_secret_is_not_kept.sql', import.meta.url),
-);
-const SECRET = 'Zq8VtR2mK9xLp4Wd';
-
-/** Drafts on both sides of every scrubber pattern, and the near misses beside each. */
-const DRAFTS = [
-  `Sign in at https://app.example.com/cb?token=${SECRET} to finish.`,
-  `Open https://app.example.com/cb?page=2&API_KEY=${SECRET}#top`,
-  'Open https://app.example.com/cb?tokens=2 for the list.',
-  'Open https://app.example.com/cb?token=&page=2 for the list.',
-  `The deploy password: ${SECRET} is in the vault.`,
-  `{"accessToken": "${SECRET}"}`,
-  'The password reset link is on the login page.',
-  'Set password: "" to clear it.',
-  'my_token: abc is a variable name.',
-  'The tokenizer: splits words.',
-  `Authorization: Bearer ${SECRET}`,
-  'Authorization is required for this call.',
-  'authorization:\r\nnext line',
-  `curl -H "X-Api-Key=${SECRET}" https://example.com`,
-  `Use forge_pat_prd_${'ab12'.repeat(8)} for the call.`,
-  'The prefix forge_pat_dev_ starts every token.',
-  `ya29.${SECRET} is the access token.`,
-  'ya29 is a prefix.',
-  '-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----',
-  '-----BEGIN PUBLIC KEY-----\nMIIBIj\n-----END PUBLIC KEY-----',
-  `export DB_PASSWORD=${SECRET}`,
-  `Two lines\n  STRIPE_SECRET_KEY = ${SECRET}\nend`,
-  'DB_PASSWORD=hunter2\r\nnext',
-  `The password:\u00a0${SECRET} line.`,
-  `export\u00a0GH_TOKEN=${SECRET}`,
-  'GH_TOKEN=\u2028',
-  'DB_PASSWORD=',
-  'db_password=lowercase is not an env line',
-  'ISS-4242 shipped in v9.2.',
-  "**ISS-999** is not on this project's tracker.",
-];
+/** 0378, then 0380, which re-runs 0378's clear under the predicate it widened (ISS-1229 r44). */
+const MIGRATIONS = [
+  '0378_a_withheld_secret_is_not_kept.sql',
+  '0380_every_block_is_screened.sql',
+].map((name) => fileURLToPath(new URL(`../../drizzle/migrations/${name}`, import.meta.url)));
+const DRAFTS = [...PROSE, ...JSON_SHAPED];
 
 let harness: TestDatabase;
 let app: import('hono').Hono<AppVars>;
@@ -79,7 +48,7 @@ beforeAll(async () => {
   ({ app } = (await import('../../src/index.js')) as unknown as {
     app: import('hono').Hono<AppVars>;
   });
-  ({ readsAsCredential } = await import('../../src/messaging/text-rules.js'));
+  ({ readsAsCredential } = await import('../../src/messaging/credential-screen.js'));
 }, 120_000);
 
 afterAll(async () => {
@@ -137,10 +106,14 @@ async function replied(seq: number, proof: Record<string, unknown>): Promise<str
   return rows[0]?.id as string;
 }
 
+/** The files as drizzle applies them: in order, each statement in turn, in one transaction. */
 async function migrate(): Promise<void> {
-  for (const statement of readFileSync(MIGRATION, 'utf8').split('--> statement-breakpoint')) {
-    if (statement.trim()) await harness.db.execute(sql.raw(statement));
-  }
+  const statements = MIGRATIONS.flatMap((file) =>
+    readFileSync(file, 'utf8').split('--> statement-breakpoint'),
+  );
+  await harness.db.transaction(async (tx) => {
+    for (const statement of statements) if (statement.trim()) await tx.execute(sql.raw(statement));
+  });
 }
 
 async function proofOf(id: string): Promise<Record<string, unknown>> {

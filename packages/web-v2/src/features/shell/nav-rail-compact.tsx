@@ -119,7 +119,7 @@ function RailButton({
       aria-label={face ? `${item.label}, ${face.phrase}` : item.label}
       title={face ? `${item.label}, ${face.phrase}` : item.label}
       className={cn(
-        'relative flex w-[76px] flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 transition-colors duration-[120ms]',
+        'relative flex w-[76px] flex-col items-center gap-1 rounded-md px-1 pb-1 pt-1.5 transition-colors duration-[120ms]',
         'focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]',
         active ? 'bg-accent-tint' : 'text-subtle hover:bg-hover',
       )}

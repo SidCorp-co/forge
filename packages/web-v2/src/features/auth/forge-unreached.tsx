@@ -9,6 +9,7 @@ export function ForgeUnreached({ error, onRetry }: { error: unknown; onRetry: ()
   return (
     <main className="flex min-h-dvh items-center justify-center bg-app px-4">
       <ErrorState
+        level={1}
         title="Couldn't open Forge"
         message={formatApiError(error)}
         technical={error instanceof ApiError ? readFailure(error).technical : undefined}

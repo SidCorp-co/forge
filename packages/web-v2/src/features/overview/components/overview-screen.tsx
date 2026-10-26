@@ -65,6 +65,7 @@ export function OverviewScreen() {
     return (
       <PageContainer className="grid min-h-[60vh] place-items-center">
         <EmptyState
+          level={1}
           title={said.title}
           message={said.message}
           action={{ label: 'New project', onClick: () => router.push('/projects?new=1'), icon: 'plus' }}

@@ -27,7 +27,7 @@ export default function ProjectReleaseRunPage() {
 	if (isError) {
 		return (
 			<div className="grid min-h-[60vh] place-items-center">
-				<ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
+				<ErrorState level={1} message={formatApiError(error)} onRetry={() => refetch()} />
 			</div>
 		);
 	}
@@ -37,6 +37,7 @@ export default function ProjectReleaseRunPage() {
 		return (
 			<div className="grid min-h-[60vh] place-items-center">
 				<ErrorState
+					level={1}
 					title="Release run not found"
 					message="This project doesn't exist, you don't have access to it, or the run id is missing from the address."
 				/>

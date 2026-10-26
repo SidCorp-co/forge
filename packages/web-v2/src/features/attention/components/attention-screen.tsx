@@ -235,6 +235,7 @@ export function AttentionScreen() {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <ErrorState
+          level={1}
           message={
             devicesRead === "failed"
               ? `${formatApiError(error)} Offline runners could not be read either: ${formatApiError(devicesError)}.`

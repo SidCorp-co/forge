@@ -237,6 +237,8 @@ const CHOSEN_SILENCE: ReadonlySet<string> = new Set(["nothing-to-say", "not-ment
 const NOT_POSTED: Readonly<Record<string, string>> = {
   "screen-refused":
     "The agent's reply was withheld: the reply check found it said something the tracker does not show, and a rewrite did not fix it.",
+  "screen-refused-credential":
+    "The agent's reply was withheld because it looked like it held a password, key or token, so nothing was posted.",
   "empty-reply": "The agent's reply came back empty, so nothing was posted.",
 };
 const ENDED_UNWRITTEN = "The agent's turn ended before it wrote a reply, so nothing was posted.";

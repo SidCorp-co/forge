@@ -95,6 +95,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 		return (
 			<div className="grid min-h-[60vh] place-items-center">
 				<ErrorState
+					level={1}
 					message={formatApiError(projectsQ.error)}
 					onRetry={() => projectsQ.refetch()}
 				/>
@@ -106,6 +107,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 		return (
 			<div className="grid min-h-[60vh] place-items-center">
 				<EmptyState
+					level={1}
 					title="Project not found"
 					message="This project doesn't exist or you don't have access to it."
 					mascot
@@ -118,6 +120,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 		return (
 			<div className="grid min-h-[60vh] place-items-center">
 				<ErrorState
+					level={1}
 					message={formatApiError(detailQ.error)}
 					onRetry={() => detailQ.refetch()}
 				/>

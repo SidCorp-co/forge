@@ -1,5 +1,6 @@
 import { Button, ButtonLink } from "./button";
 import { ForgeMascot } from "@/design/patterns/forge-mascot";
+import { TabTitle } from "./tab-title";
 
 export interface ErrorStateProps {
   title?: string;
@@ -15,7 +16,7 @@ export interface ErrorStateProps {
   level?: 1 | 2 | 3;
 }
 
-/** Failure state — mascot (flame stilled), a heading at `level` (1 where it is the whole page), a retry. */
+/** Failure state — mascot (flame stilled), a heading at `level` (1 where it is the whole page, naming the tab too), a retry. */
 export function ErrorState({ title = "Couldn't load", message, onRetry, action, mascot = true, technical, level = 2 }: ErrorStateProps) {
   const Heading = `h${level}` as const;
   return (
@@ -23,6 +24,7 @@ export function ErrorState({ title = "Couldn't load", message, onRetry, action, 
       {mascot && <ForgeMascot size={88} mode="blink" ring={false} flicker={false} progress={0.4} />}
       <div>
         <Heading className="fg-h3">{title}</Heading>
+        {level === 1 && <TabTitle subject={title} />}
         <p className="fg-body-sm mx-auto mt-1 max-w-[260px]">{message}</p>
       </div>
       {technical && (

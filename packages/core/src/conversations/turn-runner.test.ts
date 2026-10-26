@@ -32,15 +32,19 @@ vi.mock('./transcript.js', () => ({
   recordDeliveredReply: vi.fn(async () => ({ messageId: 'm1' })),
 }));
 
-// The reply check reads the tracker; a written reply passes it untouched here, an empty one goes to the real check.
+// The reply check reads the tracker; a written reply passes it untouched here unless a test refuses it,
+// and an empty one goes to the real check.
+const refused = new Set<string>();
 vi.mock('./screened-reply.js', async (orig) => {
   const real = await orig<typeof import('./screened-reply.js')>();
   return {
     ...real,
     screenedTurnReply: (args: Parameters<typeof real.screenedTurnReply>[0]) =>
-      args.first.reply.trim()
-        ? Promise.resolve({ text: args.first.reply, problems: [] })
-        : real.screenedTurnReply(args),
+      refused.has(args.first.reply)
+        ? Promise.resolve(null)
+        : args.first.reply.trim()
+          ? Promise.resolve({ text: args.first.reply, problems: [] })
+          : real.screenedTurnReply(args),
   };
 });
 
@@ -162,6 +166,26 @@ describe('a reply that posts nothing', () => {
     const outcome = await runConversationTurn(request() as never);
 
     expect(outcome).toEqual({ kind: 'declined', reason: 'empty-reply', silenceSeq: 7 });
+  });
+
+  // ISS-1229 r44: a reply withheld for a credential said only that it held something the tracker does not show.
+  it.each([
+    ['https://ci.test/run?token=Zq8VtR2mK9xLp4Wd is the build link.', 'screen-refused-credential'],
+    ['ISS-4242 shipped in v9.2.', 'screen-refused'],
+  ])('records a refused reply by why it was refused: %s', async (reply, reason) => {
+    refused.add(reply);
+    runExternalChatTurn.mockResolvedValue({
+      terminal: 'done',
+      reply,
+      toolCalls: [],
+      iterations: 1,
+    });
+
+    const outcome = await runConversationTurn(request() as never);
+
+    expect(outcome).toEqual({ kind: 'declined', reason });
+    expect(recordSilence).toHaveBeenCalledWith(expect.objectContaining({ reason }));
+    expect(deliver).not.toHaveBeenCalled();
   });
 });
 
