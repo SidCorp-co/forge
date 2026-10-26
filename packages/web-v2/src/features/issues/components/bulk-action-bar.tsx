@@ -58,9 +58,11 @@ function RefusedAction({
   );
 }
 
-function canBatchRelease(rows: IssueRow[], mayRelease: boolean): { enabled: boolean; reason?: string } {
+function canBatchRelease(
+  rows: IssueRow[],
+  mayRelease: boolean,
+): { enabled: boolean; reason?: string; whoMay?: true } {
   if (rows.length === 0) return { enabled: false };
-  if (!mayRelease) return { enabled: false, reason: askWhoReleases("them") };
   const notAtGate = rows.filter((r) => r.status !== BATCH_RELEASE_GATE);
   if (notAtGate.length > 0) {
     return { enabled: false, reason: `${notAtGate.length} selected issue${notAtGate.length > 1 ? "s are" : " is"} not awaiting release` };
@@ -69,6 +71,8 @@ function canBatchRelease(rows: IssueRow[], mayRelease: boolean): { enabled: bool
   if (claimed.length > 0) {
     return { enabled: false, reason: `${claimed.length} issue${claimed.length > 1 ? "s are" : " is"} already claimed by a batch release` };
   }
+  // Said beside the button, not only in its title, so a touch or keyboard reader gets it too.
+  if (!mayRelease) return { enabled: false, reason: askWhoReleases("them"), whoMay: true };
   return { enabled: true };
 }
 
@@ -91,6 +95,7 @@ export function BulkActionBar({
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [holdOpen, setHoldOpen] = useState(false);
   const statusReasonId = useId();
+  const releaseReasonId = useId();
   const count = selectedRows.length;
   if (count === 0) return null;
 
@@ -175,10 +180,16 @@ export function BulkActionBar({
             size="sm"
             disabled={!batchRelease.enabled || bulk.isPending}
             title={batchRelease.reason ?? "Release selected issues as a batch"}
+            aria-describedby={batchRelease.whoMay ? releaseReasonId : undefined}
             onClick={() => setBatchDialogOpen(true)}
           >
             Batch release
           </Button>
+          {batchRelease.whoMay && (
+            <span id={releaseReasonId} className="fg-body-sm text-subtle">
+              {batchRelease.reason}
+            </span>
+          )}
           <Button
             variant="ghost"
             size="sm"

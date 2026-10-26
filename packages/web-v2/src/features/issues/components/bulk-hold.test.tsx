@@ -159,9 +159,14 @@ describe("Batch release on the bulk bar", () => {
     bar(waiting, vi.fn(), false);
     const button = screen.getByRole("button", { name: "Batch release" });
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute(
-      "title",
-      "Only an admin of this project can release them, so ask one of them.",
-    );
+    const said = "Only an admin of this project can release them, so ask one of them.";
+    expect(button).toHaveAttribute("title", said);
+    expect(screen.getByText(said)).toBeVisible();
+    expect(button).toHaveAccessibleDescription(said);
+  });
+
+  it("says nothing about who may where the selection could not be released by anyone", () => {
+    bar([row({ status: "open" })], vi.fn(), false);
+    expect(screen.queryByText(/Only an admin of this project/)).not.toBeInTheDocument();
   });
 });
