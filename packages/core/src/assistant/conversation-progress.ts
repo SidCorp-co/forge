@@ -1,4 +1,4 @@
-import { scrubLogText } from '@forge/observability';
+import { FILTERED, scrubLogText } from '@forge/observability';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 import { readsAsCredential } from '../messaging/text-rules.js';
@@ -48,16 +48,37 @@ export interface ConversationProgressFrame {
   replaced?: { draft: string } | { draft: null; for: WithdrawnFor };
 }
 
+const PEM_HEADER = /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/;
+
 /**
- * A block with its credential-shaped prose filtered. A frame carries the whole entry so far and every
- * scrubber pattern is anchored ahead of its secret, so no secret character reaches a frame (r43).
+ * Prose as a reader may see it while it is still being written: scrubbed, and cut at a private key's
+ * header, whose body the scrubber only matches once 16 characters of it exist (ISS-1229 r43).
  */
-function withoutCredentials(block: ContentBlock): ContentBlock {
-  return {
-    ...block,
-    ...(block.text !== undefined ? { text: scrubLogText(block.text) } : {}),
-    ...(block.thinking !== undefined ? { thinking: scrubLogText(block.thinking) } : {}),
-  };
+function shownWhileWritten(text: string): string {
+  const key = PEM_HEADER.exec(text);
+  return scrubLogText(key ? text.slice(0, key.index) + FILTERED : text);
+}
+
+type ProseKind = 'text' | 'thinking';
+
+/**
+ * Blocks with no credential in their prose. A tool call splits one run of prose into blocks, so a key
+ * and its value can sit in two: where the run joined up reads as a credential, it is shown as one
+ * scrubbed block after the others rather than block by block.
+ */
+function withoutCredentials(blocks: readonly ContentBlock[]): ContentBlock[] {
+  let out = blocks.map((b) => ({ ...b }));
+  for (const kind of ['text', 'thinking'] as const satisfies readonly ProseKind[]) {
+    const prose = out.filter((b) => b.type === kind && b[kind] !== undefined);
+    const joined = prose.map((b) => b[kind]).join('');
+    const shown = shownWhileWritten(joined);
+    if (shown !== joined && prose.length > 1) {
+      out = [...out.filter((b) => !prose.includes(b)), { type: kind, [kind]: shown }];
+    } else {
+      for (const b of prose) b[kind] = shownWhileWritten(b[kind] as string);
+    }
+  }
+  return out;
 }
 
 /**
@@ -83,9 +104,9 @@ export function startConversationProgress(args: {
   /** The entry as it stands right now, detached from the accumulator that keeps folding into it. */
   const freeze = (entry: AgentMessage): AgentMessage => ({
     ...entry,
-    ...(entry.content !== undefined ? { content: scrubLogText(entry.content) } : {}),
-    blocks: (entry.blocks ?? []).map((b) => ({
-      ...withoutCredentials(b),
+    ...(entry.content !== undefined ? { content: shownWhileWritten(entry.content) } : {}),
+    blocks: withoutCredentials(entry.blocks ?? []).map((b) => ({
+      ...b,
       ...(b.toolCall ? { toolCall: { ...b.toolCall } } : {}),
       ...(b.todos ? { todos: b.todos.map((t) => ({ ...t })) } : {}),
     })),
@@ -139,7 +160,10 @@ export function startConversationProgress(args: {
       await tail;
     },
 
-    blocksForRecord: (deliveredText) => blocksFor(deliveredText)?.map(withoutCredentials) ?? null,
+    blocksForRecord: (deliveredText) => {
+      const blocks = blocksFor(deliveredText);
+      return blocks ? withoutCredentials(blocks) : null;
+    },
 
     withdrawnDraft: () => withdrawn,
 

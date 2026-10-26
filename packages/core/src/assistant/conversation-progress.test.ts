@@ -123,6 +123,37 @@ describe('a draft the reply check reads as a credential', () => {
     }
   });
 
+  // Consult on r43 F1: the scrubber matches a private key's body only once 16 characters of it exist.
+  it('shows none of a private key while it streams, one character per frame', async () => {
+    const body = 'MIIEowIBAAKCAQEAz9Lp4Wd8VtR2mK9x';
+    const draft = `Here it is:\n-----BEGIN RSA PRIVATE KEY-----\n${body}\n-----END RSA PRIVATE KEY-----`;
+    const { progress, frames } = streamed(Array.from(draft));
+    await progress.close();
+    const sent = frames.map(shown).join('\n');
+    for (const run of secretRuns(body)) expect(sent.includes(run), run).toBe(false);
+  });
+
+  // Consult on r43 F2: a tool call splits the prose into two blocks, the key in one and its value in the other.
+  it('shows no password whose key and value a tool call split into two blocks', async () => {
+    const frames: unknown[] = [];
+    const progress = startConversationProgress({
+      conversationId: 'c1',
+      entryId: 'e1',
+      publish: async (_id, envelope) => {
+        frames.push(envelope.data);
+        return 1;
+      },
+    });
+    progress.onTurnEvent({ type: 'chunk', text: 'The deploy password: ' });
+    progress.onTurnEvent({ type: 'tool_call', id: 't1', name: 'forge_issue', arguments: '{}' });
+    progress.onTurnEvent({ type: 'chunk', text: `${SECRET} is the one.` });
+    progress.onTurnEvent({ type: 'tool_result', id: 't1', result: 'ok' });
+    await progress.close();
+
+    expect(frames.length).toBeGreaterThan(1);
+    expect(frames.map(shown).join('\n')).not.toContain(SECRET);
+  });
+
   it('keeps no credential in the reasoning stored beside the reply', async () => {
     const frames: unknown[] = [];
     const progress = startConversationProgress({
