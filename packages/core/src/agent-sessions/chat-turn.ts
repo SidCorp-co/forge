@@ -276,6 +276,12 @@ interface TurnPlan {
    * declares runs between an edit and the preview showing it.
    */
   ungated: boolean;
+  /**
+   * A support group's session (REQ-75 BC-11): the box keeps its process resident across turns that
+   * each carry their own token, reading each turn's token from a file it rewrites, so no turn pays
+   * a cold start.
+   */
+  keepResident: boolean;
 }
 
 /** The session's checkout, re-read from the device binding when the turn lands on another box. */
@@ -306,6 +312,7 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
   const confined = isChatDoorSession(session);
   if (confined) await requireConfiningBox(deviceId);
   const ungated = Boolean((session.metadata as { pocRoom?: unknown } | null)?.pocRoom);
+  const keepResident = Boolean((session.metadata as { supportRoom?: unknown } | null)?.supportRoom);
 
   const attachments = args.attachmentIds?.length
     ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
@@ -351,6 +358,7 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
     language,
     confined,
     ungated,
+    keepResident,
   };
 }
 
@@ -460,6 +468,7 @@ async function boxFrame(
     ...(args.credential ? { forgeToken: args.credential } : {}),
     ...(plan.confined ? { confined: true } : {}),
     ...(plan.ungated ? { ungated: true } : {}),
+    ...(plan.keepResident ? { keepResident: true } : {}),
   };
   // `--resume` keeps the original system prompt and history
   if (plan.resumable) {

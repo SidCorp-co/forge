@@ -4,6 +4,8 @@
 // `docs/proposals/rocketchat-support-session.md`).
 
 import { chatDoorOfToken } from '../agent-sessions/index.js';
+import { fencedProjectIds } from '../credentials/pat-scope.js';
+import { fenceReaches } from '../credentials/token-fence.js';
 import { refuse } from './refusals.js';
 import { type RoomRow, roomOfPrincipal } from './store.js';
 
@@ -15,7 +17,9 @@ export async function sessionCaller(caller: {
   const room = await roomOfPrincipal(caller.userId);
   const door = caller.tokenId ? await chatDoorOfToken(caller.tokenId) : null;
   const sameSession = door?.door === 'box-session' && door.sessionId === room?.sessionId;
-  if (!room || room.projectId !== caller.projectId || !sameSession) {
+  // the turn's token is fenced to its project: a route naming another project is refused by the fence too
+  const fenced = fenceReaches(fencedProjectIds(), caller.projectId);
+  if (!room || room.projectId !== caller.projectId || !sameSession || !fenced) {
     throw refuse(
       'SUPPORT_NOT_THE_ROOM_SESSION',
       "only a support group's own session, under the token its current turn was handed, acts here",

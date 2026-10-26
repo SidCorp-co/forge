@@ -83,7 +83,7 @@ export const OUTBOX_CONSUMERS = {
 	"runner.changed": ["ws-broadcast"],
 	"job.changed": ["ws-broadcast"],
 	"session.changed": ["ws-broadcast"],
-	"device.pushed": ["ws-broadcast"],
+	"device.pushed": ["ws-broadcast", "support-rooms"],
 	"session.pushed": ["ws-broadcast"],
 	"issue.pushed": ["ws-broadcast"],
 	"conversation.pushed": ["ws-broadcast"],

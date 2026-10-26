@@ -206,6 +206,7 @@ fn spec(p: &Planted, confined: bool) -> JobSpec {
         credential: Some(TurnCredential(TURN.into())),
         confinement: confined.then(Confinement::default),
         hooks_off: false,
+        keep_resident: false,
     }
 }
 
@@ -248,6 +249,7 @@ async fn run_probe(p: &Planted, confined: bool) -> (String, std::process::Comman
         repo: &p.repo.to_string_lossy(),
         credential: TURN,
         mcp_path: &p.mcp,
+        bearer_dir: None,
         core_url: "https://core.example",
     }
     .build(Some(view(p)))
@@ -385,5 +387,62 @@ async fn a_confined_session_handed_no_credential_is_refused_rather_than_given_th
     assert!(
         err.to_string().contains("CHAT_CONFINEMENT_NO_CREDENTIAL"),
         "the refusal does not name itself: {err}"
+    );
+}
+
+/// A support group's resident session (REQ-75 BC-11): its environment holds no Forge credential,
+/// and the bearer file its `forge` server's `headersHelper` reads is bound in by its directory, so
+/// a token the runner writes there after the spawn is the one the session reads.
+#[tokio::test]
+async fn a_resident_session_reads_each_turns_bearer_from_its_bound_file_and_holds_none_in_env() {
+    if !bwrap_or_skip("a_resident_session_reads_each_turns_bearer_from_its_bound_file") {
+        return;
+    }
+    let p = plant();
+    let bearer_dir = p.root.join("bearer");
+    std::fs::create_dir_all(&bearer_dir).unwrap();
+    runner_workspace::mcp::config::refresh_bearer(&bearer_dir, "turn-one").unwrap();
+    let mut s = spec(&p, true);
+    s.keep_resident = true;
+    let script = format!(
+        "env | grep -c '^FORGE_PAT=' ; cat '{dir}/headers.json'; echo; sleep 2; cat '{dir}/headers.json'; echo",
+        dir = bearer_dir.display()
+    );
+    let args = vec!["-c".to_string(), script];
+    let (mut cmd, _egress) = SessionCommand {
+        spec: &s,
+        program: std::ffi::OsStr::new("/bin/sh"),
+        args: &args,
+        repo: &p.repo.to_string_lossy(),
+        credential: "turn-one",
+        mcp_path: &p.mcp,
+        bearer_dir: Some(&bearer_dir),
+        core_url: "https://core.example",
+    }
+    .build(Some(view(&p)))
+    .await
+    .expect("the session command is built");
+    let child = cmd
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("the session started");
+    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+    runner_workspace::mcp::config::refresh_bearer(&bearer_dir, "turn-two").unwrap();
+    let out = child.wait_with_output().await.expect("the session ran");
+    let seen = String::from_utf8_lossy(&out.stdout).into_owned();
+    let mut lines = seen.lines();
+    assert_eq!(
+        lines.next(),
+        Some("0"),
+        "a resident session's environment holds a Forge credential: {seen}"
+    );
+    assert!(
+        lines.next().is_some_and(|l| l.contains("Bearer turn-one")),
+        "the bearer file is not readable in the sandbox: {seen}"
+    );
+    assert!(
+        lines.next().is_some_and(|l| l.contains("Bearer turn-two")),
+        "the token written after the spawn is not the one the session reads: {seen}"
     );
 }

@@ -46,7 +46,20 @@ struct Session {
     turn_tx: TurnTx,
     /// Raised by [`Runner::send`] so the turn loop knows the idle clock stops.
     turn_started: Arc<tokio::sync::Notify>,
-    pending_inbox: Option<(String, u64)>,
+    /// Inbox messages written into this process and not yet reported applied: every one a turn
+    /// that ends has taken.
+    pending_inbox: Vec<(String, u64)>,
+    /// User messages written into stdin that Claude Code has not yet replayed. Claude Code takes
+    /// a message written while a turn runs either into that turn, at its next tool call, or as a
+    /// turn of its own straight after the `result` (measured on 2.1.310); a `result` ends the
+    /// caller's turn only when every message written has been replayed.
+    unreplayed: u32,
+    /// Whether a turn is in flight: written and not yet ended by a `result` with nothing queued.
+    in_turn: bool,
+    /// Core's `keepResident`: the session takes input only in a turn core started.
+    keep_resident: bool,
+    /// Where a resident session's bearer file lives (`mcp::config::write_refreshable`).
+    bearer_dir: Option<std::path::PathBuf>,
     /// Completed turns, so an `applied` report can name the one that consumed
     /// the message.
     turns: u64,
@@ -122,6 +135,9 @@ pub struct Resident {
     pub model: Option<String>,
     /// `head_sha` recorded at the last turn, or `None` if none was recorded.
     pub head_sha: Option<String>,
+    /// Spawned to read its bearer from a file the runner rewrites, so a turn carrying its own
+    /// token can be written into it.
+    pub refreshable: bool,
 }
 
 fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
@@ -190,7 +206,46 @@ impl ClaudeCodeRunner {
         Some(Resident {
             model: s.model.clone(),
             head_sha: s.head_sha.clone(),
+            refreshable: s.bearer_dir.is_some(),
         })
+    }
+
+    /// Hand a resident session the token of the turn about to be written into it.
+    pub async fn refresh_bearer(&self, id: &SessionId, credential: &str) -> Result<()> {
+        let dir = {
+            let map = self.sessions.lock().await;
+            map.get(id).and_then(|s| s.bearer_dir.clone())
+        };
+        let dir = dir.ok_or_else(|| {
+            Error::Other("the resident session reads no bearer file to hand a token to".into())
+        })?;
+        mcp::config::refresh_bearer(&dir, credential)
+    }
+
+    /// An inbox message for a session this runner holds: written in at once, and taken by the
+    /// turn in flight. A session core keeps resident takes input only within a turn core started
+    /// (its token is that turn's), so one with none in flight refuses it, and core hands the
+    /// message to its next turn instead.
+    pub async fn inject_resident(
+        &self,
+        id: &SessionId,
+        message: &str,
+        pending: (String, u64),
+    ) -> Result<()> {
+        {
+            let map = self.sessions.lock().await;
+            let sess = map
+                .get(id)
+                .ok_or_else(|| Error::Other("session not found".into()))?;
+            if sess.keep_resident && !sess.in_turn {
+                return Err(Error::Other(
+                    "the session has no turn in flight, and a resident support session takes input \
+                     only in a turn core started"
+                        .into(),
+                ));
+            }
+        }
+        self.send_resident(id, message, Some(pending)).await
     }
 
     /// Whether this runner holds a session under `id` at all, resident or closed. A session it
@@ -213,7 +268,7 @@ impl ClaudeCodeRunner {
             if sess.stdin.is_none() {
                 return Err(Error::Other("session is not resident".into()));
             }
-            sess.pending_inbox = pending;
+            sess.pending_inbox.extend(pending);
             sess.turn_tx.clone()
         };
         let tx = turn_tx.lock().await.clone();
@@ -333,6 +388,26 @@ fn session_credential(spec: &JobSpec) -> Result<String> {
     }
 }
 
+/// The session's MCP config, and the directory its bearer is read from when the process stays
+/// resident across turns that each carry their own token (a support group's session, REQ-75):
+/// every turn writes its token there before it is written to the process, so one process serves
+/// every turn without holding a revoked token.
+fn mcp_config_for(
+    core_url: &str,
+    spec: &JobSpec,
+    credential: &str,
+) -> Result<(std::path::PathBuf, Option<std::path::PathBuf>)> {
+    let slug = spec.project_slug.as_deref().unwrap_or("");
+    let servers = spec.mcp_servers_override.as_ref();
+    if spec.keep_resident && spec.credential.is_some() {
+        let made =
+            mcp::config::write_refreshable(core_url, credential, slug, &spec.job_id, servers)?;
+        return Ok((made.config, Some(made.bearer_dir)));
+    }
+    let path = mcp::config::write(core_url, credential, slug, &spec.job_id, servers)?;
+    Ok((path, None))
+}
+
 #[async_trait]
 impl Runner for ClaudeCodeRunner {
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
@@ -358,14 +433,7 @@ impl Runner for ClaudeCodeRunner {
 
         let (session_permit, pending_permit) = self.permit_for(&spec).await?;
 
-        let slug = spec.project_slug.as_deref().unwrap_or("");
-        let mcp_path = mcp::config::write(
-            &self.core_url,
-            &credential,
-            slug,
-            &spec.job_id,
-            spec.mcp_servers_override.as_ref(),
-        )?;
+        let (mcp_path, bearer_dir) = mcp_config_for(&self.core_url, &spec, &credential)?;
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
         let (mut child, egress) = spawn_claude(
@@ -373,6 +441,7 @@ impl Runner for ClaudeCodeRunner {
             &effective_repo,
             &credential,
             &mcp_path,
+            bearer_dir.as_deref(),
             &self.core_url,
         )
         .await?;
@@ -401,7 +470,11 @@ impl Runner for ClaudeCodeRunner {
                 stdin: session_stdin,
                 turn_tx: turn_tx.clone(),
                 turn_started: turn_started.clone(),
-                pending_inbox: None,
+                pending_inbox: Vec::new(),
+                unreplayed: 1,
+                in_turn: true,
+                keep_resident: spec.keep_resident,
+                bearer_dir: bearer_dir.clone(),
                 turns: 0,
                 turn_done: turn_done.clone(),
                 model: spec.model.clone(),
@@ -452,6 +525,7 @@ impl Runner for ClaudeCodeRunner {
             reader,
             stderr: stderr_handle,
             mcp_path,
+            bearer_dir,
             egress,
             invoked_with_resume,
             tx,
@@ -482,9 +556,15 @@ impl Runner for ClaudeCodeRunner {
             .flush()
             .await
             .map_err(|e| Error::Other(format!("failed to flush the turn: {e}")))?;
+        sess.unreplayed += 1;
         let _ = tx.send(RunnerEvent::StateChanged("working")).await;
         *sess.turn_tx.lock().await = tx;
-        sess.turn_started.notify_one();
+        // a message written while a turn runs joins that turn; only one written between turns
+        // starts one
+        if !sess.in_turn {
+            sess.in_turn = true;
+            sess.turn_started.notify_one();
+        }
         Ok(())
     }
 
@@ -515,6 +595,7 @@ async fn spawn_claude(
     repo: &str,
     credential: &str,
     mcp_path: &std::path::Path,
+    bearer_dir: Option<&std::path::Path>,
     core_url: &str,
 ) -> Result<(tokio::process::Child, Option<EgressGuard>)> {
     let args = build_args(spec, &mcp_path.to_string_lossy());
@@ -526,6 +607,7 @@ async fn spawn_claude(
         repo,
         credential,
         mcp_path,
+        bearer_dir,
         core_url,
     }
     .build(None)
@@ -555,6 +637,9 @@ pub(crate) struct SessionCommand<'a> {
     pub repo: &'a str,
     pub credential: &'a str,
     pub mcp_path: &'a std::path::Path,
+    /// A resident session's bearer file directory: its `forge` server reads the token there, and
+    /// its environment holds none.
+    pub bearer_dir: Option<&'a std::path::Path>,
     pub core_url: &'a str,
 }
 
@@ -574,11 +659,18 @@ impl SessionCommand<'_> {
             repo,
             credential,
             mcp_path,
+            bearer_dir,
             core_url,
         } = *self;
+        // a resident session's token changes with each turn, so none sits in its environment
+        let env_credential = if bearer_dir.is_some() {
+            None
+        } else {
+            Some(credential)
+        };
         let Some(confinement) = &spec.confinement else {
             return Ok((
-                unconfined_command(spec, program, args, repo, credential),
+                unconfined_command(spec, program, args, repo, env_credential),
                 None,
             ));
         };
@@ -590,8 +682,9 @@ impl SessionCommand<'_> {
         let (git_dirs, git_identity) = confine::read_git(repo).await;
         let handed = confine::Handed {
             repo,
-            credential,
+            credential: env_credential,
             mcp_config: mcp_path,
+            bearer_dir,
             reads: &confinement.reads,
             project_slug: spec.project_slug.as_deref(),
             project_id: &spec.project_id,
@@ -649,16 +742,23 @@ fn egress_dir_name() -> String {
 }
 
 /// A run's command: this runner's environment and view of the box, `credential` its
-/// `$FORGE_PAT`.
+/// `$FORGE_PAT` where it has one.
 fn unconfined_command(
     spec: &JobSpec,
     program: &std::ffi::OsStr,
     args: &[String],
     repo: &str,
-    credential: &str,
+    credential: Option<&str>,
 ) -> tokio::process::Command {
     let mut cmd = build_command_for(program, args, repo);
-    cmd.env("FORGE_PAT", credential);
+    match credential {
+        Some(credential) => {
+            cmd.env("FORGE_PAT", credential);
+        }
+        None => {
+            cmd.env_remove("FORGE_PAT");
+        }
+    }
     for (k, v) in project_env(spec) {
         cmd.env(k, v);
     }
@@ -728,6 +828,7 @@ mod confine_elsewhere_tests {
             credential: Some(crate::TurnCredential("t".into())),
             confinement: Some(crate::Confinement::default()),
             hooks_off: false,
+            keep_resident: false,
         };
         let view = confine::BoxView {
             home: repo.clone(),
@@ -747,6 +848,7 @@ mod confine_elsewhere_tests {
             repo: &repo.to_string_lossy(),
             credential: "t",
             mcp_path: &mcp_path,
+            bearer_dir: None,
             core_url: "https://core.example",
         }
         .build(Some(view))

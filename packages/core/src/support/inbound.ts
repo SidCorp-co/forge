@@ -128,7 +128,8 @@ async function recordInbound(
         actorKind: 'member',
         actorKey: author.key,
         actorLabel: author.label,
-        input: { text },
+        // the server's own timestamp, which the room's latency is read from (BC-11)
+        input: m.ts ? { text, ts: m.ts } : { text },
         externalId: m.id,
         deliveredAt: opts.deliver ? null : new Date(),
       },

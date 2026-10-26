@@ -294,6 +294,8 @@ export const supportRecordRequestSchema = z.strictObject({
 	/** What the person needs, said plainly: what they did, saw and expected, or what they ask for. */
 	summary: z.string().trim().min(3).max(4000),
 	whereSeen: z.string().trim().min(1).max(300).optional(),
+	/** The member who confirms the filing: their account id; the thread's first writer when omitted. */
+	asker: z.string().min(1).max(64).optional(),
 });
 
 /** One action as Forge shows it. Inputs and outputs are stored scrubbed. */
@@ -315,6 +317,32 @@ export interface SupportActionView {
 }
 
 /** One support group as Forge shows it. */
+/**
+ * How a member's message reached the session: as the first message of a cold turn (`start`), of a
+ * turn that resumed the resident session (`send`), or written into a turn already running
+ * (`inject`).
+ */
+export const SUPPORT_DELIVERY_PATHS = ["start", "send", "inject"] as const;
+export type SupportDeliveryPath = (typeof SUPPORT_DELIVERY_PATHS)[number];
+
+/**
+ * How fast a room answers (REQ-75 BC-11): from a member message's Rocket.Chat timestamp to the
+ * session's first post in its thread, over the room's last `SUPPORT_LATENCY_WINDOW` answered
+ * messages, overall and by how each reached the session.
+ */
+export interface SupportLatencyView {
+	measured: number;
+	p50Ms: number | null;
+	p95Ms: number | null;
+	byPath: Record<
+		SupportDeliveryPath,
+		{ measured: number; p50Ms: number | null; p95Ms: number | null }
+	>;
+}
+
+/** The answered messages a room's latency is read over. */
+export const SUPPORT_LATENCY_WINDOW = 200;
+
 export interface SupportRoomView {
 	id: string;
 	projectId: string;
@@ -322,9 +350,12 @@ export interface SupportRoomView {
 	rid: string;
 	sessionId: string | null;
 	sessionStatus: string | null;
+	/** Whether the session's process waits resident on its box for the next message. */
+	resident: boolean;
 	principalUserId: string;
 	toolCount: number;
 	threads: number;
+	latency: SupportLatencyView;
 	createdAt: string;
 }
 

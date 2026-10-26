@@ -43,7 +43,12 @@ import {
   sweepStandings,
 } from './steward/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
-import { drainSupportRooms, expireSupportFixes, followAllItems } from './support/index.js';
+import {
+  expireSupportFixes,
+  followAllItems,
+  recoverSupportRooms,
+  warmColdRooms,
+} from './support/index.js';
 import { drainWidgetConversationWindows } from './widget/index.js';
 
 /** The memory half of the re-embed sweep, then the knowledge half unless the provider is down. */
@@ -243,12 +248,21 @@ function conversationDrains(): Timer[] {
       run: drainRoomWindows,
     },
     {
-      // a support group's waiting messages, for a room whose turn end was missed (REQ-75)
+      // recovery only: a message goes to its room's session as it is recorded (REQ-75 BC-11); this
+      // finds one a crash or a refused write left waiting
       kind: 'process',
       name: 'support.room-drain',
       everyMs: 2_000,
       runAtStart: true,
-      run: drainSupportRooms,
+      run: recoverSupportRooms,
+    },
+    {
+      // a room whose session is not resident on its box is warmed before anyone writes (BC-11)
+      kind: 'process',
+      name: 'support.room-warm',
+      everyMs: 30_000,
+      runAtStart: true,
+      run: warmColdRooms,
     },
     {
       kind: 'process',
