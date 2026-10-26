@@ -32,7 +32,12 @@ import type { AssistantPreferences, Preferences } from "@/features/settings/type
 export type ApiState = "failed" | "empty" | "loaded";
 
 /** What one read answers: a body (status 200), or a status with a refusal. */
-export type Answer = { body: unknown } | { text: string } | { status: number; code?: string; message?: string };
+export type Answer =
+  | { body: unknown }
+  | { text: string }
+  | { status: number; code?: string; message?: string }
+  /** The read is still out: it never answers while the test reads the page. */
+  | { held: true };
 
 export type Read = (path: string, method: string) => Answer | undefined;
 
@@ -92,10 +97,12 @@ export interface ApiStub {
   readonly asked: Set<string>;
   /** Reads the state's table did not answer, which failed for it. */
   readonly unanswered: Set<string>;
+  /** How many reads are held out, never answering. */
+  held(): number;
   restore(): void;
 }
 
-function respond(answer: Answer): Response {
+function respond(answer: Exclude<Answer, { held: true }>): Response {
   if ("text" in answer) return new Response(answer.text, { status: 200, headers: { "content-type": "text/markdown" } });
   if ("body" in answer) {
     return new Response(JSON.stringify(answer.body), { status: 200, headers: { "content-type": "application/json" } });
@@ -106,7 +113,7 @@ function respond(answer: Answer): Response {
   );
 }
 
-const FAILED: Answer = { status: 500, code: "INTERNAL", message: "The server ran into a problem and could not finish the request." };
+const FAILED = { status: 500, code: "INTERNAL", message: "The server ran into a problem and could not finish the request." };
 
 /**
  * Puts a stand-in API on `fetch`. `reads` answers the state's reads (first match wins); `always`
@@ -115,6 +122,7 @@ const FAILED: Answer = { status: 500, code: "INTERNAL", message: "The server ran
 export function stubApi(state: ApiState, reads: Read[] = []): ApiStub {
   const asked = new Set<string>();
   const unanswered = new Set<string>();
+  let held = 0;
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -126,6 +134,10 @@ export function stubApi(state: ApiState, reads: Read[] = []): ApiStub {
     if (method === "GET" && path in ALWAYS) return respond({ body: ALWAYS[path] });
     for (const read of reads) {
       const answer = read(path, method);
+      if (answer && "held" in answer) {
+        held += 1;
+        return new Promise<Response>(() => {});
+      }
       if (answer) return respond(answer);
     }
     if (state !== "failed") unanswered.add(key);
@@ -134,6 +146,7 @@ export function stubApi(state: ApiState, reads: Read[] = []): ApiStub {
   return {
     asked,
     unanswered,
+    held: () => held,
     restore() {
       globalThis.fetch = original;
     },

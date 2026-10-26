@@ -279,6 +279,16 @@ function slashesBefore(text: string, i: number, from = 0): number {
 
 const ESCAPED_BREAK = /\\+[nrt]/g;
 
+/** Whether `slashes` backslashes before an `n`, `r` or `t` decode to a line break within `levels` strings; an even run is backslashes the value holds. */
+function decodesToBreak(slashes: number, levels: number): boolean {
+  let k = slashes;
+  for (let level = 0; level < levels && k > 0; level++) {
+    if (k % 2 === 1) return true;
+    k /= 2;
+  }
+  return false;
+}
+
 /**
  * Where a header's value ends (ISS-1229 r47): its line's end, or sooner where a quote opened before the
  * name closes, as a curl `-H "Authorization: …"` argument's does. In escaped text, a tool output cut off
@@ -288,13 +298,15 @@ const ESCAPED_BREAK = /\\+[nrt]/g;
 function headerEnd(text: string, nameAt: number, at: number): number {
   let end = lineEnd(text, at);
   const before = text[nameAt - 1];
-  let escaped = false;
+  let escapedBy = 0;
   if (before === "'") {
     const close = text.indexOf("'", at);
     if (close >= 0 && close < end) end = close;
   } else if (before === '"') {
     const opening = slashesBefore(text, nameAt - 1);
-    escaped = opening > 0;
+    // A quote JSON opens, after `:`, `[`, `,` or `{`, starts a string one level deeper; one in prose does not.
+    const nested = opening > 0 && /[:[,{]\s*$/.test(text.slice(Math.max(0, nameAt - 4 - opening), nameAt - 1 - opening));
+    escapedBy = opening > 0 ? (opening + 1) * (nested ? 2 : 1) - 1 : 0;
     const close = closingQuote(text, at, opening);
     if (close >= 0 && close < end) end = close;
     for (let i = at; i < end; i++) {
@@ -304,8 +316,8 @@ function headerEnd(text: string, nameAt: number, at: number): number {
       }
     }
   } else if (before && /[nrt]/.test(before) && text[nameAt - 2] === '\\') {
-    escaped = true;
     const depth = slashesBefore(text, nameAt - 1);
+    escapedBy = depth;
     for (let i = at; i < end; i++) {
       if (text[i] === '"' && slashesBefore(text, i, at) < depth) {
         end = i - slashesBefore(text, i, at);
@@ -313,10 +325,15 @@ function headerEnd(text: string, nameAt: number, at: number): number {
       }
     }
   }
-  if (escaped) {
+  if (escapedBy > 0) {
+    const levels = escapedBy.toString(2).length;
     ESCAPED_BREAK.lastIndex = at;
-    const broken = ESCAPED_BREAK.exec(text);
-    if (broken && broken.index < end) end = broken.index;
+    for (let found = ESCAPED_BREAK.exec(text); found && found.index < end; found = ESCAPED_BREAK.exec(text)) {
+      if (decodesToBreak(found[0].length - 1, levels)) {
+        end = found.index;
+        break;
+      }
+    }
   }
   return end;
 }

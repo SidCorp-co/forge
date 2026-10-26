@@ -208,6 +208,16 @@ describe('a header in a tool output cut off part way through a string', () => {
       '{"stdout":"curl -H \\"Authorization: Bearer abcdefghijklmnop1234\\" -H \\"Accept: application/json\\" https://x.test","n":1,"cut',
       `{"stdout":"curl -H \\"Authorization: ${FILTERED}\\" -H \\"Accept: application/json\\" https://x.test","n":1,"cut`,
     ],
+    [
+      'a credential holding a backslash before an n, after a line break',
+      '{"stdout":"headers:\\nX-Api-Key: abc\\\\nsecretTail987\\nAccept: application/json","cut',
+      `{"stdout":"headers:\\nX-Api-Key: ${FILTERED}\\nAccept: application/json","cut`,
+    ],
+    [
+      'a credential holding a backslash before an n, in a quoted curl header',
+      '{"stdout":"curl -H \\"Authorization: Bearer abc\\\\nsecretTail987\\" https://x.test","cut',
+      `{"stdout":"curl -H \\"Authorization: ${FILTERED}\\" https://x.test","cut`,
+    ],
   ] as const) {
     it(`keeps every key before and after the value: ${what}`, () => {
       expect(scrubLogText(text)).toBe(expected);

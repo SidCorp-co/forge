@@ -199,12 +199,6 @@ export function ConversationsScreen() {
     setLookup(null);
   }, [lookup, read, readProject, setLookup]);
 
-  // A room, or a state the addressed room's read left, carries the page's heading in the pane; so does the
-  // chooser's failure to read the projects (ISS-1229 r47).
-  const paneHeads = Boolean(
-    selection || orphan || (lookup && (malformed || roomRead.error || read)) || projectsUnread,
-  );
-
   const openRoomId = selection?.conversationId ?? null;
   const openArchived = selection?.archived === true;
   useEffect(() => {
@@ -265,7 +259,8 @@ export function ConversationsScreen() {
         className="flex flex-none items-center justify-between gap-3 border-b border-line px-4 py-3 md:hidden"
         {...STEPS_ASIDE}
       >
-        <PageTitle className="fg-h2" heads={!paneHeads}>
+        {/* The pane heads the page in every state, at every width: this bar is not there on a desk (ISS-1229 r47). */}
+        <PageTitle className="fg-h2" heads={false}>
           Conversations
         </PageTitle>
         <IconButton
@@ -389,5 +384,10 @@ function AddressedRoom({
       />,
     );
   }
-  return pane(<ProjectLoader label="loading conversation…" />);
+  return pane(
+    <div className="flex flex-col items-center gap-3">
+      <PageTitle className="fg-h3">Opening the conversation</PageTitle>
+      <ProjectLoader label="loading conversation…" />
+    </div>,
+  );
 }

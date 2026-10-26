@@ -14,7 +14,7 @@ import { personChoice } from "@forge/contracts/person-name";
 import { orderPeople } from "@/lib/people/order-people";
 import { useState } from "react";
 import { useAuth } from "@/providers/auth-provider";
-import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
+import { Button, Checkbox, ErrorState, Icon, PageTitle, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useOpenConversation, useProjectCandidates, useRoomOpeners } from "../hooks";
@@ -97,9 +97,10 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
   if (isLoading) {
     return (
       <div className="grid h-full min-h-0 place-items-center px-4 py-8">
-        <p role="status" data-testid="start-loading" className="fg-body-sm flex items-center gap-2 text-muted">
-          <Spinner size={14} /> Reading your projects…
-        </p>
+        <div role="status" data-testid="start-loading" className="flex items-center gap-2 text-muted">
+          <Spinner size={14} />
+          <PageTitle className="fg-h3">Reading your projects</PageTitle>
+        </div>
       </div>
     );
   }
@@ -108,9 +109,9 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-4 py-8">
       <div className="flex w-full max-w-sm flex-col gap-4">
         <div className="text-center">
-          <p className="fg-h3">
+          <PageTitle className="fg-h3">
             {onlyViews ? "Conversations you can read" : nothingToStart ? "No project you can see" : "Start a conversation"}
-          </p>
+          </PageTitle>
           <p className="fg-body-sm mt-1 text-muted">
             {onlyViews
               ? "You hold the viewer role on every project here, so their conversations are yours to read from the list."

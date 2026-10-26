@@ -125,7 +125,7 @@ async function metadataTitle(mod: Module, props: object): Promise<string | null>
   return null;
 }
 
-async function open(route: Route, search = ""): Promise<{ client: ReturnType<typeof createQueryClient> }> {
+async function open(route: Route, search = "", held = () => 0): Promise<{ client: ReturnType<typeof createQueryClient> }> {
   here.pathname = route.path;
   here.params = route.params;
   window.history.replaceState(null, "", `${route.path}${search}`);
@@ -156,33 +156,66 @@ async function open(route: Route, search = ""): Promise<{ client: ReturnType<typ
       ),
     );
   });
-  await settle(client);
+  await settle(client, held);
   return { client };
 }
 
 /** Waits until no read is out and nothing is still being drawn from one. */
-async function settle(client: ReturnType<typeof createQueryClient>) {
+async function settle(client: ReturnType<typeof createQueryClient>, held: () => number) {
   for (let i = 0; i < 40; i++) {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 5));
     });
-    if (client.isFetching() === 0 && client.isMutating() === 0) {
+    if (client.isFetching() <= held() && client.isMutating() === 0) {
       await act(async () => {
         await new Promise((r) => setTimeout(r, 5));
       });
-      if (client.isFetching() === 0) return;
+      if (client.isFetching() <= held()) return;
     }
   }
   throw new Error(`reads still out after settling: ${client.getQueryCache().findAll({ fetchStatus: "fetching" }).map((q) => JSON.stringify(q.queryKey)).join(", ")}`);
 }
 
-/** The page's one h1 and the tab that names it. */
+const BREAKPOINTS: Record<string, number> = { sm: 640, md: 768, lg: 1024, xl: 1280, "2xl": 1536 };
+const DISPLAYS = new Set(["block", "flex", "grid", "inline", "inline-block", "inline-flex", "inline-grid", "contents", "table"]);
+
+/**
+ * Whether the app's display utilities show `el` on a screen `width` px wide. jsdom loads no stylesheet,
+ * so the utilities are read off the class list: `hidden`, a `md:` or `lg:` display that undoes it, and a
+ * `max-md:` one below a breakpoint. `sr-only` is shown: it is in the accessibility tree.
+ */
+function shownAt(el: Element, width: number): boolean {
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    let hidden = false;
+    const classes = [...node.classList];
+    for (const c of classes) if (c === "hidden") hidden = true;
+    for (const [bp, min] of Object.entries(BREAKPOINTS).sort((a, b) => a[1] - b[1])) {
+      if (width < min) continue;
+      for (const c of classes) {
+        if (c === `${bp}:hidden`) hidden = true;
+        else if (DISPLAYS.has(c.slice(bp.length + 1)) && c.startsWith(`${bp}:`)) hidden = false;
+      }
+    }
+    for (const c of classes) {
+      const below = /^max-(sm|md|lg|xl|2xl):hidden$/.exec(c);
+      if (below && width < (BREAKPOINTS[below[1] as string] as number)) hidden = true;
+    }
+    if (hidden || node.hasAttribute("hidden")) return false;
+  }
+  return true;
+}
+
+/** The page's one h1, at a phone's width and a desk's, and the tab that names it. */
 function headsOnce(label: string) {
-  const h1s = [...document.querySelectorAll("h1")].map((h) => (h.textContent ?? "").replace(/\s+/g, " ").trim());
-  expect(h1s, `${label}: exactly one h1, read ${JSON.stringify(h1s)}`).toHaveLength(1);
-  // The workspace's tabs read `<h1> · Forge`; the public docs' read `<h1> — Forge documentation`, their landing the name alone.
-  const h1 = h1s[0];
-  expect([`${h1} · Forge`, `${h1} — Forge documentation`, h1], `${label}: the tab says the h1's words, read "${document.title}"`).toContain(document.title);
+  const texts = (width: number) =>
+    [...document.querySelectorAll("h1")].filter((h) => shownAt(h, width)).map((h) => (h.textContent ?? "").replace(/\s+/g, " ").trim());
+  for (const width of [390, 1280]) {
+    const h1s = texts(width);
+    expect(h1s, `${label} at ${width}px: exactly one h1 shown, read ${JSON.stringify(h1s)}`).toHaveLength(1);
+    // The workspace's tabs read `<h1> · Forge`; the public docs' read `<h1> — Forge documentation`, their landing the name alone.
+    const h1 = h1s[0];
+    expect([`${h1} · Forge`, `${h1} — Forge documentation`, h1], `${label} at ${width}px: the tab says the h1's words, read "${document.title}"`).toContain(document.title);
+  }
 }
 
 beforeAll(() => {
@@ -293,6 +326,13 @@ const ADDRESSES: Address[] = [
   },
   {
     file: "./(workspace)/conversations/page.tsx",
+    search: `?room=${ROOM_ID}`,
+    name: "a room still being read while the project list has failed",
+    state: "failed",
+    reads: () => [answering(ROOM_PATH, { held: true }), answering(/^\/projects$/, FAILING), ...readsFor("loaded")],
+  },
+  {
+    file: "./(workspace)/conversations/page.tsx",
     search: "",
     name: "the project list alone failing",
     state: "failed",
@@ -321,7 +361,7 @@ describe("every page at the addresses its query string reaches", () => {
   it.each(ADDRESSES.map((a) => [`${routeOf(a.file).path}${a.search} (${a.name})`, a] as const))("%s has one h1 the tab names", async (label, address) => {
     const api = stubApi(address.state, address.reads());
     try {
-      const { client } = await open(routeOf(address.file), address.search);
+      const { client } = await open(routeOf(address.file), address.search, api.held);
       expect([...api.unanswered], `${label} made reads the ${address.state} table does not answer`).toEqual([]);
       if (address.state !== "failed") {
         const refused = client.getQueryCache().findAll({ predicate: (q) => q.state.status === "error" }).map((q) => `${JSON.stringify(q.queryKey)}: ${String(q.state.error)}`);
