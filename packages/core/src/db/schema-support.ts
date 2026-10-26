@@ -1,13 +1,15 @@
-// A support group's record (REQ-75), owned by the `support` domain: the room and the one session
-// that answers it, every action taken in it, the fixes waiting on their asker, and the Feedback the
-// session recorded with the thread it is followed in.
+// A support group's and an operations room's record (REQ-75), owned by the `support` domain: the
+// room and the one session that answers it, every action taken in it, the fixes and filings waiting
+// on their asker, and the Feedback the session recorded with the thread it is followed in.
 
 import { FEEDBACK_PHASES } from '@forge/contracts/feedback';
 import {
   SUPPORT_ACTION_KINDS,
   SUPPORT_ACTOR_KINDS,
   SUPPORT_FIX_STATES,
+  SUPPORT_PROPOSAL_KINDS,
 } from '@forge/contracts/support';
+import { OPERATIONS_SCOPES, SUPPORT_ROOM_KINDS } from '@forge/contracts/support-operations';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -29,8 +31,11 @@ import { projects } from './schema-projects.js';
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
 /**
- * One support group: the `rocketchat` binding that names it, the room, the agent account its
- * session acts as (a member of nothing, like a widget's), and the session that answers it.
+ * One room a session answers: a support group (`kind` support, one per binding) or an operations
+ * room (`kind` operations, several per binding, each with its `scope`). The `rocketchat` binding that
+ * names it, the room, the agent account its session acts as (a member of nothing, like a widget's),
+ * and the session that answers it. An operations room's project is the binding's: its home, whose
+ * box serves the session.
  */
 export const supportRooms = pgTable(
   'support_rooms',
@@ -44,6 +49,8 @@ export const supportRooms = pgTable(
       .references(() => integrationBindings.id, { onDelete: 'cascade' }),
     connectionId: uuid('connection_id').notNull(),
     rid: text('rid').notNull(),
+    kind: text('kind', { enum: SUPPORT_ROOM_KINDS }).notNull().default('support'),
+    scope: text('scope', { enum: OPERATIONS_SCOPES }),
     principalUserId: uuid('principal_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -51,10 +58,15 @@ export const supportRooms = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    bindingUq: uniqueIndex('support_rooms_binding_uq').on(t.bindingId),
+    bindingRidUq: uniqueIndex('support_rooms_binding_rid_uq').on(t.bindingId, t.rid),
     roomUq: uniqueIndex('support_rooms_connection_rid_uq').on(t.connectionId, t.rid),
     principalUq: uniqueIndex('support_rooms_principal_uq').on(t.principalUserId),
     projectIdx: index('support_rooms_project_idx').on(t.projectId),
+    kindChk: check('support_rooms_kind_chk', sql`${t.kind} IN (${inList(SUPPORT_ROOM_KINDS)})`),
+    scopeChk: check(
+      'support_rooms_scope_chk',
+      sql`(${t.kind} = 'operations') = (${t.scope} IS NOT NULL) AND (${t.scope} IS NULL OR ${t.scope} IN (${inList(OPERATIONS_SCOPES)}))`,
+    ),
   }),
 );
 
@@ -86,7 +98,7 @@ export const supportActions = pgTable(
     output: jsonb('output'),
     /** The Rocket.Chat message this action is: the inbound message, or the line posted. */
     externalId: text('external_id'),
-    fixId: uuid('fix_id'),
+    proposalId: uuid('proposal_id'),
     feedbackId: uuid('feedback_id').references(() => feedback.id, { onDelete: 'set null' }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -112,11 +124,11 @@ export const supportActions = pgTable(
 );
 
 /**
- * A change the session proposed, waiting on the one account that asked, or what became of it: a fix
- * through the product API, or a Feedback filing (tool `forge:record`, `support/propose.ts`).
+ * A change the session proposed, waiting on the one account that asked, or what became of it: a
+ * `fix` through the product API (its `tool`), or a Feedback `filing` (no tool, `support/propose.ts`).
  */
-export const supportFixes = pgTable(
-  'support_fixes',
+export const supportProposals = pgTable(
+  'support_proposals',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     roomId: uuid('room_id')
@@ -126,7 +138,8 @@ export const supportFixes = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     thread: text('thread').notNull(),
-    tool: text('tool').notNull(),
+    kind: text('kind', { enum: SUPPORT_PROPOSAL_KINDS }).notNull().default('fix'),
+    tool: text('tool'),
     args: jsonb('args').notNull().default({}),
     askerKey: text('asker_key').notNull(),
     askerLabel: text('asker_label'),
@@ -138,16 +151,23 @@ export const supportFixes = pgTable(
     decidedAt: timestamp('decided_at', { withTimezone: true }),
   },
   (t) => ({
-    pendingCodeUq: uniqueIndex('support_fixes_pending_code_uq')
+    pendingCodeUq: uniqueIndex('support_proposals_pending_code_uq')
       .on(t.roomId, t.code)
       .where(sql`state = 'pending'`),
-    stateChk: check('support_fixes_state_chk', sql`${t.state} IN (${inList(SUPPORT_FIX_STATES)})`),
-    codeChk: check('support_fixes_code_chk', sql`${t.code} ~ '^[A-HJ-NP-Z2-9]{6}$'`),
+    stateChk: check(
+      'support_proposals_state_chk',
+      sql`${t.state} IN (${inList(SUPPORT_FIX_STATES)})`,
+    ),
+    codeChk: check('support_proposals_code_chk', sql`${t.code} ~ '^[A-HJ-NP-Z2-9]{6}$'`),
     decidedChk: check(
-      'support_fixes_decided_chk',
+      'support_proposals_decided_chk',
       sql`(${t.state} = 'pending') = (${t.decidedAt} IS NULL)`,
     ),
-    expiryChk: check('support_fixes_expiry_chk', sql`${t.expiresAt} > ${t.createdAt}`),
+    expiryChk: check('support_proposals_expiry_chk', sql`${t.expiresAt} > ${t.createdAt}`),
+    kindChk: check(
+      'support_proposals_kind_chk',
+      sql`${t.kind} IN (${inList(SUPPORT_PROPOSAL_KINDS)}) AND (${t.kind} = 'fix') = (${t.tool} IS NOT NULL)`,
+    ),
   }),
 );
 

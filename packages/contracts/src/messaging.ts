@@ -16,7 +16,8 @@ export type DoorId =
 	| "agent-chat-completion"
 	| "web-agent-completion"
 	| "widget-chat-reply"
-	| "support-reply";
+	| "support-reply"
+	| "operations-reply";
 
 declare const admittedByADoor: unique symbol;
 

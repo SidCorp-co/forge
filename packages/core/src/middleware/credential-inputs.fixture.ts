@@ -211,6 +211,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:basis field:json:claims
     field:json:endpoint field:json:by field:json:cites field:json:intent field:json:recommended
     field:json:reportedBy field:json:resolves field:json:refused field:json:broken
+    field:json:key field:json:url
     field:json:screenshot field:json:args`,
   'a time, a version or a time zone': words`
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
@@ -406,6 +407,12 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     previews/relay.ts IncomingMessage.pipe in relayPreviewRequest
     previews/relay.ts IncomingMessage.pipe in relayPreviewUpgrade
     previews/relay.ts IncomingMessage.url in serveRecorder`,
+  'a public web page an operations room’s research reads, an outbound request core makes, never a request to core (REQ-75 BC-24)': lines`
+    support/ops-research.ts IncomingMessage.on(data) in readPublicPage
+    support/ops-research.ts URL handed to @types/node:request in readPublicPage
+    support/ops-research.ts URL.href in readPublicPage
+    support/ops-research.ts URL.password in readPublicPage
+    support/ops-research.ts URL.username in readPublicPage`,
   'the storefront MCP relay, once its relay ticket verified: the transport headers it passes by name, the agent’s message relayed as sent, and the provider’s answer core passes back': lines`
     integrations/mcp-relay.ts Headers handed to @types/node:fetch in relayToUpstream
     integrations/mcp-relay.ts Headers handed to undici-types:Response in relayToUpstream

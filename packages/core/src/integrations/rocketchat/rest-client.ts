@@ -241,6 +241,8 @@ interface RocketChatUserProfile {
   externalId: string;
   username: string | null;
   email: string | null;
+  /** Whether the server has `email` verified; an unverified one is the account's own word. */
+  emailVerified: boolean;
 }
 
 /**
@@ -268,6 +270,7 @@ export async function fetchUserProfile(
     externalId: user._id,
     username: typeof user.username === 'string' ? user.username : null,
     email: chosen?.address ?? null,
+    emailVerified: chosen?.verified === true,
   };
 }
 

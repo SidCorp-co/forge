@@ -122,7 +122,10 @@ async function roomConfig(room: RoomRow) {
   return ((pair?.binding.config ?? null) as RocketChatBindingConfig | null)?.support ?? null;
 }
 
-/** Post the session's reply in a thread: scrubbed, then screened as a reply to people who hold no role. */
+/**
+ * Post the session's reply in a thread: scrubbed, then screened as a reply to people who hold no role
+ * in a support group, and to the team an operations room was bound for.
+ */
 export async function reply(
   room: RoomRow,
   input: { thread: string; text: string },
@@ -130,13 +133,14 @@ export async function reply(
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
   const text = await scrubbedForRoom(room, input.text);
-  const verdict = await screenReplyAtDoor('support-reply', {
+  const door = room.kind === 'operations' ? 'operations-reply' : 'support-reply';
+  const verdict = await screenReplyAtDoor(door, {
     projectId: room.projectId,
     segments: [text],
     toolCalls: [],
     progress: null,
   });
-  const admitted = screened(text, 'support-reply', verdict);
+  const admitted = screened(text, door, verdict);
   if (!admitted?.proof) {
     const why = refusalsOf(verdict).map(
       (r) => `${r.rule}: ${r.why}${r.quote ? ` ("${r.quote}")` : ''} — ${r.shape}`,

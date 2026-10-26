@@ -9,10 +9,10 @@ import {
   planCall,
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
-import { RECORD_CHANGE, type RecordRequest, threadLink } from './record.js';
+import { type RecordRequest, threadLink } from './record.js';
 import { type Refusal, refusalOf } from './refusals.js';
 import { confirmPrompt, mintConfirmCode, recordPrompt } from './rules.js';
-import { type FixRow, insertAction, insertFix, type RoomRow, threadMembers } from './store.js';
+import { insertAction, insertFix, type ProposalRow, type RoomRow, threadMembers } from './store.js';
 import { noteInThread, postInThread } from './thread.js';
 
 export type ProposeOutcome =
@@ -84,19 +84,21 @@ async function offerChange(input: {
   room: RoomRow;
   thread: string;
   asker: Member;
-  tool: string;
+  /** A fix names its granted tool; a filing names none. */
+  change: { kind: 'fix'; tool: string } | { kind: 'filing' };
   args: Record<string, unknown>;
   prompt: (code: string) => string;
 }): Promise<ProposeOutcome> {
   const { room, asker } = input;
   const now = new Date();
-  let fix: FixRow | null = null;
+  let fix: ProposalRow | null = null;
   for (let attempt = 0; attempt < 5 && !fix; attempt++) {
     fix = await insertFix({
       roomId: room.id,
       projectId: room.projectId,
       thread: input.thread,
-      tool: input.tool,
+      kind: input.change.kind,
+      tool: input.change.kind === 'fix' ? input.change.tool : null,
       args: input.args,
       askerKey: asker.key,
       askerLabel: asker.label,
@@ -123,7 +125,7 @@ async function offerChange(input: {
     input: input.args,
     output: { code: fix.code, asker: asker.key, expiresAt: fix.expiresAt.toISOString() },
     externalId: posted.messageId,
-    fixId: fix.id,
+    proposalId: fix.id,
   });
   await noteInThread(
     posted.conversationId,
@@ -183,7 +185,7 @@ export async function proposeFix(input: {
     room,
     thread: input.thread,
     asker: asked.asker,
-    tool: planned.plan.tool.name,
+    change: { kind: 'fix', tool: planned.plan.tool.name },
     args: input.args,
     prompt: (code) =>
       confirmPrompt({
@@ -212,7 +214,7 @@ export async function proposeRecord(
     room,
     thread: input.thread,
     asker: asked.asker,
-    tool: RECORD_CHANGE,
+    change: { kind: 'filing' },
     args: request,
     prompt: (code) =>
       recordPrompt({
@@ -226,11 +228,11 @@ export async function proposeRecord(
 }
 
 /** What did not happen to a change nobody confirmed. */
-export const nothingDone = (fix: Pick<FixRow, 'tool'>) =>
-  fix.tool === RECORD_CHANGE ? 'Nothing was recorded.' : 'Nothing was run.';
+export const nothingDone = (fix: Pick<ProposalRow, 'kind'>) =>
+  fix.kind === 'filing' ? 'Nothing was recorded.' : 'Nothing was run.';
 
 /** What a change is, in the words the thread and the session are told. */
-export function changeName(fix: Pick<FixRow, 'tool' | 'args'>): string {
-  if (fix.tool !== RECORD_CHANGE) return `the fix ${fix.tool}`;
+export function changeName(fix: Pick<ProposalRow, 'kind' | 'tool' | 'args'>): string {
+  if (fix.kind === 'fix') return `the fix ${fix.tool}`;
   return `the filing "${String((fix.args as { title?: unknown } | null)?.title ?? '')}"`;
 }

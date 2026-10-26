@@ -1,8 +1,8 @@
 # A project's Rocket.Chat group answered by a Claude session Forge manages
 
-**Removed when:** REQ-75 r2's criteria (BC-2, BC-10..BC-19) each hold a counting verdict. After that,
-what holds is the code: `packages/contracts/src/support.ts`, `packages/core/src/support/` and
-`packages/core/src/integrations/support-api/`.
+**Removed when:** REQ-75 r4's criteria (BC-2, BC-10..BC-24) each hold a counting verdict. After that,
+what holds is the code: `packages/contracts/src/support.ts`, `packages/contracts/src/support-operations.ts`,
+`packages/core/src/support/` and `packages/core/src/integrations/support-api/`.
 
 Requirement REQ-75 r2. The owner, 2026-10-26: "gắn thẳng vào group chat để hỗ trợ người dùng trực
 tiếp và liên tục", and the shape: a user writes in the group, a Claude session Forge manages handles
@@ -121,9 +121,10 @@ confirmed in 15 minutes expires. Slack bots built on Bolt do the same thing with
 
 Nothing is filed until its asker agrees (REQ-30 BC-4, the owner's confirm-before-recording rule):
 the session's `record` restates the route (defect, feature or request), the title and the thread's
-link in the thread, with the same `confirm <code>` / `cancel <code>` buttons a fix has, and waits as
-a pending change in `support_fixes` under the reserved name `forge:record`, which no granted tool can
-take (`support/propose.ts:proposeRecord`). Only the asker's confirm files it; another member's, a
+link in the thread, with the same `confirm <code>` / `cancel <code>` buttons a fix has, and waits in
+`support_proposals` as kind `filing` with no tool, beside the fixes (kind `fix`, their tool named) in
+one code space per room (`support/propose.ts:proposeRecord`; migration 0539 renamed `support_fixes`
+and ended the reserved `forge:record` tool name it used to hide under). Only the asker's confirm files it; another member's, a
 cancel or 15 minutes unconfirmed file nothing, and the session is told the key once it is filed.
 Then core records a defect, a feature or an extra request as Feedback through the external
 filing door (`feedback/external.ts:fileExternalFeedback`, channel `rocketchat`), as the room's
@@ -181,6 +182,48 @@ One MCP tool, `forge_support` (`support/tool.ts`), with a REST twin per action u
 Actions: `search`, `thread`, `tools`, `reply`, `run`, `propose_fix`, `record`. People read
 `GET /api/projects/:id/support/rooms` and `…/rooms/:roomId/actions` with `project.read`.
 
+## Operations rooms (REQ-75 r4 BC-20..BC-24)
+
+The same machinery answers a team's room under a bot's role. A `rocketchat` binding carrying
+`operations { scope }` instead of `support` attaches any number of rooms (`rids`), and each is its
+own `support_rooms` row (kind `operations`, its `scope`) with its own resident session on the box of
+the binding's project, its home (`support/rooms.ts:declareSupportRooms`). `scope: forge` reaches
+every project of the home project's organization; `scope: project` the home project alone
+(`support/ops-scope.ts`). Two rooms of one bot reach what their own bindings say.
+
+**A role is data on the bot's connection** (BC-22): `config.role { name, persona, grants }`, one per
+Rocket.Chat account, since the connection is the account. The persona opens the session's brief in
+the owner's words (`support/ops-prompt.ts`); a connection edit re-tells a resident session its role.
+The grants are `read`, `deliver`, `draft` and `research`, and each `forge_support` operations act
+needs one (`OPERATIONS_ACTION_GRANT`): `projects`, `issues`, `releases` read; `move` delivers;
+`draft_requirement`, `draft_feedback` draft; `research` reads one public page. An act the role lacks
+is refused naming the grant (`OPS_ROLE_NOT_GRANTED`, `support/ops-role.ts:grantRefusal`) before
+anything is read, so Babo, granted `read` and `deliver`, never drafts product direction (BC-23), and
+Sy, granted `read`, `draft` and `research`, never moves delivery (BC-24). No act decides product
+direction at all: a draft waits for a person.
+
+**A write runs as the member who asked, never as the bot** (BC-21). Core names the asker, not the
+session: the member who wrote last in the thread, by the account id Rocket.Chat signed
+(`support/ops-asker.ts`). That account is a Forge user through a confirmed speaker link
+(`assistant_speaker_links`, the explicit map, which wins), or else when the address the chat server
+holds for it is verified there and is a Forge account's verified address. The act then runs under
+that user's own permissions — the `requireCan` and kernel guards their own click would meet — with
+the turn's token recorded as the credential acting for them (`kernel_transitions.actor_token_id`,
+`actor_on_behalf_of`; `support/ops-acts.ts:asAsker`). A member Forge cannot name may only read
+(`OPS_ASKER_UNMAPPED`); a mapped member without the permission is refused naming it
+(`PERMISSION_FORBIDDEN … project.write`). A project outside the scope is `OPS_OUT_OF_SCOPE`.
+
+`research` is fetched by core, not by the confined session: https on 443 only, every address the
+host resolves to public, the connection made to the address checked, no redirect followed, the page
+cut to text (`support/ops-research.ts`). An operations room's replies are screened at the
+`operations-reply` door (`role:chat`): its readers are the team the room was bound for. A support
+group's acts (`search`, `tools`, `run`, `propose_fix`, `record`) are refused in an operations room
+(`SUPPORT_NOT_A_SUPPORT_ROOM`) and the operations acts in a support group.
+
+The proof is `packages/core/tests/integration/support-operations-e2e.test.ts`, two bot accounts on
+one chat server (a stand-in, or a real Rocket.Chat with `OPS_E2E_RC=<file>`; the shape is in
+`tests/helpers/ops-chat-server.ts`).
+
 ## Honest costs
 
 - **A box per project.** The session runs on a paired runner bound to the project with a checkout,
@@ -210,6 +253,17 @@ Actions: `search`, `thread`, `tools`, `reply`, `run`, `propose_fix`, `record`. P
   who pressed them; Rocket.Chat's UIKit buttons would need an Apps-Engine app, which this does not
   ship. A member who types the line by hand confirms just the same, and only the asker's account
   counts.
+- **The asker is the thread's latest writer.** A command and a second member's line landing before
+  the session acts runs the command as the second member: never with more than that member holds,
+  but not as the one who asked. Ask in a thread of your own.
+- **An operations room's readers are whoever the room admits.** The reply screen is the team's
+  (`role:chat`), and an unmapped member in the room reads what the team reads; who is in the room is
+  Rocket.Chat's to decide.
+- **A move from chat sends no unblock toast.** The issue door's `issue.unblockCascade` broadcast is
+  published by its route, which an operations move does not pass through; the dependents are still
+  admissible at the next claim.
+- **One rocketchat binding per project.** Each room with a scope of its own needs a home project of
+  its own (`integration_bindings_service_uq`), and that project's box runs its session.
 - **Two scrub layers, one source of truth.** Every line core posts is scrubbed with the bot token
   and each word of every credential header (`integrations/support-api/call.ts:credentialValuesOf`);
   a credential the product API returns under another shape (encoded, split) is not recognised.
@@ -265,6 +319,38 @@ holds the bot; one connection may carry the bindings of several projects, one gr
    `projects/<uuid>/support/rooms/<roomId>/actions`; the session is in the Agents view.
 
 For Catalog and AdminHub the same three calls run once per bound project, with the inputs below.
+
+### Operations rooms (BC-20..BC-24)
+
+One connection per bot account, its role in `config.role`, and one binding per room scope:
+
+```sh
+forge-runner api --core-url "$CORE" integration-connections --data '{
+  "provider": "rocketchat", "displayName": "Babo",
+  "config": { "serverUrl": "https://chat.sidcorp.co",
+    "role": { "name": "babo", "grants": ["read", "deliver"],
+              "persona": "You are Babo. You coordinate Forge and delivery: projects, masters, runners and releases, and you support the project groups. You never decide product direction." } },
+  "secrets": { "userId": "<babo user id>", "authToken": "<babo personal access token>" },
+  "bindings": [{ "projectId": "<home project uuid>", "role": "service",
+    "target": { "provider": "rocketchat", "rids": ["<Forge-Communicate rid>"],
+                "operations": { "scope": "forge" } } }] }'
+```
+
+Sy is the same call with its own account, `"grants": ["read", "draft", "research"]`, a persona that
+works on product direction, requirements, feedback and research as drafts a person decides and never
+moves delivery, and its room bound from another project of the organization (one rocketchat binding
+per project). A project group Babo supports is a binding of that project with
+`"operations": { "scope": "project" }`.
+
+The live bindings, made by the coordinator on chat.sidcorp.co:
+
+| Room | Bot (account) | Role | Scope |
+|---|---|---|---|
+| Forge-Communicate | Babo (`chuong_bot`, username `babo`) | `read`, `deliver` | forge |
+| AgentSocialTeams | Sy (`digital`) | `read`, `draft`, `research` | forge |
+
+Each person who acts in them is a Forge user by a verified address both sides share, or by a
+confirmed speaker link; the bots need `view-full-other-user-info` to read a member's address.
 
 ### What the owner gives
 

@@ -73,6 +73,12 @@ describe('REQ-75: a filing waits for its asker (BC-14, REQ-30 BC-4)', () => {
       `cancel ${code}`,
     ]);
     expect(await filings()).toBe(before);
+    // a filing waits as what it is, never as a fix under a reserved tool name
+    expect(
+      await rows<{ kind: string; tool: string | null }>(
+        sql`SELECT kind, tool FROM support_proposals WHERE room_id = ${roomId}::uuid AND code = ${code}`,
+      ),
+    ).toEqual([{ kind: 'filing', tool: null }]);
 
     await w.chat.say(w.chat.bob, `confirm ${code}`, id);
     await w.untilLines((ls) =>
@@ -88,7 +94,7 @@ describe('REQ-75: a filing waits for its asker (BC-14, REQ-30 BC-4)', () => {
   it('files nothing once the offer expires, and a late confirm finds nothing waiting', async () => {
     const before = await filings();
     const { id, code } = await offered('Search returns nothing for SKU 0042');
-    await db.execute(sql`UPDATE support_fixes SET created_at = now() - interval '1 hour',
+    await db.execute(sql`UPDATE support_proposals SET created_at = now() - interval '1 hour',
       expires_at = now() - interval '1 minute' WHERE room_id = ${roomId}::uuid AND code = ${code}`);
     const { expireSupportFixes } = await import('../../src/support/index.js');
     await expireSupportFixes();

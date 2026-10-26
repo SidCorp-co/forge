@@ -95,7 +95,14 @@ export async function postInThread(input: {
         content: text,
         authorUserId: input.room.principalUserId,
         externalId: messageId,
-        deliveryProof: { messageId, door: input.proof ? 'support-reply' : 'code-authored' },
+        deliveryProof: {
+          messageId,
+          door: input.proof
+            ? input.room.kind === 'operations'
+              ? 'operations-reply'
+              : 'support-reply'
+            : 'code-authored',
+        },
       },
     ],
   });

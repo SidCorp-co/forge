@@ -1,4 +1,4 @@
-// A message in a support group (REQ-75 BC-11, BC-13, BC-18): recorded on its thread's conversation
+// A message in a support group or an operations room (REQ-75 BC-11, BC-13, BC-18, BC-20): recorded on its thread's conversation
 // and as a `message_in` action, marked received, and handed to the group's session — unless it is a
 // `confirm`/`cancel` naming a fix, which core answers itself, or the writer is past the hourly limit.
 
@@ -30,7 +30,8 @@ export async function handleSupportMessage(input: {
   shape: RoomShape;
 }): Promise<void> {
   const { route, m } = input;
-  const config = route.support as SupportRoomConfig;
+  // an operations room runs under the default limits and takes no confirm: it proposes nothing
+  const config: SupportRoomConfig = route.support ?? {};
   if (input.shape !== 'group') {
     // a support binding names a group; a direct room bound so is refused, never answered as one
     logger.error(
@@ -44,14 +45,16 @@ export async function handleSupportMessage(input: {
     bindingId: route.bindingId,
     connectionId: input.connectionId,
     rid: m.rid,
-    support: config,
+    room: route.operations
+      ? { kind: 'operations', scope: route.operations.scope }
+      : { kind: 'support', support: config },
   });
   const { auth, namespace } = await roomAuth(room);
   const thread = threadOf(m);
   const conversation = await threadConversationOf(room, namespace, thread);
   const author = { key: m.userId, label: m.username ?? null };
 
-  const confirm = parseConfirm(m.text);
+  const confirm = room.kind === 'support' ? parseConfirm(m.text) : null;
   if (confirm) {
     await recordInbound(room, conversation.id, thread, m, author, { deliver: false });
     await answerConfirm({

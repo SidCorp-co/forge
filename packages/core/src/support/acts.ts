@@ -1,11 +1,15 @@
 // The session's acts, each behind the check that the caller is the room's own session: the one
-// function both doors (REST and the `forge_support` tool) call, so neither re-implements a rule.
+// function both doors (REST and the `forge_support` tool) call, so neither re-implements a rule. A
+// support group's acts and an operations room's (`ops-acts.ts`) share the reply and thread reads;
+// each kind's own acts are refused in the other's room by name.
 
 import type { SupportRecordKind } from '@forge/contracts/support';
+import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
 import { sessionCaller } from './access.js';
 import { settleLatency } from './delivery.js';
-import type { Outcome } from './outcome.js';
+import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
+import { no } from './outcome.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose } from './service.js';
@@ -20,6 +24,7 @@ export interface SupportCaller {
 type ToolCall = { thread: string; tool: string; args?: SupportCallArgs | undefined };
 
 export type SupportActInput =
+  | OperationsActInput
   | { action: 'search'; query: string }
   | { action: 'thread'; thread: string }
   | { action: 'tools' }
@@ -39,9 +44,17 @@ export type SupportActInput =
 export async function supportAct(
   caller: SupportCaller,
   input: SupportActInput,
-): Promise<Outcome<unknown>> {
+): Promise<OpsOutcome<unknown>> {
   const room = await sessionCaller(caller);
-  const out = await act(room, input);
+  const out = isOperation(input)
+    ? await operationsAct(room, input)
+    : room.kind === 'support' || SHARED.has(input.action)
+      ? await act(room, input)
+      : no(
+          'SUPPORT_NOT_A_SUPPORT_ROOM',
+          '/action',
+          `${input.action} is a support group's act, and this room is an operations room: its acts are ${OPERATION_ACTIONS.join(', ')}, reply and thread`,
+        );
   // the session's first post in a thread answers every message of it the session had been handed
   if (out.ok && 'thread' in input && POSTS.has(input.action)) {
     await settleLatency(room.id, input.thread, new Date());
@@ -52,7 +65,16 @@ export async function supportAct(
 /** The acts that post in the thread they name. */
 const POSTS = new Set<SupportActInput['action']>(['reply', 'run', 'propose_fix', 'record']);
 
-async function act(room: RoomRow, input: SupportActInput): Promise<Outcome<unknown>> {
+/** The acts both kinds of room take. */
+const SHARED = new Set<SupportActInput['action']>(['reply', 'thread']);
+
+const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
+const isOperation = (input: SupportActInput): input is OperationsActInput =>
+  OPERATION_ACTIONS.includes(input.action);
+
+type SupportOnlyInput = Exclude<SupportActInput, OperationsActInput>;
+
+async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<unknown>> {
   switch (input.action) {
     case 'search':
       return search(room, input.query);

@@ -1,5 +1,5 @@
-// What Forge shows of a support group (REQ-75 BC-18): its rooms with their session, and every action
-// taken in one, oldest first. Inputs and outputs were stored scrubbed.
+// What Forge shows of a support group or an operations room (REQ-75 BC-18): its rooms with their
+// session, and every action taken in one, oldest first. Inputs and outputs were stored scrubbed.
 
 import {
   SUPPORT_DELIVERY_PATHS,
@@ -13,6 +13,7 @@ import { externalItemPhases } from '../feedback/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { latencySamples } from './delivery.js';
+import { roleOfRoom } from './ops-role.js';
 import { percentile } from './rules.js';
 import { type ActionRow, actionsOfRoom, recentThreads, roomById, roomsOfProject } from './store.js';
 
@@ -37,6 +38,9 @@ export async function supportRoomsOf(
         projectId: r.projectId,
         bindingId: r.bindingId,
         rid: r.rid,
+        kind: r.kind,
+        scope: r.scope,
+        role: r.kind === 'operations' ? await roleName(r) : null,
         sessionId: r.sessionId,
         sessionStatus: session?.status ?? null,
         resident: session?.status === 'running' || session?.runtimeState === 'awaiting_input',
@@ -48,6 +52,12 @@ export async function supportRoomsOf(
       };
     }),
   );
+}
+
+/** The role an operations room's bot answers under, by name; null where it carries none it can read. */
+async function roleName(room: Parameters<typeof roleOfRoom>[0]): Promise<string | null> {
+  const role = await roleOfRoom(room);
+  return role.ok ? role.value.name : null;
 }
 
 /** p50 and p95 of the samples, overall and by how each message reached the session. */

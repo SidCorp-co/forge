@@ -12,9 +12,6 @@ import { FEEDBACK_KIND_OF, visitorIdOf } from './rules.js';
 import { insertAction, insertLink, type RoomRow } from './store.js';
 import { postInThread, roomAuth, scrubbedForRoom } from './thread.js';
 
-/** The reserved name a filing waits under among the changes an asker confirms (`fixes.ts`). */
-export const RECORD_CHANGE = 'forge:record';
-
 /** What the session asks to file: the route (kind), a title, and the need in plain words. */
 export interface RecordRequest {
   thread: string;

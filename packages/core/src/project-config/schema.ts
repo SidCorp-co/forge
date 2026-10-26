@@ -12,6 +12,7 @@ import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import { stewardPolicySchema } from '@forge/contracts/steward-runtime';
 import { supportApiBindingConfigSchema, supportRoomConfigSchema } from '@forge/contracts/support';
+import { operationsRoomConfigSchema } from '@forge/contracts/support-operations';
 import { widgetBindingConfigSchema } from '@forge/contracts/widget';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
 import {
@@ -373,6 +374,7 @@ const BINDING_TARGETS = [
     // the room is a support group answered by its session (REQ-75); exactly one room, refused by
     // name otherwise (`integrations/rocketchat/support-binding.ts`)
     support: supportRoomConfigSchema.optional(),
+    operations: operationsRoomConfigSchema.optional(), // operations rooms (REQ-75 BC-20)
   }),
   targetOf('support-api', { ...supportApiBindingConfigSchema.shape }),
   targetOf('agent', {}),

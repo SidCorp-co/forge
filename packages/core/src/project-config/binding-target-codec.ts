@@ -20,7 +20,7 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   github: ['installationId', 'owner', 'repo'],
   gitlab: ['projectPath', 'projectId'],
   sentry: [],
-  rocketchat: ['rids', 'support'],
+  rocketchat: ['rids', 'support', 'operations'],
   'support-api': ['tools'],
   agent: [],
   widget: ['siteKey', 'allowedOrigins', 'identity', 'title', 'greeting', 'accent', 'limits'],

@@ -11,6 +11,10 @@
 
 import { z } from "zod";
 import type { RefusalStatuses } from "./refusal.js";
+import type {
+	OperationsScope,
+	SupportRoomKind,
+} from "./support-operations.js";
 
 /** The limits a support group runs under unless its binding names its own. */
 export const SUPPORT_LIMIT_DEFAULTS = {
@@ -198,7 +202,7 @@ export type SupportApiBindingConfig = z.infer<
  * What one support action was. `message_in` an inbound message (undelivered until a turn took it),
  * `reply` a line the session posted, `diagnose` a check that ran, `fix_*` a fix's life,
  * `feedback_recorded` an item filed, `progress_posted` a progress line, `refused` a refusal the
- * room was told of.
+ * room was told of, `operation` an operations room's act (its action in `tool`).
  */
 export const SUPPORT_ACTION_KINDS = [
 	"message_in",
@@ -213,12 +217,20 @@ export const SUPPORT_ACTION_KINDS = [
 	"feedback_recorded",
 	"progress_posted",
 	"refused",
+	"operation",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
 /** Who took an action: a group member (by their Rocket.Chat account), the session, or core itself. */
 export const SUPPORT_ACTOR_KINDS = ["member", "session", "core"] as const;
 export type SupportActorKind = (typeof SUPPORT_ACTOR_KINDS)[number];
+
+/**
+ * What waits on its asker's confirm: a granted `fix`, or a `filing` of what needs code as Feedback.
+ * Both share one code space per room, so one `confirm <code>` names one of them.
+ */
+export const SUPPORT_PROPOSAL_KINDS = ["fix", "filing"] as const;
+export type SupportProposalKind = (typeof SUPPORT_PROPOSAL_KINDS)[number];
 
 /** pending: waits on the asker. ran / failed: confirmed and called. declined / expired: never called. */
 export const SUPPORT_FIX_STATES = [
@@ -316,7 +328,6 @@ export interface SupportActionView {
 	at: string;
 }
 
-/** One support group as Forge shows it. */
 /**
  * How a member's message reached the session: as the first message of a cold turn (`start`), of a
  * turn that resumed the resident session (`send`), or written into a turn already running
@@ -345,9 +356,15 @@ export const SUPPORT_LATENCY_WINDOW = 200;
 
 export interface SupportRoomView {
 	id: string;
+	/** The project whose binding attaches the room; an operations room's home, whose box serves it. */
 	projectId: string;
 	bindingId: string;
 	rid: string;
+	kind: SupportRoomKind;
+	/** An operations room's scope; null for a support group. */
+	scope: OperationsScope | null;
+	/** The role its bot answers under; null for a support group. */
+	role: string | null;
 	sessionId: string | null;
 	sessionStatus: string | null;
 	/** Whether the session's process waits resident on its box for the next message. */
@@ -372,6 +389,14 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_TOOLS_UNBOUND",
 	"SUPPORT_REPLY_REFUSED",
 	"SUPPORT_LIMIT_REACHED",
+	"SUPPORT_NOT_A_SUPPORT_ROOM",
+	"OPS_NOT_AN_OPERATIONS_ROOM",
+	"OPS_NO_ROLE",
+	"OPS_ROLE_NOT_GRANTED",
+	"OPS_OUT_OF_SCOPE",
+	"OPS_ASKER_UNMAPPED",
+	"OPS_ISSUE_UNKNOWN",
+	"OPS_RESEARCH_REFUSED",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -400,4 +425,11 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_HOST_NOT_GRANTED: 403,
 	SUPPORT_TOOLS_UNBOUND: 409,
 	SUPPORT_LIMIT_REACHED: 409,
+	SUPPORT_NOT_A_SUPPORT_ROOM: 409,
+	OPS_NOT_AN_OPERATIONS_ROOM: 409,
+	OPS_NO_ROLE: 409,
+	OPS_ROLE_NOT_GRANTED: 403,
+	OPS_OUT_OF_SCOPE: 403,
+	OPS_ASKER_UNMAPPED: 403,
+	OPS_ISSUE_UNKNOWN: 404,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;
