@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.326] - 2026-10-26
+
+Host merges record their landing; API contract served and versioned
+
+### Added
+
+- **Forge's own API contract is published.** `GET /api/openapi.json` serves the OpenAPI 3.1 document and `GET /api/mcp-tools.json` the MCP tool list, with no sign-in, each with a semver version that moves only when the contract does.
+
+### Fixed
+
+- **The published API contract starts above the numbers Forge's interface registry already holds.** `forge-api` and `forge-mcp` are 2.0.0, so the registry accepts them over the 1.0.0 recorded on 2026-10-21.
+- **A merge through Forge records the branch it landed on and the head it merged.** GitLab merges wait out an undecided mergeability, a push during a builder run opens one run at the latest head, and recorded landings take versions.
+- **The steward no longer sends landed work back to reopen.** Landed work that only owes verdicts stays at awaiting_release with the owed criteria named, and a judge declared over an earlier such reopen counts as a judge.
+
 ## [0.4.0-dev.325] - 2026-10-26
 
 The steward stops re-asking for decisions already recorded; decisions show their impact

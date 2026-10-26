@@ -1,1 +1,0 @@
-**The steward no longer sends landed work back to reopen.** Landed work that only owes verdicts stays at awaiting_release with the owed criteria named, and a judge declared over an earlier such reopen counts as a judge.
