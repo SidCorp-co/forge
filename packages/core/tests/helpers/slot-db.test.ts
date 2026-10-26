@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupTestDatabase } from './db.js';
 import {
   bornAt,
@@ -100,6 +100,23 @@ describe('setupTestDatabase({ own })', () => {
         `setupTestDatabase({ own }) takes the reason this file cannot share its worker slot's database`,
       );
     }
+  });
+});
+
+describe('setupTestDatabase in schema mode with no server named', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('points at the README’s test-only Postgres, not the compose dev database', async () => {
+    for (const name of ['TEST_DATABASE_URL', 'TEST_PG_ADMIN_URL', 'TEST_PG_TEMPLATE'])
+      vi.stubEnv(name, '');
+    vi.stubEnv('TEST_DB_MODE', 'schema');
+    const refusal = setupTestDatabase().then(
+      () => '',
+      (err: Error) => err.message,
+    );
+    expect(await refusal).toContain('packages/core/tests/README.md');
+    expect(await refusal).toContain('-c fsync=off');
+    expect(await refusal).not.toContain('docker compose up postgres');
   });
 });
 

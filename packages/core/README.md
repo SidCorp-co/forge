@@ -82,14 +82,17 @@ pnpm --filter @forge/core test
 ### Integration — local schema mode (fast)
 
 ```bash
-# From the repo root
-docker compose up -d postgres
+# A Postgres for tests only, not the compose `postgres` that holds the dev data
+docker run -d --name forge-test-pg -p 127.0.0.1:5433:5432 \
+  -e POSTGRES_USER=forge -e POSTGRES_PASSWORD=forge_secret -e POSTGRES_DB=forge \
+  pgvector/pgvector:pg17 -c fsync=off
 
-export TEST_DATABASE_URL="postgres://forge:forge_secret@localhost:5432/forge"
+export TEST_DATABASE_URL="postgres://forge:forge_secret@localhost:5433/forge"
 pnpm --filter @forge/core test:integration
 ```
 
-Each run creates its own disposable schema inside the target DB and drops it after.
+How each file gets its database, and why this instance and not the compose one:
+[`tests/README.md`](tests/README.md).
 
 ### Integration — CI-style (self-contained, Testcontainers)
 

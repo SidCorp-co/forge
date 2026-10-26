@@ -136,4 +136,30 @@ describe('the slot digest names every kind of schema change a file can leave beh
     ]);
     expect(drift).toEqual([]);
   });
+
+  // A rewrite folds a column's missing value into the rows and clears `atthasmissing` (ISS-1315 r3).
+  const missing = (table: string) =>
+    t.client<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM pg_attribute WHERE attrelid = ${table}::regclass AND atthasmissing
+    `.then(([row]) => row?.n ?? 0);
+
+  it('names nothing for VACUUM FULL, which rewrites a table without changing its schema', async () => {
+    expect(
+      await missing('projects'),
+      'the template gave projects no missing value',
+    ).toBeGreaterThan(0);
+    await t.client.unsafe('VACUUM FULL projects');
+    expect(await missing('projects')).toBe(0);
+    expect(await schemaChangesOn(t.client, clone.hash, () => clone.objects ?? {})).toEqual([]);
+    expect(await driftAfter(['ALTER TABLE projects ALTER COLUMN name SET STATISTICS 500'])).toEqual(
+      ['changed columns of table projects'],
+    );
+  });
+
+  it('names only the index CLUSTER marks, and none of the columns its rewrite touched', async () => {
+    expect(await missing('labels'), 'the template gave labels no missing value').toBeGreaterThan(0);
+    expect(await driftAfter(['CLUSTER labels USING labels_pkey'])).toEqual([
+      'changed index labels_pkey',
+    ]);
+  });
 });

@@ -144,8 +144,9 @@ resets it, the same way for every file:
 
 The schema is read from every catalog the database holds, not from a list of object kinds
 (`slot-db.ts:schemaChangesOn`): one hash over every row of every database-local table in
-`pg_catalog`, less the planner's statistics, large objects, and the `pg_class` columns that move by
-use (storage, row estimates, freeze horizons). A rule, an aggregate, a comment, a collation, a
+`pg_catalog`, less the planner's statistics, large objects, the `pg_class` columns that move by
+use (storage, row estimates, freeze horizons) and a column's missing value (`atthasmissing`,
+`attmissingval`), which `VACUUM FULL` and `CLUSTER` write into the rows. A rule, an aggregate, a comment, a collation, a
 statistics object or a storage option is a difference as a table is;
 `tests/integration/slot-digest-names-every-change-e2e.test.ts` plants each kind and the use that is
 not one. Only once the hash moved are the rows grouped by the object they belong to and named the way
