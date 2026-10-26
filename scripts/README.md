@@ -136,6 +136,13 @@ outside its package is not this checker's, and neither is what no observer insid
 native code, and a listing delegated to a process the test did not start. All three are recorded in
 `docs/proposals/a-test-reading-a-named-file-outside-its-package-is-not-selected-by-it.md`.
 
+The guard keeps each worker's child logs in a directory of its own,
+`<tmpdir>/forge-whole-tree-guard/<pid>-<random>`, and the worker removes it as it ends — on
+`SIGTERM`, which is how vitest ends a fork and which runs no exit handler. A worker killed before it
+could leaves a directory named for a process that is gone, and the next guard to start reaps it by
+that name (`whole-tree-gates.mjs:reapGuardDirs`). A directory per worker that nothing removed piled
+up to 598,704 on one box (ISS-1315).
+
 ### Why flows is where the two axes meet
 
 A `cm:flow` annotation says *which line is step 4 of the dispatch flow*; the integration suite's v8
