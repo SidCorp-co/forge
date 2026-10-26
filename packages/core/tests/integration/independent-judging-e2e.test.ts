@@ -279,6 +279,84 @@ describe('BC-2: a pass by the run that built the work never counts, whatever qa 
   });
 });
 
+// catalog-fe, 2026-10-26 03:53:13Z: the steward sent ISS-11 and ISS-14..19 back from awaiting_release
+// to reopen over verdicts owed at their landing, the code untouched; judge run 58b60850, declared
+// over ISS-23 at that reopen, then read as its builder, and its 8 passes at a36f27ef never counted.
+describe('a judge declared over a reopen that only owed verdicts at the landing is a judge (priced amnesty)', () => {
+  const REOPENED = '2026-10-26T03:53:13Z';
+  const DECLARED = '2026-10-26T05:00:00Z';
+
+  /** ISS-1 landed at NEW, sent back to reopen at `reopenedAt`, a run declared over it at `declaredAt`. */
+  async function reopenedLanded(reopenedAt: string, declaredAt: string) {
+    await world('independent');
+    const req = await agreedRequirement();
+    const issue = await issueTracing(req, 1, ['BC-1'], 'awaiting_release');
+    await db.execute(sql`
+      UPDATE issues SET merged_commit_sha = ${NEW}, merged_at = ${BUILT} WHERE id = ${issue}`);
+    await db.execute(sql`
+      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, reason, actor_type,
+                                      actor_agency, actor_id, source, created_at)
+      VALUES ('issue', ${issue}, 'awaiting_release', 'reopen',
+              'criteria 1-8 pass only at earlier commits, not at ISS-1''s landing', 'user', 'agent',
+              ${ownerId}, 'rest', ${reopenedAt})`);
+    await seedIssueStatus(issue, 'reopen');
+    const judgeRun = await runOn({ 'ISS-1': 'reopen' });
+    await db.execute(sql`
+      UPDATE pipeline_runs SET created_at = ${declaredAt}
+       WHERE id = (SELECT pipeline_run_id FROM agent_sessions WHERE id = ${judgeRun})`);
+    await lease('ISS-1', judgeRun);
+    return { req, issue, judgeRun };
+  }
+
+  it('counts the pass of a run declared over such a reopen made before the cut-off', async () => {
+    const { req, issue } = await reopenedLanded(REOPENED, DECLARED);
+    await judge(issue, 1, 'pass', AFTER, box);
+
+    expect((await bc(req, 'BC-1')).verdict).toBe('passing');
+  });
+
+  // catalog-fe ISS-23, 2026-10-26: the bounce landed as judge run e8996d8d was declared, so its
+  // runIssueStatuses read `reopen` from a run row stamped a moment earlier; and a second request of
+  // the same issue merged after the reopen moved its landing
+  it('counts it where the reopen landed as the run was declared and a later merge moved the landing', async () => {
+    const { req, issue } = await reopenedLanded('2026-10-26T05:00:20Z', DECLARED);
+    await db.execute(sql`UPDATE issues SET merged_at = '2026-10-26T06:00:00Z' WHERE id = ${issue}`);
+    await judge(issue, 1, 'pass', AFTER, box);
+
+    expect((await bc(req, 'BC-1')).verdict).toBe('passing');
+  });
+
+  it('reads it as the builder once anything was built after the reopen', async () => {
+    const { req, issue, judgeRun } = await reopenedLanded(REOPENED, DECLARED);
+    await checked(issue, judgeRun);
+    await judge(issue, 1, 'pass', AFTER, box);
+
+    expect((await bc(req, 'BC-1')).verdict).toBe('not_judged');
+  });
+
+  it('reads it as the builder where a fail stood when the issue was sent back', async () => {
+    const { req, issue } = await reopenedLanded(REOPENED, DECLARED);
+    const [c] = await rows<{ id: string }>(
+      sql`SELECT id FROM issue_criteria WHERE issue_id = ${issue} AND n = 1`,
+    );
+    await db.execute(sql`
+      INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, reason, identity_kind, commit_sha,
+                                      author_user_id, author_agency, judge, created_at)
+      VALUES (${c?.id}, ${issue}, 'fail', 'the report is empty', 'commit', ${NEW}, ${ownerId}, 'agent',
+              'qa', '2026-10-26T03:00:00Z')`);
+    await judge(issue, 1, 'pass', AFTER, box);
+
+    expect((await bc(req, 'BC-1')).verdict).toBe('not_judged');
+  });
+
+  it('gives a reopen made after the cut-off nothing: the steward no longer makes one', async () => {
+    const { req, issue } = await reopenedLanded('2026-10-28T03:53:13Z', '2026-10-28T05:00:00Z');
+    await judge(issue, 1, 'pass', '2026-10-29T10:00:00Z', box);
+
+    expect((await bc(req, 'BC-1')).verdict).toBe('not_judged');
+  });
+});
+
 describe('BC-3: a failing verdict reopens the issue that owns the work', () => {
   beforeEach(() => world('independent'));
 

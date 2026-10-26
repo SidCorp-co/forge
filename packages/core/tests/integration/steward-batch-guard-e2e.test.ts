@@ -4,10 +4,12 @@
  * issues are judged after the release. Given no facts, the check claimed "no production
  * environment", cited a proof plan that does not exist, and reopened ISS-635 two minutes after the
  * batch claimed it; the release shipped it anyway. Then the three post-release judges were skipped
- * `budget_spent` and left nothing on the issues. Each refusal is kernel input, read at the steward's
- * own move door (`release-batch/reopen-guard.ts`), whatever the model concluded.
+ * `budget_spent` and left nothing on the issues. The steward now sends no issue back at all
+ * (`steward/door-writes.ts:MOVE`, 2026-10-26): its output check reads the release facts
+ * (`release-batch/steward-release-facts.ts`) and writes what is missing in its note.
  *
- * @direct-test-of packages/core/src/release-batch/reopen-guard.ts
+ * @direct-test-of packages/core/src/release-batch/steward-release-facts.ts
+ * @direct-test-of packages/core/src/steward/door-writes.ts
  * @direct-test-of packages/core/src/steward/dispatch.ts
  */
 
@@ -131,51 +133,35 @@ async function stewardReopens(issueId: string, issueKey: string) {
   );
 }
 
-describe("the steward's reopen at the release gate, on a project with production", () => {
-  it('is refused for a member of a live release batch, as ISS-635 was not', async () => {
+describe('the steward sends nothing back at the release gate, on a project with production', () => {
+  /** The steward's move refused by its field, and the issue left where it was. */
+  async function refusedAndKept(issue: string, key: string) {
+    const answer = await stewardReopens(issue, key);
+    expect(answer.ok).toBe(false);
+    expect(answer.text).toContain('to');
+    expect(await statusOf(issue)).toBe('awaiting_release');
+  }
+
+  it('for a member of a live release batch, as ISS-635 was reopened two minutes after the claim', async () => {
     const issue = await atTheGate(635);
-    const run = await batchClaims([issue]);
-
-    const answer = await stewardReopens(issue, 'ISS-635');
-
-    expect(answer.ok).toBe(false);
-    expect(answer.text).toContain('STEWARD_REOPEN_RELEASING');
-    expect(answer.text).toContain(
-      `ISS-635 is a member of release batch ${run}, which is still running`,
-    );
-    expect(await statusOf(issue)).toBe('awaiting_release');
+    await batchClaims([issue]);
+    await refusedAndKept(issue, 'ISS-635');
   });
 
-  it('is refused over missing verdicts where the policy owes none at the gate', async () => {
+  it('over missing verdicts where the policy owes none at the gate', async () => {
     await judgedAfterRelease();
-    const issue = await atTheGate(634);
-
-    const answer = await stewardReopens(issue, 'ISS-634');
-
-    expect(answer.ok).toBe(false);
-    expect(answer.text).toContain('STEWARD_REOPEN_JUDGED_AFTER_RELEASE');
-    expect(answer.text).toContain('delivery.verdictsRequired: false');
-    expect(await statusOf(issue)).toBe('awaiting_release');
+    await refusedAndKept(await atTheGate(634), 'ISS-634');
   });
 
-  it('still sends it back where the policy owes none but a criterion is judged fail', async () => {
+  it('where a criterion is judged fail: the fail reopens it, by its own consumer', async () => {
     await judgedAfterRelease();
     const issue = await atTheGate(634);
     await failed(issue, 2);
-
-    const answer = await stewardReopens(issue, 'ISS-634');
-
-    expect(answer.ok, answer.text).toBe(true);
-    expect(await statusOf(issue)).toBe('reopen');
+    await refusedAndKept(issue, 'ISS-634');
   });
 
-  it('still sends it back where the policy owes verdicts and none is there, as before', async () => {
-    const issue = await atTheGate(632);
-
-    const answer = await stewardReopens(issue, 'ISS-632');
-
-    expect(answer.ok, answer.text).toBe(true);
-    expect(await statusOf(issue)).toBe('reopen');
+  it('where the policy owes verdicts and none is there: the note names them, a person reopens', async () => {
+    await refusedAndKept(await atTheGate(632), 'ISS-632');
   });
 });
 

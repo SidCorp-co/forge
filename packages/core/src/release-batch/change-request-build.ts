@@ -8,7 +8,7 @@
  * (`landed-on-target.ts`) is landed at that commit (`from: 'landed'`), never read as unlanded.
  *
  * One reading, through `landed-build.ts:deliveredBuildsOf`, for the build a verdict defaults to
- * (`judged-build.ts`), the steward's reopen rule (`reopen-guard.ts`) and a requirement's coverage;
+ * (`judged-build.ts`), the steward's release facts (`steward-release-facts.ts`) and a requirement's coverage;
  * the release's own admission reads it too, for its approval (`approval-checklist.ts`) and for each
  * merge (`change-request-merge.ts`), through `changeRequestHeadWhy`.
  */

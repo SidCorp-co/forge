@@ -16,6 +16,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { replaceCriteria } from '../../src/issues/criteria/service.js';
+import { stewardReleaseFacts } from '../../src/release-batch/index.js';
 import { api, userToken } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -261,15 +262,15 @@ describe('the roster needs no change request for work already on the target bran
 describe('nothing reads work already on the target branch as unlanded', () => {
   beforeEach(() => seedWorld(true));
 
-  it('refuses the steward’s reopen of ISS-3 when every criterion passes at its commit on dev', async () => {
+  it('tells the steward ISS-3 misses nothing when every criterion passes at its commit on dev', async () => {
     const three = await marked(3, C988);
     await passedAt(three, C988);
 
+    const facts = await stewardReleaseFacts(world.projectId, three);
+    expect(facts).toContain('already on `dev`');
+    expect(facts).toContain('no evidence is missing');
     const answer = await stewardReopens(three, 'ISS-3');
-
     expect(answer.ok, answer.text).toBe(false);
-    expect(answer.text).toContain('STEWARD_REOPEN_COUNTED');
-    expect(answer.text).toContain('already on `dev`');
     expect(await statusOf(three)).toBe('awaiting_release');
   });
 
@@ -287,20 +288,21 @@ describe('nothing reads work already on the target branch as unlanded', () => {
     await passedAt(three, C988);
     host.fail = new Error('GitLab answered 503');
 
+    expect(await stewardReleaseFacts(world.projectId, three)).toContain('could not be read');
     const answer = await stewardReopens(three, 'ISS-3');
-
     expect(answer.ok, answer.text).toBe(false);
-    expect(answer.text).toContain('could not be read');
     expect(await statusOf(three)).toBe('awaiting_release');
   });
 
-  it('lets the steward reopen ISS-12, whose mark names a commit no host branch holds', async () => {
+  it('sends ISS-12 back no more than the others: its mark names a commit no host branch holds, and the note says so', async () => {
     const twelve = await marked(12, LOCAL);
     await passedAt(twelve, LOCAL);
 
+    expect(await stewardReleaseFacts(world.projectId, twelve)).not.toContain(
+      'no evidence is missing',
+    );
     const answer = await stewardReopens(twelve, 'ISS-12');
-
-    expect(answer.ok, answer.text).toBe(true);
-    expect(await statusOf(twelve)).toBe('reopen');
+    expect(answer.ok, answer.text).toBe(false);
+    expect(await statusOf(twelve)).toBe('awaiting_release');
   });
 });

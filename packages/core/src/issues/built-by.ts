@@ -4,7 +4,9 @@
 // landed (the status its run opened the issue at, `runIssueStatuses`, is not awaiting_release,
 // closed or dropped), or it holds the issue's lease with no declaration saying it came after. A
 // judge run declared over an awaiting_release issue holds its lease too, on the same box, and is
-// not the builder: its declaration says the work had landed.
+// not the builder: its declaration says the work had landed. So is one declared over a reopen the
+// steward made of landed work that only owed verdicts, before that reopen was refused
+// (`owedVerdictsReopenSql`, a priced amnesty).
 //
 // A verdict naming the session that recorded it (`criterion_verdicts.run_session_id`, 0528) is read
 // by that session alone. One naming none, as every row before 0528, is read off its box: the
@@ -30,6 +32,54 @@ const LANDED_LIST = sql.join(
   sql`, `,
 );
 
+/**
+ * Before this instant the delivery-policy steward's output check could send landed work back to
+ * `reopen` when all it lacked was verdicts at its landing (catalog-fe ISS-11 and ISS-14..19,
+ * 2026-10-26 03:53Z); from the change that takes that move away from the steward
+ * (`steward/door-writes.ts:MOVE`) it sends nothing back. A cut-off, not a flag: no reopen made
+ * after it is ever read this way.
+ */
+export const OWED_VERDICTS_REOPEN_CUTOFF = '2026-10-27T00:00:00Z';
+
+/**
+ * A priced amnesty for the reopens made before the cut-off: a run declared over an issue standing at
+ * such a reopen judges it rather than builds it, read off the record because no declaration names a
+ * role. It holds where the issue's latest move into `reopen` by the run's declaration was from
+ * `awaiting_release`, before the cut-off, over a recorded landing (`merged_commit_sha`), with no
+ * failing verdict recorded on the issue by then and no check other than a review recorded on it
+ * after (nothing was built since). The declaration is read with `REOPEN_DECLARATION_SLACK` of give:
+ * catalog-fe ISS-23's bounce landed as judge run e8996d8d was declared, so its run row is stamped a
+ * moment before the reopen its `runIssueStatuses` read. The landing is not required to predate the
+ * reopen, because a later merge of the same issue moves it (`merge-record.ts:recordIssueMerge`).
+ * What it costs: a builder declared over such a reopen to rebuild, before recording any check, reads
+ * as a judge. What ends it: no issue stands at a reopen made before the cut-off; then this clause
+ * matches nothing and is deleted.
+ */
+const REOPEN_DECLARATION_SLACK = sql.raw(`interval '10 minutes'`);
+
+function owedVerdictsReopenSql(issueId: SQL): SQL<boolean> {
+  const declared = sql`(r.created_at + ${REOPEN_DECLARATION_SLACK})`;
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM kernel_transitions t JOIN issues ai ON ai.id = ${issueId}
+     WHERE t.entity = 'issue' AND t.entity_id = ${issueId}
+       AND t.to_status = 'reopen' AND t.from_status = 'awaiting_release'
+       AND t.created_at < ${OWED_VERDICTS_REOPEN_CUTOFF}::timestamptz
+       AND t.created_at <= ${declared}
+       AND NOT EXISTS (
+         SELECT 1 FROM kernel_transitions later
+          WHERE later.entity = 'issue' AND later.entity_id = ${issueId}
+            AND later.to_status = 'reopen' AND later.created_at > t.created_at
+            AND later.created_at <= ${declared})
+       AND ai.merged_commit_sha IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM criterion_verdicts fv JOIN issue_criteria fc ON fc.id = fv.criterion_id
+          WHERE fc.issue_id = ${issueId} AND fv.verdict = 'fail' AND fv.created_at <= t.created_at)
+       AND NOT EXISTS (
+         SELECT 1 FROM issue_check_runs bk
+          WHERE bk.issue_id = ${issueId} AND bk.kind <> 'review' AND bk.created_at > t.created_at)
+  )`;
+}
+
 /** True where session `session` built issue `issueId`. */
 function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
   const key = sql`(SELECT ${canonicalIssueKeySql(sql`bi.iss_seq`)} FROM issues bi WHERE bi.id = ${issueId})`;
@@ -37,7 +87,9 @@ function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
   const declaredAfterLanding = sql`EXISTS (
     SELECT 1 FROM agent_sessions ds JOIN pipeline_runs r ON r.id = ds.pipeline_run_id
      WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
-       AND ${runGroupHolds(sql`r.metadata`, key)} AND ${opened} IN (${LANDED_LIST})
+       AND ${runGroupHolds(sql`r.metadata`, key)}
+       AND (${opened} IN (${LANDED_LIST})
+            OR (${opened} = 'reopen' AND ${owedVerdictsReopenSql(issueId)}))
   )`;
   return sql<boolean>`(
     EXISTS (
@@ -49,6 +101,7 @@ function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
        WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
          AND ${runGroupHolds(sql`r.metadata`, key)}
          AND COALESCE(${opened}, '') NOT IN (${LANDED_LIST})
+         AND NOT (COALESCE(${opened}, '') = 'reopen' AND ${owedVerdictsReopenSql(issueId)})
     )
     OR (EXISTS (
       SELECT 1 FROM issue_leases l JOIN issues bi ON bi.id = ${issueId}

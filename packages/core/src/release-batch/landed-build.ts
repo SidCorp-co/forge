@@ -3,8 +3,8 @@
  * no production environment. Landing on the project's working branch IS the delivery there (owner
  * ruling 2026-10-22), so the build its verdicts count on is the landing, never a production probe
  * that cannot exist. One definition, read by the record that closes the issue (`recorded.ts`), a
- * requirement's coverage (`requirements/standing-coverage.ts`), the steward's output check
- * (`steward/door-writes.ts`) and the build a verdict defaults to (`judged-build.ts`).
+ * requirement's coverage (`requirements/standing-coverage.ts`), the steward's release facts
+ * (`landed-facts.ts`) and the build a verdict defaults to (`judged-build.ts`).
  *
  * The landed build is, first found: the commit the landing record that closed the issue names; the
  * merge commit Forge observed (`merged_commit_sha`); the commit the current merge mark claims
@@ -25,7 +25,7 @@ import {
   landedIdentityWhy,
   verdictEarns,
 } from '@forge/contracts/verdict-identity';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
@@ -418,65 +418,6 @@ export async function aheadBuildsOf(
     });
   }
   return out;
-}
-
-/** The live criteria the issue's design plans a proof for, by number. */
-async function proofPlanned(issueId: string): Promise<number[]> {
-  const rows = (await db.execute(sql`
-    SELECT c.n FROM issue_design_criteria d
-      JOIN issue_criteria c ON c.id = d.criterion_id AND c.retired_at IS NULL
-     WHERE d.issue_id = ${issueId}::uuid
-     ORDER BY c.n
-  `)) as unknown as Array<{ n: number }>;
-  return rows.map((r) => Number(r.n));
-}
-
-/**
- * Why the steward's output check may not send this issue back, or null where it may. Under release
- * mode `none` both of its reasons read the landed build: a verdict counts on the running build where
- * it was judged at the landed commit, and since no release run replays a probe there, the design's
- * proof plan is met where each criterion it plans to prove has that pass. So an issue at the gate
- * whose landing is recorded and whose every live criterion, every planned one among them, passes at
- * that commit is missing nothing.
- */
-export async function landedReopenRefusal(issueId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ projectId: issues.projectId, status: issues.status })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (row?.status !== 'awaiting_release') return null;
-  const delivery = await deliveryOf(row.projectId);
-  if (!delivery) return null;
-  const build = (await deliveredBuildsOf(row.projectId, delivery, [issueId])).get(
-    issueId.toLowerCase(),
-  );
-  if (build?.sha === null && build.unread) {
-    return `${build.why}. Nothing is sent back on a read that failed: its work may already be on that branch. Read it again once the host answers.`;
-  }
-  if (!build?.sha) return null;
-  const sha = build.sha;
-  const [standing] = await landedStandings(
-    [issueId],
-    () => sha,
-    () => build.via ?? null,
-  );
-  if (!standing?.owes || standing.criteria.length === 0) return null;
-  if (standing.criteria.some((c) => !c.counts)) return null;
-  const counted = new Set(standing.criteria.map((c) => c.criterion));
-  const planned = await proofPlanned(issueId);
-  if (planned.some((n) => !counted.has(n))) return null;
-  const plan =
-    planned.length > 0
-      ? ` The design's proof plan is met the same way: each of the ${planned.length} criteria it plans to prove passes at that commit, and with no production environment no release run replays a probe.`
-      : '';
-  if (delivery === 'change-request' && (build.from === 'landed' || build.from === 'ahead')) {
-    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. Its work is already on the branch this project releases from, with no change request left to merge, so it is landed, and no evidence is missing.${plan} Wake the master to cut the release that carries it (POST /api/projects/${row.projectId}/release-batches) instead of sending it back.`;
-  }
-  if (delivery === 'change-request') {
-    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project releases by merging its change requests, with no production environment: until the request merges its unchanged head is the build its verdicts are read on, and no landing record is owed (REQ-63 BC-6).${plan} No evidence is missing: wake the master to cut the release that merges it (POST /api/projects/${row.projectId}/release-batches) instead of sending it back.`;
-  }
-  return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project declares no production environment, so that landing is the running build and its verdicts are read there.${plan} No evidence is missing: wake the master to record the landing (POST /api/projects/${row.projectId}/release-records) instead of sending it back.`;
 }
 
 /** One issue's landed build, or why it has none. */

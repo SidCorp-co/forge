@@ -8,7 +8,7 @@
 import { deviceHolderUserId, workspaceHolderUserId } from './devices/index.js';
 import { provideLessonsPorts } from './lessons/index.js';
 import { getMockupAs } from './mockups/index.js';
-import { stewardReleaseFacts, stewardReopenRefusal } from './release-batch/index.js';
+import { stewardReleaseFacts } from './release-batch/index.js';
 import { provideReleasePagePorts } from './release-page/index.js';
 import { projectDeviceIds } from './runners/index.js';
 import {
@@ -44,7 +44,6 @@ export function provideStewardDomainPorts(
   provideStewardPorts({
     doorFetch,
     wakeMasters: wakeMastersForSteward,
-    reopenRefusal: stewardReopenRefusal,
     releaseFacts: stewardReleaseFacts,
     masterAccounts: masterAccountsOf,
   });
