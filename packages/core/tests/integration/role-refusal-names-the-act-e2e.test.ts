@@ -180,6 +180,17 @@ describe('the doors that kept the bare gate until ISS-1236 r2 and ISS-1300 r5 la
       403,
       'You are a member of this project, so you cannot onboard it. Only an admin of this project can, so ask one of them.',
     ]);
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, metadata)
+      VALUES (${runId}, ${projectId}, 'system', 'running', now(), '{"source":"release-batch"}'::jsonb)`);
+    const abort = await send(
+      'viewer',
+      'POST',
+      `/api/projects/${projectId}/release-batches/${runId}/abort`,
+      {},
+    );
+    expect([abort.status, abort.message]).toEqual([403, viewerCannot('abort its release batches')]);
     const rooms = await send('outsider', 'GET', `/api/conversations?projectId=${projectId}`);
     expect([rooms.status, rooms.message]).toEqual([
       403,
