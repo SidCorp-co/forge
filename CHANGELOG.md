@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.329] - 2026-10-26
+
+Merges stamp only their own issues; webhookless sources read checks and change requests
+
+### Added
+
+- **A project with no source webhook reads its checks and fixes its change requests through Forge.** Commit and branch checks are read live, and a change request is edited, closed or re-read onto Forge's record by its number.
+
+### Fixed
+
+- **A support group is told when its assistant's turn fails.** Each thread left unanswered is asked once to send again, and the room records a `turn_failed` refusal.
+- **A merge stamps only the issues it landed.** A request the host marks merged through another's commits no longer stamps or supersedes issues its links name; each refused stamp is written on the issue with the commit and why.
+
 ## [0.4.0-dev.328] - 2026-10-26
 
 Merge requests link only the issues they deliver; wrong links can be removed

@@ -1,1 +1,0 @@
-**A merge stamps only the issues it landed.** A request the host marks merged through another's commits no longer stamps or supersedes issues its links name; each refused stamp is written on the issue with the commit and why.
