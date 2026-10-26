@@ -63,6 +63,7 @@ import {
   refuseSwitchOnOverRemoved,
   stagesOnNonDeployBinding,
   summarizeProjectBinding,
+  updateBindingOrRefuse,
 } from './route-helpers.js';
 import {
   bindingChangedSchema,
@@ -258,16 +259,6 @@ integrationsRoutes.patch(
       });
     }
 
-    // Connection-tier config and secrets go to the connection; binding-tier config and `active` to the binding.
-    if (mergedConfig !== undefined || mergedSecrets !== undefined) {
-      const connPatch: Parameters<typeof updateConnection>[1] = {};
-      if (mergedConfig !== undefined) connPatch.config = mergedConfig;
-      if (mergedSecrets !== undefined) {
-        connPatch.secrets = mergedSecrets;
-        Object.assign(connPatch, keySavedHere(connection, patch.secrets ?? {}));
-      }
-      await updateConnection(connection.id, connPatch);
-    }
     if (
       mergedBindingConfig !== undefined ||
       patch.active !== undefined ||
@@ -281,7 +272,19 @@ integrationsRoutes.patch(
       if (patch.instructions !== undefined) bindingPatch.instructions = patch.instructions;
       if (patch.agentAccess !== undefined) bindingPatch.agentAccess = patch.agentAccess;
       if (patch.stages !== undefined) bindingPatch.stages = patch.stages;
-      await updateBinding(binding.id, bindingPatch);
+      // A switch-on that loses a race to another lands on the index, before the connection is touched.
+      await updateBindingOrRefuse(binding, bindingPatch);
+    }
+
+    // Binding-tier config and `active` go to the binding first; connection-tier config and secrets to the connection.
+    if (mergedConfig !== undefined || mergedSecrets !== undefined) {
+      const connPatch: Parameters<typeof updateConnection>[1] = {};
+      if (mergedConfig !== undefined) connPatch.config = mergedConfig;
+      if (mergedSecrets !== undefined) {
+        connPatch.secrets = mergedSecrets;
+        Object.assign(connPatch, keySavedHere(connection, patch.secrets ?? {}));
+      }
+      await updateConnection(connection.id, connPatch);
     }
 
     const refreshed = await findBindingWithConnectionById(id);

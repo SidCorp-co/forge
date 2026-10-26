@@ -138,6 +138,37 @@ describe('a project integration removed and connected again', () => {
     ]);
   });
 
+  // Whole-set review F1: two removed bindings switched on at once, each with a new key. Whichever
+  // loses is refused by name before its connection's key is touched, however the two interleave.
+  it('switches on one of two removed bindings sent at once, and leaves the loser and its key as they were', async () => {
+    const first = await createdId();
+    await call('DELETE', `/api/projects/${projectId}/integrations/${first}`);
+    const second = await createdId();
+    await call('DELETE', `/api/projects/${projectId}/integrations/${second}`);
+    const keys = async () =>
+      rows<{ id: string; active: boolean; key: string }>(sql`
+        SELECT b.id, b.active, encode(c.secrets_enc, 'hex') AS key
+          FROM integration_bindings b JOIN integration_connections c ON c.id = b.connection_id
+         WHERE b.project_id = ${projectId} ORDER BY b.created_at`);
+    const before = await keys();
+    const answers = await Promise.all(
+      [first, second].map((id, i) =>
+        call('PATCH', `/api/projects/${projectId}/integrations/${id}`, {
+          active: true,
+          secrets: { authToken: `scratch-new-${i}` },
+        }),
+      ),
+    );
+    expect(answers.map((a) => a.status).sort()).toEqual([200, 409]);
+    const lost = answers.findIndex((a) => a.status === 409);
+    expect(answers[lost]?.body.message).toBe(
+      'Another Sentry integration is switched on for this project, so this one cannot be switched on too. Disconnect that one from this project first.',
+    );
+    const after = await keys();
+    expect(after.filter((b) => b.active).map((b) => b.id)).toEqual([[first, second][1 - lost]]);
+    expect(after[lost]).toEqual(before[lost]);
+  });
+
   it('refuses a second while one is switched on, and leaves no connection behind', async () => {
     await createdId();
     const before = await connectionCount();

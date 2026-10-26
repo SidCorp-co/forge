@@ -2,6 +2,7 @@ import type { ConnectionAccess } from '@forge/contracts';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
 import { effectiveProjectRole, projectWriteRefusal } from '../lib/authz.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type AgentAccess, noAgentPathMessage } from './agent-access.js';
@@ -31,6 +32,8 @@ import {
   findSwitchedOnServiceBindingAtLabel,
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
+  type UpdateBindingPatch,
+  updateBinding,
 } from './store.js';
 import type { HealthCheckResult, IntegrationProvider } from './types.js';
 import { isVaultConfigured } from './vault.js';
@@ -223,11 +226,23 @@ export async function refuseSwitchOnBesideAnother(
     binding.label,
     binding.id,
   );
-  if (!other) return;
-  throw alreadyExists(
-    `Another ${providerLabel(binding.provider)} integration is switched on for this project, so this one cannot be switched on too. Disconnect that one from this project first.`,
-  );
+  if (other) throw anotherSwitchedOn(binding.provider);
 }
+
+/** `updateBinding`, with a switch-on refused by the index answered as `anotherSwitchedOn`. */
+export async function updateBindingOrRefuse(
+  binding: IntegrationBindingRow,
+  patch: UpdateBindingPatch,
+): Promise<void> {
+  await updateBinding(binding.id, patch).catch((err: unknown) => {
+    throw isUniqueViolation(err) ? anotherSwitchedOn(binding.provider) : err;
+  });
+}
+
+export const anotherSwitchedOn = (provider: string) =>
+  alreadyExists(
+    `Another ${providerLabel(provider)} integration is switched on for this project, so this one cannot be switched on too. Disconnect that one from this project first.`,
+  );
 
 /**
  * Tell a provider its connection changed, where the provider declares that it cares.
