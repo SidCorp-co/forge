@@ -233,7 +233,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       .select({
         agentConfig: projects.agentConfig,
         environments: projects.environments,
-        repoPath: projects.repoPath,
+        repoPath: projects.repoPathHint,
         repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
         releaseChain: projects.releaseChain,

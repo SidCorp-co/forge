@@ -253,7 +253,7 @@ describe('a release reads the probe its live binding declares, and nothing else'
     const id = await project('ready', { live: { url: 'https://r.test' } });
     await harness.db.execute(sql`
       UPDATE projects
-         SET base_branch = 'main', repo_path = '/srv/app',
+         SET base_branch = 'main', repo_path_hint = '/srv/app',
              release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb
        WHERE id = ${id}
     `);

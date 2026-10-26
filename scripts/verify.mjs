@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { baseRef } from './lib/base-branch.mjs';
@@ -17,7 +17,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CI_PATH = join(ROOT, '.github', 'workflows', 'ci.yml');
 const COMPOSITE_PATH = join(ROOT, '.github', 'actions', 'setup-workspace', 'action.yml');
 
-const CHECKS = [
+/** Every check the gate declares, read as data by the tests that judge the declarations. */
+export const CHECKS = [
   {
     axis: 'language',
     label: 'source-language',
@@ -211,7 +212,7 @@ const CHECKS = [
     label: 'repo-path-readers',
     layer: 'shared',
     reads:
-      'every reader of projects.repoPath in core; a subset reports clean on a tree that is not',
+      'every file in core naming the projects checkout hint; a subset reports clean on a tree that is not',
     cmd: ['node', 'scripts/check-repo-path-readers.mjs', '--all'],
     scanned: /^repo-path-readers: (\d+) file\(s\) scanned/m,
   },
@@ -239,6 +240,28 @@ const CHECKS = [
     layer: 'shared',
     reads: 'the whole packages/core program, every file typed against every other',
     cmd: ['pnpm', '--filter', '@forge/core', 'exec', 'tsc', '--noEmit', '--extendedDiagnostics'],
+    scanned: /^Files:\s+(\d+)/m,
+    needs: ['deps', 'observability-build', 'contracts-build'],
+  },
+  {
+    axis: 'form',
+    label: 'web typecheck',
+    layer: 'shared',
+    reads:
+      'the whole packages/web-v2 program, the type pass `next build` runs, which nothing else here ran (ISS-1236)',
+    cmd: [
+      'pnpm',
+      '--filter',
+      'web-v2',
+      'exec',
+      'tsc',
+      '--noEmit',
+      '--extendedDiagnostics',
+      '--incremental',
+      'false',
+      '--typeRoots',
+      '../../node_modules/@types',
+    ],
     scanned: /^Files:\s+(\d+)/m,
     needs: ['deps', 'observability-build', 'contracts-build'],
   },
@@ -792,61 +815,70 @@ function report(results, { code: parityCode, said }, memo) {
   return codes.some((c) => c !== 0) ? 1 : 0;
 }
 
-const args = process.argv.slice(2);
-const bad = args.filter(
-  (a) => !['--ci-parity', '--entry', '--window', '--all', '--memo'].includes(a),
-);
-if (bad.length || (args.includes('--entry') && args.includes('--window'))) {
-  console.error(
-    `usage: verify.mjs [--ci-parity | --entry | --window] [--all]  |  --memo\nunknown: ${bad.join(' ') || 'both --entry and --window'}`,
+/** The gate itself, run only when this file is the program, so a test can import CHECKS. */
+async function main() {
+  const args = process.argv.slice(2);
+  const bad = args.filter(
+    (a) => !['--ci-parity', '--entry', '--window', '--all', '--memo'].includes(a),
   );
-  process.exit(2);
-}
-if (args.includes('--memo')) {
-  for (const line of memoListing()) console.log(line);
-  process.exit(0);
-}
-
-assertEveryCheckIsLayered();
-assertEveryCheckProvesScan();
-assertEveryCheckDeclaresItsInputs();
-assertEverySkipIsCovered();
-
-if (args.includes('--ci-parity')) process.exit(ciParity());
-
-const scope = mergeBase();
-if (scope.refusal) {
-  console.error(`verify: ${scope.refusal}`);
-  process.exit(2);
-}
-const base = scope.base;
-
-let mode = args.includes('--entry') ? 'entry' : args.includes('--window') ? 'window' : 'whole';
-if (mode === 'entry') {
-  const judged = entryEligibility(ROOT, base);
-  if (judged.refusal) {
-    console.error(`verify --entry: ${judged.refusal}`);
+  if (bad.length || (args.includes('--entry') && args.includes('--window'))) {
+    console.error(
+      `usage: verify.mjs [--ci-parity | --entry | --window] [--all]  |  --memo\nunknown: ${bad.join(' ') || 'both --entry and --window'}`,
+    );
     process.exit(2);
   }
-  if (!judged.eligible) {
-    console.log(
-      'verify --entry: this change is not queue-eligible, so it takes the whole gate here:\n' +
-        judged.surfaces.map((s) => `  ${s}`).join('\n'),
-    );
-    mode = 'whole';
+  if (args.includes('--memo')) {
+    for (const line of memoListing()) console.log(line);
+    process.exit(0);
   }
-}
-const checks = checksFor(mode, CHECKS);
-console.log(
-  `verify: ${checks.length} checks against ${base.slice(0, 8)} on ${BASE_REF} — ${MODES[mode]}`,
-);
-if (mode === 'entry') {
-  const left = CHECKS.filter((c) => c.layer === 'shared').map((c) => c.label);
-  console.log(`  a verify window pays the ${left.length} shared check(s) once: ${left.join(', ')}`);
-}
-const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
-const memo = new Memo({ root: ROOT, args, baseRef: BASE_REF });
-const results = await runAll(checks, base, WIDTH, memo);
 
-const said = [];
-process.exit(report(results, { code: ciParity(true, said), said }, memo));
+  assertEveryCheckIsLayered();
+  assertEveryCheckProvesScan();
+  assertEveryCheckDeclaresItsInputs();
+  assertEverySkipIsCovered();
+
+  if (args.includes('--ci-parity')) process.exit(ciParity());
+
+  const scope = mergeBase();
+  if (scope.refusal) {
+    console.error(`verify: ${scope.refusal}`);
+    process.exit(2);
+  }
+  const base = scope.base;
+
+  let mode = args.includes('--entry') ? 'entry' : args.includes('--window') ? 'window' : 'whole';
+  if (mode === 'entry') {
+    const judged = entryEligibility(ROOT, base);
+    if (judged.refusal) {
+      console.error(`verify --entry: ${judged.refusal}`);
+      process.exit(2);
+    }
+    if (!judged.eligible) {
+      console.log(
+        'verify --entry: this change is not queue-eligible, so it takes the whole gate here:\n' +
+          judged.surfaces.map((s) => `  ${s}`).join('\n'),
+      );
+      mode = 'whole';
+    }
+  }
+  const checks = checksFor(mode, CHECKS);
+  console.log(
+    `verify: ${checks.length} checks against ${base.slice(0, 8)} on ${BASE_REF} — ${MODES[mode]}`,
+  );
+  if (mode === 'entry') {
+    const left = CHECKS.filter((c) => c.layer === 'shared').map((c) => c.label);
+    console.log(
+      `  a verify window pays the ${left.length} shared check(s) once: ${left.join(', ')}`,
+    );
+  }
+  const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
+  const memo = new Memo({ root: ROOT, args, baseRef: BASE_REF });
+  const results = await runAll(checks, base, WIDTH, memo);
+
+  const said = [];
+  process.exit(report(results, { code: ciParity(true, said), said }, memo));
+}
+
+// Real paths on both sides: either may name this module through a symlink.
+const entry = process.argv[1];
+if (entry && realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url))) await main();

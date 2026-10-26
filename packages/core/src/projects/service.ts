@@ -97,7 +97,7 @@ export async function createProject(input: NewProject) {
           ...(input.releaseChain !== undefined ? { releaseChain: input.releaseChain } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.kind !== undefined ? { kind: input.kind } : {}),
-          ...(input.repoPath !== undefined ? { repoPath: input.repoPath } : {}),
+          ...(input.repoPath !== undefined ? { repoPathHint: input.repoPath } : {}),
         })
         .returning(CREATED_PROJECT);
       if (!project) throw new Error('projects: insert returned no row');
@@ -172,7 +172,10 @@ export async function readProjectSummary(projectId: string) {
   return row ?? null;
 }
 
-export async function updateProject(projectId: string, updates: Record<string, unknown>) {
+/** The columns a settings write may set, so a key naming no column fails to compile rather than vanish. */
+export type ProjectUpdates = Partial<typeof projects.$inferInsert>;
+
+export async function updateProject(projectId: string, updates: ProjectUpdates) {
   const [row] = await db
     .update(projects)
     .set(updates)
@@ -202,7 +205,7 @@ export async function readProjectWithConfig(projectId: string) {
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      repoPath: projects.repoPath,
+      repoPath: projects.repoPathHint,
       baseBranch: projects.baseBranch,
       releaseChain: projects.releaseChain,
       agentConfig: projects.agentConfig,

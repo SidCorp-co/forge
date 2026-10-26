@@ -32,7 +32,7 @@ export async function seedPoolBox(harness: TestDatabase): Promise<PoolBox> {
     WHERE id = ${deviceId}
   `);
   await harness.db.execute(
-    sql`UPDATE projects SET repo_path = '/tmp/pool-lanes' WHERE id = ${projectId}`,
+    sql`UPDATE projects SET repo_path_hint = '/tmp/pool-lanes' WHERE id = ${projectId}`,
   );
   await harness.db.execute(sql`
     INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at)

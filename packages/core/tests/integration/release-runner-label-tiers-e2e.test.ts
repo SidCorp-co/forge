@@ -91,7 +91,7 @@ async function seed(tiers: {
   });
   await harness.db.execute(sql`
     UPDATE projects
-       SET base_branch = 'main', release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb, repo_path = '/srv/app',
+       SET base_branch = 'main', release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb, repo_path_hint = '/srv/app',
            environments = ${JSON.stringify({
              live: { url: 'https://app.example.test' },
            })}::jsonb

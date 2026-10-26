@@ -91,7 +91,7 @@ async function seed(binding: Record<string, unknown> = {}): Promise<World> {
   await harness.db.execute(sql`
     UPDATE projects
        SET base_branch = 'main', release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb,
-           repo_path = '/srv/app',
+           repo_path_hint = '/srv/app',
            environments = ${JSON.stringify({ live: { url: 'https://app.example.test' } })}::jsonb
      WHERE id = ${project.id}
   `);

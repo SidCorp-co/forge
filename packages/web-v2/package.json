@@ -10,6 +10,7 @@
     "start": "next start --port 3100",
     "test": "vitest run",
     "lint": "node ../../scripts/check-lint-budget.mjs --all",
+    "typecheck": "tsc --noEmit",
     "lint:raw": "biome check src"
   },
   "dependencies": {

@@ -1,7 +1,7 @@
 /**
  * ISS-1236 — a working directory is the device's own, read through one reader, against a real Postgres.
  *
- * The fixture is forge-dev's live shape on 2026-10-26: one project whose own `repo_path` names
+ * The fixture is forge-dev's live shape on 2026-10-26: one project whose own `repo_path_hint` names
  * dev1's checkout, bound on two boxes at two different paths. Before the fix a chat turn on a
  * device with no binding, and every claimed job, was handed the project's path — another box's
  * folder. A third box the project never bound stands as the project's default device.
@@ -65,7 +65,7 @@ async function seed() {
   const xeon = await createTestDevice(harness.db, owner.id, { name: 'sid-xeon-1' });
   const spare = await createTestDevice(harness.db, owner.id, { name: 'spare-box' });
   await harness.db.execute(sql`
-    UPDATE projects SET repo_path = ${PROJECT_DEFAULT}, default_device_id = ${spare.id}
+    UPDATE projects SET repo_path_hint = ${PROJECT_DEFAULT}, default_device_id = ${spare.id}
     WHERE id = ${project.id}
   `);
   for (const [device, path] of [

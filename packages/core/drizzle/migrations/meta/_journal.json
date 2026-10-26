@@ -2304,6 +2304,13 @@
       "when": 1816214400000,
       "tag": "0384_a_removed_binding_blocks_nothing",
       "breakpoints": true
+    },
+    {
+      "idx": 389,
+      "version": "7",
+      "when": 1816646400000,
+      "tag": "0389_the_hint_has_its_own_name",
+      "breakpoints": true
     }
   ]
 }

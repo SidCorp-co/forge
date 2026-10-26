@@ -380,8 +380,10 @@ export const projects = pgTable(
     /**
      * The path offered when a device is bound, and a declaration that this project has a
      * repository. Never a working directory: a checkout is the device's (`runners.repoPath`).
+     * Named apart from every other path column so a read of it says so; the files that may are
+     * listed in `scripts/check-repo-path-readers.mjs` (ISS-1236). The API calls it `repoPath`.
      */
-    repoPath: text('repo_path'),
+    repoPathHint: text('repo_path_hint'),
     /** Where an ISS-* branch is cut from and merges back to. NOT a release fact: `releaseChain` is. */
     baseBranch: text('base_branch'),
     /** ISS-1311 — the ordered release path. First entry is where work merges, last is live. */

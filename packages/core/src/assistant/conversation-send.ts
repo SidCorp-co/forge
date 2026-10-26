@@ -54,6 +54,7 @@ import { makeConversationImageResolver } from './conversation-images.js';
 import { type ConversationProgress, startConversationProgress } from './conversation-progress.js';
 import { registerTurnStop } from './conversation-stops.js';
 import { webAgentConversationPersona, webConversationPersona } from './door-persona.js';
+import { lostTokenRace, repeatedWebSend } from './repeated-send.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
 
@@ -225,7 +226,8 @@ export async function sendWebConversationMessage(args: {
    * Whether the caller named a mode at all, as opposed to the route deriving one.
    */
   namedMode: boolean;
-  /** The sender's own id for this message, echoed on the accepted event (ISS-1078). */
+  /** The sender's own id for this message, echoed on the accepted event (ISS-1078); a repeat of it
+   *  is answered with the first message (ISS-1236). */
   clientToken?: string | undefined;
   /** The files staged with this message, as references the turn re-reads (ISS-1146). */
   images?: readonly ConversationImage[] | undefined;
@@ -235,20 +237,35 @@ export async function sendWebConversationMessage(args: {
     projectId: args.projectId,
     userId: args.userId,
   };
-  const collected = await collectInboundMessage({
-    ports: webConversationPorts,
-    frame,
-    message: args.content,
-    speakerKey: args.userId,
-    manySpeakersPrincipalUserId: args.userId,
-    ...(args.images && args.images.length > 0 ? { images: args.images } : {}),
-    withinCollection: async (tx, { conversationId, seq }) => {
-      if (seq === 0 && (await settleConversationMode(tx, conversationId, args.mode))) return;
-      if (seq !== 0 && !args.namedMode) return;
-      const row = await getConversation(conversationId, tx);
-      throw new ConversationModeSettledError(effectiveConversationMode(row ?? { mode: null }));
-    },
-  });
+  let collected: Awaited<ReturnType<typeof collectInboundMessage>>;
+  try {
+    collected = await collectInboundMessage({
+      ports: webConversationPorts,
+      frame,
+      message: args.content,
+      speakerKey: args.userId,
+      manySpeakersPrincipalUserId: args.userId,
+      ...(args.clientToken ? { clientToken: args.clientToken } : {}),
+      ...(args.images && args.images.length > 0 ? { images: args.images } : {}),
+      withinCollection: async (tx, { conversationId, seq }) => {
+        if (seq === 0 && (await settleConversationMode(tx, conversationId, args.mode))) return;
+        if (seq !== 0 && !args.namedMode) return;
+        const row = await getConversation(conversationId, tx);
+        throw new ConversationModeSettledError(effectiveConversationMode(row ?? { mode: null }));
+      },
+    });
+  } catch (err) {
+    // Two sends under one token arrived together and the other was written first: answer it.
+    const lostTheRace = lostTokenRace(err)
+      ? await repeatedWebSend({
+          conversationId: args.room.id,
+          userId: args.userId,
+          clientToken: args.clientToken,
+        })
+      : null;
+    if (lostTheRace) return lostTheRace;
+    throw err;
+  }
   if (collected.kind !== 'collected') {
     throw new Error(
       `web conversations: conversation ${args.room.id} could not be placed as a venue, so the message was not taken in`,

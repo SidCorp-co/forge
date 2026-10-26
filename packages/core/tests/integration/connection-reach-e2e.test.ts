@@ -475,7 +475,7 @@ describe("the project's github status card", () => {
 
   beforeEach(async () => {
     await harness.db.execute(
-      sql`UPDATE projects SET repo_path = '/tmp/forge-test-checkout' WHERE id = ${projectId}`,
+      sql`UPDATE projects SET repo_path_hint = '/tmp/forge-test-checkout' WHERE id = ${projectId}`,
     );
   });
 

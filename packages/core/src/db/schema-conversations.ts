@@ -190,10 +190,15 @@ export const conversationMessages = pgTable(
      * where it named one (ISS-1087).
      */
     replyToExternalId: text('reply_to_external_id'),
+    /** The web composer's id for this message: a resend under it is answered with this row. */
+    clientToken: text('client_token'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     seqUnique: uniqueIndex('conversation_messages_seq_unique').on(t.conversationId, t.seq),
+    clientTokenUnique: uniqueIndex('conversation_messages_client_token_uq')
+      .on(t.conversationId, t.authorUserId, t.clientToken)
+      .where(sql`client_token IS NOT NULL`),
     externalIdx: index('conversation_messages_external_idx')
       .on(t.externalId)
       .where(sql`external_id IS NOT NULL`),

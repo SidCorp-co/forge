@@ -13,6 +13,13 @@ import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
 import { pluginDesignationSchema } from '../plugins/designation.js';
 
 const projectRow = tableRow(projects);
+/** The project's checkout hint, answered under the name the API has always given it (ISS-1236). */
+const repoPathField = z
+  .string()
+  .nullable()
+  .describe(
+    "The path offered when a device is bound to this project. A device's own checkout is its runner binding's.",
+  );
 const roleSchema = z.enum(projectMemberRoles);
 const orgRoleSchema = z.enum(orgMemberRoles);
 
@@ -79,7 +86,6 @@ export const projectDetailSchema = projectRow
     createdBy: true,
     description: true,
     kind: true,
-    repoPath: true,
     repoUrl: true,
     workspaceSetup: true,
     baseBranch: true,
@@ -90,6 +96,7 @@ export const projectDetailSchema = projectRow
   })
   .extend({
     ...retiredReleaseAxesShape,
+    repoPath: repoPathField,
     releaseChain: releaseChainSchema,
     agentConfig: agentConfigSchema,
     environments: environmentsSchema,
@@ -118,7 +125,6 @@ export const patchedProjectSchema = projectRow
     createdBy: true,
     description: true,
     kind: true,
-    repoPath: true,
     repoUrl: true,
     workspaceSetup: true,
     baseBranch: true,
@@ -128,6 +134,7 @@ export const patchedProjectSchema = projectRow
   })
   .extend({
     ...retiredReleaseAxesShape,
+    repoPath: repoPathField,
     releaseChain: releaseChainSchema,
     agentConfig: agentConfigSchema,
     environments: environmentsSchema,

@@ -90,10 +90,10 @@ describe('a repository path that is not absolute', () => {
     );
     expect(res).toMatchObject({ status: 400, code: 'REPO_PATH_NOT_ABSOLUTE' });
     expect(res.message).toMatch(NOT_ABSOLUTE);
-    const rows = await harness.db.execute<{ repo_path: string | null }>(
-      sql`SELECT repo_path FROM projects WHERE id = ${projectId}`,
+    const rows = await harness.db.execute<{ repo_path_hint: string | null }>(
+      sql`SELECT repo_path_hint FROM projects WHERE id = ${projectId}`,
     );
-    expect(rows[0]?.repo_path).not.toBe('projects/app');
+    expect(rows[0]?.repo_path_hint).not.toBe('projects/app');
   });
 
   it("is refused by name on a project's runner, and nothing is saved", async () => {
