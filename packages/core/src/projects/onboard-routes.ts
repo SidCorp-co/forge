@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -11,23 +11,39 @@ import {
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
+import { projects, skills } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
-import { requestSkillSync } from '../skills/service.js';
+import { globalEffectiveMd } from '../skills/effective.js';
 import { onboardStartedSchema, startOnboarding } from './onboard-routes-reference.js';
 
 // ISS-733 — the "Build Project Brain" trigger: web calls this once, after
-// bootstrap, to open a fresh chat session that runs `forge-onboard` as turn 1
-// (the chat-runs-skill mechanism in `agent-sessions/chat-turn.ts`). Mirrors
-// the dedup-free dispatch shape of `integrations/rocketchat/agent-chat.ts`
-// (resolveChatDevice → createChatSessionRow → dispatchChatTurn), plus an
-// explicit skill-sync push first since sync is explicit-only (the runner
-// won't have the file on disk otherwise).
+// bootstrap, to open a fresh chat session whose first turn runs `forge-onboard`.
+// `forge-onboard` is a Forge-owned skill (META_SKILL_NAMES), so no project holds
+// a copy of it and none can create one: the device is handed its instructions
+// from the global row, as Forge's other owned agents are (ISS-1236 round 2).
 
 const ONBOARD_SKILL_NAME = 'forge-onboard';
+
+/** Forge's own `forge-onboard`, refused by name where core's builtin seed did not load it. */
+async function forgeOnboardInstructions(): Promise<string> {
+  const [row] = await db
+    .select({ skillMd: skills.skillMd, prompt: skills.prompt })
+    .from(skills)
+    .where(and(eq(skills.scope, 'global'), eq(skills.name, ONBOARD_SKILL_NAME)))
+    .limit(1);
+  const body = row ? globalEffectiveMd(row) : '';
+  if (!body) {
+    throw new HTTPException(503, {
+      message:
+        "Forge's own forge-onboard skill is not loaded on this server: the builtin skills are seeded when core starts, and this one was not. Nothing in this project can install it; the server's operator restarts core or reads its startup log for the seed's error.",
+      cause: { code: 'ONBOARD_SKILL_MISSING' },
+    });
+  }
+  return body;
+}
+
 const ONBOARD_MESSAGE =
   'Build the Project Brain for this project: survey the repo, then walk me through what you find before writing anything.';
 
@@ -64,36 +80,13 @@ projectOnboardRoutes.post(
       .limit(1);
     if (!project) throw new HTTPException(404, { message: 'project not found' });
 
-    const effective = await resolveRegisteredEffectiveSkills(project.id);
-    if (!effective.some((s) => s.name === ONBOARD_SKILL_NAME && s.installOnly)) {
-      throw new HTTPException(503, {
-        message:
-          'forge-onboard is not installed for this project — apply a domain template to adopt it',
-        cause: { code: 'ONBOARD_SKILL_MISSING' },
-      });
-    }
+    const instructions = await forgeOnboardInstructions();
 
     const client = await resolveChatDevice(
       { projectId: project.id, deviceId: null, metadata: null },
       undefined,
     );
     if (!client.deviceId) throw noClaudeClient('project');
-
-    // Explicit-only skill sync: push the current forge-onboard manifest to the
-    // target device BEFORE dispatch, so the runner's working dir has the file
-    // on disk when `claude -p` cold-starts (sync never happens implicitly).
-    const sync = await requestSkillSync({
-      projectId: project.id,
-      actorUserId: userId,
-      skillNames: [ONBOARD_SKILL_NAME],
-      deviceId: client.deviceId,
-    });
-    if (sync.deviceIds.length === 0) {
-      throw new HTTPException(503, {
-        message: 'no device-bound runner available to sync forge-onboard to',
-        cause: { code: 'NO_SYNC_TARGET' },
-      });
-    }
 
     const session = await createChatSessionRow({
       projectId: project.id,
@@ -108,7 +101,7 @@ projectOnboardRoutes.post(
         project,
         client,
         message: ONBOARD_MESSAGE,
-        skillName: ONBOARD_SKILL_NAME,
+        instructions,
         broadcastEvent: 'agent-session.created',
       });
     } catch (err) {

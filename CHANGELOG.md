@@ -11,6 +11,7 @@
 ### Security
 
 - **A room's tools no longer pass on a password, key or token.** Every part of a reply is checked, tool input included, even a secret in JSON or named by its field; stored replies are cleared on deploy. (ISS-1229)
+- **A box paired by someone outside the project cannot be bound to it.** Binding now needs the account that paired it to belong to the project or its organization, on the web, the API and the box's own registration. (ISS-1236)
 - **A reply withdrawn for holding a password, key or token keeps none of it.** The room says why, readers never receive the text, and replies withdrawn earlier lose it on deploy. (ISS-1229)
 - **Asking for an issue under an id that is no project reads the same as under someone else's project**, so the answer no longer tells you whether an id is a project. (ISS-1229)
 - **A stored test credential no longer reaches an issue comment.** A comment written on the web or by an agent tool that carries one is refused, naming where; text Forge writes itself gets a marker saying where it is read.
@@ -3202,6 +3203,10 @@
 - **In a room, "the first" and "the second" name the same person for everyone reading it.** (ISS-1229)
 - **A reply held back for looking like it held a password, key or token says so**, and the left rail keeps every label on a 900-pixel-high screen. (ISS-1229)
 - **Each box works in its own checkout of a project.** Chats, schedules and jobs used the project's saved folder, another box's path; a box the project never bound is refused, naming how to bind it. (ISS-1236)
+- **A conversation opens while the project's box is not set up.** The room failed to open; it now opens and says why Agent mode is unavailable, and only sending an Agent message is refused. (ISS-1236)
+- **The way to bind a box is told in the order that works.** Assign it on the project's Runners page first; `forge-runner bind` sets its folder only once it is assigned, and the project's name is written in. (ISS-1236)
+- **A Rocket.Chat room is answered in its own words when the project's box is not set up.** It no longer shows the box's name, id or a command; the project's admins are told instead, until it is bound. (ISS-1236)
+- **Building the Project Brain no longer asks for a template.** Onboarding refused every project that had not applied one, and no template could satisfy it; it now starts on any project with a bound box. (ISS-1236)
 - **Everyone in a room is named as its members list names them**, so three people who never set a name no longer all read "Another member". (ISS-1229)
 - **The bell's count reads at most 99+ and sits beside the bell**, never over it, on a phone and on a desktop. (ISS-1229)
 - **The "This issue is not in" page has a heading, and the browser tab says what the page does.** Every error page's title is now a heading. (ISS-1229)

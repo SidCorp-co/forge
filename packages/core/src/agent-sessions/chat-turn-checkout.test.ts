@@ -155,7 +155,9 @@ describe('resolveChatDevice — a device is handed its own checkout or refused (
         details: { deviceId: 'dev-unbound', projectId: PROJECT.id },
       },
     });
-    expect(String((refused as Error).message)).toContain('forge-runner bind');
+    const message = String((refused as Error).message);
+    expect(message).toContain('Runners page');
+    expect(message).not.toContain('forge-runner bind');
   });
 
   it('refuses an explicit pick of an unbound device as DEVICE_NOT_BOUND, before the capability check', async () => {

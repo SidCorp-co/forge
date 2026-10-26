@@ -102,9 +102,11 @@ agentSessionLifecycleRoutes.post(
     );
     if (!client.isLocal && !client.deviceId) throw noClaudeClient('project');
     if (!client.isLocal && input.repoPath != null) {
+      const runsIn = client.checkout
+        ? `the checkout its binding records, ${client.checkout}`
+        : `the checkout the device itself keeps for ${project.slug}, since its binding records no path`;
       throw badRequest({
-        repoPath:
-          'names a checkout, which only a local client chooses: this session runs on a runner, and a runner works in the checkout its device is bound to. Leave repoPath out, or bind the device with `forge-runner bind <slug> --path <dir>`',
+        repoPath: `names a checkout, which only a local client chooses: this session runs on a runner device, in ${runsIn}. Leave repoPath out. To move that checkout, change the path on ${project.slug}'s Runners page, or run \`forge-runner bind ${project.slug} --path <dir>\` on that device`,
       });
     }
 

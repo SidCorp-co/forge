@@ -94,6 +94,8 @@ export async function findChatCapableDeviceForProject(
 
 /**
  * Why a device cannot be handed a working directory for a project: it has no runner row there.
+ * The sentence names only acts that work from that state, in the order they work: `forge-runner
+ * bind` refuses a device the project has not assigned, so the Runners page comes first.
  *
  * A checkout belongs to a device, not to a project (`runners.repoPath` per device × project), so a
  * device the project never bound has no checkout this core could name, and handing it the
@@ -111,11 +113,14 @@ export class DeviceNotBoundError extends HTTPException {
   }) {
     const device = args.deviceName ? `${args.deviceName} (${args.deviceId})` : args.deviceId;
     const project = args.projectSlug ?? args.projectId;
-    const slug = args.projectSlug ?? '<project-slug>';
     super(409, {
       message:
         `Device ${device} is not bound to project ${project}, so it has no checkout of it to run in. ` +
-        `Bind it on that device with \`forge-runner bind ${slug} --path <dir>\`, or assign the device on the project's Runners page, then try again.`,
+        `Assign the device on ${project}'s Runners page, which binds it; ` +
+        (args.projectSlug
+          ? `to choose the folder it runs in, give the path there or, once it is assigned, run \`forge-runner bind ${args.projectSlug} --path <dir>\` on that device. `
+          : 'the path it runs in can be given there too. ') +
+        'Then try again.',
       cause: {
         code: 'DEVICE_NOT_BOUND',
         details: { deviceId: args.deviceId, projectId: args.projectId },

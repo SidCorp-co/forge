@@ -177,8 +177,16 @@ describe('a device the project never bound', () => {
     const message = (refused as Error).message;
     expect(message).toContain('spare-box');
     expect(message).toContain('forge-dev');
-    expect(message).toContain('forge-runner bind forge-dev --path <dir>');
-    expect(message).toContain("project's Runners page");
+    // `forge-runner bind` refuses a device the project has not assigned, which is the only state this
+    // refusal is shown in: the assignment is named first, the bind only once it is done.
+    const assign = message.indexOf("forge-dev's Runners page");
+    const bind = message.indexOf(
+      'once it is assigned, run `forge-runner bind forge-dev --path <dir>`',
+    );
+    expect(assign, message).toBeGreaterThanOrEqual(0);
+    expect(bind, message).toBeGreaterThan(assign);
+    expect(message).not.toContain('<slug>');
+    expect(message).not.toContain('<project-slug>');
     expect(await sessionCount(project.id)).toBe(0);
   });
 

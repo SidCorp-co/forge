@@ -27,6 +27,68 @@ describe('check-repo-path-readers — a working directory is the device binding'
     ]);
   });
 
+  it('finds raw SQL naming the table with no alias, the column bare (judge-126 plant E)', () => {
+    const found = reads(
+      'const [row] = await db.execute(sql`\n  SELECT repo_path FROM projects WHERE id = ${projectId}\n`);\n',
+    );
+    expect(found.map((r) => [r.line, r.how])).toEqual([[2, 'repo_path (in SQL over projects)']]);
+  });
+
+  it('finds a bare column in SQL over projects whose expressions hold templates of their own', () => {
+    const found = reads(
+      'sql`SELECT id, ${flag ? sql`name` : sql`slug`}, repo_path\n  FROM projects\n  WHERE ${where}`;\n',
+    );
+    expect(found.map((r) => [r.line, r.how])).toEqual([[1, 'repo_path (in SQL over projects)']]);
+  });
+
+  it('finds a whole row read off projects, which hands the file repoPath (judge-126 plant F)', () => {
+    const found = reads(
+      'const [p] = await db\n  .select()\n  .from(projects)\n  .where(eq(projects.id, id));\nreturn p.repoPath;\n',
+    );
+    expect(found.map((r) => [r.line, r.how])).toEqual([[3, 'a whole row of projects']]);
+  });
+
+  it('finds the other whole-row shapes: relational query, returning(), SELECT * and alias.*', () => {
+    const found = reads(
+      'await db.query.projects.findFirst({ where: eq(projects.id, id) });\n' +
+        'await db.update(projects).set({ name }).where(eq(projects.id, id)).returning();\n' +
+        'sql`SELECT * FROM projects WHERE id = ${id}`;\n' +
+        'sql`SELECT p.* FROM projects p JOIN jobs j ON j.project_id = p.id`;\n' +
+        'const cols = getTableColumns(projects);\n',
+    );
+    expect(found.map((r) => [r.line, r.how])).toEqual([
+      [1, 'a whole row of projects'],
+      [2, 'a whole row of projects'],
+      [3, 'a whole row of projects (SELECT *)'],
+      [4, 'a whole row of projects (p.*)'],
+      [5, 'a whole row of projects'],
+    ]);
+  });
+
+  it('finds a read through the table drizzle interpolates, named or bare (review F1)', () => {
+    const found = reads(
+      'sql`SELECT ${projects}.repo_path FROM ${projects}`;\n' +
+        'sql`SELECT projects.repo_path FROM ${table}`;\n' +
+        'sql`SELECT repo_path FROM ${projects} WHERE id = ${id}`;\n',
+    );
+    expect(found.map((r) => [r.line, r.how])).toEqual([
+      [1, 'projects.repo_path'],
+      [2, 'projects.repo_path'],
+      [3, 'repo_path (in SQL over projects)'],
+    ]);
+  });
+
+  it('passes SQL over projects that names its columns, a count, and a bare column of another table', () => {
+    expect(
+      reads(
+        'sql`SELECT p.slug, count(*) FROM projects p GROUP BY p.slug`;\n' +
+          'sql`SELECT repo_path FROM runners WHERE device_id = ${id}`;\n' +
+          'await db.select({ slug: projects.slug }).from(projects);\n' +
+          'await db.update(projects).set({ name }).returning({ id: projects.id });\n',
+      ),
+    ).toEqual([]);
+  });
+
   it('passes the device binding, which is where a working directory comes from', () => {
     expect(
       reads(

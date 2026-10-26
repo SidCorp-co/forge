@@ -207,8 +207,12 @@ export const createRunner = describeOperation({
   responses: {
     201: json(runnerOneSchema, 'The new runner'),
     400: fail('BAD_REQUEST', "no adapter for the type, or `config` fails the adapter's schema"),
-    403: notAdmin,
-    404: fail('NOT_FOUND', 'no such project'),
+    403: fail({
+      FORBIDDEN: 'the caller is below the project admin role',
+      DEVICE_NOT_HELD:
+        "the device's owner is a member of neither the project nor its organization, so nothing was bound",
+    }),
+    404: fail({ NOT_FOUND: 'no such project', DEVICE_NOT_FOUND: 'no device has this id' }),
     409: fail('RUNNER_ALREADY_BOUND', 'the device already binds this project as this type'),
   },
 });

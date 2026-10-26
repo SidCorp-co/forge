@@ -102,6 +102,8 @@ export interface ChatClient {
 }
 
 /** The refusal a lane posts when `err` is a device the project never bound; null for any other. */
+export { DeviceNotBoundError };
+
 export function unboundDeviceRefusal(err: unknown): string | null {
   return err instanceof DeviceNotBoundError ? err.message : null;
 }
@@ -285,6 +287,11 @@ export interface DispatchChatTurnArgs {
    */
   broadcastEvent?: 'agent-session.created' | 'agent-session.updated';
   skillName?: string | null;
+  /**
+   * Instructions the device runs this cold-start turn under, ahead of the person's message and
+   * never stored as it: how a Forge-owned skill reaches a box without a per-project copy.
+   */
+  instructions?: string | null;
   model?: ModelTier | null | undefined;
 }
 
@@ -435,6 +442,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     // shape a pipeline job's `-p` prompt already uses. Cold-start only (this
     // whole branch is `!resumable`) — a `--resume` turn never re-prepends it.
     // Shape already validated above (before the DB transaction).
+    if (args.instructions) {
+      prompt = `${args.instructions}\n\n---\n\n${prompt}`;
+    }
     if (args.skillName) {
       prompt = `/${args.skillName}\n${prompt}`;
     }

@@ -234,12 +234,13 @@ conversationRoutes.get(
     const { projectId } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     assertProjectRole(access, 'viewer', 'not a project member');
+    const device = await conversationAgentDeviceAvailable(projectId);
     return c.json(
       answer(
         agentModeOfferSchema,
-        (await conversationAgentDeviceAvailable(projectId))
+        device.available
           ? { available: true, reason: null }
-          : { available: false, reason: 'this project has no runner paired' },
+          : { available: false, reason: device.reason },
       ),
     );
   },
@@ -427,7 +428,9 @@ conversationRoutes.post(
       );
     }
     const asking = mode ?? effectiveConversationMode(conversation);
-    if (asking === 'agent' && !(await conversationAgentDeviceAvailable(projectId))) {
+    const device = asking === 'agent' ? await conversationAgentDeviceAvailable(projectId) : null;
+    if (device && !device.available) {
+      if (device.unbound) throw device.unbound;
       throw roomRefusal(
         409,
         'CONVERSATION_AGENT_NO_DEVICE',

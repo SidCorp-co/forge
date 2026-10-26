@@ -12,6 +12,8 @@ import {
   runnerEvents,
   runners,
 } from '../db/schema.js';
+import { assertDeviceBindable } from '../devices/bind-authority.js';
+import { resolveDeviceUnbound } from '../devices/unbound-notice.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -302,6 +304,7 @@ runnerRoutes.post(
 
     const result = adapter.validateConfig(input.config);
     if (!result.ok) throw badRequest({ config: result.error });
+    await assertDeviceBindable(input.deviceId, input.projectId);
 
     let row: Awaited<ReturnType<typeof insertRunner>>;
     try {
@@ -324,6 +327,7 @@ runnerRoutes.post(
       throw err;
     }
 
+    await resolveDeviceUnbound(input.projectId, input.deviceId);
     roomManager.publish(projectRoom(input.projectId), {
       event: 'runner.created',
       data: { runnerId: row.id, type: row.type },

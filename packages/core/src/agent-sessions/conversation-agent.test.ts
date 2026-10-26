@@ -36,6 +36,7 @@ vi.mock('./chat-turn.js', async () => {
   const { DeviceNotBoundError } =
     await vi.importActual<typeof import('../lib/device-pool.js')>('../lib/device-pool.js');
   return {
+    DeviceNotBoundError,
     createChatSessionRow: (...args: unknown[]) => createChatSessionRow(...args),
     dispatchChatTurn: (...args: unknown[]) => dispatchChatTurn(...args),
     resolveChatDevice: (...args: unknown[]) => resolveChatDevice(...args),

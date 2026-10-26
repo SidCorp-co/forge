@@ -24,9 +24,11 @@ import type { WindowCut, WindowTurnInputs } from '../../conversations/route-wind
 import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
+import { tellAdminsDeviceUnbound } from '../../devices/tell-admins-unbound.js';
 import {
   AGENT_CHAT_DEDUP_REPLY,
   AGENT_CHAT_NO_DEVICE_REPLY,
+  AGENT_CHAT_UNBOUND_REPLY,
   startAgentChat,
 } from './agent-chat.js';
 import { readRocketChatAnswerMode } from './answer-mode.js';
@@ -35,6 +37,7 @@ import {
   ESCALATION_ACK,
   ESCALATION_DEDUP_REPLY,
   ESCALATION_NO_DEVICE_REPLY,
+  ESCALATION_UNBOUND_REPLY,
   startEscalation,
 } from './escalation.js';
 import { prepareFastTurn } from './images.js';
@@ -183,8 +186,19 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
           message: codeAuthored(AGENT_CHAT_NO_DEVICE_REPLY(bot.botName)),
           screenReplaced: false,
         };
-      if (started.reason === 'device-not-bound')
-        return { send: true, message: codeAuthored(started.refusal), screenReplaced: false };
+      if (started.reason === 'device-not-bound') {
+        await tellAdminsDeviceUnbound({
+          projectId: route.projectId,
+          deviceId: started.deviceId,
+          refusal: started.refusal,
+          where: `${bot.botName} in Rocket.Chat`,
+        });
+        return {
+          send: true,
+          message: codeAuthored(AGENT_CHAT_UNBOUND_REPLY(bot.botName)),
+          screenReplaced: false,
+        };
+      }
       return { send: false, reason: 'agent-chat-dispatch-failed' };
     },
 
@@ -254,8 +268,19 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
           message: codeAuthored(ESCALATION_NO_DEVICE_REPLY(bot.botName)),
           screenReplaced: true,
         };
-      if (started.reason === 'device-not-bound')
-        return { send: true, message: codeAuthored(started.refusal), screenReplaced: true };
+      if (started.reason === 'device-not-bound') {
+        await tellAdminsDeviceUnbound({
+          projectId: route.projectId,
+          deviceId: started.deviceId,
+          refusal: started.refusal,
+          where: `${bot.botName} in Rocket.Chat`,
+        });
+        return {
+          send: true,
+          message: codeAuthored(ESCALATION_UNBOUND_REPLY(bot.botName)),
+          screenReplaced: true,
+        };
+      }
       return { send: false, reason: 'escalation-dispatch-failed' };
     },
 
