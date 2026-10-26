@@ -19,8 +19,8 @@ export interface AgentTurn {
 export interface AgentModeOffer {
   available: boolean;
   reason: string | null;
-  /** The device the project would use, paired but not assigned to it. A room's offer carries it. */
-  unbound?: {
+  /** The device the project would use, paired but not assigned to it; every offer carries it. */
+  unbound: {
     deviceId: string;
     deviceName: string | null;
     projectSlug: string | null;

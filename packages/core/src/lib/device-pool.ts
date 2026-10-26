@@ -165,6 +165,16 @@ export async function readDeviceBinding(
   return { runnerId: row.id, runnerType: row.type, checkout: checkout.length ? checkout : null };
 }
 
+/** The name a device's Runners row shows, for a refusal about a device the project already binds. */
+export async function nameOfDevice(deviceId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ name: devices.name })
+    .from(devices)
+    .where(eq(devices.id, deviceId))
+    .limit(1);
+  return row?.name ?? null;
+}
+
 /**
  * The refusal for `deviceId`, naming the device only where the project itself names it as its
  * default: a caller may pass any device's id, and another tenant's box name is not this one's.

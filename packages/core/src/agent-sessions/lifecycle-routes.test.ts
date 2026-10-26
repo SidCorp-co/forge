@@ -67,6 +67,7 @@ vi.mock('../lib/device-pool.js', async () => {
       findChatCapableDeviceForProject(projectId, deviceId),
     readDeviceBinding: (projectId: string, deviceId: string) =>
       readDeviceBinding(projectId, deviceId),
+    nameOfDevice: async (deviceId: string) => (deviceId === DEVICE_ID ? 'xeon-box' : null),
   };
 });
 
@@ -405,6 +406,8 @@ describe('POST /api/agent-sessions/start naming a checkout for a remote session'
     expect(said).toContain('forge-runner bind apiflow --path <dir>');
     expect(said).not.toContain('<slug>');
     expect(said).not.toContain('or bind the device');
+    expect(said).toMatch(/runs on xeon-box, in .*--path <dir>` on xeon-box/);
+    expect(said).not.toMatch(new RegExp(`that device|${DEVICE_ID}`));
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
