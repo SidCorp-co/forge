@@ -235,9 +235,15 @@ export type RunEnd =
 
 /**
  * End a running run, and queue what arrived while it ran as the next run, due now: those triggers
- * already waited out their debounce behind this one.
+ * already waited out their debounce behind this one. Acts the run carried for want of today's budget
+ * are due at `followUpNotBefore` instead, unless a trigger arrived while it ran.
  */
-export async function endRun(runId: string, end: RunEnd, now = new Date()): Promise<string | null> {
+export async function endRun(
+  runId: string,
+  end: RunEnd,
+  now = new Date(),
+  opts: { followUpNotBefore?: Date | null } = {},
+): Promise<string | null> {
   return db.transaction(async (tx) => {
     const [run] = await tx.select().from(stewardRuns).where(eq(stewardRuns.id, runId)).limit(1);
     if (!run) throw new Error(`steward: run ${runId} is gone`);
@@ -255,6 +261,10 @@ export async function endRun(runId: string, end: RunEnd, now = new Date()): Prom
       .returning();
     if (!ended || ended.followUp.length === 0) return null;
     const first = ended.followUpEvents[0];
+    const arrived = ended.followUpEvents.some(
+      (e) => !ended.events.some((o) => o.outboxId === e.outboxId),
+    );
+    const due = opts.followUpNotBefore && !arrived ? opts.followUpNotBefore : now;
     const [next] = await tx
       .insert(stewardRuns)
       .values({
@@ -265,7 +275,7 @@ export async function endRun(runId: string, end: RunEnd, now = new Date()): Prom
         trigger: first?.trigger ?? ended.trigger,
         events: ended.followUpEvents,
         actsToRun: ended.followUp,
-        notBefore: now,
+        notBefore: due,
       })
       .returning({ id: stewardRuns.id });
     return next?.id ?? null;
