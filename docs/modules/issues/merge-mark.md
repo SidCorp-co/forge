@@ -238,7 +238,11 @@ message — names a commit by its first seven characters, or by as many more as 
 the other commit the same sentence names (`packages/core/src/issues/merge-record.ts:shortCommit`;
 ISS-1300 r4: sid-desk ISS-578's pair shares its first eight), and a commit the repository was read
 and lacks by twelve (`absentCommit`), since its seven may name one it holds (a
-`MergeMarkerError` shortens any whole sha in its message). The whole sha stays where a caller reads
+`MergeMarkerError` shortens any whole sha in its message). A commit the person typed that the
+repository holds no commit under is the exception: `COMMIT_NOT_IN_REPOSITORY` quotes the whole value
+typed, since a typo past the twelfth digit reads as its real neighbour by twelve (ISS-1300 r5), and
+the panel's Commit field wraps rather than scrolls, so every digit typed shows at phone width beside
+the refusal. The whole sha stays where a caller reads
 it as data: the row (`mergedCommitSha`, `mergedClaimedCommit`), the answer's `movedFrom` and
 `namedCommit` (the commit this mark named where no column keeps it), a refusal's `details`, and the
 rail's hover, where an observed commit and a claim's both show by seven characters. An answer is at
@@ -365,12 +369,23 @@ through different installations, or a GitHub Enterprise host and github.com, are
 through their own access, so a commit one installation found never stands for one that cannot see
 the repository.
 
-A person's mark repeated with Commit left blank, over a landing the repository was read and lacks,
-answers with the act the hold names: "To record the
-commit that landed, use Mark a later merge and name it under Commit." It never answers Unmark,
-which would leave the criteria with no commit to weigh against
-(`packages/core/src/issues/stated-landing.ts:commitWouldStand`). Over a landing that resolves, the
-answer still names Unmark, then Mark merged.
+The mark's answers read the recorded landing through the reader the weighing reads it through
+(`packages/core/src/issues/verdict-standing.ts:issueIdentities`: the merge mark's commit, else the
+landing record's head), so the answer, the hold and the banner name one commit and one act whichever
+record holds it (`packages/core/src/issues/stated-landing.ts:recordedAbsent`, ISS-1300 r5). A
+person's mark repeated with Commit left blank, over a landing the repository was read and lacks,
+says which record names it — "The mark stays at commit …" or "The landing record names commit …" —
+and answers with the act the hold names: "To record the commit that landed, use Mark a later merge
+and name it under Commit." It never answers Unmark, which would leave the criteria with no commit to
+weigh against (`packages/core/src/issues/stated-landing.ts:commitWouldStand`). A person's first
+Mark merged with Commit left blank over such a landing would answer success and leave the next
+sweep weighing the same commit, so it is refused `LANDING_COMMIT_REQUIRED`, naming the record, the
+commit and the repository, and writes nothing
+(`packages/core/src/issues/merge-marker.ts:refuseNamingNoCommit`). A repository that could not be
+read names nothing absent, so neither applies there. Over a landing that resolves, the blank repeat
+still names Unmark, then Mark merged. The banner on an issue not marked merged in git names the same
+act: fill in Where it landed and name the commit that landed under Commit
+(`packages/contracts/src/mark-merged-words.ts:markMergedSteps`).
 
 The forge-plugin CLI's own check of a verdict against the merged commit reads that commit out of
 the mark's note, not off these columns, so it is not covered here.

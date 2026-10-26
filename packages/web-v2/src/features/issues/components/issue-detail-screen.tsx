@@ -77,6 +77,7 @@ import { agentHoldsIssue, heldByAgent } from "../edit-lock";
 import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus } from "../types";
 import { ActivityFeed } from "./activity-feed";
+import { mayRelease } from "../release-who";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { IssueHeaderActions } from "./issue-header-actions";
@@ -481,7 +482,8 @@ export function IssueDetailScreen({
           <AwaitingReleaseBanner
             projectId={issue.projectId}
             issueId={issue.id}
-            canWrite={mayWrite}
+            canRelease={mayRelease(projectRole) && !issueStale}
+            askWhoReleases={!mayRelease(projectRole) && !issueStale}
             mergeMark={issue.mergeMark}
             mergedCommitSha={issue.mergedCommitSha}
             mergedClaimedCommit={issue.mergedClaimedCommit}

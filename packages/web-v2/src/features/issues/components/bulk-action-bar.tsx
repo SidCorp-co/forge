@@ -24,6 +24,7 @@ import {
 } from "../derive";
 import { agentHoldsSelection, heldInSelection } from "../edit-lock";
 import { type BulkUpdate, useBulkUpdateIssues, useStatusExits } from "../hooks";
+import { askWhoReleases } from "../release-who";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 import { TransitionReasonDialog } from "./transition-reason-dialog";
@@ -57,8 +58,9 @@ function RefusedAction({
   );
 }
 
-function canBatchRelease(rows: IssueRow[]): { enabled: boolean; reason?: string } {
+function canBatchRelease(rows: IssueRow[], mayRelease: boolean): { enabled: boolean; reason?: string } {
   if (rows.length === 0) return { enabled: false };
+  if (!mayRelease) return { enabled: false, reason: askWhoReleases("them") };
   const notAtGate = rows.filter((r) => r.status !== BATCH_RELEASE_GATE);
   if (notAtGate.length > 0) {
     return { enabled: false, reason: `${notAtGate.length} selected issue${notAtGate.length > 1 ? "s are" : " is"} not awaiting release` };
@@ -74,8 +76,11 @@ export function BulkActionBar({
   projectId,
   selectedRows,
   onCleared,
+  canRelease,
 }: {
   projectId: string;
+  /** Whether the reader holds the role the release door takes (ISS-1300 r5). */
+  canRelease: boolean;
   /** The currently-selected rows (page-scoped). */
   selectedRows: IssueRow[];
   /** Clear the selection — called on Clear and after a successful apply. */
@@ -97,7 +102,7 @@ export function BulkActionBar({
     ? "Loading the status moves…"
     : exitsFailure;
   const noCommonStatus = statusTargets.length === 0;
-  const batchRelease = canBatchRelease(selectedRows);
+  const batchRelease = canBatchRelease(selectedRows, canRelease);
 
   const run = (update: BulkUpdate) =>
     bulk.mutate({ ids, update }, { onSuccess: onCleared });

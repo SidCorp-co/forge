@@ -64,7 +64,13 @@ vi.mock("@/features/questions/components/decision-panel", () => ({
 vi.mock("@/features/shell", () => ({ buildShareLink: (p: string) => p, useRecents: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
-vi.mock("./awaiting-release-banner", () => ({ AwaitingReleaseBanner: () => null }));
+const bannerProps = vi.hoisted(() => vi.fn());
+vi.mock("./awaiting-release-banner", () => ({
+  AwaitingReleaseBanner: (props: Record<string, unknown>) => {
+    bannerProps(props);
+    return null;
+  },
+}));
 vi.mock("./lease-disagreement-notice", () => ({ LeaseDisagreementNotice: () => null }));
 vi.mock("./use-guarded-transition", () => ({
   useGuardedTransition: () => ({ requestTransition, requestParkLeave: vi.fn(), dialog: null, isPending: false }),
@@ -445,6 +451,25 @@ describe("the issue header at Awaiting release (ISS-1421)", () => {
     fireEvent.click(menuItem("Reopen") as Element);
     expect(requestTransition).toHaveBeenCalledWith(ISSUE.id, "reopen", expect.anything());
     expect(menuItem("Pause (hold)")).toBeUndefined();
+  });
+
+  // ISS-1300 r5 (judge-125, X2): a plain member was offered Release now, then refused it.
+  it("offers Release now to a project admin alone, and tells anyone else who may", () => {
+    status = "awaiting_release";
+    for (const [role, canRelease] of [
+      ["admin", true],
+      ["member", false],
+      ["viewer", false],
+    ] as const) {
+      projects.list = [{ id: "p1", slug: "forge-dev", name: "Forge dev", role }];
+      bannerProps.mockClear();
+      renderScreen();
+      expect(bannerProps.mock.lastCall?.[0], role).toMatchObject({
+        canRelease,
+        askWhoReleases: !canRelease,
+      });
+      cleanup();
+    }
   });
 
   it("still offers Reopen as the primary on a closed issue", () => {

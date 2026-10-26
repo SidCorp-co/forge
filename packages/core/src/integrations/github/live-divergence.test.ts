@@ -110,10 +110,39 @@ describe('readLiveDivergence', () => {
   it('refuses rather than comparing against an empty head', async () => {
     const c = client((path) => (path.includes('/branches/') ? { commit: {} } : { ahead_by: 0 }));
     const d = await readLiveDivergence(c, refs);
+    const why = 'SidCorp-co/sid-desk answered no commit for staging';
     expect(d).toEqual({
       ok: false,
-      reason: 'SidCorp-co/sid-desk answered no commit for staging',
+      reason: why,
+      failure: { why, repository: 'SidCorp-co/sid-desk' },
     });
+  });
+
+  // ISS-1300 r5 (judge-125, X1): a branch head GitHub would not give is told apart the way the
+  // repository reader tells it, so the Production row can say it in a person's words.
+  it('tells a repository refusing the read from a branch it lacks', async () => {
+    const failing = (status: number) =>
+      client((path) => {
+        if (path.endsWith('/branches/master')) {
+          throw new GitHubReadError(
+            status,
+            `GET ${path} on SidCorp-co/sid-desk returned HTTP ${status}`,
+          );
+        }
+        return heads(path);
+      });
+    const hidden = await readLiveDivergence(failing(404), refs);
+    const lacking = await readLiveDivergence(failing(422), refs);
+
+    expect(!hidden.ok && hidden.failure).toMatchObject({
+      refused: true,
+      repository: 'SidCorp-co/sid-desk',
+    });
+    expect(!lacking.ok && lacking.failure).toMatchObject({
+      missingBranch: 'master',
+      repository: 'SidCorp-co/sid-desk',
+    });
+    expect(!lacking.ok && lacking.failure && 'refused' in lacking.failure).toBe(false);
   });
 
   it('sends a branch name holding a slash as one encoded segment', async () => {

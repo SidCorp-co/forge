@@ -92,7 +92,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     [
       'COMMIT_NOT_IN_REPOSITORY',
       () => 'f'.repeat(40),
-      [`${GITLAB_URL} holds no commit ${'f'.repeat(12)}.`],
+      [`${GITLAB_URL} holds no commit ${'f'.repeat(40)}.`],
     ],
     [
       'COMMIT_NOT_THIS_ISSUE',

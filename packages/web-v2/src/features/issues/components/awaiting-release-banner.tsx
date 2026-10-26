@@ -4,6 +4,7 @@ import { Banner, Button } from "@/design";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
 import { failedCloseLead } from "@/features/releases/roster";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
+import { askWhoReleases as askWho } from "../release-who";
 import type { MergeMarkKind } from "../types";
 
 /** A claim, by the commit it names: one the repository holds, one nobody checked, or none. */
@@ -20,14 +21,18 @@ function claimedAs(when: string, held?: string | null, unchecked?: string | null
 export function AwaitingReleaseBanner({
 	projectId,
 	issueId,
-	canWrite,
+	canRelease,
+	askWhoReleases = false,
 	mergeMark,
 	mergedCommitSha,
 	mergedClaimedCommit,
 }: {
 	projectId: string;
 	issueId: string;
-	canWrite: boolean;
+	/** The release door takes a project admin, so Release now is offered to one alone (ISS-1300 r5). */
+	canRelease: boolean;
+	/** Where the reader may not release: name who may, in place of a button that would be refused. */
+	askWhoReleases?: boolean;
 	/** Which record the mark is: a claim naming no commit is never said to be a merge (ISS-1421 r14). */
 	mergeMark?: MergeMarkKind;
 	/** The commit a person's mark names, checked against the repository (ISS-1300 r3). */
@@ -71,7 +76,7 @@ export function AwaitingReleaseBanner({
 		);
 	}
 
-	const action = canWrite ? (
+	const action = canRelease ? (
 		<Button variant="primary" size="sm" disabled={batch.isPending} onClick={() => batch.mutate({ issueIds: [issueId] })}>
 			Release now
 		</Button>
@@ -83,6 +88,7 @@ export function AwaitingReleaseBanner({
 			<Banner tone="attention" action={action}>
 				<span className="font-medium">{failedCloseLead(entry.closeFailure, "this issue")}</span>{" "}
 				Release now fails the same way until whoever operates Forge fixes it.
+				{askWhoReleases && ` ${askWho("it")}`}
 			</Banner>
 		);
 	}
@@ -95,6 +101,7 @@ export function AwaitingReleaseBanner({
 				: data.automaticRelease
 					? "Forge releases it on its own once its criteria pass and nothing holds it."
 					: "No release is scheduled, so this ships when a person cuts one."}
+			{askWhoReleases && ` ${askWho("it")}`}
 		</Banner>
 	);
 }

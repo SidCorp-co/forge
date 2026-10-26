@@ -26,7 +26,14 @@ export type LiveReading =
       complete: boolean;
       startedAt: Date;
     })
-  | (ReadingBranches & { kind: 'refused'; reason: string; startedAt: Date })
+  | (ReadingBranches & {
+      kind: 'refused';
+      reason: string;
+      /** The read the reason was taken from, request and all, where the reason is said in a
+       *  person's words: it belongs behind the sentence, never in it (ISS-1300 r5). */
+      detail?: string;
+      startedAt: Date;
+    })
   | (ReadingBranches & { kind: 'pending'; reason: string });
 
 export interface LiveReachCommit {
@@ -54,7 +61,12 @@ export type LiveReach =
       /** Waiting commits no source gives to any issue: where a closed row could still be missed. */
       unowned: LiveReachCommit[];
     })
-  | (ReadingBranches & { state: 'unmeasured'; measuredAt: string | null; reason: string });
+  | (ReadingBranches & {
+      state: 'unmeasured';
+      measuredAt: string | null;
+      reason: string;
+      detail?: string;
+    });
 
 export interface LiveReachIssue {
   issSeq: number;
@@ -117,7 +129,8 @@ export function liveReachOf(
   }
   const measuredAt = reading.startedAt.toISOString();
   if (reading.kind === 'refused') {
-    return { ...branches, state: 'unmeasured', measuredAt, reason: reading.reason };
+    const { reason, detail } = reading;
+    return { ...branches, state: 'unmeasured', measuredAt, reason, ...(detail ? { detail } : {}) };
   }
   const measured = {
     baseBranch: reading.baseBranch,

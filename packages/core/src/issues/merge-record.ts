@@ -445,8 +445,28 @@ export const CHANGE_THE_MARK = 'To change the mark, use Unmark, then Mark merged
 /** The act the hold names, owed where a blank Commit could have recorded the landing (ISS-1300 r4). */
 export const NAME_THE_COMMIT = `To record the commit that landed, use ${LATER_MERGE_ACTION} and name it under ${COMMIT_FIELD}.`;
 
-export function absentStays(commit: string): string {
-  return `The mark stays at commit ${absentCommit(commit)}, which its repository does not hold.`;
+export interface AbsentRecord {
+  readonly commit: string;
+  readonly from: 'merge' | 'landing';
+  readonly repository: string | null;
+}
+
+export function absentStays(absent: AbsentRecord): string {
+  const named = absentCommit(absent.commit);
+  return absent.from === 'merge'
+    ? `The mark stays at commit ${named}, which its repository does not hold.`
+    : `The landing record names commit ${named}, which its repository does not hold.`;
+}
+
+/** A person's first mark naming no commit, over a landing the repository lacks (ISS-1300 r5). */
+export function namesNoCommitRefusal(absent: AbsentRecord): string {
+  const record = absent.from === 'merge' ? 'merge mark' : 'landing record';
+  const holder = absent.repository ?? 'its repository';
+  return (
+    `Nothing was marked, because this issue's ${record} names commit ${absentCommit(absent.commit)}, ` +
+    `which ${holder} does not hold, and a mark naming no commit leaves that record as it is. ` +
+    `Name the commit that landed under ${COMMIT_FIELD}.`
+  );
 }
 
 /** The audit comment a person reads: words, never field names. A repeat opens with what it did,

@@ -6,6 +6,7 @@ import { replaceLocationSearch, useLocationSearch } from "@/lib/utils/use-locati
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { legacyTab } from "../legacy-tab";
+import { mayRelease } from "../release-who";
 import { IssuesListView } from "./issues-list-view";
 import { NewIssueDialog } from "./new-issue-dialog";
 
@@ -98,6 +99,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
         <IssuesListView
           scope={scope}
           canWrite={canWrite}
+          canRelease={mayRelease(projectsQ.data?.find((p) => p.id === scope.projectId)?.role)}
           onNewIssue={canWrite ? () => setNewOpen(true) : undefined}
         />
       </PageContainer>

@@ -75,10 +75,10 @@ function state(over: Partial<ReleaseRoster> | null, flags: Record<string, unknow
   });
 }
 
-function renderPanel() {
+function renderPanel(canRelease = true) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <ReleaseGatePanel projectId="proj-1" slug="forge-dev" />
+      <ReleaseGatePanel projectId="proj-1" slug="forge-dev" canRelease={canRelease} />
     </QueryClientProvider>,
   );
 }
@@ -188,6 +188,16 @@ describe("ReleaseGatePanel — the way in to the release a claimed issue is in",
 });
 
 describe("ReleaseGatePanel — releasing", () => {
+  // ISS-1300 r5 (judge-125, X2): the release door takes a project admin, so nobody else is offered it.
+  it("offers no Release now to a reader who may not release, and names who may", () => {
+    state({ issues: ISSUES });
+    renderPanel(false);
+    expect(screen.queryByRole("button", { name: /release/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Only an admin of this project can release these issues, so ask one of them."),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the action disabled, and says why, until something is selected", () => {
     state({ issues: ISSUES });
     renderPanel();

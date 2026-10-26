@@ -493,4 +493,6 @@ export type LiveReach =
       liveBranch: string;
       measuredAt: string | null;
       reason: string;
+      /** The read the reason was taken from, request and all, where the reason is said in words. */
+      detail?: string;
     };

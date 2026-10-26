@@ -42,7 +42,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
       const refused = await refusal(() => mark(issue, ISS_578_PAIR, agency));
       expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
       expect(refused.message).toContain(
-        `The repository ${repo.fullName} holds no commit ${ISS_578_PAIR.slice(0, 12)}.`,
+        `The repository ${repo.fullName} holds no commit ${ISS_578_PAIR}.`,
       );
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
       expect(await comments(issue.id)).toEqual([]);

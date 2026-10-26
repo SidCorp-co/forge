@@ -171,7 +171,7 @@ describe("StatusEdit, before the exits have answered", () => {
 
 describe("BulkActionBar", () => {
   function bulk(rows: IssueRow[]) {
-    wrap(<BulkActionBar projectId="p1" selectedRows={rows} onCleared={vi.fn()} />);
+    wrap(<BulkActionBar projectId="p1" selectedRows={rows} onCleared={vi.fn()} canRelease />);
     return () => screen.getByRole("button", { name: /Set status/ });
   }
 
@@ -367,7 +367,7 @@ describe("row overflow menu, while an agent is working the row", () => {
 
 describe("BulkActionBar, while an agent is working part of the selection", () => {
   function bulk(rows: IssueRow[]) {
-    wrap(<BulkActionBar projectId="p1" selectedRows={rows} onCleared={vi.fn()} />);
+    wrap(<BulkActionBar projectId="p1" selectedRows={rows} onCleared={vi.fn()} canRelease />);
     return (name: RegExp) => screen.getByRole("button", { name });
   }
 
@@ -476,6 +476,7 @@ describe("Releasing is never a menu choice (ISS-1421)", () => {
     get.mockResolvedValue(OLD_CORE);
     wrap(
       <BulkActionBar
+        canRelease
         projectId="p1"
         selectedRows={[row({ status: "awaiting_release" }), row({ id: "i2", status: "awaiting_release" })]}
         onCleared={vi.fn()}
@@ -527,6 +528,7 @@ describe("Releasing is never a menu choice (ISS-1421)", () => {
     get.mockResolvedValue(OLD_CORE);
     wrap(
       <BulkActionBar
+        canRelease
         projectId="p1"
         selectedRows={[row({ status: "releasing" }), row({ id: "i2", status: "releasing" })]}
         onCleared={vi.fn()}

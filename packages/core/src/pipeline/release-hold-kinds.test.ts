@@ -53,9 +53,15 @@ const UNMERGED = {
   code: 'CLOSE_REQUIRES_SHIPPED',
   reason: 'not marked merged',
   clears:
-    "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
+    "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
   clearsHere:
-    "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
+    "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
+};
+// ISS-1300 r5: outside git the panel takes no commit, so its step names none.
+const UNLANDED = {
+  code: 'CLOSE_REQUIRES_SHIPPED',
+  reason: 'no mark naming where its work landed',
+  clears: 'Use Mark merged.',
 };
 const RECORDS = {
   code: 'ENTRY_CRITERIA_UNMET',
@@ -128,10 +134,17 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
       'The next sweep releases it once that is done.',
   ],
   [
+    'close refused for a landing outside git',
+    closeRefusedHold([UNLANDED]),
+    'The automatic release cannot close this issue.\n\n' +
+      '- It has no mark naming where its work landed. Use Mark merged in its properties and fill in Where it landed.\n\n' +
+      'The next sweep releases it once that is done.',
+  ],
+  [
     'close refused for several reasons',
     closeRefusedHold([UNMERGED, QUESTION, RECORDS]),
     'The automatic release cannot close this issue, for 3 reasons.\n\n' +
-      '- It is not marked merged. Use Mark merged in its properties and fill in Where it landed.\n' +
+      '- It is not marked merged. Use Mark merged in its properties, fill in Where it landed and name the commit that landed under Commit.\n' +
       '- It holds 1 open question. Answer the question in the Decision waiting card above.\n' +
       '- It is missing a test report. Press Open session at the top of this page, and the agent writes the missing records.\n\n' +
       'The next sweep releases it once each is done.',
@@ -228,7 +241,7 @@ describe('every hold kind is commented in three short sentences (ISS-1421 r8 rep
   // that clears itself), and each variant one of them words differently, is measured above.
   it('measures every kind a hold comes in', () => {
     expect(new Set(KINDS.map(([, hold]) => hold.code)).size).toBe(12);
-    expect(KINDS.length).toBe(18);
+    expect(KINDS.length).toBe(19);
   });
 
   it.each(KINDS)(

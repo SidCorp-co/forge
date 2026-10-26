@@ -1,4 +1,6 @@
+import type { ReadFailure } from '../../projects/repository-reader.js';
 import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
+import { headFailure } from './repository-reader.js';
 
 /** Commits per compare page, GitHub's own ceiling. */
 export const COMPARE_PAGE_SIZE = 100;
@@ -24,7 +26,13 @@ export type LiveDivergence =
       /** False where `commits` holds fewer than `aheadBy`: an issue it does not name is unplaced. */
       complete: boolean;
     }
-  | { ok: false; reason: string };
+  | {
+      ok: false;
+      reason: string;
+      /** A branch head GitHub would not give, told apart as the repository reader tells it: a
+       *  branch the repository lacks, or the repository refusing the read (ISS-1300 r5). */
+      failure?: ReadFailure & { repository: string };
+    };
 
 interface BranchRead {
   commit?: { sha?: string };
@@ -40,13 +48,21 @@ interface CompareRead {
   }>;
 }
 
-async function headOf(client: GitHubRepoClient, branch: string): Promise<string> {
-  const read = await client.get<BranchRead>(
-    `/repos/${client.fullName}/branches/${encodeURIComponent(branch)}`,
-  );
-  const sha = read.commit?.sha;
-  if (!sha) throw new GitHubReadError(200, `${client.fullName} answered no commit for ${branch}`);
-  return sha;
+async function headOf(client: GitHubRepoClient, branch: string): Promise<string | ReadFailure> {
+  let read: BranchRead;
+  try {
+    read = await client.get<BranchRead>(
+      `/repos/${client.fullName}/branches/${encodeURIComponent(branch)}`,
+    );
+  } catch (err) {
+    return headFailure(err, client.fullName, branch);
+  }
+  return read.commit?.sha || { why: `${client.fullName} answered no commit for ${branch}` };
+}
+
+/** The reason keeps the reader's own line, the request included, for whoever opens the details. */
+function headUnread(client: GitHubRepoClient, failed: ReadFailure): LiveDivergence {
+  return { ok: false, reason: failed.why, failure: { ...failed, repository: client.fullName } };
 }
 
 /**
@@ -59,11 +75,13 @@ export async function readLiveDivergence(
   client: GitHubRepoClient,
   refs: { baseRef: string; liveRef: string },
 ): Promise<LiveDivergence> {
+  const [baseSha, liveSha] = await Promise.all([
+    headOf(client, refs.baseRef),
+    headOf(client, refs.liveRef),
+  ]);
+  if (typeof baseSha !== 'string') return headUnread(client, baseSha);
+  if (typeof liveSha !== 'string') return headUnread(client, liveSha);
   try {
-    const [baseSha, liveSha] = await Promise.all([
-      headOf(client, refs.baseRef),
-      headOf(client, refs.liveRef),
-    ]);
     const commits: WaitingCommit[] = [];
     let aheadBy = 0;
     for (let page = 1; page <= COMPARE_MAX_PAGES; page += 1) {

@@ -188,6 +188,46 @@ describe('liveReadingForRow', () => {
     expect(r).toMatchObject({ kind: 'refused', reason: 'the repository has no branch staging' });
   });
 
+  // ISS-1300 r5 (judge-125, X1): the Production row printed the raw request a 404 came back on.
+  it('says a repository Forge cannot read as the readiness page does, the request kept as the detail', async () => {
+    const request =
+      'GET /repos/SidCorp-co/forge/branches/staging on SidCorp-co/forge returned HTTP 404';
+    const why = `SidCorp-co/forge could not read the head of staging: ${request}`;
+    const r = await liveReadingForRow(
+      row,
+      deps(async () => ({
+        ok: false,
+        reason: why,
+        failure: { why, refused: true, repository: 'SidCorp-co/forge' },
+      })),
+    );
+    expect(r).toMatchObject({
+      kind: 'refused',
+      reason:
+        "Forge cannot read SidCorp-co/forge, and checks again once Forge can read SidCorp-co/forge again: give the GitHub App installation behind this project's binding access to it, or bind the project to where it now lives",
+      detail: why,
+    });
+    expect(r?.kind === 'refused' && r.reason).not.toMatch(/GET \/repos|HTTP 404/);
+  });
+
+  it('names a branch a readable repository lacks, and what supplies it', async () => {
+    const why = 'SidCorp-co/forge could not read the head of master: HTTP 422';
+    const r = await liveReadingForRow(
+      row,
+      deps(async () => ({
+        ok: false,
+        reason: why,
+        failure: { why, missingBranch: 'master', repository: 'SidCorp-co/forge' },
+      })),
+    );
+    expect(r).toMatchObject({
+      kind: 'refused',
+      reason:
+        "SidCorp-co/forge has no branch master, so whether staging's commits reached master cannot be read. It is read again once SidCorp-co/forge has a branch master, or the project's release chain names only branches it has",
+      detail: why,
+    });
+  });
+
   it('refuses with the error itself when reading the branches throws', async () => {
     const r = await liveReadingForRow(
       row,

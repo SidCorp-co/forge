@@ -16,9 +16,9 @@ describe('the hold the automatic release leaves on an issue whose close would be
         code: 'CLOSE_REQUIRES_SHIPPED',
         reason: 'not marked merged',
         clears:
-          "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
+          "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
         clearsHere:
-          "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
+          "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
       },
     ]);
     expect(hold.code).toBe('RELEASE_ISSUES_UNCLOSABLE');
