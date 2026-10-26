@@ -34,6 +34,7 @@ import {
   environmentFault,
   readSourceDrafts,
 } from './storefront-draft.js';
+import { unobservedRuntimeFault } from './unobserved-runtime.js';
 import { keepFailAsCorrection } from './verdict-correction.js';
 import {
   storefrontPartsOf,
@@ -195,10 +196,11 @@ async function storefrontColumns(
 /** The identity columns a draft writes, the design resolved to its workflow row. */
 async function identityColumns(
   tx: Tx,
-  projectId: string,
+  issue: { id: string; projectId: string },
   draft: VerdictDraft,
   readDraft: DraftReader,
 ): Promise<VerdictColumns> {
+  const { projectId } = issue;
   const identity = draft.identity;
   if (identity === null) return {};
   switch (identity.kind) {
@@ -206,8 +208,12 @@ async function identityColumns(
       return storefrontColumns(projectId, draft.criterion, identity, readDraft);
     case 'commit':
       return { identityKind: 'commit', commitSha: identity.sha.trim().toLowerCase() };
-    case 'runtime':
-      return { identityKind: 'runtime', runtimeRef: identity.ref.trim().toLowerCase() };
+    case 'runtime': {
+      const ref = identity.ref.trim().toLowerCase();
+      const unobserved = await unobservedRuntimeFault(issue, draft.criterion, ref);
+      if (unobserved) throw verdictRefused(unobserved);
+      return { identityKind: 'runtime', runtimeRef: ref };
+    }
     case 'contract': {
       const [project = '', contract = ''] = identity.ref.trim().split('/');
       const held = await contractLookup(tx)(projectId, {
@@ -424,12 +430,7 @@ export async function recordVerdict(
   if (route !== null && route.judge !== judge) {
     throw verdictRefused(misrouted(draft.criterion, route.judge));
   }
-  const identity = await identityColumns(
-    tx,
-    issue.projectId,
-    draft,
-    args.readDraft ?? readSourceDrafts,
-  );
+  const identity = await identityColumns(tx, issue, draft, args.readDraft ?? readSourceDrafts);
   const noClip = await clipFault(tx, issue.id, draft, route?.class ?? null);
   if (noClip) throw verdictRefused(noClip);
   const runSessionId = await recordingSession(tx, {

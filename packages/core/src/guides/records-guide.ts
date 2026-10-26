@@ -102,7 +102,10 @@ block names what that criterion was judged against before the next \`criterion\`
   Where the project declares no way to ask, or where what it declares answered nothing, the verdict
   reads as uncorroborated: a runtime witnessed it and nothing here could check that, which is
   weaker evidence than a checked reading and is earned all the same. Absence of a reading is not a
-  failure. What a landing wrote down about a deployment is read by people and gates nothing.
+  failure. What a landing wrote down about a deployment is read by people and gates nothing. On a
+  project that declares no production environment nothing runs that Forge observes, so a runtime
+  there is refused at the write door under \`VERDICT_RUNTIME_UNOBSERVED\`, naming the commit at
+  the issue's landing that a verdict names instead.
 - \`commit: <at least seven hexadecimal characters>\` — a source that was read. It says which code
   was judged and never that the code was running, so a verdict carrying one and no runtime reads as
   unwitnessed, which is not earned either.

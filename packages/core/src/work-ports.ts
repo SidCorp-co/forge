@@ -127,6 +127,7 @@ import {
   nextDraftVersion,
   releaseEndsRun,
   releaseHoldsOf,
+  unobservedBuildOf,
 } from './release-batch/index.js';
 import {
   changedTracedOf,
@@ -250,6 +251,7 @@ export function provideWorkPorts(): void {
     subjectOf,
     liveReachForIssue,
     judgedBuildOf,
+    unobservedBuildOf,
     deliveryHeadsOf,
     getLoopThresholds,
     extractStageStatus,

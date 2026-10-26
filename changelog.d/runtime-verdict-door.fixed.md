@@ -1,0 +1,1 @@
+**A runtime verdict on a project without production is refused by name.** The verdict door answers `VERDICT_RUNTIME_UNOBSERVED`, naming the commit verdict at the landing that counts there, instead of keeping a verdict that never could.

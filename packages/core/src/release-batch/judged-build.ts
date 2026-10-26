@@ -16,6 +16,7 @@ import { db } from '../db/client.js';
 import { shipsWithdrawnOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index.js';
+import { resolveReleaseDeclaration } from './gate.js';
 import { landedJudgedBuild } from './landed-build.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
 import {
@@ -171,6 +172,29 @@ export async function judgedBuildOf(
     answer === false
       ? `production serves \`${live}\`, which does not hold it`
       : `whether production's \`${live}\` holds it could not be read: ${answer.unread}`,
+  );
+}
+
+/**
+ * Where the issue's project declares no production environment (release mode `none`, or a release
+ * through its change requests), the build a verdict on it counts at: its landing, or its request's
+ * head (`landed-build.ts:landedJudgedBuild`), `sha` null with the reason where none is read yet. Null
+ * on a project that declares production, and on one whose document cannot be read, which declared
+ * nothing either way. The verdict door names it when it refuses a `runtime` identity there.
+ */
+export async function unobservedBuildOf(issue: {
+  id: string;
+  projectId: string;
+}): Promise<JudgedBuild | null> {
+  const declared = await resolveReleaseDeclaration(issue.projectId);
+  if (declared?.kind !== 'no-release' && declared?.kind !== 'change-requests') return null;
+  return (
+    (await landedJudgedBuild(issue)) ?? {
+      sha: null,
+      source: null,
+      version: null,
+      basis: 'this project names no working branch its landing is read on',
+    }
   );
 }
 
