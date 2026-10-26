@@ -141,12 +141,12 @@ function runPart(
   attempts: ReleaseAttemptRow[],
   approvals: ApprovalView[],
   required: boolean,
-  productionBranch: string | null,
+  deploysFrom: string | null,
 ): Part {
   return {
     version: run.version,
     runId: run.id,
-    state: versionStatus(run, approvals[0] ?? null, required, productionBranch),
+    state: versionStatus(run, approvals[0] ?? null, required, deploysFrom),
     issueIds: issueIdsOf(run.metadata),
     openedAt: run.startedAt,
     releasedAt: run.releasedAt,
@@ -159,7 +159,7 @@ function runPart(
     continuedAs: null,
     naming: readReleaseNaming(run.metadata),
     mergeSteps: mergeStepsOf(run.metadata),
-    landedOn: run.releasedAt ? landedOffProduction(run.metadata, productionBranch) : null,
+    landedOn: run.releasedAt ? landedOffProduction(run.metadata, deploysFrom) : null,
   };
 }
 
@@ -184,7 +184,7 @@ async function productionOf(projectId: string, current: string | null): Promise<
 }
 
 /** The branch production deploys from, as the project document declares it; null where it declares no production. */
-async function productionBranchOf(projectId: string): Promise<string | null> {
+async function deploysFromOf(projectId: string): Promise<string | null> {
   const read = await readReleasePath(projectId);
   return read.ok ? (read.path.production?.declaration.deploysFrom ?? null) : null;
 }
@@ -231,9 +231,9 @@ async function sharedFor(
 }
 
 async function runParts(projectId: string, version: string | undefined, required: boolean) {
-  const [runs, productionBranch] = await Promise.all([
+  const [runs, deploysFrom] = await Promise.all([
     versionRuns(projectId, version),
-    productionBranchOf(projectId),
+    deploysFromOf(projectId),
   ]);
   const ids = runs.map((r) => r.id);
   const [attempts, rows] = await Promise.all([attemptsOf(ids), approvalsOfRuns(ids)]);
@@ -244,7 +244,7 @@ async function runParts(projectId: string, version: string | undefined, required
       attempts.filter((a) => a.runId === run.id),
       approvals.filter((a) => a.runId === run.id),
       required,
-      productionBranch,
+      deploysFrom,
     ),
   );
 }

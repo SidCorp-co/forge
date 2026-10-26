@@ -47,12 +47,12 @@ export const issueIdsOf = (meta: Record<string, unknown>): string[] => [
  * The branch a recorded landing put its release on, where production does not deploy from that
  * branch; null for every other run. Such a release landed and nothing deployed it: no production
  * reading says production serves it (`recorded-landing.ts`), so it reads `landed`, never `shipped`.
- * `productionBranch` is the branch the project's production environment deploys from, read from
+ * `deploysFrom` is the branch the project's production environment deploys from, read from
  * its document; null where it declares none.
  */
 export function landedOffProduction(
   metadata: Record<string, unknown>,
-  productionBranch: string | null,
+  deploysFrom: string | null,
 ): string | null {
   if (metadata.source !== RELEASE_RECORD_SOURCE) return null;
   if (metadata.verification !== LANDED_VERIFICATION) return null;
@@ -62,7 +62,7 @@ export function landedOffProduction(
       `release record ${JSON.stringify(metadata.identity ?? null)} records a landing with no branch: a landing is recorded on the branch it landed on (recorded-landing.ts)`,
     );
   }
-  return branch === productionBranch ? null : branch;
+  return branch === deploysFrom ? null : branch;
 }
 
 // a version's status is read from what the run recorded, in this order: a ship stamp is final (a recorded landing off production's branch reads landed), an open run is waiting on its approval or still at work, and a concluded run was aborted or failed
@@ -71,10 +71,10 @@ export function versionStatus(
   run: Pick<ReleaseRunRow, 'status' | 'releasedAt' | 'metadata'>,
   latest: Pick<ApprovalView, 'decision'> | null,
   required = false,
-  productionBranch: string | null = null,
+  deploysFrom: string | null = null,
 ): VersionStatus {
   if (run.releasedAt) {
-    return landedOffProduction(run.metadata, productionBranch) === null ? 'shipped' : 'landed';
+    return landedOffProduction(run.metadata, deploysFrom) === null ? 'shipped' : 'landed';
   }
   if (run.status === 'running' || run.status === 'paused') {
     if (latest && latest.decision === null) return 'awaiting_approval';
