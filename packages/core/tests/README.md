@@ -183,15 +183,15 @@ instance started with `-c fsync=off`, as *Running* below does.
 
 **What it buys**, counted from `log_statement=ddl` over one whole local run at three workers:
 
-| | `main` at `e4f44b66c`, a database per file | ISS-1315 at `1340c3d8b`, a database per slot |
+| | `main` at `e4f44b66c`, a database per file | ISS-1315 at `ea09294f2`, a database per slot |
 | --- | --- | --- |
-| `CREATE DATABASE` | 537 — 405 per file, 108 per migration case, 24 templates | 168 — 3 slots, 6 in the isolation e2e's nested runs, 27 declared `own` (one of them the gone-template refusal, which Postgres rejects), 108 per case, 24 templates |
+| `CREATE DATABASE` | 537 — 405 per file, 108 per migration case, 24 templates | 167 — 3 slots, 6 in the isolation e2e's nested runs, 27 declared `own` (one of them the gone-template refusal, which Postgres rejects), 108 per case, 23 templates |
 | `DROP DATABASE` | 537 | 167, plus 1 slot database renamed aside by the isolation e2e |
-| Files / tests, green | 413 / 4276 | 423 / 4373 |
-| Wall | 2429s at `fsync=on` | 1317s at `fsync=off` |
+| Files / tests, green | 413 / 4276 | 423 / 4380 |
+| Wall | 2429s at `fsync=on` | 1431s at `fsync=off` |
 
 The `e4f44b66c` run went under `--sequence.shuffle.files --sequence.seed=1315` on 2026-10-25, the
-`1340c3d8b` run under `--sequence.shuffle --sequence.seed=2615` (tests shuffled inside each file
+`ea09294f2` run under `--sequence.shuffle --sequence.seed=1315` (tests shuffled inside each file
 too) on 2026-10-26; both with `TEST_TEMPLATE_MODE=fresh` against a `pgvector/pgvector:pg17`
 container of their own, on a 56-core box. The two walls ran at different `fsync` settings and are
 not a comparison of the two designs. Nothing carrying either run's token was left in `pg_database`
