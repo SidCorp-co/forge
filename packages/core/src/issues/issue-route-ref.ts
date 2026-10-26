@@ -64,12 +64,15 @@ async function closedIssueRefusal(
   });
 }
 
-/** A display key read under a project the caller holds no role on. */
-async function closedProjectRefusal(access: ProjectAccess): Promise<HTTPException> {
+/**
+ * A display key read under a project the caller holds no role on, or under an id that is no project:
+ * the two read alike, so the refusal never says whether an id is a project (ISS-1229 r43).
+ */
+async function closedProjectRefusal(access: ProjectAccess | null): Promise<HTTPException> {
   const name = await nameShownTo(access);
   const project = name
     ? `${name} is a project you are not a member of`
-    : 'This address names a project you are not a member of';
+    : 'This address names no project you are a member of';
   return forbidden(`${project}, so none of its issues can be read.`, {
     issueProject: { name },
     addressProject: null,
@@ -120,8 +123,8 @@ export async function resolveIssueRouteRef(
     throw badRequest({ formErrors: ['`projectId` must be a uuid'], fieldErrors: {} });
   }
 
-  const access = await loadProjectAccess(projectIdQuery, userId);
-  if (!access.role) throw await closedProjectRefusal(access);
+  const access = await effectiveProjectRole(userId, projectIdQuery);
+  if (!access?.role) throw await closedProjectRefusal(access);
 
   const parsed = parseIssueRef(
     rawId,

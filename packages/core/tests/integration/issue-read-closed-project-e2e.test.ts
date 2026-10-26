@@ -157,6 +157,27 @@ describe('GET /api/issues/:id — the refusal names the project', () => {
     }
   });
 
+  // ISS-1229 r43 (judge-120): a display-key read under an id that is no project answered 404 "Project not
+  // found" where another organization's project answered 403, so a caller learned whether a uuid is a project.
+  it("refuses a display key under an id that is no project exactly as under another organization's project", async () => {
+    const s = await seed({ readerInOrg: true });
+    await issueIn(s.elsewhere.id, s.owner.id);
+
+    const another = await read(`/api/issues/1?projectId=${s.elsewhere.id}`, s.reader.id);
+    const none = await read(`/api/issues/1?projectId=${randomUUID()}`, s.reader.id);
+
+    expect(another).toEqual({
+      status: 403,
+      body: {
+        code: 'FORBIDDEN',
+        message:
+          'This address names no project you are a member of, so none of its issues can be read.',
+        details: { issueProject: { name: null }, addressProject: null },
+      },
+    });
+    expect(none).toEqual(another);
+  });
+
   it('still answers an issue the reader may read, whatever project the address names', async () => {
     const s = await seed({ readerInOrg: true });
     const deskIssue = await issueIn(s.desk.id, s.owner.id);

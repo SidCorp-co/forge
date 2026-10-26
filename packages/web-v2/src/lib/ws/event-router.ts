@@ -155,7 +155,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 					["conversations", data.conversationId, "withdrawn"],
 					(prev: Record<string, unknown> | undefined) => ({
 						...prev,
-						[data.entry.id]: data.replaced.draft,
+						[data.entry.id]: { draft: data.replaced.draft ?? null, for: data.replaced.for ?? null },
 					}),
 				);
 			}

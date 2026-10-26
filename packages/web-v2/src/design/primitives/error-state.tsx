@@ -12,15 +12,17 @@ export interface ErrorStateProps {
   mascot?: boolean;
   /** The server's own code and message, for whoever reports it: folded under Technical details. */
   technical?: string;
+  level?: 1 | 2 | 3;
 }
 
-/** Failure state — mascot (flame stilled) + one line + a retry. Never a dead end. */
-export function ErrorState({ title = "Couldn't load", message, onRetry, action, mascot = true, technical }: ErrorStateProps) {
+/** Failure state — mascot (flame stilled), a heading at `level` (1 where it is the whole page), a retry. */
+export function ErrorState({ title = "Couldn't load", message, onRetry, action, mascot = true, technical, level = 2 }: ErrorStateProps) {
+  const Heading = `h${level}` as const;
   return (
     <div className="flex flex-col items-center justify-center gap-3.5 px-6 py-12 text-center">
       {mascot && <ForgeMascot size={88} mode="blink" ring={false} flicker={false} progress={0.4} />}
       <div>
-        <p className="fg-h3">{title}</p>
+        <Heading className="fg-h3">{title}</Heading>
         <p className="fg-body-sm mx-auto mt-1 max-w-[260px]">{message}</p>
       </div>
       {technical && (

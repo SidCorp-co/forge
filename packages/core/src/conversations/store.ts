@@ -73,6 +73,8 @@ export interface StoredConversationMessage {
   deliveryProof: unknown;
   /** The draft the reply screen withdrew before this reply, read off its delivery proof (ISS-1229 r36). */
   withdrawnDraft: string | null;
+  /** Why a withdrawn draft keeps no text: it read as a credential (ISS-1229 r43). */
+  withdrawnFor: 'credential' | null;
   silenceReason: string | null;
   createdAt: Date;
 }
@@ -402,6 +404,13 @@ function withdrawnDraftOf(proof: unknown): string | null {
   return typeof draft === 'string' && draft.trim() !== '' ? draft : null;
 }
 
+/** Why the delivery proof keeps no withdrawn draft, where it says (ISS-1229 r43). */
+function withdrawnForOf(proof: unknown): 'credential' | null {
+  const why =
+    proof && typeof proof === 'object' ? (proof as { withdrawnFor?: unknown }).withdrawnFor : null;
+  return why === 'credential' ? 'credential' : null;
+}
+
 function toStored(row: typeof conversationMessages.$inferSelect): StoredConversationMessage {
   return {
     id: row.id,
@@ -417,6 +426,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     images: asImages(row.images),
     deliveryProof: row.deliveryProof ?? null,
     withdrawnDraft: withdrawnDraftOf(row.deliveryProof),
+    withdrawnFor: withdrawnForOf(row.deliveryProof),
     silenceReason: row.silenceReason,
     createdAt: row.createdAt,
   };

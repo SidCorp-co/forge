@@ -437,6 +437,7 @@ export function ConversationChat({
               outbox={outbox}
               progress={progress}
               withdrawn={withdrawn}
+              participants={roomQ.data?.participants ?? []}
               agentTurns={agentTurns}
               onRetry={retry}
               unanswered={unanswered}

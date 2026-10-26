@@ -36,6 +36,8 @@ export interface DeliveredReply {
   decision?: string | undefined;
   /** The draft the reply screen withdrew before this reply went out (ISS-1229 r36). */
   withdrawnDraft?: string | undefined;
+  /** Why no draft is kept: it read as a credential, so none of its text is stored (ISS-1229 r43). */
+  withdrawnFor?: 'credential' | undefined;
 }
 
 /**
@@ -56,6 +58,7 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
         ...(reply.deliveryKey ? { deliveryKey: reply.deliveryKey } : {}),
         ...(reply.deliveryKey && reply.decision ? { decision: reply.decision } : {}),
         ...(reply.withdrawnDraft ? { withdrawnDraft: reply.withdrawnDraft } : {}),
+        ...(reply.withdrawnFor ? { withdrawnFor: reply.withdrawnFor } : {}),
       },
     });
   } catch (err) {

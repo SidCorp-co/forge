@@ -7,6 +7,7 @@ import { Button } from "@/design/primitives/button";
 import { Kbd } from "@/design/primitives/kbd";
 import { SegmentedControl } from "@/design/primitives/segmented-control";
 import { Tooltip } from "@/design/primitives/tooltip";
+import { shortCount } from "@/lib/document-title";
 import { cn } from "@/lib/utils/cn";
 import { PageTitle } from "@/design";
 
@@ -110,20 +111,22 @@ export function TopBar({
             />
           </Tooltip>
         )}
+        {/* The count sits beside the bell, never over it, and reads at most 99+ (ISS-1229 r43, judge-120). */}
         <button
           ref={notificationsRef}
           type="button"
           onClick={onNotifications}
-          className="relative inline-flex size-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
+          className="inline-flex h-9 min-w-9 flex-none items-center justify-center gap-1 rounded-md px-[9px] text-muted transition-colors hover:bg-hover hover:text-fg"
           aria-label="Notifications"
         >
-          <Icon name="bell" size={18} />
+          <Icon name="bell" size={18} className="flex-none" />
           {notificationCount > 0 && (
             <span
-              className="absolute right-1.5 top-1.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 text-10 font-bold text-white"
+              data-testid="bell-count"
+              className="inline-flex min-w-[15px] flex-none items-center justify-center rounded-pill px-1 text-10 font-bold text-white"
               style={{ background: "var(--accent)" }}
             >
-              {notificationCount}
+              {shortCount(notificationCount)}
             </span>
           )}
         </button>

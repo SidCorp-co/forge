@@ -1,5 +1,7 @@
+import { scrubLogText } from '@forge/observability';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
+import { readsAsCredential } from '../messaging/text-rules.js';
 import {
   publishToConversationReaders,
   WEB_CONVERSATION_PROGRESS_EVENT,
@@ -19,9 +21,10 @@ export interface ConversationProgress {
   blocksForRecord: (deliveredText: string) => ContentBlock[] | null;
   /**
    * The draft the reply screen withdrew in this turn, stored beside the reply that replaced it so the
-   * room still says so after a reload (ISS-1229 r36, judge-97); null where nothing was withdrawn.
+   * room still says so after a reload (ISS-1229 r36, judge-97); null where nothing was kept.
    */
   withdrawnDraft: () => string | null;
+  withdrawnFor: () => WithdrawnFor | null;
   /** The one id the frames, the delivered message and the stored row all share. */
   entryId: string;
   /**
@@ -29,6 +32,9 @@ export interface ConversationProgress {
    */
   close: () => Promise<void>;
 }
+
+/** Why a withdrawn draft keeps no text: it read as a credential (ISS-1229 r43). */
+export type WithdrawnFor = 'credential';
 
 /** Everything published under one conversation, so a client can order what it receives. */
 export interface ConversationProgressFrame {
@@ -39,7 +45,19 @@ export interface ConversationProgressFrame {
   /**
    * Set when the text that went out is NOT the prose these frames streamed.
    */
-  replaced?: { draft: string };
+  replaced?: { draft: string } | { draft: null; for: WithdrawnFor };
+}
+
+/**
+ * A block with its credential-shaped prose filtered. A frame carries the whole entry so far and every
+ * scrubber pattern is anchored ahead of its secret, so no secret character reaches a frame (r43).
+ */
+function withoutCredentials(block: ContentBlock): ContentBlock {
+  return {
+    ...block,
+    ...(block.text !== undefined ? { text: scrubLogText(block.text) } : {}),
+    ...(block.thinking !== undefined ? { thinking: scrubLogText(block.thinking) } : {}),
+  };
 }
 
 /**
@@ -59,13 +77,15 @@ export function startConversationProgress(args: {
   let rev = 0;
   let closed = false;
   let withdrawn: string | null = null;
+  let withdrawnFor: WithdrawnFor | null = null;
   let tail: Promise<unknown> = Promise.resolve();
 
   /** The entry as it stands right now, detached from the accumulator that keeps folding into it. */
   const freeze = (entry: AgentMessage): AgentMessage => ({
     ...entry,
+    ...(entry.content !== undefined ? { content: scrubLogText(entry.content) } : {}),
     blocks: (entry.blocks ?? []).map((b) => ({
-      ...b,
+      ...withoutCredentials(b),
       ...(b.toolCall ? { toolCall: { ...b.toolCall } } : {}),
       ...(b.todos ? { todos: b.todos.map((t) => ({ ...t })) } : {}),
     })),
@@ -119,9 +139,11 @@ export function startConversationProgress(args: {
       await tail;
     },
 
-    blocksForRecord: (deliveredText) => blocksFor(deliveredText),
+    blocksForRecord: (deliveredText) => blocksFor(deliveredText)?.map(withoutCredentials) ?? null,
 
     withdrawnDraft: () => withdrawn,
+
+    withdrawnFor: () => withdrawnFor,
 
     onTurnEvent: (event) => {
       acc.apply(event);
@@ -140,8 +162,17 @@ export function startConversationProgress(args: {
         content: settled,
         blocks: blocksFor(settled) ?? [{ type: 'text', text: settled }],
       };
-      if (screenReplaced) withdrawn = draft;
-      send({ entry: corrected, ...(screenReplaced ? { replaced: { draft } } : {}) });
+      if (!screenReplaced) {
+        send({ entry: corrected });
+        return;
+      }
+      if (readsAsCredential(draft)) {
+        withdrawnFor = 'credential';
+        send({ entry: corrected, replaced: { draft: null, for: 'credential' } });
+        return;
+      }
+      withdrawn = draft;
+      send({ entry: corrected, replaced: { draft } });
     },
   };
 }

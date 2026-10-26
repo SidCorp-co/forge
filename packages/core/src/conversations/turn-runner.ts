@@ -147,6 +147,8 @@ export interface ConversationTurnRequest {
         blocks: readonly ContentBlock[] | null;
         /** The draft the reply screen withdrew before this reply, kept beside it (ISS-1229 r36). */
         withdrawnDraft?: string | null;
+        /** Why a withdrawn draft was not kept: it read as a credential (ISS-1229 r43). */
+        withdrawnFor?: 'credential' | null;
       })
     | undefined;
   /** The answering handle's own name — the code-authored fallbacks speak as it. */
@@ -461,6 +463,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
       deliveryKey: req.deliveryKey,
       ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
       ...(entry?.withdrawnDraft ? { withdrawnDraft: entry.withdrawnDraft } : {}),
+      ...(entry?.withdrawnFor ? { withdrawnFor: entry.withdrawnFor } : {}),
     });
   } catch (err) {
     logger.error(

@@ -15,7 +15,7 @@
 
 import { personName, readerName } from "@forge/contracts/person-name";
 import { useAuth } from "@/providers/auth-provider";
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { Icon, Markdown } from "@/design";
 import { Conversation } from "@/features/session/components/conversation";
 import { RoomToolCard } from "./room-tool-card";
@@ -31,9 +31,15 @@ import {
   type ConversationMessage,
   type ConversationWindow,
   type ConversationProgressEntry,
+  type ConversationParticipant,
   type OutboxMessage,
   threadEntries,
+  type WithdrawnReply,
 } from "../types";
+import { memberName } from "../membership";
+
+/** The room's people, so each message names its author as the members list does (ISS-1229 r43). */
+const RoomPeople = createContext<readonly ConversationParticipant[]>([]);
 
 /**
  * One stored row as the canonical entry every renderer here reads.
@@ -71,12 +77,33 @@ function AssistantTurn({
   );
 }
 
+export const WITHDRAWN_FOR_A_CREDENTIAL =
+  "A reply was withdrawn by the reply check because it looked like it held a password, key or token, and answered again below.";
+
+/** What the stored row says was withdrawn before it, if anything (r36; the reason since r43). */
+function storedWithdrawal(message: ConversationMessage): WithdrawnReply | null {
+  if (message.withdrawnFor === "credential") return { draft: null, for: "credential" };
+  return message.withdrawnDraft ? { draft: message.withdrawnDraft, for: null } : null;
+}
+
 /**
  * A draft the reply screen refused: one line above the turn that replaced it, and the draft itself only
- * under its technical details, which a person opens or not (ISS-1229 r35, judge-95).
+ * under its technical details, which a person opens or not (ISS-1229 r35, judge-95). A draft that looked
+ * like it held a credential is not kept at all, so its line says why and offers nothing to open (r43).
  */
-function WithdrawnDraft({ draft }: { draft: string }) {
+function WithdrawnDraft({ withdrawn }: { withdrawn: WithdrawnReply }) {
   const [open, setOpen] = useState(false);
+  const draft = withdrawn.draft;
+  if (withdrawn.for === "credential" || !draft) {
+    return (
+      <div className="border-l border-line py-1 pl-3" data-testid="thread-reply-withdrawn">
+        <p className="fg-body-sm flex items-start gap-2 text-muted">
+          <Icon name="alert" size={13} className="mt-0.5 flex-none" />
+          <span>{WITHDRAWN_FOR_A_CREDENTIAL}</span>
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="border-l border-line py-1 pl-3" data-testid="thread-reply-withdrawn">
       <p className="fg-body-sm flex items-start gap-2 text-muted">
@@ -146,9 +173,18 @@ function MessageActions({ message }: { message: ConversationMessage }) {
   const own = Boolean(viewerId) && message.authorUserId === viewerId;
   // Core names every other person when the room is read (ISS-1229 r25); one it could not name is
   // another member, never "You", which is the reader's word alone.
+  const people = useContext(RoomPeople);
+  const listed =
+    message.role === "user" && message.authorUserId
+      ? people.find((p) => p.kind === "person" && p.userId === message.authorUserId)
+      : undefined;
+  // A person in the room reads as the members list names them, so three people none of whom set a
+  // name never read alike (ISS-1229 r43, judge-120); one no longer in it keeps core's name for them.
   const author = own
     ? "You"
-    : (message.authorLabel ?? (message.role === "user" ? personName(null, "start") : "Assistant"));
+    : listed
+      ? memberName(listed, viewerId, "start", { participants: [...people] })
+      : (message.authorLabel ?? (message.role === "user" ? personName(null, "start") : "Assistant"));
   const from = own ? "you" : readerName(null, null, author, "inside");
   const copy = () => {
     navigator.clipboard?.writeText(message.content).then(
@@ -209,7 +245,7 @@ function Said({
   newestAgentId,
 }: {
   message: ConversationMessage;
-  withdrawn?: string;
+  withdrawn?: WithdrawnReply;
   newestAgentId?: string;
 }) {
   if (message.silenceReason) {
@@ -237,7 +273,7 @@ function Said({
   }
   return (
     <div className="flex flex-col gap-2">
-      {withdrawn && <WithdrawnDraft draft={withdrawn} />}
+      {withdrawn && <WithdrawnDraft withdrawn={withdrawn} />}
       <AssistantTurn entry={entryOf(message)} {...(newestAgentId ? { newestAgentId } : {})} />
       <MessageActions message={message} />
     </div>
@@ -320,6 +356,7 @@ export function ConversationThread({
   agentTurns = [],
   progress,
   withdrawn = {},
+  participants = [],
   atBottom,
   onRetry,
   unanswered,
@@ -333,7 +370,8 @@ export function ConversationThread({
   /** The turn running right now, as the socket's frames have it so far (ISS-1078). */
   progress?: ConversationProgressEntry | null;
   /** Drafts the reply screen refused in this room, by the entry id that replaced each (ISS-1078). */
-  withdrawn?: Record<string, string>;
+  withdrawn?: Record<string, WithdrawnReply>;
+  participants?: readonly ConversationParticipant[];
   /**
    * Whether the reader is at the bottom of this thread (ISS-1083).
    */
@@ -348,17 +386,18 @@ export function ConversationThread({
     return id;
   }, undefined);
   return (
+    <RoomPeople.Provider value={participants}>
     <DisclosureScope {...(atBottom !== undefined ? { atBottom } : {})}>
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
         if (entry.kind === "said") {
           // The live frame's draft, else the one stored with the reply, which a reload or a later reader gets.
-          const draft = withdrawn[entry.message.id] ?? entry.message.withdrawnDraft;
+          const said = withdrawn[entry.message.id] ?? storedWithdrawal(entry.message);
           return (
             <Said
               key={entry.key}
               message={entry.message}
-              {...(draft ? { withdrawn: draft } : {})}
+              {...(said ? { withdrawn: said } : {})}
               {...(newestAgentId ? { newestAgentId } : {})}
             />
           );
@@ -399,6 +438,7 @@ export function ConversationThread({
       })}
     </div>
     </DisclosureScope>
+    </RoomPeople.Provider>
   );
 }
 
@@ -411,12 +451,12 @@ function LiveTurn({
   newestAgentId,
 }: {
   progress: ConversationProgressEntry;
-  withdrawn?: string;
+  withdrawn?: WithdrawnReply;
   newestAgentId?: string;
 }) {
   return (
     <div className="flex flex-col gap-2" data-testid="thread-live-turn">
-      {withdrawn && <WithdrawnDraft draft={withdrawn} />}
+      {withdrawn && <WithdrawnDraft withdrawn={withdrawn} />}
       <AssistantTurn
         entry={progress.entry}
         streaming={!progress.replaced}

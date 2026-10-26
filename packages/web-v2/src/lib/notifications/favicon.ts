@@ -1,6 +1,6 @@
 
-/** Base document title — the favicon/title indicator only PREFIXES this. */
-const BASE_TITLE = "Forge";
+import { setTitleCount } from "@/lib/document-title";
+
 const BADGE_COLOR = "#F15A2B";
 /** A contrast ring around the dot so it reads against a dark favicon too. */
 const RING_COLOR = "#FFFFFF";
@@ -100,13 +100,12 @@ export function setFaviconBadge(show: boolean): void {
 }
 
 /**
- * Prefix the document title with the open count, e.g. `(3) Forge`, capping at
- * `(99+)`. `count <= 0` restores the bare base title. SSR-safe; never throws.
+ * Prefix the document title with the open count, e.g. `(3) Forge`, capping at `(99+)`, beside whatever
+ * the page named (`lib/document-title.ts`). `count <= 0` drops the prefix. SSR-safe; never throws.
  */
 export function setTitleOpenCount(count: number): void {
-  if (typeof document === "undefined") return;
   try {
-    document.title = count > 0 ? `(${count > 99 ? "99+" : count}) ${BASE_TITLE}` : BASE_TITLE;
+    setTitleCount(Math.max(0, count));
   } catch {
     // Assigning document.title can't normally throw, but stay defensive.
   }
