@@ -43,6 +43,7 @@ import {
   type VerdictRefusal,
   verdictDraftFault,
 } from './verdict-input.js';
+import { repeatedVerdict } from './verdict-repeat.js';
 
 type VerdictColumns = Partial<typeof criterionVerdicts.$inferInsert>;
 
@@ -355,7 +356,9 @@ async function countingOf(
 /**
  * Insert one verdict, refused by name where the draft, its criterion or its design is wrong. It
  * answers, by name, where the verdict is kept and will never count (`notCounted`), and marks a
- * builder's pass that counts only under the cutover (`countedUnderCutover`).
+ * builder's pass that counts only under the cutover (`countedUnderCutover`). A run sending its own
+ * latest verdict on the criterion again, word for word, is answered that row, `duplicate`, and
+ * nothing is written (`verdict-repeat.ts`).
  */
 export async function recordVerdict(
   tx: Tx,
@@ -372,7 +375,13 @@ export async function recordVerdict(
     /** False where the door moves the issue itself on a fail (a release's probe replay). */
     reopens?: boolean;
   },
-): Promise<{ id: string; notCounted: NotCounted | null; countedUnderCutover: boolean }> {
+): Promise<{
+  id: string;
+  /** True where this run already holds this very verdict on the criterion, answered and not written. */
+  duplicate: boolean;
+  notCounted: NotCounted | null;
+  countedUnderCutover: boolean;
+}> {
   const { issue, draft, author } = args;
   const fault = verdictDraftFault(draft);
   if (fault) throw verdictRefused(fault);
@@ -417,6 +426,15 @@ export async function recordVerdict(
     run: args.run,
     runSession: args.runSession,
   });
+  const repeat = { criterionId: criterion.id, runSessionId, draft, identity, judge };
+  const repeated = await repeatedVerdict(tx, repeat);
+  if (repeated) {
+    return {
+      id: repeated,
+      duplicate: true,
+      ...(await countingOf(tx, issue.projectId, { id: repeated, value: draft.verdict })),
+    };
+  }
   const probeId = await probeOfVerdict(tx, {
     issueId: issue.id,
     projectId: issue.projectId,
@@ -492,5 +510,5 @@ export async function recordVerdict(
       failed,
     });
   }
-  return { id: row.id, notCounted, countedUnderCutover: underCutover };
+  return { id: row.id, duplicate: false, notCounted, countedUnderCutover: underCutover };
 }

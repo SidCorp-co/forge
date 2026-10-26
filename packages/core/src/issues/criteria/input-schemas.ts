@@ -32,6 +32,26 @@ export const criteriaPutSchema = z
   .strict()
   .transform(({ criteria }) => ({ criteria: numberCriteria(criteria) }));
 
+/** One criterion of an issue, named by its number on the issue or by its id. */
+export const criterionParamSchema = z.object({
+  id: z.uuid(),
+  ref: z.union([
+    z.uuid().transform((id) => ({ id })),
+    z
+      .string()
+      .regex(/^[1-9][0-9]{0,5}$/, 'a criterion number or id')
+      .transform((n) => ({ n: Number(n) })),
+  ]),
+});
+
+/** One criterion's corrected wording and why: its id, and so its verdicts, are kept (`criterion-reword.ts`). */
+export const criterionPatchSchema = z
+  .object({
+    statement: z.string().trim().min(1).max(10_000),
+    reason: z.string().trim().min(1).max(REASON_TEXT_MAX),
+  })
+  .strict();
+
 /** The business criteria to tie an issue to, by code; a code of the wrong shape is refused by name. */
 export const criteriaTracePostSchema = z
   .object({ codes: z.array(z.string().trim().min(1).max(32)).min(1).max(50) })

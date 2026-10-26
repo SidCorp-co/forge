@@ -3,7 +3,11 @@
  * `store.ts` and `verdict-input.ts`, which every door calls.
  *
  *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict, and the retired ones with all their verdicts
- *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text)
+ *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text),
+ *                                   answering `verdicts`: which recorded verdicts it kept and voided
+ *   GET  /api/issues/:id/criteria/:ref   one live criterion (`ref` its number or id) with its wording history
+ *   PATCH /api/issues/:id/criteria/:ref  correct its wording: keeps its id and every verdict on it,
+ *                                   recording the old and new text on its history
  *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends; refreshes a trace on an earlier wording)
  *   POST /api/issues/:id/verdicts   one verdict on one criterion, with the probe it keeps, answering
  *                                   `notCounted` by name where it will never count (ISS-475)
@@ -24,11 +28,19 @@ import { nestedFieldShape, zValidator } from '../../middleware/zod-validator.js'
 import { heldIssue } from '../issue-route-ref.js';
 import { judgedBuildOf } from '../ports.js';
 import { findIssueById } from '../read-service.js';
-import { criteriaPutSchema, criteriaTracePostSchema, verdictPostSchema } from './input-schemas.js';
+import {
+  criteriaPutSchema,
+  criteriaTracePostSchema,
+  criterionParamSchema,
+  criterionPatchSchema,
+  verdictPostSchema,
+} from './input-schemas.js';
 import {
   addVerdict,
+  correctCriterion,
   readCriteriaWithDrafts as readCriteria,
   readCriteriaAndRetired,
+  readCriterion,
   replaceCriteria,
   traceCriteria,
 } from './service.js';
@@ -36,7 +48,8 @@ import {
 export const issueCriteriaRoutes = new Hono<{ Variables: AuthVars }>();
 
 issueCriteriaRoutes.use('/:id/criteria', requireAuth(), assertEmailVerified());
-issueCriteriaRoutes.use('/:id/criteria/traces', requireAuth(), assertEmailVerified());
+// `/:id/criteria/:ref` also gates `/:id/criteria/traces`
+issueCriteriaRoutes.use('/:id/criteria/:ref', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/verdicts', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/judged-build', requireAuth(), assertEmailVerified());
 
@@ -68,8 +81,51 @@ issueCriteriaRoutes.put(
     const { id } = c.req.valid('param');
     const { criteria } = c.req.valid('json');
     const issue = await heldIssue(id, c.get('userId'), 'project.write');
-    await replaceCriteria(id, criteria);
-    return c.json(await criteriaShown(c.get('agency'), issue));
+    const verdicts = await replaceCriteria(id, criteria);
+    if (!verdicts) throw notFound('issue not found');
+    return c.json({ ...(await criteriaShown(c.get('agency'), issue)), verdicts });
+  },
+);
+
+issueCriteriaRoutes.get(
+  '/:id/criteria/:ref',
+  zValidator('param', criterionParamSchema),
+  async (c) => {
+    const { id, ref } = c.req.valid('param');
+    const issue = await heldIssue(id, c.get('userId'), 'project.read');
+    return c.json(
+      await egressForRequest(
+        c.get('agency'),
+        issue.projectId,
+        'issue.criteria',
+        await readCriterion(issue, ref),
+        `a criterion of ${issue.id}`,
+      ),
+    );
+  },
+);
+
+issueCriteriaRoutes.patch(
+  '/:id/criteria/:ref',
+  zValidator('param', criterionParamSchema),
+  zValidator('json', criterionPatchSchema),
+  async (c) => {
+    const { id, ref } = c.req.valid('param');
+    const { statement, reason } = c.req.valid('json');
+    const issue = await heldIssue(id, c.get('userId'), 'project.write');
+    const done = await correctCriterion({
+      issueId: issue.id,
+      ref,
+      statement,
+      reason,
+      actor: { type: 'user', id: c.get('userId'), agency: restActor(c).agency },
+    });
+    if (!done) throw notFound('issue not found');
+    return c.json({
+      ...done,
+      // the id is kept, so every verdict recorded on the criterion stands on the corrected wording
+      verdicts: { kept: done.keptVerdicts, voided: [] },
+    });
   },
 );
 
@@ -121,11 +177,13 @@ issueCriteriaRoutes.post(
     return c.json(
       {
         verdictId: written.id,
+        // this run's latest verdict on the criterion, sent again word for word: nothing was written
+        duplicate: written.duplicate,
         criterion,
         notCounted: written.notCounted,
         countedUnderCutover: written.countedUnderCutover,
       },
-      201,
+      written.duplicate ? 200 : 201,
     );
   },
 );
