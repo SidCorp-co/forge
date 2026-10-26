@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { unlinkChangeRequestIssue } from '../../src/integrations/source-host/change-request-links.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
 import { emitEvent } from '../../src/outbox/index.js';
 import { api, userToken } from '../helpers/api.js';
@@ -237,6 +238,27 @@ describe('BC-4: a merge the host reports stamps every issue its request delivers
       expect((await issueRow(id))?.merged_commit_sha).toBe(HOST_SHA);
     }
     expect((await issueRow(four))?.merged_commit_sha).toBeNull();
+  });
+
+  // ISS-705: an issue a person unlinked is not stamped, though the branch itself names it
+  it('leaves ISS-2 unstamped once it is unlinked from !10', async () => {
+    await settleOutbox();
+    await seedWorld({ approval: { required: true } });
+    const { one, two, three } = await stack();
+    const off = await unlinkChangeRequestIssue({
+      bindingId: world.bindingId,
+      number: 10,
+      label: '!10',
+      issueId: two,
+      issueKey: 'ISS-2',
+      actor: { id: world.ownerId, agency: 'human' },
+    });
+    expect(off.ok).toBe(true);
+    await hostMerged(10, 'feat/req3-site-write-iss-1-2', HOST_SHA);
+    for (const id of [one, three]) {
+      expect((await issueRow(id))?.merged_commit_sha).toBe(HOST_SHA);
+    }
+    expect((await issueRow(two))?.merged_commit_sha).toBeNull();
   });
 
   it('closes a change-request release when the host reports its last merge', async () => {

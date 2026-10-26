@@ -13,34 +13,46 @@
  *
  * `:number` is the number the host shows: a pull request number on GitHub, a merge request IID (the
  * `!12`) on GitLab. Authorization is membership, raised to writer for the four routes that change
- * something on the host; every route but the binding list also asks the binding's `agent_access`.
+ * something on the host and the two that change which issues a change request delivers; every route
+ * but the binding list also asks the binding's `agent_access`.
  *
  * Registered ONTO `integrationsRoutes` for the reason coolify-routes.ts gives.
  */
 
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
-import type { Hono, MiddlewareHandler } from 'hono';
+import type { Context, Hono, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { noteReviewOnIssue } from '../comments/index.js';
 import { listIntegrations } from '../integrations/index.js';
 import {
+  type ChangeRequestLinks,
   OpenedPullRequestIncomplete,
   projectOpenedPullRequest,
+  readChangeRequestLinks,
+  relinkChangeRequestIssue,
   resolveSourceHost,
   type SourceHost,
   SourceHostCallError,
   SourceHostInputRefusal,
   SourceHostUnavailable,
+  unlinkChangeRequestIssue,
 } from '../integrations/source-host/index.js';
+import { issueKeysAndTitles } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
-import type { AuthVars } from '../middleware/auth.js';
+import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { changeRequestIssueOf } from './change-request-issue.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 const numberParamSchema = z.object({ number: z.coerce.number().int().positive() });
+
+const linkParamSchema = z.object({
+  number: z.coerce.number().int().positive(),
+  issue: z.string().trim().min(1).max(200),
+});
 
 const checkLogParamSchema = z.object({ checkRunId: z.coerce.number().int().positive() });
 
@@ -120,6 +132,99 @@ type Routes = Hono<{ Variables: AuthVars }>;
 export function registerSourceRoutes(routes: Routes): void {
   registerSourceReads(routes);
   registerSourceWrites(routes);
+  registerChangeRequestLinks(routes);
+}
+
+/** The link state as a person reads it: issues by key, the primary first, no uuid on screen. */
+async function linksAnswer(projectId: string, links: ChangeRequestLinks) {
+  const ids = [...links.linked, ...links.unlinked].map((l) => l.issueId);
+  const named = await issueKeysAndTitles(projectId, ids);
+  const keyOf = (id: string) => named.get(id)?.key ?? id;
+  return {
+    number: links.number,
+    state: links.state,
+    primary: links.linked[0] ? keyOf(links.linked[0].issueId) : null,
+    linked: links.linked.map((l) => ({
+      issue: keyOf(l.issueId),
+      title: named.get(l.issueId)?.title ?? null,
+      linkedBy: l.linkedBy,
+    })),
+    unlinked: links.unlinked.map((u) => ({
+      issue: keyOf(u.issueId),
+      title: named.get(u.issueId)?.title ?? null,
+      linkedBy: u.linkedBy,
+      unlinkedAt: u.unlinkedAt,
+    })),
+  };
+}
+
+type LinksOutcome = Awaited<ReturnType<typeof readChangeRequestLinks>>;
+
+async function answerLinks(projectId: string, outcome: LinksOutcome) {
+  if (!outcome.ok) throw refuse(outcome.code, outcome.detail);
+  return linksAnswer(projectId, outcome.links);
+}
+
+type LinkAct = typeof unlinkChangeRequestIssue;
+
+/** An unlink or a relink of the issue the path names on the request it names. */
+async function correctLink(
+  c: Context<{ Variables: AuthVars }>,
+  { number, issue }: z.infer<typeof linkParamSchema>,
+  act: LinkAct,
+): Promise<Awaited<ReturnType<typeof linksAnswer>>> {
+  const projectId = c.req.param('projectId') ?? '';
+  const host = await onHost(projectId, async (h) => h);
+  const label = `${host.words.sigil}${number}`;
+  const target = await changeRequestIssueOf(projectId, issue, label);
+  const actor = restActor(c);
+  return answerLinks(
+    projectId,
+    await act({
+      bindingId: host.bindingId,
+      number,
+      label,
+      issueId: target.id,
+      issueKey: target.key,
+      actor: { id: actor.id, agency: actor.agency },
+    }),
+  );
+}
+
+/**
+ * ISS-705: which issues a change request delivers, and a person's correction of it. The binding is
+ * the one an agent's verbs resolve; nothing is sent to the host.
+ */
+function registerChangeRequestLinks(routes: Routes): void {
+  routes.get(
+    '/:projectId/integrations/source/change-requests/:number/issues',
+    can('project.read'),
+    zValidator('param', numberParamSchema),
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      const { number } = c.req.valid('param');
+      const host = await onHost(projectId, async (h) => h);
+      const label = `${host.words.sigil}${number}`;
+      return c.json(
+        await answerLinks(
+          projectId,
+          await readChangeRequestLinks({ bindingId: host.bindingId, number, label }),
+        ),
+      );
+    },
+  );
+  routes.delete(
+    '/:projectId/integrations/source/change-requests/:number/issues/:issue',
+    can('project.write'),
+    zValidator('param', linkParamSchema),
+    async (c) => c.json(await correctLink(c, c.req.valid('param'), unlinkChangeRequestIssue)),
+  );
+  routes.put(
+    '/:projectId/integrations/source/change-requests/:number/issues/:issue',
+    can('project.write'),
+    zValidator('param', linkParamSchema),
+    async (c) => c.json(await correctLink(c, c.req.valid('param'), relinkChangeRequestIssue)),
+  );
 }
 
 function registerSourceReads(routes: Routes): void {

@@ -98,7 +98,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_RUNTIME_UNROUTED:
     'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.',
   RELEASE_CHANGE_REQUEST_MISSING:
-    '{named} {have} no open change request delivering {them}, and this project releases by merging its change requests, so nothing would ship {them}. Open a merge request whose branch ends `-iss-N` (`feat/…` or `fix/…`) or whose description names the key, then cut again.',
+    '{named} {have} no open change request delivering {them}, and this project releases by merging its change requests, so nothing would ship {them}. Open a merge request whose branch names the key (`fix/iss-N-…`, `feat/…-iss-N`) or whose description says `Closes ISS-N`, then cut again.',
   RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED:
     'A change request this release merges also delivers an issue it does not carry, so merging it would ship work nobody was asked to accept.',
   RELEASE_THROUGH_CHANGE_REQUESTS:

@@ -1,7 +1,11 @@
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
+import {
+  repoPullRequestIssues,
+  repoPullRequestIssueUnlinks,
+  repoPullRequests,
+} from '../db/schema-repo-projection.js';
 import { consume } from '../outbox/index.js';
 import { resolveIssuesForChangeRequest } from './head-ref-link.js';
 import { recordIssueMerge } from './merge-record.js';
@@ -10,15 +14,32 @@ import { projectCreatorOf } from './ports.js';
 /**
  * Every issue the merged branch delivers: each one Forge's record of its change request links, and
  * each one the branch name itself names, for a request the projection has not read yet (REQ-63 BC-4).
+ * An issue a person unlinked from a request on this branch is not delivered by it (ISS-705), even
+ * where the branch names it.
  */
 async function issuesDelivered(executor: Tx, projectId: string, headRef: string) {
+  const onBranch = and(
+    eq(repoPullRequests.projectId, projectId),
+    eq(repoPullRequests.headRef, headRef),
+  );
   const linked = await executor
     .selectDistinct({ issueId: repoPullRequestIssues.issueId })
     .from(repoPullRequestIssues)
     .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
-    .where(and(eq(repoPullRequests.projectId, projectId), eq(repoPullRequests.headRef, headRef)));
+    .where(onBranch);
+  const unlinked = await executor
+    .selectDistinct({ issueId: repoPullRequestIssueUnlinks.issueId })
+    .from(repoPullRequestIssueUnlinks)
+    .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssueUnlinks.pullRequestId))
+    .where(and(onBranch, isNull(repoPullRequestIssueUnlinks.relinkedAt)));
+  const off = new Set(unlinked.map((r) => r.issueId));
   const named = await resolveIssuesForChangeRequest({ projectId, headRef });
-  return [...new Set([...linked.map((r) => r.issueId), ...named.map((l) => l.issueId)])];
+  return [
+    ...new Set([
+      ...linked.map((r) => r.issueId),
+      ...named.map((l) => l.issueId).filter((id) => !off.has(id)),
+    ]),
+  ];
 }
 
 /**

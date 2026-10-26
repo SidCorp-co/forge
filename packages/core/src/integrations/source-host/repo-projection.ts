@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
   type PullRequestState,
@@ -105,11 +105,12 @@ export async function openPullRequestsForIssue(issueId: string): Promise<string[
   return rows.map((r) => r.id);
 }
 
-/** Every issue the stored change request delivers (REQ-63 BC-4), by its row id. */
+/** Every issue the stored change request delivers (REQ-63 BC-4), by its row id, primary first. */
 export async function issuesOfPullRequest(pullRequestId: string): Promise<string[]> {
   const rows = await db
     .select({ issueId: repoPullRequestIssues.issueId })
     .from(repoPullRequestIssues)
-    .where(eq(repoPullRequestIssues.pullRequestId, pullRequestId));
+    .where(eq(repoPullRequestIssues.pullRequestId, pullRequestId))
+    .orderBy(asc(repoPullRequestIssues.position), asc(repoPullRequestIssues.issueId));
   return rows.map((r) => r.issueId);
 }
