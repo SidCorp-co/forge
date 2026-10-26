@@ -6,9 +6,9 @@
 
 // every frozen comment in this file is an `i18n-allow` pragma carrying the Vietnamese phrasing its regex matches; deleting one to pay the drain reds the language gate instead, so this file's debt cannot be paid the ordinary way.
 
-import { scrubLogText } from '@forge/observability';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
+import { readsAsCredential } from './credential-screen.js';
 import type { MessageFacts } from './facts.js';
 import { keyMentions } from './issue-tokens.js';
 import { OPTION_LINE_RE } from './option-line.js';
@@ -114,14 +114,6 @@ export const NO_OPTION_LINE: MessageRule = {
         )
       : none,
 };
-
-/**
- * Whether the reply check reads `text` as holding a credential: the one predicate the refusal below and
- * what a withdrawn draft may keep both answer to (ISS-1229 r43), so the two cannot drift apart.
- */
-export function readsAsCredential(text: string): boolean {
-  return scrubLogText(text) !== text;
-}
 
 /**
  * The scrubber is the DETECTOR here, not the fixer: redacting on the way out

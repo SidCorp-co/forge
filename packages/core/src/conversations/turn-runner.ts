@@ -19,6 +19,7 @@ import type { ImageResolver, TurnImage } from '../assistant/vision.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 import type { DoorId } from '../messaging/contract.js';
+import { readsAsCredential } from '../messaging/credential-screen.js';
 import { Sentry } from '../observability/sentry.js';
 import { errorFallbackReply } from './fallback-replies.js';
 import {
@@ -339,9 +340,10 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     return quiet('nothing-to-say');
   }
   if (!screenedMessage) {
-    // The screen passes an empty first reply untouched, so only a written one was refused (ISS-1229 r40).
-    const reason = result.reply.trim() ? 'screen-refused' : 'empty-reply';
-    return quiet(reason);
+    // The screen passes an empty first reply untouched, so only a written one was refused (ISS-1229 r40);
+    // one refused for a credential says so, keeping none of it (r44).
+    if (!result.reply.trim()) return quiet('empty-reply');
+    return quiet(readsAsCredential(result.reply) ? 'screen-refused-credential' : 'screen-refused');
   }
   const screenReplaced = screenedMessage.text.trim() !== result.reply.trim();
   return { send: true, message: screenedMessage, screenReplaced };

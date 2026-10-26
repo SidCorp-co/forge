@@ -32,3 +32,34 @@ describe('listedAs — a person as a Members list row names them', () => {
     expect(listedAs(me, [me], 'reader')).toBe('You');
   });
 });
+
+// ISS-1229 r44, judge-124: two readers of one room meant different people by "the first", because each
+// left themself out of the people told apart.
+describe('addedApart — the same person behind the same words for every reader', () => {
+  const minute = '2026-10-03T09:00:';
+  const a = person('a', null, `${minute}01Z`);
+  const b = person('b', null, `${minute}02Z`);
+  const c = person('c', null, `${minute}03Z`);
+  const room = [a, b, c];
+
+  it('names each unnamed person by their place among everyone, whoever reads', () => {
+    for (const reader of ['a', 'b', 'c', 'outsider']) {
+      const words = Object.fromEntries(room.map((p) => [p.userId, addedApart(p, room, reader)]));
+      for (const [id, place] of [['a', 'first'], ['b', 'second'], ['c', 'third']] as const) {
+        expect(words[id], `${reader} reading ${id}`).toEqual(
+          id === reader ? null : expect.stringMatching(new RegExp(`, the ${place}$`)),
+        );
+      }
+    }
+  });
+
+  it('keeps the reader as "You" with nothing beside it', () => {
+    expect(listedAs(a, room, 'a')).toBe('You');
+  });
+
+  it('counts the reader among the people it tells apart, adding nothing where only the reader reads alike', () => {
+    const pair = [a, person('b', null, `${minute}02Z`)];
+    expect(addedApart(pair[1] as never, pair, 'a')).toBeNull();
+    expect(addedApart(pair[1] as never, pair, 'outsider')).toMatch(/, the second$/);
+  });
+});

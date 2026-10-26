@@ -30,6 +30,7 @@ function ArchivedWithUnarchive({ project }: { project: ProjectListItem }) {
   const unarchive = useUnarchiveProject(project.id);
   return (
     <EmptyState
+      level={1}
       title="This project is archived"
       message={archivedProjectWords(project)}
       action={{
@@ -56,7 +57,7 @@ export function ProjectMissing({
   if (all.isLoading) return <ProjectLoader label="loading project…" />;
   if (archived && mayUnarchive(archived)) return <ArchivedWithUnarchive project={archived} />;
   if (archived) {
-    return <EmptyState title="This project is archived" message={archivedProjectWords(archived)} />;
+    return <EmptyState level={1} title="This project is archived" message={archivedProjectWords(archived)} />;
   }
-  return <EmptyState title={title} message={message} />;
+  return <EmptyState level={1} title={title} message={message} />;
 }

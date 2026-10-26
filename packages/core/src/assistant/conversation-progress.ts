@@ -1,7 +1,11 @@
-import { FILTERED, scrubLogText } from '@forge/observability';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
-import { readsAsCredential } from '../messaging/text-rules.js';
+import {
+  readsAsCredential,
+  screened,
+  screenedBlocks,
+  screenedText,
+} from '../messaging/credential-screen.js';
 import {
   publishToConversationReaders,
   WEB_CONVERSATION_PROGRESS_EVENT,
@@ -48,38 +52,7 @@ export interface ConversationProgressFrame {
   replaced?: { draft: string } | { draft: null; for: WithdrawnFor };
 }
 
-const PEM_HEADER = /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/;
-
-/**
- * Prose as a reader may see it while it is still being written: scrubbed, and cut at a private key's
- * header, whose body the scrubber only matches once 16 characters of it exist (ISS-1229 r43).
- */
-function shownWhileWritten(text: string): string {
-  const key = PEM_HEADER.exec(text);
-  return scrubLogText(key ? text.slice(0, key.index) + FILTERED : text);
-}
-
-type ProseKind = 'text' | 'thinking';
-
-/**
- * Blocks with no credential in their prose. A tool call splits one run of prose into blocks, so a key
- * and its value can sit in two: where the run joined up reads as a credential, it is shown as one
- * scrubbed block after the others rather than block by block.
- */
-function withoutCredentials(blocks: readonly ContentBlock[]): ContentBlock[] {
-  let out = blocks.map((b) => ({ ...b }));
-  for (const kind of ['text', 'thinking'] as const satisfies readonly ProseKind[]) {
-    const prose = out.filter((b) => b.type === kind && b[kind] !== undefined);
-    const joined = prose.map((b) => b[kind]).join('');
-    const shown = shownWhileWritten(joined);
-    if (shown !== joined && prose.length > 1) {
-      out = [...out.filter((b) => !prose.includes(b)), { type: kind, [kind]: shown }];
-    } else {
-      for (const b of prose) b[kind] = shownWhileWritten(b[kind] as string);
-    }
-  }
-  return out;
-}
+const SCREENED_KEPT = 256;
 
 /**
  * Watch one turn in one room.
@@ -100,17 +73,22 @@ export function startConversationProgress(args: {
   let withdrawn: string | null = null;
   let withdrawnFor: WithdrawnFor | null = null;
   let tail: Promise<unknown> = Promise.resolve();
+  // Every frame re-sends the turn so far, so a tool's output is screened once rather than once a frame.
+  const seen = new Map<string, string>();
+  const screen = (text: string): string => {
+    let out = seen.get(text);
+    if (out === undefined) {
+      out = screenedText(text);
+      if (seen.size >= SCREENED_KEPT) seen.clear();
+      seen.set(text, out);
+    }
+    return out;
+  };
 
-  /** The entry as it stands right now, detached from the accumulator that keeps folding into it. */
-  const freeze = (entry: AgentMessage): AgentMessage => ({
-    ...entry,
-    ...(entry.content !== undefined ? { content: shownWhileWritten(entry.content) } : {}),
-    blocks: withoutCredentials(entry.blocks ?? []).map((b) => ({
-      ...b,
-      ...(b.toolCall ? { toolCall: { ...b.toolCall } } : {}),
-      ...(b.todos ? { todos: b.todos.map((t) => ({ ...t })) } : {}),
-    })),
-    ...(entry.toolCalls ? { toolCalls: entry.toolCalls.map((t) => ({ ...t })) } : {}),
+  /** The entry as it stands, every string in it screened: a copy, so the accumulator folds on untouched. */
+  const freeze = ({ blocks, ...entry }: AgentMessage): AgentMessage => ({
+    ...screened(entry, screen),
+    blocks: screenedBlocks(blocks ?? [], screen),
   });
 
   const send = (frame: Omit<ConversationProgressFrame, 'conversationId' | 'rev'>): void => {
@@ -162,7 +140,7 @@ export function startConversationProgress(args: {
 
     blocksForRecord: (deliveredText) => {
       const blocks = blocksFor(deliveredText);
-      return blocks ? withoutCredentials(blocks) : null;
+      return blocks ? screenedBlocks(blocks, screen) : null;
     },
 
     withdrawnDraft: () => withdrawn,

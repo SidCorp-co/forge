@@ -26,7 +26,7 @@ export default function ProjectPipelinePage() {
   if (isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
+        <ErrorState level={1} message={formatApiError(error)} onRetry={() => refetch()} />
       </div>
     );
   }

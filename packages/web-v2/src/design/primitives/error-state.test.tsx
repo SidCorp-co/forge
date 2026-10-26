@@ -23,3 +23,13 @@ describe("an error state's title", () => {
     expect(screen.getByRole("heading", { name: "Couldn't load" })).toBeTruthy();
   });
 });
+
+// ISS-1229 r44, judge-124: a page made of one error state names the tab from the primitive itself.
+describe("an error state that is the whole page", () => {
+  it("names the tab after its title while it is shown", () => {
+    render(<ErrorState mascot={false} level={1} title="Page not found" message="This page moved." />);
+    expect(document.title).toBe("Page not found · Forge");
+    cleanup();
+    expect(document.title).toBe("Forge");
+  });
+});

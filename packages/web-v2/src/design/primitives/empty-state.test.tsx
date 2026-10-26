@@ -41,3 +41,24 @@ it("takes a message with inline markup", () => {
 
   expect(screen.getByText("ISS-9").tagName).toBe("CODE");
 });
+
+// ISS-1229 r44, judge-124: "Project not found" and the other states built on this primitive drew their
+// title as a <p>, so a page made of one held no heading.
+it("draws its title as a heading, one level under the page's own title by default", () => {
+  render(<EmptyState title="No runs on this project" message="A run appears here." mascot={false} />);
+  expect(screen.getByRole("heading", { level: 2, name: "No runs on this project" })).toBeTruthy();
+});
+
+it("is the page's heading and names the tab where it is the whole page", () => {
+  render(<EmptyState level={1} title="Project not found" message="It does not exist." mascot={false} />);
+  expect(screen.getByRole("heading", { level: 1, name: "Project not found" })).toBeTruthy();
+  expect(document.title).toBe("Project not found · Forge");
+  cleanup();
+  expect(document.title).toBe("Forge");
+});
+
+it("leaves the tab as the page named it where it sits inside a section", () => {
+  document.title = "Forge";
+  render(<EmptyState title="No runs on this project" message="A run appears here." mascot={false} />);
+  expect(document.title).toBe("Forge");
+});

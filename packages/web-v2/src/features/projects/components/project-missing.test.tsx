@@ -46,3 +46,18 @@ describe("a project page whose slug the live list lacks", () => {
     expect(screen.queryByText("This project is archived")).toBeNull();
   });
 });
+
+// ISS-1229 r44, judge-124: /projects/<no such project>/issues showed "Project not found" as a paragraph and
+// left the tab reading "Forge". The page is that one state, so its title heads the page and names the tab.
+describe("the page a missing or archived project shows", () => {
+  it.each([
+    ["not found", "never-was", "admin", "Project not found"],
+    ["archived, to an admin", "old-board", "admin", "This project is archived"],
+    ["archived, to a member", "old-board", "member", "This project is archived"],
+  ])("heads the page with its title and names the tab where it is %s", (_case, slug, orgRole, title) => {
+    rows = [{ ...ARCHIVED, orgRole }];
+    render(<ProjectMissing slug={slug} />);
+    expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
+    expect(document.title).toBe(`${title} · Forge`);
+  });
+});

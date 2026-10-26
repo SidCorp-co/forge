@@ -7,7 +7,7 @@ export function OperatorLoadError({ title, message }: { title?: string; message:
   const router = useRouter();
   return (
     <div className="flex h-dvh items-center justify-center bg-app">
-      <ErrorState title={title} message={message} onRetry={() => router.refresh()} />
+      <ErrorState level={1} title={title} message={message} onRetry={() => router.refresh()} />
     </div>
   );
 }

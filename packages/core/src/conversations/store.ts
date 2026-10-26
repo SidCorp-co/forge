@@ -17,6 +17,7 @@ import {
   conversations,
 } from '../db/schema-conversations.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
+import { screenedBlocks } from '../messaging/credential-screen.js';
 import { asBlocks } from './canonical-entry.js';
 import type { Executor, TxOnly } from './db-executor.js';
 import { resolveProjectHandle } from './handles.js';
@@ -247,7 +248,7 @@ export async function appendMessagesIn(
           externalId: m.externalId ?? null,
           replyToExternalId: m.replyToExternalId ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
-          blocks: (m.blocks && m.blocks.length > 0 ? [...m.blocks] : null) as never,
+          blocks: (m.blocks && m.blocks.length > 0 ? screenedBlocks(m.blocks) : null) as never,
           deliveryProof: (m.deliveryProof ?? null) as never,
           silenceReason: m.silenceReason ?? null,
         })),

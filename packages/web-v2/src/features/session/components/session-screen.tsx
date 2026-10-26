@@ -248,6 +248,7 @@ export function SessionScreen({
       <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
         <div className="grid flex-1 place-items-center">
           <ErrorState
+            level={embedded ? 2 : 1}
             title="Couldn't load session"
             message={formatApiError(sessionQ.error)}
             onRetry={() => sessionQ.refetch()}
