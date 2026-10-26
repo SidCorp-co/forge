@@ -46,6 +46,10 @@ confirm's answer starts (`support/inbound.ts:handleSupportMessage`), or the `sup
 timer (every 2 s, `timer-registry.ts`) does for a room whose turn end was missed. A turn that cannot
 reach a box gives its messages back and the room waits 30 s before the next try; a project with no
 capable box is told so in the thread at most every 10 minutes (`support/dispatch.ts:deliverWaiting`).
+A turn that ends failed or cancelled instead of completed tells each thread it left with no session
+action that it went unanswered, once, and records a `refused` action (`turn_failed`) naming the
+messages (`support/dispatch.ts:onSupportTurnEnded`). Those messages stay delivered: a box that fails
+every turn is never handed them again, and the asker is told to send it again.
 
 ### Identity: a Rocket.Chat account is a visitor, and the server says who wrote a message
 
