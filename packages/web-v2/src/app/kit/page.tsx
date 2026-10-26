@@ -818,7 +818,7 @@ export default function KitPage() {
           <Section id="feedback" title="Feedback — error & toasts" hint="Distinct error state with retry; toasts on create / sweep / failure (bottom-right).">
             <div className="flex flex-col gap-6">
               <div className="rounded-md border border-line">
-                <ErrorState message="Couldn't load runs. Check your connection, then retry." onRetry={() => {}} />
+                <ErrorState title="Couldn't load runs" message="Couldn't load runs. Check your connection, then retry." onRetry={() => {}} />
               </div>
               <ToastButtons />
             </div>

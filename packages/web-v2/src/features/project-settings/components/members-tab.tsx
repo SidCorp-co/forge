@@ -108,7 +108,7 @@ export function MembersTab({
           <Skeleton className="h-9 w-3/4 rounded-md" />
         </div>
       ) : membersQ.isError ? (
-        <ErrorState
+        <ErrorState title="Couldn't load members"
           message={formatApiError(membersQ.error)}
           onRetry={() => membersQ.refetch()}
         />
@@ -158,7 +158,7 @@ export function MembersTab({
           {invitationsQ.isLoading ? (
             <Skeleton className="h-9 w-full rounded-md" />
           ) : invitationsQ.isError ? (
-            <ErrorState
+            <ErrorState title="Couldn't load invitations"
               message={formatApiError(invitationsQ.error)}
               onRetry={() => invitationsQ.refetch()}
             />

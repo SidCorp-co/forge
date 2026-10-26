@@ -18,10 +18,6 @@ describe("an error state's title", () => {
     expect(screen.getByRole("heading", { level: 1, name: "This issue is not in Desk" })).toBeTruthy();
   });
 
-  it("keeps its default title as a heading too", () => {
-    render(<ErrorState mascot={false} message="The server did not answer." />);
-    expect(screen.getByRole("heading", { name: "Couldn't load" })).toBeTruthy();
-  });
 });
 
 // ISS-1229 r44, judge-124: a page made of one error state names the tab from the primitive itself.
@@ -40,5 +36,14 @@ describe("an error state that is the whole page, given no title", () => {
     // @ts-expect-error a page-level state names what failed in its title
     render(<ErrorState mascot={false} level={1} message="The server did not answer." />);
     expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
+  });
+});
+
+// ISS-1229 r46, judge-135: section and page errors that gave no title still read "Couldn't load" alone.
+describe("an error state anywhere, given no title", () => {
+  it("is refused by the type check, and no default stands in for it", () => {
+    // @ts-expect-error every error state names what failed in its title
+    render(<ErrorState mascot={false} message="The server did not answer." />);
+    expect(screen.queryByRole("heading", { name: "Couldn't load" })).toBeNull();
   });
 });

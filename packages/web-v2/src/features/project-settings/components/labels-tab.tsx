@@ -60,7 +60,7 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
           <Skeleton className="h-9 w-2/3 rounded-md" />
         </div>
       ) : labelsQ.isError ? (
-        <ErrorState message={formatApiError(labelsQ.error)} onRetry={() => labelsQ.refetch()} />
+        <ErrorState title="Couldn't load labels" message={formatApiError(labelsQ.error)} onRetry={() => labelsQ.refetch()} />
       ) : plainLabels.length === 0 ? (
         <EmptyState title="No labels yet" message="Create a label to organize issues." mascot={false} />
       ) : (

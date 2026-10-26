@@ -130,6 +130,27 @@ describe("the header", () => {
   });
 });
 
+// ISS-1229 r46, judge-135: a room opened by its address left the tab reading "Forge".
+describe("the browser tab", () => {
+  it("names the room as its heading does where the room fills the page", () => {
+    room = detail({ title: "Desk triage" });
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" namesTab />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "Desk triage" })).toBeInTheDocument();
+    expect(document.title).toBe("Desk triage · Forge");
+  });
+
+  it("is left to the page beneath a docked room", () => {
+    document.title = "Issues · Forge";
+    room = detail({ title: "Desk triage" });
+    open();
+    expect(document.title).toBe("Issues · Forge");
+  });
+});
+
 describe("the composer this pane renders", () => {
   it("carries the mode control inside its own frame", () => {
     open();

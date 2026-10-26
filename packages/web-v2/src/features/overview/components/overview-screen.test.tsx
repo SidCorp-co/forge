@@ -15,6 +15,7 @@ let orgRows: { id: string; archivedAt: string | null }[] | undefined;
 let orgRead: { isLoading: boolean; isError: boolean };
 let elsewhere: unknown[];
 let orgAsked: string | undefined;
+let pulseFails = false;
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/orgs/active-org", () => ({
@@ -29,7 +30,10 @@ vi.mock("@/features/orgs/hooks", () => ({
   },
 }));
 vi.mock("../hooks", () => ({
-  usePulse: () => ({ isError: false, isLoading: false, data: { work: { perProject: [] } } }),
+  usePulse: () =>
+    pulseFails
+      ? { isError: true, isLoading: false, error: new Error("The server did not answer."), refetch: vi.fn() }
+      : { isError: false, isLoading: false, data: { work: { perProject: [] } } },
 }));
 
 beforeEach(() => {
@@ -37,6 +41,17 @@ beforeEach(() => {
   orgRead = { isLoading: false, isError: false };
   elsewhere = [{ id: "x" }];
   orgAsked = undefined;
+  pulseFails = false;
+});
+
+// ISS-1229 r46: the Overview whose one read failed was headed by nothing, its tab "Forge".
+describe("the Overview whose read failed", () => {
+  it("is headed by what failed, and the tab names it", () => {
+    pulseFails = true;
+    render(<OverviewScreen />);
+    expect(screen.getByRole("heading", { level: 1, name: "Couldn't load your workspace" })).toBeInTheDocument();
+    expect(document.title).toBe("Couldn't load your workspace · Forge");
+  });
 });
 
 describe("the Overview for a reader who sees none of the organization's projects", () => {

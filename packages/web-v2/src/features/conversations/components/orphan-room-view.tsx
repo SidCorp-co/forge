@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { Button, ConfirmDialog, EmptyState, ErrorState, PageTitle, ProjectLoader } from "@/design";
+import { TabTitle } from "@/design/primitives/tab-title";
 import { formatApiError } from "@/lib/api/error";
 import { useConversation, useDeleteConversation } from "../hooks";
 import type { RoomWithoutAProject } from "../types";
@@ -33,6 +34,7 @@ export function OrphanRoomView({
       <header className="flex flex-none flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
         <div className="min-w-0">
           <PageTitle className="fg-h3 truncate">{title}</PageTitle>
+          <TabTitle subject={title} />
           <p className="fg-caption truncate text-subtle">{orphanRoomFacts(facts)}</p>
         </div>
         <Button variant="ghost" size="sm" icon="trash" aria-label={`Delete ${title}, ${orphanRoomFacts(facts)}`} onClick={() => setConfirming(true)}>

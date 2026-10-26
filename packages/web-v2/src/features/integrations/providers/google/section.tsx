@@ -73,7 +73,7 @@ export function GoogleSection({ projectId }: { projectId: string }) {
   if (list.isLoading) return <p className="fg-body-sm text-muted">Loading…</p>;
   if (list.isError)
     return (
-      <ErrorState
+      <ErrorState title="Couldn't load this project's integrations"
         message={`Could not read this project's integrations, so whether a Google account is already connected is unknown. ${formatApiError(list.error)}`}
         onRetry={() => list.refetch()}
         mascot={false}

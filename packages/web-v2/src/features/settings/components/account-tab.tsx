@@ -277,7 +277,7 @@ export function AccountTab() {
       </SettingsSection>
       {prefsQ.isError || assistantQ.isError ? (
         <SettingsSection>
-          <ErrorState
+          <ErrorState title="Couldn't load your preferences"
             message={formatApiError(prefsQ.error ?? assistantQ.error)}
             onRetry={() => {
               void prefsQ.refetch();

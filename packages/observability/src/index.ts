@@ -342,7 +342,127 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
   return out + text.slice(from);
 }
 
+const JSON_CONTAINER = /^[ \t\n\r]*[[{]/;
+const JSON_SPACE = /[ \t\n\r]/;
+const SECRET_NAMES = [...SCRUB_HEADER_KEYS, ...SCRUB_BODY_KEYS].map((name) => name.toLowerCase());
+
+/** A key the text rules would read a secret under: the name itself, or the name closing a longer key. */
+function namesASecret(key: string): boolean {
+  const lower = key.toLowerCase();
+  return SECRET_NAMES.some(
+    (name) => lower === name || (lower.endsWith(name) && /[^a-z0-9_]/.test(lower[lower.length - name.length - 1] ?? '')),
+  );
+}
+
+function skipSpace(text: string, i: number): number {
+  let at = i;
+  while (at < text.length && JSON_SPACE.test(text[at] as string)) at++;
+  return at;
+}
+
+/** The index past the string literal opening at `start`. */
+function stringEnd(text: string, start: number): number {
+  for (let i = start + 1; i < text.length; i++) {
+    if (text[i] === '\\') i++;
+    else if (text[i] === '"') return i + 1;
+  }
+  return text.length;
+}
+
+/** The index past the JSON value starting at `start`, in text already known to parse. */
+function valueEnd(text: string, start: number): number {
+  const first = text[start];
+  if (first === '"') return stringEnd(text, start);
+  if (first === '[' || first === '{') {
+    let level = 0;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '"') i = stringEnd(text, i) - 1;
+      else if (ch === '[' || ch === '{') level++;
+      else if (ch === ']' || ch === '}') {
+        level--;
+        if (level === 0) return i + 1;
+      }
+    }
+    return text.length;
+  }
+  let i = start;
+  while (i < text.length && !/[,\]}]/.test(text[i] as string) && !JSON_SPACE.test(text[i] as string)) i++;
+  return i;
+}
+
+/** Only JSON types a value as holding nothing: an empty string, array or object, `null`, `true` or `false`. */
+function holdsNoSecret(raw: string): boolean {
+  const value: unknown = JSON.parse(raw);
+  if (value === null || value === '' || value === true || value === false) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  return typeof value === 'object' && Object.keys(value as object).length === 0;
+}
+
+/**
+ * JSON text with each string scrubbed inside its own quotes and each value under a secret's name
+ * replaced by a quoted marker, everything else left byte for byte (ISS-1229 r46): a secret in a
+ * string moves nothing outside that string.
+ */
+function scrubJsonText(text: string, extraSecrets: string[]): string {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '"') continue;
+    const end = stringEnd(text, i);
+    const literal = text.slice(i, end);
+    const value = JSON.parse(literal) as string;
+    const shown = scrubText(value, extraSecrets);
+    const after = skipSpace(text, end);
+    out += text.slice(from, i) + (shown === value ? literal : JSON.stringify(shown));
+    from = end;
+    i = end - 1;
+    if (text[after] !== ':' || !namesASecret(value)) continue;
+    const valueAt = skipSpace(text, after + 1);
+    const valueStop = valueEnd(text, valueAt);
+    if (holdsNoSecret(text.slice(valueAt, valueStop))) continue;
+    out += text.slice(from, valueAt) + JSON.stringify(FILTERED);
+    from = valueStop;
+    i = valueStop - 1;
+  }
+  return out + text.slice(from);
+}
+
+/**
+ * JSON text walked string by string, at any depth: JSON inside a string is shorter than the string that
+ * holds it, so the walk ends. Any other text goes through the line rules.
+ */
+function scrubText(text: string, extraSecrets: string[]): string {
+  if (JSON_CONTAINER.test(text)) {
+    let parses = true;
+    try {
+      JSON.parse(text);
+    } catch {
+      parses = false;
+    }
+    if (parses) return scrubShapes(scrubJsonText(text, extraSecrets), extraSecrets);
+  }
+  return scrubLines(text, extraSecrets);
+}
+
+/** A secret by its shape or by its value, wherever it still stands: it may sit outside every string. */
+function scrubShapes(text: string, extraSecrets: string[]): string {
+  let out = scrubPatInString(text);
+  for (const s of extraSecrets) {
+    if (s && s.length >= 6) out = out.split(s).join(FILTERED);
+  }
+  return out;
+}
+
+/**
+ * `text` with every secret replaced. Text that parses as a JSON array or object keeps its shape: each
+ * string is scrubbed inside its quotes and nothing outside it moves; other text is read line by line.
+ */
 export function scrubLogText(text: string, extraSecrets: string[] = []): string {
+  return scrubText(text, extraSecrets);
+}
+
+function scrubLines(text: string, extraSecrets: string[]): string {
   let out = text
     .replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
     .replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)

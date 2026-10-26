@@ -158,7 +158,7 @@ export function GitConfigCard({
 					{cred.isLoading ? (
 						<Skeleton className="mt-2 h-20 w-full" />
 					) : cred.isError ? (
-						<ErrorState message={formatApiError(cred.error)} onRetry={() => cred.refetch()} />
+						<ErrorState title="Couldn't load the deploy key" message={formatApiError(cred.error)} onRetry={() => cred.refetch()} />
 					) : credData?.configured ? (
 						<div className="mt-2 flex flex-col gap-2">
 							<div className="flex items-center justify-between gap-2">
@@ -228,7 +228,7 @@ export function GitConfigCard({
 							{pool.isLoading ? (
 								<Skeleton className="h-9 w-full" />
 							) : pool.isError ? (
-								<ErrorState
+								<ErrorState title="Couldn't load private keys"
 									message={formatApiError(pool.error)}
 									onRetry={() => pool.refetch()}
 								/>
@@ -355,7 +355,7 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 	}
 	if (activity.isError) {
 		return (
-			<ErrorState
+			<ErrorState title="Couldn't load runner activity"
 				message={formatApiError(activity.error)}
 				onRetry={() => activity.refetch()}
 			/>
@@ -965,7 +965,7 @@ export function ProjectRunnersScreen({
 						<Skeleton className="h-28 w-full" />
 					</div>
 				) : runners.isError ? (
-					<ErrorState
+					<ErrorState title="Couldn't load assigned devices"
 						message={formatApiError(runners.error)}
 						onRetry={() => runners.refetch()}
 					/>

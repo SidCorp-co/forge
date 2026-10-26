@@ -12,13 +12,17 @@ import { OperatorOverviewScreen } from "./overview-screen";
 
 expect.extend(matchers);
 
-const { workspaces } = vi.hoisted(() => ({ workspaces: vi.fn() }));
+const { workspaces, reads } = vi.hoisted(() => ({ workspaces: vi.fn(), reads: { fail: false } }));
+const answer = async <T,>(value: T): Promise<T> => {
+  if (reads.fail) throw new Error("The server did not answer.");
+  return value;
+};
 vi.mock("@/lib/ws/client", () => ({ wsClient: { subscribe: vi.fn(), unsubscribe: vi.fn() } }));
 vi.mock("../api", () => ({
   operatorApi: {
-    overview: async () => ({ counts: {}, kpis: {}, glance: {} }),
-    alerts: async () => ({ items: [], totalCount: 0 }),
-    adoption: async () => [],
+    overview: () => answer({ counts: {}, kpis: {}, glance: {} }),
+    alerts: () => answer({ items: [], totalCount: 0 }),
+    adoption: () => answer([]),
     workspaces,
   },
 }));
@@ -27,7 +31,10 @@ vi.mock("./glance-cards", () => ({ GlanceCards: () => null, GlanceCardsSkeleton:
 vi.mock("./adoption-panel", () => ({ AdoptionPanel: () => null, AdoptionPanelSkeleton: () => null }));
 vi.mock("./alert-feed", () => ({ AlertFeed: () => null, AlertFeedSkeleton: () => null }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  reads.fail = false;
+});
 
 const row = (slug: string, runs: number, spendUsd: number): AdminWorkspaceRow => ({
   projectId: slug, slug, runs, spendUsd, medianLeadTimeMin: runs, openIssues: runs,
@@ -69,5 +76,22 @@ describe("re-ranking Top workspaces", () => {
     expect(screen.getByRole("table", { name: "Top workspaces" })).toBe(table);
     expect(document.activeElement).toBe(button);
     expect(within(table).getAllByRole("row")[1]).toHaveTextContent("b");
+  });
+});
+
+// ISS-1229 r46, judge-135: with every read failed the page showed five headings saying "Couldn't load".
+describe("a panel whose read failed", () => {
+  it("names what it could not load, each panel its own", async () => {
+    reads.fail = true;
+    workspaces.mockRejectedValue(new Error("The server did not answer."));
+    mount();
+    await waitFor(() => expect(screen.getAllByRole("heading", { name: /^Couldn't load/ })).toHaveLength(5));
+    expect(screen.getAllByRole("heading", { name: /^Couldn't load/ }).map((h) => h.textContent)).toEqual([
+      "Couldn't load the key figures",
+      "Couldn't load alerts",
+      "Couldn't load the glance figures",
+      "Couldn't load adoption",
+      "Couldn't load workspaces",
+    ]);
   });
 });

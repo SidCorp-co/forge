@@ -30,6 +30,7 @@ import {
 import { NewOutput } from "@/features/session/components/new-output";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { parseMessages } from "@/features/session/types";
+import { TabTitle } from "@/design/primitives/tab-title";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -61,6 +62,7 @@ export function ConversationChat({
   onNew,
   onRoomGone,
   emptyBody,
+  namesTab = false,
 }: {
   projectId: string;
   /** Omitted = a draft: no room exists until the first message opens one. */
@@ -77,6 +79,8 @@ export function ConversationChat({
   emptyBody?: React.ReactNode;
   /** Fires once this room is found deleted, so the caller can return the reader to the room list. */
   onRoomGone?: (id: string) => void;
+  /** The room fills the page, so its title names the browser tab too; a docked panel leaves the tab to its page. */
+  namesTab?: boolean;
 }) {
   const [activeId, setActiveId] = useState<string | undefined>(conversationId);
   const [membersOpen, setMembersOpen] = useState(false);
@@ -336,13 +340,13 @@ export function ConversationChat({
     draftBeside,
   ]);
 
+  const heading = roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : draftHeading(resolvedId, canWrite);
   const header = (
     <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <PageTitle className="fg-h2 truncate">
-            {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : draftHeading(resolvedId, canWrite)}
-          </PageTitle>
+          <PageTitle className="fg-h2 truncate">{heading}</PageTitle>
+          {namesTab && <TabTitle subject={heading} />}
         </div>
         {onOpenHistory && (
           <IconButton

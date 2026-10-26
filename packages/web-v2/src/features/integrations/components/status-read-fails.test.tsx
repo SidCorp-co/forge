@@ -179,13 +179,13 @@ describe("a status read that fails while a drawer is open", () => {
     }
   });
 
-  it("still says Couldn't load where no status was ever read", async () => {
+  it("says it could not load this project's integrations where no status was ever read", async () => {
     statusFails = true;
     render(
       <QueryClientProvider client={queries}>
         <ProjectIntegrationsPanel projectId={PROJECT} />
       </QueryClientProvider>,
     );
-    expect(await screen.findByText("Couldn't load")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Couldn't load this project's integrations" })).toBeInTheDocument();
   });
 });

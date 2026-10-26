@@ -309,7 +309,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
         </div>
       ) : failed ? (
         <div className="grid min-h-[40vh] place-items-center">
-          <ErrorState message={formatApiError(failed.error)} onRetry={() => failed.refetch()} />
+          <ErrorState title="Couldn't load runs" message={formatApiError(failed.error)} onRetry={() => failed.refetch()} />
         </div>
       ) : nothing && !runsQ.isError && total === 0 ? (
         <div className="grid min-h-[40vh] place-items-center">

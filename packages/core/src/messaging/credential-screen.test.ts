@@ -61,9 +61,35 @@ describe('screenedText', () => {
     expect(shown).toBe('The deploy password: [Filtered] is in the vault.');
   });
 
-  it('withholds the whole string where the scrub cannot reach the credential', () => {
-    const text = stdoutOf({ description: `a\nDB_PASSWORD=${SECRET}\nb` });
-    expect(screenedText(text)).toBe('[Filtered]');
+  // ISS-1229 r46, judge-135: a header line in a tool's JSON output withheld the whole result.
+  it('scrubs a credential on a line of a string inside JSON within that string, keeping the rest', () => {
+    const text = stdoutOf({
+      description: `a\nDB_PASSWORD=${SECRET}\nX-Api-Key: ${SECRET}\nb`,
+      n: 1,
+    });
+    const shown = JSON.parse(screenedText(text)) as { exitCode: number; stdout: string };
+    expect(shown.exitCode).toBe(0);
+    expect(JSON.parse(shown.stdout)).toEqual({
+      description: 'a\nDB_PASSWORD=[Filtered]\nX-Api-Key: [Filtered]\nb',
+      n: 1,
+    });
+  });
+
+  it('scrubs a header line in a tool output however deep its JSON is quoted, keeping its siblings', () => {
+    let text = asJson({
+      stdout: `Request headers:\nX-Api-Key: ${SECRET}\nAccept: */*`,
+      sibling: 'kept',
+    });
+    for (let depth = 0; depth < 9; depth++) text = asJson({ detail: text, depth });
+    let shown: unknown = JSON.parse(screenedText(text));
+    for (let depth = 8; depth >= 0; depth--) {
+      expect((shown as { depth: number }).depth).toBe(depth);
+      shown = JSON.parse((shown as { detail: string }).detail);
+    }
+    expect(shown).toEqual({
+      stdout: 'Request headers:\nX-Api-Key: [Filtered]\nAccept: */*',
+      sibling: 'kept',
+    });
   });
 
   // ISS-1229 r45, judge-129: a project read's tool output showed `"testCredentials": [Filtered]`.
