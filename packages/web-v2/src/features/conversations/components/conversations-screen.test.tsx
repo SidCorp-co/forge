@@ -261,7 +261,7 @@ describe("an address naming a room the reader cannot open", () => {
     at("/conversations?room=orphan&archived=1");
     render(<ConversationsScreen />);
     expect(screen.getByRole("heading", { level: 1, name: "This conversation is about no project" })).toBeTruthy();
-    expect(screen.getByText(/Open it from Project deleted/)).toBeTruthy();
+    expect(screen.getByText(/Open it from Project deleted, .* in the organization it belonged to/)).toBeTruthy();
     expect(screen.getByTestId("orphan-section")).toBeTruthy();
   });
 });

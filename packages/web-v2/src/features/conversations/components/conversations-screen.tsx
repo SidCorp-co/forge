@@ -354,7 +354,7 @@ function AddressedRoom({
       <EmptyState
         level={1}
         title="This conversation is about no project"
-        message="Its project was deleted. Open it from Project deleted, under the list of conversations."
+        message="Its project was deleted. Open it from Project deleted, under the list of conversations, in the organization it belonged to."
       />,
     );
   }
