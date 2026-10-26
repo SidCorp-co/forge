@@ -88,6 +88,7 @@ const DECLARED = {
     roots: [CODE, CONFORMANCE, 'packages/runner/crates/forge-runner-core/assets/skills'],
   },
   'merged-at-writers': { roots: [CODE, ...WORKSPACE] },
+  'repo-path-readers': { roots: [CODE, ...WORKSPACE] },
   'lazy-module-init': { roots: [CODE, ...WORKSPACE] },
   'scripts lint': { roots: [...PNPM, 'scripts'], listed: ['packages'], blind: ['biome'] },
   'core typecheck': {

@@ -212,7 +212,7 @@ agentSessionTurnsRoutes.post(
     if (!client.isLocal && !client.deviceId) throw noClaudeClient('session');
 
     const [project] = await db
-      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .select({ id: projects.id, slug: projects.slug })
       .from(projects)
       .where(eq(projects.id, session.projectId))
       .limit(1);
@@ -366,7 +366,7 @@ agentSessionTurnsRoutes.post(
     if (!client.isLocal && !client.deviceId) throw noClaudeClient('session');
 
     const [project] = await db
-      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .select({ id: projects.id, slug: projects.slug })
       .from(projects)
       .where(eq(projects.id, session.projectId))
       .limit(1);

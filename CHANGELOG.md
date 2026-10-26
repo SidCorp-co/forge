@@ -3197,6 +3197,7 @@
 
 ### Fixed
 
+- **Each box works in its own checkout of a project.** Chats, schedules and jobs used the project's saved folder, another box's path; a box the project never bound is refused, naming how to bind it. (ISS-1236)
 - **Everyone in a room is named as its members list names them**, so three people who never set a name no longer all read "Another member". (ISS-1229)
 - **The bell's count reads at most 99+ and sits beside the bell**, never over it, on a phone and on a desktop. (ISS-1229)
 - **The "This issue is not in" page has a heading, and the browser tab says what the page does.** Every error page's title is now a heading. (ISS-1229)

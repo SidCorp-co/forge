@@ -151,9 +151,11 @@ export const runScheduleOp = describeOperation({
       'the caller is not a project member, or is not a member of the target project',
     ),
     404: fail('NOT_FOUND', NO_SCHEDULE),
-    409: fail(
-      'SCHEDULE_DISPATCH_FAILED',
-      'nothing was started: no device is online, the project is gone, the run was already applied, or the session failed to start',
-    ),
+    409: fail({
+      SCHEDULE_DISPATCH_FAILED:
+        'nothing was started: no device is online, the project is gone, the run was already applied, or the session failed to start',
+      DEVICE_NOT_BOUND:
+        'nothing was started: the device picked has no runner bound to the project, so no checkout of it to run in',
+    }),
   },
 });

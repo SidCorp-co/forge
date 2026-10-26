@@ -32,11 +32,17 @@ vi.mock('../issues/progress.js', () => ({
 const createChatSessionRow = vi.fn();
 const dispatchChatTurn = vi.fn();
 const resolveChatDevice = vi.fn();
-vi.mock('./chat-turn.js', () => ({
-  createChatSessionRow: (...args: unknown[]) => createChatSessionRow(...args),
-  dispatchChatTurn: (...args: unknown[]) => dispatchChatTurn(...args),
-  resolveChatDevice: (...args: unknown[]) => resolveChatDevice(...args),
-}));
+vi.mock('./chat-turn.js', async () => {
+  const { DeviceNotBoundError } =
+    await vi.importActual<typeof import('../lib/device-pool.js')>('../lib/device-pool.js');
+  return {
+    createChatSessionRow: (...args: unknown[]) => createChatSessionRow(...args),
+    dispatchChatTurn: (...args: unknown[]) => dispatchChatTurn(...args),
+    resolveChatDevice: (...args: unknown[]) => resolveChatDevice(...args),
+    unboundDeviceRefusal: (err: unknown) =>
+      err instanceof DeviceNotBoundError ? err.message : null,
+  };
+});
 
 const applyKernelTransition = vi.fn();
 vi.mock('../lifecycle/transition.js', () => ({
@@ -44,7 +50,10 @@ vi.mock('../lifecycle/transition.js', () => ({
 }));
 
 const findAvailableDeviceForProject = vi.fn();
-vi.mock('../lib/device-pool.js', () => ({
+vi.mock('../lib/device-pool.js', async () => ({
+  DeviceNotBoundError: (
+    await vi.importActual<typeof import('../lib/device-pool.js')>('../lib/device-pool.js')
+  ).DeviceNotBoundError,
   findAvailableDeviceForProject: (...args: unknown[]) => findAvailableDeviceForProject(...args),
 }));
 
@@ -117,7 +126,7 @@ const BASE_ARGS = {
   conversationId: 'conv-1',
   windowId: 'win-1',
   deliveryKey: 'key-1',
-  project: { id: 'proj-1', slug: 'proj', repoPath: '/repo' },
+  project: { id: 'proj-1', slug: 'proj' },
   handleName: 'Babo',
   question: 'How does the pipeline dispatcher work?',
   askedByLabel: '@alice',
@@ -236,6 +245,25 @@ describe('startConversationAgentTurn', () => {
     resolveChatDevice.mockResolvedValue({ deviceId: null, isLocal: false });
     const result = await startConversationAgentTurn(BASE_ARGS);
     expect(result).toEqual({ started: false, reason: 'no-device' });
+    expect(createChatSessionRow).not.toHaveBeenCalled();
+  });
+
+  it('answers the room with the DEVICE_NOT_BOUND sentence, creating no session, when the device picked has no runner row (ISS-1236)', async () => {
+    selectLimit.mockResolvedValue([]);
+    const { DeviceNotBoundError } = await import('../lib/device-pool.js');
+    resolveChatDevice.mockRejectedValue(
+      new DeviceNotBoundError({
+        deviceId: 'device-9',
+        deviceName: 'spare-box',
+        projectId: 'proj-1',
+        projectSlug: 'proj',
+      }),
+    );
+    const result = await startConversationAgentTurn(BASE_ARGS);
+    expect(result).toMatchObject({ started: false, reason: 'device-not-bound' });
+    expect((result as { refusal: string }).refusal).toContain(
+      'forge-runner bind proj --path <dir>',
+    );
     expect(createChatSessionRow).not.toHaveBeenCalled();
   });
 

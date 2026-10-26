@@ -9,10 +9,15 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { createChatSessionRow, dispatchChatTurn } from '../agent-sessions/chat-turn.js';
+import {
+  type ChatClient,
+  createChatSessionRow,
+  dispatchChatTurn,
+  remoteChatClient,
+} from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
 import { agentSessions, projects, schedules } from '../db/schema.js';
-import { findAvailableDeviceForProject } from '../lib/device-pool.js';
+import { DeviceNotBoundError, findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 
@@ -27,7 +32,14 @@ export type ScheduleFailoverResult =
   | { ok: true; status: 'redispatched'; sessionId: string; deviceId: string }
   | {
       ok: false;
-      status: 'not-schedule' | 'exhausted' | 'no-device' | 'no-prompt' | 'side-effects' | 'error';
+      status:
+        | 'not-schedule'
+        | 'exhausted'
+        | 'no-device'
+        | 'device-not-bound'
+        | 'no-prompt'
+        | 'side-effects'
+        | 'error';
     };
 
 const FAILOVER_DISPOSITIONS: Record<
@@ -36,6 +48,8 @@ const FAILOVER_DISPOSITIONS: Record<
 > = {
   'side-effects': 'no failover (session had attached and run tool calls; side effects preserved)',
   'no-device': 'no failover (no other device was available)',
+  'device-not-bound':
+    'no failover (the device picked has no runner bound to this project, so no checkout to run in)',
   exhausted: `no failover (chain exhausted after ${MAX_SCHEDULE_FAILOVERS} re-dispatches)`,
   'no-prompt': 'no failover (the failed session carries no prompt to re-run)',
   'not-schedule': 'no failover (not a schedule run)',
@@ -172,11 +186,23 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
   if (!deviceId) return { ok: false, status: 'no-device' };
 
   const [project] = await db
-    .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+    .select({ id: projects.id, slug: projects.slug })
     .from(projects)
     .where(eq(projects.id, failed.projectId))
     .limit(1);
   if (!project) return { ok: false, status: 'error' };
+
+  let client: ChatClient;
+  try {
+    client = await remoteChatClient(failed.projectId, deviceId);
+  } catch (err) {
+    if (!(err instanceof DeviceNotBoundError)) throw err;
+    logger.error(
+      { failedSessionId: sessionId, refusal: err.message },
+      'schedule.failover: refused',
+    );
+    return { ok: false, status: 'device-not-bound' };
+  }
 
   const nextMeta: Record<string, unknown> = {
     source: 'schedule.run',
@@ -200,7 +226,7 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
     const dispatched = await dispatchChatTurn({
       session,
       project,
-      client: { deviceId, isLocal: false, migrated: false },
+      client,
       message: firstUser.content,
       broadcastEvent: 'agent-session.created',
     });

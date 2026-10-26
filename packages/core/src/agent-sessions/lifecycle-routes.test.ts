@@ -39,23 +39,36 @@ vi.mock('../db/client.js', () => {
 
 const findAvailableDeviceForProject = vi.fn();
 const findChatCapableDeviceForProject = vi.fn();
-const resolveSessionRepoPathForDevice = vi.fn(
-  async (_projectId: string, _deviceId: string | null, projectRepoPath: string | null) =>
-    projectRepoPath ?? null,
-);
-vi.mock('../lib/device-pool.js', () => ({
-  findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
-  findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
-    findChatCapableDeviceForProject(projectId, deviceId),
-  resolveRepoPath: (override: string | null | undefined, repo: string | null) =>
-    (override ?? repo ?? '').trim() || null,
-  resolveRunnerRepoPath: () => Promise.resolve(null),
-  resolveSessionRepoPathForDevice: (
-    projectId: string,
-    deviceId: string | null,
-    repo: string | null,
-  ) => resolveSessionRepoPathForDevice(projectId, deviceId, repo),
-}));
+/** Each device's own binding of the project; a device absent here has no runner row there. */
+let bindings: Record<string, string | null> = {};
+const readDeviceBinding = vi.fn();
+vi.mock('../lib/device-pool.js', async () => {
+  const { DeviceNotBoundError } =
+    await vi.importActual<typeof import('../lib/device-pool.js')>('../lib/device-pool.js');
+  readDeviceBinding.mockImplementation(async (projectId: string, deviceId: string) => {
+    if (!(deviceId in bindings)) {
+      throw new DeviceNotBoundError({
+        deviceId,
+        deviceName: 'box',
+        projectId,
+        projectSlug: 'apiflow',
+      });
+    }
+    return {
+      runnerId: `runner-${deviceId}`,
+      runnerType: 'claude-code',
+      checkout: bindings[deviceId],
+    };
+  });
+  return {
+    DeviceNotBoundError,
+    findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
+    findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
+      findChatCapableDeviceForProject(projectId, deviceId),
+    readDeviceBinding: (projectId: string, deviceId: string) =>
+      readDeviceBinding(projectId, deviceId),
+  };
+});
 
 const buildChatPreamble = vi.fn(async (..._args: unknown[]) => '## Project Config\n\n---\n\n');
 vi.mock('../lib/chat-preamble.js', () => ({
@@ -129,6 +142,7 @@ beforeEach(() => {
   updateReturning.mockReset();
   projectAccessMock.mockReset();
   findChatCapableDeviceForProject.mockReset();
+  bindings = { [DEVICE_ID]: '/repo/on/device', [OTHER_DEVICE_ID]: '/repo/on/new-device' };
 });
 
 function grantAccess(role: 'admin' | 'member' | 'viewer' | null) {
@@ -281,6 +295,54 @@ describe('POST /api/agent-sessions/start', () => {
     expect(data.projectSlug).toBe('apiflow');
     expect(data.systemPrompt).toBe('## Tool Reference (test)');
     expect(String(data.prompt)).toContain('hello');
+    // The device's own checkout, never the project's `repoPath` (ISS-1236).
+    expect(data.repoPath).toBe('/repo/on/device');
+  });
+
+  it('409 DEVICE_NOT_BOUND before any session row when the picked device has no runner row (ISS-1236)', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT_ID, slug: 'apiflow', ownerId: USER_ID, defaultDeviceId: DEVICE_ID },
+    ]);
+    grantAccess('admin');
+    bindings = {};
+    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
+
+    const res = await buildApp().fetch(
+      req('/api/agent-sessions/start', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hello' }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(body.code).toBe('DEVICE_NOT_BOUND');
+    expect(body.message).toContain(DEVICE_ID);
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(publishSpy).not.toHaveBeenCalled();
+  });
+
+  it('400 naming repoPath when a session a runner takes is started with one, before any row (ISS-1236)', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT_ID, slug: 'apiflow', ownerId: USER_ID, defaultDeviceId: null },
+    ]);
+    grantAccess('admin');
+    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
+
+    const res = await buildApp().fetch(
+      req('/api/agent-sessions/start', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hello', repoPath: '/elsewhere' }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain('repoPath');
+    expect(dbInsert).not.toHaveBeenCalled();
   });
 
   it.each(['qa', 'qa-reindex'])(
@@ -505,26 +567,35 @@ describe('POST /api/agent-sessions/abort', () => {
   });
 });
 
+/** Switch a session pinned to DEVICE_ID to `deviceId`, as its owner. */
+async function switchRunner(deviceId: string | null, status: 'idle' | 'running' = 'idle') {
+  const token = await signUserToken(USER_ID);
+  mockAuthVerified();
+  selectLimit.mockResolvedValueOnce([
+    {
+      id: SESSION_ID,
+      projectId: PROJECT_ID,
+      userId: USER_ID,
+      deviceId: DEVICE_ID,
+      metadata: { deviceId: DEVICE_ID },
+      status,
+      claudeSessionId: 'claude-abc',
+      repoPath: '/repo/on/old-device',
+    },
+  ]);
+  grantAccess('admin');
+  return buildApp().fetch(
+    req(`/api/agent-sessions/${SESSION_ID}/runner`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ deviceId }),
+    }),
+  );
+}
+
 describe('POST /api/agent-sessions/:id/runner', () => {
   it('200 re-pins deviceId + metadata.deviceId, nulls claudeSessionId, writes the NEW device repoPath, broadcasts agent-session.updated', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        userId: USER_ID,
-        deviceId: DEVICE_ID,
-        metadata: { deviceId: DEVICE_ID },
-        status: 'idle',
-        claudeSessionId: 'claude-abc',
-        repoPath: '/repo/on/old-device',
-      },
-    ]);
-    grantAccess('admin');
     findChatCapableDeviceForProject.mockResolvedValueOnce(OTHER_DEVICE_ID);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: '/repo' }]);
-    resolveSessionRepoPathForDevice.mockResolvedValueOnce('/repo/on/new-device');
     updateReturning.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -536,15 +607,7 @@ describe('POST /api/agent-sessions/:id/runner', () => {
         repoPath: '/repo/on/new-device',
       },
     ]);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ deviceId: OTHER_DEVICE_ID }),
-      }),
-    );
+    const res = await switchRunner(OTHER_DEVICE_ID);
     expect(res.status).toBe(200);
     expect(updateSet).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -561,94 +624,41 @@ describe('POST /api/agent-sessions/:id/runner', () => {
   });
 
   it('409 NO_CLAUDE_CLIENT when the picked device is offline/disabled/not a chat runner', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        userId: USER_ID,
-        deviceId: DEVICE_ID,
-        metadata: { deviceId: DEVICE_ID },
-        status: 'idle',
-        claudeSessionId: 'claude-abc',
-        repoPath: '/repo/on/old-device',
-      },
-    ]);
-    grantAccess('admin');
     findChatCapableDeviceForProject.mockResolvedValueOnce(null);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: '/repo' }]);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ deviceId: OTHER_DEVICE_ID }),
-      }),
-    );
+    const res = await switchRunner(OTHER_DEVICE_ID);
     expect(res.status).toBe(409);
     expect(((await res.json()) as { code?: string }).code).toBe('NO_CLAUDE_CLIENT');
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  it('409 NO_REPO_PATH when the picked device has no runner binding and the project has no default repoPath (ISS-755 fix)', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        userId: USER_ID,
-        deviceId: DEVICE_ID,
-        metadata: { deviceId: DEVICE_ID },
-        status: 'idle',
-        claudeSessionId: 'claude-abc',
-        repoPath: '/repo/on/old-device',
-      },
-    ]);
-    grantAccess('admin');
-    findChatCapableDeviceForProject.mockResolvedValueOnce(OTHER_DEVICE_ID);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: null }]);
-    resolveSessionRepoPathForDevice.mockResolvedValueOnce(null);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ deviceId: OTHER_DEVICE_ID }),
-      }),
-    );
+  it('409 DEVICE_NOT_BOUND naming the device and how to bind it when the picked device has no runner row, before the capability check (ISS-1236)', async () => {
+    delete bindings[OTHER_DEVICE_ID];
+    const res = await switchRunner(OTHER_DEVICE_ID);
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { code?: string }).code).toBe('NO_REPO_PATH');
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(body.code).toBe('DEVICE_NOT_BOUND');
+    expect(body.message).toContain(OTHER_DEVICE_ID);
+    expect(body.message).toContain('forge-runner bind apiflow --path <dir>');
+    expect(body.message).toContain("project's Runners page");
+    expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  it('409 SESSION_BUSY while the session is running', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        userId: USER_ID,
-        deviceId: DEVICE_ID,
-        metadata: { deviceId: DEVICE_ID },
-        status: 'running',
-        claudeSessionId: 'claude-abc',
-      },
+  it('200 pins a device whose binding records no path, handing the session no path rather than a project default (ISS-1236)', async () => {
+    bindings[OTHER_DEVICE_ID] = null;
+    findChatCapableDeviceForProject.mockResolvedValueOnce(OTHER_DEVICE_ID);
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: OTHER_DEVICE_ID, repoPath: null },
     ]);
-    grantAccess('admin');
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ deviceId: OTHER_DEVICE_ID }),
-      }),
+    const res = await switchRunner(OTHER_DEVICE_ID);
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ deviceId: OTHER_DEVICE_ID, repoPath: null }),
     );
+  });
+
+  it('409 SESSION_BUSY while the session is running', async () => {
+    const res = await switchRunner(OTHER_DEVICE_ID, 'running');
     expect(res.status).toBe(409);
     expect(((await res.json()) as { code?: string }).code).toBe('SESSION_BUSY');
     expect(updateSet).not.toHaveBeenCalled();
@@ -656,22 +666,6 @@ describe('POST /api/agent-sessions/:id/runner', () => {
   });
 
   it('{ deviceId: null } clears the pin + metadata.deviceId + repoPath (Auto)', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        userId: USER_ID,
-        deviceId: DEVICE_ID,
-        metadata: { deviceId: DEVICE_ID },
-        status: 'idle',
-        claudeSessionId: 'claude-abc',
-        repoPath: '/repo/on/old-device',
-      },
-    ]);
-    grantAccess('admin');
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: '/repo' }]);
     updateReturning.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -683,15 +677,7 @@ describe('POST /api/agent-sessions/:id/runner', () => {
         repoPath: null,
       },
     ]);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ deviceId: null }),
-      }),
-    );
+    const res = await switchRunner(null);
     expect(res.status).toBe(200);
     expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();
     expect(updateSet).toHaveBeenCalledWith(
@@ -702,30 +688,7 @@ describe('POST /api/agent-sessions/:id/runner', () => {
   });
 
   it('same-device (idempotent) pick → no-op, keeps claudeSessionId (no needless --resume loss)', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        userId: USER_ID,
-        deviceId: DEVICE_ID,
-        metadata: { deviceId: DEVICE_ID },
-        status: 'idle',
-        claudeSessionId: 'claude-abc',
-        repoPath: '/repo/on/old-device',
-      },
-    ]);
-    grantAccess('admin');
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/agent-sessions/${SESSION_ID}/runner`, {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ deviceId: DEVICE_ID }),
-      }),
-    );
+    const res = await switchRunner(DEVICE_ID);
     expect(res.status).toBe(200);
     expect(updateSet).not.toHaveBeenCalled();
     expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();

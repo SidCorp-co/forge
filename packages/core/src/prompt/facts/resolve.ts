@@ -175,7 +175,6 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
 export function makeProjectResolver(src: {
   baseBranch: string | null;
   releaseChain: ReleaseChain;
-  repoPath: string | null;
   environments: NormalizedEnvironments;
   integrations: IntegrationRow[];
 }): ProjectVarResolver {
@@ -184,7 +183,8 @@ export function makeProjectResolver(src: {
     'live-branch': () => chainLiveBranch(src.releaseChain) ?? undefined,
     'production-branch': () =>
       '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where this project declares a release chain of two or more branches. Update this skill body.',
-    'repo-path': () => src.repoPath ?? undefined,
+    'repo-path': () =>
+      '⚠️ `{{project:repo-path}}` was retired when a checkout became a property of the device that holds it (ISS-1236): every box keeps the project at its own path, so a project-wide value names some other box. Your working directory is your checkout. Update this skill body.',
     'test-urls': () => renderTestUrls(src.environments),
     'test-creds': () => TEST_CREDS_POINTER,
     'test-notes': () => src.environments.limits ?? undefined,
@@ -286,7 +286,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     project: makeProjectResolver({
       baseBranch,
       releaseChain,
-      repoPath,
       environments,
       integrations,
     }),

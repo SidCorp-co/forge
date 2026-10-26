@@ -1,4 +1,5 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from './dispatch-liveness.js';
@@ -91,37 +92,78 @@ export async function findChatCapableDeviceForProject(
   return rows[0]?.device_id ?? null;
 }
 
-export function resolveRepoPath(
-  override: string | null | undefined,
-  projectRepoPath: string | null,
-): string | null {
-  const v = (override ?? projectRepoPath ?? '').trim();
-  return v.length === 0 ? null : v;
+/**
+ * Why a device cannot be handed a working directory for a project: it has no runner row there.
+ *
+ * A checkout belongs to a device, not to a project (`runners.repoPath` per device × project), so a
+ * device the project never bound has no checkout this core could name, and handing it the
+ * project's own `repoPath` would run it in some other box's folder.
+ */
+export class DeviceNotBoundError extends HTTPException {
+  readonly deviceId: string;
+  readonly projectId: string;
+
+  constructor(args: {
+    deviceId: string;
+    deviceName: string | null;
+    projectId: string;
+    projectSlug: string | null;
+  }) {
+    const device = args.deviceName ? `${args.deviceName} (${args.deviceId})` : args.deviceId;
+    const project = args.projectSlug ?? args.projectId;
+    const slug = args.projectSlug ?? '<project-slug>';
+    super(409, {
+      message:
+        `Device ${device} is not bound to project ${project}, so it has no checkout of it to run in. ` +
+        `Bind it on that device with \`forge-runner bind ${slug} --path <dir>\`, or assign the device on the project's Runners page, then try again.`,
+      cause: {
+        code: 'DEVICE_NOT_BOUND',
+        details: { deviceId: args.deviceId, projectId: args.projectId },
+      },
+    });
+    this.name = 'DeviceNotBoundError';
+    this.deviceId = args.deviceId;
+    this.projectId = args.projectId;
+  }
 }
 
-export async function resolveRunnerRepoPath(
-  projectId: string,
-  deviceId: string,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ repoPath: runners.repoPath })
-    .from(runners)
-    .where(and(eq(runners.projectId, projectId), eq(runners.deviceId, deviceId)))
-    .limit(1);
-  const v = (row?.repoPath ?? '').trim();
-  return v.length === 0 ? null : v;
+export interface DeviceBinding {
+  runnerId: string;
+  runnerType: string;
+  /**
+   * The device's checkout of the project as the server records it. `null` means the server holds
+   * no path for this binding and the device answers from its own local binding for the slug,
+   * refusing by name when it has none; the project's `repoPath` is never put in its place.
+   */
+  checkout: string | null;
 }
 
 /**
- * Single cwd resolver for a chat/schedule turn dispatched to `deviceId` (or
- * `null` for the desktop/local path). Combines the runner binding lookup with
- * the project-default fallback so callers never hand-roll the chain.
+ * The one reader of where a device runs a project's work: its runner row for that project.
  */
-export async function resolveSessionRepoPathForDevice(
+export async function readDeviceBinding(
   projectId: string,
-  deviceId: string | null,
-  projectRepoPath: string | null,
-): Promise<string | null> {
-  const bindingRepo = deviceId ? await resolveRunnerRepoPath(projectId, deviceId) : null;
-  return resolveRepoPath(null, bindingRepo ?? projectRepoPath ?? null);
+  deviceId: string,
+): Promise<DeviceBinding> {
+  const [row] = await db
+    .select({ id: runners.id, type: runners.type, repoPath: runners.repoPath })
+    .from(runners)
+    .where(and(eq(runners.projectId, projectId), eq(runners.deviceId, deviceId)))
+    .limit(1);
+  if (!row) throw await deviceNotBound(projectId, deviceId);
+  const checkout = (row.repoPath ?? '').trim();
+  return { runnerId: row.id, runnerType: row.type, checkout: checkout.length ? checkout : null };
+}
+
+async function deviceNotBound(projectId: string, deviceId: string): Promise<DeviceNotBoundError> {
+  const [[device], [project]] = await Promise.all([
+    db.select({ name: devices.name }).from(devices).where(eq(devices.id, deviceId)).limit(1),
+    db.select({ slug: projects.slug }).from(projects).where(eq(projects.id, projectId)).limit(1),
+  ]);
+  return new DeviceNotBoundError({
+    deviceId,
+    deviceName: device?.name ?? null,
+    projectId,
+    projectSlug: project?.slug ?? null,
+  });
 }

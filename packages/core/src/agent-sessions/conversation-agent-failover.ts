@@ -12,7 +12,13 @@ import { db } from '../db/client.js';
 import { type agentSessions, type MemberLens, projects } from '../db/schema.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
-import { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
+import {
+  type ChatClient,
+  createChatSessionRow,
+  dispatchChatTurn,
+  remoteChatClient,
+  unboundDeviceRefusal,
+} from './chat-turn.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
@@ -30,7 +36,13 @@ export type ConversationAgentFailoverResult =
   | { ok: true; sessionId: string; deviceId: string }
   | {
       ok: false;
-      status: 'not-a-conversation-turn' | 'exhausted' | 'no-device' | 'no-prompt' | 'error';
+      status:
+        | 'not-a-conversation-turn'
+        | 'exhausted'
+        | 'no-device'
+        | 'device-not-bound'
+        | 'no-prompt'
+        | 'error';
     };
 
 export async function redispatchConversationAgentTurn(
@@ -61,11 +73,21 @@ export async function redispatchConversationAgentTurn(
   if (!deviceId) return { ok: false, status: 'no-device' };
 
   const [project] = await db
-    .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+    .select({ id: projects.id, slug: projects.slug })
     .from(projects)
     .where(eq(projects.id, session.projectId))
     .limit(1);
   if (!project) return { ok: false, status: 'error' };
+
+  let client: ChatClient;
+  try {
+    client = await remoteChatClient(session.projectId, deviceId);
+  } catch (err) {
+    const refusal = unboundDeviceRefusal(err);
+    if (refusal === null) throw err;
+    logger.error({ failedSessionId: session.id, refusal }, 'conversation-agent failover: refused');
+    return { ok: false, status: 'device-not-bound' };
+  }
 
   const priorMeta = (session.metadata as Record<string, unknown>) ?? {};
   const next: ConversationAgentMeta = {
@@ -103,7 +125,7 @@ export async function redispatchConversationAgentTurn(
     const dispatched = await dispatchChatTurn({
       session: retry,
       project,
-      client: { deviceId, isLocal: false, migrated: false },
+      client,
       message: firstUser.content,
       ...(priorMeta.lensOverride
         ? { forceLenses: priorMeta.lensOverride as readonly MemberLens[] }

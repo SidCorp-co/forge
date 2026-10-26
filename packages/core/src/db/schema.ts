@@ -377,6 +377,10 @@ export const projects = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     description: text('description'),
     kind: text('kind').notNull().default('standard'),
+    /**
+     * The path offered when a device is bound, and a declaration that this project has a
+     * repository. Never a working directory: a checkout is the device's (`runners.repoPath`).
+     */
     repoPath: text('repo_path'),
     /** Where an ISS-* branch is cut from and merges back to. NOT a release fact: `releaseChain` is. */
     baseBranch: text('base_branch'),
@@ -872,9 +876,9 @@ export const runners = pgTable(
     labels: jsonb('labels').notNull().default([]),
     capabilities: jsonb('capabilities').notNull().default({}),
     config: jsonb('config').notNull().default({}),
-    // ISS-271 — per (device × project) repo checkout. Source of truth for the
-    // runner working dir, written by web (PATCH) or CLI (`forge-runner bind`).
-    // `projects.repoPath` is now only a default hint when binding a new device.
+    // ISS-271 — per (device × project) repo checkout. The only source of the
+    // working dir a device is handed, read through `readDeviceBinding`; written
+    // by web (PATCH) or CLI (`forge-runner bind`). Null: the device's own config.
     repoPath: text('repo_path'),
     branch: text('branch'),
     status: text('status', { enum: runnerStatuses }).notNull().default('offline'),

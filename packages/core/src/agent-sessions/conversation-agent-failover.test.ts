@@ -29,11 +29,30 @@ vi.mock('../issues/progress.js', () => ({
 const createChatSessionRow = vi.fn();
 const dispatchChatTurn = vi.fn();
 const resolveChatDevice = vi.fn();
-vi.mock('./chat-turn.js', () => ({
-  createChatSessionRow: (...args: unknown[]) => createChatSessionRow(...args),
-  dispatchChatTurn: (...args: unknown[]) => dispatchChatTurn(...args),
-  resolveChatDevice: (...args: unknown[]) => resolveChatDevice(...args),
-}));
+/** Devices bound to the project; the client of any other is refused DEVICE_NOT_BOUND. */
+let bound = new Set<string>(['device-3']);
+vi.mock('./chat-turn.js', async () => {
+  const { DeviceNotBoundError } =
+    await vi.importActual<typeof import('../lib/device-pool.js')>('../lib/device-pool.js');
+  return {
+    createChatSessionRow: (...args: unknown[]) => createChatSessionRow(...args),
+    dispatchChatTurn: (...args: unknown[]) => dispatchChatTurn(...args),
+    resolveChatDevice: (...args: unknown[]) => resolveChatDevice(...args),
+    unboundDeviceRefusal: (err: unknown) =>
+      err instanceof DeviceNotBoundError ? err.message : null,
+    remoteChatClient: async (projectId: string, deviceId: string) => {
+      if (!bound.has(deviceId)) {
+        throw new DeviceNotBoundError({
+          deviceId,
+          deviceName: null,
+          projectId,
+          projectSlug: 'proj',
+        });
+      }
+      return { deviceId, isLocal: false, migrated: false, checkout: `/repo/on/${deviceId}` };
+    },
+  };
+});
 
 const applyKernelTransition = vi.fn();
 vi.mock('../lifecycle/transition.js', () => ({
@@ -41,7 +60,10 @@ vi.mock('../lifecycle/transition.js', () => ({
 }));
 
 const findAvailableDeviceForProject = vi.fn();
-vi.mock('../lib/device-pool.js', () => ({
+vi.mock('../lib/device-pool.js', async () => ({
+  DeviceNotBoundError: (
+    await vi.importActual<typeof import('../lib/device-pool.js')>('../lib/device-pool.js')
+  ).DeviceNotBoundError,
   findAvailableDeviceForProject: (...args: unknown[]) => findAvailableDeviceForProject(...args),
 }));
 
@@ -127,6 +149,18 @@ describe('redispatchConversationAgentTurn', () => {
     dispatchChatTurn.mockReset();
     findAvailableDeviceForProject.mockReset();
     applyKernelTransition.mockReset();
+    bound = new Set(['device-3']);
+  });
+
+  it('reports device-not-bound and opens no retry session when the device picked has no runner row (ISS-1236)', async () => {
+    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj' }]);
+    findAvailableDeviceForProject.mockResolvedValue('device-unbound');
+
+    const result = await redispatchConversationAgentTurn(makeSession());
+
+    expect(result).toEqual({ ok: false, status: 'device-not-bound' });
+    expect(createChatSessionRow).not.toHaveBeenCalled();
+    expect(dispatchChatTurn).not.toHaveBeenCalled();
   });
 
   it('reports not-a-conversation-turn for a session carrying no conversation marker', async () => {
@@ -232,7 +266,7 @@ describe('redispatchConversationAgentTurn \u00b7 the re-dispatch itself', () => 
   });
 
   it('re-dispatches to a healthy runner, carrying the bumped failover chain in metadata', async () => {
-    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj' }]);
     findAvailableDeviceForProject.mockResolvedValue('device-3');
     createChatSessionRow.mockResolvedValue({ id: 'session-2', status: 'idle' });
     dispatchChatTurn.mockResolvedValue({ id: 'session-2' });
@@ -258,7 +292,12 @@ describe('redispatchConversationAgentTurn \u00b7 the re-dispatch itself', () => 
     expect(dispatchChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         message: 'the built agent-chat prompt',
-        client: { deviceId: 'device-3', isLocal: false, migrated: false },
+        client: {
+          deviceId: 'device-3',
+          isLocal: false,
+          migrated: false,
+          checkout: '/repo/on/device-3',
+        },
         broadcastEvent: 'agent-session.created',
       }),
     );
@@ -274,7 +313,7 @@ describe('redispatchConversationAgentTurn \u00b7 the re-dispatch itself', () => 
 
   it('schedules the interim ack for the retry session, through the venue own transport', async () => {
     vi.useFakeTimers();
-    selectLimit.mockResolvedValueOnce([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    selectLimit.mockResolvedValueOnce([{ id: 'proj-1', slug: 'proj' }]);
     selectLimit.mockResolvedValueOnce([
       { status: 'running', metadata: { conversationAgent: { ...MARKER, deliveredAt: null } } },
     ]);
@@ -300,7 +339,7 @@ describe('redispatchConversationAgentTurn \u00b7 the re-dispatch itself', () => 
   });
 
   it('reports error, marks the retry session failed, and pre-stamps deliveredAt so the bridge short-circuits (no double fallback)', async () => {
-    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj' }]);
     findAvailableDeviceForProject.mockResolvedValue('device-3');
     createChatSessionRow.mockResolvedValue({
       id: 'session-2',
@@ -328,7 +367,7 @@ describe('redispatchConversationAgentTurn \u00b7 the re-dispatch itself', () => 
   });
 
   it('does not mark the retry session failed when createChatSessionRow itself throws (nothing to mark)', async () => {
-    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj', repoPath: '/repo' }]);
+    selectLimit.mockResolvedValue([{ id: 'proj-1', slug: 'proj' }]);
     findAvailableDeviceForProject.mockResolvedValue('device-3');
     createChatSessionRow.mockRejectedValue(new Error('insert failed'));
 

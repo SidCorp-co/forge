@@ -17,7 +17,11 @@ export const desktopConnectedSchema = z.object({ data: z.object({ connected: z.b
 
 const noSession = fail('NOT_FOUND', 'no such agent session, or its project');
 const noProject = fail('NOT_FOUND', 'no such project');
-const noClient = fail('NO_CLAUDE_CLIENT', 'no online chat-capable runner can take the turn');
+const noClient = fail({
+  NO_CLAUDE_CLIENT: 'no online chat-capable runner can take the turn',
+  DEVICE_NOT_BOUND:
+    'the device picked has no runner bound to the project, so no checkout of it to run in',
+});
 const notYours = fail('FORBIDDEN', 'the caller is not the session owner or a project admin');
 
 export const startSession = describeOperation({
@@ -28,7 +32,7 @@ export const startSession = describeOperation({
     201: json(sessionSchema, 'The session, queued on a runner'),
     400: fail(
       'BAD_REQUEST',
-      '`type` was sent, `prompt` is missing, or `skillName` is not install-only for the project',
+      '`type` was sent, `prompt` is missing, `skillName` is not install-only for the project, or `repoPath` was sent for a session a runner takes',
     ),
     403: fail('FORBIDDEN', 'the caller is below the project member role'),
     404: noProject,
@@ -80,7 +84,7 @@ export const setSessionRunner = describeOperation({
     404: fail('NOT_FOUND', 'no such agent session or project'),
     409: fail({
       SESSION_BUSY: 'the agent is still working on the conversation',
-      NO_REPO_PATH: 'the runner has no project folder configured',
+      DEVICE_NOT_BOUND: 'the picked device has no runner bound to the project',
       NO_CLAUDE_CLIENT: 'the picked runner is offline or not chat-capable for the project',
     }),
   },

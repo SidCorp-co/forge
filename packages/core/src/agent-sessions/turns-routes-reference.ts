@@ -82,6 +82,8 @@ export const regenerateTurn = describeOperation({
       NO_DISPATCHABLE_PROMPT: 'no user prompt precedes the turn',
       SESSION_STALE: 'the session changed before the regeneration could start',
       NO_CLAUDE_CLIENT: noClient,
+      DEVICE_NOT_BOUND:
+        'the device picked has no runner bound to the project, so no checkout of it to run in',
     }),
   },
 });
@@ -98,6 +100,11 @@ export const rerunSession = describeOperation({
     400: fail('NO_PROMPT', 'the session has no user prompt'),
     403: fail('FORBIDDEN', 'the caller does not own the session and is not a project admin'),
     404: noSession,
-    409: fail({ SESSION_RUNNING: running, NO_CLAUDE_CLIENT: noClient }),
+    409: fail({
+      SESSION_RUNNING: running,
+      NO_CLAUDE_CLIENT: noClient,
+      DEVICE_NOT_BOUND:
+        'the device picked has no runner bound to the project, so no checkout of it to run in',
+    }),
   },
 });
