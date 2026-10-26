@@ -40,7 +40,7 @@ import {
   keyLockedLine,
   removedKeyHint,
 } from "../../components/integration-enabled-control";
-import { bindingBadge, bindingInUse } from "../../derive";
+import { bindingBadge, bindingForRow } from "../../derive";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
@@ -84,11 +84,11 @@ function toConfig(f: FormState): PostmanConfig {
  * write-only (never returned by the API), and only sent when the operator
  * types a new one. Test connection validates the key against Postman `GET /me`.
  */
-export function PostmanSection({ projectId }: { projectId: string }) {
+export function PostmanSection({ projectId, bindingId }: { projectId: string; bindingId?: string }) {
   const list = useIntegrationsList(projectId);
   const existing = useMemo(
-    () => bindingInUse(list.data?.items, "postman"),
-    [list.data],
+    () => bindingForRow(list.data?.items, "postman", bindingId),
+    [list.data, bindingId],
   );
 
   const create = useCreateProviderIntegration(projectId);

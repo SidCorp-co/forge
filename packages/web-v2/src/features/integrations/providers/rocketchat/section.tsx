@@ -51,14 +51,14 @@ import {
   keyLockedLine,
   onlyWho,
 } from "../../components/integration-enabled-control";
-import { bindingBadge, bindingInUse } from "../../derive";
+import { bindingBadge, bindingForRow } from "../../derive";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
-export function RocketchatSection({ projectId }: { projectId: string }) {
+export function RocketchatSection({ projectId, bindingId }: { projectId: string; bindingId?: string }) {
   const list = useIntegrationsList(projectId);
   const binding = useMemo(
-    () => bindingInUse(list.data?.items, "rocketchat"),
-    [list.data],
+    () => bindingForRow(list.data?.items, "rocketchat", bindingId),
+    [list.data, bindingId],
   );
 
   if (list.isLoading) return <p className="fg-body-sm text-muted">Loading…</p>;
