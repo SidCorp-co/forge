@@ -1,1 +1,0 @@
-**A run resending its own latest verdict writes nothing.** The same criterion, verdict, identity, reason, evidence and judge from the same run answers `200` with the existing row and `duplicate: true`.

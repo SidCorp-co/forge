@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.335] - 2026-10-26
+
+A criterion's wording can be corrected safely; repeated verdicts record once
+
+### Fixed
+
+- **One criterion's wording is corrected without losing its verdicts.** `PATCH /api/issues/:id/criteria/:n` keeps its id, trace and verdicts at any status and records old and new text on its history; the whole-list PUT names the verdicts it kept and voided.
+- **A run resending its own latest verdict writes nothing.** The same criterion, verdict, identity, reason, evidence and judge from the same run answers `200` with the existing row and `duplicate: true`.
+
 ## [0.4.0-dev.334] - 2026-10-26
 
 Support chat answers within a second and records only what the asker confirms
