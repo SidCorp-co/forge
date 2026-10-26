@@ -1,1 +1,0 @@
-**A decision says what changes and its impact, and takes one click.** Needs you and Approvals show three at a time. A moved item voids its decision. Day 3 reminds; day 14 proposes a defer. Questions are answered on Approvals.

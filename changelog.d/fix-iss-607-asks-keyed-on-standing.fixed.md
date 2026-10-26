@@ -1,1 +1,0 @@
-**The steward asks once per item standing, whichever item's run asks.** A decision recorded on that standing answers it, made before the first ask or after, so asks on ISS-498 from feedback runs settle.
