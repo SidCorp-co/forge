@@ -55,9 +55,33 @@ async function headOf(client: GitHubRepoClient, branch: string): Promise<string 
       `/repos/${client.fullName}/branches/${encodeURIComponent(branch)}`,
     );
   } catch (err) {
-    return headFailure(err, client.fullName, branch);
+    return headUnreadFor(client, branch, err);
   }
   return read.commit?.sha || { why: `${client.fullName} answered no commit for ${branch}` };
+}
+
+/** GitHub answers a branch read 404 both where a repository it shows lacks the branch and where it
+ *  hides the repository; the commit lookup tells the two apart, 422 against 404 (ISS-1300 r5). */
+async function headUnreadFor(
+  client: GitHubRepoClient,
+  branch: string,
+  err: unknown,
+): Promise<ReadFailure> {
+  const said = headFailure(err, client.fullName, branch);
+  if (!(err instanceof GitHubReadError) || err.phase !== 'request' || err.status !== 404) {
+    return said;
+  }
+  try {
+    await client.get(`/repos/${client.fullName}/commits/${encodeURIComponent(branch)}`);
+    return { why: said.why };
+  } catch (again) {
+    const { missingBranch, refused } = headFailure(again, client.fullName, branch);
+    return {
+      why: said.why,
+      ...(missingBranch ? { missingBranch } : {}),
+      ...(refused ? { refused } : {}),
+    };
+  }
 }
 
 /** The reason keeps the reader's own line, the request included, for whoever opens the details. */
