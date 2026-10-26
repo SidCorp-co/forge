@@ -12,12 +12,12 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema-projects.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
-import { emitNotification } from '../notifications/index.js';
 import { namedHolders } from '../permissions/index.js';
 import { ESCALATE_AFTER_DAYS, REMIND_AFTER_DAYS } from '../questions/index.js';
 import { readNeedsYouDecisionsBare } from './needs-you-decisions-read.js';
 import { declineOf } from './needs-you-escalation.js';
 import { needsYouViewerOf } from './needs-you-viewer.js';
+import { emitNotification } from './ports.js';
 
 const DAY_MS = 86_400_000;
 
