@@ -31,7 +31,7 @@ let recordTurnedAwayInboundCall: typeof import('../../src/integrations/inbound-d
 const SECRET = 'the-binding-signing-secret-at-least-32-chars';
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({ own: 'plants a constraint on integration_deliveries' });
   process.env.DATABASE_URL = harness.url;
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';

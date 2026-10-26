@@ -11,6 +11,7 @@ import {
   freshTemplateName,
   isAbandoned,
   mintRunToken,
+  ownDbName,
   reapAbandoned,
   retireScratchDb,
   runToken,
@@ -32,21 +33,9 @@ describe('names', () => {
     expect(tokens.size).toBe(200);
   });
 
-  it('mints a different file database for every call of the same worker', () => {
-    expect(workerDbName('3', TOKEN)).not.toBe(workerDbName('3', TOKEN));
-  });
-
-  it('carries this run\u2019s token, so a sweep can tell a file database from another run\u2019s', () => {
-    expect(workerDbName('3', TOKEN).startsWith(`${WORKER_PREFIX}${TOKEN}_3_`)).toBe(true);
-  });
-
-  it('refuses a run with no template rather than minting an unsweepable file database', () => {
-    expect(() => workerDbName('3', null)).toThrow(/TEST_PG_RUN_TOKEN/);
-  });
-
   it('keeps both prefixes, so the reaper can still find them', () => {
     expect(freshTemplate().startsWith(TEMPLATE_PREFIX)).toBe(true);
-    expect(workerDbName('0', TOKEN).startsWith(WORKER_PREFIX)).toBe(true);
+    expect(workerDbName('1', TOKEN).startsWith(WORKER_PREFIX)).toBe(true);
   });
 
   it('carries the birth time the reaper needs', () => {
@@ -116,12 +105,14 @@ describe('reapAbandoned', () => {
   it('drops only what is old and stamped', async () => {
     const now = Date.now();
     const old = `${TEMPLATE_PREFIX}${(now - 3 * HOUR).toString(36)}_aaaaaaaa`;
-    const oldWorker = `${WORKER_PREFIX}abc_2_${(now - 3 * HOUR).toString(36)}_bbbbbbbb`;
+    const oldWorker = `${WORKER_PREFIX}2_${(now - 3 * HOUR).toString(36)}_bbbbbbbb`;
     const fresh = freshTemplate();
+    const liveSlot = workerDbName('2', mintRunToken());
     const { admin, dropped } = fakeAdmin([
       old,
       oldWorker,
       fresh,
+      liveSlot,
       'forge',
       'postgres',
       'test_w29_9ed50deb',
@@ -164,7 +155,8 @@ describe('a database minted for one test case', () => {
 
   it('stays inside the identifier length Postgres truncates at', () => {
     expect(Buffer.byteLength(caseDbName('conversations', TOKEN))).toBeLessThan(63);
-    expect(Buffer.byteLength(workerDbName('12', TOKEN))).toBeLessThan(63);
+    expect(Buffer.byteLength(workerDbName('1234', TOKEN))).toBeLessThan(63);
+    expect(Buffer.byteLength(ownDbName(TOKEN))).toBeLessThan(63);
   });
 
   it('refuses a run with no template rather than minting an unsweepable name', () => {
@@ -215,15 +207,16 @@ describe('sweepRunScratchDbs', () => {
     expect(dropped).toEqual([a, b]);
   });
 
-  it('drops every file database carrying this run\u2019s token', async () => {
+  it('drops every slot and own database carrying this run\u2019s token', async () => {
     const mine = mintRunToken();
     const a = workerDbName('1', mine);
     const b = workerDbName('2', mine);
-    const { admin, dropped } = fakeAdmin([a, b, 'forge']);
+    const c = ownDbName(mine);
+    const { admin, dropped } = fakeAdmin([a, b, c, 'forge']);
 
     // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
-    await expect(sweepRunScratchDbs(admin as any, mine)).resolves.toEqual([a, b]);
-    expect(dropped).toEqual([a, b]);
+    await expect(sweepRunScratchDbs(admin as any, mine)).resolves.toEqual([a, b, c]);
+    expect(dropped).toEqual([a, b, c]);
   });
 
   it('leaves a case database another live run minted', async () => {
@@ -237,11 +230,11 @@ describe('sweepRunScratchDbs', () => {
     expect(dropped).toEqual([ours]);
   });
 
-  it('leaves a file database another live run minted', async () => {
+  it('leaves a slot or own database another live run minted', async () => {
     const mine = mintRunToken();
     const theirs = mintRunToken();
     const ours = workerDbName('1', mine);
-    const { admin, dropped } = fakeAdmin([ours, workerDbName('1', theirs)]);
+    const { admin, dropped } = fakeAdmin([ours, workerDbName('1', theirs), ownDbName(theirs)]);
 
     // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
     await expect(sweepRunScratchDbs(admin as any, mine)).resolves.toEqual([ours]);
@@ -433,7 +426,7 @@ const BUDGETED_TEARDOWNS: Array<[string, string, string]> = [
   ['integration/release-axes-migration-ground.ts', 'async stop() {', ''],
   ['integration/conversations-migration-ground.ts', 'async stop() {', ''],
   ['integration/mcp-sentinel-migration.fixture.ts', 'afterAll(async () => {', ''],
-  ['helpers/db.ts', 'cleanup: async () => {', 'async function cloneFromTemplate'],
+  ['helpers/db.ts', 'cleanup: async () => {', 'async function cloneOwnDatabase'],
 ];
 
 describe.each(BUDGETED_TEARDOWNS)('%s, at `%s`', (file, marker, after) => {

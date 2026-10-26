@@ -8,7 +8,7 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, expect } from 'vitest';
 import type { RequestIdVars } from '../../src/middleware/request-id.js';
-import { setupTestDatabase, type TestDatabase } from './db.js';
+import { type SetupOptions, setupTestDatabase, type TestDatabase } from './db.js';
 import { createTestProject, createTestUser } from './factories.js';
 import { truncateAll } from './truncate.js';
 
@@ -76,7 +76,7 @@ export interface InboxFixture {
 }
 
 /** Register the suite's hooks and hand back a fixture whose fields follow each `beforeEach`. */
-export function registerInboxFixture(): InboxFixture {
+export function registerInboxFixture(setup: SetupOptions = {}): InboxFixture {
   let harness: TestDatabase;
   let mods: InboxMods;
   let app: Hono<{ Variables: RequestIdVars }>;
@@ -85,7 +85,7 @@ export function registerInboxFixture(): InboxFixture {
   let token = '';
 
   beforeAll(async () => {
-    harness = await setupTestDatabase();
+    harness = await setupTestDatabase(setup);
     process.env.DATABASE_URL = harness.url;
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';

@@ -9,7 +9,12 @@ import {
   retireScratchDb,
   TEMPLATE_PREFIX,
 } from '../helpers/scratch-db.js';
-import { hashMigrations, sharedTemplateName, stamp } from '../helpers/shared-template.js';
+import {
+  hashMigrations,
+  holderName,
+  sharedTemplateName,
+  stamp,
+} from '../helpers/shared-template.js';
 import { templateRow, useLockHolders } from '../helpers/shared-template-probe.js';
 
 // The real global setup and teardown against this run's own instance: which mode builds what, and
@@ -21,7 +26,7 @@ const adminUrl = process.env.TEST_PG_ADMIN_URL as string;
 
 let admin: postgres.Sql;
 const existing = (name: string) => templateRow(admin, name);
-const holders = (name: string) => useLockHolders(admin, name);
+const holders = (name: string, from?: string) => useLockHolders(admin, name, from);
 
 beforeAll(() => {
   admin = postgres(adminUrl, { max: 2, onnotice: () => {} });
@@ -86,10 +91,12 @@ describe('global setup, run for real against this instance', () => {
     'shares: leaves the template standing at teardown and drops only its own scratch databases',
     async () => {
       const outer = process.env.TEST_PG_RUN_TOKEN as string;
-      // Whether the run executing this file shares the template is its own mode (CI builds a
-      // private one), so the holders already on it are read before, and this run adds one.
+      // Other runs on this instance may hold the same template — a suite started beside this one
+      // takes it while this one sets up, planted here — so what is counted is this process's holder.
       const shared = sharedTemplateName(hashMigrations(MIGRATIONS_FOLDER));
-      const holdersBefore = (await holders(shared)).length;
+      const mineBefore = (await holders(shared, holderName())).length;
+      const other = postgres(adminUrl, { max: 1, onnotice: () => {} });
+      await other`SELECT pg_advisory_lock_shared(hashtextextended(${`use:${shared}`}, 0))`;
       const first = await runWith({ mode: 'shared' });
       const mine = `test_case_${first.token}_x_${Date.now().toString(36)}_aaaaaaaa`;
       const theirs = `test_case_${outer}_x_${Date.now().toString(36)}_bbbbbbbb`;
@@ -99,7 +106,8 @@ describe('global setup, run for real against this instance', () => {
       expect(first.token).not.toBe(outer);
       expect(first.name).toBe(process.env.TEST_PG_TEMPLATE);
       expect(first.name).toBe(shared);
-      expect((await holders(first.name)).length).toBe(holdersBefore + 1);
+      expect((await holders(first.name, holderName())).length).toBe(mineBefore + 1);
+      await other.end({ timeout: 5 });
 
       await globalTeardown();
 

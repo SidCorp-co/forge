@@ -18,7 +18,9 @@ const MIGRATION = fileURLToPath(
   new URL('../../drizzle/migrations/0346_a_bell_row_goes_with_its_notices.sql', import.meta.url),
 );
 
-const fx = registerInboxFixture();
+const fx = registerInboxFixture({
+  own: 'plants a refusing trigger on notification_delivery_members',
+});
 
 async function runMigration(): Promise<string[]> {
   const notices: string[] = [];

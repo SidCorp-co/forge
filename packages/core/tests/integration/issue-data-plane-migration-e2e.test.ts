@@ -43,7 +43,9 @@ function guardBlock(): string {
 }
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({
+    own: 'drops and rebuilds issue_attributes_single_row_uq, and creates tables',
+  });
 }, 60_000);
 
 afterAll(async () => {

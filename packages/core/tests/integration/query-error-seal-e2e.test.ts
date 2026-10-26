@@ -20,7 +20,7 @@ describe("core's database client, given a statement the database refuses", () =>
   let isUniqueViolation: (err: unknown) => boolean;
 
   beforeAll(async () => {
-    harness = await setupTestDatabase();
+    harness = await setupTestDatabase({ own: 'creates the seal_probe table' });
     process.env.DATABASE_URL = harness.url;
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';

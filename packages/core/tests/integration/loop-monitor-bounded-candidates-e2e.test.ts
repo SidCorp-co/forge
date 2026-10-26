@@ -218,7 +218,7 @@ function nodesOn(nodes: PlanNode[], relation: string): PlanNode[] {
 }
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({ own: 'drops and rebuilds job_events_result_idx' });
   process.env.DATABASE_URL = harness.url;
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';

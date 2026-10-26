@@ -28,7 +28,7 @@ const MIGRATION = fileURLToPath(
 let harness: TestDatabase;
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({ own: 'adds projects.api_key and its index' });
 }, 60_000);
 
 afterAll(async () => {

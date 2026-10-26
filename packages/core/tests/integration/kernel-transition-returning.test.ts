@@ -58,7 +58,7 @@ let sweeper: typeof import('../../src/pipeline/sweeper.js');
 let loopMonitor: typeof import('../../src/jobs/loop-monitor.js');
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({ own: 'renames an agent_sessions column' });
   process.env.DATABASE_URL = harness.url;
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';

@@ -20,7 +20,7 @@ let sql: pg.Client;
 const opened: PgBoss[] = [];
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({ own: 'creates pg-boss schemas under names of its own' });
   sql = new pg.Client({ connectionString: harness.url });
   await sql.connect();
 }, 60_000);

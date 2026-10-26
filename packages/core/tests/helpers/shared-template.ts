@@ -136,7 +136,13 @@ export const HOLDER_OPTIONS = {
   max_lifetime: 0,
   idle_timeout: 0,
   onnotice: () => {},
+  connection: { application_name: holderName() },
 } as const;
+
+/** What a holder connection opened by process `pid` is called, so a run can tell its own from another's. */
+export function holderName(pid: number = process.pid): string {
+  return `forge-test-template-holder ${pid}`;
+}
 
 export interface SharedTemplate {
   name: string;

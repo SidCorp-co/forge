@@ -29,7 +29,9 @@ let token: string;
 let app: any;
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({
+    own: 'plants a failing trigger on issues and drops a constraint',
+  });
   process.env.DATABASE_URL = harness.url;
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';

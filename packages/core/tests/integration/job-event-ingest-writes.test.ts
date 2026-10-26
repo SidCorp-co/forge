@@ -62,7 +62,9 @@ let userAuth: string;
 let queries: typeof import('../../src/jobs/job-queries.js');
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({
+    own: 'creates a statement-counting table and function, with triggers on jobs and agent_sessions',
+  });
   process.env.DATABASE_URL = harness.url;
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';

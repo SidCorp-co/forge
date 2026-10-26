@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach } from 'vitest';
-import { setupTestDatabase, type TestDatabase } from './db.js';
+import { type SetupOptions, setupTestDatabase, type TestDatabase } from './db.js';
 import { createTestDevice, createTestProject, createTestUser } from './factories.js';
 import { truncateAll } from './truncate.js';
 
@@ -43,14 +43,14 @@ export interface IdleFixture {
 /**
  * Register the suite's hooks and hand back a fixture whose fields follow each `beforeEach`.
  */
-export function registerIdleFixture(seqFrom: number): IdleFixture {
+export function registerIdleFixture(seqFrom: number, setup: SetupOptions = {}): IdleFixture {
   let harness: TestDatabase;
   let projectId = '';
   let ownerId = '';
   let seq = seqFrom;
 
   beforeAll(async () => {
-    harness = await setupTestDatabase();
+    harness = await setupTestDatabase(setup);
     process.env.DATABASE_URL = harness.url;
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';

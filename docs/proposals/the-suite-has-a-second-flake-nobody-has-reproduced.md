@@ -26,12 +26,14 @@ and produced them zero times again.
 
 ## What is established, so nobody re-derives it
 
-**File order is not the variable.** `scratch-db.ts:workerDbName` stamps every call, so the pool id
-in the name it returns is a name segment and not an allocation: sampling `pg_database` across two
-concurrent suites returned 204 distinct such databases over three pool ids. `isolate` is vitest's default `true`, so each file also holds its own process. Nothing one
-file does reaches another file's rows or another file's module state, which is why the filing's
-opening hypothesis — one database per worker, file-to-worker assignment deciding the answer — is
-disproved rather than untested.
+**File order is not the variable.** At the commits those runs were taken on, every file cloned a
+database of its own: sampling `pg_database` across two concurrent suites returned 204 distinct such
+databases over three pool ids. `isolate` is vitest's default `true`, so each file also holds its own
+process. Nothing one file did reached another file's rows or another file's module state, which is
+why the filing's opening hypothesis — one database per worker, file-to-worker assignment deciding
+the answer — is disproved rather than untested. A worker slot now hands one database to every file
+it runs, reset between them (`packages/core/tests/README.md`, *One database per worker slot*), so a
+recurrence that follows file order points at that reset first.
 
 **The state those four report is one the writer says it does not produce.**
 `projectOpenedPullRequest` returns `not-recorded` only when `applyPullRequestEvent` wrote zero rows
@@ -65,6 +67,12 @@ way, the two are one subject and the load fix is the fix. If only timeouts come 
 and this issue keeps the harder half."* Only timeouts came back. The teardown change removes those
 and is measured against them alone; a green run under it is not evidence about the four above,
 because no run anyone has taken produced them on demand.
+
+## One more seen once a box is loaded, and not reproduced alone (ISS-1315, 2026-10-25)
+
+`live-reach-e2e.test.ts`, *places the eight rows off master*: `ISS-419` read `unmeasured` where
+`not_on_live` was expected, once, on `main` at `308137ce0` while a second whole suite ran on the same
+box; green alone on the same tree. No mechanism yet.
 
 ## Honest costs
 

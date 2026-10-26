@@ -56,6 +56,25 @@ async function buildPrivateTemplate(adminUrl: string, name: string): Promise<voi
   await migrateDatabase(url.toString());
 }
 
+/** Say so where the instance syncs to disk: tests/README.md, *One database per worker slot*. */
+async function reportDurability(adminUrl: string): Promise<void> {
+  const postgres = (await import('postgres')).default;
+  const admin = postgres(adminUrl, { max: 1 });
+  try {
+    const [row] = await admin<{ fsync: string }[]>`SHOW fsync`;
+    if (row?.fsync === 'on') {
+      console.log(
+        '[integration] fsync is on at this instance: every table a case truncates in a slot ' +
+          'database leaves files the next checkpoint must sync, and each CREATE or DROP DATABASE ' +
+          'waits on that checkpoint. Run the test instance with fsync=off, as the container this ' +
+          'suite starts does.',
+      );
+    }
+  } finally {
+    await admin.end({ timeout: 5 });
+  }
+}
+
 /** The count vitest resolved, read off the run that uses it, and the rule that chose it. */
 function reportWorkers(project: TestProject): void {
   const flag = project.vitest.config.cliOptions.maxWorkers;
@@ -76,6 +95,7 @@ export async function setup(project: TestProject): Promise<void> {
 
   const token = mintRunToken();
   await reapLeftovers(adminUrl);
+  await reportDurability(adminUrl);
 
   let name: string;
   if (mode === 'shared') {
@@ -102,6 +122,8 @@ export async function setup(project: TestProject): Promise<void> {
   process.env.TEST_PG_ADMIN_URL = adminUrl;
   process.env.TEST_PG_TEMPLATE = name;
   process.env.TEST_PG_RUN_TOKEN = token;
+  // The workers this process forks are the only ones a slot database of this token is handed to.
+  process.env.TEST_PG_RUN_OWNER = String(process.pid);
 }
 
 export async function teardown(): Promise<void> {
@@ -114,10 +136,11 @@ export async function teardown(): Promise<void> {
     // and then names.
     const admin = postgres(finished.url, { max: 1, onnotice: () => {} });
     try {
-      // Every scratch database this run minted and the drain did not reach — per case and per file
-      // — and here rather than in the cases and hooks that used them: this is the only teardown in
-      // the suite with no vitest budget over it, so a `DROP DATABASE` waiting on the cluster's
-      // checkpoint costs a run its wall time and never a case or a hook its verdict.
+      // Every worker slot's database, which lives as long as the run, and every other scratch
+      // database this run minted that the drain did not reach. Here rather than in the cases and
+      // hooks that used them: this is the only teardown in the suite with no vitest budget over it,
+      // so a `DROP DATABASE` waiting on the cluster's checkpoint costs a run its wall time and never
+      // a case or a hook its verdict.
       await sweepRunScratchDbs(admin, finished.token);
       // Only a template this run built for itself is dropped; a shared one outlives every run.
       if (finished.fresh) {
