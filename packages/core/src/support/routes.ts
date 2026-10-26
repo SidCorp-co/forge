@@ -49,7 +49,7 @@ const SHAPES = {
   reply: '{ thread, text }',
   run: '{ thread, tool, args? }',
   fix: '{ thread, tool, args?, asker }',
-  record: '{ thread, kind: defect | feature | request, title, summary, whereSeen? }',
+  record: '{ thread, kind: defect | feature | request, title, summary, whereSeen?, asker? }',
 } as const;
 
 supportRoutes.post(
