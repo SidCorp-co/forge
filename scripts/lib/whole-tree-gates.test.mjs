@@ -928,7 +928,8 @@ describe('the guard installed in this very run', () => {
 
   it('counts a child it could not put on the log as the root', async () => {
     const saved = state.log;
-    const unwritable = join(mkdtempSync(join(tmpdir(), 'wt-nolog-')), 'missing', 'log.jsonl');
+    const scratch = mkdtempSync(join(tmpdir(), 'wt-nolog-'));
+    const unwritable = join(scratch, 'missing', 'log.jsonl');
     const watch = globalThis[Symbol.for('forge.whole-tree-watch')];
     watch.log = unwritable;
     try {
@@ -936,6 +937,7 @@ describe('the guard installed in this very run', () => {
       await new Promise((done) => child.on('exit', done));
     } finally {
       watch.log = saved;
+      rmSync(scratch, { recursive: true, force: true });
     }
     expect(vias()).toEqual([
       expect.stringMatching(/^child process \d+ could not be put on the log \(ENOENT\)/),

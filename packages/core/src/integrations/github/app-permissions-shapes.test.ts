@@ -7,7 +7,7 @@
  * the refusal must not swallow. `app-permissions.test.ts` holds the manifest comparison itself.
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -272,11 +272,15 @@ describe('a call is found by what it calls, however it is written (ISS-1153)', (
 
   it('reads a source one directory down, which a listing of the top level would miss', () => {
     const root = mkdtempSync(join(tmpdir(), 'iss1153-'));
-    mkdirSync(join(root, 'helpers'));
-    writeFileSync(join(root, 'top.ts'), 'export const a = 1;\n');
-    writeFileSync(join(root, 'helpers', 'extra.ts'), 'export const b = 2;\n');
-    writeFileSync(join(root, 'helpers', 'extra.test.ts'), 'export const c = 3;\n');
-    expect(sourceFilesIn(root).sort()).toEqual(['helpers/extra.ts', 'top.ts']);
+    try {
+      mkdirSync(join(root, 'helpers'));
+      writeFileSync(join(root, 'top.ts'), 'export const a = 1;\n');
+      writeFileSync(join(root, 'helpers', 'extra.ts'), 'export const b = 2;\n');
+      writeFileSync(join(root, 'helpers', 'extra.test.ts'), 'export const c = 3;\n');
+      expect(sourceFilesIn(root).sort()).toEqual(['helpers/extra.ts', 'top.ts']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('refuses a scalar property of an object written to after it is built', () => {

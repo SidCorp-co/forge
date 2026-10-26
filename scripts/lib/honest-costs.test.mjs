@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -186,16 +186,20 @@ describe('selectProposals', () => {
 describe('listProposals', () => {
   it('walks subdirectories on a real tree, and skips an index at any depth', () => {
     const dir = mkdtempSync(join(tmpdir(), 'honest-costs-'));
-    mkdirSync(join(dir, 'rfc-drafts'));
-    for (const rel of [
-      'README.md',
-      'flat.md',
-      'drawn.html',
-      'rfc-drafts/README.md',
-      'rfc-drafts/sub.md',
-    ]) {
-      writeFileSync(join(dir, rel), '# x\n');
+    try {
+      mkdirSync(join(dir, 'rfc-drafts'));
+      for (const rel of [
+        'README.md',
+        'flat.md',
+        'drawn.html',
+        'rfc-drafts/README.md',
+        'rfc-drafts/sub.md',
+      ]) {
+        writeFileSync(join(dir, rel), '# x\n');
+      }
+      expect(listProposals(dir).sort()).toEqual(['flat.md', 'rfc-drafts/sub.md']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
-    expect(listProposals(dir).sort()).toEqual(['flat.md', 'rfc-drafts/sub.md']);
   });
 });
