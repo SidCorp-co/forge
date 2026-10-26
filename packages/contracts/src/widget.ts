@@ -23,8 +23,8 @@ export const WIDGET_IDENTITY_MODES = ["anonymous", "email", "signed"] as const;
 export type WidgetIdentityMode = (typeof WIDGET_IDENTITY_MODES)[number];
 export const WIDGET_SIGNATURE_MAX_AGE_S = 600;
 
-/** The channels a reporter outside Forge files Feedback through; the widget is the one there is. */
-export const FEEDBACK_EXTERNAL_CHANNELS = ["widget"] as const;
+/** The channels a reporter outside Forge files Feedback through: the widget, and a support group's session (REQ-75). */
+export const FEEDBACK_EXTERNAL_CHANNELS = ["widget", "rocketchat"] as const;
 export type FeedbackExternalChannel =
 	(typeof FEEDBACK_EXTERNAL_CHANNELS)[number];
 

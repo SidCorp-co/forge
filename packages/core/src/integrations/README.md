@@ -25,7 +25,9 @@ protocol and nothing else:
   worker (`release-batch/deploy-worker.ts`) turns into holds and confirmations.
 - A vendor connection that stays open hands what it takes in to handlers the owning slices provide at
   boot: the Rocket.Chat connection owner (`rocketchat/connection-manager.ts`) routes a room message to
-  `rocketchat/room-handlers.ts:RoomHandlers`, which `assistant/chat-room/room-chat.ts` fills. The
+  `rocketchat/room-handlers.ts:RoomHandlers`, which `assistant/chat-room/room-chat.ts` fills, or, for
+  a room whose binding carries `support`, to `rocketchat/room-handlers.ts:SupportRoomHandler`, which
+  `support/` fills (REQ-75). The
   chat application (conversation ports, window drain, escalation, question and comment lanes) lives
   in `assistant/chat-room/`; their deliveries settle through the kernel
   transition (`@forge/contracts/room-delivery-machine`).
@@ -41,6 +43,7 @@ protocol and nothing else:
 | error tracking | `sentry/` | Sentry | project |
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project |
 | chat | `rocketchat/` (the REST and DDP clients, the connection owner, room routing, the thread registry) | Rocket.Chat | project |
+| support tools | `support-api/` (the tools a project grants its support session, and the one door that calls them: host grant, no redirect, credential scrubbed) | a product's own API | project |
 | embedded feedback chat | `widget/` (the binding's config, its site key minted or settled on bind, its signing secret); the public door, sessions and drafts are the `widget` domain's (`../widget/`) | a client site embedding Forge's frame | project |
 | LLM | `llm/`, over the AI SDK (`ai`, `@ai-sdk/openai-compatible`) behind `ChatProvider` | the model gateway: an OpenAI-compatible endpoint (LiteLLM); no provider is reached directly | deployment |
 | embeddings | `llm/embeddings.ts`, over `llm/embeddings-client.ts` and the AI SDK's `embedMany` | OpenAI-compatible endpoints | deployment |

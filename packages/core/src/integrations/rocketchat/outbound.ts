@@ -1,7 +1,7 @@
 import type { ProvenMessage } from '@forge/contracts/messaging';
 import { scrubLogText } from '@forge/observability';
 import type { RocketChatDdpClient } from './ddp-client.js';
-import { postRoomMessage } from './rest-client.js';
+import { postRoomMessage, type RocketChatButtonAttachment } from './rest-client.js';
 import type { RoomPostAuth } from './room-auth.js';
 
 export type ReplyTransport =
@@ -12,7 +12,14 @@ export type ReplyTransport =
       tmid?: string | undefined;
       authToken: string;
     }
-  | { kind: 'rest'; auth: RoomPostAuth; rid: string; tmid?: string | undefined };
+  | {
+      kind: 'rest';
+      auth: RoomPostAuth;
+      rid: string;
+      tmid?: string | undefined;
+      /** Buttons posted under the text, code-authored like it (a support fix's confirm). */
+      attachments?: readonly RocketChatButtonAttachment[] | undefined;
+    };
 
 const MAX_REPLY_CHARS = 4500;
 
@@ -29,7 +36,13 @@ async function deliver(transport: ReplyTransport, text: string): Promise<string 
   if (transport.kind === 'ddp') {
     return transport.client.sendMessage(transport.rid, safe, transport.tmid);
   }
-  return postRoomMessage(transport.auth, transport.rid, safe, transport.tmid);
+  return postRoomMessage(
+    transport.auth,
+    transport.rid,
+    safe,
+    transport.tmid,
+    transport.attachments,
+  );
 }
 
 export const FIXED_REPLY_CONSTANT: unique symbol = Symbol('rocketchat.outbound.fixedReplyConstant');

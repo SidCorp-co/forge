@@ -183,6 +183,7 @@ import {
   staleOnTargetRevised,
   writeKeptPreview,
 } from './suggestions/index.js';
+import { registerSupportRooms } from './support/index.js';
 import { coreTimers } from './timer-registry.js';
 import { servedWebBuild } from './web-host/index.js';
 import { readServing } from './whats-new/index.js';
@@ -450,6 +451,7 @@ if (isMain) {
   registerWidgetConversationAdapter();
   registerRoomChat();
   registerRoomBridges();
+  registerSupportRooms();
   bootstrapRunnerAdapters();
   await registerMemoryReconcileWorker();
   await registerReleaseBatchFinish();

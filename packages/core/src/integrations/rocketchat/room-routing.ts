@@ -5,6 +5,7 @@
  * reads on every message, rebuilt whenever a connection or a binding changes.
  */
 
+import type { SupportRoomConfig } from '@forge/contracts/support';
 import { logger } from '../../lib/logger.js';
 import { forgeReads, listBindingsForConnection } from '../index.js';
 import type { RocketChatBindingConfig } from './types.js';
@@ -15,6 +16,10 @@ export interface Route {
   projectId: string;
   projectSlug: string;
   projectName: string;
+  /** The binding that names the room. */
+  bindingId: string;
+  /** Set where the binding makes the room a support group, answered by its session (REQ-75). */
+  support: SupportRoomConfig | null;
 }
 
 export async function buildRoutes(connectionId: string): Promise<Map<string, Route>> {
@@ -48,6 +53,8 @@ export async function buildRoutes(connectionId: string): Promise<Map<string, Rou
         projectId: b.projectId,
         projectSlug: proj.slug,
         projectName: proj.name,
+        bindingId: b.id,
+        support: (b.config as RocketChatBindingConfig | null)?.support ?? null,
       });
     }
   }

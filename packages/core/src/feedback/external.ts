@@ -12,14 +12,14 @@
 
 import { type CreateFeedbackRequest, feedbackKey } from '@forge/contracts/feedback';
 import type { FeedbackExternalChannel } from '@forge/contracts/widget';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { users } from '../db/schema-auth.js';
 import { feedback, feedbackExternalReporters } from '../db/schema-feedback.js';
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
 import { embedFeedbackLater } from './embeddings.js';
-import { phaseOfRow } from './list-read.js';
+import { linkedOf, phaseIn, phaseOfRow } from './list-read.js';
 import type { Row } from './read.js';
 import { insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
 
@@ -33,8 +33,8 @@ export interface ExternalReporter {
   signedUserId: string | null;
   /** Where they were, as the host page reported it: stored as data. */
   pageContext: Record<string, unknown> | null;
-  /** The SHA-256 of the status link the visitor is handed once. */
-  statusTokenHash: string;
+  /** The SHA-256 of the status link a widget visitor is handed once; null on every other channel. */
+  statusTokenHash: string | null;
 }
 
 export type ExternalFiling =
@@ -152,6 +152,23 @@ export async function externalFeedbackStatus(
     filedAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+/**
+ * Where each of these items stands, as every reader sees it (the stored status read with the work it
+ * was routed to): a channel that follows what it filed reads this, never the stored status alone.
+ */
+export async function externalItemPhases(
+  projectId: string,
+  feedbackIds: readonly string[],
+): Promise<Map<string, { key: string; phase: Awaited<ReturnType<typeof phaseOfRow>> }>> {
+  if (feedbackIds.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(feedback)
+    .where(and(eq(feedback.projectId, projectId), inArray(feedback.id, [...feedbackIds])));
+  const linked = await linkedOf(projectId, rows);
+  return new Map(rows.map((r) => [r.id, { key: feedbackKey(r.fbSeq), phase: phaseIn(r, linked) }]));
 }
 
 /** A redaction takes the external reporter's own data with the rest of what they gave (UC15). */

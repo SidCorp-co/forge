@@ -15,6 +15,8 @@ export const TERMINAL_SESSION_BRIDGE_MARKERS = [
   'escalation',
   'conversationAgent',
   'pocRoom',
+  // a Rocket.Chat support group's session: its turn's end hands the room's waiting messages on (REQ-75)
+  'supportRoom',
 ] as const;
 type TerminalSessionBridgeMarker = (typeof TERMINAL_SESSION_BRIDGE_MARKERS)[number];
 

@@ -108,10 +108,10 @@ const ROW_KEYS = 'an id, key, number or slug naming a row, checked under the cal
 
 /** Every input no credential arrives in, grouped by why. */
 export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
-  'a header no credential rides in: media types, sizes, a cache validator, the proxy’s view, a trace id': words`
+  'a header no credential rides in: media types, sizes, a cache validator, the proxy’s view, a trace id, where a provider’s answer redirects': words`
     header:accept header:accept-encoding header:cf-ray header:content-encoding
     header:content-length header:content-type header:host header:if-none-match header:link
-    header:origin header:range
+    header:location header:origin header:range
     header:referer header:sec-fetch-dest header:user-agent header:x-forwarded-for
     header:x-forwarded-host header:x-forwarded-proto header:x-next-page header:x-real-ip
     header:x-request-id`,
@@ -138,7 +138,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:param:scheduleId field:param:scope field:param:sessionId field:param:shareId
     field:param:sid field:param:skillId field:param:slug field:param:templateId
     field:param:turnId field:param:userId field:param:version field:param:waitId
-    field:param:workflow field:param:workflowId
+    field:param:workflow field:param:workflowId field:param:roomId
     field:query:assignee field:query:assigneeId field:query:connectionId field:query:createdBy
     field:query:deviceId field:query:installation_id field:query:integrationId field:query:issue
     field:query:issueId field:query:memoryId field:query:orgId
@@ -157,7 +157,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:providerRef field:json:recommendedOptionId field:json:ref field:json:requirement
     field:json:resourceUuid field:json:run field:json:runId field:json:runIds field:json:runnerId
     field:json:sessionId field:json:slug field:json:sourceRef field:json:subjectId
-    field:json:targetProjectSlug field:json:templateId field:json:turnId
+    field:json:targetProjectSlug field:json:templateId field:json:turnId field:json:thread
+    field:json:asker field:json:tool
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
     field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
     field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers
@@ -209,7 +210,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:basis field:json:claims
     field:json:endpoint field:json:by field:json:cites field:json:intent field:json:recommended
     field:json:reportedBy field:json:resolves field:json:refused field:json:broken
-    field:json:screenshot`,
+    field:json:screenshot field:json:args`,
   'a time, a version or a time zone': words`
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt
@@ -303,6 +304,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integrations/llm/embeddings-client.ts URL handed to @types/node:fetchFn in timedFetch
     integrations/rocketchat/rest-client.ts URLSearchParams.toString in rcGet
     integrations/sentry/endpoints.ts URLSearchParams.toString in sentryOrgIssuesUrl
+    integrations/support-api/call.ts URL handed to @types/node:(input.fetchImpl ?? fetch) in callGranted
     sandbox/run.ts URL handed to @types/node:Worker in runScript
     sandbox/run.ts URL.href in workerEntry
     skills/builtin-seed.ts URL handed to @types/node:fileURLToPath in defaultSkillsRoot`,

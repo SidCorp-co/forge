@@ -11,6 +11,7 @@ import { ECOSYSTEM_READS } from '../ecosystem/index.js';
 import { FORGE_FEEDBACK_READ_ACTIONS } from '../forge-door/index.js';
 import type { PatRequestClass } from '../lib/rate-limits.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
+import { SUPPORT_TOOL_READS } from '../support/index.js';
 import { PROJECT_FEEDBACK_READ_ACTIONS } from './feedback-tool.js';
 import { REQUIREMENT_READ_ACTIONS } from './requirements-tool.js';
 
@@ -48,6 +49,7 @@ const READ_ACTIONS = {
   forge_design: new Set<string>(DESIGN_TOOL_READS),
   forge_questions: new Set<string>(QUESTIONS_TOOL_READS),
   forge_issues: new Set<string>(ISSUES_TOOL_READS),
+  forge_support: new Set<string>(SUPPORT_TOOL_READS),
 } satisfies Record<McpToolName, ReadonlySet<string>>;
 
 /** The action a tool takes when the call names none — its schema's own default. */

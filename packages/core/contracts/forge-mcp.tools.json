@@ -1364,6 +1364,95 @@
       "name": "forge_requirements"
     },
     {
+      "description": "Answer a Rocket.Chat support group as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the group. search {query}: the project knowledge and its published OpenAPI contracts; each hit carries `cite`, which you put in brackets after what it supports. thread {thread}: the thread so far, oldest first. tools {}: the checks (diagnose) and changes (fix) this group grants you. reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite. run {thread, tool, args}: run a granted diagnose check; the thread is shown what was checked, and you get what came back. propose_fix {thread, tool, args, asker}: offer a granted fix to the person who asked (`from.id`). It runs only when that person confirms in the thread; you are told the result as a later message. record {thread, kind, title, summary}: what needs code or a decision becomes Feedback for the team (kind defect | feature | request); the thread is given its key and status link and told its progress until it ships. Never promise a date. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: search { query }; thread { thread }; tools {}; reply { thread, text }; run { thread, tool, args? }; propose_fix { thread, tool, args?, asker }; record { thread, kind: defect | feature | request, title, summary, whereSeen? }.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "search",
+              "thread",
+              "tools",
+              "reply",
+              "run",
+              "propose_fix",
+              "record"
+            ],
+            "type": "string"
+          },
+          "args": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "asker": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "defect",
+              "feature",
+              "request"
+            ],
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 300,
+            "minLength": 2,
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 4000,
+            "minLength": 3,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "thread": {
+            "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 3,
+            "type": "string"
+          },
+          "tool": {
+            "maxLength": 48,
+            "minLength": 1,
+            "type": "string"
+          },
+          "whereSeen": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_support"
+    },
+    {
       "description": "READ an issue, comment or session attachment so you can analyze it: the one Forge read no shell command can do, because an image comes back as a viewable image block. Uploading is `POST /api/issues/:id/attachments` (multipart) or `forge attach`. data={target:\"issue\"|\"comment\"|\"session\", attachmentId:<uuid from any attachments[].id>}. Images (png/jpeg/gif/webp) return as a viewable image block; the structured answer carries no bytes, so it says `inlined: false` with `reason: image_block_in_content` and names the block as `image: { contentIndex, mimeType }`. Text/markdown return inline, framed as data, with `inlined: true`. PDFs/video and oversized files (> inline cap) return metadata only. EVERY fetch also returns `downloadUrl` (+ `downloadExpiresAt`): a short-lived, self-authenticating URL to `curl` the raw bytes onto disk or hand to a service that must fetch the file itself. Treat it as a secret: do not log it or paste it into a comment.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1603,5 +1692,5 @@
       "name": "project_feedback"
     }
   ],
-  "version": "2.0.0"
+  "version": "2.1.0"
 }

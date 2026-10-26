@@ -172,6 +172,7 @@ import { statusReportRoutes } from './status-reports/routes.js';
 import { stewardRoutes } from './steward/index.js';
 import { stewardNoteRoutes } from './steward-notes/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
+import { supportRoutes } from './support/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { hostTheWeb } from './web-host/index.js';
 import { whatsNewRoutes } from './whats-new/routes.js';
@@ -252,6 +253,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', projectPreviewRoutes);
   app.route('/api/projects', projectRoomRoutes);
   app.route('/api/projects', feedbackRoutes);
+  app.route('/api/projects', supportRoutes);
   app.route('/api/projects', standingRoutes);
   app.route('/api/projects', stewardNoteRoutes);
   app.route('/api/projects', feedbackChecklistRoutes);

@@ -23,6 +23,7 @@ import {
   rocketchatConfigBase,
   rocketchatSecretsSchema,
 } from './schemas.js';
+import { settleSupportRoom } from './support-binding.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 8000;
@@ -32,6 +33,8 @@ const unsupported = (op: string): never => {
 };
 
 const rocketChatAdapterMethods: IntegrationAdapterMethods<RocketChatConfig, RocketChatSecrets> = {
+  settleBindingConfig: settleSupportRoom,
+
   onConnectionChanged: (connectionId) => {
     void import('./connection-manager.js')
       .then((m) => m.requestRocketChatReload(connectionId))

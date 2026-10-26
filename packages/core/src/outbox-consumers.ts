@@ -37,6 +37,7 @@ import {
 import { registerReleaseHighlightsRefresh, registerReleaseNaming } from './release-page/index.js';
 import { registerReasonAnswers } from './requirements/index.js';
 import { registerSteward } from './steward/index.js';
+import { registerSupportConsumers } from './support/index.js';
 import { registerMasterWakeSubscribers, registerWsBroadcastSubscribers } from './ws/index.js';
 
 /**
@@ -77,4 +78,5 @@ export function registerOutboxConsumers(): void {
   registerIntakeAssistant();
   registerSteward();
   registerLessonCorrections();
+  registerSupportConsumers();
 }

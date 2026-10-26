@@ -43,7 +43,10 @@ export async function drainConversationWindows(
     if (ac.closing || !ac.client) continue;
     const namespace = namespaceFromServerUrl(ac.serverUrl);
     if (!namespace) continue;
-    const venuePrefixes = [...ac.routes.keys()].map((rid) => `${namespace} ${rid}`);
+    // a support group's messages are its session's, never a team-assistant turn's (REQ-75)
+    const venuePrefixes = [...ac.routes.values()]
+      .filter((r) => !r.support)
+      .map((r) => `${namespace} ${r.rid}`);
     if (venuePrefixes.length === 0) continue;
     const windows = await claimDueWindows({
       adapter: 'rocketchat',
@@ -79,7 +82,7 @@ async function routeOne(
     throw new Error('rocketchat: a window is routed under its claim, and this one holds none');
   const parts = parseRocketChatVenueId(window.venueExternalId);
   const route = ac && parts ? ac.routes.get(parts.rid) : undefined;
-  if (!ac || !route || !parts || route.projectId !== window.projectId) {
+  if (!ac || !route || !parts || route.support || route.projectId !== window.projectId) {
     await releaseWindow(window.id, claim);
     return;
   }

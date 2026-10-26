@@ -101,7 +101,6 @@
         "agent-run-standing#handed_back",
         "issue-delivery#ev-run-ended",
         "personal-data-flow#ds-transcripts",
-        "REQ-24",
         "issue-delivery#rule-return",
         "core-kernel#k-sessions"
       ]
@@ -197,7 +196,7 @@
         "project-onboarding#card",
         "personal-data-flow#pr-chat",
         "personal-data-flow#ds-conversations",
-        "REQ-19"
+        "REQ-30"
       ]
     },
     "credentials": {
@@ -340,7 +339,6 @@
       ],
       "serves": [
         "REQ-5",
-        "REQ-9",
         "requirement-to-delivery#contract-first",
         "feedback-triage#breaking",
         "requirement-to-delivery#provider-live",
@@ -517,7 +515,7 @@
       "serves": [
         "personal-data-flow#ext-llm",
         "personal-data-flow#pr-assistant",
-        "REQ-19",
+        "REQ-30",
         "personal-data-flow#ext-embeddings",
         "feedback-triage#vectors",
         "core-components#ad-llm"
@@ -527,7 +525,7 @@
       "kind": "adapter",
       "context": "adapters",
       "owns": ["rocketchatThreads"],
-      "serves": ["personal-data-flow#src-rocketchat", "personal-data-flow#pr-chat-out", "REQ-20"]
+      "serves": ["personal-data-flow#src-rocketchat", "personal-data-flow#pr-chat-out", "REQ-75"]
     },
     "integrations/sentry": {
       "kind": "adapter",
@@ -548,6 +546,11 @@
         "issue-delivery#github",
         "personal-data-flow#pr-provision"
       ]
+    },
+    "integrations/support-api": {
+      "kind": "adapter",
+      "context": "adapters",
+      "serves": ["via:support"]
     },
     "issues": {
       "kind": "kernel",
@@ -756,7 +759,7 @@
         "runnerEvents",
         "usageRecords"
       ],
-      "serves": ["REQ-24"]
+      "serves": ["REQ-11"]
     },
     "middleware": {
       "kind": "platform",
@@ -914,7 +917,7 @@
       "kind": "domain",
       "context": "project-config",
       "owns": ["preferenceChanges", "productTourEvents", "userPreferences", "userProductState"],
-      "serves": ["REQ-19"]
+      "serves": ["REQ-30"]
     },
     "previews": {
       "kind": "domain",
@@ -956,7 +959,7 @@
     "project-status": {
       "kind": "read-model",
       "context": "operations",
-      "serves": ["REQ-11", "REQ-19"]
+      "serves": ["REQ-11"]
     },
     "projects": {
       "kind": "domain",
@@ -1169,7 +1172,7 @@
       "kind": "domain",
       "context": "operations",
       "owns": ["statusReports"],
-      "serves": ["REQ-11", "REQ-19"]
+      "serves": ["REQ-11"]
     },
     "steward": {
       "kind": "domain",
@@ -1195,6 +1198,12 @@
         "feedback-triage#suggest",
         "project-onboarding#suggested"
       ]
+    },
+    "support": {
+      "kind": "domain",
+      "context": "conversations",
+      "owns": ["supportRooms", "supportActions", "supportFixes", "supportFeedbackLinks"],
+      "serves": ["REQ-75"]
     },
     "uploads": {
       "kind": "domain",
@@ -1310,7 +1319,7 @@
       "serves": ["via:conversations", "via:mockups"]
     },
     "chat": {
-      "serves": ["REQ-19"]
+      "serves": ["REQ-30"]
     },
     "chat-dock": {
       "serves": ["via:conversations"]
@@ -1322,7 +1331,7 @@
       "serves": ["REQ-5", "REQ-11"]
     },
     "conversations": {
-      "serves": ["project-onboarding#card", "REQ-19"]
+      "serves": ["project-onboarding#card"]
     },
     "development": {
       "serves": ["REQ-11"]
@@ -1331,7 +1340,7 @@
       "serves": ["REQ-23"]
     },
     "ecosystem": {
-      "serves": ["REQ-5", "REQ-9"]
+      "serves": ["REQ-5"]
     },
     "feedback": {
       "serves": [

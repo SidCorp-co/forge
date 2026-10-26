@@ -21,15 +21,17 @@ export {
   markSessionTerminal,
 } from './recovery-stats.js';
 export { agentSessionEventsRetention } from './retention.js';
-export { sessionAudienceById } from './session-access.js';
+export { sessionAudienceById, sessionRowById, sessionStatusesByIds } from './session-access.js';
 export {
   agentRefusalText,
+  mintFencedSessionCredential,
   mintSessionCredential,
   noTurnCredentialDeviceReason,
   pickTurnCredentialDevice,
   readSessionAsker,
   resolveSessionAuthority,
   type SessionAsker,
+  turnCredentialChatDevice,
 } from './session-credential.js';
 export { isPipelineSessionKind } from './session-kinds.js';
 export { requestSessionSend, resolveSessionSend } from './session-send.js';

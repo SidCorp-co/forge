@@ -1,0 +1,1 @@
+**A Rocket.Chat group can be answered by a support session Forge manages.** It answers in thread with sources, runs the checks a project grants, runs a fix only when the asker confirms, and files code needs as Feedback.
