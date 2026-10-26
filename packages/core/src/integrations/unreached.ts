@@ -125,9 +125,20 @@ export function addressForReader(text: string, who: string): string {
   return said;
 }
 
-export function unreachedWords(label: string, reason: UnreachedReason): string {
+/** The host a check was sent to, where the answer names it: `saved` where the connection holds that
+ *  address, and not where the provider's own default was used, which no one here can change. */
+export interface UnreachedHost {
+  host: string;
+  saved: boolean;
+}
+
+export function unreachedWords(label: string, reason: UnreachedReason, at?: UnreachedHost): string {
+  if (at && !at.saved) {
+    return `Forge could not reach ${label} at ${at.host}, because ${BECAUSE[reason]}. Test again once ${at.host} answers.`;
+  }
   const check = reason === 'timed_out' ? CHECK_ADDRESS.answering : CHECK_ADDRESS.thenTest;
-  return `Forge could not reach ${label}, because ${BECAUSE[reason]}. ${check}`;
+  const where = at ? ` at ${at.host}` : '';
+  return `Forge could not reach ${label}${where}, because ${BECAUSE[reason]}. ${check}`;
 }
 
 export function isUnreachedReason(value: unknown): value is UnreachedReason {
@@ -138,11 +149,19 @@ export function isUnreachedReason(value: unknown): value is UnreachedReason {
  * The diagnostics a check's catch-all reports a thrown error under: why the host was not reached,
  * or `thrown` where the error came from somewhere else and the provider never answered.
  */
-export function thrownDiagnostics(err: unknown): Record<string, unknown> {
+export function thrownDiagnostics(err: unknown, at?: UnreachedHost): Record<string, unknown> {
   const unreached = unreachedBy(err);
   if (!unreached) return { thrown: true };
   return {
     unreached: unreached.reason,
     ...(unreached.code ? { unreachedCode: unreached.code } : {}),
+    ...(at ? { unreachedHost: at.host, unreachedHostSaved: at.saved } : {}),
   };
+}
+
+/** The host `thrownDiagnostics` recorded, read back for the answer's words. */
+export function unreachedHostOf(diagnostics: Record<string, unknown>): UnreachedHost | undefined {
+  const host = diagnostics.unreachedHost;
+  if (typeof host !== 'string' || !host) return undefined;
+  return { host, saved: diagnostics.unreachedHostSaved !== false };
 }

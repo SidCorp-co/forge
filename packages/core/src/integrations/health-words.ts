@@ -1,6 +1,6 @@
 import { PROVIDER_LABELS } from '@forge/contracts/health-words';
 import type { HealthCheckResult, IntegrationProvider } from './types.js';
-import { isUnreachedReason, unreachedWords } from './unreached.js';
+import { isUnreachedReason, unreachedHostOf, unreachedWords } from './unreached.js';
 
 function asSentence(text: string): string {
   const t = text.trim();
@@ -67,7 +67,7 @@ export function healthAnswer(provider: string, result: HealthCheckResult): Healt
   let message: string;
   if (result.status === 'ok') message = asSentence(said) || `${label} answered the check.`;
   else if (isUnreachedReason(diagnostics.unreached))
-    message = unreachedWords(label, diagnostics.unreached);
+    message = unreachedWords(label, diagnostics.unreached, unreachedHostOf(diagnostics));
   // The adapter worded which key was refused and until when the previous one runs (ISS-1421 r20).
   else if (diagnostics.newKeyRefused === true) message = asSentence(said);
   else if (diagnostics.thrown === true)
