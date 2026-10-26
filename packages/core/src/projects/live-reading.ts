@@ -61,8 +61,8 @@ export function forgetAllLiveReadings(): void {
 
 /**
  * A failed comparison in the words the release readiness page uses for the same read: a repository
- * Forge cannot read, or a branch it lacks, with the request behind it kept as `detail` (ISS-1300 r5).
- * Any other failure is said as it came.
+ * Forge cannot read, a branch it lacks, or a read that failed otherwise, with the request behind it
+ * kept as `detail` (ISS-1300 r5). A route that words its own refusal is said as it came.
  */
 function failedComparison(
   d: Extract<LiveDivergence, { ok: false }>,
@@ -78,7 +78,12 @@ function failedComparison(
       detail: d.reason,
     };
   }
-  if (!failed.refused) return { reason: d.reason };
+  if (!failed.refused) {
+    return {
+      reason: `Comparing ${refs.baseBranch} with ${refs.liveBranch} on ${repository} failed, so whether ${refs.baseBranch}'s commits reached ${refs.liveBranch} cannot be read until the next reading`,
+      detail: d.reason,
+    };
+  }
   const clears = readableThrough('binding', repository);
   return { reason: unreadLandingClears({ repository, why: d.reason, clears }), detail: d.reason };
 }

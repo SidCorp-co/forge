@@ -228,6 +228,24 @@ describe('liveReadingForRow', () => {
     });
   });
 
+  it('says any other failed GitHub read in words, with the read it failed on as the detail', async () => {
+    const why = 'GET /repos/SidCorp-co/forge/compare/l1...b1 on SidCorp-co/forge returned HTTP 502';
+    const r = await liveReadingForRow(
+      row,
+      deps(async () => ({
+        ok: false,
+        reason: why,
+        failure: { why, repository: 'SidCorp-co/forge' },
+      })),
+    );
+    expect(r).toMatchObject({
+      kind: 'refused',
+      reason:
+        "Comparing staging with master on SidCorp-co/forge failed, so whether staging's commits reached master cannot be read until the next reading",
+      detail: why,
+    });
+  });
+
   it('refuses with the error itself when reading the branches throws', async () => {
     const r = await liveReadingForRow(
       row,

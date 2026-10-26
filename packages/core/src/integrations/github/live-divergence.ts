@@ -1,5 +1,5 @@
 import type { ReadFailure } from '../../projects/repository-reader.js';
-import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
+import { GitHubReadError, type GitHubRepoClient } from './client.js';
 import { headFailure } from './repository-reader.js';
 
 /** Commits per compare page, GitHub's own ceiling. */
@@ -123,9 +123,7 @@ export async function readLiveDivergence(
     }
     return { ok: true, baseSha, liveSha, aheadBy, commits, complete: commits.length >= aheadBy };
   } catch (err) {
-    if (err instanceof GitHubReadError || err instanceof GitHubClientError) {
-      return { ok: false, reason: err.message };
-    }
-    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    const reason = err instanceof Error ? err.message : String(err);
+    return { ok: false, reason, failure: { why: reason, repository: client.fullName } };
   }
 }
