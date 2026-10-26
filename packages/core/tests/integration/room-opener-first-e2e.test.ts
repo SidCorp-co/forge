@@ -63,9 +63,8 @@ beforeEach(async () => {
       sql`INSERT INTO organization_members (org_id, user_id, role) VALUES (${orgId}, ${id}, 'member')`,
     );
   }
-  projectId = (
-    await createTestProject(harness.db, openerId, { slug: 'desk', name: 'Desk', orgId })
-  ).id;
+  projectId = (await createTestProject(harness.db, openerId, { slug: 'desk', name: 'Desk', orgId }))
+    .id;
   for (const id of peers) {
     await harness.db.execute(
       sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${id}, 'member')`,

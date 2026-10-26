@@ -96,7 +96,6 @@ export function ConversationsScreen() {
   const [selection, setSelection] = useState<Selection | null>(null);
   /** A room whose project was deleted, opened read-only in place of a chat (ISS-1229 r24). */
   const [orphan, setOrphan] = useState<{ room: RoomWithoutAProject; facts: OrphanFacts } | null>(null);
-  /** A room the address names that the list shown does not hold, read by its own id (ISS-1229 r45). */
   const [lookup, setLookupState] = useState<string | null>(null);
   // Read in the same commit the lookup starts in, before its state lands, so the address keeps the id.
   const lookupRef = useRef<string | null>(null);
@@ -158,8 +157,7 @@ export function ConversationsScreen() {
     setSelection({ key: selectionKeyRef.current, projectId, conversationId, archived: false });
   }, [setLookup]);
 
-  // The room the address named opens from the list; one the list does not hold (lists are capped) is
-  // read by its own id, and only that read can say it is gone (ISS-1229 r45, judge-129).
+  // Lists are capped, so only the room's own read can say it is gone (ISS-1229 r45, judge-129).
   useEffect(() => {
     const room = addressed.current.room;
     // Until the projects are read there is no list to find it in, only an empty one.
@@ -321,7 +319,7 @@ export function ConversationsScreen() {
   );
 }
 
-/** The room pane while the address names a room the list does not hold: its read, and what it said. */
+/** The room pane while that read is out, and what it said. */
 function AddressedRoom({
   error,
   read,

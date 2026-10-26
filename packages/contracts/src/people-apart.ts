@@ -8,7 +8,6 @@ export interface ListedPerson {
   displayName: string | null | undefined;
   addedAt: string | null | undefined;
   key?: string | undefined;
-  /** Where the list that holds this person serves them; a room serves its opener first (ISS-1229 r45). */
   place?: number | undefined;
 }
 
@@ -16,7 +15,7 @@ export const listedKey = (p: ListedPerson): string => p.key ?? p.userId ?? '';
 
 const NEVER = '\uffff';
 
-/** The one order of people by when each was added: the moment, then the place served, then the key. */
+/** People by when each was added, then where their list serves them (a room: opener first), then key. */
 export function compareAdded(a: ListedPerson, b: ListedPerson): number {
   return (
     (a.addedAt ?? NEVER).localeCompare(b.addedAt ?? NEVER) ||

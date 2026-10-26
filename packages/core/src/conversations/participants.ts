@@ -45,8 +45,7 @@ export function answersHere(
   return kind === 'handle' ? projectRole !== null : null;
 }
 
-/** A room's members in one stated order: when added, then the room's opener first, then the row id, so
- *  people added at one moment are told apart the same way on every read (ISS-1229 r45). */
+/** Ordered when added, then the room's opener first, then row id: one order for every read (ISS-1229 r45). */
 export async function listParticipants(
   conversationId: string,
   tx: Executor = defaultDb,

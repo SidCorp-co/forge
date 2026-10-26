@@ -34,8 +34,7 @@ describe("an error state that is the whole page", () => {
   });
 });
 
-// ISS-1229 r45, judge-129: four page-level load errors were headed only "Couldn't load", the default a
-// call site without a title fell to. A state that is the whole page names what failed, or does not compile.
+// ISS-1229 r45, judge-129: four page-level load errors fell to the default "Couldn't load".
 describe("an error state that is the whole page, given no title", () => {
   it("is refused by the type check", () => {
     // @ts-expect-error a page-level state names what failed in its title

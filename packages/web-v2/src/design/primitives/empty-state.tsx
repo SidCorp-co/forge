@@ -15,7 +15,6 @@ interface EmptyStateBase {
   titleId?: string;
 }
 
-/** A state that is the whole page is headed by its title, which names the tab too. */
 export type EmptyStateProps = EmptyStateBase &
   ({ level: 1; title: string } | { level?: 2 | 3; title?: string });
 

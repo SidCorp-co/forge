@@ -63,7 +63,6 @@ export function ProjectMissing({
   return <EmptyState level={1} title={title} message={message} />;
 }
 
-/** A page under a project's slug whose read of the project list failed: what failed, and a retry. */
 export function ProjectUnread({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   return <ErrorState level={1} title="Couldn't load this project" message={formatApiError(error)} onRetry={onRetry} />;
 }

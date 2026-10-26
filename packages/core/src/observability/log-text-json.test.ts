@@ -109,7 +109,13 @@ describe('a structured body', () => {
   it('keeps an empty secret field as it is and censors a filled one', () => {
     const body = { testCredentials: [], password: '', token: null, apiKey: 'k1', secret: {} };
     expect(scrubBodyKeys(body)).toBe(true);
-    expect(body).toEqual({ testCredentials: [], password: '', token: null, apiKey: FILTERED, secret: {} });
+    expect(body).toEqual({
+      testCredentials: [],
+      password: '',
+      token: null,
+      apiKey: FILTERED,
+      secret: {},
+    });
   });
 
   it('censors a secret field a getter answers without asking the getter', () => {
