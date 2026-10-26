@@ -68,7 +68,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     [
       'COMMIT_NOT_IN_REPOSITORY',
       FABRICATED,
-      [`The repository SidCorp-co/specimen holds no commit ${FABRICATED.slice(0, 7)}.`],
+      [`The repository SidCorp-co/specimen holds no commit ${FABRICATED.slice(0, 12)}.`],
     ],
     [
       'COMMIT_NOT_THIS_ISSUE',

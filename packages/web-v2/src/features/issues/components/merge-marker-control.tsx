@@ -37,6 +37,9 @@ export const LATER_BLURB =
   `Where the mark names no commit, or one its repository lacks, ${COMMIT_FIELD} records the one that landed.`;
 /** Short enough to read whole in the 390px panel; what happens to the commit is the hint's to say. */
 export const COMMIT_PLACEHOLDER = "e.g. 3f9c2ab, or the whole sha";
+/** The same field on a marked issue corrects where the work landed, so it says that, not a later
+ *  round (ISS-1300 r4, judge-121). */
+export const CORRECTION_PLACEHOLDER = "e.g. 3f9c2ab, where it landed";
 /** A person's commit is checked against the repository and recorded as where the work landed. */
 export const COMMIT_HINT = "Checked against the project's repository before it is recorded.";
 /** Said only where Forge holds a merged pull request at another commit than the mark's: anywhere
@@ -167,7 +170,7 @@ export function MergeMarkerControl({
               <Field label={COMMIT_FIELD} hint={COMMIT_HINT}>
                 <Input
                   value={commit}
-                  placeholder={later ? "e.g. the merge commit of the later round" : COMMIT_PLACEHOLDER}
+                  placeholder={later ? CORRECTION_PLACEHOLDER : COMMIT_PLACEHOLDER}
                   onChange={(e) => {
                     setCommit(e.target.value);
                     setRefusal(null);

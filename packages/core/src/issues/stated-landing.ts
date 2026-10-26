@@ -43,6 +43,18 @@ export async function statedLanding(args: {
   return { ...said, supersedes: held };
 }
 
+/** The landing a person's Commit would replace on a blank repeat: one the repository lacks (ISS-1300 r4). */
+export async function commitWouldStand(
+  issue: { id: string; projectId: string },
+  agency: ActorAgency,
+  observed: { commitSha: string } | null,
+): Promise<string | null> {
+  if (agency !== 'human') return null;
+  const held = (await readMergeColumns(db, issue.id)).commitSha?.trim() || null;
+  const forge = held ?? observed?.commitSha ?? null;
+  return forge && (await absentFrom(issue.projectId, forge)) ? forge : null;
+}
+
 /** True where `commit` is the stated commit this row already keeps. */
 export async function statedAt(issueId: string, commit: string): Promise<boolean> {
   const held = await readMergeColumns(db, issueId);

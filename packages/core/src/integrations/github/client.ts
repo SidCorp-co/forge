@@ -106,6 +106,9 @@ export interface GitHubRepoClient {
   repo: string;
   /** `owner/repo`, as the binding spells it. */
   fullName: string;
+  /** The API host, the App and its installation: what decides whether a read of `fullName` is
+   *  answered, so an answer kept for one client is never handed to another (ISS-1300 r4). */
+  reach: string;
   /** GET a repository path, relative to the API base, as the installation. */
   get<T>(path: string): Promise<T>;
   /**
@@ -190,6 +193,7 @@ export function buildRepoClient(args: {
     owner,
     repo,
     fullName,
+    reach: `${base}/app/${appId}/installations/${installationId}/${fullName}`,
     async get<T>(path: string): Promise<T> {
       let token: string;
       try {

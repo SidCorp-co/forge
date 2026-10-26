@@ -1,6 +1,6 @@
 /**
  * What a served commit carries of a judged one, and what a landing changed (ISS-1368, ISS-1398).
- * An answer about named commits never changes, so it is kept, bounded; a failure is never kept.
+ * An answer about named commits is kept, bounded, by reader `reach` (ISS-1300 r4); a failure isn't.
  */
 
 import type { Carriage, ChangedPaths, RepositoryReader } from '../projects/repository-reader.js';
@@ -35,7 +35,7 @@ export async function carriageOf(
   served: string,
   spend: () => string | null = () => null,
 ): Promise<Carriage> {
-  const key = `${reader.name}\u0000${judged.toLowerCase()}\u0000${served.toLowerCase()}`;
+  const key = `${reader.reach}\u0000${judged.toLowerCase()}\u0000${served.toLowerCase()}`;
   const kept = carried.get(key);
   if (kept) return kept;
   const spent = spend();
@@ -50,7 +50,7 @@ export async function changedPathsOf(
   landing: string,
   spend: () => string | null = () => null,
 ): Promise<ChangedPaths> {
-  const key = `${reader.name}\u0000${landing.toLowerCase()}`;
+  const key = `${reader.reach}\u0000${landing.toLowerCase()}`;
   const kept = changed.get(key);
   if (kept) return kept;
   const spent = spend();
@@ -70,7 +70,7 @@ export async function landingHeld(
   spend: () => string | null = () => null,
   now: () => number = Date.now,
 ): Promise<'found' | 'absent' | 'spent' | { unreadable: string }> {
-  const key = `${reader.name}\u0000${commit.trim().toLowerCase()}`;
+  const key = `${reader.reach}\u0000${commit.trim().toLowerCase()}`;
   const foundAt = held.get(key);
   if (foundAt !== undefined && now() - foundAt < HELD_FOR_MS) return 'found';
   if (spend()) return 'spent';

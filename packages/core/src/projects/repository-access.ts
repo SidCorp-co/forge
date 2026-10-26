@@ -5,6 +5,7 @@
  * words, never answered from the key instead.
  */
 
+import { createHash } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import { GIT_ACCESS, REPO_URL_AT, unresolvedHostRefusal } from '../git/bounded-fetch.js';
 import { gitRepositoryReader } from '../git/repository-reading.js';
@@ -24,11 +25,20 @@ const defaultDeps: RepositoryAccessDeps = {
   deployKey: withDeployKey,
 };
 
-/** The "once …" clause naming what must hold before a mark read through `route` is checked. */
-export function readableThrough(route: RepositoryRoute): string {
+/** The "once …" clause naming what makes `repository` readable through `route` again, and the
+ *  act a person takes for it, in a person's words: Forge, never "the tracker" (ISS-1300 r4). */
+export function readableThrough(route: RepositoryRoute, repository: string | null = null): string {
+  const repo = repository ?? "the project's repository";
   return route === 'binding'
-    ? "once the tracker can read the project's repository, through a GitHub binding whose installation can read it"
-    : `once the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}, over the SSH clone URL set under ${REPO_URL_AT}`;
+    ? `once Forge can read ${repo} again: give the GitHub App installation behind this project's binding access to it, or bind the project to where it now lives`
+    : `once Forge can read ${repo} again: attach a deploy key that can read it under ${GIT_ACCESS}, with the SSH clone URL set under ${REPO_URL_AT}`;
+}
+
+/** A deploy key's reach: the remote and a digest of the key, so two keys on one remote never share
+ *  an answer and the key itself is never kept (ISS-1300 r4). */
+export function deployKeyReach(repoUrl: string, privateKey: string): string {
+  const key = createHash('sha256').update(privateKey.trim()).digest('hex').slice(0, 32);
+  return `${repoUrl}#key-${key}`;
 }
 
 /** `fn` with a reader, or why there is none; a deploy-key reading is removed when `fn` returns. */
@@ -52,7 +62,8 @@ export async function withRepository<T>(
   try {
     return await deployKey(privateKey, repoUrl, (env, dir, pin) => {
       entered = true;
-      return fn({ kind: 'reader', reader: gitRepositoryReader(repoUrl, env, dir, { pin }) });
+      const reach = deployKeyReach(repoUrl, privateKey);
+      return fn({ kind: 'reader', reader: gitRepositoryReader(repoUrl, env, dir, { reach, pin }) });
     });
   } catch (err) {
     // The host guard refuses the remote before any key is written; past that, `fn`'s own throw.

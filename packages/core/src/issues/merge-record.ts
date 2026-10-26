@@ -1,4 +1,9 @@
-import { LANDING_UNSEEN, MARK_UNSEEN } from '@forge/contracts/mark-merged-words';
+import {
+  COMMIT_FIELD,
+  LANDING_UNSEEN,
+  LATER_MERGE_ACTION,
+  MARK_UNSEEN,
+} from '@forge/contracts/mark-merged-words';
 import { and, desc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -83,8 +88,24 @@ export function mergeMarkFields(row: MergeMarkColumns): {
   };
 }
 
-// A person reads a commit by its first seven characters; the whole sha stays in the answer's fields.
-export const shortCommit = (sha: string): string => sha.replace(/^([0-9a-f]{7})[0-9a-f]+$/i, '$1');
+function sharedPrefix(a: string, b: string): number {
+  let n = 0;
+  while (n < a.length && n < b.length && a[n]?.toLowerCase() === b[n]?.toLowerCase()) n += 1;
+  return n;
+}
+
+// Seven characters, or as many more as tell it from each commit `beside` it (ISS-578's pair shares
+// eight; ISS-1300 r4). The whole sha stays in the answer's fields.
+export const shortCommit = (sha: string, ...beside: Array<string | null | undefined>): string => {
+  if (!/^[0-9a-f]{8,}$/i.test(sha)) return sha;
+  const others = beside.filter((b): b is string => !!b && b.toLowerCase() !== sha.toLowerCase());
+  const keep = Math.max(7, ...others.map((b) => sharedPrefix(sha, b) + 1));
+  return sha.slice(0, Math.min(keep, sha.length));
+};
+
+/** A commit the repository lacks, in twelve: its seven may name one it holds (ISS-1300 r4). */
+export const absentCommit = (sha: string): string =>
+  sha.replace(/^([0-9a-f]{12})[0-9a-f]+$/i, '$1');
 export const shortenCommits = (text: string): string =>
   text.replace(/\b([0-9a-f]{7})(?:[0-9a-f]{33}|[0-9a-f]{57})\b/gi, '$1');
 
@@ -104,7 +125,7 @@ type Unverified = {
 /** What must hold, cut to its first phrase; a reader's route reads as "once Forge can read it". */
 export function markAgainOnce(clears: string): string {
   const once = firstClause(clears.replace(/^once\s+/, '')).split(', ')[0] ?? clears;
-  return /^the tracker can read the project's repository\b/.test(once)
+  return /^Forge can read .+? again:/.test(once)
     ? 'Mark it again once Forge can read the repository'
     : `Mark it again once ${once}`;
 }
@@ -153,9 +174,9 @@ export function addressesAsCode(text: string): string {
 
 /** A repeat beside the claim the row keeps: why it is unchecked, or what records the other commit. */
 export function keptClaimRepeat(u: Unverified): string {
-  const named = u.notKept ? shortCommit(u.notKept) : null;
+  const named = u.notKept ? shortCommit(u.notKept, u.commit) : null;
   return named
-    ? `Commit ${named} was not recorded, because the first claim, ${shortCommit(u.commit)}, stands. To record ${named} instead, use Unmark, then Mark merged again.`
+    ? `Commit ${named} was not recorded, because the first claim, ${shortCommit(u.commit, u.notKept)}, stands. To record ${named} instead, use Unmark, then Mark merged again.`
     : withReason(
         `Commit ${shortCommit(u.commit)} stays a claim, because Forge could not check it. ${checkStep(u)}.`,
         u.why,
@@ -190,21 +211,23 @@ export function describeMergeMark(args: {
     const differs =
       !!args.claimedCommit &&
       args.claimedCommit.toLowerCase() !== (args.commitSha ?? '').toLowerCase();
-    const at = args.commitSha ? shortCommit(args.commitSha) : 'the commit it landed at';
+    const at = args.commitSha
+      ? shortCommit(args.commitSha, args.claimedCommit)
+      : 'the commit it landed at';
     const source = args.readFrom
       ? `on ${args.readFrom.branch} of ${args.readFrom.repository}`
       : 'in the pull request or the repository';
     // The column holds the merge Forge saw, and the CHECK keeps no claim beside it.
     const overruled = differs
-      ? ` Commit ${shortCommit(args.claimedCommit as string)}, named in this mark, was not recorded.`
+      ? ` Commit ${shortCommit(args.claimedCommit as string, args.commitSha)}, named in this mark, was not recorded.`
       : '';
     return `Forge saw this merge land at commit ${at}, ${source}.${overruled}`;
   }
   if (args.stated && args.commitSha) {
     const { repository, replaced } = args.stated;
-    const at = shortCommit(args.commitSha);
+    const at = shortCommit(args.commitSha, replaced);
     const said = replaced
-      ? `Commit ${at}, which ${repository} holds, replaces commit ${shortCommit(replaced)}, which it does not.`
+      ? `Commit ${at}, which ${repository} holds, replaces commit ${shortCommit(replaced, args.commitSha)}, which it does not.`
       : `Commit ${at} is in ${repository}, and is recorded as where this work landed.`;
     return `${said} ${MARK_UNSEEN}`;
   }
@@ -418,6 +441,13 @@ export function alreadyMarkedSentence(mergedAt: Date | null): string {
 }
 
 export const CHANGE_THE_MARK = 'To change the mark, use Unmark, then Mark merged again.';
+
+/** The act the hold names, owed where a blank Commit could have recorded the landing (ISS-1300 r4). */
+export const NAME_THE_COMMIT = `To record the commit that landed, use ${LATER_MERGE_ACTION} and name it under ${COMMIT_FIELD}.`;
+
+export function absentStays(commit: string): string {
+  return `The mark stays at commit ${absentCommit(commit)}, which its repository does not hold.`;
+}
 
 /** The audit comment a person reads: words, never field names. A repeat opens with what it did,
  *  nothing; a first mark names its commit once, in the label only where the detail does not. */

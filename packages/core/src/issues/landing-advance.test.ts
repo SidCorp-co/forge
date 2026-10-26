@@ -48,6 +48,7 @@ function github(ahead: Record<string, string[]>, fail = false): GitHubRepoClient
     owner: 'o',
     repo: 'r',
     fullName: 'o/r',
+    reach: 'https://api.github.test/app/1/installations/1',
     async get<T>(path: string): Promise<T> {
       if (fail) throw new Error('HTTP 502');
       const [, base = '', head = ''] =

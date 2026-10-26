@@ -365,17 +365,19 @@ async function changedIn(g: GitReading, landing: string): Promise<ChangedPaths> 
   return { kind: 'read', paths: [...new Set(await g.differ(parent, read.commit.sha))].sort() };
 }
 
-/** The reader for `remote`, fetched as `env` (the deploy key's ssh command) allows, under `dir`. */
+/** The reader for `remote`, fetched as `env` (the deploy key's ssh command) allows, under `dir`.
+ *  `reach` names the key it reads as, which decides what it can read (ISS-1300 r4). */
 export function gitRepositoryReader(
   remote: string,
   env: NodeJS.ProcessEnv,
   dir: string,
-  opts: { pin?: PinnedSshHost; limits?: FetchLimits } = {},
+  opts: { reach: string; pin?: PinnedSshHost; limits?: FetchLimits },
 ): RepositoryReader {
   const g = new GitReading(remote, env, dir, opts);
   return {
     name: remote,
     route: 'deploy_key',
+    reach: opts.reach,
 
     async commit(ref: string): Promise<CommitLookup> {
       try {

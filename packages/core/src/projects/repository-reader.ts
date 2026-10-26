@@ -63,10 +63,11 @@ export type CommitLookup =
   | { kind: 'absent'; detail: string; details: Record<string, unknown> }
   | { kind: 'unreadable'; why: string };
 
-/** A read that failed: on a branch the repository lacks (`missingBranch`), or refused by it (`refused`). */
+/** A read that failed: on a branch or commit the repository lacks (`missing*`), or refused (`refused`). */
 export interface ReadFailure {
   why: string;
   missingBranch?: string;
+  missingCommit?: string;
   refused?: true;
 }
 
@@ -101,6 +102,7 @@ export type RangeRead = { commits: RangeCommit[] } | ReadFailure;
 export interface RepositoryReader {
   readonly name: string;
   readonly route: RepositoryRoute;
+  readonly reach: string;
   commit(ref: string): Promise<CommitLookup>;
   branchHead(branch: string): Promise<BranchRead>;
   contains(sha: string, branch: string): Promise<Containment>;

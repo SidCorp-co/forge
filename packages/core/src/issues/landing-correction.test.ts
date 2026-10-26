@@ -84,10 +84,10 @@ describe('what corrects or restores a recorded landing', () => {
     const clears = unreadLandingClears({
       repository: 'SidCorp-co/forge',
       why: 'SidCorp-co/forge answered HTTP 404',
-      clears: 'once the tracker can read it',
+      clears: 'once Forge can read SidCorp-co/forge again: restore it',
     });
     expect(clears).toBe(
-      'Forge cannot read SidCorp-co/forge, and reads it again once the tracker can read it',
+      'Forge cannot read SidCorp-co/forge, and checks again once Forge can read SidCorp-co/forge again: restore it',
     );
     expect(
       unreadLandingClears({ repository: null, why: 'no token', clears: 'once it can' }),

@@ -28,6 +28,7 @@ import {
 import { targetRequiredDetail } from './merge-input-refusal.js';
 import { announceMark } from './merge-mark-announce.js';
 import {
+  absentStays,
   alreadyMarkedSentence,
   CHANGE_THE_MARK,
   clearIssueMerge,
@@ -36,6 +37,7 @@ import {
   type MergeMarkKind,
   type MergeRecord,
   mergeMarkKindOf,
+  NAME_THE_COMMIT,
   observedMergeForIssue,
   readMergeColumns,
   recordIssueMerge,
@@ -44,7 +46,13 @@ import {
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById, type IssueRow } from './read-service.js';
-import { type Stated, stampStated, statedAt, statedWords } from './stated-landing.js';
+import {
+  commitWouldStand,
+  type Stated,
+  stampStated,
+  statedAt,
+  statedWords,
+} from './stated-landing.js';
 import { statusForCaller } from './status-sets.js';
 
 /**
@@ -271,16 +279,23 @@ function answerWords(a: {
   repeated: boolean;
   namedUnread: { commit: string; why: string } | null;
   standingDetail: string;
+  /** Where a blank repeat could have recorded a commit named under Commit (ISS-1300 r4). */
+  correctable: Awaited<ReturnType<typeof commitWouldStand>>;
 }): { after: string; unread: string | null; markDetail: string } {
-  const stays = markStays(a.later, a.mark, a.stamp);
-  const after = a.kept ? keptClaimRepeat(a.kept) : `${stays} ${CHANGE_THE_MARK}`;
   const named =
     a.later?.kind === 'unread'
       ? { commit: a.later.candidate, why: a.later.why }
       : a.repeated
         ? a.namedUnread
         : null;
-  const unread = named ? unreadAnswer(stays, named.commit, named.why) : null;
+  const stays = markStays(a.later, a.mark, a.stamp, named?.commit ?? null);
+  const after = a.kept
+    ? keptClaimRepeat(a.kept)
+    : a.correctable
+      ? `${absentStays(a.correctable)} ${NAME_THE_COMMIT}`
+      : `${stays} ${CHANGE_THE_MARK}`;
+  const held = a.stamp.commitSha ?? a.stamp.claimedCommit;
+  const unread = named ? unreadAnswer(stays, named.commit, named.why, held) : null;
   const markDetail = a.repeated
     ? (unread ?? `${alreadyMarkedSentence(a.stamp.mergedAt)}. ${after}`)
     : a.later?.kind === 'moved'
@@ -352,6 +367,7 @@ export async function applyMergeMarker(args: {
   let namedUnread: { commit: string; why: string } | null = null;
   /** A person's commit stamped as the landing, where this call stamped one. */
   let stated: Stated | null = null;
+  let blankObserved: { commitSha: string } | null = null;
   if (args.op === 'mark') {
     const lane = await markLane(before);
     const shape = lane.shape;
@@ -366,6 +382,7 @@ export async function applyMergeMarker(args: {
       if (evidence?.kind === 'unverified') unverified = evidence;
     }
     const observed = await observedMergeForIssue(db, before.id);
+    blankObserved = observed;
     const landing = args.landing ?? null;
     const refused = landingMarkRefusal({ lane, landing, observed: observed !== null, door });
     if (refused) throw new MergeMarkerError(refused.code, refused.detail);
@@ -460,6 +477,10 @@ export async function applyMergeMarker(args: {
   }
 
   const repeated = args.op === 'mark' && !stampResult.wrote;
+  const correctable =
+    repeated && !args.commit && !later && !namedUnread && !stampResult.landing
+      ? await commitWouldStand(before, args.actor.agency, blankObserved)
+      : null;
 
   // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
   const mark: MergeMarkKind =
@@ -490,6 +511,7 @@ export async function applyMergeMarker(args: {
     repeated,
     namedUnread,
     standingDetail,
+    correctable,
   });
   const said = { stamp: stampResult, claimedCommit, repeated, unread, after, markDetail };
   const issue = await announceMark(before, args, threadBody({ ...args, ...said }));

@@ -319,6 +319,7 @@ export function ReleaseAnswer({
             return (
               <li key={`${b.code}:${b.message}`} className="fg-body-sm py-2.5 text-fg" data-code={b.code}>
                 {gap ? GAP_TEXT[gap] : inlineCode(b.reader)} <BlockerLinkView link={link} slug={slug} />
+                <TechnicalDetail blocker={b} />
               </li>
             );
           })}
@@ -361,6 +362,20 @@ export function ReleaseAnswer({
       )}
       <After node={after} joined={endsInList} />
     </div>
+  );
+}
+
+/** The read a check failed on, where the sentence above it does not quote it: folded under
+ *  Technical details, so a person reads the sentence and whoever reports it has the request
+ *  (ISS-1300 r4, judge-121). */
+function TechnicalDetail({ blocker }: { blocker: Blocker }) {
+  const detail = blocker.details?.detail;
+  if (typeof detail !== "string" || detail === "" || blocker.reader.includes(detail)) return null;
+  return (
+    <details className="fg-caption mt-1 text-muted">
+      <summary className="cursor-pointer">Technical details</summary>
+      <p className="mt-1 break-words font-mono [overflow-wrap:anywhere]">{detail}</p>
+    </details>
   );
 }
 

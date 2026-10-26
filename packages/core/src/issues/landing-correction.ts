@@ -36,23 +36,36 @@ export function unreadLandingClause(commit: string, landing: UnreadLandingRef): 
 }
 
 export function unreadLandingClears(landing: UnreadLandingRef): string {
-  return `Forge cannot read ${named(landing.repository)}, and reads it again ${landing.clears}`;
+  return `Forge cannot read ${named(landing.repository)}, and checks again ${landing.clears}`;
 }
 
-/** A release check its repository refused, in the same words; null where the read was not refused. */
+const UNSAID =
+  'this answer cannot say whether a release would start: whatever that check would have found is missing from this list';
+
+/** A release check its repository refused, in the same words; null where the read was not refused,
+ *  or where the repository was read and lacks what the check asked for (`lackingCheckClause`). */
 export function refusedCheckClause(details?: {
   repository?: unknown;
   clears?: unknown;
   detail?: unknown;
+  lacks?: unknown;
 }): string | null {
-  if (typeof details?.clears !== 'string') return null;
+  if (typeof details?.clears !== 'string' || typeof details.lacks === 'string') return null;
   const repository = typeof details.repository === 'string' ? details.repository : null;
   const cannot = unreadLandingClears({
     repository,
     why: String(details.detail ?? ''),
     clears: details.clears,
   });
-  return `${cannot}. Until then this answer cannot say whether a release would start: whatever that check would have found is missing from this list.`;
+  return `${cannot}. Until then ${UNSAID}.`;
+}
+
+/** A release check whose repository was read and lacks a branch or commit it asked for, said as what
+ *  is missing and what supplies it: no retry finds it there (ISS-1300 r4). Null for any other. */
+export function lackingCheckClause(details?: { lacks?: unknown; clears?: unknown }): string | null {
+  if (typeof details?.lacks !== 'string' || typeof details.clears !== 'string') return null;
+  // It opens on the repository's own name, whose case is the repository's, so it is never raised.
+  return `${details.lacks.replace(/\.$/, '')}, so ${UNSAID}. It is read again ${details.clears}.`;
 }
 
 export function landingRecordName(from: LandingRecord): string {

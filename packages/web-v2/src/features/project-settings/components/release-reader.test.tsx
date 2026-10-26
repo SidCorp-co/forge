@@ -82,6 +82,49 @@ describe("a release reason on Shape & release", () => {
 		expect(text).not.toMatch(/evaluated|EVERY/);
 	});
 
+	// ISS-1300 r4 (judge-121): the readiness page opened with the raw request a check failed on.
+	// The sentence is the person's; the request sits folded under Technical details behind it.
+	it("folds the request a check failed on under Technical details, out of the sentence", () => {
+		const detail = "o/r could not read the head of main: GET /repos/o/r/commits/main on o/r returned HTTP 404";
+		const { container, getByText } = draw(
+			answer({
+				blockers: [
+					{
+						code: "RELEASE_CHECK_UNEVALUATED",
+						evaluated: false,
+						message: "Forge cannot read o/r.",
+						reader: "Reading which landings this release would carry beyond its issues failed: Forge cannot read o/r.",
+						details: { check: "carried", detail, repository: "o/r", clears: "once Forge can read o/r again: x" },
+					},
+				],
+			}),
+		);
+
+		const item = container.querySelector('[data-code="RELEASE_CHECK_UNEVALUATED"]');
+		const summary = getByText("Technical details");
+		expect(summary.closest("details")?.open).toBe(false);
+		expect(summary.closest("details")?.textContent).toContain(detail);
+		const sentence = item?.firstChild?.textContent ?? "";
+		expect(sentence).not.toMatch(/GET \/repos|HTTP 404/);
+	});
+
+	it("adds no Technical details where the sentence already quotes the read", () => {
+		const { queryByText } = draw(
+			answer({
+				blockers: [
+					{
+						code: "RELEASE_CHECK_UNEVALUATED",
+						evaluated: false,
+						message: CALLER,
+						reader: READER,
+						details: { check: "roster", detail: "timeout" },
+					},
+				],
+			}),
+		);
+		expect(queryByText("Technical details")).toBeNull();
+	});
+
 	it("draws a warning as a person reads it too", () => {
 		const { container } = draw(
 			answer({
