@@ -4,6 +4,7 @@
 // guide is read as the public route serves it, so a guide left out of the registry goes red here.
 
 import { WORKFLOW_LIMITS, WORKFLOW_V2_SCHEMA_ID } from '@forge/contracts/workflows';
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { guideRoutes } from './routes.js';
 
@@ -112,5 +113,19 @@ describe('the design-write shape the workflow-design guide gives (ISS-579)', () 
       "`POST /api/issues/:id/transition` `{ toStatus: 'needs_info', waitingKind: 'needs_decision', reason, awaitsDesign: { workflowId, revision } }`",
     );
     expect(design).toContain('`needs` may be left out');
+  });
+});
+
+describe('the index an agent reads first (llms.txt)', () => {
+  it('links the API contract and the MCP tool list at /api, from either mount', async () => {
+    const atApi = new Hono().route('/api', guideRoutes);
+    for (const [routes, path] of [
+      [guideRoutes, '/llms.txt'],
+      [atApi, '/api/llms.txt'],
+    ] as const) {
+      const text = await (await routes.request(`http://forge.test${path}`)).text();
+      expect(text, path).toContain('(http://forge.test/api/openapi.json)');
+      expect(text, path).toContain('(http://forge.test/api/mcp-tools.json)');
+    }
   });
 });

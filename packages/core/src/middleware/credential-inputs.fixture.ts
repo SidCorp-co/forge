@@ -108,9 +108,10 @@ const ROW_KEYS = 'an id, key, number or slug naming a row, checked under the cal
 
 /** Every input no credential arrives in, grouped by why. */
 export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
-  'a header no credential rides in: media types, sizes, the proxy’s view, a trace id': words`
+  'a header no credential rides in: media types, sizes, a cache validator, the proxy’s view, a trace id': words`
     header:accept header:accept-encoding header:cf-ray header:content-encoding
-    header:content-length header:content-type header:host header:link header:origin header:range
+    header:content-length header:content-type header:host header:if-none-match header:link
+    header:origin header:range
     header:referer header:sec-fetch-dest header:user-agent header:x-forwarded-for
     header:x-forwarded-host header:x-forwarded-proto header:x-next-page header:x-real-ip
     header:x-request-id`,
@@ -285,6 +286,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     widget/stream.ts Context handed to hono:streamSSE in widgetStream`,
   'an outbound URL, header set or module URL core builds, never a request to core': lines`
     assistant/identity/link-url.ts URLSearchParams.toString in speakerLinkUrl
+    contracts-generate.ts URL.href in baseOf
     integrations/autoflow/refresh.ts URLSearchParams.toString in requestRefresh
     integration-door/github-connect-shared.ts URLSearchParams.toString in strandedAt
     integrations/deploy/coolify/client.ts URLSearchParams.toString in CoolifyClient

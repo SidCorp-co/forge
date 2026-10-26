@@ -51,7 +51,8 @@ RUN VITE_SENTRY_DSN=$VITE_SENTRY_DSN VITE_WS_URL=$VITE_WS_URL WEB_V2_BASE_PATH=$
 # zero workspace symlinks — every dependency is a real install. The
 # runtime stage just copies that directory and runs node. Honors the
 # `files` field in packages/core/package.json so only dist + skills +
-# drizzle + public ship.
+# drizzle + public + contracts ship (contracts/ is what GET /api/openapi.json
+# and GET /api/mcp-tools.json serve, byte for byte).
 RUN pnpm deploy --filter=@forge/core --prod /prod/core
 
 # ----- Runtime stage: minimal node + the deployed app -----

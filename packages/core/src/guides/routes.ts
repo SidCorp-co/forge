@@ -69,6 +69,8 @@ guideRoutes.get('/llms.txt', (c) => {
   const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
   if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
   const base = `${url.origin}${url.pathname.replace(/\/llms\.txt$/, '')}`;
+  // the contracts are served under /api only, whichever of the two mounts answered this
+  const api = base.endsWith('/api') ? base : `${base}/api`;
   const lines = [
     '# Forge',
     '',
@@ -82,6 +84,11 @@ guideRoutes.get('/llms.txt', (c) => {
     '## Guides',
     '',
     ...listGuides().map((g) => `- [${g.title}](${base}/guides/${g.slug}.md): ${g.summary}`),
+    '',
+    '## API contract',
+    '',
+    `- [OpenAPI 3.1](${api}/openapi.json): every route core mounts, versioned by semver.`,
+    `- [MCP tools](${api}/mcp-tools.json): the tools \`POST /mcp\` serves, versioned by semver.`,
     '',
     '## Index',
     '',
