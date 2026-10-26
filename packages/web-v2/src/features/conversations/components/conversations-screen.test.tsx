@@ -221,6 +221,14 @@ describe("an address naming a room the reader cannot open", () => {
     });
   }
 
+  it("says so to a reader whose organization holds no project of theirs", () => {
+    reader.role = "none";
+    roomRead.answers.gone = { error: new ApiError(403, "This room is not yours to open.") };
+    at("/conversations?room=gone");
+    render(<ConversationsScreen />);
+    expect(screen.getByRole("heading", { level: 1, name: "Conversation not found" })).toBeTruthy();
+  });
+
   it("lets go of the address once the reader starts a new conversation", () => {
     roomRead.answers.gone = { error: new ApiError(404, "This room no longer exists.") };
     at("/conversations?room=gone");

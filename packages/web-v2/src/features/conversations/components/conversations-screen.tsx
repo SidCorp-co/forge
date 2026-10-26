@@ -161,12 +161,12 @@ export function ConversationsScreen() {
   useEffect(() => {
     const room = addressed.current.room;
     // Until the projects are read there is no list to find it in, only an empty one.
-    if (!room || projectsQ.isLoading || projectIdList.length === 0 || conversations.isLoading) return;
+    if (!room || projectsQ.isLoading || orgLoading || conversations.isLoading) return;
     addressed.current = { room: null, archived: false };
     const row = conversations.rows.find((r) => r.id === room);
     if (row) openRow(row);
     else setLookup(room);
-  }, [projectsQ.isLoading, projectIdList.length, conversations.isLoading, conversations.rows, openRow, setLookup]);
+  }, [projectsQ.isLoading, orgLoading, conversations.isLoading, conversations.rows, openRow, setLookup]);
 
   const read = lookup ? roomRead.data : undefined;
   const readProject = read ? (read.scope.find((id) => orgProjectIds.has(id)) ?? read.scope[0]) : undefined;

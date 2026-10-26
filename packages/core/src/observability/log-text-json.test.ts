@@ -89,7 +89,7 @@ describe('a log line, which is not JSON', () => {
   });
 
   it('loses a bare secret that only opens like an empty value', () => {
-    for (const value of ['null!hunter2', '[]hunter2', '{}x', 'truex']) {
+    for (const value of ['null!hunter2', '[]hunter2', '{}x', 'truex', 'null\\hunter2', '[]\\hunter2']) {
       expect(scrubLogText(`password=${value} user=ana`)).toBe(`password=${FILTERED} user=ana`);
     }
   });
@@ -122,6 +122,14 @@ describe('a structured body', () => {
       apiKey: FILTERED,
       secret: {},
     });
+  });
+
+  it('censors an empty container that serializes as something else', () => {
+    const shaped = Object.assign([], { toJSON: () => 'hunter2' });
+    const hidden = Object.defineProperty({}, 'toJSON', { value: () => 'hunter2', enumerable: false });
+    const body = { password: shaped, secret: hidden };
+    scrubBodyKeys(body);
+    expect(JSON.stringify(body)).toBe(`{"password":"${FILTERED}","secret":"${FILTERED}"}`);
   });
 
   it('censors a secret field a getter answers without asking the getter', () => {

@@ -181,8 +181,9 @@ function holdsNothing(obj: object, key: string): boolean {
   if (!field || !('value' in field)) return false;
   const v: unknown = field.value;
   if (v === null || v === '') return true;
-  if (Array.isArray(v)) return v.length === 0;
-  return typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype && Object.keys(v).length === 0;
+  // Only a plain container with nothing of its own: a `toJSON` could render it as anything.
+  if (Array.isArray(v)) return Object.getPrototypeOf(v) === Array.prototype && Reflect.ownKeys(v).length === 1;
+  return typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype && Reflect.ownKeys(v).length === 0;
 }
 
 /** Key-named secrets in `obj` censored in place, an empty one left as it is: true only if each one held. */
@@ -267,9 +268,10 @@ function lineEnd(text: string, from: number): number {
 }
 
 const OPENING_QUOTE = /^(\\*)"/;
-// What may follow a whole value: the text's end, a space, a delimiter, or the string around it closing.
-const VALUE_END = /^(?:$|[\s,}\]&"\\])/;
-const KEPT_AS_IT_IS = /^(?:\[\s*\]|\{\s*\}|null|true|false)(?=$|[\s,}\]&"\\])/;
+// What may follow a whole value: the text's end, a space or a delimiter; a backslash only as the
+// escape of a closing quote or a line break, as nested JSON writes them.
+const VALUE_END = /^(?:$|[\s,}\]&"]|\\+(?:"|[nrt](?![A-Za-z0-9])))/;
+const KEPT_AS_IT_IS = /^(?:\[\s*\]|\{\s*\}|null|true|false)(?=$|[\s,}\]&"]|\\+(?:"|[nrt](?![A-Za-z0-9])))/;
 // A backslash is the value's own, unless its run ends in a quote: that is the string around it closing.
 const BARE_VALUE = /^(?:[^\s",}\]&\\]|\\+(?!\\*"))+/;
 
@@ -306,7 +308,7 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
     } else if (rest.startsWith('[') || rest.startsWith('{')) {
       end = closingBracket(text, at, Math.max(nameQuote.length - 1, 0));
       // Brackets that close before the value does were the value's own characters, not JSON.
-      if (!VALUE_END.test(text.slice(end, end + 1))) end = at + (/^\S+/.exec(rest)?.[0].length ?? 0);
+      if (!VALUE_END.test(text.slice(end, end + 8))) end = at + (/^\S+/.exec(rest)?.[0].length ?? 0);
       shown = marker;
     } else {
       const bare = BARE_VALUE.exec(rest);
