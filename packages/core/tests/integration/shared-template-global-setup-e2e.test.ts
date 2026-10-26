@@ -38,6 +38,7 @@ afterAll(async () => {
 
 describe('global setup, run for real against this instance', () => {
   const KEYS = [
+    'TEST_DB_MODE',
     'TEST_DATABASE_URL',
     'TEST_TEMPLATE_MODE',
     'CI',
@@ -66,6 +67,8 @@ describe('global setup, run for real against this instance', () => {
     mode?: string;
     ci?: string;
   }): Promise<{ name: string; token: string }> {
+    // This instance, whatever mode the run around this file was started in.
+    process.env.TEST_DB_MODE = 'schema';
     process.env.TEST_DATABASE_URL = adminUrl;
     process.env.TEST_TEMPLATE_MODE = env.mode ?? '';
     process.env.CI = env.ci ?? '';
@@ -153,6 +156,7 @@ describe('global setup, run for real against this instance', () => {
   it(
     'refuses a mode it does not know before building anything',
     async () => {
+      process.env.TEST_DB_MODE = 'schema';
       process.env.TEST_DATABASE_URL = adminUrl;
       process.env.TEST_TEMPLATE_MODE = 'sharde';
       const before = process.env.TEST_PG_TEMPLATE;

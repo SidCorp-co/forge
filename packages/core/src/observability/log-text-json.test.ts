@@ -62,6 +62,98 @@ describe('a secret scrubbed out of JSON', () => {
   });
 });
 
+// ISS-1229 r46, judge-135: a header line inside a JSON string took everything after it, the rest of the
+// document included, and a header line after an escaped line break was never read at all.
+describe('a header line inside a JSON string', () => {
+  const description =
+    'The failing call was: curl -H "Authorization: Bearer abcdefghijklmnop1234" https://api.example.org/export\n' +
+    'After the call the job printed: done, 3 rows exported to the billing bucket.';
+  const issue = {
+    identifier: 'ISS-3',
+    description,
+    status: 'open',
+    priority: 'high',
+    relations: [],
+  };
+  const cases: Array<[string, unknown, unknown]> = [
+    [
+      'a header line as a whole string',
+      { log: 'Authorization: Bearer abcdefghijklmnop1234', keep: 1 },
+      { log: `Authorization: ${FILTERED}`, keep: 1 },
+    ],
+    [
+      'a curl call in an issue description',
+      issue,
+      {
+        ...issue,
+        description: `The failing call was: curl -H "Authorization: ${FILTERED}\nAfter the call the job printed: done, 3 rows exported to the billing bucket.`,
+      },
+    ],
+    [
+      'a header on its own line of a request dump',
+      {
+        stdout: 'Request headers:\nX-Api-Key: k3yplanted998877\nAccept: application/json',
+        code: 0,
+      },
+      { stdout: `Request headers:\nX-Api-Key: ${FILTERED}\nAccept: application/json`, code: 0 },
+    ],
+    [
+      'a header name with nothing after it on its line',
+      { stdout: 'authorization:\nAccept: application/json' },
+      { stdout: 'authorization:\nAccept: application/json' },
+    ],
+  ];
+
+  for (const depth of [0, 1, 2]) {
+    for (const [what, value, expected] of cases) {
+      it(`is scrubbed inside its own string and the rest is kept: ${what}, quoted ${depth} deep`, () => {
+        const out = scrubLogText(quoted(value, depth));
+        expect(unquoted(out, depth)).toEqual(expected);
+      });
+    }
+  }
+
+  it("keeps a tool's JSON output byte for byte outside the string that held the secret", () => {
+    const stdout = JSON.stringify(issue, null, 2);
+    const tool = JSON.stringify({ exitCode: 0, stdout, stderr: '' });
+    const out = scrubLogText(tool);
+    const read = JSON.parse(out) as { exitCode: number; stdout: string; stderr: string };
+    expect(read.exitCode).toBe(0);
+    expect(read.stderr).toBe('');
+    expect(read.stdout).toBe(
+      stdout.replace('Bearer abcdefghijklmnop1234\\" https://api.example.org/export', FILTERED),
+    );
+    expect(out).not.toContain('abcdefghijklmnop1234');
+  });
+
+  it('keeps the spacing of pretty-printed JSON around a scrubbed secret', () => {
+    const text = JSON.stringify({ password: 'hunter2', name: 'Desk' }, null, 2);
+    expect(scrubLogText(text)).toBe(text.replace('"hunter2"', `"${FILTERED}"`));
+  });
+
+  it('still loses a secret by its shape where JSON holds it outside every string', () => {
+    expect(scrubLogText('{"n": 1234567890}', ['1234567890'])).toBe(`{"n": ${FILTERED}}`);
+  });
+});
+
+// ISS-1229 r46: a tool output cut off at a length cap is not JSON any more, and a name written straight
+// after an escaped line break (`\nX-Api-Key:`) was read as part of the word before it and left as it was.
+describe('JSON cut off before its end', () => {
+  for (const [what, text] of [
+    [
+      'a header after an escaped line break',
+      '{"stdout":"Request headers:\\nX-Api-Key: k3yplanted998877\\nAcc',
+    ],
+    ['a secret name after an escaped tab', '{"stdout":"user=ana\\tpassword=hunter2\\tnext'],
+  ] as const) {
+    it(`loses the secret: ${what}`, () => {
+      const out = scrubLogText(text);
+      expect(out).not.toMatch(/k3yplanted998877|hunter2/);
+      expect(out).toContain(FILTERED);
+    });
+  }
+});
+
 describe('an empty value under a secret name', () => {
   for (const value of [
     { testCredentials: [] },

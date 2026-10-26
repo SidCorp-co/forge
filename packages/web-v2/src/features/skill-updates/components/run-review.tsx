@@ -55,7 +55,7 @@ export function RunReview({ projectId, runId, canManage }: RunReviewProps) {
   if (isError || !run) {
     return (
       <div className="p-4">
-        <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
+        <ErrorState title="Couldn't load this update" message={formatApiError(error)} onRetry={() => refetch()} />
       </div>
     );
   }

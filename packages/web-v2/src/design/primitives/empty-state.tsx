@@ -15,8 +15,10 @@ interface EmptyStateBase {
   titleId?: string;
 }
 
-export type EmptyStateProps = EmptyStateBase &
-  ({ level: 1; title: string } | { level?: 2 | 3; title?: string });
+export interface EmptyStateProps extends EmptyStateBase {
+  title: string;
+  level?: 1 | 2 | 3;
+}
 
 /** Mascot + one calm line + one way forward; at level 1 the title heads the page and names the tab. */
 export function EmptyState({ title, message, action, mascot = true, titleId, level = 2 }: EmptyStateProps) {
@@ -25,16 +27,14 @@ export function EmptyState({ title, message, action, mascot = true, titleId, lev
     <div className="flex flex-col items-center justify-center gap-3.5 px-6 py-12 text-center">
       {mascot && <ForgeMascot size={88} mode="blink" ring={false} progress={0.4} />}
       <div>
-        {title && (
-          <Heading
-            id={titleId}
-            tabIndex={titleId ? -1 : undefined}
-            className="fg-h3 rounded-md focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            {title}
-          </Heading>
-        )}
-        {title && level === 1 && <TabTitle subject={title} />}
+        <Heading
+          id={titleId}
+          tabIndex={titleId ? -1 : undefined}
+          className="fg-h3 rounded-md focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        >
+          {title}
+        </Heading>
+        {level === 1 && <TabTitle subject={title} />}
         <p className="fg-body-sm mx-auto mt-1 max-w-[260px]">{message}</p>
       </div>
       {action && (

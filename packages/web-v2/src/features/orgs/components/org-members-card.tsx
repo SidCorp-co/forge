@@ -276,7 +276,7 @@ export function OrgMembersCard({
         {membersQ.isLoading ? (
           <Skeleton className="h-9 w-full rounded-md" />
         ) : membersQ.isError ? (
-          <ErrorState
+          <ErrorState title="Couldn't load members"
             message={formatApiError(membersQ.error)}
             onRetry={() => membersQ.refetch()}
           />
@@ -396,7 +396,7 @@ export function OrgMembersCard({
           {projectsQ.isLoading ? (
             <Skeleton className="h-9 w-full rounded-md" />
           ) : projectsQ.isError ? (
-            <ErrorState
+            <ErrorState title="Couldn't load projects"
               message={formatApiError(projectsQ.error)}
               onRetry={() => projectsQ.refetch()}
             />
@@ -426,7 +426,7 @@ export function OrgMembersCard({
             {invitationsQ.isLoading ? (
               <Skeleton className="h-9 w-full rounded-md" />
             ) : invitationsQ.isError ? (
-              <ErrorState
+              <ErrorState title="Couldn't load invitations"
                 message={formatApiError(invitationsQ.error)}
                 onRetry={() => invitationsQ.refetch()}
               />

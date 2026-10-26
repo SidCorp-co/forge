@@ -104,7 +104,7 @@ async function assertConversationRole(
   throw roomRefusal(
     403,
     'CONVERSATION_OUT_OF_SCOPE',
-    await outOfScope(refused.role, refused.projectId, tx),
+    await outOfScope(refused.role, min, refused.projectId, tx),
     { conversationId, projectId: refused.projectId },
   );
 }
@@ -113,11 +113,17 @@ async function assertConversationRole(
  * Why a caller is refused a room for its role on one of the room's projects, saying only what is true:
  * a viewer is told the role they hold and what it does not allow, never that this room is theirs to
  * read (a one-to-one room is read only by its people), and a project the caller holds no role on is
- * not named to them.
+ * not named to them. Each names the act refused and who may let them take it (ISS-1421 r33).
  */
-async function outOfScope(role: string | null, projectId: string, tx: Executor): Promise<string> {
+async function outOfScope(
+  role: string | null,
+  min: ProjectMemberRole,
+  projectId: string,
+  tx: Executor,
+): Promise<string> {
   if (role !== 'viewer') {
-    return 'This room is about a project on which you hold no role; a room is reached only by someone who holds one on every project in it';
+    const act = min === 'viewer' ? 'read this room' : 'change this room or post in it';
+    return `You hold no role on a project this room is about, so you cannot ${act}. An admin of that project can add you to it.`;
   }
   const [project] = await tx
     .select({ name: projects.name })

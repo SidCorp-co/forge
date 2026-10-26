@@ -320,7 +320,7 @@ function ProjectsSection({
       {bindingsLoading ? (
         <Skeleton className="h-8 w-full" />
       ) : bindingsError ? (
-        <ErrorState message={bindingsError} onRetry={onRetry} />
+        <ErrorState title="Couldn't load the projects using it" message={bindingsError} onRetry={onRetry} />
       ) : bindings.length === 0 ? (
         // A removed connection cannot be shared (ISS-1421 r22): its Danger zone says what it can do.
         <p className="fg-body-sm border-b border-line pb-2 text-muted">

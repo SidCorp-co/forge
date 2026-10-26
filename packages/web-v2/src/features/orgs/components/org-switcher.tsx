@@ -6,11 +6,13 @@
 //   • a dropdown of all orgs, personal-first then alpha, selectable (AC2),
 //   • a "Manage organizations" entry → Settings → Orgs (AC6, reuses ISS-468),
 //   • a static, non-interactive label when the user has a single org (AC5).
-// Two variants match the two rail widths; `expanded` is also used in the mobile
-// drawer. Presentational beyond the context read — no data fetching of its own.
+// `compact` (narrow rail) is the org's mark; `expanded` (wide rail, mobile drawer)
+// prints the whole name. Presentational beyond the context read.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/design/icons/icon";
+import { ProjectMark } from "@/design/primitives/project-mark";
+import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { Menu, type MenuItem } from "@/design/patterns/menu";
 import { cn } from "@/lib/utils/cn";
 import { useActiveOrg } from "../active-org";
@@ -37,13 +39,11 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
   ];
 
   if (variant === "compact") {
-    const glyph = (
-      <span className="relative inline-flex">
-        <span
-          className="inline-flex size-[30px] items-center justify-center rounded-md border border-line bg-sunken text-subtle"
-        >
-          <Icon name="users" size={16} />
-        </span>
+    // The narrow rail never grows with the name (ISS-1229 r46): the name is the tooltip and accessible name.
+    const { tint, ink } = projectGlyph(activeOrg.id);
+    const mark = (
+      <span className="relative inline-flex" data-testid="org-mark">
+        <ProjectMark tint={tint} ink={ink} initials={projectInitials(label)} size={30} radius="var(--r-pill)" />
         {!isSingle && (
           <span
             className="absolute -bottom-[3px] -right-1 inline-flex size-[15px] items-center justify-center rounded-pill text-subtle"
@@ -54,22 +54,14 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
         )}
       </span>
     );
-    const labelEl = (
-      <span className="mt-1 block min-w-0 max-w-full whitespace-normal text-center text-10 font-semibold leading-tight tracking-[-0.01em] text-muted [overflow-wrap:anywhere]">
-        {label}
-      </span>
-    );
+    const markClass =
+      "flex w-[76px] flex-col items-center rounded-md px-1 py-1 transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
     // Single org → no menu/chevron, but still a link to the org home so the
     // user can reach the org's projects + members (ISS-470, AC7 — no dead-end).
     if (isSingle) {
       return (
-        <Link
-          href="/org"
-          className="flex w-[76px] flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
-          aria-label={`Organization: ${label}`}
-        >
-          {glyph}
-          {labelEl}
+        <Link href="/org" className={markClass} aria-label={`Organization: ${label}`} title={label}>
+          {mark}
         </Link>
       );
     }
@@ -84,10 +76,10 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
             type="button"
             aria-haspopup="menu"
             aria-label={`Switch organization — current ${label}`}
-            className="flex w-[76px] flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
+            title={label}
+            className={markClass}
           >
-            {glyph}
-            {labelEl}
+            {mark}
           </button>
         }
       />

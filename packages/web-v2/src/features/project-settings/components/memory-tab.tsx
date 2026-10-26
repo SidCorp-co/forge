@@ -60,7 +60,7 @@ export function MemoryTab({ project, canEdit }: { project: ProjectDetail; canEdi
 	}
 	if (statusQ.isError || !status) {
 		return (
-			<ErrorState
+			<ErrorState title="Couldn't load the memory model"
 				message={statusQ.error ? formatApiError(statusQ.error) : "No memory-model state came back."}
 				onRetry={() => statusQ.refetch()}
 			/>

@@ -207,7 +207,7 @@ export function IntegrationsScreen() {
     <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <PageTitle className="fg-h2">Integrations</PageTitle>
+          <PageTitle className="fg-h2" heads={!connections.isError}>Integrations</PageTitle>
           <p className="fg-body-sm text-muted">
             Credentials in {scopeName}, shared across projects. Configure a project&apos;s
             integrations in its settings → Integrations.
@@ -253,7 +253,7 @@ export function IntegrationsScreen() {
           ))}
         </div>
       ) : connections.isError ? (
-        <ErrorState
+        <ErrorState title="Couldn't load your connections" level={1}
           message={formatApiError(connections.error)}
           onRetry={() => connections.refetch()}
         />

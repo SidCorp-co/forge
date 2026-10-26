@@ -2,6 +2,7 @@
 
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { z } from "zod";
 import {
   ConfirmDialog,
   EmptyState,
@@ -78,6 +79,13 @@ function notTheirs(err: unknown): boolean {
   return err instanceof ApiError && (err.status === 404 || err.status === 403);
 }
 
+const roomId = z.uuid();
+
+/** An id core's room door takes: a link cut short or mistyped names no room, and is never read (ISS-1229 r46). */
+function namesARoom(id: string): boolean {
+  return roomId.safeParse(id).success;
+}
+
 /** Zero-render WS room subscription, so a reply anywhere shows up live. */
 function RoomSub({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
@@ -103,7 +111,8 @@ export function ConversationsScreen() {
     lookupRef.current = room;
     setLookupState(room);
   }, []);
-  const roomRead = useConversation(lookup ?? undefined);
+  const malformed = lookup !== null && !namesARoom(lookup);
+  const roomRead = useConversation(lookup && !malformed ? lookup : undefined);
   const selectionKeyRef = useRef(0);
   const [collapsed, setCollapsed] = usePersistedState<boolean>(SIDEBAR_COLLAPSED_KEY, false, {
     syncTabs: false,
@@ -184,6 +193,9 @@ export function ConversationsScreen() {
     setLookup(null);
   }, [lookup, read, readProject, setLookup]);
 
+  // A room, or a state the addressed room's read left, carries the page's heading in the pane.
+  const paneHeads = Boolean(selection || orphan || (lookup && (malformed || roomRead.error || read)));
+
   const openRoomId = selection?.conversationId ?? null;
   const openArchived = selection?.archived === true;
   useEffect(() => {
@@ -243,7 +255,9 @@ export function ConversationsScreen() {
         className="flex flex-none items-center justify-between gap-3 border-b border-line px-4 py-3 md:hidden"
         {...STEPS_ASIDE}
       >
-        <PageTitle className="fg-h2">Conversations</PageTitle>
+        <PageTitle className="fg-h2" heads={!paneHeads}>
+          Conversations
+        </PageTitle>
         <IconButton
           icon="clock"
           aria-label="Conversation history"
@@ -267,6 +281,7 @@ export function ConversationsScreen() {
           ) : selection ? (
             <ConversationChat
               key={selection.key}
+              namesTab
               projectId={selection.projectId}
               conversationId={selection.conversationId ?? undefined}
               onConversationActive={(id) =>
@@ -280,6 +295,7 @@ export function ConversationsScreen() {
             />
           ) : lookup ? (
             <AddressedRoom
+              missing={malformed}
               error={roomRead.error}
               read={read !== undefined}
               startsNone={startsNone}
@@ -326,18 +342,21 @@ export function ConversationsScreen() {
 
 /** The room pane while that read is out, and what it said. */
 function AddressedRoom({
+  missing,
   error,
   read,
   startsNone,
   onRetry,
 }: {
+  /** The address cannot name a room at all. */
+  missing: boolean;
   error: unknown;
   read: boolean;
   startsNone: boolean;
   onRetry: () => void;
 }) {
   const pane = (state: ReactNode) => <div className="grid h-full place-items-center">{state}</div>;
-  if (notTheirs(error)) {
+  if (missing || notTheirs(error)) {
     return pane(
       <ErrorState
         level={1}

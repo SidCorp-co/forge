@@ -1,5 +1,6 @@
 import type { TestProject } from 'vitest/node';
 import { integrationWorkers, workerLine } from './integration-workers.js';
+import { resolveDbSource } from './schema-mode.js';
 import {
   freshTemplateName,
   mintRunToken,
@@ -82,8 +83,9 @@ function reportWorkers(project: TestProject): void {
 }
 
 export async function setup(project: TestProject): Promise<void> {
+  const source = resolveDbSource(process.env);
   reportWorkers(project);
-  let adminUrl = process.env.TEST_DATABASE_URL;
+  let adminUrl = source.mode === 'schema' ? source.url : undefined;
   const { mode, rule } = resolveTemplateMode(process.env, Boolean(adminUrl));
 
   if (!adminUrl) {

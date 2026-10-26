@@ -13,7 +13,7 @@ import { PROJECTS_VIEW_KEY, ProjectsConsole } from "./projects-console";
 
 expect.extend(matchers);
 
-const state: { items: ProjectConsoleItem[] } = { items: [] };
+const state: { items: ProjectConsoleItem[]; failed: boolean } = { items: [], failed: false };
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: () => {}, replace: () => {} }),
   useSearchParams: () => new URLSearchParams(),
@@ -24,8 +24,8 @@ vi.mock("../hooks", () => ({
   useProjectsConsole: () => ({
     items: state.items,
     isLoading: false,
-    isError: false,
-    error: null,
+    isError: state.failed,
+    error: state.failed ? new Error("The server did not answer.") : null,
     healthRead: "read",
     projectsRead: "read",
     refetch: () => {},
@@ -43,6 +43,7 @@ const project = (name: string, over: Partial<ProjectConsoleItem> = {}): ProjectC
 });
 
 beforeEach(() => {
+  state.failed = false;
   state.items = [
     project("bravo", { lastActivityAt: "2026-10-03T00:00:00Z" }),
     project("alpha", { health: "idle", lastActivityAt: "2026-10-09T00:00:00Z" }),
@@ -340,5 +341,22 @@ describe("the view the console opens in", () => {
     expect(table()).toBeNull();
     expect(cardNames()).toHaveLength(3);
     vi.restoreAllMocks();
+  });
+});
+
+// ISS-1229 r46, judge-135: the Projects page's failed read was an h2 on a page with no h1, the tab "Forge".
+describe("the Projects page with nothing to list", () => {
+  it("heads the page with its failed read and names the tab", () => {
+    state.failed = true;
+    render(<ProjectsConsole />);
+    expect(screen.getByRole("heading", { level: 1, name: "Couldn't load projects" })).toBeInTheDocument();
+    expect(document.title).toBe("Couldn't load projects · Forge");
+  });
+
+  it("heads the page with its empty state and names the tab", () => {
+    state.items = [];
+    render(<ProjectsConsole />);
+    expect(screen.getByRole("heading", { level: 1, name: "No projects yet" })).toBeInTheDocument();
+    expect(document.title).toBe("No projects yet · Forge");
   });
 });

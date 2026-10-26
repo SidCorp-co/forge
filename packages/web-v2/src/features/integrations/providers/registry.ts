@@ -12,8 +12,13 @@ import { postman } from "./postman";
 import { rocketchat } from "./rocketchat";
 import { sentry } from "./sentry";
 
-/** A provider's setup on a project; `stage` is the deploy stage the drawer was opened at. */
-export type ProjectSection = ComponentType<{ projectId: string; stage?: DeployStage }>;
+/** A provider's setup on a project; `stage` is the deploy stage the drawer was opened at, and
+ *  `bindingId` the binding of the row that opened it, which the section reads and acts on. */
+export type ProjectSection = ComponentType<{
+  projectId: string;
+  stage?: DeployStage;
+  bindingId?: string;
+}>;
 export type ConnectionSection = ComponentType<{
   connection: { id: string; config: Record<string, unknown> };
   canManage: boolean;

@@ -61,17 +61,30 @@ import { bindingBadge } from "../../derive";
 import { connectionLabels, connectionName } from "../../connection-identity";
 import { connectionTargetFor } from "../registry";
 
-export function CoolifySection({ projectId, stage: openedAt }: { projectId: string; stage?: DeployStage }) {
+export function CoolifySection({
+  projectId,
+  stage: openedAt,
+  bindingId,
+}: {
+  projectId: string;
+  stage?: DeployStage;
+  bindingId?: string;
+}) {
   const [stage, setStage] = useState<DeployStage>(openedAt ?? "preview");
   const list = useIntegrationsList(projectId);
   const rows = useMemo(
     () => (list.data?.items ?? []).filter((i) => i.provider === "coolify"),
     [list.data],
   );
-  // Every coolify binding serving this stage — a stage may hold more than one
-  // and core never picks among them (ISS-1046 rule 3). This panel edits the
-  // first; the connection drawer lists them all.
-  const existing = useMemo(() => rows.find((i) => i.stages.includes(stage)), [rows, stage]);
+  // A stage may hold more than one binding and core never picks among them (ISS-1046 rule 3). The
+  // row that opened this drawer names its own, which it reads at every stage it serves (ISS-1421 r33);
+  // at a stage it does not serve, or with no row named, the switched-on binding serving that stage.
+  const existing = useMemo(() => {
+    const named = rows.find((i) => i.id === bindingId);
+    if (named?.stages.includes(stage)) return named;
+    const serving = rows.filter((i) => i.stages.includes(stage));
+    return serving.find((i) => i.bindingActive) ?? serving[0];
+  }, [rows, stage, bindingId]);
   const reachesLive = useMemo(() => bindingReachesLive(rows, existing), [rows, existing]);
 
   return (

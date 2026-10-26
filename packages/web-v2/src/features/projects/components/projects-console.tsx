@@ -154,6 +154,7 @@ export function ProjectsConsole() {
     <PageContainer>
       {isError ? (
         <ErrorState
+          level={1}
           title="Couldn't load projects"
           message={formatApiError(error)}
           onRetry={() => refetch()}
@@ -166,6 +167,7 @@ export function ProjectsConsole() {
         </div>
       ) : allItems.length === 0 ? (
         <EmptyState
+          level={1}
           title="No projects yet"
           message="Projects you own or are a member of will appear here."
           action={{ label: 'New project', onClick: onNewProject, icon: 'plus' }}

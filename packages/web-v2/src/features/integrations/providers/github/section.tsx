@@ -44,7 +44,7 @@ import {
 } from "../../components/integration-enabled-control";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 import { scopeLabel } from "../../components/status-pill";
-import { bindingInUse } from "../../derive";
+import { bindingForRow } from "../../derive";
 
 function submitManifest(start: GitHubConnectStart): void {
   const form = document.createElement("form");
@@ -597,13 +597,16 @@ function RemovedApp({
  * One App per organization, one binding per project. An existing App is offered
  * first; creating another is the deliberate path, not the default.
  */
-export function GitHubSection({ projectId }: { projectId: string }) {
+export function GitHubSection({ projectId, bindingId }: { projectId: string; bindingId?: string }) {
   const list = useIntegrationsList(projectId);
   const connections = useConnections();
   const [forceCreate, setForceCreate] = useState(false);
   const [changing, setChanging] = useState(false);
 
-  const binding = useMemo(() => bindingInUse(list.data?.items, "github"), [list.data]);
+  const binding = useMemo(
+    () => bindingForRow(list.data?.items, "github", bindingId),
+    [list.data, bindingId],
+  );
 
   // The App this project is offered is one the server would let it bind: managed by the caller
   // and, where an org owns it, owned by this project's own org. Offering any other would walk the

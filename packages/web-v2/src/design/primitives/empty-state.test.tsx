@@ -12,14 +12,19 @@ expect.extend(matchers);
 afterEach(cleanup);
 
 it("draws no icon on an action that names none", () => {
-  render(<EmptyState message="Nothing here." action={{ label: "Clear search" }} mascot={false} />);
+  render(<EmptyState title="No matches" message="Nothing here." action={{ label: "Clear search" }} mascot={false} />);
 
   expect(screen.getByRole("button", { name: "Clear search" }).querySelector("svg")).toBeNull();
 });
 
 it("draws the plus an action that creates something names", () => {
   render(
-    <EmptyState message="No issues yet." action={{ label: "New issue", icon: "plus" }} mascot={false} />,
+    <EmptyState
+      title="No issues yet"
+      message="File the first one."
+      action={{ label: "New issue", icon: "plus" }}
+      mascot={false}
+    />,
   );
 
   expect(
@@ -30,6 +35,7 @@ it("draws the plus an action that creates something names", () => {
 it("takes a message with inline markup", () => {
   render(
     <EmptyState
+      title="Issue not found"
       message={
         <>
           <code>ISS-9</code> is not here.
@@ -64,8 +70,14 @@ it("leaves the tab as the page named it where it sits inside a section", () => {
 });
 
 // ISS-1229 r45: a page made of one empty state is headed by its title, so it cannot be left out.
-it("refuses, by the type check, a page-level empty state with no title", () => {
+
+// ISS-1229 r45 refused a page-level state with no title; r46 refuses one anywhere. `typecheck:test` is the
+// proof: an `@ts-expect-error` that no longer meets an error is itself an error.
+it("is refused by the type check where it is given no title, at any level", () => {
   // @ts-expect-error a page-level state is headed by its title
   render(<EmptyState level={1} message="Nothing here." mascot={false} />);
-  expect(screen.queryByRole("heading")).toBeNull();
+  cleanup();
+  // @ts-expect-error every empty state says what is empty in its title
+  render(<EmptyState message="Pick an update to review it." mascot={false} />);
+  expect(screen.getByText("Pick an update to review it.")).toBeTruthy();
 });
