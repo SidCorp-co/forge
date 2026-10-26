@@ -1,9 +1,10 @@
+import { PROVIDER_LABELS } from "@forge/contracts/health-words";
 import type { ProviderModule } from "../registry";
 import { text } from "../config-read";
 
 export const postman: ProviderModule = {
   provider: "postman",
-  label: "Postman",
+  label: PROVIDER_LABELS.postman,
   icon: "command",
   secretField: "apiKey",
   secretPlaceholder: "PMAK-…",

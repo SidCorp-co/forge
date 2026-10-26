@@ -571,7 +571,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             'BAD_REQUEST: attributes is required for setAttributes — each entry is { key, value }, and the registered keys come back on action=get under `attributes`',
           );
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, issue.projectId);
+        await assertPrincipalIsWriter(principal, issue.projectId, 'set attributes on its issues');
         try {
           return await setIssueAttributes(
             input.attributes.map((a) => ({
@@ -592,7 +592,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.data?.title)
           throw new Error('BAD_REQUEST: Give the new issue a title as `data.title`.');
         const projectId = await resolveProjectId(input, ctx);
-        await assertPrincipalIsWriter(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId, 'create an issue in it');
 
         let result: Awaited<ReturnType<typeof createIssue>>;
         try {
@@ -645,7 +645,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             throw new Error('BAD_REQUEST: Name the issue to update as `documentId`.');
           if (!input.data) throw new Error('BAD_REQUEST: Send the fields to write as `data`.');
           const issue = await loadIssue(await refs.issue('documentId', input.documentId));
-          await assertPrincipalIsWriter(principal, issue.projectId);
+          await assertPrincipalIsWriter(principal, issue.projectId, 'change its issues');
           return { issue, data: input.data };
         });
         let labelIds: ResolvedLabelAttach[] | undefined;
@@ -738,7 +738,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target)
           throw new Error('BAD_REQUEST: Name the status to move the issue to as `data.status`.');
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, issue.projectId);
+        await assertPrincipalIsWriter(principal, issue.projectId, 'move its issues');
         const { rewritten } = await transitionByData(issue, target, principal, input.data);
         const fresh = await loadIssue(issue.id);
         const transitionOutput: Record<string, unknown> = {
@@ -761,7 +761,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!ref) throw new Error('BAD_REQUEST: Name the issue as `data.issueId`.');
         const marking = input.action === 'mark_merged';
         const issue = await loadIssue(await refs.issue('data.issueId', ref));
-        await assertPrincipalIsWriter(principal, issue.projectId);
+        await assertPrincipalIsWriter(principal, issue.projectId, 'change its merged marks');
 
         try {
           const {

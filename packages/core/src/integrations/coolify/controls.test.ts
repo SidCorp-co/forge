@@ -299,7 +299,7 @@ describe('resolveCoolifyTargets', () => {
 
     expect(err.name).toBe('CoolifyReadFailedError');
     expect(err.message).toBe(
-      'Forge could not reach the address saved on this connection to ask for its list of applications, because its host name does not resolve. Forge has no application list to read.',
+      'Forge could not reach the address saved on this connection to ask for its list of applications, because its host name does not resolve. Forge has no application list to read. Check the address saved on this connection.',
     );
   });
 });

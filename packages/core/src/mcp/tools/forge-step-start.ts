@@ -54,7 +54,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalIsWriter(ctx.principal, input.projectId);
+    await assertPrincipalIsWriter(ctx.principal, input.projectId, 'start a pipeline step on it');
 
     const issue: IssueRow = await loadIssue(input.issueId);
     if (issue.projectId !== input.projectId) {

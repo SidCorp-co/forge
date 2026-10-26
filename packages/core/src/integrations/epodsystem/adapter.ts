@@ -1,3 +1,4 @@
+import { PROVIDER_LABELS } from '@forge/contracts/health-words';
 import { redactedMessage } from '@forge/observability';
 import { logger } from '../../logger.js';
 import { findConnectionById, updateConnection } from '../store.js';
@@ -273,7 +274,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
     hint: 'Read store + theme context via `forge_storefront_target` and customize the storefront via the `mcp__epodsystem__*` shop tools. Always build on the DRAFT theme; publishing promotes draft to main.',
   },
   presentation: {
-    label: 'Epodsystem',
+    label: PROVIDER_LABELS.epodsystem,
     alwaysStageKeyed: false,
     cardMeta: (config) => {
       const cfg = config as { storeSlug?: string; storeName?: string };

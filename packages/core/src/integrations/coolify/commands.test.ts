@@ -30,6 +30,23 @@ vi.mock('../../pipeline/release-coolify.js', () => ({
 vi.mock('../../release-batch/service.js', () => ({
   isOpenReleaseBatchRun: (...a: unknown[]) => isOpenReleaseBatchRun(...(a as [])),
 }));
+const activeBindings = vi.fn(async () => [livePair] as unknown[]);
+const projectBindings = vi.fn(async () => [] as unknown[]);
+const livePair = {
+  binding: {
+    id: 'binding-1',
+    provider: 'coolify',
+    role: 'deploy',
+    active: true,
+    stages: ['preview'],
+  },
+  connection: { active: true, lastHealthStatus: null, breakerOpenedAt: null },
+};
+vi.mock('../store.js', () => ({
+  effectiveConfig: () => ({}),
+  listActiveDeployBindingsForProvider: (...a: unknown[]) => activeBindings(...(a as [])),
+  listBindingsForProject: (...a: unknown[]) => projectBindings(...(a as [])),
+}));
 vi.mock('../../release-batch/method.js', () => ({
   readRunMethod: (...a: unknown[]) => readRunMethod(...(a as [])),
 }));
@@ -42,6 +59,31 @@ const RUN_ID = '44444444-4444-4444-8444-444444444444';
 beforeEach(() => {
   vi.clearAllMocks();
   isOpenReleaseBatchRun.mockResolvedValue(true);
+  activeBindings.mockResolvedValue([livePair]);
+  projectBindings.mockResolvedValue([]);
+});
+
+// ISS-1421 r30, judge-122 on 316: a deploy on a project with no Coolify answered 200
+// {dispatched:false, reason:'no-integration'} while cancel and rollback there refused naming who
+// may connect one. A write that does nothing is refused by name, on every path.
+describe('runCoolifyDeploy on a project with no Coolify', () => {
+  const NONE =
+    "This project has no Coolify connected. Only an admin of this project can connect it, on the project's Integrations tab. Nothing was asked of Coolify.";
+
+  it.each([
+    ['no run or issue named', {}],
+    ['a release run', { pipelineRunId: RUN_ID }],
+    ['an issue', { issueId: '55555555-5555-4555-8555-555555555555' }],
+  ])('refuses one sent with %s, saying who may connect one', async (_, sent) => {
+    activeBindings.mockResolvedValue([]);
+    readRunMethod.mockResolvedValue({ skill: 'release-flow', loaded: true });
+
+    const out = runCoolifyDeploy({ projectId: PROJECT_ID, ...sent });
+
+    await expect(out).rejects.toBeInstanceOf(CoolifyCommandError);
+    await expect(out).rejects.toThrow(NONE);
+    expect(tryDispatchCoolifyRelease).not.toHaveBeenCalled();
+  });
 });
 
 describe('runCoolifyDeploy on a release run', () => {

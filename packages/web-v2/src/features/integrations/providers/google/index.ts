@@ -1,9 +1,10 @@
+import { PROVIDER_LABELS } from "@forge/contracts/health-words";
 import type { ProviderModule } from "../registry";
 import { text } from "../config-read";
 
 export const google: ProviderModule = {
   provider: "google",
-  label: "Google Sheets",
+  label: PROVIDER_LABELS.google,
   icon: "rows",
   secretField: "serviceAccountJson",
   secretPlaceholder: "the service-account JSON file, whole",

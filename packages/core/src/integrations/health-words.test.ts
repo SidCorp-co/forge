@@ -1,9 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('./registry.js', () => ({
-  getIntegration: (provider: string) =>
-    provider === 'postman' ? { presentation: { label: 'Postman' } } : undefined,
-}));
+import { describe, expect, it } from 'vitest';
 
 const { healthAnswer } = await import('./health-words.js');
 

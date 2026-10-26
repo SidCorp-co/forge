@@ -6,6 +6,8 @@ const { refuseByTier, refuseNewBinding } = await import('./binding-doors.js');
 const { agentAccessTier, noAgentPathMessage } = await import('./agent-access.js');
 const { getIntegration, listIntegrations } = await import('./registry.js');
 const { noKeyToSaveMessage } = await import('./provider-schemas.js');
+const { providerLabel } = await import('./health-words.js');
+const { PROVIDER_LABELS } = await import('@forge/contracts/health-words');
 
 type Role = 'admin' | 'member' | 'viewer';
 type OrgRole = 'owner' | 'admin' | 'member';
@@ -114,7 +116,26 @@ describe('refuseByTier — the acts a binding PATCH carries (ISS-1421 r28)', () 
       expect(said?.message).toBe(noAgentPathMessage(none));
       // ISS-1421 r29: it read "`rocketchat` declares no agent path … a provider core answers tools from".
       expect(said?.message).not.toMatch(/`|\bcore\b|agent path/);
-      expect(said?.message).toContain(getIntegration(none)?.presentation?.label ?? none);
+      expect(said?.message).toContain(providerLabel(none));
+    }
+  });
+
+  // ISS-1421 r30, judge-122 on 337: "No agent can use Agent: … never sends its credential to a
+  // runner box", for a provider the page labels "Agent release channel" and that keeps no key.
+  it('names a keyless provider as the page does, and no credential of it', () => {
+    expect(noAgentPathMessage('agent')).toBe(
+      'No agent can use Agent release channel: Forge gives agents no tools for it, so there is no agent access to grant on it.',
+    );
+    expect(noAgentPathMessage('rocketchat')).toBe(
+      'No agent can use Rocket.Chat: Forge gives agents no tools for it and never sends its credential to a runner box, so there is no agent access to grant on it.',
+    );
+  });
+
+  it('labels every provider, in its sentences and its declaration, as the page does (348)', () => {
+    for (const decl of listIntegrations()) {
+      const label = PROVIDER_LABELS[decl.provider as keyof typeof PROVIDER_LABELS];
+      expect(providerLabel(decl.provider), decl.provider).toBe(label);
+      if (decl.presentation) expect(decl.presentation.label, decl.provider).toBe(label);
     }
   });
 

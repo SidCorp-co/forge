@@ -45,7 +45,7 @@ jobRetryUserRoutes.post(
     if (!job)
       throw new HTTPException(404, { message: 'job not found', cause: { code: 'NOT_FOUND' } });
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'member', projectWriteRefusal(access.role));
+    assertProjectRole(access, 'member', projectWriteRefusal(access.role, 'retry this job'));
 
     const { reason } = await readReasonBody(c.req);
 

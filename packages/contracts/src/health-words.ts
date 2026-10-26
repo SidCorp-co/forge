@@ -1,5 +1,20 @@
-// A connection's last health check, said to a person; core's status rows and the web's connection
-// rows both read it here, so a check reads the same wherever it is shown (ISS-1421).
+// A connection's last health check and its provider's name, said to a person; core's sentences and
+// the web's rows both read them here, so neither reads differently wherever it is shown (ISS-1421).
+
+/**
+ * Each provider as the Integrations page labels it. Core's refusals and the web's registry both
+ * read this one map, so a sentence and the page cannot name a provider apart (ISS-1421 r30).
+ */
+export const PROVIDER_LABELS = {
+  coolify: 'Coolify',
+  postman: 'Postman',
+  epodsystem: 'Epodsystem',
+  sentry: 'Sentry',
+  rocketchat: 'Rocket.Chat',
+  github: 'GitHub',
+  google: 'Google Sheets',
+  agent: 'Agent release channel',
+} as const;
 
 const HEALTH_WORDS: Record<string, string> = {
   ok: 'The last check passed.',

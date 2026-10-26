@@ -48,8 +48,9 @@ import { DisconnectFromProject } from "../../components/disconnect-from-project"
 // Scopes a website build needs to publish themes + toggle commerce/cache.
 const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
 
-// Kebab-case label: starts with alphanumeric, followed by alphanumeric or dashes.
 const LABEL_REGEX = /^[a-z0-9][a-z0-9-]*$/;
+/** What `LABEL_REGEX` takes, in words a person reads. */
+const LABEL_RULE = "lowercase letters, numbers and dashes, starting with a letter or number";
 
 const ROLE_SELECT_OPTIONS: SelectOption[] = [
   { value: "service", label: "Service — a project-wide facility" },
@@ -99,12 +100,16 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
       </div>
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
-          Connect one or more Epodsystem storefronts to this project. Each
-          storefront needs its own{" "}
-          <span className="font-mono">crmk_</span> API key. The first
-          (unlabeled) connection is the default. Extra connections require a
-          unique kebab-case label (e.g.{" "}
-          <span className="font-mono">partner-a</span>).
+          {mayAdd ? "Connect one or more Epodsystem storefronts to this project." : "This project's Epodsystem storefronts."}{" "}
+          Each storefront has its own{" "}
+          <span className="font-mono">crmk_</span> API key, and the first
+          (unlabeled) one is the default.
+          {mayAdd && (
+            <>
+              {" "}Each one after it needs a label of its own, in {LABEL_RULE} (e.g.{" "}
+              <span className="font-mono">partner-a</span>).
+            </>
+          )}
         </p>
 
         {list.isLoading && (
@@ -347,7 +352,7 @@ function AddEpodsystemForm({
 
   const labelError =
     label && !LABEL_REGEX.test(label)
-      ? "Label must be kebab-case (lowercase letters, numbers, dashes; e.g. partner-a)"
+      ? `A label takes ${LABEL_RULE}, e.g. partner-a.`
       : null;
 
   const canSubmit =
@@ -409,7 +414,7 @@ function AddEpodsystemForm({
       {hasDefault && (
         <Field
           label="Label"
-          hint="Unique kebab-case name for this storefront (e.g. partner-a). Required for extra connections."
+          hint={`A name for this storefront no other one here has, in ${LABEL_RULE} (e.g. partner-a). Every storefront after the first needs one.`}
           required
         >
           <Input

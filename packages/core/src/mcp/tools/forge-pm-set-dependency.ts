@@ -29,7 +29,7 @@ export async function pmSetDependencyHandler(
   input: z.infer<typeof pmSetDependencyInputSchema>,
   opts?: { deferHealthPublish?: boolean },
 ) {
-  await assertPrincipalIsWriter(principal, input.projectId);
+  await assertPrincipalIsWriter(principal, input.projectId, 'set a dependency between its issues');
 
   try {
     return await setIssueDependency(

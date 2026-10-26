@@ -25,7 +25,7 @@ import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
 import { WHO_CHANGES } from '../binding-acts.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../deliveries.js';
-import { isRemovedConnection, offBindingWords } from '../held-key.js';
+import { isRemovedConnection, type OffPair, offBindingWords } from '../held-key.js';
 import { getIntegration } from '../registry.js';
 import {
   effectiveConfig,
@@ -120,19 +120,24 @@ export async function resolveIntegrationRow<T extends { id: string }>(
   const dead = input.integrationId
     ? bound.find((p) => p.binding.id === input.integrationId)
     : bound.find((p) => !(p.binding.active && p.connection.active));
-  if (dead) {
-    const why = await offBindingWords(dead, projectId);
-    const said = `This project's Coolify binding answers nothing: ${why} ${NOTHING_ASKED}`;
-    throw isRemovedConnection(dead.connection)
-      ? new CoolifyConnectionRemovedError(said)
-      : new CoolifyCommandError(said);
-  }
+  if (dead) throw await offBindingRefusal(dead, projectId);
   if (input.integrationId) {
     throw new CoolifyCommandError(
       `None of this project's Coolify bindings has the id that was named; the list of this project's Coolify bindings gives the ids it has. ${NOTHING_ASKED}`,
     );
   }
   return null;
+}
+
+/** A dead binding's refusal at every Coolify door, the application list included (ISS-1421 r30). */
+export async function offBindingRefusal(
+  dead: OffPair,
+  projectId: string,
+): Promise<CoolifyCommandError> {
+  const said = `This project's Coolify binding answers nothing: ${await offBindingWords(dead, projectId)} ${NOTHING_ASKED}`;
+  return isRemovedConnection(dead.connection)
+    ? new CoolifyConnectionRemovedError(said)
+    : new CoolifyCommandError(said);
 }
 
 /** The project's Coolify said absent: who may connect one, and where (ISS-1421 r29). */
@@ -183,6 +188,14 @@ export async function runCoolifyDeploy(input: {
   integrationId?: string | undefined;
 }) {
   const { projectId } = input;
+  const rows = await activeCoolifyIntegrations(projectId);
+  // Nothing to deploy to is refused by name on every path, and a named binding that answers
+  // nothing says why: a write that does nothing is never a 200 (ISS-1421 r30).
+  if (rows.length === 0 || input.integrationId) {
+    if (!(await resolveIntegrationRow(projectId, rows, input))) {
+      throw new CoolifyCommandError(NO_COOLIFY);
+    }
+  }
 
   if (input.pipelineRunId && !input.issueId) {
     if (!(await isOpenReleaseBatchRun(projectId, input.pipelineRunId))) {
@@ -235,19 +248,8 @@ export async function runCoolifyDeploy(input: {
     );
   }
 
-  const row = await resolveIntegrationRow(
-    projectId,
-    await activeCoolifyIntegrations(projectId),
-    input,
-  );
-  if (!row) {
-    return {
-      dispatched: false,
-      pendingHumanConfirm: false,
-      integrationIds: [],
-      reason: 'no-integration',
-    };
-  }
+  const row = await resolveIntegrationRow(projectId, rows, input);
+  if (!row) throw new CoolifyCommandError(NO_COOLIFY);
   return shape(await dispatchCoolifyDeployDirect({ projectId, integrationId: row.id }));
 }
 

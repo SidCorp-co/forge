@@ -1,9 +1,10 @@
+import { PROVIDER_LABELS } from "@forge/contracts/health-words";
 import type { ProviderModule } from "../registry";
 import { text } from "../config-read";
 
 export const epodsystem: ProviderModule = {
   provider: "epodsystem",
-  label: "Epodsystem",
+  label: PROVIDER_LABELS.epodsystem,
   icon: "command",
   secretField: "apiKey",
   secretPlaceholder: "crmk_…",

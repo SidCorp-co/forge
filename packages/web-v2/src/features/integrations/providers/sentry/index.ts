@@ -1,9 +1,10 @@
+import { PROVIDER_LABELS } from "@forge/contracts/health-words";
 import type { ProviderModule } from "../registry";
 import { text } from "../config-read";
 
 export const sentry: ProviderModule = {
   provider: "sentry",
-  label: "Sentry",
+  label: PROVIDER_LABELS.sentry,
   icon: "shield",
   secretField: "authToken",
   secretPlaceholder: "sntryu_…",

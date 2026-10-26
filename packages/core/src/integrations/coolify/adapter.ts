@@ -1,3 +1,4 @@
+import { PROVIDER_LABELS } from '@forge/contracts/health-words';
 import type { DeployStage } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
@@ -35,6 +36,7 @@ import { buildClient } from './log-fetch.js';
 import {
   COOLIFY_BINDING_CONFIG_KEYS,
   coolifyConfigSchema,
+  coolifyConnectionConfigSchema,
   coolifySecretsSchema,
 } from './schemas.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
@@ -457,7 +459,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     agentPath: { kind: 'core-mediated', tools: ['forge_coolify_deploy'] },
   },
   schemas: {
-    connectionConfig: coolifyConfigSchema,
+    connectionConfig: coolifyConnectionConfigSchema,
     connectionPatchConfig: coolifyConfigSchema.partial(),
     bindingConfig: coolifyConfigSchema,
     patchConfig: coolifyConfigSchema.partial(),
@@ -473,7 +475,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     guideSlug: 'deploy-safety',
   },
   presentation: {
-    label: 'Coolify',
+    label: PROVIDER_LABELS.coolify,
     // Coolify is stage-split by design, so even a single binding keys by stage.
     alwaysStageKeyed: true,
   },

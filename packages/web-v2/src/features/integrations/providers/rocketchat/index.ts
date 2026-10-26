@@ -1,9 +1,10 @@
+import { PROVIDER_LABELS } from "@forge/contracts/health-words";
 import type { ProviderModule } from "../registry";
 import { urlHost } from "../config-read";
 
 export const rocketchat: ProviderModule = {
   provider: "rocketchat",
-  label: "Rocket.Chat",
+  label: PROVIDER_LABELS.rocketchat,
   icon: "inbox",
   secretField: "authToken",
   secretPlaceholder: "bot personal-access token",

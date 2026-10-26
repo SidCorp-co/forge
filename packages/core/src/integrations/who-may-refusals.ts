@@ -1,6 +1,7 @@
 // Refusals naming what was refused and who may, each who read off `binding-acts.ts`.
 
 import { HTTPException } from 'hono/http-exception';
+import { refusedForRole, roleHeldWords } from '../lib/authz.js';
 import { UNNAMED_PERSON } from '../lib/person-name.js';
 import { type ProjectRole, WHO_CHANGES, WHO_GRANTS_A_BOX } from './binding-acts.js';
 import { providerLabel } from './health-words.js';
@@ -14,16 +15,10 @@ export const keyNotYours = (connection: { ownerType: 'user' | 'org' }) =>
     cause: { code: 'FORBIDDEN' },
   });
 
-const ROLE_HELD: Record<ProjectRole, string> = {
-  admin: 'an admin',
-  member: 'a member',
-  viewer: 'a viewer',
-};
-
 /** A binding-tier act, or any act on the project's integrations, from a reader who is not its admin. */
 export const notThisProjectsAdmin = (role: ProjectRole, act: string) =>
   new HTTPException(403, {
-    message: `You are ${ROLE_HELD[role]} of this project, so you cannot ${act}. Only ${WHO_CHANGES} can, so ask one of them.`,
+    message: refusedForRole(role, act, WHO_CHANGES),
     cause: { code: 'FORBIDDEN' },
   });
 
@@ -40,7 +35,7 @@ const noneOf = (acts: readonly string[]): string => acts.join(', nor ');
 /** Several refused acts at once, naming who may take every one (ISS-1421 r28, judge-114 on 308). */
 export const severalNotYours = (role: ProjectRole, acts: readonly string[], who: string) =>
   new HTTPException(403, {
-    message: `You are ${ROLE_HELD[role]} of this project, and you may not ${noneOf(acts)}. Only ${who} can do all of that, so ask one of them.`,
+    message: `${roleHeldWords(role)}, and you may not ${noneOf(acts)}. Only ${who} can do all of that, so ask one of them.`,
     cause: { code: 'FORBIDDEN' },
   });
 

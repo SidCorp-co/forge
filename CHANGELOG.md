@@ -16,7 +16,7 @@
 - **A stored test credential written as `&#64;` or split by markup is refused too.** It was stored because only the characters sent were matched; a comment is now matched as it reads, on the web and through the agent tool.
 - **A stored test credential hidden by an invisible character is refused too.** A status-change reason is now kept with the credential replaced, as its comment is, and values already stored in activity, transition logs and questions are replaced on deploy.
 - **Project listings no longer hand out a secret.** The project API key, which opened nothing since the widget was retired, is deleted on deploy; the webhook secret is still checked but never sent back.
-- **A viewer can no longer deploy, cancel or roll back a Coolify binding.** The web API let any project member through; it now asks for the member role, as the agent tool always did, and says which role was held.
+- **A viewer can no longer deploy, cancel or roll back a Coolify binding.** The web API let any project member through; it now asks for the member role, as the agent tool always did, and says what was refused and who may do it.
 - **Another person's comment cannot be rewritten by an agent, and a reply cannot hang under another issue.** Agents could edit any comment and name any parent; editing now needs the author or a project admin, as in the web.
 - **A viewer can no longer edit or delete a comment they wrote.** The web let the author through whatever their role, for instance after a demotion; it now asks for the member role, as the agent tool did.
 - **A step handoff cannot overwrite another project's issue, and a viewer cannot mark feedback reviewed through an agent tool.** Both are refused by name, and the other issue's handoff is left as it was.
@@ -3206,6 +3206,10 @@
 - **An issue of a project closed to you, opened under one you belong to, says so.** The page names the project it belongs to where you may see it, instead of "Not a project member.". (ISS-1229)
 - **A room reply of one bullet reads as its sentence**, and an agent answering "(nothing to add)" behind a list or quote mark posts nothing. (ISS-1229)
 - **A code block in a reply wraps inside the reply**, and a viewer's issue pages no longer ask for the release roster they cannot read. (ISS-1229)
+- **Every write a viewer is refused says what was refused and who may do it**: a Coolify deploy, a job retry, a dependency and every agent tool, where it named only roles. (ISS-1421)
+- **A Coolify deploy on a project with no Coolify is refused, saying who may connect one**, where it answered as done and did nothing. The application list over a switched-off connection says so and sends nothing, and when it cannot reach the server it names who may change the address. (ISS-1421)
+- **Each integration is named as the Integrations page names it**, in every refusal ("Agent release channel", "GitHub"). A GitHub App private key that is not a whole key is refused. (ISS-1421)
+- **A drawer says once who may change its integration**, the live approval gate names its connection instead of an id, and Epodsystem explains storefront labels in plain words to whoever may add one, and Rocket.Chat's personality example is in English. A Coolify connection no longer needs deploy targets of its own. (ISS-1421)
 - **Whoever an integration's refusal tells you to ask can do what you asked.** A change you may not make names who may make all of it, and Rocket.Chat, which agents cannot use, names nobody. (ISS-1421)
 - **An integration switched on for a project over a connection that is off says nothing uses it**, and a connection's own refusals say what you asked (test, rename, turn off, remove) and who to ask by name. (ISS-1421)
 - **A key sent to an integration that keeps none is refused**, where it was answered as saved and kept nowhere. (ISS-1421)

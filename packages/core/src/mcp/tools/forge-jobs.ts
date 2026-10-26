@@ -163,7 +163,7 @@ export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) 
     const { jobId, reason } = cancelInputSchema.parse(args);
     const job = await readJob(jobId);
     if (!job) throw new Error('NOT_FOUND: job not found');
-    await assertPrincipalIsWriter(principal, job.projectId);
+    await assertPrincipalIsWriter(principal, job.projectId, 'cancel its jobs');
 
     try {
       return await cancelJob(jobId, {
@@ -192,7 +192,7 @@ export const forgeJobsResumeTool: ContextScopedMcpToolFactory = ({ principal }) 
     const { jobId, reason } = cancelInputSchema.parse(args);
     const job = await readJob(jobId);
     if (!job) throw new Error('NOT_FOUND: job not found');
-    await assertPrincipalIsWriter(principal, job.projectId);
+    await assertPrincipalIsWriter(principal, job.projectId, 'resume its jobs');
 
     try {
       return await resumeHeldJob(jobId, {

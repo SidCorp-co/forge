@@ -5,6 +5,7 @@
  * field near it the provider takes, at create, at a PATCH and inside an array entry.
  */
 
+import { PROVIDER_LABELS } from '@forge/contracts/health-words';
 import { describe, expect, it } from 'vitest';
 import { refusalMessage } from '../lib/refusal-sentence.js';
 import { schemaRefusalWords } from '../lib/zod-sentences.js';
@@ -195,7 +196,58 @@ describe('a key sent to a provider that keeps none', () => {
 
   it('names the provider by its label and no field', () => {
     const said = noKeyToSaveMessage(keyless);
-    expect(said).toMatch(/^This is the \S+ integration, which keeps no key or secret/);
+    expect(said).toMatch(/^This is the .+ integration, which keeps no key or secret/);
+    expect(said).toContain(
+      `the ${PROVIDER_LABELS[keyless as keyof typeof PROVIDER_LABELS]} integration`,
+    );
     expect(said).not.toContain('secrets');
+  });
+});
+
+// ISS-1421 r30: a Coolify connection created on its own was refused without `targets`, which
+// belong to each project's binding (ISS-1275) and which a project create moves there.
+describe("a Coolify connection's own config", () => {
+  const conn = (config: Record<string, unknown>) =>
+    connectionCreateSchema.safeParse({
+      provider: 'coolify',
+      config,
+      secrets: { apiToken: 'a-coolify-token' },
+    });
+
+  it('is taken with its address alone', () => {
+    expect(conn({ baseUrl: 'https://coolify.example.com' }).success).toBe(true);
+  });
+
+  it('still takes targets for the projects that share it', () => {
+    expect(conn({ baseUrl: 'https://coolify.example.com', targets: [target] }).success).toBe(true);
+  });
+
+  it("still needs a project's binding to name its targets", () => {
+    const project = createSchema.safeParse({
+      provider: 'coolify',
+      role: 'deploy',
+      stages: ['live'],
+      config: { baseUrl: 'https://coolify.example.com' },
+      secrets: { apiToken: 'a-coolify-token' },
+    });
+    expect(project.success).toBe(false);
+  });
+});
+
+// ISS-1421 r30: a storefront label was refused "label must be kebab-case (a-z0-9-)".
+describe('a storefront label the create refuses', () => {
+  it('says what a label takes in words a person reads', () => {
+    const r = createSchema.safeParse({
+      provider: 'epodsystem',
+      role: 'service',
+      label: 'Partner A',
+      secrets: { apiKey: 'crmk_made_up_key_123' },
+    });
+    expect(r.success).toBe(false);
+    const said = r.success ? '' : r.error.issues.map((i) => i.message).join(' ');
+    expect(said).toContain(
+      'A label takes lowercase letters, numbers and dashes, starting with a letter or number, e.g. partner-a.',
+    );
+    expect(said).not.toMatch(/kebab/i);
   });
 });

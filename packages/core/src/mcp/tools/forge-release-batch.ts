@@ -223,7 +223,7 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId ?? null);
-    await assertPrincipalIsWriter(ctx.principal, projectId);
+    await assertPrincipalIsWriter(ctx.principal, projectId, 'record its release batch');
     assertCanRecord(ctx.principal);
     await assertRunOfProject(input.runId, projectId);
     return run(ctx.principal, input, projectId);

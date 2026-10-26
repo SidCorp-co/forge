@@ -46,7 +46,6 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { rocketchat } from "./index";
 import {
-  bindingLockedLine,
   bindsRemovedConnection,
   IntegrationEnabledControl,
   keyLockedLine,
@@ -128,7 +127,7 @@ function AnswerModePanel({ projectId }: { projectId: string }) {
 
 // The example is deliberately in the operator's own language — the knob exists
 // precisely to style the bot in whatever language the channel speaks.
-const STYLE_PLACEHOLDER = `e.g. "Xưng 'em', gọi user là 'anh'. Tone thân thiện. Khi phân tích alert luôn kết bằng đề xuất hành động."`; // i18n-allow: demonstrates styling in the user's language
+const STYLE_PLACEHOLDER = `e.g. "Address people by their first name and keep a friendly tone. When you read an alert, end with a suggested next step."`;
 
 function BotPersonalityPanel({ projectId }: { projectId: string }) {
   const projectQ = useProject(projectId);
@@ -378,11 +377,6 @@ function RocketchatBindingPanel({
 
       {keyLocked && (
         <p className="fg-body-sm text-muted">{keyLockedLine(binding.acts)}</p>
-      )}
-      {bindingLocked && (
-        <p className="fg-body-sm text-muted">
-          {bindingLockedLine(binding.acts)}
-        </p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">

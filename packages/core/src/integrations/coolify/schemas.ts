@@ -80,6 +80,12 @@ export const coolifyConfigSchema = z.strictObject({
   rollback: coolifyRollbackSchema,
 });
 
+/**
+ * A connection's own config: its address, and targets only as a default the projects sharing it
+ * inherit. Each project's binding names its own targets (ISS-1275), so a connection needs none.
+ */
+export const coolifyConnectionConfigSchema = coolifyConfigSchema.partial({ targets: true });
+
 export const coolifySecretsSchema = z.strictObject({
   apiToken: z.string().min(8).max(2000),
 });

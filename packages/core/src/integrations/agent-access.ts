@@ -1,4 +1,5 @@
 import { providerLabel } from './health-words.js';
+import { getIntegration } from './registry.js';
 import type { AgentPathKind, IntegrationDeclaration } from './types.js';
 
 export const AGENT_ACCESS_VALUES = ['none', 'all'] as const;
@@ -30,7 +31,9 @@ export function agentAccessTier(
 
 /** The sentence a caller gets for granting access on a provider no agent can reach, in a reader's words. */
 export function noAgentPathMessage(provider: string): string {
-  return `No agent can use ${providerLabel(provider)}: Forge gives agents no tools for it and never sends its credential to a runner box, so there is no agent access to grant on it.`;
+  const keyless = !getIntegration(provider)?.schemas.primaryCredentialField;
+  const credential = keyless ? '' : ' and never sends its credential to a runner box';
+  return `No agent can use ${providerLabel(provider)}: Forge gives agents no tools for it${credential}, so there is no agent access to grant on it.`;
 }
 
 /** The sentence an agent-facing tool gives for a binding nobody has granted. */

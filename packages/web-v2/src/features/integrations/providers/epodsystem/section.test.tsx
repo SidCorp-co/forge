@@ -109,3 +109,22 @@ describe("Epodsystem's Add storefront", () => {
     ).toBeInTheDocument();
   });
 });
+
+// ISS-1421 r30: the introduction told every reader about a "kebab-case" label, readers who cannot
+// add a storefront included, in a word that says nothing to a person.
+describe("Epodsystem's label rule", () => {
+  const RULE = /lowercase letters, numbers and dashes/;
+
+  it("is told, in plain words, to a reader who may add a storefront", () => {
+    render(<EpodsystemSection projectId={PROJECT} />);
+    expect(screen.getByText(RULE)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/kebab/i);
+  });
+
+  it("is not told to a reader who may not add one", () => {
+    listRead.answer = { ...listRead.answer, may: MEMBER_MAY };
+    render(<EpodsystemSection projectId={PROJECT} />);
+    expect(screen.queryByText(RULE)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/kebab/i);
+  });
+});

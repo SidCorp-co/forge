@@ -310,8 +310,8 @@ describe('refuses on every action', () => {
     for (const args of actions) {
       const answer = await call(token, { ...args, runId });
       expect(answer.isError, args.action).toBe(true);
-      expect(answer.text, args.action).toMatch(
-        /Requires the project member role or above to write; the role held is viewer/,
+      expect(answer.text, args.action).toContain(
+        'You are a viewer of this project, so you cannot record its release batch. Only a member or admin of this project can, so ask one of them.',
       );
     }
     expect((await fx.stored(a)).status).toBe('releasing');

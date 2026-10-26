@@ -163,7 +163,10 @@ export const createSchema = z
       .string()
       .min(1)
       .max(60)
-      .regex(/^[a-z0-9][a-z0-9-]*$/, 'label must be kebab-case (a-z0-9-)')
+      .regex(
+        /^[a-z0-9][a-z0-9-]*$/,
+        'A label takes lowercase letters, numbers and dashes, starting with a letter or number, e.g. partner-a.',
+      )
       .optional(),
     agentAccess: agentAccessField,
   })

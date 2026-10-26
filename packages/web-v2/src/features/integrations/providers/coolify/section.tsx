@@ -31,7 +31,6 @@ import {
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import {
-  bindingLockedLine,
   bindsRemovedConnection,
   IntegrationEnabledControl,
   keyLockedLine,
@@ -44,6 +43,7 @@ import { DisconnectFromProject } from "../../components/disconnect-from-project"
 import { STAGE_OPTIONS } from "../../components/status-pill";
 import {
   useConfirmProdDeploy,
+  useConnections,
   useCreateProviderIntegration,
   useIntegrationsList,
   useProjectIntegrationActs,
@@ -58,6 +58,8 @@ import type {
 } from "../../types";
 import type { CoolifyReadConfig } from "./config";
 import { bindingBadge } from "../../derive";
+import { connectionName } from "../../connection-identity";
+import { connectionTargetFor } from "../registry";
 
 export function CoolifySection({ projectId, stage: openedAt }: { projectId: string; stage?: DeployStage }) {
   const [stage, setStage] = useState<DeployStage>(openedAt ?? "preview");
@@ -297,7 +299,6 @@ function StagePanel({
         canEditTargets={!bindingLocked}
       />
       </fieldset>
-      {existing && bindingLocked && <p className="fg-body-sm text-muted">{bindingLockedLine(existing.acts)}</p>}
       {!existing && may && !may.connect && (
         <p className="fg-body-sm text-muted">{`${onlyWho(may.whoConnects)} can connect Coolify to this project.`}</p>
       )}
@@ -359,7 +360,7 @@ function StagePanel({
         <fieldset disabled={bindingLocked} className="contents">
           <ProdGateSection
             projectId={projectId}
-            integrationId={existing.id}
+            binding={existing}
             confirmPending={confirmProd.isPending}
             onConfirm={() => confirmProd.mutate(existing.id)}
           />
@@ -384,17 +385,31 @@ function StagePanel({
  * When pipeline control is disabled (FEATURE_OFF) the toggle is replaced by a
  * muted note and the manual gate stays in place — never a broken/dead control.
  */
+/**
+ * The connection a live gate deploys through, as the reader knows it: its name, else where it
+ * points. Never its id, which no reader can act on (ISS-1421 r30).
+ */
+function useGateConnection(binding: IntegrationSummary): string {
+  const connections = useConnections();
+  const own = connections.data?.items.find((c) => c.id === binding.connectionId);
+  const name = own ? connectionName(own) : null;
+  if (name) return `the connection ${name}`;
+  const target = connectionTargetFor("coolify", own?.config ?? binding.config);
+  return target ? `the connection at ${target}` : "this project's Coolify connection";
+}
+
 function ProdGateSection({
   projectId,
-  integrationId,
+  binding,
   confirmPending,
   onConfirm,
 }: {
   projectId: string;
-  integrationId: string;
+  binding: IntegrationSummary;
   confirmPending: boolean;
   onConfirm: () => void;
 }) {
+  const through = useGateConnection(binding);
   const cfgQ = usePipelineConfig(projectId);
   const update = useUpdatePipelineConfig(projectId);
   // The pipeline config's door needs an owner or admin of the organization (ISS-1421 r27).
@@ -459,14 +474,12 @@ function ProdGateSection({
               Auto-approve is enabled — live deploys dispatch automatically on
               release, like preview. No manual confirmation required.
             </span>
-            <span className="font-mono text-10 text-subtle">
-              integration: {integrationId}
-            </span>
+            <span className="fg-body-sm text-subtle">{`Through ${through}.`}</span>
           </div>
         </Banner>
       ) : (
         <ProdConfirmBanner
-          integrationId={integrationId}
+          through={through}
           pending={confirmPending}
           onConfirm={onConfirm}
         />
@@ -492,11 +505,11 @@ function DeployConfirmationHint() {
 }
 
 function ProdConfirmBanner({
-  integrationId,
+  through,
   pending,
   onConfirm,
 }: {
-  integrationId: string;
+  through: string;
   pending: boolean;
   onConfirm: () => void;
 }) {
@@ -511,9 +524,7 @@ function ProdConfirmBanner({
         <Button size="sm" loading={pending} onClick={onConfirm} className="self-start">
           Confirm live deploy
         </Button>
-        <span className="font-mono text-10 text-subtle">
-          integration: {integrationId}
-        </span>
+        <span className="fg-body-sm text-subtle">{`Through ${through}.`}</span>
       </div>
     </Banner>
   );

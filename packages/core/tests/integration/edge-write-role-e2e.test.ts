@@ -138,12 +138,13 @@ const doors: Record<string, Door> = {
 };
 
 describe.each(Object.entries(doors))('%s', (_name, write) => {
-  it('refuses a viewer by name, naming the role held and the role the write needs, and writes no edge', async () => {
+  it('refuses a viewer by name, naming the role held, the act and who may take it, and writes no edge', async () => {
     const [from, to] = [await issue(1), await issue(2)];
     const { refused } = await write(callers.viewer, from, to);
     expect(refused, 'a viewer must not be able to write an edge').toBeDefined();
-    expect(refused).toContain('role held is viewer');
-    expect(refused).toMatch(/requires the project member role/i);
+    // ISS-1421 r30: it named the roles alone, "requires the project member role … held is viewer".
+    expect(refused).toMatch(/You are a viewer of this project, so you cannot \w[^.]*\./);
+    expect(refused).toContain('Only a member or admin of this project can, so ask one of them.');
     expect(await edgeCount()).toBe(0);
   });
 

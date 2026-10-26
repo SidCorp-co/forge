@@ -114,7 +114,9 @@ describe('Coolify commands over REST', () => {
     expect(await res.json()).toEqual({ integrations: [] });
   });
 
-  it('reports nothing to deploy rather than failing, when no integration exists', async () => {
+  // ISS-1421 r30, judge-122 on 316: it answered 200 {dispatched:false, reason:'no-integration'},
+  // a write that did nothing, while cancel and rollback there refused naming who may connect one.
+  it('refuses a deploy on a project with no Coolify, saying who may connect one', async () => {
     const { project, token } = await seed();
     const res = await call(
       token,
@@ -123,8 +125,12 @@ describe('Coolify commands over REST', () => {
       {},
     );
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ dispatched: false, reason: 'no-integration' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      code: 'BAD_REQUEST',
+      message:
+        "This project has no Coolify connected. Only an admin of this project can connect it, on the project's Integrations tab. Nothing was asked of Coolify.",
+    });
   });
 
   it('refuses a project the token cannot see', async () => {

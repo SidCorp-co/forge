@@ -103,7 +103,7 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.data) throw new Error('BAD_REQUEST: data is required for ask');
         const data = input.data;
         const projectId = await loadIssueProjectId(data.issueId);
-        await assertPrincipalIsWriter(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId, 'ask a question on its issues');
         try {
           const asked = await askAs({
             userId: principal.userId,

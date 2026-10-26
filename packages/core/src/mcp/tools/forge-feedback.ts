@@ -251,7 +251,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
 
           const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-          await assertPrincipalIsWriter(principal, projectId);
+          await assertPrincipalIsWriter(principal, projectId, 'review its feedback');
           const updated = await stampReviewed(
             { projectIds: [projectId], signalKey: input.signalKey },
             { reviewed, linkedIssueId: await linkedIssue() },
@@ -272,7 +272,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         // member of project A can never stamp a report belonging to project
         // B by guessing its id.
         const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-        await assertPrincipalIsWriter(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId, 'review its feedback');
         if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
 
         const [updated] = await stampReviewed(

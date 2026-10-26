@@ -1,9 +1,10 @@
+import { PROVIDER_LABELS } from "@forge/contracts/health-words";
 import type { ProviderModule } from "../registry";
 import { text } from "../config-read";
 
 export const github: ProviderModule = {
   provider: "github",
-  label: "GitHub",
+  label: PROVIDER_LABELS.github,
   icon: "github",
   secretField: null,
   secretPlaceholder: null,

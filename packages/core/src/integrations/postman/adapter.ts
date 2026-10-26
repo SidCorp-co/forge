@@ -9,6 +9,7 @@
  * surfaces the authenticated user back to the config UI.
  */
 
+import { PROVIDER_LABELS } from '@forge/contracts/health-words';
 import { logger } from '../../logger.js';
 import { updateConnection } from '../store.js';
 import {
@@ -181,7 +182,7 @@ export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecre
       '`GET /api/projects/:projectId/integrations/postman-target`, then use the `mcp__postman__*` tools.',
   },
   presentation: {
-    label: 'Postman',
+    label: PROVIDER_LABELS.postman,
     alwaysStageKeyed: false,
     cardMeta: (config) => {
       const cfg = config as { region?: string; mode?: string };
