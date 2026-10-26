@@ -95,3 +95,88 @@ describe('the number a generated contract takes', () => {
     expect(measured).toBe(false);
   });
 });
+
+describe('the number a generated contract takes above the registry floor', () => {
+  const floored = (
+    next: string,
+    version: string,
+    floor: { version: string; text: string } | null,
+  ) => deriveVersion({ type: 'mcp-tools', base: { version, text: base }, next, floor });
+
+  it('passes a stale registered number the base never carried, by what the change since it owes', async () => {
+    const out = await floored(base, '1.0.0', {
+      version: '1.0.0',
+      text: doc(tool('a'), tool('b'), tool('z')),
+    });
+    expect(out).toMatchObject({
+      ok: true,
+      version: '2.0.0',
+      why: expect.stringContaining('after the registry floor 1.0.0'),
+    });
+    expect(out.ok && out.why).toContain('tool z was removed');
+  });
+
+  it('takes the next PATCH over a floor whose text is this one, never the floor number again', async () => {
+    expect(await floored(base, '1.0.0', { version: '1.0.0', text: base })).toMatchObject({
+      ok: true,
+      version: '1.0.1',
+      why: expect.stringContaining('unchanged since 1.0.0'),
+    });
+  });
+
+  it('takes a MINOR over the floor for an addition since it', async () => {
+    expect(
+      await floored(doc(tool('a'), tool('b'), tool('c')), '1.4.2', {
+        version: '1.4.2',
+        text: base,
+      }),
+    ).toMatchObject({ ok: true, version: '1.5.0' });
+  });
+
+  it('keeps the number from the base where it is already past the floor', async () => {
+    expect(
+      await floored(doc(tool('a'), tool('b'), tool('c')), '3.1.0', {
+        version: '1.0.0',
+        text: base,
+      }),
+    ).toEqual({ ok: true, version: '3.2.0', why: expect.stringContaining('after 3.1.0') });
+  });
+
+  it('measures nothing against a floor the base number is already a MAJOR past', async () => {
+    let measured = 0;
+    const out = await deriveVersion(
+      {
+        type: 'openapi',
+        base: { version: '2.0.0', text: '{"a":1}' },
+        next: '{"a":1}',
+        floor: { version: '1.0.0', text: '{"a":0}' },
+      },
+      async () => {
+        measured += 1;
+        return { tool: 'oasdiff', classification: 'breaking', changes: [] };
+      },
+    );
+    expect(out).toEqual({ ok: true, version: '2.0.0', why: 'unchanged' });
+    expect(measured).toBe(0);
+  });
+
+  it('is refused for a floor outside MAJOR.MINOR.PATCH, and for a change since it no differ measured', async () => {
+    expect(await floored(base, '1.0.0', { version: 'v1', text: base })).toMatchObject({
+      ok: false,
+      refusal: expect.stringContaining('registry floor is "v1"'),
+    });
+    const out = await deriveVersion(
+      {
+        type: 'openapi',
+        base: { version: '1.0.0', text: '{"a":1}' },
+        next: '{"a":1}',
+        floor: { version: '1.0.0', text: '{"a":0}' },
+      },
+      fixed({ tool: 'oasdiff', classification: 'unknown', changes: [unloadable] }),
+    );
+    expect(out).toMatchObject({
+      ok: false,
+      refusal: expect.stringContaining('failed to load base spec'),
+    });
+  });
+});

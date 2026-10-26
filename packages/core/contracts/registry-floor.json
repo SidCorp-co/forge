@@ -1,0 +1,13 @@
+{
+  "$comment": "The latest version the interface registry holds for each artifact, approved or not, and the commit it was uploaded from. The generator numbers each artifact strictly after it, by what the change since that commit owes (scripts/README.md, check-api-contracts). Raise an entry when the registry holds a number these files never carried.",
+  "forge-api.openapi.json": {
+    "contract": "forge-api",
+    "source": "9f932d61f390fa15b086ed67cb0a0ff408c1a9b6",
+    "version": "1.0.0"
+  },
+  "forge-mcp.tools.json": {
+    "contract": "forge-mcp",
+    "source": "9f932d61f390fa15b086ed67cb0a0ff408c1a9b6",
+    "version": "1.0.0"
+  }
+}
