@@ -89,7 +89,14 @@ describe('a log line, which is not JSON', () => {
   });
 
   it('loses a bare secret that only opens like an empty value', () => {
-    for (const value of ['null!hunter2', '[]hunter2', '{}x', 'truex', 'null\\hunter2', '[]\\hunter2']) {
+    for (const value of [
+      'null!hunter2',
+      '[]hunter2',
+      '{}x',
+      'truex',
+      'null\\hunter2',
+      '[]\\hunter2',
+    ]) {
       expect(scrubLogText(`password=${value} user=ana`)).toBe(`password=${FILTERED} user=ana`);
     }
   });
@@ -97,6 +104,8 @@ describe('a log line, which is not JSON', () => {
   it('loses a bare secret that opens with a closing bracket whole', () => {
     expect(scrubLogText('password=]hunter2 user=ana')).toBe(`password=${FILTERED} user=ana`);
     expect(scrubLogText('password=}x] user=ana')).toBe(`password=${FILTERED} user=ana`);
+    expect(scrubLogText('password=null]hunter2 user=ana')).toBe(`password=${FILTERED} user=ana`);
+    expect(scrubLogText('password=[x]]hunter2 user=ana')).toBe(`password=${FILTERED} user=ana`);
   });
 
   it('still loses a bare secret and keeps what follows', () => {
@@ -131,7 +140,10 @@ describe('a structured body', () => {
 
   it('censors an empty container that serializes as something else', () => {
     const shaped = Object.assign([], { toJSON: () => 'hunter2' });
-    const hidden = Object.defineProperty({}, 'toJSON', { value: () => 'hunter2', enumerable: false });
+    const hidden = Object.defineProperty({}, 'toJSON', {
+      value: () => 'hunter2',
+      enumerable: false,
+    });
     const body = { password: shaped, secret: hidden };
     scrubBodyKeys(body);
     expect(JSON.stringify(body)).toBe(`{"password":"${FILTERED}","secret":"${FILTERED}"}`);

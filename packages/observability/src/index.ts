@@ -268,9 +268,21 @@ function lineEnd(text: string, from: number): number {
 }
 
 const OPENING_QUOTE = /^(\\*)"/;
-// What may end a value: a space, a delimiter, or a backslash escaping a closing quote or line break.
-const VALUE_END = /^(?:$|[\s,}\]&"]|\\+(?:"|[nrt](?![A-Za-z0-9])))/;
-const KEPT_AS_IT_IS = /^(?:\[\s*\]|\{\s*\}|null|true|false)(?=$|[\s,}\]&"]|\\+(?:"|[nrt](?![A-Za-z0-9])))/;
+// What may end a value: a space, a delimiter, or a backslash escaping a closing quote or line break;
+// a closing bracket or brace only where JSON holds it, under a quoted name.
+const ESCAPED_END = String.raw`\\+(?:"|[nrt](?![A-Za-z0-9]))`;
+const ENDS = {
+  quoted: String.raw`$|[\s,}\]&"]|${ESCAPED_END}`,
+  unquoted: String.raw`$|[\s,&"]|${ESCAPED_END}`,
+};
+const VALUE_END = {
+  quoted: new RegExp(`^(?:${ENDS.quoted})`),
+  unquoted: new RegExp(`^(?:${ENDS.unquoted})`),
+};
+const KEPT_AS_IT_IS = {
+  quoted: new RegExp(String.raw`^(?:\[\s*\]|\{\s*\}|null|true|false)(?=${ENDS.quoted})`),
+  unquoted: new RegExp(String.raw`^(?:\[\s*\]|\{\s*\}|null|true|false)(?=${ENDS.unquoted})`),
+};
 // A backslash is the value's own, unless its run ends in a quote: that is the string around it closing.
 const BARE_VALUE = /^(?:[^\s",}\]&\\]|\\+(?!\\*"))+/;
 const BARE_UNQUOTED = /^(?:[^\s",&\\]|\\+(?!\\*"))+/;
@@ -289,6 +301,7 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
   for (let found = re.exec(text); found; found = re.exec(text)) {
     const at = found.index + found[0].length;
     const nameQuote = found[1] ?? '';
+    const context = nameQuote ? 'quoted' : 'unquoted';
     const marker = `${nameQuote}${FILTERED}${nameQuote}`;
     const rest = text.slice(at);
     const quoted = OPENING_QUOTE.exec(rest);
@@ -303,11 +316,11 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
     } else if (toLineEnd) {
       end = lineEnd(text, at);
       shown = FILTERED;
-    } else if (KEPT_AS_IT_IS.test(rest)) {
+    } else if (KEPT_AS_IT_IS[context].test(rest)) {
       continue;
     } else if (rest.startsWith('[') || rest.startsWith('{')) {
       end = closingBracket(text, at, Math.max(nameQuote.length - 1, 0));
-      if (!VALUE_END.test(text.slice(end, end + 8))) end = at + (/^\S+/.exec(rest)?.[0].length ?? 0);
+      if (!VALUE_END[context].test(text.slice(end, end + 8))) end = at + (/^\S+/.exec(rest)?.[0].length ?? 0);
       shown = marker;
     } else {
       const bare = (nameQuote ? BARE_VALUE : BARE_UNQUOTED).exec(rest);
