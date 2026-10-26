@@ -50,7 +50,7 @@ export const AGENT_CONFIG_DOORS: Record<AgentConfigKey, string> = {
  */
 export const RETIRED_AGENT_CONFIG_KEYS: Record<string, string> = {
   repoPath:
-    'agentConfig.repoPath decides nothing — the checkout a project names is the `projects.repo_path` column, which is what `forge_config` serves and what every reader in this tree reads. Two of the copies stored in this jsonb disagreed with their column. Set it with the `repoPath` field on `PATCH /api/projects/:id`, and remove repoPath from agentConfig.',
+    "agentConfig.repoPath decides nothing — a checkout belongs to the device that holds it, recorded on that device's runner binding by `forge-runner bind` or the project's Runners page, and the project's own `repoPath`, the `projects.repo_path` column, is only the path offered when a device is bound. Set that with the `repoPath` field on `PATCH /api/projects/:id`, and remove repoPath from agentConfig.",
   baseBranch:
     'agentConfig.baseBranch decides nothing — the branch work is cut from is the `projects.base_branch` column, read by `branches/resolve.ts:resolveIssueBranches`. It is not a release fact: where a release goes is `projects.release_chain`. One copy stored in this jsonb said `main` against a column of `release/stg`. Set it with the `baseBranch` field on `PATCH /api/projects/:id`, and remove baseBranch from agentConfig.',
   productionBranch:

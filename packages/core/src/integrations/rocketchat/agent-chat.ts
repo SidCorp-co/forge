@@ -28,7 +28,7 @@ export interface StartAgentChatArgs {
   conversationId: string;
   windowId: string;
   deliveryKey: string;
-  project: { id: string; slug: string; repoPath: string | null };
+  project: { id: string; slug: string };
   botName: string;
   message: string;
   askedByUsername?: string | undefined;

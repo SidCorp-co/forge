@@ -12,11 +12,12 @@
  * nothing behind for the release to undo.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, issues, jobs, projects, runners } from '../db/schema.js';
+import { devices, issues, jobs, projects } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
+import { readDeviceBinding } from '../lib/device-pool.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.js';
@@ -26,24 +27,6 @@ import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
 import { finalizeResumeForDevice, resolveResumePolicy } from './resume-policy.js';
 import { resolveStageOverrides, type StageOverrides } from './stage-overrides.js';
-
-/**
- * The runner row that will actually host this job, refused by name when absent.
- */
-export async function resolveRunnerForDevice(
-  projectId: string,
-  deviceId: string,
-): Promise<{ id: string; type: string }> {
-  const [runner] = await db
-    .select({ id: runners.id, type: runners.type })
-    .from(runners)
-    .where(and(eq(runners.projectId, projectId), eq(runners.deviceId, deviceId)))
-    .limit(1);
-  if (!runner) {
-    throw new Error(`prepare: device ${deviceId} has no runner bound to project ${projectId}`);
-  }
-  return runner;
-}
 
 export interface PreparedJob {
   jobId: string;
@@ -104,18 +87,6 @@ function buildOverridesPayload(o: StageOverrides): Record<string, unknown> {
   return out;
 }
 
-async function loadRepoPath(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ repoPath: projects.repoPath, agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!row) return null;
-  if (row.repoPath) return row.repoPath;
-  const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
-  return typeof ac.repoPath === 'string' ? ac.repoPath : null;
-}
-
 /**
  * Prepare a job a master has just claimed on `deviceId`.
  *
@@ -141,7 +112,7 @@ export async function prepareClaimedJob(args: {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
   if (!job) throw new Error(`prepare: job ${args.jobId} not found`);
 
-  const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
+  const binding = await readDeviceBinding(job.projectId, args.deviceId);
 
   const overrides = await resolveStageOverrides(job.projectId, job.payload);
   const proposedResume = await resolveResumePolicy({ job, overrides, agentConfig: undefined });
@@ -180,7 +151,7 @@ export async function prepareClaimedJob(args: {
       : resumedPromptString;
 
   const model = stageOverrides.model ?? job.modelTier ?? 'default';
-  const repoPath = await loadRepoPath(job.projectId);
+  const repoPath = binding.checkout;
 
   const [project, issueRow, issuePrefix] = await Promise.all([
     sessionSettingsOf(job.projectId),
@@ -200,7 +171,7 @@ export async function prepareClaimedJob(args: {
   });
 
   const agentSessionId = await ensureAgentSessionForJob(
-    { ...job, runnerId: runner.id, deviceId: args.deviceId },
+    { ...job, runnerId: binding.runnerId, deviceId: args.deviceId },
     { repoPath, resume: resume.record },
   );
   if (!agentSessionId) {
@@ -224,8 +195,8 @@ export async function prepareClaimedJob(args: {
     model,
     repoPath,
     priorClaudeSessionId: resume.priorClaudeSessionId ?? null,
-    runnerId: runner.id,
-    runnerType: runner.type,
+    runnerId: binding.runnerId,
+    runnerType: binding.runnerType,
     attempts: job.attempts,
     ...project.settings,
   };

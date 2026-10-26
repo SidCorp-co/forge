@@ -58,7 +58,7 @@ projectOnboardRoutes.post(
     assertProjectRole(access, 'admin', 'project admin required');
 
     const [project] = await db
-      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .select({ id: projects.id, slug: projects.slug })
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);
@@ -99,7 +99,6 @@ projectOnboardRoutes.post(
       projectId: project.id,
       userId,
       title: 'Build Project Brain',
-      repoPath: project.repoPath,
       metadata: { source: 'onboard' },
     });
 

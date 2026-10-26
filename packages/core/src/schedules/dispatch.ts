@@ -155,12 +155,11 @@ export async function dispatchScheduleRun(
   const userId = input.actorUserId ?? (await loadCreatedBy(resolvedProjectId, resolvedCreatedBy));
   if (!userId) return { ok: false, reason: 'project-not-found', status: 'skipped' };
 
-  // Look up project slug + repoPath in one shot for the WS payload.
+  // The slug rides the WS payload; the working directory is the picked device's own binding.
   const [project] = await db
     .select({
       id: projects.id,
       slug: projects.slug,
-      repoPath: projects.repoPath,
     })
     .from(projects)
     .where(eq(projects.id, resolvedProjectId))
@@ -224,7 +223,7 @@ export async function dispatchScheduleRun(
   try {
     inserted = await dispatchChatTurn({
       session,
-      project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
+      project: { id: project.id, slug: project.slug },
       client,
       message: effectivePrompt,
       // Parity with /start — web subscribers add the new session to their list.

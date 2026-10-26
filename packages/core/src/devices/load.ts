@@ -74,10 +74,10 @@ export async function readDeviceLoad(deviceId: string): Promise<DeviceLoad | nul
     LEFT JOIN (
       SELECT j.device_id,
              COUNT(*)::int AS n,
-             ARRAY_AGG(DISTINCT p.repo_path) FILTER (WHERE p.repo_path IS NOT NULL) AS repos
+             ARRAY_AGG(DISTINCT r.repo_path) FILTER (WHERE r.repo_path IS NOT NULL) AS repos
       FROM jobs j
       LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-      JOIN projects p ON p.id = j.project_id
+      LEFT JOIN runners r ON r.project_id = j.project_id AND r.device_id = j.device_id
       WHERE ${OCCUPYING}
       GROUP BY j.device_id
     ) l ON l.device_id = d.id

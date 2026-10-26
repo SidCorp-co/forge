@@ -28,7 +28,13 @@ import { logger } from '../logger.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { getStorage } from '../storage/index.js';
 import { persistSessionAttachment } from './attachment-service.js';
-import { createChatSessionRow, dispatchChatTurn, resolveChatDevice } from './chat-turn.js';
+import {
+  type ChatClient,
+  createChatSessionRow,
+  dispatchChatTurn,
+  resolveChatDevice,
+  unboundDeviceRefusal,
+} from './chat-turn.js';
 import { scheduleAck } from './conversation-agent-ack.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
@@ -56,7 +62,7 @@ export interface ConversationAgentTurnArgs {
   conversationId: string;
   windowId: string;
   deliveryKey: string;
-  project: { id: string; slug: string; repoPath: string | null };
+  project: { id: string; slug: string };
   /** The handle answering here — whose voice the code-authored sentences speak in. */
   handleName: string;
   /** Everything the window collected, as one body. */
@@ -81,6 +87,8 @@ export interface ConversationAgentTurnArgs {
 
 export type ConversationAgentTurnResult =
   | { started: true; sessionId: string }
+  /** The device picked has no runner bound to the project; `refusal` says which and how to bind it. */
+  | { started: false; reason: 'device-not-bound'; refusal: string }
   | {
       started: false;
       reason: 'deduped' | 'no-device' | 'dispatch-failed' | 'attachment-unreadable';
@@ -322,10 +330,17 @@ export async function startConversationAgentTurn(
     return { started: false, reason: 'deduped' };
   }
 
-  const client = await resolveChatDevice(
-    { projectId: args.venue.projectId, deviceId: null, metadata: null },
-    undefined,
-  );
+  let client: ChatClient;
+  try {
+    client = await resolveChatDevice(
+      { projectId: args.venue.projectId, deviceId: null, metadata: null },
+      undefined,
+    );
+  } catch (err) {
+    const refusal = unboundDeviceRefusal(err);
+    if (refusal === null) throw err;
+    return { started: false, reason: 'device-not-bound', refusal };
+  }
   if (!client.deviceId) return { started: false, reason: 'no-device' };
 
   const progress = await computeProjectProgress(args.venue.projectId);

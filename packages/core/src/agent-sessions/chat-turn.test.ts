@@ -29,23 +29,34 @@ vi.mock('../db/client.js', () => {
 
 const findAvailableDeviceForProject = vi.fn();
 const findChatCapableDeviceForProject = vi.fn();
-const resolveSessionRepoPathForDevice = vi.fn(
-  async (_projectId: string, _deviceId: string | null, projectRepoPath: string | null) =>
-    projectRepoPath ?? null,
-);
-vi.mock('../lib/device-pool.js', () => ({
-  findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
-  findChatCapableDeviceForProject: (
-    projectId: string,
-    deviceId: string,
-    opts?: { allowLimited?: boolean },
-  ) => findChatCapableDeviceForProject(projectId, deviceId, opts),
-  resolveSessionRepoPathForDevice: (
-    projectId: string,
-    deviceId: string | null,
-    repo: string | null,
-  ) => resolveSessionRepoPathForDevice(projectId, deviceId, repo),
-}));
+/** Each device's own binding of the project; a device absent here has no runner row there. */
+let bindings: Record<string, string | null> = {};
+const readDeviceBinding = vi.fn();
+vi.mock('../lib/device-pool.js', async () => {
+  const { DeviceNotBoundError } =
+    await vi.importActual<typeof import('../lib/device-pool.js')>('../lib/device-pool.js');
+  readDeviceBinding.mockImplementation(async (projectId: string, deviceId: string) => {
+    if (!(deviceId in bindings)) {
+      throw new DeviceNotBoundError({ deviceId, deviceName: null, projectId, projectSlug: null });
+    }
+    return {
+      runnerId: `runner-${deviceId}`,
+      runnerType: 'claude-code',
+      checkout: bindings[deviceId],
+    };
+  });
+  return {
+    DeviceNotBoundError,
+    findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
+    findChatCapableDeviceForProject: (
+      projectId: string,
+      deviceId: string,
+      opts?: { allowLimited?: boolean },
+    ) => findChatCapableDeviceForProject(projectId, deviceId, opts),
+    readDeviceBinding: (projectId: string, deviceId: string) =>
+      readDeviceBinding(projectId, deviceId),
+  };
+});
 
 vi.mock('../lib/chat-preamble.js', () => ({
   buildChatPreamble: vi.fn(async () => '[Preamble]\n'),
@@ -86,8 +97,10 @@ vi.mock('../pipeline/runs.js', () => ({
 
 const { resolveChatDevice, dispatchChatTurn } = await import('./chat-turn.js');
 
-const PROJECT = { id: 'proj-1', slug: 'apiflow', repoPath: '/repo' };
+const PROJECT = { id: 'proj-1', slug: 'apiflow' };
 const DEVICE = 'dev-1';
+const ON_DEV_1 = '/repo/on/dev-1';
+const ON_DEV_2 = '/repo/on/dev-2';
 
 function baseSession(over: Record<string, unknown> = {}) {
   return {
@@ -116,25 +129,26 @@ beforeEach(() => {
   updateReturning.mockReset();
   findAvailableDeviceForProject.mockReset();
   findChatCapableDeviceForProject.mockReset();
+  bindings = { [DEVICE]: ON_DEV_1, 'dev-2': ON_DEV_2 };
 });
 
 describe('resolveChatDevice', () => {
   it('desktop origin → local, no device', async () => {
     const r = await resolveChatDevice(baseSession(), 'desktop');
-    expect(r).toEqual({ deviceId: null, isLocal: true, migrated: false });
+    expect(r).toEqual({ deviceId: null, isLocal: true, migrated: false, checkout: null });
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
   });
 
   it('no pin → picks a fresh online runner (not a migration)', async () => {
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE);
     const r = await resolveChatDevice(baseSession(), undefined);
-    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false, checkout: ON_DEV_1 });
   });
 
   it('online pin → reuses it (no re-pick, no migration)', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'online' }]);
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false, checkout: ON_DEV_1 });
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
   });
 
@@ -142,7 +156,7 @@ describe('resolveChatDevice', () => {
     selectLimit.mockResolvedValueOnce([{ status: 'offline' }]);
     findAvailableDeviceForProject.mockResolvedValueOnce('dev-2');
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: true });
+    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: true, checkout: ON_DEV_2 });
   });
 
   it('offline pin but pool re-picks the SAME device → not a migration', async () => {
@@ -150,14 +164,14 @@ describe('resolveChatDevice', () => {
     selectLimit.mockResolvedValueOnce([{ status: 'offline' }]);
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE);
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false, checkout: ON_DEV_1 });
   });
 
   it('offline pin + empty pool → null (caller 409s)', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'offline' }]);
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: null, isLocal: false, migrated: false });
+    expect(r).toEqual({ deviceId: null, isLocal: false, migrated: false, checkout: null });
   });
 
   // --- explicit runner pick (RunnerPicker override) ---
@@ -165,7 +179,7 @@ describe('resolveChatDevice', () => {
   it('override on a pinless session → honours the pick, cold start (not a migration)', async () => {
     findChatCapableDeviceForProject.mockResolvedValueOnce('dev-2');
     const r = await resolveChatDevice(baseSession(), undefined, 'dev-2');
-    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: false });
+    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: false, checkout: ON_DEV_2 });
     // The pick short-circuits both the pin check and the auto-pick.
     expect(selectLimit).not.toHaveBeenCalled();
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
@@ -178,7 +192,7 @@ describe('resolveChatDevice', () => {
       undefined,
       'dev-2',
     );
-    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: true });
+    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: true, checkout: ON_DEV_2 });
   });
 
   it('override equal to the current pin → honoured, not a migration', async () => {
@@ -188,27 +202,28 @@ describe('resolveChatDevice', () => {
       undefined,
       DEVICE,
     );
-    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false, checkout: ON_DEV_1 });
   });
 
   it('override that is offline / not chat-capable → null (caller 409s "picked"), no silent fallback', async () => {
+    bindings['dev-offline'] = '/repo/on/dev-offline';
     findChatCapableDeviceForProject.mockResolvedValueOnce(null);
     const r = await resolveChatDevice(baseSession(), undefined, 'dev-offline');
-    expect(r).toEqual({ deviceId: null, isLocal: false, migrated: false });
+    expect(r).toEqual({ deviceId: null, isLocal: false, migrated: false, checkout: null });
     // Must NOT fall back to the auto-pick — the point of picking is honoured or refused.
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
   });
 
   it('desktop origin ignores an override (stays local)', async () => {
     const r = await resolveChatDevice(baseSession(), 'desktop', 'dev-2');
-    expect(r).toEqual({ deviceId: null, isLocal: true, migrated: false });
+    expect(r).toEqual({ deviceId: null, isLocal: true, migrated: false, checkout: null });
     expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();
   });
 
   it('pin with stale devices.status but still a live chat-capable runner → pin honoured, not stolen back', async () => {
     findChatCapableDeviceForProject.mockResolvedValueOnce(DEVICE);
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false, checkout: ON_DEV_1 });
     expect(selectLimit).not.toHaveBeenCalled();
     expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
   });
@@ -220,7 +235,7 @@ describe('resolveChatDevice', () => {
     );
     findAvailableDeviceForProject.mockResolvedValueOnce('dev-2');
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: true });
+    expect(r).toEqual({ deviceId: 'dev-2', isLocal: false, migrated: true, checkout: ON_DEV_2 });
     expect(selectLimit).not.toHaveBeenCalled();
   });
 
@@ -231,7 +246,7 @@ describe('resolveChatDevice', () => {
     );
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE);
     const r = await resolveChatDevice(baseSession({ metadata: { deviceId: DEVICE } }), undefined);
-    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false });
+    expect(r).toEqual({ deviceId: DEVICE, isLocal: false, migrated: false, checkout: ON_DEV_1 });
     expect(selectLimit).not.toHaveBeenCalled();
   });
 });
@@ -242,7 +257,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession(),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: 'hello',
     });
     const call = publishSpy.mock.calls.find(
@@ -266,7 +281,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession({ claudeSessionId: 'c-1', messages: [{ type: 'user', content: 'a' }] }),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: 'again',
     });
     const call = publishSpy.mock.calls.find(
@@ -298,7 +313,7 @@ describe('dispatchChatTurn', () => {
       }),
       project: PROJECT,
       // resolveChatDevice landed on a different live device → migration.
-      client: { deviceId: 'dev-2', isLocal: false, migrated: true },
+      client: { deviceId: 'dev-2', isLocal: false, migrated: true, checkout: ON_DEV_2 },
       message: 'and the dispatch loop?',
     });
     // A migration must NOT --resume on the new box: it cold-starts.
@@ -323,53 +338,6 @@ describe('dispatchChatTurn', () => {
     expect(updates.claudeSessionId).toBeNull();
   });
 
-  it("migration recomputes repoPath for the NEW device instead of reusing the old box's stale path (ISS-755 bug guard)", async () => {
-    updateReturning.mockResolvedValueOnce([
-      baseSession({ status: 'running', deviceId: 'dev-2', claudeSessionId: null }),
-    ]);
-    resolveSessionRepoPathForDevice.mockResolvedValueOnce('/repo/on/dev-2');
-    await dispatchChatTurn({
-      session: baseSession({
-        claudeSessionId: 'c-1',
-        deviceId: DEVICE,
-        metadata: { deviceId: DEVICE },
-        repoPath: '/repo/on/dev-1',
-        messages: [{ type: 'user', content: 'hi' }],
-      }),
-      project: PROJECT,
-      client: { deviceId: 'dev-2', isLocal: false, migrated: true },
-      message: 'again on the new box',
-    });
-    expect(resolveSessionRepoPathForDevice).toHaveBeenCalledWith(
-      PROJECT.id,
-      'dev-2',
-      PROJECT.repoPath,
-    );
-    const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
-    expect(updates.repoPath).toBe('/repo/on/dev-2');
-    expect(updates.repoPath).not.toBe('/repo/on/dev-1');
-  });
-
-  it('no device change + session.repoPath already set → NOT re-resolved (no extra query)', async () => {
-    updateReturning.mockResolvedValueOnce([
-      baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
-    ]);
-    await dispatchChatTurn({
-      session: baseSession({
-        claudeSessionId: 'c-1',
-        deviceId: DEVICE,
-        repoPath: '/repo/on/dev-1',
-        messages: [{ type: 'user', content: 'a' }],
-      }),
-      project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false, migrated: false },
-      message: 'again',
-    });
-    expect(resolveSessionRepoPathForDevice).not.toHaveBeenCalled();
-    const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
-    expect(updates.repoPath).toBe('/repo/on/dev-1');
-  });
-
   it('explicit re-pin already applied (migrated=false, no claudeSessionId, prior history) still cold-starts WITH rehydration', async () => {
     updateReturning.mockResolvedValueOnce([
       baseSession({ status: 'running', deviceId: 'dev-2', claudeSessionId: null }),
@@ -385,7 +353,7 @@ describe('dispatchChatTurn', () => {
         ],
       }),
       project: PROJECT,
-      client: { deviceId: 'dev-2', isLocal: false, migrated: false },
+      client: { deviceId: 'dev-2', isLocal: false, migrated: false, checkout: ON_DEV_2 },
       message: 'and the dispatch loop?',
     });
     const start = publishSpy.mock.calls.find(
@@ -404,7 +372,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession(),
       project: PROJECT,
-      client: { deviceId: null, isLocal: true },
+      client: { deviceId: null, isLocal: true, checkout: null },
       message: 'hi',
       origin: 'desktop',
     });
@@ -425,7 +393,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession(),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: 'hello',
     });
     expect(syncTurnsSpy).toHaveBeenCalledTimes(1);
@@ -448,7 +416,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession({ title: 'Chat' }),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: '  What files   are\nin this repo?  ',
     });
     const updates = updateSet.mock.calls[0]?.[0] as { title?: string };
@@ -466,7 +434,7 @@ describe('dispatchChatTurn', () => {
         messages: [{ type: 'user', content: 'first' }],
       }),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: 'second message',
     });
     const updates = updateSet.mock.calls[0]?.[0] as { title?: string };
@@ -478,7 +446,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession({ title: 'My important chat' }),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: 'hello there',
     });
     const updates = updateSet.mock.calls[0]?.[0] as { title?: string };
@@ -490,7 +458,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession({ title: 'Chat' }),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: 'What files are in this repo?',
     });
     expect(applyAutoTitleAsyncSpy).toHaveBeenCalledWith({
@@ -511,7 +479,7 @@ describe('dispatchChatTurn', () => {
         messages: [{ type: 'user', content: 'first' }],
       }),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: 'second message',
     });
     expect(applyAutoTitleAsyncSpy).not.toHaveBeenCalled();
@@ -522,7 +490,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession(),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: 'hello',
       skillName: 'forge-onboard',
     });
@@ -545,7 +513,7 @@ describe('dispatchChatTurn', () => {
       dispatchChatTurn({
         session: baseSession(),
         project: PROJECT,
-        client: { deviceId: DEVICE, isLocal: false },
+        client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
         message: 'hello',
         skillName: 'Not Valid!',
       }),
@@ -560,7 +528,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession({ claudeSessionId: 'c-1', messages: [{ type: 'user', content: 'a' }] }),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: 'again',
       skillName: 'forge-onboard',
     });
@@ -576,7 +544,7 @@ describe('dispatchChatTurn', () => {
     await dispatchChatTurn({
       session: baseSession({ title: 'Chat' }),
       project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false },
+      client: { deviceId: DEVICE, isLocal: false, checkout: ON_DEV_1 },
       message: "[RESULT_ERROR] success: You've hit a rate limit",
     });
     const updates = updateSet.mock.calls[0]?.[0] as { title?: string };

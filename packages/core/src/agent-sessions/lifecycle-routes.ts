@@ -12,7 +12,7 @@ import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
-  resolveSessionRepoPathForDevice,
+  readDeviceBinding,
 } from '../lib/device-pool.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
@@ -61,7 +61,6 @@ export async function loadProjectBySlug(slug: string) {
     .select({
       id: projects.id,
       slug: projects.slug,
-      repoPath: projects.repoPath,
       defaultDeviceId: projects.defaultDeviceId,
     })
     .from(projects)
@@ -102,6 +101,12 @@ agentSessionLifecycleRoutes.post(
       input.origin,
     );
     if (!client.isLocal && !client.deviceId) throw noClaudeClient('project');
+    if (!client.isLocal && input.repoPath != null) {
+      throw badRequest({
+        repoPath:
+          'names a checkout, which only a local client chooses: this session runs on a runner, and a runner works in the checkout its device is bound to. Leave repoPath out, or bind the device with `forge-runner bind <slug> --path <dir>`',
+      });
+    }
 
     const rawPrompt = input.prompt;
 
@@ -142,12 +147,12 @@ agentSessionLifecycleRoutes.post(
       projectId: project.id,
       userId,
       title,
-      repoPath: input.repoPath ?? null,
+      repoPath: client.isLocal ? (input.repoPath ?? null) : null,
       metadata: Object.keys(metadata).length ? metadata : null,
     });
     const updated = await dispatchChatTurn({
       session,
-      project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
+      project: { id: project.id, slug: project.slug },
       client,
       message: rawPrompt,
       origin: input.origin ?? null,
@@ -188,7 +193,7 @@ agentSessionLifecycleRoutes.post(
     }
 
     const [project] = await db
-      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .select({ id: projects.id, slug: projects.slug })
       .from(projects)
       .where(eq(projects.id, session.projectId))
       .limit(1);
@@ -339,32 +344,17 @@ agentSessionLifecycleRoutes.post(
 
     if (input.deviceId === pinned) return c.json(answer(sessionSchema, session));
 
-    const [project] = await db
-      .select({ id: projects.id, repoPath: projects.repoPath })
-      .from(projects)
-      .where(eq(projects.id, session.projectId))
-      .limit(1);
-    if (!project) throw notFound('project not found');
-
     let picked: string | null = null;
+    let repoPath: string | null = null;
     if (input.deviceId) {
+      // Bound first: a device the project never bound is refused as that, not as "offline".
+      repoPath = (await readDeviceBinding(session.projectId, input.deviceId)).checkout;
       picked = await findChatCapableDeviceForProject(session.projectId, input.deviceId);
       if (!picked) throw noClaudeClient('picked');
     }
 
     const nextMeta = { ...prevMeta };
     nextMeta.deviceId = picked ?? undefined;
-
-    const repoPath = picked
-      ? await resolveSessionRepoPathForDevice(session.projectId, picked, project.repoPath)
-      : null;
-    if (picked && !repoPath) {
-      throw new HTTPException(409, {
-        message:
-          'This runner has no project folder configured (no runner binding and no project default). Set a repo path for it, or pick a different runner, then try again.',
-        cause: { code: 'NO_REPO_PATH' },
-      });
-    }
 
     const [updated] = await db
       .update(agentSessions)

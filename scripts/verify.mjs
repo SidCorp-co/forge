@@ -207,6 +207,15 @@ const CHECKS = [
     scanned: /^merged-at-writers: (\d+) file\(s\) scanned/m,
   },
   {
+    axis: 'relations',
+    label: 'repo-path-readers',
+    layer: 'shared',
+    reads:
+      'every reader of projects.repoPath in core; a subset reports clean on a tree that is not',
+    cmd: ['node', 'scripts/check-repo-path-readers.mjs', '--all'],
+    scanned: /^repo-path-readers: (\d+) file\(s\) scanned/m,
+  },
+  {
     axis: 'form',
     label: 'lazy-module-init',
     layer: 'shared',
@@ -324,6 +333,7 @@ const CI_COVERAGE = {
   'node scripts/check-skill-frontmatter.mjs --all': 'verify',
   'node scripts/check-lazy-module-init.mjs --all': 'verify',
   'node scripts/check-merged-at-writers.mjs --all': 'verify',
+  'node scripts/check-repo-path-readers.mjs --all': 'verify',
   'node scripts/check-comment-budget.mjs --all': 'verify',
   'node scripts/check-migration-order.mjs': 'verify',
   'node scripts/conformance-status.mjs': 'verify',

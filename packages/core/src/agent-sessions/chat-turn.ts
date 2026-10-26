@@ -13,9 +13,10 @@ import {
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import {
+  DeviceNotBoundError,
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
-  resolveSessionRepoPathForDevice,
+  readDeviceBinding,
 } from '../lib/device-pool.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { isSlashCommandSkillName } from '../skills/skill-name.js';
@@ -92,6 +93,32 @@ export interface ChatClient {
    * lose, so it is a genuine cold start, not a migration).
    */
   migrated?: boolean;
+  /**
+   * The device's own checkout of the project, read from its binding as this client was resolved
+   * (ISS-1236). Null for a local client, for no client, and for a binding that records no path,
+   * where the device answers from its own configuration.
+   */
+  checkout: string | null;
+}
+
+/** The refusal a lane posts when `err` is a device the project never bound; null for any other. */
+export function unboundDeviceRefusal(err: unknown): string | null {
+  return err instanceof DeviceNotBoundError ? err.message : null;
+}
+
+const NO_CLIENT: ChatClient = { deviceId: null, isLocal: false, migrated: false, checkout: null };
+
+/**
+ * A client for a device the caller picked itself, refused `DEVICE_NOT_BOUND` when that device
+ * has no runner row for the project — before the caller has written anything.
+ */
+export async function remoteChatClient(
+  projectId: string,
+  deviceId: string,
+  migrated = false,
+): Promise<ChatClient> {
+  const { checkout } = await readDeviceBinding(projectId, deviceId);
+  return { deviceId, isLocal: false, migrated, checkout };
 }
 
 export async function resolveChatDevice(
@@ -99,19 +126,22 @@ export async function resolveChatDevice(
   origin?: string | null,
   overrideDeviceId?: string | null,
 ): Promise<ChatClient> {
-  if (origin === 'desktop') return { deviceId: null, isLocal: true, migrated: false };
+  if (origin === 'desktop')
+    return { deviceId: null, isLocal: true, migrated: false, checkout: null };
   const pinned =
     ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
   if (overrideDeviceId) {
+    // An explicit pick of a device the project never bound is that, not "offline" (ISS-1236).
+    const { checkout } = await readDeviceBinding(session.projectId, overrideDeviceId);
     const picked = await findChatCapableDeviceForProject(session.projectId, overrideDeviceId, {
       allowLimited: true,
     });
-    if (!picked) return { deviceId: null, isLocal: false, migrated: false };
-    return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned };
+    if (!picked) return NO_CLIENT;
+    return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned, checkout };
   }
   if (pinned) {
     const capable = await findChatCapableDeviceForProject(session.projectId, pinned);
-    if (capable) return { deviceId: capable, isLocal: false, migrated: false };
+    if (capable) return remoteChatClient(session.projectId, capable);
     const liveButLimited = await findChatCapableDeviceForProject(session.projectId, pinned, {
       allowLimited: true,
     });
@@ -124,14 +154,14 @@ export async function resolveChatDevice(
       // A turned-off device is ignored even when online + pinned — fall through to
       // pick another available device (or report no client).
       if (dev?.status === 'online' && !dev.disabledAt)
-        return { deviceId: pinned, isLocal: false, migrated: false };
+        return remoteChatClient(session.projectId, pinned);
     }
   }
   const deviceId = await findAvailableDeviceForProject(session.projectId);
+  if (!deviceId) return NO_CLIENT;
   // Migration = we had a pin but could not honour it and landed on another live
   // device. A pinless session is a true cold start, not a migration.
-  const migrated = !!pinned && !!deviceId && deviceId !== pinned;
-  return { deviceId, isLocal: false, migrated };
+  return remoteChatClient(session.projectId, deviceId, !!pinned && deviceId !== pinned);
 }
 
 /**
@@ -228,8 +258,8 @@ export async function createChatSessionRow(args: CreateChatSessionArgs): Promise
 export interface DispatchChatTurnArgs {
   /** The current session row (may be an empty `idle` placeholder). */
   session: AgentSessionRow;
-  /** Loaded project — `slug` + `repoPath` feed the WS payload / cwd fallback. */
-  project: { id: string; slug: string; repoPath: string | null };
+  /** Loaded project — `slug` feeds the WS payload; the working directory is `client.checkout`. */
+  project: { id: string; slug: string };
   /** Client resolved by {@link resolveChatDevice}; caller has already 409'd / skipped on a null remote device. */
   client: ChatClient;
   /** Raw user text / prompt (NOT pre-decorated — this fn prepends [Context: …]). */
@@ -274,11 +304,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     ? `${formatPageContextLine(args.pageContext as PageContext)}\n${args.message}`
     : args.message;
 
-  const deviceChanged = !!deviceId && (migrated || deviceId !== (session.deviceId ?? null));
-  let repoPath = session.repoPath ?? null;
-  if (!repoPath || deviceChanged) {
-    repoPath = await resolveSessionRepoPathForDevice(project.id, deviceId, project.repoPath);
-  }
+  // A remote turn runs where its device is bound, read afresh by `resolveChatDevice` for every
+  // turn; only a local client keeps the path its caller gave the session.
+  const repoPath = isLocal ? (session.repoPath ?? null) : client.checkout;
 
   // ISS-499 — hydrate attachment refs (drops ids not belonging to this session)
   // BEFORE building the user message so they persist on the turn for re-render.

@@ -96,7 +96,6 @@ interface Seed {
   persona: string;
   conversationContext: string | null;
   agentConfig: unknown;
-  repoPath: string | null;
 }
 
 /**
@@ -122,7 +121,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         triggerText: subject.text,
       }),
       db
-        .select({ agentConfig: projects.agentConfig, repoPath: projects.repoPath })
+        .select({ agentConfig: projects.agentConfig })
         .from(projects)
         .where(eq(projects.id, route.projectId))
         .limit(1),
@@ -130,7 +129,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
     seed = {
       conversationContext,
       agentConfig: projectRow[0]?.agentConfig ?? null,
-      repoPath: projectRow[0]?.repoPath ?? null,
       persona: rocketChatPersona(route.projectName, subject.username, {
         projectSlug: route.projectSlug,
         webBaseUrl: args.webBaseUrl,
@@ -165,7 +163,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         conversationId: args.window.conversationId,
         windowId: args.window.windowId,
         deliveryKey: args.window.deliveryKey,
-        project: { ...project, repoPath: s.repoPath },
+        project,
         botName: bot.botName,
         message: subject.text,
         askedByUsername: subject.username,
@@ -185,6 +183,8 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
           message: codeAuthored(AGENT_CHAT_NO_DEVICE_REPLY(bot.botName)),
           screenReplaced: false,
         };
+      if (started.reason === 'device-not-bound')
+        return { send: true, message: codeAuthored(started.refusal), screenReplaced: false };
       return { send: false, reason: 'agent-chat-dispatch-failed' };
     },
 
@@ -224,10 +224,9 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       setPhase('escalate');
       if (args.beforeDivert && !(await args.beforeDivert()))
         return { send: false, reason: 'superseded-before-escalation' };
-      const s = await readSeed();
       const started = await startEscalation({
         projectId: route.projectId,
-        project: { ...project, repoPath: s.repoPath },
+        project,
         connectionId: args.connectionId,
         rid: subject.rid,
         tmid: subject.tmid,
@@ -255,6 +254,8 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
           message: codeAuthored(ESCALATION_NO_DEVICE_REPLY(bot.botName)),
           screenReplaced: true,
         };
+      if (started.reason === 'device-not-bound')
+        return { send: true, message: codeAuthored(started.refusal), screenReplaced: true };
       return { send: false, reason: 'escalation-dispatch-failed' };
     },
 

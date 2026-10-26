@@ -398,12 +398,21 @@ export const prepareJob = describeOperation({
   summary: 'Take a queued job for a master session and build its work, without starting it',
   description:
     'A refusal is a 200 with `ok: false` and a `reason`. The caller then owes `pool/start` or `pool/release`.',
-  responses: { 200: json(prepareResultSchema) },
+  responses: {
+    200: json(prepareResultSchema),
+    409: fail(
+      'DEVICE_NOT_BOUND',
+      'this device has no runner bound to the job project; the job is given back',
+    ),
+  },
 });
 
 export const startJob = describeOperation({
   summary: 'Hand a prepared job to the process now starting it',
-  responses: { 200: json(startResultSchema) },
+  responses: {
+    200: json(startResultSchema),
+    409: fail('DEVICE_NOT_BOUND', 'this device has no runner bound to the job project'),
+  },
 });
 
 export const releaseJob = describeOperation({

@@ -27,8 +27,8 @@ import {
   canNameItsAgent,
   type PreparedJob,
   prepareClaimedJob,
-  resolveRunnerForDevice,
 } from '../jobs/prepare-claimed-job.js';
+import { readDeviceBinding } from '../lib/device-pool.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -223,7 +223,7 @@ export async function startJobForMaster(args: {
     .where(and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)))
     .limit(1);
   if (!job) return { ok: false, reason: 'hold_lost' };
-  const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
+  const { runnerId } = await readDeviceBinding(job.projectId, args.deviceId);
 
   const stamped = await withKernelMarker(db, async (tx) =>
     tx
@@ -231,7 +231,7 @@ export async function startJobForMaster(args: {
       .set({
         status: 'dispatched',
         deviceId: args.deviceId,
-        runnerId: runner.id,
+        runnerId,
         dispatchedAt: new Date(),
         heldBy: null,
         heldAt: null,
