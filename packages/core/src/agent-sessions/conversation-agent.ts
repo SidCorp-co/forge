@@ -31,9 +31,9 @@ import { persistSessionAttachment } from './attachment-service.js';
 import {
   type ChatClient,
   createChatSessionRow,
+  DeviceNotBoundError,
   dispatchChatTurn,
   resolveChatDevice,
-  unboundDeviceRefusal,
 } from './chat-turn.js';
 import { scheduleAck } from './conversation-agent-ack.js';
 
@@ -88,7 +88,7 @@ export interface ConversationAgentTurnArgs {
 export type ConversationAgentTurnResult =
   | { started: true; sessionId: string }
   /** The device picked has no runner bound to the project; `refusal` says which and how to bind it. */
-  | { started: false; reason: 'device-not-bound'; refusal: string }
+  | { started: false; reason: 'device-not-bound'; refusal: string; deviceId: string }
   | {
       started: false;
       reason: 'deduped' | 'no-device' | 'dispatch-failed' | 'attachment-unreadable';
@@ -272,12 +272,31 @@ function turnState(
   return row.runtimeState ? 'running' : 'dispatched';
 }
 
+export type AgentDeviceAvailability =
+  | { available: true }
+  | { available: false; reason: string; unbound: DeviceNotBoundError | null };
+
+export const NO_RUNNER_PAIRED = 'this project has no runner paired';
+
 /**
- * Whether a box could take a turn for this project right now.
+ * Whether a box could take a turn for this project right now, answered as data: a read that asks
+ * is never refused for the box it would have picked. `unbound` carries the refusal a door that
+ * dispatches the turn throws instead.
  */
-export async function conversationAgentDeviceAvailable(projectId: string): Promise<boolean> {
-  const client = await resolveChatDevice({ projectId, deviceId: null, metadata: null }, undefined);
-  return Boolean(client.deviceId);
+export async function conversationAgentDeviceAvailable(
+  projectId: string,
+): Promise<AgentDeviceAvailability> {
+  try {
+    const client = await resolveChatDevice(
+      { projectId, deviceId: null, metadata: null },
+      undefined,
+    );
+    if (client.deviceId) return { available: true };
+    return { available: false, reason: NO_RUNNER_PAIRED, unbound: null };
+  } catch (err) {
+    if (!(err instanceof DeviceNotBoundError)) throw err;
+    return { available: false, reason: err.message, unbound: err };
+  }
 }
 
 /**
@@ -337,9 +356,13 @@ export async function startConversationAgentTurn(
       undefined,
     );
   } catch (err) {
-    const refusal = unboundDeviceRefusal(err);
-    if (refusal === null) throw err;
-    return { started: false, reason: 'device-not-bound', refusal };
+    if (!(err instanceof DeviceNotBoundError)) throw err;
+    return {
+      started: false,
+      reason: 'device-not-bound',
+      refusal: err.message,
+      deviceId: err.deviceId,
+    };
   }
   if (!client.deviceId) return { started: false, reason: 'no-device' };
 

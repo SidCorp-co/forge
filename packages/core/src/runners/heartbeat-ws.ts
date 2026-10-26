@@ -3,6 +3,7 @@ import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { runners, runnerTypes } from '../db/schema.js';
+import { ownerHoldsProject } from '../devices/bind-authority.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -62,6 +63,15 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     return;
   }
   const input = parsed.data;
+  // A device binds itself only where the account that paired it holds a place; any other project
+  // id would hand this box that project's jobs (ISS-1236 round 2).
+  if (!(await ownerHoldsProject(principal.ownerId, input.projectId))) {
+    logger.warn(
+      { deviceId: principal.deviceId, projectId: input.projectId, code: 'DEVICE_NOT_HELD' },
+      "runner:register refused: the device's owner is a member of neither the project nor its organization",
+    );
+    return;
+  }
   const [existing] = await db
     .select()
     .from(runners)

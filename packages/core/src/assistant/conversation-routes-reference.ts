@@ -294,6 +294,8 @@ export const sendToRoom = describeOperation({
       CONVERSATION_MODE_SETTLED:
         'the message names a mode and the room already answers in one, or another message settled it first',
       CONVERSATION_AGENT_NO_DEVICE: 'no paired device is free to take an Agent turn',
+      DEVICE_NOT_BOUND:
+        'the device that would take the Agent turn has no runner bound to the project, so no checkout of it to run in',
       CONVERSATION_ATTACHMENT_FOREIGN: 'an attachment id is not on this room',
       CONVERSATION_SHAPE_CONFLICT: "the room's shape changed between the check and the send",
       CONVERSATION_PROJECT_CONFLICT: "the room's project changed between the check and the send",

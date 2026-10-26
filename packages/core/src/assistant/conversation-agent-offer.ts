@@ -19,8 +19,8 @@ export async function agentModeOffer(
       reason: `a turn runs under exactly one project, and this room is about ${scope.length}`,
     };
   }
-  if (!(await conversationAgentDeviceAvailable(projectId))) {
-    return { available: false, reason: 'this project has no runner paired' };
-  }
-  return { available: true, reason: null };
+  const device = await conversationAgentDeviceAvailable(projectId);
+  return device.available
+    ? { available: true, reason: null }
+    : { available: false, reason: device.reason };
 }

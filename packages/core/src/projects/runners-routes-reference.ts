@@ -104,7 +104,11 @@ export const bindRunner = describeOperation({
   responses: {
     201: json(runnerBindingSchema, 'The runner binding'),
     400: REPO_PATH_REFUSED,
-    403: NEEDS_ADMIN,
+    403: fail({
+      FORBIDDEN: 'the caller is not a project admin',
+      DEVICE_NOT_HELD:
+        "the device's owner is a member of neither the project nor its organization, so nothing was bound",
+    }),
     404: fail({ NOT_FOUND: NO_PROJECT, DEVICE_NOT_FOUND: 'no device has this id' }),
     409: fail(
       'PROVISION_WORKSPACE_IN_USE',

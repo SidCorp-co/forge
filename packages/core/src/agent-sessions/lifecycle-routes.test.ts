@@ -324,27 +324,6 @@ describe('POST /api/agent-sessions/start', () => {
     expect(publishSpy).not.toHaveBeenCalled();
   });
 
-  it('400 naming repoPath when a session a runner takes is started with one, before any row (ISS-1236)', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: PROJECT_ID, slug: 'apiflow', ownerId: USER_ID, defaultDeviceId: null },
-    ]);
-    grantAccess('admin');
-    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
-
-    const res = await buildApp().fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hello', repoPath: '/elsewhere' }),
-      }),
-    );
-    expect(res.status).toBe(400);
-    expect(JSON.stringify(await res.json())).toContain('repoPath');
-    expect(dbInsert).not.toHaveBeenCalled();
-  });
-
   it.each(['qa', 'qa-reindex'])(
     'rejects retired typed session %s before a row is created',
     async (type) => {
@@ -396,6 +375,61 @@ describe('POST /api/agent-sessions/start', () => {
     expect(
       publishSpy.mock.calls.find(([_room, env]) => (env as any).event === 'agent:start'),
     ).toBeUndefined();
+  });
+});
+
+describe('POST /api/agent-sessions/start naming a checkout for a remote session', () => {
+  it('400 naming repoPath when a session a runner takes is started with one, before any row (ISS-1236)', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT_ID, slug: 'apiflow', ownerId: USER_ID, defaultDeviceId: null },
+    ]);
+    grantAccess('admin');
+    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
+
+    const res = await buildApp().fetch(
+      req('/api/agent-sessions/start', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hello', repoPath: '/elsewhere' }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    const said = JSON.stringify(await res.json());
+    expect(said).toContain('repoPath');
+    // The caller's device is bound: the sentence names where the session runs and how to move it,
+    // with the slug written out, and never asks a bound caller to bind (judge-126, criterion 10).
+    expect(said).toContain('the checkout its binding records, /repo/on/device');
+    expect(said).toContain("apiflow's Runners page");
+    expect(said).toContain('forge-runner bind apiflow --path <dir>');
+    expect(said).not.toContain('<slug>');
+    expect(said).not.toContain('or bind the device');
+    expect(dbInsert).not.toHaveBeenCalled();
+  });
+
+  it('400 naming the device-kept checkout when a bound device records no path (ISS-1236 round 2)', async () => {
+    bindings[DEVICE_ID] = null;
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT_ID, slug: 'apiflow', ownerId: USER_ID, defaultDeviceId: null },
+    ]);
+    grantAccess('admin');
+    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
+
+    const res = await buildApp().fetch(
+      req('/api/agent-sessions/start', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hello', repoPath: '/elsewhere' }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain(
+      'the checkout the device itself keeps for apiflow, since its binding records no path',
+    );
+    expect(dbInsert).not.toHaveBeenCalled();
   });
 });
 
@@ -638,8 +672,10 @@ describe('POST /api/agent-sessions/:id/runner', () => {
     const body = (await res.json()) as { code?: string; message?: string };
     expect(body.code).toBe('DEVICE_NOT_BOUND');
     expect(body.message).toContain(OTHER_DEVICE_ID);
-    expect(body.message).toContain('forge-runner bind apiflow --path <dir>');
-    expect(body.message).toContain("project's Runners page");
+    expect(body.message).toContain("apiflow's Runners page");
+    expect(body.message).toContain(
+      'once it is assigned, run `forge-runner bind apiflow --path <dir>` on that device',
+    );
     expect(findChatCapableDeviceForProject).not.toHaveBeenCalled();
     expect(updateSet).not.toHaveBeenCalled();
   });

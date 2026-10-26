@@ -6,9 +6,11 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
+import { assertDeviceBindable } from '../devices/bind-authority.js';
 import { liveMasterOf } from '../devices/master-owner.js';
 import { residentMasterSql } from '../devices/master-session.js';
 import { readRunnerPoolRead } from '../devices/pool-read-report.js';
+import { resolveDeviceUnbound } from '../devices/unbound-notice.js';
 import { refusedRepoPath, repoPathField } from '../lib/absolute-path.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -170,6 +172,7 @@ projectRunnerRoutes.post(
         cause: { code: 'DEVICE_NOT_FOUND' },
       });
     }
+    await assertDeviceBindable(deviceId, id);
 
     const status: 'online' | 'offline' =
       device.status === 'online' && device.lastSeenAt ? 'online' : 'offline';
@@ -247,6 +250,8 @@ projectRunnerRoutes.post(
       newStatus: runner.status,
       reason: 'bind',
     });
+
+    if (runner.deviceId) await resolveDeviceUnbound(runner.projectId, runner.deviceId);
 
     // Wake the device room so an online device pulls its queued provision now;
     // an offline device picks it up from the `queued` row on reconnect.

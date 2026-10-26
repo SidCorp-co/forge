@@ -56,6 +56,15 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
+const assertDeviceBindable = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock('../devices/bind-authority.js', () => ({
+  assertDeviceBindable: (...args: unknown[]) => assertDeviceBindable(...args),
+}));
+const resolveDeviceUnbound = vi.fn(async (..._args: unknown[]) => 0);
+vi.mock('../devices/unbound-notice.js', () => ({
+  resolveDeviceUnbound: (...args: unknown[]) => resolveDeviceUnbound(...args),
+}));
+
 const { projectRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');

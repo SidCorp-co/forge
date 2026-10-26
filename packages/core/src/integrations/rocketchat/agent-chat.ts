@@ -19,6 +19,9 @@ export const AGENT_CHAT_DEDUP_REPLY = (botName: string): string =>
 export const AGENT_CHAT_NO_DEVICE_REPLY = (botName: string): string =>
   `Xin lỗi, hiện không có runner nào sẵn sàng để ${botName} trả lời đầy đủ câu hỏi này — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
+export const AGENT_CHAT_UNBOUND_REPLY = (botName: string): string =>
+  `Xin lỗi, ${botName} chưa trả lời đầy đủ được câu hỏi này vì runner của dự án chưa được thiết lập xong — quản trị viên dự án đã được báo, bạn thử lại sau nhé.`; // i18n-allow: user-facing channel reply
+
 export const AGENT_CHAT_FALLBACK_REPLY = (botName: string): string =>
   `Xin lỗi, ${botName} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 

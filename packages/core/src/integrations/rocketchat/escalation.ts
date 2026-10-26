@@ -10,10 +10,10 @@ import {
   createChatSessionRow,
   dispatchChatTurn,
   resolveChatDevice,
-  unboundDeviceRefusal,
 } from '../../agent-sessions/chat-turn.js';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
+import { DeviceNotBoundError } from '../../lib/device-pool.js';
 import { applyKernelTransition } from '../../lifecycle/transition.js';
 import { logger } from '../../logger.js';
 import { hasInFlightRoomSession } from './room-delivery.js';
@@ -28,6 +28,9 @@ export const ESCALATION_DEDUP_REPLY = (botName: string): string =>
 
 export const ESCALATION_NO_DEVICE_REPLY = (botName: string): string =>
   `Xin lỗi, hiện không có runner nào sẵn sàng để ${botName} tìm hiểu sâu câu hỏi này — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
+
+export const ESCALATION_UNBOUND_REPLY = (botName: string): string =>
+  `Xin lỗi, ${botName} chưa tìm hiểu sâu được câu hỏi này vì runner của dự án chưa được thiết lập xong — quản trị viên dự án đã được báo, bạn thử lại sau nhé.`; // i18n-allow: user-facing channel reply
 
 export const ESCALATION_FALLBACK_REPLY = (botName: string): string =>
   `Xin lỗi, ${botName} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
@@ -48,7 +51,7 @@ export interface StartEscalationArgs {
 export type StartEscalationResult =
   | { started: true; sessionId: string }
   | { started: false; reason: 'deduped' | 'no-device' | 'dispatch-failed' }
-  | { started: false; reason: 'device-not-bound'; refusal: string };
+  | { started: false; reason: 'device-not-bound'; refusal: string; deviceId: string };
 
 // every frozen comment in this file is an `i18n-allow` lint pragma; deleting one to pay the drain would break the language gate instead of cleaning prose.
 export function hasInFlightEscalation(
@@ -87,9 +90,13 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
       undefined,
     );
   } catch (err) {
-    const refusal = unboundDeviceRefusal(err);
-    if (refusal === null) throw err;
-    return { started: false, reason: 'device-not-bound', refusal };
+    if (!(err instanceof DeviceNotBoundError)) throw err;
+    return {
+      started: false,
+      reason: 'device-not-bound',
+      refusal: err.message,
+      deviceId: err.deviceId,
+    };
   }
   if (!client.deviceId) {
     return { started: false, reason: 'no-device' };

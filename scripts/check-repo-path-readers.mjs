@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE = 'packages/core/src';
@@ -49,39 +50,6 @@ function die(message) {
   process.exit(2);
 }
 
-/** Blank every comment, keeping line breaks; a `//` or `/*` inside a string or template is text. */
-function stripComments(text) {
-  let out = '';
-  let quote = null;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (quote) {
-      out += c;
-      if (c === '\\') {
-        out += text[i + 1] ?? '';
-        i++;
-      } else if (c === quote) quote = null;
-      continue;
-    }
-    if (c === "'" || c === '"' || c === '`') {
-      quote = c;
-      out += c;
-      continue;
-    }
-    const close = text.startsWith('//', i) ? '\n' : text.startsWith('/*', i) ? '*/' : null;
-    if (!close) {
-      out += c;
-      continue;
-    }
-    const stop = text.indexOf(close, i + 2);
-    const to = stop === -1 ? text.length : close === '\n' ? stop : stop + 2;
-    out += text.slice(i, to).replace(/[^\n]/g, ' ');
-    i = to - 1;
-  }
-  return out;
-}
-
-const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 const SQL_WORDS = new Set([
   'on',
   'where',
@@ -92,26 +60,136 @@ const SQL_WORDS = new Set([
   'group',
   'order',
   'limit',
+  'set',
 ]);
 
-export function readsIn(rel, source) {
-  const text = stripComments(source);
-  const reads = [];
-  for (const hit of text.matchAll(/\bprojects\.(repoPath|repo_path)\b/g)) {
-    reads.push({ rel, line: lineOf(text, hit.index), how: `projects.${hit[1]}` });
+const NAMES_PROJECTS =
+  /\b(?:from|join|update|into)\s+"?projects"?(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?/gi;
+
+const isProjects = (node) => node && ts.isIdentifier(node) && node.text === 'projects';
+const calls = (node, names) =>
+  ts.isCallExpression(node) &&
+  ts.isPropertyAccessExpression(node.expression) &&
+  names.includes(node.expression.name.text);
+
+/** A drizzle chain under `node` that started from `update(projects)` or `insert(projects)`. */
+function writesProjects(node) {
+  for (let at = node; at; ) {
+    if (calls(at, ['update', 'insert'])) return isProjects(at.arguments[0]);
+    if (ts.isCallExpression(at) || ts.isPropertyAccessExpression(at)) at = at.expression;
+    else if (ts.isAwaitExpression(at) || ts.isParenthesizedExpression(at)) at = at.expression;
+    else return false;
   }
+  return false;
+}
+
+/**
+ * Whether this node hands the file every column of projects, `repoPath` among them: a whole-row
+ * select, the relational query, an argument-less `returning()` after a write, or the column map.
+ */
+function wholeRow(node) {
+  if (calls(node, ['from']) && isProjects(node.arguments[0])) {
+    const source = node.expression.expression;
+    return calls(source, ['select', 'selectDistinct']) && source.arguments.length === 0;
+  }
+  if (calls(node, ['findFirst', 'findMany'])) {
+    const table = node.expression.expression;
+    return (
+      ts.isPropertyAccessExpression(table) &&
+      table.name.text === 'projects' &&
+      ts.isPropertyAccessExpression(table.expression) &&
+      table.expression.name.text === 'query'
+    );
+  }
+  if (calls(node, ['returning']) && node.arguments.length === 0) {
+    return writesProjects(node.expression.expression);
+  }
+  return (
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'getTableColumns' &&
+    isProjects(node.arguments[0])
+  );
+}
+
+/** A string or template's own text at its own offset; a template's `${...}` is blanked. */
+function literalText(node, source) {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return { at: node.getStart(), body: source.slice(node.getStart(), node.end) };
+  }
+  if (!ts.isTemplateExpression(node)) return null;
+  const at = node.getStart();
+  let body = source.slice(at, node.end);
+  for (const span of node.templateSpans) {
+    const from = span.expression.getFullStart() - at;
+    const to = span.expression.end - at;
+    body = body.slice(0, from) + body.slice(from, to).replace(/[^\n]/g, ' ') + body.slice(to);
+  }
+  return { at, body };
+}
+
+/** The reads of projects' repo path in an SQL text, each at its offset in that text. */
+function sqlReads(body) {
+  const reads = [];
   const aliases = new Set();
-  for (const hit of text.matchAll(
-    /\b(?:from|join)\s+"?projects"?\s+(?:as\s+)?([a-z_][a-z0-9_]*)/gi,
-  )) {
-    if (!SQL_WORDS.has(hit[1].toLowerCase())) aliases.add(hit[1]);
+  let named = false;
+  for (const hit of body.matchAll(NAMES_PROJECTS)) {
+    named = true;
+    if (hit[1] && !SQL_WORDS.has(hit[1].toLowerCase())) aliases.add(hit[1]);
+  }
+  if (!named) return reads;
+  aliases.add('projects');
+  for (const hit of body.matchAll(/(?<![\w."])"?repo_path\b/g)) {
+    reads.push({ index: hit.index, how: 'repo_path (in SQL over projects)' });
+  }
+  // `SELECT *` takes projects' columns only where its own FROM clause, up to the next SELECT,
+  // names the table; `SELECT * FROM aged` over a CTE takes whatever the CTE chose.
+  for (const hit of body.matchAll(/\bselect\s+(?:distinct\s+)?\*(?:(?!\bselect\b)[\s\S])*/gi)) {
+    if (new RegExp(NAMES_PROJECTS.source, 'i').test(hit[0])) {
+      reads.push({ index: hit.index, how: 'a whole row of projects (SELECT *)' });
+    }
   }
   for (const alias of aliases) {
-    for (const hit of text.matchAll(new RegExp(`\\b${alias}\\.repo_path\\b`, 'g'))) {
-      reads.push({ rel, line: lineOf(text, hit.index), how: `${alias}.repo_path (projects)` });
+    for (const hit of body.matchAll(new RegExp(`\\b${alias}\\.repo_path\\b`, 'g'))) {
+      reads.push({
+        index: hit.index,
+        how: alias === 'projects' ? 'projects.repo_path' : `${alias}.repo_path (projects)`,
+      });
+    }
+    for (const hit of body.matchAll(new RegExp(`\\b${alias}\\.\\*`, 'g'))) {
+      reads.push({ index: hit.index, how: `a whole row of projects (${alias}.*)` });
     }
   }
   return reads;
+}
+
+/**
+ * Every read of `projects.repoPath` in one source file, parsed rather than pattern-matched so a
+ * comment, a regular expression or a string holding a quote cannot hide what follows it.
+ */
+export function readsIn(rel, source) {
+  const file = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const reads = [];
+  const at = (pos, how) =>
+    reads.push({ rel, line: file.getLineAndCharacterOfPosition(pos).line + 1, how, pos });
+  const visit = (node) => {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      isProjects(node.expression) &&
+      (node.name.text === 'repoPath' || node.name.text === 'repo_path')
+    ) {
+      at(node.getStart(), `projects.${node.name.text}`);
+    }
+    if (wholeRow(node)) {
+      const name = ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression);
+      at(name ? node.expression.name.getStart() : node.getStart(), 'a whole row of projects');
+    }
+    const literal = literalText(node, source);
+    if (literal) for (const r of sqlReads(literal.body)) at(literal.at + r.index, r.how);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return reads.sort((a, b) => a.pos - b.pos).map(({ pos: _pos, ...r }) => r);
 }
 
 function walk(rel, acc) {
