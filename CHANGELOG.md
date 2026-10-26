@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.332] - 2026-10-26
+
+Judge runs stop holding project scope; queued runs cannot file verdicts
+
+### Fixed
+
+- **A judge run neither holds nor waits on a scope, and a queued run writes no verdict.** Runs declared over landed work skip the scope hold; a verdict from an unadmitted session is refused `VERDICT_SESSION_NOT_ADMITTED`, naming what it waits behind.
+
 ## [0.4.0-dev.331] - 2026-10-26
 
 Runtime verdicts refused on projects with no production environment
