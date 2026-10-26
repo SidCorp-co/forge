@@ -20,7 +20,9 @@ import {
 import {
   issueScopeOf,
   mergedCommitShaSchema,
+  mergeIdentityOf,
   recordIssueMerge,
+  recordRefusedStamp,
   type TransitionActor,
 } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -38,17 +40,37 @@ const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
  * The stamp Forge's own merge writes, in the transaction that marks the projection row: the host's
  * landing commit, its time, the branch it landed on and the request's head with whether its tree is
  * the landing's, each read from the host. A later merge of another request delivering the issue
- * supersedes it (`recordIssueMerge`).
+ * supersedes it (`recordIssueMerge`). Taken only where the commit is the issue's landing
+ * (`issues/merge-identity.ts`); a refusal is recorded on the issue and answered beside the merge.
  */
 const stampKernelMerge =
-  (actor: OutboxActor): IssueMergeStamp =>
-  (tx, { issueId, commitSha, mergedAt, target, head }) =>
-    recordIssueMerge(tx, {
+  (actor: OutboxActor, projectId: string): IssueMergeStamp =>
+  async (tx, { pullRequestId, performed, issueId, commitSha, mergedAt, target, head }) => {
+    // only a merge Forge made now names its request; one the host reports already made may have
+    // landed through another request's commits, so the commit answers for it
+    const identity = await mergeIdentityOf({
+      projectId,
+      commitSha,
+      mergedRequestId: performed ? pullRequestId : null,
+    })(issueId);
+    if (!identity.holds) {
+      await recordRefusedStamp(tx, {
+        issueId,
+        actor,
+        commitSha,
+        target,
+        via: 'kernel',
+        refusal: identity,
+      });
+      return { wrote: false, refused: { code: identity.code, detail: identity.detail } };
+    }
+    return recordIssueMerge(tx, {
       issueId,
       actor,
       via: 'kernel',
       evidence: { kind: 'observed', commitSha, mergedAt, target, hostMerge: { head } },
     });
+  };
 
 /**
  * The release this merge was a step of, settled where it was the last. The merge has already
@@ -166,7 +188,7 @@ issueMergePullRequestRoutes.post(
           ...(expectedHeadSha ? { expectedHeadSha } : {}),
           ...(body.method ? { method: body.method } : {}),
         },
-        stampKernelMerge(actor),
+        stampKernelMerge(actor, issue.projectId),
       );
       if (!outcome) throw notFound('pull request not found');
       if (outcome.kind === 'refused') {
@@ -190,6 +212,8 @@ issueMergePullRequestRoutes.post(
         mergedAt: outcome.mergedAt.toISOString(),
         stamped: outcome.stamped,
         stampedIssues: outcome.stampedIssues,
+        refusedStamps: outcome.refusedStamps,
+        checks: outcome.checks,
         release,
         deliveryId: outcome.deliveryId,
       });

@@ -9,117 +9,46 @@
  *
  * NOTHING HERE MERGES. Merging is `POST /api/issues/:id/merge-pull-request`, where the operation that
  * merges also records the merge and the commit it landed at — one writer for one truth. No route here
- * closes a change request or deletes a branch either.
+ * deletes a branch either. Editing, closing and re-reading a change request, and a commit's or a
+ * branch's checks, are `source-projection-routes.ts`'s: each writes what the host answers onto
+ * Forge's projection, for a binding no webhook reaches.
  *
  * `:number` is the number the host shows: a pull request number on GitHub, a merge request IID (the
- * `!12`) on GitLab. Authorization is membership, raised to writer for the four routes that change
- * something on the host; every route but the binding list also asks the binding's `agent_access`.
+ * `!12`) on GitLab. Authorization is membership, raised to writer for every route that changes
+ * something on the host or on Forge's record of it, including which issues a change request
+ * delivers (`source-link-routes.ts`, ISS-705); every route but the binding list also asks the binding's `agent_access`.
  *
  * Registered ONTO `integrationsRoutes` for the reason coolify-routes.ts gives.
  */
 
-import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
-import type { Hono, MiddlewareHandler } from 'hono';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { noteReviewOnIssue } from '../comments/index.js';
 import { listIntegrations } from '../integrations/index.js';
 import {
   OpenedPullRequestIncomplete,
   projectOpenedPullRequest,
-  resolveSourceHost,
   type SourceHost,
-  SourceHostCallError,
-  SourceHostInputRefusal,
-  SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
 import { logger } from '../lib/logger.js';
-import { refuser } from '../lib/refusal.js';
-import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-
-const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
-
-const numberParamSchema = z.object({ number: z.coerce.number().int().positive() });
-
-const checkLogParamSchema = z.object({ checkRunId: z.coerce.number().int().positive() });
-
-/** `lines` is how many trailing lines to keep: rejected outside 1..1000, never clamped. */
-const checkLogQuerySchema = z
-  .object({ lines: z.coerce.number().int().min(1).max(1000).optional() })
-  .strict();
-
-const commentBodySchema = z.object({ body: z.string().min(1).max(60_000) }).strict();
-
-/** The branch carrying the change, and the branch it lands on. Push the branch with git first. */
-const openBodySchema = z
-  .object({
-    head: z.string().min(1).max(300),
-    base: z.string().min(1).max(300),
-    title: z.string().min(1).max(500),
-    body: z.string().min(1).max(60_000).optional(),
-    draft: z.boolean().optional(),
-  })
-  .strict();
-
-/** Host usernames, and GitHub team slugs: GitLab has no team reviewers and refuses them by name. */
-const reviewersBodySchema = z
-  .object({
-    reviewers: z.array(z.string().min(1).max(100)).min(1).max(25).optional(),
-    teamReviewers: z.array(z.string().min(1).max(100)).min(1).max(25).optional(),
-  })
-  .strict()
-  .refine((b) => b.reviewers || b.teamReviewers, {
-    message:
-      'name `reviewers` (host usernames) or `teamReviewers` (team slugs) — nobody is guessed',
-  });
-
-/** On GitLab APPROVE is an approval plus a note, COMMENT a note; REQUEST_CHANGES is refused by name. */
-const reviewBodySchema = z
-  .object({
-    verdict: z.enum(['APPROVE', 'REQUEST_CHANGES', 'COMMENT']),
-    body: z.string().min(1).max(60_000),
-  })
-  .strict();
-
-const can =
-  (level: 'project.read' | 'project.write'): MiddlewareHandler<{ Variables: AuthVars }> =>
-  async (c, next) => {
-    await requireCan(
-      actorFor(c.get('userId')),
-      level,
-      projectResource(c.req.param('projectId') ?? ''),
-    );
-    await next();
-  };
-
-/**
- * The project's source host for an agent, then the call. A binding that is missing, switched off,
- * on another host or not granted to agents is refused by name, and so is the host failing: a retry
- * of HOST_UNAVAILABLE may succeed.
- */
-async function onHost<T>(projectId: string, call: (host: SourceHost) => Promise<T>): Promise<T> {
-  try {
-    return await call(await resolveSourceHost(projectId, 'agent'));
-  } catch (err) {
-    if (err instanceof SourceHostUnavailable) {
-      throw refuse('SOURCE_HOST_UNAVAILABLE', `${err.message} (${err.reason})`);
-    }
-    if (err instanceof SourceHostInputRefusal)
-      throw refuse('SOURCE_HOST_INPUT_REFUSED', err.message);
-    if (err instanceof SourceHostCallError) {
-      const said = err.detail ? ` The host said: ${err.detail}` : '';
-      throw refuse('HOST_UNAVAILABLE', `${err.message}.${said}`);
-    }
-    throw err;
-  }
-}
-
-type Routes = Hono<{ Variables: AuthVars }>;
+import { can, onHost, type Routes } from './source-door.js';
+import { registerChangeRequestLinks } from './source-link-routes.js';
+import { registerSourceProjectionRoutes } from './source-projection-routes.js';
+import {
+  checkLogParamSchema,
+  checkLogQuerySchema,
+  commentBodySchema,
+  numberParamSchema,
+  openBodySchema,
+  reviewBodySchema,
+  reviewersBodySchema,
+} from './source-schemas.js';
 
 export function registerSourceRoutes(routes: Routes): void {
   registerSourceReads(routes);
   registerSourceWrites(routes);
+  registerSourceProjectionRoutes(routes);
+  registerChangeRequestLinks(routes);
 }
 
 function registerSourceReads(routes: Routes): void {

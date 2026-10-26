@@ -12,9 +12,11 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { users } from './schema-auth.js';
 import { issues } from './schema-issues.js';
 import { integrationBindings } from './schema-project-config.js';
 import { projects } from './schema-projects.js';
+import { actorAgencies } from './schema-vocabulary.js';
 
 export const pullRequestStates = ['open', 'closed', 'merged'] as const;
 export type PullRequestState = (typeof pullRequestStates)[number];
@@ -120,8 +122,10 @@ const LINKED_BY_CHK = sql`linked_by IN ('head-ref', 'description')`;
 
 /**
  * Every issue a change request delivers (REQ-63 BC-4): one row per issue its branch or its
- * description names, rewritten whole on each delivery, so a key taken out of the description
- * unlinks it. Merging the request stamps every issue linked here.
+ * description delivers, rewritten whole on each delivery, so a key taken out of the description
+ * unlinks it. Merging the request stamps every issue linked here. `position` is the order the request
+ * names them in, branch keys first; the first is its primary issue (ISS-705). An issue a person
+ * unlinked (`repoPullRequestIssueUnlinks`) is never written here until it is relinked.
  */
 export const repoPullRequestIssues = pgTable(
   'repo_pull_request_issues',
@@ -133,11 +137,58 @@ export const repoPullRequestIssues = pgTable(
       .notNull()
       .references(() => issues.id, { onDelete: 'cascade' }),
     linkedBy: text('linked_by', { enum: changeRequestLinkKinds }).notNull(),
+    position: integer('position').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     pk: primaryKey({ name: 'repo_pull_request_issues_pk', columns: [t.pullRequestId, t.issueId] }),
     issueIdx: index('repo_pull_request_issues_issue_idx').on(t.issueId),
     linkedByChk: check('repo_pull_request_issues_linked_by_chk', LINKED_BY_CHK),
+  }),
+);
+
+/**
+ * A person's unlink of one issue from one change request (ISS-705): kept apart from the links,
+ * which each delivery rewrites from the branch and the description, so the next delivery does not
+ * put a stray link back. It stands while `relinked_at` is null; a relink records itself on the same
+ * row and a later unlink clears it again. `linked_by` is the kind the link had, which a relink
+ * restores.
+ */
+export const repoPullRequestIssueUnlinks = pgTable(
+  'repo_pull_request_issue_unlinks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    pullRequestId: uuid('pull_request_id')
+      .notNull()
+      .references(() => repoPullRequests.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    linkedBy: text('linked_by', { enum: changeRequestLinkKinds }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    unlinkedAt: timestamp('unlinked_at', { withTimezone: true }).notNull(),
+    unlinkedBy: uuid('unlinked_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    unlinkedAgency: text('unlinked_agency', { enum: actorAgencies }).notNull(),
+    relinkedAt: timestamp('relinked_at', { withTimezone: true }),
+    relinkedBy: uuid('relinked_by').references(() => users.id, { onDelete: 'restrict' }),
+    relinkedAgency: text('relinked_agency', { enum: actorAgencies }),
+  },
+  (t) => ({
+    prIssueUq: uniqueIndex('repo_pull_request_issue_unlinks_pr_issue_uq').on(
+      t.pullRequestId,
+      t.issueId,
+    ),
+    issueIdx: index('repo_pull_request_issue_unlinks_issue_idx').on(t.issueId),
+    linkedByChk: check('repo_pull_request_issue_unlinks_linked_by_chk', LINKED_BY_CHK),
+    unlinkedAgencyChk: check(
+      'repo_pull_request_issue_unlinks_unlinked_agency_chk',
+      sql`unlinked_agency IN ('human', 'agent')`,
+    ),
+    relinkedAgencyChk: check(
+      'repo_pull_request_issue_unlinks_relinked_agency_chk',
+      sql`relinked_agency IS NULL OR relinked_agency IN ('human', 'agent')`,
+    ),
   }),
 );

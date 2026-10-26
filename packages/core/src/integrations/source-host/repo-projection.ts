@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
   type PullRequestState,
@@ -105,11 +105,34 @@ export async function openPullRequestsForIssue(issueId: string): Promise<string[
   return rows.map((r) => r.id);
 }
 
-/** Every issue the stored change request delivers (REQ-63 BC-4), by its row id. */
+/** Every issue the stored change request delivers (REQ-63 BC-4), by its row id, primary first. */
 export async function issuesOfPullRequest(pullRequestId: string): Promise<string[]> {
   const rows = await db
     .select({ issueId: repoPullRequestIssues.issueId })
     .from(repoPullRequestIssues)
-    .where(eq(repoPullRequestIssues.pullRequestId, pullRequestId));
+    .where(eq(repoPullRequestIssues.pullRequestId, pullRequestId))
+    .orderBy(asc(repoPullRequestIssues.position), asc(repoPullRequestIssues.issueId));
   return rows.map((r) => r.issueId);
+}
+
+/**
+ * The stored row numbered `number` on this binding and every issue it delivers, oldest link first;
+ * undefined where Forge holds no row for that number.
+ */
+export async function linkedIssuesOfNumber(
+  bindingId: string,
+  number: number,
+): Promise<{ id: string; issueIds: string[] } | undefined> {
+  const [row] = await db
+    .select({ id: repoPullRequests.id })
+    .from(repoPullRequests)
+    .where(and(eq(repoPullRequests.bindingId, bindingId), eq(repoPullRequests.number, number)))
+    .limit(1);
+  if (!row) return undefined;
+  const links = await db
+    .select({ issueId: repoPullRequestIssues.issueId })
+    .from(repoPullRequestIssues)
+    .where(eq(repoPullRequestIssues.pullRequestId, row.id))
+    .orderBy(asc(repoPullRequestIssues.position), asc(repoPullRequestIssues.issueId));
+  return { id: row.id, issueIds: links.map((l) => l.issueId) };
 }

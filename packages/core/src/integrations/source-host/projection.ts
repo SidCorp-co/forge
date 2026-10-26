@@ -17,6 +17,7 @@ import {
   type ProjectedCheckRun,
   type ProjectedReview,
   repoPullRequestIssues,
+  repoPullRequestIssueUnlinks,
   repoPullRequests,
 } from '../../db/schema-repo-projection.js';
 import { forgeReads } from '../index.js';
@@ -192,13 +193,35 @@ export async function applyPullRequestEvent(
 
 /**
  * The issues a change request delivers, rewritten whole from the delivery that just landed: a key
- * taken out of its description, or a branch renamed, unlinks the issue (REQ-63 BC-4).
+ * taken out of its description, or a branch renamed, unlinks the issue (REQ-63 BC-4). `links` come
+ * in the order the request names them and each keeps its place, so the first is its primary issue.
+ * An issue a person unlinked from this request stays off it (ISS-705).
  */
 async function writeIssueLinks(
   pullRequestId: string,
-  links: ReadonlyArray<{ issueId: string; linkedBy: 'head-ref' | 'description' }>,
+  named: ReadonlyArray<{ issueId: string; linkedBy: 'head-ref' | 'description' }>,
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    // the row lock an unlink takes too, so an unlink is never lost between this read and the write
+    await tx
+      .select({ id: repoPullRequests.id })
+      .from(repoPullRequests)
+      .where(eq(repoPullRequests.id, pullRequestId))
+      .for('update');
+    const unlinked = new Set(
+      (
+        await tx
+          .select({ issueId: repoPullRequestIssueUnlinks.issueId })
+          .from(repoPullRequestIssueUnlinks)
+          .where(
+            and(
+              eq(repoPullRequestIssueUnlinks.pullRequestId, pullRequestId),
+              isNull(repoPullRequestIssueUnlinks.relinkedAt),
+            ),
+          )
+      ).map((r) => r.issueId),
+    );
+    const links = named.filter((l) => !unlinked.has(l.issueId));
     const keep = links.map((l) => l.issueId);
     await tx
       .delete(repoPullRequestIssues)
@@ -213,10 +236,17 @@ async function writeIssueLinks(
     if (links.length === 0) return;
     await tx
       .insert(repoPullRequestIssues)
-      .values(links.map((l) => ({ pullRequestId, issueId: l.issueId, linkedBy: l.linkedBy })))
+      .values(
+        links.map((l, position) => ({
+          pullRequestId,
+          issueId: l.issueId,
+          linkedBy: l.linkedBy,
+          position,
+        })),
+      )
       .onConflictDoUpdate({
         target: [repoPullRequestIssues.pullRequestId, repoPullRequestIssues.issueId],
-        set: { linkedBy: sql`excluded.linked_by` },
+        set: { linkedBy: sql`excluded.linked_by`, position: sql`excluded.position` },
       });
   });
 }
@@ -291,6 +321,33 @@ export async function applyCheckRunEvent(
     });
   }
   return written;
+}
+
+/**
+ * Store the checks a host read answered for a row, folded one by one under the rule a `check_run`
+ * delivery is folded under (`foldCheckRun`), so a read and a webhook write one shape and the newer
+ * of the two wins either way. One transaction for the whole read. Answers whether a row was there.
+ */
+export async function storeHostChecks(
+  rowId: string,
+  checks: readonly ProjectedCheckRun[],
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ checks: repoPullRequests.checks, headSha: repoPullRequests.headSha })
+      .from(repoPullRequests)
+      .where(eq(repoPullRequests.id, rowId))
+      .for('update')
+      .limit(1);
+    if (!row) return false;
+    let next = row.checks ?? {};
+    for (const check of checks) next = foldCheckRun(next, check, row.headSha);
+    await tx
+      .update(repoPullRequests)
+      .set({ checks: next, updatedAt: new Date() })
+      .where(eq(repoPullRequests.id, rowId));
+    return true;
+  });
 }
 
 export async function applyReviewEvent(

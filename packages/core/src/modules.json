@@ -540,7 +540,7 @@
     "integrations/source-host": {
       "kind": "adapter",
       "context": "adapters",
-      "owns": ["repoPullRequests", "repoPullRequestIssues"],
+      "owns": ["repoPullRequests", "repoPullRequestIssues", "repoPullRequestIssueUnlinks"],
       "serves": [
         "github-merge-sequence#m-host-merge",
         "issue-delivery#github",

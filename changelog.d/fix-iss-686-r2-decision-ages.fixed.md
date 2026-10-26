@@ -1,1 +1,0 @@
-**Every unanswered decision is reminded on day 3 and gets a proposal on day 14.** A question on an issue or feedback item proposes its drop or its requirement's defer, and sign-offs and proposals now age too.

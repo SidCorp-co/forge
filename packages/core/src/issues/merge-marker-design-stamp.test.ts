@@ -17,14 +17,18 @@ const designOnly = {
 };
 let prior: Record<string, unknown> = designOnly;
 
-// Each awaited query on the transaction takes the next answer, in the order the mark makes them.
+// Each awaited query takes the next answer, in the order the mark makes them: the observed-merge
+// read before the transaction first, then the transaction's.
 const answers: unknown[][] = [];
 const chain: unknown = new Proxy(() => {}, {
   get: (_t, p) =>
     p === 'then' ? (res: (v: unknown) => void) => res(answers.shift() ?? []) : () => chain,
 });
 vi.mock('../db/client.js', () => ({
-  db: { transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(chain) },
+  db: {
+    select: () => chain,
+    transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(chain),
+  },
 }));
 vi.mock('../outbox/index.js', () => ({ emitEvent: async () => {}, emitEvents: async () => {} }));
 vi.mock('./read-service.js', () => ({ findIssueById: async () => prior }));
