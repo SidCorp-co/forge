@@ -12,6 +12,8 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /repo
 
 COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+# The patches package.json's patchedDependencies names; a frozen install refuses without them.
+COPY patches ./patches
 COPY packages ./packages
 
 # Install only web-v2's transitive deps (package name is "web-v2").

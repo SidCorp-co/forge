@@ -64,6 +64,8 @@ function buildDb() {
     max: 10,
     connection: {
       statement_timeout: env.DATABASE_STATEMENT_TIMEOUT_MS,
+      // A transaction this ends gets its later statements refused rather than the process
+      // crashed, by the root patches/postgres@3.4.9.patch until postgres ships the same refusal.
       idle_in_transaction_session_timeout: env.DATABASE_IDLE_IN_TX_TIMEOUT_MS,
     },
   });
