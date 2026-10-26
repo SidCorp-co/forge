@@ -1546,9 +1546,13 @@ describe('reapGuardDirs', () => {
 
 describe('the directories a run of the guard makes', () => {
   const REPO = resolve(import.meta.dirname, '..', '..');
-  const parent = join(tmpdir(), GUARD_DIRS);
   const root = mkdtempSync(join(tmpdir(), 'whole-tree-dirs-'));
   afterAll(() => rmSync(root, { recursive: true, force: true }));
+  // The nested runs' TMPDIR is this block's alone: every guard that starts reaps a dead worker's
+  // directory under its TMPDIR, so a sibling fork sharing ours could reap the one read below.
+  const ownTmp = join(root, 'tmp');
+  mkdirSync(ownTmp);
+  const parent = join(ownTmp, GUARD_DIRS);
   writeFileSync(
     join(root, 'vitest.config.mjs'),
     `export default { test: { globals: true, include: ['*.test.mjs'], setupFiles: [${JSON.stringify(join(REPO, 'scripts/lib/whole-tree-guard.mjs'))}] } };`,
@@ -1566,7 +1570,11 @@ describe('the directories a run of the guard makes', () => {
     const r = spawnSync(
       process.execPath,
       [join(REPO, 'node_modules/vitest/vitest.mjs'), 'run', '--root', root, ...files],
-      { cwd: root, encoding: 'utf8', env: { ...process.env, WT_DIRS: record, FORCE_COLOR: '0' } },
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: { ...process.env, TMPDIR: ownTmp, WT_DIRS: record, FORCE_COLOR: '0' },
+      },
     );
     writeFileSync(globalThis[Symbol.for('forge.whole-tree-guard')].log, '');
     return r;
