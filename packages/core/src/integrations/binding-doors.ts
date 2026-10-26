@@ -221,9 +221,11 @@ export function refuseNewBindingAsSent(
 ): void {
   const sent = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const provider = typeof sent.provider === 'string' ? sent.provider : '';
+  // A grant the provider cannot take is a field judged after the role, not before it.
+  const grantable = agentAccessTier(getIntegration(provider)) !== 'refused';
   refuseNewBinding(reader, provider, {
     act: 'connect an integration to it',
-    grants: getIntegration(provider) !== undefined && sent.agentAccess === 'all',
+    grants: grantable && sent.agentAccess === 'all',
     orgOwned: Boolean(sent.orgId),
   });
 }

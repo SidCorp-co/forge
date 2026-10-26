@@ -151,6 +151,10 @@ describe('a viewer refused a write, through REST', () => {
       sql`SELECT body FROM knowledge_entries WHERE project_id = ${projectId} AND slug = 'build'`,
     )) as unknown as Array<{ body: string }>;
     expect(k?.body).toBe('How it builds.');
+    const [c] = (await harness.db.execute(
+      sql`SELECT count(*)::int AS n FROM comments WHERE issue_id = ${issueId}`,
+    )) as unknown as Array<{ n: number }>;
+    expect(c?.n).toBe(0);
   });
 });
 
@@ -221,6 +225,17 @@ describe('a create refused by role before its fields are judged (criterion 354)'
     expect(answer.message).toBe(
       'You are a viewer of this project, so you cannot connect an integration to it. Only an admin of this project can, so ask one of them.',
     );
+  });
+
+  it('refuses it by role even where the body asks an agent grant the provider cannot take', async () => {
+    const answer = await send('viewer', 'POST', `/api/projects/${projectId}/integrations`, {
+      provider: 'rocketchat',
+      agentAccess: 'all',
+    });
+    expect([answer.status, answer.message]).toEqual([
+      403,
+      'You are a viewer of this project, so you cannot connect an integration to it. Only an admin of this project can, so ask one of them.',
+    ]);
   });
 
   it("refuses a plain org member's organization connection create by who may, whatever its fields hold", async () => {
