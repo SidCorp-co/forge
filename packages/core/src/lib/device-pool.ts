@@ -103,7 +103,10 @@ export async function findChatCapableDeviceForProject(
  */
 export class DeviceNotBoundError extends HTTPException {
   readonly deviceId: string;
+  /** Null where the device is not the project's own default, whose name is not this project's. */
+  readonly deviceName: string | null;
   readonly projectId: string;
+  readonly projectSlug: string | null;
 
   constructor(args: {
     deviceId: string;
@@ -128,7 +131,9 @@ export class DeviceNotBoundError extends HTTPException {
     });
     this.name = 'DeviceNotBoundError';
     this.deviceId = args.deviceId;
+    this.deviceName = args.deviceName;
     this.projectId = args.projectId;
+    this.projectSlug = args.projectSlug;
   }
 }
 

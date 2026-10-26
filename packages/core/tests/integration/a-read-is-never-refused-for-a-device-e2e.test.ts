@@ -114,11 +114,17 @@ describe('a read that asks whether a device is available is answered, never refu
     const room = await as(ownerId, `/api/conversations/${id}`);
     expect(room.status, await room.clone().text()).toBe(200);
     const { agentMode } = (await room.json()) as {
-      agentMode: { available: boolean; reason: string | null };
+      agentMode: { available: boolean; reason: string | null; unbound: unknown };
     };
     expect(agentMode.available).toBe(false);
     expect(agentMode.reason).toContain('judge-d1');
     expect(agentMode.reason).toContain('is not bound to project judge-p');
+    // The room's panel names the device and links the project's Runners page from these.
+    expect(agentMode.unbound).toEqual({
+      deviceId: defaultDeviceId,
+      deviceName: 'judge-d1',
+      projectSlug: 'judge-p',
+    });
 
     const offer = await as(ownerId, `/api/conversations/agent-mode?projectId=${projectId}`);
     expect(offer.status, await offer.clone().text()).toBe(200);

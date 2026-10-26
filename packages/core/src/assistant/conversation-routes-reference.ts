@@ -133,6 +133,17 @@ export const namedProjectSchema = z.object({ id: z.string(), name: z.string(), s
 export const agentModeOfferSchema = z.object({
   available: z.boolean(),
   reason: z.string().nullable(),
+  unbound: z
+    .object({
+      deviceId: z.string(),
+      deviceName: z.string().nullable(),
+      projectSlug: z.string().nullable(),
+    })
+    .nullable()
+    .optional()
+    .describe(
+      "The device the project would use, paired but not assigned to it, so a person can be shown where to assign it. A room's own offer carries it; `GET /agent-mode` does not yet.",
+    ),
 });
 
 /** A room as a list shows it: when it last moved, and every project it is about (ISS-1229 r33). */

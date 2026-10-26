@@ -140,6 +140,70 @@ describe("the blocked option", () => {
   });
 });
 
+// judge-128 at 9ec61fa: the device was paired already, so "Pair a runner" sent a
+// person to a page where it shows as paired and cannot be assigned, under a
+// sentence that said to assign it, with its raw id and literal backticks.
+describe("the blocked option, where the project's device is paired but not assigned", () => {
+  const UNBOUND: AgentModeOffer = {
+    available: false,
+    reason:
+      "Device studio-mac (5f0c1d2e-0000-4000-8000-000000000001) is not bound to project shop, so it has no checkout of it to run in. Assign the device on shop's Runners page, which binds it; to choose the folder it runs in, give the path there or, once it is assigned, run `forge-runner bind shop --path <dir>` on that device. Then try again.",
+    unbound: {
+      deviceId: "5f0c1d2e-0000-4000-8000-000000000001",
+      deviceName: "studio-mac",
+      projectSlug: "shop",
+    },
+  };
+  const openPanel = (offer: AgentModeOffer = UNBOUND) => {
+    renderControl({ offer });
+    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    return screen.getByTestId("mode-blocked-panel");
+  };
+
+  it("says what is missing: the device is not assigned to this project", () => {
+    const panel = openPanel();
+    expect(panel).toHaveTextContent("Agent needs this project's runner");
+    expect(panel).toHaveTextContent("studio-mac is paired but not assigned to shop");
+    expect(panel).not.toHaveTextContent("Agent needs a paired runner");
+  });
+
+  it("links to the project's own Runners page, where the device can be assigned", () => {
+    openPanel();
+    const link = screen.getByRole("link", { name: "Assign it on shop's Runners page" });
+    expect(link).toHaveAttribute("href", "/projects/shop/settings?tab=runners");
+    expect(screen.queryByRole("link", { name: "Pair a runner" })).not.toBeInTheDocument();
+  });
+
+  it("names the device as the Runners page does, never by its id", () => {
+    const panel = openPanel();
+    expect(panel).not.toHaveTextContent("5f0c1d2e-0000-4000-8000-000000000001");
+  });
+
+  it("shows the bind command as code, with no literal backticks", () => {
+    const panel = openPanel();
+    const command = panel.querySelector("code");
+    expect(command).toHaveTextContent("forge-runner bind shop --path <dir>");
+    expect(panel.textContent).not.toContain("`");
+  });
+
+  it("says which device without naming one the project does not hold as its default", () => {
+    const panel = openPanel({
+      ...UNBOUND,
+      unbound: { deviceId: "5f0c1d2e-0000-4000-8000-000000000001", deviceName: null, projectSlug: "shop" },
+    });
+    expect(panel).toHaveTextContent("The device this project picked is paired but not assigned to shop");
+    expect(panel).not.toHaveTextContent("5f0c1d2e");
+  });
+
+  it("puts the keyboard on the way out, and closes on Escape from it", () => {
+    openPanel();
+    const link = screen.getByRole("link", { name: "Assign it on shop's Runners page" });
+    expect(link).toHaveFocus();
+    fireEvent.keyDown(link, { key: "Escape" });
+    expect(screen.queryByTestId("mode-blocked-panel")).not.toBeInTheDocument();
+  });
+});
+
 describe("below 480 pixels of composer width", () => {
   it("becomes one button naming the mode the room is in", () => {
     renderControl({ narrow: true, value: "agent" });
