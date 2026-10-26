@@ -26,7 +26,7 @@ vi.mock('./create-service.js', async (importOriginal) => ({
 vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: async () => ({ role: 'member' }),
-  assertProjectRole: () => undefined,
+  assertRoleFor: () => undefined,
 }));
 
 const { issueProjectRoutes } = await import('./routes.js');

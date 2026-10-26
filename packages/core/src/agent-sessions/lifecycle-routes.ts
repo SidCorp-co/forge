@@ -8,7 +8,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, devices, issues, projects, runners, schedules } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
@@ -94,7 +94,7 @@ agentSessionLifecycleRoutes.post(
     if (!project) throw notFound('project not found');
 
     const access = await loadProjectAccess(project.id, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'start a session in it');
 
     const client = await resolveChatDevice(
       { projectId: project.id, deviceId: null, metadata: null },
@@ -181,7 +181,11 @@ agentSessionLifecycleRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
+    const { session } = await ensureSessionOwnerOrAdmin(
+      input.sessionId,
+      userId,
+      'send to its sessions',
+    );
 
     // Resolve the client through the SHARED path: honour an explicit runner pick
     // (input.deviceId) when present, else reuse the session's pinned device,
@@ -226,7 +230,11 @@ agentSessionLifecycleRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
+    const { session } = await ensureSessionOwnerOrAdmin(
+      input.sessionId,
+      userId,
+      'abort its sessions',
+    );
     const updated = await endChatTurn(session, {
       type: 'user',
       id: userId,
@@ -262,7 +270,7 @@ agentSessionLifecycleRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionOwnerOrAdmin(id, userId);
+    const { session } = await ensureSessionOwnerOrAdmin(id, userId, 'cancel its sessions');
 
     if (session.status === 'completed' || session.status === 'failed') {
       // Already terminal — return current state, idempotent.
@@ -329,7 +337,11 @@ agentSessionLifecycleRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionOwnerOrAdmin(id, userId);
+    const { session } = await ensureSessionOwnerOrAdmin(
+      id,
+      userId,
+      'move its sessions to another runner',
+    );
 
     if (session.status === 'running' || session.status === 'queued') {
       throw new HTTPException(409, {
@@ -390,7 +402,7 @@ agentSessionLifecycleRoutes.post(
     if (!project) throw notFound('project not found');
 
     const access = await loadProjectAccess(project.id, userId);
-    assertProjectRole(access, 'member');
+    assertRoleFor(access, 'member', 'build a session prompt in it');
 
     let deviceId = await findAvailableDeviceForProject(project.id);
     if (!deviceId && project.defaultDeviceId) {
@@ -455,7 +467,12 @@ agentSessionLifecycleRoutes.post(
     const { sessionId, status, note } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session: existing } = await ensureSessionRole(sessionId, userId, 'member');
+    const { session: existing } = await ensureSessionRole(
+      sessionId,
+      userId,
+      'member',
+      "report its sessions' status",
+    );
 
     const statusSet: AgentSessionPatch = { status, updatedAt: new Date() };
 

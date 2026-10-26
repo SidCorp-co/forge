@@ -179,16 +179,9 @@ describe('assertProjectAccess', () => {
 });
 
 const SRC = join(import.meta.dirname, '..');
-/** The files other open runs hold, whose calls keep the bare gate until they name their acts. */
-const BARE_GATE_HELD = [
-  'agent-sessions/lifecycle-routes.ts',
-  'agent-sessions/session-access.ts',
-  'assistant/conversation-routes.ts',
-  'projects/onboard-routes.ts',
-  'projects/runners-routes.ts',
-  'release-batch/routes.ts',
-  'runners/routes.ts',
-];
+/** A refusal in role words alone, the form judge-127 found at five doors on criterion 340. */
+const ROLE_WORDS_ONLY =
+  /forbidden\(\s*['"`](project (admin|member|owner)|requires? project|(admin|member) (only|required))/i;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -198,15 +191,22 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-describe('assertProjectRole', () => {
-  // The amnesty `assertProjectRole` carries: no file but those other runs hold may refuse in role
-  // words alone, so a new door names its act or this goes red (ISS-1421 r31).
-  it('is called only from the files other open runs hold', () => {
-    const callers = sourceFiles(SRC)
-      .filter((path) => /\bassertProjectRole\(/.test(readFileSync(path, 'utf8')))
-      .map((path) => relative(SRC, path))
-      .filter((path) => path !== 'lib/authz.ts');
-    expect(callers.sort()).toEqual(BARE_GATE_HELD);
+describe('the role gates', () => {
+  it('offer no way to refuse a role without naming the act', async () => {
+    const authz = await import('./authz.js');
+    expect(Object.keys(authz)).not.toContain('assertProjectRole');
+    expect([
+      authz.assertRoleFor.length,
+      authz.assertProjectAccess.length,
+      authz.assertOrgRoleOnProject.length,
+    ]).toEqual([3, 4, 3]);
+  });
+
+  it('are the only refusal of a role too low anywhere in core', () => {
+    const bare = sourceFiles(SRC)
+      .filter((path) => ROLE_WORDS_ONLY.test(readFileSync(path, 'utf8')))
+      .map((path) => relative(SRC, path));
+    expect(bare).toEqual([]);
   });
 });
 

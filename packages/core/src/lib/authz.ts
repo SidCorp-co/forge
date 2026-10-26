@@ -232,18 +232,6 @@ export function assertRoleFor(access: ProjectAccess, min: ProjectMemberRole, act
   }
 }
 
-/** Amnesty: the bare-role gate, kept only in files ISS-1236 r2 and ISS-1300 r5 hold; a refusal
- *  there names no act. It goes when they call `assertRoleFor`; `authz.test.ts` bars any other. */
-export function assertProjectRole(
-  access: ProjectAccess,
-  min: ProjectMemberRole,
-  message?: string,
-): void {
-  if (!projectRoleAtLeast(access.role, min)) {
-    throw forbidden(message ?? projectRoleRefusal(access.role, min, 'do this'));
-  }
-}
-
 /** `assertRoleFor` for a door holding only the project's id: a missing project refused as a non-member. */
 export async function assertProjectAccess(
   projectId: string,

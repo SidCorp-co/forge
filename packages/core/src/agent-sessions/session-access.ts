@@ -4,12 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, type ProjectMemberRole } from '../db/schema.js';
-import {
-  assertProjectRole,
-  assertRoleFor,
-  loadProjectAccess,
-  projectRoleAtLeast,
-} from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 
 export const idParamSchema = z.object({ id: z.uuid() });
@@ -68,21 +63,16 @@ export async function ensureSessionMember(sessionId: string, userId: string) {
   return { session, access };
 }
 
-/**
- * `act` is optional only for the calls in lifecycle-routes.ts, which ISS-1236 r2 holds; those still
- * refuse in role words until that file names its acts (ISS-1421 r31).
- */
 export async function ensureSessionRole(
   sessionId: string,
   userId: string,
   min: ProjectMemberRole,
-  act?: string,
+  act: string,
 ) {
   personOrRefuse(userId);
   const session = await loadSessionOr404(sessionId);
   const access = await loadProjectAccess(session.projectId, userId);
-  if (act) assertRoleFor(access, min, act);
-  else assertProjectRole(access, min);
+  assertRoleFor(access, min, act);
   return { session, access };
 }
 
@@ -105,7 +95,7 @@ export function assertSessionOwnerOrAdmin(
  * Full mutate guard used by /send, /abort, /cancel and DELETE: member-role
  * gate + session-owner-or-admin check on a freshly loaded session row.
  */
-export async function ensureSessionOwnerOrAdmin(sessionId: string, userId: string, act?: string) {
+export async function ensureSessionOwnerOrAdmin(sessionId: string, userId: string, act: string) {
   const { session, access } = await ensureSessionRole(sessionId, userId, 'member', act);
   assertSessionOwnerOrAdmin(session, access, userId);
   return { session, access };

@@ -164,6 +164,26 @@ describe('a member refused an admin act, through REST', () => {
   });
 });
 
+describe('the doors that kept the bare gate until ISS-1236 r2 and ISS-1300 r5 landed', () => {
+  it('names the act at the release, onboarding and conversation doors', async () => {
+    const readiness = await send('viewer', 'GET', `/api/projects/${projectId}/release-readiness`);
+    expect([readiness.status, readiness.message]).toEqual([
+      403,
+      viewerCannot('read its release readiness'),
+    ]);
+    const onboard = await send('member', 'POST', `/api/projects/${projectId}/onboard`);
+    expect([onboard.status, onboard.message]).toEqual([
+      403,
+      'You are a member of this project, so you cannot onboard it. Only an admin of this project can, so ask one of them.',
+    ]);
+    const rooms = await send('outsider', 'GET', `/api/conversations?projectId=${projectId}`);
+    expect([rooms.status, rooms.message]).toEqual([
+      403,
+      'You are not a member of this project, so you cannot read its conversations. An admin of this project can add you to it.',
+    ]);
+  });
+});
+
 describe("a project's knowledge, read through REST (criterion 356)", () => {
   it('is listed, searched and read by a viewer', async () => {
     expect((await send('viewer', 'GET', `/api/projects/${projectId}/knowledge`)).status).toBe(200);

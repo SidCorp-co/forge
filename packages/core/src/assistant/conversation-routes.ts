@@ -48,7 +48,7 @@ import {
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { db } from '../db/client.js';
 import { conversationModes } from '../db/schema-conversations.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
@@ -196,7 +196,7 @@ conversationRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read its conversations');
 
     const rows = await listConversationsInProject(projectId, { archived });
 
@@ -233,7 +233,7 @@ conversationRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'viewer', 'not a project member');
+    assertRoleFor(access, 'viewer', 'read whether it offers Agent mode');
     const device = await conversationAgentDeviceAvailable(projectId);
     return c.json(
       answer(

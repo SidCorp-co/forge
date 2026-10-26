@@ -12,7 +12,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { projects, skills } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { globalEffectiveMd } from '../skills/effective.js';
@@ -71,7 +71,7 @@ projectOnboardRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    assertRoleFor(access, 'admin', 'onboard it');
 
     const [project] = await db
       .select({ id: projects.id, slug: projects.slug })
