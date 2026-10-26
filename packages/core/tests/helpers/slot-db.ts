@@ -55,9 +55,11 @@ function literal(text: string): string {
 
 /**
  * Catalog columns that move by use rather than by DDL: storage, planner statistics, freeze
- * horizons, and the `relhas*` flags vacuum clears lazily (the rows they summarise are read anyway).
+ * horizons, the `relhas*` flags vacuum clears lazily (the rows they summarise are read anyway), and
+ * a column's missing value, which a table rewrite (VACUUM FULL, CLUSTER) writes into the rows.
  */
 const MOVES_BY_USE: Record<string, string[]> = {
+  pg_attribute: ['atthasmissing', 'attmissingval'],
   pg_class: [
     'relfilenode',
     'relpages',
