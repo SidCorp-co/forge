@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Kbd, Textarea } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
-import { prefillOf } from "@/features/needs-you";
+import { prefillOf, wordsAsItStands } from "@/features/needs-you";
 import { drawnAnswers } from "../derive";
 
 /** The words an act needs before it is sent, and the send; empty words are refused in place. */
@@ -90,7 +90,12 @@ interface AnswersProps {
 export function DecisionAnswers({ d, typing, onType, onPress, editHref }: AnswersProps) {
   const t = useCopy();
   const answers = drawnAnswers(d);
-  const press = (a: DecisionAnswer) => (a.needsReason ? onType(a) : onPress(a, null));
+  const press = (a: DecisionAnswer) => {
+    const asItStands = wordsAsItStands(a);
+    if (!a.needsReason) onPress(a, null);
+    else if (asItStands !== null) onPress(a, asItStands);
+    else onType(a);
+  };
   return (
     <div className="flex flex-col gap-2 px-4 py-3" data-testid="approval-peek-foot">
       {typing ? (

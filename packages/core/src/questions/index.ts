@@ -12,9 +12,11 @@ export {
 export {
   type AgedRound,
   agedRounds,
+  DECLINE_OPTION_IDS,
   type DecisionAgeStamp,
   ESCALATE_AFTER_DAYS,
   escalationActs,
+  proposable,
   REMIND_AFTER_DAYS,
   stampAgedRounds,
 } from './decision-age.js';

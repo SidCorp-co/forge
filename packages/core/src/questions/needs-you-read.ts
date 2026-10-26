@@ -83,10 +83,11 @@ export interface OpenPersonQuestion {
   /** When the current round was asked, else when the question was written. */
   at: string;
   /**
-   * The requirement this round has held up 14 days, once the agent proposed deferring or dropping it
-   * (REQ-68 BC-8), with the status deciding which of the two apply; null before that.
+   * Set once the round waited 14 days and the agent proposed what to do (REQ-68 BC-8): with the
+   * requirement it holds up, whose status decides whether a defer or a drop applies, or with none,
+   * where the round's own drop is the proposal; null before that.
    */
-  escalated: { key: string; status: string } | null;
+  escalated: { requirement: { key: string; status: string } | null } | null;
 }
 
 /** Every open `human` question of these projects outside a questionnaire, oldest first. */
@@ -164,8 +165,13 @@ export async function readOpenPersonQuestions(projectId: string): Promise<OpenPe
       suggestion: r.suggestion,
       at,
       escalated:
-        r.escalatedAt && r.requirementKey && r.requirementStatus && r.escalatedAt >= new Date(at)
-          ? { key: r.requirementKey, status: r.requirementStatus }
+        r.escalatedAt && r.escalatedAt >= new Date(at)
+          ? {
+              requirement:
+                r.requirementKey && r.requirementStatus
+                  ? { key: r.requirementKey, status: r.requirementStatus }
+                  : null,
+            }
           : null,
     };
   });

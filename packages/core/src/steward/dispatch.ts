@@ -3,7 +3,8 @@
 // once, so a trigger is acted on within 2 minutes and 30 seconds however long the backlog, and it
 // ends the runs nothing else will (a cancelled job sends no event; a gateway run whose process died).
 // A run takes its acts in `STEWARD_ACTS` order: the gateway acts as turns, then its runner acts as
-// one job; behind its project's live job, its turns now and its job in the run its end queues.
+// one job; behind its project's live job, or with the day's runner jobs spent, its turns now and
+// its job in the run its end queues (due the next UTC day where the budget is what held it).
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -23,6 +24,7 @@ import {
   claimDueRuns,
   deferSweepRun,
   endRun,
+  type RunEnd,
   type RunRow,
   requeueRun,
   runsToSettle,
@@ -100,43 +102,58 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
     acts.some((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job') &&
     (await stewardJobLive(run.projectId));
   if (behindJob && gateway.length === 0) return 'job_live';
-  const taken = behindJob ? gateway : acts;
-  const runner = taken.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
-  const refused = await admitRun(run, taken, now);
+  let taken = behindJob ? gateway : acts;
+  let refused = await admitRun(run, taken, now);
   // a refused turn never ends the job it was carrying: the run waits for the job, and is read whole
   if (refused && behindJob) return 'job_live';
+  // the day's runner jobs are spent and its turns are not: the turns run now and the job waits for
+  // tomorrow's, as it waits behind a live job (ISS-618 c1, judged on dev.325: FB-292's note fit and
+  // the whole run was skipped, its triage with it)
+  let carriedUntil: Date | null = null;
+  if (refused === 'budget_spent' && gateway.length > 0 && gateway.length < acts.length) {
+    if ((await admitRun(run, gateway, now)) === null) {
+      taken = gateway;
+      refused = null;
+      carriedUntil = nextUtcDay(now);
+    }
+  }
   if (refused === 'next_day') {
     // the sweep's share of today is spent: the run waits for tomorrow's, in its place in the queue,
     // unless a handoff arrived while it was claimed
     await deferSweepRun(run.id, nextUtcDay(now));
     return 'ended';
   }
-  if (refused === 'budget_spent' && acts.includes('release_followthrough')) {
-    // the judge a shipped issue is owed is never dropped for the day's budget: it waits for the
-    // next day's, queued, and the issue says so (dev.287 skipped three and left nothing)
+  if (refused === 'budget_spent') {
+    // nothing it owes fits today: it waits for the next day's budget, queued, and the item says so;
+    // an ended run is raised again by nothing (dev.287's judges, dev.325's FB-292)
     const until = nextUtcDay(now);
     await deferSweepRun(run.id, until);
-    await judgeOwedNote(run, until, (await stewardStanceOf(run.projectId)).budget.runnerJobs);
+    if (acts.includes('release_followthrough')) {
+      await judgeOwedNote(run, until, (await stewardStanceOf(run.projectId)).budget.runnerJobs);
+    } else {
+      await budgetNote(run, standing);
+    }
     return 'ended';
   }
   if (refused) {
     await endRun(run.id, { state: 'skipped', reason: refused });
-    if (refused === 'budget_spent') await budgetNote(run, standing);
     return 'ended';
   }
+  const runner = taken.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
   await stampRun(run.id, { actsToRun: acts, basis: standing?.basis ?? run.basis });
-  if (behindJob)
+  if (taken.length < acts.length)
     await carryActs(
       run.id,
       acts.filter((a) => !taken.includes(a)),
     );
+  const end = (e: RunEnd) => endRun(run.id, e, new Date(), { followUpNotBefore: carriedUntil });
   const ran = gateway.length > 0 ? await runGatewayActs(run, gateway, standing) : null;
   if (ran && ran.failures.length > 0) {
-    await endRun(run.id, { state: 'failed', failure: ran.failures.join('\n'), kind: ran.kind });
+    await end({ state: 'failed', failure: ran.failures.join('\n'), kind: ran.kind });
     return 'ended';
   }
   if (runner.length === 0) {
-    await endRun(run.id, { state: 'done' });
+    await end({ state: 'done' });
     return 'ended';
   }
   const started = await enqueueStewardJob(run, runner);

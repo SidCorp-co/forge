@@ -50,7 +50,7 @@ const HOLD = {
   says: { cause: HOLD_CAUSE },
 };
 
-const DEV: DevelopmentOverview = {
+export const DEV: DevelopmentOverview = {
   generatedAt: NOW,
   signals: {
     ci: unavailable(say("overview.signal.ciNote")),
@@ -224,7 +224,7 @@ export const SCREENS = [
   {
     name: "Development overview",
     render: () => (
-      <Seeded data={[[["issues", "standing", "development-overview", P], DEV], [needsYouKey(P), { items: [] }]]}>
+      <Seeded data={[[["issues", "standing", "development-overview", P], DEV], [needsYouKey(P), { items: [] }], [["needs-you", P, "decisions"], { generatedAt: NOW, decisions: [], total: 0, notDecisions: [] }]]}>
         <DevelopmentOverviewScreen scope={{ projectId: P, slug: "hop" }} />
       </Seeded>
     ),

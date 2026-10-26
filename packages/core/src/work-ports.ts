@@ -342,6 +342,7 @@ export function provideWorkPorts(): void {
     releaseApprovalsOfRuns: approvalsOfRuns,
     deliveryRunsOf,
     masterAccountsOf: async (projectId) => (await masterAccountsOf(projectId)).accounts,
+    emitNotification,
   });
 
   provideWorkflowHealthPorts({

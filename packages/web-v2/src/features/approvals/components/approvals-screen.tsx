@@ -9,7 +9,7 @@ import type { DecisionAnswer, NeedsYouDecision, NeedsYouDecisions } from "@forge
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { useMemo, useState } from "react";
 import { Checkbox, EmptyState, FilterChip, ListLayout, ListSearch, ListToolbar, PageTitle, usePeek, usePeekKeys, useUrlChoice, useUrlParams } from "@/design";
-import { decisionHref, useNeedsYouDecisions } from "@/features/needs-you";
+import { decisionHref, useNeedsYouDecisions, wordsAsItStands } from "@/features/needs-you";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { Link, useRouter } from "@/lib/navigation/router";
@@ -122,10 +122,16 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
     peek.set(d.id);
     setTyping({ id: d.id, answer });
   };
+  /** One press: an answer that takes no words, or the recommended one with core's words, goes at once (REQ-68 BC-2). */
+  const pressOrAsk = (d: NeedsYouDecision, a: DecisionAnswer) => {
+    const asItStands = wordsAsItStands(a);
+    if (!a.needsReason) press(d, a, null);
+    else if (asItStands !== null) press(d, a, asItStands);
+    else askWords(d, a);
+  };
   const approveRow = (d: NeedsYouDecision) => {
     const a = approveOf(d);
-    if (a?.needsReason) askWords(d, a);
-    else if (a) press(d, a, null);
+    if (a) pressOrAsk(d, a);
   };
   const declineRow = (d: NeedsYouDecision) => {
     const a = declineOf(d);
@@ -135,8 +141,7 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
     answer: (n) => {
       const a = open ? drawnAnswers(open)[n - 1] : undefined;
       if (!open || !a) return;
-      if (a.needsReason) askWords(open, a);
-      else press(open, a, null);
+      pressOrAsk(open, a);
     },
     select: () => (open ? select(open.id, !picked.has(open.id)) : undefined),
   });
@@ -161,7 +166,7 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
       noun={t(open.opens ? `approvals.noun.${open.opens.kind}` : "approvals.noun")}
       typing={typing?.id === open.id ? typing.answer : null}
       onType={(a) => setTyping(a ? { id: open.id, answer: a } : null)}
-      onPress={(a, words) => (a.needsReason && words === null ? askWords(open, a) : press(open, a, words))}
+      onPress={(a, words) => (words === null ? pressOrAsk(open, a) : press(open, a, words))}
     />
   ) : undefined;
 
@@ -243,7 +248,7 @@ function LeftOut({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
       {read.notDecisions.map((n) => (
         <section key={n.reason} aria-label={t(`needsYou.decisions.reason.${n.reason}`, { n: n.count })}>
           <h2 className="text-12 font-semibold text-muted">
-            {t("approvals.leftOut.heading", { what: t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }) })}
+            {t(n.reason === "agent_takes" ? "approvals.leftOut.agentHeading" : "approvals.leftOut.heading", { what: t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }) })}
           </h2>
           <ul className="mt-1 divide-y divide-line-subtle">
             {n.items.map((item) => {

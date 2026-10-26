@@ -20,7 +20,7 @@ import { useState } from "react";
 import { Button, Icon, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { needsYouApi, prefillOf, pressBody } from "../api";
+import { needsYouApi, prefillOf, pressBody, wordsAsItStands } from "../api";
 import { NEEDS_YOU_ROOT } from "../hooks";
 import { decisionHref } from "../routes";
 
@@ -142,16 +142,30 @@ function OwedDecision({
               data-testid="needs-you-decision-answer"
               data-answer={a.id}
               onClick={() => {
-                if (a.needsReason) {
+                const asItStands = wordsAsItStands(a);
+                if (!a.needsReason) press.mutate({ answer: a, text: null });
+                else if (asItStands !== null) press.mutate({ answer: a, text: asItStands });
+                else {
                   setTyped(prefillOf(a));
                   setTyping(a);
-                } else press.mutate({ answer: a, text: null });
+                }
               }}
             >
               {a.label}
             </Button>
           ))}
         </div>
+      )}
+      {!sent && !typing && d.answers.some((a) => a.effect) && (
+        <ul className="fg-caption flex flex-col gap-0.5 text-muted" data-testid="needs-you-decision-effects">
+          {d.answers.flatMap((a) =>
+            a.effect ? [
+              <li key={a.id}>
+                <span className="font-semibold text-fg">{a.label}:</span> {a.effect}
+              </li>,
+            ] : [],
+          )}
+        </ul>
       )}
       {press.isError && (
         <p className="fg-caption text-danger" role="alert">

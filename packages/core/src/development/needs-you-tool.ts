@@ -7,7 +7,7 @@ import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { requireHeld } from '../permissions/index.js';
-import { readNeedsYouDecisions } from './needs-you-decisions.js';
+import { readNeedsYouDecisions } from './needs-you-decisions-read.js';
 import { needsYouViewerOf } from './needs-you-viewer.js';
 
 export const NEEDS_YOU_TOOL = 'forge_needs_you';

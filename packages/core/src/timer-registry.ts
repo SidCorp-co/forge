@@ -10,6 +10,7 @@ import {
   runTranscriptIndexSweepOnce,
 } from './assistant/index.js';
 import { runHeartbeatTick } from './conversations/index.js';
+import { sweepAgedDecisions } from './development/index.js';
 import {
   reapAbandonedDeclarations,
   reapDeadMasterHolds,
@@ -161,6 +162,22 @@ function stewardTimers(): Timer[] {
             escalated: number;
           };
           return voided > 0 || reminded > 0 || escalated > 0;
+        },
+      ),
+    },
+    {
+      // REQ-68 BC-8: a decision that is no question (a sign-off, a release, a design, a proposal) is
+      // reminded on day 3 and its decline proposed on day 14, read from each person's Needs you;
+      // hourly, as each notice is sent once per decision and person
+      kind: 'cluster',
+      name: 'decision-ages',
+      cron: '17 * * * *',
+      run: logged(
+        'decision-ages: told',
+        () => sweepAgedDecisions(),
+        (r) => {
+          const { reminded, escalated } = r as { reminded: number; escalated: number };
+          return reminded > 0 || escalated > 0;
         },
       ),
     },
