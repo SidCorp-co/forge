@@ -2,10 +2,7 @@ import { nameOfDevice } from '../lib/device-pool.js';
 import type { ChatClient } from './chat-turn.js';
 import { badRequest } from './session-access.js';
 
-/**
- * Refuses a checkout named for a session a runner device takes, saying which device and checkout it
- * runs in instead. Every remote client was resolved through the project's own binding (ISS-1236).
- */
+/** A remote client came through the project's own binding, so its device's name is ours to show. */
 export async function refuseRemoteCheckout(client: ChatClient, slug: string): Promise<never> {
   const named = client.deviceId ? await nameOfDevice(client.deviceId) : null;
   const device = named ?? 'the runner device this project picked';

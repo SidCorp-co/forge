@@ -43,6 +43,7 @@ import {
   setRunnerBodySchema,
   startBodySchema,
 } from './lifecycle-schemas.js';
+import { refuseRemoteCheckout } from './remote-checkout.js';
 import { okSchema, sessionSchema } from './routes-reference.js';
 import {
   badRequest,
@@ -52,7 +53,6 @@ import {
   notFound,
   personOrRefuse,
 } from './session-access.js';
-import { refuseRemoteCheckout } from './remote-checkout.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { type AgentSessionPatch, finalizeScheduleSessionFailure } from './session-failure.js';
 import { endChatTurn } from './turn-end.js';
