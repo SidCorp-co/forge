@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { GitHubReadError, type GitHubRepoClient } from '../integrations/github/client.js';
+import {
+  buildRepoClient,
+  GitHubReadError,
+  type GitHubRepoClient,
+} from '../integrations/github/client.js';
 import { githubRepositoryReader } from '../integrations/github/repository-reader.js';
 import { carriageOf, changedPathsOf, forgetCarriage, landingHeld } from './carriage.js';
 
@@ -302,6 +306,23 @@ describe('an answer kept for one reach', () => {
     expect((await carriageOf(githubRepositoryReader(hidden), J, S)).kind).toBe('unread');
     expect((await changedPathsOf(githubRepositoryReader(hidden), J)).kind).toBe('unread');
     expect(hidden.asked).toHaveLength(2);
+  });
+
+  // r4 review F2: the reach `buildRepoClient` gives, where only the installation differs.
+  it('asks again through a second installation of the same App, host and repository', async () => {
+    const built = (installationId: number) =>
+      buildRepoClient({
+        bindingId: `b${installationId}`,
+        config: { owner: 'o', repo: 'r', installationId },
+        secrets: { appId: '7', privateKey: 'unused: nothing here mints a token' },
+      } as Parameters<typeof buildRepoClient>[0]);
+    const seen = { ...built(1), get: client({ [`/repos/o/r/commits/${J}`]: { sha: J } }).get };
+    expect(await landingHeld(githubRepositoryReader(seen), J)).toBe('found');
+    const hidden = { ...hiddenFrom(''), reach: built(2).reach };
+    expect(await landingHeld(githubRepositoryReader(hidden), J)).toEqual({
+      unreadable: expect.stringContaining('answered HTTP 404'),
+    });
+    expect(hidden.asked).toHaveLength(1);
   });
 
   it('still answers a second reader of the same reach from what the first found', async () => {

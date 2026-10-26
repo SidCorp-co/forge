@@ -385,6 +385,23 @@ describe('a branch or commit a readable repository lacks, on a GitHub binding', 
     });
   });
 
+  // r4 review F1: a ref read refused between the compare and the lookup is a refusal too.
+  it.each([401, 403])(
+    'reads a ref lookup refused %s after the compare as the repository refusing',
+    async (status) => {
+      const client: GitHubRepoClient = {
+        ...github(),
+        async get<T>(path: string): Promise<T> {
+          const code = path.includes('/compare/') ? 404 : status;
+          throw new GitHubReadError(code, `GET ${path} on o/r returned HTTP ${code}`);
+        },
+      };
+      expect(await githubRepositoryReader(client).range(LIVE, SHA)).toMatchObject({
+        refused: true,
+      });
+    },
+  );
+
   it('reads the repository as refusing the read where it hides itself, never a branch as missing', async () => {
     const read = await githubRepositoryReader(lacking([], true)).range(LIVE, SHA);
     expect(read).toMatchObject({ refused: true });

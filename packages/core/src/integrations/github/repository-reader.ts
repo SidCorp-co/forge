@@ -198,7 +198,9 @@ async function compareMissing(
       await client.get<CommitRead>(`/repos/${repository}/commits/${encodeURIComponent(ref)}`);
     } catch (err) {
       const status = statusOf(err);
-      if (status === REPOSITORY_HIDDEN) return { why: failed, refused: true };
+      if (status === REPOSITORY_HIDDEN || status === 401 || status === 403) {
+        return { why: failed, refused: true };
+      }
       if (status !== COMMIT_UNKNOWN) return { why: failed };
       return FULL_SHA.test(ref)
         ? { why: `${repository} holds no commit ${ref}`, missingCommit: ref }
