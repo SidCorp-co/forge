@@ -3195,6 +3195,8 @@
 
 ### Fixed
 
+- **A long link in a room message wraps inside its bubble** instead of running past it and letting the conversation slide sideways on a phone. (ISS-1229)
+- **The "This issue is not in" page leads somewhere**: back to the project's issues, and says who can add you. Trying other projects in the address no longer reveals which one holds an issue. (ISS-1229)
 - **An issue of a project closed to you, opened under one you belong to, says so.** The page names the project it belongs to where you may see it, instead of "Not a project member.". (ISS-1229)
 - **A room reply of one bullet reads as its sentence**, and an agent answering "(nothing to add)" behind a list or quote mark posts nothing. (ISS-1229)
 - **A code block in a reply wraps inside the reply**, and a viewer's issue pages no longer ask for the release roster they cannot read. (ISS-1229)

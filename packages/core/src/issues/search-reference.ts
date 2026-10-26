@@ -177,7 +177,7 @@ export const ISSUE_REF_REFUSALS = {
   ),
   403: fail(
     'FORBIDDEN',
-    "the caller is not a member of the issue's project; `details` names it, and the project `projectId` named, each where the caller may see it",
+    "the caller is not a member of the issue's project; `details` names it where the caller may see it, and the project `projectId` named only where the caller holds a role on it",
   ),
   404: fail('NOT_FOUND', 'no issue has the id or key'),
 } as const;

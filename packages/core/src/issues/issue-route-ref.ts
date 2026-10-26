@@ -38,7 +38,9 @@ async function nameShownTo(access: ProjectAccess | null): Promise<string | null>
 
 /**
  * The read refused for want of a role on the issue's project: which project that is, as far as the
- * caller may see it, and that the project the address named is not it (ISS-1229 r41).
+ * caller may see it, and that the project the address named is not it — said only where the caller
+ * holds a role on that project, so the refusal reads the same whichever project a caller with no role
+ * there names, and never tells them which one holds the issue (ISS-1229 r42).
  */
 async function closedIssueRefusal(
   issueAccess: ProjectAccess,
@@ -46,19 +48,19 @@ async function closedIssueRefusal(
   userId: string,
 ): Promise<HTTPException> {
   const issueName = await nameShownTo(issueAccess);
-  const elsewhere = addressProjectId !== undefined && addressProjectId !== issueAccess.projectId;
-  const addressName = elsewhere
-    ? await nameShownTo(await effectiveProjectRole(userId, addressProjectId))
-    : null;
+  const addressAccess =
+    addressProjectId === undefined ? null : await effectiveProjectRole(userId, addressProjectId);
+  const named = addressAccess?.role ? addressAccess.projectId : null;
+  const addressName = named ? await findProjectName(named) : null;
   const owner = issueName ? `${issueName}, a project` : 'a project';
-  const address = !elsewhere
+  const address = !named
     ? ''
     : addressName
       ? ` It is not in ${addressName}, the project this address names.`
       : ' It is not in the project this address names.';
   return forbidden(`This issue belongs to ${owner} you are not a member of.${address}`, {
     issueProject: { name: issueName },
-    addressProject: elsewhere ? { id: addressProjectId, name: addressName } : null,
+    addressProject: named ? { id: named, name: addressName } : null,
   });
 }
 
