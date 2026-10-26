@@ -39,7 +39,11 @@ vi.mock('../../src/integrations/source-host/index.js', async (original) => ({
     provider: 'gitlab',
     readCommit: async (ref: string) => ({
       sha: ref.length === 40 ? ref : C988,
-      message: 'docs(api): Scribe for the admin REST API',
+      // !1014's merge commit as GitLab writes one, naming the request it merged
+      message:
+        ref === HOST_MERGE
+          ? "Merge branch 'feat/iss-12-scribe' into 'dev'\n\nISS-12: document the admin REST API\n\nSee merge request acme/catalog-api!1014"
+          : 'docs(api): Scribe for the admin REST API',
       committedAt: '2026-10-23T08:00:00Z',
     }),
     branchContains: async (branch: string, sha: string) => {

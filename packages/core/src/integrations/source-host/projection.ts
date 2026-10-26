@@ -323,6 +323,33 @@ export async function applyCheckRunEvent(
   return written;
 }
 
+/**
+ * Store the checks a host read answered for a row, folded one by one under the rule a `check_run`
+ * delivery is folded under (`foldCheckRun`), so a read and a webhook write one shape and the newer
+ * of the two wins either way. One transaction for the whole read. Answers whether a row was there.
+ */
+export async function storeHostChecks(
+  rowId: string,
+  checks: readonly ProjectedCheckRun[],
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ checks: repoPullRequests.checks, headSha: repoPullRequests.headSha })
+      .from(repoPullRequests)
+      .where(eq(repoPullRequests.id, rowId))
+      .for('update')
+      .limit(1);
+    if (!row) return false;
+    let next = row.checks ?? {};
+    for (const check of checks) next = foldCheckRun(next, check, row.headSha);
+    await tx
+      .update(repoPullRequests)
+      .set({ checks: next, updatedAt: new Date() })
+      .where(eq(repoPullRequests.id, rowId));
+    return true;
+  });
+}
+
 export async function applyReviewEvent(
   ctx: ProjectionContext,
   payload: ReviewPayload,

@@ -20,6 +20,7 @@ import {
   submitReview,
   writePullRequestComment,
 } from './agent-ops.js';
+import { githubChangeRequestVerbs } from './change-requests.js';
 import { buildRepoClient, GitHubReadError, type GitHubRepoClient } from './client.js';
 import { type CompareFile, readCompareFiles } from './compare-pages.js';
 import { readCompareCommits, readLiveDivergence } from './live-divergence.js';
@@ -231,6 +232,7 @@ function githubSourceHostOf(
     requestReview: (args) => requestReview(agent(), args),
     submitReview: (args) => submitReview(agent(), args),
     merge: (args) => mergeGitHubPullRequest(client, args),
+    ...githubChangeRequestVerbs(client, agent),
   };
 }
 
