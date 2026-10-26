@@ -20,7 +20,11 @@ export async function runArchiveAction(input: {
   dryRun: boolean | undefined;
   principal: McpPrincipal;
 }): Promise<IssueArchiveReport> {
-  await assertPrincipalIsAdmin(input.principal, input.projectId);
+  await assertPrincipalIsAdmin(
+    input.principal,
+    input.projectId,
+    input.direction === 'archive' ? 'archive its issues' : 'unarchive its issues',
+  );
   if (!input.filter) {
     throw new Error(
       `BAD_REQUEST: ${input.direction} needs archiveFilter { keys?, statuses?, seqBelow?, exclude? } naming keys or statuses; send dryRun:true first to read back what it matches`,

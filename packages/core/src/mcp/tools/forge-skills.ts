@@ -187,7 +187,7 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(createInputSchema),
   handler: async (args) => {
     const input = createInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, input.projectId);
+    await assertPrincipalIsAdmin(ctx.principal, input.projectId, 'create its skills');
     try {
       const skill = await createProjectSkill({
         projectId: input.projectId,
@@ -218,7 +218,7 @@ export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const { projectId, skillId, ...patch } = updateInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, projectId);
+    await assertPrincipalIsAdmin(ctx.principal, projectId, 'change its skills');
     const row = await getSkillForProject(skillId, projectId);
     if (!row) throw new Error('NOT_FOUND: skill not found');
     if (row.scope !== 'project') {
@@ -248,7 +248,7 @@ export const forgeSkillsDeleteTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { projectId, skillId } = getInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, projectId);
+    await assertPrincipalIsAdmin(ctx.principal, projectId, 'delete its skills');
     const row = await getSkillForProject(skillId, projectId);
     if (!row) throw new Error('NOT_FOUND: skill not found');
     if (row.scope !== 'project')
@@ -278,7 +278,7 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(adoptInputSchema),
   handler: async (args) => {
     const { projectId, skillId } = adoptInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, projectId);
+    await assertPrincipalIsAdmin(ctx.principal, projectId, 'adopt skills into it');
     const global = await getSkillForProject(skillId, projectId);
     if (!global) throw new Error('NOT_FOUND: skill not found');
     if (global.scope !== 'global') {
@@ -334,7 +334,7 @@ export const forgeSkillsPushTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(pushInputSchema),
   handler: async (args) => {
     const input = pushInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, input.projectId);
+    await assertPrincipalIsAdmin(ctx.principal, input.projectId, 'push its skills');
     const result = await requestSkillSync({
       projectId: input.projectId,
       actorUserId: principalUserId(ctx.principal),
