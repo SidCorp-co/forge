@@ -291,7 +291,9 @@ describe('a release batch names every issue its range carries', () => {
     expect(res.body.code).toBe('RELEASE_CHECK_UNEVALUATED');
     expect(res.body.details).toMatchObject({ check: 'carried' });
     expect(String(res.body.details?.detail)).toContain('production...');
-    expect(String(res.body.message)).toContain(String(res.body.details?.detail));
+    // ISS-1300 r4: the request stays in the details; the sentence says what the repository lacks.
+    expect(String(res.body.message)).toContain('SidCorp-co/forge has no branch production');
+    expect(String(res.body.message)).not.toContain('production...');
   });
 });
 

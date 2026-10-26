@@ -47,13 +47,28 @@ export type CutRangeDeps = Partial<RepositoryAccessDeps>;
  *  does; one it answered without the branch or commit asked for names that, and what supplies it. */
 function unread(reader: RepositoryReader, failed: ReadFailure): CutRange {
   const repository = reader.name;
+  // `why` keeps the read it failed on, for the details; `lacks` is what a person reads (ISS-1300 r4).
   if (failed.missingBranch) {
-    const clears = `once ${repository} has a branch ${failed.missingBranch}, or the project's release chain names only branches it has`;
-    return { kind: 'unread', why: failed.why, repository, lacks: failed.why, clears };
+    const b = failed.missingBranch;
+    const clears = `once ${repository} has a branch ${b}, or the project's release chain names only branches it has`;
+    return {
+      kind: 'unread',
+      why: failed.why,
+      repository,
+      lacks: `${repository} has no branch ${b}`,
+      clears,
+    };
   }
   if (failed.missingCommit) {
-    const clears = `once ${repository} holds commit ${failed.missingCommit}`;
-    return { kind: 'unread', why: failed.why, repository, lacks: failed.why, clears };
+    const c = failed.missingCommit;
+    const lacks = `${repository} holds no commit ${c}`;
+    return {
+      kind: 'unread',
+      why: failed.why,
+      repository,
+      lacks,
+      clears: `once ${repository} holds commit ${c}`,
+    };
   }
   if (!failed.refused) return { kind: 'unread', why: failed.why };
   const clears = readableThrough(reader.route, repository);
