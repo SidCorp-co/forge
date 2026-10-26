@@ -50,9 +50,11 @@ export async function setupTestDatabase(options: SetupOptions = {}): Promise<Tes
     const baseUrl = process.env.TEST_DATABASE_URL;
     if (!baseUrl) {
       throw new Error(
-        'TEST_DATABASE_URL is required when TEST_DB_MODE=schema. ' +
-          'Start a local Postgres (`docker compose up postgres`) and export ' +
-          'TEST_DATABASE_URL=postgres://forge:forge_secret@localhost:5432/forge.',
+        'TEST_DATABASE_URL is required when TEST_DB_MODE=schema. Start the test-only Postgres ' +
+          'packages/core/tests/README.md runs under "Integration tests — local" ' +
+          '(pgvector/pgvector:pg17 -c fsync=off on port 5433) and export ' +
+          'TEST_DATABASE_URL=postgres://forge:forge_secret@localhost:5433/forge. ' +
+          'Not the compose `postgres`: it keeps the dev data and syncs to disk.',
       );
     }
     const schema = await createTestSchema(baseUrl, workerId);
