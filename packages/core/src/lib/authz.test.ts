@@ -182,6 +182,10 @@ const SRC = join(import.meta.dirname, '..');
 /** A refusal in role words alone, the form judge-127 found at five doors on criterion 340. */
 const ROLE_WORDS_ONLY =
   /forbidden\(\s*['"`](project (admin|member|owner)|requires? project|(admin|member) (only|required))/i;
+/** A door's own sentence for a role too low, thrown before the shared gate is reached: judge-132
+ *  found one at the room start door on criterion 340 (ISS-1421 r32). */
+const OWN_ROLE_SENTENCE =
+  /['"`][^'"`\n]*(a viewer cannot|hold the viewer role on|role or above to )/i;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -207,6 +211,13 @@ describe('the role gates', () => {
       .filter((path) => ROLE_WORDS_ONLY.test(readFileSync(path, 'utf8')))
       .map((path) => relative(SRC, path));
     expect(bare).toEqual([]);
+  });
+
+  it('are not stepped round by a door refusing a role too low in its own words', () => {
+    const own = sourceFiles(SRC)
+      .filter((path) => OWN_ROLE_SENTENCE.test(readFileSync(path, 'utf8')))
+      .map((path) => relative(SRC, path));
+    expect(own).toEqual([]);
   });
 });
 

@@ -215,11 +215,11 @@ describe('a viewer of the project', () => {
   const refusedFor = (refusal: Refusal) => {
     expect(refusal.code).toBe('FORBIDDEN');
     expect(refusal.message).toBe(
-      'You hold the viewer role on Ledger; a viewer cannot start a room.',
+      'You are a viewer of this project, so you cannot start a conversation about it. Only a member or admin of this project can, so ask one of them.',
     );
   };
 
-  it('is refused opening a room there, told the viewer role it holds and that a viewer cannot start one', async () => {
+  it('is refused opening a room there, told the viewer role it holds and who may start one', async () => {
     const res = await as(viewerId, '/api/conversations', 'POST', { projectId });
     expect(res.status).toBe(403);
     refusedFor((await res.json()) as Refusal);
@@ -343,7 +343,7 @@ describe('the projects a room may be opened on', () => {
  */
 describe('a write by a viewer of the room', () => {
   const VIEWER_WRITE =
-    'You hold the viewer role on Ledger; a viewer cannot change a room or post in it.';
+    'You are a viewer of Ledger, so you cannot change this room or post in it. Only a member or admin of Ledger can, so ask one of them.';
   const ROLELESS =
     'This room is about a project on which you hold no role; a room is reached only by someone who holds one on every project in it.';
 

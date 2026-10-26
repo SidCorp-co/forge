@@ -264,7 +264,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
       }
       const comment = await loadCommentForAccess(input.documentId);
 
-      await assertPrincipalIsWriter(principal, comment.projectId, 'delete a comment on it');
+      await assertPrincipalIsWriter(principal, comment.projectId, 'delete this comment');
       await assertMayChange(principal.userId, comment, 'delete');
 
       await deleteComment(input.documentId);
@@ -359,7 +359,7 @@ async function updateAction(principal: Principal, input: ToolInput): Promise<unk
   if (!body) throw new Error('BAD_REQUEST: data.body is required for update');
 
   const comment = await loadCommentForAccess(input.documentId);
-  await assertPrincipalIsWriter(principal, comment.projectId, 'edit a comment on it');
+  await assertPrincipalIsWriter(principal, comment.projectId, 'edit this comment');
   await assertMayChange(principal.userId, comment, 'edit');
 
   const written = await updateCommentBody(input.documentId, {
@@ -380,15 +380,9 @@ async function assertMayChange(
   verb: 'edit' | 'delete',
 ): Promise<void> {
   try {
-    await assertMayChangeComment(userId, comment);
+    await assertMayChangeComment(userId, comment, `${verb} this comment`);
   } catch (err) {
-    if (err instanceof CommentChangeForbidden) {
-      throw new Error(
-        err.reason === 'not_a_writer'
-          ? `FORBIDDEN: ${err.message}`
-          : `FORBIDDEN: only the comment author or a project admin can ${verb}`,
-      );
-    }
+    if (err instanceof CommentChangeForbidden) throw new Error(`FORBIDDEN: ${err.message}`);
     throw err;
   }
 }
