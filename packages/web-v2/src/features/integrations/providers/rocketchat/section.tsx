@@ -51,13 +51,13 @@ import {
   keyLockedLine,
   onlyWho,
 } from "../../components/integration-enabled-control";
-import { bindingBadge } from "../../derive";
+import { bindingBadge, bindingInUse } from "../../derive";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 
 export function RocketchatSection({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const binding = useMemo(
-    () => (list.data?.items ?? []).find((i) => i.provider === "rocketchat"),
+    () => bindingInUse(list.data?.items, "rocketchat"),
     [list.data],
   );
 
@@ -114,6 +114,7 @@ function AnswerModePanel({ projectId }: { projectId: string }) {
           update.mutate({ rocketChatAnswerMode: value === "fast" ? null : (value as "agent") })
         }
         options={ANSWER_MODE_OPTIONS}
+        aria-label="Answer mode"
         disabled={projectQ.isLoading || update.isPending || lockedTo !== null}
       />
       {lockedTo && <p className="fg-body-sm text-muted">{`${lockedTo} can change the answer mode.`}</p>}

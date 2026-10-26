@@ -88,6 +88,12 @@ async function commentCount(issueId: string): Promise<number> {
   return rows[0]?.n ?? 0;
 }
 
+// ISS-1421 r32, criterion 340: either door refuses a role too low naming the act and who may take it.
+const viewerCannot = (act: string) =>
+  `You are a viewer of this project, so you cannot ${act}. Only a member or admin of this project can, so ask one of them.`;
+const memberCannot = (act: string) =>
+  `You are a member of this project, so you cannot ${act}. Only its author or an admin of this project can, so ask one of them.`;
+
 type Change = (who: Caller, commentId: string) => Promise<Door>;
 
 const edits: Record<string, Change> = {
@@ -112,7 +118,9 @@ describe.each(Object.entries(edits))('an edit through %s', (_name, edit) => {
   it("refuses a member who is not the author, and leaves the author's words", async () => {
     const id = await comment(await issue(), callers.admin.userId);
     const { refused } = await edit(callers.member, id);
-    expect(refused, "a member must not rewrite another person's comment").toBeDefined();
+    expect(refused, "a member must not rewrite another person's comment").toContain(
+      memberCannot('edit this comment'),
+    );
     expect(await bodyOf(id)).toBe('the first words');
   });
 
@@ -131,7 +139,9 @@ describe.each(Object.entries(edits))('an edit through %s', (_name, edit) => {
   it('refuses a viewer who authored the comment, because a viewer may not write one', async () => {
     const id = await comment(await issue(), callers.viewer.userId);
     const { refused } = await edit(callers.viewer, id);
-    expect(refused, 'whoever may not create a comment may not edit one either').toBeDefined();
+    expect(refused, 'whoever may not create a comment may not edit one either').toContain(
+      viewerCannot('edit this comment'),
+    );
     expect(await bodyOf(id)).toBe('the first words');
   });
 });
@@ -140,7 +150,7 @@ describe.each(Object.entries(deletes))('a delete through %s', (_name, remove) =>
   it('refuses a member who is not the author, and keeps the comment', async () => {
     const id = await comment(await issue(), callers.admin.userId);
     const { refused } = await remove(callers.member, id);
-    expect(refused).toBeDefined();
+    expect(refused).toContain(memberCannot('delete this comment'));
     expect(await bodyOf(id)).toBe('the first words');
   });
 
@@ -153,7 +163,9 @@ describe.each(Object.entries(deletes))('a delete through %s', (_name, remove) =>
   it('refuses a viewer who authored the comment, and keeps it', async () => {
     const id = await comment(await issue(), callers.viewer.userId);
     const { refused } = await remove(callers.viewer, id);
-    expect(refused, 'whoever may not create a comment may not delete one either').toBeDefined();
+    expect(refused, 'whoever may not create a comment may not delete one either').toContain(
+      viewerCannot('delete this comment'),
+    );
     expect(await bodyOf(id)).toBe('the first words');
   });
 });

@@ -536,4 +536,20 @@ describe("Rocket.Chat's bot personality field", () => {
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Bot personality" })).toBeInTheDocument());
     expect(screen.getByRole("textbox", { name: "Room to add" })).toBeInTheDocument();
   });
+
+  // ISS-1421 r32: Answer mode's select was a combobox named by nothing.
+  it("gives the answer mode select an accessible name", async () => {
+    provider = "rocketchat";
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: "rocketchat", status: "connected", meta: {} } as never}
+          onClose={() => {}}
+        />
+      </Page>,
+    );
+    await waitFor(() => expect(screen.getByText("Answer mode")).toBeInTheDocument());
+    expect(screen.getByRole("combobox", { name: "Answer mode" })).toBeInTheDocument();
+  });
 });

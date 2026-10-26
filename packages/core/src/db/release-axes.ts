@@ -19,7 +19,7 @@ const BINDING_ROLE_CHK = sql`role IN ('deploy', 'service')`;
 
 const ROLE_STAGES_CHK = sql`(role = 'service' AND cardinality(stages) = 0) OR (role = 'deploy' AND array_ndims(stages) = 1 AND cardinality(stages) BETWEEN 1 AND 2 AND stages <@ ARRAY['preview', 'live'] AND (cardinality(stages) = 1 OR stages[1] <> stages[2]))`;
 
-export const SERVICE_ROLE_PRED = sql`role = 'service'`;
+export const SWITCHED_ON_SERVICE_PRED = sql`role = 'service' AND active`;
 
 /** Spread into `projects`' extras in `schema.ts`; the constraint name is what Postgres reports. */
 export const releaseProjectChecks = {

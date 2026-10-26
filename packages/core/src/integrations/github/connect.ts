@@ -20,6 +20,7 @@ export interface ConnectState {
    *  App. Absent = personal. The choice is made at connect time but spent in
    *  the callback, which sees nothing but this state. */
   orgId?: string;
+  bindingId?: string;
 }
 
 export function signConnectState(secret: string, state: ConnectState, nowMs = Date.now()): string {
@@ -53,6 +54,7 @@ export function verifyConnectState(
     projectId: parsed.projectId,
     userId: parsed.userId,
     ...(parsed.orgId ? { orgId: parsed.orgId } : {}),
+    ...(typeof parsed.bindingId === 'string' ? { bindingId: parsed.bindingId } : {}),
   };
 }
 

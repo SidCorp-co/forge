@@ -214,6 +214,17 @@ describe("a github binding that records a repository", () => {
     expect(screen.getByText("SidCorp-co/forge")).toBeInTheDocument();
   });
 
+  // ISS-1421 r32: a removed binding no longer holds the slot, so a project can hold one switched off
+  // beside one switched on, and the panel shows the one in use.
+  it("shows the binding switched on where a switched-off one stands beside it", () => {
+    items = [{ ...GITHUB_EMPTY_INACTIVE, id: "0b5c2c1e-1111-4a77-9f2d-2c5e6a7b8c90" }, GITHUB_CONFIGURED];
+
+    mount();
+
+    expect(screen.getByText("SidCorp-co/forge")).toBeInTheDocument();
+    expect(picker()).toBeNull();
+  });
+
   it("offers a control that reopens the picker, so a repository is changeable in place", () => {
     items = [GITHUB_CONFIGURED];
     mount();

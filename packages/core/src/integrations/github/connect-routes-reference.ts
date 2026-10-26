@@ -61,6 +61,7 @@ export const startGithubConnect = onProject(
         ORG_MISMATCH: "`orgId` is not the project's own org, so the App would be owned by another",
         REMOVED_CONNECTION_OTHER_OWNER:
           "the project's GitHub binding names a removed connection the new App would not belong to",
+        ALREADY_EXISTS: 'a GitHub binding is switched on for the project over a live connection',
       }),
       503: vaultMissing,
     },

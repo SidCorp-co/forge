@@ -267,7 +267,8 @@ export const createIntegration = onProject(
       404: fail('NOT_FOUND', 'no such project, or the caller cannot see it'),
       409: fail({
         ORG_MISMATCH: "the named org is not the project's own org",
-        ALREADY_EXISTS: 'an active service binding of this provider (and label) is already there',
+        ALREADY_EXISTS:
+          'a service binding of this provider (and label) is switched on for the project, over a live connection or a removed one',
       }),
       503: vaultMissing,
     },
@@ -295,6 +296,8 @@ export const updateIntegration = onBinding(
         CONNECTION_REMOVED:
           'the binding was switched on over a removed connection, which holds no key to resolve',
         CREDENTIAL_UNREADABLE: `${UNREADABLE_WHEN}, and only part of a new one was sent`,
+        ALREADY_EXISTS:
+          'the binding was switched on while another service binding of its provider and label is switched on for the project',
       }),
       503: vaultMissing,
     },

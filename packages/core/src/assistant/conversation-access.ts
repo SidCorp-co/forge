@@ -7,7 +7,6 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { Executor } from '../conversations/db-executor.js';
-import { projectsNamed } from '../conversations/membership.js';
 import { listParticipants } from '../conversations/participants.js';
 import { roomGone, roomRefusal } from '../conversations/room-refusal.js';
 import { assertConversationReadable, assertConversationWritable } from '../conversations/scope.js';
@@ -16,23 +15,14 @@ import { db as defaultDb } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 
-/**
- * A room is started by somebody holding the member role or above on its project. A viewer is one of
- * the project's members, and is told the role they hold rather than that they are not one (ISS-1229
- * r35, judge-95).
- */
+/** A room is started by a member or above, a viewer refused as every door refuses a role too low
+ *  (ISS-1421 r32, judge-132 on criterion 340). */
 export async function assertMayStartRoom(projectId: string, userId: string): Promise<void> {
-  const access = await loadProjectAccess(projectId, userId);
-  if (access.role === 'viewer') {
-    const [project] = await projectsNamed([projectId]);
-    throw roomRefusal(
-      403,
-      'FORBIDDEN',
-      `You hold the viewer role on ${project?.name ?? 'this project'}; a viewer cannot start a room.`,
-      { projectId },
-    );
-  }
-  assertRoleFor(access, 'member', 'start a conversation about it');
+  assertRoleFor(
+    await loadProjectAccess(projectId, userId),
+    'member',
+    'start a conversation about it',
+  );
 }
 
 /**

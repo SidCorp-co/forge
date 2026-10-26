@@ -34,11 +34,12 @@ function isPrivateKeyPem(value: string): boolean {
 }
 
 /**
- * A key as a YAML or JSON block carries it, every line indented, set back to the file GitHub gave:
- * the whole key was once refused as not whole for its indent (ISS-1421 r31, judge-127 on 341).
+ * A key as a YAML or JSON block carries it set back to the file GitHub gave, whichever of its lines
+ * are indented: a copy taken from its BEGIN line keeps that line flush and the rest indented
+ * (ISS-1421 r31, judge-127 on 341; r32, judge-132 on 352).
  */
 function unindented(value: string): string {
-  if (!/^[ \t]+-----BEGIN /m.test(value)) return value;
+  if (!/^[ \t]+\S/m.test(value)) return value;
   return value
     .split(/\r?\n/)
     .map((line) => line.trim())

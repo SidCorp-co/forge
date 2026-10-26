@@ -2297,6 +2297,13 @@
       "when": 1815868800000,
       "tag": "0380_every_block_is_screened",
       "breakpoints": true
+    },
+    {
+      "idx": 384,
+      "version": "7",
+      "when": 1816214400000,
+      "tag": "0384_a_removed_binding_blocks_nothing",
+      "breakpoints": true
     }
   ]
 }

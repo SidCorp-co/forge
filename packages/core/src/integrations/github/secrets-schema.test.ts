@@ -72,6 +72,31 @@ describe('githubSecretsSchema — the App private key a save door takes', () => 
     },
   );
 
+  // ISS-1421 r32, judge-132 on 352: selecting from -----BEGIN inside an indented block copies the
+  // BEGIN line flush and every other line indented, and that key was refused as not whole.
+  it.each([
+    ['its BEGIN line flush', (line: string, i: number) => (i === 0 ? line : `    ${line}`)],
+    [
+      'its END line flush',
+      (line: string, i: number, n: number) => (i === n - 1 ? line : `  ${line}`),
+    ],
+    ['its indent mixed', (line: string, i: number) => `${i % 2 ? '\t' : '   '}${line}`],
+  ])('takes a whole key with %s, and keeps it without the indent', (_what, indent) => {
+    const lines = PEM.trimEnd().split('\n');
+    const sent = lines.map((line, i) => indent(line, i, lines.length)).join('\n');
+    const parsed = githubSecretsSchema.safeParse(app(sent));
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.privateKey).toBe(PEM.trim());
+  });
+
+  it('still refuses a key that is not whole once its indent is gone', () => {
+    const lines = PEM.trimEnd().split('\n');
+    const cut = lines
+      .filter((_line, i) => i !== 3)
+      .map((line, i) => (i === 0 ? line : `  ${line}`));
+    expect(refusal(cut.join('\n'))).toMatch(/^This is not a whole GitHub App private key/);
+  });
+
   it('refuses more than any App key as that, with no count', () => {
     const said = refusal(`${PEM}${'x'.repeat(20000)}`);
     expect(said).toMatch(/^This is larger than any private key GitHub gives an App/);

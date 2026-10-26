@@ -2476,8 +2476,8 @@ export const integrationBindings = pgTable(
     // ISS-558 — multi-store support for epodsystem. Empty string = the default
     // (unlabeled) binding; a non-empty kebab slug = a named extra binding.
     // Non-epodsystem providers always leave this as '' (the DB default), so
-    // `integration_bindings_service_uq` still keeps one service binding per
-    // (project, provider) for sentry/rocketchat/github/postman/google.
+    // `integration_bindings_service_uq` still keeps one switched-on service binding
+    // per (project, provider) for sentry/rocketchat/github/postman/google.
     label: text('label').notNull().default(''),
     active: boolean('active').notNull().default(true),
     agentAccess: text('agent_access', { enum: axes.agentAccessValues }).notNull().default('none'),
@@ -2493,7 +2493,7 @@ export const integrationBindings = pgTable(
     ),
     serviceUq: uniqueIndex('integration_bindings_service_uq')
       .on(t.projectId, t.provider, t.label)
-      .where(axes.SERVICE_ROLE_PRED),
+      .where(axes.SWITCHED_ON_SERVICE_PRED),
     ...axes.bindingShapeChecks,
   }),
 );

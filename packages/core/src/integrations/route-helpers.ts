@@ -2,6 +2,7 @@ import type { ConnectionAccess } from '@forge/contracts';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
 import { effectiveProjectRole, projectWriteRefusal } from '../lib/authz.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type AgentAccess, noAgentPathMessage } from './agent-access.js';
@@ -13,7 +14,7 @@ import {
   WHO_CHANGES,
 } from './binding-acts.js';
 import { checkBindingHealth } from './binding-health.js';
-import { healthAnswer } from './health-words.js';
+import { healthAnswer, providerLabel } from './health-words.js';
 import {
   holdsKey,
   isRemovedConnection,
@@ -27,10 +28,12 @@ import { getAdapter, getIntegration } from './registry.js';
 import {
   type BindingWithConnection,
   effectiveConfig,
-  findActiveServiceBindingAtLabel,
   findBindingWithConnectionById,
+  findSwitchedOnServiceBindingAtLabel,
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
+  type UpdateBindingPatch,
+  updateBinding,
 } from './store.js';
 import type { HealthCheckResult, IntegrationProvider } from './types.js';
 import { isVaultConfigured } from './vault.js';
@@ -183,13 +186,13 @@ export const stagesOnNonDeployBinding = (role: string) =>
 
 /** 409 for the one-active-service-binding invariant (create + bind-existing). */
 export const alreadyExists = (
-  message = 'an active service binding for this provider already exists on this project',
+  message = 'This integration is already connected to this project. Disconnect it from this project before connecting another.',
 ) => new HTTPException(409, { message, cause: { code: 'ALREADY_EXISTS' } });
 
 /**
- * Shared pre-check of the two binding-creating endpoints: one active SERVICE binding per
- * (project, provider) — 409 ALREADY_EXISTS on a clash. (Epodsystem creates check by label
- * instead — see the create route.)
+ * Shared pre-check of the two binding-creating endpoints: one switched-on SERVICE binding per
+ * (project, provider, label) — 409 ALREADY_EXISTS on a clash, before anything is written. One
+ * switched on over a connection that was removed is named as that (ISS-1421 r32).
  */
 export async function assertNoActiveBindingClash(
   projectId: string,
@@ -198,12 +201,48 @@ export async function assertNoActiveBindingClash(
   label = '',
 ): Promise<void> {
   if (role !== 'service') return;
-  const clash = await findActiveServiceBindingAtLabel(projectId, provider, label);
-  if (clash)
-    throw alreadyExists(
-      label ? `integration already exists for this provider (label "${label}")` : undefined,
-    );
+  const clash = await findSwitchedOnServiceBindingAtLabel(projectId, provider, label);
+  if (!clash) return;
+  if (!clash.connection.active) throw alreadyExists(switchedOnOverRemoved(provider));
+  const named = label ? `${providerLabel(provider)} (${label})` : providerLabel(provider);
+  throw alreadyExists(
+    `${named} is already connected to this project. Disconnect it from this project before connecting another.`,
+  );
 }
+
+export function switchedOnOverRemoved(provider: string): string {
+  return `This project still has a ${providerLabel(provider)} integration switched on, over a connection that was removed. Disconnect that one from this project before connecting another.`;
+}
+
+/** A switched-off service binding is not switched on beside another one switched on (ISS-1421 r32). */
+export async function refuseSwitchOnBesideAnother(
+  patch: { active?: boolean | undefined },
+  binding: IntegrationBindingRow,
+): Promise<void> {
+  if (patch.active !== true || binding.active || binding.role !== 'service') return;
+  const other = await findSwitchedOnServiceBindingAtLabel(
+    binding.projectId,
+    binding.provider as IntegrationProvider,
+    binding.label,
+    binding.id,
+  );
+  if (other) throw anotherSwitchedOn(binding.provider);
+}
+
+/** `updateBinding`, with a switch-on refused by the index answered as `anotherSwitchedOn`. */
+export async function updateBindingOrRefuse(
+  binding: IntegrationBindingRow,
+  patch: UpdateBindingPatch,
+): Promise<void> {
+  await updateBinding(binding.id, patch).catch((err: unknown) => {
+    throw isUniqueViolation(err) ? anotherSwitchedOn(binding.provider) : err;
+  });
+}
+
+export const anotherSwitchedOn = (provider: string) =>
+  alreadyExists(
+    `Another ${providerLabel(provider)} integration is switched on for this project, so this one cannot be switched on too. Disconnect that one from this project first.`,
+  );
 
 /**
  * Tell a provider its connection changed, where the provider declares that it cares.

@@ -59,9 +59,11 @@ import {
   keySavedHere,
   notFound,
   notifyConnectionChanged,
+  refuseSwitchOnBesideAnother,
   refuseSwitchOnOverRemoved,
   stagesOnNonDeployBinding,
   summarizeProjectBinding,
+  updateBindingOrRefuse,
 } from './route-helpers.js';
 import {
   bindingChangedSchema,
@@ -93,10 +95,10 @@ import {
   buildContextFromBinding,
   createBinding,
   createConnection,
+  deleteConnectionOfRefusedCreate,
   findBindingWithConnectionById,
   listBindingsForProject,
   softDeleteBinding,
-  softDeleteConnection,
   updateBinding,
   updateConnection,
 } from './store.js';
@@ -190,13 +192,10 @@ integrationsRoutes.post(
         agentAccess: bindingAgentAccess,
       });
     } catch (err) {
-      // Roll the just-created connection back so a binding-unique collision
-      // doesn't leave a dangling credential.
-      await softDeleteConnection(connection.id).catch(() => {});
+      // A refused create leaves nothing: the connection made for it goes whole (ISS-1421 r32).
+      await deleteConnectionOfRefusedCreate(connection.id).catch(() => {});
       if (isUniqueViolation(err)) {
-        throw alreadyExists(
-          'an active service binding for this provider and label already exists on this project',
-        );
+        throw alreadyExists();
       }
       throw err;
     }
@@ -245,6 +244,7 @@ integrationsRoutes.patch(
     // Refused here rather than as the DB check's constraint violation.
     if (patch.stages !== undefined && binding.role !== 'deploy')
       throw stagesOnNonDeployBinding(binding.role);
+    await refuseSwitchOnBesideAnother(patch, binding);
 
     let mergedSecrets: Record<string, unknown> | undefined;
     if (patch.secrets) {
@@ -259,16 +259,6 @@ integrationsRoutes.patch(
       });
     }
 
-    // Connection-tier config and secrets go to the connection; binding-tier config and `active` to the binding.
-    if (mergedConfig !== undefined || mergedSecrets !== undefined) {
-      const connPatch: Parameters<typeof updateConnection>[1] = {};
-      if (mergedConfig !== undefined) connPatch.config = mergedConfig;
-      if (mergedSecrets !== undefined) {
-        connPatch.secrets = mergedSecrets;
-        Object.assign(connPatch, keySavedHere(connection, patch.secrets ?? {}));
-      }
-      await updateConnection(connection.id, connPatch);
-    }
     if (
       mergedBindingConfig !== undefined ||
       patch.active !== undefined ||
@@ -282,7 +272,19 @@ integrationsRoutes.patch(
       if (patch.instructions !== undefined) bindingPatch.instructions = patch.instructions;
       if (patch.agentAccess !== undefined) bindingPatch.agentAccess = patch.agentAccess;
       if (patch.stages !== undefined) bindingPatch.stages = patch.stages;
-      await updateBinding(binding.id, bindingPatch);
+      // A switch-on that loses a race to another lands on the index, before the connection is touched.
+      await updateBindingOrRefuse(binding, bindingPatch);
+    }
+
+    // Binding-tier config and `active` go to the binding first; connection-tier config and secrets to the connection.
+    if (mergedConfig !== undefined || mergedSecrets !== undefined) {
+      const connPatch: Parameters<typeof updateConnection>[1] = {};
+      if (mergedConfig !== undefined) connPatch.config = mergedConfig;
+      if (mergedSecrets !== undefined) {
+        connPatch.secrets = mergedSecrets;
+        Object.assign(connPatch, keySavedHere(connection, patch.secrets ?? {}));
+      }
+      await updateConnection(connection.id, connPatch);
     }
 
     const refreshed = await findBindingWithConnectionById(id);
