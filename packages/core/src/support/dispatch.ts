@@ -3,7 +3,8 @@
 // the project, a later one goes as `agent:send` with the stored Claude session id, which the box
 // writes into its resident process or resumes with `--resume`. A message that arrives while a turn
 // runs waits as an undelivered `message_in` row; the turn's end (`supportRoom` bridge) or the drain
-// sends every waiting message as the next turn.
+// sends every waiting message as the next turn. A turn that ends without completing tells each
+// thread it left unanswered so, and those messages are not handed to a turn again.
 
 import {
   dispatchChatTurn,
@@ -26,6 +27,7 @@ import {
   type RoomRow,
   roomById,
   roomsWithUndelivered,
+  unansweredOfLastTurn,
   unclaim,
 } from './store.js';
 import { postInThread } from './thread.js';
@@ -189,5 +191,44 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
     | { roomId?: unknown }
     | undefined;
   if (typeof marker?.roomId !== 'string') return;
+  if (!COMPLETED.has(row.status)) await tellTurnFailed(marker.roomId, row.status);
   await deliverWaiting(marker.roomId);
+}
+
+/** The ends of a turn that finished it; every other end left its messages unanswered. */
+const COMPLETED = new Set<string>(['completed', 'completed_via_recovery']);
+
+const TURN_FAILED_LINE =
+  'I could not finish answering this message, so it has no answer from me. Please send it again; it is recorded in Forge for the team.';
+
+/**
+ * A turn that failed or was cancelled tells each thread it left unanswered, once, and records why:
+ * the messages stay delivered, so a box that fails every turn is never handed them again.
+ */
+async function tellTurnFailed(roomId: string, status: string): Promise<void> {
+  const room = await roomById(roomId);
+  if (!room) return;
+  const left = await unansweredOfLastTurn(room.id);
+  const threads = new Map(left.map((m) => [m.thread, m] as const));
+  for (const [thread, first] of threads) {
+    const posted = await postInThread({ room, thread, text: TURN_FAILED_LINE }).catch((err) => {
+      logger.error({ err, roomId, thread }, 'support: the failed-turn notice could not be posted');
+      return null;
+    });
+    await insertAction({
+      roomId: room.id,
+      projectId: room.projectId,
+      conversationId: posted?.conversationId ?? first.conversationId,
+      thread,
+      kind: 'refused',
+      actorKind: 'core',
+      tool: 'turn_failed',
+      output: {
+        reason: `the session's turn ended ${status} before it answered`,
+        messages: left.filter((m) => m.thread === thread).map((m) => m.id),
+        posted: Boolean(posted),
+      },
+      externalId: posted?.messageId ?? null,
+    });
+  }
 }

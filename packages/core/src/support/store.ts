@@ -129,6 +129,46 @@ export async function unclaim(ids: readonly string[], at: Date): Promise<void> {
     .where(and(inArray(supportActions.id, [...ids]), eq(supportActions.deliveredAt, at)));
 }
 
+/**
+ * The messages the room's last turn took that the session wrote nothing back to: each taken by the
+ * newest delivery, in a thread with no session action since. One turn runs at a time, so the newest
+ * delivery is the turn that just ended.
+ */
+export async function unansweredOfLastTurn(roomId: string): Promise<ActionRow[]> {
+  const [last] = await db
+    .select({
+      at: sql<Date | null>`max(${supportActions.deliveredAt})`.mapWith((v) =>
+        v ? new Date(v) : null,
+      ),
+    })
+    .from(supportActions)
+    .where(and(eq(supportActions.roomId, roomId), eq(supportActions.kind, 'message_in')));
+  if (!last?.at) return [];
+  const taken = await db
+    .select()
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.kind, 'message_in'),
+        eq(supportActions.deliveredAt, last.at),
+      ),
+    )
+    .orderBy(asc(supportActions.createdAt));
+  const answered = await db
+    .selectDistinct({ thread: supportActions.thread })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.actorKind, 'session'),
+        gte(supportActions.createdAt, last.at),
+      ),
+    );
+  const done = new Set(answered.map((a) => a.thread));
+  return taken.filter((m) => !done.has(m.thread));
+}
+
 /** The oldest inbound message of a room no turn has taken. */
 export async function oldestUndelivered(roomId: string): Promise<ActionRow | null> {
   const [row] = await db
