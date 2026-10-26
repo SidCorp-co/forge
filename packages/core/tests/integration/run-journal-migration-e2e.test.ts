@@ -46,7 +46,9 @@ function dropBlock(): string {
 }
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({
+    own: 'creates tables and a pgboss schema to replay a migration',
+  });
 }, 60_000);
 
 afterAll(async () => {

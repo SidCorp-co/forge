@@ -40,7 +40,7 @@ function migrationBlock(): string {
 }
 
 beforeAll(async () => {
-  harness = await setupTestDatabase();
+  harness = await setupTestDatabase({ own: 'creates phase_journal to replay a migration' });
 }, 60_000);
 
 afterAll(async () => {

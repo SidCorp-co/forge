@@ -171,15 +171,16 @@ instance started with `-c fsync=off`.
 
 **What it buys**, counted from `log_statement=ddl` over one whole local run at three workers:
 
-| | `e4f44b66c`, a database per file | ISS-1315 on `e4f44b66c`, a database per slot |
+| | `main` at `e4f44b66c`, a database per file | ISS-1315, a database per slot |
 | --- | --- | --- |
-| `CREATE DATABASE` | 537 — 405 per file, 108 per migration case, 24 templates | 154 — 3 slots, 6 in the isolation e2e's nested runs, 13 declared `own`, 108 per case, 24 templates |
-| `DROP DATABASE` | 537 | 150, plus 1 slot database renamed aside by the isolation e2e |
-| Wall, solo, `--sequence.shuffle.files --sequence.seed=1315` | 2429s | 2183s |
+| `CREATE DATABASE` | 537 — 405 per file, 108 per migration case, 24 templates | 167 — 3 slots, 6 in the isolation e2e's nested runs, 26 declared `own`, 108 per case, 24 templates |
+| `DROP DATABASE` | 537 | 167, plus 1 slot database renamed aside by the isolation e2e |
+| Files / tests, green | 413 / 4276 | 414 / 4286 (`main` had gained a file by then) |
+| Wall | 2429s, `fsync=on` | 2183s at `fsync=on` before the last rebase; 1312s at `fsync=off` |
 
-Both runs: 413 files, the second with 3 more tests (4276 and 4279), green, measured 2026-10-25 on a
-56-core box with `TEST_TEMPLATE_MODE=fresh` against a `pgvector/pgvector:pg17` container of their own,
-at its default `fsync=on`.
+Each a whole local run at three workers under `--sequence.shuffle.files --sequence.seed=1315`, with
+`TEST_TEMPLATE_MODE=fresh` against a `pgvector/pgvector:pg17` container of its own, on a 56-core box,
+2026-10-25 and 2026-10-26. Nothing carrying either run's token was left in `pg_database` after it.
 
 **What ends it.** The trade holds while every file a slot runs reads only what the reset puts back.
 The day a file has to depend on something the reset does not restore and cannot declare `own` for
