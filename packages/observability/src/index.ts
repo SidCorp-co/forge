@@ -324,7 +324,7 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
       if (!VALUE_END[context].test(text.slice(end, end + 8))) end = at + (/^[^\s,&"]+/.exec(rest)?.[0].length ?? 0);
       shown = marker;
     } else {
-      const bare = (nameQuote ? BARE_VALUE : BARE_UNQUOTED).exec(rest);
+      const bare = (context === 'quoted' ? BARE_VALUE : BARE_UNQUOTED).exec(rest);
       if (!bare) continue;
       end = at + bare[0].length;
       shown = marker;

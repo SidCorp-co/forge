@@ -124,6 +124,14 @@ describe('a log line, which is not JSON', () => {
     }
   });
 
+  it('loses a bracketed tail under a quoted name that `=` assigns', () => {
+    for (const value of [']hunter2', 'abc]def']) {
+      expect(scrubLogText(`"password"=${value} user=ana`)).toBe(
+        `"password"="${FILTERED}" user=ana`,
+      );
+    }
+  });
+
   it('keeps what follows a bracketed secret that runs on past its brackets', () => {
     expect(scrubLogText('password=[x]tail&user=ana')).toBe(`password=${FILTERED}&user=ana`);
     expect(scrubLogText('password={x}tail,user=ana')).toBe(`password=${FILTERED},user=ana`);
