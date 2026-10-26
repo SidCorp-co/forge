@@ -1,4 +1,5 @@
-// Recording what needs code as Feedback for the team (REQ-75 BC-14), then following it (BC-15).
+// Filing what needs code as Feedback for the team once its asker confirmed it (REQ-75 BC-14), then
+// following it (BC-15).
 
 import { createHash } from 'node:crypto';
 import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
@@ -8,30 +9,42 @@ import { buildMessagePermalink } from '../integrations/rocketchat/index.js';
 import { knownThread, type Outcome, threadUnknown } from './outcome.js';
 import { refusalOf } from './refusals.js';
 import { FEEDBACK_KIND_OF, visitorIdOf } from './rules.js';
-import { insertAction, insertLink, type RoomRow, threadMembers } from './store.js';
+import { insertAction, insertLink, type RoomRow } from './store.js';
 import { postInThread, roomAuth, scrubbedForRoom } from './thread.js';
 
+/** The reserved name a filing waits under among the changes an asker confirms (`fixes.ts`). */
+export const RECORD_CHANGE = 'forge:record';
+
+/** What the session asks to file: the route (kind), a title, and the need in plain words. */
+export interface RecordRequest {
+  thread: string;
+  kind: SupportRecordKind;
+  title: string;
+  summary: string;
+  whereSeen?: string | undefined;
+}
+
+/** The thread's link in Rocket.Chat, or the room and thread ids where the server gives none. */
+export async function threadLink(room: RoomRow, thread: string): Promise<string> {
+  const { auth } = await roomAuth(room);
+  const permalink = await buildMessagePermalink(auth, room.rid, thread).catch(() => null);
+  return permalink ?? `${room.rid} / ${thread}`;
+}
+
 /**
- * Record what needs code as Feedback for the team (BC-14): filed as the room's own account through
- * the external filing door, the thread's first writer as its reporter, the thread's link in its
- * body; the thread is told the key and is followed until it ships (BC-15). The external filing
- * door hands a group member no status link: in a group anyone could open it, and the thread's own
- * progress lines are the status.
+ * File what needs code as Feedback for the team (BC-14), once the asker confirmed it
+ * (`fixes.ts:proposeRecord`): filed as the room's own account through the external filing door,
+ * the asker as its reporter, the thread's link in its body; the thread is told the key and is
+ * followed until it ships (BC-15). The external filing door hands a group member no status link:
+ * in a group anyone could open it, and the thread's own progress lines are the status.
  */
-export async function record(
+export async function fileRecord(
   room: RoomRow,
-  input: {
-    thread: string;
-    kind: SupportRecordKind;
-    title: string;
-    summary: string;
-    whereSeen?: string | undefined;
-  },
+  input: RecordRequest & { reporter: { key: string; label: string | null } },
 ): Promise<Outcome<{ feedbackKey: string; created: boolean }>> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
-  const [reporter] = await threadMembers(room.id, input.thread);
-  if (!reporter) return threadUnknown(input.thread);
+  const { reporter } = input;
   const { auth, namespace } = await roomAuth(room);
   const permalink = await buildMessagePermalink(auth, room.rid, input.thread).catch(() => null);
   const external: ExternalReporter = {

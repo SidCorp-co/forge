@@ -121,7 +121,9 @@ export async function reapUnansweredParks(
  * box reports it closed. A box that has not answered within the hour after is read as gone, and the
  * row says the residency is over without it. A session with a turn in flight (`queued`/`running`)
  * is not waiting for one, though its runtime state reads the one the turn before ended on until the
- * box's first beat of this turn, and for the whole turn on a box older than that beat.
+ * box's first beat of this turn, and for the whole turn on a box older than that beat. A support
+ * group's session is resident for as long as its room is bound (REQ-75 BC-11), so the idle verdict
+ * never closes it: its next message must not wait on a cold start.
  */
 export async function closeIdleResidents(
   now: Date = new Date(),
@@ -137,6 +139,7 @@ export async function closeIdleResidents(
        AND ${agentSessions.status} NOT IN ('queued', 'running')
        AND ${agentSessions.runtimeState} = 'awaiting_input'
        AND ${agentSessions.deviceId} IS NOT NULL
+       AND NOT (COALESCE(${agentSessions.metadata}, '{}'::jsonb) ? 'supportRoom')
        AND ${BEAT} < ${at}::timestamptz - make_interval(secs => ${RESIDENCY_SECONDS})
        ${scope.projectId ? sql`AND ${agentSessions.projectId} = ${scope.projectId}` : sql``}
      ORDER BY ${BEAT} ASC

@@ -269,9 +269,9 @@ async fn deliver_resident(
     key: &str,
     body: &str,
 ) {
-    let pending = Some((frame.session_id.clone(), frame.seq));
+    let pending = (frame.session_id.clone(), frame.seq);
     let key = key.to_string();
-    let write = runner.send_resident(&key, body, pending);
+    let write = runner.inject_resident(&key, body, pending);
     match tokio::time::timeout(write_deadline(frame.deadline_ms), write).await {
         Ok(Ok(())) => inbox::ack(client, &frame.session_id, frame.seq, Ack::Delivered).await,
         Ok(Err(e)) => {

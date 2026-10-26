@@ -49,7 +49,7 @@ const SHAPE = [
   'reply { thread, text }',
   'run { thread, tool, args? }',
   'propose_fix { thread, tool, args?, asker }',
-  `record { thread, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, whereSeen? }`,
+  `record { thread, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, whereSeen?, asker? }`,
 ].join('; ');
 
 const DESCRIPTION = [
@@ -59,7 +59,7 @@ const DESCRIPTION = [
   'reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite.',
   'run {thread, tool, args}: run a granted diagnose check; the thread is shown what was checked, and you get what came back.',
   'propose_fix {thread, tool, args, asker}: offer a granted fix to the person who asked (`from.id`). It runs only when that person confirms in the thread; you are told the result as a later message.',
-  `record {thread, kind, title, summary}: what needs code or a decision becomes Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}); the thread is given its key and status link and told its progress until it ships. Never promise a date.`,
+  `record {thread, kind, title, summary, asker?}: what needs code or a decision is offered as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}); the thread is shown the route, the title and its link, and it is filed only when the asker (the thread's first writer unless named) confirms. You are told the key when it is filed; the thread is told its progress until it ships. Never promise a date.`,
   `A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: ${SHAPE}.`,
 ].join(' ');
 

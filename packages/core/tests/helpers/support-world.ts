@@ -7,8 +7,6 @@
 // The chat server is `support-chat-server.ts`'s: a stand-in by default, a real Rocket.Chat on demand.
 
 import { createHash } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { expect } from 'vitest';
 import WebSocket from 'ws';
@@ -21,11 +19,14 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
+  rows,
 } from './factories.js';
 import { boxToken, type Served, serveCore, stopCore } from './preview-world.js';
 import { type BotLine, type ChatServer, chatServer } from './support-chat-server.js';
+import { ProductApi, SUPPORT_TOOLS } from './support-product-api.js';
 
 export type { BotLine, ChatServer, Member } from './support-chat-server.js';
+export { ProductApi, SUPPORT_TOOLS } from './support-product-api.js';
 
 /** One message of a turn as the session reads it: its thread, its writer, and the words. */
 export interface TurnMessage {
@@ -35,12 +36,25 @@ export interface TurnMessage {
 }
 
 export interface Turn {
-  event: 'agent:start' | 'agent:send';
+  /** `session.send`: messages core wrote into the running turn (the resident's stdin). */
+  event: 'agent:start' | 'agent:send' | 'session.send';
   sessionId: string;
   token: string;
   text: string;
   messages: TurnMessage[];
   claudeSessionId: string | null;
+  /** The frame told the box to keep its Claude Code process resident between turns. */
+  keepResident: boolean;
+  /** A warm-up: the session is spawned and briefed with no member message to answer. */
+  warmUp: boolean;
+  /** When the box heard it. */
+  at: number;
+}
+
+/** A turn the box is running, and what core wrote into it while it ran. */
+interface Running {
+  turn: Turn;
+  injected: { seq: number; work: Promise<void> }[];
 }
 
 /** The messages of a turn's text, read the way the brief tells the session they are written. */
@@ -63,7 +77,11 @@ export function messagesOf(text: string): TurnMessage[] {
 
 /**
  * The runner's part for a chat session: it hears `agent:start` / `agent:send`, runs the model the
- * test scripts, and reports the turn done with the Claude session id a resume reads.
+ * test scripts, and reports the turn done with the Claude session id a resume reads. A `session.send`
+ * while a turn runs is written into it, as the runner writes the resident's stdin: acked delivered,
+ * handed to the model as messages of that turn, and reported applied when the turn completes; with
+ * no turn running it is acked gone, as the runner refuses it. A warm-up turn is answered without the
+ * model, as Claude Code answers "ready".
  */
 export class SessionBox {
   readonly turns: Turn[] = [];
@@ -81,6 +99,7 @@ export class SessionBox {
   /** How the box reports a turn's end: completed, or failed as a crashed process is. */
   turnEnd: 'completed' | 'failed' = 'completed';
   private turnSeq = 0;
+  private readonly running = new Map<string, Running>();
 
   constructor(
     readonly base: string,
@@ -99,11 +118,14 @@ export class SessionBox {
     ws.send(JSON.stringify({ type: 'subscribe', room: `device:${this.deviceId}` }));
     ws.on('message', (raw) => {
       const frame = JSON.parse(String(raw)) as { event: string; data: Record<string, unknown> };
+      // a turn still calling core when the world stops fails on a closed core: that is the stop
+      const failed = (err: unknown) => {
+        if (!this.closed) this.errors.push(err);
+      };
       if (frame.event === 'agent:start' || frame.event === 'agent:send') {
-        // a turn still calling core when the world stops fails on a closed core: that is the stop
-        this.run(frame).catch((err: unknown) => {
-          if (!this.closed) this.errors.push(err);
-        });
+        this.run(frame).catch(failed);
+      } else if (frame.event === 'session.send') {
+        this.inject(frame.data).catch(failed);
       }
     });
     this.control = ws;
@@ -145,37 +167,98 @@ export class SessionBox {
   private async run(frame: { event: string; data: Record<string, unknown> }): Promise<void> {
     const d = frame.data;
     const text = String(d.prompt ?? d.message ?? '');
+    const messages = messagesOf(text);
     const turn: Turn = {
       event: frame.event as Turn['event'],
       sessionId: String(d.sessionId),
       token: String(d.forgeToken ?? ''),
       text,
-      messages: messagesOf(text),
+      messages,
       claudeSessionId: (d.claudeSessionId as string | undefined) ?? null,
+      keepResident: d.keepResident === true,
+      warmUp: messages.length === 0 && text.includes('reply with the single word: ready'),
+      at: Date.now(),
     };
     this.turns.push(turn);
-    await this.model(turn, (args) => this.tool(turn.token, args));
-    if (!this.finishTurns) return;
-    this.turnSeq += 1;
+    this.running.set(turn.sessionId, { turn, injected: [] });
+    if (!turn.warmUp) await this.model(turn, (args) => this.tool(turn.token, args));
+    if (!this.finishTurns && !turn.warmUp) return;
     await this.finish(
       turn.sessionId,
       turn.claudeSessionId ?? `claude-${turn.sessionId.slice(0, 8)}`,
     );
   }
 
-  /** The turn ends as the runner reports it: completed with Claude's session id kept, or failed. */
-  async finish(sessionId: string, claudeSessionId: string): Promise<void> {
-    const res = await fetch(`${this.base}/api/agent-sessions/${sessionId}`, {
-      method: 'PATCH',
-      headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(
-        this.turnEnd === 'completed'
-          ? { status: 'completed', claudeSessionId }
-          : { status: 'failed' },
-      ),
+  /** Messages core wrote into the session's running turn, or refused where none runs. */
+  private async inject(d: Record<string, unknown>): Promise<void> {
+    const sessionId = String(d.sessionId);
+    const seq = Number(d.seq);
+    const running = this.running.get(sessionId);
+    if (!running) {
+      await this.post(`/api/agent-sessions/${sessionId}/inbox/${seq}/ack`, { outcome: 'gone' });
+      return;
+    }
+    await this.post(`/api/agent-sessions/${sessionId}/inbox/${seq}/ack`, {
+      outcome: 'delivered',
     });
-    if (!res.ok)
-      throw new Error(`the box could not end the turn: ${res.status} ${await res.text()}`);
+    const text = String(d.body ?? '');
+    const turn: Turn = {
+      ...running.turn,
+      event: 'session.send',
+      text,
+      messages: messagesOf(text),
+      warmUp: false,
+      at: Date.now(),
+    };
+    this.turns.push(turn);
+    const work = this.model(turn, (args) => this.tool(turn.token, args));
+    running.injected.push({ seq, work });
+    await work;
+  }
+
+  private async post(path: string, body: unknown): Promise<void> {
+    const res = await fetch(`${this.base}${path}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`the box's ${path} answered ${res.status} ${await res.text()}`);
+  }
+
+  /**
+   * The turn ends as the runner reports it: once what was written into it is answered, completed
+   * with each write applied, the process left resident and Claude's session id kept; or failed.
+   */
+  async finish(sessionId: string, claudeSessionId: string): Promise<void> {
+    const running = this.running.get(sessionId);
+    for (const i of running?.injected ?? []) await i.work;
+    this.running.delete(sessionId);
+    this.turnSeq += 1;
+    const patch = async (body: unknown) => {
+      const res = await fetch(`${this.base}/api/agent-sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok)
+        throw new Error(`the box could not end the turn: ${res.status} ${await res.text()}`);
+    };
+    if (this.turnEnd === 'failed') {
+      await patch({ status: 'failed' });
+      return;
+    }
+    for (const i of running?.injected ?? []) {
+      await this.post(`/api/agent-sessions/${sessionId}/inbox/${i.seq}/applied`, {
+        turn: this.turnSeq,
+      });
+    }
+    await patch({ runtimeState: 'awaiting_input' });
+    await patch({ status: 'completed', claudeSessionId });
+  }
+
+  /** The turns that carried member messages: what the session was asked, not its warm-ups. */
+  asked(): Turn[] {
+    return this.turns.filter((t) => !t.warmUp);
   }
 
   async untilTurns(count: number, ms = 20_000): Promise<Turn> {
@@ -190,86 +273,6 @@ export class SessionBox {
     this.control?.close();
   }
 }
-
-/** The product API the project grants: an order read, an invoice resend, and a redirect. */
-export class ProductApi {
-  static readonly SECRET = 'sk_live_req75_0123456789abcdef';
-  base = '';
-  readonly calls: { method: string; url: string; auth: string | undefined; body: string }[] = [];
-  private server!: Server;
-
-  async start(): Promise<void> {
-    this.server = createServer(async (req, res) => {
-      const chunks: Buffer[] = [];
-      for await (const c of req) chunks.push(c as Buffer);
-      this.calls.push({
-        method: req.method ?? '',
-        url: req.url ?? '',
-        auth: req.headers.authorization,
-        body: Buffer.concat(chunks).toString('utf8'),
-      });
-      const order = /^\/v1\/orders\/(\d+)$/.exec(req.url ?? '');
-      if (order && req.method === 'GET') {
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            id: order[1],
-            status: 'payment_pending',
-            invoice: 'not_sent',
-            // a careless API echoes the caller's credential; it must never reach the group
-            debug: `auth=${req.headers.authorization} token=${String(req.headers.authorization).split(' ')[1]}`,
-          }),
-        );
-        return;
-      }
-      if (/^\/v1\/orders\/\d+\/invoice$/.test(req.url ?? '') && req.method === 'POST') {
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ sent: true }));
-        return;
-      }
-      if (req.url === '/v1/elsewhere') {
-        res.writeHead(302, { location: 'http://127.0.0.2:9/steal' });
-        res.end();
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    });
-    await new Promise<void>((r) => this.server.listen(0, '127.0.0.1', () => r()));
-    this.base = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}/v1`;
-  }
-
-  async close(): Promise<void> {
-    this.server.closeAllConnections();
-    await new Promise<void>((r) => this.server.close(() => r()));
-  }
-}
-
-export const SUPPORT_TOOLS = [
-  {
-    name: 'order_status',
-    kind: 'diagnose',
-    method: 'GET',
-    path: '/orders/{orderId}',
-    summary: 'read order status',
-    params: { orderId: { in: 'path', description: 'the order number', pattern: '[0-9]{3,10}' } },
-  },
-  {
-    name: 'follow_elsewhere',
-    kind: 'diagnose',
-    method: 'GET',
-    path: '/elsewhere',
-    summary: 'read a page that redirects',
-  },
-  {
-    name: 'resend_invoice',
-    kind: 'fix',
-    method: 'POST',
-    path: '/orders/{orderId}/invoice',
-    summary: 'resend the invoice',
-    params: { orderId: { in: 'path', description: 'the order number', pattern: '[0-9]{3,10}' } },
-  },
-] as const;
 
 export class SupportWorld {
   core!: Served;
@@ -349,6 +352,44 @@ export class SupportWorld {
     await settleOutbox();
     const { startRocketChatManager } = await import('../../src/integrations/rocketchat/index.js');
     await startRocketChatManager();
+  }
+
+  /** The project's newest filing, which a group member made: handed no status link (BC-14). */
+  async lastGroupFiling(): Promise<{ kind: string; body: string; fb_seq: number }> {
+    const [fb] = await rows<{
+      id: string;
+      kind: string;
+      channel: string;
+      body: string;
+      fb_seq: number;
+      status_token_hash: string | null;
+    }>(sql`
+      SELECT f.id, f.kind, r.channel, f.body, f.fb_seq, r.status_token_hash FROM feedback f
+        JOIN feedback_external_reporters r ON r.feedback_id = f.id
+       WHERE f.project_id = ${this.projectId}::uuid ORDER BY f.created_at DESC LIMIT 1`);
+    if (!fb) throw new Error('no filing in the project');
+    // no token exists that anyone in the group could open, and the schema refuses one
+    expect(fb).toMatchObject({ channel: 'rocketchat', status_token_hash: null });
+    await expect(
+      db.execute(sql`UPDATE feedback_external_reporters SET status_token_hash = ${'a'.repeat(64)}
+                      WHERE feedback_id = ${fb.id}::uuid`),
+    ).rejects.toMatchObject({
+      cause: { constraint_name: 'feedback_external_reporters_status_link_chk' },
+    });
+    return fb;
+  }
+
+  /** The room's session is warm: its warm-up turn ran and the process stays resident. */
+  async untilWarm(): Promise<void> {
+    await expect
+      .poll(async () => (await this.rooms())[0]?.resident === true && this.box.turns.length > 0, {
+        timeout: 20_000,
+        interval: 50,
+      })
+      .toBe(true);
+    await expect
+      .poll(async () => (await this.rooms())[0]?.sessionStatus, { timeout: 20_000 })
+      .toBe('completed');
   }
 
   async rooms(): Promise<Record<string, unknown>[]> {

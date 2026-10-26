@@ -35,13 +35,19 @@ export async function sessionRowById(sessionId: string) {
 }
 
 /** The status of each named session that exists. */
-export async function sessionStatusesByIds(ids: readonly string[]): Promise<Map<string, string>> {
+export async function sessionStatusesByIds(
+  ids: readonly string[],
+): Promise<Map<string, { status: string; runtimeState: string | null }>> {
   if (ids.length === 0) return new Map();
   const rows = await db
-    .select({ id: agentSessions.id, status: agentSessions.status })
+    .select({
+      id: agentSessions.id,
+      status: agentSessions.status,
+      runtimeState: agentSessions.runtimeState,
+    })
     .from(agentSessions)
     .where(inArray(agentSessions.id, [...ids]));
-  return new Map(rows.map((r) => [r.id, r.status]));
+  return new Map(rows.map((r) => [r.id, { status: r.status, runtimeState: r.runtimeState }]));
 }
 
 /** Load the session row or 404 — the shared first step of every per-session guard. */

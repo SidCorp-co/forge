@@ -1,0 +1,1 @@
+**A Rocket.Chat support group answers in real time, and files only what its asker confirms.** Messages reach the warm session at once, mid-turn ones join the running turn, and rooms show answer latency at p50 and p95.

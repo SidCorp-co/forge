@@ -83,14 +83,20 @@ pub(crate) async fn duplex_turns(
                 };
                 let consumed = {
                     let mut map = sessions.lock().await;
-                    map.get_mut(job_id).and_then(|s| {
+                    map.get_mut(job_id).map(|s| {
                         s.turns += 1;
+                        s.in_turn = false;
                         let turn = s.turns;
-                        s.pending_inbox.take().map(|(sid, seq)| (sid, seq, turn))
+                        std::mem::take(&mut s.pending_inbox)
+                            .into_iter()
+                            .map(|(sid, seq)| (sid, seq, turn))
+                            .collect::<Vec<_>>()
                     })
                 };
-                if let (Some((sid, seq, turn)), Some(client)) = (consumed, core) {
-                    runner_transport::inbox::applied(client, &sid, seq, turn).await;
+                if let Some(client) = core {
+                    for (sid, seq, turn) in consumed.unwrap_or_default() {
+                        runner_transport::inbox::applied(client, &sid, seq, turn).await;
+                    }
                 }
                 {
                     let tx = turn_tx.lock().await.clone();

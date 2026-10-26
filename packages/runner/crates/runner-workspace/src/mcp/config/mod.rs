@@ -113,6 +113,35 @@ pub fn write(
     write_in(
         &mcp_config_dir(),
         core_url,
+        ForgeBearer::Fixed(credential),
+        project_slug,
+        job_id,
+        override_servers,
+    )
+}
+
+/// A session config whose `forge` server reads its bearer from a file beside it, and that file's
+/// directory, which a confined session is handed read-only.
+pub struct Refreshable {
+    pub config: PathBuf,
+    pub bearer_dir: PathBuf,
+}
+
+/// [`write`] for a session that stays resident across turns that each carry their own token
+/// (REQ-75 BC-11): the `forge` server's `Authorization` comes from `headersHelper`, which reads
+/// the file [`refresh_bearer`] rewrites before each turn is written in. A turn's token is revoked
+/// when that turn ends, so the next turn's first call is answered 401, and Claude Code runs the
+/// helper again and retries with the token the file now holds (measured on Claude Code 2.1.310).
+pub fn write_refreshable(
+    core_url: &str,
+    credential: &str,
+    project_slug: &str,
+    job_id: &str,
+    override_servers: Option<&Value>,
+) -> Result<Refreshable> {
+    write_refreshable_in(
+        &mcp_config_dir(),
+        core_url,
         credential,
         project_slug,
         job_id,
@@ -120,25 +149,90 @@ pub fn write(
     )
 }
 
-fn write_in(
+fn write_refreshable_in(
     dir: &Path,
     core_url: &str,
     credential: &str,
     project_slug: &str,
     job_id: &str,
     override_servers: Option<&Value>,
+) -> Result<Refreshable> {
+    let bearer_dir = dir.join(format!(
+        "{BEARER_DIR_PREFIX}{}-{}",
+        sanitize_slug(project_slug),
+        sanitize_slug(job_id)
+    ));
+    if bearer_dir.to_string_lossy().contains('\'') {
+        return Err(Error::Other(format!(
+            "the MCP config directory `{}` holds a quote, which the `headersHelper` command that \
+             reads a resident session's bearer cannot carry",
+            bearer_dir.display()
+        )));
+    }
+    std::fs::create_dir_all(&bearer_dir)?;
+    restrict_dir_perms(&bearer_dir);
+    refresh_bearer(&bearer_dir, credential)?;
+    let config = write_in(
+        dir,
+        core_url,
+        ForgeBearer::FromFile(&bearer_dir.join(BEARER_FILE)),
+        project_slug,
+        job_id,
+        override_servers,
+    )?;
+    Ok(Refreshable { config, bearer_dir })
+}
+
+/// Put `credential` in the file a refreshable session's `headersHelper` reads. Written beside and
+/// renamed in, so the helper never reads half a token; the directory, not the file, is what a
+/// confined session has bound, so it sees the new file.
+pub fn refresh_bearer(bearer_dir: &Path, credential: &str) -> Result<()> {
+    let body = serde_json::json!({ "Authorization": format!("Bearer {credential}") }).to_string();
+    let path = bearer_dir.join(BEARER_FILE);
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    let _ = std::fs::remove_file(&tmp);
+    write_owner_only(&tmp, &body)?;
+    std::fs::rename(&tmp, &path)?;
+    Ok(())
+}
+
+const BEARER_DIR_PREFIX: &str = "forge-bearer-";
+const BEARER_FILE: &str = "headers.json";
+
+/// Where the `forge` server's bearer comes from.
+enum ForgeBearer<'a> {
+    /// Written into the config: the session holds this one token for as long as it lives.
+    Fixed(&'a str),
+    /// Read by `headersHelper` from this file whenever Claude Code (re)connects.
+    FromFile(&'a Path),
+}
+
+fn write_in(
+    dir: &Path,
+    core_url: &str,
+    bearer: ForgeBearer<'_>,
+    project_slug: &str,
+    job_id: &str,
+    override_servers: Option<&Value>,
 ) -> Result<PathBuf> {
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
-    let mut servers = serde_json::json!({
-        "forge": {
+    let forge = match bearer {
+        ForgeBearer::Fixed(credential) => serde_json::json!({
             "type": "http",
             "url": mcp_url,
             "headers": {
                 "Authorization": format!("Bearer {credential}"),
                 "X-Forge-Project-Slug": project_slug
             }
-        }
-    });
+        }),
+        ForgeBearer::FromFile(file) => serde_json::json!({
+            "type": "http",
+            "url": mcp_url,
+            "headers": { "X-Forge-Project-Slug": project_slug },
+            "headersHelper": format!("cat '{}'", file.display())
+        }),
+    };
+    let mut servers = serde_json::json!({ "forge": forge });
 
     if let Some(extra) = override_servers {
         if let (Some(base), Some(extra)) = (servers.as_object_mut(), extra.as_object()) {
@@ -493,6 +587,86 @@ mod borrowed_token_tests {
         std::fs::write(&urlless, r#"{"token":"tok-1"}"#).unwrap();
         let err = borrowed_credential_from(Some(urlless.into_os_string())).unwrap_err();
         assert!(err.to_string().contains("holds no `url`"), "{err}");
+        std::fs::remove_dir_all(d).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod refreshable_bearer_tests {
+    use super::*;
+
+    fn dir() -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "refreshable-bearer-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn helper_output(config: &Path) -> Value {
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(config).unwrap()).unwrap();
+        let forge = &doc["mcpServers"]["forge"];
+        assert!(
+            forge["headers"].get("Authorization").is_none(),
+            "a refreshable session's config still holds a bearer of its own: {forge}"
+        );
+        let helper = forge["headersHelper"].as_str().expect("no headersHelper");
+        let out = std::process::Command::new("sh")
+            .args(["-c", helper])
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "the helper failed: {out:?}");
+        serde_json::from_slice(&out.stdout).unwrap()
+    }
+
+    #[test]
+    fn a_resident_sessions_helper_reads_the_bearer_of_the_turn_written_last() {
+        let d = dir();
+        let made = write_refreshable_in(&d, "https://core.example/", "tok-one", "proj", "s1", None)
+            .unwrap();
+        assert_eq!(
+            helper_output(&made.config)["Authorization"],
+            "Bearer tok-one"
+        );
+        refresh_bearer(&made.bearer_dir, "tok-two").unwrap();
+        assert_eq!(
+            helper_output(&made.config)["Authorization"],
+            "Bearer tok-two",
+            "the helper still reads the token of the turn before"
+        );
+        let doc: Value =
+            serde_json::from_str(&std::fs::read_to_string(&made.config).unwrap()).unwrap();
+        assert_eq!(
+            doc["mcpServers"]["forge"]["headers"]["X-Forge-Project-Slug"],
+            "proj"
+        );
+        assert_eq!(
+            doc["mcpServers"]["forge"]["url"],
+            "https://core.example/mcp"
+        );
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn a_fixed_sessions_config_holds_its_one_bearer() {
+        let d = dir();
+        let path = write_in(
+            &d,
+            "https://core.example",
+            ForgeBearer::Fixed("tok-one"),
+            "proj",
+            "s1",
+            None,
+        )
+        .unwrap();
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            doc["mcpServers"]["forge"]["headers"]["Authorization"],
+            "Bearer tok-one"
+        );
+        assert!(doc["mcpServers"]["forge"].get("headersHelper").is_none());
         std::fs::remove_dir_all(d).unwrap();
     }
 }

@@ -10,7 +10,8 @@ import { rows } from '../helpers/factories.js';
 import { SupportWorld, type Turn } from '../helpers/support-world.js';
 
 // REQ-75 r2, BC-11 and BC-18: a support session's turn that ends failed tells each thread it left
-// with no answer so, once, records it, and never hands those messages to a turn again. The world is
+// with no answer so, once, records it, and never hands those messages to a turn again; that holds
+// for the messages written into the turn while it ran as for the one that started it. The world is
 // support-room-e2e's: the real Rocket.Chat connection manager against a chat server and a box
 // playing the session's Claude Code.
 
@@ -29,7 +30,8 @@ beforeAll(async () => {
 afterAll(() => w.stop());
 
 describe('REQ-75: a turn that fails', () => {
-  it('tells a thread a failed turn left unanswered, once, and never hands it that turn again', async () => {
+  it('tells a thread a failed turn left unanswered, written into it or not, once, and never hands it that turn again', async () => {
+    await w.untilWarm();
     const seen: Turn[] = [];
     w.box.model = async (turn, act) => {
       seen.push(turn);
@@ -42,26 +44,25 @@ describe('REQ-75: a turn that fails', () => {
     await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(1);
     const parcel = await w.chat.say(w.chat.alice, 'Where is my parcel?');
     const refund = await w.chat.say(w.chat.bob, 'Refund please');
-    await expect
-      .poll(async () => {
-        const [r] = await rows<{ n: number }>(
-          sql`SELECT count(*)::int AS n FROM support_actions WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND delivered_at IS NULL`,
-        );
-        return r?.n;
-      })
-      .toBe(2);
+    // both are written into the running turn, and the turn answers one of them
+    await expect.poll(() => seen.flatMap((t) => t.messages).length, { timeout: 15_000 }).toBe(3);
+    expect(seen.slice(1).every((t) => t.event === 'session.send')).toBe(true);
+    await w.untilLines((ls) => ls.some((l) => l.tmid === parcel && l.text === 'On its way.'));
+    const [waiting] = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM support_actions WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND delivered_at IS NULL`,
+    );
+    expect(waiting?.n).toBe(0);
     w.box.finishTurns = true;
     w.box.turnEnd = 'failed';
     await w.box.finish(sessionId, 'unused');
-    await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(2);
-    await w.untilLines((ls) => ls.some((l) => l.tmid === parcel && l.text === 'On its way.'));
     await expect
       .poll(async () => (await w.rooms())[0]?.sessionStatus, { timeout: 15_000 })
       .toBe('failed');
     const failedLine = (l: { text: string }) => l.text.startsWith('I could not finish answering');
     await w.untilLines((ls) => ls.some((l) => l.tmid === refund && failedLine(l)));
+    await w.untilLines((ls) => ls.some((l) => l.tmid === hold && failedLine(l)));
     const lines = await w.chat.botLines();
-    // the first failed turn held only "Hold on"; the second left refund unanswered, not parcel
+    // the failed turn left hold and refund unanswered, not parcel, which it answered
     expect(lines.filter((l) => l.tmid === hold && failedLine(l))).toHaveLength(1);
     expect(lines.filter((l) => l.tmid === refund && failedLine(l))).toHaveLength(1);
     expect(lines.some((l) => l.tmid === parcel && failedLine(l))).toBe(false);
@@ -71,9 +72,10 @@ describe('REQ-75: a turn that fails', () => {
     expect(told).toHaveLength(2);
     // nothing failed is handed to a turn again: the next message goes alone
     w.box.turnEnd = 'completed';
+    const before = seen.length;
     const next = await w.chat.say(w.chat.bob, 'Any news?', refund);
-    await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(3);
-    expect(seen[2]?.messages.map((m) => m.text)).toEqual(['Any news?']);
+    await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(before + 1);
+    expect(seen[before]?.messages.map((m) => m.text)).toEqual(['Any news?']);
     expect(next).toBeTruthy();
   });
 });

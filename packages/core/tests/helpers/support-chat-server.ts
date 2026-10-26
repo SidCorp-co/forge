@@ -144,29 +144,38 @@ export class StandInRocketChat implements ChatServer {
     });
   }
 
-  private push(message: Record<string, unknown>): void {
+  private push(message: Record<string, unknown>, ts = Date.now()): void {
     const frame = JSON.stringify({
       msg: 'changed',
       collection: 'stream-room-messages',
       id: 'id',
       fields: {
         eventName: '__my_messages__',
-        args: [{ ts: new Date().toISOString(), ...message }],
+        // DDP sends a date as EJSON, as Rocket.Chat does
+        args: [{ ts: { $date: ts }, ...message }],
       },
     });
     for (const s of this.subs) s.ws.send(frame);
   }
 
   async say(who: Member, text: string, tmid?: string): Promise<string> {
+    return this.sayAt(Date.now(), who, text, tmid);
+  }
+
+  /** `say`, the server stamping the message at `ts` (a message the stream carries late). */
+  async sayAt(ts: number, who: Member, text: string, tmid?: string): Promise<string> {
     await expect.poll(() => this.subs.size, { timeout: 15_000 }).toBeGreaterThan(0);
     const id = this.nextId();
-    this.push({
-      _id: id,
-      rid: this.rid,
-      msg: text,
-      ...(tmid ? { tmid } : {}),
-      u: { _id: who.userId, username: who.username },
-    });
+    this.push(
+      {
+        _id: id,
+        rid: this.rid,
+        msg: text,
+        ...(tmid ? { tmid } : {}),
+        u: { _id: who.userId, username: who.username },
+      },
+      ts,
+    );
     return id;
   }
 

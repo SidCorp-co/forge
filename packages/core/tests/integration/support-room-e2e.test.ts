@@ -34,31 +34,6 @@ async function noSecretPosted(): Promise<void> {
   for (const line of await w.chat.botLines()) expect(line.text).not.toContain(SECRET);
 }
 
-/** The project's newest filing, which a group member made: handed no status link (BC-14). */
-async function lastGroupFiling(): Promise<{ kind: string; body: string; fb_seq: number }> {
-  const [fb] = await rows<{
-    id: string;
-    kind: string;
-    channel: string;
-    body: string;
-    fb_seq: number;
-    status_token_hash: string | null;
-  }>(sql`
-    SELECT f.id, f.kind, r.channel, f.body, f.fb_seq, r.status_token_hash FROM feedback f
-      JOIN feedback_external_reporters r ON r.feedback_id = f.id
-     WHERE f.project_id = ${w.projectId}::uuid ORDER BY f.created_at DESC LIMIT 1`);
-  if (!fb) throw new Error('no filing in the project');
-  // no token exists that anyone in the group could open, and the schema refuses one
-  expect(fb).toMatchObject({ channel: 'rocketchat', status_token_hash: null });
-  await expect(
-    db.execute(sql`UPDATE feedback_external_reporters SET status_token_hash = ${'a'.repeat(64)}
-                    WHERE feedback_id = ${fb.id}::uuid`),
-  ).rejects.toMatchObject({
-    cause: { constraint_name: 'feedback_external_reporters_status_link_chk' },
-  });
-  return fb;
-}
-
 const lastTurnFor = (thread: string): Turn | undefined =>
   [...w.box.turns].reverse().find((t) => t.messages.some((m) => m.thread === thread));
 
@@ -75,6 +50,11 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
     );
     expect(session?.kind).toBe('chat');
     expect(session?.user_id).toBe(rooms[0]?.principalUserId);
+    // the session is spawned and briefed as the room is bound, before anyone writes (BC-11)
+    await w.untilWarm();
+    const warm = w.box.turns[0] as Turn;
+    expect(warm).toMatchObject({ event: 'agent:start', warmUp: true, keepResident: true });
+    expect(warm.text).toContain('You act ONLY through the forge_support tool');
 
     const two = await api(w.owner, 'POST', '/api/integration-connections', {
       provider: 'rocketchat',
@@ -122,9 +102,11 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
     const answer = lines.find((l) => l.tmid === id && l.text.includes('Export'));
     expect(answer?.text).toContain('[knowledge:catalog-export]');
     expect(answer?.text).toContain('[openapi:catalog-api@1.4.0 GET /products/export]');
-    const first = w.box.turns[0] as Turn;
-    expect(first.event).toBe('agent:start');
-    expect(first.text).toContain('You act ONLY through the forge_support tool');
+    // the member's first message is written into the warm process: no cold start, no re-brief
+    const first = w.box.asked()[0] as Turn;
+    expect(first).toMatchObject({ event: 'agent:send', keepResident: true });
+    expect(first.claudeSessionId).toBeTruthy();
+    expect(first.text).not.toContain('You act ONLY through the forge_support tool');
     expect(first.messages[0]).toMatchObject({
       thread: id,
       from: { id: w.chat.alice.userId, name: w.chat.alice.username },
@@ -331,40 +313,46 @@ describe('REQ-75: a fix, and what the session may not do', () => {
 });
 
 describe('REQ-75: what needs code, a restart, and the record', () => {
-  it('records what needs code as Feedback linked to the thread, never as an issue (BC-14)', async () => {
-    const [{ n: issuesBefore }] = (await rows<{ n: number }>(
-      sql`SELECT count(*)::int AS n FROM issues WHERE project_id = ${w.projectId}::uuid`,
-    )) as [{ n: number }];
+  it('records what needs code as Feedback linked to the thread once the asker confirms, never as an issue (BC-14)', async () => {
+    const issues = () => rows(sql`SELECT id FROM issues WHERE project_id = ${w.projectId}::uuid`);
+    const issuesBefore = (await issues()).length;
+    let code = '';
     w.box.model = async (turn, act) => {
       for (const m of turn.messages) {
         if (m.from === 'forge') continue;
-        await act({
+        const offered = await act({
           action: 'record',
           thread: m.thread,
           kind: 'feature',
           title: 'Export the catalog to Excel',
           summary: 'Alice wants the catalog export as an Excel file, not only CSV.',
         });
+        code = String(offered.code ?? '');
       }
     };
     const id = await w.chat.say(
       w.chat.alice,
       'Could you add an Excel export? We need it for accounting',
     );
+    // the route, the title and the thread are restated first; it is filed on the asker's confirm
+    await w.untilLines((ls) => ls.some((l) => l.tmid === id && l.text.includes('I would record')));
+    await expect.poll(() => code).not.toBe('');
+    await w.chat.say(w.chat.alice, `confirm ${code}`, id);
     const lines = await w.untilLines((ls) =>
       ls.some((l) => l.tmid === id && l.text.startsWith('Recorded as FB-')),
     );
     const line = lines.find((l) => l.tmid === id && l.text.startsWith('Recorded as FB-'));
     // the external door's status token is never posted: in a group anyone could open it
     expect(line?.text).not.toContain('/w/status/');
-    const fb = await lastGroupFiling();
+    const fb = await w.lastGroupFiling();
     expect(fb.kind).toBe('idea');
     expect(fb?.body).toContain('Rocket.Chat support group by alice');
     expect(line?.text).toContain(`FB-${fb?.fb_seq}`);
-    const [{ n: issuesAfter }] = (await rows<{ n: number }>(
-      sql`SELECT count(*)::int AS n FROM issues WHERE project_id = ${w.projectId}::uuid`,
-    )) as [{ n: number }];
-    expect(issuesAfter).toBe(issuesBefore);
+    expect((await issues()).length).toBe(issuesBefore);
+    // the session is told the key in a turn of its own, and that turn ends
+    const told = () => w.box.turns.some((t) => t.text.includes(`was recorded as FB-${fb.fb_seq}`));
+    await expect.poll(told, { timeout: 10_000 }).toBe(true);
+    await w.untilWarm();
   });
 
   it('posts the item’s progress in the same thread until it is done, then stops (BC-15)', async () => {
@@ -398,38 +386,40 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
     expect((await w.chat.botLines()).length).toBe(count);
   });
 
-  it('keeps a message that arrives mid-turn for the next turn, resumes Claude’s own session, and re-reads its threads on a new box (BC-11, BC-16)', async () => {
+  it('writes a message that arrives mid-turn into the running turn, resumes Claude’s own session, and re-reads its threads on a new box (BC-11, BC-16)', async () => {
     const seen: Turn[] = [];
     w.box.finishTurns = false;
-    w.box.model = async (turn) => {
+    w.box.model = async (turn, act) => {
       seen.push(turn);
+      for (const m of turn.messages)
+        if (m.from !== 'forge' && turn.event === 'session.send')
+          await act({ action: 'reply', thread: m.thread, text: `Seen: ${m.text}` });
     };
     const first = await w.chat.say(w.chat.bob, 'Is the shop down?');
     await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(1);
+    const said = Date.now();
     await w.chat.say(w.chat.bob, 'It shows error 502', first);
-    // the session is busy: the second message waits, recorded and undelivered
-    await expect
-      .poll(async () => {
-        const [r] = await rows<{ n: number }>(
-          sql`SELECT count(*)::int AS n FROM support_actions WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND delivered_at IS NULL`,
-        );
-        return r?.n;
-      })
-      .toBe(1);
-    expect(seen).toHaveLength(1);
+    // the session is busy: the second message is written into its running turn at once
+    await expect.poll(() => seen.length, { timeout: 5_000 }).toBe(2);
+    expect(Date.now() - said).toBeLessThan(1_500);
+    expect(seen[1]).toMatchObject({ event: 'session.send', sessionId });
+    expect(seen[1]?.text).toContain('More messages arrived in the group while you were working');
+    expect(seen[1]?.messages.map((m) => m.text)).toEqual(['It shows error 502']);
+    await w.untilLines((ls) => ls.some((l) => l.text === 'Seen: It shows error 502'));
     // the session's live state is readable in Forge while the turn runs
     const live = await api(w.owner, 'GET', `/api/agent-sessions/${sessionId}`);
     expect(live.status).toBe(200);
     expect(JSON.stringify(live.body)).toContain('"running"');
     w.box.finishTurns = true;
     await w.box.finish(sessionId, 'claude-resident-1');
-    await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(2);
-    expect(seen[1]?.event).toBe('agent:send');
-    expect(seen[1]?.claudeSessionId).toBe('claude-resident-1');
-    expect(seen[1]?.messages.map((m) => m.text)).toEqual(['It shows error 502']);
     await expect
       .poll(async () => (await w.rooms())[0]?.sessionStatus, { timeout: 15_000 })
       .toBe('completed');
+    // the next message is a turn of its own on Claude's own session, and carries only itself
+    await w.chat.say(w.chat.bob, 'Thanks', first);
+    await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(3);
+    expect(seen[2]).toMatchObject({ event: 'agent:send', claudeSessionId: 'claude-resident-1' });
+    expect(seen[2]?.messages.map((m) => m.text)).toEqual(['Thanks']);
 
     // the box goes away and another serves the project: the next turn starts cold and re-reads
     const { SessionBox } = await import('../helpers/support-world.js');
