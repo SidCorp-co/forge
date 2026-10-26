@@ -114,6 +114,7 @@ function AnswerModePanel({ projectId }: { projectId: string }) {
           update.mutate({ rocketChatAnswerMode: value === "fast" ? null : (value as "agent") })
         }
         options={ANSWER_MODE_OPTIONS}
+        aria-label="Answer mode"
         disabled={projectQ.isLoading || update.isPending || lockedTo !== null}
       />
       {lockedTo && <p className="fg-body-sm text-muted">{`${lockedTo} can change the answer mode.`}</p>}
