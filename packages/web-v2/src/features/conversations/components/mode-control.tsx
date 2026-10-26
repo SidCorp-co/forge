@@ -170,7 +170,7 @@ function NotAssigned({
         {device ?? "The device this project picked"} is paired but not assigned to {slug}, so it
         has no checkout of the project to run in. Assign it on the project&apos;s Runners page; to
         choose the folder it runs in, give the path there or, once it is assigned, run{" "}
-        <code className="font-mono text-12 break-all">forge-runner bind {slug} --path &lt;dir&gt;</code>{" "}
+        <code className="font-mono text-12 [overflow-wrap:anywhere]">forge-runner bind {slug} --path &lt;dir&gt;</code>{" "}
         on {device ?? "that device"}.
       </p>
       <Link ref={wayOut} href={`/projects/${slug}/settings?tab=runners`} className={WAY_OUT}>
