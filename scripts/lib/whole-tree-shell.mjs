@@ -16,6 +16,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launched } from './entrypoint.mjs';
 
 /** The file every watched Node process preloads; a NODE_OPTIONS still naming it keeps the watch. */
 export const PRELOAD_MARK = 'whole-tree-child.mjs';
@@ -1103,6 +1104,6 @@ export function printGrammar() {
   return L.join('\n');
 }
 
-if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === '--print-grammar') {
+if (launched(import.meta.url) && process.argv[2] === '--print-grammar') {
   process.stdout.write(`${printGrammar()}\n`);
 }

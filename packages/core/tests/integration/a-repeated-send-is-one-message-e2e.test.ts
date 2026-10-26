@@ -180,3 +180,33 @@ describe('a send repeating its client token', () => {
     expect(await stored()).toHaveLength(4);
   });
 });
+
+// ISS-1236 r6, judge-140: a send whose answer was lost stayed marked "Couldn't send" beside the
+// message the room read showed, because nothing in that read said the message was the browser's own.
+describe("a message's client token, as each reader reads the room", () => {
+  type Read = { messages: Array<{ seq: number; content: string; clientToken: string | null }> };
+  const tokenIn = (read: Read, content: string) =>
+    read.messages.find((m) => m.content === content)?.clientToken;
+
+  it('is answered to its sender, on the room read and on the send answer', async () => {
+    const res = await as(ownerId, `/api/conversations/${roomId}/messages`, 'POST', {
+      content: 'mine',
+      clientToken: 'tok-own',
+    });
+    expect(res.status, await res.clone().text()).toBeLessThan(300);
+    expect(tokenIn((await res.json()) as Read, 'mine')).toBe('tok-own');
+    const read = await as(ownerId, `/api/conversations/${roomId}`);
+    expect(tokenIn((await read.json()) as Read, 'mine')).toBe('tok-own');
+  });
+
+  it('is null to every other reader of the room', async () => {
+    await send(ownerId, { content: 'not yours', clientToken: 'tok-other' });
+    const read = await as(memberId, `/api/conversations/${roomId}`);
+    expect(read.status).toBe(200);
+    expect(tokenIn((await read.json()) as Read, 'not yours')).toBeNull();
+    const answered = await as(memberId, `/api/conversations/${roomId}/messages`, 'POST', {
+      content: 'reply',
+    });
+    expect(tokenIn((await answered.json()) as Read, 'not yours')).toBeNull();
+  });
+});

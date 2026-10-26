@@ -21,14 +21,42 @@ export const repoPathField = z
     error: (issue) => repoPathRefusal(String(issue.input)),
   });
 
+/**
+ * The refusal's sentence for the field at `at` (`patch.repoPath` in an MCP tool), matched whole:
+ * `agentConfig.repoPath` is a retired key with its own sentence.
+ */
+export function repoPathRefusalIn(
+  error: { issues: readonly z.core.$ZodIssue[] },
+  at: readonly PropertyKey[] = ['repoPath'],
+): string | null {
+  const issue = error.issues.find(
+    (i) =>
+      i.code === 'custom' && i.path.length === at.length && i.path.every((p, n) => p === at[n]),
+  );
+  return issue ? issue.message : null;
+}
+
 /** The refusal for a body whose repository path is not absolute, or null where that is not what failed. */
 export function refusedRepoPath(error: {
   issues: readonly z.core.$ZodIssue[];
 }): HTTPException | null {
-  const issue = error.issues.find((i) => i.path[0] === 'repoPath' && i.code === 'custom');
-  if (!issue) return null;
+  const message = repoPathRefusalIn(error);
+  if (message === null) return null;
   return new HTTPException(400, {
-    message: issue.message,
+    message,
     cause: { code: REPO_PATH_NOT_ABSOLUTE, details: { field: 'repoPath' } },
   });
+}
+
+/** An MCP tool's input, parsed, with a relative repository path refused by name as REST refuses it. */
+export function parseRefusingRelativeRepoPath<T>(
+  schema: z.ZodType<T>,
+  args: unknown,
+  at: readonly PropertyKey[] = ['repoPath'],
+): T {
+  const parsed = schema.safeParse(args);
+  if (parsed.success) return parsed.data;
+  const message = repoPathRefusalIn(parsed.error, at);
+  if (message !== null) throw new Error(`BAD_REQUEST: ${REPO_PATH_NOT_ABSOLUTE}: ${message}`);
+  throw parsed.error;
 }

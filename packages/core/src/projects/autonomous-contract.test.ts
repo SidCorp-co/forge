@@ -10,8 +10,8 @@ const SHIPS_NOTHING: { branch: string; from?: 'merge-branch' | 'cherry-pick' }[]
 const CROSSES = [{ branch: 'main' }, { branch: 'live', from: 'merge-branch' as const }];
 const PUBLISHES = [{ branch: 'main' }];
 
-const REPO = { repoPath: '/srv/app', repoUrl: null, releaseChain: SHIPS_NOTHING } as const;
-const NOTHING = { repoPath: null, repoUrl: null, releaseChain: SHIPS_NOTHING } as const;
+const REPO = { repoPathHint: '/srv/app', repoUrl: null, releaseChain: SHIPS_NOTHING } as const;
+const NOTHING = { repoPathHint: null, repoUrl: null, releaseChain: SHIPS_NOTHING } as const;
 
 describe('declaresRepository', () => {
   it('accepts either column on its own', () => {
@@ -24,7 +24,7 @@ describe('declaresRepository', () => {
   });
 
   it('counts a whitespace-only column as no repository', () => {
-    expect(declaresRepository({ ...NOTHING, repoPath: '   ' })).toBe(false);
+    expect(declaresRepository({ ...NOTHING, repoPathHint: '   ' })).toBe(false);
     expect(declaresRepository({ ...NOTHING, repoUrl: '\n\t' })).toBe(false);
   });
 });

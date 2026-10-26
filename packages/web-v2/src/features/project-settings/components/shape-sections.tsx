@@ -26,6 +26,7 @@ import { formatApiError } from "@/lib/api/error";
 import { type Hop, IN_FLIGHT, type Shape, SHAPES, type ShapeDraft } from "../shape-form";
 import { inlineCode } from "./inline-code";
 import type { ReleaseCrossing } from "../types";
+import { REPOSITORY_PATH_HINT } from "@/features/projects/repository-path";
 
 const CROSSINGS: SelectOption[] = [
   { value: "merge-branch", label: "merge-branch — merge the branch above into this one" },
@@ -92,7 +93,7 @@ export function RepositoryFields({
     <SettingsSection id="repository">
       <SectionTitle className="fg-h3 mb-4">Repository</SectionTitle>
       <div className="space-y-4">
-        <Field label="Repository path" hint="Absolute path on the runner host where the repo is checked out.">
+        <Field label="Repository path" hint={REPOSITORY_PATH_HINT}>
           <Input
             value={d.repoPath}
             onChange={(e) => set({ repoPath: e.target.value })}

@@ -66,7 +66,7 @@ function project(over: {
   baseBranch?: string;
   releaseChain?: { branch: string; from?: string }[];
   facts?: Record<string, unknown>;
-  repoPath?: string | null;
+  repoPathHint?: string | null;
   environments?: unknown;
 }) {
   const row = {
@@ -74,7 +74,7 @@ function project(over: {
     // out otherwise — so the fixture declares one too. Since ISS-1048 the build/test obligations are
     // conditioned on that declaration, and a fixture silently missing it would make the contract
     // tests below pass by owing nothing at all. The repo-less case gets its own test.
-    repoPath: over.repoPath === undefined ? '/srv/app' : over.repoPath,
+    repoPathHint: over.repoPathHint === undefined ? '/srv/app' : over.repoPathHint,
     repoUrl: null,
     baseBranch: over.baseBranch ?? 'main',
     releaseChain: over.releaseChain ?? [],
@@ -135,7 +135,7 @@ describe('loadReleaseReadiness', () => {
   });
 
   it('owes no build or test commands to a project that declares no repository', async () => {
-    project({ facts: {}, repoPath: null });
+    project({ facts: {}, repoPathHint: null });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 

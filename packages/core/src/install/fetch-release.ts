@@ -1,8 +1,5 @@
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { argv } from 'node:process';
-import { pathToFileURL } from 'node:url';
-
 import { refreshMainRunnerHead } from './main-runner-head.js';
 
 const REPO = process.env.RUNNER_RELEASE_REPO ?? 'SidCorp-co/forge';
@@ -159,20 +156,4 @@ export function registerRunnerReleaseRefetch(intervalMs = 30 * 60_000): NodeJS.T
   }, intervalMs);
   timer.unref?.();
   return timer;
-}
-
-// Only run when invoked directly (`node dist/install/fetch-release.js`), not
-// when imported by the unit tests — otherwise importing the pure helpers would
-// trigger a live GitHub fetch and `process.exit(0)`.
-const isMain = argv[1] && import.meta.url === pathToFileURL(argv[1]).href;
-if (isMain) {
-  run()
-    .catch((err) => {
-      // Never block core boot on a release-fetch failure.
-      console.warn(`[runner-release] skipped: ${err instanceof Error ? err.message : String(err)}`);
-    })
-    .finally(() => {
-      // Explicit clean exit so `&&` in the container CMD proceeds to the server.
-      process.exit(0);
-    });
 }

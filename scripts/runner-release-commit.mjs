@@ -6,6 +6,7 @@
  * [--ref <ref>] [--cwd <dir>]
  */
 import { execFileSync } from 'node:child_process';
+import { launched } from './lib/entrypoint.mjs';
 
 const RUNNER_PATH = 'packages/runner';
 
@@ -56,7 +57,7 @@ function main() {
   );
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (launched(import.meta.url)) {
   try {
     main();
   } catch (err) {

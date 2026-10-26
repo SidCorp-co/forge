@@ -237,7 +237,7 @@ describe('GET /api/projects/health, the rollups beside each project', () => {
         name: 'Alpha',
         agentConfig: null,
         description: 'Alpha project',
-        repoPath: 'org/alpha',
+        repoPathHint: 'org/alpha',
       },
       {
         id: PROJECT_B_ID,
@@ -245,7 +245,7 @@ describe('GET /api/projects/health, the rollups beside each project', () => {
         name: 'Beta',
         agentConfig: null,
         description: null,
-        repoPath: null,
+        repoPathHint: null,
       },
     ]); // visibleProjects
     queryQueue.push([{ projectId: PROJECT_A_ID, status: 'open', n: 2 }]); // statusRows

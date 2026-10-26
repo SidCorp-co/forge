@@ -107,7 +107,7 @@ function roster(mergedAt: Date | null) {
 function ready() {
   selectLimit.mockResolvedValue([
     {
-      repoPath: '/srv/app',
+      repoPathHint: '/srv/app',
       repoUrl: null,
       baseBranch: 'main',
       releaseChain: [{ branch: 'main' }],

@@ -66,7 +66,7 @@ const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 
 function unlabelled() {
   selectLimit.mockResolvedValue([
     {
-      repoPath: '/srv/app',
+      repoPathHint: '/srv/app',
       repoUrl: null,
       baseBranch: 'main',
       releaseChain: [{ branch: 'main' }],

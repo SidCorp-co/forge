@@ -1,5 +1,20 @@
-import { describe, expect, it } from 'vitest';
-import { check, DECLARED, namesIn } from './check-repo-path-readers.mjs';
+import { spawnSync } from 'node:child_process';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterAll, describe, expect, it } from 'vitest';
+import { ANSWERED_AS_REPO_PATH, check, DECLARED, namesIn } from './check-repo-path-readers.mjs';
+
+const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 
 // The fixtures are FIXTURE TEXT — source this checker searches, not source this file runs.
 const OUTSIDE = 'packages/core/src/fixture.ts';
@@ -79,5 +94,71 @@ describe('check-repo-path-readers — the hint is read only by naming it', () =>
 
   it('reports each line once however often it names the hint', () => {
     expect(namesIn(OUTSIDE, 'a.repoPathHint ?? b.repoPathHint\n')).toHaveLength(1);
+  });
+});
+
+// ISS-1236 r6, judge-140: launched through a symlinked checkout, or from one whose real path holds a
+// space, the checker exited 0 printing nothing while a planted reader stood.
+describe('check-repo-path-readers — launched from wherever the checkout is', () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'repo-path-readers-'));
+  afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+  const tree = join(scratch, 'a checkout');
+  const put = (rel, text) => {
+    mkdirSync(dirname(join(tree, rel)), { recursive: true });
+    writeFileSync(join(tree, rel), text);
+  };
+  for (const rel of ['check-repo-path-readers.mjs', 'lib/entrypoint.mjs']) {
+    mkdirSync(dirname(join(tree, 'scripts', rel)), { recursive: true });
+    copyFileSync(join(SCRIPTS, rel), join(tree, 'scripts', rel));
+  }
+  put('packages/core/src/lib/device-pool.ts', 'export const readDeviceBinding = () => null;\n');
+  for (const rel of DECLARED.keys()) put(rel, '// repo_path_hint\n');
+  symlinkSync(tree, join(scratch, 'linked'));
+  const PLANT = 'packages/core/src/planted.ts';
+  const run = (base) =>
+    spawnSync(process.execPath, [join(base, 'scripts', 'check-repo-path-readers.mjs'), '--all'], {
+      cwd: scratch,
+      encoding: 'utf8',
+    });
+
+  for (const [how, base] of [
+    ['through a symlinked checkout', join(scratch, 'linked')],
+    ['from a real path holding a space', tree],
+  ]) {
+    it(`goes red naming a planted reader, ${how}, and green without it`, () => {
+      put(PLANT, 'export const sql = "SELECT repo_path_hint FROM projects";\n');
+      const red = run(base);
+      expect(red.status).toBe(1);
+      expect(red.stderr).toContain(`${PLANT}:1`);
+      rmSync(join(tree, PLANT));
+      const green = run(base);
+      expect(green.status).toBe(0);
+      expect(green.stdout).toMatch(/repo-path-readers: \d+ file\(s\) scanned/);
+    });
+  }
+});
+
+// ISS-1236 r6, judge-140: a read of the hint under the API's name, off a declared reader's answer,
+// is invisible to a name search, and the README row did not say so.
+describe('check-repo-path-readers — what it cannot see is said', () => {
+  const row = readFileSync(join(SCRIPTS, 'README.md'), 'utf8')
+    .split('\n')
+    .find((line) => line.startsWith('| repo-path readers |'));
+
+  it('names, in its README row, a read of `.repoPath` off an answer that carries the hint', () => {
+    expect(row).toContain('a read of `.repoPath` off an answer that carries the hint');
+    expect(row).toContain('ANSWERED_AS_REPO_PATH');
+  });
+
+  it('names every declared reader whose answer carries the hint as `repoPath`', () => {
+    expect(ANSWERED_AS_REPO_PATH.length).toBeGreaterThan(0);
+    for (const rel of ANSWERED_AS_REPO_PATH) {
+      expect(DECLARED.has(rel), rel).toBe(true);
+      expect(row, rel).toContain(`\`${rel}\``);
+    }
+  });
+
+  it('declares forge-config.ts, which answers it as `config.repoPath`', () => {
+    expect(DECLARED.get('packages/core/src/mcp/tools/forge-config.ts')).toMatch(/config\.repoPath/);
   });
 });

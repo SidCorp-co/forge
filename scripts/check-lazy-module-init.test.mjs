@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { importTimeReads } from './check-lazy-module-init.mjs';
 
-// the three strings below are FIXTURE TEXT — source this checker parses, not source this
-// file runs — and `${process.argv[1]}` inside them is the entrypoint comparison the gate has to
-// recognise. Written any other way the fixture stops being the shape it is testing.
+// The strings below are FIXTURE TEXT — source this checker parses, not source this file runs.
+// A launch check is core's `isEntrypoint(import.meta.url)` from `lib/entrypoint` (ISS-1236 r6).
+const IMPORT_ENTRY = "import { isEntrypoint } from '../lib/entrypoint.js';\n";
+const IS_MAIN = 'const isMain = isEntrypoint(import.meta.url);\n';
+const INLINE_GUARD = 'if (isEntrypoint(import.meta.url)) {\n';
 // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, parsed rather than evaluated
-const IS_MAIN = 'const isMain = import.meta.url === `file://${process.argv[1]}`;\n';
-// biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, parsed rather than evaluated
-const INLINE_GUARD = 'if (import.meta.url === `file://${process.argv[1]}`) {\n';
+const RAW_GUARD = 'if (import.meta.url === `file://${process.argv[1]}`) {\n';
 const IMPORT_ENV = "import { env } from '../config/env.js';\n";
 const IMPORT_DB = "import { db } from '../db/client.js';\n";
 const reads = (body, header = IMPORT_ENV) =>
   importTimeReads('packages/core/src/fixture.ts', header + body);
+/** A body read with the helper imported, its line numbers one further down. */
+const guarded = (body) => reads(body, IMPORT_ENV + IMPORT_ENTRY);
 
 describe('check-lazy-module-init — reads that run at import', () => {
   it('catches a direct module-scope read', () => {
@@ -129,11 +131,11 @@ describe('check-lazy-module-init — holes the review found', () => {
   });
 
   it('catches a read in the ELSE branch of an entrypoint guard', () => {
-    const found = reads(
+    const found = guarded(
       `${IS_MAIN}if (isMain) {\n  void 0;\n} else {\n  const port = env.PORT;\n}\n`,
     );
     expect(found).toHaveLength(1);
-    expect(found[0].line).toBe(6);
+    expect(found[0].line).toBe(7);
   });
 
   it('catches a read guarded by an always-true url comparison', () => {
@@ -150,27 +152,22 @@ describe('check-lazy-module-init — holes the review found', () => {
     expect(found).toHaveLength(1);
   });
 
-  it('catches a read guarded by a process.argv index other than 1', () => {
-    const found = reads(
-      `${INLINE_GUARD.replace('argv[1]', 'argv[2]')}  const port = env.PORT;\n}\n`,
-    );
+  it('catches a read guarded by the raw comparison the helper replaced', () => {
+    const found = guarded(`${RAW_GUARD}  const port = env.PORT;\n}\n`);
     expect(found).toHaveLength(1);
   });
 
-  it('catches a read guarded by a template carrying more than the entrypoint path', () => {
-    const found = reads(`${INLINE_GUARD.replace('`)', '/x`)')}  const port = env.PORT;\n}\n`);
-    expect(found).toHaveLength(1);
+  it('catches a read guarded by an isEntrypoint that is not the lib/entrypoint one', () => {
+    const local = 'const isEntrypoint = (u) => u.length > 0;\n';
+    expect(reads(`${local}${INLINE_GUARD}  const port = env.PORT;\n}\n`)).toHaveLength(1);
+    const elsewhere = "import { isEntrypoint } from '../other/entrypoint.js';\n";
+    expect(
+      reads(`${INLINE_GUARD}  const port = env.PORT;\n}\n`, IMPORT_ENV + elsewhere),
+    ).toHaveLength(1);
   });
 
-  it('catches a read guarded by a template that is not the entrypoint shape', () => {
-    const found = reads(
-      `${INLINE_GUARD.replace('file://', 'other://')}  const port = env.PORT;\n}\n`,
-    );
-    expect(found).toHaveLength(1);
-  });
-
-  it('catches a read guarded by a comparison that names no process.argv', () => {
-    const found = reads("if (import.meta.url === 'file:///x') {\n  const port = env.PORT;\n}\n");
+  it('catches a read guarded by the helper asked about anything but import.meta.url', () => {
+    const found = guarded("if (isEntrypoint('file:///x')) {\n  const port = env.PORT;\n}\n");
     expect(found).toHaveLength(1);
   });
 
@@ -189,19 +186,28 @@ describe('check-lazy-module-init — holes the review found', () => {
 
 describe('check-lazy-module-init — the entrypoint guard', () => {
   it('passes a read inside a block guarded by an isMain binding', () => {
-    const found = reads(`${IS_MAIN}if (isMain) {\n  const port = env.PORT;\n}\n`);
+    const found = guarded(`${IS_MAIN}if (isMain) {\n  const port = env.PORT;\n}\n`);
     expect(found).toEqual([]);
   });
 
-  it('passes a read inside a block guarded by the comparison written inline', () => {
-    const found = reads(`${INLINE_GUARD}  const port = env.PORT;\n}\n`);
+  it('passes a read inside a block guarded by the helper called inline', () => {
+    const found = guarded(`${INLINE_GUARD}  const port = env.PORT;\n}\n`);
+    expect(found).toEqual([]);
+  });
+
+  it('passes a read guarded by the helper imported under another name', () => {
+    const aliased = "import { isEntrypoint as launchedHere } from '../lib/entrypoint.js';\n";
+    const found = reads(
+      'if (launchedHere(import.meta.url)) {\n  const port = env.PORT;\n}\n',
+      IMPORT_ENV + aliased,
+    );
     expect(found).toEqual([]);
   });
 
   it('catches a read in the same file OUTSIDE that block', () => {
-    const found = reads(`${IS_MAIN}const port = env.PORT;\nif (isMain) {\n  void port;\n}\n`);
+    const found = guarded(`${IS_MAIN}const port = env.PORT;\nif (isMain) {\n  void port;\n}\n`);
     expect(found).toHaveLength(1);
-    expect(found[0].line).toBe(3);
+    expect(found[0].line).toBe(4);
   });
 
   it('catches a read in a block guarded by some other condition', () => {

@@ -5,10 +5,12 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   isAbsolutePath,
+  parseRefusingRelativeRepoPath,
   REPO_PATH_NOT_ABSOLUTE,
   refusedRepoPath,
   repoPathField,
   repoPathRefusal,
+  repoPathRefusalIn,
 } from './absolute-path.js';
 
 const body = z.object({
@@ -59,5 +61,41 @@ describe('the repository path field', () => {
     const parsed = body.safeParse({ repoPath: `/${'a'.repeat(500)}` });
     expect(parsed.success).toBe(false);
     if (!parsed.success) expect(refusedRepoPath(parsed.error)).toBeNull();
+  });
+});
+
+// ISS-1236 r6, judge-140: forge_projects stored a relative path REST refuses. Every door asks one rule.
+describe('the refusal, found where the field sits', () => {
+  const tool = z.object({ patch: z.object({ repoPath: repoPathField.nullable().optional() }) });
+  const retired = z.object({ agentConfig: z.unknown() }).superRefine((_v, ctx) => {
+    ctx.addIssue({ code: 'custom', path: ['agentConfig', 'repoPath'], message: 'retired' });
+  });
+
+  it("names a tool patch's relative repoPath by its whole path", () => {
+    const parsed = tool.safeParse({ patch: { repoPath: 'relative/x' } });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(repoPathRefusalIn(parsed.error, ['patch', 'repoPath'])).toBe(
+      repoPathRefusal('relative/x'),
+    );
+    expect(repoPathRefusalIn(parsed.error)).toBeNull();
+  });
+
+  it('leaves agentConfig.repoPath, a retired key with its own sentence, to that sentence', () => {
+    const parsed = retired.safeParse({ agentConfig: {} });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(repoPathRefusalIn(parsed.error)).toBeNull();
+    expect(refusedRepoPath(parsed.error)).toBeNull();
+  });
+
+  it('refuses at a non-HTTP door by code and sentence, and passes any other refusal through', () => {
+    expect(() => parseRefusingRelativeRepoPath(body, { repoPath: 'app' })).toThrow(
+      `BAD_REQUEST: ${REPO_PATH_NOT_ABSOLUTE}: ${repoPathRefusal('app')}`,
+    );
+    expect(() => parseRefusingRelativeRepoPath(body, { labels: [''] })).toThrow(z.ZodError);
+    expect(parseRefusingRelativeRepoPath(body, { repoPath: '/srv/app' })).toEqual({
+      repoPath: '/srv/app',
+    });
   });
 });

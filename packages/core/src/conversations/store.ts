@@ -77,6 +77,8 @@ export interface StoredConversationMessage {
   /** Why a withdrawn draft keeps no text: it read as a credential (ISS-1229 r43). */
   withdrawnFor: 'credential' | null;
   silenceReason: string | null;
+  /** The sender's own id for this message, where its door took one (ISS-1236). */
+  clientToken: string | null;
   createdAt: Date;
 }
 
@@ -453,6 +455,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     withdrawnDraft: withdrawnDraftOf(row.deliveryProof),
     withdrawnFor: withdrawnForOf(row.deliveryProof),
     silenceReason: row.silenceReason,
+    clientToken: row.clientToken,
     createdAt: row.createdAt,
   };
 }

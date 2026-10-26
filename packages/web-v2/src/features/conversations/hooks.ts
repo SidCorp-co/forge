@@ -1,12 +1,14 @@
 "use client";
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useToast } from "@/providers/toast-provider";
 import { conversationsApi, type OpenConversationArgs } from "./api";
+import { isRoomGone } from "./room-gone";
 import type {
   ConversationDetail,
   ConversationMembership,
+  ConversationMessage,
   ConversationMode,
   ConversationProgressEntry,
   ListedRoom,
@@ -218,6 +220,12 @@ export function useSendMessage() {
       );
       qc.invalidateQueries({ queryKey: ["conversations", "list"] });
     },
+    // A send whose answer was lost may still have been written: the room is read again, and a message
+    // it carries under this token is the send's own (ISS-1236 r6). A deleted room has nothing to read.
+    onError: (err, { conversationId }) => {
+      if (isRoomGone(err)) return;
+      void qc.invalidateQueries({ queryKey: ["conversations", conversationId], exact: true });
+    },
   });
 }
 
@@ -322,10 +330,30 @@ export function useConversationProgress(id: string | undefined) {
  * Which of this tab's outbox messages the server has confirmed are rows.
  */
 export function useAcceptedMessages(id: string | undefined) {
-  return useSocketWrittenKey<Record<string, { messageId: string; seq: number }>>(
-    ["conversations", id, "accepted"],
-    NO_ACCEPTED,
+  const told = useSocketWrittenKey<Accepted>(["conversations", id, "accepted"], NO_ACCEPTED);
+  const room = useSocketWrittenKey<ConversationDetail | undefined>(["conversations", id], undefined);
+  const messages = room?.messages;
+  return useMemo(() => withOwnTokens(told, messages), [told, messages]);
+}
+
+type Accepted = Record<string, { messageId: string; seq: number }>;
+
+/**
+ * What the socket said was accepted, and every message the room read answers under this reader's own
+ * token: the socket's frame can be lost as the send's answer was, and the read still says which
+ * message the send became (ISS-1236 r6). The socket's word stands where both have one.
+ */
+function withOwnTokens(
+  told: Accepted,
+  messages: readonly ConversationMessage[] | undefined,
+): Accepted {
+  const read = (messages ?? []).filter(
+    (m): m is ConversationMessage & { clientToken: string } => !!m.clientToken && !told[m.clientToken],
   );
+  if (read.length === 0) return told;
+  const merged = { ...told };
+  for (const m of read) merged[m.clientToken] = { messageId: m.id, seq: m.seq };
+  return merged;
 }
 
 /**

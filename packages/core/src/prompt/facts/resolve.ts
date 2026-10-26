@@ -218,7 +218,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let states: Record<string, { enabled?: boolean } | undefined> = {};
   let baseBranch: string | null = null;
   let releaseChain: ReleaseChain = [];
-  let repoPath: string | null = null;
+  let repoPathHint: string | null = null;
   let environments: NormalizedEnvironments = normalizeEnvironments(null);
   let integrations: IntegrationRow[] = [];
   let noProgressRounds = DEFAULT_NO_PROGRESS_ROUNDS;
@@ -233,7 +233,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       .select({
         agentConfig: projects.agentConfig,
         environments: projects.environments,
-        repoPath: projects.repoPathHint,
+        repoPathHint: projects.repoPathHint,
         repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
         releaseChain: projects.releaseChain,
@@ -251,7 +251,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     environments = normalizeEnvironments(row?.environments);
     baseBranch = row?.baseBranch ?? null;
     releaseChain = row?.releaseChain ?? [];
-    repoPath = row?.repoPath ?? null;
+    repoPathHint = row?.repoPathHint ?? null;
     repoUrl = row?.repoUrl ?? null;
 
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
@@ -267,7 +267,10 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       selectOnDemandSlugsFromKnowledge(projectId),
       selectAllSlugsFromKnowledge(projectId),
     ]);
-    missingObligations = missingProjectKnowledge({ repoPath, repoUrl, releaseChain }, heldSlugs);
+    missingObligations = missingProjectKnowledge(
+      { repoPathHint, repoUrl, releaseChain },
+      heldSlugs,
+    );
   } catch (err) {
     factsUnavailable = true;
     alwaysInjectFacts = [];

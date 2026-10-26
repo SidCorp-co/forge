@@ -81,7 +81,7 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
       name: row.name,
     },
     config: {
-      repoPath: row.repoPath,
+      repoPath: row.repoPathHint,
       baseBranch: row.baseBranch,
       releaseChain: row.releaseChain,
       ...retiredReleaseAxes(row.releaseChain),

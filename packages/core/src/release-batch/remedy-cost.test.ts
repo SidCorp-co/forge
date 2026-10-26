@@ -289,7 +289,7 @@ const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 
 function projectRow() {
   selectLimit.mockResolvedValue([
     {
-      repoPath: '/srv/app',
+      repoPathHint: '/srv/app',
       repoUrl: null,
       baseBranch: 'main',
       liveBranch: null,
