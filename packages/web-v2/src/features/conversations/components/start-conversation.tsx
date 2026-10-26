@@ -28,7 +28,7 @@ const sameHandle = (a: PickedHandle, b: PickedHandle) =>
   a.projectId === b.projectId && a.userId === b.userId;
 
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
-  const { projects: visible, isLoading: projectsLoading } = useOrgScopedProjects();
+  const { projects: visible, isLoading: projectsLoading, error: projectsError, refetch: readProjects } = useOrgScopedProjects();
   // Whose agent can answer is read before anything is offered: a project whose agent lost its role is
   // marked as Add an agent marks it, and cannot be picked (ISS-1229 r36, judge-97).
   const openersQ = useRoomOpeners(visible.some((p) => startsRooms(p.role)));
@@ -77,6 +77,21 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
       { onSuccess: (row) => onStarted(row.id, projectId) },
     );
   };
+
+  // Projects that could not be read are not projects there are none of (ISS-1229 r47, judge-137). The pane is
+  // the page's state then, so it heads the page.
+  if (projectsError) {
+    return (
+      <div className="grid h-full min-h-0 place-items-center px-4 py-8" data-testid="start-projects-unread">
+        <ErrorState
+          level={1}
+          title="Couldn't load your projects"
+          message={`${formatApiError(projectsError)} A conversation is about a project, so none can be started or listed until they are read.`}
+          onRetry={readProjects}
+        />
+      </div>
+    );
+  }
 
   // Until the reader's roles are read, nothing is offered: a viewer would be invited first.
   if (isLoading) {

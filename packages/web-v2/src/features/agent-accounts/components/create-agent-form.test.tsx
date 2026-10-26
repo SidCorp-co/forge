@@ -12,8 +12,17 @@ expect.extend(matchers);
 const create = vi.fn(async () => ({ handle: "forge-vm", plaintext: "forge_pat_secret" }));
 const PROJECTS = Array.from({ length: 24 }, (_, i) => ({ id: `p${i}`, name: `project-${i}` }));
 
+const read = { error: null as unknown };
+const readProjects = vi.fn(() => {
+  read.error = null;
+});
 vi.mock("@/features/projects/hooks", () => ({
-  useOrgScopedProjects: () => ({ projects: PROJECTS, isLoading: false }),
+  useOrgScopedProjects: () => ({
+    projects: read.error ? [] : PROJECTS,
+    isLoading: false,
+    error: read.error,
+    refetch: readProjects,
+  }),
 }));
 vi.mock("../hooks", () => ({
   useCreateAgent: () => ({ mutateAsync: create, isPending: false, isError: false }),
@@ -55,5 +64,22 @@ describe("CreateAgentForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create agent" }));
     expect(create).not.toHaveBeenCalled();
     expect(screen.getByText("Pick at least one project.")).toBeInTheDocument();
+  });
+});
+
+// ISS-1229 r47: a failed projects read said "This organization has no projects yet", which was false.
+describe("CreateAgentForm when the projects cannot be read", () => {
+  it("says the read failed and offers Retry, never that the organization has no projects", () => {
+    read.error = new Error("The server ran into a problem and could not finish the request.");
+    const { rerender } = render(<CreateAgentForm orgId="o1" />);
+    expect(screen.getByTestId("agent-projects-unread")).toHaveTextContent(
+      "This organization's projects could not be read: The server ran into a problem and could not finish the request.",
+    );
+    expect(screen.queryByText(/has no projects yet/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(readProjects).toHaveBeenCalledTimes(1);
+    rerender(<CreateAgentForm orgId="o1" />);
+    expect(screen.queryByTestId("agent-projects-unread")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Search projects" })).toBeInTheDocument();
   });
 });

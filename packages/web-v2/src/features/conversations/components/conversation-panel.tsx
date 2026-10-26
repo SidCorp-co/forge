@@ -13,7 +13,7 @@
 // room.
 
 import { useCallback, useRef, useState } from "react";
-import { Button, IconButton, PageTitle } from "@/design";
+import { Button, IconButton, SectionTitle } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import type { ListedConversation } from "../hooks";
 import { startsRooms } from "../membership";
@@ -85,7 +85,7 @@ export function ConversationPanel({
     return (
       <div className="flex h-full min-h-0 flex-col">
         <header className="flex flex-none items-center gap-3 border-b border-line bg-app/95 px-4 py-3">
-          <PageTitle className="fg-h2 min-w-0 flex-1 truncate">Conversations</PageTitle>
+          <SectionTitle className="fg-h2 min-w-0 flex-1 truncate">Conversations</SectionTitle>
           <Button variant="ghost" size="sm" onClick={() => setView("chat")}>
             Back to chat
           </Button>

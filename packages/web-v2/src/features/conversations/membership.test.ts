@@ -4,7 +4,7 @@
 // in the same words.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { agentPanelWithoutProject, composerRefusal, issueDoorWithoutProject, emptyRoomState, memberName, orderedPeopleOf, removalClaim, removalQuestion, unopenableReason } from "./membership";
+import { agentPanelWithoutProject, composerRefusal, issueDoorWithoutProject, emptyRoomState, memberName, orderedPeopleOf, removalClaim, removalQuestion, unopenableReason, viewerCannotPost } from "./membership";
 import type { ConversationParticipant } from "./types";
 
 // When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
@@ -137,9 +137,17 @@ describe("emptyRoomState", () => {
       emptyRoomState({ participants: [agent(false)], scopeProjects: [desk] }, { canPost: false, projectName: "Desk" }),
     ).toEqual({
       title: "No agent here can answer",
-      message:
-        "You can read this room, not post in it: you hold the viewer role on Desk. The reason is in this room's About line, at the top.",
+      message: "The reason is in this room's About line, at the top.",
     });
+  });
+
+  // ISS-1229 r47 (aea8bed8): a viewer is told once, where the message box would be, why they cannot post and who can.
+  it("says a viewer cannot post and who can, in core's words, and the empty room does not say it again", () => {
+    expect(viewerCannotPost("Desk")).toBe(
+      "You are a viewer of Desk, so you cannot post here. Only a member or admin of Desk can, so ask one of them.",
+    );
+    const said = emptyRoomState({ participants: [agent(true)], scopeProjects: [desk] }, { canPost: false, projectName: "Desk" });
+    expect(said).toEqual({ title: "Nothing has been said here yet", message: "What is said here shows up for you to read." });
   });
 
   it("tells a viewer of a draft what they can read, and nothing of starting one", () => {

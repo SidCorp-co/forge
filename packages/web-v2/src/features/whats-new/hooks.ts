@@ -24,9 +24,8 @@ export function useWhatsNew() {
   });
 }
 
-/** Feed + the user's last-seen marker. `hasUnseen` drives the nav badge;
- *  `markSeen` silently records the current top entry (no toast) when the user
- *  opens the feed. */
+/** Feed + the user's last-seen marker. `hasUnseen` drives the nav badge; `markSeen` records the
+ *  current top entry when the user opens the feed, and a write that fails leaves the badge standing. */
 export function useWhatsNewStatus() {
   const qc = useQueryClient();
   const feed = useWhatsNew();
@@ -38,8 +37,12 @@ export function useWhatsNewStatus() {
 
   async function markSeen() {
     if (!topId || topId === lastSeen) return;
-    const next = await settingsApi.updatePreferences({ lastSeenWhatsNew: topId });
-    qc.setQueryData(["settings", "preferences"], next);
+    try {
+      const next = await settingsApi.updatePreferences({ lastSeenWhatsNew: topId });
+      qc.setQueryData(["settings", "preferences"], next);
+    } catch (err) {
+      console.warn("what's new: the last-seen mark was not saved", err);
+    }
   }
 
   return { ...feed, topId, lastSeen, hasUnseen, markSeen };

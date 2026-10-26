@@ -45,8 +45,20 @@ const revokeMutate = vi.fn();
 const toastSpy = vi.fn();
 const dismissSpy = vi.fn();
 
+const projectsRead = { failed: false, refetched: 0 };
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: projects, isLoading: false, isError: false }),
+  useProjects: () =>
+    projectsRead.failed
+      ? {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          error: new Error("The server ran into a problem and could not finish the request."),
+          refetch: async () => {
+            projectsRead.refetched += 1;
+          },
+        }
+      : { data: projects, isLoading: false, isError: false },
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: toastSpy, dismiss: dismissSpy }) }));
 vi.mock("@/providers/auth-provider", () => ({
@@ -72,6 +84,8 @@ const createButton = () => screen.getByRole("button", { name: "Create token" });
 beforeEach(() => {
   tokens = [];
   projects = [];
+  projectsRead.failed = false;
+  projectsRead.refetched = 0;
   createMutate.mockClear();
   revokeMutate.mockClear();
   toastSpy.mockClear();
@@ -623,5 +637,25 @@ describe("TokensTab — a refusal leaves once its field no longer holds what it 
     expect(refusal("Pick at least one permission, or choose full access.")).not.toBeNull();
     fireEvent.click(screen.getByRole("checkbox", { name: "issues:read" }));
     expect(screen.queryAllByRole("alert")).toEqual([]);
+  });
+});
+
+// ISS-1229 r47: with the projects read failing, Bind to a project offered only "None — user-level", as if
+// the reader held no project to bind a token to.
+describe("TokensTab — Bind to a project when the projects cannot be read", () => {
+  it("says they could not be read and reads them again on Retry", () => {
+    projectsRead.failed = true;
+    render(<TokensTab />);
+    const said = screen.getByTestId("token-projects-unread");
+    expect(said).toHaveTextContent(
+      "Your projects could not be read, so none can be chosen: The server ran into a problem and could not finish the request.",
+    );
+    fireEvent.click(within(said).getByRole("button", { name: "Retry" }));
+    expect(projectsRead.refetched).toBe(1);
+  });
+
+  it("says nothing of a failure where the projects were read", () => {
+    render(<TokensTab />);
+    expect(screen.queryByTestId("token-projects-unread")).toBeNull();
   });
 });

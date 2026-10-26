@@ -57,12 +57,8 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const header = (
     <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div>
-        {/* Two headings, only one ever visible per breakpoint (`hidden` is
-            display:none, so assistive tech only sees the active one) — avoids
-            depending on a responsive variant of the custom `fg-h*` classes,
-            which aren't registered as Tailwind utilities. */}
-        <PageTitle className="fg-h3 sm:hidden">Issues</PageTitle>
-        <PageTitle className="fg-h2 hidden sm:block">Issues</PageTitle>
+        {/* One h1 at every width, at the step every other page's title takes (ISS-1229 r47). */}
+        <PageTitle className="fg-h2">Issues</PageTitle>
         <p className="fg-body-sm mt-1 hidden text-muted sm:block">
           Every issue on this project, and what each one is waiting on.
         </p>

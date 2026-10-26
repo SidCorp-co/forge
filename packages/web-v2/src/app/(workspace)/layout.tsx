@@ -28,6 +28,7 @@ import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
 import { useAuth, useUserInitials } from "@/providers/auth-provider";
 import { ToastLane, useToast } from "@/providers/toast-provider";
 import { useProjects } from "@/features/projects/hooks";
+import { formatApiError } from "@/lib/api/error";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
 import { ActiveOrgProvider } from "@/features/orgs/active-org";
@@ -92,7 +93,17 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const userInitials = useUserInitials();
   useUnblockCascadeToasts();
   const { toast } = useToast();
-  const { data: projects } = useProjects();
+  const projectsQ = useProjects();
+  const projects = projectsQ.data;
+  const { refetch: readProjects } = projectsQ;
+  // A failed read with no list held is not a list of no projects: the rail and drawer say so (ISS-1229 r47).
+  const projectsUnread = useMemo(
+    () =>
+      projectsQ.isError && projects === undefined
+        ? { message: formatApiError(projectsQ.error), onRetry: () => void readProjects() }
+        : null,
+    [projectsQ.isError, projectsQ.error, projects, readProjects],
+  );
   const sidebar = useSidebarContext();
   const { items: recents } = useRecents();
   const pinnedViews = usePinnedViews();
@@ -372,6 +383,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             activeSlug={railSlug}
             activeProject={compactActiveProject}
             switcherProjects={switcherProjects}
+            projectsUnread={projectsUnread}
             onNavigate={navigate}
             onSelectProject={(s) => router.push(`/projects/${s}`)}
             onTogglePin={togglePin}
@@ -435,6 +447,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         attention={attentionBadge}
         openWork={openWork}
         scopedProjects={scopedProjects}
+        projectsUnread={projectsUnread}
         onNavigate={navigate}
         onOpenProject={(s) => router.push(`/projects/${s}`)}
         onCreateProject={() => router.push("/projects?new=1")}

@@ -270,6 +270,57 @@ function lineEnd(text: string, from: number): number {
   return LINE_BREAK.exec(text)?.index ?? text.length;
 }
 
+/** How many backslashes stand right before `i`, counting back no further than `from`. */
+function slashesBefore(text: string, i: number, from = 0): number {
+  let n = 0;
+  while (i - 1 - n >= from && text[i - 1 - n] === '\\') n++;
+  return n;
+}
+
+const ESCAPED_BREAK = /\\+[nrt]/g;
+
+/**
+ * Where a header's value ends (ISS-1229 r47): its line's end, or sooner where a quote opened before the
+ * name closes, as a curl `-H "Authorization: …"` argument's does. In escaped text, a tool output cut off
+ * before it parses, it ends at an escaped line break or at a quote behind fewer backslashes, which
+ * closes the string around it. A credential holds no escape and no quote, so neither cuts one short.
+ */
+function headerEnd(text: string, nameAt: number, at: number): number {
+  let end = lineEnd(text, at);
+  const before = text[nameAt - 1];
+  let escaped = false;
+  if (before === "'") {
+    const close = text.indexOf("'", at);
+    if (close >= 0 && close < end) end = close;
+  } else if (before === '"') {
+    const opening = slashesBefore(text, nameAt - 1);
+    escaped = opening > 0;
+    const close = closingQuote(text, at, opening);
+    if (close >= 0 && close < end) end = close;
+    for (let i = at; i < end; i++) {
+      if (text[i] === '"' && slashesBefore(text, i, at) < opening) {
+        end = i - slashesBefore(text, i, at);
+        break;
+      }
+    }
+  } else if (before && /[nrt]/.test(before) && text[nameAt - 2] === '\\') {
+    escaped = true;
+    const depth = slashesBefore(text, nameAt - 1);
+    for (let i = at; i < end; i++) {
+      if (text[i] === '"' && slashesBefore(text, i, at) < depth) {
+        end = i - slashesBefore(text, i, at);
+        break;
+      }
+    }
+  }
+  if (escaped) {
+    ESCAPED_BREAK.lastIndex = at;
+    const broken = ESCAPED_BREAK.exec(text);
+    if (broken && broken.index < end) end = broken.index;
+  }
+  return end;
+}
+
 // A name starts a word, or follows an escaped line break or tab in text that is no longer JSON (cut off).
 const NAME_START = String.raw`(?:\b|(?<=\\[nrt]))`;
 const OPENING_QUOTE = /^(\\*)"/;
@@ -322,7 +373,7 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
       end = close < 0 ? lineEnd(text, at) : close + opening.length;
       shown = close < 0 ? `${opening}${FILTERED}` : `${opening}${FILTERED}${opening}`;
     } else if (toLineEnd) {
-      end = lineEnd(text, at);
+      end = headerEnd(text, found.index, at);
       if (end === at) continue;
       shown = FILTERED;
     } else if (KEPT_AS_IT_IS[context].test(rest)) {

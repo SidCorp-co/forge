@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { queryRead, type QueryRead } from '@/design/patterns/badge-read';
 import { projectApi } from './api';
@@ -29,7 +29,9 @@ export interface OrgScopedProjects {
   projectSlugs: Set<string>;
   activeOrgId: string | null;
   isLoading: boolean;
+  /** Why the projects could not be read, where none is held: `projects` is then no statement, and `refetch` reads them again. */
   error: unknown;
+  refetch: () => void;
 }
 
 export function useOrgScopedProjects(): OrgScopedProjects {
@@ -41,15 +43,16 @@ export function useOrgScopedProjects(): OrgScopedProjects {
   );
   const projectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
   const projectSlugs = useMemo(() => new Set(projects.map((p) => p.slug)), [projects]);
-  return { projects, projectIds, projectSlugs, activeOrgId, isLoading: q.isLoading, error: q.error };
+  const { refetch } = q;
+  const retry = useCallback(() => void refetch(), [refetch]);
+  const error = q.data === undefined ? q.error : null;
+  return { projects, projectIds, projectSlugs, activeOrgId, isLoading: q.isLoading, error, refetch: retry };
 }
 
 /**
- * ISS-353 — projects list INCLUDING archived (`?archived=1` superset). Keyed
- * `['projects', 'all']`, a child of `['projects']`, so the WS reconnect replay
- * and the archive/unarchive mutations (which invalidate `['projects']`) refresh
- * it too. Used by Project Settings to resolve a slug→id even when the project
- * is archived (the default `['projects']` list excludes archived rows).
+ * ISS-353 — projects list INCLUDING archived (`?archived=1` superset). Keyed `['projects', 'all']`, a
+ * child of `['projects']`, so the WS reconnect replay and the archive/unarchive mutations refresh it
+ * too. Project Settings resolves a slug→id with it even when the project is archived.
  */
 export function useProjectsIncludingArchived() {
   return useQuery({

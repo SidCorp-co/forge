@@ -5,7 +5,7 @@
 // and the public `/guides` pages both compose these, so there is one reading UI, not two.
 import Link from "next/link";
 import { Fragment, type ReactNode, useEffect, useRef } from "react";
-import { Icon, Input, Markdown } from "@/design";
+import { Icon, Input, Markdown, PageTitle } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { type MatchExcerpt, type MatchSpan, slugify, titleParts } from "../reader";
 import type { TocEntry } from "../types";
@@ -212,12 +212,35 @@ export type DocsCrumb = string | { label: string; href: string };
 
 const crumbLabel = (c: DocsCrumb) => (typeof c === "string" ? c : c.label);
 
+const bare = (text: string) => text.replace(/[`*_]/g, "").trim();
+
+/** The heading a document opens with, and the body after it. */
+function opening(body: string): { text: string; rest: string } | null {
+  const lines = body.split("\n");
+  const first = lines.findIndex((line) => line.trim() !== "");
+  const heading = first === -1 ? null : /^#{1,2}\s+(.+?)\s*#*$/.exec(lines[first] as string);
+  return heading ? { text: heading[1] as string, rest: lines.slice(first + 1).join("\n") } : null;
+}
+
+/** What heads a document's page and names its tab: the heading it opens with, else its title. */
+export function articleTitle(body: string, title: string): string {
+  return opening(body)?.text ?? title;
+}
+
+/** The body without its opening heading where that heading says the title, which the page heads instead. */
+function withoutTitleHeading(body: string, title: string): string {
+  const open = opening(body);
+  return open && bare(open.text) === bare(title) ? open.rest : body;
+}
+
 /** A page: its breadcrumb, anything the caller puts above the body, and the markdown, with
  *  heading ids assigned after render so the table of contents can scroll to them. `trailing` sits
  *  at the end of the breadcrumb's row, and a breadcrumb that has one stays at the top of the screen
- *  below `lg`. */
+ *  below `lg`. Given a `title`, the article is the page: the title is its one h1 and names the tab,
+ *  and the body's own heading of those words is not said twice (ISS-1229 r47). */
 export function DocsArticle({
   crumbs,
+  title,
   body,
   docBasePath,
   docRoute,
@@ -225,6 +248,7 @@ export function DocsArticle({
   children,
 }: {
   crumbs: DocsCrumb[];
+  title?: string;
   body: string;
   trailing?: ReactNode;
   docBasePath?: string;
@@ -237,7 +261,7 @@ export function DocsArticle({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    for (const h of el.querySelectorAll("h1, h2, h3")) {
+    for (const h of el.querySelectorAll("h1, h2, h3, h4")) {
       h.id = slugify(h.textContent ?? "");
     }
   });
@@ -284,9 +308,14 @@ export function DocsArticle({
         </nav>
         {trailing}
       </div>
+      {title === undefined ? null : (
+        <PageTitle className="fg-h1 mb-4 border-b border-line pb-2">
+          <DocTitle title={title} />
+        </PageTitle>
+      )}
       {children}
       <Markdown variant="prose" docBasePath={docBasePath} docRoute={docRoute}>
-        {body}
+        {title === undefined ? body : withoutTitleHeading(body, title)}
       </Markdown>
     </div>
   );

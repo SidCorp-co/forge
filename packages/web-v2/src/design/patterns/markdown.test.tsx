@@ -97,3 +97,14 @@ describe("a fenced block on a doc page", () => {
     expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
   });
 });
+
+// ISS-1229 r47: an issue description opening "# Summary" was a second h1 on the issue's page.
+describe("headings inside an embed", () => {
+  it("step down one level, so an embed never holds an h1", () => {
+    render(<Markdown>{"# Summary\n\n## Steps\n\n### Detail"}</Markdown>);
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    expect(screen.getByRole("heading", { level: 2, name: "Summary" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Steps" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 4, name: "Detail" })).toBeInTheDocument();
+  });
+});

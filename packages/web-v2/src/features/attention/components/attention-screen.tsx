@@ -230,6 +230,7 @@ export function AttentionScreen() {
   const total = view.total + view.offlineRunners.length;
 
   const open = (link: string) => router.push(link);
+  const inboxZero = total === 0 && devicesRead !== "failed";
 
   if (read === "failed") {
     return (
@@ -264,7 +265,10 @@ export function AttentionScreen() {
       ))}
 
       <header className="mb-5">
-        <PageTitle className="fg-h2">Attention</PageTitle>
+        {/* With nothing waiting the page's only content is its state, which is then the h1 (ISS-1229 r47). */}
+        <PageTitle className="fg-h2" heads={!inboxZero}>
+          Attention
+        </PageTitle>
         <p className="fg-body-sm mt-1 text-muted">
           Cross-project items waiting on you — reviews, blocked work, mentions, failures, unseen
           drafts, and offline runners.
@@ -285,7 +289,7 @@ export function AttentionScreen() {
 
       {total === 0 && devicesRead === "failed" ? null : total === 0 ? (
         <div className="grid min-h-[40vh] place-items-center">
-          <EmptyState title="Inbox zero" message="Nothing needs your attention right now." />
+          <EmptyState level={1} title="Inbox zero" message="Nothing needs your attention right now." />
         </div>
       ) : (
         <div className="flex flex-col gap-6">

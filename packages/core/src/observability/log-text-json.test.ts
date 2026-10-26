@@ -86,7 +86,7 @@ describe('a header line inside a JSON string', () => {
       issue,
       {
         ...issue,
-        description: `The failing call was: curl -H "Authorization: ${FILTERED}\nAfter the call the job printed: done, 3 rows exported to the billing bucket.`,
+        description: `The failing call was: curl -H "Authorization: ${FILTERED}" https://api.example.org/export\nAfter the call the job printed: done, 3 rows exported to the billing bucket.`,
       },
     ],
     [
@@ -120,9 +120,7 @@ describe('a header line inside a JSON string', () => {
     const read = JSON.parse(out) as { exitCode: number; stdout: string; stderr: string };
     expect(read.exitCode).toBe(0);
     expect(read.stderr).toBe('');
-    expect(read.stdout).toBe(
-      stdout.replace('Bearer abcdefghijklmnop1234\\" https://api.example.org/export', FILTERED),
-    );
+    expect(read.stdout).toBe(stdout.replace('Bearer abcdefghijklmnop1234', FILTERED));
     expect(out).not.toContain('abcdefghijklmnop1234');
   });
 
@@ -150,6 +148,69 @@ describe('JSON cut off before its end', () => {
       const out = scrubLogText(text);
       expect(out).not.toMatch(/k3yplanted998877|hunter2/);
       expect(out).toContain(FILTERED);
+    });
+  }
+});
+
+// ISS-1229 r47, judge-137: a curl line lost its Accept header and URL behind one [Filtered], and a tool
+// output cut off mid-string lost every key after a header value.
+describe('a header written inside quotes', () => {
+  const curl = (q: string) =>
+    `curl -H ${q}Authorization: Bearer abcdefghijklmnop1234${q} -H ${q}Accept: application/json${q} https://api.example.test/export?rows=3`;
+  const kept = (q: string) =>
+    `curl -H ${q}Authorization: ${FILTERED}${q} -H ${q}Accept: application/json${q} https://api.example.test/export?rows=3`;
+
+  for (const q of ['"', "'"]) {
+    it(`loses only the credential and keeps the rest of its line, quoted with ${q}`, () => {
+      expect(scrubLogText(curl(q))).toBe(kept(q));
+    });
+  }
+
+  for (const depth of [0, 1, 2]) {
+    it(`keeps the rest of the line inside a JSON string, quoted ${depth} deep`, () => {
+      const out = scrubLogText(quoted({ description: `${curl('"')}\nnext line`, n: 1 }, depth));
+      expect(unquoted(out, depth)).toEqual({ description: `${kept('"')}\nnext line`, n: 1 });
+    });
+  }
+
+  it('loses every word of a credential with escaped quotes of its own', () => {
+    const digest =
+      'curl -H "Authorization: Digest username=\\"ana\\", response=\\"6629fae4\\"" https://x.test/a';
+    expect(scrubLogText(digest)).toBe(`curl -H "Authorization: ${FILTERED}" https://x.test/a`);
+  });
+
+  it('takes the rest of the line where the quote never closes on it', () => {
+    expect(scrubLogText('curl -H "Authorization: Bearer abc def\nnext')).toBe(
+      `curl -H "Authorization: ${FILTERED}\nnext`,
+    );
+  });
+});
+
+describe('a header in a tool output cut off part way through a string', () => {
+  for (const [what, text, expected] of [
+    [
+      'a header line among others',
+      '{"stdout":"Request headers:\\nX-Api-Key: k3yplanted998877\\nAccept: application/json\\n","code":0,"more":"cut her',
+      `{"stdout":"Request headers:\\nX-Api-Key: ${FILTERED}\\nAccept: application/json\\n","code":0,"more":"cut her`,
+    ],
+    [
+      "a header on the string's last line",
+      '{"stdout":"X-Api-Key: k3yplanted998877","code":0,"stderr":"","more":"cut',
+      `{"stdout":"X-Api-Key: ${FILTERED}","code":0,"stderr":"","more":"cut`,
+    ],
+    [
+      'a header in JSON quoted inside the output',
+      '{"stdout":"{\\"items\\":[{\\"description\\":\\"X-Api-Key: k3yplanted998877\\\\nnext\\",\\"title\\":\\"Gateway\\"}],\\"total\\":1',
+      `{"stdout":"{\\"items\\":[{\\"description\\":\\"X-Api-Key: ${FILTERED}\\\\nnext\\",\\"title\\":\\"Gateway\\"}],\\"total\\":1`,
+    ],
+    [
+      'a quoted curl header',
+      '{"stdout":"curl -H \\"Authorization: Bearer abcdefghijklmnop1234\\" -H \\"Accept: application/json\\" https://x.test","n":1,"cut',
+      `{"stdout":"curl -H \\"Authorization: ${FILTERED}\\" -H \\"Accept: application/json\\" https://x.test","n":1,"cut`,
+    ],
+  ] as const) {
+    it(`keeps every key before and after the value: ${what}`, () => {
+      expect(scrubLogText(text)).toBe(expected);
     });
   }
 });

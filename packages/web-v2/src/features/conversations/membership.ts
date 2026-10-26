@@ -14,6 +14,7 @@
 
 import { personName, readerName } from "@forge/contracts/person-name";
 import { addedApart, type ListedPerson, orderPeople } from "@/lib/people/order-people";
+import { ApiError } from "@/lib/api/client";
 import type {
   BeyondReach,
   ConversationMembership,
@@ -23,9 +24,7 @@ import type {
   RoomOpener,
 } from "./types";
 
-/**
- * One claim a confirmation makes, keyed so a test names the claim and not its wording.
- */
+/** One claim a confirmation makes, keyed so a test names the claim and not its wording. */
 export interface MembershipClaim {
   key: ClaimKey;
   text: string;
@@ -195,6 +194,19 @@ export const changesRoom = (
 
 export const READ_ONLY_LIST_EMPTY = "Conversations on your projects show up here to read.";
 
+const VIEWER_READS = "What is said here shows up for you to read.";
+
+export const NO_ACCESS_TITLE = "No access to this conversation";
+
+export function refusedForScope(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.status === 403 && err.code !== "NOT_IN_THE_ROOM";
+}
+
+/** Why a viewer cannot post, and who can, in core's words, said where the message box would be (ISS-1229 r47, aea8bed8). */
+export function viewerCannotPost(projectName: string): string {
+  return `You are a viewer of ${projectName}, so you cannot post here. Only a member or admin of ${projectName} can, so ask one of them.`;
+}
+
 /** An empty room's title and line where an invitation would be untrue, else null (ISS-1229 r34). */
 export function emptyRoomState(
   room:
@@ -211,15 +223,11 @@ export function emptyRoomState(
           message: `You hold the viewer role on ${where}, so its conversations are yours to read from the list.`,
         };
   }
-  const readOnly = reader.canPost ? null : `You can read this room, not post in it: you hold the viewer role on ${where}.`;
   const whySaid = whereWhyIsSaid(room, reader.canPost);
   if (whySaid) {
-    return {
-      title: "No agent here can answer",
-      message: whySaid === "box" ? WHY_ABOVE_THE_BOX : [readOnly, WHY_IN_ABOUT].filter(Boolean).join(" "),
-    };
+    return { title: "No agent here can answer", message: whySaid === "box" ? WHY_ABOVE_THE_BOX : WHY_IN_ABOUT };
   }
-  if (readOnly) return { title: "Nothing has been said here yet", message: readOnly };
+  if (!reader.canPost) return { title: "Nothing has been said here yet", message: VIEWER_READS };
   if (composerRefusal(room, reader)) return { title: "Nothing can be sent here", message: WHY_AT_THE_BOTTOM };
   return null;
 }
@@ -234,9 +242,7 @@ export function peopleOf(room: Partial<Pick<ConversationMembership, "participant
   return (room.participants ?? []).filter((p) => p.kind === "person");
 }
 
-/**
- * What adding this agent does, claim by claim.
- */
+/** What adding this agent does, claim by claim. */
 export function agentAdditionClaims(args: {
   candidate: HandleCandidate;
   room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects" | "participants">>;

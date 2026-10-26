@@ -28,5 +28,6 @@ const SECTION_COPY: Record<PlaceholderSection, { title: string; message: string 
 
 export function OperatorSection({ section }: { section: PlaceholderSection }) {
   const copy = SECTION_COPY[section];
-  return <EmptyState title={copy.title} message={copy.message} />;
+  // The section's whole page: its state heads it and names the tab (ISS-1229 r47, judge-137).
+  return <EmptyState level={1} title={copy.title} message={copy.message} />;
 }

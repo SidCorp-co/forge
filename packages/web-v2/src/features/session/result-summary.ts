@@ -79,6 +79,28 @@ export function summarizeResult(
   return { label: String(result), hasBody: false, pending: false };
 }
 
+/** A string holding a JSON array or object read as the value it holds, at any depth: each level is shorter than the one holding it. */
+function unfoldJsonText(value: unknown, seen: WeakSet<object>): unknown {
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text.startsWith("{") && !text.startsWith("[")) return value;
+    try {
+      return unfoldJsonText(JSON.parse(text), seen);
+    } catch {
+      return value;
+    }
+  }
+  if (value === null || typeof value !== "object" || seen.has(value)) return value;
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((v) => unfoldJsonText(v, seen));
+  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, unfoldJsonText(v, seen)]));
+}
+
+/** A tool's input or result as a reader opens it: JSON text it holds is shown as JSON, indented, never as one escaped string (ISS-1229 r47). */
+export function formatToolBody(value: unknown): string {
+  return formatResultBody(unfoldJsonText(value, new WeakSet()));
+}
+
 /**
  * The value as a reader should see it when they ask for it: whole, and not on one line.
  */

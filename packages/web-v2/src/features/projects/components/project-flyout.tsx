@@ -11,6 +11,8 @@ import { useRouter } from "next/navigation";
 import { Icon, Input, ProjectMark } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useProjects } from "@/features/projects/hooks";
+import { formatApiError } from "@/lib/api/error";
+import { ProjectsUnreadLine } from "./projects-unread";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 
@@ -36,7 +38,12 @@ export function ProjectFlyout({
   onCreateProject?: () => void;
 }) {
   const router = useRouter();
-  const { data: projects } = useProjects();
+  const projectsQ = useProjects();
+  const projects = projectsQ.data;
+  const unread =
+    projectsQ.isError && projects === undefined
+      ? { message: formatApiError(projectsQ.error), onRetry: () => void projectsQ.refetch() }
+      : null;
   const { pinnedIds, toggle } = usePinnedProjects();
   const [q, setQ] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -178,9 +185,12 @@ export function ProjectFlyout({
             );
           })}
 
-          {rows.length === 0 && (
-            <p className="fg-body-sm px-2.5 py-3 text-muted">No projects match.</p>
-          )}
+          {rows.length === 0 &&
+            (unread ? (
+              <ProjectsUnreadLine unread={unread} className="px-2.5 py-3" />
+            ) : (
+              <p className="fg-body-sm px-2.5 py-3 text-muted">No projects match.</p>
+            ))}
         </div>
 
         {/* Actions pinned below the list (mirrors the compact rail). */}

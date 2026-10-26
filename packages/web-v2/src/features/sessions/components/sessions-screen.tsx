@@ -17,7 +17,7 @@ import {
   Menu,
   MonoTag,
   PageContainer,
-  PageTitle,
+  SectionTitle,
   SegmentedControl,
   SessionRowSkeleton,
   SILENCE_TONE,
@@ -344,7 +344,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
           band of mostly 0/— on quiet projects), with End silent sessions on the same row. */}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
-          <PageTitle className="fg-h2">Sessions</PageTitle>
+          {/* A tab of a project's Agents page, whose title is the page's h1 (ISS-1229 r47). */}
+          <SectionTitle className="fg-h2">Sessions</SectionTitle>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <StatPill label={WORKING_WORD} value={String(counts.running)} />
             <StatPill label="Queued" value={String(stats.queued)} />

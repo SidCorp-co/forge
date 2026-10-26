@@ -235,3 +235,42 @@ describe("a name on the empty Connections page", () => {
     expectPrintedAsTyped();
   });
 });
+
+// ISS-1229 r47, judge-137: with the projects read failing, a space whose connections are known only through
+// its projects read "No connections in <org>", and "You can see N in your other spaces".
+describe("a Connections directory whose projects cannot be read", () => {
+  it("says the projects could not be loaded, as the page's one heading, and reads them again on Retry", () => {
+    projectsRead = "failed";
+    connections = [
+      {
+        id: "c1",
+        ownerType: "org",
+        ownerId: OTHER.id,
+        provider: "github",
+        displayName: "Shared App",
+        config: {},
+        active: true,
+        lastHealthStatus: "ok",
+        lastHealthAt: null,
+        breakerOpenedAt: null,
+        hasSecrets: true,
+        createdAt: "2026-09-01T00:00:00.000Z",
+        updatedAt: "2026-09-20T00:00:00.000Z",
+        usage: { bindings: [{ projectId: "p1" }] },
+        access: { reach: "binding", canManage: false, ownerName: "Elsewhere" },
+      } as unknown as ConnectionDirectoryItem,
+    ];
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <IntegrationsScreen />
+      </QueryClientProvider>,
+    );
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([
+      "Couldn't load your projects",
+    ]);
+    expect(document.title).toBe("Couldn't load your projects · Forge");
+    expect(screen.queryByText(/No connections in|in your other spaces/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetchProjects).toHaveBeenCalledTimes(1);
+  });
+});

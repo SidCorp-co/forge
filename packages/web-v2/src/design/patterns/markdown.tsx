@@ -140,11 +140,12 @@ function ProseCodeBlock({ node, children }: ComponentProps<"pre"> & ExtraProps) 
 }
 
 // COMPACT — dense styling for inline embeds (issue descriptions, comments,
-// plans). Small body, flattened heading scale.
+// plans). Small body, flattened heading scale, stepped down one level: an embed sits under its
+// page's own h1, so a description's `# Title` is never a second one (ISS-1229 r47).
 const compactComponents: Components = {
-  h1: ({ children }) => <h1 className={T.h1}>{children}</h1>,
-  h2: ({ children }) => <h2 className={T.h2}>{children}</h2>,
-  h3: ({ children }) => <h3 className={T.h3}>{children}</h3>,
+  h1: ({ children }) => <h2 className={T.h1}>{children}</h2>,
+  h2: ({ children }) => <h3 className={T.h2}>{children}</h3>,
+  h3: ({ children }) => <h4 className={T.h3}>{children}</h4>,
   p: ({ children }) => <p className={T.p}>{children}</p>,
   a: linkRenderer,
   ul: ({ children }) => <ul className={T.ul}>{children}</ul>,
@@ -170,15 +171,15 @@ const compactWrappedComponents: Components = {
   code: makeCodeRenderer(CODE_BLOCK_WRAPPED_CLASS, CODE_INLINE_CLASS),
 };
 
-// PROSE — long-form reading styling for the Docs viewer. Real heading
-// hierarchy, comfortable body size + line-height, roomier code/tables, and a
-// soft callout for blockquotes.
+// PROSE — long-form reading styling for the Docs viewer. Comfortable body size + line-height,
+// roomier code/tables, and a soft callout for blockquotes. Its headings keep their scale and step
+// down one level, as the compact set's do: the page that shows the document owns its h1.
 const proseComponents: Components = {
   h1: ({ children }) => (
-    <h1 className="fg-h1 mt-8 mb-4 border-b border-line pb-2 first:mt-0">{children}</h1>
+    <h2 className="fg-h1 mt-8 mb-4 border-b border-line pb-2 first:mt-0">{children}</h2>
   ),
-  h2: ({ children }) => <h2 className="fg-h2 mt-8 mb-3 first:mt-0">{children}</h2>,
-  h3: ({ children }) => <h3 className="fg-h3 mt-6 mb-2 first:mt-0">{children}</h3>,
+  h2: ({ children }) => <h3 className="fg-h2 mt-8 mb-3 first:mt-0">{children}</h3>,
+  h3: ({ children }) => <h4 className="fg-h3 mt-6 mb-2 first:mt-0">{children}</h4>,
   p: ({ children }) => <p className="fg-body my-4 leading-7 first:mt-0 last:mb-0">{children}</p>,
   a: linkRenderer,
   ul: ({ children }) => <ul className="fg-body my-4 list-disc space-y-2 pl-6 leading-7">{children}</ul>,
