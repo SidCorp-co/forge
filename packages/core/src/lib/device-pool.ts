@@ -155,11 +155,24 @@ export async function readDeviceBinding(
   return { runnerId: row.id, runnerType: row.type, checkout: checkout.length ? checkout : null };
 }
 
+/**
+ * The refusal for `deviceId`, naming the device only where the project itself names it as its
+ * default: a caller may pass any device's id, and another tenant's box name is not this one's.
+ */
 async function deviceNotBound(projectId: string, deviceId: string): Promise<DeviceNotBoundError> {
-  const [[device], [project]] = await Promise.all([
-    db.select({ name: devices.name }).from(devices).where(eq(devices.id, deviceId)).limit(1),
-    db.select({ slug: projects.slug }).from(projects).where(eq(projects.id, projectId)).limit(1),
-  ]);
+  const [project] = await db
+    .select({ slug: projects.slug, defaultDeviceId: projects.defaultDeviceId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const [device] =
+    project?.defaultDeviceId === deviceId
+      ? await db
+          .select({ name: devices.name })
+          .from(devices)
+          .where(eq(devices.id, deviceId))
+          .limit(1)
+      : [];
   return new DeviceNotBoundError({
     deviceId,
     deviceName: device?.name ?? null,

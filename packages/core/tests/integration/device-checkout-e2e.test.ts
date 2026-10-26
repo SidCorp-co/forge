@@ -27,6 +27,7 @@ const ON_XEON = '/home/dev/forge/projects/forge-core';
 let harness: TestDatabase;
 let chat: typeof import('../../src/agent-sessions/chat-turn.js');
 let prepare: typeof import('../../src/jobs/prepare-claimed-job.js');
+let claim: typeof import('../../src/devices/claim.js');
 let published: Array<{ room: string; event: string; data: Record<string, unknown> }> = [];
 
 beforeAll(async () => {
@@ -44,6 +45,7 @@ beforeAll(async () => {
   });
   chat = await import('../../src/agent-sessions/chat-turn.js');
   prepare = await import('../../src/jobs/prepare-claimed-job.js');
+  claim = await import('../../src/devices/claim.js');
 }, 60_000);
 
 afterAll(async () => {
@@ -192,6 +194,41 @@ describe('a device the project never bound', () => {
 
     expect(refused).toMatchObject({ cause: { code: 'DEVICE_NOT_BOUND' } });
     expect(published).toEqual([]);
+  });
+
+  it("does not name another tenant's box it was handed by id", async () => {
+    const { project } = await seed();
+    const stranger = await createTestUser(harness.db);
+    const theirs = await createTestDevice(harness.db, stranger.id, { name: 'their-private-box' });
+
+    const refused = await chat
+      .resolveChatDevice(
+        { projectId: project.id, deviceId: null, metadata: null },
+        undefined,
+        theirs.id,
+      )
+      .catch((e: unknown) => e);
+
+    expect(refused).toMatchObject({ cause: { code: 'DEVICE_NOT_BOUND' } });
+    expect((refused as Error).message).toContain(theirs.id);
+    expect((refused as Error).message).not.toContain('their-private-box');
+  });
+
+  it('is refused at the pool door by admission, before any hold, and never handed the project path', async () => {
+    const { owner, project, spare } = await seed();
+    const job = await queuedJob(project.id, owner.id);
+
+    const result = await claim.prepareJobForMaster({
+      jobId: job,
+      deviceId: spare.id,
+      sessionId: 'master-1',
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: 'runner_unbound' });
+    const rows = (await harness.db.execute(
+      sql`SELECT held_by FROM jobs WHERE id = ${job}`,
+    )) as unknown as Array<{ held_by: string | null }>;
+    expect(rows[0]?.held_by).toBeNull();
   });
 
   it('cannot prepare a job: refused DEVICE_NOT_BOUND rather than handed the project path', async () => {

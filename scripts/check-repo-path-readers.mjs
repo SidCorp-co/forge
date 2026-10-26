@@ -49,10 +49,36 @@ function die(message) {
   process.exit(2);
 }
 
+/** Blank every comment, keeping line breaks; a `//` or `/*` inside a string or template is text. */
 function stripComments(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+  let out = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      out += c;
+      if (c === '\\') {
+        out += text[i + 1] ?? '';
+        i++;
+      } else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      quote = c;
+      out += c;
+      continue;
+    }
+    const close = text.startsWith('//', i) ? '\n' : text.startsWith('/*', i) ? '*/' : null;
+    if (!close) {
+      out += c;
+      continue;
+    }
+    const stop = text.indexOf(close, i + 2);
+    const to = stop === -1 ? text.length : close === '\n' ? stop : stop + 2;
+    out += text.slice(i, to).replace(/[^\n]/g, ' ');
+    i = to - 1;
+  }
+  return out;
 }
 
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;

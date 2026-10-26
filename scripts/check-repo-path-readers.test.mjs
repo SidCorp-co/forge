@@ -36,6 +36,13 @@ describe('check-repo-path-readers — a working directory is the device binding'
     ).toEqual([]);
   });
 
+  it('reads past a URL in a string, which is not a comment', () => {
+    const found = reads(
+      "const endpoint = 'https://example.com'; const checkout = projects.repoPath;\n",
+    );
+    expect(found.map((r) => [r.line, r.how])).toEqual([[1, 'projects.repoPath']]);
+  });
+
   it('passes a comment that names the column', () => {
     expect(reads('// `projects.repoPath` is the bind-time default\n')).toEqual([]);
   });
