@@ -60,6 +60,7 @@ export async function listParticipants(
       label: conversationParticipants.label,
       addedAt: conversationParticipants.addedAt,
       memberRole: projectMembers.role,
+      openedBy: conversations.createdBy,
     })
     .from(conversationParticipants)
     .leftJoin(
@@ -75,13 +76,16 @@ export async function listParticipants(
         eq(conversationParticipants.conversationId, conversationId),
         isNull(conversationParticipants.removedAt),
       ),
-    )
-    .orderBy(
-      conversationParticipants.addedAt,
-      sql`COALESCE(${conversationParticipants.userId} = ${conversations.createdBy}, false) DESC`,
-      conversationParticipants.id,
     );
 
+  const opener = (row: (typeof rows)[number]) =>
+    row.userId !== null && row.userId === row.openedBy ? 0 : 1;
+  rows.sort(
+    (a, b) =>
+      a.addedAt.getTime() - b.addedAt.getTime() ||
+      opener(a) - opener(b) ||
+      a.id.localeCompare(b.id),
+  );
   return rows.map((row) => ({
     id: row.id,
     kind: row.kind,

@@ -168,7 +168,7 @@ export function ConversationsScreen() {
     else setLookup(room);
   }, [projectsQ.isLoading, projectIdList.length, conversations.isLoading, conversations.rows, openRow, setLookup]);
 
-  const read = roomRead.data;
+  const read = lookup ? roomRead.data : undefined;
   const readProject = read ? (read.scope.find((id) => orgProjectIds.has(id)) ?? read.scope[0]) : undefined;
   useEffect(() => {
     if (!lookup || !read || !readProject) return;

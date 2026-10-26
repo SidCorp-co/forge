@@ -267,7 +267,9 @@ function lineEnd(text: string, from: number): number {
 }
 
 const OPENING_QUOTE = /^(\\*)"/;
-const KEPT_AS_IT_IS = /^(?:\[\s*\]|\{\s*\}|(?:null|true|false)(?![\w-]))/;
+// What may follow a whole value: the text's end, a space, a delimiter, or the string around it closing.
+const VALUE_END = /^(?:$|[\s,}\]&"\\])/;
+const KEPT_AS_IT_IS = /^(?:\[\s*\]|\{\s*\}|null|true|false)(?=$|[\s,}\]&"\\])/;
 // A backslash is the value's own, unless its run ends in a quote: that is the string around it closing.
 const BARE_VALUE = /^(?:[^\s",}\]&\\]|\\+(?!\\*"))+/;
 
@@ -303,6 +305,8 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
       continue;
     } else if (rest.startsWith('[') || rest.startsWith('{')) {
       end = closingBracket(text, at, Math.max(nameQuote.length - 1, 0));
+      // Brackets that close before the value does were the value's own characters, not JSON.
+      if (!VALUE_END.test(text.slice(end, end + 1))) end = at + (/^\S+/.exec(rest)?.[0].length ?? 0);
       shown = marker;
     } else {
       const bare = BARE_VALUE.exec(rest);
