@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type BindingRole,
@@ -45,43 +45,15 @@ export async function findBindingById(id: string): Promise<IntegrationBindingRow
 }
 
 /**
- * The active SERVICE binding (+ its connection) for a project + provider, or none.
- *
- * Service-only ON PURPOSE, and this is the pre-flight side of
- * `integration_bindings_service_uq`, which is a PARTIAL index `WHERE role = 'service'`. Asking
- * without the role filter refuses an operator adding a service binding to a project that already
- * has a deploy binding on the same provider — a pair the index admits and ISS-1046 rule 3 requires,
- * since a coolify deploy target and a coolify service facility are different declarations about
- * the same credential. The two must admit exactly the same rows.
+ * Exactly the rows `integration_bindings_service_uq` holds to one, whatever its connection's state:
+ * a create this finds nothing for, the index admits (ISS-1421 r32). Service-only on purpose, as the
+ * index is: a deploy binding on the same provider is a different declaration (ISS-1046 rule 3).
  */
-export async function findActiveServiceBinding(
-  projectId: string,
-  provider: IntegrationProvider,
-): Promise<BindingWithConnection | null> {
-  const rows = await db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.role, 'service'),
-        eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-export async function findActiveServiceBindingAtLabel(
+export async function findSwitchedOnServiceBindingAtLabel(
   projectId: string,
   provider: IntegrationProvider,
   label: string,
+  exceptBindingId?: string,
 ): Promise<BindingWithConnection | null> {
   const rows = await db
     .select({ binding: integrationBindings, connection: integrationConnections })
@@ -97,7 +69,7 @@ export async function findActiveServiceBindingAtLabel(
         eq(integrationBindings.label, label),
         eq(integrationBindings.role, 'service'),
         eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
+        exceptBindingId ? ne(integrationBindings.id, exceptBindingId) : undefined,
       ),
     )
     .limit(1);
@@ -388,6 +360,11 @@ export async function softDeleteConnection(id: string): Promise<void> {
     .where(eq(integrationConnections.id, id));
 }
 
+/** A refused create's connection was never anyone's, so it goes whole (ISS-1421 r32). */
+export async function deleteConnectionOfRefusedCreate(id: string): Promise<void> {
+  await db.delete(integrationConnections).where(eq(integrationConnections.id, id));
+}
+
 /**
  * Clears a removed connection from the list: the row goes, and its bindings with it (cascade). The
  * caller has read it removed (`held-key.ts`), and it goes only while it still holds the secrets read
@@ -438,8 +415,15 @@ export async function removedConnectionBoundTo(
         eq(integrationConnections.ownerId, owner.ownerId),
       ),
     )
+    .orderBy(desc(integrationBindings.active), desc(integrationBindings.createdAt))
     .limit(1);
   return pair ?? null;
+}
+
+/** The order a removed GitHub connection is chosen in: the binding switched on, then the newest. */
+export function switchedOnThenNewest(a: BindingWithConnection, b: BindingWithConnection): number {
+  if (a.binding.active !== b.binding.active) return a.binding.active ? -1 : 1;
+  return b.binding.createdAt.getTime() - a.binding.createdAt.getTime();
 }
 
 export async function softDeleteBinding(id: string): Promise<void> {

@@ -148,6 +148,18 @@ export function bindingBadge(
   return { label: DIRECTORY_STATUS_META[status].label, tone: BADGE_TONE[status], status };
 }
 
+/** A project's binding of `provider` in use: the one switched on, else the newest, where a removed
+ *  integration connected again left its switched-off row beside the new one (ISS-1421 r32). */
+export function bindingInUse(
+  items: readonly IntegrationSummary[] | undefined,
+  provider: string,
+): IntegrationSummary | undefined {
+  const newestFirst = (items ?? [])
+    .filter((i) => i.provider === provider)
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  return newestFirst.find((i) => i.bindingActive) ?? newestFirst[0];
+}
+
 export function bindingConnected(existing: IntegrationSummary): boolean {
   return deriveConnectionStatus(existing) === "connected";
 }

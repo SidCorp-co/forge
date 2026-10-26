@@ -1,6 +1,6 @@
 {
-  "id": "63bf6723-15c0-4de0-a767-300d45e396f6",
-  "prevId": "e5d02dfd-535f-443d-b561-83e063abac20",
+  "id": "c5211670-6b30-434d-b8d3-17248a7abe7d",
+  "prevId": "c61a6fc7-7bf2-477c-bf39-89ac62a82c4f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2961,7 +2961,7 @@
             }
           ],
           "isUnique": true,
-          "where": "role = 'service'",
+          "where": "role = 'service' AND active",
           "concurrently": false,
           "method": "btree",
           "with": {}

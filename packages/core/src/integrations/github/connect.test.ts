@@ -23,6 +23,14 @@ describe('connect state', () => {
     expect(verifyConnectState(SECRET, token, NOW + 1000)).toEqual(STATE);
   });
 
+  // ISS-1421 r32: the install state names the binding its App was stored on.
+  it('round-trips the binding an install state names', () => {
+    const named = { ...STATE, bindingId: 'b-1' };
+    expect(verifyConnectState(SECRET, signConnectState(SECRET, named, NOW), NOW + 1000)).toEqual(
+      named,
+    );
+  });
+
   it('rejects a tampered payload, a foreign signature, and an expired state', () => {
     const token = signConnectState(SECRET, STATE, NOW);
     const [body, mac] = token.split('.');

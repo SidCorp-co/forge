@@ -44,6 +44,7 @@ import {
 } from "../../components/integration-enabled-control";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 import { scopeLabel } from "../../components/status-pill";
+import { bindingInUse } from "../../derive";
 
 function submitManifest(start: GitHubConnectStart): void {
   const form = document.createElement("form");
@@ -203,10 +204,10 @@ function RepositoryField({
 /**
  * Write a repository onto a binding this project ALREADY holds.
  *
- * Not the bind route: `integration_bindings_service_uq` is on
- * (project, provider, label) with no `active` predicate, so a row left behind by
- * a Disconnect still holds the slot and a create against it is refused 409. The
- * PATCH merges binding-tier config onto the surviving row instead, and sends
+ * Not the bind route: a Disconnect leaves the binding's row behind, switched
+ * off, and the bind route makes a second row beside it rather than taking that
+ * one back with its installation. The PATCH merges binding-tier config onto the
+ * surviving row instead, and sends
  * `active` only when the row is switched off, so a write that changes nothing
  * about whether the binding resolves does not say it does.
  */
@@ -602,10 +603,7 @@ export function GitHubSection({ projectId }: { projectId: string }) {
   const [forceCreate, setForceCreate] = useState(false);
   const [changing, setChanging] = useState(false);
 
-  const binding = useMemo(
-    () => (list.data?.items ?? []).find((i) => i.provider === "github"),
-    [list.data],
-  );
+  const binding = useMemo(() => bindingInUse(list.data?.items, "github"), [list.data]);
 
   // The App this project is offered is one the server would let it bind: managed by the caller
   // and, where an org owns it, owned by this project's own org. Offering any other would walk the

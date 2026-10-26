@@ -3,8 +3,19 @@ import type { BodyFormat } from '../body/formats.js';
 import { decodeEntities } from '../body/parse.js';
 import { type PreparedBody, prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
-import { type CommentAnnouncement, comments, issues, users } from '../db/schema.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import {
+  type CommentAnnouncement,
+  comments,
+  issues,
+  type ProjectMemberRole,
+  users,
+} from '../db/schema.js';
+import {
+  effectiveProjectRole,
+  projectRoleAtLeast,
+  projectRoleRefusal,
+  refusedForRole,
+} from '../lib/authz.js';
 import { MessageRefusedError } from '../messaging/contract.js';
 import {
   type CredentialPlace,
@@ -186,13 +197,23 @@ async function assertParentOnIssue(parentId: string, issueId: string, tx: Tx): P
   if (parent.issueId !== issueId) throw new CommentParentRefused('other_issue');
 }
 
-/** A refusal to change a comment, carrying which of the two rules refused. */
+/** Who may change a comment someone else wrote, beside its author. */
+const WHO_CHANGES_A_COMMENT = 'its author or an admin of this project';
+
+/**
+ * A refusal to change a comment, carrying which of the two rules refused, in the one sentence every
+ * door uses for a role too low: the act and who may take it (ISS-1421 r32, criterion 340).
+ */
 export class CommentChangeForbidden extends Error {
-  constructor(readonly reason: 'not_a_writer' | 'not_author_or_admin') {
+  constructor(
+    readonly reason: 'not_a_writer' | 'not_author_or_admin',
+    held: ProjectMemberRole | null,
+    act: string,
+  ) {
     super(
       reason === 'not_a_writer'
-        ? 'requires the project member role or above to change a comment'
-        : 'not comment author or project admin',
+        ? projectRoleRefusal(held, 'member', act)
+        : refusedForRole(held, act, WHO_CHANGES_A_COMMENT),
     );
     this.name = 'CommentChangeForbidden';
   }
@@ -202,18 +223,21 @@ export class CommentChangeForbidden extends Error {
  * Editing or deleting a comment belongs to its author and to an admin of its project, and to
  * neither without the role that may write one: whoever may not create a comment may not change
  * one, so a viewer who authored a comment before a demotion no longer reaches it by either door.
+ * `act` completes "you cannot …" in the refusal.
  */
 export async function assertMayChangeComment(
   userId: string,
   comment: { authorId: string; projectId: string },
+  act: string,
 ): Promise<void> {
   const access = await effectiveProjectRole(userId, comment.projectId);
-  if (!projectRoleAtLeast(access?.role ?? null, 'member')) {
-    throw new CommentChangeForbidden('not_a_writer');
+  const held = access?.role ?? null;
+  if (!projectRoleAtLeast(held, 'member')) {
+    throw new CommentChangeForbidden('not_a_writer', held, act);
   }
   if (comment.authorId === userId) return;
-  if (!projectRoleAtLeast(access?.role ?? null, 'admin')) {
-    throw new CommentChangeForbidden('not_author_or_admin');
+  if (!projectRoleAtLeast(held, 'admin')) {
+    throw new CommentChangeForbidden('not_author_or_admin', held, act);
   }
 }
 

@@ -124,7 +124,8 @@ async function outOfScope(role: string | null, projectId: string, tx: Executor):
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  return `You hold the viewer role on ${project?.name ?? 'one of its projects'}; a viewer cannot change a room or post in it`;
+  const name = project?.name ?? 'one of its projects';
+  return `You are a viewer of ${name}, so you cannot change this room or post in it. Only a member or admin of ${name} can, so ask one of them.`;
 }
 
 interface RoomAboutNoProject {

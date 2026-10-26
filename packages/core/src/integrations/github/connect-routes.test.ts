@@ -80,6 +80,8 @@ const helpers = vi.hoisted(() => ({
   projectRole: 'admin' as 'admin' | 'member' | 'viewer' | null,
 }));
 vi.mock('../route-helpers.js', () => ({
+  alreadyExists: (message: string) =>
+    new HTTPException(409, { message, cause: { code: 'ALREADY_EXISTS' } }),
   badRequest: (details: unknown) =>
     new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } }),
   forbidden: (message = 'forbidden') =>
@@ -106,6 +108,7 @@ vi.mock('../route-helpers.js', () => ({
 const store = vi.hoisted(() => ({
   createBinding: vi.fn(async () => ({ id: 'binding-new' })),
   createConnection: vi.fn(async () => ({ id: CONNECTION_ID })),
+  findSwitchedOnServiceBindingAtLabel: vi.fn(async (): Promise<unknown> => null),
   decryptConnectionSecrets: vi.fn((): { appId?: string; privateKey?: string } => ({
     appId: '42',
     privateKey: 'pk',
@@ -114,6 +117,7 @@ const store = vi.hoisted(() => ({
   listBindingsForConnection: vi.fn(async (): Promise<unknown[]> => []),
   listBindingsForProject: vi.fn(async (): Promise<unknown[]> => []),
   removedConnectionBoundTo: vi.fn(async (): Promise<unknown> => null),
+  switchedOnThenNewest: () => 0,
   updateBinding: vi.fn(async () => ({})),
   updateConnection: vi.fn(async (id: string) => ({ id })),
 }));
@@ -159,7 +163,7 @@ vi.mock('./connect.js', async (importOriginal) => ({
 vi.mock('./install-resolve.js', () => ({ findBindingOwningInstallation: vi.fn(async () => null) }));
 
 const { githubConnectRoutes, githubCallbackRoutes } = await import('./connect-routes.js');
-const { signConnectState } = await import('./connect.js');
+const { signConnectState, verifyConnectState } = await import('./connect.js');
 const { errorHandler } = await import('../../middleware/error.js');
 const { requestId } = await import('../../middleware/request-id.js');
 
@@ -428,7 +432,12 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
   // ISS-1421 r21 — judge-89: a removed GitHub connection stayed listed, and a fresh install stood a
   // second one beside it that nothing could turn on.
   it('turns the removed connection the project is bound to back on with the new App', async () => {
-    const old = { id: 'binding-old', config: { installationId: 7, repository: 'acme/app' } };
+    const old = {
+      id: 'binding-old',
+      projectId: PROJECT_ID,
+      label: '',
+      config: { installationId: 7, repository: 'acme/app' },
+    };
     store.removedConnectionBoundTo.mockResolvedValueOnce({
       binding: old,
       connection: { id: 'connection-removed' },
@@ -470,6 +479,35 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
       config: {},
       integrationSecret: 'whsec_x',
     });
+  });
+
+  // ISS-1421 r32: a GitHub binding switched on since, beside the removed one, keeps it off. The index
+  // refuses the switch-on, whenever the other was switched on, and the rest is written without it.
+  it('keeps the removed binding off where the index refuses switching it on, and sends the install to it', async () => {
+    const old = { id: 'binding-old', config: {} };
+    const removed = { binding: old, connection: { id: 'c-r' } };
+    store.removedConnectionBoundTo.mockResolvedValueOnce(removed);
+    store.listBindingsForConnection.mockResolvedValueOnce([{ binding: old }]);
+    store.updateBinding.mockRejectedValueOnce(
+      Object.assign(new Error('update failed'), { cause: { code: '23505' } }),
+    );
+    const state = signConnectState(process.env.JWT_SECRET as string, {
+      projectId: PROJECT_ID,
+      userId: ADMIN_B,
+      orgId: ORG_ID,
+    });
+
+    const res = await callback(state);
+
+    const written = { config: {}, integrationSecret: 'whsec_x' };
+    expect(res.status).toBe(302);
+    const carried = new URL(res.headers.get('location') as string).searchParams.get('state');
+    expect(verifyConnectState(process.env.JWT_SECRET as string, carried ?? '')?.bindingId).toBe(
+      'binding-old',
+    );
+    const on = { ...written, active: true };
+    expect(store.updateBinding).toHaveBeenNthCalledWith(1, 'binding-old', on);
+    expect(store.updateBinding).toHaveBeenNthCalledWith(2, 'binding-old', written);
   });
 
   it('creates nothing for a state issued to another user', async () => {

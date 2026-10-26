@@ -322,7 +322,9 @@ commentRoutes.patch(
     const userId = c.get('userId');
 
     const comment = await loadComment(id);
-    await assertMayChangeComment(userId, comment).catch(rethrowChangeForbidden);
+    await assertMayChangeComment(userId, comment, 'edit this comment').catch(
+      rethrowChangeForbidden,
+    );
 
     let written: Awaited<ReturnType<typeof updateCommentBody>>;
     try {
@@ -366,7 +368,9 @@ commentRoutes.delete(
     const userId = c.get('userId');
 
     const comment = await loadComment(id);
-    await assertMayChangeComment(userId, comment).catch(rethrowChangeForbidden);
+    await assertMayChangeComment(userId, comment, 'delete this comment').catch(
+      rethrowChangeForbidden,
+    );
 
     await removeComment(id);
     await hooks.emit('commentDeleted', {

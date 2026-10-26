@@ -3199,6 +3199,10 @@
 
 ### Fixed
 
+- **A viewer refused a room, a room write or a comment change is told who may.** Each refusal names the act and who can take it, as every other door already did. (ISS-1421)
+- **A GitHub App key copied from an indented block is saved whole.** A key with its first line flush and the rest indented was refused as not whole; the indent is now removed. (ISS-1421)
+- **A removed integration can be connected again.** Connecting it was refused as already existing, and each refused attempt left a nameless connection behind; neither happens now. (ISS-1421)
+- **Rocket.Chat's Answer mode is named for screen readers.** (ISS-1421)
 - **A link to a conversation that is gone says so, and the rail shows your organization's whole name.** Pages that fail to load name what failed, technical details stay readable, and the room's opener is "the first". (ISS-1229)
 - **A page that is only an error, such as Page not found or Project not found, is headed by it and names the browser tab.** (ISS-1229)
 - **In a room, "the first" and "the second" name the same person for everyone reading it.** (ISS-1229)
