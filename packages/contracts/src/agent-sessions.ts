@@ -66,5 +66,7 @@ export const RUN_SESSION_KIND = "run_session";
 export const RUN_ISSUES_METADATA_KEY = "runIssues";
 export const RUN_GROUP_METADATA_KEY = "runGroup";
 export const RUN_ISSUE_STATUSES_METADATA_KEY = "runIssueStatuses";
+/** On a queued declaration, the refusal it waits behind: `{code, gate, detail, at, attempts}`. */
+export const RUN_DECLARATION_REFUSAL_METADATA_KEY = "declarationRefusal";
 /** What each carried issue was given when the run opened (`run-standing.ts:RunGiven`); nothing rewrites it. */
 export const RUN_GIVEN_METADATA_KEY = "runGiven";

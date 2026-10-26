@@ -11,6 +11,7 @@
  */
 
 import {
+  RUN_DECLARATION_REFUSAL_METADATA_KEY,
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
   RUN_SESSION_KIND,
@@ -31,7 +32,7 @@ import {
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 /** The refusal a queued declaration waits behind: `{code, gate, detail, at, attempts}`. */
-export const DECLARATION_REFUSAL_METADATA_KEY = 'declarationRefusal';
+export const DECLARATION_REFUSAL_METADATA_KEY = RUN_DECLARATION_REFUSAL_METADATA_KEY;
 
 /** The take refusals that leave the declared run waiting rather than wrong, each with the gate
  *  word runs/standing serves it under (design agent-run-standing, waiting_gate). */
