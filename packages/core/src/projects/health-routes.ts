@@ -126,7 +126,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
       slug: projects.slug,
       name: projects.name,
       description: projects.description,
-      repoPath: projects.repoPath,
+      repoPath: projects.repoPathHint,
     })
     .from(projects)
     .where(inArray(projects.id, visibleIds));

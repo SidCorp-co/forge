@@ -20,6 +20,7 @@ export interface InboundCollection<Frame> {
   /** The name the transport shows for the speaker; none where the speaker is a Forge person on Forge's
    *  own surface, whose name is read from their row when the room is read (ISS-1229 r25). */
   speakerLabel?: string | null;
+  clientToken?: string | null;
   /** Image references as the transport names them — no bytes, which are fetched at route time. */
   images?: readonly ConversationImage[];
   /** Whose authority a turn runs under in a venue that has many speakers. */
@@ -75,6 +76,7 @@ export async function collectInboundMessage<Frame>(
           authorKey: inbound.speakerKey,
           externalId: inbound.externalMessageId ?? null,
           replyToExternalId: inbound.replyToExternalId ?? null,
+          clientToken: inbound.clientToken ?? null,
           ...(inbound.images && inbound.images.length > 0 ? { images: inbound.images } : {}),
         },
       ],

@@ -63,7 +63,7 @@ describe('agentConfig declared keys and their doors', () => {
 
   it('names the owning column in every retired key message', () => {
     const owners: Record<string, string> = {
-      repoPath: 'projects.repo_path',
+      repoPath: 'projects.repo_path_hint',
       baseBranch: 'projects.base_branch',
       productionBranch: 'projects.release_chain',
       activeDeviceId: 'projects.default_device_id',
@@ -86,7 +86,7 @@ function refusalsFor(record: unknown): string[] {
 
 describe('refuseAgentConfigRecord', () => {
   it.each([
-    ['repoPath', '/tmp/somewhere', 'projects.repo_path'],
+    ['repoPath', '/tmp/somewhere', 'projects.repo_path_hint'],
     ['baseBranch', 'main', 'projects.base_branch'],
     ['productionBranch', 'main', 'projects.release_chain'],
     ['activeDeviceId', '85644100-e4f5-455a-9754-6af76c19e50a', 'projects.default_device_id'],

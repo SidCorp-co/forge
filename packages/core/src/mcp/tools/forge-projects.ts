@@ -23,6 +23,7 @@ import {
 import {
   createProject,
   ProjectSlugTakenError,
+  type ProjectUpdates,
   readProjectSummary,
   updateProject,
 } from '../../projects/service.js';
@@ -269,10 +270,10 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
       throw new Error('FORBIDDEN: requires org admin (project admin role is insufficient)');
     }
 
-    const updates: Record<string, unknown> = {};
+    const updates: ProjectUpdates = {};
     if (input.patch.name !== undefined) updates.name = input.patch.name;
     if (input.patch.description !== undefined) updates.description = input.patch.description;
-    if (input.patch.repoPath !== undefined) updates.repoPath = input.patch.repoPath;
+    if (input.patch.repoPath !== undefined) updates.repoPathHint = input.patch.repoPath;
     if (input.patch.baseBranch !== undefined) updates.baseBranch = input.patch.baseBranch;
     if (input.patch.releaseChain !== undefined) updates.releaseChain = input.patch.releaseChain;
     // ISS-1311 — the REST PATCH has always run this rule and this tool never did, so a chain and a

@@ -625,7 +625,7 @@ describe('PATCH /api/projects/:id', () => {
     expect(res.status).toBe(200);
     expect(updateSet).toHaveBeenCalledWith({
       description: 'a project',
-      repoPath: '/home/user/repo',
+      repoPathHint: '/home/user/repo',
       baseBranch: 'staging',
       releaseChain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
       defaultDeviceId: '22222222-2222-4222-8222-222222222222',
@@ -846,7 +846,7 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     [
       'the shadow repoPath',
       { agentConfig: { repoPath: '/home/kieutrung/tools/forge/jarvis-agents' } },
-      'the `projects.repo_path` column',
+      'the `projects.repo_path_hint` column',
     ],
     [
       'the shadow baseBranch',

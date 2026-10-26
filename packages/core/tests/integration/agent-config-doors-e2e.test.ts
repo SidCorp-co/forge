@@ -138,7 +138,7 @@ describe('the named doors write one key each', () => {
 
 describe('the raw agentConfig record is refused by name', () => {
   it.each([
-    ['repoPath', '/tmp/elsewhere', 'projects.repo_path'],
+    ['repoPath', '/tmp/elsewhere', 'projects.repo_path_hint'],
     ['baseBranch', 'main', 'projects.base_branch'],
     ['productionBranch', 'main', 'projects.release_chain'],
     ['activeDeviceId', '85644100-e4f5-455a-9754-6af76c19e50a', 'projects.default_device_id'],

@@ -176,6 +176,8 @@ export interface AppendMessageArgs {
   authorKey?: string | null;
   externalId?: string | null;
   replyToExternalId?: string | null;
+  /** The web composer's own id for this message, so a resend of it is answered with this row. */
+  clientToken?: string | null;
   images?: readonly ConversationImage[] | undefined;
   /** Ordered canonical blocks for this row; omit on a caller that has only text. */
   blocks?: readonly ContentBlock[] | null | undefined;
@@ -247,6 +249,7 @@ export async function appendMessagesIn(
           content: m.content,
           externalId: m.externalId ?? null,
           replyToExternalId: m.replyToExternalId ?? null,
+          clientToken: m.clientToken ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
           blocks: (m.blocks && m.blocks.length > 0 ? screenedBlocks(m.blocks) : null) as never,
           deliveryProof: (m.deliveryProof ?? null) as never,
@@ -265,6 +268,27 @@ export async function appendMessagesIn(
 
     return rows.map(toStored);
   }
+}
+
+/**
+ * The message a person already sent into a room under this client token, if any (ISS-1236).
+ */
+export async function findMessageByClientToken(
+  args: { conversationId: string; authorUserId: string; clientToken: string },
+  tx: Executor = defaultDb,
+): Promise<{ id: string; seq: number } | null> {
+  const [row] = await tx
+    .select({ id: conversationMessages.id, seq: conversationMessages.seq })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, args.conversationId),
+        eq(conversationMessages.authorUserId, args.authorUserId),
+        eq(conversationMessages.clientToken, args.clientToken),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 /**

@@ -211,7 +211,7 @@ const CHECKS = [
     label: 'repo-path-readers',
     layer: 'shared',
     reads:
-      'every reader of projects.repoPath in core; a subset reports clean on a tree that is not',
+      'every file in core naming the projects checkout hint; a subset reports clean on a tree that is not',
     cmd: ['node', 'scripts/check-repo-path-readers.mjs', '--all'],
     scanned: /^repo-path-readers: (\d+) file\(s\) scanned/m,
   },

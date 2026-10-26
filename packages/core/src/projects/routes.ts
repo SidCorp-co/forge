@@ -83,7 +83,7 @@ import {
   unarchiveProject,
 } from './routes-reference.js';
 import { projectRunnerRoutes } from './runners-routes.js';
-import { createProject, ProjectSlugTakenError } from './service.js';
+import { createProject, ProjectSlugTakenError, type ProjectUpdates } from './service.js';
 import { projectSettingsWriteRoutes } from './settings-write-routes.js';
 import { strandedWorkFor } from './stranded-work.js';
 
@@ -313,7 +313,7 @@ projectRoutes.patch(
     const access = await loadProjectAccess(id, userId);
     assertOrgRoleOnProject(access, 'admin', 'change its settings');
 
-    const updates: Record<string, unknown> = {};
+    const updates: ProjectUpdates = {};
     if (patch.orgId !== undefined && patch.orgId !== access.orgId) {
       await assertOrgAccess(patch.orgId, userId, 'admin');
       updates.orgId = patch.orgId;
@@ -321,7 +321,7 @@ projectRoutes.patch(
     if (patch.name !== undefined) updates.name = patch.name;
     if (patch.description !== undefined) updates.description = patch.description;
     if (patch.kind !== undefined) updates.kind = patch.kind;
-    if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
+    if (patch.repoPath !== undefined) updates.repoPathHint = patch.repoPath;
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
     if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;

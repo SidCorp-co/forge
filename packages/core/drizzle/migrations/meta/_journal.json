@@ -2297,6 +2297,13 @@
       "when": 1815868800000,
       "tag": "0380_every_block_is_screened",
       "breakpoints": true
+    },
+    {
+      "idx": 389,
+      "version": "7",
+      "when": 1816646400000,
+      "tag": "0389_the_hint_has_its_own_name",
+      "breakpoints": true
     }
   ]
 }

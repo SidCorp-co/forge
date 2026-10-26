@@ -92,7 +92,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   const row = await guarded('project', blockers, async () => {
     const [found] = await db
       .select({
-        repoPath: projects.repoPath,
+        repoPath: projects.repoPathHint,
         baseBranch: projects.baseBranch,
         repoUrl: projects.repoUrl,
         releaseChain: projects.releaseChain,

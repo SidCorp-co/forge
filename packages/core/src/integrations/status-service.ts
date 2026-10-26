@@ -168,7 +168,7 @@ export function buildProviderCards(opts: {
 /** Build the full status-card set for a project (caller has already authz'd). */
 export async function buildIntegrationsStatusCards(projectId: string): Promise<StatusCard[]> {
   const [project] = await db
-    .select({ repoPath: projects.repoPath, baseBranch: projects.baseBranch })
+    .select({ repoPath: projects.repoPathHint, baseBranch: projects.baseBranch })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);

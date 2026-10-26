@@ -316,7 +316,7 @@ deviceOwnerRoutes.get(
         branch: runners.branch,
         status: runners.status,
         lastSeenAt: runners.lastSeenAt,
-        projectDefaultRepoPath: projects.repoPath,
+        projectDefaultRepoPath: projects.repoPathHint,
         baseBranch: projects.baseBranch,
         provisionStatus: runners.provisionStatus,
         provisionDetail: runners.provisionDetail,

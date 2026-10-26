@@ -3210,6 +3210,7 @@
 - **When a project's box is paired but not assigned, the Agent panel says so**, in new rooms too. It named pairing, which was done; it now names the box, links the project's Runners page and shows the bind command. (ISS-1236)
 - **Starting a session with a folder of your own names the box it will run on**, rather than "that device", and where to move its folder. (ISS-1236)
 - **Your own messages read "You" wherever a room is read through the API**, not "Another member" when you have set no name. (ISS-1236)
+- **A message you retry after a failed send appears once.** When the first send had gone through, retrying posted it a second time; the room now answers with the message it already has. (ISS-1236)
 - **Building the Project Brain no longer asks for a template.** Onboarding refused every project that had not applied one, and no template could satisfy it; it now starts on any project with a bound box. (ISS-1236)
 - **Everyone in a room is named as its members list names them**, so three people who never set a name no longer all read "Another member". (ISS-1229)
 - **The bell's count reads at most 99+ and sits beside the bell**, never over it, on a phone and on a desktop. (ISS-1229)
