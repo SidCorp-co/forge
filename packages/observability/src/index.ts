@@ -296,13 +296,13 @@ const BARE_UNQUOTED = /^(?:[^\s",&\\]|\\+(?!\\*"))+/;
  * line's rule: an unquoted value takes the rest of the line.
  */
 function scrubNamedValues(text: string, name: string, toLineEnd: boolean): string {
-  const re = new RegExp(`\\b${escapeRegExp(name)}\\b(\\\\*")?\\s*[:=]\\s*`, 'gi');
+  const re = new RegExp(`\\b${escapeRegExp(name)}\\b(\\\\*")?\\s*([:=])\\s*`, 'gi');
   let out = '';
   let from = 0;
   for (let found = re.exec(text); found; found = re.exec(text)) {
     const at = found.index + found[0].length;
     const nameQuote = found[1] ?? '';
-    const context = nameQuote ? 'quoted' : 'unquoted';
+    const context = nameQuote && found[2] === ':' ? 'quoted' : 'unquoted';
     const marker = `${nameQuote}${FILTERED}${nameQuote}`;
     const rest = text.slice(at);
     const quoted = OPENING_QUOTE.exec(rest);
