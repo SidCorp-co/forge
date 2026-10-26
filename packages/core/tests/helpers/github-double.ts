@@ -40,7 +40,7 @@ export interface GitHubDouble {
 /** A new App private key on every call, as GitHub gives one: a whole PEM the save doors parse. */
 export const freshAppKey = (): string =>
   generateKeyPairSync('rsa', {
-    modulusLength: 1024,
+    modulusLength: 2048,
     privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
     publicKeyEncoding: { type: 'spki', format: 'pem' },
   }).privateKey;
