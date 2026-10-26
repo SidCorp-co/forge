@@ -34,6 +34,16 @@ describe('a secret scrubbed out of JSON', () => {
       { testCredentials: FILTERED, next: 2 },
     ],
     ['a header value', { authorization: 'Bearer abc', x: 1 }, { authorization: FILTERED, x: 1 }],
+    [
+      'an array whose strings hold brackets',
+      { testCredentials: [']hunter2', '{[x'], next: 2 },
+      { testCredentials: FILTERED, next: 2 },
+    ],
+    [
+      'an object whose strings hold brackets and quotes',
+      { secret: { a: '}"]', b: ['[{'] }, next: 2 },
+      { secret: FILTERED, next: 2 },
+    ],
   ];
 
   for (const depth of [0, 1, 2]) {
@@ -73,6 +83,11 @@ describe('an empty value under a secret name', () => {
 });
 
 describe('a log line, which is not JSON', () => {
+  it('loses a bare secret holding or opening with a backslash whole', () => {
+    expect(scrubLogText('password=abc\\def user=ana')).toBe(`password=${FILTERED} user=ana`);
+    expect(scrubLogText('password=\\abc user=ana')).toBe(`password=${FILTERED} user=ana`);
+  });
+
   it('still loses a bare secret and keeps what follows', () => {
     expect(scrubLogText('password=hunter2 user=ana')).toBe(`password=${FILTERED} user=ana`);
     expect(scrubLogText('access_token=abc&id=7')).toBe(`access_token=${FILTERED}&id=7`);

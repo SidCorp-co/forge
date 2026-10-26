@@ -226,22 +226,33 @@ function escapeRegExp(s: string): string {
  * its opening, plus any whole escaped pairs at that depth (`"`, `\"`, `\\\"` …). -1 where none does.
  */
 function closingQuote(text: string, start: number, depth: number): number {
-  const pair = 2 * (depth + 1);
   for (let i = start; i < text.length && text[i] !== '\n'; i++) {
-    if (text[i] !== '"') continue;
-    let slashes = 0;
-    while (i - 1 - slashes >= start && text[i - 1 - slashes] === '\\') slashes++;
-    if (slashes >= depth && (slashes - depth) % pair === 0) return i - depth;
+    if (quoteAt(text, i, start, depth)) return i - depth;
   }
   return -1;
 }
 
-/** The end of the array or object opening at `start`, brackets counted; its line's end where they never close. */
-function closingBracket(text: string, start: number): number {
+/** Whether `text[i]` is a quote at `depth` escapes, opening or closing a string there. */
+function quoteAt(text: string, i: number, from: number, depth: number): boolean {
+  if (text[i] !== '"') return false;
+  let slashes = 0;
+  while (i - 1 - slashes >= from && text[i - 1 - slashes] === '\\') slashes++;
+  return slashes >= depth && (slashes - depth) % (2 * (depth + 1)) === 0;
+}
+
+/**
+ * The end of the array or object opening at `start`, quoted `depth` escapes deep, its brackets counted
+ * outside the strings it holds; its line's end where they never close.
+ */
+function closingBracket(text: string, start: number, depth: number): number {
   let level = 0;
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
-    if (ch === '[' || ch === '{') level++;
+    if (quoteAt(text, i, start, depth)) {
+      const close = closingQuote(text, i + 1, depth);
+      if (close < 0) return lineEnd(text, start);
+      i = close + depth;
+    } else if (ch === '[' || ch === '{') level++;
     else if (ch === ']' || ch === '}') {
       level--;
       if (level === 0) return i + 1;
@@ -257,7 +268,8 @@ function lineEnd(text: string, from: number): number {
 
 const OPENING_QUOTE = /^(\\*)"/;
 const KEPT_AS_IT_IS = /^(?:\[\s*\]|\{\s*\}|(?:null|true|false)(?![\w-]))/;
-const BARE_VALUE = /^[^\s",}\]&\\]+/;
+// A backslash is the value's own, unless its run ends in a quote: that is the string around it closing.
+const BARE_VALUE = /^(?:[^\s",}\]&\\]|\\+(?!\\*"))+/;
 
 /**
  * `text` with the value after each `name:` / `name=` replaced, read by its shape so JSON stays JSON
@@ -290,7 +302,7 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
     } else if (KEPT_AS_IT_IS.test(rest)) {
       continue;
     } else if (rest.startsWith('[') || rest.startsWith('{')) {
-      end = closingBracket(text, at);
+      end = closingBracket(text, at, Math.max(nameQuote.length - 1, 0));
       shown = marker;
     } else {
       const bare = BARE_VALUE.exec(rest);
