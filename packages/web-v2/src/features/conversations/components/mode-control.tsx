@@ -13,6 +13,7 @@
 
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  type Ref,
   useCallback,
   useContext,
   useEffect,
@@ -84,10 +85,10 @@ function asSentence(clause: string): string {
  * composer sits in does not read the same key as its own close.
  */
 function BlockedPanel({
-  reason,
+  offer,
   onClose,
 }: {
-  reason: string | null;
+  offer: AgentModeOffer;
   onClose: (returnFocus: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -123,19 +124,60 @@ function BlockedPanel({
       }}
       className="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-md border border-line bg-surface p-3 shadow-lg"
     >
-      <p className="fg-body-sm font-semibold text-fg">Agent needs a paired runner</p>
-      <p className="fg-caption mt-1 text-muted">
-        {asSentence(reason ?? "no runner is paired with this project")}
-      </p>
-      <Link
-        ref={wayOut}
-        href={PAIR_A_RUNNER}
-        className="fg-body-sm mt-2.5 inline-flex items-center gap-1.5 rounded-sm text-link hover:underline"
-      >
-        <Icon name="link" size={14} />
-        Pair a runner
-      </Link>
+      {offer.unbound?.projectSlug ? (
+        <NotAssigned
+          device={offer.unbound.deviceName}
+          slug={offer.unbound.projectSlug}
+          wayOut={wayOut}
+        />
+      ) : (
+        <>
+          <p className="fg-body-sm font-semibold text-fg">Agent needs a paired runner</p>
+          <p className="fg-caption mt-1 text-muted">
+            {asSentence(offer.reason ?? "no runner is paired with this project")}
+          </p>
+          <Link ref={wayOut} href={PAIR_A_RUNNER} className={WAY_OUT}>
+            <Icon name="link" size={14} />
+            Pair a runner
+          </Link>
+        </>
+      )}
     </div>
+  );
+}
+
+const WAY_OUT =
+  "fg-body-sm mt-2.5 inline-flex items-center gap-1.5 rounded-sm text-link hover:underline";
+
+/**
+ * A device that is paired already but not assigned to this project: pairing is
+ * done, so the way out is the project's own Runners page, where it is assigned.
+ * A device the project does not hold as its default is not named, as core does not name it.
+ */
+function NotAssigned({
+  device,
+  slug,
+  wayOut,
+}: {
+  device: string | null;
+  slug: string;
+  wayOut: Ref<HTMLAnchorElement>;
+}) {
+  return (
+    <>
+      <p className="fg-body-sm font-semibold text-fg">Agent needs this project&apos;s runner</p>
+      <p className="fg-caption mt-1 text-muted">
+        {device ?? "The device this project picked"} is paired but not assigned to {slug}, so it
+        has no checkout of the project to run in. Assign it on the project&apos;s Runners page; to
+        choose the folder it runs in, give the path there or, once it is assigned, run{" "}
+        <code className="font-mono text-12 [overflow-wrap:anywhere]">forge-runner bind {slug} --path &lt;dir&gt;</code>{" "}
+        on {device ?? "that device"}.
+      </p>
+      <Link ref={wayOut} href={`/projects/${slug}/settings?tab=runners`} className={WAY_OUT}>
+        <Icon name="link" size={14} />
+        Assign it on {slug}&apos;s Runners page
+      </Link>
+    </>
   );
 }
 
@@ -384,7 +426,7 @@ export function ConversationModeControl({
         />
       )}
       {blockedOpen && (
-        <BlockedPanel reason={offer.reason} onClose={closeBlocked} />
+        <BlockedPanel offer={offer} onClose={closeBlocked} />
       )}
     </div>
   );
