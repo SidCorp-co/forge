@@ -321,7 +321,7 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
       continue;
     } else if (rest.startsWith('[') || rest.startsWith('{')) {
       end = closingBracket(text, at, Math.max(nameQuote.length - 1, 0));
-      if (!VALUE_END[context].test(text.slice(end, end + 8))) end = at + (/^\S+/.exec(rest)?.[0].length ?? 0);
+      if (!VALUE_END[context].test(text.slice(end, end + 8))) end = at + (/^[^\s,&"]+/.exec(rest)?.[0].length ?? 0);
       shown = marker;
     } else {
       const bare = (nameQuote ? BARE_VALUE : BARE_UNQUOTED).exec(rest);

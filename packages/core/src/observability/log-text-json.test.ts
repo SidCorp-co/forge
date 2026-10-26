@@ -116,6 +116,11 @@ describe('a log line, which is not JSON', () => {
     }
   });
 
+  it('keeps what follows a bracketed secret that runs on past its brackets', () => {
+    expect(scrubLogText('password=[x]tail&user=ana')).toBe(`password=${FILTERED}&user=ana`);
+    expect(scrubLogText('password={x}tail,user=ana')).toBe(`password=${FILTERED},user=ana`);
+  });
+
   it('still loses a bare secret and keeps what follows', () => {
     expect(scrubLogText('password=hunter2 user=ana')).toBe(`password=${FILTERED} user=ana`);
     expect(scrubLogText('access_token=abc&id=7')).toBe(`access_token=${FILTERED}&id=7`);
