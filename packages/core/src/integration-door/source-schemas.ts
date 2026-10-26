@@ -4,6 +4,12 @@ import { z } from 'zod';
 
 export const numberParamSchema = z.object({ number: z.coerce.number().int().positive() });
 
+/** A change request and an issue of this project it links, by key or id (ISS-705). */
+export const linkParamSchema = z.object({
+  number: z.coerce.number().int().positive(),
+  issue: z.string().trim().min(1).max(200),
+});
+
 export const checkLogParamSchema = z.object({ checkRunId: z.coerce.number().int().positive() });
 
 /** `lines` is how many trailing lines to keep: rejected outside 1..1000, never clamped. */

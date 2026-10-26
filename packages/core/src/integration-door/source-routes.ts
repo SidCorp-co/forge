@@ -15,7 +15,8 @@
  *
  * `:number` is the number the host shows: a pull request number on GitHub, a merge request IID (the
  * `!12`) on GitLab. Authorization is membership, raised to writer for every route that changes
- * something on the host or on Forge's record of it; every route but the binding list also asks the binding's `agent_access`.
+ * something on the host or on Forge's record of it, including which issues a change request
+ * delivers (`source-link-routes.ts`, ISS-705); every route but the binding list also asks the binding's `agent_access`.
  *
  * Registered ONTO `integrationsRoutes` for the reason coolify-routes.ts gives.
  */
@@ -31,6 +32,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { can, onHost, type Routes } from './source-door.js';
+import { registerChangeRequestLinks } from './source-link-routes.js';
 import { registerSourceProjectionRoutes } from './source-projection-routes.js';
 import {
   checkLogParamSchema,
@@ -46,6 +48,7 @@ export function registerSourceRoutes(routes: Routes): void {
   registerSourceReads(routes);
   registerSourceWrites(routes);
   registerSourceProjectionRoutes(routes);
+  registerChangeRequestLinks(routes);
 }
 
 function registerSourceReads(routes: Routes): void {

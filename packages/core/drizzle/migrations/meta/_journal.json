@@ -3438,6 +3438,13 @@
       "when": 1829347200000,
       "tag": "0537_a_support_group_is_answered_by_a_session_forge_manages",
       "breakpoints": true
+    },
+    {
+      "idx": 538,
+      "version": "7",
+      "when": 1829433600000,
+      "tag": "0538_a_change_request_link_keeps_its_order_and_its_unlink",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,10 @@
 export { sourceHostMismatch } from './bind.js';
+export {
+  type ChangeRequestLinks,
+  readChangeRequestLinks,
+  relinkChangeRequestIssue,
+  unlinkChangeRequestIssue,
+} from './change-request-links.js';
 export { SourceHostCallError, SourceHostInputRefusal, SourceHostUnavailable } from './errors.js';
 export {
   GIT_RELAY_PREFIX,

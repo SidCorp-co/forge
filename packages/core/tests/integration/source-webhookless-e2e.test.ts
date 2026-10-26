@@ -180,7 +180,7 @@ describe('refresh: a merge request opened outside Forge, projected by its number
     const one = await issue(1);
     await issue(2);
     await issue(3);
-    mergeRequest(12, { body: `Also ISS-2. Pairs with ${world.otherSlug} ISS-3.` });
+    mergeRequest(12, { body: `Delivers ISS-2.\nPairs with ${world.otherSlug} ISS-3.` });
     checks.set(HEAD, [pipeline(901, HEAD, 'completed', 'success')]);
 
     const res = await api(world.token, 'POST', door('12/refresh'));
@@ -229,7 +229,7 @@ describe('edit and close: a merge request opened with the wrong body', () => {
   it('re-projects the links from the edited description', async () => {
     await issue(1);
     await issue(2);
-    mergeRequest(12, { body: 'Also ISS-2.' });
+    mergeRequest(12, { body: 'Delivers ISS-2.' });
     await api(world.token, 'POST', door('12/refresh'));
     expect((await linked(12)).map((l) => l.key)).toEqual([1, 2]);
 

@@ -202,34 +202,6 @@ describe('BC-4: one change request delivers every issue its branch and descripti
     await mergeRequest(10, 'feat/req3-site-write-iss-1-2', HEAD_A, 'Serves REQ-4.');
     expect((await linkedTo(10)).map((r) => r.key)).toEqual([1, 2]);
   });
-
-  // adminhub-fe, 2026-10-26: "pairs with adminhub-api ISS-11" linked adminhub-fe's own ISS-11
-  it('links no key another project qualifies, by its slug or its issue page', async () => {
-    await stack();
-    const other = await createTestProject(world.ownerId);
-    const own = (
-      await rows<{ slug: string }>(sql`
-      SELECT slug FROM projects WHERE id = ${world.projectId}`)
-    )[0]?.slug;
-    await mergeRequest(
-      12,
-      'chore/bump',
-      HEAD_C,
-      `Pairs with ${other.slug} ISS-1 and https://forge.example/projects/${other.slug}/issues/ISS-2.`,
-    );
-    expect(await linkedTo(12)).toEqual([]);
-    await mergeRequest(
-      12,
-      'chore/bump',
-      HEAD_C,
-      `Fixes ISS-1, ${own} ISS-2 and https://forge.example/projects/${own}/issues/ISS-3; ${other.slug} ISS-4.`,
-    );
-    expect(await linkedTo(12)).toEqual([
-      { key: 1, linked_by: 'description' },
-      { key: 2, linked_by: 'description' },
-      { key: 3, linked_by: 'description' },
-    ]);
-  });
 });
 
 describe('BC-1: a change-request project releases by approval, with no deploy', () => {

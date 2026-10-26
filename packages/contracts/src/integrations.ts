@@ -406,15 +406,33 @@ export const INTEGRATION_REFUSAL_CODES = [
 	"WEBHOOK_FOREIGN_REPOSITORY",
 	"INTEGRATION_RELAY_FORBIDDEN",
 	"INTEGRATION_RELAY_NO_CREDENTIAL",
+	"CHANGE_REQUEST_NOT_FOUND",
+	"CHANGE_REQUEST_MERGED",
+	"CHANGE_REQUEST_ISSUE_NOT_LINKED",
+	"CHANGE_REQUEST_ISSUE_NOT_UNLINKED",
+	"CHANGE_REQUEST_ISSUE_OF_ANOTHER_PROJECT",
 ] as const;
 
 export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
+
+/** The codes a change request's link list, unlink and relink answer a service refusal under (ISS-705). */
+export type ChangeRequestLinkRefusalCode = Extract<
+	IntegrationRefusalCode,
+	| "CHANGE_REQUEST_NOT_FOUND"
+	| "CHANGE_REQUEST_MERGED"
+	| "CHANGE_REQUEST_ISSUE_NOT_LINKED"
+	| "CHANGE_REQUEST_ISSUE_NOT_UNLINKED"
+>;
 
 /** The instance's GitHub App is a platform admin's to create, complete and change; nobody else's. */
 export const INTEGRATION_REFUSAL_STATUSES = {
 	GITHUB_APP_OPERATOR_ONLY: 403,
 	GITHUB_APP_NOT_CONNECTED: 409,
 	GITHUB_APP_INCOMPLETE: 409,
+	CHANGE_REQUEST_NOT_FOUND: 404,
+	CHANGE_REQUEST_MERGED: 409,
+	CHANGE_REQUEST_ISSUE_NOT_LINKED: 409,
+	CHANGE_REQUEST_ISSUE_NOT_UNLINKED: 409,
 } as const satisfies RefusalStatuses<IntegrationRefusalCode>;
 
 /**

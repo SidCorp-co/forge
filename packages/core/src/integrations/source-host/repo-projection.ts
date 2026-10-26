@@ -105,12 +105,13 @@ export async function openPullRequestsForIssue(issueId: string): Promise<string[
   return rows.map((r) => r.id);
 }
 
-/** Every issue the stored change request delivers (REQ-63 BC-4), by its row id. */
+/** Every issue the stored change request delivers (REQ-63 BC-4), by its row id, primary first. */
 export async function issuesOfPullRequest(pullRequestId: string): Promise<string[]> {
   const rows = await db
     .select({ issueId: repoPullRequestIssues.issueId })
     .from(repoPullRequestIssues)
-    .where(eq(repoPullRequestIssues.pullRequestId, pullRequestId));
+    .where(eq(repoPullRequestIssues.pullRequestId, pullRequestId))
+    .orderBy(asc(repoPullRequestIssues.position), asc(repoPullRequestIssues.issueId));
   return rows.map((r) => r.issueId);
 }
 
@@ -132,6 +133,6 @@ export async function linkedIssuesOfNumber(
     .select({ issueId: repoPullRequestIssues.issueId })
     .from(repoPullRequestIssues)
     .where(eq(repoPullRequestIssues.pullRequestId, row.id))
-    .orderBy(asc(repoPullRequestIssues.createdAt), asc(repoPullRequestIssues.issueId));
+    .orderBy(asc(repoPullRequestIssues.position), asc(repoPullRequestIssues.issueId));
   return { id: row.id, issueIds: links.map((l) => l.issueId) };
 }

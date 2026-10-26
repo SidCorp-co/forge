@@ -32,9 +32,9 @@ type OpenedProjectionOutcome =
 
 interface OpenedProjectionResult {
   outcome: OpenedProjectionOutcome;
-  /** Every Forge issue the row delivers: the keys its branch and its description name (REQ-63 BC-4). */
+  /** Every Forge issue the row delivers, in the order it names them: its branch's keys, then the ones its description delivers (REQ-63 BC-4). */
   issueIds: string[];
-  /** The first of `issueIds`, for a caller reading one issue; null where none is linked. */
+  /** The primary issue: the branch's, else the first the description delivers; null where none is linked. */
   issueId: string | null;
   /**
    * Why there is no row — or, under `recorded`, what could not be read back after there was one.
