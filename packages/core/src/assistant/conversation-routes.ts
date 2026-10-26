@@ -16,13 +16,9 @@ import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import {
-  conversationAgentDeviceAvailable,
-  readConversationAgentTurns,
-} from '../agent-sessions/conversation-agent.js';
+import { readConversationAgentTurns } from '../agent-sessions/conversation-agent.js';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
 import {
   assertPersonReachesScope,
   projectsNamed,
@@ -36,7 +32,6 @@ import { nameSpeakers } from '../conversations/speaker-names.js';
 import {
   type ConversationRow,
   deleteConversation,
-  effectiveConversationMode,
   getConversation,
   listConversationsInProject,
   openConversationIn,
@@ -61,7 +56,6 @@ import {
 import { deleteAndTellReaders } from './conversation-adapter.js';
 import { agentModeOffer, projectAgentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
-import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
 import { withDisplayNames } from './conversation-people.js';
 import {
@@ -78,12 +72,9 @@ import {
   sendToRoom,
   sentSchema,
 } from './conversation-routes-reference.js';
-import {
-  ConversationModeSettledError,
-  sendWebConversationMessage,
-  type WebSendResult,
-} from './conversation-send.js';
+import type { WebSendResult } from './conversation-send.js';
 import { repeatedWebSend } from './repeated-send.js';
+import { takeWebSend } from './take-web-send.js';
 
 const READ_WINDOW = 200;
 
@@ -157,13 +148,6 @@ const sendSchema = z
       'a message carries text, a file, or both — this one carries neither, so there is nothing to say',
   });
 
-/** A room's name, taken from the first thing said in it. */
-const ROOM_NAME_MAX = 80;
-function roomNameFrom(content: string, attached: readonly { name: string }[]): string {
-  const line = content.trim().split('\n')[0]?.trim() || (attached[0]?.name ?? '');
-  return line.length > ROOM_NAME_MAX ? `${line.slice(0, ROOM_NAME_MAX - 1)}…` : line;
-}
-
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
@@ -172,24 +156,6 @@ conversationRoutes.use('*', requireAuth(), assertEmailVerified());
 
 conversationRoutes.route('/', conversationMemberRoutes);
 conversationRoutes.route('/', conversationAttachmentRoutes);
-
-/**
- * The one project a web turn runs under.
- */
-function soleProject(row: ConversationRow, scope: string[]): string {
-  const only = scope[0];
-  if (scope.length !== 1 || !only) {
-    throw roomRefusal(
-      409,
-      'CONVERSATION_SCOPE_AMBIGUOUS',
-      scope.length === 0
-        ? 'This room is about no project and a turn runs under exactly one, so there is no project for this message to be answered under'
-        : `This room is about ${scope.length} projects and a turn runs under exactly one, so there is no project for this message to be answered under`,
-      { conversationId: row.id, projectIds: scope },
-    );
-  }
-  return only;
-}
 
 conversationRoutes.get(
   '/',
@@ -400,7 +366,7 @@ conversationRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { content, mode, clientToken, attachmentIds } = c.req.valid('json');
+    const { clientToken } = c.req.valid('json');
     const userId = c.get('userId');
 
     const conversation = await writableConversation(id, userId);
@@ -415,72 +381,10 @@ conversationRoutes.post(
     const repeat = () => repeatedWebSend({ conversationId: id, userId, clientToken });
     const early = await repeat();
     if (early) return c.json(...(await sentAnswer(id, userId, early)));
-    const scope = await derivedScope(id);
-    const projectId = soleProject(conversation, scope);
-
-    const already = await readMessages(id, 1);
-    const settled = conversation.mode !== null || already.length > 0;
-    if (mode !== undefined && settled) {
-      const late = await repeat();
-      if (late) return c.json(...(await sentAnswer(id, userId, late)));
-      throw roomRefusal(
-        409,
-        'CONVERSATION_MODE_SETTLED',
-        `This room already answers in ${effectiveConversationMode(conversation)} mode; a room's mode is written by its first message and never changes, so open another conversation to talk to the other one`,
-        { conversationId: id },
-      );
-    }
-    const asking = mode ?? effectiveConversationMode(conversation);
-    const device = asking === 'agent' ? await conversationAgentDeviceAvailable(projectId) : null;
-    if (device && !device.available) {
-      if (device.unbound) throw device.unbound;
-      throw roomRefusal(
-        409,
-        'CONVERSATION_AGENT_NO_DEVICE',
-        "No paired device is free to take an Agent turn for this room's project, so this message was not taken in — nothing was answered in Assistant mode in its place",
-        { conversationId: id, projectId },
-      );
-    }
-
-    const attached = await listConversationAttachmentsByIds(id, attachmentIds ?? []);
-    const foreign = foreignAttachmentIds(attachmentIds ?? [], attached);
-    if (foreign.length > 0) {
-      throw roomRefusal(
-        409,
-        'CONVERSATION_ATTACHMENT_FOREIGN',
-        `${foreign.length === 1 ? 'One attached file is' : `${foreign.length} attached files are`} not in this room, so this message was not taken in — upload the file to this room and send it from here, rather than citing one from another`,
-        { conversationId: id, attachmentIds: foreign },
-      );
-    }
-
-    let sent: WebSendResult;
-    try {
-      sent = await sendWebConversationMessage({
-        room: conversation,
-        projectId,
-        userId,
-        content,
-        mode: asking,
-        namedMode: mode !== undefined,
-        ...(clientToken ? { clientToken } : {}),
-        ...(attached.length > 0 ? { images: imagesFromAttachments(attached) } : {}),
-      });
-    } catch (err) {
-      if (err instanceof ConversationModeSettledError) {
-        throw roomRefusal(
-          409,
-          'CONVERSATION_MODE_SETTLED',
-          `This room was opened in ${err.settled} mode by a message that landed first; this one was not taken in — send it again, or open another conversation to talk to the other mode`,
-          { conversationId: id },
-        );
-      }
-      throw err;
-    }
-
-    if (conversation.title === null && sent.seq === 0) {
-      await renameConversation(id, roomNameFrom(content, attached));
-    }
-
+    // A refusal met after that lookup may be the first send under this token landing meanwhile.
+    const sent = await takeWebSend(conversation, userId, c.req.valid('json')).catch(
+      async (err: unknown) => (await repeat()) ?? Promise.reject(err),
+    );
     return c.json(...(await sentAnswer(id, userId, sent)));
   },
 );

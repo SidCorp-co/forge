@@ -77,7 +77,7 @@ async function seed() {
   const device = await createTestDevice(harness.db, owner.id);
   const issue = randomUUID();
   await harness.db.execute(sql`
-    UPDATE projects SET repo_path = '/tmp/session-identity' WHERE id = ${project.id}
+    UPDATE projects SET repo_path_hint = '/tmp/session-identity' WHERE id = ${project.id}
   `);
   await harness.db.execute(sql`
     INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at)

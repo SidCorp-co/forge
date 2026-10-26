@@ -103,7 +103,7 @@ async function seed(shape: Shape = {}): Promise<World> {
   await harness.db.execute(sql`
     UPDATE projects
        SET base_branch = ${baseBranch}, release_chain = ${JSON.stringify(releaseChain)}::jsonb,
-           repo_path = '/srv/app'
+           repo_path_hint = '/srv/app'
      WHERE id = ${project.id}
   `);
   const connection = randomUUID();

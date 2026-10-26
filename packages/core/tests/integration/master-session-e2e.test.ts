@@ -88,7 +88,7 @@ async function seed() {
     UPDATE devices SET agent_version = '0.11.0', last_seen_at = now() WHERE id = ${device.id}
   `);
   await harness.db.execute(sql`
-    UPDATE projects SET repo_path = '/tmp/pool-test' WHERE id = ${project.id}
+    UPDATE projects SET repo_path_hint = '/tmp/pool-test' WHERE id = ${project.id}
   `);
   await harness.db.execute(sql`
     INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at)

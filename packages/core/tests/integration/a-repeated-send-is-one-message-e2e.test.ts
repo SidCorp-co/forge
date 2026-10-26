@@ -140,6 +140,18 @@ describe('a send repeating its client token', () => {
     expect(await stored()).toHaveLength(1);
   });
 
+  it('is answered whichever refusal past the door the late repeat meets, not only a settled mode', async () => {
+    const first = await send(ownerId, { content: 'pic', clientToken: 'tok-any' });
+    vi.mocked(repeatedWebSend).mockResolvedValueOnce(null);
+    const again = await send(ownerId, {
+      content: 'pic',
+      clientToken: 'tok-any',
+      attachmentIds: ['00000000-0000-4000-8000-000000000000'],
+    });
+    expect(again).toBe(first);
+    expect(await stored()).toHaveLength(1);
+  });
+
   it("writes another person's send under the same token as that person's own message", async () => {
     await send(ownerId, { content: 'mine', clientToken: 'tok-s' });
     await send(memberId, { content: 'theirs', clientToken: 'tok-s' });
