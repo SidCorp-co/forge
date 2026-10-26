@@ -88,9 +88,12 @@ confirmed in 15 minutes expires. Slack bots built on Bolt do the same thing with
 
 The session records a defect, a feature or an extra request as Feedback through the external
 filing door (`feedback/external.ts:fileExternalFeedback`, channel `rocketchat`), as the room's
-account, with the thread's permalink in the body and the thread told its key. The door takes a
-status token; it is minted and never posted, because in a group anyone could open it — the scrubber
-filters it as a credential, which is right — and the thread's own progress lines are the status.
+account, with the thread's permalink in the body and the thread told its key. A group member is
+handed no status link — in a group anyone could open it, and the thread's own progress lines are the
+status — so migration 0537 lets `feedback_external_reporters.status_token_hash` be null and checks
+it is held by exactly the widget rows (`feedback_external_reporters_status_link_chk`). Minting a token
+and discarding it would have stored a link nobody holds, and pulled the support module into the
+credential walk (`middleware/credential-doors.test.ts`) as if it checked a secret.
 Triage then routes it — to an issue, or promoted to a Requirement — as every item is; the session never files an issue (BC-14). The `support-progress` outbox consumer reads
 each linked item's phase on `issue.created`, `issue.transitioned`, `release.shipped`,
 `requirement.transitioned` and `feedback.verifySettled`, posts each change in the thread, and stops

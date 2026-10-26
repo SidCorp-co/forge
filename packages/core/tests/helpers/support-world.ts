@@ -67,6 +67,9 @@ export function messagesOf(text: string): TurnMessage[] {
  */
 export class SessionBox {
   readonly turns: Turn[] = [];
+  /** What a turn failed on while the box was open; `SupportWorld.stop` throws them. */
+  readonly errors: unknown[] = [];
+  private closed = false;
   control: WebSocket | null = null;
   /** The session's model: what it does with a turn, through `act`. */
   model: (
@@ -94,7 +97,12 @@ export class SessionBox {
     ws.send(JSON.stringify({ type: 'subscribe', room: `device:${this.deviceId}` }));
     ws.on('message', (raw) => {
       const frame = JSON.parse(String(raw)) as { event: string; data: Record<string, unknown> };
-      if (frame.event === 'agent:start' || frame.event === 'agent:send') void this.run(frame);
+      if (frame.event === 'agent:start' || frame.event === 'agent:send') {
+        // a turn still calling core when the world stops fails on a closed core: that is the stop
+        this.run(frame).catch((err: unknown) => {
+          if (!this.closed) this.errors.push(err);
+        });
+      }
     });
     this.control = ws;
     await new Promise((r) => setTimeout(r, 100));
@@ -172,6 +180,7 @@ export class SessionBox {
   }
 
   close(): void {
+    this.closed = true;
     this.control?.close();
   }
 }
@@ -422,5 +431,9 @@ export class SupportWorld {
     await this.product?.close();
     if (this.core) await stopCore(this.core);
     await closeWorld();
+    const failed = this.box?.errors ?? [];
+    if (failed.length) {
+      throw new AggregateError(failed, `the session box failed ${failed.length} turn(s)`);
+    }
   }
 }

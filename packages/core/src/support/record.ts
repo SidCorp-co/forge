@@ -5,7 +5,6 @@ import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
 import type { SupportRecordKind } from '@forge/contracts/support';
 import { type ExternalReporter, fileExternalFeedback } from '../feedback/index.js';
 import { buildMessagePermalink } from '../integrations/rocketchat/index.js';
-import { mintStatusToken } from '../widget/index.js';
 import { knownThread, type Outcome, threadUnknown } from './outcome.js';
 import { refusalOf } from './refusals.js';
 import { FEEDBACK_KIND_OF, visitorIdOf } from './rules.js';
@@ -16,8 +15,8 @@ import { postInThread, roomAuth, scrubbedForRoom } from './thread.js';
  * Record what needs code as Feedback for the team (BC-14): filed as the room's own account through
  * the external filing door, the thread's first writer as its reporter, the thread's link in its
  * body; the thread is told the key and is followed until it ships (BC-15). The external filing
- * door takes a status token, minted and never posted: in a group anyone could open it, and the
- * thread's own progress lines are the status.
+ * door hands a group member no status link: in a group anyone could open it, and the thread's own
+ * progress lines are the status.
  */
 export async function record(
   room: RoomRow,
@@ -35,7 +34,6 @@ export async function record(
   if (!reporter) return threadUnknown(input.thread);
   const { auth, namespace } = await roomAuth(room);
   const permalink = await buildMessagePermalink(auth, room.rid, input.thread).catch(() => null);
-  const status = mintStatusToken();
   const external: ExternalReporter = {
     channel: 'rocketchat',
     bindingId: room.bindingId,
@@ -44,7 +42,7 @@ export async function record(
     name: reporter.label,
     signedUserId: reporter.key,
     pageContext: { thread: input.thread, ...(permalink ? { threadUrl: permalink } : {}) },
-    statusTokenHash: status.hash,
+    statusTokenHash: null,
   };
   const body = await scrubbedForRoom(
     room,

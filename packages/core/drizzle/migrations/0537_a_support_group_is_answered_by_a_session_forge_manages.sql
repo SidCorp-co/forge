@@ -5,11 +5,15 @@
 --                           them), replies, checks, fixes, filings, progress posts, refusals
 --   support_fixes           a fix the session proposed, waiting on the one account that asked
 --   support_feedback_links  a Feedback item the session recorded and the thread its progress is posted in
--- and the external reporter channel `rocketchat` beside `widget`. Every table is new, so no existing
--- row can fail its checks; the channel check only widens.
+-- and the external reporter channel `rocketchat` beside `widget`. A widget visitor is handed a status
+-- link; a group member is not (anyone in the group could open it, and the thread is its status), so
+-- status_token_hash is held by exactly the widget rows. Every table is new and every existing reporter
+-- row is a widget row holding its hash, so no existing row can fail a check; the channel check only
+-- widens.
 --
--- ROLLBACK: DROP TABLE support_feedback_links, support_fixes, support_actions, support_rooms; restore
--- feedback_external_reporters_channel_chk to IN ('widget') once no row names 'rocketchat'.
+-- ROLLBACK: DROP TABLE support_feedback_links, support_fixes, support_actions, support_rooms; once no
+-- row names 'rocketchat', drop feedback_external_reporters_status_link_chk, SET NOT NULL on
+-- status_token_hash and restore feedback_external_reporters_channel_chk to IN ('widget').
 SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "support_rooms" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -113,4 +117,7 @@ ALTER TABLE "support_feedback_links" DROP CONSTRAINT IF EXISTS "support_feedback
 ALTER TABLE "support_feedback_links" ADD CONSTRAINT "support_feedback_links_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "support_feedback_links_open_idx" ON "support_feedback_links" USING btree ("project_id") WHERE closed_at IS NULL;--> statement-breakpoint
 ALTER TABLE "feedback_external_reporters" DROP CONSTRAINT IF EXISTS "feedback_external_reporters_channel_chk";--> statement-breakpoint
-ALTER TABLE "feedback_external_reporters" ADD CONSTRAINT "feedback_external_reporters_channel_chk" CHECK ("feedback_external_reporters"."channel" IN ('widget', 'rocketchat'));
+ALTER TABLE "feedback_external_reporters" ADD CONSTRAINT "feedback_external_reporters_channel_chk" CHECK ("feedback_external_reporters"."channel" IN ('widget', 'rocketchat'));--> statement-breakpoint
+ALTER TABLE "feedback_external_reporters" ALTER COLUMN "status_token_hash" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "feedback_external_reporters" DROP CONSTRAINT IF EXISTS "feedback_external_reporters_status_link_chk";--> statement-breakpoint
+ALTER TABLE "feedback_external_reporters" ADD CONSTRAINT "feedback_external_reporters_status_link_chk" CHECK (("feedback_external_reporters"."channel" = 'widget') = ("feedback_external_reporters"."status_token_hash" IS NOT NULL));

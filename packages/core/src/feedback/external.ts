@@ -33,8 +33,8 @@ export interface ExternalReporter {
   signedUserId: string | null;
   /** Where they were, as the host page reported it: stored as data. */
   pageContext: Record<string, unknown> | null;
-  /** The SHA-256 of the status link the visitor is handed once. */
-  statusTokenHash: string;
+  /** The SHA-256 of the status link a widget visitor is handed once; null on every other channel. */
+  statusTokenHash: string | null;
 }
 
 export type ExternalFiling =

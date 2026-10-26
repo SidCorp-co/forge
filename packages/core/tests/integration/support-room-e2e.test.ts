@@ -34,6 +34,31 @@ async function noSecretPosted(): Promise<void> {
   for (const line of await w.chat.botLines()) expect(line.text).not.toContain(SECRET);
 }
 
+/** The project's newest filing, which a group member made: handed no status link (BC-14). */
+async function lastGroupFiling(): Promise<{ kind: string; body: string; fb_seq: number }> {
+  const [fb] = await rows<{
+    id: string;
+    kind: string;
+    channel: string;
+    body: string;
+    fb_seq: number;
+    status_token_hash: string | null;
+  }>(sql`
+    SELECT f.id, f.kind, r.channel, f.body, f.fb_seq, r.status_token_hash FROM feedback f
+      JOIN feedback_external_reporters r ON r.feedback_id = f.id
+     WHERE f.project_id = ${w.projectId}::uuid ORDER BY f.created_at DESC LIMIT 1`);
+  if (!fb) throw new Error('no filing in the project');
+  // no token exists that anyone in the group could open, and the schema refuses one
+  expect(fb).toMatchObject({ channel: 'rocketchat', status_token_hash: null });
+  await expect(
+    db.execute(sql`UPDATE feedback_external_reporters SET status_token_hash = ${'a'.repeat(64)}
+                    WHERE feedback_id = ${fb.id}::uuid`),
+  ).rejects.toMatchObject({
+    cause: { constraint_name: 'feedback_external_reporters_status_link_chk' },
+  });
+  return fb;
+}
+
 const lastTurnFor = (thread: string): Turn | undefined =>
   [...w.box.turns].reverse().find((t) => t.messages.some((m) => m.thread === thread));
 
@@ -332,11 +357,8 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
     const line = lines.find((l) => l.tmid === id && l.text.startsWith('Recorded as FB-'));
     // the external door's status token is never posted: in a group anyone could open it
     expect(line?.text).not.toContain('/w/status/');
-    const [fb] = await rows<{ kind: string; channel: string; body: string; fb_seq: number }>(sql`
-      SELECT f.kind, r.channel, f.body, f.fb_seq FROM feedback f
-        JOIN feedback_external_reporters r ON r.feedback_id = f.id
-       WHERE f.project_id = ${w.projectId}::uuid ORDER BY f.created_at DESC LIMIT 1`);
-    expect(fb).toMatchObject({ kind: 'idea', channel: 'rocketchat' });
+    const fb = await lastGroupFiling();
+    expect(fb.kind).toBe('idea');
     expect(fb?.body).toContain('Rocket.Chat support group by alice');
     expect(line?.text).toContain(`FB-${fb?.fb_seq}`);
     const [{ n: issuesAfter }] = (await rows<{ n: number }>(

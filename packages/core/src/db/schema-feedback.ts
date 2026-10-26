@@ -393,8 +393,10 @@ export const feedbackMessages = pgTable(
 /**
  * Who filed an item from outside Forge (`feedback.reported_by` is then the channel's own account):
  * the visitor as they identified themselves, the binding they came through, the page they were on,
- * and the SHA-256 of their private status link (the token is shown once). The email, the name, the
- * signed id and the page are reporter data, cleared with the rest of it on a redaction.
+ * and, for a widget visitor only, the SHA-256 of their private status link (the token is shown
+ * once); a support group member is handed none, since anyone in the group could open it and the
+ * thread is its status. The email, the name, the signed id and the page are reporter data, cleared
+ * with the rest of it on a redaction.
  */
 export const feedbackExternalReporters = pgTable(
   'feedback_external_reporters',
@@ -414,7 +416,7 @@ export const feedbackExternalReporters = pgTable(
     name: text('name'),
     signedUserId: text('signed_user_id'),
     pageContext: jsonb('page_context'),
-    statusTokenHash: text('status_token_hash').notNull(),
+    statusTokenHash: text('status_token_hash'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -427,6 +429,10 @@ export const feedbackExternalReporters = pgTable(
     statusTokenChk: check(
       'feedback_external_reporters_status_token_chk',
       sql`${t.statusTokenHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    statusLinkChk: check(
+      'feedback_external_reporters_status_link_chk',
+      sql`(${t.channel} = 'widget') = (${t.statusTokenHash} IS NOT NULL)`,
     ),
     pageContextChk: check(
       'feedback_external_reporters_page_context_chk',
