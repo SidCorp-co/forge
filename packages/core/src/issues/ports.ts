@@ -251,6 +251,9 @@ interface IssuePorts {
     mergedAt: Date | string | null;
     mergedCommitSha: string | null;
   }) => Promise<JudgedBuild>;
+  /** Where the project declares no production environment, the build a verdict on the issue counts
+   *  at (`release-batch/judged-build.ts:unobservedBuildOf`); null where it declares one, or nothing. */
+  unobservedBuildOf: (issue: { id: string; projectId: string }) => Promise<JudgedBuild | null>;
   /** On a change-request project, each issue's head through the one predicate
    *  (`release-batch/landed-build.ts:deliveryHeadsOf`); null on any other project. */
   deliveryHeadsOf: (
@@ -441,6 +444,7 @@ export const declaredIssueSeqs = port('declaredIssueSeqs');
 export const subjectOf = port('subjectOf');
 export const liveReachOfIssue = port('liveReachForIssue');
 export const judgedBuildOf = port('judgedBuildOf');
+export const unobservedBuildOf = port('unobservedBuildOf');
 export const deliveryHeadsOf = port('deliveryHeadsOf');
 
 export const getLoopThresholds = port('getLoopThresholds');
