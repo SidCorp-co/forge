@@ -262,12 +262,17 @@ function closingBracket(text: string, start: number, depth: number): number {
   return lineEnd(text, start);
 }
 
+// A line ends where `.` stops: a value never reaches across a break, nor takes the CR of a CRLF.
+const LINE_BREAK = /[\n\r\u2028\u2029]/g;
+
 function lineEnd(text: string, from: number): number {
-  const at = text.indexOf('\n', from);
-  return at < 0 ? text.length : at;
+  LINE_BREAK.lastIndex = from;
+  return LINE_BREAK.exec(text)?.index ?? text.length;
 }
 
 const OPENING_QUOTE = /^(\\*)"/;
+// Space around a name's `:` or `=` is on its own line; a name with nothing after it on its line holds none.
+const SAME_LINE = String.raw`[^\S\n\r\u2028\u2029]`;
 // What may end a value: a space or a delimiter; under a quoted name, where JSON holds it, a closing
 // bracket or brace too, or a backslash escaping a closing quote or line break.
 const ESCAPED_END = String.raw`\\+(?:"|[nrt](?![A-Za-z0-9]))`;
@@ -296,7 +301,7 @@ const BARE_UNQUOTED = /^(?:[^\s",&\\]|\\+(?!\\*"))+/;
  * line's rule: an unquoted value takes the rest of the line.
  */
 function scrubNamedValues(text: string, name: string, toLineEnd: boolean): string {
-  const re = new RegExp(`\\b${escapeRegExp(name)}\\b(\\\\*")?\\s*([:=])\\s*`, 'gi');
+  const re = new RegExp(`\\b${escapeRegExp(name)}\\b(\\\\*")?${SAME_LINE}*([:=])${SAME_LINE}*`, 'gi');
   let out = '';
   let from = 0;
   for (let found = re.exec(text); found; found = re.exec(text)) {
@@ -316,6 +321,7 @@ function scrubNamedValues(text: string, name: string, toLineEnd: boolean): strin
       shown = close < 0 ? `${opening}${FILTERED}` : `${opening}${FILTERED}${opening}`;
     } else if (toLineEnd) {
       end = lineEnd(text, at);
+      if (end === at) continue;
       shown = FILTERED;
     } else if (KEPT_AS_IT_IS[context].test(rest)) {
       continue;

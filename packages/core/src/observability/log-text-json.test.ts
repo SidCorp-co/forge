@@ -146,6 +146,22 @@ describe('a log line, which is not JSON', () => {
     expect(scrubLogText('Authorization: Bearer abc def\nnext line')).toBe(
       `Authorization: ${FILTERED}\nnext line`,
     );
+    expect(scrubLogText('Authorization: Bearer abc\r\nnext line')).toBe(
+      `Authorization: ${FILTERED}\r\nnext line`,
+    );
+  });
+
+  it('reads no value across a line break: a name with nothing after it on its line holds none', () => {
+    for (const text of [
+      'authorization:\r\nnext line',
+      'Authorization:\nnext line',
+      'password:\nhunter2',
+      'password =\r\nhunter2',
+      '"password":\n"x"',
+      'token: next',
+    ]) {
+      expect(scrubLogText(text)).toBe(text);
+    }
   });
 
   it('scrubs what it already scrubbed to the same text', () => {

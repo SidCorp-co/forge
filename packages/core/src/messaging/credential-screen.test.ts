@@ -43,6 +43,8 @@ describe('readsAsCredential — the one predicate', () => {
     ],
     ['prose that is not JSON', '{this} is not JSON, and password reset is on the login page.'],
     ['a number', '42'],
+    ['a header name with nothing after it on its line', 'authorization:\r\nnext line'],
+    ['a secret name with its value on the next line', 'password:\nhunter2'],
   ])('reads %s as none', (_what, text) => {
     expect(readsAsCredential(text)).toBe(false);
   });
