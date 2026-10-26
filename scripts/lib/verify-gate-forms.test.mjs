@@ -3,11 +3,12 @@
 // on a clean tree with the memo on and an empty store (ISS-1180: `--entry` and `--window` ran
 // comment-budget's `--changed` form, which asks git, against a declaration that said it did not).
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CHECKS } from '../verify.mjs';
 import { INPUTS } from './check-inputs.mjs';
 import { checksFor } from './verify-layers.mjs';
 import { listEntries } from './verify-memo.mjs';
@@ -15,27 +16,25 @@ import { Memo } from './verify-memo-run.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RATCHET = join(HERE, 'debt-ratchet.mjs');
-const VERIFY = readFileSync(join(HERE, '..', 'verify.mjs'), 'utf8');
-
 /** The checks `verify.mjs` declares, as far as the mode selection reads them: label, layer, commands. */
-function formsOf(source) {
-  const table = source.slice(source.indexOf('const CHECKS = ['), source.indexOf('\n];\n'));
-  const list = (text) => JSON.parse(text.replaceAll("'", '"'));
-  return table
-    .split(/\n {2}\{\n/)
-    .map((chunk) => ({
-      label: /label: '([^']+)'/.exec(chunk)?.[1],
-      layer: /layer: '([^']+)'/.exec(chunk)?.[1],
-      cmd: /\n {4}cmd: (\[[^\]]*\])/.exec(chunk)?.[1],
-      scoped: /scoped: \{\s*cmd: (\[[^\]]*\])/.exec(chunk)?.[1],
-    }))
-    .filter((c) => c.label)
-    .map((c) => ({
-      label: c.label,
-      layer: c.layer,
-      cmd: list(c.cmd),
-      ...(c.scoped ? { scoped: { cmd: list(c.scoped) } } : {}),
-    }));
+function formsOf(checks) {
+  return checks.map((c) => ({
+    label: c.label,
+    layer: c.layer,
+    cmd: c.cmd,
+    ...(c.scoped ? { scoped: { cmd: c.scoped.cmd } } : {}),
+  }));
+}
+
+/** A declaration module written however a person formats it, imported as the gate imports its own. */
+async function declaredIn(source) {
+  const dir = mkdtempSync(join(tmpdir(), 'verify-checks-'));
+  try {
+    writeFileSync(join(dir, 'checks.mjs'), source);
+    return (await import(join(dir, 'checks.mjs'))).CHECKS;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /** The checks whose scoped form asks git for the diff and whose declaration does not say so. */
@@ -45,18 +44,32 @@ function scopedWithoutGit(forms, inputs) {
 
 describe('the forms verify takes a check in', () => {
   it('reads the scoped form of every check out of verify.mjs', () => {
-    const forms = formsOf(VERIFY);
+    const forms = formsOf(CHECKS);
     expect(forms.length).toBeGreaterThan(20);
     expect(forms.filter((f) => f.scoped).map((f) => f.label)).toContain('comment-budget');
   });
 
   it('declares git for every check whose scoped form is a diff against the base', () => {
-    expect(scopedWithoutGit(formsOf(VERIFY), INPUTS)).toEqual([]);
+    expect(scopedWithoutGit(formsOf(CHECKS), INPUTS)).toEqual([]);
+  });
+
+  it('reads a command written over several lines with a trailing comma, as verify runs it', async () => {
+    const planted = await declaredIn(
+      `export const CHECKS = [\n  {\n    label: 'planted',\n    layer: 'shared',\n    cmd: [\n      'pnpm',\n      'exec',\n      'tsc',\n    ],\n  },\n];\n`,
+    );
+    expect(formsOf(planted)).toEqual([
+      { label: 'planted', layer: 'shared', cmd: ['pnpm', 'exec', 'tsc'] },
+    ]);
+    expect(
+      formsOf(CHECKS)
+        .find((f) => f.label === 'web typecheck')
+        ?.cmd.at(-1),
+    ).toBe('../../node_modules/@types');
   });
 
   it('names the check whose declaration lost its git', () => {
     const lost = { ...INPUTS, 'comment-budget': { ...INPUTS['comment-budget'], git: false } };
-    expect(scopedWithoutGit(formsOf(VERIFY), lost)).toEqual(['comment-budget']);
+    expect(scopedWithoutGit(formsOf(CHECKS), lost)).toEqual(['comment-budget']);
   });
 });
 
@@ -80,7 +93,7 @@ describe('the whole and the scoped form of a check that asks git, each through t
   const sh = (...argv) => spawnSync(argv[0], argv.slice(1), { cwd: root, encoding: 'utf8' });
   /** The comment-budget command the real mode selection hands a gate form, aimed at the fixture's checker. */
   const formOf = (mode) => {
-    const picked = checksFor(mode, formsOf(VERIFY)).find((c) => c.label === 'comment-budget');
+    const picked = checksFor(mode, formsOf(CHECKS)).find((c) => c.label === 'comment-budget');
     expect(picked.cmd[1]).toBe('scripts/check-comment-budget.mjs');
     return { label: 'comment-budget', cmd: ['node', 'check.mjs', ...picked.cmd.slice(2)] };
   };
