@@ -69,7 +69,8 @@ Issues that are unblocked, touch the same module and are proved by one build rid
 dispatch, one run, one tree. Two issues that only share a file are neighbours, not a batch — they go
 to separate runs, and the second waits for the first to land. Two issues whose designs name one
 module or contract never run at once: core withholds the second from the admissible list and
-refuses its run \`ISSUE_SCOPE_HELD\`, naming the run that holds it, until that run ends.
+refuses its run \`ISSUE_SCOPE_HELD\`, naming the run that holds it, until that run ends. A judge
+run, declared over work that has landed, writes no code: it neither holds a scope nor waits on one.
 
 ### 5. A tree per run, and its brief
 - **The tree.** A worktree of its own inside the checkout, where the project's convention puts one

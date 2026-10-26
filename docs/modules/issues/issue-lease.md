@@ -157,6 +157,13 @@ There only a run already building counts, so of two runs that recorded
 overlapping designs after admission the first to build goes first and neither
 waits on the other in a circle.
 
+The hold binds runs that build or change the tree. A judge run writes no code,
+so it neither holds a scope nor waits on one (REQ-36 BC-5, revision 5). No
+declaration names a role, so core reads a judge as `issues/built-by.ts` does: a
+run declared over an issue whose work had landed (`awaiting_release`, `closed`
+or `dropped`). An asked issue at one of those statuses meets nothing, and a
+lease whose run's `runIssueStatuses` stamped its issue there holds nothing.
+
 `takeIssueLeases` asks the scope under the project's `issueScope` advisory
 lock before its first insert, and the build move takes the same lock. Without
 it two opens over issues whose designs meet each read the other as absent and
@@ -165,6 +172,9 @@ no lock and writes nothing; the open asks it again where it counts.
 
 A refused declaration queues behind `scope_held`
 (`packages/core/src/devices/run-session-queued.ts`), and the box's re-sent open
-is admitted once the holding run's session ends. The runner's `HELD_CODES`
+is admitted once the holding run's session ends. While it stands queued its
+run is admitted to nothing, and a verdict naming it is refused
+`VERDICT_SESSION_NOT_ADMITTED` with the refusal it waits behind
+(`packages/core/src/issues/criteria/recording-session.ts`). The runner's `HELD_CODES`
 mirrors that map; `packages/core/src/devices/run-session-queued.test.ts` fails
 when they part.

@@ -1,0 +1,1 @@
+**A judge run neither holds nor waits on a scope, and a queued run writes no verdict.** Runs declared over landed work skip the scope hold; a verdict from an unadmitted session is refused `VERDICT_SESSION_NOT_ADMITTED`, naming what it waits behind.
