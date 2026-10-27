@@ -95,6 +95,8 @@ export async function moveLandingForward(
     candidate: LandingCandidate;
     /** The issue's declared lane the caller judged on, held as the mark writer holds it. */
     declared?: string | null;
+    /** Where the mark moving it said the work landed, written with the move. */
+    target?: string | undefined;
   },
   deps: Partial<RepositoryAccessDeps> = {},
 ): Promise<LandingAdvance> {
@@ -111,6 +113,7 @@ export async function moveLandingForward(
     const wrote = await recordIssueMerge(db, {
       issueId,
       ...(args.declared === undefined ? {} : { declared: args.declared }),
+      ...(args.target ? { target: args.target } : {}),
       evidence: {
         kind: 'observed',
         commitSha: candidate.sha,
@@ -266,6 +269,7 @@ export async function laterLanding(
   commit: string | undefined,
   observed: { commitSha: string; mergedAt: Date } | null,
   fromRepository: Extract<CommitLanding, { ok: true }> | null,
+  target?: string,
 ): Promise<LaterLanding | null> {
   const held = (await readMergeColumns(db, issue.id)).commitSha?.trim();
   if (!held) return null;
@@ -293,6 +297,7 @@ export async function laterLanding(
     projectId: issue.projectId,
     candidate,
     declared: issue.declaredLandingShape ?? null,
+    ...(target ? { target } : {}),
   });
   return outcome.kind === 'empty' ? null : { ...outcome, candidate: candidate.sha };
 }

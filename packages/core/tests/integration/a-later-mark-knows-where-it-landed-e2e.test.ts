@@ -88,6 +88,22 @@ describe('where a git mark said the work landed (ISS-1421 r36)', () => {
     expect((await markColumns(issue.id)).target).toBe('main');
   });
 
+  // codex F1: the target rides on the mark's own guarded write, so a late write of mark A, made after
+  // B was recorded, takes neither A's mark nor A's target.
+  it("never writes one mark's target over another mark recorded since", async () => {
+    const issue = await seed({ sessionContext: {} });
+    await mark(issue, undefined, 'human', { target: 'release/b' });
+    const { db } = current();
+    const { recordIssueMerge } = await import('../../src/issues/merge-record.js');
+    const late = await recordIssueMerge(db, {
+      issueId: issue.id,
+      target: 'release/a',
+      evidence: { kind: 'asserted', at: null, via: 'mark', unverifiedCommit: null },
+    });
+    expect(late.wrote).toBe(false);
+    expect((await markColumns(issue.id)).target).toBe('release/b');
+  });
+
   it('is served on the issue a page reads', async () => {
     const issue = await seed({ sessionContext: {} });
     await mark(issue, undefined, 'human', { target: 'main' });

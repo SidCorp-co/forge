@@ -290,6 +290,9 @@ export async function recordIssueMerge(
     evidence: MergeEvidence;
     /** The issue's declared lane the mark was judged on; the stamp lands only while it still holds. */
     declared?: string | null;
+    /** Where a git mark said the work landed: written by this same guarded statement, so it lands
+     *  only with the mark it describes, never on a mark another request recorded (ISS-1421 r36). */
+    target?: string | undefined;
   },
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
@@ -340,6 +343,7 @@ export async function recordIssueMerge(
       mergedAt: claimsOnly ? sql`coalesce(${issues.mergedAt}, ${stampExpr})` : stampExpr,
       // When the mark was first set, which the owed-close sweep counts from; a later write keeps it.
       mergeMarkedAt: sql`coalesce(${issues.mergeMarkedAt}, now())`,
+      ...(args.target ? { mergedTarget: args.target } : {}),
       // A commit replaces any claim here: the CHECK holds a claim beside no commit.
       ...(withCommit
         ? {
@@ -383,22 +387,6 @@ export async function recordIssueMerge(
   }
   const held = await readMergeColumns(executor, issueId);
   return { wrote: false, ...held };
-}
-
-/**
- * Where a mark that wrote said the work landed, kept beside it so a later mark opens on it (ISS-1421
- * r36, judge-145: Mark a later merge opened with Where it landed empty). Written only while a mark
- * stands; an unmark clears it with the rest.
- */
-export async function keepMarkTarget(
-  executor: MergeRecordExecutor,
-  issueId: string,
-  target: string,
-): Promise<void> {
-  await executor
-    .update(issues)
-    .set({ mergedTarget: target })
-    .where(and(eq(issues.id, issueId), isNotNull(issues.mergedAt)));
 }
 
 /** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The

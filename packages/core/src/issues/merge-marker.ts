@@ -34,7 +34,6 @@ import {
   CHANGE_THE_MARK,
   clearIssueMerge,
   describeMergeMark,
-  keepMarkTarget,
   keptClaimRepeat,
   type MergeMarkKind,
   type MergeRecord,
@@ -214,8 +213,9 @@ async function compareLater(
   commit: string | undefined,
   observed: { commitSha: string; mergedAt: Date } | null,
   fromRepository: Extract<CommitLanding, { ok: true }> | null,
+  target: string | undefined,
 ): Promise<LaterLanding | null> {
-  const later = await laterLanding(issue, commit, observed, fromRepository);
+  const later = await laterLanding(issue, commit, observed, fromRepository, target);
   if (later?.kind === 'refused')
     throw new MergeMarkerError(later.code, later.detail, later.details);
   if (later?.kind === 'other') {
@@ -383,6 +383,8 @@ export async function applyMergeMarker(args: {
       const details = { commit, record, repository };
       throw new MergeMarkerError('LANDING_COMMIT_REQUIRED', namesNoCommitRefusal(lacking), details);
     }
+    // Where a git mark said the work landed rides on the mark's own write (ISS-1421 r36).
+    const target = shape === 'git' ? args.target?.trim() || undefined : undefined;
     // Every read is taken before the first write, so a refusal leaves the row as it found it.
     const recorded =
       shape === 'git' && !fromRepository && !unverified
@@ -394,11 +396,11 @@ export async function applyMergeMarker(args: {
           })
         : null;
     if (recorded?.unchecked) unverified = recorded.unchecked;
-    const statedStamp = await stampStated(before, args, recorded, observed);
+    const statedStamp = await stampStated(before, { ...args, target }, recorded, observed);
     stated = statedStamp?.stated ?? null;
     later =
       shape === 'git' && !stated
-        ? await compareLater(before, args.commit, observed, fromRepository)
+        ? await compareLater(before, args.commit, observed, fromRepository, target)
         : null;
     const readFirst = fromRepository && (await statedAt(before.id, fromRepository.sha));
     if (statedStamp) {
@@ -413,6 +415,7 @@ export async function applyMergeMarker(args: {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         declared: before.declaredLandingShape ?? null,
+        ...(target ? { target } : {}),
         evidence: {
           kind: 'observed',
           commitSha: observed.commitSha,
@@ -429,6 +432,7 @@ export async function applyMergeMarker(args: {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         declared: before.declaredLandingShape ?? null,
+        ...(target ? { target } : {}),
         evidence: {
           kind: 'observed',
           commitSha: fromRepository.sha,
@@ -440,6 +444,7 @@ export async function applyMergeMarker(args: {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         declared: before.declaredLandingShape ?? null,
+        ...(target ? { target } : {}),
         evidence: { kind: 'landed', landing, at: args.mergedAt ?? null, via: 'mark' },
       });
       claimedCommit = args.commit ?? null;
@@ -447,6 +452,7 @@ export async function applyMergeMarker(args: {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         declared: before.declaredLandingShape ?? null,
+        ...(target ? { target } : {}),
         evidence: {
           kind: 'asserted',
           at: args.mergedAt ?? null,
@@ -470,10 +476,6 @@ export async function applyMergeMarker(args: {
       },
     });
     if (standing) throw new MergeMarkerError(standing.code, standing.detail, standing.details);
-    const target = args.target?.trim();
-    if (shape === 'git' && target && (stampResult.wrote || later?.kind === 'moved')) {
-      await keepMarkTarget(db, before.id, target);
-    }
   } else {
     await unmarkOrRefuse(before.id);
   }
