@@ -1,4 +1,4 @@
-//! A resident session closed so a turn can replace it (adminhub-free support room, dev runner,
+//! A resident session closed so a turn can replace it (Sidcorp Mail support room, dev runner,
 //! 2026-10-27 03:41:12–25Z). The turn carried its own token, so the box closed the resident and
 //! spawned the replacement under the same session key at once. The closed process's completion
 //! task then reaped by that key: it took the replacement's child, killed it mid-turn and removed
