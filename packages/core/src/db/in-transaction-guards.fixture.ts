@@ -6,8 +6,12 @@
  * matched by its binding, never its name. Every guard it does not so recognise is refused like a
  * bare catch, among them one whose body it cannot read and a comparison it cannot resolve.
  *
- * Named residuals: a comparand whose type claims a literal its value does not hold, a class changed
- * by code outside `src`, and a code a TLS layer raises (`ERR_SSL_*`), which no list here holds.
+ * Named residuals, each beyond what a reading of the files in `src` can decide: a comparand whose
+ * type claims a literal its value does not hold, since the reader takes the checker's word for it; a
+ * class, or a prototype, changed by code outside `src` (a dependency, a preload), which it never
+ * reads; and a code a layer above the socket raises (`ERR_SSL_*`, `ERR_STREAM_*`), which
+ * `SESSION_ENDED_CODES` does not hold because no lost session has been seen to carry one. What a
+ * function called from the catch does to the error is the catch scan's residual.
  */
 
 import { dirname, join } from 'node:path';
@@ -38,6 +42,8 @@ export interface Scan {
   names: ReadonlySet<string>;
   /** Every class `escapedClasses` found used other than by `instanceof`, `new` or `extends`. */
   escaped: ReadonlySet<ts.Symbol>;
+  /** Every class among those whose prototype some use could change, and so what its instances carry. */
+  reshaped: ReadonlySet<ts.Symbol>;
 }
 
 /** `lib/db-errors.ts:STATEMENT_ERRORS`'s declaration and the array of classes it holds. */
@@ -130,18 +136,44 @@ function classNames(files: readonly ts.SourceFile[]): Set<string> {
   return names;
 }
 
+/** `node` compared by `===`, `!==`, `==` or `!=`, through any parentheses or cast around it. */
+function comparedAt(node: ts.Expression): boolean {
+  let at: ts.Node = node;
+  while (ts.isExpression(at.parent) && unwrap(at.parent) === node) at = at.parent;
+  const { parent } = at;
+  return ts.isBinaryExpression(parent) && [...EQUAL, ...UNEQUAL].includes(parent.operatorToken.kind);
+}
+
+/** `X.prototype` or `X['prototype']` read off `node`, where `node` is the class `X`. */
+function prototypeOf(node: ts.Node): ts.Expression | undefined {
+  const { parent } = node;
+  if (ts.isPropertyAccessExpression(parent) && parent.expression === node)
+    return parent.name.text === 'prototype' ? parent : undefined;
+  if (
+    ts.isElementAccessExpression(parent) &&
+    parent.expression === node &&
+    ts.isStringLiteralLike(parent.argumentExpression)
+  )
+    return parent.argumentExpression.text === 'prototype' ? parent : undefined;
+  return undefined;
+}
+
 /**
  * Each class some use in `files` could change: its value handed to a call (`Object.defineProperty`
- * among them, `Error.captureStackTrace` excepted), bound to another name, indexed, or written. Its
- * `instanceof` then answers what the change says, and so does a subclass's. `STATEMENT_ERRORS`
- * holding a class is no such use until something reads that list.
+ * among them, `Error.captureStackTrace` excepted), bound to another name, indexed, or written, or
+ * its prototype used any way but compared. Its `instanceof` then answers what the change says, and
+ * so does a subclass's; a change through the prototype (`Object.setPrototypeOf(X.prototype, …)`,
+ * `X.prototype.code = …`) also changes what every instance carries, so such a class is `reshaped`.
+ * `STATEMENT_ERRORS` holding a class is no such use until something reads that list, and a read
+ * reaches every class it holds and their prototypes.
  */
 export function escapedClasses(
   program: ts.Program,
   files: readonly ts.SourceFile[],
   checker: ts.TypeChecker,
-): Set<ts.Symbol> {
+): { escaped: Set<ts.Symbol>; reshaped: Set<ts.Symbol> } {
   const escaped = new Set<ts.Symbol>();
+  const reshaped = new Set<ts.Symbol>();
   const { decl, items } = statementList(program);
   const list = checker.getSymbolAtLocation(decl.name);
   const names = classNames(files);
@@ -156,7 +188,10 @@ export function escapedClasses(
     if (own === list && n !== decl.name) {
       for (const kind of statementErrors(program, checker)) {
         const named = kind.getSymbol();
-        if (named) escaped.add(named);
+        if (named) {
+          escaped.add(named);
+          reshaped.add(named);
+        }
       }
     }
     if (!own || !(own.flags & (ts.SymbolFlags.Class | ts.SymbolFlags.Variable))) return;
@@ -165,6 +200,14 @@ export function escapedClasses(
     const ref = ts.isPropertyAccessExpression(n.parent) && n.parent.name === n ? n.parent : n;
     let at: ts.Node = ref;
     while (ts.isExpression(at.parent) && unwrap(at.parent) === ref) at = at.parent;
+    const proto = prototypeOf(at);
+    if (proto) {
+      if (!comparedAt(proto)) {
+        escaped.add(own);
+        reshaped.add(own);
+      }
+      return;
+    }
     const { parent } = at;
     const compared =
       ts.isBinaryExpression(parent) &&
@@ -188,7 +231,7 @@ export function escapedClasses(
     if (!safe) escaped.add(own);
   };
   files.forEach(visit);
-  return escaped;
+  return { escaped, reshaped };
 }
 
 function unwrap(node: ts.Expression): ts.Expression {
@@ -281,9 +324,12 @@ function mentions(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
 
 /**
  * `err.code === '23505'`: the other side reads nothing of the error, a `name` is no statement
- * error's, and a code is not one the error carries when the session ended.
+ * error's, a code is not one the error carries when the session ended, and no statement error's
+ * prototype is one `escapedClasses` found something could change, which would give every statement
+ * error that code.
  */
 function comparesError(node: ts.BinaryExpression, param: ts.Symbol, scan: Scan): boolean {
+  if ([...scan.kinds].some((k) => scan.reshaped.has(k))) return false;
   const sides = [
     [node.left, node.right],
     [node.right, node.left],
@@ -418,38 +464,69 @@ function isAssignment(node: ts.Node): node is ts.BinaryExpression {
   );
 }
 
+/** Where `this` holds the caught error: `this` is no name, so it stands for itself among them. */
+const THIS = { escapedName: 'this' } as unknown as ts.Symbol;
+
+/** The symbol a name or `this` stands for, where `node` is either. */
+function bound(node: ts.Node, scan: Scan): ts.Symbol | undefined {
+  if (node.kind === ts.SyntaxKind.ThisKeyword) return THIS;
+  return ts.isIdentifier(node) ? scan.checker.getSymbolAtLocation(node) : undefined;
+}
+
+function mentionsAny(node: ts.Node, among: ReadonlySet<ts.Symbol>, scan: Scan): boolean {
+  const symbol = bound(node, scan);
+  if (symbol && among.has(symbol)) return true;
+  return ts.forEachChild(node, (c) => mentionsAny(c, among, scan) || undefined) ?? false;
+}
+
+/** The names `body` binds to the caught error, and those holding it in a property. */
+interface Aliases {
+  /** The catch's own name, and each name bound to a value mentioning the error, as `const { cause } = err`. */
+  is: Set<ts.Symbol>;
+  /** Each name, or `this`, a property of which was set to such a value, as `this.last = err`. */
+  holds: Set<ts.Symbol>;
+}
+
 /**
- * Every name the caught error is bound to in `body`: the catch's own, and each name a declaration,
- * a `for...of` or an assignment binds to a value mentioning one of them, as `const { cause } = err`.
+ * Every name the caught error is bound to in `body`: the catch's own, each name a declaration, a
+ * parameter's or a binding's default, a `for...of` or an assignment binds to a value mentioning one
+ * of them, and a function declared with a body that mentions one, whose result may be the error.
+ * Storing such a value in a property of a name, or of `this`, makes that name a holder of it.
  */
-function aliasesOf(body: ts.Node, param: ts.Symbol, scan: Scan): Set<ts.Symbol> {
-  const aliases = new Set([param]);
+function aliasesOf(body: ts.Node, param: ts.Symbol, scan: Scan): Aliases {
+  const aliases: Aliases = { is: new Set([param]), holds: new Set() };
   let grew = true;
+  const add = (into: Set<ts.Symbol>, symbol: ts.Symbol | undefined): void => {
+    if (symbol && !into.has(symbol)) {
+      into.add(symbol);
+      grew = true;
+    }
+  };
+  const hold = (e: ts.Expression): void => {
+    const root = unwrap(e);
+    if (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root))
+      hold(root.expression);
+    else add(aliases.holds, bound(root, scan));
+  };
   const bind = (name: ts.Node): void => {
     const e = ts.isExpression(name) ? unwrap(name) : name;
-    if (ts.isIdentifier(e)) {
-      const symbol = scan.checker.getSymbolAtLocation(e);
-      if (symbol && !aliases.has(symbol)) {
-        aliases.add(symbol);
-        grew = true;
-      }
-    } else if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e))
-      bind(e.expression);
+    if (ts.isIdentifier(e)) add(aliases.is, scan.checker.getSymbolAtLocation(e));
+    else if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e))
+      hold(e.expression);
     else if (ts.isBindingElement(e)) bind(e.name);
     else if (ts.isPropertyAssignment(e)) bind(e.initializer);
-    else if (ts.isShorthandPropertyAssignment(e)) {
-      const symbol = scan.checker.getShorthandAssignmentValueSymbol(e);
-      if (symbol && !aliases.has(symbol)) {
-        aliases.add(symbol);
-        grew = true;
-      }
-    } else if (ts.isSpreadElement(e) || ts.isSpreadAssignment(e)) bind(e.expression);
+    else if (ts.isShorthandPropertyAssignment(e))
+      add(aliases.is, scan.checker.getShorthandAssignmentValueSymbol(e));
+    else if (ts.isSpreadElement(e) || ts.isSpreadAssignment(e)) bind(e.expression);
     else if (isAssignment(e)) bind(e.left);
     else ts.forEachChild(e, bind);
   };
-  const fromAlias = (n: ts.Node) => [...aliases].some((a) => mentions(n, a, scan));
+  const fromAlias = (n: ts.Node) => mentionsAny(n, new Set([...aliases.is, ...aliases.holds]), scan);
   const visit = (n: ts.Node): void => {
     if (ts.isVariableDeclaration(n) && n.initializer && fromAlias(n.initializer)) bind(n.name);
+    if ((ts.isParameter(n) || ts.isBindingElement(n)) && n.initializer && fromAlias(n.initializer))
+      bind(n.name);
+    if (ts.isFunctionDeclaration(n) && n.name && n.body && fromAlias(n.body)) bind(n.name);
     if ((ts.isForOfStatement(n) || ts.isForInStatement(n)) && fromAlias(n.expression)) {
       if (ts.isVariableDeclarationList(n.initializer))
         for (const d of n.initializer.declarations) bind(d.name);
@@ -465,22 +542,59 @@ function aliasesOf(body: ts.Node, param: ts.Symbol, scan: Scan): Set<ts.Symbol> 
   return aliases;
 }
 
+/** Whether `node`'s type says it holds a string, number, boolean or nothing, which no error is. */
+function primitive(node: ts.Expression, scan: Scan): boolean {
+  const type = scan.checker.getTypeAtLocation(node);
+  const flat = (t: ts.Type) =>
+    (t.flags &
+      (ts.TypeFlags.StringLike |
+        ts.TypeFlags.NumberLike |
+        ts.TypeFlags.BigIntLike |
+        ts.TypeFlags.BooleanLike |
+        ts.TypeFlags.ESSymbolLike |
+        ts.TypeFlags.Null |
+        ts.TypeFlags.Undefined |
+        ts.TypeFlags.Void)) !==
+    0;
+  return type.isUnion() ? type.types.every(flat) : flat(type);
+}
+
+/**
+ * Whether the access chain `node` writes into the caught error: its root is the error or an alias,
+ * or holds one and the chain reaches past the property holding it, or a call along it is one an
+ * alias names or is handed an alias, as `get().code` and `Object.getPrototypeOf(err).code`, whose
+ * result may be the error or its prototype. A key, or an argument whose type holds no object, only
+ * reads the error.
+ */
+function writesThrough(node: ts.Expression, aliases: Aliases, scan: Scan): boolean {
+  let depth = 0;
+  let at = unwrap(node);
+  for (;;) {
+    if (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) depth += 1;
+    else if (ts.isCallExpression(at)) {
+      const handed = at.arguments.some(
+        (a) => !primitive(a, scan) && mentionsAny(a, aliases.is, scan),
+      );
+      if (handed) return true;
+    } else break;
+    at = unwrap(at.expression);
+  }
+  const root = bound(at, scan);
+  return root !== undefined && (aliases.is.has(root) || (aliases.holds.has(root) && depth > 1));
+}
+
 /**
  * Whether the assignment target `node` changes the caught error: binds `err` itself, or writes a
- * property reached through it or any of its `aliases`, also inside a destructuring pattern. A key
- * that only reads the error, as in `seen[err.message]`, writes something else, and binding an
- * alias anew leaves the error as it was.
+ * property `writesThrough` reaches it by, also inside a destructuring pattern. Binding an alias
+ * anew, or setting the property of a holder that held it, leaves the error as it was.
  */
-function writesTo(node: ts.Node, aliases: ReadonlySet<ts.Symbol>, scan: Scan, through = false) {
+function writesTo(node: ts.Node, aliases: Aliases, scan: Scan): boolean {
   const e: ts.Node = ts.isExpression(node) ? unwrap(node) : node;
-  const again = (n: ts.Node, deeper = through): boolean => writesTo(n, aliases, scan, deeper);
-  const [param] = aliases;
-  if (ts.isIdentifier(e)) {
-    const symbol = scan.checker.getSymbolAtLocation(e);
-    return symbol === param || (through && symbol !== undefined && aliases.has(symbol));
-  }
+  const again = (n: ts.Node): boolean => writesTo(n, aliases, scan);
+  const [param] = aliases.is;
+  if (ts.isIdentifier(e)) return scan.checker.getSymbolAtLocation(e) === param;
   if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e))
-    return again(e.expression, true);
+    return writesThrough(e, aliases, scan);
   if (isAssignment(e) && e.operatorToken.kind === ts.SyntaxKind.EqualsToken) return again(e.left);
   if (ts.isArrayLiteralExpression(e)) return e.elements.some((x) => again(x));
   if (ts.isSpreadElement(e) || ts.isSpreadAssignment(e)) return again(e.expression);
@@ -491,7 +605,7 @@ function writesTo(node: ts.Node, aliases: ReadonlySet<ts.Symbol>, scan: Scan, th
   return false;
 }
 
-/** True where `node` holds a write `writesTo` counts; a call handed the error goes unseen. */
+/** True where `node` holds a write `writesTo` counts; what a call handed the error does inside it goes unseen. */
 export function reassigns(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
   const aliases = aliasesOf(node, param, scan);
   const target = (n: ts.Node) => writesTo(n, aliases, scan);

@@ -3,7 +3,6 @@
  * `cause`, and a caller may wrap that again, so every read walks the cause chain.
  */
 
-import { constants } from 'node:os';
 import { DrizzleQueryError, TransactionRollbackError } from 'drizzle-orm/errors';
 import postgres from 'postgres';
 
@@ -27,16 +26,29 @@ export const STATEMENT_ERRORS = [
 ] as const;
 
 /**
- * Codes an error carries once its session is gone: the driver's for a lost connection, every errno
- * name (the driver rejects a statement with its socket's own error, whichever errno the system gave
- * it), and the SQLSTATEs the server ends a session with.
+ * Codes an error carries once its session is gone: the driver's for a lost connection, libuv's name
+ * for each errno an open TCP or Unix socket's read or write fails with once its peer or the route to
+ * it is gone (`recv(2)`, `send(2)`, `tcp(7)`), which the driver rejects a statement with, and the
+ * SQLSTATEs the server ends a session with. A code only a connect or a file call raises
+ * (`ECONNREFUSED`, `ENOENT`, `EACCES`, `EEXIST`) never reaches a statement on a session already open,
+ * so a guard on one names no lost session.
  */
 export const SESSION_ENDED_CODES: ReadonlySet<string> = new Set([
   'CONNECTION_CLOSED',
   'CONNECTION_ENDED',
   'CONNECTION_DESTROYED',
   'CONNECT_TIMEOUT',
-  ...Object.keys(constants.errno),
+  'ECONNABORTED',
+  'ECONNRESET',
+  'EHOSTDOWN',
+  'EHOSTUNREACH',
+  'ENETDOWN',
+  'ENETRESET',
+  'ENETUNREACH',
+  'ENOTCONN',
+  'EPIPE',
+  'ESHUTDOWN',
+  'ETIMEDOUT',
   '08000',
   '08003',
   '08006',

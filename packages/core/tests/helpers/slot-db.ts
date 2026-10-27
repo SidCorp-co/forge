@@ -197,18 +197,29 @@ function describeSession(s: Session): string {
 
 /**
  * End every connection to `name` but the caller's and answer the sessions it ended, each as it was
- * last seen, refusing by pid any that is still there after its termination was waited on.
+ * last seen. It refuses by pid one it terminated that is still there after the wait, and one a file
+ * opened after the terminate, which is another holder; an autovacuum worker the server started in
+ * between is neither.
  */
 export async function sever(admin: Sql, name: string): Promise<Session[]> {
   const rows = await sessionsOn(admin, name);
   for (const { pid } of rows) {
     await admin`SELECT pg_terminate_backend(${pid}, 5000)`.catch(() => {});
   }
+  const ended = new Set(rows.map((r) => r.pid));
   const left = rows.length > 0 ? await sessionsOn(admin, name) : [];
-  if (left.length > 0) {
+  const outlived = left.filter((s) => ended.has(s.pid));
+  if (outlived.length > 0) {
     throw new Error(
-      `[db] ${name}: connection(s) ${left.map((r) => r.pid).join(', ')} outlived a terminate ` +
+      `[db] ${name}: connection(s) ${outlived.map((r) => r.pid).join(', ')} outlived a terminate ` +
         'waited on for 5s, so the database cannot be reset or handed on while they can still write.',
+    );
+  }
+  const arrived = left.filter((s) => !ended.has(s.pid) && opened(s));
+  if (arrived.length > 0) {
+    throw new Error(
+      `[db] ${name}: ${arrived.map(describeSession).join('; ')} connected after every session on ` +
+        'it was terminated, so something still holds it and it cannot be reset or handed on.',
     );
   }
   return rows;
