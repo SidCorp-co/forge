@@ -140,8 +140,8 @@ function handWrittenLaunchChecks(files) {
     .flatMap(([rel, text]) => entryReads(rel, text));
 }
 
-/** Methods of an array that answer without reading what it holds. */
-const BLIND = new Set(['length']);
+/** Methods that ask whether argv holds a literal flag: the only walks of the entry that compare nothing to it. */
+const FLAG_TESTS = new Set(['includes', 'indexOf', 'lastIndexOf']);
 
 function entryReads(rel, text) {
   const kind = rel.endsWith('.tsx') ? ts.ScriptKind.TSX : rel.endsWith('.ts') ? ts.ScriptKind.TS : ts.ScriptKind.JS;
@@ -222,6 +222,16 @@ function entryReads(rel, text) {
     if (ts.isArrayLiteralExpression(n) && n.elements.length === 1 && ts.isSpreadElement(n.elements[0])) {
       return startOf(n.elements[0].expression);
     }
+    if (
+      ts.isCallExpression(n) &&
+      n.arguments.length === 1 &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      n.expression.name.text === 'from' &&
+      ts.isIdentifier(n.expression.expression) &&
+      n.expression.expression.text === 'Array'
+    ) {
+      return startOf(n.arguments[0]);
+    }
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'slice') {
       const from = startOf(n.expression.expression);
       const k = n.arguments.length === 0 ? 0 : literal(n.arguments[0]);
@@ -292,15 +302,20 @@ function entryReads(rel, text) {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const start = startOf(node.expression.expression);
       const method = node.expression.name.text;
-      if (start !== null && start <= 1 && method !== 'slice' && !BLIND.has(method)) {
+      if (start !== null && start <= 1 && method !== 'slice') {
         if (method === 'at') {
           if (reachesEntry(start, literal(node.arguments[0]))) say(node, `argv read by .at(): ${node.getText(src)}`);
-        } else if (!node.arguments.every((a) => ts.isStringLiteralLike(a) || ts.isNumericLiteral(a))) {
+        } else if (
+          !FLAG_TESTS.has(method) ||
+          !node.arguments.every((a) => ts.isStringLiteralLike(a) || ts.isNumericLiteral(a))
+        ) {
           say(node, `argv walked by .${method}(): ${node.getText(src)}`);
         }
       }
-      if (start !== null && method === 'slice' && startOf(node) === null) {
-        say(node, `argv sliced from where it cannot be told: ${node.getText(src)}`);
+      if (start !== null && method === 'slice') {
+        const kept = startOf(node);
+        if (kept === null) say(node, `argv sliced from where it cannot be told: ${node.getText(src)}`);
+        else if (start <= 1 && kept <= 1) say(node, `argv sliced keeping its entry: ${node.getText(src)}`);
       }
     }
     if (ts.isVariableDeclaration(node) && node.initializer && ts.isArrayBindingPattern(node.name)) {
@@ -337,6 +352,11 @@ describe('no file decides it was launched by hand', () => {
     ['scripts/assigned.mjs', 'let node, entry;\n[node, entry] = process.argv;\nif (import.meta.url === entry) main();\n', 2],
     ['scripts/sliced.mjs', 'const [entry] = process.argv.slice(1);\nif (import.meta.url === entry) main();\n', 1],
     ['scripts/sliced-var.mjs', 'const rest = process.argv.slice(1);\nif (import.meta.url === rest[0]) main();\n', 2],
+    ['scripts/sliced-joined.mjs', "const entry = process.argv.slice(1).join('');\nif (import.meta.url === pathToFileURL(entry).href) main();\n", 1],
+    ['scripts/sliced-alone.mjs', 'export const all = process.argv.slice(1);\nexport const ROOT = import.meta.url;\n', 1],
+    ['scripts/sliced-all.mjs', 'const all = process.argv.slice();\nif (import.meta.url === all.pop()) main();\n', 1],
+    ['scripts/joined.mjs', "if (process.argv.join(' ').includes(fileURLToPath(import.meta.url))) main();\n", 1],
+    ['scripts/from.mjs', 'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n', 2],
     ['scripts/var.mjs', 'const args = process.argv;\n\nif (import.meta.url === pathToFileURL(args[1]).href) main();\n', 3],
     ['scripts/var-var.mjs', 'const a = process.argv;\nconst b = a;\nif (import.meta.url === b.at(1)) main();\n', 3],
     ['scripts/spread.mjs', 'const a = [...process.argv];\nif (import.meta.url === a[1]) main();\n', 2],
@@ -390,9 +410,10 @@ describe('no file decides it was launched by hand', () => {
 
   it('refuses every spelling of a hand-read launch entry, naming file and line', () => {
     const found = handWrittenLaunchChecks(refused.map(([rel, text]) => [rel, text]));
-    expect(found.map((f) => `${f.file}:${f.line}`)).toEqual(
-      refused.map(([rel, , line]) => `${rel}:${line}`),
-    );
+    expect([...new Set(found.map((f) => f.file))]).toEqual(refused.map(([rel]) => rel));
+    for (const [rel, , line] of refused) {
+      expect(found.filter((f) => f.file === rel).map((f) => f.line), rel).toContain(line);
+    }
     for (const f of found) expect(f.how).toMatch(/argv/);
   });
 
