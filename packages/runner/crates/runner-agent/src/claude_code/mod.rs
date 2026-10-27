@@ -408,46 +408,45 @@ fn mcp_config_for(
     Ok((path, None))
 }
 
-#[async_trait]
-impl Runner for ClaudeCodeRunner {
-    async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
-        let job_id = spec.job_id.clone();
+/// A process just spawned for a session, its first turn already written into `stdin`: what
+/// [`ClaudeCodeRunner::adopt`] makes a session of.
+pub(crate) struct Spawned {
+    pub(crate) job_id: String,
+    pub(crate) child: tokio::process::Child,
+    pub(crate) stdin: tokio::process::ChildStdin,
+    pub(crate) egress: Option<EgressGuard>,
+    pub(crate) mcp_path: std::path::PathBuf,
+    pub(crate) bearer_dir: Option<std::path::PathBuf>,
+    pub(crate) invoked_with_resume: bool,
+    pub(crate) permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    pub(crate) keep_resident: bool,
+    pub(crate) model: Option<String>,
+    pub(crate) project_slug: Option<String>,
+}
 
-        let effective_repo = spec.repo_path.to_string_lossy().to_string();
-
-        // No skill seeding at job start: the job consumes whatever is already
-        // in `<worktree>/.claude/skills/`, delivered ahead of time by the disk
-        // sync channel (`workspace::skill_sync`, driven by provision / the
-        // `skill.sync` event / background auto-pull), plus any device-scope
-        // plugin skills inherited from the config dir. A job-start re-seed was
-        // removed because it clobbered project-shadowed skills mid-flight.
-        //
-
-        let prompt = spec
-            .prompt
-            .clone()
-            .ok_or_else(|| Error::Other("job has no prompt".into()))?;
-        let credential = session_credential(&spec)?;
-
-        let invoked_with_resume = spec.resume_id.is_some();
-
-        let (session_permit, pending_permit) = self.permit_for(&spec).await?;
-
-        let (mcp_path, bearer_dir) = mcp_config_for(&self.core_url, &spec, &credential)?;
+impl ClaudeCodeRunner {
+    /// Make a session of a spawned process: record it under its key, and start the stdout reader
+    /// and the completion task that runs its turns and reaps it.
+    pub(crate) async fn adopt(
+        &self,
+        spawned: Spawned,
+        tx: mpsc::Sender<RunnerEvent>,
+    ) -> Result<()> {
+        let Spawned {
+            job_id,
+            mut child,
+            stdin,
+            egress,
+            mcp_path,
+            bearer_dir,
+            invoked_with_resume,
+            permit,
+            keep_resident,
+            model,
+            project_slug,
+        } = spawned;
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
-        let (mut child, egress) = spawn_claude(
-            &spec,
-            &effective_repo,
-            &credential,
-            &mcp_path,
-            bearer_dir.as_deref(),
-            &self.core_url,
-        )
-        .await?;
-        tracing::info!("[claude] spawned job={job_id}");
-        let session_stdin = Some(write_first_turn(&mut child, &prompt).await?);
-
         let stdout = child
             .stdout
             .take()
@@ -467,25 +466,22 @@ impl Runner for ClaudeCodeRunner {
             Session {
                 child: Some(child),
                 claude_session_id: None,
-                stdin: session_stdin,
+                stdin: Some(stdin),
                 turn_tx: turn_tx.clone(),
                 turn_started: turn_started.clone(),
                 pending_inbox: Vec::new(),
                 unreplayed: 1,
                 in_turn: true,
-                keep_resident: spec.keep_resident,
+                keep_resident,
                 bearer_dir: bearer_dir.clone(),
                 turns: 0,
                 turn_done: turn_done.clone(),
-                model: spec.model.clone(),
+                model,
                 head_sha: None,
-                permit: session_permit,
-                project_slug: spec.project_slug.clone(),
+                permit,
+                project_slug,
             },
         );
-        // The session row is now the countable record; hand over rather than
-        // let both report the same permit.
-        drop(pending_permit);
 
         // Shared outcome written incrementally so it survives a reader abort.
         let outcome: Arc<Mutex<Outcome>> = Arc::new(Mutex::new(Outcome::default()));
@@ -512,7 +508,7 @@ impl Runner for ClaudeCodeRunner {
         );
         tokio::spawn(stream::complete(stream::Completion {
             sessions: self.sessions.clone(),
-            job_id: job_id.clone(),
+            job_id,
             core: Some(runner_transport::CoreClient::new(
                 self.core_url.clone(),
                 self.device_token.clone(),
@@ -530,7 +526,67 @@ impl Runner for ClaudeCodeRunner {
             invoked_with_resume,
             tx,
         }));
+        Ok(())
+    }
+}
 
+#[async_trait]
+impl Runner for ClaudeCodeRunner {
+    async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
+        let job_id = spec.job_id.clone();
+
+        let effective_repo = spec.repo_path.to_string_lossy().to_string();
+
+        // No skill seeding at job start: the job consumes whatever is already
+        // in `<worktree>/.claude/skills/`, delivered ahead of time by the disk
+        // sync channel (`workspace::skill_sync`, driven by provision / the
+        // `skill.sync` event / background auto-pull), plus any device-scope
+        // plugin skills inherited from the config dir. A job-start re-seed was
+        // removed because it clobbered project-shadowed skills mid-flight.
+        //
+
+        let prompt = spec
+            .prompt
+            .clone()
+            .ok_or_else(|| Error::Other("job has no prompt".into()))?;
+        let credential = session_credential(&spec)?;
+
+        let invoked_with_resume = spec.resume_id.is_some();
+
+        let (session_permit, pending_permit) = self.permit_for(&spec).await?;
+
+        let (mcp_path, bearer_dir) = mcp_config_for(&self.core_url, &spec, &credential)?;
+        let (mut child, egress) = spawn_claude(
+            &spec,
+            &effective_repo,
+            &credential,
+            &mcp_path,
+            bearer_dir.as_deref(),
+            &self.core_url,
+        )
+        .await?;
+        tracing::info!("[claude] spawned job={job_id}");
+        let stdin = write_first_turn(&mut child, &prompt).await?;
+        self.adopt(
+            Spawned {
+                job_id: job_id.clone(),
+                child,
+                stdin,
+                egress,
+                mcp_path,
+                bearer_dir,
+                invoked_with_resume,
+                permit: session_permit,
+                keep_resident: spec.keep_resident,
+                model: spec.model.clone(),
+                project_slug: spec.project_slug.clone(),
+            },
+            tx,
+        )
+        .await?;
+        // The session row is now the countable record; hand over rather than
+        // let both report the same permit.
+        drop(pending_permit);
         Ok(job_id)
     }
 
