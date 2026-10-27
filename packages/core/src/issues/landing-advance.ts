@@ -89,16 +89,10 @@ async function lockLanding(tx: Tx, issueId: string): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`landing:${issueId}`}))`);
 }
 
-/** The move's comment, in a savepoint: a comment that cannot be written never undoes the move. */
+/** The move's comment, in the move's transaction: the move and what is said of it land together. */
 async function sayMoved(tx: Tx, issueId: string, from: string, to: string): Promise<void> {
-  try {
-    await tx.transaction(async (inner) => {
-      const authorId = await forgeAuthorId(inner);
-      await postSystemComment({ issueId, authorId, body: movedSentence(from, to) }, inner);
-    });
-  } catch (err) {
-    logger.warn({ err, issueId }, 'landing advance: the comment was not written');
-  }
+  const authorId = await forgeAuthorId(tx);
+  await postSystemComment({ issueId, authorId, body: movedSentence(from, to) }, tx);
 }
 
 /**
