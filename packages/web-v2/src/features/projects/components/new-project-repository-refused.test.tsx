@@ -81,7 +81,8 @@ describe("the new-project dialog when its repository step is refused", () => {
     await createThenSaveRepository("/srv/desk");
     await vi.waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
     expect(titles()[1]).toBe("Project created; its repository settings were not saved");
-    expect((toast.mock.calls[1]?.[0] as { description: string }).description).toMatch(
+    const said = toast.mock.calls[1]?.[0] as { description: string } | undefined;
+    expect(said?.description).toMatch(
       /\. Set them in the project's Settings, under Repository\.$/,
     );
   });

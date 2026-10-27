@@ -220,33 +220,44 @@ describe('the accepted frame a send publishes', () => {
     try {
       await act();
       const frames = publish.mock.calls
-        .map(([room, envelope]) => [String(room), envelope as { event?: string; data?: { clientToken?: unknown } }] as const)
+        .map(
+          ([room, envelope]) =>
+            [
+              String(room),
+              envelope as { event?: string; data?: { clientToken?: unknown } },
+            ] as const,
+        )
         .filter(([, envelope]) => envelope.event === 'conversation.accepted');
       expect(new Set(frames.map(([room]) => room)).size).toBe(frames.length);
-      return Object.fromEntries(frames.map(([room, envelope]) => [room, envelope.data?.clientToken]));
+      return Object.fromEntries(
+        frames.map(([room, envelope]) => [room, envelope.data?.clientToken]),
+      );
     } finally {
       publish.mockRestore();
     }
   }
 
-  /** Every reader's room the frame went to, other than the sender's. */
   const othersOf = (frames: Record<string, unknown>, sender: string) =>
     Object.keys(frames).filter((room) => room !== `user:${sender}`);
-  /** The sender's room carrying `token`, and every other reader's carrying null. */
+  /** Each room the frames named: the sender's carrying `token`, every other reader's null. */
   const expected = (frames: Record<string, unknown>, sender: string, token: string | null) => ({
     ...Object.fromEntries(othersOf(frames, sender).map((room) => [room, null])),
     [`user:${sender}`]: token,
   });
 
   it('carries the token to its sender and null to every other reader', async () => {
-    const frames = await acceptedFrames(() => send(ownerId, { content: 'first', clientToken: 'tok-f' }));
+    const frames = await acceptedFrames(() =>
+      send(ownerId, { content: 'first', clientToken: 'tok-f' }),
+    );
     expect(othersOf(frames, ownerId)).toContain(`user:${memberId}`);
     expect(frames).toEqual(expected(frames, ownerId, 'tok-f'));
   });
 
   it('does the same for a send repeating its token', async () => {
     await send(ownerId, { content: 'again', clientToken: 'tok-again' });
-    const frames = await acceptedFrames(() => send(ownerId, { content: 'again', clientToken: 'tok-again' }));
+    const frames = await acceptedFrames(() =>
+      send(ownerId, { content: 'again', clientToken: 'tok-again' }),
+    );
     expect(othersOf(frames, ownerId)).toContain(`user:${memberId}`);
     expect(frames).toEqual(expected(frames, ownerId, 'tok-again'));
   });

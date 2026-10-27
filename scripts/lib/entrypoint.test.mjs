@@ -153,7 +153,11 @@ const WRAPS = [
 const FLAG_TESTS = new Set(['includes', 'indexOf', 'lastIndexOf']);
 
 function entryReads(rel, text) {
-  const kind = rel.endsWith('.tsx') ? ts.ScriptKind.TSX : rel.endsWith('.ts') ? ts.ScriptKind.TS : ts.ScriptKind.JS;
+  const kind = rel.endsWith('.tsx')
+    ? ts.ScriptKind.TSX
+    : rel.endsWith('.ts')
+      ? ts.ScriptKind.TS
+      : ts.ScriptKind.JS;
   const src = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, kind);
   let namesMeta = false;
   const processNames = new Set();
@@ -171,13 +175,15 @@ function entryReads(rel, text) {
   /** Names bound by an import: a function another file owns, which this file's walk cannot read. */
   const imported = new Set();
   visit((node) => {
-    if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) namesMeta = true;
+    if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword)
+      namesMeta = true;
     if (ts.isImportDeclaration(node)) {
       const clause = node.importClause;
       if (clause?.name) imported.add(clause.name.text);
       const bound = clause?.namedBindings;
       if (bound && ts.isNamespaceImport(bound)) imported.add(bound.name.text);
-      if (bound && ts.isNamedImports(bound)) for (const el of bound.elements) imported.add(el.name.text);
+      if (bound && ts.isNamedImports(bound))
+        for (const el of bound.elements) imported.add(el.name.text);
     }
     if (ts.isImportDeclaration(node) && /^(node:)?process$/.test(node.moduleSpecifier.text ?? '')) {
       const clause = node.importClause;
@@ -216,7 +222,12 @@ function entryReads(rel, text) {
   const literal = (node) => {
     const n = unwrap(node);
     if (n && ts.isNumericLiteral(n)) return Number(n.text);
-    if (n && ts.isPrefixUnaryExpression(n) && n.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(n.operand)) {
+    if (
+      n &&
+      ts.isPrefixUnaryExpression(n) &&
+      n.operator === ts.SyntaxKind.MinusToken &&
+      ts.isNumericLiteral(n.operand)
+    ) {
       return -Number(n.operand.text);
     }
     return null;
@@ -226,7 +237,12 @@ function entryReads(rel, text) {
     const n = unwrap(node);
     if (!n) return null;
     if (ts.isIdentifier(n)) return argvNames.has(n.text) ? argvNames.get(n.text) : null;
-    if (ts.isPropertyAccessExpression(n) && n.name.text === 'argv' && isProcess(unwrap(n.expression))) return 0;
+    if (
+      ts.isPropertyAccessExpression(n) &&
+      n.name.text === 'argv' &&
+      isProcess(unwrap(n.expression))
+    )
+      return 0;
     if (
       ts.isElementAccessExpression(n) &&
       ts.isStringLiteralLike(n.argumentExpression) &&
@@ -235,7 +251,11 @@ function entryReads(rel, text) {
     ) {
       return 0;
     }
-    if (ts.isArrayLiteralExpression(n) && n.elements.length === 1 && ts.isSpreadElement(n.elements[0])) {
+    if (
+      ts.isArrayLiteralExpression(n) &&
+      n.elements.length === 1 &&
+      ts.isSpreadElement(n.elements[0])
+    ) {
       return startOf(n.elements[0].expression);
     }
     if (
@@ -248,7 +268,11 @@ function entryReads(rel, text) {
     ) {
       return startOf(n.arguments[0]);
     }
-    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'slice') {
+    if (
+      ts.isCallExpression(n) &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      n.expression.name.text === 'slice'
+    ) {
       const from = startOf(n.expression.expression);
       const k = n.arguments.length === 0 ? 0 : literal(n.arguments[0]);
       if (from !== null && k !== null && k >= 0) return from + k;
@@ -267,7 +291,8 @@ function entryReads(rel, text) {
     changed = false;
     visit((node) => {
       if (ts.isVariableDeclaration(node) && node.initializer) {
-        if (ts.isIdentifier(node.name)) changed = bind(node.name.text, startOf(node.initializer)) || changed;
+        if (ts.isIdentifier(node.name))
+          changed = bind(node.name.text, startOf(node.initializer)) || changed;
         if (ts.isObjectBindingPattern(node.name) && isProcess(unwrap(node.initializer))) {
           for (const el of node.name.elements) {
             const key = el.propertyName ?? el.name;
@@ -284,7 +309,11 @@ function entryReads(rel, text) {
       ) {
         changed = bind(node.left.text, startOf(node.right)) || changed;
       }
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && functions.has(node.expression.text)) {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        functions.has(node.expression.text)
+      ) {
         const params = functions.get(node.expression.text).parameters;
         node.arguments.forEach((arg, i) => {
           const param = params[i]?.name;
@@ -306,7 +335,8 @@ function entryReads(rel, text) {
       const rest = ts.isSpreadElement(el) || (ts.isBindingElement(el) && el.dotDotDotToken);
       return rest ? start + i <= 1 : start + i === 1;
     });
-  const reachesEntry = (start, index) => (index === null || index < 0 ? start <= 1 : start + index === 1);
+  const reachesEntry = (start, index) =>
+    index === null || index < 0 ? start <= 1 : start + index === 1;
   const outer = (node) => {
     let n = node;
     while (n.parent && WRAPS.some((is) => is(n.parent))) n = n.parent;
@@ -317,9 +347,11 @@ function entryReads(rel, text) {
     const p = id.parent;
     return (
       (ts.isPropertyAccessExpression(p) && p.name === id) ||
-      ((ts.isVariableDeclaration(p) || ts.isParameter(p) || ts.isBindingElement(p)) && p.name === id) ||
+      ((ts.isVariableDeclaration(p) || ts.isParameter(p) || ts.isBindingElement(p)) &&
+        p.name === id) ||
       (ts.isBindingElement(p) && p.propertyName === id) ||
-      ((ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p) || ts.isPropertyDeclaration(p)) && p.name === id) ||
+      ((ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p) || ts.isPropertyDeclaration(p)) &&
+        p.name === id) ||
       ((ts.isFunctionDeclaration(p) || ts.isFunctionExpression(p)) && p.name === id) ||
       ts.isImportSpecifier(p) ||
       ts.isImportClause(p) ||
@@ -344,26 +376,43 @@ function entryReads(rel, text) {
         if (kept === null) return `argv sliced from where it cannot be told: ${call.getText(src)}`;
         return kept <= 1 ? `argv sliced keeping its entry: ${call.getText(src)}` : null;
       }
-      if (method === 'at') return reachesEntry(start, literal(call.arguments[0])) ? `argv read by .at(): ${call.getText(src)}` : null;
+      if (method === 'at')
+        return reachesEntry(start, literal(call.arguments[0]))
+          ? `argv read by .at(): ${call.getText(src)}`
+          : null;
       const flagTest =
-        FLAG_TESTS.has(method) && call.arguments.every((x) => ts.isStringLiteralLike(x) || ts.isNumericLiteral(x));
+        FLAG_TESTS.has(method) &&
+        call.arguments.every((x) => ts.isStringLiteralLike(x) || ts.isNumericLiteral(x));
       return flagTest ? null : `argv walked by .${method}(): ${call.getText(src)}`;
     }
     if (ts.isElementAccessExpression(p) && p.expression === self) {
-      return reachesEntry(start, literal(p.argumentExpression)) ? `argv read by index: ${text()}` : null;
+      return reachesEntry(start, literal(p.argumentExpression))
+        ? `argv read by index: ${text()}`
+        : null;
     }
     if (ts.isVariableDeclaration(p) && p.initializer === self) {
       if (ts.isIdentifier(p.name)) return null;
-      if (ts.isArrayBindingPattern(p.name)) return bindsEntry(p.name.elements, start) ? `argv destructured: ${text()}` : null;
+      if (ts.isArrayBindingPattern(p.name))
+        return bindsEntry(p.name.elements, start) ? `argv destructured: ${text()}` : null;
       return `argv destructured: ${text()}`;
     }
-    if (ts.isBinaryExpression(p) && p.right === self && p.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    if (
+      ts.isBinaryExpression(p) &&
+      p.right === self &&
+      p.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    ) {
       const left = p.left;
       if (ts.isIdentifier(left)) return null;
-      if (ts.isArrayLiteralExpression(left)) return bindsEntry(left.elements, start) ? `argv destructured: ${text()}` : null;
+      if (ts.isArrayLiteralExpression(left))
+        return bindsEntry(left.elements, start) ? `argv destructured: ${text()}` : null;
       return `argv destructured: ${text()}`;
     }
-    if (ts.isSpreadElement(p) && ts.isArrayLiteralExpression(p.parent) && p.parent.elements.length === 1) return null;
+    if (
+      ts.isSpreadElement(p) &&
+      ts.isArrayLiteralExpression(p.parent) &&
+      p.parent.elements.length === 1
+    )
+      return null;
     if (ts.isCallExpression(p) && p.arguments.includes(self)) {
       const callee = p.expression;
       if (startOf(p) !== null) return null;
@@ -372,7 +421,9 @@ function entryReads(rel, text) {
         const param = functions.get(callee.text).parameters[p.arguments.indexOf(self)];
         if (param && !param.dotDotDotToken && ts.isIdentifier(param.name)) return null;
         if (param && !param.dotDotDotToken && ts.isArrayBindingPattern(param.name)) {
-          return bindsEntry(param.name.elements, start) ? `argv destructured by ${callee.text}(): ${text()}` : null;
+          return bindsEntry(param.name.elements, start)
+            ? `argv destructured by ${callee.text}(): ${text()}`
+            : null;
         }
         return `argv destructured by ${callee.text}(): ${text()}`;
       }
@@ -383,7 +434,13 @@ function entryReads(rel, text) {
 
   visit((node) => {
     if (ts.isIdentifier(node) && naming(node)) return;
-    if (!ts.isIdentifier(node) && !ts.isPropertyAccessExpression(node) && !ts.isElementAccessExpression(node) && !ts.isCallExpression(node) && !ts.isArrayLiteralExpression(node)) {
+    if (
+      !ts.isIdentifier(node) &&
+      !ts.isPropertyAccessExpression(node) &&
+      !ts.isElementAccessExpression(node) &&
+      !ts.isCallExpression(node) &&
+      !ts.isArrayLiteralExpression(node)
+    ) {
       return;
     }
     if (WRAPS.some((is) => is(node))) return;
@@ -400,46 +457,194 @@ describe('no file decides it was launched by hand', () => {
   const refused = [
     // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, searched rather than run
     ['scripts/a.mjs', 'if (import.meta.url === `file://${process.argv[1]}`) main();\n', 1],
-    ['scripts/b.mjs', 'if (import.meta.url === pathToFileURL(process.argv[ 1 ]).href) main();\n', 1],
-    ['scripts/at.mjs', 'main;\nif (import.meta.url === pathToFileURL(process.argv.at(1)).href) main();\n', 2],
-    ['scripts/at-end.mjs', 'if (import.meta.url === pathToFileURL(process.argv.at(-1)).href) main();\n', 1],
-    ['scripts/hole.mjs', 'const [, entry] = process.argv;\nif (import.meta.url === pathToFileURL(entry).href) main();\n', 1],
-    ['scripts/named.mjs', 'const [node, entry, ...rest] = process.argv;\nif (import.meta.filename === entry) main();\n', 1],
-    ['scripts/rest.mjs', 'const [, ...rest] = process.argv;\nif (import.meta.url.endsWith(rest[0])) main();\n', 1],
-    ['scripts/assigned.mjs', 'let node, entry;\n[node, entry] = process.argv;\nif (import.meta.url === entry) main();\n', 2],
-    ['scripts/sliced.mjs', 'const [entry] = process.argv.slice(1);\nif (import.meta.url === entry) main();\n', 1],
-    ['scripts/sliced-var.mjs', 'const rest = process.argv.slice(1);\nif (import.meta.url === rest[0]) main();\n', 2],
-    ['scripts/sliced-joined.mjs', "const entry = process.argv.slice(1).join('');\nif (import.meta.url === pathToFileURL(entry).href) main();\n", 1],
-    ['scripts/sliced-alone.mjs', 'export const all = process.argv.slice(1);\nexport const ROOT = import.meta.url;\n', 1],
-    ['scripts/sliced-all.mjs', 'const all = process.argv.slice();\nif (import.meta.url === all.pop()) main();\n', 1],
-    ['scripts/joined.mjs', "if (process.argv.join(' ').includes(fileURLToPath(import.meta.url))) main();\n", 1],
-    ['scripts/keyed.mjs', 'const { 1: entry } = process.argv;\nif (import.meta.filename === entry) main();\n', 1],
-    ['scripts/keyed-assigned.mjs', 'let entry;\n({ 1: entry } = process.argv);\nif (import.meta.filename === entry) main();\n', 2],
+    [
+      'scripts/b.mjs',
+      'if (import.meta.url === pathToFileURL(process.argv[ 1 ]).href) main();\n',
+      1,
+    ],
+    [
+      'scripts/at.mjs',
+      'main;\nif (import.meta.url === pathToFileURL(process.argv.at(1)).href) main();\n',
+      2,
+    ],
+    [
+      'scripts/at-end.mjs',
+      'if (import.meta.url === pathToFileURL(process.argv.at(-1)).href) main();\n',
+      1,
+    ],
+    [
+      'scripts/hole.mjs',
+      'const [, entry] = process.argv;\nif (import.meta.url === pathToFileURL(entry).href) main();\n',
+      1,
+    ],
+    [
+      'scripts/named.mjs',
+      'const [node, entry, ...rest] = process.argv;\nif (import.meta.filename === entry) main();\n',
+      1,
+    ],
+    [
+      'scripts/rest.mjs',
+      'const [, ...rest] = process.argv;\nif (import.meta.url.endsWith(rest[0])) main();\n',
+      1,
+    ],
+    [
+      'scripts/assigned.mjs',
+      'let node, entry;\n[node, entry] = process.argv;\nif (import.meta.url === entry) main();\n',
+      2,
+    ],
+    [
+      'scripts/sliced.mjs',
+      'const [entry] = process.argv.slice(1);\nif (import.meta.url === entry) main();\n',
+      1,
+    ],
+    [
+      'scripts/sliced-var.mjs',
+      'const rest = process.argv.slice(1);\nif (import.meta.url === rest[0]) main();\n',
+      2,
+    ],
+    [
+      'scripts/sliced-joined.mjs',
+      "const entry = process.argv.slice(1).join('');\nif (import.meta.url === pathToFileURL(entry).href) main();\n",
+      1,
+    ],
+    [
+      'scripts/sliced-alone.mjs',
+      'export const all = process.argv.slice(1);\nexport const ROOT = import.meta.url;\n',
+      1,
+    ],
+    [
+      'scripts/sliced-all.mjs',
+      'const all = process.argv.slice();\nif (import.meta.url === all.pop()) main();\n',
+      1,
+    ],
+    [
+      'scripts/joined.mjs',
+      "if (process.argv.join(' ').includes(fileURLToPath(import.meta.url))) main();\n",
+      1,
+    ],
+    [
+      'scripts/keyed.mjs',
+      'const { 1: entry } = process.argv;\nif (import.meta.filename === entry) main();\n',
+      1,
+    ],
+    [
+      'scripts/keyed-assigned.mjs',
+      'let entry;\n({ 1: entry } = process.argv);\nif (import.meta.filename === entry) main();\n',
+      2,
+    ],
     ['scripts/keyed-string.mjs', "if (import.meta.filename === process.argv['1']) main();\n", 1],
-    ['scripts/stringified.mjs', 'if (JSON.stringify(process.argv).includes(import.meta.filename)) main();\n', 1],
-    ['scripts/returned.mjs', 'function args() {\n  return process.argv;\n}\nif (import.meta.url.endsWith(args()[1])) main();\n', 2],
-    ['scripts/param-keyed.mjs', 'function isMain({ 1: entry }) {\n  return import.meta.filename === entry;\n}\nif (isMain(process.argv)) main();\n', 4],
-    ['scripts/param-hole.mjs', 'function isMain([, entry]) {\n  return import.meta.filename === entry;\n}\nisMain(process.argv);\n', 4],
-    ['scripts/param-rest.mjs', 'const isMain = (...all) => import.meta.filename === all[0][1];\nisMain(process.argv);\n', 2],
-    ['packages/core/src/satisfies.ts', 'function isMain(v: string[]) {\n  return import.meta.filename === v[1];\n}\nisMain(process.argv satisfies string[]);\n', 2],
-    ['packages/core/src/satisfies-var.ts', 'const v = process.argv satisfies string[];\nif (import.meta.filename === v[1]) main();\n', 2],
-    ['packages/core/src/asserted.ts', 'const v = <string[]>process.argv;\nif (import.meta.filename === (v as string[])[1]!) main();\n', 2],
-    ['scripts/from.mjs', 'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n', 2],
-    ['scripts/var.mjs', 'const args = process.argv;\n\nif (import.meta.url === pathToFileURL(args[1]).href) main();\n', 3],
-    ['scripts/var-var.mjs', 'const a = process.argv;\nconst b = a;\nif (import.meta.url === b.at(1)) main();\n', 3],
-    ['scripts/spread.mjs', 'const a = [...process.argv];\nif (import.meta.url === a[1]) main();\n', 2],
-    ['scripts/index-var.mjs', 'const i = 1;\nif (import.meta.url === process.argv[i]) main();\n', 2],
-    ['scripts/imported.mjs', "import { argv } from 'node:process';\nif (import.meta.url.endsWith(argv[1])) main();\n", 2],
-    ['scripts/renamed.mjs', "import { argv as v } from 'node:process';\nif (import.meta.url.endsWith(v[1])) main();\n", 2],
-    ['scripts/default.mjs', "import proc from 'node:process';\nif (import.meta.url.endsWith(proc.argv[1])) main();\n", 2],
-    ['scripts/star.mjs', "import * as p from 'process';\nif (import.meta.url.endsWith(p.argv.at(1))) main();\n", 2],
-    ['scripts/taken.mjs', 'const { argv: v } = process;\nif (import.meta.filename === v.at(1)) main();\n', 2],
+    [
+      'scripts/stringified.mjs',
+      'if (JSON.stringify(process.argv).includes(import.meta.filename)) main();\n',
+      1,
+    ],
+    [
+      'scripts/returned.mjs',
+      'function args() {\n  return process.argv;\n}\nif (import.meta.url.endsWith(args()[1])) main();\n',
+      2,
+    ],
+    [
+      'scripts/param-keyed.mjs',
+      'function isMain({ 1: entry }) {\n  return import.meta.filename === entry;\n}\nif (isMain(process.argv)) main();\n',
+      4,
+    ],
+    [
+      'scripts/param-hole.mjs',
+      'function isMain([, entry]) {\n  return import.meta.filename === entry;\n}\nisMain(process.argv);\n',
+      4,
+    ],
+    [
+      'scripts/param-rest.mjs',
+      'const isMain = (...all) => import.meta.filename === all[0][1];\nisMain(process.argv);\n',
+      2,
+    ],
+    [
+      'packages/core/src/satisfies.ts',
+      'function isMain(v: string[]) {\n  return import.meta.filename === v[1];\n}\nisMain(process.argv satisfies string[]);\n',
+      2,
+    ],
+    [
+      'packages/core/src/satisfies-var.ts',
+      'const v = process.argv satisfies string[];\nif (import.meta.filename === v[1]) main();\n',
+      2,
+    ],
+    [
+      'packages/core/src/asserted.ts',
+      'const v = <string[]>process.argv;\nif (import.meta.filename === (v as string[])[1]!) main();\n',
+      2,
+    ],
+    [
+      'scripts/from.mjs',
+      'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n',
+      2,
+    ],
+    [
+      'scripts/var.mjs',
+      'const args = process.argv;\n\nif (import.meta.url === pathToFileURL(args[1]).href) main();\n',
+      3,
+    ],
+    [
+      'scripts/var-var.mjs',
+      'const a = process.argv;\nconst b = a;\nif (import.meta.url === b.at(1)) main();\n',
+      3,
+    ],
+    [
+      'scripts/spread.mjs',
+      'const a = [...process.argv];\nif (import.meta.url === a[1]) main();\n',
+      2,
+    ],
+    [
+      'scripts/index-var.mjs',
+      'const i = 1;\nif (import.meta.url === process.argv[i]) main();\n',
+      2,
+    ],
+    [
+      'scripts/imported.mjs',
+      "import { argv } from 'node:process';\nif (import.meta.url.endsWith(argv[1])) main();\n",
+      2,
+    ],
+    [
+      'scripts/renamed.mjs',
+      "import { argv as v } from 'node:process';\nif (import.meta.url.endsWith(v[1])) main();\n",
+      2,
+    ],
+    [
+      'scripts/default.mjs',
+      "import proc from 'node:process';\nif (import.meta.url.endsWith(proc.argv[1])) main();\n",
+      2,
+    ],
+    [
+      'scripts/star.mjs',
+      "import * as p from 'process';\nif (import.meta.url.endsWith(p.argv.at(1))) main();\n",
+      2,
+    ],
+    [
+      'scripts/taken.mjs',
+      'const { argv: v } = process;\nif (import.meta.filename === v.at(1)) main();\n',
+      2,
+    ],
     ['scripts/bracket.mjs', "if (import.meta.url.endsWith(process['argv'][1])) main();\n", 1],
-    ['scripts/global.mjs', 'if (import.meta.url.endsWith(globalThis.process.argv[1])) main();\n', 1],
+    [
+      'scripts/global.mjs',
+      'if (import.meta.url.endsWith(globalThis.process.argv[1])) main();\n',
+      1,
+    ],
     ['scripts/optional.mjs', 'if (import.meta.url.endsWith(process.argv?.[1])) main();\n', 1],
-    ['scripts/found.mjs', 'if (process.argv.some((a) => a === fileURLToPath(import.meta.url))) main();\n', 1],
-    ['scripts/includes.mjs', 'if (process.argv.includes(fileURLToPath(import.meta.url))) main();\n', 1],
-    ['scripts/loop.mjs', 'for (const a of process.argv) if (a === fileURLToPath(import.meta.url)) main();\n', 1],
+    [
+      'scripts/found.mjs',
+      'if (process.argv.some((a) => a === fileURLToPath(import.meta.url))) main();\n',
+      1,
+    ],
+    [
+      'scripts/includes.mjs',
+      'if (process.argv.includes(fileURLToPath(import.meta.url))) main();\n',
+      1,
+    ],
+    [
+      'scripts/loop.mjs',
+      'for (const a of process.argv) if (a === fileURLToPath(import.meta.url)) main();\n',
+      1,
+    ],
     [
       'scripts/param.mjs',
       'function isMain(v) {\n  return import.meta.url === pathToFileURL(v[1]).href;\n}\nif (isMain(process.argv)) main();\n',
@@ -451,22 +656,52 @@ describe('no file decides it was launched by hand', () => {
       1,
     ],
     ['scripts/filename.mjs', 'if (import.meta.filename === process.argv[1]) main();\n', 1],
-    ['scripts/newurl.mjs', "const argv = process.argv;\nif (import.meta.url === new URL(argv[1], 'file://').href) main();\n", 2],
-    ['packages/core/src/c.ts', 'const isMain = argv[1] && import.meta.url === x(process.argv[1] as string);\n', 1],
-    ['packages/web-v2/src/w.tsx', 'export const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;\n', 1],
+    [
+      'scripts/newurl.mjs',
+      "const argv = process.argv;\nif (import.meta.url === new URL(argv[1], 'file://').href) main();\n",
+      2,
+    ],
+    [
+      'packages/core/src/c.ts',
+      'const isMain = argv[1] && import.meta.url === x(process.argv[1] as string);\n',
+      1,
+    ],
+    [
+      'packages/web-v2/src/w.tsx',
+      'export const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;\n',
+      1,
+    ],
   ];
 
   // FIXTURE TEXT — reads of argv that never touch the launch entry, and launch checks through a helper.
   const allowed = [
     ['scripts/helper.mjs', 'if (launched(import.meta.url)) main();\n'],
-    ['scripts/args.mjs', 'const args = process.argv.slice(2);\nconst first = args[0];\nconst ROOT = import.meta.url;\n'],
-    ['scripts/mode.mjs', "if (process.argv[2] !== '--all') fail();\nconst at = process.argv.at(2);\nconst ROOT = import.meta.dirname;\n"],
-    ['scripts/flags.mjs', "const json = process.argv.includes('--json');\nconst n = process.argv.length;\nconst ROOT = import.meta.url;\n"],
+    [
+      'scripts/args.mjs',
+      'const args = process.argv.slice(2);\nconst first = args[0];\nconst ROOT = import.meta.url;\n',
+    ],
+    [
+      'scripts/mode.mjs',
+      "if (process.argv[2] !== '--all') fail();\nconst at = process.argv.at(2);\nconst ROOT = import.meta.dirname;\n",
+    ],
+    [
+      'scripts/flags.mjs',
+      "const json = process.argv.includes('--json');\nconst n = process.argv.length;\nconst ROOT = import.meta.url;\n",
+    ],
     ['scripts/node.mjs', 'const node = process.argv[0];\nconst ROOT = import.meta.url;\n'],
-    ['scripts/parsed.mjs', 'function parse(v) {\n  return v.slice(2);\n}\nparse(process.argv);\nconst ROOT = import.meta.url;\n'],
+    [
+      'scripts/parsed.mjs',
+      'function parse(v) {\n  return v.slice(2);\n}\nparse(process.argv);\nconst ROOT = import.meta.url;\n',
+    ],
     ['scripts/tail.mjs', 'const [, , ...rest] = process.argv;\nconst ROOT = import.meta.url;\n'],
-    ['scripts/param-tail.mjs', 'function flags([, , ...rest]) {\n  return rest;\n}\nflags(process.argv);\nconst ROOT = import.meta.url;\n'],
-    ['scripts/local.mjs', "const argv = text.split(' ');\nconst [head, ...rest] = argv;\nconst x = argv[1];\nconst ROOT = import.meta.url;\n"],
+    [
+      'scripts/param-tail.mjs',
+      'function flags([, , ...rest]) {\n  return rest;\n}\nflags(process.argv);\nconst ROOT = import.meta.url;\n',
+    ],
+    [
+      'scripts/local.mjs',
+      "const argv = text.split(' ');\nconst [head, ...rest] = argv;\nconst x = argv[1];\nconst ROOT = import.meta.url;\n",
+    ],
     [
       'scripts/inline.mjs',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, searched rather than run
@@ -474,14 +709,20 @@ describe('no file decides it was launched by hand', () => {
     ],
     ['scripts/no-meta.mjs', 'const entry = process.argv[1];\n'],
     ['scripts/lib/entrypoint.mjs', 'realpathSync(fileURLToPath(import.meta.url)) === argv[1]'],
-    ['packages/core/src/lib/entrypoint.ts', 'export const isEntrypoint = (u) => u === process.argv[1] && import.meta.url;'],
+    [
+      'packages/core/src/lib/entrypoint.ts',
+      'export const isEntrypoint = (u) => u === process.argv[1] && import.meta.url;',
+    ],
   ];
 
   it('refuses every spelling of a hand-read launch entry, naming file and line', () => {
     const found = handWrittenLaunchChecks(refused.map(([rel, text]) => [rel, text]));
     expect([...new Set(found.map((f) => f.file))]).toEqual(refused.map(([rel]) => rel));
     for (const [rel, , line] of refused) {
-      expect(found.filter((f) => f.file === rel).map((f) => f.line), rel).toContain(line);
+      expect(
+        found.filter((f) => f.file === rel).map((f) => f.line),
+        rel,
+      ).toContain(line);
     }
     for (const f of found) expect(f.how).toMatch(/argv/);
   });
