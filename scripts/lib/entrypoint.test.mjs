@@ -174,9 +174,45 @@ function entryReads(rel, text) {
 
   /** Names bound by an import: a function another file owns, which this file's walk cannot read. */
   const imported = new Set();
-  /** Every name this file declares, and those holding a symbol (a key that is never 'process'). */
-  const declared = new Set();
+  /** Each name this file declares, with the scopes it is declared in; and the names holding a symbol. */
+  const declared = new Map();
   const symbols = new Set();
+  const FUNCTIONS = [ts.isFunctionLike, ts.isSourceFile];
+  const BLOCKS = [
+    ts.isBlock,
+    ts.isSourceFile,
+    ts.isForStatement,
+    ts.isForOfStatement,
+    ts.isForInStatement,
+    ts.isCaseBlock,
+    ts.isCatchClause,
+    ts.isModuleBlock,
+  ];
+  const nearest = (node, kinds) => {
+    let n = node.parent;
+    while (n && !kinds.some((is) => is(n))) n = n.parent;
+    return n ?? src;
+  };
+  /** The node a declaration's name is visible inside. */
+  const scopeOf = (decl) => {
+    let d = decl;
+    while (ts.isBindingElement(d)) d = d.parent.parent;
+    if (ts.isParameter(d)) return d.parent;
+    if (ts.isVariableDeclaration(d)) {
+      if (ts.isCatchClause(d.parent)) return d.parent;
+      const scoped = d.parent.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const);
+      return scoped ? nearest(d.parent, BLOCKS) : nearest(d.parent, FUNCTIONS);
+    }
+    return nearest(d, BLOCKS);
+  };
+  const declare = (name, decl) =>
+    declared.set(name, [...(declared.get(name) ?? []), scopeOf(decl)]);
+  /** Whether `id` names a declaration of this file rather than a global, at the place it stands. */
+  const shadowed = (id) =>
+    (declared.get(id.text) ?? []).some((scope) => {
+      for (let n = id; n; n = n.parent) if (n === scope) return true;
+      return false;
+    });
   visit((node) => {
     if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword)
       namesMeta = true;
@@ -206,13 +242,13 @@ function entryReads(rel, text) {
       (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) &&
       ts.isIdentifier(node.name)
     ) {
-      declared.add(node.name.text);
+      declare(node.name.text, node);
       const init = ts.isVariableDeclaration(node) ? node.initializer : undefined;
       const callee = init && ts.isCallExpression(init) ? init.expression.getText(src) : '';
       if (callee === 'Symbol' || callee === 'Symbol.for') symbols.add(node.name.text);
     }
     if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name)
-      declared.add(node.name.text);
+      declare(node.name.text, node);
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
@@ -224,9 +260,9 @@ function entryReads(rel, text) {
   });
   if (!namesMeta) return [];
 
-  // A global object's name, unless this file declares its own of that name.
+  // A global object's name, where no declaration of this file's shadows it, and every name holding one.
   const GLOBAL_NAMES = ['globalThis', 'global', 'self', 'window'];
-  const GLOBALS = new Set(GLOBAL_NAMES.filter((g) => !declared.has(g)));
+  const GLOBALS = new Set(GLOBAL_NAMES);
   /** The name a property read states, dotted or bracketed by a string; null where it is computed. */
   const propName = (node) =>
     ts.isPropertyAccessExpression(node)
@@ -236,7 +272,9 @@ function entryReads(rel, text) {
         : null;
   /** The global object: a global's name or a name holding it, and its own self-properties. */
   function isGlobal(node) {
-    if (ts.isIdentifier(node)) return GLOBALS.has(node.text);
+    if (ts.isIdentifier(node)) {
+      return GLOBALS.has(node.text) && !(GLOBAL_NAMES.includes(node.text) && shadowed(node));
+    }
     const name = propName(node);
     return GLOBAL_NAMES.includes(name) && isGlobal(unwrap(node.expression));
   }
@@ -957,6 +995,11 @@ describe('no file decides it was launched by hand', () => {
       3,
     ],
     [
+      'scripts/global-shadow-elsewhere.mjs',
+      'function unrelated(globalThis) {}\nif (import.meta.filename === globalThis.process.argv[1]) main();\n',
+      2,
+    ],
+    [
       'scripts/from.mjs',
       'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n',
       2,
@@ -1077,6 +1120,10 @@ describe('no file decides it was launched by hand', () => {
       'function parse(v) {\n  return v.slice(2);\n}\nparse(process.argv);\nconst ROOT = import.meta.url;\n',
     ],
     ['scripts/tail.mjs', 'const [, , ...rest] = process.argv;\nconst ROOT = import.meta.url;\n'],
+    [
+      'scripts/shadowed-param.mjs',
+      'function pick(window) {\n  return window.process;\n}\nconst ROOT = import.meta.url;\n',
+    ],
     [
       'scripts/shadowed.mjs',
       "const window = text.slice(0, 9);\nconst KEY = Symbol.for('x');\nconst held = globalThis[KEY];\nconst w = window.slice(1);\nconst ROOT = import.meta.url;\n",
