@@ -146,7 +146,8 @@ describe('every guarded script runs where it is launched from', () => {
  * - what code built from a string runs, where the builder is `vm.runInThisContext`, `vm.Script` and
  *   its kin, or an import of a `data:` URL: the string is data the walk does not parse, and these
  *   builders are not refused where they are built;
- * - a function of another file handed argv or process, whose body is in that file;
+ * - a function of another file handed argv, process or the name `constructor`, whose body is in
+ *   that file;
  * - a native handed `this` as its receiver (`fn.call(this)`), whose body is not in any file;
  *
  * - the file named through what lies outside it: a specifier reaching it through a symlink, a
@@ -718,6 +719,11 @@ function entryReads(rel, text) {
     while (n.parent && WRAPS.some((is) => is(n.parent))) n = n.parent;
     return n;
   };
+  /** The natives that read a property named by their second argument. */
+  const PROPERTY_READERS = {
+    Reflect: ['get', 'getOwnPropertyDescriptor'],
+    Object: ['getOwnPropertyDescriptor'],
+  };
   /** Whether a function of this file is what `node` holds: one written here, or a name bound to one. */
   const isFunctionValue = (node) => {
     const n = unwrap(node);
@@ -754,7 +760,16 @@ function entryReads(rel, text) {
     }
     if (ts.isStringLiteralLike(node) && node.text === 'constructor') {
       const p = outer(node).parent;
-      return ts.isCallExpression(p) && p.arguments.includes(outer(node));
+      if (!ts.isCallExpression(p) || p.arguments[1] !== outer(node)) return false;
+      const callee = unwrap(p.expression);
+      const owner =
+        callee && ts.isPropertyAccessExpression(callee) ? unwrap(callee.expression) : null;
+      return (
+        !!owner &&
+        ts.isIdentifier(owner) &&
+        !shadowed(owner) &&
+        PROPERTY_READERS[owner.text]?.includes(callee.name.text) === true
+      );
     }
     if (!ts.isPropertyAccessExpression(node) && !ts.isElementAccessExpression(node)) return false;
     const self = outer(node);
@@ -1737,6 +1752,11 @@ describe('no file decides it was launched by hand', () => {
       1,
     ],
     [
+      'scripts/constructor-described.mjs',
+      "const F = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(() => {}), 'constructor').value;\nif (import.meta.url === F('return process.argv[1]')()) main();\n",
+      1,
+    ],
+    [
       'scripts/constructor-computed.mjs',
       "const k = ['constr', 'uctor'].join('');\nfunction f() {}\nconst F = f[k];\nif (import.meta.url === F('return process.argv[1]')()) main();\n",
       3,
@@ -1812,7 +1832,7 @@ describe('no file decides it was launched by hand', () => {
     ],
     [
       'scripts/constructor-uses.mjs',
-      "class A {\n  constructor(x) {\n    this.x = x;\n  }\n}\nconst kind = err.constructor.name;\nconst same = err.constructor === TypeError;\nconst made = err instanceof A.prototype.constructor;\nA.prototype.constructor = A;\nconst plain = typeof v.constructor;\nconst k = 'constructor';\nconst ROOT = import.meta.url;\n",
+      "console.log('constructor');\nconst own = Object.hasOwn({}, 'constructor');\nclass A {\n  constructor(x) {\n    this.x = x;\n  }\n}\nconst kind = err.constructor.name;\nconst same = err.constructor === TypeError;\nconst made = err instanceof A.prototype.constructor;\nA.prototype.constructor = A;\nconst plain = typeof v.constructor;\nconst k = 'constructor';\nconst ROOT = import.meta.url;\n",
     ],
     [
       'scripts/self-sibling.mjs',
