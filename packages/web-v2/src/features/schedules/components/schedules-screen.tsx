@@ -15,6 +15,7 @@ import {
   IconButton,
   PageContainer,
   PageTitle,
+  ReadFailedLine,
   Skeleton,
   Spinner,
   StatusChip,
@@ -271,9 +272,11 @@ function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undef
           </span>
         )}
         {runsQ.isError && (
-          <span className="fg-caption fg-danger">
-            Couldn&apos;t load run history — {formatApiError(runsQ.error)}
-          </span>
+          <ReadFailedLine
+            what="this schedule's run history"
+            why={formatApiError(runsQ.error)}
+            onRetry={() => void runsQ.refetch()}
+          />
         )}
         {!runsQ.isLoading && !runsQ.isError && runs.length === 0 && (
           <span className="fg-caption text-subtle">No runs yet.</span>

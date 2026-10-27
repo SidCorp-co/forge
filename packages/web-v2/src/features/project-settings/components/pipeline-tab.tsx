@@ -125,7 +125,7 @@ function PipelinePage({
   });
   const draft = form.draft;
 
-  const unknownDevices = unknownPoolDevices(draft.states, runnersQ.data ?? []);
+  const unknownDevices = unknownPoolDevices(draft.states, runnersQ.data ?? null);
   const blockedBy =
     unknownDevices.length > 0
       ? "A runner pool names a device this project has no runner for. Clear that pool before saving."

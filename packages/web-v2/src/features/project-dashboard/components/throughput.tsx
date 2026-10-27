@@ -88,7 +88,7 @@ export function ThroughputChart({ rows }: { rows: ThroughputRow[] | undefined })
 
   if (!series.ok) {
     return (
-      <ErrorState title="Throughput can't be drawn" message={series.reason} mascot={false} />
+      <ErrorState title="Throughput can't be drawn" message={series.reason} mascot={false} final />
     );
   }
 

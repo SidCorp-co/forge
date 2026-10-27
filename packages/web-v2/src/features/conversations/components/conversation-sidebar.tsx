@@ -34,6 +34,8 @@ interface ConversationSidebarProps {
   onToggleArchived: () => void;
   loading: boolean;
   error: unknown;
+  /** Names the read that failed: the list stands on the projects read as well as its own (ISS-1229 r48). */
+  errorTitle: string;
   onRetry: () => void;
   /** Set when rendered inside the mobile drawer — swaps the collapse toggle
    *  for a close action (collapsing to an icon rail makes no sense inside a
@@ -66,6 +68,7 @@ export function ConversationSidebar({
   below,
   loading,
   error,
+  errorTitle,
   onRetry,
   onClose,
   onRename,
@@ -134,7 +137,7 @@ export function ConversationSidebar({
           )}
 
           {!loading && error != null && (
-            <ErrorState title="Couldn't load conversations" message={formatApiError(error)} onRetry={onRetry} />
+            <ErrorState title={errorTitle} message={formatApiError(error)} onRetry={onRetry} />
           )}
 
           {!loading && error == null && rows.length === 0 && (

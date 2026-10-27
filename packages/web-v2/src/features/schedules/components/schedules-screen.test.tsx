@@ -5,7 +5,7 @@
 // in words with the expression kept, and the narrow layout is a flush list rather than cards.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScheduleRow } from "../types";
 import { SchedulesScreen } from "./schedules-screen";
@@ -20,19 +20,24 @@ const HOUR = 3_600_000;
 
 let rows: ScheduleRow[] = [];
 let loadState: { isLoading: boolean; isError: boolean } = { isLoading: false, isError: false };
+const runsRead = vi.hoisted(() => ({ failed: false, refetch: () => {} }));
 
 vi.mock("next/navigation", () => ({ useParams: () => ({ slug: "forge-dev" }) }));
 vi.mock("../hooks", () => ({
   useSchedules: () => ({ data: rows, ...loadState, refetch: vi.fn(), error: null }),
   useSetScheduleEnabled: () => ({ mutate: vi.fn(), isPending: false }),
   useRunSchedule: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useScheduleRuns: () => ({ data: { runs: [] }, isLoading: false, isError: false }),
+  useScheduleRuns: () =>
+    runsRead.failed
+      ? { data: undefined, isLoading: false, isError: true, error: new Error("The server is down."), refetch: runsRead.refetch }
+      : { data: { runs: [] }, isLoading: false, isError: false, refetch: runsRead.refetch },
 }));
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
   loadState = { isLoading: false, isError: false };
+  runsRead.failed = false;
 });
 afterEach(() => {
   cleanup();
@@ -193,5 +198,22 @@ describe("SchedulesScreen — present state", () => {
     renderScreen();
     expect(screen.getByText("No schedules yet")).toBeInTheDocument();
     expect(screen.queryByText(/none enabled/)).toBeNull();
+  });
+});
+
+// ISS-1229 r48: a schedule's run history whose read failed said so with no way to read it again.
+describe("SchedulesScreen — run history whose read failed", () => {
+  it("says it could not be loaded, and Retry reads it again", () => {
+    rows = [row({ enabled: true })];
+    runsRead.failed = true;
+    const refetch = vi.fn();
+    runsRead.refetch = refetch;
+    renderScreen();
+    fireEvent.click(screen.getAllByRole("button", { name: "Expand history" })[0] as HTMLElement);
+    const failure = screen.getByRole("alert");
+    expect(failure).toHaveTextContent("Couldn't load this schedule's run history. The server is down.");
+    expect(screen.queryByText("No runs yet.")).toBeNull();
+    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });

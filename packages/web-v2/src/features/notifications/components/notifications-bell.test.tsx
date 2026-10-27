@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   members: [] as NotificationMember[],
   marked: [] as string[],
   pushed: [] as string[],
+  membersFail: false,
+  membersRead: 0,
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: (h: string) => state.pushed.push(h) }) }));
@@ -31,10 +33,18 @@ vi.mock("../hooks", () => {
       isError: false,
       refetch: () => {},
     }),
-    useNotificationMembers: (id: string | null) => ({
-      data: id ? state.members : undefined,
-      isLoading: false,
-    }),
+    useNotificationMembers: (id: string | null) =>
+      state.membersFail && id
+        ? {
+            data: undefined,
+            isLoading: false,
+            isError: true,
+            error: new Error("The server is down."),
+            refetch: () => {
+              state.membersRead += 1;
+            },
+          }
+        : { data: id ? state.members : undefined, isLoading: false, isError: false, error: null, refetch: () => {} },
     useOpenCount: () => ({ data: { count: 1 } }),
     useMarkRead: () => ({ ...idle, mutate: (id: string) => state.marked.push(id) }),
     useMarkAllRead: () => idle,
@@ -105,6 +115,8 @@ beforeEach(() => {
   state.members = [];
   state.marked = [];
   state.pushed = [];
+  state.membersFail = false;
+  state.membersRead = 0;
 });
 afterEach(cleanup);
 
@@ -183,5 +195,18 @@ describe("a single row in the bell", () => {
     fireEvent.click(screen.getByText("ISS-5 is stranded"));
     expect(state.marked).toEqual(["d1"]);
     expect(state.pushed).toEqual(["/projects/invoicing/issues/i5"]);
+  });
+});
+
+// ISS-1229 r48: a grouped row whose notifications could not be read opened to nothing at all.
+describe("a grouped row whose notifications cannot be read", () => {
+  it("says they could not be loaded, and Retry reads them again", () => {
+    state.membersFail = true;
+    mount();
+    fireEvent.click(screen.getByText("Issues whose code shipped and whose close was never written"));
+    const failure = screen.getByTestId("group-members-unread");
+    expect(failure).toHaveTextContent("Couldn't load this group's notifications. The server is down.");
+    fireEvent.click(screen.getByRole("button", { name: "Retry this group" }));
+    expect(state.membersRead).toBe(1);
   });
 });

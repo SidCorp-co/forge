@@ -9,6 +9,7 @@ export default function NotFound() {
         title="Page not found"
         message="This page moved or never existed. Go back to your home page to carry on."
         action={{ label: "Back to home", href: "/" }}
+        final
       />
     </div>
   );

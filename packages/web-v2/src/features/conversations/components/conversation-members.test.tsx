@@ -131,3 +131,40 @@ describe("the About panel of a room holding an agent that cannot answer", () => 
     expect(screen.queryByTestId("scope-notice-unanswering")).toBeNull();
   });
 });
+
+// ISS-1229 r48, the master's ruling on judge-142: a room's header said where its projects came from and
+// "Nobody chooses it"; it says in plain words which agents answer in the room.
+describe("which agents answer in a room", () => {
+  const second = { ...agent, id: "a2", userId: "agent2", projectId: "p2", label: "ops" };
+  const gone = { ...agent, id: "a3", userId: "agent3", projectId: "p3", label: "old", reachable: false };
+
+  it("names the one agent that answers, in the room's header", () => {
+    render(<ScopeNotice room={{ ...room, participants: [agent] }} />);
+    expect(screen.getByTestId("scope-notice").textContent).toContain(
+      "@billing-agent-with-a-long-handle answers in this room.",
+    );
+  });
+
+  it("names every agent that answers, and leaves out one that cannot", () => {
+    render(<ScopeNotice room={{ ...room, participants: [agent, second, gone] }} />);
+    const notice = screen.getByTestId("scope-notice").textContent ?? "";
+    expect(notice).toContain("@billing-agent-with-a-long-handle and @ops answer in this room.");
+    expect(notice).not.toContain("@old answer");
+  });
+
+  it("says no agent can answer where none can", () => {
+    render(<ScopeNotice room={{ ...room, participants: [gone] }} />);
+    expect(screen.getByTestId("scope-notice").textContent).toContain("No agent in this room can answer.");
+  });
+
+  it("never says Nobody chooses it, in the header or the people list", () => {
+    render(<ScopeNotice room={{ ...room, participants: [agent] }} />);
+    render(
+      <ConversationMembers conversationId="c1" room={{ ...room, participants: [agent] }} canChange open onClose={() => {}} />,
+    );
+    expect(document.body.textContent).not.toMatch(/Nobody chooses it/);
+    expect(screen.getByTestId("members-agents-answer").textContent).toBe(
+      "@billing-agent-with-a-long-handle answers in this room.",
+    );
+  });
+});

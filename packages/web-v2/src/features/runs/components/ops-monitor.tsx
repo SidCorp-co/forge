@@ -77,8 +77,13 @@ export function OpsMonitor() {
   // view (Monitor/Progress/Runs). Note: those aggregates are fetched with a
   // server-side window/top-N, so the org-scoped slice is best-effort — a true
   // org-aggregate endpoint is a documented follow-up.
-  const { projects, projectIds, isLoading: projectsLoading, error: projectsError } =
-    useOrgScopedProjects();
+  const {
+    projects,
+    projectIds,
+    isLoading: projectsLoading,
+    error: projectsError,
+    refetch: readProjects,
+  } = useOrgScopedProjects();
   const healthQ = useProjectHealth();
   const durationsQ = useStepDurations({ days: 7 });
   const throughputQ = useThroughput({ days: 30 });
@@ -116,7 +121,7 @@ export function OpsMonitor() {
           level={1}
           title={projectsError ? "Couldn't load your projects" : "Couldn't load the projects' health"}
           message={formatApiError(projectsError ?? healthQ.error)}
-          onRetry={() => healthQ.refetch()}
+          onRetry={() => void (projectsError ? readProjects() : healthQ.refetch())}
         />
       </div>
     );

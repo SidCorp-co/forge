@@ -3,12 +3,18 @@
 // ISS-1229 r35, judge-95: the project drawer's room list offered a viewer of the project a new room,
 // and asked them to "ask the agent something", which their role does not let them do.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const rows: Array<Record<string, unknown>> = [];
 const projects: Array<Record<string, unknown>> = [{ id: "p1", name: "Ops", slug: "ops", role: "viewer" }];
-vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: projects }) }));
+const projectsRead = vi.hoisted(() => ({ failed: false, refetch: () => {} }));
+vi.mock("@/features/projects/hooks", () => ({
+  useProjects: () =>
+    projectsRead.failed
+      ? { data: undefined, isError: true, error: new Error("down"), refetch: projectsRead.refetch }
+      : { data: projects, isError: false, error: null, refetch: projectsRead.refetch },
+}));
 vi.mock("../hooks", () => ({
   listedUnder: (row: unknown) => row,
   useConversations: () => ({ data: { items: rows }, isLoading: false, error: null, refetch: () => {} }),
@@ -59,5 +65,41 @@ describe("the drawer's room rows", () => {
     cleanup();
     render(<ConversationList {...props} />);
     expect(screen.queryAllByRole("button", { name: /^(Rename|Archive|Delete) Ops handover/ })).toHaveLength(3);
+  });
+});
+
+// ISS-1229 r48: a room about another project read "Unknown project" while the projects read had failed.
+describe("the drawer's room rows, while the projects cannot be read", () => {
+  it("say the other project's name was not loaded, never that the project is unknown", () => {
+    rows.splice(0, rows.length, {
+      id: "c2",
+      title: "Cross-team",
+      scope: ["p9"],
+      projectId: "p9",
+      updatedAt: new Date().toISOString(),
+      archivedAt: null,
+      adapter: "web",
+      externalId: "y",
+      shape: "group",
+      mode: null,
+    });
+    projectsRead.failed = true;
+    render(<ConversationList {...props} />);
+    expect(screen.queryByText("Unknown project")).toBeNull();
+    expect(screen.getByText("1 project not loaded")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /an unknown project/ })).toBeNull();
+    projectsRead.failed = false;
+  });
+
+  it("say the projects could not be loaded above the rows, and Retry reads them again", () => {
+    projectsRead.failed = true;
+    const refetch = vi.fn();
+    projectsRead.refetch = refetch;
+    render(<ConversationList {...props} />);
+    const failure = screen.getByRole("alert");
+    expect(failure.textContent).toContain("Couldn't load your projects");
+    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    projectsRead.failed = false;
   });
 });

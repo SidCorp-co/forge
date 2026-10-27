@@ -92,3 +92,22 @@ describe("the in-app search, which shares the public docs' results", () => {
     expect(mentionOnly?.querySelector("span.line-clamp-2 mark")?.textContent?.toLowerCase()).toBe("status");
   });
 });
+
+// ISS-1229 r48, the master's ruling on judge-142: /docs named the tab "Docs" whichever document was open.
+describe("the Docs screen's tab", () => {
+  it("names the open document, which is the page's one h1", async () => {
+    open("path=what-done-means");
+    const h1s = screen.getAllByRole("heading", { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent("Tell when an issue is done");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.title).toBe(`${h1s[0]?.textContent} · Forge`);
+  });
+
+  it("is named Docs while no document is open", async () => {
+    open("path=no-such-page");
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["Docs"]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.title).toBe("Docs · Forge");
+  });
+});

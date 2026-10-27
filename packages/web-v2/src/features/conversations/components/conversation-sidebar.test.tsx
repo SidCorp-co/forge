@@ -23,6 +23,7 @@ const props = {
   onToggleArchived: vi.fn(),
   loading: false,
   error: null,
+  errorTitle: "Couldn't load conversations",
   onRetry: vi.fn(),
 };
 
@@ -106,5 +107,15 @@ describe("a row's changes", () => {
       />,
     );
     expect(controls()).toHaveLength(3);
+  });
+});
+
+// ISS-1229 r48, judge-142: the list's failure is titled after the read that failed, which its caller names.
+describe("the room list whose read failed", () => {
+  it("heads its failure with the title it is given, and offers Retry", () => {
+    render(<ConversationSidebar {...props} error={new Error("down")} errorTitle="Couldn't load your projects" />);
+    expect(screen.getByRole("heading", { name: "Couldn't load your projects" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Couldn't load conversations" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 });

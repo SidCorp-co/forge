@@ -4,8 +4,6 @@
 // destination. Token-spend overview across the workspace, built to the redesign
 // draft (`design/draft-screen/09 Usage.html`).
 //
-"use client";
-
 
 import {
   EmptyState,
@@ -33,7 +31,7 @@ export function UsageScreen() {
       <EmptyState
         level={1}
         title="Organization usage is coming"
-        message={`Spend metering for ${orgName} isn't wired up yet. Per-project token usage is available on each project's dashboard in the meantime.`}
+        message={`Forge does not total token spend for ${orgName} yet. Each project's dashboard shows that project's token usage in the meantime.`}
       />
     </PageContainer>
   );

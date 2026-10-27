@@ -21,20 +21,24 @@ import {
   Checkbox,
   HealthDot,
   Icon,
+  ReadFailedLine,
   type SettingsForm,
   Skeleton,
 } from "@/design";
 import { useProjectRunners } from "@/features/runners/hooks";
+import { formatApiError } from "@/lib/api/error";
 import type { ProjectRunner } from "@/features/runners/types";
 import type { PipelineDraft } from "../pipeline-form";
 import { PIPELINE_STATUS_ROWS } from "../types";
 
 /** The devices a pool names that no runner on this project answers for. The server refuses a
- *  save that keeps one, so the page holds its Save while any is named. */
+ *  save that keeps one, so the page holds its Save while any is named. `null` is runners not read,
+ *  which names no device unknown (ISS-1229 r48). */
 export function unknownPoolDevices(
   states: PipelineDraft["states"],
-  runners: readonly { deviceId?: string | null }[],
+  runners: readonly { deviceId?: string | null }[] | null,
 ): string[] {
+  if (runners === null) return [];
   const known = new Set(runners.map((r) => r.deviceId));
   const out = new Set<string>();
   for (const st of Object.values(states)) for (const id of st.deviceIds) if (!known.has(id)) out.add(id);
@@ -76,7 +80,11 @@ export function RunnerPoolsSection({
 
   const states = form.draft.states;
   const pools = (status: string): string[] => states[status]?.deviceIds ?? [];
-  const staleIds = useMemo(() => unknownPoolDevices(states, runners), [states, runners]);
+  const runnersRead = runnersQuery.data !== undefined;
+  const staleIds = useMemo(
+    () => unknownPoolDevices(states, runnersRead ? runners : null),
+    [states, runners, runnersRead],
+  );
 
   function setPool(status: string, next: (current: string[]) => string[]) {
     form.setDraft((d) => {
@@ -108,7 +116,13 @@ export function RunnerPoolsSection({
         rather than leaking onto a machine outside the pool.
       </p>
 
-      {runnersQuery.isPending ? (
+      {runnersQuery.isError && !runnersRead ? (
+        <ReadFailedLine
+          what="this project's runners"
+          why={formatApiError(runnersQuery.error)}
+          onRetry={() => void runnersQuery.refetch()}
+        />
+      ) : runnersQuery.isPending ? (
         <Skeleton className="h-32 w-full" />
       ) : runners.length === 0 ? (
         <div data-testid="runner-pools-unavailable">

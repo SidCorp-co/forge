@@ -23,10 +23,18 @@ let failed: Error | null = null;
 const refetch = vi.fn();
 const removeMutate = vi.fn();
 let detail: { messages: unknown[]; windows: unknown[] } | undefined;
+let detailFailed: Error | null = null;
+const readDetail = vi.fn();
 vi.mock("../hooks", () => ({
   useRoomsWithoutAProject: () => ({ data: failed ? undefined : rooms, isError: failed !== null, error: failed, refetch }),
   useDeleteConversation: () => ({ mutate: removeMutate, isPending: false }),
-  useConversation: () => ({ data: detail, isLoading: false, isError: false }),
+  useConversation: () => ({
+    data: detailFailed ? undefined : detail,
+    isLoading: false,
+    isError: detailFailed !== null,
+    error: detailFailed,
+    refetch: readDetail,
+  }),
 }));
 
 const { RoomsWithoutAProject } = await import("./orphan-rooms");
@@ -47,6 +55,8 @@ const room = (over: Partial<RoomWithoutAProject> = {}): RoomWithoutAProject => (
 beforeEach(() => {
   rooms = [];
   failed = null;
+  detailFailed = null;
+  readDetail.mockReset();
   refetch.mockReset();
   removeMutate.mockReset();
 });
@@ -141,6 +151,17 @@ describe("a room whose project was deleted, told apart", () => {
     expect(
       screen.getByRole("button", { name: "Delete Release chat, Billing (deleted) · opened 3 Oct · last message 5 Oct" }),
     ).toBeTruthy();
+  });
+});
+
+// ISS-1229 r48: the room's own read failing said so with no way to read it again.
+describe("a room whose project was deleted, whose own read failed", () => {
+  it("says it could not be loaded, and Retry reads it again", () => {
+    detailFailed = new Error("The server is down.");
+    render(<OrphanRoomView room={room()} facts={["Billing (deleted)", "opened 3 Oct"]} onDeleted={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "Couldn't load this conversation" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(readDetail).toHaveBeenCalledTimes(1);
   });
 });
 

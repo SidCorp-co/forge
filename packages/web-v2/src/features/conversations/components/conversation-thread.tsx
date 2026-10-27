@@ -13,7 +13,7 @@
 // drawn by it: a person's own bubble, which carries an `authorLabel` a session
 // has no notion of, and the four non-message entries below.
 
-import { personName, readerName } from "@forge/contracts/person-name";
+import { givenName } from "@forge/contracts/person-name";
 import { useAuth } from "@/providers/auth-provider";
 import { createContext, useContext, useState } from "react";
 import { Icon, Markdown } from "@/design";
@@ -36,7 +36,6 @@ import {
   threadEntries,
   type WithdrawnReply,
 } from "../types";
-import { memberName } from "../membership";
 
 /** The room's people, so each message names its author as the members list does (ISS-1229 r43). */
 const RoomPeople = createContext<readonly ConversationParticipant[]>([]);
@@ -149,6 +148,9 @@ function NoAnswer({ lines }: { lines: readonly string[] }) {
 const causeOf = (detail: unknown) =>
   detail && typeof detail === "object" ? (detail as { cause?: unknown }).cause : undefined;
 
+/** How a message is signed where the reader sees no name for its sender (ISS-1229 r48). */
+const UNNAMED_SENDER = "A member";
+
 /** The clock a reader needs beside a turn: when, in their own locale. */
 function spokenAt(iso: string): { label: string; title: string } {
   const at = new Date(iso);
@@ -171,21 +173,21 @@ function MessageActions({ message }: { message: ConversationMessage }) {
   const viewerId = useAuth().user?.id ?? null;
   // The reader's own message is "You" whatever label core stored for it (ISS-1229 r24).
   const own = Boolean(viewerId) && message.authorUserId === viewerId;
-  // Core names every other person when the room is read (ISS-1229 r25); one it could not name is
-  // another member, never "You", which is the reader's word alone.
+  // A person signs with the name they gave, else "A member": never when they were added or their place in
+  // that order, which the members list keeps (ISS-1229 r48, the master's ruling on judge-142). A person no
+  // longer in the room keeps core's name for them; the reader is "You", which is their word alone (r25).
   const people = useContext(RoomPeople);
   const listed =
     message.role === "user" && message.authorUserId
       ? people.find((p) => p.kind === "person" && p.userId === message.authorUserId)
       : undefined;
-  // A person in the room reads as the members list names them, so three people none of whom set a
-  // name never read alike (ISS-1229 r43, judge-120); one no longer in it keeps core's name for them.
+  const given = givenName(listed ? listed.displayName : message.authorLabel);
   const author = own
     ? "You"
-    : listed
-      ? memberName(listed, viewerId, "start", { participants: [...people] })
-      : (message.authorLabel ?? (message.role === "user" ? personName(null, "start") : "Assistant"));
-  const from = own ? "you" : readerName(null, null, author, "inside");
+    : message.role === "user"
+      ? (given ?? UNNAMED_SENDER)
+      : (message.authorLabel ?? "Assistant");
+  const from = own ? "you" : message.role === "user" && !given ? UNNAMED_SENDER.toLowerCase() : author;
   const copy = () => {
     navigator.clipboard?.writeText(message.content).then(
       () => {

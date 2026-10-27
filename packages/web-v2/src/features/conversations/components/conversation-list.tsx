@@ -15,6 +15,7 @@
 
 import { useState } from "react";
 import { Button, ConfirmDialog, EmptyState, ErrorState, SessionRowSkeleton } from "@/design";
+import { ProjectsUnreadLine } from "@/features/projects/components/projects-unread";
 import { formatApiError } from "@/lib/api/error";
 import { groupByRecency } from "../grouping";
 import { useProjects } from "@/features/projects/hooks";
@@ -28,7 +29,7 @@ import {
 } from "../hooks";
 import { changesRoom, READ_ONLY_LIST_EMPTY } from "../membership";
 import { conversationTitle } from "../types";
-import { ConversationRow, projectsOfRow } from "./conversation-row";
+import { ConversationRow, projectsOfRow, unnamedOfRow } from "./conversation-row";
 
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
@@ -111,6 +112,13 @@ export function ConversationList({
       </div>
 
       <div className={inline ? "p-2" : "min-h-0 flex-1 overflow-y-auto p-2"}>
+        {projectsQ.isError && (
+          <ProjectsUnreadLine
+            className="mb-2 px-1"
+            unread={{ message: formatApiError(projectsQ.error), onRetry: () => void projectsQ.refetch() }}
+          />
+        )}
+
         {listQ.isLoading && (
           <div className="overflow-hidden rounded-lg border border-line">
             {SKELETON_ROWS.map((k) => (
@@ -154,6 +162,7 @@ export function ConversationList({
                       key={row.id}
                       row={row}
                       projects={projectsOfRow(row, nameOf)}
+                      notLoaded={projectsQ.isError ? unnamedOfRow(row, nameOf) : 0}
                       open={row.id === activeConversationId}
                       onOpen={() => onOpen(row)}
                       {...(changesRoom(row, roleOf)

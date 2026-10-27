@@ -12,9 +12,13 @@ afterEach(cleanup);
 
 let rows: Array<Record<string, unknown>> = [];
 const mutate = vi.fn();
+const listRead = vi.hoisted(() => ({ failed: false, refetch: () => {} }));
 
 vi.mock("@/features/projects/hooks", () => ({
-  useProjectsIncludingArchived: () => ({ data: rows, isLoading: false }),
+  useProjectsIncludingArchived: () =>
+    listRead.failed
+      ? { data: undefined, isLoading: false, isError: true, error: new Error("The server is down."), refetch: listRead.refetch }
+      : { data: rows, isLoading: false, isError: false, error: null, refetch: listRead.refetch },
 }));
 vi.mock("@/features/project-settings/hooks", () => ({
   useUnarchiveProject: () => ({ mutate, isPending: false }),
@@ -59,5 +63,20 @@ describe("the page a missing or archived project shows", () => {
     render(<ProjectMissing slug={slug} />);
     expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
     expect(document.title).toBe(`${title} · Forge`);
+  });
+});
+
+// ISS-1229 r48: with the projects list failing to load, a project's own address said "Project not found".
+describe("a project page whose projects list could not be read", () => {
+  it("says the projects could not be loaded, never that the project is not found, and Retry reads them again", () => {
+    listRead.failed = true;
+    const refetch = vi.fn();
+    listRead.refetch = refetch;
+    render(<ProjectMissing slug="old-board" />);
+    expect(screen.queryByText("Project not found")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "Couldn't load your projects" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    listRead.failed = false;
   });
 });

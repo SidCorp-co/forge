@@ -426,19 +426,24 @@ export function NavRailCompact({
 
         {!activeProject && switcherProjects.length === 0 && projectsUnread && (
           <>
-            {/* A failed read holds no project to add beside: it is said, with the act that reads again (ISS-1229 r47). */}
+            {/* What failed is visible text, not only the accessible name; the server's why is the switcher's (ISS-1229 r48). */}
             <button
               type="button"
               onClick={projectsUnread.onRetry}
               aria-label="Couldn't load your projects. Retry"
-              title={projectsUnread.message}
+              title="Couldn't load your projects. Retry"
               data-testid="rail-projects-unread"
               className="flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle transition-colors hover:bg-hover"
             >
               <span className="inline-flex size-[30px] items-center justify-center rounded-md border border-[color:var(--flame-500)]">
                 <Icon name="alert" size={16} className="text-[color:var(--flame-700)]" />
               </span>
-              <span className="text-10 font-semibold tracking-[-0.01em] text-muted">Retry</span>
+              <span className="px-0.5 text-center text-10 font-semibold leading-tight tracking-[-0.01em] text-fg">
+                Projects not loaded
+              </span>
+              <span className="text-10 font-semibold tracking-[-0.01em] text-accent-text underline underline-offset-2">
+                Retry
+              </span>
             </button>
 
             <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />

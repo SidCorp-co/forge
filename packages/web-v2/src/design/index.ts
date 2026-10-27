@@ -30,6 +30,7 @@ export { StreamBand, type StreamBandProps, type StreamWeek } from "./primitives/
 export { EmptyState, type EmptyStateProps } from "./primitives/empty-state";
 export { EmptyPanelLine, type EmptyPanelLineProps } from "./primitives/empty-panel-line";
 export { StaleReadLine } from "./primitives/stale-read-line";
+export { ReadFailedLine } from "./primitives/read-failed-line";
 export { ComingSoon, type ComingSoonProps } from "./primitives/coming-soon";
 export { ErrorState, type ErrorStateProps } from "./primitives/error-state";
 export { LiveDot, type LiveDotProps } from "./primitives/live-dot";
