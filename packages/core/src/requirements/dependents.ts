@@ -34,9 +34,14 @@ export interface RequirementDependents {
   ): Promise<LiveBuildHolds | null>;
   /**
    * On a project with no production environment, each issue's landed build, which its verdicts are
-   * weighed on (`release-batch/landed-build.ts:landedBuildHolds`); null on a project with one.
+   * weighed on, and whether each later commit `judged` names for an issue holds it
+   * (`release-batch/landed-build-holds.ts:landedBuildHolds`); null on a project with one.
    */
-  landedBuildHolds(projectId: string, issueIds: readonly string[]): Promise<LiveBuildHolds | null>;
+  landedBuildHolds(
+    projectId: string,
+    issueIds: readonly string[],
+    judged: ReadonlyMap<string, readonly { kind: string; value: string }[]>,
+  ): Promise<LiveBuildHolds | null>;
   /**
    * The questions holding the requirement's value check, each unanswered and blocking (REQ-65 BC-4,
    * `intake/value-held.ts`): an agree waits for them as for any blocking question.

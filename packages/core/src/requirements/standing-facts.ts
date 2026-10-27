@@ -225,13 +225,32 @@ export async function liveBuildOf(
   const runtimes = judged.flatMap((r) => (r.identity?.kind === 'runtime' ? [r.identity.ref] : []));
   const voidedAtCommit = rows.some((r) => r.beforeReopen?.identity?.kind === 'commit');
   if (commits.length === 0 && runtimes.length === 0 && !voidedAtCommit) return null;
-  // With no production environment each verdict is weighed on its own issue's landing instead.
-  const landed = await requirementDependents().landedBuildHolds(projectId, [
-    ...new Set(rows.map((r) => r.issueId)),
-  ]);
+  // With no production environment each verdict is weighed on its own issue's landing instead, and
+  // a later commit it names counts where it holds that landing (`standing-identity.ts:atLanding`).
+  const landed = await requirementDependents().landedBuildHolds(
+    projectId,
+    [...new Set(rows.map((r) => r.issueId))],
+    judgedAgainstOf(rows),
+  );
   if (landed) return landed;
   if (commits.length === 0 && runtimes.length === 0) return null;
   return requirementDependents().liveBuildHolds(projectId, { commits, runtimes });
+}
+
+/** Per issue, the commit and runtime identities its verdicts name, a voided one's included. */
+function judgedAgainstOf(
+  rows: readonly StandingIssueCriterion[],
+): Map<string, { kind: string; value: string }[]> {
+  const out = new Map<string, { kind: string; value: string }[]>();
+  for (const r of rows) {
+    for (const v of [r, ...(r.earlier ?? []), ...(r.beforeReopen ? [r.beforeReopen] : [])]) {
+      const id = v.identity;
+      if (v.verdict === null || !id || (id.kind !== 'commit' && id.kind !== 'runtime')) continue;
+      const value = id.kind === 'commit' ? id.sha : id.ref;
+      out.set(r.issueId, [...(out.get(r.issueId) ?? []), { kind: id.kind, value }]);
+    }
+  }
+  return out;
 }
 
 type PinRow = {

@@ -20,6 +20,7 @@ import {
   traced,
 } from '../helpers/landed-requirement.js';
 import {
+  ASIDE,
   BRANCH,
   D9,
   F4,
@@ -168,16 +169,21 @@ describe('a requirement whose issues all closed by landing records', () => {
     );
   });
 
-  it('does not count a pass at another commit, naming the landing it needs', async () => {
+  // adminhub-fe ISS-4, dev.344 (REQ-36 BC-18): a pass on a later build holding the landing is a
+  // pass on the delivered work; one at a commit that does not hold it judged another build
+  it('counts a pass at a later commit holding the landing, and never one at a commit that does not', async () => {
     const req = await agreedRequirement(BCS.slice(0, 1));
     const issue = await landedIssue(6, F4);
     await traced(req, issue, 6);
     await verdict(issue, 1, 'pass', LATER);
 
+    expect(await bcOf(req)).toMatchObject({ verdict: 'passing' });
+
+    await verdict(issue, 1, 'pass', ASIDE);
     const bc = await bcOf(req);
     expect(bc.verdict).toBe('not_live');
     expect(bc.issues[0]?.notCounted).toContain(
-      `judged at commit ${LATER.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)}`,
+      `judged at commit ${ASIDE.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)} nor at a build that holds it`,
     );
   });
 });

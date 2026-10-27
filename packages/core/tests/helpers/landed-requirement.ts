@@ -72,7 +72,7 @@ export type Bc = {
   code: string;
   verdict: string;
   why: string | null;
-  issues: Array<{ notCounted: string | null }>;
+  issues: Array<{ notCounted: string | null; identity: string | null }>;
 };
 
 export type RequirementRead = {

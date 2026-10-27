@@ -296,3 +296,71 @@ describe('a runtime pass on the testing environment the project is judged on (de
     expect(c?.issues[0]?.notCounted).toContain(`not at its issue's landing ${L.slice(0, 12)}`);
   });
 });
+
+// adminhub-fe ISS-4, dev.344 (REQ-36 BC-18): landed at 5841cc20 on release/stg and recorded 0.1.0;
+// every criterion's latest verdict a runtime pass judged on stg, the testing environment, serving
+// f9ed575a, which holds the landing. REQ-1 read "judge BC-1 on ISS-4": coverage counted a verdict
+// only at the landing itself. A pass on a later build that holds the landing is a pass on the
+// delivered work; one at a build that does not hold it never counts, and an unread hold is unchecked.
+describe('a pass on a later build that holds the landing', () => {
+  const L = '5841cc20'.padEnd(40, '1');
+  const S = 'f9ed575a'.padEnd(40, '2');
+  const onStg = (holders: ReadonlyMap<string, boolean | { unread: string }> | undefined) =>
+    deriveStanding({
+      ...input([issue(4, 'closed', false)]),
+      criteria: [bc1],
+      issueCriteria: [
+        { ...row(4, 'pass', '2026-10-27T09:00:00Z'), identity: { kind: 'runtime', ref: S } },
+      ],
+      liveBuild: {
+        sha: null,
+        holds: new Map(),
+        runtimes: new Map(),
+        unanswered: new Map(),
+        landed: new Map([['i4', { sha: L, why: null, ...(holders ? { holders } : {}) }]]),
+        judgedOn: 'stg',
+      },
+    }).coverage[0];
+
+  it('counts the runtime pass on stg at a commit holding the landing, saying it holds it', () => {
+    const c = onStg(new Map([[S, true]]));
+    expect(c?.verdict).toBe('passing');
+    expect(c?.issues[0]?.notCounted).toBeNull();
+    expect(c?.issues[0]?.identity).toBe(
+      `judged at commit ${S.slice(0, 12)}, which holds landing ${L.slice(0, 12)}`,
+    );
+  });
+
+  it('counts a commit pass at a later build holding the landing the same way', () => {
+    const c = deriveStanding({
+      ...input([issue(4, 'closed', false)]),
+      criteria: [bc1],
+      issueCriteria: [row(4, 'pass', '2026-10-27T09:00:00Z', S)],
+      liveBuild: {
+        sha: null,
+        holds: new Map(),
+        runtimes: new Map(),
+        unanswered: new Map(),
+        landed: new Map([['i4', { sha: L, why: null, holders: new Map([[S, true]]) }]]),
+      },
+    }).coverage[0];
+    expect(c?.verdict).toBe('passing');
+  });
+
+  it('never counts a pass at a commit that does not hold the landing, naming it', () => {
+    const c = onStg(new Map([[S, false]]));
+    expect(c?.verdict).toBe('not_live');
+    expect(c?.issues[0]?.notCounted).toBe(
+      `judged at commit ${S.slice(0, 12)}, not at its issue's landing ${L.slice(0, 12)} nor at a build that holds it: judge it again at ${L.slice(0, 12)} or at a later build that holds it`,
+    );
+  });
+
+  it('reads an unread hold as unchecked, never as passing nor as another build', () => {
+    const c = onStg(new Map([[S, { unread: 'GitLab answered 503' }]]));
+    expect(c?.verdict).toBe('not_judged');
+    expect(c?.issues[0]?.inLiveBuild).toBeNull();
+    expect(c?.issues[0]?.notCounted).toContain(
+      `whether it holds that landing could not be read: GitLab answered 503`,
+    );
+  });
+});

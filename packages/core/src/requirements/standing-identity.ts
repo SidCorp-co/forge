@@ -39,7 +39,7 @@ export interface LiveBuildHolds {
   runtimes: ReadonlyMap<string, string | null>;
   unanswered: ReadonlyMap<string, string>;
   /**
-   * On a project with no production environment (`release-batch/landed-build.ts:landedBuildHolds`),
+   * On a project with no production environment (`release-batch/landed-build-holds.ts:landedBuildHolds`),
    * per issue id the landed build its verdicts count on, or why it has none. Present, it replaces the
    * live build for every commit and runtime verdict.
    */
@@ -58,6 +58,12 @@ export interface LandedHolds {
   why: string | null;
   /** Where the build is a host merge commit: the merged request's head and whether its tree is the build's. */
   head?: MergedHead | null;
+  /**
+   * Per later commit a verdict on the issue names (lower case), whether it holds the landing, or why
+   * that was not read, through the record door's ancestry reader (`landed-build.ts:readHolding`).
+   * A commit absent was not asked, and is read as another build.
+   */
+  holders?: ReadonlyMap<string, boolean | { unread: string }>;
 }
 
 export const short = (sha: string) => sha.slice(0, 12);
@@ -199,13 +205,14 @@ export function resolve(
 }
 
 // With no production environment the build a verdict counts on is its issue's landing
-// (`release-batch/landed-build.ts`), and only a verdict at that very commit counts, or at the head of
-// the request that merged as it where Forge read from the host, at the merge, that the two trees are
-// identical (`issues.merged_head`): a head whose tree differs, or whose tree was not read, judged
-// another build as far as anyone can say. One at any other earlier commit judged another build, and
-// one at a later head counts once a landing is recorded there, or before any record where every live
-// criterion of the issue passes at that one head and it holds the landing
-// (`release-batch/landed-build.ts:aheadBuildsOf`).
+// (`release-batch/landed-build.ts`): a verdict counts at that very commit, at the head of the request
+// that merged as it where Forge read from the host, at the merge, that the two trees are identical
+// (`issues.merged_head`), or at a later build that holds the landing (`LandedHolds.holders`, REQ-36
+// BC-18): the testing environment serves such a build, and `judged-build.ts` sends the judge to it
+// (adminhub-fe ISS-4). A head whose tree differs or was not read, and a commit that does not hold
+// the landing, judged another build as far as anyone can say; one whose hold was not read is
+// unchecked, never passing (`VISION: state-never-lies`). A release record keeps its own rule: the
+// recorded commit must hold the verdict's (`release-batch/landing-coverage.ts`).
 function atLanding(commit: string, landed: LandedHolds | null): Resolved {
   const judged = `judged at commit ${short(commit)}`;
   if (!landed) {
@@ -239,9 +246,33 @@ function atLanding(commit: string, landed: LandedHolds | null): Resolved {
           : `${judged}, ${merged}, and whether its tree is the landing's was not read (${head.why ?? 'nothing says why'}): judge it again at ${short(landed.sha)}`,
     };
   }
+  const away = `${judged}, not at its issue's landing ${short(landed.sha)}`;
+  const held = landed.holders?.get(commit.toLowerCase());
+  if (held === true) {
+    return {
+      commit,
+      inLiveBuild: true,
+      notCounted: null,
+      countedAs: `${judged}, which holds landing ${short(landed.sha)}`,
+    };
+  }
+  if (held === false) {
+    return {
+      commit,
+      inLiveBuild: false,
+      notCounted: `${away} nor at a build that holds it: judge it again at ${short(landed.sha)} or at a later build that holds it`,
+    };
+  }
+  if (held !== undefined) {
+    return {
+      commit,
+      inLiveBuild: null,
+      notCounted: `${away}, and whether it holds that landing could not be read: ${held.unread}`,
+    };
+  }
   return {
     commit,
     inLiveBuild: false,
-    notCounted: `${judged}, not at its issue's landing ${short(landed.sha)}: judge it again at ${short(landed.sha)}`,
+    notCounted: `${away}: judge it again at ${short(landed.sha)}`,
   };
 }

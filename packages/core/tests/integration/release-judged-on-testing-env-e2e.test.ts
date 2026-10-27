@@ -243,6 +243,49 @@ describe('a project that names dev as its testing environment (BC-18, BC-19)', (
   });
 });
 
+// adminhub-fe ISS-4, dev.344: landed at 5841cc20 on release/stg and recorded 0.1.0; every criterion
+// traced to BC-1, each latest verdict a runtime pass on stg serving f9ed575a, which holds the
+// landing (the build `judged-build` sends the judge to). REQ-1 read "judge BC-1 on ISS-4".
+describe("a requirement's coverage of a pass on a later build that holds the landing (BC-18)", () => {
+  const ALL = { 1: 'BC-1', 2: 'BC-1', 3: 'BC-1' };
+
+  beforeEach(async () => {
+    await seedLandedWorld();
+    await declare('dev');
+  });
+
+  /** ISS-4 landed at F4 and recorded there, every criterion then judged on dev at `served`. */
+  async function judgedOnDevAt(served: string) {
+    const req = await agreedRequirement();
+    const issue = await landedIssue(4, F4);
+    await traced(req, issue, 4, ALL);
+    expect((await record([issue], F4)).status).toBe(201);
+    for (const n of [1, 2, 3]) await ok(judged(issue, n, { kind: 'runtime', ref: served }));
+    return bcOf(req);
+  }
+
+  it('counts the runtime passes on dev at a commit holding the recorded landing', async () => {
+    const bc = await judgedOnDevAt(LATER);
+
+    expect(bc.verdict).toBe('passing');
+    for (const line of bc.issues) {
+      expect(line.notCounted ?? null).toBeNull();
+      expect(line.identity).toBe(
+        `judged at commit ${LATER.slice(0, 12)}, which holds landing ${F4.slice(0, 12)}`,
+      );
+    }
+  });
+
+  it('never counts a pass on dev at a commit that does not hold the landing', async () => {
+    const bc = await judgedOnDevAt(ASIDE);
+
+    expect(bc.verdict).toBe('not_live');
+    expect(bc.issues[0]?.notCounted).toContain(
+      `judged at commit ${ASIDE.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)} nor at a build that holds it`,
+    );
+  });
+});
+
 describe('a project that names no testing environment (BC-20)', () => {
   beforeEach(async () => {
     await seedLandedWorld();
