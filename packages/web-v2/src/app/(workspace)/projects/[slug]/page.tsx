@@ -11,6 +11,10 @@ import {
   ProjectLoader,
   ProjectMark,
 } from "@/design";
+import { useAttention, useRetryFailedJob } from "@/features/attention/hooks";
+import { useIssues } from "@/features/issues/hooks";
+import { formatElapsed } from "@/features/overview/derive";
+import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
 import { AwaitingReleaseCard } from "@/features/project-dashboard/components/awaiting-release-card";
 import { ComingSoonNote } from "@/features/project-dashboard/components/dashboard-section";
@@ -22,47 +26,44 @@ import { SpendCard } from "@/features/project-dashboard/components/spend-card";
 import { StatStrip } from "@/features/project-dashboard/components/stat-strip";
 import { StatusDonut } from "@/features/project-dashboard/components/status-donut";
 import { StepTimes } from "@/features/project-dashboard/components/step-times";
-import { Throughput, THROUGHPUT_WINDOW_DAYS } from "@/features/project-dashboard/components/throughput";
+import { THROUGHPUT_WINDOW_DAYS, Throughput } from "@/features/project-dashboard/components/throughput";
 import {
+  activeSpend,
   attentionCaption,
+  attentionCut,
   attentionParts,
   attentionReadFailure,
   attentionRefusal,
-  attentionCut,
-  type StuckIssues,
-  stuckRowsOf,
-  sessionsWaitingOnYou,
+  awaitingReleaseRuns,
   idleRuns,
   joblessRuns,
-  runsShown,
-  activeSpend,
-  awaitingReleaseRuns,
   projectAttention,
+  runsShown,
+  type StuckIssues,
+  sessionsWaitingOnYou,
   spendByStep,
   statusDonut,
+  stuckRowsOf,
 } from "@/features/project-dashboard/derive";
 import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
 import {
-  type ReadState,
   parkedAges,
   projectShape,
+  type ReadState,
   readOf,
   secondsSince,
   spendComparison,
   stuckRuns,
 } from "@/features/project-dashboard/shape";
-import { useAttention, useRetryFailedJob } from "@/features/attention/hooks";
-import { useIssues } from "@/features/issues/hooks";
-import { formatElapsed } from "@/features/overview/derive";
-import { useSessionsAndHolds } from "@/features/pipeline/hooks";
-import { useProjectRuns, useStepDurations, useThroughput } from "@/features/runs/hooks";
-import { useProjectHealth, useProjects } from "@/features/projects/hooks";
+import { ProjectMissing, ProjectsUnread } from "@/features/projects/components/project-missing";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
+import { useProjectHealth, useProjects } from "@/features/projects/hooks";
+import { useProjectRuns, useStepDurations, useThroughput } from "@/features/runs/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { retryFailedReads } from "@/lib/utils/retry-rule";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { ProjectMissing, ProjectsUnread } from "@/features/projects/components/project-missing";
 
 /** The window the spend and where-time-goes sections read; the throughput section's is its own. */
 const METRICS_WINDOW_DAYS = 7;
@@ -129,7 +130,7 @@ export default function ProjectOverviewPage() {
           level={1}
           title="Couldn't load this project"
           message={formatApiError(healthQ.error)}
-          onRetry={() => void healthQ.refetch()}
+          error={healthQ.error} onRetry={() => void healthQ.refetch()}
         />
       </div>
     );
@@ -160,6 +161,10 @@ export default function ProjectOverviewPage() {
         ? `the live sessions were not read (${sessionsState.reason})`
         : null;
   const readFailure = attentionFailure === null ? null : attentionReadFailure(attentionFailure);
+  const attentionRetry = retryFailedReads([
+    { failed: attentionQ.read === "failed", error: attentionQ.error, retry: () => attentionQ.refetch() },
+    { failed: sessionsState.read === "failed", error: sessionsQ.error, retry: () => void sessionsQ.refetch() },
+  ]);
   const attentionRead = attentionQ.read === "read" && sessionsState.read === "ok";
   const parkedState: ReadState = !parkedWanted
     ? { read: "ok" }
@@ -345,14 +350,8 @@ export default function ProjectOverviewPage() {
                 cut={attentionLeftOut}
                 refusal={attentionRefused}
                 pending={attentionPending}
-                onRetry={
-                  readFailure
-                    ? () => {
-                        if (attentionQ.read === "failed") attentionQ.refetch();
-                        if (sessionsState.read === "failed") sessionsQ.refetch();
-                      }
-                    : undefined
-                }
+                onRetry={readFailure ? attentionRetry.onRetry : undefined}
+                retryError={attentionRetry.error}
                 onRetryJob={(jobId) => retryJob.mutate(jobId)}
                 retryingJobId={retryJob.isPending ? (retryJob.variables ?? null) : null}
                 shape={reading.shape}

@@ -301,12 +301,12 @@ describe("the Pipeline page with nothing to show, or no reading", () => {
     expect(container.querySelector(".forge-pulse")).toBeNull();
   });
 
-  // Round 23 (master's read of the r23 after-shots): a refused refresh said "Try again in a minute."
-  // with no Retry beside it; only a transport failure or a 5xx offered one.
+  // ISS-1229 r50 (judge-152, criterion 478): one rule decides Retry everywhere, and this page offered it on a
+  // 403, 404 and 422. A refusal a second read cannot change is named without one; no answer, 408, 425, 429 and
+  // a 5xx are offered one.
   it.each([
-    ["a 409 refusal", new ApiError(409, refusal, "HOLDS_READ_REFUSED")],
-    ["a 403 refusal", new ApiError(403, "Forbidden", "FORBIDDEN")],
     ["a 500", new ApiError(500, "Internal Server Error", "INTERNAL_ERROR")],
+    ["a 429", new ApiError(429, "Too Many Requests", "RATE_LIMITED")],
   ])("offers Retry beside a refresh failed by %s", (_, error) => {
     const refetch = vi.fn();
     query = { data: reading, isError: true, error, refetch };
@@ -315,10 +315,20 @@ describe("the Pipeline page with nothing to show, or no reading", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  it("offers Retry when a refused first read fails", () => {
+  it.each([
+    ["a 409 refusal", new ApiError(409, refusal, "HOLDS_READ_REFUSED")],
+    ["a 403 refusal", new ApiError(403, "Forbidden", "FORBIDDEN")],
+    ["a 422 refusal", new ApiError(422, "Unprocessable", "BAD_REQUEST")],
+  ])("offers no Retry beside a refresh refused by %s", (_, error) => {
+    query = { data: reading, isError: true, error, refetch: vi.fn() };
+    screenFor();
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
+  });
+
+  it("offers no Retry when a refused first read fails", () => {
     query = { data: undefined, isError: true, error: new ApiError(409, refusal, "HOLDS_READ_REFUSED"), refetch: vi.fn() };
     screenFor();
-    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
   });
 
   it("offers no Retry where Forge answered 401, which signs the person out", () => {

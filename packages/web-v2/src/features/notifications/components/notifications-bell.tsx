@@ -259,6 +259,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
                 ? formatApiError(pendingQuery.error)
                 : undefined
           }
+          readError={notificationsQuery.isError ? notificationsQuery.error : pendingQuery.error}
           onRetry={() => {
             notificationsQuery.refetch();
             pendingQuery.refetch();
@@ -270,7 +271,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
           expandedLoading={membersQuery.isLoading}
           expandedUnread={
             membersQuery.isError && membersQuery.data === undefined
-              ? { why: formatApiError(membersQuery.error), onRetry: () => void membersQuery.refetch() }
+              ? { why: formatApiError(membersQuery.error), error: membersQuery.error, onRetry: () => void membersQuery.refetch() }
               : null
           }
           onToggleGroup={onToggleGroup}

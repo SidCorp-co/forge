@@ -88,7 +88,7 @@ export function SkillUpdatesScreen({ scope }: SkillUpdatesScreenProps) {
   if (isError) {
     return (
       <div className="p-4">
-        <ErrorState title="Couldn't load skill updates" message={formatApiError(error)} onRetry={() => refetch()} />
+        <ErrorState title="Couldn't load skill updates" message={formatApiError(error)} error={error} onRetry={() => refetch()} />
       </div>
     );
   }

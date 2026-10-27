@@ -71,5 +71,5 @@ export function ProjectMissing({
  */
 export function ProjectsUnread({ error }: { error: unknown }) {
   const retry = useRetryProjects();
-  return <ErrorState level={1} title="Couldn't load your projects" message={formatApiError(error)} onRetry={retry} />;
+  return <ErrorState level={1} title="Couldn't load your projects" message={formatApiError(error)} error={error} onRetry={retry} />;
 }

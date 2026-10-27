@@ -6,9 +6,9 @@
 
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useState } from "react";
-import { EmptyPanelLine, Icon, STOPPED_WORD, StaleReadLine } from "@/design";
+import { EmptyPanelLine, Icon, RetryButton, STOPPED_WORD, StaleReadLine } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { couldNotRefresh, offersRetry } from "@/lib/api/read-failed";
+import { couldNotRefresh } from "@/lib/api/read-failed";
 import { formatDurationMs, formatDurationSec, formatRelativeTime, formatUsd } from "@/lib/utils/format";
 import { useNow } from "@/design/hooks/use-now";
 import { runReadingChip, runSince } from "@/features/runs/derive";
@@ -58,13 +58,7 @@ export function RunJournalSection({ runs, loading, error, onRetry, readAt }: Run
         status="Couldn't load"
         detail={formatApiError(error)}
         flat
-        action={
-          offersRetry(error) ? (
-            <button type="button" onClick={onRetry} className="fg-caption text-muted hover:text-fg">
-              Retry
-            </button>
-          ) : undefined
-        }
+        action={<RetryButton error={error} onRetry={onRetry} look="link" className="fg-caption text-muted hover:text-fg no-underline" />}
       />
     );
   }
@@ -92,7 +86,7 @@ export function RunJournalSection({ runs, loading, error, onRetry, readAt }: Run
     <section aria-label={TITLE} className="border-t border-line-subtle pt-4">
       <h2 className="fg-label mb-1">{TITLE}</h2>
       {stale && (
-        <StaleReadLine said={stale} onRetry={offersRetry(error) ? onRetry : undefined} className="mb-2" />
+        <StaleReadLine said={stale} error={error} onRetry={onRetry} className="mb-2" />
       )}
       <ol>
         {runs.map((run) => (

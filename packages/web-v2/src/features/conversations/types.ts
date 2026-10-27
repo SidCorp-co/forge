@@ -131,6 +131,14 @@ export interface ConversationParticipant {
   displayName: string | null;
   reachable: boolean | null;
   addedAt?: string;
+  /** What tells two alike names apart (ISS-1229 r50); empty and false for an agent. */
+  roles?: RoomRole[];
+  opener?: boolean;
+}
+
+export interface RoomRole {
+  projectId: string;
+  role: "admin" | "member" | "viewer" | null;
 }
 
 /** A project in a room's derived scope, named so a screen can say which it is. */

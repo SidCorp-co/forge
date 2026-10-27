@@ -51,7 +51,7 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
         <ErrorState
           title="Couldn't load step times"
           message={formatApiError(error)}
-          onRetry={onRetry}
+          error={error} onRetry={onRetry}
           mascot={false}
         />
       ) : slowest === null ? null : (

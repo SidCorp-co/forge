@@ -1,4 +1,5 @@
-import { Button, ButtonLink } from "./button";
+import { ButtonLink } from "./button";
+import { RetryButton } from "./retry-button";
 import { ForgeMascot } from "@/design/patterns/forge-mascot";
 import { TabTitle } from "./tab-title";
 
@@ -13,14 +14,11 @@ interface ErrorStateBase {
   technical?: string;
 }
 
-export type ErrorStateRetry = { onRetry: () => void; final?: never } | { final: true; onRetry?: never };
+/** A failed read hands over its error with its Retry; an answer no read changes is `final` (ISS-1229 r50). */
+export type ErrorStateRetry =
+  | { error: unknown; onRetry: () => void; final?: never }
+  | { final: true; onRetry?: never; error?: never };
 
-/** Retry where a second read can change the answer, else the state is final. */
-export function retryOrFinal(retryable: boolean, retry: () => void): ErrorStateRetry {
-  return retryable ? { onRetry: retry } : { final: true };
-}
-
-/** `title` names what failed (r46); a failed read writes its Retry, an answer no read changes is `final` (ISS-1229 r48). */
 export type ErrorStateProps = ErrorStateBase &
   ErrorStateRetry & {
     title: string;
@@ -28,7 +26,7 @@ export type ErrorStateProps = ErrorStateBase &
   };
 
 /** Failure state — mascot (flame stilled), a heading at `level` (1 where it is the whole page, naming the tab too), a retry. */
-export function ErrorState({ title, message, onRetry, action, mascot = true, technical, level = 2 }: ErrorStateProps) {
+export function ErrorState({ title, message, onRetry, error, action, mascot = true, technical, level = 2 }: ErrorStateProps) {
   const Heading = `h${level}` as const;
   return (
     <div className="flex flex-col items-center justify-center gap-3.5 px-6 py-12 text-center">
@@ -49,11 +47,7 @@ export function ErrorState({ title, message, onRetry, action, mascot = true, tec
           {action.label}
         </ButtonLink>
       )}
-      {onRetry && (
-        <Button variant="secondary" size="sm" icon="rerun" onClick={onRetry}>
-          Retry
-        </Button>
-      )}
+      <RetryButton error={error} onRetry={onRetry} />
     </div>
   );
 }

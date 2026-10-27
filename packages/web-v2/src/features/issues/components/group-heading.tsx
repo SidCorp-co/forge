@@ -1,14 +1,14 @@
 "use client";
 
-import { couldNotRead, offersRetry } from "@/lib/api/read-failed";
-import { Button, SectionTitle } from "@/design";
+import { couldNotRead } from "@/lib/api/read-failed";
+import { Button, RetryButton, SectionTitle } from "@/design";
 import type { IssueGroup } from "../derive";
 import type { GroupBy, ModuleCounts, ModuleRollupResponse } from "../types";
 
 /** What the module rollup says about one group's module, or why it says nothing. */
 export type ModuleGroupCounts =
   | { state: "loading" }
-  | { state: "unavailable"; why?: string; retry?: () => void }
+  | { state: "unavailable"; why?: string; error?: unknown; retry?: () => void }
   | { state: "read"; primary: ModuleCounts; secondaryTotal: number };
 
 interface RollupRead {
@@ -26,9 +26,7 @@ export function moduleGroupCounts(group: IssueGroup, rollup: RollupRead): Module
   if (rollup.isLoading) return { state: "loading" };
   if (rollup.isError) {
     const why = couldNotRead("Project counts", rollup.error);
-    return offersRetry(rollup.error)
-      ? { state: "unavailable", why, retry: () => void rollup.refetch() }
-      : { state: "unavailable", why };
+    return { state: "unavailable", why, error: rollup.error, retry: () => void rollup.refetch() };
   }
   if (!rollup.data) return { state: "unavailable" };
   if (group.moduleId === null || group.moduleId === undefined) {
@@ -70,11 +68,7 @@ export function GroupHeading({ group, groupBy, counts, onlyThisModule }: GroupHe
                 counts.secondaryTotal > 0 ? ` · also tagged on ${counts.secondaryTotal}` : ""
               }`}
       </span>
-      {counts?.state === "unavailable" && counts.retry ? (
-        <Button variant="secondary" size="sm" icon="rerun" onClick={counts.retry}>
-          Retry
-        </Button>
-      ) : null}
+      {counts?.state === "unavailable" ? <RetryButton error={counts.error} onRetry={counts.retry} /> : null}
       {group.moduleId && onlyThisModule ? (
         <Button
           variant="ghost"

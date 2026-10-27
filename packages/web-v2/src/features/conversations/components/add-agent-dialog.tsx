@@ -149,7 +149,7 @@ function CandidateList({
         <ErrorState
           title="Couldn't load the agents"
           message={formatApiError(query.error)}
-          onRetry={() => query.refetch()}
+          error={query.error} onRetry={() => query.refetch()}
         />
       </div>
     );

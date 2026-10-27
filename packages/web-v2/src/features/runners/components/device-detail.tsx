@@ -223,7 +223,7 @@ export function DeviceDetail({
 						) : runners.isError ? (
 							<ErrorState title="Couldn't load this device's runners"
 								message={formatApiError(runners.error)}
-								onRetry={() => runners.refetch()}
+								error={runners.error} onRetry={() => runners.refetch()}
 							/>
 						) : rows.length === 0 ? (
 							<EmptyState

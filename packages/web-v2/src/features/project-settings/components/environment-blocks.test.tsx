@@ -29,8 +29,15 @@ beforeEach(() => refetch.mockClear());
 afterEach(cleanup);
 
 describe("a deploy-connections read that failed", () => {
-  it("offers Retry under a refusal, and reads the connections again", () => {
+  // ISS-1229 r50 (criterion 478): Retry only where a second read can change the answer.
+  it("offers no Retry under a refusal a second read cannot change", () => {
     error = new ApiError(409, "Try again in a minute.", "X");
+    mount();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("offers Retry where the server could not answer, and reads the connections again", () => {
+    error = new ApiError(503, "Busy.", "X");
     mount();
     const retries = screen.getAllByRole("button", { name: "Retry" });
     expect(retries.length).toBeGreaterThan(0);

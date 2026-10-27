@@ -13,7 +13,7 @@ export function ForgeUnreached({ error, onRetry }: { error: unknown; onRetry: ()
         title="Couldn't open Forge"
         message={formatApiError(error)}
         technical={error instanceof ApiError ? readFailure(error).technical : undefined}
-        onRetry={onRetry}
+        error={error} onRetry={onRetry}
       />
     </main>
   );

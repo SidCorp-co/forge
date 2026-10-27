@@ -57,7 +57,7 @@ import { deleteAndTellReaders } from './conversation-adapter.js';
 import { agentModeOffer, projectAgentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
-import { withDisplayNames } from './conversation-people.js';
+import { withDisplayNames, withStanding } from './conversation-people.js';
 import {
   agentModeOfferSchema,
   changeRoom,
@@ -292,7 +292,7 @@ conversationRoutes.get(
         canChangeMembership: await mayChangeMembership(conversation, userId),
         agentMode: await agentModeOffer(conversation, scope, messages.length),
         agentTurns,
-        participants: await withDisplayNames(participants),
+        participants: await withStanding(await withDisplayNames(participants), id, scope),
         messages,
         windows,
       }),

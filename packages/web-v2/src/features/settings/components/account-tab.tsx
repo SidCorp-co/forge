@@ -1,5 +1,6 @@
 "use client";
 
+import type { AnswerStyle } from "@forge/contracts";
 // Settings → Account. Identity is read from the hydrated auth session. The display name saves
 // against `/api/auth/me`, theme + language against `/api/auth/me/preferences` and the reply style +
 // standing instructions against `/api/auth/preferences`: three routes, one form, one save bar, so a
@@ -8,7 +9,6 @@ import { displayNameRefusal, personName } from "@forge/contracts/person-name";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
-import type { AnswerStyle } from "@forge/contracts";
 import {
   Banner,
   Button,
@@ -18,13 +18,14 @@ import {
   MonoTag,
   SectionTitle,
   Select,
-  SettingsFormBar,
-  Skeleton,
   type SelectOption,
-  useSettingsForm,
+  SettingsFormBar,
   SettingsSection,
+  Skeleton,
+  useSettingsForm,
 } from "@/design";
 import { formatApiError, formatApiReason } from "@/lib/api/error";
+import { retryFailedReads } from "@/lib/utils/retry-rule";
 import { useAuth } from "@/providers/auth-provider";
 import {
   useAssistantPreferences,
@@ -279,10 +280,10 @@ export function AccountTab() {
         <SettingsSection>
           <ErrorState title="Couldn't load your preferences"
             message={formatApiError(prefsQ.error ?? assistantQ.error)}
-            onRetry={() => {
-              void prefsQ.refetch();
-              void assistantQ.refetch();
-            }}
+            {...retryFailedReads([
+              { failed: prefsQ.isError, error: prefsQ.error, retry: () => void prefsQ.refetch() },
+              { failed: assistantQ.isError, error: assistantQ.error, retry: () => void assistantQ.refetch() },
+            ])}
           />
         </SettingsSection>
       ) : (

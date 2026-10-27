@@ -22,6 +22,7 @@ import type {
   ConversationProject,
   HandleCandidate,
   RoomOpener,
+  RoomRole,
 } from "./types";
 
 /** One claim a confirmation makes, keyed so a test names the claim and not its wording. */
@@ -404,6 +405,78 @@ export function memberName(
   return readerName(participant.userId, viewerId, participant.displayName, at);
 }
 
+const ROLE_WORD = { admin: "Admin", member: "Member", viewer: "Viewer" } as const;
+
+/** A person's roles on the room's projects in words: one word where they hold the same role on each, else one
+ *  per project; null where the answer carries none. */
+function roleWords(
+  participant: ConversationParticipant,
+  room: Partial<Pick<ConversationMembership, "scopeProjects">>,
+): string | null {
+  const roles = participant.roles ?? [];
+  if (roles.length === 0) return null;
+  const word = (r: RoomRole["role"]) => (r ? ROLE_WORD[r] : "No role");
+  if (roles.every((r) => r.role === roles[0]?.role)) return word(roles[0]?.role ?? null);
+  const nameOf = (id: string) => (room.scopeProjects ?? []).find((p) => p.id === id)?.name ?? "a project";
+  return roles.map((r, i) => `${i === 0 ? word(r.role) : word(r.role).toLowerCase()} on ${nameOf(r.projectId)}`).join(", ");
+}
+
+/** How a person is told apart in a room (ISS-1229 r50, the master's ruling on judge-152). */
+export interface PersonStanding {
+  /** The row's second line: their role on the room's projects, and whether they opened it. */
+  line: string;
+  /** The words added after their name where another person reads alike; else null. */
+  apart: string | null;
+  /** True where name, role and opening the room all match another person's: the row says so. */
+  alike: boolean;
+}
+
+/** Told apart by role on the room's projects, then by opening the room; never by a date, an order or an address. */
+export function personStanding(
+  participant: ConversationParticipant,
+  room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">>,
+  viewerId?: string | null,
+): PersonStanding {
+  const role = roleWords(participant, room);
+  const line = [role ?? "Person", participant.opener ? "Opened this room" : null].filter(Boolean).join(" · ");
+  const name = memberName(participant, viewerId, "start");
+  const same = peopleOf(room).filter((p) => p.id !== participant.id && memberName(p, viewerId, "start") === name);
+  if (same.length === 0) return { line, apart: null, alike: false };
+  const sameRole = same.filter((p) => roleWords(p, room) === role);
+  const rolePhrase = role ? `with the ${role.charAt(0).toLowerCase()}${role.slice(1)} role` : null;
+  if (sameRole.length === 0 && rolePhrase) return { line, apart: rolePhrase, alike: false };
+  const opener = Boolean(participant.opener);
+  const sameOpening = sameRole.filter((p) => Boolean(p.opener) === opener);
+  if (sameOpening.length === 0) {
+    if (opener) return { line, apart: "who opened this room", alike: false };
+    const roleToo = rolePhrase && sameRole.length < same.length ? `${rolePhrase} ` : "";
+    return { line, apart: `${roleToo}who did not open this room`, alike: false };
+  }
+  return { line: `${line} · Can't be told apart from another person here`, apart: null, alike: true };
+}
+
+function namedApart(
+  participant: ConversationParticipant,
+  room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">>,
+  viewerId: string | null | undefined,
+  at: "inside" | "start",
+): string {
+  const name = memberName(participant, viewerId, at);
+  if (participant.kind === "handle") return name;
+  const { apart } = personStanding(participant, room, viewerId);
+  return apart ? `${name} ${apart}` : name;
+}
+
+/** The remove control's name for a member (criterion 494). */
+export function removeControlName(
+  participant: ConversationParticipant,
+  room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">>,
+  viewerId?: string | null,
+): string {
+  const self = participant.kind === "person" && Boolean(viewerId) && participant.userId === viewerId;
+  return `Take ${self ? "yourself" : namedApart(participant, room, viewerId, "inside")} out of the room`;
+}
+
 /** What taking this member out does. */
 export function removalClaim(
   participant: ConversationParticipant,
@@ -411,7 +484,10 @@ export function removalClaim(
   viewerId?: string | null,
 ): string {
   if (participant.kind !== "handle") {
-    return `${memberName(participant, viewerId, "start")} will no longer be listed in this room.`;
+    const leaves = `${namedApart(participant, room, viewerId, "start")} will no longer be listed in this room.`;
+    return personStanding(participant, room, viewerId).alike
+      ? `This person can't be told apart from another person in this room: both read alike by name, role and who opened the room, so either may be the one taken out. ${leaves}`
+      : leaves;
   }
   const rest = agentsOf(room)
     .filter((p) => p.id !== participant.id)
@@ -473,8 +549,9 @@ export function composerRefusal(
 export function removalQuestion(
   participant: ConversationParticipant,
   viewerId?: string | null,
+  room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">> = {},
 ): { title: string; confirm: string } {
   const self = participant.kind === "person" && Boolean(viewerId) && participant.userId === viewerId;
-  const who = self ? "yourself" : memberName(participant, viewerId, "inside");
+  const who = self ? "yourself" : namedApart(participant, room, viewerId, "inside");
   return { title: `Take ${who} out of this room?`, confirm: self ? "Take me out" : `Take ${who} out` };
 }

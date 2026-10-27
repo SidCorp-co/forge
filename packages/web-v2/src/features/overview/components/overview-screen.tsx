@@ -40,7 +40,7 @@ export function OverviewScreen() {
           level={1}
           title="Couldn't load your workspace"
           message={formatApiError(pulse.error)}
-          onRetry={() => pulse.refetch()}
+          error={pulse.error} onRetry={() => pulse.refetch()}
         />
       </PageContainer>
     );

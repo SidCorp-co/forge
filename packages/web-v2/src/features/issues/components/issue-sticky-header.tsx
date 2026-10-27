@@ -1,8 +1,8 @@
-import { Button } from "@/design/primitives/button";
 import { PageTitle } from "@/design/primitives/heading";
 import { IconButton } from "@/design/primitives/icon-button";
 import { forwardRef, type ReactNode } from "react";
 import { couldNotReadAll } from "@/lib/api/read-failed";
+import { offersRetryFor, RetryButton } from "@/design/primitives/retry-button";
 
 /**
  * The issue page's sticky bar, opaque so nothing scrolls through it. Failed reads are said on one
@@ -45,14 +45,16 @@ export interface FailedHeaderRead {
  */
 export function HeaderReadFailures({ reads }: { reads: ReadonlyArray<FailedHeaderRead> }) {
   if (reads.length === 0) return null;
-  const retries = reads.flatMap((r) => (r.retry ? [r.retry] : []));
+  // Only the reads a second read can change are read again, by the one rule (ISS-1229 r50).
+  const again = reads.filter((r) => r.retry && offersRetryFor(r.error));
   return (
     <HeaderReadFailure
       said={couldNotReadAll(reads)}
+      error={again[0]?.error ?? reads[0]?.error}
       retry={
-        retries.length > 0
+        again.length > 0
           ? () => {
-              for (const retry of retries) retry();
+              for (const r of again) r.retry?.();
             }
           : undefined
       }
@@ -60,16 +62,20 @@ export function HeaderReadFailures({ reads }: { reads: ReadonlyArray<FailedHeade
   );
 }
 
-/** A read the header rests on that failed, said as what could not be read and why, with Retry where it is offered. */
-export function HeaderReadFailure({ said, retry }: { said: string; retry?: (() => void) | undefined }) {
+/** A read the header rests on that failed, said as what could not be read and why, with Retry where its error allows one. */
+export function HeaderReadFailure({
+  said,
+  error,
+  retry,
+}: {
+  said: string;
+  error: unknown;
+  retry?: (() => void) | undefined;
+}) {
   return (
     <div role="status" className="fg-caption flex flex-wrap items-center gap-2 text-muted">
       <span>{said}</span>
-      {retry && (
-        <Button variant="secondary" size="sm" icon="rerun" onClick={retry}>
-          Retry
-        </Button>
-      )}
+      <RetryButton error={error} onRetry={retry} />
     </div>
   );
 }

@@ -390,7 +390,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         <ErrorState
           title="Couldn't load sessions"
           message={formatApiError(sessionsQ.error)}
-          onRetry={() => sessionsQ.refetch()}
+          error={sessionsQ.error} onRetry={() => sessionsQ.refetch()}
         />
       )}
 

@@ -386,7 +386,7 @@ function AddressedRoom({
   // Refused for a project role, the room is there: core's sentence says so and who can add them (ISS-1229 r47).
   if (refusedForScope(error)) return pane(<ErrorState level={1} title={NO_ACCESS_TITLE} message={error.message} final />);
   if (error) {
-    return pane(<ErrorState level={1} title="Couldn't load this conversation" message={formatApiError(error)} onRetry={onRetry} />);
+    return pane(<ErrorState level={1} title="Couldn't load this conversation" message={formatApiError(error)} error={error} onRetry={onRetry} />);
   }
   if (read) {
     return pane(

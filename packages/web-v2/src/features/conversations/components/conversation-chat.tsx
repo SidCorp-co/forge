@@ -428,7 +428,7 @@ export function ConversationChat({
               level={level}
               title="Couldn't load this conversation"
               message={formatApiError(roomQ.error)}
-              onRetry={() => roomQ.refetch()}
+              error={roomQ.error} onRetry={() => roomQ.refetch()}
             />
           )}
         </div>

@@ -30,9 +30,11 @@ import {
   cannotAnswerReason,
   memberName,
   orderedPeopleOf,
+  personStanding,
   removalClaim,
   removalHeld,
   removalQuestion,
+  removeControlName,
 } from "../membership";
 import type { ConversationMembership, ConversationParticipant } from "../types";
 import { AddAgentDialog } from "./add-agent-dialog";
@@ -58,7 +60,7 @@ export function ConversationMembers({
   const [removing, setRemoving] = useState<ConversationParticipant | null>(null);
   const remove = useRemoveParticipant(conversationId);
   const viewerId = useAuth().user?.id ?? null;
-  const asked = removing ? removalQuestion(removing, viewerId) : null;
+  const asked = removing ? removalQuestion(removing, viewerId, room) : null;
 
   const agents = agentsOf(room);
   const people = orderedPeopleOf(room, viewerId);
@@ -231,7 +233,7 @@ function MemberRow({
             {memberName(member, viewerId, "start")}
           </span>
           <span className="fg-caption block truncate text-subtle">
-            {isAgent ? (project?.name ?? "a project this room is no longer about") : "Person"}
+            {isAgent ? (project?.name ?? "a project this room is no longer about") : personStanding(member, room, viewerId).line}
           </span>
         </div>
         {/* Core marks an agent by its role on the room's project, the one thing answering here asks of
@@ -252,7 +254,7 @@ function MemberRow({
             <IconButton
               icon="x"
               size="sm"
-              aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside")} out of the room`}
+              aria-label={removeControlName(member, room, viewerId)}
               aria-describedby={held ? heldReasonId : undefined}
               aria-disabled={held !== null || undefined}
               className={held ? "cursor-not-allowed opacity-50" : undefined}

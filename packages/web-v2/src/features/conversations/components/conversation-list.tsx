@@ -15,7 +15,7 @@
 
 import { useState } from "react";
 import { Button, ConfirmDialog, EmptyState, ErrorState, SessionRowSkeleton } from "@/design";
-import { ProjectsUnreadLine } from "@/features/projects/components/projects-unread";
+import { ProjectsUnreadLine, projectsUnreadOf } from "@/features/projects/components/projects-unread";
 import { formatApiError } from "@/lib/api/error";
 import { groupByRecency } from "../grouping";
 import { useProjects } from "@/features/projects/hooks";
@@ -115,7 +115,7 @@ export function ConversationList({
         {projectsQ.isError && (
           <ProjectsUnreadLine
             className="mb-2 px-1"
-            unread={{ message: formatApiError(projectsQ.error), onRetry: () => void projectsQ.refetch() }}
+            unread={projectsUnreadOf(projectsQ.error, () => void projectsQ.refetch())}
           />
         )}
 
@@ -131,7 +131,7 @@ export function ConversationList({
           <ErrorState
             title="Couldn't load conversations"
             message={formatApiError(listQ.error)}
-            onRetry={() => listQ.refetch()}
+            error={listQ.error} onRetry={() => listQ.refetch()}
           />
         )}
 

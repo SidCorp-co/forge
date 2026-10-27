@@ -29,7 +29,8 @@ describe("people in a room who gave no name", () => {
     expect(memberName(a, "me", "start")).toBe("A member");
     expect(memberName(b, "me", "start")).toBe("A member");
     expect(removalQuestion(b, "me")).toEqual({ title: "Take a member out of this room?", confirm: "Take a member out" });
-    expect(removalClaim(b, room, "me")).toBe("A member will no longer be listed in this room.");
+    // Two people with nothing to tell them apart are said to read alike (r50, criterion 493).
+    expect(removalClaim(b, room, "me")).toMatch(/can't be told apart.* A member will no longer be listed in this room\.$/);
   });
 
   it("are still listed in the order they were added, the opener first among people added at one moment", () => {

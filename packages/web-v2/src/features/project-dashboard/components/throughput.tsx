@@ -38,7 +38,7 @@ export function Throughput({ rows, isLoading, error, onRetry }: ThroughputProps)
         <ErrorState
           title="Couldn't load throughput"
           message={formatApiError(error)}
-          onRetry={onRetry}
+          error={error} onRetry={onRetry}
           mascot={false}
         />
       ) : (

@@ -20,6 +20,7 @@ import {
   Input,
   Radio,
   RadioGroup,
+  RetryButton,
   SectionTitle,
   Select,
   Skeleton,
@@ -370,7 +371,7 @@ export function TokensTab() {
         <ErrorState
           title="Couldn't load tokens"
           message={formatApiError(tokensQ.error)}
-          onRetry={() => tokensQ.refetch()}
+          error={tokensQ.error} onRetry={() => tokensQ.refetch()}
         />
       )}
 
@@ -450,9 +451,7 @@ export function TokensTab() {
               {projectsQ.isError && projectsQ.data === undefined && (
                 <p className="fg-body-sm mb-1.5" role="alert" data-testid="token-projects-unread">
                   Your projects could not be read, so none can be chosen: {formatApiError(projectsQ.error)}{" "}
-                  <Button variant="secondary" size="sm" onClick={() => void projectsQ.refetch()}>
-                    Retry
-                  </Button>
+                  <RetryButton error={projectsQ.error} onRetry={() => void projectsQ.refetch()} />
                 </p>
               )}
               <Select

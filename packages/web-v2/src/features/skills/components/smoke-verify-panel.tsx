@@ -105,7 +105,7 @@ export function SmokeVerifyPanel({ projectId, canManage }: SmokeVerifyPanelProps
             className="mt-3"
             what="the verification report"
             why={formatApiError(reportQ.error)}
-            onRetry={() => void reportQ.refetch()}
+            error={reportQ.error} onRetry={() => void reportQ.refetch()}
           />
         )}
 

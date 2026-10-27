@@ -192,7 +192,7 @@ function MessageActions({ message }: { message: ConversationMessage }) {
       ? (given ?? UNNAMED_PERSON_AT_START)
       : agent
         ? memberName(agent)
-        : (message.authorLabel ?? "Assistant");
+        : (message.authorLabel ?? "The agent");
   const from = own ? "you" : message.role === "user" && !given ? UNNAMED_PERSON : author;
   const copy = () => {
     navigator.clipboard?.writeText(message.content).then(
