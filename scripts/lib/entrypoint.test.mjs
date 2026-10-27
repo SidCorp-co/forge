@@ -136,7 +136,7 @@ describe('every guarded script runs where it is launched from', () => {
  */
 function handWrittenLaunchChecks(files) {
   return files
-    .filter(([rel, text]) => !HELPERS.has(rel) && text.includes('argv') && text.includes('meta'))
+    .filter(([rel, text]) => !HELPERS.has(rel) && text.includes('meta'))
     .flatMap(([rel, text]) => entryReads(rel, text));
 }
 
@@ -805,6 +805,11 @@ describe('no file decides it was launched by hand', () => {
       'scripts/assigned-short.mjs',
       'let argv;\n({ argv } = process);\nif (import.meta.filename === argv[1]) main();\n',
       3,
+    ],
+    [
+      'scripts/joined-key.mjs',
+      "const k = 'ar' + 'gv';\nif (import.meta.filename === process[k][1]) main();\n",
+      2,
     ],
     [
       'scripts/from.mjs',
