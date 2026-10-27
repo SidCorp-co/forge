@@ -35,16 +35,28 @@ function approverOf(r: Standing, t: Copy): string {
   return r.approvalRequired || r.approval ? t("releases.standing.approver.admin") : t("releases.standing.approver.notNeeded");
 }
 
+// on a project naming its testing environment, the count is of passes judged on the build it serves (REQ-36 BC-18, BC-19)
 function verifiedOf(r: Standing, t: Copy): string {
-  const { proven, total } = r.verified;
+  const { proven, total, judgedOn } = r.verified;
   if (total === 0) return t("releases.standing.verified.unchecked");
-  return proven === total ? t("releases.standing.verified.all", { n: total }) : t("releases.standing.verified.some", { proven, total });
+  if (judgedOn && proven === 0) return t("releases.standing.verified.notJudgedOn", { environment: judgedOn, total });
+  const met = proven === total ? t("releases.standing.verified.all", { n: total }) : t("releases.standing.verified.some", { proven, total });
+  return judgedOn ? t("releases.standing.verified.onEnvironment", { met, environment: judgedOn }) : met;
 }
 
 const ENDED: readonly ReleaseState[] = ["failed", "aborted"];
 
+/** Whether the owner's review waits on the judge: criteria not all passing on the testing environment (REQ-36 BC-18). */
+function untested(r: Standing): string | null {
+  const { proven, total, judgedOn } = r.verified;
+  if (!judgedOn || total === 0 || proven === total) return null;
+  return r.state === "landed" || (r.state === "awaiting_approval" && !r.approval?.decision) ? judgedOn : null;
+}
+
 function nextOf(r: Standing, t: Copy, goesSomewhere: boolean): string | null {
   if (r.state === "shipped") return null;
+  const judgeOn = untested(r);
+  if (judgeOn && (r.state !== "landed" || r.approvalRequired)) return t("releases.standing.next.judgeOn", { environment: judgeOn });
   if (r.state === "landed") return r.approvalRequired ? t("releases.standing.next.promote") : null;
   if (ENDED.includes(r.state)) return t("releases.standing.next.cutAgain");
   if (r.state === "returned") return t("releases.standing.next.returned");

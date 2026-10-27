@@ -26,6 +26,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 				total: 3,
 				check: null,
 				provider: null,
+				judgedOn: null,
 			},
 			approval: {
 				required: true,

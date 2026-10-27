@@ -24,7 +24,7 @@ describe("a release that has to be split", () => {
 });
 
 describe("a release's rail, in plain words (BC-19)", () => {
-  const draft = { ...release, releasedAt: null, production: null, verified: { level: "none", proven: 0, total: 0, check: null, provider: null } };
+  const draft = { ...release, releasedAt: null, production: null, verified: { level: "none", proven: 0, total: 0, check: null, provider: null, judgedOn: null } };
 
   it("says its status, approver, where it goes, what was checked and the next step, at every width", () => {
     const { container } = render(<WhereReleaseStands r={draft as never} />);

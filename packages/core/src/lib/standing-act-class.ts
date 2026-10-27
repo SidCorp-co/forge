@@ -53,6 +53,7 @@ const BY_KEY: Readonly<Record<string, StandingActClass>> = {
   'standing.act.confirmAnswer': 'reporter',
   'standing.act.judgeCriteria': 'judge',
   'standing.act.judgeOn': 'judge',
+  'standing.act.judgeReleaseOn': 'judge',
   'issues.standing.act.judgeAgain': 'judge',
   'issues.standing.act.landedWaitsJudge': 'judge',
 };

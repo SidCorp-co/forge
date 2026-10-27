@@ -133,7 +133,7 @@ function approvalFacts(p: Part) {
     : null;
 }
 
-function turnFor(p: Part, s: Shared) {
+function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }) {
   return turnOf({
     state: p.state,
     version: p.version,
@@ -148,6 +148,14 @@ function turnFor(p: Part, s: Shared) {
     viewer: s.viewer,
     gates: p.gates.filter((g) => g.kind === 'blocker'),
     inFlight: inFlightStage(p.attempts),
+    testing: s.facts.judgedOn
+      ? {
+          environment: s.facts.judgedOn,
+          judge: s.facts.judge,
+          proven: criteria.proven,
+          total: criteria.total,
+        }
+      : null,
   });
 }
 
@@ -192,7 +200,7 @@ function headOf(p: Part): string | null {
  *  release that merges change requests is the head of the request delivering it. */
 function criteriaOf(p: Part, s: Shared, issue: IssueFact) {
   const head = p.mergeSteps?.find((step) => step.issueIds.includes(issue.id))?.headSha;
-  return criteriaAt(issue, releaseBuildOf(p.state, head ?? headOf(p)), s.facts.judge);
+  return criteriaAt(issue, releaseBuildOf(p.state, head ?? headOf(p)), s.facts);
 }
 
 /** The change request shown beside each issue this release carries. */
@@ -256,11 +264,11 @@ function splitOf(p: Part, s: Shared): ReleaseSplit | null {
 }
 
 export function summaryOf(p: Part, s: Shared): ReleaseSummary {
-  const turn = turnFor(p, s);
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
+  const criteria = sumTotals(facts.map((i) => totalsOf(criteriaOf(p, s, i))));
+  const turn = turnFor(p, s, criteria);
   const { owner, act } = ownerOf(p, s);
   const split = splitOf(p, s);
-  const criteria = sumTotals(facts.map((i) => totalsOf(criteriaOf(p, s, i))));
   const reqs = [
     ...new Set(
       facts.flatMap((i) => {
@@ -288,6 +296,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
       total: criteria.total,
       check: p.verification,
       provider: p.verification === 'provider' ? s.provider : null,
+      judgedOn: s.facts.judgedOn,
     },
     contents: contentsOf(p, s),
     owner,

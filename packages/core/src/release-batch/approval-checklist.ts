@@ -4,7 +4,9 @@
  * release_check) when its approver approves it: the requirements it carries, each at its revision,
  * and each carried criterion as proven or not on the commit it ships, by the verified rule every count
  * of proof reads (`release-facts.ts:criteriaAt`, contracts `verified-rule.ts:verifiedOf`): a short, or the
- * builder's own pass, is not proven, and the gap says why. A project whose document says
+ * builder's own pass, is not proven, and the gap says why. A project naming its testing environment
+ * (`delivery.judgedOn`, REQ-36 BC-18) proves each only by a pass judged on the build that environment
+ * serves, so its owner reviews what ran there, never a commit judged elsewhere. A project whose document says
  * `delivery.verdictsRequired: false` judges on the running build after release, so its verdicts are
  * not asked here.
  *
@@ -39,6 +41,8 @@ export interface ApprovalFacts {
   /** Every carried criterion not proven, with its standing's words, or why its pass or short does not count. */
   unproven: { issue: string; n: number; standing: string }[];
   verdictsRequired: boolean;
+  /** The testing environment a carried criterion is proven on (REQ-36 BC-18); null where a commit verdict counts. */
+  judgedOn: string | null;
 }
 
 const listed = (items: readonly string[]) => items.join(', ');
@@ -80,7 +84,10 @@ export function approvalAnswersOf(f: ApprovalFacts): RecordAnswers {
             0,
             2000,
           ),
-          fix: "Have the project's judge pass each on the commit it ships.",
+          fix:
+            f.judgedOn === null
+              ? "Have the project's judge pass each on the commit it ships."
+              : `Deploy the commit it ships to ${f.judgedOn}, and have the project's judge pass each there, on the build ${f.judgedOn} serves.`,
         }
       : { value: 'Every carried criterion is proven.' };
   return { carried, verdicts };
@@ -151,7 +158,7 @@ export async function approvalFactsOf(
         const why = cr.why.replace(`${i.key}: `, '').replaceAll('`', '');
         return i.criteria.map((c) => ({ issue: i.key, n: c.n, standing: why }));
       }
-      return criteriaAt(i, cr?.sha ?? build, facts.judge)
+      return criteriaAt(i, cr?.sha ?? build, facts)
         .filter((c) => !c.proven)
         .map((c) => ({
           issue: i.key,
@@ -160,6 +167,7 @@ export async function approvalFactsOf(
         }));
     }),
     verdictsRequired: verdictsRequiredOf(doc?.document.delivery),
+    judgedOn: facts.judgedOn,
   };
 }
 

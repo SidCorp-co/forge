@@ -9,6 +9,8 @@
 
 import type { PolicyQaMode } from '@forge/contracts/project-config';
 import {
+  judgedOnReleaseBuild,
+  notJudgedOnWhy,
   RELEASE_CLIP_MAX_BYTES,
   type ReleaseClaim,
   type ReleaseKnownIssue,
@@ -70,26 +72,37 @@ export interface ClaimReading {
   underCutover: boolean;
 }
 
-/** The verdicts a release reads a criterion by, newest first: those on `build`, or every one on a draft. */
-function readAt(verdicts: readonly CarriedVerdict[], build: string | null): CarriedVerdict[] {
+/**
+ * The verdicts a release reads a criterion by, newest first: those judged on `build`
+ * (`judgedOnReleaseBuild`, on its testing environment where the project names one), or every one on
+ * a draft.
+ */
+function readAt(
+  verdicts: readonly CarriedVerdict[],
+  build: string | null,
+  judgedOn: string | null,
+): CarriedVerdict[] {
   const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
   return build === null
     ? newestFirst
-    : newestFirst.filter((v) => v.identityKind === 'commit' && v.commitSha === build);
+    : newestFirst.filter((v) => judgedOnReleaseBuild(v, build, judgedOn));
 }
 
+/** `judgedOn` is the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18), or null. */
 export function readClaims(
   criteria: readonly CarriedCriterion[],
   build: string | null,
   judge: PolicyQaMode | null,
+  judgedOn: string | null,
 ): ClaimReading[] {
   return criteria.map((criterion) => {
-    const read = verifiedOf(readAt(criterion.verdicts, build), judge);
+    const read = verifiedOf(readAt(criterion.verdicts, build, judgedOn), judge);
     const { stands, why } = read;
     const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
     const onBuild = build === null ? null : stands;
     let claim: ReleaseClaim;
-    if (build === null || onBuild === null) claim = releaseClaimOf(criterion.verdicts, build);
+    if (build === null || onBuild === null)
+      claim = releaseClaimOf(criterion.verdicts, build, judgedOn);
     else if (proven) claim = { claimed: true, at: onBuild.at };
     else if (onBuild.verdict === 'pass')
       claim = { claimed: false, standing: 'not_judged', elsewhere: null };
@@ -98,7 +111,12 @@ export function readClaims(
       criterion,
       claim,
       proven,
-      unverified: stands?.verdict === 'pass' ? why : null,
+      unverified:
+        stands?.verdict === 'pass'
+          ? why
+          : build !== null && judgedOn !== null && !stands
+            ? notJudgedOnWhy(judgedOn, build)
+            : null,
       onBuild,
       underCutover: proven && stands !== null && countedUnderCutover(stands, judge),
     };

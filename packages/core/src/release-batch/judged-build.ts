@@ -11,10 +11,12 @@
  * falls back to the build the issue is known to be in, and `basis` says why.
  */
 
+import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
 import { db } from '../db/client.js';
 import { shipsWithdrawnOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { readProjectDocument } from '../project-config/index.js';
 import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { landedJudgedBuild } from './landed-build.js';
@@ -180,7 +182,9 @@ export async function judgedBuildOf(
  * through its change requests), the build a verdict on it counts at: its landing, or its request's
  * head (`landed-build.ts:landedJudgedBuild`), `sha` null with the reason where none is read yet. Null
  * on a project that declares production, and on one whose document cannot be read, which declared
- * nothing either way. The verdict door names it when it refuses a `runtime` identity there.
+ * nothing either way. The verdict door names it when it refuses a `runtime` identity there. Null
+ * too on a project that names its testing environment (`delivery.judgedOn`, REQ-36 BC-18): a build
+ * runs there, and its releases are proven only by a verdict judged on it.
  */
 export async function unobservedBuildOf(issue: {
   id: string;
@@ -188,6 +192,8 @@ export async function unobservedBuildOf(issue: {
 }): Promise<JudgedBuild | null> {
   const declared = await resolveReleaseDeclaration(issue.projectId);
   if (declared?.kind !== 'no-release' && declared?.kind !== 'change-requests') return null;
+  const held = await readProjectDocument(issue.projectId);
+  if (judgedOnOf(held?.document.delivery) !== null) return null;
   return (
     (await landedJudgedBuild(issue)) ?? {
       sha: null,

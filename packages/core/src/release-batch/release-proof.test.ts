@@ -25,6 +25,7 @@ const verdict = (
   verdict: v,
   identityKind: 'commit',
   commitSha: BUILD,
+  runtimeRef: null,
   at: `2026-10-14T${at}:00.000Z`,
   reason: null,
   evidence: [],
@@ -65,7 +66,7 @@ function issue(verdicts: CarriedVerdict[][]): IssueFact {
 }
 
 const read = (i: IssueFact, judge: PolicyQaMode | null = null, build: string | null = BUILD) =>
-  criteriaAt(i, build, judge);
+  criteriaAt(i, build, { judge, judgedOn: null });
 
 describe("a release record counts what it proves by the requirement's rule", () => {
   it('never counts a short proven: judged and unproven, never "not judged yet"', () => {
@@ -127,9 +128,73 @@ describe("a release record counts what it proves by the requirement's rule", () 
     const unproven = read(i)
       .filter((c) => !c.proven)
       .map((c) => ({ issue: i.key, n: c.n, standing: c.unverified ?? c.standing }));
-    const answers = approvalAnswersOf({ carried: [], unproven, verdictsRequired: true });
+    const answers = approvalAnswersOf({
+      carried: [],
+      unproven,
+      verdictsRequired: true,
+      judgedOn: null,
+    });
     expect(answers.verdicts).toMatchObject({
       gap: 'Not proven: ISS-1 criterion 1 (judged short: met short of its wording, and only a pass counts as verified).',
+    });
+  });
+});
+
+// REQ-36 BC-18..BC-20: on a project naming its testing environment, a release is proven only by a
+// pass judged on the build that environment serves, a runtime verdict at the release's commit
+describe('a release of a project that names its testing environment', () => {
+  const onDev = (i: IssueFact, build: string | null = BUILD) =>
+    criteriaAt(i, build, { judge: null, judgedOn: 'dev' });
+  const runtime = (at: string, ref = BUILD, over: Partial<CarriedVerdict> = {}) =>
+    verdict('pass', at, { identityKind: 'runtime', commitSha: null, runtimeRef: ref, ...over });
+
+  it('counts no commit verdict, and names the environment it was not judged on', () => {
+    const [c] = onDev(issue([[verdict('pass', '10:00')]]));
+    expect(c).toMatchObject({ standing: 'unjudged', proven: false, identity: null });
+    expect(c?.unverified).toBe(
+      `Not judged on dev: a release of this project is proven only by a pass judged on the build dev serves at ${BUILD.slice(0, 12)} (a runtime verdict), and a commit verdict gates the merge only`,
+    );
+  });
+
+  it('proves it by a runtime pass at the build, however it was corroborated', () => {
+    const [c] = onDev(issue([[verdict('pass', '10:00'), runtime('11:00')]]));
+    expect(c).toMatchObject({
+      standing: 'pass',
+      proven: true,
+      unverified: null,
+      identity: `runtime ${BUILD.slice(0, 12)} on dev`,
+    });
+  });
+
+  it("counts no runtime pass at another build, nor the builder's own", () => {
+    expect(onDev(issue([[runtime('11:00', EARLIER)]]))[0]?.proven).toBe(false);
+    // recorded after the builder-pass cutover, which no amnesty counts
+    const after = { byBuilder: true, recordedAt: '2026-10-27T11:00:00.000Z' };
+    const [own] = onDev(issue([[runtime('11:00', BUILD, after)]]));
+    expect(own?.proven).toBe(false);
+    expect(own?.unverified).toBe(BUILDER_WHY);
+  });
+
+  it('reads a runtime fail at the build as failing', () => {
+    const [c] = onDev(issue([[runtime('11:00', BUILD, { verdict: 'fail' })]]));
+    expect(c).toMatchObject({ standing: 'fail', proven: false });
+  });
+
+  it('counts a commit verdict on a project naming none, as before (BC-20)', () => {
+    expect(read(issue([[verdict('pass', '10:00')]]))[0]?.proven).toBe(true);
+    expect(read(issue([[runtime('11:00')]]))[0]?.proven).toBe(false);
+  });
+
+  it('asks the approver for a deploy to the environment and a pass there', () => {
+    const answers = approvalAnswersOf({
+      carried: [],
+      unproven: [{ issue: 'ISS-1', n: 1, standing: 'Not judged on dev' }],
+      verdictsRequired: true,
+      judgedOn: 'dev',
+    });
+    expect(answers.verdicts).toMatchObject({
+      gap: 'Not proven: ISS-1 criterion 1 (Not judged on dev).',
+      fix: "Deploy the commit it ships to dev, and have the project's judge pass each there, on the build dev serves.",
     });
   });
 });

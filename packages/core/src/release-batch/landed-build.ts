@@ -22,6 +22,7 @@
  * to the issue until the host merges it, then the host's merge commit (`change-request-build.ts`).
  */
 
+import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import {
@@ -291,11 +292,21 @@ export type LandedCriterion =
   | { criterion: number; counts: true; at: string }
   | { criterion: number; counts: false; why: string };
 
-/** The whole commit a verdict was judged at, or why it names none. */
-function judgedCommit(verdict: CriterionVerdict): { sha: string } | { why: string } {
+/**
+ * The whole commit a verdict was judged at, or why it names none; on a project naming its testing
+ * environment (`judgedOn`), a runtime verdict at a whole commit names it (REQ-36 BC-18).
+ */
+function judgedCommit(
+  verdict: CriterionVerdict,
+  judgedOn: string | null,
+): { sha: string } | { why: string } {
   const at = verdict.at;
   if (!at) return { why: 'it names nothing it was judged against' };
-  const misshapen = landedIdentityWhy(at.kind === 'source' ? 'commit' : at.kind, at.value);
+  const misshapen = landedIdentityWhy(
+    at.kind === 'source' ? 'commit' : at.kind,
+    at.value,
+    judgedOn,
+  );
   if (misshapen) return { why: `it was ${misshapen}` };
   const sha = at.value.trim().toLowerCase();
   return WHOLE.test(sha)
@@ -346,6 +357,7 @@ export function weighOnLanded(
   { criterion, verdict }: StandingCriterion,
   via: string | null = null,
   head: MergedHead | null = null,
+  judgedOn: string | null = null,
 ): LandedCriterion {
   const no = (why: string): LandedCriterion => ({
     criterion,
@@ -355,7 +367,7 @@ export function weighOnLanded(
   if (!verdict) return no('no verdict was recorded for it');
   if (verdict.unverified) return no(verdict.unverified);
   if (!verdictEarns(verdict.verdict)) return no(`its verdict is \`${verdict.verdict}\``);
-  const judged = judgedCommit(verdict);
+  const judged = judgedCommit(verdict, judgedOn);
   if ('why' in judged) return no(judged.why);
   if (judged.sha !== build.toLowerCase()) {
     const atHead = atMergedHead(judged.sha, build, head);
@@ -374,11 +386,14 @@ export function weighOnLanded(
 function heldWhereNoneOwed(
   build: string,
   criteria: readonly StandingCriterion[],
+  judgedOn: string | null,
 ): LandedCriterion[] {
   return criteria.flatMap(({ criterion, verdict }): LandedCriterion[] => {
     if (!verdict?.at) return [];
     const why =
-      verdict.at.kind === 'source' ? null : landedIdentityWhy(verdict.at.kind, verdict.at.value);
+      verdict.at.kind === 'source'
+        ? null
+        : landedIdentityWhy(verdict.at.kind, verdict.at.value, judgedOn);
     if (why) {
       return [
         {
@@ -388,7 +403,7 @@ function heldWhereNoneOwed(
         },
       ];
     }
-    const judged = judgedCommit(verdict);
+    const judged = judgedCommit(verdict, judgedOn);
     if (verdictEarns(verdict.verdict) || !('sha' in judged) || judged.sha !== build.toLowerCase()) {
       return [];
     }
@@ -425,12 +440,14 @@ export async function landedStandings(
     const s = standing.get(issueId);
     if (!s) return [];
     const build = buildOf(issueId);
-    const weighed = s.criteria.map((c) => weighOnLanded(build, c, viaOf(issueId), headOf(issueId)));
+    const weighed = s.criteria.map((c) =>
+      weighOnLanded(build, c, viaOf(issueId), headOf(issueId), s.judgedOn),
+    );
     return [
       {
         issueId,
         owes: s.owes,
-        criteria: s.owes ? weighed : heldWhereNoneOwed(build, s.criteria),
+        criteria: s.owes ? weighed : heldWhereNoneOwed(build, s.criteria, s.judgedOn),
         live: s.criteria.length,
         passing: weighed.filter((c) => c.counts).length,
       },
@@ -460,7 +477,7 @@ export async function aheadBuildsOf(
     if (!s?.owes || s.criteria.length === 0 || build.sha === null) continue;
     const at = s.criteria.map(({ verdict }) => {
       if (!verdict || verdict.unverified || !verdictEarns(verdict.verdict)) return null;
-      const judged = judgedCommit(verdict);
+      const judged = judgedCommit(verdict, s.judgedOn);
       return 'sha' in judged ? judged.sha : null;
     });
     const one = at[0];
@@ -508,11 +525,15 @@ export async function landedBuildHolds(
   runtimes: Map<string, string | null>;
   unanswered: Map<string, string>;
   landed: Map<string, LandedHolds>;
+  judgedOn: string | null;
 } | null> {
   const delivery = await deliveryOf(projectId);
   if (!delivery) return null;
   const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
-  const builds = await deliveredBuildsOf(projectId, delivery, ids);
+  const [builds, held] = await Promise.all([
+    deliveredBuildsOf(projectId, delivery, ids),
+    readProjectDocument(projectId),
+  ]);
   const landed = new Map<string, LandedHolds>();
   for (const [issueId, build] of builds) {
     landed.set(issueId, {
@@ -521,5 +542,12 @@ export async function landedBuildHolds(
       ...(build.sha !== null && build.head ? { head: build.head } : {}),
     });
   }
-  return { sha: null, holds: new Map(), runtimes: new Map(), unanswered: new Map(), landed };
+  return {
+    sha: null,
+    holds: new Map(),
+    runtimes: new Map(),
+    unanswered: new Map(),
+    landed,
+    judgedOn: judgedOnOf(held?.document.delivery),
+  };
 }

@@ -80,7 +80,13 @@ export async function pageFacts(projectId: string, detail: ReleaseDetail): Promi
     readEffectivePolicy(projectId),
   ]);
   // the judge a requirement's coverage counts by, so the page proves what the requirement does
-  const claims = readClaims(criteria, build, policy?.document.qa ?? null);
+  // and the testing environment the release record proves it on (REQ-36 BC-18)
+  const claims = readClaims(
+    criteria,
+    build,
+    policy?.document.qa ?? null,
+    detail.verified.judgedOn ?? null,
+  );
   const facts = highlightFacts(detail.version, requirements, claims, mediaOf(claims, files, build));
   return { build, claims, requirements, facts, digest: digestOf(facts) };
 }

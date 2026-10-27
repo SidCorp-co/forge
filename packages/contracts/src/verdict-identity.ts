@@ -178,9 +178,22 @@ export function identityPhraseOf(v: VerdictReading): string {
  * landed sha, a design, a contract or a storefront draft names no landed commit. The record door,
  * the steward and a requirement's coverage all read this one sentence.
  */
-export function landedIdentityWhy(kind: string, value: string): string | null {
+export function landedIdentityWhy(
+	kind: string,
+	value: string,
+	judgedOn: string | null,
+): string | null {
 	if (kind === "commit") return null;
-	return `judged against ${kind} \`${value}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts`;
+	// on a project naming its testing environment (`delivery.judgedOn`, REQ-36 BC-18), a runtime ref
+	// that is a whole commit names that commit as it ran there, weighed at it as a commit verdict is
+	if (kind === "runtime" && judgedOn !== null && /^[0-9a-f]{40}$/i.test(value.trim())) {
+		return null;
+	}
+	const there =
+		kind === "runtime"
+			? ", or, where the project names its testing environment (`delivery.judgedOn`), one judged on the whole commit it serves"
+			: "";
+	return `judged against ${kind} \`${value}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts${there}`;
 }
 
 export const JUDGED_BUILD_SOURCES = ["live", "shipped", "merged", "landed", "change-request"] as const;

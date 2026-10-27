@@ -189,7 +189,7 @@ describe('on day 14 the agent proposes a defer or a decline for every decision (
       createdAt: new Date(),
     });
     ok(
-      await say('member', 'POST', '/api/projects/' + projectId + '/mockups', {
+      await say('member', 'POST', `/api/projects/${projectId}/mockups`, {
         target: { issue: issue.key },
         kind: 'html',
         name: 'export.html',

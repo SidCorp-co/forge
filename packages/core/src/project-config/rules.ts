@@ -1,5 +1,6 @@
 import { withArticle } from '@forge/contracts/articles';
 import { contentLanguageProblem } from '@forge/contracts/content-language';
+import { judgedOnProblem } from '@forge/contracts/delivery-policy';
 import { hostOf } from '@forge/contracts/git-repository';
 import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import { previewEnvironmentProblem } from '@forge/contracts/preview';
@@ -275,6 +276,16 @@ function checkPreviewEnvironment(doc: ProjectDocument): ConfigRefusal[] {
   return out;
 }
 
+/** A release is judged on an environment the project declares, never production (REQ-36 BC-18). */
+function checkJudgedOn(doc: ProjectDocument): ConfigRefusal[] {
+  const named = doc.delivery?.judgedOn;
+  if (named === undefined) return [];
+  const problem = judgedOnProblem(named, doc.environments);
+  return problem
+    ? [{ code: problem.code, path: pointer('delivery', 'judgedOn'), detail: problem.detail }]
+    : [];
+}
+
 function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): ConfigRefusal[] {
   const out: ConfigRefusal[] = [];
   const envs = Object.entries(doc.environments);
@@ -400,6 +411,7 @@ export function checkProjectConfig(
   out.push(...checkStorefrontProvider(doc, ctx));
   out.push(...checkEnvironments(doc, ctx));
   out.push(...checkPreviewEnvironment(doc));
+  out.push(...checkJudgedOn(doc));
   out.push(...checkGitlessBindings(doc, ctx));
   out.push(...checkWorkflowTemplates(doc, ctx));
   out.push(...checkContentLanguage(doc));

@@ -15,7 +15,7 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
       releasedAt: "2026-10-09T10:00:00.000Z",
       environment: { name: "production", url: "https://forge.example" },
       build: BUILD,
-      verified: { level: "criteria", proven: 2, total: 3, check: null, provider: null },
+      verified: { level: "criteria", proven: 2, total: 3, check: null, provider: null, judgedOn: null },
       approval: { required: true, state: "approved", by: { id: "u1", name: "Ada", kind: "human" }, at: "2026-10-09T09:00:00.000Z" },
     },
     highlights: {

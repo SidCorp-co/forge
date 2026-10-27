@@ -1,4 +1,5 @@
 import { isDecisionActOn } from '@forge/contracts/needs-you-decisions';
+import type { PolicyQaMode } from '@forge/contracts/project-config';
 import type {
   ReleaseAttemptStage,
   ReleaseAttentionGroup,
@@ -55,6 +56,17 @@ interface TurnFacts {
   /** The blockers, in the order the door refuses in, each with whoever owes its act. */
   gates: readonly { code: string; owner: ReleaseGateOwner }[];
   inFlight: ReleaseAttemptStage | null;
+  /**
+   * Where the project names its testing environment (`delivery.judgedOn`, REQ-36 BC-18): its name,
+   * the project's judge, and how many carried criteria pass on the build it serves of how many.
+   * Null where it names none, and the owner's turn reads as it always has (BC-20).
+   */
+  testing: {
+    environment: string;
+    judge: PolicyQaMode | null;
+    proven: number;
+    total: number;
+  } | null;
 }
 
 type Turn = Standing<ReleaseAttentionGroup, ReleaseWaitingKind>;
@@ -156,8 +168,32 @@ function draftTurn(f: TurnFacts): Turn {
   return turn('waiting', 'person', { who: holdersWho(f.admins), act, rule });
 }
 
+/**
+ * A release not yet proven on its testing environment (REQ-36 BC-18, BC-19): the owner's review is
+ * not theirs yet. It waits on the project's judge to judge each carried criterion on the build that
+ * environment serves, and says by the environment's name what is not judged there. Null where the
+ * project names no testing environment, or every carried criterion passes there.
+ */
+function untestedTurn(f: TurnFacts): Turn | null {
+  const t = f.testing;
+  if (!t || t.total === 0 || t.proven === t.total) return null;
+  return turn('waiting', 'agent', {
+    who: t.judge === 'independent' ? say('standing.who.independentJudge') : MASTER,
+    act: say('standing.act.judgeReleaseOn', { v: f.version, environment: t.environment }),
+    rule: say('releases.rule.notJudgedOn', {
+      environment: t.environment,
+      proven: t.proven,
+      total: t.total,
+    }),
+  });
+}
+
 function approvalTurn(f: TurnFacts): Turn {
   const a = f.approval;
+  if (a?.decision === null) {
+    const untested = untestedTurn(f);
+    if (untested) return untested;
+  }
   if (!a) {
     const route = f.runId
       ? `POST /api/projects/${f.projectId}/release-batches/${f.runId}/approvals`
@@ -195,7 +231,9 @@ function approvalTurn(f: TurnFacts): Turn {
  * A release that landed on a branch production does not deploy from. Production does not serve it:
  * where the project requires a release approval, a holder of releases.approve reviews it and
  * promotes it, and until then it is theirs. Where none is required and no production is declared,
- * the landing is the delivery (owner ruling 2026-10-22) and nobody owes anything.
+ * the landing is the delivery (owner ruling 2026-10-22) and nobody owes anything. On a project
+ * naming its testing environment, the review waits until every carried criterion passes there
+ * (`untestedTurn`).
  */
 function landedTurn(f: TurnFacts): Turn {
   const branch = f.landedOn ?? '';
@@ -205,6 +243,8 @@ function landedTurn(f: TurnFacts): Turn {
       waitingOn: nobodyWaits(say('releases.rule.landedDelivered', { branch })),
     };
   }
+  const untested = untestedTurn(f);
+  if (untested) return untested;
   const rule = say('releases.rule.landedOwesProduction', { branch });
   const act = say('standing.act.reviewAndPromote', { v: f.version });
   if (f.viewer?.mayApprove) return turn('needs_you', 'you', { who: YOU, act, rule });

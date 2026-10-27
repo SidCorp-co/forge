@@ -22,6 +22,7 @@ const draftTurn = (blockers: ReturnType<typeof blocker>[]) =>
     viewer: { userId: 'u', agency: 'human', isAdmin: true, mayApprove: true },
     gates: gateViews(blockers, [], ['Ada']),
     inFlight: null,
+    testing: null,
   });
 
 describe('a draft while another release runs', () => {

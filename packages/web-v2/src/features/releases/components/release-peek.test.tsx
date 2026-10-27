@@ -28,7 +28,7 @@ const DETAIL = {
   approvalRequired: true,
   approvers: [{ id: "u", name: "orchestrator", kind: "agent" }],
   production: null,
-  verified: { level: "criteria", proven: 10, total: 10, check: null, provider: null },
+  verified: { level: "criteria", proven: 10, total: 10, check: null, provider: null, judgedOn: null },
   criteria: { total: 10, proven: 10, failing: 0, open: 0, unproven: 0 },
   issues: [],
   gates: [],

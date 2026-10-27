@@ -1,6 +1,7 @@
 // The refusal vocabulary of the project document, its bindings, its policy and its testing secrets.
 
 import { CONTENT_LANGUAGE_REFUSAL_CODES } from "./content-language.js";
+import { JUDGED_ON_REFUSAL_CODES } from "./delivery-policy.js";
 import type { RefusalStatuses } from "./refusal.js";
 import { TEMPLATE_REFUSAL_CODES } from "./workflow-template-schema.js";
 
@@ -59,6 +60,8 @@ export const CONFIG_REFUSAL_CODES = [
 	...STORED_REFUSAL_CODES,
 	...WORKFLOW_TEMPLATE_CONFIG_REFUSAL_CODES,
 	...CONTENT_LANGUAGE_REFUSAL_CODES,
+	/** `delivery.judgedOn` names no declared environment, or production (REQ-36 BC-18). */
+	...JUDGED_ON_REFUSAL_CODES,
 ] as const;
 
 export type ConfigRefusalCode = (typeof CONFIG_REFUSAL_CODES)[number];
