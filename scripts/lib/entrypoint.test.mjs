@@ -586,7 +586,8 @@ function entryReads(rel, text) {
       (ts.isIdentifier(node) && !naming(node)) ||
       ts.isPropertyAccessExpression(node) ||
       ts.isElementAccessExpression(node) ||
-      ts.isCallExpression(node)
+      ts.isCallExpression(node) ||
+      ts.isAwaitExpression(node)
     ) {
       if (!WRAPS.some((is) => is(node)) && isProcess(node)) {
         const leak = processLeak(node);
@@ -852,6 +853,11 @@ describe('no file decides it was launched by hand', () => {
       'scripts/required-alias.mjs',
       "const r = require;\nif (import.meta.filename === r('process').argv[1]) main();\n",
       2,
+    ],
+    [
+      'scripts/dynamic-passed.mjs',
+      "function entry(p) {\n  return p.argv[1];\n}\nif (import.meta.filename === entry(await import('node:process'))) main();\n",
+      4,
     ],
     [
       'scripts/from.mjs',
