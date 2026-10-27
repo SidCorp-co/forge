@@ -321,8 +321,29 @@ function entryReads(rel, text) {
         if (ts.isObjectBindingPattern(node.name) && isProcess(unwrap(node.initializer))) {
           for (const el of node.name.elements) {
             const key = keyOf(el.propertyName ?? el.name);
-            if ((key === 'argv' || key === null) && ts.isIdentifier(el.name)) {
+            if (el.dotDotDotToken && ts.isIdentifier(el.name) && !processNames.has(el.name.text)) {
+              processNames.add(el.name.text);
+              changed = true;
+            } else if ((key === 'argv' || key === null) && ts.isIdentifier(el.name)) {
               changed = bind(el.name.text, 0) || changed;
+            }
+          }
+        }
+        const init = unwrap(node.initializer);
+        if (
+          ts.isObjectBindingPattern(node.name) &&
+          ts.isIdentifier(init) &&
+          GLOBALS.has(init.text)
+        ) {
+          for (const el of node.name.elements) {
+            const key = keyOf(el.propertyName ?? el.name);
+            if (
+              (key === 'process' || key === null) &&
+              ts.isIdentifier(el.name) &&
+              !processNames.has(el.name.text)
+            ) {
+              processNames.add(el.name.text);
+              changed = true;
             }
           }
         }
@@ -457,7 +478,45 @@ function entryReads(rel, text) {
     return `argv used whole: ${text()}`;
   };
 
+  /** A destructuring of process whose argv is itself destructured: judged as argv's own would be. */
+  const nestedArgv = (pattern, whole) => {
+    for (const el of pattern.elements) {
+      const prop = ts.isBindingElement(el)
+        ? el.propertyName
+        : ts.isPropertyAssignment(el)
+          ? el.name
+          : null;
+      const inner = ts.isBindingElement(el)
+        ? el.name
+        : ts.isPropertyAssignment(el)
+          ? el.initializer
+          : null;
+      if (!prop || !inner || ts.isIdentifier(inner)) continue;
+      const key = keyOf(prop);
+      if (key !== 'argv' && key !== null) continue;
+      const items = inner.elements;
+      const array = ts.isArrayBindingPattern(inner) || ts.isArrayLiteralExpression(inner);
+      if (!array || bindsEntry(items, 0))
+        say(whole, `argv destructured inside process: ${whole.getText(src)}`);
+    }
+  };
+
   visit((node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      ts.isObjectBindingPattern(node.name)
+    ) {
+      if (isProcess(unwrap(node.initializer))) nestedArgv(node.name, node);
+    }
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isObjectLiteralExpression(node.left) &&
+      isProcess(unwrap(node.right))
+    ) {
+      nestedArgv({ elements: node.left.properties }, node);
+    }
     if (ts.isIdentifier(node) && naming(node)) return;
     if (
       !ts.isIdentifier(node) &&
@@ -624,6 +683,31 @@ describe('no file decides it was launched by hand', () => {
       1,
     ],
     [
+      'scripts/nested.mjs',
+      'const { argv: [, entry] } = process;\nif (import.meta.filename === entry) main();\n',
+      1,
+    ],
+    [
+      'scripts/nested-keyed.mjs',
+      'const { argv: { 1: entry } } = process;\nif (import.meta.filename === entry) main();\n',
+      1,
+    ],
+    [
+      'scripts/nested-assigned.mjs',
+      'let entry;\n({ argv: [, entry] } = process);\nif (import.meta.filename === entry) main();\n',
+      2,
+    ],
+    [
+      'scripts/process-rest.mjs',
+      'const { ...p } = process;\nif (import.meta.filename === p.argv[1]) main();\n',
+      2,
+    ],
+    [
+      'scripts/process-taken.mjs',
+      'const { process: p } = globalThis;\nif (import.meta.filename === p.argv[1]) main();\n',
+      2,
+    ],
+    [
       'scripts/from.mjs',
       'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n',
       2,
@@ -744,6 +828,10 @@ describe('no file decides it was launched by hand', () => {
       'function parse(v) {\n  return v.slice(2);\n}\nparse(process.argv);\nconst ROOT = import.meta.url;\n',
     ],
     ['scripts/tail.mjs', 'const [, , ...rest] = process.argv;\nconst ROOT = import.meta.url;\n'],
+    [
+      'scripts/nested-tail.mjs',
+      'const { argv: [, , ...rest] } = process;\nconst ROOT = import.meta.url;\n',
+    ],
     [
       'scripts/param-tail.mjs',
       'function flags([, , ...rest]) {\n  return rest;\n}\nflags(process.argv);\nconst ROOT = import.meta.url;\n',
