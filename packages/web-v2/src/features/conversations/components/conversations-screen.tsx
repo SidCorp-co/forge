@@ -326,6 +326,7 @@ export function ConversationsScreen() {
       <SlideOver
         open={mobileHistoryOpen}
         onClose={() => setMobileHistoryOpen(false)}
+        title="Conversation history"
         hideHeader
         fitBody
         width="min(85vw, 320px)"

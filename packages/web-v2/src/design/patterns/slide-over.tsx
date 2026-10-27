@@ -126,12 +126,17 @@ export function SlideOver({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        // The title it draws is its name, so a screen reader announces which sheet opened.
-        {...(hideHeader ? {} : { "aria-labelledby": titleId })}
+        // Its title is its name, drawn or not, so a screen reader announces which sheet opened.
+        {...(title ? { "aria-labelledby": titleId } : {})}
         className="forge-slide flex h-full w-full max-w-[100vw] flex-col border-l border-line bg-surface shadow-lg sm:w-[var(--slide-over-w)]"
         style={{ "--slide-over-w": slideOverWidth } as CSSProperties}
         onClick={(e) => e.stopPropagation()}
       >
+        {hideHeader && title ? (
+          <span id={titleId} className="sr-only">
+            {title}
+          </span>
+        ) : null}
         {!hideHeader && (
           <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-5 py-4">
             <div id={titleId} className="fg-h3 min-w-0 flex-1" data-testid="slide-over-title">

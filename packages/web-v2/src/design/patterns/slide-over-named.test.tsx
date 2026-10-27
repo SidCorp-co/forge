@@ -17,4 +17,14 @@ describe("a sheet", () => {
     );
     expect(screen.getByRole("dialog", { name: "Filters" })).toBeTruthy();
   });
+
+  it("is named by its title when it draws no title bar of its own", () => {
+    render(
+      <SlideOver open onClose={vi.fn()} title="My conversations" hideHeader>
+        <p>body</p>
+      </SlideOver>,
+    );
+    expect(screen.getByRole("dialog", { name: "My conversations" })).toBeTruthy();
+    expect(screen.queryByTestId("slide-over-title")).toBeNull();
+  });
 });

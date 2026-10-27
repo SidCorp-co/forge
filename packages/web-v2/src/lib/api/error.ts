@@ -46,14 +46,15 @@ export function isRetryableApiError(err: unknown): boolean {
   return true;
 }
 
-/** When the server asked to be asked again, as a sentence; null where it did not say. */
+/** When the server asked to be asked again, as a sentence; null where it did not say. Each unit is
+ *  rounded up, so a retry at the time it names is never sooner than the server allows. */
 export function retryWhen(err: unknown): string | null {
   if (!(err instanceof ApiError) || err.retryAfterMs === undefined) return null;
   const seconds = Math.ceil(err.retryAfterMs / 1000);
-  if (seconds <= 1) return 'You can retry now.';
-  if (seconds < 90) return `You can retry in ${seconds} seconds.`;
-  const minutes = Math.round(seconds / 60);
-  return minutes < 90 ? `You can retry in ${minutes} minutes.` : `You can retry in ${Math.round(minutes / 60)} hours.`;
+  if (seconds <= 0) return 'You can retry now.';
+  if (seconds < 90) return `You can retry in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`;
+  const minutes = Math.ceil(seconds / 60);
+  return minutes < 90 ? `You can retry in ${minutes} minutes.` : `You can retry in ${Math.ceil(minutes / 60)} hours.`;
 }
 
 /**

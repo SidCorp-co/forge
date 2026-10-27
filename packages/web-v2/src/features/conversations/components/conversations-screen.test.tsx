@@ -228,6 +228,15 @@ describe("the open room, across a reload", () => {
   });
 });
 
+// ISS-1229 r49: the phone's history sheet drew no title bar and so had no name to announce.
+describe("the phone's history sheet", () => {
+  it("is announced by its name", () => {
+    render(<ConversationsScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Conversation history" }));
+    expect(screen.getByRole("dialog", { name: "Conversation history" })).toBeTruthy();
+  });
+});
+
 // ISS-1229 r35, judge-95: the list offered a viewer a room they could not start.
 describe("the offer of a new room", () => {
   it("is made to a member of a project here", () => {

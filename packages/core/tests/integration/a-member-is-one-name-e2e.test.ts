@@ -17,6 +17,21 @@ const MIGRATION = fileURLToPath(
 
 const fx = registerInboxFixture();
 
+/** The migration with "another member" and "a member" traded, in either case: its way back. */
+function swapped(text: string): string {
+  const words: Record<string, string> = {
+    'Another member': 'A member',
+    'another member': 'a member',
+    'A member': 'Another member',
+    'a member': 'another member',
+  };
+  // A letter, not a word boundary, bounds the words: '\1A member\2' puts a back-reference's digit before them.
+  return text.replace(
+    /(?<![A-Za-z])(?:Another member|another member|A member|a member)(?![A-Za-z])/g,
+    (w) => words[w] ?? w,
+  );
+}
+
 async function runMigration(): Promise<string[]> {
   const notices: string[] = [];
   const postgres = (await import('postgres')).default;
@@ -32,12 +47,23 @@ async function runMigration(): Promise<string[]> {
   return notices.filter((n) => n.startsWith('0396'));
 }
 
+/** An issue numbered as the delivery door names it, so a notice about it is led by "ISS-<seq> — ". */
+async function anIssue(seq: number): Promise<string> {
+  const id = crypto.randomUUID();
+  await fx.db.execute(sql`
+    INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq)
+    VALUES (${id}, ${fx.project.id}, 'Fix the login', 'open', ${fx.owner}, ${seq})
+  `);
+  return id;
+}
+
 /** A notice told to the owner with a title as core wrote it before this round, and its bell row. */
-async function told(title: string): Promise<string> {
+async function told(title: string, issueId?: string): Promise<string> {
   const row = await fx.mods.recordAndDeliver({
     type: 'mention',
     recipients: [fx.owner],
     projectId: fx.project.id,
+    ...(issueId ? { issueId } : {}),
     title,
   });
   if (!row) throw new Error(`nothing recorded for ${title}`);
@@ -99,13 +125,15 @@ const SHIPPED = (who: string) =>
 describe('migration 0396: a person with no name reads "a member" in what core stored', () => {
   it('re-renders the person slot of a stored mention, invitation and waiting park, on the notice and its bell row', async () => {
     const ids = [
-      await told('Another member mentioned you in "Fix the login"'),
+      await told('Another member mentioned you in "Fix the login"', await anIssue(41)),
       await told('Another member invited you to Invoicing as member'),
       await told("INV-3 is waiting for another member's decision — Invoicing"),
       await told('INV-4 is waiting for something only another member can supply — Invoicing'),
     ];
     const before = await Promise.all(ids.map(titlesOf));
     for (const t of before) expect(t.notice).toMatch(/another member/i);
+    // The delivery door led the mention's bell row with its issue, as it does every mention core sends.
+    expect(before[0]?.bell).toEqual(['ISS-41 — Another member mentioned you in "Fix the login"']);
 
     const said = await runMigration();
 
@@ -133,16 +161,24 @@ describe('migration 0396: a person with no name reads "a member" in what core st
     );
   });
 
-  it('leaves an issue title that quotes the words as written', async () => {
+  it('leaves an issue title that quotes the words as written, wherever it quotes them', async () => {
     const quoted = await told(
       'Lan mentioned you in "Another member mentioned you in the old bell"',
     );
+    const afterADash = await told(
+      'Mai mentioned you in "Plan — Another member mentioned you in "X""',
+      await anIssue(42),
+    );
+    const invitedAfterADash = await told(
+      'Mai invited you to Plan — Another member invited you to Invoicing as member',
+    );
     const asks = await told('INV-5 — Ask another member about the release');
-    const before = await Promise.all([quoted, asks].map(titlesOf));
+    const ids = [quoted, afterADash, invitedAfterADash, asks];
+    const before = await Promise.all(ids.map(titlesOf));
 
     await runMigration();
 
-    expect(await Promise.all([quoted, asks].map(titlesOf))).toEqual(before);
+    expect(await Promise.all(ids.map(titlesOf))).toEqual(before);
   });
 
   it("re-renders a room's join and leave lines, and no other line", async () => {
@@ -162,6 +198,7 @@ describe('migration 0396: a person with no name reads "a member" in what core st
     const person = await comment(
       'Another member decided, when pressing the release, to ship it unverified.',
     );
+    const quoting = await comment(`The release said: ${SHIPPED('Another member')}`);
 
     await runMigration();
 
@@ -169,17 +206,23 @@ describe('migration 0396: a person with no name reads "a member" in what core st
     expect(await bodyOf(person)).toBe(
       'Another member decided, when pressing the release, to ship it unverified.',
     );
+    expect(await bodyOf(quoting)).toBe(`The release said: ${SHIPPED('Another member')}`);
   });
 
-  it('is undone by its statements with the two words swapped, row for row', async () => {
-    const mention = await told('Another member mentioned you in "Fix the login"');
-    const before = (await titlesOf(mention)).notice;
+  it('is undone by its statements with the two words swapped, which also re-render what core wrote since', async () => {
+    const issue = await anIssue(43);
+    const old = await told('Another member mentioned you in "Fix the login"', issue);
+    const named = await told('Lan mentioned you in "Fix the login"', issue);
+    const before = await Promise.all([old, named].map(titlesOf));
     await runMigration();
-    await fx.db.execute(sql`
-      UPDATE notifications
-         SET title = regexp_replace(title, '^((?:.* — )?)A member( mentioned you in ".*")$', '\\1Another member\\2')
-       WHERE id = ${mention}
-    `);
-    expect((await titlesOf(mention)).notice).toBe(before);
+    // Written by this round's code after the deploy: the new word, in the same slot.
+    const since = await told('A member invited you to Invoicing as member');
+
+    await fx.db.execute(sql.raw(swapped(readFileSync(MIGRATION, 'utf8'))));
+
+    expect(await Promise.all([old, named].map(titlesOf))).toEqual(before);
+    expect((await titlesOf(since)).notice).toBe(
+      'Another member invited you to Invoicing as member',
+    );
   });
 });
