@@ -37,7 +37,10 @@ Read these before judging anything, while whoever sent you can still equip you.
 - A verdict the run that built the change wrote is that builder's evidence and counts as no
   judgement, whatever \`qa\` (\`GET /api/projects/:id/policy\`) says: yours is the one that counts.
   A verdict answering \`notCounted\` (\`VERDICT_BY_BUILDER\`) was read as the builder's: where the
-  building run is still live on your box, send \`run\` with your box's run id. A run core has not
+  building run is still live on your box, send \`run\` with your box's run id. A run declared over an
+  issue before its merge was recorded, at a status short of \`awaiting_release\`, is read as its
+  builder, and the answer names that status: record the merge, move the issue on, and declare a new
+  judge run. A run core has not
   admitted yet, its declaration still queued, writes no verdict: one naming it is refused
   \`VERDICT_SESSION_NOT_ADMITTED\` with the refusal it waits behind, and nothing is written.
 - \`GET /api/projects/:id/issues?status=awaiting_release\` lists the issues whose work landed and waits
@@ -50,7 +53,9 @@ Read these before judging anything, while whoever sent you can still equip you.
 - \`GET /api/issues/:id/review\` lists what the review owes: the code-property criteria are its, not
   yours.
 - \`GET /api/issues/:id/judged-build\` answers the build a verdict on the issue defaults to: the sha the
-  environment serves, and in \`basis\` whether it holds the issue's landed commit.
+  environment serves, and in \`basis\` whether it holds the issue's landed commit. Where the project
+  names its testing environment (\`delivery.judgedOn\`), that is the build that environment serves
+  (\`source: judged-on\`), judged there as a \`runtime\` verdict at that commit.
 - \`GET /api/projects/:id/config\` answers the project document: each environment's address and the
   testing profile its testers get in through, whose \`limits\` say what that environment does not have.
 - \`GET /api/jobs/<run>/testing-profiles/<profile>/secrets\` answers the values behind that profile's
@@ -85,7 +90,8 @@ steps, what you expected, what you observed. Captures go outside the checkout yo
 
 ### Writing each verdict
 \`POST /api/issues/:id/verdicts\` per criterion, as ${guideRef('issue-flow')} (section 5) gives the
-body: the identity the build serves, written whole, the evidence uploaded first and cited by name, the
+body: the identity the build serves, written whole, the evidence uploaded first and cited by its name,
+its id or its download URL, the
 probe an observable criterion keeps, and its clip or \`withoutClip\`. A code-property criterion is the
 review's, and a verdict recorded on it as QA's is refused. On a project that declares no production
 environment nothing runs that Forge observes: the build is the commit \`judged-build\` names, its

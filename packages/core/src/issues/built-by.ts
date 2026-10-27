@@ -2,7 +2,15 @@
 // verdict (ISS-475, REQ-36 BC-16). A session built the issue when it recorded a check on it other
 // than a review's (`review.ts:buildersOf`), or its run was declared over the issue before the work
 // landed (the status its run opened the issue at, `runIssueStatuses`, is not awaiting_release,
-// closed or dropped), or it holds the issue's lease with no declaration saying it came after. A
+// closed or dropped, and no merge of the issue stood landed when it was declared, `mergedBeforeDeclared`), or it
+// holds the issue's lease with no declaration saying it came after. The merge is read beside the
+// status word because the word is only a proxy for the landing: adminhub-api's judge run bc3a1c72
+// was declared over ISS-23/24 at `in_progress` 14 minutes after both merged, since `developed`
+// is refused ISSUE_STATUS_LEGACY, and its 13 passes read as the builder's. A run declared with role
+// qa is never the builder for that reason, not for its role: core is told no role at declaration
+// (the box learns it only when the subagent binds), so the rule reads what that role asserts, that
+// the work had landed. What it costs: a builder re-declared over its own merged work, recording no
+// check, reads as a judge, as one re-declared at awaiting_release always has. A
 // judge run declared over an awaiting_release issue holds its lease too, on the same box, and is
 // not the builder: its declaration says the work had landed. So is one declared over a reopen the
 // steward made of landed work that only owed verdicts, before that reopen was refused
@@ -20,6 +28,7 @@ import { ISSUE_DISPATCH_TERMINAL_STATUSES } from '@forge/contracts/issue-machine
 import { type SQL, sql } from 'drizzle-orm';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { canonicalIssueKeySql, runGroupHolds } from '../lib/issue-run-group.js';
+import { designOnlyMarkSql } from './design-delivery.js';
 
 const TERMINAL = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),
@@ -109,6 +118,23 @@ function builderCandidatesSql(issueId: SQL): SQL {
   )`;
 }
 
+/**
+ * Whether the issue's work stood landed when run `r` was declared: its merge was recorded before the
+ * declaration, and nothing sent it back to `reopen` between the two. A reopen means the work is being
+ * built again, so a run declared over it builds, whatever merge stands from before
+ * (`owedVerdictsReopenSql` is the one priced exception). A design approval's stamp alone
+ * (`design-delivery.ts:designOnlyMarkSql`) lands no code, so a run declared after it may build it.
+ */
+const mergedBeforeDeclared = (issueId: SQL) =>
+  sql`COALESCE((
+    SELECT mi.merged_at < r.created_at
+       AND NOT ${designOnlyMarkSql(sql`mi`)}
+       AND NOT EXISTS (
+         SELECT 1 FROM kernel_transitions rt
+          WHERE rt.entity = 'issue' AND rt.entity_id = mi.id AND rt.to_status = 'reopen'
+            AND rt.created_at > mi.merged_at AND rt.created_at <= r.created_at)
+      FROM issues mi WHERE mi.id = ${issueId}), false)`;
+
 /** True where session `session` built issue `issueId`. */
 function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
   const key = keyOf(issueId);
@@ -118,6 +144,7 @@ function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
      WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
        AND ${runHoldsIssue(issueId)}
        AND (${opened} IN (${LANDED_LIST})
+            OR (${opened} <> 'reopen' AND ${mergedBeforeDeclared(issueId)})
             OR (${opened} = 'reopen' AND ${owedVerdictsReopenSql(issueId)}))
   )`;
   return sql<boolean>`(
@@ -130,6 +157,7 @@ function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
        WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
          AND ${runHoldsIssue(issueId)}
          AND COALESCE(${opened}, '') NOT IN (${LANDED_LIST})
+         AND NOT (COALESCE(${opened}, '') <> 'reopen' AND ${mergedBeforeDeclared(issueId)})
          AND NOT (COALESCE(${opened}, '') = 'reopen' AND ${owedVerdictsReopenSql(issueId)})
     )
     OR (EXISTS (
@@ -137,6 +165,30 @@ function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
        WHERE l.session_id = ${session} AND l.project_id = bi.project_id
          AND l.issue_key = ${canonicalIssueKeySql(sql`bi.iss_seq`)}
     ) AND NOT ${declaredAfterLanding})
+  )`;
+}
+
+/**
+ * The status run session `session`'s run was declared over `issueId` at, where that declaration is why
+ * the session reads as its builder: opened at a status before the landing, with no merge recorded by
+ * then. Null where the session reads as the builder for another reason, or not at all. The verdict
+ * door names it, so the judge declared too early is told how to be read as one.
+ */
+export function declaredBeforeLandingSql(issueId: SQL, session: SQL): SQL<string | null> {
+  const key = keyOf(issueId);
+  const opened = sql`(r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY} ->> ${key})`;
+  return sql<string | null>`(
+    SELECT ${opened} FROM agent_sessions ds JOIN pipeline_runs r ON r.id = ds.pipeline_run_id
+     WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
+       AND ${runHoldsIssue(issueId)}
+       AND ${opened} IS NOT NULL
+       AND ${opened} NOT IN (${LANDED_LIST})
+       AND NOT (${opened} <> 'reopen' AND ${mergedBeforeDeclared(issueId)})
+       AND NOT (${opened} = 'reopen' AND ${owedVerdictsReopenSql(issueId)})
+       AND NOT EXISTS (
+         SELECT 1 FROM issue_check_runs k
+          WHERE k.issue_id = ${issueId} AND k.kind <> 'review' AND k.run_session_id = ${session})
+     LIMIT 1
   )`;
 }
 

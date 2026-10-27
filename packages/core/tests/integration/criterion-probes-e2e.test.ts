@@ -295,6 +295,68 @@ describe('a judgement of an observable criterion cites a clip or says why not (R
     );
   });
 
+  // adminhub-fe ISS-53, 2026-10-27: the judge cited its clip by the attachment's id, then its
+  // download URL, then a full URL, and was refused VERDICT_CLIP_REQUIRED each time; the refusal
+  // never said the citation is read by name, and the id is the natural reading of it
+  it('takes a clip cited by its id or its download URL, on this issue only, and says so when refused', async () => {
+    const issue = await issueWith(true);
+    const other = await issueWith(true);
+    const { app } = await import('../../src/index.js');
+    const upload = async (
+      on: string,
+      name: string,
+      type: string,
+      bytes: Uint8Array<ArrayBuffer>,
+    ) => {
+      const fd = new FormData();
+      fd.append('file', new File([bytes], name, { type }));
+      const res = await app.fetch(
+        new Request(`http://forge.test/api/issues/${on}/attachments`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${tokens.author}` },
+          body: fd,
+        }),
+      );
+      expect(res.status, await res.clone().text()).toBe(201);
+      return (await res.json()) as { id: string; url: string };
+    };
+    const webm = new Uint8Array(2048);
+    webm.set([0x1a, 0x45, 0xdf, 0xa3]);
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const clip = await upload(issue, 'ac1-flow.webm', 'video/webm', webm);
+    const still = await upload(issue, 'ac1-flow.png', 'image/png', png);
+    const elsewhere = await upload(other, 'other.webm', 'video/webm', webm);
+    const cite = (evidence: string[], word = 'pass') =>
+      verdict(issue, {
+        criterion: 1,
+        verdict: word,
+        withoutClip: undefined,
+        evidence,
+        probe: requestProbe,
+      });
+
+    ok(await cite([clip.id]), 201);
+    ok(await cite([`/api/attachments/${clip.id}/download`], 'short'), 201);
+    ok(
+      await cite([
+        `https://forge-dev.sidcorp.co/api/attachments/${clip.id.toUpperCase()}/download`,
+      ]),
+      201,
+    );
+
+    for (const cited of [
+      [still.id],
+      [elsewhere.id],
+      [`/api/attachments/${elsewhere.id}/download`],
+    ]) {
+      const res = await cite(cited, 'fail');
+      expect([res.status, refused(res)]).toEqual([422, ['VERDICT_CLIP_REQUIRED']]);
+      expect(res.body.error.refusals[0].detail).toContain(
+        'by its name, its id or its download URL (`/api/attachments/:id/download`)',
+      );
+    }
+  });
+
   it('takes a skip, which judged nothing, and a code property, which no screen shows, with no clip', async () => {
     const issue = await issueWith(true);
     ok(await verdict(issue, { criterion: 1, verdict: 'skipped', withoutClip: undefined }), 201);

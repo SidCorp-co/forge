@@ -42,6 +42,31 @@ const MIB = 1024 * 1024;
 // ---- media: a clip or a picture QA kept as verdict evidence (BC-3, BC-4) ----
 
 export const RELEASE_CLIP_MIMES = ["video/webm", "video/mp4"] as const;
+
+const ATTACHMENT_ID =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ATTACHMENT_DOWNLOAD =
+	/(?:^|\/)api\/attachments\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/download\/?(?:[?#].*)?$/i;
+
+/**
+ * The attachment id an evidence line names by id, or by its download URL (`/api/attachments/:id/download`,
+ * relative or whole), lower case; null where it names one by name or names none. The same three
+ * spellings the attachment door answers with (`name`, `id`, `url`) are one citation of one file.
+ */
+export function citedAttachmentId(cited: string): string | null {
+	const line = cited.trim();
+	if (ATTACHMENT_ID.test(line)) return line.toLowerCase();
+	return ATTACHMENT_DOWNLOAD.exec(line)?.[1]?.toLowerCase() ?? null;
+}
+
+/** Whether an evidence line cites `file`: by its name, its id or its download URL. */
+export function citesAttachment(
+	cited: string,
+	file: { id: string; name: string },
+): boolean {
+	const line = cited.trim();
+	return line === file.name || citedAttachmentId(line) === file.id.toLowerCase();
+}
 export const RELEASE_PICTURE_MIMES = [
 	"image/png",
 	"image/jpeg",

@@ -9,6 +9,7 @@
 
 import type { PolicyQaMode } from '@forge/contracts/project-config';
 import {
+  citesAttachment,
   judgedOnReleaseBuild,
   notJudgedOnWhy,
   RELEASE_CLIP_MAX_BYTES,
@@ -258,8 +259,8 @@ function posterOf(clip: IssueFile, cited: readonly IssueFile[]): ReleaseMediaRef
 }
 
 /**
- * The clips and pictures a highlight may show: each file a claimed pass on the build cites by name
- * in its evidence, on that criterion's own issue, of a kind a page shows and within the clip
+ * The clips and pictures a highlight may show: each file a claimed pass on the build cites in its
+ * evidence by its name, its id or its download URL (contracts `citesAttachment`), on that criterion's own issue, of a kind a page shows and within the clip
  * ceiling, a clip with the still it opens on. Clips first, so a highlight that can show one does.
  */
 export function mediaOf(
@@ -273,11 +274,11 @@ export function mediaOf(
   for (const { criterion, claim, onBuild } of claims) {
     if (!claim.claimed || !onBuild || criterion.bc === null) continue;
     const ofVerdict = onBuild.evidence.flatMap((cited) => {
-      const file = files.find((f) => f.issueId === criterion.issueId && f.name === cited);
+      const file = files.find((f) => f.issueId === criterion.issueId && citesAttachment(cited, f));
       return file ? [file] : [];
     });
     for (const cited of onBuild.evidence) {
-      const file = files.find((f) => f.issueId === criterion.issueId && f.name === cited);
+      const file = files.find((f) => f.issueId === criterion.issueId && citesAttachment(cited, f));
       const kind = file ? releaseMediaKindOf(file.mime) : null;
       if (!file || !kind || seen.has(file.id)) continue;
       if (file.bytes <= 0 || file.bytes > RELEASE_CLIP_MAX_BYTES) continue;

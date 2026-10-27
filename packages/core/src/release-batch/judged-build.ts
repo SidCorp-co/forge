@@ -1,7 +1,9 @@
 /**
- * The build a verdict on an issue is judged against by default (REQ-6 BC-2, BC-4): the commit
- * production serves now where Forge can show it carries the issue's work, else the build that
- * shipped the work, else the commit it merged as. Read when asked and never stored.
+ * The build a verdict on an issue is judged against by default (REQ-6 BC-2, BC-4): on a project
+ * whose releases are judged on its testing environment (`delivery.judgedOn`, REQ-36 BC-18), the
+ * commit that environment serves where it carries the issue's work; else the commit production serves
+ * now where Forge can show it carries it, else the build that shipped the work, else the commit it
+ * merged as. Read when asked and never stored.
  *
  * The live build is what the production probe answers (`provider-live.ts:servedProductionCommit`),
  * never a branch head. It carries the issue where the release verified at that commit holds the issue
@@ -21,6 +23,7 @@ import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index
 import { resolveReleaseDeclaration } from './gate.js';
 import { landedJudgedBuild } from './landed-build.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
+import { servedOnJudgedOn } from './serving-reading.js';
 import {
   type AncestrySource,
   ancestrySourceFor,
@@ -48,6 +51,9 @@ export interface JudgedBuildDeps {
   /** On a project with no production environment, the issue's landed build (`landed-build.ts`); null
    *  on one with production. Absent, the project is read as having one. */
   landed?(issue: { id: string; projectId: string }): Promise<JudgedBuild | null>;
+  /** What the environment the project's releases are judged on (`delivery.judgedOn`) serves; null
+   *  where it names none. Absent, none is named. */
+  testing?(projectId: string): Promise<{ name: string; served: Reading<string> } | null>;
 }
 
 const LIVE_DEPS: JudgedBuildDeps = {
@@ -56,6 +62,7 @@ const LIVE_DEPS: JudgedBuildDeps = {
   ancestry: (projectId) => ancestrySourceFor(projectId),
   withdrawn: async (issueId) => (await shipsWithdrawnOf(db, [issueId])).has(issueId),
   landed: landedJudgedBuild,
+  testing: servedOnJudgedOn,
 };
 
 // Ancestry between two commits never changes, so an answer is kept for the process, bounded.
@@ -122,14 +129,75 @@ function fallback(
   };
 }
 
+/**
+ * Where the project names its testing environment (`delivery.judgedOn`, REQ-36 BC-18), its releases
+ * are proven by a verdict judged there, so the build it serves is the default where it holds the
+ * issue's work (`work`); otherwise why not, for the basis of the build answered instead.
+ */
+async function onTesting(
+  issue: JudgedBuildIssue,
+  work: string | null,
+  deps: JudgedBuildDeps,
+): Promise<JudgedBuild | string | null> {
+  const testing = await deps.testing?.(issue.projectId);
+  if (!testing) return null;
+  const { name } = testing;
+  const named = `this project's releases are judged on \`${name}\` (delivery.judgedOn)`;
+  if (!testing.served.ok)
+    return `${named}, and what it serves could not be read: ${testing.served.why}`;
+  const served = testing.served.value.toLowerCase();
+  if (!work)
+    return `${named}, which serves \`${served}\`, and nothing says where this issue's work is`;
+  const answer =
+    work === served ? true : await carried(await deps.ancestry(issue.projectId), work, served);
+  if (answer === true) {
+    return {
+      sha: served,
+      source: 'judged-on',
+      version: null,
+      basis: `\`${name}\` serves \`${served}\`, which holds this issue's work \`${work}\`; ${named}, so that is the build a verdict counts on, judged there at that commit (a \`runtime\` verdict)`,
+    };
+  }
+  return answer === false
+    ? `${named}; \`${name}\` serves \`${served}\`, which does not hold it`
+    : `${named}; whether \`${name}\`'s \`${served}\` holds it could not be read: ${answer.unread}`;
+}
+
+const withWhy = (build: JudgedBuild, why: string | null): JudgedBuild =>
+  why === null ? build : { ...build, basis: `${build.basis}; ${why}` };
+
 /** The build a verdict on `issue` defaults to, and how Forge knows. */
 export async function judgedBuildOf(
   issue: JudgedBuildIssue,
   deps: JudgedBuildDeps = LIVE_DEPS,
 ): Promise<JudgedBuild> {
-  // No production probe can exist there: the landing is the build (`landed-build.ts`).
+  // No production probe can exist there: the landing is the build (`landed-build.ts`), unless the
+  // project names the environment its releases are judged on, whose build is then the one.
   const landed = await deps.landed?.(issue);
-  if (landed) return landed;
+  if (landed) {
+    const testing = await onTesting(issue, landed.sha?.toLowerCase() ?? null, deps);
+    if (testing !== null && typeof testing !== 'string') return testing;
+    return withWhy(landed, testing);
+  }
+  // A project judged on its testing environment proves a release only by a verdict judged there
+  // (`judgedOnReleaseBuild`), so that build is the default wherever it holds the work, production's
+  // answer only where it does not.
+  const known = await knownWorkOf(issue, deps);
+  const testing = await onTesting(issue, known.work, deps);
+  if (testing !== null && typeof testing !== 'string') return testing;
+  return withWhy(await liveJudgedBuild(issue, known, deps), testing);
+}
+
+interface KnownWork {
+  /** Every release Forge verified, without the issue on any its reopen withdrew it from. */
+  releases: ShippedReleaseRun[];
+  /** The newest release that shipped the issue, or null. */
+  shippedIn: ShippedReleaseRun | null;
+  /** The issue's work commit: the release that shipped it, else its whole merge commit, else null. */
+  work: string | null;
+}
+
+async function knownWorkOf(issue: JudgedBuildIssue, deps: JudgedBuildDeps): Promise<KnownWork> {
   const withdrawn = await deps.withdrawn(issue.id);
   // A release that closed an issue its reopen took back shipped rejected work: none carries it now.
   const releases = (await deps.releases(issue.projectId)).map((r) =>
@@ -137,6 +205,16 @@ export async function judgedBuildOf(
   );
   const carrying = releases.filter((r) => r.issueIds.includes(issue.id));
   const shippedIn = carrying[carrying.length - 1] ?? null;
+  const merged = issue.mergedCommitSha?.trim().toLowerCase() ?? '';
+  return { releases, shippedIn, work: shippedIn?.commit ?? (WHOLE.test(merged) ? merged : null) };
+}
+
+/** On a project with production: the live build where it holds the issue, else what it is known to be in. */
+async function liveJudgedBuild(
+  issue: JudgedBuildIssue,
+  { releases, shippedIn, work }: KnownWork,
+  deps: JudgedBuildDeps,
+): Promise<JudgedBuild> {
   const served = await deps.served(issue.projectId);
   if (!served.ok) {
     return fallback(issue, shippedIn, `the live build could not be read: ${served.why}`);
@@ -159,8 +237,6 @@ export async function judgedBuildOf(
   if (liveRelease?.issueIds.includes(issue.id)) {
     return isLive(`production serves release ${liveRelease.version}, which shipped this issue`);
   }
-  const merged = issue.mergedCommitSha?.trim().toLowerCase() ?? '';
-  const work = shippedIn?.commit ?? (WHOLE.test(merged) ? merged : null);
   if (!work) return fallback(issue, null, `production serves \`${live}\``);
   if (work === live) return isLive('production serves the commit this issue shipped at');
   const answer = await carried(await deps.ancestry(issue.projectId), work, live);

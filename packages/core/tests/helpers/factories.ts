@@ -262,9 +262,9 @@ export async function createTestRunSession(
 ): Promise<string> {
   const runId = randomUUID();
   await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, metadata)
+    INSERT INTO pipeline_runs (id, project_id, kind, status, created_at, started_at, finished_at, metadata)
     VALUES (${runId}, ${projectId}, 'system', ${end ? 'completed' : 'running'}, ${start.toISOString()},
-            ${end?.toISOString() ?? null}, '{}'::jsonb)
+            ${start.toISOString()}, ${end?.toISOString() ?? null}, '{}'::jsonb)
   `);
   await db.execute(sql`
     INSERT INTO agent_sessions (project_id, device_id, pipeline_run_id, kind, status, started_at, created_at)

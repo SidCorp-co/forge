@@ -46,6 +46,7 @@ function namedBuildHint(t: Copy, build: JudgedBuild): string {
   if (build.source === "shipped") return t("issues.verdictAct.commitShipped", named);
   if (build.source === "merged") return t("issues.verdictAct.commitMerged", named);
   if (build.source === "landed") return t("issues.verdictAct.commitLanded", named);
+  if (build.source === "judged-on") return t("issues.verdictAct.commitJudgedOn", named);
   return t("issues.verdictAct.commitNone");
 }
 
@@ -93,7 +94,13 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
         loading={record.isPending}
         confirmDisabled={!ready}
         onClose={close}
-        onConfirm={() => record.mutate({ criterion: row.n, verdict, sha, note, evidence }, { onSuccess: close })}
+        onConfirm={() =>
+          record.mutate(
+            // the build core named on the testing environment, untyped over, is judged there as it runs
+            { criterion: row.n, verdict, sha, note, evidence, onTesting: typed === null && build.data?.source === "judged-on" },
+            { onSuccess: close },
+          )
+        }
         message={
           <div className="grid gap-4" data-testid="verdict-form">
             <p className="whitespace-pre-wrap text-13 text-muted">{row.statement}</p>

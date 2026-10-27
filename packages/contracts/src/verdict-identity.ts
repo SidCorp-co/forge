@@ -196,7 +196,15 @@ export function landedIdentityWhy(
 	return `judged against ${kind} \`${value}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts${there}`;
 }
 
-export const JUDGED_BUILD_SOURCES = ["live", "shipped", "merged", "landed", "change-request"] as const;
+export const JUDGED_BUILD_SOURCES = [
+	"live",
+	"shipped",
+	"merged",
+	"landed",
+	"change-request",
+	// what the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18) serves
+	"judged-on",
+] as const;
 export type JudgedBuildSource = (typeof JUDGED_BUILD_SOURCES)[number];
 
 export interface JudgedBuild {
