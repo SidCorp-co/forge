@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -133,6 +133,19 @@ describe('every guarded script runs where it is launched from', () => {
  * (`argv[1]`) itself, as `{ file, line, how }`. Read off the parsed code, so a string or a comment is
  * never a read and no spelling is missed by a text search: an index, `.at()`, a destructuring, a
  * `slice` that keeps the entry, a method that walks it, and each through a name holding argv.
+ *
+ * Its bound is static reading of the one file's own code (ISS-1236 r8). Inside it, process and argv
+ * are followed through names, aliases, destructuring, the parameters and `arguments` of the
+ * function a call names where it is made, a function's `this`, process's methods returning process,
+ * the file's own exports imported back, and a module loaded by a name it cannot read, which is taken
+ * as process. Outside it, and so passed rather than refused:
+ * - code built from a string other than `eval` and `Function` (which are refused): `vm.runInThisContext`,
+ *   `vm.Script` and its kin, an import of a `data:` URL;
+ * - the launch entry read from anything but `process.argv`: `process.report`, `/proc/self/cmdline`,
+ *   `process.execArgv`;
+ * - a launch check in a file that never names `import.meta`;
+ * - a function of another file handed argv or process, which is that file's to answer;
+ * - a native handed `this` as its receiver (`fn.call(this)`), taken as using it, not returning it.
  */
 function handWrittenLaunchChecks(files) {
   return files
@@ -172,7 +185,7 @@ const FLAG_TESTS = new Set(['includes', 'indexOf', 'lastIndexOf']);
 function entryReads(rel, text) {
   const kind = rel.endsWith('.tsx')
     ? ts.ScriptKind.TSX
-    : rel.endsWith('.ts')
+    : /\.[mc]?ts$/.test(rel)
       ? ts.ScriptKind.TS
       : ts.ScriptKind.JS;
   const src = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, kind);
@@ -180,7 +193,21 @@ function entryReads(rel, text) {
   const processNames = new Set();
   /** Each name holding argv, with how far into argv it starts: `slice(2)` holds it from 2. */
   const argvNames = new Map();
-  const functions = new Map();
+  /** Names holding a function that loads a module by name: `require`, and one `createRequire` made. */
+  const loaders = new Set();
+  /** Names bound to `createRequire` itself. */
+  const requireMakers = new Set(['createRequire']);
+  /** What this file exports, by exported name: a local name, a name of process's module, or a value. */
+  const exportsLocal = new Map();
+  const exportsProcess = new Map();
+  const exportsValue = new Map();
+  let exportsAllOfProcess = false;
+  /** Names bound by importing the file itself: each local name with the export it reads. */
+  const selfImports = new Map();
+  /** Names holding the file's own module namespace. */
+  const selfNs = new Set();
+  /** For each function of this file called with argv, the positions argv was handed in, from where. */
+  const heldArguments = new Map();
   const visit = (fn) => {
     const walk = (node) => {
       fn(node);
@@ -189,9 +216,7 @@ function entryReads(rel, text) {
     walk(src);
   };
 
-  /** Names bound by an import: a function another file owns, which this file's walk cannot read. */
-  const imported = new Set();
-  /** Each name this file declares, with the scopes it is declared in; and the names holding a symbol. */
+  /** Each name this file declares, with each declaration and the scope it is visible in; and the names holding a symbol. */
   const declared = new Map();
   const symbols = new Set();
   const FUNCTIONS = [ts.isFunctionLike, ts.isSourceFile];
@@ -223,38 +248,96 @@ function entryReads(rel, text) {
     return nearest(d, BLOCKS);
   };
   const declare = (name, decl) =>
-    declared.set(name, [...(declared.get(name) ?? []), scopeOf(decl)]);
+    declared.set(name, [...(declared.get(name) ?? []), { scope: scopeOf(decl), decl }]);
+  /** The declarations `id`'s name has where it stands: those of the innermost scope holding one. */
+  const bindingAt = (id) => {
+    const decls = declared.get(id.text) ?? [];
+    for (let n = id; n; n = n.parent) {
+      const here = decls.filter((d) => d.scope === n);
+      if (here.length > 0) return here;
+    }
+    return [];
+  };
   /** Whether `id` names a declaration of this file rather than a global, at the place it stands. */
-  const shadowed = (id) =>
-    (declared.get(id.text) ?? []).some((scope) => {
-      for (let n = id; n; n = n.parent) if (n === scope) return true;
-      return false;
-    });
+  const shadowed = (id) => bindingAt(id).length > 0;
+  /** The function a declaration binds its name to, or null. */
+  const fnOf = (decl) => {
+    if (ts.isFunctionDeclaration(decl)) return decl;
+    if (!ts.isVariableDeclaration(decl) || !decl.initializer) return null;
+    let init = decl.initializer;
+    while (WRAPS.some((is) => is(init))) init = init.expression;
+    return ts.isArrowFunction(init) || ts.isFunctionExpression(init) ? init : null;
+  };
+  const MODULE_SPEC = /^(node:)?process$/;
+  /** Whether a module specifier names this file itself, by a relative path with or without its extension. */
+  const stem = (p) => p.replace(/\.[mc]?[jt]sx?$/, '');
+  const isSelf = (spec) =>
+    /^\.\.?\//.test(spec) &&
+    stem(posix.normalize(posix.join(posix.dirname(rel), spec))) === stem(posix.normalize(rel));
+  const exported = (node) =>
+    ts.canHaveModifiers(node) &&
+    (ts.getModifiers(node) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+  const defaulted = (node) =>
+    (ts.getModifiers(node) ?? []).some((m) => m.kind === ts.SyntaxKind.DefaultKeyword);
   visit((node) => {
     if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword)
       namesMeta = true;
     if (ts.isImportDeclaration(node)) {
+      const spec = node.moduleSpecifier.text ?? '';
       const clause = node.importClause;
-      if (clause?.name) imported.add(clause.name.text);
       const bound = clause?.namedBindings;
-      if (bound && ts.isNamespaceImport(bound)) imported.add(bound.name.text);
+      if (clause?.name) declare(clause.name.text, clause);
+      if (bound && ts.isNamespaceImport(bound)) declare(bound.name.text, bound);
       if (bound && ts.isNamedImports(bound))
-        for (const el of bound.elements) imported.add(el.name.text);
-    }
-    if (ts.isImportDeclaration(node) && /^(node:)?process$/.test(node.moduleSpecifier.text ?? '')) {
-      const clause = node.importClause;
-      if (clause?.name) processNames.add(clause.name.text);
-      const bound = clause?.namedBindings;
-      if (bound && ts.isNamespaceImport(bound)) processNames.add(bound.name.text);
-      if (bound && ts.isNamedImports(bound)) {
-        for (const el of bound.elements) {
-          const name = (el.propertyName ?? el.name).text;
-          if (name === 'argv') argvNames.set(el.name.text, 0);
-          if (name === 'default') processNames.add(el.name.text);
+        for (const el of bound.elements) declare(el.name.text, el);
+      if (MODULE_SPEC.test(spec)) {
+        if (clause?.name) processNames.add(clause.name.text);
+        if (bound && ts.isNamespaceImport(bound)) processNames.add(bound.name.text);
+        if (bound && ts.isNamedImports(bound)) {
+          for (const el of bound.elements) {
+            const name = (el.propertyName ?? el.name).text;
+            if (name === 'argv') argvNames.set(el.name.text, 0);
+            if (name === 'default') processNames.add(el.name.text);
+          }
         }
       }
+      if (/^(node:)?module$/.test(spec) && bound && ts.isNamedImports(bound)) {
+        for (const el of bound.elements)
+          if ((el.propertyName ?? el.name).text === 'createRequire') requireMakers.add(el.name.text);
+      }
+      if (isSelf(spec)) {
+        if (clause?.name) selfImports.set(clause.name.text, 'default');
+        if (bound && ts.isNamespaceImport(bound)) selfNs.add(bound.name.text);
+        if (bound && ts.isNamedImports(bound))
+          for (const el of bound.elements)
+            selfImports.set(el.name.text, (el.propertyName ?? el.name).text);
+      }
     }
-    if (ts.isFunctionDeclaration(node) && node.name) functions.set(node.name.text, node);
+    if (ts.isExportDeclaration(node)) {
+      const spec = node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)
+        ? node.moduleSpecifier.text
+        : null;
+      const clause = node.exportClause;
+      if (spec !== null && MODULE_SPEC.test(spec)) {
+        if (!clause) exportsAllOfProcess = true;
+        else if (ts.isNamespaceExport(clause)) exportsProcess.set(clause.name.text, '*');
+        else
+          for (const el of clause.elements)
+            exportsProcess.set(el.name.text, (el.propertyName ?? el.name).text);
+      }
+      if (spec === null && clause && ts.isNamedExports(clause))
+        for (const el of clause.elements)
+          exportsLocal.set(el.name.text, (el.propertyName ?? el.name).text);
+    }
+    if (ts.isExportAssignment(node) && !node.isExportEquals) {
+      if (ts.isIdentifier(node.expression)) exportsLocal.set('default', node.expression.text);
+      else exportsValue.set('default', node.expression);
+    }
+    if (ts.isVariableStatement(node) && exported(node))
+      for (const d of node.declarationList.declarations)
+        if (ts.isIdentifier(d.name)) exportsLocal.set(d.name.text, d.name.text);
+    if (ts.isFunctionDeclaration(node) && node.name && exported(node))
+      exportsLocal.set(defaulted(node) ? 'default' : node.name.text, node.name.text);
     if (
       (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) &&
       ts.isIdentifier(node.name)
@@ -266,16 +349,33 @@ function entryReads(rel, text) {
     }
     if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name)
       declare(node.name.text, node);
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
-    ) {
-      functions.set(node.name.text, node.initializer);
-    }
   });
   if (!namesMeta) return [];
+
+  /** The function of this file a name declared at the top of it holds, or null. */
+  const topFunction = (name) =>
+    (declared.get(name) ?? [])
+      .filter((d) => d.scope === src)
+      .map((d) => fnOf(d.decl))
+      .find(Boolean) ?? null;
+  /**
+   * What a called name is where the call is made: `{ fn }` for a function of this file, `{ foreign }`
+   * for another file's import, `{}` for anything else. A call is resolved by the scope it stands in,
+   * so a function of the same name nested elsewhere never stands in for the one called.
+   */
+  const calleeAt = (id) => {
+    const here = bindingAt(id);
+    const fn = here.map((d) => fnOf(d.decl)).find(Boolean);
+    if (fn) return { fn };
+    const imports = here.some(
+      (d) => ts.isImportSpecifier(d.decl) || ts.isImportClause(d.decl) || ts.isNamespaceImport(d.decl),
+    );
+    if (!imports) return {};
+    if (!selfImports.has(id.text)) return { foreign: true };
+    const local = exportsLocal.get(selfImports.get(id.text));
+    const target = local === undefined ? null : topFunction(local);
+    return target ? { fn: target } : {};
+  };
 
   // A global object's name, where no declaration of this file's shadows it, and every name holding one.
   const GLOBAL_NAMES = ['globalThis', 'global', 'self', 'window'];
@@ -307,8 +407,35 @@ function entryReads(rel, text) {
     while (at && (ts.isArrowFunction(at) || !ts.isFunctionLike(at))) at = at.parent;
     return !!at && ts.isConstructorDeclaration(at);
   }
+  /**
+   * A function that loads a module by name: `require` and a name holding one, a loader
+   * `createRequire` makes, another module's `require`, and `getBuiltinModule`.
+   */
+  function isLoader(node) {
+    const n = unwrap(node);
+    if (!n) return false;
+    if (ts.isIdentifier(n)) return n.text === 'require' || loaders.has(n.text);
+    const name = propName(n);
+    if (name === 'require' || name === 'getBuiltinModule') return true;
+    if (!ts.isCallExpression(n)) return false;
+    const made = unwrap(n.expression);
+    return (ts.isIdentifier(made) && requireMakers.has(made.text)) || propName(made) === 'createRequire';
+  }
+  const loads = (call) =>
+    call.expression.kind === ts.SyntaxKind.ImportKeyword || isLoader(call.expression);
+  /** The file's own module namespace: a name holding it, or a load of the file by its literal path. */
+  function isSelfNs(node) {
+    const n = unwrap(node);
+    if (!n) return false;
+    if (ts.isIdentifier(n)) return selfNs.has(n.text);
+    if (ts.isAwaitExpression(n)) return isSelfNs(n.expression);
+    if (!ts.isCallExpression(n) || !loads(n)) return false;
+    const [first] = n.arguments;
+    return !!first && ts.isStringLiteralLike(first) && isSelf(first.text);
+  }
   function isProcess(node) {
-    if (ts.isIdentifier(node)) return node.text === 'process' || processNames.has(node.text);
+    if (ts.isIdentifier(node))
+      return node.text === 'process' || processNames.has(node.text) || selfNs.has(node.text);
     if (node.kind === ts.SyntaxKind.ThisKeyword) return !constructed(node);
     if (ts.isAwaitExpression(node)) return isProcess(unwrap(node.expression));
     if (
@@ -318,14 +445,19 @@ function entryReads(rel, text) {
     ) {
       return true;
     }
-    // Whatever loads the module by name — require, a require made elsewhere, import() — hands over process.
+    // Whatever loads the module by name — require, a require made elsewhere, import() — hands over
+    // process; a load whose name this walk cannot read could be process, and is taken as process. The
+    // file's own namespace re-exports what it likes of process, so it is taken as process too.
     if (ts.isCallExpression(node)) {
       const [first] = node.arguments;
-      return !!first && ts.isStringLiteralLike(first) && /^(node:)?process$/.test(first.text);
+      if (!first) return false;
+      if (ts.isStringLiteralLike(first)) return MODULE_SPEC.test(first.text) || isSelfNs(node);
+      return loads(node);
     }
     const name = propName(node);
     if (name === 'process') return isGlobal(unwrap(node.expression));
     if (name === 'default') return isProcess(unwrap(node.expression));
+    if (name !== null && isSelfNs(unwrap(node.expression))) return exportIsProcess(name);
     return false;
   }
   const unwrap = (node) => {
@@ -346,11 +478,39 @@ function entryReads(rel, text) {
     }
     return null;
   };
+  /** The argv positions the `arguments` an identifier names were handed, or undefined. */
+  const argumentsOf = (node) => {
+    if (!node || !ts.isIdentifier(node) || node.text !== 'arguments') return undefined;
+    let fn = node.parent;
+    while (fn && (!ts.isFunctionLike(fn) || ts.isArrowFunction(fn))) fn = fn.parent;
+    return fn ? heldArguments.get(fn) : undefined;
+  };
+  /** Where in argv the file's export `name` starts, when it holds argv; null when it does not. */
+  function exportStart(name) {
+    if (exportsLocal.has(name)) return argvNames.get(exportsLocal.get(name)) ?? null;
+    if (exportsProcess.has(name)) return exportsProcess.get(name) === 'argv' ? 0 : null;
+    if (exportsValue.has(name)) return startOf(exportsValue.get(name));
+    return exportsAllOfProcess && name === 'argv' ? 0 : null;
+  }
+  /** Whether the file's export `name` holds process. */
+  function exportIsProcess(name) {
+    if (exportsLocal.has(name)) return processNames.has(exportsLocal.get(name));
+    if (exportsProcess.has(name)) return ['default', '*'].includes(exportsProcess.get(name));
+    if (exportsValue.has(name)) return isProcess(unwrap(exportsValue.get(name)));
+    return false;
+  }
   /** Where in argv `node` starts, when it holds argv; null when it does not. */
   const startOf = (node) => {
     const n = unwrap(node);
     if (!n) return null;
     if (ts.isIdentifier(n)) return argvNames.has(n.text) ? argvNames.get(n.text) : null;
+    if (ts.isElementAccessExpression(n)) {
+      const held = argumentsOf(unwrap(n.expression));
+      const k = literal(n.argumentExpression);
+      if (held && k !== null && held.has(k)) return held.get(k);
+    }
+    if (propName(n) !== null && propName(n) !== 'argv' && isSelfNs(unwrap(n.expression)))
+      return exportStart(propName(n));
     if (
       ts.isPropertyAccessExpression(n) &&
       n.name.text === 'argv' &&
@@ -422,7 +582,27 @@ function entryReads(rel, text) {
     let news = bind(name, startOf(value));
     if (isGlobal(held)) news = hold(globalAliases, name) || news;
     if (isProcess(held)) news = hold(processNames, name) || news;
+    if (isLoader(held)) news = hold(loaders, name) || news;
+    if (isSelfNs(held)) news = hold(selfNs, name) || news;
     return news;
+  };
+  /** What a name bound to the file's own export `key` receives: what that export holds. */
+  const mirror = (name, key) => {
+    let news = bind(name, exportStart(key));
+    if (exportIsProcess(key)) news = hold(processNames, name) || news;
+    const local = exportsLocal.get(key);
+    if (local !== undefined && globalAliases.has(local)) news = hold(globalAliases, name) || news;
+    if (local !== undefined && loaders.has(local)) news = hold(loaders, name) || news;
+    return news;
+  };
+  /** Record that a function of this file was handed argv, from `start`, at position `i`. */
+  const holdArgument = (fn, i, start) => {
+    if (start === null) return false;
+    const held = heldArguments.get(fn) ?? new Map();
+    heldArguments.set(fn, held);
+    if (held.has(i) && held.get(i) <= start) return false;
+    held.set(i, start);
+    return true;
   };
   /**
    * The bindings an object destructuring of process or a global takes: each target with its stated
@@ -446,8 +626,10 @@ function entryReads(rel, text) {
     const held = unwrap(value);
     const fromProcess = isProcess(held);
     const fromGlobal = isGlobal(held);
+    const fromSelf = isSelfNs(held);
     let news = false;
     for (const [key, name] of targets(pattern)) {
+      if (fromSelf && key !== null && key !== '...') news = mirror(name, key) || news;
       if (fromProcess) {
         if (key === 'argv' || key === null) news = bind(name, 0) || news;
         if (key === 'default' || key === '...' || key === null)
@@ -463,6 +645,7 @@ function entryReads(rel, text) {
   };
   for (let changed = true; changed; ) {
     changed = false;
+    for (const [name, key] of selfImports) changed = mirror(name, key) || changed;
     visit((node) => {
       if (ts.isVariableDeclaration(node) && node.initializer) {
         if (ts.isIdentifier(node.name))
@@ -475,15 +658,15 @@ function entryReads(rel, text) {
         if (ts.isObjectLiteralExpression(node.left))
           changed = destructure(node.left, node.right) || changed;
       }
-      if (
-        ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        functions.has(node.expression.text)
-      ) {
-        const params = functions.get(node.expression.text).parameters;
+      const fn =
+        ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+          ? calleeAt(node.expression).fn
+          : undefined;
+      if (fn) {
         node.arguments.forEach((arg, i) => {
-          const param = params[i]?.name;
+          const param = fn.parameters[i]?.name;
           if (param && ts.isIdentifier(param)) changed = receive(param.text, arg) || changed;
+          if (!ts.isArrowFunction(fn)) changed = holdArgument(fn, i, startOf(arg)) || changed;
         });
       }
     });
@@ -582,9 +765,13 @@ function entryReads(rel, text) {
     if (ts.isCallExpression(p) && p.arguments.includes(self)) {
       const callee = p.expression;
       if (startOf(p) !== null) return null;
-      if (ts.isIdentifier(callee) && imported.has(callee.text)) return null;
-      if (ts.isIdentifier(callee) && functions.has(callee.text)) {
-        const param = functions.get(callee.text).parameters[p.arguments.indexOf(self)];
+      const at = ts.isIdentifier(callee) ? calleeAt(callee) : {};
+      if (at.foreign) return null;
+      if (at.fn) {
+        const params = at.fn.parameters;
+        const param = params[p.arguments.indexOf(self)];
+        // Past every parameter, and none a rest: only `arguments` holds it, and that is judged where it is read.
+        if (!param && !params.at(-1)?.dotDotDotToken) return null;
         if (param && !param.dotDotDotToken && ts.isIdentifier(param.name)) return null;
         if (param && !param.dotDotDotToken && ts.isArrayBindingPattern(param.name)) {
           return bindsEntry(param.name.elements, start)
@@ -733,6 +920,18 @@ function entryReads(rel, text) {
         node,
         `code built from a string, which no walk can read for process or argv: ${node.getText(src)}`,
       );
+    }
+    // A function handed argv holds it in `arguments` too: an element read by a stated index is judged
+    // as argv's own read below, and any other use of `arguments` could reach the entry.
+    if (argumentsOf(node) && !naming(node)) {
+      const self = outer(node);
+      const p = self.parent;
+      const indexed = ts.isElementAccessExpression(p) && p.expression === self;
+      if (indexed && literal(p.argumentExpression) === null)
+        say(p, `arguments of a function handed argv read by a computed index: ${p.getText(src)}`);
+      const counted = ts.isPropertyAccessExpression(p) && p.expression === self && p.name.text === 'length';
+      if (!indexed && !counted)
+        say(node, `arguments of a function handed argv used whole: ${p.getText(src)}`);
     }
     if (ts.isIdentifier(node) && naming(node)) return;
     if (
@@ -1273,6 +1472,93 @@ describe('no file decides it was launched by hand', () => {
       'export const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;\n',
       1,
     ],
+    // judge-147's evaders inside the bound (ISS-1236 r8), and their neighbours.
+    [
+      'scripts/scoped-call.mjs',
+      'function pick(list) {\n  return list[1];\n}\nfunction unrelated() {\n  function pick(other) {\n    return other.length;\n  }\n  return pick([]);\n}\nif (import.meta.url === pick(process.argv)) main();\n',
+      2,
+    ],
+    [
+      'scripts/scoped-param.mjs',
+      'function pick(list) {\n  return list.length;\n}\nfunction run(pick) {\n  return pick(process.argv);\n}\nconst ROOT = import.meta.url;\n',
+      5,
+    ],
+    [
+      'scripts/self-reexport.mjs',
+      "export { argv } from 'node:process';\nimport { argv as av } from './self-reexport.mjs';\nif (import.meta.url === av[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/self-local.mjs',
+      "export const entry = process.argv;\nimport { entry as e } from './self-local.mjs';\nif (import.meta.url === e[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/self-namespace.mjs',
+      "export * from 'node:process';\nimport * as me from './self-namespace.js';\nif (import.meta.url === me.argv[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/self-dynamic.mjs',
+      "export const entry = process.argv;\nconst { entry: e } = await import('./self-dynamic.mjs');\nif (import.meta.url === e.at(1)) main();\n",
+      3,
+    ],
+    [
+      'scripts/self-function.mjs',
+      "export function pick(list) {\n  return list[1];\n}\nimport { pick as p } from './self-function';\nif (import.meta.url === p(process.argv)) main();\n",
+      2,
+    ],
+    [
+      'scripts/require-computed.mjs',
+      "import { createRequire } from 'node:module';\nconst load = createRequire(import.meta.url);\nconst p = load('node:' + 'process');\nif (import.meta.url === p.argv[1]) main();\n",
+      4,
+    ],
+    [
+      'scripts/require-made-renamed.mjs',
+      "import { createRequire as make } from 'node:module';\nif (import.meta.url === make(import.meta.url)(id).argv[1]) main();\n",
+      2,
+    ],
+    [
+      'scripts/builtin-computed.mjs',
+      "const p = process.getBuiltinModule(['node', 'process'].join(':'));\nif (import.meta.url === p.argv[1]) main();\n",
+      2,
+    ],
+    [
+      'scripts/import-computed.mjs',
+      "const id = 'node:process';\nconst p = await import(id);\nif (import.meta.url === p.default.argv[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/import-computed-handed.mjs',
+      'const m = await import(name);\nrun(m);\nconst ROOT = import.meta.url;\n',
+      2,
+    ],
+    [
+      'scripts/arguments.mjs',
+      'function pick(list) {\n  return arguments[0][1];\n}\nif (import.meta.url === pick(process.argv)) main();\n',
+      2,
+    ],
+    [
+      'scripts/arguments-computed.mjs',
+      'function pick() {\n  const i = 0;\n  return arguments[i][1];\n}\nif (import.meta.url === pick(process.argv)) main();\n',
+      3,
+    ],
+    [
+      'scripts/arguments-whole.mjs',
+      'function pick() {\n  return [...arguments][0][1];\n}\nif (import.meta.url === pick(process.argv)) main();\n',
+      2,
+    ],
+    [
+      'scripts/arguments-arrow.mjs',
+      'function outer() {\n  const read = () => arguments[0].at(1);\n  return read();\n}\nif (import.meta.url === outer(process.argv)) main();\n',
+      2,
+    ],
+    [
+      'packages/core/src/m.mts',
+      'if (import.meta.url === pathToFileURL(process.argv[1]).href) main();\n',
+      1,
+    ],
+    ['scripts/c.cts', 'const isMain = import.meta && process.argv.at(1);\n', 1],
   ];
 
   // FIXTURE TEXT — reads of argv that never touch the launch entry, and launch checks through a helper.
@@ -1326,6 +1612,23 @@ describe('no file decides it was launched by hand', () => {
       'const SCRIPT = `const [url] = process.argv.slice(1); ${x}`;\n// compares import.meta.url with process.argv[1]\nconst ROOT = import.meta.url;\n',
     ],
     ['scripts/no-meta.mjs', 'const entry = process.argv[1];\n'],
+    [
+      'scripts/scoped-allowed.mjs',
+      "function pick(list) {\n  return list.slice(2);\n}\nfunction other() {\n  function pick(x) {\n    return x[1];\n  }\n  return pick(['a', 'b']);\n}\npick(process.argv);\nconst ROOT = import.meta.url;\n",
+    ],
+    ['scripts/import-computed-read.mjs', 'const { resolveConfig } = await import(url);\nconst ROOT = import.meta.url;\n'],
+    [
+      'scripts/require-literal.mjs',
+      "import { createRequire } from 'node:module';\nconst ts = createRequire(import.meta.url)('typescript');\nuse(ts);\n",
+    ],
+    [
+      'scripts/arguments-tail.mjs',
+      'function flags() {\n  return arguments[0].slice(2).concat(arguments.length);\n}\nflags(process.argv);\nconst ROOT = import.meta.url;\n',
+    ],
+    [
+      'scripts/self-other.mjs',
+      "export const NAME = 'x';\nimport { NAME as n } from './self-other.mjs';\nconst ROOT = import.meta.url + n;\n",
+    ],
     ['scripts/lib/entrypoint.mjs', 'realpathSync(fileURLToPath(import.meta.url)) === argv[1]'],
     [
       'packages/core/src/lib/entrypoint.ts',
@@ -1379,7 +1682,7 @@ function sourceFiles(rel, acc = []) {
         sourceFiles(path, acc);
       }
     } else if (
-      /\.(mjs|cjs|js|ts|tsx)$/.test(entry.name) &&
+      /\.(mjs|cjs|js|ts|tsx|mts|cts)$/.test(entry.name) &&
       !/\.(test|fixture)\./.test(entry.name)
     ) {
       acc.push(path);
