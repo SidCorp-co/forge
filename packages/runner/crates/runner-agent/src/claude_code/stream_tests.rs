@@ -46,6 +46,7 @@ fn session(unreplayed: u32) -> Session {
         head_sha: None,
         permit: None,
         project_slug: None,
+        ended: tokio::sync::watch::channel(false).1,
     }
 }
 

@@ -68,7 +68,14 @@ after. The box ends the turn only when every message it wrote has been replayed 
 (`claude_code/stream.rs`), and reports each write applied. A box with no turn in flight refuses the
 write; core hands the messages back at once — on the refusal itself once core reads the turn ended
 (read again every 250 ms for 2 s while it still reads it running), or at that turn's end
-(`inject.ts:onInjectRefused`, `dispatch.ts:onSupportTurnEnded`). A session's end-of-turn bridges
+(`inject.ts:onInjectRefused`, `dispatch.ts:onSupportTurnEnded`). A write that reaches the box after core handed it a
+turn, and before the box has written that turn into a process, waits for it and goes into that
+turn's process (`claude_code/mod.rs:TurnPlacing`, held from the frame's arrival): core wrote it for
+the turn it had just started, and the resident that turn may close is never fed. A resident the turn
+cannot reuse (a model change, or a turn whose token it cannot read) is closed and reaped before the
+replacement spawns under the same key, and killed if it has not ended 10 s after its stdin closed
+(`claude_code/mod.rs:retire`); the replacement resumes the same Claude session, which no two
+processes write at once. A session's end-of-turn bridges
 fire after the write that ended it commits (`agent-sessions/session-transition.ts`); fired inside it,
 the support bridge read the session still running, and a turn it handed over was refused and the
 room backed off 30 s. The 2 s `support.room-drain` timer only

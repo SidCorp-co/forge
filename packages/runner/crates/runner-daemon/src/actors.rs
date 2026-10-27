@@ -543,23 +543,23 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 });
             }
         }
-        "agent:start" => {
+        "agent:start" | "agent:send" => {
             let (client, runner) = (client.clone(), runner.clone());
             let guard = InflightGuard::enter(inflight);
+            // held from here, in the order core sent its frames, so an inbox write that follows
+            // this turn waits for it rather than reaching the resident it may close
+            let placing = session_id_of(&frame.data).map(|sid| runner.place_turn(&sid));
+            let start = frame.event == "agent:start";
             tokio::spawn(async move {
                 let _guard = guard; // released when the chat turn finishes (drain gate)
-                if let Err(e) = chat::handle_start(&client, runner, frame.data).await {
-                    tracing::error!("[chat] start: {e}");
-                }
-            });
-        }
-        "agent:send" => {
-            let (client, runner) = (client.clone(), runner.clone());
-            let guard = InflightGuard::enter(inflight);
-            tokio::spawn(async move {
-                let _guard = guard; // released when the chat turn finishes (drain gate)
-                if let Err(e) = chat::handle_send(&client, runner, frame.data).await {
-                    tracing::error!("[chat] send: {e}");
+                let ran = if start {
+                    chat::handle_start(&client, runner, frame.data, placing).await
+                } else {
+                    chat::handle_send(&client, runner, frame.data, placing).await
+                };
+                if let Err(e) = ran {
+                    let which = if start { "start" } else { "send" };
+                    tracing::error!("[chat] {which}: {e}");
                 }
             });
         }

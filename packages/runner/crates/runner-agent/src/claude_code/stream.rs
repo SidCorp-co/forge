@@ -122,6 +122,8 @@ pub(crate) struct Completion {
     pub(crate) egress: Option<super::EgressGuard>,
     pub(crate) invoked_with_resume: bool,
     pub(crate) tx: mpsc::Sender<RunnerEvent>,
+    /// Raised once the process is reaped and its entry removed, which a close waits on.
+    pub(crate) ended: tokio::sync::watch::Sender<bool>,
 }
 
 /// Run the session's turns, then wait for the process to end (MCP
@@ -184,6 +186,7 @@ pub(crate) async fn complete(c: Completion) {
     }
     c.sessions.lock().await.remove(&c.job_id);
     inflight::forget(&c.job_id);
+    let _ = c.ended.send(true);
 }
 
 /// Wait until the session's child exits, recording its status.
