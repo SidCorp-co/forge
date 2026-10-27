@@ -778,13 +778,14 @@ function entryReads(rel, text) {
       ts.isBinaryExpression(p) &&
       p.left === self &&
       p.operatorToken.kind === ts.SyntaxKind.EqualsToken;
-    if (
+    const runtimeKey =
       ts.isElementAccessExpression(node) &&
       propName(node) === null &&
-      literal(node.argumentExpression) === null
-    )
-      return !written && isFunctionValue(node.expression);
-    if (propName(node) !== 'constructor' || written) return false;
+      literal(node.argumentExpression) === null;
+    const reached = runtimeKey
+      ? isFunctionValue(node.expression)
+      : propName(node) === 'constructor';
+    if (!reached || written) return false;
     if (ts.isPropertyAccessExpression(p) && p.expression === self && p.name.text === 'name')
       return false;
     if (ts.isTypeOfExpression(p)) return false;
@@ -1832,7 +1833,7 @@ describe('no file decides it was launched by hand', () => {
     ],
     [
       'scripts/constructor-uses.mjs',
-      "console.log('constructor');\nconst own = Object.hasOwn({}, 'constructor');\nclass A {\n  constructor(x) {\n    this.x = x;\n  }\n}\nconst kind = err.constructor.name;\nconst same = err.constructor === TypeError;\nconst made = err instanceof A.prototype.constructor;\nA.prototype.constructor = A;\nconst plain = typeof v.constructor;\nconst k = 'constructor';\nconst ROOT = import.meta.url;\n",
+      "console.log('constructor');\nconst own = Object.hasOwn({}, 'constructor');\nfunction f() {}\nconst key = pick();\nconst t = typeof f[key];\nconst is = f[key] === expected;\nconst of = v instanceof f[key];\nclass A {\n  constructor(x) {\n    this.x = x;\n  }\n}\nconst kind = err.constructor.name;\nconst same = err.constructor === TypeError;\nconst made = err instanceof A.prototype.constructor;\nA.prototype.constructor = A;\nconst plain = typeof v.constructor;\nconst k = 'constructor';\nconst ROOT = import.meta.url;\n",
     ],
     [
       'scripts/self-sibling.mjs',
