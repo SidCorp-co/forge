@@ -208,12 +208,24 @@ function entryReads(rel, text) {
   });
   if (!namesMeta) return [];
 
+  const GLOBALS = new Set(['globalThis', 'global', 'self', 'window']);
   const isProcess = (node) =>
     (ts.isIdentifier(node) && (node.text === 'process' || processNames.has(node.text))) ||
     (ts.isPropertyAccessExpression(node) &&
       node.name.text === 'process' &&
       ts.isIdentifier(node.expression) &&
-      node.expression.text === 'globalThis');
+      GLOBALS.has(node.expression.text)) ||
+    (ts.isElementAccessExpression(node) &&
+      ts.isStringLiteralLike(node.argumentExpression) &&
+      node.argumentExpression.text === 'process' &&
+      ts.isIdentifier(node.expression) &&
+      GLOBALS.has(node.expression.text)) ||
+    (ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'require' &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteralLike(node.arguments[0]) &&
+      /^(node:)?process$/.test(node.arguments[0].text));
   const unwrap = (node) => {
     let n = node;
     while (n && WRAPS.some((is) => is(n))) n = n.expression;
@@ -600,6 +612,16 @@ describe('no file decides it was launched by hand', () => {
       'scripts/process-alias.mjs',
       'const p = process;\nif (import.meta.filename === p.argv[1]) main();\n',
       2,
+    ],
+    [
+      'scripts/required.cjs',
+      "if (__filename === require('node:process').argv[1] && import.meta) main();\n",
+      1,
+    ],
+    [
+      'scripts/global-bracket.mjs',
+      "if (import.meta.filename === globalThis['process'].argv[1]) main();\n",
+      1,
     ],
     [
       'scripts/from.mjs',
