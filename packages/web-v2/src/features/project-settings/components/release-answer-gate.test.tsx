@@ -6,7 +6,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReleaseReadiness } from "../types";
 
@@ -121,8 +121,28 @@ describe("Shape & release's answer, beside the release gate", () => {
     expect(said).toContain("A release cannot start now: 1 thing stops it.");
   });
 
-  it("says what it said before where the gate could not be read", () => {
+  it("says what it said before where the reader cannot read the gate", () => {
     const said = draw(TWO_PER_ISSUE, undefined);
     expect(said).toContain("A release cannot start now: 2 things stop it.");
+  });
+
+  it.each([
+    ["with nothing cached", undefined],
+    ["with an earlier read cached", { gateStatus: "awaiting_release", blockingAll: [], issues: [row("ISS-3")] }],
+  ])("says whether any issue is ready could not be read where the gate's read failed, %s, and reads it again on Retry", async (_, cached) => {
+    const refetch = vi.fn();
+    readiness.mockReturnValue({ isLoading: false, isError: false, data: readinessWith(TWO_PER_ISSUE) });
+    roster.mockReturnValue({ data: cached, isError: true, error: new Error("network"), refetch });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ReleaseAnswer projectId="p-1" slug="desk" />
+      </QueryClientProvider>,
+    );
+    const said = screen.getByTestId("release-answer").querySelector("p")?.textContent ?? "";
+    expect(said).toContain("2 things keep issues out of a release; whether any waiting issue is ready could not be read.");
+    expect(said).not.toMatch(/can start now|cannot start now/);
+    fireEvent.click(screen.getByRole("button", { name: "Read the release gate again" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });

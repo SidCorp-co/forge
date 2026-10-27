@@ -201,12 +201,20 @@ function verifiedBy(r: ReleaseReadiness): string {
   return r.hasVerify ? "a probe" : "nothing";
 }
 
-/** How many waiting issues the gate offers Release now for, or null where the gate was not read. */
-function usePickable(projectId: string): number | null {
-  const roster = useReleaseRoster(projectId).data;
-  if (!roster?.gateStatus) return null;
-  return pickableRows(roster.issues, roster.blockingAll).length;
+/** How many waiting issues the gate offers Release now for: null where the reader holds no role
+ *  that reads the gate or no gate is declared, and `unread` where the read failed, whatever an
+ *  earlier read left cached, so a stale roster never answers. */
+function usePickable(projectId: string) {
+  const q = useReleaseRoster(projectId);
+  const pickable: Pickable = q.isError
+    ? "unread"
+    : q.data?.gateStatus
+      ? pickableRows(q.data.issues, q.data.blockingAll).length
+      : null;
+  return { pickable, error: q.error, refetch: q.refetch };
 }
+
+type Pickable = number | null | "unread";
 
 const things = (n: number) => `${n} ${n === 1 ? "thing" : "things"}`;
 
@@ -215,7 +223,7 @@ const things = (n: number) => `${n} ${n === 1 ? "thing" : "things"}`;
  * keep the other issues out, and a release can start for the rest (ISS-1421 r40, judge-164 read
  * "cannot start" beside a gate offering Release now).
  */
-export function answerText(r: ReleaseReadiness, pickable: number | null = null): ReactNode {
+export function answerText(r: ReleaseReadiness, pickable: Pickable = null): ReactNode {
   const a = releaseAnswer(r);
   switch (a.kind) {
     case "unread":
@@ -223,6 +231,9 @@ export function answerText(r: ReleaseReadiness, pickable: number | null = null):
     case "ships-nothing":
       return "This project releases nothing: an issue closes when its work is done.";
     case "blocked":
+      if (pickable === "unread") {
+        return `${things(a.count)} ${a.count === 1 ? "keeps" : "keep"} issues out of a release; whether any waiting issue is ready could not be read.`;
+      }
       if (pickable !== null && pickable > 0) {
         const ready = pickable === 1 ? "the one issue" : `the ${pickable} issues`;
         return `A release can start now for ${ready} ready to release; ${things(a.count)} ${a.count === 1 ? "keeps" : "keep"} the others out of it.`;
@@ -285,7 +296,7 @@ export function ReleaseAnswer({
   after?: ReactNode;
 }) {
   const q = useReleaseReadiness(projectId);
-  const pickable = usePickable(projectId);
+  const gate = usePickable(projectId);
   const tab = (t: string, add?: string, field?: string) =>
     slug ? settingsHref(slug, t, add, field) : undefined;
   const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
@@ -320,13 +331,25 @@ export function ReleaseAnswer({
   return (
     <div data-testid="release-answer" data-answer={a.kind}>
       <p className="fg-body text-fg">
-        <b>Can this project release?</b> {answerText(r, pickable)}
+        <b>Can this project release?</b> {answerText(r, gate.pickable)}
       </p>
       {/* The read that failed is core's, of the binding's declaration, and it came back with no answer to judge:
           the rule's no-answer arm, so it goes through the one Retry like every other (ISS-1229 r51, judge-158). */}
       {a.kind === "unread" && (
         <RetryButton look="link" className="fg-caption mt-1" error={null} onRetry={() => void q.refetch()}>
           Read it again
+        </RetryButton>
+      )}
+      {/* The gate's read failed, so whether some issues are ready is unknown: its own Retry reads it again. */}
+      {a.kind === "blocked" && gate.pickable === "unread" && (
+        <RetryButton
+          look="link"
+          className="fg-caption mt-1"
+          error={gate.error}
+          label="Read the release gate again"
+          onRetry={() => void gate.refetch()}
+        >
+          Read the release gate again
         </RetryButton>
       )}
       {listed && r.blockers.length > 0 && (
