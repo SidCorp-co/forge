@@ -127,6 +127,6 @@ export function noProjectSaid({
   return {
     title: 'Welcome to Forge',
     message:
-      'Create your first project to start shipping issues through the pipeline. This dashboard fills in as work flows.',
+      'Create your first project to start releasing issues through the pipeline. This dashboard fills in as work flows.',
   };
 }

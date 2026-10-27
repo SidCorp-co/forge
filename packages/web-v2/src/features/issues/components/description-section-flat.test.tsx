@@ -66,7 +66,7 @@ describe.each([1280, 390])("the issue page's top sections at %ipx", (viewport) =
   });
 
   it("draws the release note flat too, so no card stands above the flat sections", async () => {
-    const note = at(await drawnAt(page(), viewport), "What will change once it ships");
+    const note = at(await drawnAt(page(), viewport), "What will change once it is released");
     expect([note.borderTop, note.borderRight, note.borderBottom, note.borderLeft]).toEqual([1, 0, 0, 0]);
     expect(note.radius).toBe("0px");
     expect(note.background).toMatch(TRANSPARENT);

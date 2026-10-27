@@ -131,9 +131,9 @@ function namedSentence(code: NamedCode, details: Record<string, unknown> | null)
     case 'CLAIM_CONFLICT':
       return `${who} ${w('is', 'are')} not at the release gate, ${w('is', 'are')} not on this project, or ${w('is', 'are')} already claimed by a batch. Read the roster and send the issues it lists.`;
     case 'RELEASE_RECORD_MISSING':
-      return `${who} ${w('has', 'have')} no release note, and closing ${w('it', 'them')} would claim a ship nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`;
+      return `${who} ${w('has', 'have')} no release note, and closing ${w('it', 'them')} would tell users nothing about what changed. ${RELEASE_RECORD_REMEDY}`;
     case 'RELEASE_WORK_UNMERGED':
-      return `${who} ${w('has', 'have')} no merge Forge watched land, so nothing says ${w('its', 'their')} work is on the branch this release deployed. Mark the merge on ${w('it', 'each of them')} first — a release records what shipped, and an issue nobody merged did not.`;
+      return `${who} ${w('is', 'are')} not marked merged, so nothing says ${w('its', 'their')} work is on the branch this release deploys. Mark ${w('it', 'each of them')} merged first — a release closes what it carries, and a close says the work went out.`;
     case 'RELEASE_ISSUES_UNCLOSABLE':
       return `${who} would be refused ${w('its', 'their')} close when this release finishes, so it would release ${w('it', 'them')} and hand ${w('it', 'them')} back to the gate. Clear what ${w('it is', 'each one is')} refused for, or leave ${w('it', 'each')} off this release.`;
   }
@@ -141,9 +141,9 @@ function namedSentence(code: NamedCode, details: Record<string, unknown> | null)
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
-    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. To release through Forge instead, declare a release chain under Settings → Shape & release and give it a live deploy target under Settings → Integrations.',
+    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what releases it. To release through Forge instead, declare a release chain under Settings → Shape & release and give it a live deploy target under Settings → Integrations.',
   RELEASE_TARGET_UNDECLARED:
-    'This project declares a release chain and has no deploy target switched on that carries the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.',
+    'This project declares a release chain and has no deploy target switched on that carries the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project releases nothing, choose "Repository, no release" under Shape & release in its settings.',
   CLAIM_CONFLICT: namedSentence('CLAIM_CONFLICT', null),
   RELEASE_ROSTER_EMPTY: `Nothing is ready to release: no issue is at ${ISSUE_STATUS_LABELS.awaiting_release}.`,
   RELEASE_ROSTER_OVERSIZE: `More issues are waiting than one release may carry. A release names at most ${RELEASE_ROSTER_LIMIT} issues, so cut this roster in parts, oldest merge first.`,
@@ -166,7 +166,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_CARRIED_DECISION_REFUSED:
     'A decision sent with this batch for an issue its range carries does not hold. Correct each one named and send the batch again.',
   RELEASE_CUT_DROPS_ROSTER:
-    'A `cut-below` moves the release below the landing of issues this batch names, so it would name issues it does not ship. Take them off the roster, or decide the carried issue another way.',
+    'A `cut-below` moves the release below the landing of issues this batch names, so it would name issues it does not release. Take them off the roster, or decide the carried issue another way.',
   RELEASE_CHECK_UNEVALUATED:
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
@@ -334,7 +334,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
     const n = Array.isArray(details.issueIds) ? details.issueIds.length : 0;
-    return `${namedHere(details)} ${agree(n, 'has', 'have')} no mark saying where ${agree(n, 'its', 'their')} work landed. ${agree(n, 'Its', 'Their')} work lands outside git, so mark ${agree(n, 'it', 'each one')} merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
+    return `${namedHere(details)} ${agree(n, 'has', 'have')} no mark saying where ${agree(n, 'its', 'their')} work landed. ${agree(n, 'Its', 'Their')} work lands outside git, so mark ${agree(n, 'it', 'each one')} merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what went out, and a mark naming nothing does not say that anything did.`;
   }
   if (code === 'RELEASE_ISSUES_UNCLOSABLE' && Array.isArray(details?.refused)) {
     return unclosableSentence(details.refused as UnclosableIssueRef[]);
@@ -342,7 +342,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_TARGET_UNDECLARED' && Array.isArray(details?.releaseChain)) {
     const chain = details.releaseChain as { branch?: unknown }[];
     const last = chain[chain.length - 1]?.branch;
-    return `This project's release chain ends at \`${String(last)}\` and it has no deploy target switched on that carries the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.`;
+    return `This project's release chain ends at \`${String(last)}\` and it has no deploy target switched on that carries the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project releases nothing, choose "Repository, no release" under Shape & release in its settings.`;
   }
   if (
     code === 'RELEASE_RUNNER_AMBIGUOUS' &&
@@ -471,7 +471,7 @@ export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string)
   const each = held.map((h) => `\`${h.displayId}\` on ${criteriaPhrase(h.criteria)}`).join('; ');
   return withCosts(
     'RELEASE_CRITERIA_UNCORROBORATED',
-    `${issues} a criterion earned at a runtime nothing here could re-read: ${why} Those verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them. Whether each issue ships is decided by its own criteria, not by this. ${each}.`,
+    `${issues} a criterion earned at a runtime nothing here could re-read: ${why} Those verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them. Whether each issue is released is decided by its own criteria, not by this. ${each}.`,
   );
 }
 

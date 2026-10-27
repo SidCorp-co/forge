@@ -386,6 +386,19 @@ function CommentItem({
   );
 }
 
+/**
+ * The thread's own order turned round. Two comments inside one millisecond carry the same time here,
+ * since JSON keeps no finer one, and the thread listed them in the database's order; a sort by time
+ * alone kept that pair oldest first inside a newest-first list (ISS-1421 r39). A copy: the list the
+ * query holds is not reordered.
+ */
+export function newestFirst<C extends { createdAt: string }>(comments: readonly C[]): C[] {
+  return comments
+    .map((comment, at) => ({ comment, at, time: new Date(comment.createdAt).getTime() }))
+    .sort((a, b) => b.time - a.time || b.at - a.at)
+    .map(({ comment }) => comment);
+}
+
 export function CommentThread({
   issueId,
   comments,
@@ -399,11 +412,8 @@ export function CommentThread({
   readOnly?: boolean;
 }) {
   // Newest top-level comment first so the latest activity is reachable without
-  // scrolling past a long history (ISS-347). Sort a COPY — nested `replies`
-  // stay chronological since a thread reads top-down.
-  const ordered = [...comments].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+  // scrolling past a long history (ISS-347); nested `replies` stay chronological.
+  const ordered = newestFirst(comments);
   return (
     <div className="space-y-5">
       {!readOnly && (

@@ -174,7 +174,7 @@ describe('the idle sweep, on the issue judge-25 stood up', () => {
 
 describe.each([
   ['waiting-park', 'waiting', false, 'is waiting for'],
-  ['owed-close', 'developed', true, 'shipped but never closed'],
+  ['owed-close', 'developed', true, 'merged but never closed'],
 ] as const)('the %s sweep', (name, status, merged, says) => {
   it('tells the admin about the live project and nobody about the archived one', async () => {
     const w = await world();

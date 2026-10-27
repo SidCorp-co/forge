@@ -239,7 +239,7 @@ export function refusedCloseComment(args: {
     repeats.length > 0
       ? ` The release${repeats.length === 1 ? '' : 's'} before it (${releasesNamed(repeats)}) could not close it for the same reason either.`
       : '';
-  const opening = `The release finished and shipped ${shipped}, but this issue could not be closed.${before} ${why}\n\n`;
+  const opening = `The release finished and went out ${shipped}, but this issue could not be closed.${before} ${why}\n\n`;
   if (held) {
     const again = refusal.kind === 'refused' ? 'refused' : 'failed';
     return `${opening}${held} Clear the reason above first, or that close is ${again} again.`;

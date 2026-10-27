@@ -122,7 +122,7 @@ describe('RELEASE_WORK_UNMERGED, before the press at either door', () => {
     const blockers = await blockersAt('batch', new Map([[ISSUE, [LANDING_GIT]]]));
     const unmerged = blockers.find((b) => b.code === 'RELEASE_WORK_UNMERGED');
     expect(unmerged?.details).toMatchObject({ issueIds: [ISSUE], shape: 'git' });
-    expect(unmerged?.message).toContain('the branch this release deployed');
+    expect(unmerged?.message).toContain('the branch this release deploys');
   });
 
   it('asks the record door for a merge and never for a runner', async () => {

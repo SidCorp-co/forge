@@ -28,8 +28,9 @@ const RUNNER_HOLD_ACT: Record<RunnerHoldReason, (hold: RunnerHold) => string> = 
     `is \`${h.detail ?? 'draining'}\` and so takes nothing from the pool. Switch "Takes jobs from the pool" back on for it under ${RUNNERS_TAB}.`,
   'never-connected': () =>
     'is registered and has never reported in. Start `forge-runner` on that box.',
+  // Forge marks a box offline when its heartbeats stop or its socket closes; the box never says so.
   disconnected: () =>
-    'reported itself offline. Start `forge-runner` on that box, or wait for it to reconnect.',
+    'stopped reporting, and Forge marked it offline. Start `forge-runner` on that box, or wait for it to reconnect.',
   stale: () => 'has stopped reporting. Check `forge-runner` is still running on that box.',
   auth: () =>
     `had its agent credential rejected, so it is taking nothing. Re-authenticate the agent on that box; ${RUNNERS_TAB} shows the detail it reported.`,
@@ -68,7 +69,7 @@ const RUNNER_HOLD_READER_ACT: Record<RunnerHoldReason, (hold: RunnerHold) => str
     `${h.detail === 'disabled' ? 'is switched off' : 'is winding down'}, so it takes nothing from the pool. Switch "Takes jobs from the pool" back on for it under ${RUNNERS_TAB}.`,
   'never-connected': () => `is registered and has never reported in. Start ${RUNNER} on that box.`,
   disconnected: () =>
-    `reported itself offline. Start ${RUNNER} on that box, or wait for it to reconnect.`,
+    `stopped reporting, and Forge marked it offline. Start ${RUNNER} on that box, or wait for it to reconnect.`,
   stale: () => `has stopped reporting. Check ${RUNNER} is still running on that box.`,
   auth: RUNNER_HOLD_ACT.auth,
   'rate-limited': (h) =>

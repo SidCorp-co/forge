@@ -35,12 +35,17 @@ beforeAll(async () => {
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   jwt = await import('../../src/auth/jwt.js');
-  const { commentRoutes } = await import('../../src/comments/routes.js');
+  const { commentRoutes, registerIssueCommentRoutes } = await import('../../src/comments/routes.js');
+  const { requireAuth } = await import('../../src/middleware/auth.js');
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', requestId());
   app.route('/api/comments', commentRoutes);
+  const issueRoutes = new Hono<{ Variables: RequestIdVars }>();
+  issueRoutes.use('*', requireAuth());
+  registerIssueCommentRoutes(issueRoutes as never);
+  app.route('/api/issues', issueRoutes);
   app.onError(errorHandler);
 }, 60_000);
 
@@ -81,6 +86,45 @@ async function plantTie(n: number): Promise<{ parent: string; byId: string[] }> 
   }
   return { parent, byId: [...ids].sort() };
 }
+
+/** A parent and two replies inside one millisecond, the later one holding the lower id, so an order
+ *  by the millisecond and then the id reads them the wrong way round (ISS-1421 r39, judge-160). */
+async function plantInsideOneMillisecond(): Promise<{ issueId: string; parent: string; order: string[] }> {
+  const issueId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+    VALUES (${issueId}, ${projectId}, 2, 'Inside a millisecond', 'open', ${ownerId})`);
+  const parent = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO comments (id, issue_id, author_id, body, created_at)
+    VALUES (${parent}, ${issueId}, ${ownerId}, 'parent', '2026-10-28T09:00:00.000000Z'::timestamptz)`);
+  const earlier = 'ffffffff-0000-4000-8000-000000000000';
+  const later = '00000000-0000-4000-8000-000000000000';
+  for (const [id, at] of [
+    [earlier, '2026-10-28T09:00:01.000100Z'],
+    [later, '2026-10-28T09:00:01.000900Z'],
+  ] as const) {
+    await harness.db.execute(sql`
+      INSERT INTO comments (id, issue_id, author_id, body, parent_id, created_at)
+      VALUES (${id}, ${issueId}, ${ownerId}, ${`reply ${id.slice(0, 1)}`}, ${parent}, ${at}::timestamptz)`);
+  }
+  return { issueId, parent, order: [earlier, later] };
+}
+
+describe('comments written inside one millisecond', () => {
+  it("are read in the database's order by the issue's thread and by their parent's replies alike", async () => {
+    const { issueId, parent, order } = await plantInsideOneMillisecond();
+    const auth = { headers: { Authorization: `Bearer ${token}` } };
+    const thread = await app.request(`/api/issues/${issueId}/comments?limit=50`, auth);
+    expect(thread.status).toBe(200);
+    const tree = (await thread.json()) as { items: Array<{ id: string; replies: Array<{ id: string }> }> };
+    expect(tree.items.map((r) => r.id)).toEqual([parent]);
+    expect(tree.items[0]?.replies.map((r) => r.id)).toEqual(order);
+    const replies = await app.request(`/api/comments/${parent}/replies?limit=50`, auth);
+    expect(replies.status).toBe(200);
+    expect(((await replies.json()) as { items: Array<{ id: string }> }).items.map((r) => r.id)).toEqual(order);
+  });
+});
 
 describe('comments written at one instant', () => {
   it('a thread lists replies sharing a time in id order, on every read', async () => {

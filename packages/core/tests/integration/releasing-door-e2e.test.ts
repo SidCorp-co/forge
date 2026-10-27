@@ -293,7 +293,7 @@ describe('the refusal names only the doors this project has (criteria 25, 26)', 
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
-    expect(body.message).toContain('This project ships nothing');
+    expect(body.message).toContain('This project releases nothing');
     expect(body.message).toContain(
       "To release them, choose a shape that releases under Shape & release in the project's settings.",
     );

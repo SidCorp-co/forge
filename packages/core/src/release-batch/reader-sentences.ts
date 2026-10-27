@@ -69,7 +69,7 @@ function uncheckedSentence(details: Details): string {
 
 function carriedWaysOutForReader(n: number): string {
   const w = (one: string, many: string) => agree(n, one, many);
-  return `${w('It does not', 'None of them')} ship${w('', 's')} until a person decides ${w('it', 'each one')}: when you release, choose Ship unverified, Reverted or Cut below for ${w('it', 'each')} in the Batch release dialog, or bring ${w('it', 'each')} to Awaiting release so the release names it.`;
+  return `${w('It is not', 'None of them is')} released until a person decides ${w('it', 'each one')}: when you release, choose Release unverified, Reverted or Cut below for ${w('it', 'each')} in the Batch release dialog, or bring ${w('it', 'each')} to Awaiting release so the release names it.`;
 }
 
 function carriedForReader(details: Details): string | null {
@@ -79,12 +79,22 @@ function carriedForReader(details: Details): string | null {
   return carriedUndecidedSentence(details, carriedWaysOutForReader);
 }
 
+/** What a missing note costs, said as what happens rather than in the team's word for a release. */
+const NOTHING_TOLD = 'with nothing telling users what changed';
+
+/** What a note holds, wherever one is asked for. */
+const NOTE_HOLDS = 'the one line a user would read, or that nothing a user sees changed';
+
+/** One issue's note and several issues' notes are two sentences: "give each one" read as giving the
+ *  issue, and "each page" named no page (ISS-1421 r39, judge-160). */
 function recordMissingForReader(details: Details): string {
   const n = Array.isArray(details?.issueIds) ? details.issueIds.length : 2;
   const who =
     details && Array.isArray(details.issueIds) ? namedHere(details) : 'The issues named here';
-  const w = (one: string, many: string) => agree(n, one, many);
-  return `${who} ${w('has', 'have')} no release note, and closing ${w('it', 'them')} would claim a ship nobody wrote anything about. Give ${w('it', 'each')} one first, under Release note on ${w('its', 'each')} page: the one line a user would read, or that nothing a user sees changed.`;
+  if (n === 1) {
+    return `${who} has no release note, so a release would close it ${NOTHING_TOLD}. Write one first, under Release note on the issue's page: ${NOTE_HOLDS}.`;
+  }
+  return `${who} have no release note, so a release would close them ${NOTHING_TOLD}. Write a note for each of them first, under Release note on each issue's own page: ${NOTE_HOLDS}.`;
 }
 
 /** One issue's missing note, on the gate's row about it or on its own page (`here`), and where it
@@ -92,7 +102,7 @@ function recordMissingForReader(details: Details): string {
  *  promises no readiness, since the same row can owe its close something too (ISS-1421 r37). */
 export function recordMissingForRow(here: boolean): string {
   const where = here ? 'under Release note on this page' : "under Release note on the issue's page";
-  return `${here ? 'This issue' : 'It'} has no release note, so a release would close it claiming a ship nobody wrote anything about, and Release now refuses it. A member of the project writes one ${where}: the one line a user would read, or that nothing a user sees changed.`;
+  return `${here ? 'This issue' : 'It'} has no release note, so a release would close it ${NOTHING_TOLD}, and Release now refuses it. A member of the project writes one ${where}: ${NOTE_HOLDS}.`;
 }
 
 function strings(value: unknown): string[] {
@@ -138,11 +148,16 @@ function runnersForReaderHeld(details: Details): string | null {
   return runnersHeldSentence(holds, runnerHoldReaderClause);
 }
 
+/** Not marked merged is the reason, whatever the mark would have named: an issue marked merged with
+ *  no commit releases, so "no merge Forge watched land" was never why (ISS-1421 r39, judge-160). */
 function unmergedForReader(details: Details): string | null {
-  if (details?.shape !== 'outside_git') return null;
-  const n = Array.isArray(details.issueIds) ? details.issueIds.length : 0;
+  if (!details || !Array.isArray(details.issueIds)) return null;
+  const n = details.issueIds.length;
   const w = (one: string, many: string) => agree(n, one, many);
-  return `${namedHere(details)} ${w('has', 'have')} no mark saying where ${w('its', 'their')} work landed. ${w('Its', 'Their')} work lands outside git, so mark ${w('it', 'each one')} merged naming where the work now is — the live URL, CMS entry or storefront resource — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
+  if (details.shape !== 'outside_git') {
+    return `${namedHere(details)} ${w('is', 'are')} not marked merged, so nothing says ${w('its', 'their')} work is on the branch this release deploys. Use Mark merged in ${w("the issue's", "each issue's")} properties first: a release closes what it carries, and a close says the work went out.`;
+  }
+  return `${namedHere(details)} ${w('has', 'have')} no mark saying where ${w('its', 'their')} work landed. ${w('Its', 'Their')} work lands outside git, so mark ${w('it', 'each one')} merged naming where the work now is — the live URL, CMS entry or storefront resource — first: a release records what went out, and a mark naming nothing does not say that anything did.`;
 }
 
 const unreadableDeclarationForReader: RefusedDeclaration = (n) => {

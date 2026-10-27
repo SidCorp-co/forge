@@ -115,7 +115,7 @@ export function ShapeTab({ project, canEdit }: { project: ProjectDetail; canEdit
 /** What Live tracks for the draft's shape, in words. */
 function liveBranchText(d: ShapeDraft, chain: readonly ReleaseChainEntry[]): string {
   if (d.shape === "no-repository") return "None — this project's work lands outside git.";
-  if (d.shape === "no-release") return "None — this project ships nothing.";
+  if (d.shape === "no-release") return "None — this project releases nothing.";
   const last = chain[chain.length - 1];
   return last ? `${last.branch} — the release deploys it` : "None yet — name the base branch.";
 }

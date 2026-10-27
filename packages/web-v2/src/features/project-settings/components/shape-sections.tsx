@@ -254,7 +254,7 @@ export function StrandedNotice({ waiting, slug }: { waiting: number; slug?: stri
   return (
     <p role="alert" className="fg-body-sm border-y border-line py-3 text-fg" data-testid="stranded-notice">
       {waiting} {waiting === 1 ? "issue waits" : "issues wait"} at{" "}
-      <b>{ISSUE_STATUS_LABELS.awaiting_release}</b>, and this project ships nothing, so no release
+      <b>{ISSUE_STATUS_LABELS.awaiting_release}</b>, and this project releases nothing, so no release
       will ever carry {waiting === 1 ? "it" : "them"}. Release {waiting === 1 ? "it" : "them"} under
       a shape that releases, or return {waiting === 1 ? "it" : "them"} to{" "}
       <b>{ISSUE_STATUS_LABELS.developed}</b>.{" "}

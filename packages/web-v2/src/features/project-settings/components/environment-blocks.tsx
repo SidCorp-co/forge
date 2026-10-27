@@ -272,7 +272,7 @@ export function EnvironmentBlocks({
           <div id="environment-live" className="space-y-4 pt-6">
             <h4 className="fg-h4 text-fg">Live</h4>
             <p className="fg-caption text-muted">
-              Where real users are. A release ships here; agents read this address as where the
+              Where real users are. A release lands here; agents read this address as where the
               product runs, whether or not Forge releases to it.
             </p>
             <Tracks>{liveBranch}</Tracks>
@@ -292,7 +292,7 @@ export function EnvironmentBlocks({
               slug={slug}
               none={
                 shipsNothing
-                  ? "None needed: this project ships nothing, so no release lands here."
+                  ? "None needed: this project releases nothing, so no release lands here."
                   : "None serves Live, so a release has nowhere to land."
               }
             />

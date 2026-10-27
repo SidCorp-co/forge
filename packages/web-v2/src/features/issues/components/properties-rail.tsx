@@ -156,7 +156,7 @@ function MergeMarkBadge({
         title={
           // Outside git no pull request is the normal record; what the mark lacks is a landing.
           landingShape === "outside_git"
-            ? "This mark names no landing — it says the work shipped, not where it landed"
+            ? "This mark names no landing — it says the work went out, not where it landed"
             : "Forge holds no merged pull request for this issue — this mark is a claim it recorded, not a merge it witnessed"
         }
       >

@@ -96,7 +96,7 @@ beforeEach(() => {
 describe('the rule itself (ISS-1108)', () => {
   it('refuses an unmark on `closed`, naming the exit `closed` has and the one for non-work', () => {
     const refusal = refuseUnmarkOnClosed('closed');
-    expect(refusal?.detail).toContain('Closed means the work shipped');
+    expect(refusal?.detail).toContain('Closed means the work went out');
     expect(refusal?.detail).toContain('Reopened');
     expect(refusal?.detail).toContain('Dropped');
     expect(refusal?.details).toEqual({

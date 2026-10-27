@@ -90,6 +90,11 @@ export type CommentPage = {
  */
 const cursorKeyExpr = sql<string>`to_char(${comments.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
+/** Code-unit order, which for the fixed-width UTC key and for a lowercase uuid is Postgres's own. */
+function byKey(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 export async function listIssueCommentPage(
   issueId: string,
   opts: { after?: CommentCursor | undefined; limit: number },
@@ -123,19 +128,23 @@ export async function listIssueCommentPage(
   const cursorKeyById = new Map(keyed.map((r) => [r.id, r.cursorKey]));
   const roots = keyed.map(({ cursorKey: _key, ...row }) => row);
 
-  const rows = [...roots];
+  const keyedRows = [...keyed];
   let frontier = roots.map((r) => r.id);
   for (let depth = 1; depth < COMMENT_MAX_DEPTH && frontier.length > 0; depth += 1) {
     const replies = await db
-      .select(commentThreadColumns)
+      .select({ ...commentThreadColumns, cursorKey: cursorKeyExpr })
       .from(comments)
       .where(inArray(comments.parentId, frontier))
       .orderBy(asc(comments.createdAt), asc(comments.id));
-    rows.push(...replies);
+    keyedRows.push(...replies);
     frontier = replies.map((r) => r.id);
   }
 
-  rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+  // The database's order, `(created_at, id)`: the microsecond key, then the id compared as Postgres
+  // compares a uuid. A Date holds the millisecond only, so two comments inside one millisecond
+  // sorted by it came back in another order than a comment's replies list them (ISS-1421 r39).
+  keyedRows.sort((a, b) => byKey(a.cursorKey, b.cursorKey) || byKey(a.id, b.id));
+  const rows = keyedRows.map(({ cursorKey: _key, ...row }) => row);
   return { rows, roots, nextCursor, cursorKeyById };
 }
 

@@ -29,7 +29,7 @@ function label(status: string): string {
 function sentenceFor(c: Standing): string {
   if (c.standing === "absent") return `${c.key} is no issue on this project.`;
   if (c.standing === "status") {
-    if (c.status === "closed") return `${c.key} is Closed: it has shipped, and a release carries an issue once.`;
+    if (c.status === "closed") return `${c.key} is Closed: it was released, and a release carries an issue once.`;
     if (c.status === "dropped") return `${c.key} is Dropped, so no release carries it.`;
     return `${c.key} is ${label(c.status)}, not at the release gate.`;
   }

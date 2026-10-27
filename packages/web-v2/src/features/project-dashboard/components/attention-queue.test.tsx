@@ -286,7 +286,7 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(
       screen.getByText("Blocked on a person — Waiting. It has been waiting for you for over six hours."),
     ).toBeInTheDocument();
-    expect(screen.getByText("Shipped its code and was never closed")).toBeInTheDocument();
+    expect(screen.getByText("Was marked merged and never closed")).toBeInTheDocument();
     // Another person's park and the one stuck row left unlisted wear the Stuck tag; the owed rows do not.
     expect(screen.getAllByText("Stuck")).toHaveLength(2);
     expect(screen.getAllByText("Failed")).toHaveLength(1);

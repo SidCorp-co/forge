@@ -24,8 +24,8 @@ const SAID: Readonly<Record<StuckKind, { one: string; many: string }>> = {
     many: 'are in a live status with no live work behind them',
   },
   owed_close: {
-    one: 'shipped its code and was never closed',
-    many: 'shipped their code and were never closed',
+    one: 'was marked merged and never closed',
+    many: 'were marked merged and never closed',
   },
   orphan: {
     one: 'asserts work in progress with no run behind it',
@@ -34,7 +34,7 @@ const SAID: Readonly<Record<StuckKind, { one: string; many: string }>> = {
   other: { one: 'is reported stuck', many: 'are reported stuck' },
 };
 
-/** The bell's group title for a kind, as in "Issues that shipped their code and were never closed". A
+/** The bell's group title for a kind, as in "Issues that were marked merged and never closed". A
  *  group of waiting parks holds the reader's and other people's alike, so it names neither. */
 export function stuckGroupTitle(kind: StuckKind): string {
   if (kind === 'waiting' || kind === 'waiting_on_others') {

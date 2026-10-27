@@ -25,8 +25,8 @@ export function unverifiedCloseNote(
   unread: readonly string[] = [],
 ): string {
   const reported = commit
-    ? `The release reported shipping \`${commit}\`, and nothing checked that it is serving.`
-    : 'The release reported no commit, so nothing names what it shipped.';
+    ? `The release reported deploying \`${commit}\`, and nothing checked that it is serving.`
+    : 'The release reported no commit, so nothing names what it put live.';
   const partial = unread.length > 0;
   return [
     partial

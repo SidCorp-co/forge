@@ -33,7 +33,7 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     expect(said).toContain('refused with `OPEN_QUESTIONS`');
     expect(said).toContain('Blocking it: 1 blocking run, 2 open questions.');
     expect(said).not.toMatch(/q-1|q-2|r-9/);
-    expect(said).toContain('shipped as version 1.4.0');
+    expect(said).toContain('went out as version 1.4.0');
   });
 
   it('names only acts the issue page offers at the release gate, and no API route (ISS-1381 r3)', () => {
@@ -73,7 +73,7 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     expect(said).toContain('failed before it reached a decision: connection reset');
     expect(said).toContain('nothing here is yours to clear');
     expect(said).toContain('whoever operates this Forge');
-    expect(said).toContain('shipped with this batch');
+    expect(said).toContain('went out with this batch');
     expect(said).not.toMatch(/Closed|the close can be made again/);
   });
 
@@ -101,7 +101,7 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       repeats: ['1.4.0', null],
     });
 
-    expect(said).toContain('shipped as version 1.6.0');
+    expect(said).toContain('went out as version 1.6.0');
     expect(said).toContain('version 1.4.0');
     expect(said).toContain('one with no version');
     expect(said).toContain('for the same reason');

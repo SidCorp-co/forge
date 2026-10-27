@@ -1,17 +1,23 @@
-// ISS-1421 r35, judge-141: a gone row's drawer said "This Sentry binding is no longer on this
-// project". "Binding" is the store's word for a project's use of a connection, and the Integrations
-// tab never shows it to a person, so no sentence this feature draws may say it. r36 (judge-145)
-// found "bound" and "Bind" said the same thing in other words, and project settings saying them
-// beside it, so the word's whole family is held across both features.
+// Two words the store and the team use that a person reads otherwise. "Binding" is the store's word
+// for a project's use of a connection, never shown on the Integrations tab (ISS-1421 r35, judge-141;
+// r36 held "bound" and "Bind" and project settings too). "Ship" is the team's word for a release, and
+// a person outside the team reads it as a boat (ISS-1421 r39, the master's ruling on judge-160): no
+// sentence the web draws says it.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-const FEATURES = resolve(__dirname, "..");
-const SURFACES = [resolve(__dirname), resolve(FEATURES, "project-settings")];
-const WORD = /\b(bindings?|bound|bind|binds|unbind)\b/i;
+const SRC = resolve(__dirname, "..");
+const FEATURES = resolve(SRC, "features");
+const BINDING_SURFACES = [resolve(FEATURES, "integrations"), resolve(FEATURES, "project-settings")];
+const BINDING = /\b(bindings?|bound|bind|binds|unbind)\b/i;
+const SHIP = /\bship(s|ped|ping)?\b/i;
+
+/** What no person reads as the web's own sentence: a test's fixture, and the guides generated from
+ *  the docs, which carry the docs' words. */
+const NOT_DRAWN = /(^|\/)(test-support\/|[^/]*\.generated\.tsx?$)/;
 
 function sourceFiles(path: string): string[] {
   if (!statSync(path).isDirectory()) return [path];
@@ -22,10 +28,23 @@ function sourceFiles(path: string): string[] {
   });
 }
 
+/** A join hands a literal on; a comparison only reads it: `decision === "ship-unverified"` says nothing. */
+const JOINS = new Set([
+  ts.SyntaxKind.PlusToken,
+  ts.SyntaxKind.AmpersandAmpersandToken,
+  ts.SyntaxKind.BarBarToken,
+  ts.SyntaxKind.QuestionQuestionToken,
+]);
+
 /** Where a bare literal ends up: through a conditional or a join, into a template or JSX. */
 function interpolated(node: ts.Node): boolean {
   let at = node.parent;
-  while (ts.isConditionalExpression(at) || ts.isParenthesizedExpression(at) || ts.isBinaryExpression(at)) at = at.parent;
+  while (
+    ts.isConditionalExpression(at) ||
+    ts.isParenthesizedExpression(at) ||
+    (ts.isBinaryExpression(at) && JOINS.has(at.operatorToken.kind))
+  )
+    at = at.parent;
   return ts.isTemplateSpan(at) || ts.isJsxExpression(at);
 }
 
@@ -50,8 +69,8 @@ function isWords(node: ts.Node, text: string): boolean {
   return (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && interpolated(node);
 }
 
-/** Every readable string in `body` that says the word, with its line. */
-function bindingWords(body: string, file: string): string[] {
+/** Every readable string in `body` that says `word`, with its line. */
+function wordsSaying(body: string, file: string, word: RegExp): string[] {
   const source = ts.createSourceFile(
     file,
     body,
@@ -68,7 +87,7 @@ function bindingWords(body: string, file: string): string[] {
       ts.isTemplateHead(node) ||
       ts.isTemplateMiddle(node) ||
       ts.isTemplateTail(node);
-    if (literal && WORD.test(node.text) && isWords(node, node.text)) {
+    if (literal && word.test(node.text) && isWords(node, node.text)) {
       const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
       found.push(`${line}: ${node.text.trim()}`);
     }
@@ -78,12 +97,42 @@ function bindingWords(body: string, file: string): string[] {
   return found;
 }
 
-describe("the Integrations surface's words", () => {
-  it("never say binding, bound or bind to a person", () => {
-    const hits = SURFACES.flatMap(sourceFiles).flatMap((file) =>
-      bindingWords(readFileSync(file, "utf8"), file).map((hit) => `${relative(FEATURES, file)}:${hit}`),
-    );
-    expect(hits).toEqual([]);
+function hitsIn(surfaces: string[], word: RegExp): string[] {
+  const files = surfaces.flatMap(sourceFiles).filter((file) => !NOT_DRAWN.test(relative(SRC, file)));
+  expect(files.length).toBeGreaterThan(20);
+  return files.flatMap((file) =>
+    wordsSaying(readFileSync(file, "utf8"), file, word).map((hit) => `${relative(SRC, file)}:${hit}`),
+  );
+}
+
+describe("the web's words", () => {
+  it("never say binding, bound or bind to a person on the Integrations surface", () => {
+    expect(hitsIn(BINDING_SURFACES, BINDING)).toEqual([]);
+  });
+
+  it("never say ship to a person anywhere", () => {
+    expect(hitsIn([SRC], SHIP)).toEqual([]);
+  });
+
+  it("finds ship in a sentence, JSX text, a label and an interpolated word, and not in a value or a comparison", () => {
+    const planted = [
+      'const a = "This ships when a person cuts one.";',
+      "const b = <span>— not shipped yet.</span>;",
+      'const c = { value: "ship-unverified", label: "Ship unverified" };',
+      'const d = <Tile label="Shipped · 30d" />;',
+      'const e = `${n} shipped on ${date}`;',
+      'const f = decision === "ship-unverified" && <textarea />;',
+      'const g: "settled" | "shipped" = "shipped";',
+      'const h = <p>{done ? "shipped" : "open"}</p>;',
+    ].join("\n");
+    expect(wordsSaying(planted, "planted.tsx", SHIP).map((hit) => hit.split(": ")[0])).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "8",
+    ]);
   });
 
   it("finds the word in a sentence, JSX text, an accessible name and an interpolated word, and not in code", () => {
@@ -100,7 +149,7 @@ describe("the Integrations surface's words", () => {
       "const j = `\u0024{label} (binding \u0024{id})`;",
       "// a binding named in a comment",
     ].join("\n");
-    expect(bindingWords(planted, "planted.tsx").map((hit) => hit.split(": ")[0])).toEqual([
+    expect(wordsSaying(planted, "planted.tsx", BINDING).map((hit) => hit.split(": ")[0])).toEqual([
       "1",
       "2",
       "3",

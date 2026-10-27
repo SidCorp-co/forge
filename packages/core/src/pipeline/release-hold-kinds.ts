@@ -111,7 +111,7 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
   const reasons = reasonsByWhy(report);
   const judge = judgeClause(report.serving, report.runtimes);
   const clears = [...new Set(report.unearned.flatMap((c) => c.clears ?? []))];
-  const others = `${judge}; or, having seen the change running in production, close the issue by hand; or move it out of Awaiting release if it is not to ship.`;
+  const others = `${judge}; or, having seen the change running in production, close the issue by hand; or move it out of Awaiting release if it is not to be released.`;
   const remedy =
     clears.length === 0
       ? `A person clears this: ${others}`

@@ -1,9 +1,8 @@
-// ISS-1421 r36, judge-145 on criterion 344: Confirm live deploy on a preview deploy target was
-// refused "This Coolify binding neither deploys to live nor ...", and a turned-off Coolify drawer
-// read "This project's Coolify binding answers nothing". "Binding" is the store's word for a
-// project's use of a connection; the Integrations tab says connection or deploy target, and r35
-// held the web to that. Every sentence core's integrations, landing and release code sends is held
-// to it here, so a refusal a drawer shows cannot bring the word back.
+// Two words the store and the team use that a person reads otherwise. "Binding" is the store's
+// word for a project's use of a connection; the Integrations tab says connection or deploy target
+// (ISS-1421 r36, judge-145). "Ship" is the team's word for a release, and a person outside the team
+// reads "a ship nobody wrote anything about" as a boat (ISS-1421 r39, the master's ruling on
+// judge-160). Every sentence core's person-facing code sends is held to both here.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -28,7 +27,44 @@ const SURFACES: ReadonlyArray<{ dir: string; file?: RegExp }> = [
   { dir: 'assistant/identity', file: /^directory\.ts$/ },
 ];
 
-const WORD = /\b(bindings?|bound|bind|binds|unbind)\b/i;
+/** Where else a release, a merge mark or a close is said to a person: a chain emptied under waiting
+ *  work, a dropped blocker's comment, a stranded issue's notice and the stuck words. */
+const RELEASE_SURFACES: ReadonlyArray<{ dir: string; file?: RegExp }> = [
+  ...SURFACES,
+  { dir: 'projects', file: /^(stranded-work|release-chain)\.ts$/ },
+  { dir: 'issues', file: /^drop-unblock\.ts$/ },
+  { dir: 'pipeline', file: /^stranded-issues\.ts$/ },
+  { dir: '../../contracts/src', file: /^stuck-words\.ts$/ },
+];
+
+const BINDING = /\b(bindings?|bound|bind|binds|unbind)\b/i;
+const SHIP = /\bship(s|ped|ping)?\b/i;
+
+/** A value a caller sends, marked as code: `ship-unverified` names the decision, not the act. */
+const CODE_MARK = /`[^`]*`/g;
+
+/** A literal's text with its code marks taken out. A template's marks can open in one part and close
+ *  in the next (`\`${id}\``), so they are read across the whole template, a value standing for each
+ *  `${...}`, and only this part's share kept. */
+function uncodedText(node: ts.Node & { text: string }): string {
+  const template = ts.isTemplateHead(node)
+    ? node.parent
+    : ts.isTemplateMiddle(node) || ts.isTemplateTail(node)
+      ? node.parent.parent
+      : undefined;
+  if (!template || !ts.isTemplateExpression(template)) return node.text.replace(CODE_MARK, '');
+  const parts = [template.head, ...template.templateSpans.map((s) => s.literal)];
+  const kept = parts
+    .map((p) => p.text)
+    .join('\u0000')
+    .replace(CODE_MARK, (mark) => mark.replace(/[^\u0000]/g, ''))
+    .split('\u0000');
+  return kept[parts.indexOf(node as (typeof parts)[number])] ?? '';
+}
+
+/** A query's text is code, whatever words its columns are named in. */
+const isQuery = (node: ts.Node) =>
+  ts.isTaggedTemplateExpression(node) && /^sql\b/.test(node.tag.getText());
 
 function sourceFiles(path: string, file?: RegExp): string[] {
   return readdirSync(path).flatMap((entry) => {
@@ -55,15 +91,23 @@ function inLogCall(node: ts.Node): boolean {
   return false;
 }
 
+/** A join hands a literal on; a comparison only reads it: `status === 'shipped'` says nothing. */
+const JOINS = new Set([
+  ts.SyntaxKind.PlusToken,
+  ts.SyntaxKind.AmpersandAmpersandToken,
+  ts.SyntaxKind.BarBarToken,
+  ts.SyntaxKind.QuestionQuestionToken,
+]);
+
+function joins(node: ts.Node): boolean {
+  return ts.isBinaryExpression(node) && JOINS.has(node.operatorToken.kind);
+}
+
 /** What a bare literal is handed to once it has passed through a conditional or a join. */
 function receiver(node: ts.Node): { at: ts.Node; from: ts.Node } {
   let from = node;
   let at = node.parent;
-  while (
-    ts.isConditionalExpression(at) ||
-    ts.isParenthesizedExpression(at) ||
-    ts.isBinaryExpression(at)
-  ) {
+  while (ts.isConditionalExpression(at) || ts.isParenthesizedExpression(at) || joins(at)) {
     from = at;
     at = at.parent;
   }
@@ -165,19 +209,22 @@ function isWords(node: ts.Node, text: string, helpers: ReadonlySet<string>): boo
   );
 }
 
-/** Every readable string in `body` that says the word, with its line. */
-function bindingWords(body: string, file: string): string[] {
+/** Every readable string in `body` that says `word`, with its line; `uncoded` reads it with its
+ *  code marks taken out. */
+function wordsSaying(body: string, file: string, word: RegExp, uncoded = false): string[] {
   const source = ts.createSourceFile(file, body, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const helpers = wordingHelpers(source);
   const found: string[] = [];
   const visit = (node: ts.Node) => {
+    if (uncoded && isQuery(node)) return;
     const literal =
       ts.isStringLiteral(node) ||
       ts.isNoSubstitutionTemplateLiteral(node) ||
       ts.isTemplateHead(node) ||
       ts.isTemplateMiddle(node) ||
       ts.isTemplateTail(node);
-    if (literal && WORD.test(node.text) && isWords(node, node.text, helpers)) {
+    const said = literal && uncoded ? uncodedText(node) : literal ? node.text : '';
+    if (literal && word.test(said) && isWords(node, node.text, helpers)) {
       const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
       found.push(`${line}: ${node.text.trim().replace(/\s+/g, ' ')}`);
     }
@@ -187,14 +234,47 @@ function bindingWords(body: string, file: string): string[] {
   return found;
 }
 
+function hitsIn(surfaces: typeof SURFACES, word: RegExp, uncoded = false): string[] {
+  const files = surfaces.flatMap(({ dir, file }) => sourceFiles(join(SRC, dir), file));
+  expect(files.length).toBeGreaterThan(100);
+  return files.flatMap((file) =>
+    wordsSaying(readFileSync(file, 'utf8'), file, word, uncoded).map(
+      (hit) => `${relative(SRC, file)}:${hit}`,
+    ),
+  );
+}
+
 describe("core's sentences to a person", () => {
   it('never say binding or bound', () => {
-    const files = SURFACES.flatMap(({ dir, file }) => sourceFiles(join(SRC, dir), file));
-    expect(files.length).toBeGreaterThan(100);
-    const hits = files.flatMap((file) =>
-      bindingWords(readFileSync(file, 'utf8'), file).map((hit) => `${relative(SRC, file)}:${hit}`),
-    );
-    expect(hits).toEqual([]);
+    expect(hitsIn(SURFACES, BINDING)).toEqual([]);
+  });
+
+  it('never say ship, outside a code mark naming a value a caller sends', () => {
+    expect(hitsIn(RELEASE_SURFACES, SHIP, true)).toEqual([]);
+  });
+
+  it('finds ship in a sentence, a template and a wording helper, and not in a code mark, a value or a word that only holds it', () => {
+    const planted = [
+      "const a = 'closing it would claim a ship nobody wrote anything about.';",
+      'const b = `The release finished and shipped \u0024{n} issues.`;',
+      "const c = `\u0024{w('It does not', 'None of them')} ship\u0024{w('', 's')} without a decision.`;",
+      "const d = 'Send `ship-unverified` with what is unverified.';",
+      "const e = z.literal('ship-unverified');",
+      "const f = 'The relationship and the membership stay.';",
+      "const g = { holdsUntil: 'shipped' };",
+      "const h = 'This project ships nothing.';",
+      'const i = `decide \\`\u0024{id}\\` or \\`ship-unverified\\` instead`;',
+      'const j = sql`SELECT released_at IS NOT NULL AS shipped FROM runs`;',
+      'const k = `\\`\u0024{id}\\` shipped, or decide \\`ship-unverified\\``;',
+      "const l = `\u0024{status === 'shipped' ? 'done' : 'open'}`;",
+    ].join('\n');
+    expect(wordsSaying(planted, 'planted.ts', SHIP, true).map((hit) => hit.split(': ')[0])).toEqual([
+      '1',
+      '2',
+      '3',
+      '8',
+      '11',
+    ]);
   });
 
   it('finds the word in a sentence, a template, an interpolated word and a word handed to a wording helper, and not in code or a log', () => {
@@ -216,7 +296,7 @@ describe("core's sentences to a person", () => {
       "function says(n: number) { return agree(n, 'its binding', 'their bindings'); }",
       "const l = says(n) + everyOne(n, 'binding');",
     ].join('\n');
-    expect(bindingWords(planted, 'planted.ts').map((hit) => hit.split(': ')[0])).toEqual([
+    expect(wordsSaying(planted, 'planted.ts', BINDING).map((hit) => hit.split(': ')[0])).toEqual([
       '1',
       '2',
       '3',
