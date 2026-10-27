@@ -38,17 +38,6 @@ const FRIENDLY_CODES: Record<string, string> = {
 
 export { isRetryableApiError } from '@/lib/utils/retry-rule';
 
-/** When the server asked to be asked again, as a sentence; null where it did not say. Each unit is
- *  rounded up, so a retry at the time it names is never sooner than the server allows. */
-export function retryWhen(err: unknown): string | null {
-  if (!(err instanceof ApiError) || err.retryAfterMs === undefined) return null;
-  const seconds = Math.ceil(err.retryAfterMs / 1000);
-  if (seconds <= 0) return 'You can retry now.';
-  if (seconds < 90) return `You can retry in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`;
-  const minutes = Math.ceil(seconds / 60);
-  return minutes < 90 ? `You can retry in ${minutes} minutes.` : `You can retry in ${Math.ceil(minutes / 60)} hours.`;
-}
-
 /**
  * ISS-1327 — the merge-mark refusals in the web's own words. Core's sentence is written for
  * agents and names every door there is; a person here has one, the issue's Mark merged control.
@@ -138,13 +127,9 @@ function readerSaid(err: ApiError): string | null {
   return [reader, ...standing].join(' ');
 }
 
+/** What a failure says, in a person's words. The wait a Retry-After names is not part of it: that is said
+ *  beside the Retry it gates and counted down there, never fixed into a sentence (ISS-1229 r51, judge-158). */
 export function formatApiError(err: unknown): string {
-  const said = apiErrorSaid(err);
-  const when = retryWhen(err);
-  return when ? `${asSentence(said)} ${when}` : said;
-}
-
-function apiErrorSaid(err: unknown): string {
   if (err instanceof ApiError) {
     const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err) ?? landingShapeSentence(err);
     if (worded) return worded;

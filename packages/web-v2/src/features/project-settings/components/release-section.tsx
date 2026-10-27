@@ -8,7 +8,7 @@ import type { ReleaseBlockerCode } from "@forge/contracts";
 import { ISSUE_STATUS_LABELS, type KernelIssueStatus } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
 import type { MouseEvent, ReactNode } from "react";
-import { ErrorState, Skeleton } from "@/design";
+import { ErrorState, RetryButton, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { pushLocationSearch } from "@/lib/utils/use-location-search";
 import { useReleaseReadiness } from "../hooks";
@@ -301,14 +301,12 @@ export function ReleaseAnswer({
       <p className="fg-body text-fg">
         <b>Can this project release?</b> {answerText(r)}
       </p>
+      {/* The read that failed is core's, of the binding's declaration, and it came back with no answer to judge:
+          the rule's no-answer arm, so it goes through the one Retry like every other (ISS-1229 r51, judge-158). */}
       {a.kind === "unread" && (
-        <button
-          type="button"
-          className="fg-caption mt-1 text-accent-text hover:underline"
-          onClick={() => q.refetch()}
-        >
+        <RetryButton look="link" className="fg-caption mt-1" error={null} onRetry={() => void q.refetch()}>
           Read it again
-        </button>
+        </RetryButton>
       )}
       {listed && r.blockers.length > 0 && (
         <ul className="mt-3 divide-y divide-line border-y border-line" aria-label="What stops a release">

@@ -1,19 +1,17 @@
 "use client";
 
 import { RetryButton } from "@/design";
-import { formatApiError, retryWhen } from "@/lib/api/error";
+import { formatApiError } from "@/lib/api/error";
 
 /** A projects read that failed with no list held: why, the failed read itself, and the act that reads it again. */
 export interface ProjectsUnread {
   message: string;
   error: unknown;
-  /** How long until a second read is accepted, where the answer said (Retry-After); null where it did not. */
-  wait: string | null;
   onRetry: () => void;
 }
 
 export function projectsUnreadOf(error: unknown, onRetry: () => void): ProjectsUnread {
-  return { message: formatApiError(error), error, wait: retryWhen(error), onRetry };
+  return { message: formatApiError(error), error, onRetry };
 }
 
 /** Where a project list would stand: the read failed, which is not a list holding no project (ISS-1229 r47). */

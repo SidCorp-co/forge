@@ -132,6 +132,8 @@ describe("two people who read alike in a room (criteria 486, 492, 493, 494)", ()
       .getAllByTestId("member-row-person")
       .filter((r) => r.textContent?.includes("Can't be told apart from another person here"));
     expect(alike).toHaveLength(2);
+    // ISS-1229 r51, judge-158: at 390 the line read "Can't be told apart from another per…"; it wraps whole.
+    for (const row of alike) expect(within(row).getByTestId("member-standing")).not.toHaveClass("truncate");
     fireEvent.click(within(alike[0] as HTMLElement).getByRole("button", { name: /^Take a member/ }));
     expect(screen.getByRole("dialog", { name: /Take a member out of this room\?/ })).toHaveTextContent(
       "This person can't be told apart from another person in this room",

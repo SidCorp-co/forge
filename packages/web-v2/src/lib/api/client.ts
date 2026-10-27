@@ -16,6 +16,9 @@ export class ApiError extends Error {
   readonly body?: unknown;
   /** How long the server asked the caller to wait before asking again (`Retry-After`), where it said. */
   readonly retryAfterMs?: number;
+  /** When that wait ends, as a time: the answer arrived as this was made, so a wait shown later counts down
+   *  from here rather than starting over (ISS-1229 r51). */
+  readonly retryAt?: number;
 
   constructor(
     status: number,
@@ -31,7 +34,10 @@ export class ApiError extends Error {
     if (code !== undefined) this.code = code;
     if (details !== undefined) this.details = details;
     if (body !== undefined) this.body = body;
-    if (retryAfterMs !== undefined) this.retryAfterMs = retryAfterMs;
+    if (retryAfterMs !== undefined) {
+      this.retryAfterMs = retryAfterMs;
+      this.retryAt = Date.now() + retryAfterMs;
+    }
   }
 }
 

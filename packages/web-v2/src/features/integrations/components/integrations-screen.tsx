@@ -19,6 +19,7 @@ import {
   NativeSelect,
   PageContainer,
   PageTitle,
+  RetryButton,
   Skeleton,
 } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
@@ -196,9 +197,9 @@ export function IntegrationsScreen() {
           <p className="pb-10 text-center text-sm text-muted" data-testid="add-connection">
             The projects in {scopeName} could not be read, so none is offered to add a connection in.{" "}
             {formatApiError(projectsQ.error)}{" "}
-            <button type="button" className={ADD_LINK} onClick={() => projectsQ.refetch()}>
+            <RetryButton look="link" className={ADD_LINK} error={projectsQ.error} onRetry={() => void projectsQ.refetch()}>
               Read them again
-            </button>
+            </RetryButton>
           </p>
         ) : projectsQ.data ? (
           <AddConnection projects={projectsHere} scopeName={scopeName} />

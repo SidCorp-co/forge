@@ -68,7 +68,7 @@ export function useToast(): ToastApi {
 
 function ToastStack({ items, remove, hold }: Pick<ToastLaneApi, "items" | "remove" | "hold">) {
   return items.map(({ clearOf: _clearOf, ...t }) => (
-    <div key={t.id} className="pointer-events-auto">
+    <div key={t.id} data-testid="toast-card" className="pointer-events-auto">
       <Toast
         {...t}
         // A clickable toast goes once its action runs; a kept one holds what the reader would lose, so it
@@ -90,20 +90,30 @@ function ToastStack({ items, remove, hold }: Pick<ToastLaneApi, "items" | "remov
 
 const WIDE = "(min-width: 768px)";
 
-/** Where the open dialog's header ends, or null. On a phone a toast at the top covered a drawer's title,
- *  state and close control (ISS-1421 r27), so the lane starts below that header instead. */
-function useOpenDialogHeaderBottom(watch: boolean): number | null {
-  const [bottom, setBottom] = useState<number | null>(null);
+interface OpenDialog {
+  /** A modal dialog is open over the page. */
+  open: boolean;
+  /** Where its header ends, or null. On a phone a toast at the top covered a drawer's title, state and close
+   *  control (ISS-1421 r27), so the lane starts below that header instead. */
+  headerBottom: number | null;
+}
+
+const NO_DIALOG: OpenDialog = { open: false, headerBottom: null };
+
+/** Whether a modal dialog is open, and where its header ends, watched while `watch` holds. */
+function useOpenDialog(watch: boolean): OpenDialog {
+  const [dialog, setDialog] = useState<OpenDialog>(NO_DIALOG);
   useEffect(() => {
     if (!watch) {
-      setBottom(null);
+      setDialog(NO_DIALOG);
       return;
     }
     const read = () => {
       const open = document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]');
       const header = open[open.length - 1]?.querySelector("header");
       const edge = header ? Math.round(header.getBoundingClientRect().bottom) : 0;
-      setBottom(edge > 0 ? edge : null);
+      const next = { open: open.length > 0, headerBottom: edge > 0 ? edge : null };
+      setDialog((was) => (was.open === next.open && was.headerBottom === next.headerBottom ? was : next));
     };
     read();
     const observer = new MutationObserver(read);
@@ -114,7 +124,7 @@ function useOpenDialogHeaderBottom(watch: boolean): number | null {
       window.removeEventListener("resize", read);
     };
   }, [watch]);
-  return bottom;
+  return dialog;
 }
 
 interface Box {
@@ -136,9 +146,43 @@ const WIDE_BOTTOM_PX = 16;
 const LANE_CAP = 0.35;
 /** The lane's vertical padding, as its class states it (`py-3`), which a capped place takes away. */
 const LANE_PAD_PX = 12;
-/** The least space a capped lane takes: a toast's title and the start of its words. Less hides the toast. */
+/** The least space a capped lane takes, whatever it measures: a toast's title and the start of its words. */
 const MIN_ROOM_PX = 72;
 const OVER_KEPT_Z = 61;
+
+/** The height a lane's toasts take, each whole, without its padding, so none is cut short (ISS-1229 r51). */
+function toastsHeight(lane: HTMLElement | null): number {
+  if (!lane) return 0;
+  const style = getComputedStyle(lane);
+  const padding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+  const cards = [...lane.querySelectorAll<HTMLElement>('[data-testid="toast-card"]')].map((c) => c.getBoundingClientRect().height);
+  const gaps = Math.max(0, cards.length - 1) * (Number.parseFloat(style.rowGap) || 0);
+  return Math.max(lane.scrollHeight - padding, cards.reduce((a, b) => a + b, 0) + gaps);
+}
+
+/** A lane's height: what its toasts take whole, past its class's share, never past the screen less `reserved`. */
+function useWholeCardCap(
+  lane: React.RefObject<HTMLElement | null>,
+  items: readonly unknown[],
+  reserved: () => number,
+): number | null {
+  const [cap, setCap] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (items.length === 0) {
+      setCap(null);
+      return;
+    }
+    const measure = () => {
+      const need = toastsHeight(lane.current) + 2 * LANE_PAD_PX;
+      const next = need > window.innerHeight * LANE_CAP ? Math.min(need, Math.max(0, window.innerHeight - reserved())) : null;
+      setCap((was) => (was === next ? was : next));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [lane, items, reserved]);
+  return cap;
+}
 
 /** The device's safe-area insets in px, read off a probe: the space a fixed edge keeps clear of. */
 function safeInsets(): { top: number; bottom: number } {
@@ -155,7 +199,7 @@ function safeInsets(): { top: number; bottom: number } {
 /**
  * Where the lane goes so that no toast in it stands over the elements one names, nor over the kept
  * notices: the top edge, beside the dialog on a wide screen, the bottom edge, the larger space above or
- * below them all, or the widest between them, capped, if it holds `MIN_ROOM_PX`. Failing that it goes
+ * below them all, or the widest between them, capped, if it holds a whole toast. Failing that it goes
  * over the kept notices, then lets go of the elements from the last, never the first (ISS-1236 r10).
  * Null keeps the lane's own place. Measured again on every scroll and resize, as the elements move.
  */
@@ -198,15 +242,18 @@ function useKeepClear(
       const padding =
         (Number.parseFloat(laneStyle?.paddingTop ?? "") || 0) + (Number.parseFloat(laneStyle?.paddingBottom ?? "") || 0);
       const content = (lane.current?.scrollHeight ?? 0) - padding;
-      const height = Math.max(box.height, Math.min(content + 2 * LANE_PAD_PX, vh * LANE_CAP));
       const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : inset.top);
+      const dialogOpen = belowDialogHeader !== null || document.querySelector('[role="dialog"][aria-modal="true"]');
+      const gap = (wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX) + inset.bottom;
+      // Every toast whole, unless the screen between its edges cannot hold them: then it scrolls, wholly on screen.
+      const room = Math.max(0, vh - top - gap);
+      const whole = Math.min(Math.max(content, toastsHeight(lane.current)), room - 2 * LANE_PAD_PX);
+      const height = Math.min(room, Math.max(box.height, whole + 2 * LANE_PAD_PX));
       const left = wide ? vw - box.width : 0;
       const atTop = { top, bottom: top + height, left, right: vw };
       const dialog = targets[0].closest('[role="dialog"]') ?? targets[0];
       const edge = dialog.getBoundingClientRect().left;
       const beside = { ...atTop, left: edge - box.width, right: edge };
-      const dialogOpen = belowDialogHeader !== null || document.querySelector('[role="dialog"][aria-modal="true"]');
-      const gap = (wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX) + inset.bottom;
       const atBottom = { ...atTop, top: vh - gap - height, bottom: vh - gap };
       /** The runs of the lane's column, between its top and bottom edges, that no obstacle crosses. */
       const spaces = (obstacles: Box[]) => {
@@ -241,13 +288,13 @@ function useKeepClear(
         const lift = overKept && kept ? { zIndex: OVER_KEPT_Z } : {};
         if (clear(atTop)) return n === rects.length && !overKept ? null : { ...lift, top };
         if (wide && beside.left >= 0 && clear(beside)) return { ...lift, right: vw - edge };
-        if (clear(atBottom)) return { ...lift, top: "auto", bottom: gap };
+        if (clear(atBottom)) return { ...lift, top: "auto", bottom: gap, maxHeight: height };
         // Above or below the elements first, where it covers none of what lies between them.
         const runs = spaces(obstacles);
         const first = Math.min(...held.map((r) => r.top));
         const last = Math.max(...held.map((r) => r.bottom));
         const outside = runs.filter((r) => r.top + r.room <= first || r.top >= last);
-        const space = [outside, runs].map((list) => list.reduce(larger, { top, room: 0 })).find((r) => r.room >= MIN_ROOM_PX);
+        const space = [outside, runs].map((list) => list.reduce(larger, { top, room: 0 })).find((r) => r.room >= Math.max(whole, MIN_ROOM_PX));
         return space ? { ...lift, ...capped(space) } : undefined;
       };
       const tries: [number, boolean][] = [[rects.length, false]];
@@ -277,8 +324,7 @@ function useKeepClear(
  * one, where a page's save bar and a phone's tab bar sit. A lane in the page flow took its height
  * out of the column and lifted every bottom-anchored thing for as long as a toast showed (ISS-1171),
  * so it lets touches through everywhere but the toasts instead. On a wide screen it keeps to the
- * right, below the top bar. Its height is capped so the reading area keeps most of the column;
- * anything past the cap scrolls inside the lane. `className` carries the frame's own clearance.
+ * right, below the top bar. Its height takes its toasts whole, or scrolls. `className` carries the frame's clearance.
  * It renders through a portal on `<body>`, as every layer in popover.tsx's stacking note does, so
  * its tier is compared with an open dialog's and not trapped under it by the frame (ISS-1289).
  */
@@ -287,12 +333,24 @@ export function ToastLane({ className }: { className?: string }) {
   if (!lane) throw new Error("ToastLane must be used within <ToastProvider>");
   const { items, remove, hold, registerLane } = lane;
   const wide = useMediaQuery(WIDE);
-  const belowDialogHeader = useOpenDialogHeaderBottom(!wide && items.length > 0);
+  const dialog = useOpenDialog(!wide && items.length > 0);
+  const belowDialogHeader = dialog.headerBottom;
   const laneRef = useRef<HTMLElement>(null);
   const keptRef = useRef<HTMLElement>(null);
-  const kept = wide ? [] : items.filter((t) => t.keep);
+  // A kept notice is the page's: on a phone a dialog covers the page, so the notice waits behind it, still kept,
+  // and comes back as it closes. Over the dialog it covered Save (ISS-1229 r51, judge-157 and judge-158).
+  const kept = wide || dialog.open ? [] : items.filter((t) => t.keep);
   const passing = wide ? items : items.filter((t) => !t.keep);
   const clearPlace = useKeepClear(items, laneRef, keptRef, wide, belowDialogHeader);
+  // What the screen keeps from each lane: the top bar or a dialog's header above, the tab bar below the kept one.
+  const passingReserved = useCallback(() => {
+    if (wide) return WIDE_TOP_PX + WIDE_BOTTOM_PX;
+    const inset = safeInsets();
+    return (belowDialogHeader ?? inset.top) + (dialog.open ? 0 : TAB_BAR_PX) + inset.bottom;
+  }, [wide, belowDialogHeader, dialog.open]);
+  const keptReserved = useCallback(() => TAB_BAR_PX + safeInsets().bottom, []);
+  const passingCap = useWholeCardCap(laneRef, passing, passingReserved);
+  const keptCap = useWholeCardCap(keptRef, kept, keptReserved);
 
   useEffect(() => registerLane(), [registerLane]);
 
@@ -312,7 +370,10 @@ export function ToastLane({ className }: { className?: string }) {
               "pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-[60] md:left-auto md:top-14",
               className,
             )}
-            style={clearPlace ?? (belowDialogHeader === null ? undefined : { top: belowDialogHeader })}
+            style={{
+              ...(passingCap === null ? {} : { maxHeight: passingCap }),
+              ...(clearPlace ?? (belowDialogHeader === null ? {} : { top: belowDialogHeader })),
+            }}
           >
             <ToastStack items={passing} remove={remove} hold={hold} />
           </section>,
@@ -328,6 +389,7 @@ export function ToastLane({ className }: { className?: string }) {
               "flex max-h-[35dvh] flex-col items-center gap-2.5 overflow-y-auto px-4 py-3",
               "pointer-events-none fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom))] z-[60]",
             )}
+            style={keptCap === null ? undefined : { maxHeight: keptCap }}
           >
             <ToastStack items={kept} remove={remove} hold={hold} />
           </section>,

@@ -547,21 +547,25 @@ describe("a toast naming the element it keeps clear of", () => {
   });
 
   // r9 review F1 (seventh read): on a phone a kept notice waits above the tab bar; moving the lane to
-  // the bottom to clear the field would cover it instead.
+  // the bottom to clear the field would cover it instead. A page, since under a dialog it gives way (r51).
   it("keeps clear of a kept notice at the bottom as well as of the field", () => {
     wide(false);
     viewport(390, 844);
     const spy = boxes({
-      "toast-lane": { top: 61, bottom: 361, height: 300, width: 390, left: 0, right: 390 },
+      "toast-lane": { top: 0, bottom: 300, height: 300, width: 390, left: 0, right: 390 },
       "toast-lane-kept": { top: 700, bottom: 788, height: 88, width: 390, left: 0, right: 390 },
       path: { top: 241, bottom: 283, left: 21, right: 370 },
-      header: { bottom: 61 },
     });
     try {
       render(
         <ToastProvider>
           <Trigger />
-          <Dialog />
+          <input
+            data-testid="path"
+            ref={(el) => {
+              field = el;
+            }}
+          />
           <ToastLane />
         </ToastProvider>,
       );
@@ -629,12 +633,28 @@ describe("a toast naming the element it keeps clear of", () => {
       </SlideOver>
     );
   }
+  /** The same elements on a page with no dialog over it, where a kept notice stands. */
+  function PageStep() {
+    return (
+      <div>
+        {Object.keys(step).map((k) => (
+          <div
+            key={k}
+            data-testid={k}
+            ref={(el) => {
+              if (el) elements[k] = el;
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
   const stepOrder = () => [elements.path, elements.label, elements.error, elements.save];
   /** Where the lane stands, from the place set on it: an edge with its own 200 px, or a capped space. */
   const laneSpan = (lane: HTMLElement) => {
     if (lane.style.top === "auto") {
       const bottom = window.innerHeight - Number.parseFloat(lane.style.bottom);
-      return { top: bottom - 200, bottom };
+      return { top: bottom - (lane.style.maxHeight ? Number.parseFloat(lane.style.maxHeight) : 200), bottom };
     }
     const top = Number.parseFloat(lane.style.top);
     return { top, bottom: top + (lane.style.maxHeight ? Number.parseFloat(lane.style.maxHeight) : 200) };
@@ -671,16 +691,20 @@ describe("a toast naming the element it keeps clear of", () => {
     }
   });
 
-  // r10 review W3: a gap between two named elements is room too.
+  // r10 review W3: a gap between two named elements is room too. Under a dialog a kept notice gives way (r51).
   it("keeps clear of a kept notice too where a space between the elements it names allows", () => {
     wide(false);
     viewport(390, 600);
-    const spy = stepBoxes({ "toast-lane-kept": { top: 456, bottom: 544, height: 88, width: 390, left: 0, right: 390 } });
+    // On a page the lane starts at the top of the screen, so the error starts higher to leave no room above it.
+    const spy = stepBoxes({
+      error: { top: 40, bottom: 157, left: 21, right: 370 },
+      "toast-lane-kept": { top: 456, bottom: 544, height: 88, width: 390, left: 0, right: 390 },
+    });
     try {
       render(
         <ToastProvider>
           <Trigger />
-          <Step />
+          <PageStep />
           <ToastLane />
         </ToastProvider>,
       );
@@ -704,6 +728,7 @@ describe("a toast naming the element it keeps clear of", () => {
     viewport(390, 600);
     // Save right under the field, and a long kept notice: no space clear of both holds a first line.
     const spy = stepBoxes({
+      error: { top: 40, bottom: 157, left: 21, right: 370 },
       save: { top: 255, bottom: 299, left: 21, right: 370 },
       "toast-lane-kept": { top: 350, bottom: 544, height: 194, width: 390, left: 0, right: 390 },
     });
@@ -711,7 +736,7 @@ describe("a toast naming the element it keeps clear of", () => {
       render(
         <ToastProvider>
           <Trigger />
-          <Step />
+          <PageStep />
           <ToastLane />
         </ToastProvider>,
       );
@@ -768,6 +793,199 @@ describe("a toast naming the element it keeps clear of", () => {
       act(() => fire({ ...refused, duration: 0, clearOf: () => [elements.path, null, elements.save] }));
       const lane = screen.getByTestId("toast-lane");
       clearOfAll(lane, ["path", "save"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // ISS-1229 r51, judge-157 and judge-158: at 390×600 a kept notice stood over the dialog's Save, and over the
+  // refusal toast's link at 390×844. The notice is the page's; a dialog covers the page, so it waits behind it.
+  it("draws no kept notice over a dialog on a phone, and draws it again once the dialog closes", async () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = stepBoxes();
+    function Toggle({ open }: { open: boolean }) {
+      return open ? <Step /> : null;
+    }
+    try {
+      const view = (open: boolean) => (
+        <ToastProvider>
+          <Trigger />
+          <Toggle open={open} />
+          <ToastLane />
+        </ToastProvider>
+      );
+      const { rerender } = render(view(false));
+      act(() => fire({ title: "This room was deleted", keep: true }));
+      expect(screen.getByTestId("toast-lane-kept")).toHaveTextContent("This room was deleted");
+      rerender(view(true));
+      await act(async () => {});
+      act(() => fire({ ...refused, duration: 0, clearOf: stepOrder }));
+      expect(screen.queryByTestId("toast-lane-kept")).toBeNull();
+      expect(screen.queryByText("This room was deleted")).toBeNull();
+      rerender(view(false));
+      await act(async () => {});
+      expect(screen.getByTestId("toast-lane-kept")).toHaveTextContent("This room was deleted");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("keeps a kept notice beside the other toasts on a wide screen, dialog open or not", () => {
+    wide(true);
+    viewport(1280, 900);
+    const spy = stepBoxes();
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ title: "This room was deleted", keep: true }));
+      expect(screen.getByTestId("toast-lane")).toHaveTextContent("This room was deleted");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // judge-157 at 390×600: the refusal toast was capped to the 99 px strip below Save, its second line and its
+  // link off screen. A space shorter than the whole toast is no place; the last elements are let go of instead.
+  it("never stands in a space shorter than its whole toast: it lets go of Save before it is cut", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = stepBoxes({ "toast-card": { top: 0, bottom: 198, height: 198, left: 0, right: 390 } });
+    const tall = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(222);
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: stepOrder }));
+      const lane = screen.getByTestId("toast-lane");
+      // Below Save 151 px and between the field and Save 162: neither holds the 198 px toast.
+      const { top, bottom } = laneSpan(lane);
+      const shown = lane.style.maxHeight ? Number.parseFloat(lane.style.maxHeight) : bottom - top;
+      expect(shown).toBeGreaterThanOrEqual(198 + 24);
+      clearOfAll(lane, ["error", "label", "path"]);
+    } finally {
+      tall.mockRestore();
+      spy.mockRestore();
+    }
+  });
+
+  // r51 after-shots at 390×600: with "Project created" still up, the lane held the taller refusal's height alone,
+  // and the refusal, second in it, ran past the lane's bottom edge with its link.
+  it("holds every toast it shows whole, the second one's link included, on a short phone", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const by: Record<string, Partial<DOMRect>> = {
+        "toast-lane": { top: 61, bottom: 261, height: 200, width: 390, left: 0, right: 390 },
+        ...Object.fromEntries(Object.entries(step).map(([k, v]) => [k, { ...v, left: 21, right: 370 }])),
+        header: { bottom: 61 },
+      };
+      if (this.dataset.testid === "toast-card") {
+        const h = this.textContent?.includes("not saved") ? 198 : 61;
+        return { top: 0, bottom: h, left: 0, right: 390, width: 390, height: h } as DOMRect;
+      }
+      const key = this.dataset.testid ?? (this.getAttribute("role") === "dialog" ? "dialog" : this.tagName.toLowerCase());
+      return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, ...by[key] } as DOMRect;
+    });
+    // The lane's class gives it 12 px of padding above and below and 10 px between toasts; jsdom computes neither.
+    const real = window.getComputedStyle;
+    const styled = vi.spyOn(window, "getComputedStyle").mockImplementation((el: Element) => {
+      const style = real(el);
+      if ((el as HTMLElement).dataset?.testid !== "toast-lane" || (el as HTMLElement).style.paddingTop === "0px") return style;
+      return { ...style, paddingTop: "12px", paddingBottom: "12px", rowGap: "10px" } as CSSStyleDeclaration;
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => {
+        fire({ title: "Project created", duration: 0 });
+        fire({ ...refused, duration: 0, clearOf: stepOrder });
+      });
+      const lane = screen.getByTestId("toast-lane");
+      const { top, bottom } = laneSpan(lane);
+      // 61 and 198 px, the 10 px between them and 12 px of padding at each end: 293 px, wherever it stands.
+      expect(bottom - top).toBeGreaterThanOrEqual(293);
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(bottom).toBeLessThanOrEqual(600);
+      clearOfAll(lane, ["path"]);
+    } finally {
+      styled.mockRestore();
+      spy.mockRestore();
+    }
+  });
+
+  // r51 review F1 (second read): a lane placed at the bottom edge was pushed above the top of the screen.
+  it("keeps a lane of toasts taller than the screen leaves wholly on screen, above the tab bar", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = boxes({
+      "toast-lane": { top: 0, bottom: 200, height: 200, width: 390, left: 0, right: 390 },
+      "toast-card": { top: 0, bottom: 550, height: 550, left: 0, right: 390 },
+      path: { top: 550, bottom: 590, left: 21, right: 370 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <input
+            data-testid="path"
+            ref={(el) => {
+              field = el;
+            }}
+          />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: () => field }));
+      const lane = screen.getByTestId("toast-lane");
+      // With no place set the lane keeps its class's own, at the top of the screen.
+      const top = Number.parseFloat(lane.style.top) || 0;
+      const bottom = top + Number.parseFloat(lane.style.maxHeight);
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(bottom).toBeLessThanOrEqual(600 - 56);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("holds its height to one whole toast where 35% of a short screen is less", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = stepBoxes({ "toast-card": { top: 0, bottom: 198, height: 198, left: 0, right: 390 } });
+    try {
+      render(<Frame />);
+      act(() => fire({ ...refused, duration: 0 }));
+      // 35% of 600 is 210, under the 222 px a 198 px toast and the lane's padding take.
+      expect(screen.getByTestId("toast-lane").style.maxHeight).toBe("222px");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // r51 review F2: the kept lane's cap grew past the screen above the tab bar.
+  it("never holds a lane taller than the screen leaves it, so a toast too tall for it scrolls on screen", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = stepBoxes({ "toast-card": { top: 0, bottom: 550, height: 550, left: 0, right: 390 } });
+    try {
+      render(<Frame />);
+      act(() => fire({ title: "This room was deleted", keep: true }));
+      // Above the 56 px tab bar, 544 px is all the kept lane has; its 550 px toast and padding scroll inside it.
+      expect(screen.getByTestId("toast-lane-kept").style.maxHeight).toBe("544px");
     } finally {
       spy.mockRestore();
     }

@@ -22,6 +22,7 @@ vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn()
 const prefsRetry = vi.fn();
 let storedFail = false;
 let storedReading = false;
+let storedError: unknown = new Error("The server is down.");
 vi.mock("@/features/orgs/active-org", () => ({
   useActiveOrg: () =>
     orgsLoading || orgsFail || storedReading
@@ -31,7 +32,7 @@ vi.mock("@/features/orgs/active-org", () => ({
             // The stand-in a failed stored choice is answered by: the personal workspace (ISS-1229 r50).
             activeOrg: { id: "me", name: "Personal", isPersonal: true },
             scopeRead: true,
-            storedUnread: { error: new Error("The server is down."), retry: prefsRetry },
+            storedUnread: { error: storedError, retry: prefsRetry },
           }
         : { activeOrg: { id: "o1", name: "SidCorp", isPersonal: false }, scopeRead: true, storedUnread: null },
 }));
@@ -52,6 +53,7 @@ vi.mock("../hooks", () => ({
 }));
 
 const { NewProjectDialog } = await import("./new-project-dialog");
+const { ApiError } = await import("@/lib/api/client");
 
 function submitDesk() {
   fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "Desk" } });
@@ -63,6 +65,7 @@ beforeEach(() => {
   orgsLoading = false;
   storedFail = false;
   storedReading = false;
+  storedError = new Error("The server is down.");
   prefsRetry.mockClear();
   create.mockClear();
   orgsRefetch.mockClear();
@@ -139,7 +142,7 @@ describe("the new-project dialog while the stored active organization cannot be 
     render(<NewProjectDialog open onClose={vi.fn()} />);
     const unread = screen.getByTestId("new-project-stored-org-unread");
     expect(unread).toHaveTextContent(
-      "Couldn't load which organization you were working in, so where this project will live is not known. The server is down.",
+      "Couldn't load which organization you were working in, so choose below where this project will live. The server is down.",
     );
     expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
     submitDesk();
@@ -169,7 +172,30 @@ describe("the new-project dialog while the stored active organization cannot be 
     orgsFail = false;
     storedFail = true;
     render(<NewProjectDialog open onClose={vi.fn()} />);
-    expect(screen.queryByText("Organization")).toBeNull();
+    expect(screen.getByRole("combobox")).toHaveTextContent("Choose where it lives");
+    expect(screen.getByRole("combobox")).not.toHaveTextContent("Personal");
+  });
+
+  // ISS-1229 r51, judge-158: on a 403 for the stored organization no Retry is offered, Create was held, and the
+  // dialog offered no way forward. The person's own pick of the organization is one.
+  it("creates the project where the person picks, once they pick, where no Retry is offered", async () => {
+    orgsFail = false;
+    storedFail = true;
+    storedError = new ApiError(403, "You do not have access to this.");
+    render(<NewProjectDialog open onClose={vi.fn()} />);
+    expect(within(screen.getByTestId("new-project-stored-org-unread")).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "SidCorp" }));
+    expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
+    // r51 review F1: once a pick is made, the line no longer says where the project lands is unknown.
+    expect(screen.getByTestId("new-project-stored-org-unread")).toHaveTextContent(
+      "Couldn't load which organization you were working in. You do not have access to this.",
+    );
+    expect(screen.getByTestId("new-project-stored-org-unread")).not.toHaveTextContent(/not known|choose below/);
+    submitDesk();
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]).toEqual([{ slug: "desk", name: "Desk", orgId: "o1" }]);
   });
 
   it("says nothing is being read once both have answered", () => {

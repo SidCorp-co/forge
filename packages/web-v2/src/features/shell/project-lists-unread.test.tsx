@@ -5,7 +5,7 @@
 // said, with the act that reads it again, never shown as a list holding nothing.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
@@ -145,11 +145,35 @@ const railWith = (projectsUnread: ReturnType<typeof unread>) => (
 // ISS-1229 r50, judge-152 on 479: "Projects not loaded / Retry" gave no wait where the answer carried Retry-After,
 // and on 478: it offered Retry on a refusal no second read changes.
 describe("the narrow rail's failed projects read (criteria 497, 498)", () => {
-  it("says how long to wait where the answer carried Retry-After, in visible text and in its name", () => {
-    render(railWith(unread(() => {}, new ApiError(429, "", undefined, undefined, undefined, 30_000))));
+  // ISS-1229 r51, judge-158: 47 seconds after a 30-second Retry-After the tile still said 30, and its name said
+  // the wait twice. It counts down, offers Retry once the wait is over, and names each thing once.
+  it("counts the wait down in visible text and in its name, and offers Retry once it is over", () => {
+    vi.useFakeTimers();
+    try {
+      const onRetry = vi.fn();
+      render(railWith(unread(onRetry, new ApiError(429, "", undefined, undefined, undefined, 30_000))));
+      const tile = () => screen.getByTestId("rail-projects-unread");
+      expect(tile()).toHaveTextContent("You can retry in 30 seconds.");
+      expect(tile()).toHaveAttribute("aria-label", "Couldn't load your projects. You can retry in 30 seconds.");
+      expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+      act(() => void vi.advanceTimersByTime(17_000));
+      expect(tile()).toHaveTextContent("You can retry in 13 seconds.");
+      expect(tile()).toHaveAttribute("aria-label", "Couldn't load your projects. You can retry in 13 seconds.");
+      act(() => void vi.advanceTimersByTime(13_000));
+      expect(screen.queryByTestId("rail-projects-wait")).toBeNull();
+      const retry = screen.getByRole("button", { name: "Couldn't load your projects. Retry" });
+      fireEvent.click(retry);
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says no wait where the rule offers no Retry, though the answer carried Retry-After", () => {
+    render(railWith(unread(() => {}, new ApiError(403, "You do not have access to this.", undefined, undefined, undefined, 60_000))));
     const tile = screen.getByTestId("rail-projects-unread");
-    expect(tile).toHaveTextContent("You can retry in 30 seconds.");
-    expect(tile).toHaveAttribute("aria-label", "Couldn't load your projects. You can retry in 30 seconds. Retry");
+    expect(tile).not.toHaveTextContent(/retry in/i);
+    expect(tile.getAttribute("aria-label")).toBe("Couldn't load your projects. You do not have access to this.");
   });
 
   it.each([403, 404, 422])("offers no Retry where the read was answered %s, and says why", (status) => {

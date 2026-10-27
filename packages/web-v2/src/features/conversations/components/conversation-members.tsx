@@ -232,7 +232,8 @@ function MemberRow({
           <span className={`fg-body-sm block ${isAgent ? "truncate font-mono" : "break-words"}`}>
             {memberName(member, viewerId, "start")}
           </span>
-          <span className="fg-caption block truncate text-subtle">
+          {/* A person's line is what tells them apart, so it wraps rather than being cut at 390 (ISS-1229 r51). */}
+          <span data-testid="member-standing" className={`fg-caption block text-subtle ${isAgent ? "truncate" : "break-words"}`}>
             {isAgent ? (project?.name ?? "a project this room is no longer about") : personStanding(member, room, viewerId).line}
           </span>
         </div>
