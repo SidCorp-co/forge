@@ -1,5 +1,6 @@
 export { readAdmissibleIssues } from './admissible.js';
 export { readOwedComments } from './comment-inbox.js';
+export { type DeclaredRunRead, declaredRunOfCall } from './declared-run-of-call.js';
 export { assertDeviceBoundToProject } from './device-project.js';
 export { readDialogsAnswered, readRunGate } from './gate-report.js';
 export { OCCUPYING } from './load.js';

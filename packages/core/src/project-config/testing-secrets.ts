@@ -20,7 +20,10 @@ interface TestingSecretsRefusal {
 }
 
 interface ResolvedTestingSecrets {
-  jobId: string;
+  /** The job whose credential read them; null where a run a master declared did. */
+  jobId: string | null;
+  /** The declared run that read them, by core's session and run ids. */
+  run?: { session: string; id: string };
   environment: string;
   profileId: string;
   secrets: { ref: string; value: string }[];
@@ -41,7 +44,7 @@ const refuse = (
 });
 
 const JOB_CREDENTIAL_SHAPE =
-  'The credential that reaches this route is the one a running job holds: issued to the box the job runs on and bound to the job’s project, so it names exactly one live job.';
+  'The credential that reaches this route is the one a running job holds: issued to the box the job runs on and bound to the job’s project, so it names exactly one live job; or a box’s own credential with the id of a run a master on that box declared (its run id, or core’s session or run id for it) in place of the job id.';
 
 /** The one live job this credential names, which must be the job asked about. */
 async function credentialJob(
@@ -179,7 +182,8 @@ async function decryptedValues(
 }
 
 // testing-secrets/resolve — a job credential reads the values behind the secret:// refs of
-// the one testing profile its environment names, and nothing else
+// the one testing profile its environment names, and nothing else. A run a master declared reads
+// them the same way under its box's credential, naming itself (`resolveForDeclaredRun`).
 export async function resolveTestingSecrets(args: {
   principal: PatPrincipal;
   jobId: string;
@@ -187,6 +191,17 @@ export async function resolveTestingSecrets(args: {
   refs: readonly string[] | null;
 }): Promise<TestingSecretsOutcome> {
   const { principal, profileId } = args;
+  if (args.jobId !== SELF_JOB && principal.deviceId) {
+    const declared = await projectConfigPorts().declaredRunOfCall(principal, args.jobId);
+    if (declared.kind === 'refused') {
+      return refuse(
+        403,
+        DECLARED_RUN_REFUSAL[declared.reason],
+        `${declared.detail} Nothing was read.`,
+      );
+    }
+    if (declared.kind === 'run') return resolveForDeclaredRun({ ...args, run: declared });
+  }
   const own = await credentialJob(principal, args.jobId);
   if (!own.ok) return own;
   const { jobId } = own;
@@ -203,7 +218,7 @@ export async function resolveTestingSecrets(args: {
       `project ${job.projectId} declares no project document, so no environment names a testing profile.`,
     );
   }
-  const judged = await judgedEnvironment(job.issueId, project.document, jobId);
+  const judged = await judgedEnvironment(job.issueId, project.document, `job ${jobId}`);
   if (!judged.ok) return judged;
   const { environment, testing } = judged;
   if (testing !== profileId) {
@@ -236,12 +251,106 @@ export async function resolveTestingSecrets(args: {
   return { ok: true, resolved: { jobId, environment, profileId, secrets } };
 }
 
+const DECLARED_RUN_REFUSAL = {
+  ended: 'TESTING_SECRETS_RUN_ENDED',
+  queued: 'TESTING_SECRETS_RUN_NOT_ADMITTED',
+  foreign: 'TESTING_SECRETS_FOREIGN_RUN',
+} as const satisfies Record<string, TestingSecretsRefusalCode>;
+
+type DeclaredRun = Extract<
+  Awaited<ReturnType<ReturnType<typeof projectConfigPorts>['declaredRunOfCall']>>,
+  { kind: 'run' }
+>;
+
+/**
+ * A run a master declared on the caller's box: the runs a master declares execute in its pane under
+ * the box's own credential, so the call names the run, and core's record of that run on that box
+ * binds the read to its project and the issues it was declared over (adminhub-fe ISS-68's stg
+ * judges, 2026-10-27). Its environment is the one deploying the branch an issue of the run landed
+ * on, as for a job; the read is audited on that issue and its values scrubbed from what the run's
+ * session posts.
+ */
+async function resolveForDeclaredRun(args: {
+  principal: PatPrincipal;
+  profileId: string;
+  refs: readonly string[] | null;
+  run: DeclaredRun;
+}): Promise<TestingSecretsOutcome> {
+  const { principal, profileId, run } = args;
+  const judge = `run ${run.runId}`;
+  const project = await readProjectConfig(run.projectId);
+  if (!project) {
+    return refuse(
+      422,
+      'TESTING_SECRETS_NO_PROJECT_DOCUMENT',
+      `project ${run.projectId} declares no project document, so no environment names a testing profile.`,
+    );
+  }
+  let judged: Awaited<ReturnType<typeof judgedEnvironment>> | null = null;
+  let issueId: string | null = null;
+  for (const id of run.issueIds) {
+    const read = await judgedEnvironment(id, project.document, judge);
+    if (read.ok && read.testing === profileId) {
+      judged = read;
+      issueId = id;
+      break;
+    }
+    if (!judged || (!judged.ok && read.ok)) judged = read;
+  }
+  if (!judged) {
+    return refuse(
+      422,
+      'TESTING_SECRETS_NOT_LANDED',
+      `${judge} was declared over no issue of project ${run.projectId}, so no landed work names the environment it judges.`,
+    );
+  }
+  if (!judged.ok) return judged;
+  if (!issueId) {
+    return refuse(
+      422,
+      'TESTING_PROFILE_NOT_NAMED',
+      `environment \`${judged.environment}\`, which ${judge} judges, names testing profile \`${judged.testing}\`, not \`${profileId}\`.`,
+    );
+  }
+  const { environment } = judged;
+
+  const refs = await profileRefs(run.projectId, profileId, environment, args.refs);
+  if (!refs.ok) return refs;
+  const values = await decryptedValues(run.projectId, profileId, refs.wanted);
+  if (!values.ok) return values;
+
+  await projectConfigPorts().recordRunSecretResolve({
+    issueId,
+    sessionId: run.sessionId,
+    runId: run.runId,
+    deviceId: principal.deviceId ?? '',
+    environment,
+    profile: profileId,
+    refs: refs.wanted,
+    tokenId: principal.tokenId,
+  });
+  projectConfigPorts().rememberHandedOut(
+    run.sessionId,
+    values.secrets.map((v) => v.value),
+  );
+  return {
+    ok: true,
+    resolved: {
+      jobId: null,
+      run: { session: run.sessionId, id: run.runId },
+      environment,
+      profileId,
+      secrets: values.secrets,
+    },
+  };
+}
+
 // the environment a job judges is the one deploying the branch its issue's work landed on —
 // the target the merge mark recorded — so no deployment is read and no dispatcher writes a field.
 async function judgedEnvironment(
   issueId: string | null,
   document: ProjectDocument,
-  jobId: string,
+  judge: string,
 ): Promise<Refused | { ok: true; environment: string; testing: string }> {
   const [issue] = issueId
     ? await db
@@ -254,7 +363,7 @@ async function judgedEnvironment(
     return refuse(
       422,
       'TESTING_SECRETS_NOT_LANDED',
-      `job ${jobId} works no issue, so no landed work names the environment it judges.`,
+      `${judge} works no issue, so no landed work names the environment it judges.`,
     );
   }
   if (!issue.target) {

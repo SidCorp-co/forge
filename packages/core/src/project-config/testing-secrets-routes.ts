@@ -38,8 +38,9 @@ async function isSession(token: string): Promise<boolean> {
   }
 }
 
-// this door admits no session and no PAT door's grant: the job credential is a token of
-// the PAT format, and what it may read here is decided by the job it names, not by a grant.
+// this door admits no session and no PAT door's grant: the job credential, or the box credential a
+// declared run calls under, is a token of the PAT format, and what it may read here is decided by the
+// job or run it names, not by a grant.
 async function jobCredential(c: Context): Promise<PatPrincipal> {
   const parsed = parseBearerHeader(c);
   if (parsed.kind === 'malformed') throw unauthenticated('invalid authorization header');

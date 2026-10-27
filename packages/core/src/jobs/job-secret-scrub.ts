@@ -106,6 +106,26 @@ export async function scrubJobOutput<T>(jobIds: readonly string[], data: T): Pro
   return scrubSecretsDeep(data, await secretsHeldByJobs(jobIds));
 }
 
+/**
+ * What a session posts: its jobs' testing secrets, and those it read itself as a run a master
+ * declared (`project-config/testing-secrets.ts`), which no job holds. `read` is the refs its audit
+ * rows name, by project, so a restart still knows what the session holds.
+ */
+export async function scrubSessionSecrets<T>(
+  session: {
+    id: string;
+    jobIds: readonly string[];
+    read: ReadonlyArray<{ projectId: string; refs: readonly string[] }>;
+  },
+  data: T,
+): Promise<T> {
+  const values = new Set(await secretsHeldByJobs([...session.jobIds, session.id]));
+  for (const { projectId, refs } of session.read) {
+    for (const v of await currentValues(projectId, new Set(refs))) values.add(v);
+  }
+  return scrubSecretsDeep(data, [...values]);
+}
+
 export async function jobsOfSession(sessionId: string): Promise<string[]> {
   const rows = await db
     .select({ id: jobs.id })

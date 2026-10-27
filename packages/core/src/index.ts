@@ -28,7 +28,7 @@ import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { forgeNeedsYouTool, needsYouViewerOf, readNeedsYouDecisions } from './development/index.js';
 import { contractHolding, contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
-import { provideExecutionPorts } from './execution-ports.js';
+import { declaredRunSecretPorts, provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
 import {
   embedFeedback,
@@ -286,6 +286,7 @@ provideProjectConfigPorts({
   jobOfCredential: resolvePipelineContext,
   recordSecretResolve,
   rememberHandedOut,
+  ...declaredRunSecretPorts,
 });
 // the chat toolset composed below describes the registered queries, so they are registered first
 registerReportQueries();

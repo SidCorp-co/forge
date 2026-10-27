@@ -237,6 +237,11 @@ export {
   withheldWait,
 } from './strand-rules.js';
 export { clearIssueStrand, writeIssueStrand } from './strand-write.js';
+export {
+  RUN_SECRET_RESOLVE,
+  recordRunSecretResolve,
+  runSecretRefsOfSession,
+} from './testing-secret-audit.js';
 export { emitIssueFieldUpdate } from './update-hook.js';
 export {
   type Carriage,

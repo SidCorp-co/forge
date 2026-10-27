@@ -10,6 +10,7 @@ export {
   recordSecretResolve,
   rememberHandedOut,
   scrubJobOutput,
+  scrubSessionSecrets,
 } from './job-secret-scrub.js';
 export { jobTypeOf } from './job-type-read.js';
 export { killGraceMs, requestJobKill } from './kill-gate.js';

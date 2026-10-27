@@ -53,6 +53,12 @@ Read these before judging anything, while whoever sent you can still equip you.
   environment serves, and in \`basis\` whether it holds the issue's landed commit.
 - \`GET /api/projects/:id/config\` answers the project document: each environment's address and the
   testing profile its testers get in through, whose \`limits\` say what that environment does not have.
+- \`GET /api/jobs/<run>/testing-profiles/<profile>/secrets\` answers the values behind that profile's
+  \`secret://\` references, to log in with. A run a master declared sends the run id its box declared
+  for it as \`<run>\` (\`forge-runner api jobs/<run>/testing-profiles/<profile>/secrets\`, under the
+  box's credential); a job sends \`self\`. Only the profile of the environment deploying the branch the
+  issue's work landed on is answered, while the run runs; each read is audited on the issue and each
+  value is scrubbed from what the run posts. Keep a value in no file, comment or commit.
 
 A criterion you have no route to is a \`skipped\` naming what is missing. Where every criterion you
 were given would be one, say so and stop: a credential or a person is what was owed, not a run.

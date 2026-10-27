@@ -125,6 +125,12 @@ export type PolicyRefusalCode = (typeof POLICY_REFUSAL_CODES)[number];
 
 export const TESTING_SECRETS_REFUSAL_CODES = [
 	"TESTING_SECRETS_NOT_A_JOB_CREDENTIAL",
+	/** The run named is one this box declared, and it has ended. */
+	"TESTING_SECRETS_RUN_ENDED",
+	/** The run named is one this box declared, and core has not admitted it (its declaration is queued). */
+	"TESTING_SECRETS_RUN_NOT_ADMITTED",
+	/** The run named works another project than the one the credential is bound to. */
+	"TESTING_SECRETS_FOREIGN_RUN",
 	"TESTING_SECRETS_JOB_AMBIGUOUS",
 	"TESTING_SECRETS_FOREIGN_JOB",
 	"TESTING_SECRETS_JOB_NOT_JUDGING",

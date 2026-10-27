@@ -6,6 +6,7 @@ import { provideAgentSessionsPorts } from './agent-sessions/index.js';
 import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
 import {
+  declaredRunOfCall,
   deviceHolderUserId,
   provideDevicesPorts,
   readRunnerPoolRead,
@@ -35,13 +36,14 @@ import {
   projectsWithHostCredential,
   readPullRequestsForIssues,
 } from './integrations/source-host/index.js';
+import { recordRunSecretResolve, runSecretRefsOfSession } from './issues/index.js';
 import {
   countInFlightByRunner,
   insertInterventionEvent,
   jobsOfSession,
   provideJobsPorts,
   resolveSessionMcpServers,
-  scrubJobOutput,
+  scrubSessionSecrets,
 } from './jobs/index.js';
 import { formatIssueRef } from './lib/issue-ref.js';
 import { provideMastersPorts } from './masters/index.js';
@@ -129,6 +131,9 @@ async function checkoutRemoteOf(projectId: string, repository: string): Promise<
   return (await relayRemoteOf(projectId, repository)) ?? remoteOf(repository);
 }
 
+/** What the testing-secrets door reads and writes for a run a master declared, where no job holds it. */
+export const declaredRunSecretPorts = { declaredRunOfCall, recordRunSecretResolve };
+
 export function provideExecutionPorts(): void {
   provideReleaseBatchPorts({
     contractProviderGate,
@@ -180,7 +185,14 @@ export function provideExecutionPorts(): void {
     boxIsListening,
     sendToBoxNow,
     scrubSessionOutput: async (sessionId, data) =>
-      scrubJobOutput(await jobsOfSession(sessionId), data),
+      scrubSessionSecrets(
+        {
+          id: sessionId,
+          jobIds: await jobsOfSession(sessionId),
+          read: await runSecretRefsOfSession(sessionId),
+        },
+        data,
+      ),
   });
 
   provideDevicesPorts({
