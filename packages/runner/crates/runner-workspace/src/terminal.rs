@@ -24,7 +24,7 @@ mod launch;
 mod pane_env;
 mod submit;
 pub use launch::*;
-pub use pane_env::{missing_binaries, pane_env, pane_env_read};
+pub use pane_env::{missing_binaries, pane_env, pane_env_in, pane_env_read};
 use runner_platform::error::{Error, Result};
 
 pub const MASTER_PREFIX: &str = "forge-master";

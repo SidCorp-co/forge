@@ -1,0 +1,1 @@
+**A release job reaches its own project and runs its deploy.** Every project pane carries its checkout credential, the project agent holds `deploys.run`, and a token fenced elsewhere is refused `PAT_PROJECT_OUTSIDE_FENCE` naming itself and its projects.

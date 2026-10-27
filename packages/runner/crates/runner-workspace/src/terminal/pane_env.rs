@@ -1,29 +1,53 @@
 //! The environment a pane's shell is started with.
 
-/// What a pane's shell is started with. `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` are what a
-/// skill installed on disk names the project by: core writes the id into every brief it renders,
-/// but a skill file is the same bytes for every project, and a pane without them sends
-/// `projects//…` to Forge.
+use crate::mcp::config::{cli_borrow_path_in, CLI_BORROW_VAR};
+
+/// What a pane's shell is started with, master or job alike. `$FORGE_PROJECT_ID` and
+/// `$FORGE_PROJECT_SLUG` are what a skill installed on disk names the project by: core writes the
+/// id into every brief it renders, but a skill file is the same bytes for every project, and a pane
+/// without them sends `projects//…` to Forge. The project's checkout credential is named under
+/// [`CLI_BORROW_VAR`], so the pane's `forge-runner api` and `forge` CLI call the project as the
+/// agent its checkout was provisioned for, never as this box's stored PAT.
 pub fn pane_env(project_id: &str, project_slug: &str) -> Vec<(String, String)> {
-    let (env, missing) = pane_env_read(project_id, project_slug);
+    let daemon_dir = runner_platform::config::base_dir().ok();
+    let (env, missing) = pane_env_in(project_id, project_slug, daemon_dir.as_deref());
     for name in &missing {
         tracing::error!(
             "[terminal] a pane for {project_slug} is starting and {}",
             unresolved(name)
         );
     }
+    if !env.iter().any(|(k, _)| k == CLI_BORROW_VAR) {
+        let at = daemon_dir.as_deref().map_or_else(
+            || "this daemon's config directory, which it cannot resolve".to_string(),
+            |d| cli_borrow_path_in(d, project_slug).display().to_string(),
+        );
+        tracing::warn!(
+            "[terminal] a pane for {project_slug} is starting with no checkout credential at {at}: its `forge-runner api` and `forge` CLI go out as this box's stored PAT, which reaches only the projects it was minted for, and say so on a refusal. Re-provision the checkout"
+        );
+    }
     env
 }
 
-/// [`pane_env`] without its report of the pane binaries it cannot resolve, which it answers
-/// beside the environment: the read a sweep takes of what a pane started now would carry, which
+/// [`pane_env`] without the lines it logs about what a pane lacks; the pane binaries it cannot
+/// resolve are answered beside the environment: the read a sweep takes of what a pane started now would carry, which
 /// says nothing about a pane that is starting.
 pub fn pane_env_read(
     project_id: &str,
     project_slug: &str,
 ) -> (Vec<(String, String)>, Vec<&'static str>) {
     let daemon_dir = runner_platform::config::base_dir().ok();
-    let mut env = pane_env_from(|k| std::env::var_os(k), daemon_dir.as_deref());
+    pane_env_in(project_id, project_slug, daemon_dir.as_deref())
+}
+
+/// [`pane_env_read`] for a daemon serving the config directory `daemon_dir`, which is where the
+/// checkout credentials it provisioned sit.
+pub fn pane_env_in(
+    project_id: &str,
+    project_slug: &str,
+    daemon_dir: Option<&std::path::Path>,
+) -> (Vec<(String, String)>, Vec<&'static str>) {
+    let mut env = pane_env_from(|k| std::env::var_os(k), daemon_dir);
     let found = pane_path(
         std::env::var_os("PATH"),
         std::env::var_os("HOME").map(std::path::PathBuf::from),
@@ -35,7 +59,25 @@ pub fn pane_env_read(
     }
     env.push(("FORGE_PROJECT_ID".into(), project_id.into()));
     env.push(("FORGE_PROJECT_SLUG".into(), project_slug.into()));
+    env.extend(checkout_credential(daemon_dir, project_slug));
     (env, found.missing)
+}
+
+/// The project's checkout credential, named by path under [`CLI_BORROW_VAR`], where this daemon's
+/// provisioning left one. A box holds one stored PAT for every project it serves, minted by a
+/// person and fenced to the projects they named; each checkout's credential reaches its own
+/// project alone, so a pane carries its own project's and no other.
+fn checkout_credential(
+    daemon_dir: Option<&std::path::Path>,
+    project_slug: &str,
+) -> Option<(String, String)> {
+    let path = cli_borrow_path_in(daemon_dir?, project_slug);
+    path.is_file().then(|| {
+        (
+            CLI_BORROW_VAR.to_string(),
+            path.to_string_lossy().into_owned(),
+        )
+    })
 }
 
 fn unresolved(name: &str) -> String {
@@ -415,6 +457,32 @@ mod tests {
                 "the pane env carries a credential in {k}"
             );
         }
+    }
+
+    #[test]
+    fn a_pane_carries_its_own_projects_checkout_credential_and_no_other() {
+        let root = Scratch::new();
+        let daemon = root.0.join("xdg/forge-runner");
+        for slug in ["forge", "sidcorp-mail"] {
+            let file = crate::mcp::config::cli_borrow_path_in(&daemon, slug);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, "{}").unwrap();
+        }
+        let named = |slug: &str, dir: Option<&Path>| {
+            super::checkout_credential(dir, slug).map(|(k, v)| {
+                assert_eq!(k, crate::mcp::config::CLI_BORROW_VAR);
+                PathBuf::from(v)
+            })
+        };
+        assert_eq!(
+            named("sidcorp-mail", Some(&daemon)),
+            Some(crate::mcp::config::cli_borrow_path_in(
+                &daemon,
+                "sidcorp-mail"
+            ))
+        );
+        assert_eq!(named("adminhub-fe", Some(&daemon)), None);
+        assert_eq!(named("sidcorp-mail", None), None);
     }
 
     #[test]

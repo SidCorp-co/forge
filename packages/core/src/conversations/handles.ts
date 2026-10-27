@@ -1,3 +1,4 @@
+import type { ProjectPermission } from '@forge/contracts/permissions';
 import { and, asc, eq, ne, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
@@ -9,6 +10,17 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { addOrgMember, addProjectMembers } from '../permissions/index.js';
 import type { Executor } from './db-executor.js';
 import { refuseConversation } from './refusals.js';
+
+/**
+ * What the project's handle holds beyond its `member` role. The handle is the identity every pane a
+ * runner box starts for the project acts as, through the checkout credential
+ * (`devices/workspace-credential.ts:workspaceHolderFor`), and a release job is one of those panes:
+ * it is dispatched from a batch a holder of `project.admin` created, and the deploy it exists to run
+ * asks `deploys.run`, which a member holds only where the project's grant names it. Minted without
+ * it, every release job was refused its deploy (sidcorp-mail, 2026-10-27). A project admin may take
+ * it off the membership like any grant.
+ */
+export const PROJECT_HANDLE_GRANTS: readonly ProjectPermission[] = ['deploys.run'];
 
 export interface ProjectHandle {
   userId: string;
@@ -99,9 +111,18 @@ export async function resolveProjectHandle(
   const created = await insertAgentAccount(tx, handle, mintAs);
 
   await addOrgMember(tx, { orgId: project.orgId, userId: created.id, role: 'member', handle });
-  await addProjectMembers(tx, [{ projectId: project.id, userId: created.id, role: 'member' }], {
-    ifAbsent: true,
-  });
+  await addProjectMembers(
+    tx,
+    [
+      {
+        projectId: project.id,
+        userId: created.id,
+        role: 'member',
+        grants: [...PROJECT_HANDLE_GRANTS],
+      },
+    ],
+    { ifAbsent: true },
+  );
 
   return { userId: created.id, handle, minted: true };
 }

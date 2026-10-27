@@ -132,6 +132,7 @@ import {
   findProjectIdBySlug,
   findProjectOrgId,
   findProjectOrgIds,
+  findProjectSlugs,
   findVisibleProjectIds,
   listProjectHeads,
   orgSiblingProjects,
@@ -195,6 +196,7 @@ import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 provideProjectOrg(findProjectOrgId);
 provideRouteRefSources({
   projectIdOfSlug: findProjectIdBySlug,
+  projectSlugsOf: findProjectSlugs,
   issueIdOfKey,
   refuseIssueKey: refuseUnresolvedIssueKey,
 });

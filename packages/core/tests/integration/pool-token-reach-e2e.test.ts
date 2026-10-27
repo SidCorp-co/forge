@@ -111,8 +111,13 @@ async function serving(...fences: Fence[]): Promise<void> {
 
 describe('an onboarding job, offered by what the box credential reaches', () => {
   it('reads an empty fence as reaching nothing, as the REST door does', async () => {
+    // the REST door refuses a fence that does not reach the project by name, existing or not
     const project = await asBox('none', 'GET', `/api/projects/${projectId}`);
-    expect(project.status).toBe(404);
+    expect([project.status, project.body.code], JSON.stringify(project.body)).toEqual([
+      403,
+      'PAT_PROJECT_OUTSIDE_FENCE',
+    ]);
+    expect(JSON.stringify(project.body)).toContain('which reaches no project at all');
     const jobId = await queueOnboardingJob();
     expect(await offered('none', jobId)).toBe(false);
     expect(await offered('project', jobId)).toBe(true);

@@ -132,8 +132,7 @@ pub(crate) fn inputs_now(
     resolved: &crate::dispatch::Resolved,
     servers: Option<&ServersRead>,
 ) -> master_build::Inputs {
-    let (mut env, _) = terminal::pane_env_read(project_id, &resolved.slug);
-    env.extend(cli_borrow_read(&resolved.slug));
+    let (env, _) = terminal::pane_env_read(project_id, &resolved.slug);
     master_build::Inputs::of(&master_build::Handed {
         slug: &resolved.slug,
         repo: &resolved.repo_path,
