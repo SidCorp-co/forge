@@ -469,7 +469,7 @@ describe("ReleaseGatePanel — ready means Release now is not refused", () => {
 
   it("offers no Release now where every pick would be refused, and says why and what clears it", () => {
     const blockingAll = [
-      { code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered, so there is no box a release could run on. Pair a box to this project first." },
+      { code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered, so there is no box a release could run on. Pair a box to this project first.", runId: null },
     ];
     state({ issues: ISSUES, blockingAll });
     renderPanel();
@@ -480,5 +480,35 @@ describe("ReleaseGatePanel — ready means Release now is not refused", () => {
     expect(screen.getByRole("checkbox", { name: "Select ISS-1 for release" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Select every issue that can be released" })).toBeDisabled();
     expect(screen.getByText(/^0 ready · 1 in a release$/)).toBeInTheDocument();
+  });
+
+  // ISS-1421 r38, judge-155: the gate said a running release would claim the same issues, told a
+  // person to abort it, and linked to no run; the web has no abort.
+  it("links the running release where one running is why none can be released", () => {
+    const blockingAll = [
+      {
+        code: "BATCH_IN_FLIGHT",
+        said: "A release is already running for this project, carrying ISS-3. A project runs one release at a time, so ISS-1 and ISS-2 are on no release and wait until it finishes.",
+        runId: "run-9",
+      },
+    ];
+    state({ issues: ISSUES, blockingAll });
+    renderPanel();
+    const line = screen.getByTestId("none-ready");
+    expect(line).toHaveTextContent(/carrying ISS-3\. .* wait until it finishes\. Open the running release$/);
+    expect(line).not.toHaveTextContent(/abort/i);
+    expect(within(line).getByRole("link", { name: "Open the running release" })).toHaveAttribute(
+      "href",
+      "/projects/forge-dev/releases/run-9",
+    );
+  });
+
+  it("shows a stored value core still marks as code, never a backtick", () => {
+    state({ issues: ISSUES, blockingAll: [{ code: "RELEASE_PROBES_UNREADABLE", said: "The live deploy target `coolify-a` declares a verify step.", runId: null }] });
+    renderPanel();
+    const line = screen.getByTestId("none-ready");
+    expect(line).not.toHaveTextContent("`");
+    expect(within(line).getByText("coolify-a").tagName).toBe("CODE");
+    expect(within(line).queryByRole("link")).toBeNull();
   });
 });

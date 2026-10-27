@@ -20,15 +20,21 @@ export interface BatchReleaseIssue {
 /** A listed issue with where the last release failed its close, read off the roster. */
 type ListedIssue = BatchReleaseIssue & { closeFailure: CloseFailure | null };
 
+/** "Together" only of two or more (ISS-1421 r38, judge-155 read it of one). */
 function following(count: number): string {
-  return `The following ${count === 1 ? "issue" : `${count} issues`} will be released together`;
+  return count === 1 ? "This issue will be released" : `The following ${count} issues will be released together`;
 }
+
+/** Said in place of the list where a refusal left no picked issue that can be released (ISS-1421 r38). */
+export const NOTHING_PICKED =
+  "None of the issues you picked can be released now. The release gate behind this says what each one is waiting on.";
 
 /** What the press does to the issues listed, naming any a release fails to close the same way (ISS-1381 r5). */
 function leadSentence(issues: ListedIssue[]): string {
+  if (issues.length === 0) return NOTHING_PICKED;
   const failing = issues.filter((i) => i.closeFailure);
   if (failing.length === 0) {
-    return `${following(issues.length)} and closed in one batch. This cannot be undone.`;
+    return `${following(issues.length)} and closed${issues.length === 1 ? "" : " in one batch"}. This cannot be undone.`;
   }
   const named = (list: ListedIssue[]) => list.map((i) => i.displayId).join(", ");
   const closing = issues.filter((i) => !i.closeFailure);
@@ -227,7 +233,7 @@ export function BatchReleaseDialog({
       width={400}
     >
       <div className="flex flex-col gap-4">
-        {roster ? (
+        {roster || listed.length === 0 ? (
           <p className="fg-body-sm text-fg">{leadSentence(listed)}</p>
         ) : rosterRead.isError ? (
           <div role="alert">
@@ -345,9 +351,11 @@ export function BatchReleaseDialog({
             size="sm"
             className="ml-auto"
             loading={batch.isPending}
-            disabled={undecided > 0 || !roster}
+            disabled={undecided > 0 || !roster || listed.length === 0}
             title={
-              !roster
+              listed.length === 0
+                ? "Nothing picked can be released now"
+                : !roster
                 ? "Waits until it is known which of these the last release failed to close"
                 : undecided > 0
                   ? `Decide ${undecided} carried issue${undecided === 1 ? "" : "s"} first — a Ship unverified decision needs its reason`

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { durationWords, elapsedWords } from './elapsed-words.js';
+import { durationWords, elapsedWords, utcMomentWords } from './elapsed-words.js';
 
 const now = new Date('2026-10-15T12:00:00.000Z');
 
@@ -37,5 +37,15 @@ describe('durationWords', () => {
     [2 * 86_400_000, '2 days'],
   ])('says %i ms as %s, the words elapsedWords uses', (ms, words) => {
     expect(durationWords(ms)).toBe(words);
+  });
+});
+
+describe('utcMomentWords', () => {
+  it('says a moment as a person reads it, in UTC, never as an ISO stamp', () => {
+    expect(utcMomentWords('2026-10-21T14:53:09.000Z')).toBe('21 October 2026, 14:53 UTC');
+  });
+
+  it('says a value that is not a time is unreadable, rather than printing it', () => {
+    expect(utcMomentWords('soon')).toBe('a time that could not be read');
   });
 });

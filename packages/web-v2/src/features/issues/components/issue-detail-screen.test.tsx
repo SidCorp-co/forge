@@ -100,6 +100,7 @@ vi.mock("../hooks", () => ({
   useProjectMembers: () => ok([]),
   useRunPipelineStep: () => ({ mutate: vi.fn(), isPending: false }),
   useSaveDescription: () => ({ mutate: vi.fn(), isPending: false }),
+  useSaveReleaseNote: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 function renderScreen() {

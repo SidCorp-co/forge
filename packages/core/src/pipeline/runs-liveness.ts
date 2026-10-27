@@ -65,7 +65,10 @@ export function readingOf(counts: {
   return counts.question ?? null;
 }
 
-const STANDING_QUESTION = new Set(['open', 'needs_info']);
+/** The question statuses that still stand: asked and not yet over. The browser reads its copy from
+ *  `@forge/contracts/status-sets`, bound by `db/status-sets-parity.test.ts`. */
+export const STANDING_QUESTION_STATUSES = ['open', 'needs_info'] as const;
+const STANDING_QUESTION: ReadonlySet<string> = new Set(STANDING_QUESTION_STATUSES);
 
 /** Per run whose newest job stopped on a question, whether one of its questions stands or was answered. */
 async function questionReadings(

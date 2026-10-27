@@ -72,7 +72,7 @@ interface GateRow {
 }
 interface Gate {
   issues: GateRow[];
-  blockingAll: Array<{ code: string; said: string }>;
+  blockingAll: Array<{ code: string; said: string; runId: string | null }>;
 }
 
 async function gate(): Promise<Gate> {
@@ -103,7 +103,9 @@ describe('the release gate counts ready only what Release now would not refuse',
     expect(row?.releaseRefusals.map((r) => r.code)).toEqual(['RELEASE_RECORD_MISSING']);
     for (const said of [row?.releaseRefusals[0]?.said, row?.releaseRefusals[0]?.saidHere]) {
       expect(said).toMatch(/has no release note/);
-      expect(said).toMatch(/It needs one before it can be released/);
+      expect(said).toMatch(
+        /A member of the project writes one under Release note on (this|the issue's) page/,
+      );
       expect(said).not.toMatch(/releaseNotes|userFacing|[{}`]/);
     }
   });
@@ -144,5 +146,40 @@ describe('the release gate counts ready only what Release now would not refuse',
     expect(body.code).toBe('RELEASE_RECORD_MISSING');
     expect(body.details?.reader).toMatch(/has no release note/);
     expect(body.details?.reader).not.toMatch(/releaseNotes|userFacing|[{}]/);
+  });
+
+  // ISS-1421 r38, judge-155 at c0f8105: the gate said a second release "would claim the same
+  // issues. Let it finish, or abort it" of a release carrying one issue, and linked to no run.
+  it('names what the running release carries, what the rest do, and the run to open', async () => {
+    await fx.seedReleaseRunner();
+    const shipping = await fx.insertIssue();
+    const created = await press([shipping]);
+    expect(created.status).toBe(201);
+    const { runId } = (await created.json()) as { runId: string };
+    const waiting = await fx.insertIssue();
+    const [carried, rest] = await fx.displayIds([shipping, waiting]);
+
+    const read = await gate();
+
+    expect(read.blockingAll).toEqual([
+      {
+        code: 'BATCH_IN_FLIGHT',
+        runId,
+        said: `A release is already running for this project, carrying ${carried}. A project runs one release at a time, so ${rest} is on no release and waits until it finishes.`,
+      },
+    ]);
+  });
+
+  it('answers a press naming no issue in words a person reads, naming no route', async () => {
+    await fx.seedReleaseRunner();
+    await fx.insertIssue();
+
+    const res = await press([]);
+    const body = (await res.json()) as { code: string; details?: { reader?: string } };
+
+    expect(body.code).toBe('RELEASE_ISSUES_UNNAMED');
+    expect(body.details?.reader).toBe(
+      'No issue was picked, so nothing was released. Pick the issues to release from those the release gate lists as ready.',
+    );
   });
 });

@@ -21,3 +21,22 @@ export function durationWords(ms: number): string {
   if (span < DAY_MS) return counted(Math.floor(span / HOUR_MS), 'hour');
   return counted(Math.floor(span / DAY_MS), 'day');
 }
+
+/** "21 October 2026, 14:53 UTC": a moment as a person reads it, never an ISO stamp. */
+export function utcMomentWords(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return 'a time that could not be read';
+  const day = at.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  const time = at.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'UTC',
+  });
+  return `${day}, ${time} UTC`;
+}

@@ -556,3 +556,74 @@ describe("a carried decision the server refuses (ISS-1386 r2)", () => {
     expect(row).toHaveTextContent(/ships as it is/i);
   });
 });
+
+// ISS-1421 r38, judge-155 at c0f8105: a refusal took ISS-2's note away, the gate dropped it from the
+// pick, and the dialog read "The following 0 issues will be released together" with Release now
+// enabled; pressing it showed "Send the ids GET /api/projects/<uuid>/release-batches/roster lists".
+describe("a refusal that leaves nothing picked that can be released", () => {
+  const ONE = [{ id: "iss-b", displayId: "ISS-2", title: "Dropdown renders flat" }];
+
+  function drawPicked(picked: typeof ONE) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrap = (issues: typeof ONE) => (
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <BatchReleaseDialog projectId="proj-1" selectedIssues={issues} open onClose={onClose} onSuccess={onSuccess} />
+        </ToastProvider>
+      </QueryClientProvider>
+    );
+    const view = render(wrap(picked));
+    return { repick: (issues: typeof ONE) => view.rerender(wrap(issues)) };
+  }
+
+  it("says one issue is released, never released together", async () => {
+    drawPicked(ONE);
+    const drawer = screen.getByRole("dialog");
+    expect(await within(drawer).findByText(/^This issue will be released and closed\. This cannot be undone\.$/)).toBeInTheDocument();
+    expect(drawer).not.toHaveTextContent(/together|in one batch/);
+  });
+
+  it("says nothing picked can be released, holds Release now, and keeps the refusal in words", async () => {
+    answer(409, {
+      code: "RELEASE_RECORD_MISSING",
+      message: "1 issue named here (`ISS-2`) has no release note. Set `releaseNotes` first.",
+      details: { issueIds: ["iss-b"], reader: "1 issue named here (`ISS-2`) has no release note." },
+    });
+    const view = drawPicked(ONE);
+    const first = within(screen.getByRole("dialog")).getByRole("button", { name: /release 1 now/i });
+    await waitFor(() => expect(first).toBeEnabled());
+    fireEvent.click(first);
+    await within(screen.getByRole("dialog")).findByRole("alert");
+
+    view.repick([]);
+
+    const drawer = screen.getByRole("dialog");
+    expect(drawer).toHaveTextContent(
+      "None of the issues you picked can be released now. The release gate behind this says what each one is waiting on.",
+    );
+    expect(drawer).not.toHaveTextContent(/0 issues|together/);
+    expect(within(drawer).getByRole("alert")).toHaveTextContent("has no release note.");
+    const release = within(drawer).getByRole("button", { name: /release now/i });
+    expect(release).toBeDisabled();
+    fireEvent.click(release);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("says a press that named no issue in words, naming no route", async () => {
+    answer(400, {
+      code: "RELEASE_ISSUES_UNNAMED",
+      message:
+        "This call names no issue to release, and issues are waiting at the release gate. Send the ids GET /api/projects/p/release-batches/roster lists, oldest merge first, at most 50 in one release.",
+      details: {
+        reader:
+          "No issue was picked, so nothing was released. Pick the issues to release from those the release gate lists as ready.",
+      },
+    });
+    draw();
+    press();
+
+    const alert = await within(screen.getByRole("dialog")).findByRole("alert");
+    expect(alert).toHaveTextContent("No issue was picked, so nothing was released.");
+    expect(alert).not.toHaveTextContent(/GET|\/api\//);
+  });
+});

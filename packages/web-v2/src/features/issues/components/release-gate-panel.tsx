@@ -12,7 +12,8 @@ import {
 } from "@/design";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import { providerLabel } from "@/features/integrations/providers/registry";
-import { failedCloseLead } from "@/features/releases/roster";
+import { inlineCode } from "@/features/project-settings/components/inline-code";
+import { failedCloseLead, type GateRefusal } from "@/features/releases/roster";
 import { formatApiError } from "@/lib/api/error";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
 import Link from "next/link";
@@ -58,6 +59,17 @@ export function noneReadyLine(claimed: number, unclosable: number): string {
  *  core's own sentences for each reason and what clears it (ISS-1421 r37, judge-151). */
 export function blockedLine(blockingAll: ReadonlyArray<{ said: string }>): string {
   return `None can be released yet. ${blockingAll.map((b) => b.said).join(" ")}`;
+}
+
+/** The running release's own page, where one running is why none can be released (ISS-1421 r38). */
+export function RunningReleaseLink({ blockingAll, slug }: { blockingAll: ReadonlyArray<GateRefusal>; slug: string }) {
+  const runId = blockingAll.find((b) => b.runId !== null)?.runId;
+  if (!runId) return null;
+  return (
+    <Link href={`/projects/${slug}/releases/${runId}`} className="text-accent-text underline-offset-2 hover:underline">
+      Open the running release
+    </Link>
+  );
 }
 
 /** Whether Release now would refuse this row for a reason of its own: its close, or its release note. */
@@ -164,7 +176,9 @@ export function ReleaseGatePanel({
           </p>
         </div>
         {blocked ? (
-          <p className="fg-caption text-muted" data-testid="none-ready">{blockedLine(data.blockingAll)}</p>
+          <p className="fg-caption text-muted" data-testid="none-ready">
+            {inlineCode(blockedLine(data.blockingAll))} <RunningReleaseLink blockingAll={data.blockingAll} slug={slug} />
+          </p>
         ) : selectable.length === 0 ? (
           <p className="fg-caption text-muted" data-testid="none-ready">{noneReadyLine(claimed, unclosable)}</p>
         ) : canRelease ? (

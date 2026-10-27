@@ -1,14 +1,38 @@
 // @vitest-environment jsdom
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReleaseNotes } from "@forge/contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import type { ReactElement } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ToastProvider } from "@/providers/toast-provider";
 import type { IssueStatus } from "../types";
-import { BUILT_NOT_RELEASED, ReleaseNoteSection } from "./release-note-section";
+import { BUILT_NOT_RELEASED, NOTE_WRITTEN_HERE, ReleaseNoteSection } from "./release-note-section";
 
 expect.extend(matchers);
-afterEach(cleanup);
+vi.mock("@sentry/react", () => ({ captureException: vi.fn() }));
+const fetchMock = vi.fn();
+beforeEach(() => {
+  fetchMock.mockReset();
+  fetchMock.mockImplementation(
+    async () => new Response(JSON.stringify({ id: "iss-1" }), { status: 200, headers: { "content-type": "application/json" } }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+function wrapped(node: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <ToastProvider>{node}</ToastProvider>
+    </QueryClientProvider>,
+  );
+}
 
 const FIXED: ReleaseNotes = {
   section: "Fixed",
@@ -16,8 +40,8 @@ const FIXED: ReleaseNotes = {
 };
 const SKIP: ReleaseNotes = { section: "Skip", userFacing: "-" };
 
-function show(status: IssueStatus, releaseNotes: ReleaseNotes | null | undefined) {
-  return render(<ReleaseNoteSection issue={{ status, releaseNotes }} />);
+function show(status: IssueStatus, releaseNotes: ReleaseNotes | null | undefined, canWrite = false) {
+  return wrapped(<ReleaseNoteSection issue={{ id: "iss-1", status, releaseNotes }} canWrite={canWrite} />);
 }
 
 describe("the release note on an issue's page", () => {
@@ -76,5 +100,60 @@ describe("the release note on an issue's page", () => {
   it("draws nothing on a dropped issue, whatever note it carries", () => {
     const { container } = show("dropped", FIXED);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+// ISS-1421 r38, judge-155: the release gate told a person to "ask for" a release note, and no field
+// anywhere in the web let a person write one.
+describe("a release note the release gate asks for, written on the issue's page", () => {
+  function sent(): unknown {
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/issues\/iss-1$/);
+    expect(init.method).toBe("PATCH");
+    return JSON.parse(String(init.body));
+  }
+
+  it.each([...NOTE_WRITTEN_HERE])("offers a member the field at %s, where none is written", (status) => {
+    show(status, null, true);
+    expect(screen.getByRole("region", { name: "Release note" })).toHaveTextContent(
+      "This issue has no release note, and a release will not close it without one.",
+    );
+    expect(screen.getByRole("button", { name: "Save release note" })).toBeDisabled();
+  });
+
+  it("saves the line a user would read under the kind picked", async () => {
+    show("awaiting_release", null, true);
+    fireEvent.click(screen.getByRole("radio", { name: "A fix" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /What a user will see/ }), {
+      target: { value: "  Invoices show the billing address.  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save release note" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(sent()).toEqual({ releaseNotes: { section: "Fixed", userFacing: "Invoices show the billing address." } });
+  });
+
+  it("saves that nothing a user sees changes without asking for a line", async () => {
+    show("awaiting_release", null, true);
+    fireEvent.click(screen.getByRole("radio", { name: "Nothing a user sees changes" }));
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save release note" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(sent()).toEqual({ releaseNotes: { section: "Skip", userFacing: "-" } });
+  });
+
+  it("offers no field to a reader who may not change the issue", () => {
+    const { container } = show("awaiting_release", null, false);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it.each(["in_progress", "releasing", "closed"] as const)("offers no field at %s, where no gate asks", (status) => {
+    const { container } = show(status, null, true);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows a note already written rather than the field", () => {
+    show("awaiting_release", FIXED, true);
+    expect(screen.queryByRole("button", { name: "Save release note" })).toBeNull();
+    expect(screen.getByText(FIXED.userFacing)).toBeInTheDocument();
   });
 });

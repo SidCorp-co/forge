@@ -1,4 +1,5 @@
 
+import type { ReleaseNotes } from "@forge/contracts";
 import { parseReleaseRoster } from "@/features/releases/roster";
 import { apiClient, apiClientList } from "@/lib/api/client";
 import { type WorkState, missingWorkStateKey } from "@forge/contracts/work-state";
@@ -41,6 +42,8 @@ export interface PatchIssueInput {
   description?: string;
   /** Where this issue's own work lands; null answers the project's shape. */
   landingShape?: LandingShape | null;
+  /** The line a user reads once it ships, which the release gate asks for (ISS-1421 r38). */
+  releaseNotes?: ReleaseNotes;
 }
 
 export interface CreateIssueInput {

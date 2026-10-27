@@ -135,6 +135,7 @@
 
 ### Added
 
+- **A member can write an issue's release note on its page.** Where the release gate needs one, the page asks for the kind of change and the line a user reads. (ISS-1421)
 - **An issue page says where its work lands, and a person can change it.** Work lands sits in its properties; a change the issue's merge mark forbids is refused there, with the steps. (ISS-1171)
 - **Writing an issue into `clarified` or `tested` is refused.** Both were retired rungs that accepted the write and stranded the issue; the refusal names `approved` or `awaiting_release`. Issues already there can still move.
 
@@ -3199,6 +3200,8 @@
 
 ### Fixed
 
+- **Comments written at the same instant read in one order on every load.** Two moves of one landing are said in the order the mark took them, and a thread page neither repeats nor drops a reply. (ISS-1421)
+- **While a release runs, the release gate names what it carries, links it and says the rest wait.** Runner states read in words; Batch release stops where nothing can be released; a question's card says who it waits on. (ISS-1421)
 - **Retry is offered only where reading again can change the answer**: no answer, a timeout, too many requests or a server error. A refused or missing read says why, without Retry. (ISS-1229)
 - **A failed projects read shows in the sidebar, with the wait before Retry.** When your current organization cannot be read, every page names the one shown instead, and New project waits for it. (ISS-1229)
 - **Two people who read alike in a room are told apart by role, then by who opened it.** Where even that matches, the row and the removal question say so, never a date, an order or an address. (ISS-1229)

@@ -15,7 +15,7 @@ import { agree, counted } from './counted.js';
 import type { ReleaseDeclaration } from './gate.js';
 import { criteriaUnearnedLead, unroutedRemedy } from './held-sentences.js';
 import type { ReleaseChannel } from './plan.js';
-import { RUNNERS_TAB, runnerHoldClause } from './runner-hold-sentences.js';
+import { RUNNERS_TAB, runnerHoldClause, runnersHeldSentence } from './runner-hold-sentences.js';
 import type { ServingReading } from './serving-reading.js';
 import type { Weighing } from './weighing.js';
 
@@ -159,7 +159,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RUNNER_ONLINE:
     'This project has runners registered and none of them could be handed a release, and the reading of why could not be taken. Open Settings \u2192 Runners and check each box\'s "Takes jobs from the pool" switch and when it was last seen.',
   BATCH_IN_FLIGHT:
-    'A release is already running for this project, and a second one would claim the same issues. Let it finish, or abort it with what you found.',
+    'A release is already running for this project, and a project runs one release at a time. Let it finish, or abort it with what you found.',
   RELEASE_CRITERIA_UNEARNED: `${criteriaUnearnedLead(0)}.`,
   RELEASE_RUNTIME_UNROUTED: unroutedRemedy(0),
   RELEASE_CARRIES_UNDECIDED: `This release promotes a range that carries the landing of issues this batch does not name. ${carriedWaysOut(2)}`,
@@ -241,13 +241,6 @@ export interface HeldIssueRef extends LandingHeld {
 
 const INTEGRATIONS_TAB = 'Settings → Integrations';
 const CONNECTIONS_DIRECTORY = 'Integrations in the workspace rail';
-
-function runnersHeldSentence(holds: RunnerHold[]): string | null {
-  if (holds.length === 0) return null;
-  const can = agree(holds.length, 'it cannot', 'not one of them can');
-  const head = `This project has ${counted(holds.length, 'runner')} registered and ${can} take a release right now.`;
-  return `${head} ${holds.map(runnerHoldClause).join(' ')}`;
-}
 
 /** The act that makes the repository readable, once, ahead of the verdicts it lets be weighed. */
 function readableFirst(clears: readonly string[], subject: 'this' | 'that'): string {
@@ -382,7 +375,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
 /** A release already in flight that is held on a person's answer, and where the answer is owed. */
 function waitingOnDecisionSentence(displayId: string | null | undefined): string {
   const where = displayId ? `open on \`${displayId}\`` : "open among this project's questions";
-  return `A release is already running for this project and is waiting on a decision: its agent stopped on a question, ${where}. Answer it there and that release goes on; or abort it with what you found. A second release would claim the same issues, so it is not started.`;
+  return `A release is already running for this project and is waiting on a decision: its agent stopped on a question, ${where}. Answer it there and that release goes on; or abort it with what you found. A project runs one release at a time, so a second is not started.`;
 }
 
 /** The warning a promote chain with no route to read its repository gets instead; `why`, last and on

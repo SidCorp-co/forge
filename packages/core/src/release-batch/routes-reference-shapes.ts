@@ -93,7 +93,14 @@ export const rosterSchema = z.object({
   ),
   /** What Release now is refused for whatever is picked, each as a person reads it. Empty where
    *  pressing it over the ready rows is not refused for a reason outside them. */
-  blockingAll: z.array(z.object({ code: z.string(), said: z.string() })),
+  blockingAll: z.array(
+    z.object({
+      code: z.string(),
+      said: z.string(),
+      /** The running release's run, whose page the gate links; null for every other reason. */
+      runId: z.string().nullable(),
+    }),
+  ),
 });
 
 export const createdSchema = z.object({

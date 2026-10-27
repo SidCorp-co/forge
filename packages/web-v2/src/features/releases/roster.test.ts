@@ -181,7 +181,10 @@ describe("parseReleaseRoster — what a release could not close a row for", () =
   // ISS-1421 r37: what Release now would be refused for, which the gate counts before it says ready.
   it("reads a row's release refusal and the gate's refusals whatever is picked", () => {
     const releaseRefusals = [{ code: "RELEASE_RECORD_MISSING", said: "It has no release note.", saidHere: "This issue has no release note." }];
-    const blockingAll = [{ code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered." }];
+    const blockingAll = [
+      { code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered.", runId: null },
+      { code: "BATCH_IN_FLIGHT", said: "A release is already running for this project.", runId: "run-9" },
+    ];
     const parsed = parseReleaseRoster(body({ issues: [{ ...ENTRY, releaseRefusals }], blockingAll }), ENDPOINT);
     expect(parsed.issues[0]?.releaseRefusals).toEqual(releaseRefusals);
     expect(parsed.blockingAll).toEqual(blockingAll);
