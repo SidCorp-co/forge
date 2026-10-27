@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.339] - 2026-10-27
+
+Releases recorded before versioning or by hand now show on the Releases page
+
+### Fixed
+
+- **Every recorded release shows on the Releases list.** A release recorded by hand now takes the next version, and landings recorded before versioning are listed with no version under their own heading.
+
 ## [0.4.0-dev.338] - 2026-10-27
 
 Retired MCP delivery tools name their REST door; releases proven on the named testing environment
