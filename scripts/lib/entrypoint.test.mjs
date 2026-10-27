@@ -401,7 +401,6 @@ function entryReads(rel, text) {
     argvNames.set(name, start);
     return true;
   };
-  /** A property key's name where the source states it, null where it is computed. */
   const keyOf = (key) => {
     if (ts.isIdentifier(key) || ts.isStringLiteralLike(key) || ts.isNumericLiteral(key))
       return key.text;
@@ -409,7 +408,6 @@ function entryReads(rel, text) {
       return key.expression.text;
     return null;
   };
-  /** Mark `name` as holding process, or a global object; true where that is news. */
   const hold = (set, name) => {
     if (set.has(name)) return false;
     set.add(name);
