@@ -28,11 +28,17 @@ function interpolated(node: ts.Node): boolean {
   return ts.isTemplateSpan(at) || ts.isJsxExpression(at);
 }
 
-/** A string a person can read: JSX text, a literal holding a space or opening with a capital, or a
- *  word interpolated into one. An identifier, a query key, a route or a stored value is none. */
+/** Attributes whose value a person reads or hears: an accessible name, a title, a hint. */
+const READ_ATTRIBUTES = /^(aria-label|aria-description|title|alt|placeholder|label|hint|summary|description|message|confirmLabel|cancelLabel|disabledReason)$/;
+
+/** A string a person can read: JSX text, a readable attribute's value, a literal holding a space or
+ *  opening with a capital, or a word interpolated into one. An identifier, a query key, a route or a
+ *  stored value is none. A word reaching the screen through a variable is past this check's reach;
+ *  the rendering tests of each component hold those. */
 function isWords(node: ts.Node, text: string): boolean {
   if (ts.isJsxText(node)) return text.trim() !== "";
   const parent = node.parent;
+  if (ts.isJsxAttribute(parent)) return READ_ATTRIBUTES.test(parent.name.getText());
   if (ts.isLiteralTypeNode(parent) || ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) return false;
   if ((ts.isPropertyAssignment(parent) || ts.isPropertySignature(parent)) && parent.name === node) return false;
   if (/\s/.test(text.trim()) || /^[A-Z]/.test(text)) return true;
@@ -75,11 +81,12 @@ describe("the Integrations surface's words", () => {
     expect(hits).toEqual([]);
   });
 
-  it("finds the word in a sentence, JSX text and an interpolated word, and not in code", () => {
+  it("finds the word in a sentence, JSX text, an accessible name and an interpolated word, and not in code", () => {
     const planted = [
       'const a = "This Sentry binding is gone.";',
       "const b = `Delete its \u0024{n} project bindings?`;",
       "const c = <p>Binding settings</p>;",
+      'const h = <button aria-label="binding" className="binding" />;',
       'const d = `Deletes it, with its \u0024{n > 1 ? "bindings" : "binding"}.`;',
       'const e: "binding" | "both" = "binding";',
       'const f = { queryKey: ["integration-connections", id, "bindings"] };',
@@ -91,7 +98,8 @@ describe("the Integrations surface's words", () => {
       "2",
       "3",
       "4",
-      "4",
+      "5",
+      "5",
     ]);
   });
 });

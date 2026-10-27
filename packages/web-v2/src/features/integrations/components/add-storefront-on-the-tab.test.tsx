@@ -16,7 +16,8 @@ expect.extend(matchers);
 const PROJECT = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
 const MEMBER_MAY: ProjectIntegrationActs = { ...ALL_MAY, connect: false };
 
-const state = { cards: [] as StatusCard[], may: ALL_MAY };
+const state = { cards: [] as StatusCard[], may: ALL_MAY, listFails: false };
+const refetchList = vi.fn();
 /** What the drawer was last drawn with. */
 const drawn: Array<{ card: StatusCard | null; adding?: boolean }> = [];
 
@@ -28,7 +29,10 @@ vi.mock("../hooks", () => ({
     error: null,
     refetch: vi.fn(),
   }),
-  useIntegrationsList: () => ({ data: { items: [], bindings: [], may: state.may } }),
+  useIntegrationsList: () =>
+    state.listFails
+      ? { data: undefined, isError: true, error: new Error("The server did not answer."), refetch: refetchList }
+      : { data: { items: [], bindings: [], may: state.may }, isError: false, error: null, refetch: refetchList },
 }));
 vi.mock("./connection-detail-drawer", () => ({
   ConnectionDetailDrawer: (props: { card: StatusCard | null; adding?: boolean }) => {
@@ -53,6 +57,8 @@ const storefront: StatusCard = {
 beforeEach(() => {
   state.cards = [storefront];
   state.may = ALL_MAY;
+  state.listFails = false;
+  refetchList.mockReset();
   drawn.length = 0;
 });
 afterEach(cleanup);
@@ -80,6 +86,16 @@ describe("Add storefront on a project's Integrations tab", () => {
     state.may = MEMBER_MAY;
     render(<ProjectIntegrationsPanel projectId={PROJECT} />);
     expect(screen.queryByRole("button", { name: "Add storefront" })).toBeNull();
+  });
+
+  // Review F2: the list this button is offered by could fail to read, and the button went with no word.
+  it("where the list it is offered by cannot be read, the tab says so and offers Retry", () => {
+    state.listFails = true;
+    render(<ProjectIntegrationsPanel projectId={PROJECT} />);
+    expect(screen.queryByRole("button", { name: "Add storefront" })).toBeNull();
+    expect(screen.getByText(/integration list could not be read.*nothing can be added here/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetchList).toHaveBeenCalledTimes(1);
   });
 
   it("is not on the tab before the first storefront, whose row is where it is connected", () => {

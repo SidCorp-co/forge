@@ -73,9 +73,13 @@ describe("ConnectionRow over a removed connection", () => {
   });
 
   // Whole-set review F2: clearing deletes the bindings too, and the row says so before it does.
-  it("names the bindings a clear deletes", () => {
+  it("names the projects a clear takes it off, counting a project using it twice once", () => {
     const bound = { id: "b1", projectId: "Storefront", role: "service", stages: [], active: false };
     row({ ...removed, usage: { bindings: [bound, { ...bound, id: "b2" }] } } as never);
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByText("Delete it for good, and take it off 1 project?")).toBeInTheDocument();
+    cleanup();
+    row({ ...removed, usage: { bindings: [bound, { ...bound, id: "b2", projectId: "Shop" }] } } as never);
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(screen.getByText("Delete it for good, and take it off 2 projects?")).toBeInTheDocument();
   });

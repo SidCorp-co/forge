@@ -354,6 +354,18 @@ export function ProjectIntegrationsPanel({
               {`The status could not be refreshed, so it shows the last read. ${readError}`}
             </Banner>
           ) : null}
+          {list.isError && !list.data ? (
+            <Banner
+              tone="attention"
+              action={
+                <Button variant="ghost" size="sm" onClick={() => list.refetch()}>
+                  Retry
+                </Button>
+              }
+            >
+              {`This project's integration list could not be read, so the rows cannot say when each was connected, and nothing can be added here. ${formatApiError(list.error)}`}
+            </Banner>
+          ) : null}
           <div className="flex items-center justify-between gap-2">
             <SectionTitle className="fg-h3">Status</SectionTitle>
             <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
