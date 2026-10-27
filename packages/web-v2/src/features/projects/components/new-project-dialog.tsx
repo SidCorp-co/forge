@@ -19,6 +19,9 @@ import type { CreatedProject } from '../types';
 
 export { slugify };
 
+/** The refused-repository toast, put away once the person edits the path it stands over. */
+const REFUSED_SLOT = 'new-project-repository-refused';
+
 export interface NewProjectDialogProps {
   open: boolean;
   onClose: () => void;
@@ -26,7 +29,7 @@ export interface NewProjectDialogProps {
 
 export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const router = useRouter();
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const create = useCreateProject();
 
   const [name, setName] = useState('');
@@ -163,6 +166,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
         title: 'Project created; its repository settings were not saved',
         description: `${/[.!?]$/.test(said) ? said : `${said}.`} Correct them here and save again.`,
         tone: 'error',
+        slot: REFUSED_SLOT,
         link: {
           label: 'Or set them later in Settings, on Shape & release',
           href: `/projects/${created.slug}/settings?tab=shape#repository`,
@@ -209,7 +213,10 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
           >
             <Input
               value={repoPath}
-              onChange={(e) => setRepoPath(e.target.value)}
+              onChange={(e) => {
+                setRepoPath(e.target.value);
+                dismiss(REFUSED_SLOT);
+              }}
               placeholder="/home/runner/projects/my-repo"
               maxLength={500}
               autoFocus

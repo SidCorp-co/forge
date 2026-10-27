@@ -83,7 +83,7 @@ export function Toast({
         {link && (
           <Link
             href={link.href}
-            className="fg-caption mt-1 inline-block text-accent-text underline-offset-2 hover:underline"
+            className="mt-1 inline-block text-xs font-medium text-accent hover:underline"
             onClick={(e) => {
               e.stopPropagation();
               onClose?.();

@@ -15,10 +15,11 @@ expect.extend(matchers);
 afterEach(cleanup);
 
 const toast = vi.fn();
+const dismiss = vi.fn();
 const update = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
+vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast, dismiss }) }));
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null }) }));
 vi.mock("@/features/orgs/hooks", () => ({
   useOrgs: () => ({ data: [], isError: false, error: null, refetch: vi.fn() }),
@@ -55,6 +56,7 @@ const titles = () => toast.mock.calls.map(([t]) => (t as { title: string }).titl
 
 beforeEach(() => {
   toast.mockClear();
+  dismiss.mockClear();
   update.mockReset();
 });
 
@@ -95,6 +97,18 @@ describe("the new-project dialog when its repository step is refused", () => {
     expect(titles()[1]).toBe("Project created; its repository settings were not saved");
     const said = toast.mock.calls[1]?.[0] as { description: string } | undefined;
     expect(said?.description).toMatch(/^The server is down\. Correct them here and save again\.$/);
+  });
+
+  // At 390 the toast stands over the field it says to correct, for as long as it takes to read.
+  it("puts the refusal toast away once the person edits the path", async () => {
+    update.mockRejectedValue(new ApiError(400, REFUSAL, "REPO_PATH_NOT_ABSOLUTE"));
+    await createThenSaveRepository("~/code/app");
+    await vi.waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
+    const said = toast.mock.calls[1]?.[0] as { slot?: string };
+    expect(said.slot).toBeTruthy();
+    dismiss.mockClear();
+    fireEvent.change(screen.getByLabelText(/^Repository path/), { target: { value: "/srv/app" } });
+    expect(dismiss).toHaveBeenCalledWith(said.slot);
   });
 
   it("still says the settings were saved when the step is accepted", async () => {
