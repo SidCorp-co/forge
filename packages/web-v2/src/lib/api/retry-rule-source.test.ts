@@ -276,8 +276,7 @@ function importsOf(file: ts.SourceFile): Map<string, { from: string; name: strin
   return found;
 }
 
-/** The components a file's JSX names, as that file names them: its own, or one it imports under any name, from the file
- *  that exports it (r52 review F1); a name this walk cannot place is looked up across the source. */
+/** A component as one file's JSX names it: its own, or an import under any name, read in the exporting file (r52 F1). */
 function resolverFor(file: ts.SourceFile, elsewhere: Index): Resolver {
   const own = definitionsOf(file);
   const imports = importsOf(file);
