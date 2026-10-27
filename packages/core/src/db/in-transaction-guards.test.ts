@@ -664,6 +664,24 @@ export async function refusesAReplacementItRunsAtOnce(tx: Tx) {
   }
 }
 
+export async function refusesAHelperItRunsThroughAnotherName(tx: Tx) {
+  try {
+    try {
+      return await tx.execute('select 1' as never);
+    } catch (err) {
+      function fail(): void {
+        throw new Conflict('exists');
+      }
+      const run = fail;
+      run();
+      throw err;
+    }
+  } catch (err) {
+    if (!(err instanceof Conflict)) throw err;
+    return null;
+  }
+}
+
 export async function keepsAHelperItRunsAfterItsGuard(tx: Tx) {
   try {
     return await tx.execute('select 1' as never);
@@ -894,6 +912,7 @@ describe('a use of the caught error on a path an error it does not name can take
       ['refusesAWrapItAlwaysThrows', { throws: 'throw new Wrapped(String(err), { cause: err })' }],
       ['refusesAHelperItRunsOnTheRethrow', { throws: "throw new Error('insert failed')" }],
       ['refusesAReplacementItRunsAtOnce', { throws: "throw new Error('insert failed')" }],
+      ['refusesAHelperItRunsThroughAnotherName', { throws: "throw new Conflict('exists')" }],
       ['refusesAMethodCalledOnAHolder', { use: 'this.poison()' }],
     ];
     expect(refusals(catches.filter((c) => c.file === WRITES))).toEqual(
@@ -905,6 +924,7 @@ describe('a use of the caught error on a path an error it does not name can take
     expect(kinds('rewritesWhatItRethrows')).toEqual(['narrowed', 'swallows']);
     expect(kinds('rewritesOnTheBranchItRethrows')).toEqual(['narrowed', 'swallows']);
     expect(kinds('translatesEveryErrorToItsOwnClass')).toEqual(['narrowed', 'swallows']);
+    expect(kinds('refusesAHelperItRunsThroughAnotherName')).toEqual(['narrowed', 'swallows']);
   });
 
   it('keeps a use after its opening guard or on a branch it named, a helper run only there, a store to a key no guard reads, a read and a discarded comma', () => {

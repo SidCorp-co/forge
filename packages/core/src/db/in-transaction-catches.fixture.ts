@@ -243,6 +243,31 @@ function declaredOnly(n: ts.Node): n is ts.FunctionLikeDeclaration {
   );
 }
 
+/**
+ * Whether the function `fn` declares is only ever called by its name in `body`, so that it runs
+ * where those calls stand; one bound to another name, handed on, stored or reassigned can run
+ * anywhere, and is read where it is declared.
+ */
+function onlyCalled(fn: ts.FunctionLikeDeclaration, body: ts.Block, scan: Scan): boolean {
+  const name = ts.isFunctionDeclaration(fn) ? fn.name : (fn.parent as ts.VariableDeclaration).name;
+  const symbol = name && ts.isIdentifier(name) && scan.checker.getSymbolAtLocation(name);
+  if (!symbol) return false;
+  let called = true;
+  const visit = (n: ts.Node): void => {
+    if (!called) return;
+    if (
+      ts.isIdentifier(n) &&
+      n !== name &&
+      scan.checker.getSymbolAtLocation(n) === symbol &&
+      !(ts.isCallExpression(n.parent) && n.parent.expression === n)
+    )
+      called = false;
+    else ts.forEachChild(n, visit);
+  };
+  visit(body);
+  return called;
+}
+
 /** The function declared under a name inside `body` that `call` runs, if it runs one. */
 function calledHere(call: ts.CallExpression, body: ts.Block, scan: Scan) {
   const decl = ts.isIdentifier(call.expression)
@@ -254,13 +279,14 @@ function calledHere(call: ts.CallExpression, body: ts.Block, scan: Scan) {
 
 /**
  * The first throw of anything but the caught error on a path an error it does not name can take,
- * reading a function the catch declares under a name where a call on such a path runs it.
+ * reading a function the catch declares under a name where a call on such a path runs it, or where
+ * it is declared if anything but a call by that name reaches it.
  */
 function replacement(body: ts.Block, param: ts.Symbol, named: ReadonlySet<ts.Node>, scan: Scan) {
   let found: ts.ThrowStatement | undefined;
   const ran = new Set<ts.Node>();
   const visit = (n: ts.Node): void => {
-    if (found || named.has(n) || declaredOnly(n)) return;
+    if (found || named.has(n) || (declaredOnly(n) && onlyCalled(n, body, scan))) return;
     if (ts.isThrowStatement(n) && !passesOn(n.expression, body, param, named, scan)) {
       found = n;
       return;
