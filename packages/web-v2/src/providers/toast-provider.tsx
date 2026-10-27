@@ -154,10 +154,10 @@ function safeInsets(): { top: number; bottom: number } {
 
 /**
  * Where the lane goes so that no toast in it stands over the elements one names, nor over the kept
- * notices: the top edge, beside the dialog on a wide screen, the bottom edge, or the widest space left
- * between them, capped, if it holds `MIN_ROOM_PX`. Failing that it goes over the kept notices, then
- * lets go of the elements from the last, never the first (ISS-1236 r10). Null keeps the lane's own
- * place. Measured again on every scroll and resize, as the elements move under it (r9).
+ * notices: the top edge, beside the dialog on a wide screen, the bottom edge, the larger space above or
+ * below them all, or the widest between them, capped, if it holds `MIN_ROOM_PX`. Failing that it goes
+ * over the kept notices, then lets go of the elements from the last, never the first (ISS-1236 r10).
+ * Null keeps the lane's own place. Measured again on every scroll and resize, as the elements move.
  */
 function useKeepClear(
   items: ToastItem[],
@@ -208,21 +208,23 @@ function useKeepClear(
       const dialogOpen = belowDialogHeader !== null || document.querySelector('[role="dialog"][aria-modal="true"]');
       const gap = (wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX) + inset.bottom;
       const atBottom = { ...atTop, top: vh - gap - height, bottom: vh - gap };
-      /** The widest run of the lane's column, between its top and bottom edges, that no obstacle crosses. */
-      const widest = (obstacles: Box[]) => {
+      /** The runs of the lane's column, between its top and bottom edges, that no obstacle crosses. */
+      const spaces = (obstacles: Box[]) => {
         const spans = obstacles
           .filter((o) => o.right > left && o.left < vw)
           .map((o) => [Math.max(top, o.top), Math.min(vh - gap, o.bottom)] as const)
           .filter(([from, to]) => to > from)
           .sort((a, b) => a[0] - b[0]);
+        const runs: { top: number; room: number }[] = [];
         let at = top;
-        let best = { top, room: 0 };
         for (const [from, to] of [...spans, [vh - gap, vh - gap] as const]) {
-          if (from - at > best.room) best = { top: at, room: from - at };
+          if (from > at || runs.length === 0) runs.push({ top: at, room: Math.max(0, from - at) });
           at = Math.max(at, to);
         }
-        return best;
+        return runs;
       };
+      const larger = (a: { top: number; room: number }, b: { top: number; room: number }) =>
+        b.room > a.room ? b : a;
       // The cap is the lane's whole box, so its own padding goes too, or a small gap is overrun.
       const capped = (space: { top: number; room: number }) => ({
         top: space.top,
@@ -240,8 +242,13 @@ function useKeepClear(
         if (clear(atTop)) return n === rects.length && !overKept ? null : { ...lift, top };
         if (wide && beside.left >= 0 && clear(beside)) return { ...lift, right: vw - edge };
         if (clear(atBottom)) return { ...lift, top: "auto", bottom: gap };
-        const space = widest(obstacles);
-        return space.room < MIN_ROOM_PX ? undefined : { ...lift, ...capped(space) };
+        // Above or below the elements first, where it covers none of what lies between them.
+        const runs = spaces(obstacles);
+        const first = Math.min(...held.map((r) => r.top));
+        const last = Math.max(...held.map((r) => r.bottom));
+        const outside = runs.filter((r) => r.top + r.room <= first || r.top >= last);
+        const space = [outside, runs].map((list) => list.reduce(larger, { top, room: 0 })).find((r) => r.room >= MIN_ROOM_PX);
+        return space ? { ...lift, ...capped(space) } : undefined;
       };
       const tries: [number, boolean][] = [[rects.length, false]];
       for (let n = rects.length; n >= 1; n--) tries.push([n, true]);
@@ -251,7 +258,7 @@ function useKeepClear(
         if (next !== undefined) break;
       }
       // Nowhere holds a toast's first line clear of the first element: the widest space, however small.
-      if (next === undefined) next = { zIndex: OVER_KEPT_Z, ...capped(widest(rects.slice(0, 1))) };
+      if (next === undefined) next = { zIndex: OVER_KEPT_Z, ...capped(spaces(rects.slice(0, 1)).reduce(larger)) };
       setPlace((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : (next ?? null)));
     };
     measure();

@@ -662,9 +662,9 @@ describe("a toast naming the element it keeps clear of", () => {
       );
       act(() => fire({ ...refused, duration: 0, clearOf: stepOrder }));
       const lane = screen.getByTestId("toast-lane");
-      // Above the error 16 px, between the field and Save 162, below Save 151: the most room is between.
-      expect(lane.style.top).toBe("243px");
-      expect(lane.style.maxHeight).toBe("162px");
+      // Above the error 16 px and below Save 151: below, which covers nothing between them.
+      expect(lane.style.top).toBe("449px");
+      expect(lane.style.maxHeight).toBe("151px");
       clearOfAll(lane, ["error", "label", "path", "save"]);
     } finally {
       spy.mockRestore();
