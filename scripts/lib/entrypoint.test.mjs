@@ -382,7 +382,8 @@ function entryReads(rel, text) {
       }
       if (fromGlobal) {
         if (key === 'process' || key === null) news = hold(processNames, name) || news;
-        if (key === '...') news = hold(GLOBALS, name) || news;
+        if (key === '...' || key === null || GLOBAL_NAMES.includes(key))
+          news = hold(GLOBALS, name) || news;
       }
     }
     return news;
@@ -944,6 +945,16 @@ describe('no file decides it was launched by hand', () => {
       'scripts/global-self-alias.mjs',
       "const g = globalThis['global'];\nif (import.meta.filename === g.process.argv[1]) main();\n",
       2,
+    ],
+    [
+      'scripts/global-self-taken.mjs',
+      'const { global: g } = globalThis;\nif (import.meta.filename === g.process.argv[1]) main();\n',
+      2,
+    ],
+    [
+      'scripts/global-self-assigned.mjs',
+      'let g;\n({ global: g } = globalThis);\nif (import.meta.filename === g.process.argv[1]) main();\n',
+      3,
     ],
     [
       'scripts/from.mjs',
