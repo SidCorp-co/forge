@@ -103,7 +103,7 @@ describe('the release gate counts ready only what Release now would not refuse',
     expect(row?.releaseRefusals.map((r) => r.code)).toEqual(['RELEASE_RECORD_MISSING']);
     for (const said of [row?.releaseRefusals[0]?.said, row?.releaseRefusals[0]?.saidHere]) {
       expect(said).toMatch(/has no release note/);
-      expect(said).toMatch(/It is ready once it has one/);
+      expect(said).toMatch(/It needs one before it can be released/);
       expect(said).not.toMatch(/releaseNotes|userFacing|[{}`]/);
     }
   });

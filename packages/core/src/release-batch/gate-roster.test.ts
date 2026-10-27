@@ -87,10 +87,36 @@ describe('the release gate a person reads', () => {
     expect(refusal?.said).toMatch(/^It has no release note/);
     expect(refusal?.saidHere).toMatch(/^This issue has no release note/);
     for (const said of [refusal?.said, refusal?.saidHere]) {
-      expect(said).toContain('It is ready once it has one');
+      expect(said).toContain('It needs one before it can be released');
+      expect(said).not.toMatch(/ready once/);
       expect(said).not.toMatch(/releaseNotes|userFacing|[{}`]/);
     }
     expect(gate.blockingAll).toEqual([]);
+  });
+
+  // Consult F1: a row can owe its close something as well as its note, so the note's sentence
+  // promises nothing beyond the note, and the close's refusal stays on the row beside it.
+  it('keeps both on a row that owes its close something as well as its note', async () => {
+    const owing = {
+      ...row('a'),
+      closeRefusals: [
+        {
+          code: 'OPEN_QUESTIONS' as const,
+          reason: 'holds 1 open question',
+          clears: 'Answer it.',
+          said: 'x',
+          saidHere: 'x',
+        },
+      ],
+    };
+    rosterMock.mockResolvedValueOnce(roster([owing]));
+    reports(blocker('RELEASE_RECORD_MISSING', { issueIds: ['a'] }));
+
+    const gate = await loadReleaseGateRoster('p');
+
+    expect(gate.issues[0]?.closeRefusals).toHaveLength(1);
+    expect(gate.issues[0]?.releaseRefusals.map((r) => r.code)).toEqual(['RELEASE_RECORD_MISSING']);
+    expect(gate.issues[0]?.releaseRefusals[0]?.said).not.toMatch(/ready once|is ready/);
   });
 
   it("says once, in a person's words, a refusal no pick escapes", async () => {

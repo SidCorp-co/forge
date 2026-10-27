@@ -439,8 +439,8 @@ describe("ReleaseGatePanel — ready means Release now is not refused", () => {
     releaseRefusals: [
       {
         code: "RELEASE_RECORD_MISSING",
-        said: "It has no release note. It is ready once it has one.",
-        saidHere: "This issue has no release note. It is ready once it has one.",
+        said: "It has no release note. It needs one before it can be released.",
+        saidHere: "This issue has no release note. It needs one before it can be released.",
       },
     ],
   };
@@ -452,7 +452,7 @@ describe("ReleaseGatePanel — ready means Release now is not refused", () => {
     expect(screen.getByRole("checkbox", { name: "Select ISS-5 for release" })).toBeDisabled();
     expect(screen.getByText(/^0 ready · 1 not ready to release$/)).toBeInTheDocument();
     expect(screen.getByText("Not ready to release")).toBeInTheDocument();
-    expect(screen.getByText("It has no release note. It is ready once it has one.")).toBeInTheDocument();
+    expect(screen.getByText("It has no release note. It needs one before it can be released.")).toBeInTheDocument();
     expect(screen.getByTestId("none-ready")).toHaveTextContent(
       "None is ready to release. Each issue marked Not ready to release says below what would make it ready.",
     );

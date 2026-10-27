@@ -258,12 +258,12 @@ describe("AwaitingReleaseBanner — an issue whose last release failed its close
 describe("AwaitingReleaseBanner — Release now only where it is not refused", () => {
   it("offers no Release now on an issue with no release note, and says what makes it ready", () => {
     const releaseRefusals = [
-      { code: "RELEASE_RECORD_MISSING", said: "It has no release note.", saidHere: "This issue has no release note. It is ready once it has one." },
+      { code: "RELEASE_RECORD_MISSING", said: "It has no release note.", saidHere: "This issue has no release note. It needs one before it can be released." },
     ];
     state({}, null, [], null, releaseRefusals);
     renderBanner();
     expect(screen.getByText("Not ready to release.")).toBeInTheDocument();
-    expect(screen.getByText("This issue has no release note. It is ready once it has one.")).toBeInTheDocument();
+    expect(screen.getByText("This issue has no release note. It needs one before it can be released.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
   });
 

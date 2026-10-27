@@ -86,9 +86,10 @@ function recordMissingForReader(details: Details): string {
 }
 
 /** One issue's missing note, on the gate's row about it or on its own page (`here`), and who
- *  writes one: no page here has a field for it (ISS-1421 r37). */
+ *  writes one: no page here has a field for it. It promises no readiness, since the same row can
+ *  owe its close something too (ISS-1421 r37, consult F1). */
 export function recordMissingForRow(here: boolean): string {
-  return `${here ? 'This issue' : 'It'} has no release note, so a release would close it claiming a ship nobody wrote anything about, and Release now is refused. It is ready once it has one: the one line a user would read, or a note that nothing a user sees changed. The agent that lands the work writes it; where none did, ask for it on the issue.`;
+  return `${here ? 'This issue' : 'It'} has no release note, so a release would close it claiming a ship nobody wrote anything about, and Release now refuses it. It needs one before it can be released: the one line a user would read, or a note that nothing a user sees changed. The agent that lands the work writes it; where none did, ask for it on the issue.`;
 }
 
 function unmergedForReader(details: Details): string | null {
