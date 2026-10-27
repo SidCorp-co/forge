@@ -37,11 +37,11 @@ const members: ProjectMember[] = [
 ];
 
 describe("a comment's author", () => {
-  it("is named Another member, initialled AM, where the member has no display name", () => {
+  it("is named A member, initialled AM, where the member has no display name", () => {
     const { container } = render(
       <CommentThread issueId="i1" comments={[node({ author: null })]} members={members} readOnly />,
     );
-    expect(container.textContent).toContain("Another member");
+    expect(container.textContent).toContain("A member");
     expect(container.textContent).toContain("AM");
     expect(container.textContent).not.toMatch(/lan\.pham|@example/);
   });
@@ -53,14 +53,14 @@ describe("a comment's author", () => {
         comments={[
           node({
             authorId: "d1",
-            author: { type: "device", id: "d1", displayName: "CI Runner", isAgent: true, ownerName: "another member" },
+            author: { type: "device", id: "d1", displayName: "CI Runner", isAgent: true, ownerName: "a member" },
           }),
         ]}
         members={members}
         readOnly
       />,
     );
-    expect(container.textContent).toContain("via another member");
+    expect(container.textContent).toContain("via a member");
     expect(container.textContent).not.toContain("@");
   });
 
@@ -72,14 +72,14 @@ describe("a comment's author", () => {
         comments={[
           node({
             authorId: "d1",
-            author: { type: "device", id: "d1", displayName: "CI Runner", isAgent: true, ownerName: "Another member" },
+            author: { type: "device", id: "d1", displayName: "CI Runner", isAgent: true, ownerName: "A member" },
           }),
         ]}
         members={members}
         readOnly
       />,
     );
-    expect(container.textContent).toContain("via another member");
+    expect(container.textContent).toContain("via a member");
   });
 });
 

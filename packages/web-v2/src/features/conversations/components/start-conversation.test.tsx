@@ -69,7 +69,7 @@ function pickTheProject() {
 }
 
 describe("the people a room starts with", () => {
-  it('lists the reader once, as "You", and another unnamed member as another member', () => {
+  it('lists the reader once, as "You", and another unnamed member as a member', () => {
     candidates = {
       people: [
         { userId: "me", displayName: null, email: "me@example.com", addedAt: "2026-10-01T09:00:00.000Z" },
@@ -80,7 +80,7 @@ describe("the people a room starts with", () => {
     };
     pickTheProject();
     const labels = [...document.querySelectorAll("[data-person-label]")].map((l) => l.textContent);
-    expect(labels).toEqual(["You", "Another member"]);
+    expect(labels).toEqual(["You", "A member"]);
     expect(screen.queryByText("me@example.com")).toBeNull();
   });
 

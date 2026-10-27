@@ -85,9 +85,9 @@ async function mentionTitles(issueId: string): Promise<string[]> {
 describe('a mention names who mentioned you as core calls them', () => {
   it.each([
     ['Lan Pham', 'Lan Pham'],
-    [null, 'Another member'],
-    ['   ', 'Another member'],
-    ['lan.pham@example.com', 'Another member'],
+    [null, 'A member'],
+    ['   ', 'A member'],
+    ['lan.pham@example.com', 'A member'],
   ])(
     'a mentioner whose display name is %j reads %j, stored and in the bell',
     async (given, called) => {

@@ -92,7 +92,7 @@ describe("what stands in for the owner's controls on the org list", () => {
 		expect(rowActionNote("mine", true)).toBeNull();
 	});
 
-	it("says a row is read only where another member paired it", () => {
+	it("says a row is read only where a member paired it", () => {
 		expect(rowActionNote("org", false)).toBe("read only");
 	});
 
@@ -101,9 +101,9 @@ describe("what stands in for the owner's controls on the org list", () => {
 		expect(rowActionNote("org", false, false)).toBe("read only");
 	});
 
-	it("names the agent holding a box, and another member otherwise", () => {
+	it("names the agent holding a box, and a member otherwise", () => {
 		expect(pairedByLabel("@ops-bot")).toBe("held by the agent @ops-bot");
-		expect(pairedByLabel(null)).toBe("paired by another member");
+		expect(pairedByLabel(null)).toBe("paired by a member");
 	});
 
 	it("points a caller at the list where their own box always appears", () => {

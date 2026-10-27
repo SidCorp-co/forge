@@ -168,7 +168,7 @@ describe('a refusal to change a connection names its owner', () => {
   });
 
   // ISS-1421 r28, judge-114: "Ask another member" read as "ask anyone", so the one to ask is named by what they are.
-  it('names a person who set no display name as the member who owns it, never as another member or by their email', async () => {
+  it('names a person who set no display name as the member who owns it, never by the bare fallback or their email', async () => {
     const connection = await appBoundTo([projectId]);
     await harness.db.execute(sql`UPDATE users SET display_name = NULL WHERE id = ${clicker.id}`);
     const rows = (await harness.db.execute(
@@ -182,11 +182,11 @@ describe('a refusal to change a connection names its owner', () => {
 
     expect(body.message).toContain('owned by a member who has set no name Forge can show,');
     expect(body.message).toContain('Ask the member who owns it,');
-    expect(body.message).not.toContain('another member');
+    // "a member" stands only in the phrase that says who they are, never as a bare name ("Ask a member").
+    expect(body.message).not.toMatch(/\b[Aa] member(?! who has set no name)/);
     expect(body.message).not.toContain(rows[0]?.email ?? '@');
-    expect(body.message).not.toMatch(/Another member/);
     expect(listed.items?.find((i) => i.id === connection.id)?.access?.ownerName).toBe(
-      'another member',
+      'a member',
     );
   });
 

@@ -19,15 +19,15 @@ describe('what a person is called', () => {
   });
 
   it.each([null, undefined, '', '   ', 'mai@example.com', 'Mai <mai@example.com>'])(
-    'is "another member" where no name was given or the name holds an address (%j)',
+    'is "a member" where no name was given or the name holds an address (%j)',
     (given) => {
       expect(givenName(given)).toBeNull();
-      expect(personName(given)).toBe('another member');
-      expect(personName(given, 'start')).toBe('Another member');
+      expect(personName(given)).toBe('a member');
+      expect(personName(given, 'start')).toBe('A member');
     },
   );
 
-  it('takes initials from the name, else from "another member", never from an address', () => {
+  it('takes initials from the name, else from "a member", never from an address', () => {
     expect(personInitials('Mai Tran')).toBe('MT');
     expect(personInitials('mai')).toBe('MA');
     expect(personInitials(null)).toBe('AM');
@@ -44,7 +44,7 @@ describe('what a person is called', () => {
       personChoice(null, 'lan@example.com'),
       personChoice(' ', ' kim@example.com '),
     ];
-    expect([one.label, two.label]).toEqual(['Another member', 'Another member']);
+    expect([one.label, two.label]).toEqual(['A member', 'A member']);
     expect([one.detail, two.detail]).toEqual(['lan@example.com', 'kim@example.com']);
     expect(personChoice(' Mai Tran ', 'mai@example.com')).toEqual({
       label: 'Mai Tran',
@@ -53,18 +53,18 @@ describe('what a person is called', () => {
   });
 
   // ISS-1229 r22: a label core already served is placed again where the web's sentence puts it.
-  it.each(['Another member', 'another member', ' ANOTHER MEMBER '])(
+  it.each(['A member', 'a member', ' A MEMBER '])(
     'reads its own fallback words (%j) as no name, so a served label goes lower-case mid-sentence',
     (served) => {
       expect(givenName(served)).toBeNull();
-      expect(personName(served)).toBe('another member');
-      expect(personName(served, 'start')).toBe('Another member');
+      expect(personName(served)).toBe('a member');
+      expect(personName(served, 'start')).toBe('A member');
     },
   );
 
   it('places a served name the same at either position', () => {
     expect(personName(personName('Mai Tran', 'start'))).toBe('Mai Tran');
-    expect(personName(personName(null, 'start'))).toBe('another member');
+    expect(personName(personName(null, 'start'))).toBe('a member');
   });
 });
 
@@ -74,7 +74,7 @@ describe('a display name holding an address', () => {
     (typed) => {
       const why = displayNameRefusal(typed);
       expect(why).toMatch(/^A display name cannot hold an email address/);
-      expect(why).toMatch(/"Another member"/);
+      expect(why).toMatch(/"A member"/);
       expect(why).toMatch(/\.$/);
     },
   );
@@ -94,15 +94,15 @@ describe('the reader', () => {
 
   it('reads anyone else as personName names them, and so does a page with no reader', () => {
     expect(readerName('u2', 'u1', 'Mai Tran')).toBe('Mai Tran');
-    expect(readerName('u2', 'u1', null)).toBe('Another member');
-    expect(readerName('u1', null, null, 'inside')).toBe('another member');
+    expect(readerName('u2', 'u1', null)).toBe('A member');
+    expect(readerName('u1', null, null, 'inside')).toBe('a member');
     expect(readerName(null, null, 'Mai')).toBe('Mai');
   });
 
   it('takes their own initials from their name, and never "AM" where they gave none', () => {
     expect(readerInitials('u1', 'u1', 'Mai Tran')).toBe('MT');
     expect(readerInitials('u1', 'u1', null)).toBe(READER_INITIAL);
-    expect(readerInitials('u1', 'u1', 'Another member')).toBe(READER_INITIAL);
+    expect(readerInitials('u1', 'u1', 'A member')).toBe(READER_INITIAL);
     expect(READER_INITIAL).not.toBe('AM');
   });
 

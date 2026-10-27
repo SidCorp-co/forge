@@ -12,16 +12,16 @@ describe('what a person is called', () => {
   });
 
   it.each([null, undefined, '', '   '])(
-    'is "another member" where they gave none (%j)',
+    'is "a member" where they gave none (%j)',
     (given) => {
-      expect(personName(given)).toBe('another member');
-      expect(personName(given, 'start')).toBe('Another member');
+      expect(personName(given)).toBe('a member');
+      expect(personName(given, 'start')).toBe('A member');
     },
   );
 
   it('is never an address, even one set as the display name', () => {
-    expect(personName('mai@example.com')).toBe('another member');
-    expect(personName('Mai <mai@example.com>')).toBe('another member');
+    expect(personName('mai@example.com')).toBe('a member');
+    expect(personName('Mai <mai@example.com>')).toBe('a member');
   });
 
   // ISS-1229 r19: the person slot is the one guarded slot of a title, and it says when it acts.
@@ -30,7 +30,7 @@ describe('what a person is called', () => {
     personName('Mai');
     personName(null);
     expect(warn).not.toHaveBeenCalled();
-    personName('Another member', 'inside');
+    personName('A member', 'inside');
     expect(warn).not.toHaveBeenCalled();
     personName('mai@example.com');
     expect(warn).toHaveBeenCalledTimes(1);

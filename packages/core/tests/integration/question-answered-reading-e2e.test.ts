@@ -192,7 +192,7 @@ describe('an answered question names who answered it (criterion 207)', () => {
     expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({ name: 'Bao T.' });
     await harness.db.execute(sql`UPDATE users SET display_name = NULL WHERE id = ${memberId}`);
     expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({
-      name: 'another member',
+      name: 'a member',
     });
   });
 });

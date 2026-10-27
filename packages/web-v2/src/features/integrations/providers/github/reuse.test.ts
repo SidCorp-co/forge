@@ -76,7 +76,7 @@ describe("what a project is told when it cannot bind the App it can see", () => 
       access: { reach: "binding", canManage: false, ownerName: null },
     });
 
-    expect(unbindableReason([theirs], PROJECT)).toMatch(/owned by another member, and only its owner can bind it/);
+    expect(unbindableReason([theirs], PROJECT)).toMatch(/owned by a member, and only its owner can bind it/);
   });
 
   // ISS-1229 r22: the owner sits inside the sentence, so a person with no display name reads lower-case.
@@ -84,12 +84,12 @@ describe("what a project is told when it cannot bind the App it can see", () => 
     const theirs = app({
       ownerType: "user",
       ownerId: "them",
-      access: { reach: "binding", canManage: false, ownerName: "Another member" },
+      access: { reach: "binding", canManage: false, ownerName: "A member" },
     });
 
     const reason = unbindableReason([theirs], PROJECT) ?? "";
-    expect(reason).toMatch(/owned by another member, and only they can bind it/);
-    expect(reason).toMatch(/ask another member,/);
+    expect(reason).toMatch(/owned by a member, and only they can bind it/);
+    expect(reason).toMatch(/ask a member,/);
   });
 
   it("names the org when the org is the project's own and the caller is not an admin of it", () => {

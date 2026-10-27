@@ -159,14 +159,14 @@ describe("the own scope", () => {
 });
 
 describe("the organization scope", () => {
-	it("lists a device another member paired, and says on the row that it is theirs", async () => {
+	it("lists a device a member paired, and says on the row that it is theirs", async () => {
 		listOrgDevices.mockResolvedValue([orgDevice()]);
 
 		await show();
 		tab(/^Organization · /).click();
 
 		expect(await screen.findByText("sid-xeon-1")).toBeTruthy();
-		expect(screen.getByText("paired by another member")).toBeTruthy();
+		expect(screen.getByText("paired by a member")).toBeTruthy();
 	});
 
 	it("offers no Turn off, no Revoke and no Manage on a row this caller did not pair", async () => {
@@ -280,8 +280,8 @@ describe("a scope whose query has not answered", () => {
 	});
 });
 
-describe("the organization list, which no event about another member's box reaches", () => {
-	it("drops a device another member revoked without an event, on its own refresh", async () => {
+describe("the organization list, which no event about a member's box reaches", () => {
+	it("drops a device a member revoked without an event, on its own refresh", async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		try {
 			listDevices.mockResolvedValue([]);

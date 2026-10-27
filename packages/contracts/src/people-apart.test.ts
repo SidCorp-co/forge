@@ -14,16 +14,16 @@ describe('listedAs — a person as a Members list row names them', () => {
     expect(listedAs(ana, [ana], 'reader')).toBe('Ana');
   });
 
-  it('calls one unnamed person "Another member" with nothing beside it', () => {
+  it('calls one unnamed person "A member" with nothing beside it', () => {
     const one = person('u1', null, '2026-10-03T09:00:00Z');
     const named = person('u2', 'Ana', '2026-10-01T09:00:00Z');
-    expect(listedAs(one, [one, named], 'reader')).toBe('Another member');
+    expect(listedAs(one, [one, named], 'reader')).toBe('A member');
   });
 
   it('tells two unnamed people apart by the day each was added', () => {
     const first = person('u1', null, '2026-10-03T09:00:00Z');
     const second = person('u2', null, '2026-10-04T09:00:00Z');
-    expect(listedAs(first, [first, second], 'reader')).toBe('Another member (added 3 Oct 2026)');
+    expect(listedAs(first, [first, second], 'reader')).toBe('A member (added 3 Oct 2026)');
     expect(addedApart(second, [first, second], 'reader')).toBe('added 4 Oct 2026');
   });
 

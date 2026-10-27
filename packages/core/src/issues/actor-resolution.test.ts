@@ -30,8 +30,8 @@ describe('resolveActors', () => {
   // ISS-1229 r21: an actor is named as personName says, never by their address.
   it.each([
     ['Alice Pham', 'Alice Pham'],
-    [null, 'Another member'],
-    ['alice@example.com', 'Another member'],
+    [null, 'A member'],
+    ['alice@example.com', 'A member'],
   ])('resolves a user whose display name is %j to %j (not an agent)', async (given, named) => {
     whereMock.mockResolvedValueOnce([{ id: U1, email: 'alice@example.com', displayName: given }]);
     const result = await resolveActors([{ type: 'user', id: U1 }]);
@@ -53,7 +53,7 @@ describe('resolveActors', () => {
       displayName: 'CI Runner',
       isAgent: true,
       deviceId: D1,
-      ownerName: 'another member',
+      ownerName: 'a member',
       ownerId: O1,
     });
   });

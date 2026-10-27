@@ -118,7 +118,7 @@ describe("an Activity event, said as a sentence", () => {
   });
 
   it("names an actor core could not resolve without inventing one", () => {
-    expect(said(item("comment.created", { actor: null }))).toBe("Another member commented");
+    expect(said(item("comment.created", { actor: null }))).toBe("A member commented");
     expect(said(item("comment.created", { actor: null, actorType: "device" }))).toBe("An agent commented");
   });
 });

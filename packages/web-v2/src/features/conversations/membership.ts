@@ -13,7 +13,7 @@
 // the agent is shown what has already been said, and it says the bound.
 
 import { personName, readerName } from "@forge/contracts/person-name";
-import { addedApart, type ListedPerson, orderPeople } from "@/lib/people/order-people";
+import { type ListedPerson, orderPeople } from "@/lib/people/order-people";
 import { ApiError } from "@/lib/api/client";
 import type {
   BeyondReach,
@@ -66,11 +66,16 @@ export function initialsOf(name: string): string {
   return (letters.join("") || "?").toUpperCase();
 }
 
-/** Which agents answer in this room, in plain words: each that can, by its handle (ISS-1229 r48). */
-export function answeringAgents(room: Partial<Pick<ConversationMembership, "participants">>): string {
-  const names = agentsOf(room)
+/** The agents that can answer in this room, by handle: the names the header, the replies and the box use. */
+export function answeringAgentNames(room: Partial<Pick<ConversationMembership, "participants">>): string[] {
+  return agentsOf(room)
     .filter((p) => p.reachable !== false)
     .map((p) => memberName(p));
+}
+
+/** Which agents answer in this room, in plain words: each that can, by its handle (ISS-1229 r48). */
+export function answeringAgents(room: Partial<Pick<ConversationMembership, "participants">>): string {
+  const names = answeringAgentNames(room);
   if (names.length === 0) return "No agent in this room can answer.";
   if (names.length === 1) return `${names[0]} answers in this room.`;
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} answer in this room.`;
@@ -378,20 +383,6 @@ function listedMembers(
   };
 }
 
-/**
- * What tells a person apart from others in the room who read the same name (ISS-1229 r24): the day
- * they were added, then the minute, then their place in the order added (`addedApart`).
- */
-function addedWords(
-  participant: ConversationParticipant,
-  room: Partial<Pick<ConversationMembership, "participants">>,
-  viewerId?: string | null,
-): string | null {
-  if (participant.kind !== "person") return null;
-  const listed = listedMembers(room);
-  return addedApart(listed(participant), peopleOf(room).map((p) => listed(p)), viewerId);
-}
-
 /** A room's people in the order every list of people takes: the reader, names, then the unnamed by
  *  when each was added (ISS-1229 r28). */
 export function orderedPeopleOf(
@@ -401,18 +392,16 @@ export function orderedPeopleOf(
   return orderPeople(peopleOf(room), viewerId, listedMembers(room));
 }
 
-/** How a member is named in the room's list: the reader's own row reads "You" (ISS-1229 r23), and
- *  people who read alike carry when each was added, in the list and every question about them (r24). */
+/** How a member is named in a room: the reader's own row reads "You" (ISS-1229 r23), anyone else the
+ *  name they gave or "A member", the words their messages are signed with, never when they were added or
+ *  their place in that order (r49, the coordinator's ruling on judge-146). */
 export function memberName(
   participant: ConversationParticipant,
   viewerId?: string | null,
   at: "inside" | "start" = "start",
-  room?: Partial<Pick<ConversationMembership, "participants">>,
 ): string {
   if (participant.kind === "handle") return `@${participant.displayName ?? participant.label ?? "agent"}`;
-  const name = readerName(participant.userId, viewerId, participant.displayName, at);
-  const apart = room ? addedWords(participant, room, viewerId) : null;
-  return apart ? `${name} (${apart})` : name;
+  return readerName(participant.userId, viewerId, participant.displayName, at);
 }
 
 /** What taking this member out does. */
@@ -422,7 +411,7 @@ export function removalClaim(
   viewerId?: string | null,
 ): string {
   if (participant.kind !== "handle") {
-    return `${memberName(participant, viewerId, "start", room)} will no longer be listed in this room.`;
+    return `${memberName(participant, viewerId, "start")} will no longer be listed in this room.`;
   }
   const rest = agentsOf(room)
     .filter((p) => p.id !== participant.id)
@@ -484,12 +473,8 @@ export function composerRefusal(
 export function removalQuestion(
   participant: ConversationParticipant,
   viewerId?: string | null,
-  room?: Partial<Pick<ConversationMembership, "participants">>,
 ): { title: string; confirm: string } {
   const self = participant.kind === "person" && Boolean(viewerId) && participant.userId === viewerId;
-  const who = self ? "yourself" : memberName(participant, viewerId, "inside", room);
-  // The button answers the question above it, so it keeps the short name: the full one, with when they
-  // were added, made the button push Cancel off a phone's width (ISS-1229 r24).
-  const short = self ? "yourself" : memberName(participant, viewerId, "inside");
-  return { title: `Take ${who} out of this room?`, confirm: self ? "Take me out" : `Take ${short} out` };
+  const who = self ? "yourself" : memberName(participant, viewerId, "inside");
+  return { title: `Take ${who} out of this room?`, confirm: self ? "Take me out" : `Take ${who} out` };
 }

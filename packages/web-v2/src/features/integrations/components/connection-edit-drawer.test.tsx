@@ -407,7 +407,7 @@ describe("the drawer for a reader who may not change the connection", () => {
   });
 
   it("names the member who owns it where they have no name to show", () => {
-    mount({ access: { reach: "binding", canManage: false, ownerName: "another member" } });
+    mount({ access: { reach: "binding", canManage: false, ownerName: "a member" } });
     expect(screen.getByTestId("connection-read-only")).toHaveTextContent(
       "Read-only — only the member who owns it can change this credential.",
     );
@@ -438,7 +438,7 @@ describe("the drawer for a reader who may not change the connection", () => {
   it.each([
     [
       "a person's",
-      { ownerType: "user" as const, access: { reach: "binding" as const, canManage: false, ownerName: "another member" } },
+      { ownerType: "user" as const, access: { reach: "binding" as const, canManage: false, ownerName: "a member" } },
       "Only the member who owns it can change this.",
     ],
     [

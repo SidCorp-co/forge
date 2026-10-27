@@ -120,11 +120,11 @@ const named = (displayName: string | null) =>
 describe("a speaker's name, read when the room is read", () => {
   it('is the name the speaker holds now, on a message they sent before they set it', async () => {
     await said(1, null);
-    expect(await servedLabels()).toEqual(['Another member']);
+    expect(await servedLabels()).toEqual(['A member']);
     await named('Mai Tran');
     expect(await servedLabels()).toEqual(['Mai Tran']);
     await named(null);
-    expect(await servedLabels()).toEqual(['Another member']);
+    expect(await servedLabels()).toEqual(['A member']);
   });
 
   it('is never a label stored with the message', async () => {
@@ -200,10 +200,10 @@ describe("a speaker's name, read when the room is read", () => {
       };
       return body.messages.filter((m) => m.role === 'user').map((m) => m.authorLabel);
     };
-    expect(await read(speakerId)).toEqual(['You', 'Another member']);
-    expect(await read(ownerId)).toEqual(['Another member', 'You']);
+    expect(await read(speakerId)).toEqual(['You', 'A member']);
+    expect(await read(ownerId)).toEqual(['A member', 'You']);
     await named('Mai Tran');
-    expect(await read(speakerId)).toEqual(['You', 'Another member']);
+    expect(await read(speakerId)).toEqual(['You', 'A member']);
     expect(await read(ownerId)).toEqual(['Mai Tran', 'You']);
   });
 

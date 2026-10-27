@@ -121,7 +121,7 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
 
 /**
  * What each user is called; an id with no user row is absent, never "Unknown". `at` is where the
- * name stands: 'start' opens a label or a sentence, 'inside' sits mid-sentence ("another member").
+ * name stands: 'start' opens a label or a sentence, 'inside' sits mid-sentence ("a member").
  */
 export async function userLabels(
   ids: string[],

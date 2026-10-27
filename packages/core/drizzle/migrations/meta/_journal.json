@@ -2311,6 +2311,13 @@
       "when": 1816646400000,
       "tag": "0389_the_hint_has_its_own_name",
       "breakpoints": true
+    },
+    {
+      "idx": 396,
+      "version": "7",
+      "when": 1817251200000,
+      "tag": "0396_a_member_is_one_name",
+      "breakpoints": true
     }
   ]
 }

@@ -386,7 +386,7 @@ describe('the issue page reads one record of what a run did', () => {
     const other = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, title, created_by_id, status)
-      VALUES (${other}::uuid, ${w.projectId}::uuid, 'another member', ${w.userId}::uuid, 'in_progress')`);
+      VALUES (${other}::uuid, ${w.projectId}::uuid, 'a member', ${w.userId}::uuid, 'in_progress')`);
     const group = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at, metadata)

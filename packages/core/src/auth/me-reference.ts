@@ -37,7 +37,7 @@ export const readAccount = describeOperation({
 export const patchProfile = describeOperation({
   summary: 'Set or clear the name the account is shown as',
   description:
-    '`displayName: null` clears it, and other members then read the account as "Another member", never by its address. A name holding an email address is refused.',
+    '`displayName: null` clears it, and other members then read the account as "A member", never by its address. A name holding an email address is refused.',
   responses: {
     200: json(profileAnswerSchema, 'The profile as stored'),
     400: fail({

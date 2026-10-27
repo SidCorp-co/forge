@@ -196,7 +196,7 @@ describe('a namespace that is re-exported or bound to another name', () => {
     expect(found(source, extra)).toEqual(['pipeline/planted.ts:2 write']);
   });
 
-  it('leaves another member of the same namespace alone', () => {
+  it('leaves a member of the same namespace alone', () => {
     const extra = barrel("export * as dbSchema from '../db/schema.js';");
     const source = [
       "import { dbSchema } from './barrel.js';",

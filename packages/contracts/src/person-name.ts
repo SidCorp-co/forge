@@ -1,8 +1,9 @@
 // What a person is called wherever another member reads it: the name they gave, never their address
-// (ISS-1229). Only Settings → Members, invitations and a picker (personChoice) show an address.
+// (ISS-1229). Only Settings → Members, invitations and a picker (personChoice) show an address. Where they
+// gave none it is "a member", the words a room signs their messages with, on every surface (ISS-1229 r49).
 
-export const UNNAMED_PERSON = 'another member';
-export const UNNAMED_PERSON_AT_START = 'Another member';
+export const UNNAMED_PERSON = 'a member';
+export const UNNAMED_PERSON_AT_START = 'A member';
 
 export const ADDRESS_PATTERN = '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}';
 
@@ -50,7 +51,7 @@ export function personChoice(
   return { label: personName(displayName, 'start'), detail: email.trim() };
 }
 
-/** The reader's own avatar letter where they gave no name: never the initials of "another member". */
+/** The reader's own avatar letter where they gave no name: never the initials of "a member". */
 export const READER_INITIAL = 'Y';
 
 const isReader = (

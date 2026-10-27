@@ -554,7 +554,7 @@ export function groupRows(
  * Creator groups in the order every list of people takes — the reader, names, then the unnamed by
  * when each was added to the project — with the agents after them, an agent being an account with a
  * name, not a class (ISS-1137). Two unnamed people are told apart by when each was added, in the words
- * a room's people list uses (ISS-1229 r28, judge-80 read two identical "Another member" groups).
+ * the organization page uses (ISS-1229 r28, judge-80 read two identical unnamed groups).
  */
 function creatorGroups(
 	groups: IssueGroup[],

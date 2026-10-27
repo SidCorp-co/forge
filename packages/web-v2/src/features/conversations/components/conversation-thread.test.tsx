@@ -78,9 +78,9 @@ describe("what a stored turn carries for its reader", () => {
 
   // ISS-1229 r24: the reader's own message, in a room where core labels them like anyone else.
   it('heads the reader\'s own message "You", whatever label core stored', () => {
-    render(<ConversationThread messages={[said({ authorUserId: "me", authorLabel: "Another member" })]} windows={[]} />);
+    render(<ConversationThread messages={[said({ authorUserId: "me", authorLabel: "A member" })]} windows={[]} />);
     expect(screen.getByTestId("message-actions")).toHaveTextContent("You");
-    expect(screen.getByTestId("message-actions")).not.toHaveTextContent("Another member");
+    expect(screen.getByTestId("message-actions")).not.toHaveTextContent("A member");
     expect(screen.getByRole("button", { name: /^Copy message from you/ })).toBeInTheDocument();
   });
 
@@ -102,7 +102,7 @@ describe("what a stored turn carries for its reader", () => {
 
   // ISS-1229 r22: the control's name is a sentence, so a person with no display name reads lower-case in it.
   it("names an unnamed author lower-case inside the copy control's name", () => {
-    render(<ConversationThread messages={[said({ authorLabel: "Another member" })]} windows={[]} />);
+    render(<ConversationThread messages={[said({ authorLabel: "A member" })]} windows={[]} />);
     expect(screen.getByTestId("message-actions").querySelector("span")?.textContent).toBe("A member");
     expect(screen.getByRole("button", { name: /^Copy message from a member/ })).toBeInTheDocument();
   });
@@ -525,10 +525,10 @@ describe("who said each message in a room of people none of whom set a name", ()
       <ConversationThread
         participants={participants}
         messages={[
-          said({ id: "m1", seq: 0, authorUserId: "u2", authorLabel: "Another member" }),
-          said({ id: "m2", seq: 1, authorUserId: "u3", authorLabel: "Another member" }),
-          said({ id: "m3", seq: 2, authorUserId: "me", authorLabel: "Another member" }),
-          said({ id: "m4", seq: 3, authorUserId: "u4", authorLabel: "Another member" }),
+          said({ id: "m1", seq: 0, authorUserId: "u2", authorLabel: "A member" }),
+          said({ id: "m2", seq: 1, authorUserId: "u3", authorLabel: "A member" }),
+          said({ id: "m3", seq: 2, authorUserId: "me", authorLabel: "A member" }),
+          said({ id: "m4", seq: 3, authorUserId: "u4", authorLabel: "A member" }),
         ]}
         windows={[]}
       />,
@@ -542,8 +542,8 @@ describe("who said each message in a room of people none of whom set a name", ()
       <ConversationThread
         participants={participants}
         messages={[
-          said({ id: "m1", seq: 0, authorUserId: "u2", authorLabel: "Another member" }),
-          said({ id: "m2", seq: 1, authorUserId: "u3", authorLabel: "Another member" }),
+          said({ id: "m1", seq: 0, authorUserId: "u2", authorLabel: "A member" }),
+          said({ id: "m2", seq: 1, authorUserId: "u3", authorLabel: "A member" }),
         ]}
         windows={[]}
       />,
@@ -562,5 +562,43 @@ describe("who said each message in a room of people none of whom set a name", ()
       />,
     );
     expect(screen.getByTestId("message-actions").querySelector("span")?.textContent).toBe("Lan Pham");
+  });
+});
+
+// ISS-1229 r49, judge-146: the header said "@desk-bot answers in this room." while every reply was signed
+// "Assistant", so the reader was told one agent answers and saw another name answer.
+describe("who signs an agent's reply", () => {
+  const agent = {
+    id: "h1",
+    kind: "handle" as const,
+    userId: "agent-1",
+    projectId: "p1",
+    label: "desk-bot",
+    displayName: "desk-bot",
+    reachable: true,
+    addedAt: AT,
+  };
+
+  it("is the agent, by the handle the room's header names it by", () => {
+    render(
+      <ConversationThread
+        participants={[agent]}
+        messages={[said({ id: "m1", role: "assistant", authorUserId: "agent-1", authorLabel: null, content: "Noted." })]}
+        windows={[]}
+      />,
+    );
+    expect(screen.getByTestId("message-actions").querySelector("span")?.textContent).toBe("@desk-bot");
+    expect(screen.getByRole("button", { name: /^Copy message from @desk-bot at / })).toBeInTheDocument();
+  });
+
+  it("keeps the stored label for a reply whose agent is no longer in the room", () => {
+    render(
+      <ConversationThread
+        participants={[agent]}
+        messages={[said({ id: "m1", role: "assistant", authorUserId: "agent-gone", authorLabel: null, content: "Hi." })]}
+        windows={[]}
+      />,
+    );
+    expect(screen.getByTestId("message-actions").querySelector("span")?.textContent).toBe("Assistant");
   });
 });

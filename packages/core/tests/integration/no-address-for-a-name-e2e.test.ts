@@ -131,7 +131,7 @@ describe('a notice title quoting an issue or a project', () => {
 });
 
 describe('an invitation from an inviter with no display name', () => {
-  it('names them "Another member" in its notice and in the bell, never by address', async () => {
+  it('names them "A member" in its notice and in the bell, never by address', async () => {
     const inviter = await person(null);
     const invitee = await person('Lan');
     await fx.db.execute(sql`
@@ -151,7 +151,7 @@ describe('an invitation from an inviter with no display name', () => {
     const [notice] = (await fx.db.execute(sql`
       SELECT title FROM notifications WHERE type = 'invitation_received'
     `)) as unknown as Array<{ title: string }>;
-    expect(notice?.title).toBe(`Another member invited you to ${fx.project.name} as member`);
+    expect(notice?.title).toBe(`A member invited you to ${fx.project.name} as member`);
 
     const pending = await app.request('/api/invitations/pending', {
       headers: { authorization: `Bearer ${await signUserToken(invitee.id)}` },
@@ -159,7 +159,7 @@ describe('an invitation from an inviter with no display name', () => {
     expect(pending.status).toBe(200);
     const text = await pending.text();
     expect(text).not.toContain(inviter.email);
-    expect(JSON.parse(text)).toMatchObject([{ inviterName: 'Another member', role: 'member' }]);
+    expect(JSON.parse(text)).toMatchObject([{ inviterName: 'A member', role: 'member' }]);
     expect(await addressedTitles()).toEqual([]);
   });
 });
@@ -201,10 +201,10 @@ describe('what core calls a person, in SQL as in TypeScript', () => {
   it.each([
     ['Mai', 'Mai'],
     ['  Mai\t', 'Mai'],
-    ['\t\n', 'another member'],
-    ['', 'another member'],
-    [null, 'another member'],
-    ['mai@example.com', 'another member'],
+    ['\t\n', 'a member'],
+    ['', 'a member'],
+    [null, 'a member'],
+    ['mai@example.com', 'a member'],
   ])('reads %j as %j, as personName does', async (given, called) => {
     const { personName, personNameSql } = await import('../../src/lib/person-name.js');
     const [row] = (await fx.db.execute(

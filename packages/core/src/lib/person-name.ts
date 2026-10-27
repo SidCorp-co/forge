@@ -27,7 +27,7 @@ export function personName(
   at: 'inside' | 'start' = 'inside',
 ): string {
   if (displayName && carriesAnAddress(displayName))
-    logger.warn('person-name: a name held an email address, so it reads as another member');
+    logger.warn('person-name: a name held an email address, so it reads as a member');
   return named(displayName, at);
 }
 
