@@ -38,8 +38,9 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [orgId, setOrgId] = useState('');
   const orgsQ = useOrgs();
   const teamOrgs = (orgsQ.data ?? []).filter((o) => !o.isPersonal);
-  // Unread organizations leave where the project lands unknown: nothing is created until they answer.
+  // Until the organizations answer, where the project lands is unknown: nothing is created before then.
   const orgsUnread = orgsQ.isError && !orgsQ.data;
+  const orgsKnown = orgsQ.data !== undefined;
   const { activeOrg } = useActiveOrg();
   const defaultOrgId = activeOrg && !activeOrg.isPersonal ? activeOrg.id : '';
   const [errors, setErrors] = useState<{ name?: string; slug?: string; form?: string }>({});
@@ -99,7 +100,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (orgsUnread) return;
+    if (!orgsKnown) return;
     const trimmedName = name.trim();
     const trimmedSlug = slug.trim();
     const fieldErrors = validate(trimmedName, trimmedSlug);
@@ -345,7 +346,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" icon="plus" loading={create.isPending} disabled={orgsUnread}>
+            <Button type="submit" variant="primary" icon="plus" loading={create.isPending} disabled={!orgsKnown}>
               Create project
             </Button>
           </div>

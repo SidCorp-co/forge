@@ -12,13 +12,16 @@ afterEach(cleanup);
 const create = vi.fn(async () => ({ id: "p1", slug: "desk", name: "Desk", orgId: "o1" }));
 const orgsRefetch = vi.fn();
 let orgsFail = true;
+let orgsLoading = false;
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null }) }));
 vi.mock("@/features/orgs/hooks", () => ({
   useOrgs: () =>
-    orgsFail
+    orgsLoading
+      ? { data: undefined, isError: false, error: null, refetch: orgsRefetch }
+      : orgsFail
       ? { data: undefined, isError: true, error: new Error("The server is down."), refetch: orgsRefetch }
       : { data: [{ id: "o1", name: "SidCorp", isPersonal: false }], isError: false, error: null, refetch: orgsRefetch },
 }));
@@ -39,6 +42,7 @@ function submitDesk() {
 
 beforeEach(() => {
   orgsFail = true;
+  orgsLoading = false;
   create.mockClear();
   orgsRefetch.mockClear();
 });
@@ -61,12 +65,27 @@ describe("the new-project dialog while the organizations read failed", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("offers the picker and creates once the read answers", async () => {
+  it("keeps the draft, offers the picker and creates once Retry's read answers", async () => {
+    const { rerender } = render(<NewProjectDialog open onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "Desk" } });
+    fireEvent.click(within(screen.getByTestId("new-project-orgs-unread")).getByRole("button", { name: "Retry" }));
     orgsFail = false;
-    render(<NewProjectDialog open onClose={vi.fn()} />);
+    rerender(<NewProjectDialog open onClose={vi.fn()} />);
+
     expect(screen.queryByTestId("new-project-orgs-unread")).toBeNull();
     expect(screen.getByText("Organization")).toBeInTheDocument();
-    submitDesk();
+    expect(screen.getByLabelText(/^Name/)).toHaveValue("Desk");
+    expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
+    fireEvent.submit(screen.getByLabelText(/^Name/).closest("form") as HTMLFormElement);
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]).toEqual([{ slug: "desk", name: "Desk" }]);
+  });
+
+  it("creates nothing while the organizations are still loading", () => {
+    orgsLoading = true;
+    render(<NewProjectDialog open onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
+    submitDesk();
+    expect(create).not.toHaveBeenCalled();
   });
 });
