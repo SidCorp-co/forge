@@ -60,6 +60,7 @@ const rowOf =
       ...(r.cutCount > 1 ? [t("releases.attemptsCount", { n: r.cutCount })] : []),
       ...(r.current ? [t("releases.servingProduction")] : []),
       ...(r.landedOn ? [t("releases.landedNotProduction", { branch: r.landedOn })] : []),
+      ...(r.shippedFailing ? [t("releases.shippedFailingFact", { n: r.shippedFailing.count })] : []),
     ],
     state: <StatusBadge family="releaseState" value={r.state} />,
     waitingOn: <WaitingOn w={r.waitingOn} />,

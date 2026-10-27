@@ -176,9 +176,23 @@ describe('a landing is recorded as the release of a project with no production e
     const res = await record([issue], F4);
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(readingsOf(res.body)[0]).toBe('Shipped with 1 failing criterion: ISS-5 c2');
     expect(readingsOf(res.body)).toContain(
-      `ISS-5: 3 live criteria, c1, c3 pass at \`${F4.slice(0, 12)}\`; c2 no pass: its verdict is \`fail\``,
+      `ISS-5: 3 live criteria, c1, c3 pass at \`${F4.slice(0, 12)}\`; c2 failed at \`${F4.slice(0, 12)}\``,
     );
+    expect(res.body.shippedFailing).toMatchObject({
+      count: 1,
+      criteria: [{ issueId: issue, issueKey: 'ISS-5', criterion: 2 }],
+    });
+    expect(await statusOf(issue)).toBe('closed');
+    // the release says it whole, on its list and its page, as the follow-up's evidence
+    const list = await ok(api(token, 'GET', `/api/projects/${projectId}/releases`));
+    expect(list.releases).toMatchObject([
+      {
+        version: '0.1.0',
+        shippedFailing: { count: 1, sentence: 'Shipped with 1 failing criterion: ISS-5 c2' },
+      },
+    ]);
   });
 
   it('refuses a merge commit that is not in the recorded commit', async () => {

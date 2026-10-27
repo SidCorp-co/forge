@@ -29,7 +29,7 @@ import {
   landedBuildsOf,
   readHolding,
 } from './landed-build.js';
-import { landingCoverage } from './landing-coverage.js';
+import { landingCoverage, shippedFailingOf } from './landing-coverage.js';
 import { carryNaming } from './naming.js';
 import {
   admissibleIssues,
@@ -161,7 +161,7 @@ export async function recordLanding(
     const build = landed.get(id);
     return build?.sha === commit ? (build.head ?? null) : null;
   };
-  const { readings: covered } = await landingCoverage(
+  const { readings: covered, coverage } = await landingCoverage(
     projectId,
     issueIds,
     commit,
@@ -169,7 +169,10 @@ export async function recordLanding(
     headOf,
     deps,
   );
+  // a fail that shipped is said first and whole: it is the evidence the follow-up starts from
+  const shippedFailing = shippedFailingOf(issueIds, coverage, shown);
   const readings = [
+    ...(shippedFailing ? [shippedFailing.sentence] : []),
     ...issueIds.map((id) => {
       const build = landed.get(id);
       const via = build?.sha === commit ? 'is' : 'is held by';
@@ -198,6 +201,7 @@ export async function recordLanding(
         providerRef,
         recordedBy: userId,
         issues: roster,
+        ...(shippedFailing ? { shippedFailing } : {}),
       },
     });
     const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
@@ -251,5 +255,6 @@ export async function recordLanding(
     closed,
     failed,
     issues: roster,
+    shippedFailing,
   };
 }

@@ -208,15 +208,20 @@ describe('where none is owed', () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(readingsOf(res.body)).toContain(
-      `ISS-11: the project's document says its issues owe no verdict; 3 live criteria, c1 pass at \`${F4.slice(0, 12)}\`; c2 no pass: its verdict is \`fail\`; c3 no pass: no verdict was recorded`,
+      `ISS-11: the project's document says its issues owe no verdict; 3 live criteria, c1 pass at \`${F4.slice(0, 12)}\`; c2 failed at \`${F4.slice(0, 12)}\`; c3 no pass: no verdict was recorded`,
     );
   });
 
-  it('closes over a fail judged at an earlier commit, which judged another build', async () => {
+  // a fail at a commit the landing holds was never superseded by a pass, so it shipped with it
+  it('closes over a fail judged at an earlier commit the landing holds, and says it shipped failing', async () => {
     const issue = await landedIssue(11, F4);
     await ok(judged(issue, 2, { kind: 'commit', sha: D9 }, 'fail'));
 
-    expect((await record([issue], F4)).status).toBe(201);
+    const res = await record([issue], F4);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(readingsOf(res.body)[0]).toBe('Shipped with 1 failing criterion: ISS-11 c2');
+    expect(await statusOf(issue)).toBe('closed');
   });
 });
 

@@ -9,6 +9,7 @@
  */
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
+import type { ReleaseShippedFailing } from '@forge/contracts/releases';
 import { landedIdentityWhy, verdictEarns } from '@forge/contracts/verdict-identity';
 import { type StandingCriterion, standingCriteriaOf } from '../issues/index.js';
 import { pairKey } from '../runners/index.js';
@@ -19,7 +20,7 @@ import { ancestrySourceFor } from './shipped-earlier.js';
 const WHOLE = /^[0-9a-f]{40}$/;
 const short = (sha: string) => sha.slice(0, 12);
 
-export type CoverageBasis = 'commit' | 'earlier' | 'runtime' | 'unverified' | 'none';
+export type CoverageBasis = 'commit' | 'earlier' | 'runtime' | 'unverified' | 'fail' | 'none';
 
 /** One live criterion placed against the recorded commit; `at` is the commit or runtime it stands on. */
 export interface CriterionCoverage {
@@ -29,7 +30,7 @@ export interface CriterionCoverage {
   why: string | null;
 }
 
-type Placed = CriterionCoverage | { criterion: number; candidate: string };
+type Placed = CriterionCoverage | { criterion: number; candidate: string; fail: boolean };
 
 function place(
   commit: string,
@@ -48,20 +49,32 @@ function place(
   }
   const v = c.verdict;
   if (!v) return none('no verdict was recorded');
-  if (!verdictEarns(v.verdict)) return none(`its verdict is \`${v.verdict}\``);
-  if (v.unverified)
+  // a fail stands against what shipped wherever the recorded commit holds what it judged
+  const fail = v.verdict === 'fail';
+  if (!fail && !verdictEarns(v.verdict)) return none(`its verdict is \`${v.verdict}\``);
+  if (!fail && v.unverified)
     return { criterion: c.criterion, basis: 'unverified', at: null, why: v.unverified };
   const at = v.at;
-  if (!at) return none('it names nothing it was judged against');
+  if (!at) {
+    return fail
+      ? { criterion: c.criterion, basis: 'fail', at: null, why: null }
+      : none('it names nothing it was judged against');
+  }
   // the commit a verdict names on a landing, read by the rule the record door weighs it with
   const why = landedIdentityWhy(at.kind === 'source' ? 'commit' : at.kind, at.value, judgedOn);
   if (why && at.kind === 'runtime') {
-    return { criterion: c.criterion, basis: 'runtime', at: at.value, why: null };
+    return { criterion: c.criterion, basis: fail ? 'fail' : 'runtime', at: at.value, why: null };
   }
-  if (why) return none(`it was ${why}`);
+  if (why) {
+    return fail
+      ? { criterion: c.criterion, basis: 'fail', at: at.value, why: null }
+      : none(`it was ${why}`);
+  }
   const sha = at.value.trim().toLowerCase();
-  if (WHOLE.test(sha)) return { criterion: c.criterion, candidate: sha };
-  return none(`it was judged at \`${at.value}\`, which is not a whole commit`);
+  if (WHOLE.test(sha)) return { criterion: c.criterion, candidate: sha, fail };
+  return fail
+    ? { criterion: c.criterion, basis: 'fail', at: at.value, why: null }
+    : none(`it was judged at \`${at.value}\`, which is not a whole commit`);
 }
 
 /** `c1, c2-4`: criterion numbers, consecutive runs folded. */
@@ -116,6 +129,8 @@ function sentence(
         p.criterion,
       );
     } else if (p.basis === 'runtime') add(`pass on runtime \`${p.at}\``, p.criterion);
+    else if (p.basis === 'fail')
+      add(p.at ? `failed at \`${WHOLE.test(p.at) ? short(p.at) : p.at}\`` : 'failed', p.criterion);
     else if (p.basis === 'unverified')
       add(`only a pass the verified rule does not count: ${p.why}`, p.criterion);
     else add(`no pass: ${p.why}`, p.criterion);
@@ -123,6 +138,30 @@ function sentence(
   const owed = owes ? '' : "the project's document says its issues owe no verdict; ";
   const parts = [...groups].map(([words, ns]) => `${criteriaList(ns)} ${words}`);
   return `${key}: ${owed}${placed.length} live criteria, ${parts.join('; ')}`;
+}
+
+/** The failing criteria a landing shipped, or null where none failed (REQ-45 BC-14). */
+export function shippedFailingOf(
+  issueIds: readonly string[],
+  coverage: ReadonlyMap<string, readonly CriterionCoverage[]>,
+  shown: ReadonlyMap<string, string>,
+): ReleaseShippedFailing | null {
+  const criteria = issueIds.flatMap((issueId) =>
+    (coverage.get(issueId) ?? [])
+      .filter((c) => c.basis === 'fail')
+      .map((c) => ({ issueId, issueKey: shown.get(issueId) ?? issueId, criterion: c.criterion })),
+  );
+  if (criteria.length === 0) return null;
+  const named = issueIds.flatMap((id) => {
+    const ns = criteria.filter((c) => c.issueId === id).map((c) => c.criterion);
+    return ns.length > 0 ? [`${shown.get(id) ?? id} ${criteriaList(ns)}`] : [];
+  });
+  const n = criteria.length;
+  return {
+    count: n,
+    criteria,
+    sentence: `Shipped with ${n} failing criteri${n === 1 ? 'on' : 'a'}: ${named.join(', ')}`,
+  };
 }
 
 /**
@@ -164,12 +203,15 @@ export async function landingCoverage(
       placed.map((p): CriterionCoverage => {
         if (!('candidate' in p)) return p;
         const answer = held.get(pairKey(holdingPair(p.candidate, commit)));
-        if (answer === true)
-          return { criterion: p.criterion, basis: 'earlier', at: p.candidate, why: null };
+        if (answer === true) {
+          const basis = p.fail ? 'fail' : 'earlier';
+          return { criterion: p.criterion, basis, at: p.candidate, why: null };
+        }
+        const was = p.fail ? 'its verdict is `fail`, and ' : '';
         const why =
           answer === false
-            ? `it was judged at \`${short(p.candidate)}\`, which \`${short(commit)}\` does not hold`
-            : `it was judged at \`${short(p.candidate)}\`, and whether \`${short(commit)}\` holds it was not read: ${answer?.unread ?? 'it was not asked'}`;
+            ? `${was}it was judged at \`${short(p.candidate)}\`, which \`${short(commit)}\` does not hold`
+            : `${was}it was judged at \`${short(p.candidate)}\`, and whether \`${short(commit)}\` holds it was not read: ${answer?.unread ?? 'it was not asked'}`;
         return { criterion: p.criterion, basis: 'none', at: null, why };
       }),
     );

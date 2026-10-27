@@ -11,6 +11,7 @@
 // requiring one would put the coupling straight back. `merged_at` is required
 // instead, and the residual is priced on ISS-1129.
 
+import type { ReleaseShippedFailing } from '@forge/contracts/releases';
 import { and, eq, inArray } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
@@ -78,6 +79,8 @@ export interface RecordPerformedReleaseResult {
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
   issues: RecordedIssue[];
+  /** A landing's criteria that shipped failing, said whole where any did; null where none did. */
+  shippedFailing?: ReleaseShippedFailing | null;
 }
 
 /** Every issue this record may close, read once and refused by name. */
