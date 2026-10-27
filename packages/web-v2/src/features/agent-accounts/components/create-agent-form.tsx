@@ -12,7 +12,7 @@
 // the submit button off the screen (ISS-1169).
 
 import { useState } from "react";
-import { Banner, Button, Field, Input, MonoTag, SectionTitle } from "@/design";
+import { Banner, Button, Field, Input, MonoTag, RetryButton, SectionTitle } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCreateAgent } from "../hooks";
@@ -111,9 +111,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
               // Projects that could not be read are not projects the organization has none of (ISS-1229 r47).
               <p className="fg-body-sm" role="alert" data-testid="agent-projects-unread">
                 This organization&apos;s projects could not be read: {formatApiError(projectsUnread)}{" "}
-                <Button variant="secondary" size="sm" onClick={readProjects}>
-                  Retry
-                </Button>
+                <RetryButton error={projectsUnread} onRetry={readProjects} />
               </p>
             ) : projects.length === 0 ? (
               <p className="fg-body-sm">

@@ -111,7 +111,7 @@ export function MembersTab({
       ) : membersQ.isError ? (
         <ErrorState title="Couldn't load members"
           message={formatApiError(membersQ.error)}
-          onRetry={() => membersQ.refetch()}
+          error={membersQ.error} onRetry={() => membersQ.refetch()}
         />
       ) : (
         <ul className="divide-y divide-line">
@@ -161,7 +161,7 @@ export function MembersTab({
           ) : invitationsQ.isError ? (
             <ErrorState title="Couldn't load invitations"
               message={formatApiError(invitationsQ.error)}
-              onRetry={() => invitationsQ.refetch()}
+              error={invitationsQ.error} onRetry={() => invitationsQ.refetch()}
             />
           ) : (invitationsQ.data ?? []).length === 0 ? (
             <p className="fg-body-sm text-subtle">No pending invitations.</p>
@@ -198,7 +198,7 @@ export function MembersTab({
           <ReadFailedLine
             what="your projects, so this project's organization is not known"
             why={formatApiError(projectsQ.error)}
-            onRetry={() => void projectsQ.refetch()}
+            error={projectsQ.error} onRetry={() => void projectsQ.refetch()}
           />
         </div>
       )}
@@ -208,7 +208,7 @@ export function MembersTab({
           <ReadFailedLine
             what="the organization's members"
             why={formatApiError(orgMembersQ.error)}
-            onRetry={() => void orgMembersQ.refetch()}
+            error={orgMembersQ.error} onRetry={() => void orgMembersQ.refetch()}
           />
         </div>
       )}

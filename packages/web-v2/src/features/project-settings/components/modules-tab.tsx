@@ -250,7 +250,7 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
         <ErrorState
           title="Couldn't load modules"
           message={formatApiError(labelsQ.error)}
-          onRetry={() => labelsQ.refetch()}
+          error={labelsQ.error} onRetry={() => labelsQ.refetch()}
         />
       ) : modules.length === 0 ? (
         <EmptyState

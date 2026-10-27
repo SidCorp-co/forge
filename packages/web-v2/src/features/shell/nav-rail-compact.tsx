@@ -20,6 +20,7 @@ import { Popover } from '@/design/primitives/popover';
 import { ProjectMark } from '@/design/primitives/project-mark';
 import { assetPath } from '@/lib/asset';
 import { cn } from '@/lib/utils/cn';
+import { offersRetryFor, RetryButton } from '@/design/primitives/retry-button';
 
 export interface RailItem {
   key: string;
@@ -426,25 +427,9 @@ export function NavRailCompact({
 
         {!activeProject && switcherProjects.length === 0 && projectsUnread && (
           <>
-            {/* What failed is visible text, not only the accessible name; the server's why is the switcher's (ISS-1229 r48). */}
-            <button
-              type="button"
-              onClick={projectsUnread.onRetry}
-              aria-label="Couldn't load your projects. Retry"
-              title="Couldn't load your projects. Retry"
-              data-testid="rail-projects-unread"
-              className="flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle transition-colors hover:bg-hover"
-            >
-              <span className="inline-flex size-[30px] items-center justify-center rounded-md border border-[color:var(--flame-500)]">
-                <Icon name="alert" size={16} className="text-[color:var(--flame-700)]" />
-              </span>
-              <span className="px-0.5 text-center text-10 font-semibold leading-tight tracking-[-0.01em] text-fg">
-                Projects not loaded
-              </span>
-              <span className="text-10 font-semibold tracking-[-0.01em] text-accent-text underline underline-offset-2">
-                Retry
-              </span>
-            </button>
+            {/* What failed is visible text, not only the accessible name; the server's why is the switcher's (ISS-1229 r48).
+                The wait the server named is said too, and no Retry is offered where a second read cannot change the answer (r50). */}
+            <RailProjectsUnread unread={projectsUnread} />
 
             <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
           </>
@@ -532,5 +517,48 @@ export function NavRailCompact({
         {version && <div className="w-full px-0.5 text-center">{version}</div>}
       </div>
     </nav>
+  );
+}
+
+/** The narrow rail's tile for a failed projects read: Retry where the one rule offers it, with the wait the server named. */
+function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
+  const retry = offersRetryFor(unread.error);
+  const named = ["Couldn't load your projects.", unread.wait, retry ? "Retry" : unread.message].filter(Boolean).join(" ");
+  const face = (
+    <>
+      <span className="inline-flex size-[30px] items-center justify-center rounded-md border border-[color:var(--flame-500)]">
+        <Icon name="alert" size={16} className="text-[color:var(--flame-700)]" />
+      </span>
+      <span className="px-0.5 text-center text-10 font-semibold leading-tight tracking-[-0.01em] text-fg">
+        Projects not loaded
+      </span>
+      {unread.wait && (
+        <span data-testid="rail-projects-wait" className="px-0.5 text-center text-10 leading-tight text-muted">
+          {unread.wait}
+        </span>
+      )}
+    </>
+  );
+  const tile = "flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle";
+  if (!retry) {
+    return (
+      <div role="status" aria-label={named} title={named} data-testid="rail-projects-unread" className={tile}>
+        {face}
+      </div>
+    );
+  }
+  return (
+    <RetryButton
+      look="link"
+      error={unread.error}
+      onRetry={unread.onRetry}
+      label={named}
+      title={named}
+      testId="rail-projects-unread"
+      className={cn(tile, "no-underline transition-colors hover:bg-hover hover:no-underline")}
+    >
+      {face}
+      <span className="text-10 font-semibold tracking-[-0.01em] text-accent-text underline underline-offset-2">Retry</span>
+    </RetryButton>
   );
 }

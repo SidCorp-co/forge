@@ -171,7 +171,7 @@ export function MoveToOrgCard({ project }: { project: ProjectDetail }) {
     return (
       <SettingsSection>
         <SectionTitle className="fg-h3 mb-1">Move to organization</SectionTitle>
-        <ReadFailedLine what={unread.what} why={formatApiError(unread.error)} onRetry={unread.retry} />
+        <ReadFailedLine what={unread.what} why={formatApiError(unread.error)} error={unread.error} onRetry={unread.retry} />
       </SettingsSection>
     );
   }

@@ -2,7 +2,7 @@
 
 
 import { useEffect } from "react";
-import { Icon, Popover, Skeleton, Spinner } from "@/design";
+import { Icon, Popover, RetryButton, Skeleton, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import type { InvokableSkill } from "@/features/skills/types";
 
@@ -140,18 +140,19 @@ export function SlashSkillsMenu({
         <div className="px-2 py-2">
           <p className="text-12 text-fg">Couldn&apos;t load skills.</p>
           <p className="text-11 text-subtle">{formatApiError(error)}</p>
-          <button
-            type="button"
+          <RetryButton
+            look="link"
+            error={error}
             disabled={fetching}
-            onClick={() => {
+            onRetry={() => {
               onReturnFocus();
               retry();
             }}
-            className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-12 text-fg transition-colors hover:bg-hover focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-12 text-fg no-underline transition-colors hover:bg-hover hover:no-underline focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           >
             {fetching && <Spinner size={11} />}
             {fetching ? "Retrying…" : "Retry"}
-          </button>
+          </RetryButton>
         </div>
       )}
 

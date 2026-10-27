@@ -402,7 +402,7 @@ function AppOwner({ projectId, act }: { projectId: string; act: "create" | "inst
         testId="app-owner-unread"
         what="your projects, so who the App will belong to is not known"
         why={formatApiError(projectsQ.error)}
-        onRetry={() => void projectsQ.refetch()}
+        error={projectsQ.error} onRetry={() => void projectsQ.refetch()}
       />
     );
   if (!project) return null;

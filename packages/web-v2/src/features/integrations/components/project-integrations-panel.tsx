@@ -7,7 +7,7 @@
 // `/integrations` page is now the owner connection directory.
 
 import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
-import { Banner, Button, ErrorState, Icon, type IconName, SectionTitle, Skeleton } from "@/design";
+import { Banner, Button, ErrorState, Icon, type IconName, RetryButton, SectionTitle, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { toldApart } from "../connection-identity";
@@ -339,16 +339,14 @@ export function ProjectIntegrationsPanel({
           ))}
         </div>
       ) : status.isError && !status.data ? (
-        <ErrorState title="Couldn't load this project's integrations" message={formatApiError(status.error)} onRetry={() => status.refetch()} />
+        <ErrorState title="Couldn't load this project's integrations" message={formatApiError(status.error)} error={status.error} onRetry={() => status.refetch()} />
       ) : (
         <>
           {readError ? (
             <Banner
               tone="attention"
               action={
-                <Button variant="ghost" size="sm" onClick={() => status.refetch()}>
-                  Retry
-                </Button>
+                <RetryButton variant="ghost" error={status.error} onRetry={() => void status.refetch()} />
               }
             >
               {`The status could not be refreshed, so it shows the last read. ${readError}`}
@@ -358,9 +356,7 @@ export function ProjectIntegrationsPanel({
             <Banner
               tone="attention"
               action={
-                <Button variant="ghost" size="sm" onClick={() => list.refetch()}>
-                  Retry
-                </Button>
+                <RetryButton variant="ghost" error={list.error} onRetry={() => void list.refetch()} />
               }
             >
               {`This project's integration list could not be read, so the rows cannot say when each was connected, and nothing can be added here. ${formatApiError(list.error)}`}
@@ -419,6 +415,7 @@ export function ProjectIntegrationsPanel({
         focus={focus}
         statusReadError={readError}
         statusReadFailedAt={status.errorUpdatedAt}
+        statusError={status.error}
         onRetryStatus={() => status.refetch()}
       />
     </div>

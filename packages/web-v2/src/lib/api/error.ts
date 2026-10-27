@@ -36,15 +36,7 @@ const FRIENDLY_CODES: Record<string, string> = {
   UNPARSABLE_MODULE_FLOW: 'A module stores a flow this generator cannot read.',
 };
 
-/** The refusals a second read can change: a timeout, a request sent too early, a rate limit (ISS-1229 r49). */
-const PASSING_REFUSALS = new Set([408, 425, 429]);
-
-/** ISS-1160 — a screen offers Retry only where retrying could change the answer: a network failure,
- *  a 5xx or a passing refusal. Any other 4xx is the same request meeting the same refusal again. */
-export function isRetryableApiError(err: unknown): boolean {
-  if (err instanceof ApiError) return err.status >= 500 || PASSING_REFUSALS.has(err.status);
-  return true;
-}
+export { isRetryableApiError } from './retry-rule';
 
 /** When the server asked to be asked again, as a sentence; null where it did not say. Each unit is
  *  rounded up, so a retry at the time it names is never sooner than the server allows. */
@@ -170,6 +162,12 @@ export function readFailure(err: unknown): ReadFailure {
 /** A failure as a sentence of its own, so what a message says next starts after a full stop. */
 export function formatApiReason(err: unknown): string {
   return asSentence(formatApiError(err));
+}
+
+/** A phrase closed with one full stop, never a second where it already ends with one (ISS-1229 r50). */
+export function withStop(phrase: string): string {
+  const text = phrase.trim();
+  return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
 /** A phrase opened with a capital and closed with a full stop, so it can follow another sentence. */

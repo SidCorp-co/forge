@@ -49,7 +49,7 @@ function Panel<T>({
       <ErrorState
         title={`Couldn't load ${what}`}
         message={formatApiError(query.error)}
-        onRetry={() => void query.refetch()}
+        error={query.error} onRetry={() => void query.refetch()}
         mascot={false}
       />
     );

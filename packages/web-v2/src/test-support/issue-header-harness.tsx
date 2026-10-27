@@ -17,7 +17,7 @@ import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared
 const TITLE = "Checkout keeps the old shipping address after the customer edits it on the review step";
 const scenario = decodeURIComponent(location.hash.slice(1));
 const failed = (
-<HeaderReadFailure said="Its session could not be read. Not a project member." retry={() => undefined} />
+<HeaderReadFailure said="Its session could not be read. Not a project member." error={undefined} retry={() => undefined} />
 );
 const runRead = {
   what: "The run",

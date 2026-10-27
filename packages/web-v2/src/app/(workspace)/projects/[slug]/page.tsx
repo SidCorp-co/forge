@@ -129,7 +129,7 @@ export default function ProjectOverviewPage() {
           level={1}
           title="Couldn't load this project"
           message={formatApiError(healthQ.error)}
-          onRetry={() => void healthQ.refetch()}
+          error={healthQ.error} onRetry={() => void healthQ.refetch()}
         />
       </div>
     );
@@ -353,6 +353,7 @@ export default function ProjectOverviewPage() {
                       }
                     : undefined
                 }
+                retryError={attentionQ.read === "failed" ? attentionQ.error : sessionsQ.error}
                 onRetryJob={(jobId) => retryJob.mutate(jobId)}
                 retryingJobId={retryJob.isPending ? (retryJob.variables ?? null) : null}
                 shape={reading.shape}

@@ -28,8 +28,16 @@ beforeEach(() => refetch.mockClear());
 afterEach(cleanup);
 
 describe("an entry body that could not be read", () => {
-  it("offers Retry under a refusal, and reads the body again", () => {
+  // ISS-1229 r50 (criterion 478): Retry only where a second read can change the answer.
+  it("offers no Retry under a refusal a second read cannot change", () => {
     error = new ApiError(409, "Try again in a minute.", "X");
+    render(<EntryCard projectId="p1" row={ROW} canManage={false} defaultOpen />);
+    expect(screen.getByRole("status")).toHaveTextContent("This entry's body could not be read.");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("offers Retry where the server could not answer, and reads the body again", () => {
+    error = new ApiError(503, "Busy.", "X");
     render(<EntryCard projectId="p1" row={ROW} canManage={false} defaultOpen />);
     expect(screen.getByRole("status")).toHaveTextContent("This entry's body could not be read.");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));

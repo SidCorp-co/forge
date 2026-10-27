@@ -26,8 +26,12 @@ interface ActiveOrgContextValue {
   activeOrg: OrgListItem | null;
   /** Convenience: `activeOrg?.id ?? null`. Drives the projects-console scope. */
   activeOrgId: string | null;
-  /** The orgs and the stored choice have both been read, so a null `activeOrgId` means no org, not "not yet". */
+  /** The orgs and the stored choice have both been answered, so a null `activeOrgId` means no org, not "not yet".
+   *  A stored choice that could not be read is answered by a stand-in, which `storedUnread` says. */
   scopeRead: boolean;
+  /** The stored choice could not be read: `activeOrg` is a stand-in the person did not choose, and every page
+   *  says so with the failure and its Retry (ISS-1229 r50, judge-152). Null while the choice is read or reading. */
+  storedUnread: { error: unknown; retry: () => void } | null;
   /** Why the orgs could not be read, where they could not: no scope is known, so nothing scoped is read. */
   scopeError: Error | null;
   retryScope: () => void;
@@ -48,11 +52,19 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const orgsData = orgsQ.data;
   const prefsQ = usePreferences();
   const prefs = prefsQ.data;
-  // No active org until the stored choice is read: a stand-in it replaced would read as a switch.
-  const prefsRead = prefsQ.isSuccess || prefsQ.isError;
+  // No active org until the stored choice is answered: a stand-in it replaced would read as a switch. One that
+  // failed is answered by a stand-in that says so (`storedUnread`), never silently (ISS-1229 r50).
+  const prefsUnread = prefsQ.isError && prefs === undefined;
+  const prefsRead = prefs !== undefined || prefsUnread;
   const scopeRead = prefsRead && orgsQ.data !== undefined;
   const scopeError = orgsQ.data === undefined && orgsQ.isError ? orgsQ.error : null;
   const { refetch: refetchOrgs } = orgsQ;
+  const { refetch: refetchPrefs } = prefsQ;
+  const prefsError = prefsUnread ? prefsQ.error : null;
+  const storedUnread = useMemo(
+    () => (prefsError ? { error: prefsError as unknown, retry: () => void refetchPrefs() } : null),
+    [prefsError, refetchPrefs],
+  );
 
   const orgs = useMemo(() => sortOrgs(orgsData ?? []), [orgsData]);
   // The org this tab is viewing where a visit chose one other than the stored choice; never stored.
@@ -95,8 +107,10 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
       activeOrgId: activeOrg?.id ?? null,
       scopeRead,
       scopeError,
+      storedUnread,
       retryScope: () => {
         void refetchOrgs();
+        if (storedUnread) storedUnread.retry();
       },
       setActiveOrg: (orgId: string) => {
         setViewing(null);
@@ -107,7 +121,7 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
       },
       isSingle: orgs.length <= 1,
     }),
-    [orgs, activeOrg, scopeRead, scopeError, refetchOrgs, mutate, prefs?.activeOrgId],
+    [orgs, activeOrg, scopeRead, scopeError, storedUnread, refetchOrgs, mutate, prefs?.activeOrgId],
   );
 
   return <ActiveOrgContext.Provider value={value}>{children}</ActiveOrgContext.Provider>;
@@ -121,6 +135,7 @@ export function useActiveOrg(): ActiveOrgContextValue {
   return { orgs: [], activeOrg: null, activeOrgId: null,
     scopeRead: true,
     scopeError: null,
+    storedUnread: null,
     retryScope: () => {},
     setActiveOrg: () => {},
     viewOrg: () => {},

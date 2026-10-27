@@ -2,6 +2,7 @@
 
 import { Button } from "@/design/primitives/button";
 import { MonoTag } from "@/design/primitives/mono-tag";
+import { RetryLink } from "@/design/primitives/retry-link";
 import type { KeyboardEvent } from "react";
 
 export interface NotificationAction {
@@ -54,6 +55,8 @@ export interface NotificationsMenuProps {
   error?: boolean;
   /** Why the notifications could not be read, in the product's words. */
   errorWhy?: string | undefined;
+  /** The failed read itself, which decides whether Retry is offered (ISS-1229 r50). */
+  readError?: unknown;
   onRetry?: () => void;
   // ISS-1063 — grouping is what turns fifteen bell rows into one, so the members
   // have to stay reachable or the grouping is a loss of information rather than a
@@ -63,7 +66,7 @@ export interface NotificationsMenuProps {
   expandedMembers?: NotificationGroupMember[];
   expandedLoading?: boolean;
   /** Why the expanded group's records could not be read, and the act that reads them again (ISS-1229 r48). */
-  expandedUnread?: { why: string; onRetry: () => void } | null;
+  expandedUnread?: { why: string; error: unknown; onRetry: () => void } | null;
   onToggleGroup?: (id: string) => void;
   onSelectMember?: (memberId: string) => void;
 }
@@ -78,6 +81,7 @@ export function NotificationsMenu({
   loading,
   error,
   errorWhy,
+  readError,
   onRetry,
   expandedId,
   expandedMembers,
@@ -109,15 +113,7 @@ export function NotificationsMenu({
       ) : error ? (
         <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
           <p className="fg-body-sm text-fg">{errorWhy ? `Couldn't load notifications. ${errorWhy}` : "Couldn't load notifications."}</p>
-          {onRetry && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="fg-caption text-link hover:underline"
-            >
-              Retry
-            </button>
-          )}
+          <RetryLink className="fg-caption" error={readError} onRetry={onRetry} />
         </div>
       ) : !hasItems ? (
         <div className="px-4 py-8 text-center">
@@ -176,18 +172,13 @@ export function NotificationsMenu({
                           {!expandedLoading && expandedUnread && (
                             <li role="alert" data-testid="group-members-unread" className="fg-caption py-1 text-fg">
                               Couldn&apos;t load this group&apos;s notifications. {expandedUnread.why}{" "}
-                              <button
-                                type="button"
-                                aria-label="Retry this group"
+                              <RetryLink
+                                label="Retry this group"
                                 onKeyDown={keepKeys}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  expandedUnread.onRetry();
-                                }}
-                                className="inline-flex min-h-11 items-center text-link hover:underline"
-                              >
-                                Retry
-                              </button>
+                                className="inline-flex min-h-11 items-center"
+                                error={expandedUnread.error}
+                                onRetry={expandedUnread.onRetry}
+                              />
                             </li>
                           )}
                           {!expandedLoading &&

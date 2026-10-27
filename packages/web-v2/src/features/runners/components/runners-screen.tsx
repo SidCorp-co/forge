@@ -415,7 +415,7 @@ export function RunnersScreen() {
             {bridge ? ` ${bridge}` : null}
           </p>
           {active.isError ? (
-            <ErrorState title="Couldn't load devices" message={formatApiError(active.error)} onRetry={() => active.refetch()} />
+            <ErrorState title="Couldn't load devices" message={formatApiError(active.error)} error={active.error} onRetry={() => active.refetch()} />
           ) : /* Not `isLoading`: with no active org yet the org query is disabled,
                 which is pending and NOT loading, and an empty-state sentence
                 reached that way claims a population nothing asked for. */

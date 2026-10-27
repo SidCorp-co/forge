@@ -275,7 +275,7 @@ function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undef
           <ReadFailedLine
             what="this schedule's run history"
             why={formatApiError(runsQ.error)}
-            onRetry={() => void runsQ.refetch()}
+            error={runsQ.error} onRetry={() => void runsQ.refetch()}
           />
         )}
         {!runsQ.isLoading && !runsQ.isError && runs.length === 0 && (
@@ -343,7 +343,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
         <ErrorState
           title="Couldn't load schedules"
           message={formatApiError(schedulesQ.error)}
-          onRetry={() => schedulesQ.refetch()}
+          error={schedulesQ.error} onRetry={() => schedulesQ.refetch()}
         />
       )}
 

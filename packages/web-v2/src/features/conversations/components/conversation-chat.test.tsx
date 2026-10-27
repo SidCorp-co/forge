@@ -203,7 +203,7 @@ describe("the composer this pane renders", () => {
   it("says which mode a settled room is in", () => {
     room = detail({ mode: "agent" });
     open();
-    expect(screen.getByTestId("conversation-mode-settled")).toHaveTextContent("Agent");
+    expect(screen.getByTestId("conversation-mode-settled")).toHaveTextContent("Works in the repository");
   });
 
   it("names the mode in the box's own placeholder", () => {
@@ -211,7 +211,7 @@ describe("the composer this pane renders", () => {
     open();
     expect(screen.getByLabelText("Message")).toHaveAttribute(
       "placeholder",
-      expect.stringContaining("Agent"),
+      expect.stringContaining("the repository and a shell"),
     );
   });
 

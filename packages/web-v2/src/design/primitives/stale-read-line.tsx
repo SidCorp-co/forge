@@ -1,16 +1,20 @@
-import { Button } from "@/design/primitives/button";
+import { RetryButton } from "@/design/primitives/retry-button";
 import { cn } from "@/lib/utils/cn";
 
 /**
  * A reading kept on screen through a failed refresh: one line saying when it was read and why the
- * refresh failed, with Retry where it is offered. The reading itself stays where it was (ISS-1228 r26).
+ * refresh failed, with Retry where the failed read's error allows one. The reading itself stays where it
+ * was (ISS-1228 r26).
  */
 export function StaleReadLine({
   said,
+  error,
   onRetry,
   className,
 }: {
   said: string;
+  /** The failed refresh, which decides whether Retry is offered (ISS-1229 r50). */
+  error: unknown;
   onRetry?: (() => void) | undefined;
   className?: string;
 }) {
@@ -19,11 +23,7 @@ export function StaleReadLine({
       <p role="status" className="fg-caption fg-caption-stale">
         {said}
       </p>
-      {onRetry && (
-        <Button variant="secondary" size="sm" icon="rerun" onClick={onRetry}>
-          Retry
-        </Button>
-      )}
+      <RetryButton error={error} onRetry={onRetry} />
     </div>
   );
 }

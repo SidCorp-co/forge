@@ -152,7 +152,7 @@ export function ConversationSidebar({
           )}
 
           {!loading && error != null && (
-            <ErrorState title={errorTitle} message={formatApiError(error)} onRetry={onRetry} />
+            <ErrorState title={errorTitle} message={formatApiError(error)} error={error} onRetry={onRetry} />
           )}
 
           {!loading && error == null && rows.length === 0 && (

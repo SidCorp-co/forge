@@ -24,7 +24,6 @@ import {
   Input,
   Skeleton,
   SlideOver,
-  retryOrFinal,
   type ErrorStateRetry,
 } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
@@ -463,7 +462,7 @@ export function ConnectionEditDrawer({
           bindings={bindings}
           bindingsLoading={bindingsQ.isLoading}
           bindingsError={bindingsQ.isError ? formatApiError(bindingsQ.error) : null}
-          retry={retryOrFinal(isRetryableApiError(bindingsQ.error), () => void bindingsQ.refetch())}
+          retry={{ error: bindingsQ.error, onRetry: () => void bindingsQ.refetch() }}
           onNavigate={onClose}
         />
         {canManage && (

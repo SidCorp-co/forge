@@ -20,6 +20,7 @@ const state: {
   expanding?: boolean;
   failed: unknown[];
   expand: unknown[];
+  devicesError?: Error;
 } = {
   read: "read",
   devicesRead: "read",
@@ -63,7 +64,7 @@ vi.mock("../hooks", () => ({
     devicesRead: state.devicesRead,
     expanding: state.expanding ?? false,
     error: new Error("attention down"),
-    devicesError: new Error("devices down"),
+    devicesError: state.devicesError ?? new Error("devices down"),
     refetch,
     };
   },
@@ -75,6 +76,7 @@ afterEach(() => {
   cleanup();
   state.read = "read";
   state.devicesRead = "read";
+  state.devicesError = undefined;
   state.offline = [];
   state.awaiting = [];
   state.awaitingTotal = undefined;
@@ -109,6 +111,14 @@ describe("the Attention inbox", () => {
     render(<AttentionScreen />);
     expect(screen.queryByText("Inbox zero")).toBeNull();
     expect(screen.getByText(/attention down/u)).toBeInTheDocument();
+  });
+
+  // ISS-1229 r50 (criterion 496): a reason that already ends with a stop is not given a second.
+  it("closes a reason that already ends with a stop once", () => {
+    state.devicesRead = "failed";
+    state.devicesError = new Error("You do not have access to this.");
+    render(<AttentionScreen />);
+    expect(screen.getByTestId("attention-devices-unread").textContent).not.toContain("this..");
   });
 
   it("names both reads when both failed, and says no Inbox zero", () => {

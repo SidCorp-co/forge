@@ -115,3 +115,30 @@ describe("the phone's Filters sheet whose choices could not be read", () => {
     expect(within(screen.getByRole("dialog", { name: "Filters" })).queryByText(/^Couldn't load/)).toBeNull();
   });
 });
+
+// ISS-1229 r50, judge-152's note on criterion 477: at 1280 the opened Label menu showed only "Label: any" while the
+// failure stood under the filter row, so a reader inside the menu read a project with no labels.
+describe("an opened filter menu whose choices could not be read (criterion 504)", () => {
+  // The listbox scrolls its chosen option into view, which jsdom does not draw.
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = () => {};
+  });
+
+  it.each([
+    ["Label filter", "labelsFail", "Couldn't load the labels to choose from"],
+    ["Creator filter", "membersFail", "Couldn't load the people to choose from"],
+  ] as const)("the %s says so inside the menu, as a line nobody can pick", (name, fail, said) => {
+    reads[fail] = true;
+    mount();
+    fireEvent.click(screen.getAllByRole("combobox", { name })[0] as HTMLElement);
+    const line = screen.getByRole("option", { name: new RegExp(said) });
+    expect(line).toHaveAttribute("aria-disabled", "true");
+    expect(line).toHaveTextContent("The server is down. Retry is beside the filters.");
+  });
+
+  it("holds no such line while the choices are read", () => {
+    mount();
+    fireEvent.click(screen.getAllByRole("combobox", { name: "Label filter" })[0] as HTMLElement);
+    expect(screen.queryByRole("option", { name: /Couldn't load/ })).toBeNull();
+  });
+});

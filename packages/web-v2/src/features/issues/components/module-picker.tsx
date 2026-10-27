@@ -103,7 +103,7 @@ export function ModulePicker({
         <ErrorState
           title="Couldn't load modules"
           message={formatApiError(modulesQ.error)}
-          onRetry={() => modulesQ.refetch()}
+          error={modulesQ.error} onRetry={() => modulesQ.refetch()}
         />
       ) : modules.length === 0 ? (
         <EmptyState

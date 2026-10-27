@@ -94,18 +94,32 @@ describe("DecisionPanel, when the query itself could not be made", () => {
       data: undefined,
       isLoading: false,
       isError: true,
-      error: new ApiError(403, "Not a project member.", "FORBIDDEN"),
+      error: new ApiError(503, "The server is busy.", "UNAVAILABLE"),
       refetch,
     };
     render(<DecisionPanel issueId="i-1" />);
     const line = screen.getByRole("region", { name: "Decisions" });
-    expect(line).toHaveTextContent("Not a project member.");
+    expect(line).toHaveTextContent("The server is busy.");
     expect(line.className).toContain("border-t");
     expect(line.className).not.toMatch(/\bpy-12\b|\brounded-lg\b/);
     expect(screen.queryByRole("heading", { level: 3, name: /Couldn't load/ })).toBeNull();
     expect(screen.queryByText(/Couldn't load this issue's decisions/)).toBeNull();
     fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalled();
+  });
+
+  // ISS-1229 r50 (criterion 478): Retry only where a second read can change the answer.
+  it("offers no Retry where Forge refused the read for good", () => {
+    questionsQuery = {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new ApiError(403, "Not a project member.", "FORBIDDEN"),
+      refetch: vi.fn(),
+    };
+    render(<DecisionPanel issueId="i-1" />);
+    expect(screen.getByRole("region", { name: "Decisions" })).toHaveTextContent("Not a project member.");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("offers no Retry where Forge answered 401", () => {

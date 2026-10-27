@@ -92,7 +92,7 @@ export function ReleaseGatePanel({
             mascot={false}
             title="Couldn't load the release gate"
             message={formatApiError(error)}
-            onRetry={() => {
+            error={error} onRetry={() => {
               void refetch();
             }}
         />

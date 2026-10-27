@@ -44,10 +44,11 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const orgsQ = useOrgs();
   const teamOrgs = (orgsQ.data ?? []).filter((o) => !o.isPersonal);
   const orgsUnread = orgsQ.isError && !orgsQ.data;
-  const { activeOrg, scopeRead } = useActiveOrg();
+  const { activeOrg, scopeRead, storedUnread } = useActiveOrg();
   // Until the organizations and the stored active choice are read, where the project lands is unknown:
-  // nothing is created before then.
-  const orgsKnown = orgsQ.data !== undefined && scopeRead;
+  // nothing is created before then. A stored choice that failed is not read: its stand-in is no answer (r50).
+  const orgsKnown = orgsQ.data !== undefined && scopeRead && !storedUnread;
+  const orgsReading = !orgsKnown && !orgsUnread && !storedUnread;
   const defaultOrgId = activeOrg && !activeOrg.isPersonal ? activeOrg.id : '';
   const orgId = chosenOrgId ?? defaultOrgId;
   const [errors, setErrors] = useState<{ name?: string; slug?: string; form?: string }>({});
@@ -341,8 +342,23 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               testId="new-project-orgs-unread"
               what="your organizations, so where this project will live is not known"
               why={formatApiError(orgsQ.error)}
+              error={orgsQ.error}
               onRetry={() => void orgsQ.refetch()}
             />
+          )}
+          {storedUnread && (
+            <ReadFailedLine
+              testId="new-project-stored-org-unread"
+              what="which organization you were working in, so where this project will live is not known"
+              why={formatApiError(storedUnread.error)}
+              error={storedUnread.error}
+              onRetry={storedUnread.retry}
+            />
+          )}
+          {orgsReading && (
+            <p role="status" data-testid="new-project-orgs-reading" className="fg-body-sm text-muted">
+              Reading your organizations, to know where this project will live…
+            </p>
           )}
           {teamOrgs.length > 0 && (
             <Field label="Organization" hint="Where this project lives. Org owners/admins manage all of its projects.">

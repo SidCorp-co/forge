@@ -79,7 +79,7 @@ export function AgentsTab() {
       <ErrorState
         title="Couldn't load the agents"
         message={formatApiError(agentsQ.error)}
-        onRetry={() => void agentsQ.refetch()}
+        error={agentsQ.error} onRetry={() => void agentsQ.refetch()}
       />
     );
   }
@@ -266,7 +266,7 @@ export function AgentsTab() {
           testId="agents-projects-unread"
           what="your projects, so the projects each agent is in cannot be named"
           why={formatApiError(projectsQ.error)}
-          onRetry={readProjects}
+          error={projectsQ.error} onRetry={readProjects}
         />
       )}
 

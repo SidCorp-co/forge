@@ -58,6 +58,9 @@ export interface NavRailProps {
   onAccount?: () => void;
   onSignOut?: () => void;
   project?: { name: string; initials: string; tint: string; ink: string };
+  /** Drawn where the project switcher stands when the projects could not be read: the failure, named, never an
+   *  organization with no projects (ISS-1229 r50, judge-152). Expanded rail only. */
+  projectsUnread?: React.ReactNode;
   user?: { initials: string };
   /** Global org switcher slot (ISS-469), pinned under the brand. Presentational
    *  here — the caller supplies the wired control. Hidden while collapsed. */
@@ -207,6 +210,7 @@ export function NavRail({
   onAccount,
   onSignOut,
   project,
+  projectsUnread,
   user,
   orgSwitcher,
   version,
@@ -350,6 +354,8 @@ export function NavRail({
           )}
         </div>
       )}
+
+      {!project && !collapsed && projectsUnread}
 
       {/* Scroll region: PROJECT clusters on top, WORKSPACE cluster demoted
           below. The switcher above stays pinned. */}

@@ -94,7 +94,7 @@ export function RoomsWithoutAProject({
         <ErrorState
           title="Couldn't load the rooms whose project was deleted"
           message={formatApiError(rooms.error)}
-          onRetry={() => void rooms.refetch()}
+          error={rooms.error} onRetry={() => void rooms.refetch()}
         />
       </div>
     );

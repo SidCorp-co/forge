@@ -19,11 +19,20 @@ let orgsLoading = false;
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 // The active org is read off the same organizations read: unknown while it failed, the team org once it answers.
+const prefsRetry = vi.fn();
+let storedFail = false;
 vi.mock("@/features/orgs/active-org", () => ({
   useActiveOrg: () =>
     orgsLoading || orgsFail
-      ? { activeOrg: null, scopeRead: false }
-      : { activeOrg: { id: "o1", name: "SidCorp", isPersonal: false }, scopeRead: true },
+      ? { activeOrg: null, scopeRead: false, storedUnread: null }
+      : storedFail
+        ? {
+            // The stand-in a failed stored choice is answered by: the personal workspace (ISS-1229 r50).
+            activeOrg: { id: "me", name: "Personal", isPersonal: true },
+            scopeRead: true,
+            storedUnread: { error: new Error("The server is down."), retry: prefsRetry },
+          }
+        : { activeOrg: { id: "o1", name: "SidCorp", isPersonal: false }, scopeRead: true, storedUnread: null },
 }));
 vi.mock("@/features/orgs/hooks", () => ({
   useOrgs: () =>
@@ -51,6 +60,8 @@ function submitDesk() {
 beforeEach(() => {
   orgsFail = true;
   orgsLoading = false;
+  storedFail = false;
+  prefsRetry.mockClear();
   create.mockClear();
   orgsRefetch.mockClear();
 });
@@ -114,5 +125,37 @@ describe("the new-project dialog while the organizations read failed", () => {
     expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
     submitDesk();
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+// ISS-1229 r50, judge-152 on 481: with the stored active organization's read failed, the dialog offered Personal
+// with Create enabled and filed the project there; and on 480, for the first moments it said nothing at all.
+describe("the new-project dialog while the stored active organization cannot be read (criteria 481, 501, 502)", () => {
+  it("says so with Retry, and creates nothing in the organization standing in for it", () => {
+    orgsFail = false;
+    storedFail = true;
+    render(<NewProjectDialog open onClose={vi.fn()} />);
+    const unread = screen.getByTestId("new-project-stored-org-unread");
+    expect(unread).toHaveTextContent(
+      "Couldn't load which organization you were working in, so where this project will live is not known. The server is down.",
+    );
+    expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
+    submitDesk();
+    expect(create).not.toHaveBeenCalled();
+    fireEvent.click(within(unread).getByRole("button", { name: "Retry" }));
+    expect(prefsRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the organizations are being read while they are, where the Organization field stands", () => {
+    orgsLoading = true;
+    render(<NewProjectDialog open onClose={vi.fn()} />);
+    expect(screen.getByTestId("new-project-orgs-reading")).toHaveTextContent("Reading your organizations");
+  });
+
+  it("says nothing is being read once both have answered", () => {
+    orgsFail = false;
+    render(<NewProjectDialog open onClose={vi.fn()} />);
+    expect(screen.queryByTestId("new-project-orgs-reading")).toBeNull();
+    expect(screen.queryByTestId("new-project-stored-org-unread")).toBeNull();
   });
 });

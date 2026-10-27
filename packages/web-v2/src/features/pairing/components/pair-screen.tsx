@@ -15,6 +15,7 @@ import {
   Icon,
   MonoTag,
   PageTitle,
+  RetryButton,
   Select,
 } from "@/design";
 import { useAgentAccounts } from "@/features/agent-accounts/hooks";
@@ -173,9 +174,9 @@ export function PairScreen() {
                 <Banner
                   tone="danger"
                   action={
-                    <Button variant="secondary" onClick={() => agentsQ.refetch()}>
+                    <RetryButton error={agentsQ.error} onRetry={() => void agentsQ.refetch()}>
                       Try again
-                    </Button>
+                    </RetryButton>
                   }
                 >
                   The agents of this organization could not be loaded, so there is nothing to pick

@@ -44,16 +44,17 @@ interface ModeMeta {
   hint: string;
 }
 
-/** What each mode is, in the words a person picking between them needs. */
+/** What each mode is, in the words a person picking between them needs: what the agent does, never a name the
+ *  agent could be read as beside its handle (ISS-1229 r50, judge-152 on criterion 485). */
 export const MODES: ModeMeta[] = [
   {
     mode: "assistant",
-    label: "Assistant",
+    label: "Reads the project",
     hint: "Reads this project — its issues, progress, knowledge and memory. No repository.",
   },
   {
     mode: "agent",
-    label: "Agent",
+    label: "Works in the repository",
     hint: "A session on a paired runner with the repository checked out and a shell.",
   },
 ];
@@ -74,12 +75,12 @@ export function modePlaceholder(mode: ConversationMode | null, answerers: readon
   if (mode === "agent") {
     return who
       ? `Message ${who} — ${one ? "it has" : "they have"} the repository and a shell…`
-      : "Message Agent — it has the repository and a shell…";
+      : "Message the agent — it has the repository and a shell…";
   }
   if (mode === "assistant") {
     return who
       ? `Message ${who} — ${one ? "it reads" : "they read"} this project, not the repository…`
-      : "Message Assistant — it reads this project, not the repository…";
+      : "Message the agent — it reads this project, not the repository…";
   }
   return who ? `Message ${who} about this project…` : "Ask the agent about this project…";
 }

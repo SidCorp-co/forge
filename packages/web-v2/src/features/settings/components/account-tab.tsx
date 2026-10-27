@@ -279,7 +279,7 @@ export function AccountTab() {
         <SettingsSection>
           <ErrorState title="Couldn't load your preferences"
             message={formatApiError(prefsQ.error ?? assistantQ.error)}
-            onRetry={() => {
+            error={prefsQ.error ?? assistantQ.error} onRetry={() => {
               void prefsQ.refetch();
               void assistantQ.refetch();
             }}

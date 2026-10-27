@@ -81,11 +81,15 @@ describe("a run's times say which is which", () => {
 });
 
 describe("a runs read that failed (criterion 226)", () => {
-  it("offers Retry under a refusal", () => {
+  // ISS-1229 r50 (criterion 478): Retry only where a second read can change the answer.
+  it("offers Retry where the server could not answer, and none under a refusal", () => {
+    render(<RunJournalSection runs={[]} loading={false} error={new ApiError(503, "Busy.", "X")} onRetry={() => {}} />);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    cleanup();
     render(
       <RunJournalSection runs={[]} loading={false} error={new ApiError(409, "Try again in a minute.", "X")} onRetry={() => {}} />,
     );
-    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("offers no Retry under a 401, which signs the person out", () => {

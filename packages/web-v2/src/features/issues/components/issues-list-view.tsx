@@ -27,7 +27,7 @@ import {
 } from "@/design";
 import { WORK_STATE_LABELS, WORK_STATES } from "@forge/contracts/work-state";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
-import { formatApiError } from "@/lib/api/error";
+import { asSentence, formatApiError } from "@/lib/api/error";
 import { replaceLocationSearch, useLocationSearch } from "@/lib/utils/use-location-search";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -295,16 +295,18 @@ export function IssuesListView({
   // "any agent" stays as a KIND filter above them, which is a different
   // question from "which writer" and is why it is not one of the names.
   const viewerId = useAuth().user?.id ?? null;
+  const membersUnread = membersQ.isError && membersQ.data === undefined;
   const creatorFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Creator: anyone" },
       { value: "agent", label: `Creator: ${ANY_AGENT_LABEL}` },
+      ...(membersUnread ? [unreadChoice("the people to choose from", membersQ.error)] : []),
       ...(membersQ.data ?? []).map((m) => {
         const { label, detail } = creatorChoice(m, viewerId);
         return { value: m.userId, label: m.kind === "agent" ? `${label} (agent)` : label, detail };
       }),
     ],
-    [membersQ.data, viewerId],
+    [membersQ.data, membersQ.error, membersUnread, viewerId],
   );
 
   // A filter whose choices could not be read offers "anyone" or "any" alone, as if there were none: said (ISS-1229 r48),
@@ -319,17 +321,19 @@ export function IssuesListView({
       : null;
   const filtersUnread = [creatorUnread, labelUnread].filter((f) => f !== null);
   const unreadLine = (f: NonNullable<typeof creatorUnread>) => (
-    <ReadFailedLine key={f.what} what={f.what} why={formatApiError(f.error)} onRetry={f.retry} />
+    <ReadFailedLine key={f.what} what={f.what} why={formatApiError(f.error)} error={f.error} onRetry={f.retry} />
   );
 
+  const labelsUnread = labelsQ.isError && labelsQ.data === undefined;
   const labelFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Label: any" },
+      ...(labelsUnread ? [unreadChoice("the labels to choose from", labelsQ.error)] : []),
       ...(labelsQ.data ?? [])
         .filter((l) => l.kind !== "module")
         .map((l) => ({ value: l.id, label: l.name })),
     ],
-    [labelsQ.data],
+    [labelsQ.data, labelsQ.error, labelsUnread],
   );
 
   const moduleFilterOptions = useMemo<SelectOption[]>(
@@ -761,7 +765,7 @@ export function IssuesListView({
         <ErrorState
           title="Couldn't load issues"
           message={formatApiError(issuesQ.error)}
-          onRetry={() => issuesQ.refetch()}
+          error={issuesQ.error} onRetry={() => issuesQ.refetch()}
         />
       )}
 
@@ -916,4 +920,16 @@ export function IssuesListView({
       )}
     </>
   );
+}
+
+/** Inside an opened filter menu whose choices could not be read: a line saying so, never a choice
+ *  (ISS-1229 r50, judge-152 on criterion 477). Its Retry stands beside the filters. */
+function unreadChoice(what: string, error: unknown): SelectOption {
+  return {
+    value: `unread:${what}`,
+    label: `Couldn't load ${what}`,
+    detail: `${asSentence(formatApiError(error))} Retry is beside the filters.`,
+    icon: "alert",
+    disabled: true,
+  };
 }

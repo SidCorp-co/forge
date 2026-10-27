@@ -10,12 +10,13 @@ import {
   CardTitle,
   EmptyPanelLine,
   Field,
+  RetryButton,
   Skeleton,
   StaleReadLine,
   Textarea,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { couldNotRefresh, offersRetry } from "@/lib/api/read-failed";
+import { couldNotRefresh } from "@/lib/api/read-failed";
 import { useAnsweringQuestions, useAnswerQuestion, useIssueQuestions } from "../hooks";
 import { QuestionCard } from "./question-card";
 
@@ -185,7 +186,7 @@ export function DecisionPanel({
   const mutation = useAnswerQuestion(issueId);
   const { answering, answer } = useAnsweringQuestions(mutation.mutateAsync);
   const questions = data?.questions ?? [];
-  const retry = offersRetry(error) ? () => void refetch() : undefined;
+  const retry = () => void refetch();
   // A refresh that failed keeps the questions it showed, mounted, so an answer being typed stays (ISS-1228 r26).
   const held = isError && data !== undefined;
 
@@ -193,7 +194,7 @@ export function DecisionPanel({
 
   return (
     <div id={DECISION_PANEL_ANCHOR} className="space-y-3">
-      {held && <StaleReadLine said={`Decisions: ${couldNotRefresh(dataUpdatedAt, error)}`} onRetry={retry} />}
+      {held && <StaleReadLine said={`Decisions: ${couldNotRefresh(dataUpdatedAt, error)}`} error={error} onRetry={retry} />}
       {isLoading ? (
         <Skeleton variant="rect" className="h-24 w-full" />
       ) : isError && !held ? (
@@ -204,13 +205,7 @@ export function DecisionPanel({
             title="Decisions"
             status="Couldn't load"
             detail={formatApiError(error)}
-            action={
-              retry ? (
-                <button type="button" onClick={retry} className="fg-caption text-muted hover:text-fg">
-                  Retry
-                </button>
-              ) : undefined
-            }
+            action={<RetryButton error={error} onRetry={retry} look="link" className="fg-caption text-muted hover:text-fg no-underline" />}
           />
           {/* The park carries a thread question itself: no question row was read to stand in its way. */}
           {threadQuestion && <ThreadQuestionCard question={threadQuestion} onAnswer={onAnswerInThread} />}

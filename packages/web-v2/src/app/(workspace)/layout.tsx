@@ -29,6 +29,8 @@ import { useAuth, useUserInitials } from "@/providers/auth-provider";
 import { ToastLane, useToast } from "@/providers/toast-provider";
 import { useProjects, useRetryProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { ProjectsUnreadLine, projectsUnreadOf } from "@/features/projects/components/projects-unread";
+import { StoredOrgUnread } from "@/features/orgs/components/stored-org-unread";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
 import { ActiveOrgProvider } from "@/features/orgs/active-org";
@@ -100,7 +102,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const projectsUnread = useMemo(
     () =>
       projectsQ.isError && projects === undefined
-        ? { message: formatApiError(projectsQ.error), onRetry: readProjects }
+        ? projectsUnreadOf(projectsQ.error, readProjects)
         : null,
     [projectsQ.isError, projectsQ.error, projects, readProjects],
   );
@@ -404,6 +406,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             <NavRail
               workspaceItems={railItems}
               project={projectMark}
+              projectsUnread={
+                projectsUnread ? <ProjectsUnreadLine unread={projectsUnread} className="px-2.5 py-1" /> : undefined
+              }
               projectItems={projectMark ? PROJECT_ITEMS : undefined}
               onProjectSwitch={() => setFlyoutOpen((o) => !o)}
               onSwitcherEnter={openFlyout}
@@ -521,6 +526,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             setScrolled((s) => (s ? top > 4 : top > 8));
           }}
         >
+          <StoredOrgUnread />
           <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
         </main>
 

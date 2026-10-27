@@ -3,6 +3,7 @@
 import { type KeyboardEvent, type ReactNode, useEffect } from "react";
 import { cn } from "@/lib/utils/cn";
 import { useVirtualRows } from "../hooks/use-virtual-rows";
+import { RetryLink } from "../primitives/retry-link";
 
 export interface VirtualListMore {
   /** Asks for the next rows. Called once as the end of what is loaded comes into view. */
@@ -12,6 +13,8 @@ export interface VirtualListMore {
   failed: boolean;
   /** Why it failed, in the product's words, said beside Retry. */
   why?: string | undefined;
+  /** The failed ask itself, which decides whether Retry is offered (ISS-1229 r50). */
+  error?: unknown;
 }
 
 export interface VirtualListProps<Row> {
@@ -135,9 +138,7 @@ export function VirtualList<Row>({
           {more.failed ? (
             <>
               <span>{more.why ? `Couldn't load more. ${more.why}` : "Couldn't load more."}</span>
-              <button type="button" onClick={more.onLoad} className="text-link hover:underline">
-                Retry
-              </button>
+              <RetryLink error={more.error} onRetry={more.onLoad} />
             </>
           ) : (
             <span>Loading more…</span>

@@ -15,10 +15,11 @@ import {
   EmptyState,
   ErrorState,
   NativeSelect,
+  RetryButton,
   SectionTitle,
+  SettingsSection,
   Skeleton,
   Toggle,
-  SettingsSection,
   VirtualList,
 } from "@/design";
 import type { InboxFilter } from "@/features/notifications/api";
@@ -132,7 +133,7 @@ export function NotificationsTab() {
         <ErrorState
           title="Couldn't load notifications"
           message={formatApiError(feedQ.error)}
-          onRetry={() => feedQ.refetch()}
+          error={feedQ.error} onRetry={() => feedQ.refetch()}
         />
       )}
 
@@ -165,6 +166,7 @@ export function NotificationsTab() {
                   loading: feedQ.isFetchingNextPage,
                   failed: feedQ.isFetchNextPageError,
                   why: feedQ.isFetchNextPageError ? formatApiError(feedQ.error) : undefined,
+                  error: feedQ.error,
                 }
               : undefined
           }
@@ -238,7 +240,7 @@ function DeliveryPreferences() {
         <ErrorState
           title="Couldn't load preferences"
           message={formatApiError(prefsQ.error)}
-          onRetry={() => prefsQ.refetch()}
+          error={prefsQ.error} onRetry={() => prefsQ.refetch()}
         />
       )}
 
@@ -477,9 +479,7 @@ function MemberList({ deliveryId, onOpened }: { deliveryId: string; onOpened: ()
     return (
       <p className="fg-caption py-2">
         Couldn&apos;t load these. {formatApiError(membersQ.error)}{" "}
-        <button type="button" onClick={() => membersQ.refetch()} className="text-link hover:underline">
-          Retry
-        </button>
+        <RetryButton look="link" error={membersQ.error} onRetry={() => void membersQ.refetch()} />
       </p>
     );
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Banner, Button, MonoTag, Radio, RadioGroup, SlideOver, Textarea } from "@/design";
+import { Banner, Button, MonoTag, Radio, RadioGroup, RetryButton, SlideOver, Textarea } from "@/design";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { type CloseFailure, failedCloseLead } from "@/features/releases/roster";
 import { ApiError } from "@/lib/api/client";
@@ -234,9 +234,7 @@ export function BatchReleaseDialog({
             <Banner
               tone="danger"
               action={
-                <Button size="sm" variant="ghost" onClick={() => void rosterRead.refetch()}>
-                  Retry
-                </Button>
+                <RetryButton variant="ghost" error={rosterRead.error} onRetry={() => void rosterRead.refetch()} />
               }
             >
               {`${following(listed.length)}, but whether the last release failed to close any of them could not be read: ${formatApiError(rosterRead.error)}`}

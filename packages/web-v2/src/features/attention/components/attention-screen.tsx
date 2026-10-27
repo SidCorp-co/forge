@@ -20,10 +20,11 @@ import {
   MonoTag,
   PageContainer,
   ProjectLoader,
+  RetryButton,
 } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
+import { formatApiError, withStop } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { stuckClause } from "@forge/contracts/stuck-words";
@@ -240,10 +241,10 @@ export function AttentionScreen() {
           title="Couldn't load what needs your attention"
           message={
             devicesRead === "failed"
-              ? `${formatApiError(error)} Offline runners could not be read either: ${formatApiError(devicesError)}.`
+              ? `${formatApiError(error)} Offline runners could not be read either: ${withStop(formatApiError(devicesError))}`
               : formatApiError(error)
           }
-          onRetry={() => refetch()}
+          error={error} onRetry={() => refetch()}
         />
       </div>
     );
@@ -277,13 +278,13 @@ export function AttentionScreen() {
 
       {devicesRead === "failed" && (
         <p role="alert" className="fg-body-sm mb-4 text-muted" data-testid="attention-devices-unread">
-          Offline runners could not be read: {formatApiError(devicesError)}.{" "}
+          Offline runners could not be read: {withStop(formatApiError(devicesError))}{" "}
           {total === 0
             ? "Nothing else is listed, and that does not say nothing needs you."
             : "The list below may leave some out."}{" "}
-          <Button size="sm" variant="secondary" onClick={() => refetch()}>
+          <RetryButton error={devicesError} onRetry={() => refetch()}>
             Try again
-          </Button>
+          </RetryButton>
         </p>
       )}
 

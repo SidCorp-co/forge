@@ -131,6 +131,16 @@ export interface ConversationParticipant {
   displayName: string | null;
   reachable: boolean | null;
   addedAt?: string;
+  /** A person's role on each project the room is about, and whether they opened it: what tells two alike names
+   *  apart (ISS-1229 r50). Empty and false for an agent; absent where the answer predates them. */
+  roles?: RoomRole[];
+  opener?: boolean;
+}
+
+/** A person's role on one of the projects a room is about; null where they hold none there. */
+export interface RoomRole {
+  projectId: string;
+  role: "admin" | "member" | "viewer" | null;
 }
 
 /** A project in a room's derived scope, named so a screen can say which it is. */

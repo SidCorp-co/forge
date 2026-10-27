@@ -4,10 +4,10 @@
 // and what each is doing, then what is held and why. Read from one route; live through the project
 // room's invalidations and a poll for heartbeats, which move no event.
 
-import { ErrorState, LiveDot, PageTitle, retryOrFinal, Skeleton, StaleReadLine } from "@/design";
+import { ErrorState, LiveDot, PageTitle, Skeleton, StaleReadLine } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
 import { readFailure } from "@/lib/api/error";
-import { offersRetry, projectGone } from "@/lib/api/read-failed";
+import { projectGone } from "@/lib/api/read-failed";
 import { ProjectMissing } from "@/features/projects/components/project-missing";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -65,7 +65,8 @@ export function PipelineScreen({ scope }: { scope: { projectId: string; slug: st
         {data && q.isError && (
           <StaleReadLine
             said={readAtLine(data.readAt, q.error)}
-            onRetry={offersRetry(q.error) ? () => void q.refetch() : undefined}
+            error={q.error}
+            onRetry={() => void q.refetch()}
           />
         )}
       </header>
@@ -75,7 +76,8 @@ export function PipelineScreen({ scope }: { scope: { projectId: string; slug: st
           title="Couldn't read sessions and holds"
           message={failure.said}
           technical={failure.technical}
-          {...retryOrFinal(offersRetry(q.error), () => void q.refetch())}
+          error={q.error}
+          onRetry={() => void q.refetch()}
         />
       ) : (
         <>

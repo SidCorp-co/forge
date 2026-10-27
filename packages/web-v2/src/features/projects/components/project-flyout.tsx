@@ -12,7 +12,7 @@ import { Icon, Input, ProjectMark } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
-import { ProjectsUnreadLine } from "./projects-unread";
+import { ProjectsUnreadLine, projectsUnreadOf } from "./projects-unread";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 
@@ -42,7 +42,7 @@ export function ProjectFlyout({
   const projects = projectsQ.data;
   const unread =
     projectsQ.isError && projects === undefined
-      ? { message: formatApiError(projectsQ.error), onRetry: () => void projectsQ.refetch() }
+      ? projectsUnreadOf(projectsQ.error, () => void projectsQ.refetch())
       : null;
   const { pinnedIds, toggle } = usePinnedProjects();
   const [q, setQ] = useState("");

@@ -18,7 +18,6 @@ import {
   Markdown,
   MonoTag,
   PageContainer,
-  retryOrFinal,
   ProjectLoader,
   Skeleton,
   StaleReadLine,
@@ -36,7 +35,7 @@ import { buildShareLink, useRecents } from "@/features/shell";
 import type { IssueReadRefusalDetails } from "@forge/contracts";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { clockAt, couldNotRefresh, heldThroughFailure, offersRetry, projectGone } from "@/lib/api/read-failed";
+import { clockAt, couldNotRefresh, heldThroughFailure, projectGone } from "@/lib/api/read-failed";
 import { useAskAgainWhenAccessReturns } from "@/lib/api/ask-again-when-access-returns";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -252,7 +251,8 @@ export function IssueDetailScreen({
           level={1}
           title="Couldn't load issue"
           message={formatApiError(issueQ.error)}
-          {...retryOrFinal(isRetryableApiError(issueQ.error), () => void issueQ.refetch())}
+          error={issueQ.error}
+          onRetry={() => void issueQ.refetch()}
         />
       </div>
     );
@@ -351,7 +351,7 @@ export function IssueDetailScreen({
     q.isError
       ? {
           error: q.error,
-          retry: offersRetry(q.error) ? () => void q.refetch() : undefined,
+          retry: () => void q.refetch(),
           readAt: heldThroughFailure(q) ? q.dataUpdatedAt : undefined,
         }
       : undefined;
@@ -361,7 +361,7 @@ export function IssueDetailScreen({
   const failedRead = (what: string, q: { error: unknown; refetch: () => unknown }) => ({
     what,
     error: q.error,
-    retry: offersRetry(q.error) ? () => void q.refetch() : undefined,
+    retry: () => void q.refetch(),
   });
   const headerUnread = [
     ...(issueQ.isError ? [failedRead("The issue", issueQ)] : []),
@@ -466,7 +466,7 @@ export function IssueDetailScreen({
               onResumePark={onTransition}
               onResumeRun={onResumeRun}
               onProvideInfo={focusDecisions}
-              onRetryPark={park.state === "error" && offersRetry(park.error) ? park.retry : undefined}
+              onRetryPark={park.state === "error" && isRetryableApiError(park.error) ? park.retry : undefined}
             />
           )}
 
@@ -677,7 +677,8 @@ function StaleTabLine({
     <StaleReadLine
       className="mb-3"
       said={couldNotRefresh(query.dataUpdatedAt, query.error)}
-      onRetry={offersRetry(query.error) ? () => void query.refetch() : undefined}
+      error={query.error}
+      onRetry={() => void query.refetch()}
     />
   );
 }
@@ -696,7 +697,8 @@ function TabError({
     <ErrorState
       title={`Couldn't load ${what}`}
       message={formatApiError(query.error)}
-      {...retryOrFinal(isRetryableApiError(query.error), () => void query.refetch())}
+      error={query.error}
+      onRetry={() => void query.refetch()}
     />
   );
 }

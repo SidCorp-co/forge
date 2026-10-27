@@ -83,7 +83,7 @@ export function RulesTab({ projectId, canManage }: RulesTabProps) {
   }
 
   if (isError) {
-    return <ErrorState title="Couldn't load rules" message={errorMsg} onRetry={retry} />;
+    return <ErrorState title="Couldn't load rules" message={errorMsg} error={entriesQ.error ?? guidesQ.error} onRetry={retry} />;
   }
 
   return (

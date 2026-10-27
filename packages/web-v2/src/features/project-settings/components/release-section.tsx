@@ -282,7 +282,7 @@ export function ReleaseAnswer({
   if (q.isError) {
     return (
       <div data-testid="release-answer">
-        <ErrorState title="Couldn't load whether this project can release" message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+        <ErrorState title="Couldn't load whether this project can release" message={formatApiError(q.error)} error={q.error} onRetry={() => q.refetch()} />
         <After node={after} joined={false} />
       </div>
     );

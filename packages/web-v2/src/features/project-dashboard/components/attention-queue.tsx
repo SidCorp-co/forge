@@ -8,7 +8,7 @@
 import { SESSION_ICONS } from "@/design/primitives/status-chip";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Icon, MonoTag, type IconName } from "@/design";
+import { Button, Icon, type IconName, MonoTag, RetryButton } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import { failedJobClause } from "@/features/attention/failed-job-words";
 import { stuckClause, stuckRowWords } from "@forge/contracts/stuck-words";
@@ -91,6 +91,7 @@ export function AttentionQueue({
   refusal = null,
   pending = false,
   onRetry,
+  retryError,
   onRetryJob,
   retryingJobId = null,
   shape = "working",
@@ -112,6 +113,8 @@ export function AttentionQueue({
   pending?: boolean;
   /** Asks for the read again; offered under a refusal where the read failed. */
   onRetry?: () => void;
+  /** The failed read, which decides whether that Retry is offered (ISS-1229 r50). */
+  retryError?: unknown;
   /** Retries a failed job, by its id: what a failed row's button does. */
   onRetryJob?: (jobId: string) => void;
   /** The failed job whose retry is on its way, whose button waits for it. */
@@ -144,10 +147,10 @@ export function AttentionQueue({
           {refusal}
         </p>
       )}
-      {refusal && onRetry && (
-        <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry}>
+      {refusal && (
+        <RetryButton className="mt-2" error={retryError} onRetry={onRetry}>
           Try again
-        </Button>
+        </RetryButton>
       )}
       {cut && (
         <p className="fg-caption mt-2 text-subtle">

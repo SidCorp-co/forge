@@ -159,7 +159,7 @@ export function GitConfigCard({
 					{cred.isLoading ? (
 						<Skeleton className="mt-2 h-20 w-full" />
 					) : cred.isError ? (
-						<ErrorState title="Couldn't load the deploy key" message={formatApiError(cred.error)} onRetry={() => cred.refetch()} />
+						<ErrorState title="Couldn't load the deploy key" message={formatApiError(cred.error)} error={cred.error} onRetry={() => cred.refetch()} />
 					) : credData?.configured ? (
 						<div className="mt-2 flex flex-col gap-2">
 							<div className="flex items-center justify-between gap-2">
@@ -231,7 +231,7 @@ export function GitConfigCard({
 							) : pool.isError ? (
 								<ErrorState title="Couldn't load private keys"
 									message={formatApiError(pool.error)}
-									onRetry={() => pool.refetch()}
+									error={pool.error} onRetry={() => pool.refetch()}
 								/>
 							) : poolKeys.length === 0 ? (
 								<p className="fg-body-sm text-subtle">
@@ -358,7 +358,7 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 		return (
 			<ErrorState title="Couldn't load runner activity"
 				message={formatApiError(activity.error)}
-				onRetry={() => activity.refetch()}
+				error={activity.error} onRetry={() => activity.refetch()}
 			/>
 		);
 	}
@@ -794,7 +794,7 @@ export function AssignDevice({
 							<ReadFailedLine
 								what="your devices"
 								why={formatApiError(devices.error)}
-								onRetry={() => void devices.refetch()}
+								error={devices.error} onRetry={() => void devices.refetch()}
 							/>
 						) : (
 							<Select
@@ -977,7 +977,7 @@ export function ProjectRunnersScreen({
 				) : runners.isError ? (
 					<ErrorState title="Couldn't load assigned devices"
 						message={formatApiError(runners.error)}
-						onRetry={() => runners.refetch()}
+						error={runners.error} onRetry={() => runners.refetch()}
 					/>
 				) : rows.length === 0 ? (
 					<EmptyState

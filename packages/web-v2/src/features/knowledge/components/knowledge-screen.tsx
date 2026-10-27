@@ -200,7 +200,7 @@ function EntriesTab({
       <ErrorState
         title={`Couldn't load ${kind} entries`}
         message={formatApiError(q.error)}
-        onRetry={() => q.refetch()}
+        error={q.error} onRetry={() => q.refetch()}
       />
     );
   }
@@ -229,7 +229,7 @@ function OverviewTab({ projectId, canManage }: { projectId: string; canManage: b
       <ErrorState
         title="Couldn't load overview"
         message={formatApiError(q.error)}
-        onRetry={() => q.refetch()}
+        error={q.error} onRetry={() => q.refetch()}
       />
     );
   }
@@ -278,7 +278,7 @@ function ReferencesTab({ projectId, canManage }: { projectId: string; canManage:
       <ErrorState
         title="Couldn't load references"
         message={formatApiError((refQ.error ?? glossQ.error) as Error)}
-        onRetry={() => { refQ.refetch(); glossQ.refetch(); }}
+        error={(refQ.error ?? glossQ.error) as Error} onRetry={() => { refQ.refetch(); glossQ.refetch(); }}
       />
     );
   }
