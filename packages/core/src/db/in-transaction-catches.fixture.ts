@@ -3,22 +3,19 @@
  * parameter's constraint, a drizzle transaction is assignable to and which carries any member of
  * the transaction, so `Pick<Tx, 'insert'>`, `Pick<Db, 'select'>`, `Tx` and every local executor
  * alias count while the pool's own `Db` does not. A catch passes by calling
- * `rethrowInTransaction(<the error>, <the handle>)` first, or by going on only for an error it
- * names, on every path out of the branch that rethrows, without assigning the caught error first; a
- * `finally` that returns, breaks or continues out of a guarded try swallows whatever the try threw.
- * `EXCEPTIONS` names any allowed to fall back.
+ * `rethrowInTransaction(<the error>, <the handle>)` first, by throwing on every path with no way out
+ * of the catch short of a throw, or by going on only for an error it names, on every path out of the
+ * branch that rethrows, with every use of the caught error one the write reading resolves as a plain
+ * read; a `finally` that returns, breaks or continues out of a guarded try swallows whatever the try
+ * threw. `EXCEPTIONS` names any allowed to fall back.
  *
- * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`; which write changes the
- * error before it reads it: `in-transaction-writes.fixture.ts`.
+ * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`; which use of the error
+ * is refused as a write, and what that reading still cannot see: `in-transaction-writes.fixture.ts`.
  *
  * Named residuals: a statement reached through a helper that closes over the transaction without
  * the guarded code naming any handle, a transaction cast to a type it is not, such as `typeof db`,
- * a function called from the catch that changes the caught error before the guard reads it, whether
- * handed it (`Object.assign(err, …)`, `list.push(err)` then a write through `list`) or reaching it
- * through what it closes over (`this.poison()` after `this.last = err`), since the body that runs is
- * whatever value the callee holds and following it is a whole-program question, and a rejection
- * handled by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`. The guard reader names its
- * own.
+ * and a rejection handled by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`. The guard
+ * reader and the write reading name their own.
  */
 
 import { readdirSync } from 'node:fs';
@@ -33,7 +30,7 @@ import {
   statementErrors,
   withBases,
 } from './in-transaction-guards.fixture.js';
-import { reassigns } from './in-transaction-writes.fixture.js';
+import { unreadUse } from './in-transaction-writes.fixture.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TX_SOURCE = join(SRC, 'db', 'client.ts');
@@ -158,12 +155,12 @@ function endsInThrow(stmts: readonly ts.Statement[]): boolean {
 }
 
 /**
- * The handler goes on only for errors it named: it opens by throwing every error but a named kind,
- * on every path out of that branch, or every exit from it short of a throw sits under a test naming
- * one.
+ * Where the handler decides to go on only for errors it named, as the code a write before the
+ * decision could stand in: the test of an opening branch that throws every error but a named kind,
+ * on every path out of it, which runs before anything else; or the whole block, where every exit
+ * from it short of a throw sits under a test naming one. `undefined` where it can go on for another.
  */
-function exitsOnlyWhenNarrowed(block: ts.Block, param: ts.Symbol | null, scan: Scan): boolean {
-  if (param === null) return false;
+function decidedIn(block: ts.Block, param: ts.Symbol, scan: Scan): ts.Node | undefined {
   const first = block.statements[0];
   if (first && ts.isIfStatement(first) && !first.elseStatement) {
     if (
@@ -171,9 +168,9 @@ function exitsOnlyWhenNarrowed(block: ts.Block, param: ts.Symbol | null, scan: S
       endsInThrow(statementsOf(first.thenStatement)) &&
       !leaves(first.thenStatement)
     )
-      return true;
+      return first.expression;
   }
-  if (!endsInThrow(block.statements)) return false;
+  if (!endsInThrow(block.statements)) return undefined;
   let ok = true;
   const visit = (n: ts.Node): void => {
     if (!ok || isNestedFunction(n)) return;
@@ -184,7 +181,7 @@ function exitsOnlyWhenNarrowed(block: ts.Block, param: ts.Symbol | null, scan: S
     ts.forEachChild(n, visit);
   };
   block.statements.forEach(visit);
-  return ok;
+  return ok ? block : undefined;
 }
 
 function narrowedBy(exit: ts.Node, block: ts.Block, param: ts.Symbol, scan: Scan): boolean {
@@ -282,8 +279,10 @@ function handlerKind(handler: ts.Node, handles: string[], scan: Scan): GuardedCa
     return 'swallows';
   }
   if (rethrowsFirst(body, param, handles, scan)) return 'rethrows';
-  if (param !== null && reassigns(body, param, scan)) return 'swallows';
-  return exitsOnlyWhenNarrowed(body, param, scan) ? 'narrowed' : 'swallows';
+  const decided = param === null ? undefined : decidedIn(body, param, scan);
+  if (param === null || decided === undefined) return 'swallows';
+  if (endsInThrow(body.statements) && !leaves(body)) return 'narrowed';
+  return unreadUse(decided, param, scan) === undefined ? 'narrowed' : 'swallows';
 }
 
 function enclosingName(node: ts.Node): string {
