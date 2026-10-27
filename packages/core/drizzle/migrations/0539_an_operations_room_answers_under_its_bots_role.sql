@@ -48,6 +48,14 @@ BEGIN
     ALTER TABLE "support_actions" RENAME COLUMN "fix_id" TO "proposal_id";
   END IF;
 END $$;--> statement-breakpoint
+ALTER TABLE "support_proposals" DROP CONSTRAINT IF EXISTS "support_proposals_state_chk";--> statement-breakpoint
+ALTER TABLE "support_proposals" ADD CONSTRAINT "support_proposals_state_chk" CHECK ("support_proposals"."state" IN ('pending', 'ran', 'failed', 'declined', 'expired'));--> statement-breakpoint
+ALTER TABLE "support_proposals" DROP CONSTRAINT IF EXISTS "support_proposals_code_chk";--> statement-breakpoint
+ALTER TABLE "support_proposals" ADD CONSTRAINT "support_proposals_code_chk" CHECK ("support_proposals"."code" ~ '^[A-HJ-NP-Z2-9]{6}$');--> statement-breakpoint
+ALTER TABLE "support_proposals" DROP CONSTRAINT IF EXISTS "support_proposals_decided_chk";--> statement-breakpoint
+ALTER TABLE "support_proposals" ADD CONSTRAINT "support_proposals_decided_chk" CHECK (("support_proposals"."state" = 'pending') = ("support_proposals"."decided_at" IS NULL));--> statement-breakpoint
+ALTER TABLE "support_proposals" DROP CONSTRAINT IF EXISTS "support_proposals_expiry_chk";--> statement-breakpoint
+ALTER TABLE "support_proposals" ADD CONSTRAINT "support_proposals_expiry_chk" CHECK ("support_proposals"."expires_at" > "support_proposals"."created_at");--> statement-breakpoint
 ALTER TABLE "support_proposals" ADD COLUMN IF NOT EXISTS "kind" text DEFAULT 'fix' NOT NULL;--> statement-breakpoint
 ALTER TABLE "support_proposals" ALTER COLUMN "tool" DROP NOT NULL;--> statement-breakpoint
 UPDATE "support_proposals" SET "kind" = 'filing', "tool" = NULL WHERE "tool" = 'forge:record';--> statement-breakpoint
