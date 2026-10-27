@@ -82,8 +82,7 @@ const ASK_AGAIN: Record<number, string> = {
   504: 'Try again in a moment.',
 };
 
-/** What a failure the server answered without saying why did, and never when to ask again: where the web counts
- *  the server's wait beside Retry, that count is the one place saying how long (ISS-1229 r52, judge-162). */
+/** What happened, never when to ask again: where the web counts a wait beside Retry, only that count says how long (r52). */
 export function unsaidHappening(status: number): string {
   switch (status) {
     case 401:

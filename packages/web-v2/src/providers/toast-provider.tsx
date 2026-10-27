@@ -323,14 +323,12 @@ function useKeepClear(
 const KeptRoomContext = createContext<number>(0);
 const SetKeptRoomContext = createContext<(px: number) => void>(() => {});
 
-/**
- * Room below a frame's page as tall as the kept notices standing over it, so what they stand over can be scrolled
- * clear of them (ISS-1229 r52, judge-162: at 390x600 a kept notice sat over the issue list's first row until it was
- * dismissed). It takes no room while none stands, and none on a wide screen, where they stand beside the toasts.
- */
-export function KeptNoticeRoom() {
+/** Room below a frame's page for the kept notices standing over it, so what they cover scrolls clear (ISS-1229 r52,
+ *  judge-162: at 390x600 one sat over the issue list's first row). None while none stands, nor on a wide screen. */
+export function KeptNoticeRoom({ withLaneOffset = false }: { withLaneOffset?: boolean }) {
   const room = useContext(KeptRoomContext);
-  return room > 0 ? <div aria-hidden="true" data-testid="kept-notice-room" style={{ height: room }} /> : null;
+  const height = withLaneOffset ? `calc(${room}px + ${TAB_BAR_PX}px + env(safe-area-inset-bottom))` : room;
+  return room > 0 ? <div aria-hidden="true" data-testid="kept-notice-room" style={{ height }} /> : null;
 }
 
 /** Tells the frame how tall the kept notices are while they stand, and that they take nothing once they go. */

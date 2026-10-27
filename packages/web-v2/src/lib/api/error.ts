@@ -129,9 +129,8 @@ function readerSaid(err: ApiError): string | null {
   return [reader, ...standing].join(' ');
 }
 
-/** What a failure says, in a person's words. The wait a Retry-After names is not part of it: that is said
- *  beside the Retry it gates and counted down there, never fixed into a sentence (ISS-1229 r51, judge-158),
- *  so where the web counts one, the server's own sentence and the fixed time it carries give way (r52, judge-162). */
+/** What a failure says, in a person's words. A Retry-After's wait is counted beside the Retry it gates (ISS-1229
+ *  r51), so where the web counts one, the server's sentence and the fixed time it carries give way (r52). */
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
     const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err) ?? landingShapeSentence(err);

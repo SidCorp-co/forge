@@ -20,8 +20,7 @@ export function useRetryWait(error: unknown): string | null {
   return retryWaitWords(error, now);
 }
 
-/** Whether the server's wait before a failed read's Retry still runs: re-rendering once, as it ends, rather than each
- *  second, for a part that says where the wait is counted without counting it (ISS-1229 r52, judge-162). */
+/** Whether a failed read's wait still runs, re-rendering once as it ends rather than each second (ISS-1229 r52). */
 export function useRetryWaiting(error: unknown): boolean {
   const at = retryAt(error);
   const [, setEnded] = useState(0);
@@ -35,11 +34,8 @@ export function useRetryWaiting(error: unknown): boolean {
   return at !== null && Date.now() < at;
 }
 
-/**
- * What a live region says of a failed read's wait: what the server asked for once as it starts, and that Retry is back
- * once as it ends, never each second it counts (ISS-1229 r52, judge-162: the rail's status re-announced every tick).
- * Empty until the first effect, so a region mounted with the wait running still announces it.
- */
+/** What a live region says of a wait: once as it starts, once as it ends, never each tick (ISS-1229 r52, judge-162).
+ *  Empty until the first effect, so a region mounted with the wait running still announces it. */
 export function useWaitAnnouncement(error: unknown): string | null {
   const waiting = useRetryWaiting(error);
   const asked = askedWaitWords(error);
@@ -51,5 +47,4 @@ export function useWaitAnnouncement(error: unknown): string | null {
   return said;
 }
 
-/** What the live region says as a wait ends. */
 export const WAIT_OVER = "You can retry now.";

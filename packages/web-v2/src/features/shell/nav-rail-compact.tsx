@@ -552,14 +552,21 @@ function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
       {announced}
     </span>
   );
-  if (!retry || wait) {
+  if (wait) {
     return (
       <>
-        <div role={wait ? "group" : "status"} aria-label={named} title={named} data-testid="rail-projects-unread" className={tile}>
+        <div role="group" aria-label={named} title={named} data-testid="rail-projects-unread" className={tile}>
           {face}
         </div>
         {said}
       </>
+    );
+  }
+  if (!retry) {
+    return (
+      <div role="status" aria-label={named} title={named} data-testid="rail-projects-unread" className={tile}>
+        {face}
+      </div>
     );
   }
   return (

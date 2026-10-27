@@ -4,7 +4,7 @@
 // component in the web app and refuses a Retry for a failed read that does not go through it (criterion 495).
 // It also refuses a failure sentence closed by a second full stop (criterion 496: "You do not have access to this..").
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
@@ -224,7 +224,10 @@ function definitionsOf(file: ts.SourceFile): Map<string, Definition[]> {
     return null;
   };
   const visit = (node: ts.Node) => {
-    if (ts.isFunctionDeclaration(node) && node.name && node.body) add(node.name.text, node);
+    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      add(node.name.text, node);
+      if (node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) found.set("default", [node]);
+    }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
       const fn = unwrap(node.initializer);
       if (fn) add(node.name.text, fn);
@@ -232,7 +235,51 @@ function definitionsOf(file: ts.SourceFile): Map<string, Definition[]> {
     ts.forEachChild(node, visit);
   };
   visit(file);
+  for (const statement of file.statements) {
+    if (ts.isExportAssignment(statement) && ts.isIdentifier(statement.expression)) {
+      found.set("default", found.get(statement.expression.text) ?? []);
+    }
+  }
   return found;
+}
+
+/** Every component the web source defines: by the file that defines it, and by name for a file this walk cannot place. */
+interface Index {
+  byFile: Map<string, Map<string, Definition[]>>;
+  byName: Map<string, Definition[]>;
+}
+
+function indexOf(sources: readonly (readonly [path: string, text: string])[]): Index {
+  const index: Index = { byFile: new Map(), byName: new Map() };
+  for (const [path, text] of sources) {
+    const defined = definitionsOf(ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
+    index.byFile.set(path, defined);
+    for (const [name, fns] of defined) {
+      if (name !== "default") index.byName.set(name, [...(index.byName.get(name) ?? []), ...fns]);
+    }
+  }
+  return index;
+}
+
+/** The names a file imports, by the name it uses: where from, and the name the other file exports it under. */
+function importsOf(file: ts.SourceFile): Map<string, { from: string; name: string }> {
+  const found = new Map<string, { from: string; name: string }>();
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const from = statement.moduleSpecifier.text;
+    const clause = statement.importClause;
+    if (clause?.name) found.set(clause.name.text, { from, name: "default" });
+    if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+      for (const el of clause.namedBindings.elements) found.set(el.name.text, { from, name: (el.propertyName ?? el.name).text });
+    }
+  }
+  return found;
+}
+
+/** The files a module path written in `from` can name, where it is one of the web source's own. */
+function filesFor(from: string, path: string): string[] {
+  const base = from.startsWith("@/") ? join(SRC, from.slice(2)) : from.startsWith(".") ? join(dirname(path), from) : null;
+  return base ? [`${base}.tsx`, join(base, "index.tsx")] : [];
 }
 
 /** The element a JSX attribute or spread is written on. */
@@ -328,12 +375,21 @@ function pressesProp(
 }
 
 /** Every place in one file that breaks the rule, as `path:line what`. */
-function offences(path: string, text: string, elsewhere: Map<string, Definition[]> = new Map()): string[] {
+function offences(path: string, text: string, elsewhere: Index = { byFile: new Map(), byName: new Map() }): string[] {
   const rel = relative(SRC, path);
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const constants = constantsOf(file);
   const own = definitionsOf(file);
-  const definitions = (tag: string) => own.get(tag) ?? elsewhere.get(tag) ?? [];
+  const imports = importsOf(file);
+  // A component imported under another name is the one its file exports (r52 review F1).
+  const definitions = (tag: string): Definition[] => {
+    const local = own.get(tag);
+    if (local) return local;
+    const imported = imports.get(tag);
+    if (!imported) return elsewhere.byName.get(tag) ?? [];
+    const there = filesFor(imported.from, path).map((f) => elsewhere.byFile.get(f)?.get(imported.name)).find((d) => d);
+    return there ?? elsewhere.byName.get(imported.name) ?? [];
+  };
   const found: string[] = [];
   const at = (node: ts.Node, what: string) =>
     found.push(`${rel}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1} ${what}`);
@@ -413,12 +469,7 @@ function inJsx(node: ts.Node): boolean {
 describe("a failed read's Retry, across the web app (criteria 478, 495, 496)", () => {
   it("is decided by the one rule everywhere: no component draws a Retry for a read by itself", () => {
     const sources = components(SRC).map((path) => [path, readFileSync(path, "utf8")] as const);
-    const elsewhere = new Map<string, Definition[]>();
-    for (const [path, text] of sources) {
-      for (const [name, fns] of definitionsOf(ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX))) {
-        elsewhere.set(name, [...(elsewhere.get(name) ?? []), ...fns]);
-      }
-    }
+    const elsewhere = indexOf(sources);
     const all = sources.flatMap(([path, text]) => offences(path, text, elsewhere));
     expect(all).toEqual([]);
   });
@@ -473,6 +524,21 @@ describe("a failed read's Retry, across the web app (criteria 478, 495, 496)", (
     ["a router refresh pressed", `export const A = ({ router }) => <p>Couldn't load the runs. <button onClick={() => router.refresh()}>Refresh</button></p>;`],
   ])("is refused for %s", (_, file) => {
     expect(offences(join(SRC, "features/x/a.tsx"), file).length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["under another name", `import { FailNote as Notice } from "./fail-note";`, "Notice"],
+    ["as its file's default", `import Notice from "@/features/x/fail-note";`, "Notice"],
+  ])("is refused for a Retry handed to a part imported %s, which presses it", (_, imported, tag) => {
+    const note = join(SRC, "features/x/fail-note.tsx");
+    const elsewhere = indexOf([
+      [note, `export function FailNote({ onAction }) { return <button onClick={onAction}>Load</button>; }\nexport default FailNote;`],
+      [join(SRC, "features/y/fail-note.tsx"), `export function FailNote({ onAction }) { return <RetryButton error={null} onRetry={onAction} />; }`],
+    ]);
+    const file = `${imported}\nexport const A = ({ q }) => <${tag} onAction={() => q.refetch()} />;`;
+    expect(offences(join(SRC, "features/x/a.tsx"), file, elsewhere)).toEqual([
+      expect.stringContaining(`hands a read-again to <${tag}> as onAction`),
+    ]);
   });
 
   it.each([

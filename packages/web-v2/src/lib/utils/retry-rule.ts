@@ -37,10 +37,7 @@ function durationWords(ms: number): string {
   return minutes < 90 ? `${minutes} minutes` : `${Math.ceil(minutes / 60)} hours`;
 }
 
-/**
- * The wait the server asked for, as said once as it starts: what was asked, which stays true however long ago it was
- * said, never what is left, which only a count keeps true (ISS-1229 r52, judge-162). Null where no wait is counted.
- */
+/** The wait the server asked for, said once as it starts: what was asked stays true, what is left does not (r52). */
 export function askedWaitWords(err: unknown): string | null {
   const asked = (err as { retryAfterMs?: unknown } | null)?.retryAfterMs;
   if (retryAt(err) === null || typeof asked !== "number" || asked <= 0) return null;

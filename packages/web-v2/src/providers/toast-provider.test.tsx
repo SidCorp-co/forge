@@ -297,6 +297,30 @@ describe("a toast marked keep", () => {
     }
   });
 
+  // r52 review F2: the operator frame has no tab bar, so nothing it keeps clear covers the lane's offset above the edge.
+  it("takes the lane's offset above the screen's edge too, in a frame that keeps none clear", () => {
+    wide(false);
+    const box = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const height = this.dataset.testid === "toast-lane-kept" ? 88 : 0;
+      return { top: 0, bottom: height, left: 0, right: 390, width: 390, height, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <main>
+            <KeptNoticeRoom withLaneOffset />
+          </main>
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ title: "This room was deleted", keep: true }));
+      expect(screen.getByTestId("kept-notice-room").getAttribute("style")).toContain("calc(144px + env(safe-area-inset-bottom))");
+    } finally {
+      box.mockRestore();
+    }
+  });
+
   it("keeps no room on a wide screen, where a kept notice stands beside the other toasts", () => {
     wide(true);
     render(<Frame />);
