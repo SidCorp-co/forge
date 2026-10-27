@@ -1,4 +1,5 @@
 // @direct-test-of packages/core/src/ecosystem/link-read.ts
+// @direct-test-of packages/core/src/middleware/pat-fence.ts
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -67,10 +68,10 @@ function runDoc(patch: (d: Doc) => void = () => {}): Doc {
 const create = (document: Doc, who: Parameters<typeof say>[0] = 'masterPlugin') =>
   say(who, 'POST', links(), { baseRevision: null, document });
 
-/** A refusal of one code: a permission the caller lacks answers 403, a rule of the record 422. */
+/** A refusal of one code: a missing permission or fence answers 403, a rule of the record 422. */
 const deniedAs = (r: Reply) => {
   expect(r.status, JSON.stringify(r.json)).toBe(
-    r.json?.error?.code === 'PERMISSION_FORBIDDEN' ? 403 : 422,
+    ['PERMISSION_FORBIDDEN', 'PAT_PROJECT_OUTSIDE_FENCE'].includes(r.json?.error?.code) ? 403 : 422,
   );
   expect(r.json.error.refusals.map((x: Doc) => x.code)).toEqual([r.json.error.code]);
   return r.json.error.code as string;
@@ -89,7 +90,7 @@ describe("the consumer's master writes a link", () => {
     const viewer = await create(linkDoc(), 'viewer');
     expect(deniedAs(viewer)).toBe('PERMISSION_FORBIDDEN');
     expect(viewer.json.error.refusals[0].detail).toMatch(/needs ecosystem-links\.write/);
-    expect(deniedAs(await create(linkDoc(), 'masterForge'))).toBe('PERMISSION_FORBIDDEN');
+    expect(deniedAs(await create(linkDoc(), 'masterForge'))).toBe('PAT_PROJECT_OUTSIDE_FENCE');
     expect(deniedAs(await create(linkDoc(), 'store'))).toBe('PERMISSION_FORBIDDEN');
     expect(ok(await say('plugin', 'GET', links())).returned).toBe(1);
   });
@@ -327,7 +328,7 @@ describe('the joining project records its builder run', () => {
     const put = (document: Doc) =>
       say('masterPlugin', 'PUT', `${runs()}/${ids.run}`, { baseRevision: 3, document });
     expect(deniedAs(await post(runDoc(), 'viewer'))).toBe('PERMISSION_FORBIDDEN');
-    expect(deniedAs(await post(runDoc(), 'masterForge'))).toBe('PERMISSION_FORBIDDEN');
+    expect(deniedAs(await post(runDoc(), 'masterForge'))).toBe('PAT_PROJECT_OUTSIDE_FENCE');
     const foreign = runDoc((d) => (d.links = ['00000000-0000-4000-8000-000000000000']));
     expect(refusal(await put(foreign))).toEqual(['BUILDER_RUN_LINK_UNKNOWN /links/0']);
     const unpublished = runDoc((d) => (d.findings[0].contract.slug = 'runner'));
