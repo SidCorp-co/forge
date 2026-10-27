@@ -2,7 +2,7 @@ import { parsePath } from '@forge/contracts/document-patch';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { WHERE_IT_LANDED_FIELD, WORK_LANDS_ROW } from '@forge/contracts/mark-merged-words';
 import { claimConflictSentence } from './claim-conflict';
-import { ApiError, isReasonPhrase, unsaidFailure } from './client';
+import { ApiError, isReasonPhrase, unsaidFailure, unsaidHappening } from './client';
 import { isUnreachable, UNREACHABLE_SENTENCE } from './transport-failure';
 
 const FRIENDLY_CODES: Record<string, string> = {
@@ -35,6 +35,8 @@ const FRIENDLY_CODES: Record<string, string> = {
   NO_MODULE_FLOWS: 'No module stores a flow yet — add a mermaid block to a module’s knowledge node.',
   UNPARSABLE_MODULE_FLOW: 'A module stores a flow this generator cannot read.',
 };
+
+import { retryAt } from '@/lib/utils/retry-rule';
 
 export { isRetryableApiError } from '@/lib/utils/retry-rule';
 
@@ -128,7 +130,8 @@ function readerSaid(err: ApiError): string | null {
 }
 
 /** What a failure says, in a person's words. The wait a Retry-After names is not part of it: that is said
- *  beside the Retry it gates and counted down there, never fixed into a sentence (ISS-1229 r51, judge-158). */
+ *  beside the Retry it gates and counted down there, never fixed into a sentence (ISS-1229 r51, judge-158),
+ *  so where the web counts one, the server's own sentence and the fixed time it carries give way (r52, judge-162). */
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
     const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err) ?? landingShapeSentence(err);
@@ -137,6 +140,7 @@ export function formatApiError(err: unknown): string {
     if (claimed) return claimed;
     const reader = readerSaid(err);
     if (reader) return reader;
+    if (retryAt(err) !== null) return unsaidHappening(err.status);
     // ISS-1228 r24: the server's sentence wins; the table speaks only for an answer that said nothing.
     if (serverSaid(err)) return err.message;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];

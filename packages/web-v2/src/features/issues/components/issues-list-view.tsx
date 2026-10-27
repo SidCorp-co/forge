@@ -27,6 +27,7 @@ import {
 } from "@/design";
 import { WORK_STATE_LABELS, WORK_STATES } from "@forge/contracts/work-state";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
+import { useRetryWaiting } from "@/design/hooks/use-retry-wait";
 import { asSentence, formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { replaceLocationSearch, useLocationSearch } from "@/lib/utils/use-location-search";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -296,17 +297,19 @@ export function IssuesListView({
   // question from "which writer" and is why it is not one of the names.
   const viewerId = useAuth().user?.id ?? null;
   const membersUnread = membersQ.isError && membersQ.data === undefined;
+  const membersWaiting = useRetryWaiting(membersQ.error);
+  const labelsWaiting = useRetryWaiting(labelsQ.error);
   const creatorFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Creator: anyone" },
       { value: "agent", label: `Creator: ${ANY_AGENT_LABEL}` },
-      ...(membersUnread ? [unreadChoice("the people to choose from", membersQ.error)] : []),
+      ...(membersUnread ? [unreadChoice("the people to choose from", membersQ.error, membersWaiting)] : []),
       ...(membersQ.data ?? []).map((m) => {
         const { label, detail } = creatorChoice(m, viewerId);
         return { value: m.userId, label: m.kind === "agent" ? `${label} (agent)` : label, detail };
       }),
     ],
-    [membersQ.data, membersQ.error, membersUnread, viewerId],
+    [membersQ.data, membersQ.error, membersUnread, membersWaiting, viewerId],
   );
 
   // A filter whose choices could not be read offers "anyone" or "any" alone, as if there were none: said (ISS-1229 r48),
@@ -328,12 +331,12 @@ export function IssuesListView({
   const labelFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Label: any" },
-      ...(labelsUnread ? [unreadChoice("the labels to choose from", labelsQ.error)] : []),
+      ...(labelsUnread ? [unreadChoice("the labels to choose from", labelsQ.error, labelsWaiting)] : []),
       ...(labelsQ.data ?? [])
         .filter((l) => l.kind !== "module")
         .map((l) => ({ value: l.id, label: l.name })),
     ],
-    [labelsQ.data, labelsQ.error, labelsUnread],
+    [labelsQ.data, labelsQ.error, labelsUnread, labelsWaiting],
   );
 
   const moduleFilterOptions = useMemo<SelectOption[]>(
@@ -923,13 +926,15 @@ export function IssuesListView({
 }
 
 /** The opened menu's own line for a failed read, never a choice. It points at the Retry beside the filters only
- *  where the one rule offers one (ISS-1229 r51, judge-158: a 403 pointed at a Retry that was not there). */
-function unreadChoice(what: string, error: unknown): SelectOption {
+ *  where the one rule offers one (ISS-1229 r51, judge-158: a 403 pointed at a Retry that was not there), and while
+ *  the server's wait runs, at the wait counted there in its place (r52, judge-162). */
+function unreadChoice(what: string, error: unknown, waiting: boolean): SelectOption {
   const why = asSentence(formatApiError(error));
+  const where = waiting ? "Retry comes back beside the filters when the wait there ends." : "Retry is beside the filters.";
   return {
     value: `unread:${what}`,
     label: `Couldn't load ${what}`,
-    detail: isRetryableApiError(error) ? `${why} Retry is beside the filters.` : why,
+    detail: isRetryableApiError(error) ? `${why} ${where}` : why,
     icon: "alert",
     disabled: true,
   };

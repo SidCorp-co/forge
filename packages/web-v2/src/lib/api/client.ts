@@ -73,8 +73,18 @@ export function isReasonPhrase(text: string): boolean {
   return REASON_PHRASES.has(text.trim().replace(/\.$/, '').toLowerCase());
 }
 
-/** A failure the server answered without saying why, in words a person can act on. */
-export function unsaidFailure(status: number): string {
+/** When to ask again, said after what happened, where the status names a time to wait. */
+const ASK_AGAIN: Record<number, string> = {
+  408: 'Try again.',
+  429: 'Wait a moment, then try again.',
+  502: 'Try again in a moment.',
+  503: 'Try again in a moment.',
+  504: 'Try again in a moment.',
+};
+
+/** What a failure the server answered without saying why did, and never when to ask again: where the web counts
+ *  the server's wait beside Retry, that count is the one place saying how long (ISS-1229 r52, judge-162). */
+export function unsaidHappening(status: number): string {
   switch (status) {
     case 401:
       return 'Your session has expired. Please sign in again.';
@@ -83,22 +93,28 @@ export function unsaidFailure(status: number): string {
     case 404:
       return 'What this asked for was not found. It may have been moved or deleted.';
     case 408:
-      return 'The request took too long to reach the server. Try again.';
+      return 'The request took too long to reach the server.';
     case 409:
       return 'Something changed since this page loaded. Reload it, then try again.';
     case 413:
       return 'What was sent is larger than the server accepts.';
     case 429:
-      return 'Too many requests in a short time. Wait a moment, then try again.';
+      return 'Too many requests in a short time.';
     case 502:
     case 504:
-      return 'The server did not answer in time. Try again in a moment.';
+      return 'The server did not answer in time.';
     case 503:
-      return 'The server is unavailable right now. Try again in a moment.';
+      return 'The server is unavailable right now.';
   }
   return status >= 500
     ? 'The server ran into a problem and could not finish the request.'
     : 'The server refused the request without saying why.';
+}
+
+/** A failure the server answered without saying why, in words a person can act on. */
+export function unsaidFailure(status: number): string {
+  const again = ASK_AGAIN[status];
+  return again ? `${unsaidHappening(status)} ${again}` : unsaidHappening(status);
 }
 
 /** What the server said, where it said anything; a body with no message of its own (an empty

@@ -6,11 +6,13 @@
 // jsdom lays nothing out, so these read placement and the bounds that hold it;
 // the painted geometry is measured in a browser.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SlideOver } from "@/design/patterns/slide-over";
-import { MAX_VISIBLE_TOASTS, ToastLane, ToastProvider, useToast, type ToastInput } from "./toast-provider";
+import { KeptNoticeRoom, MAX_VISIBLE_TOASTS, ToastLane, ToastProvider, useToast, type ToastInput } from "./toast-provider";
 
 expect.extend(matchers);
 
@@ -26,7 +28,10 @@ function Frame({ withLane = true }: { withLane?: boolean }) {
     <ToastProvider>
       <Trigger />
       <div data-testid="column" className="flex flex-col">
-        <main data-testid="main">content</main>
+        <main data-testid="main">
+          content
+          <KeptNoticeRoom />
+        </main>
         {withLane ? <ToastLane /> : null}
       </div>
     </ToastProvider>
@@ -266,6 +271,43 @@ describe("a toast marked keep", () => {
     expect(screen.getByText("This room was deleted")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Dismiss"));
     expect(screen.queryByText("This room was deleted")).not.toBeInTheDocument();
+  });
+
+  // ISS-1229 r52, judge-162: at 390x600 a kept notice sat over the issue list's first row until it was dismissed, and
+  // the page could not be scrolled to bring the row clear. The frame's scroll area takes the notice's height as room.
+  it("keeps room below a phone's page for as long as a kept notice stands, and none once it goes", () => {
+    wide(false);
+    const box = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const height = this.dataset.testid === "toast-lane-kept" ? 133.4 : 0;
+      return { top: 0, bottom: height, left: 0, right: 390, width: 390, height, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      render(<Frame />);
+      const room = () => screen.queryByTestId("kept-notice-room");
+      expect(room()).toBeNull();
+      act(() => fire({ title: "Saved", duration: 0 }));
+      expect(room()).toBeNull();
+      act(() => fire({ title: "This room was deleted", keep: true }));
+      expect(room()).toHaveStyle({ height: "134px" });
+      expect(screen.getByTestId("main")).toContainElement(room());
+      fireEvent.click(within(screen.getByTestId("toast-lane-kept")).getByLabelText("Dismiss"));
+      expect(room()).toBeNull();
+    } finally {
+      box.mockRestore();
+    }
+  });
+
+  it("keeps no room on a wide screen, where a kept notice stands beside the other toasts", () => {
+    wide(true);
+    render(<Frame />);
+    act(() => fire({ title: "This room was deleted", keep: true }));
+    expect(screen.queryByTestId("kept-notice-room")).toBeNull();
+  });
+
+  it("is kept at the end of the workspace frame's scroll area", () => {
+    const frame = readFileSync(join(__dirname, "../app/(workspace)/layout.tsx"), "utf8");
+    const main = /<main[\s\S]*?<\/main>/.exec(frame)?.[0] ?? "";
+    expect(main).toMatch(/<KeptNoticeRoom \/>\s*<\/main>$/);
   });
 
   it("still lets a passing toast go once it is selected", () => {

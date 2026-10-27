@@ -25,12 +25,26 @@ export function retryAt(err: unknown): number | null {
  */
 export function retryWaitWords(err: unknown, now: number): string | null {
   const at = retryAt(err);
-  if (at === null) return null;
-  const seconds = Math.ceil((at - now) / 1000);
-  if (seconds <= 0) return null;
-  if (seconds < 90) return `You can retry in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`;
+  if (at === null || at - now <= 0) return null;
+  return `You can retry in ${durationWords(at - now)}.`;
+}
+
+/** A wait in its largest whole unit, each rounded up, so no time is named sooner than the server allows. */
+function durationWords(ms: number): string {
+  const seconds = Math.ceil(ms / 1000);
+  if (seconds < 90) return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
   const minutes = Math.ceil(seconds / 60);
-  return minutes < 90 ? `You can retry in ${minutes} minutes.` : `You can retry in ${Math.ceil(minutes / 60)} hours.`;
+  return minutes < 90 ? `${minutes} minutes` : `${Math.ceil(minutes / 60)} hours`;
+}
+
+/**
+ * The wait the server asked for, as said once as it starts: what was asked, which stays true however long ago it was
+ * said, never what is left, which only a count keeps true (ISS-1229 r52, judge-162). Null where no wait is counted.
+ */
+export function askedWaitWords(err: unknown): string | null {
+  const asked = (err as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+  if (retryAt(err) === null || typeof asked !== "number" || asked <= 0) return null;
+  return `The server asked for ${durationWords(asked)} before Retry.`;
 }
 
 export interface FailedRead {
