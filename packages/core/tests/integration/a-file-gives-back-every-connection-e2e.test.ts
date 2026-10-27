@@ -13,6 +13,7 @@
  * slot is handed the database, and that line named neither the session nor the file it came from.
  */
 
+import { dirname, join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { describe, expect, it, vi } from 'vitest';
@@ -157,7 +158,15 @@ describe('a file that gives its database back', () => {
   });
 
   it('names the file that held the slot and each session it left, when the next file is handed it', async () => {
-    const harness = await setupTestDatabase();
+    // The slot's previous holder goes by another file's name, so the line has two names to keep apart.
+    const thisFile = expect.getState().testPath as string;
+    expect.setState({ testPath: join(dirname(thisFile), 'a-previous-holder.test.ts') });
+    let harness: Awaited<ReturnType<typeof setupTestDatabase>>;
+    try {
+      harness = await setupTestDatabase();
+    } finally {
+      expect.setState({ testPath: thisFile });
+    }
     await harness.cleanup();
     // Opened once the file had given its database back, as work outliving the file would.
     const late = postgres(harness.url, {
@@ -174,7 +183,7 @@ describe('a file that gives its database back', () => {
 
       expect(next.url).toBe(harness.url);
       expect(reported.mock.calls.flat().join('\n')).toMatch(
-        /1 connection\(s\) left on it since tests\/integration\/a-file-gives-back-every-connection-e2e\.test\.ts held it were severed before tests\/integration\/a-file-gives-back-every-connection-e2e\.test\.ts was handed it: pid \d+ plant-opened-after-teardown, idle after "SELECT 'opened late' AS plant"/,
+        /1 connection\(s\) left on it since tests\/integration\/a-previous-holder\.test\.ts held it were severed before tests\/integration\/a-file-gives-back-every-connection-e2e\.test\.ts was handed it: pid \d+ plant-opened-after-teardown, idle after "SELECT 'opened late' AS plant"/,
       );
     } finally {
       reported.mockRestore();
