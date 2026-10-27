@@ -477,7 +477,9 @@ describe('a web-only deploy (BC-7)', () => {
       },
       { accept: 'application/json, text/event-stream' },
     );
-    expect(JSON.stringify(res.body)).toContain('Unknown tool: forge_coolify_deploy');
+    const refusal = JSON.stringify(res.body);
+    expect(refusal).toContain('MCP_DELIVERY_IS_REST');
+    expect(refusal).toContain('/api/projects/:id/integrations/coolify/');
     expect(await queued()).toEqual([]);
   });
 
