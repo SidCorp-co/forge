@@ -223,6 +223,24 @@ describe('a project that names dev as its testing environment (BC-18, BC-19)', (
       total: 3,
     });
   });
+
+  // catalog-api ISS-12, 2026-10-27: commit passes at another commit, then the judge's runtime passes
+  // on dev at the landing 307f35d8. The record door recorded 0.3.0 on them; REQ-3 read passing 0,
+  // its coverage setting every runtime verdict aside and standing on the older commit pass.
+  it('counts in coverage the runtime passes on dev the record door counted, over older commit passes elsewhere', async () => {
+    const req = await agreedRequirement();
+    const issue = await landedIssue(5, F4);
+    await traced(req, issue, 5);
+    await judgedAll(issue, ASIDE);
+    for (const n of [1, 2, 3]) await ok(judged(issue, n, { kind: 'runtime', ref: F4 }));
+
+    const res = await record([issue], F4);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const bc = await bcOf(req);
+    expect(bc.issues[0]?.notCounted ?? null).toBeNull();
+    expect(bc.verdict).toBe('passing');
+  });
 });
 
 describe('a project that names no testing environment (BC-20)', () => {
