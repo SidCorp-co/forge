@@ -580,13 +580,22 @@ function entryReads(rel, text) {
     if (pattern && ts.isIdentifier(pattern)) return null;
     if (pattern && (ts.isObjectBindingPattern(pattern) || ts.isObjectLiteralExpression(pattern))) {
       const items = ts.isObjectBindingPattern(pattern) ? pattern.elements : pattern.properties;
+      // Each target a plain name under a stated key; only argv may be destructured further, and that
+      // nested pattern is judged as argv's own. Anything deeper is a binding this walk cannot follow.
+      const followed = (key, target) =>
+        key !== null &&
+        (ts.isIdentifier(target) ||
+          (key === 'argv' &&
+            (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target))));
       const stated = items.every((el) => {
         if (ts.isBindingElement(el))
-          return !el.dotDotDotToken && keyOf(el.propertyName ?? el.name) !== null;
-        if (ts.isPropertyAssignment(el)) return keyOf(el.name) !== null;
+          return !el.dotDotDotToken && followed(keyOf(el.propertyName ?? el.name), el.name);
+        if (ts.isPropertyAssignment(el)) return followed(keyOf(el.name), el.initializer);
         return ts.isShorthandPropertyAssignment(el);
       });
-      return stated ? null : `${what} destructured by a key it cannot state: ${p.getText(src)}`;
+      return stated
+        ? null
+        : `${what} destructured past what this walk can follow: ${p.getText(src)}`;
     }
     return `${what} handed on whole: ${p.getText(src)}`;
   };
@@ -907,6 +916,16 @@ describe('no file decides it was launched by hand', () => {
       'scripts/process-passed-param.mjs',
       'function f(p) {\n  return p.argv[1];\n}\nconst x = 1;\nif (import.meta.filename === f(globalThis.process)) main();\n',
       5,
+    ],
+    [
+      'scripts/default-nested.mjs',
+      "const { default: { argv: v } } = await import('node:process');\nif (import.meta.filename === v[1]) main();\n",
+      1,
+    ],
+    [
+      'scripts/global-nested.mjs',
+      'const { process: { argv: v } } = globalThis;\nif (import.meta.filename === v[1]) main();\n',
+      1,
     ],
     [
       'scripts/from.mjs',
