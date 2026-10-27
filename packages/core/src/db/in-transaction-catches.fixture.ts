@@ -12,7 +12,8 @@
  *
  * Named residuals: a statement reached through a helper that closes over the transaction without
  * the guarded code naming any handle, a transaction cast to a type it is not, such as `typeof db`,
- * and a rejection handled by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`.
+ * a call handed the caught error that changes it before the guard reads it, and a rejection handled
+ * by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`.
  */
 
 import { readdirSync } from 'node:fs';

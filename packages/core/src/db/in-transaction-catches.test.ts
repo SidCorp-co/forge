@@ -626,6 +626,36 @@ export async function narrowsAShadowOfTheError(tx: Tx) {
   }
 }
 
+export async function narrowsAfterWritingTheErrorsCode(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    (err as { cause?: { code?: string } }).cause = { code: '23505' };
+    if ((err as { cause?: { code?: string } }).cause?.code !== '23505') throw err;
+    return null;
+  }
+}
+
+export async function narrowsAfterDestructuringIntoTheError(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    ({ found: err } = { found: { code: '23505' } });
+    if ((err as { code?: string }).code !== '23505') throw err;
+    return null;
+  }
+}
+
+export async function narrowsThenIndexesByTheError(tx: Tx, seen: Record<string, boolean>) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof Refused)) throw err;
+    seen[err.message] = true;
+    return null;
+  }
+}
+
 export async function narrowsByAClassThatHoldsOfAll(tx: Tx) {
   try {
     return await tx.execute('select 1' as never);
@@ -888,6 +918,8 @@ describe('a catch around a statement on a handle that can be a transaction', () 
       ['returnsBeforeTheRethrow', 'tx'],
       ['narrowsAfterReassigningTheError', 'tx'],
       ['narrowsAShadowOfTheError', 'tx'],
+      ['narrowsAfterWritingTheErrorsCode', 'tx'],
+      ['narrowsAfterDestructuringIntoTheError', 'tx'],
       ['narrowsByAClassThatHoldsOfAll', 'tx'],
       ['narrowsByAClassInheritingThat', 'tx'],
       ['narrowsByACastClass', 'tx'],
@@ -925,6 +957,7 @@ describe('a catch around a statement on a handle that can be a transaction', () 
     expect(kindOf('narrowsByAnotherErrorsName')).toBe('narrowed');
     expect(kindOf('narrowsToOneOfTwoCodes')).toBe('narrowed');
     expect(kindOf('narrowsByAConstHelper')).toBe('narrowed');
+    expect(kindOf('narrowsThenIndexesByTheError')).toBe('narrowed');
     expect(kindOf('narrowsByACodeOnTheCause')).toBe('narrowed');
     expect(kindOf('narrowsToAnotherLibraryClassOnTheCause')).toBe('narrowed');
   });

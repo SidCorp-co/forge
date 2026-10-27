@@ -281,9 +281,34 @@ export function admitsAllButNamed(node: ts.Expression, param: ts.Symbol, scan: S
   return false;
 }
 
-/** Whether anything in `node` assigns the caught error, so a later read may not be what was thrown. */
+/**
+ * Whether the assignment target `node` writes the caught error or something reached through it:
+ * `err`, `err.code`, `err['cause'].code`, or `err` inside a destructuring pattern. A key that only
+ * reads the error, as in `seen[err.message]`, writes something else.
+ */
+function writesTo(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
+  const e = ts.isExpression(node) ? unwrap(node) : node;
+  if (ts.isIdentifier(e)) return scan.checker.getSymbolAtLocation(e) === param;
+  if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e))
+    return writesTo(e.expression, param, scan);
+  if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.EqualsToken)
+    return writesTo(e.left, param, scan);
+  if (ts.isArrayLiteralExpression(e)) return e.elements.some((x) => writesTo(x, param, scan));
+  if (ts.isSpreadElement(e) || ts.isSpreadAssignment(e)) return writesTo(e.expression, param, scan);
+  if (ts.isObjectLiteralExpression(e)) return e.properties.some((x) => writesTo(x, param, scan));
+  if (ts.isPropertyAssignment(e)) return writesTo(e.initializer, param, scan);
+  if (ts.isShorthandPropertyAssignment(e))
+    return scan.checker.getShorthandAssignmentValueSymbol(e) === param;
+  return false;
+}
+
+/**
+ * Whether anything in `node` assigns the caught error or a property reached through it, so a later
+ * read may not be what was thrown. A call handed the error may change it too, which this does not
+ * see.
+ */
 export function reassigns(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
-  const target = (n: ts.Node) => mentions(n, param, scan);
+  const target = (n: ts.Node) => writesTo(n, param, scan);
   if (
     (ts.isBinaryExpression(node) &&
       node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
