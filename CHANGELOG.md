@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.336] - 2026-10-27
+
+Operations rooms: Babo and Sy bots act with the asker's own permissions
+
+### Added
+
+- **Rocket.Chat operations rooms answer under their bot's role.** Babo coordinates delivery and Sy drafts product direction, each refused what its role lacks; a command runs as the member who asked, with their own Forge permissions.
+
 ## [0.4.0-dev.335] - 2026-10-26
 
 A criterion's wording can be corrected safely; repeated verdicts record once
