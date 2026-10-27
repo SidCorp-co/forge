@@ -4,9 +4,14 @@
  * close of the app's pool, opened a new one and sat between two statements when the teardown
  * severed it; postgres.js then wrote the next statement to a socket it had dropped, and the
  * process died on `TypeError: Cannot read properties of null (reading 'write')` (run 40339045318).
+ *
+ * ISS-1315 r7 — a client ended while a statement was running resolves once that statement is done,
+ * having only written its goodbye, so the server is still ending the session when the teardown
+ * looks; main's CI printed "still open at teardown" for eight files that held nothing that way.
  */
 
 import { sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { describe, expect, it, vi } from 'vitest';
 import { setupTestDatabase } from '../helpers/index.js';
 
@@ -96,6 +101,55 @@ describe('a file that gives its database back', () => {
       expect(reported.mock.calls.flat().join('\n')).not.toContain('still open at teardown');
     } finally {
       reported.mockRestore();
+    }
+  });
+
+  it('names nothing for a session still ending because its client was ended under a statement', async () => {
+    const harness = await setupTestDatabase();
+    const own = postgres(harness.url, { max: 1, onnotice: () => {} });
+    const reported = vi.spyOn(console, 'error');
+    try {
+      // The server drops a session's temporary tables as it ends it, so four hundred of them keep
+      // the session listed for most of a second after its client is gone.
+      await own.unsafe(
+        "DO $$ BEGIN FOR i IN 1..400 LOOP EXECUTE format('CREATE TEMP TABLE plant_%s (id int)', i); END LOOP; END $$",
+      );
+      const running = own`SELECT count(*) FROM pg_class`.execute();
+      await own.end({ timeout: 5 });
+      await running;
+      const [listed] = await harness.client<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND pid <> pg_backend_pid()
+      `;
+      expect(listed?.n, 'the ended session was already gone, so this case shows nothing').toBe(1);
+
+      await harness.cleanup();
+
+      expect(reported.mock.calls.flat().join('\n')).not.toContain('still open at teardown');
+    } finally {
+      reported.mockRestore();
+    }
+  });
+
+  it('names what still holds a connection at teardown, by its application and its last statement', async () => {
+    const harness = await setupTestDatabase();
+    const held = postgres(harness.url, {
+      max: 1,
+      onnotice: () => {},
+      connection: { application_name: 'plant-held-by-this-file' },
+    });
+    const reported = vi.spyOn(console, 'error');
+    try {
+      await held`SELECT 'still here' AS plant`;
+
+      await harness.cleanup();
+
+      expect(reported.mock.calls.flat().join('\n')).toMatch(
+        /1 connection\(s\) still open at teardown, severed now: pid \d+ plant-held-by-this-file, idle after "SELECT 'still here' AS plant"/,
+      );
+    } finally {
+      reported.mockRestore();
+      await held.end({ timeout: 0 }).catch(() => {});
     }
   });
 });

@@ -186,18 +186,41 @@ export async function sever(admin: Sql, name: string): Promise<number> {
   return rows.length;
 }
 
-/** Report what is still connected to `name`, which is background work that outlived its file. */
+/** A session connected to a database, as a lingering-connection line names it. */
+interface Session {
+  pid: number;
+  app: string;
+  state: string | null;
+  query: string | null;
+}
+
+function sessionsOn(admin: Sql, name: string): Promise<Session[]> {
+  return admin<Session[]>`
+    SELECT pid, application_name AS app, state, left(regexp_replace(query, '[[:space:]]+', ' ', 'g'), 120) AS query
+    FROM pg_stat_activity WHERE datname = ${name} AND pid <> pg_backend_pid() ORDER BY pid
+  `;
+}
+
+/**
+ * Report what is still connected to `name`, which is background work that outlived its file. A
+ * client ended under a running statement resolves once the statement is done and its goodbye
+ * written, while the server is still ending the session, so a session gets what Postgres gives one
+ * before `DROP DATABASE` calls it in use (`CountOtherDBBackends`): fifty looks, 100ms apart.
+ */
 export async function reportLingeringConnections(admin: Sql, name: string): Promise<void> {
   try {
-    const rows = await admin<{ count: string }[]>`
-      SELECT count(*)::text AS count FROM pg_stat_activity
-      WHERE datname = ${name} AND pid <> pg_backend_pid()
-    `;
-    const n = Number(rows[0]?.count ?? '0');
-    if (n > 0) {
+    let held = await sessionsOn(admin, name);
+    for (let look = 1; held.length > 0 && look < 50; look++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      held = await sessionsOn(admin, name);
+    }
+    if (held.length > 0) {
+      const named = held.map(
+        (s) => `pid ${s.pid} ${s.app || 'with no application name'}, ${s.state} after "${s.query}"`,
+      );
       console.error(
-        `[db] ${name}: ${n} connection(s) still open at teardown, severed now; ` +
-          'whatever holds them is background work that outlived this file.',
+        `[db] ${name}: ${held.length} connection(s) still open at teardown, severed now: ` +
+          `${named.join('; ')}. Whatever holds them is background work that outlived this file.`,
       );
     }
   } catch {}

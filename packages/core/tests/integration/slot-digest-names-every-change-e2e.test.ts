@@ -38,6 +38,30 @@ async function driftAfter(statements: string[]): Promise<string[]> {
   return drift;
 }
 
+/** What the digest says `change` did to the schema `made` left, both read before rolling back. */
+async function driftBetween(made: string[], change: string[]): Promise<string[]> {
+  let drift: string[] = [];
+  await t.client
+    .begin(async (tx) => {
+      for (const statement of made) await tx.unsafe(statement);
+      const before = await readSchemaOn(tx, true);
+      for (const statement of change) await tx.unsafe(statement);
+      drift = await schemaChangesOn(tx, before.hash, () => before.objects ?? {});
+      throw ROLLBACK;
+    })
+    .catch((err) => {
+      if (err !== ROLLBACK) throw err;
+    });
+  return drift;
+}
+
+/** A sequence, a column defaulting to it and a view reading it: two stored expressions holding its oid. */
+const ON_A_SEQUENCE = [
+  'CREATE SEQUENCE plant_seq',
+  "ALTER TABLE admin_thresholds ADD COLUMN plant_n bigint DEFAULT nextval('plant_seq')",
+  'CREATE VIEW plant_v AS SELECT last_value FROM plant_seq',
+];
+
 describe('the slot digest names every kind of schema change a file can leave behind', () => {
   it.each([
     {
@@ -232,5 +256,30 @@ describe('the slot digest names every kind of schema change a file can leave beh
     expect(await driftAfter(['CLUSTER labels USING labels_pkey'])).toEqual([
       'changed index labels_pkey',
     ]);
+  });
+
+  // A stored expression holds the oids of what it reads; made again under the same name, the
+  // object has a new oid and `pg_dump -s` prints the same schema.
+  it('names nothing for a sequence made again under its own name, though a default and a view hold its oid', async () => {
+    expect(
+      await driftBetween(ON_A_SEQUENCE, [
+        'DROP VIEW plant_v',
+        'ALTER TABLE admin_thresholds ALTER COLUMN plant_n DROP DEFAULT',
+        'DROP SEQUENCE plant_seq',
+        'CREATE SEQUENCE plant_seq',
+        "ALTER TABLE admin_thresholds ALTER COLUMN plant_n SET DEFAULT nextval('plant_seq')",
+        'CREATE VIEW plant_v AS SELECT last_value FROM plant_seq',
+      ]),
+    ).toEqual([]);
+  });
+
+  it('still names a default and a view pointed at another sequence', async () => {
+    const drift = await driftBetween(ON_A_SEQUENCE, [
+      'CREATE SEQUENCE plant_other',
+      "ALTER TABLE admin_thresholds ALTER COLUMN plant_n SET DEFAULT nextval('plant_other')",
+      'CREATE OR REPLACE VIEW plant_v AS SELECT last_value FROM plant_other',
+    ]);
+    expect(drift).toContain('changed default value for column plant_n of table admin_thresholds');
+    expect(drift).toContain('changed rule _RETURN on view plant_v');
   });
 });
