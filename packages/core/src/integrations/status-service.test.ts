@@ -61,4 +61,17 @@ describe('the name a binding card carries beside its state', () => {
     expect(cards.find((c) => c.meta?.bindingId === 'b-1')?.meta).not.toHaveProperty('label');
     expect(cards.find((c) => c.meta?.bindingId === 'b-2')?.meta?.label).toBe('partner-a');
   });
+
+  // ISS-1421 r35, judge-141: two unlabelled Coolify rows read "Preview / Turned off" twice, and the
+  // card carried nothing else a screen could tell them apart by.
+  it.each([
+    ['coolify', { baseUrl: 'https://coolify.one.test' }, 'baseUrl', 'https://coolify.one.test'],
+    ['postman', { workspaceName: 'Partner A' }, 'workspaceName', 'Partner A'],
+    ['sentry', { host: 'sentry.one.test' }, 'host', 'sentry.one.test'],
+    ['rocketchat', { serverUrl: 'https://chat.one.test' }, 'serverUrl', 'https://chat.one.test'],
+    ['epodsystem', { storeName: 'Store A' }, 'storeName', 'Store A'],
+  ])('a %s card carries what its rows are told apart by', async (provider, config, key, value) => {
+    const { getIntegration } = await import('./registry.js');
+    expect(getIntegration(provider)?.presentation?.cardMeta?.(config)?.[key]).toBe(value);
+  });
 });

@@ -77,7 +77,7 @@ describe("ConnectionRow over a removed connection", () => {
     const bound = { id: "b1", projectId: "Storefront", role: "service", stages: [], active: false };
     row({ ...removed, usage: { bindings: [bound, { ...bound, id: "b2" }] } } as never);
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    expect(screen.getByText("Delete it for good, with its 2 project bindings?")).toBeInTheDocument();
+    expect(screen.getByText("Delete it for good, and take it off 2 projects?")).toBeInTheDocument();
   });
 
   // ISS-1421 r22, judge-91: core refuses to share a removed connection, so its row does not say to.

@@ -25,15 +25,15 @@ export const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "release-procedure":
     "No release instructions written — a release follows generic instructions written for another project.",
   "release-runner-ambiguous":
-    "Live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.",
+    "Live deploy targets name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.",
   "release-target":
     "This project declares a release but has no live deploy target to send it to — every issue would wait for a release nobody can cut. Add one, or, if this project ships nothing, choose \"Repository, no release\" below.",
   rollback:
     "No rollback declared — a failed release aborts and comments, and rolls back nothing.",
   "rollback-prose":
-    "A live Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
+    "A live Coolify deploy target declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
   "verify-probes":
-    "A live binding declares no verify probe — a release still runs, but nothing reads that deployment. Where no live binding declares one the release closes unverified; where another does, each issue it closes names this one as not read.",
+    "A live deploy target declares no verify probe — a release still runs, but nothing reads that deployment. Where no live deploy target declares one the release closes unverified; where another does, each issue it closes names this one as not read.",
 };
 
 const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, string> = {
@@ -131,7 +131,7 @@ const AT_AWAITING_RELEASE =
 function probesLink(b: Blocker): BlockerLink {
   const bindings = countOf(b.details?.bindings) ?? 0;
   const urls = countOf(b.details?.urls) ?? 0;
-  const steps = one(bindings, "the live binding's verify step", "the live bindings' verify steps");
+  const steps = one(bindings, "the live deploy target's verify step", "the live deploy targets' verify steps");
   const probes = one(urls, "the probe's url", "the probes' urls");
   const label =
     bindings === 0
@@ -348,11 +348,11 @@ export function ReleaseAnswer({
                     href={tab("integrations", undefined, VERIFY_PROBE_SECTION) as string}
                     className="text-accent-text hover:underline"
                   >
-                    Declare a probe on the live binding
+                    Declare a probe on the live deploy target
                   </SettingsLink>
                 ) : tab("integrations") ? (
                   <SettingsLink href={tab("integrations") as string} className="text-accent-text hover:underline">
-                    Set it on the live binding
+                    Set it on the live deploy target
                   </SettingsLink>
                 ) : null}
               </li>

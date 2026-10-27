@@ -231,7 +231,7 @@ describe("the release runner label on a shared connection", () => {
 
 		expect(
 			screen.getByText(
-				"none — each project bound to this credential uses its own binding, or its own pool",
+				"none — each project using this connection uses its own setting, or its own pool",
 			),
 		).toBeInTheDocument();
 	});

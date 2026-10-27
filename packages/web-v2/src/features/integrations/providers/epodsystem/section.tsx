@@ -81,39 +81,71 @@ export function defaultStorefrontId(bindings: readonly IntegrationSummary[]): st
  * ISS-395 / ISS-387 / ISS-558 — Epodsystem storefront integration config.
  * ISS-558: supports multiple stores per project, each binding with its own label (empty = default).
  * A row's drawer holds that row's storefront alone, so every control in it acts on the binding the
- * row showed (ISS-1421 r34); with no row named, every storefront is listed.
+ * row showed (ISS-1421 r34), and it neither introduces storefronts nor offers to add one: the tab
+ * lists them and holds Add storefront (r35, judge-141). With no row named, the drawer is where one
+ * is added, opened on the form where the tab's button opened it.
  */
-export function EpodsystemSection({ projectId, bindingId }: { projectId: string; bindingId?: string }) {
+export function EpodsystemSection({
+  projectId,
+  bindingId,
+  adding = false,
+}: {
+  projectId: string;
+  bindingId?: string;
+  adding?: boolean;
+}) {
   const list = useIntegrationsList(projectId);
 
   const all = useMemo(
     () => (list.data?.items ?? []).filter((i) => i.provider === "epodsystem"),
     [list.data],
   );
-  const shown = useMemo(() => {
-    if (bindingId) {
-      const row = bindingForRow(all, "epodsystem", bindingId);
-      return row ? [row] : [];
-    }
-    return [...all].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  }, [all, bindingId]);
-  const defaultId = defaultStorefrontId(all);
+  const row = bindingId ? bindingForRow(all, "epodsystem", bindingId) : undefined;
 
-  // Only a binding whose last check passed is connected: a key the provider refused is not.
-  const connectedCount = bindingId ? 0 : shown.filter(bindingConnected).length;
-  const [showAddForm, setShowAddForm] = useState(false);
+  if (bindingId) {
+    return (
+      <SettingsSection>
+        <div className="mb-4">
+          <CardTitle>Epodsystem storefront</CardTitle>
+        </div>
+        {row ? (
+          <EpodsystemBindingRow
+            projectId={projectId}
+            binding={row}
+            isDefault={row.id === defaultStorefrontId(all)}
+          />
+        ) : null}
+      </SettingsSection>
+    );
+  }
+  return <AddStorefront projectId={projectId} all={all} loading={list.isLoading} adding={adding} />;
+}
+
+function AddStorefront({
+  projectId,
+  all,
+  loading,
+  adding,
+}: {
+  projectId: string;
+  all: IntegrationSummary[];
+  loading: boolean;
+  adding: boolean;
+}) {
+  const [showAddForm, setShowAddForm] = useState(adding);
+  const [added, setAdded] = useState(false);
   // Adding a storefront is a connect: offered by the answer the create door refuses by, and withdrawn
   // when a refusal's re-read of the list says the reader may not (ISS-1421 r29, judge-119 on 313, 319).
   const may = useProjectIntegrationActs(projectId);
   const mayAdd = may?.connect === true;
+  // Only a binding whose last check passed is connected: a key the provider refused is not.
+  const connectedCount = all.filter(bindingConnected).length;
 
   return (
     <SettingsSection>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle>Epodsystem storefronts</CardTitle>
-          {connectedCount > 0 && <Badge tone="green">{connectedCount} connected</Badge>}
-        </div>
+      <div className="mb-4 flex items-center gap-2">
+        <CardTitle>Epodsystem storefronts</CardTitle>
+        {connectedCount > 0 && <Badge tone="green">{connectedCount} connected</Badge>}
       </div>
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
@@ -129,24 +161,19 @@ export function EpodsystemSection({ projectId, bindingId }: { projectId: string;
           )}
         </p>
 
-        {list.isLoading && (
+        {loading && (
           <p className="fg-body-sm text-muted">Loading…</p>
         )}
 
-        {!list.isLoading && all.length === 0 && (
+        {!loading && all.length === 0 && (
           <p className="fg-body-sm text-muted italic">
             No Epodsystem storefronts configured.
           </p>
         )}
 
-        {shown.map((binding) => (
-          <EpodsystemBindingRow
-            key={binding.id}
-            projectId={projectId}
-            binding={binding}
-            isDefault={binding.id === defaultId}
-          />
-        ))}
+        {added && !showAddForm && (
+          <Banner tone="success">Storefront added. It has its own row on the Integrations tab.</Banner>
+        )}
 
         {!mayAdd ? (
           may && (
@@ -159,10 +186,20 @@ export function EpodsystemSection({ projectId, bindingId }: { projectId: string;
             projectId={projectId}
             hasDefault={all.length > 0}
             onCancel={() => setShowAddForm(false)}
-            onCreated={() => setShowAddForm(false)}
+            onCreated={() => {
+              setShowAddForm(false);
+              setAdded(true);
+            }}
           />
         ) : (
-          <Button variant="secondary" onClick={() => setShowAddForm(true)} className="self-start">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setAdded(false);
+              setShowAddForm(true);
+            }}
+            className="self-start"
+          >
             Add storefront
           </Button>
         )}

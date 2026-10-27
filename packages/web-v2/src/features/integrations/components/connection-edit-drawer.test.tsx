@@ -282,7 +282,7 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: false });
     fireEvent.click(screen.getByRole("button", { name: "Clear from list…" }));
     expect(
-      screen.getByText("Clearing this connection deletes it for good, with its binding to Storefront."),
+      screen.getByText("Clearing this connection deletes it for good and takes it off Storefront."),
     ).toBeInTheDocument();
   });
 
@@ -314,7 +314,7 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: false });
     fireEvent.click(screen.getByRole("button", { name: "Clear from list…" }));
     expect(
-      screen.getByText(/^Clearing this connection deletes it for good, with its bindings to (Storefront and Shop|Shop and Storefront)\.$/),
+      screen.getByText(/^Clearing this connection deletes it for good and takes it off (Storefront and Shop|Shop and Storefront)\.$/),
     ).toBeInTheDocument();
   });
 

@@ -55,13 +55,32 @@ type Labelled = {
   createdAt: string;
 };
 
-/**
- * The one rule every list names a connection by: its name, else what it points at, else its
- * provider. Only where that is all there is are two alike told apart by when each was added: the
- * day, then the time on it. A number is left for two added in the same minute (ISS-1421 r6,
- * criterion 100). `withProvider` follows a name with its provider, for a list mixing providers;
- * the Connections page lists one app per section and shows the provider beside it (r8, 129).
- */
+/** Rows whose `labels` read alike, told apart by the day each was `word`, then the time, then a
+ *  number (ISS-1421 r6, criterion 100; r35). A row like no other keeps its label. */
+export function toldApart(
+  rows: ReadonlyArray<{ id: string; createdAt: string }>,
+  labels: Map<string, string>,
+  word: string,
+): Map<string, string> {
+  const byOrder = [...rows].sort(
+    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+  );
+  const dates = (c: { createdAt: string }) => !Number.isNaN(Date.parse(c.createdAt));
+  const dated = apart(byOrder, labels, (c) => (dates(c) ? ` · ${word} ${addedDay(c.createdAt)}` : null));
+  const timed = apart(byOrder, dated, (c) => (dates(c) ? `, ${addedTime(c.createdAt)}` : null));
+  const out = new Map<string, string>();
+  const seen = new Map<string, number>();
+  for (const c of byOrder) {
+    const label = timed.get(c.id) as string;
+    const n = (seen.get(label) ?? 0) + 1;
+    seen.set(label, n);
+    out.set(c.id, n === 1 ? label : `${label} (${n})`);
+  }
+  return out;
+}
+
+/** The one rule every list names a connection by: its name, else what it points at, else its
+ *  provider, then `toldApart`. `withProvider` follows a name with its provider (r8, criterion 129). */
 export function connectionLabels(
   connections: ReadonlyArray<Labelled>,
   withProvider: boolean,
@@ -72,28 +91,7 @@ export function connectionLabels(
     const name = connectionName(c) ?? connectionTarget(c);
     base.set(c.id, name ? (withProvider ? `${name} · ${provider}` : name) : provider);
   }
-  const byOrder = [...connections].sort(
-    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
-  );
-  const at = (c: { createdAt: string }) =>
-    Number.isNaN(Date.parse(c.createdAt)) ? null : new Date(c.createdAt);
-  const dated = apart(byOrder, base, (c) => {
-    const when = at(c);
-    return when ? ` · added ${addedDay(c.createdAt)}` : null;
-  });
-  const timed = apart(byOrder, dated, (c) => {
-    const when = at(c);
-    return when ? `, ${addedTime(c.createdAt)}` : null;
-  });
-  const out = new Map<string, string>();
-  const seen = new Map<string, number>();
-  for (const c of byOrder) {
-    const label = timed.get(c.id) as string;
-    const n = (seen.get(label) ?? 0) + 1;
-    seen.set(label, n);
-    out.set(c.id, n === 1 ? label : `${label} (${n})`);
-  }
-  return out;
+  return toldApart(connections, base, "added");
 }
 
 /** How the share picker lists each connection: the one rule, each name followed by its provider. */

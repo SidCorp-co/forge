@@ -43,8 +43,8 @@ const EMPTY_APPS: string[] = [];
 
 const HELP_ACTIONS = [
   "Click an app to open it, then a row — rename, replace the key, edit config, Test, drill into bound projects, or remove the connection",
-  "Disable / Enable — switch a credential off (every binding stops resolving) and back on",
-  "Binding-scoped settings (environment, webhooks, delivery log) stay in the project's settings → Integrations tab",
+  "Disable / Enable — switch a credential off (no project can use it) and back on",
+  "A project's own settings for a connection (environment, webhooks, delivery log) stay in the project's settings → Integrations tab",
 ];
 
 export function IntegrationsScreen() {
@@ -218,7 +218,7 @@ export function IntegrationsScreen() {
           </p>
         </div>
         <HelpButton
-          summary="A connection is a credential owned by you or one of your organizations (Coolify token, Postman key, GitHub App). Projects use a connection through bindings — share one connection with several projects without re-entering the secret. Health here is the connection's real last-known state; disabled connections stay listed so you can re-enable them."
+          summary="A connection is a credential owned by you or one of your organizations (Coolify token, Postman key, GitHub App). A project uses a connection once it is shared with it — share one connection with several projects without re-entering the secret. Health here is the connection's real last-known state; disabled connections stay listed so you can re-enable them."
           actions={HELP_ACTIONS}
         />
       </div>

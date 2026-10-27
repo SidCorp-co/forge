@@ -42,7 +42,7 @@ export function removalWords(count: number) {
   if (count === 0) {
     return {
       title: "Remove the verify block?",
-      what: "the verify block stored on this binding, which names no probe a release can read",
+      what: "the verify block stored on this deploy target, which names no probe a release can read",
       act: "Remove the verify block",
       keep: "Keep it",
       them: "it",
@@ -52,7 +52,7 @@ export function removalWords(count: number) {
   if (count === 1) {
     return {
       title: "Remove the probe?",
-      what: "the one probe this binding declares",
+      what: "the one probe this deploy target declares",
       act: "Remove the probe",
       keep: "Keep it",
       them: "it",
@@ -61,7 +61,7 @@ export function removalWords(count: number) {
   }
   return {
     title: `Remove all ${count} probes?`,
-    what: `all ${count} probes this binding declares`,
+    what: `all ${count} probes this deploy target declares`,
     act: REMOVE_ALL_PROBES,
     keep: "Keep them",
     them: "them",
@@ -153,13 +153,13 @@ export type OtherProbes = "usable" | "unusable" | "none" | null;
 export function afterRemovalSentence(others: OtherProbes): string {
   switch (others) {
     case null:
-      return "A release then reads no commit from this binding, and closes unverified unless another live binding declares a probe.";
+      return "A release then reads no commit from this deploy target, and closes unverified unless another live deploy target declares a probe.";
     case "unusable":
-      return "Another live binding declares a probe a release cannot read, so a release is refused until that probe is corrected.";
+      return "Another live deploy target declares a probe a release cannot read, so a release is refused until that probe is corrected.";
     case "usable":
-      return "A release then reads only the probes the project's other live bindings declare.";
+      return "A release then reads only the probes the project's other live deploy targets declare.";
     case "none":
-      return "No other live binding declares a probe, so a release then closes unverified.";
+      return "No other live deploy target declares a probe, so a release then closes unverified.";
   }
 }
 
@@ -173,7 +173,7 @@ function Reading({ declared, inherited, unusable }: { declared: ProbeRow[]; inhe
       <p className="fg-body-sm text-muted">
         {unusable
           ? "A verify block is stored here, but it names no probe a release can read. Correct it below."
-          : "None declared — a release reads nothing on this binding. Where no live binding declares one, the release closes unverified."}
+          : "None declared — a release reads nothing on this deploy target. Where no live deploy target declares one, the release closes unverified."}
       </p>
     );
   }
@@ -181,7 +181,7 @@ function Reading({ declared, inherited, unusable }: { declared: ProbeRow[]; inhe
     <div className="flex flex-col gap-1">
       <p className="fg-body-sm text-muted">
         {inherited
-          ? "Inherited from the shared connection behind this binding. Saving here declares this project's own, which a release reads instead."
+          ? "Inherited from the shared connection this deploy target uses. Saving here declares this project's own, which a release reads instead."
           : `A release reads ${declared.length === 1 ? "this probe" : "these probes"} to learn the commit production serves.`}
       </p>
       <ul className="divide-y divide-line border-y border-line" aria-label="Declared probes">

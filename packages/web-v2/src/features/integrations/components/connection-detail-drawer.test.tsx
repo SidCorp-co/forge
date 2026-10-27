@@ -126,7 +126,7 @@ describe("a provider's drawer shows the agents switch once", () => {
         <Page>
           <ConnectionDetailDrawer
             projectId={PROJECT}
-            card={{ key: name, status: "connected", meta: {} } as never}
+            card={{ key: name, status: "connected", configured: true, meta: { bindingId: `${CONNECTION}-live` } } as never}
             onClose={() => {}}
           />
         </Page>,
@@ -158,7 +158,7 @@ describe("a plain member of the project's drawer offers nothing core refuses the
         <Page>
           <ConnectionDetailDrawer
             projectId={PROJECT}
-            card={{ key: name, status: "connected", meta: {} } as never}
+            card={{ key: name, status: "connected", configured: true, meta: { bindingId: `${CONNECTION}-live` } } as never}
             onClose={() => {}}
           />
         </Page>,
@@ -484,7 +484,7 @@ describe("the live approval gate", () => {
     drawPreview();
     await waitFor(() =>
       expect(screen.getByTestId("preview-gate-why")).toHaveTextContent(
-        "This preview binding deploys an application a live binding deploys",
+        "This preview deploy target deploys an application a live one deploys",
       ),
     );
     appsOf = {};

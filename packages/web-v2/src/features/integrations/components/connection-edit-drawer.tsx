@@ -347,7 +347,7 @@ function ProjectsSection({
                 {/* The project's own switch; a connection turned off says so in the header (ISS-1421 r21). */}
                 {!b.bindingActive && (
                   <span className="fg-body-sm ml-auto rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-                    binding disabled
+                    Turned off
                   </span>
                 )}
                 {!archived && project && (

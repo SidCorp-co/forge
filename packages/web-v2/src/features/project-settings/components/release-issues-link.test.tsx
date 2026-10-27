@@ -258,7 +258,7 @@ const EVERY_COUNT: Record<ReleaseBlockerCode, Counted | string> = {
 	RELEASE_PROBES_UNREADABLE: {
 		one: { urls: [], bindings: ["coolify-a"] },
 		two: { urls: [], bindings: ["coolify-a", "coolify-b"] },
-		labels: ["Check the live binding's verify step", "Check the live bindings' verify steps"],
+		labels: ["Check the live deploy target's verify step", "Check the live deploy targets' verify steps"],
 	},
 	RELEASE_POOL_EMPTY: "the sentence counts no runner; the link pairs one",
 	NO_RUNNER_ONLINE: {
@@ -320,14 +320,14 @@ describe("a link beside a counted release sentence agrees with that count", () =
 
 	it("names a binding and a bad probe url beside it, each by its own count", () => {
 		expect(linkText("RELEASE_PROBES_UNREADABLE", { urls: ["api/version"], bindings: ["coolify-a"] })).toEqual([
-			"Check the live binding's verify step and correct the probe's url",
+			"Check the live deploy target's verify step and correct the probe's url",
 		]);
 		expect(
 			linkText("RELEASE_PROBES_UNREADABLE", { urls: ["api/version", "health"], bindings: ["coolify-a"] }),
-		).toEqual(["Check the live binding's verify step and correct the probes' urls"]);
+		).toEqual(["Check the live deploy target's verify step and correct the probes' urls"]);
 		expect(
 			linkText("RELEASE_PROBES_UNREADABLE", { urls: ["api/version"], bindings: ["coolify-a", "coolify-b"] }),
-		).toEqual(["Check the live bindings' verify steps and correct the probe's url"]);
+		).toEqual(["Check the live deploy targets' verify steps and correct the probe's url"]);
 	});
 
 	it("opens the runners tab and the integrations tab whatever the count", () => {
@@ -360,8 +360,8 @@ describe("the link beside a binding gap", () => {
 			</QueryClientProvider>,
 		);
 		expect(linksOf(container)).toEqual([
-			{ text: "Declare a probe on the live binding", href: `${SETTINGS}?tab=integrations&field=verify-probe` },
-			{ text: "Set it on the live binding", href: `${SETTINGS}?tab=integrations` },
+			{ text: "Declare a probe on the live deploy target", href: `${SETTINGS}?tab=integrations&field=verify-probe` },
+			{ text: "Set it on the live deploy target", href: `${SETTINGS}?tab=integrations` },
 		]);
 	});
 
@@ -383,7 +383,7 @@ describe("the link beside a binding gap", () => {
 		const heard = vi.fn();
 		window.addEventListener("forge:locationchange", heard);
 		try {
-			fireEvent.click(screen.getByRole("link", { name: "Declare a probe on the live binding" }));
+			fireEvent.click(screen.getByRole("link", { name: "Declare a probe on the live deploy target" }));
 			expect(window.location.search).toBe("?tab=integrations&field=verify-probe");
 			expect(heard).toHaveBeenCalled();
 		} finally {

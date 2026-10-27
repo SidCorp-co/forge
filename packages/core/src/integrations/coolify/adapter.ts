@@ -478,6 +478,8 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     label: PROVIDER_LABELS.coolify,
     // Coolify is stage-split by design, so even a single binding keys by stage.
     alwaysStageKeyed: true,
+    // The host a row of it is told apart by where it carries no label (ISS-1421 r35).
+    cardMeta: (config) => ({ baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl : null }),
   },
   adapter: coolifyAdapterMethods,
 });

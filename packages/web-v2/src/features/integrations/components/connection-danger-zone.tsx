@@ -102,7 +102,7 @@ export function DangerZone({
         <div className="flex flex-col gap-2 border-y border-line py-2.5">
           <p className="fg-body-sm text-fg">
             {removed
-              ? `Clearing this connection deletes it for good${boundProjects?.length ? `, with its ${boundProjects.length > 1 ? "bindings" : "binding"} to ${listed(boundProjects, "and")}` : ""}.`
+              ? `Clearing this connection deletes it for good${boundProjects?.length ? ` and takes it off ${listed(boundProjects, "and")}` : ""}.`
               : `${
                   affectedProjects.length > 0
                     ? `Removing this connection stops credential resolution for ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${affectedProjects.join(", ")}. Their integrations stop working on the next dispatch.`

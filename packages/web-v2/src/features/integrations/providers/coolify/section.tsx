@@ -564,7 +564,7 @@ function ProdConfirmBanner({
         <span className="fg-label">Live approval gate</span>
         {!isLive && (
           <span className="fg-body-sm" data-testid="preview-gate-why">
-            This preview binding deploys an application a live binding deploys, so its deploys wait
+            This preview deploy target deploys an application a live one deploys, so its deploys wait
             here for a confirm as live ones do.
           </span>
         )}

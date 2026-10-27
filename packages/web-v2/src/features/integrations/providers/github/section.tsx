@@ -257,8 +257,8 @@ function SetRepository({
       </div>
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
-          Using <span className="font-semibold">{connectionLabel}</span>. This project already has a
-          GitHub binding; picking here points that same binding at a repository.
+          Using <span className="font-semibold">{connectionLabel}</span>. This project already has
+          GitHub connected; picking here points that same connection at a repository.
         </p>
 
         {mayPick ? (
@@ -267,7 +267,7 @@ function SetRepository({
 
             {!binding.bindingActive && (
               <p className="fg-body-sm text-muted">
-                This binding is switched off. Saving a repository switches it back on.
+                GitHub is switched off on this project. Saving a repository switches it back on.
               </p>
             )}
 
@@ -286,7 +286,7 @@ function SetRepository({
           </>
         ) : (
           <p className="fg-body-sm text-muted">
-            {`${onlyWho(binding.acts.whoChanges)} can point this binding at a repository.`}
+            {`${onlyWho(binding.acts.whoChanges)} can point this project's GitHub at a repository.`}
           </p>
         )}
 

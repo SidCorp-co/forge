@@ -97,15 +97,21 @@ function card() {
   const status =
     health === null ? "unverified" : health === "ok" ? "connected" : health === "error" ? "error" : "attention";
   const deploy = provider === "coolify";
-  const meta = { lastHealthStatus: health, ...(deploy ? { capabilities: { canDeploy: true } } : {}) };
-  return { key: deploy ? "coolify:live" : provider, status, meta };
+  const meta = {
+    bindingId: BINDING,
+    lastHealthStatus: health,
+    ...(deploy ? { capabilities: { canDeploy: true } } : {}),
+  };
+  return { key: deploy ? "coolify:live" : provider, status, configured: true, meta };
 }
 
-async function drawer(): Promise<void> {
+/** The drawer a row opens, or with `adding` the one the tab's Add storefront opens, on no row. */
+async function drawer(adding = false): Promise<void> {
+  const opened = adding ? { ...card(), meta: {} } : card();
   render(
     <QueryClientProvider client={queries}>
       <LeaveGuardProvider>
-        <ConnectionDetailDrawer projectId={PROJECT} card={card() as never} onClose={() => {}} />
+        <ConnectionDetailDrawer projectId={PROJECT} card={opened as never} adding={adding} onClose={() => {}} />
       </LeaveGuardProvider>
     </QueryClientProvider>,
   );
@@ -140,19 +146,20 @@ describe("a provider drawer's badge reads its binding as the row does", () => {
   }
 });
 
+// The count heads the drawer Add storefront opens; a row's drawer is about its own store (ISS-1421 r35).
 describe("Epodsystem's connected count", () => {
   it("does not count a store whose key the provider refused", async () => {
     provider = "epodsystem";
     health = "needs_reauth";
-    await drawer();
-    await waitFor(() => expect(screen.getAllByText("Needs re-auth").length).toBeGreaterThanOrEqual(2));
+    await drawer(true);
+    await screen.findByText("Epodsystem storefronts");
     expect(screen.queryByText(/\d+ connected$/)).toBeNull();
   });
 
   it("counts a store whose last check passed", async () => {
     provider = "epodsystem";
     health = "ok";
-    await drawer();
+    await drawer(true);
     expect(await screen.findByText("1 connected")).toBeInTheDocument();
   });
 });

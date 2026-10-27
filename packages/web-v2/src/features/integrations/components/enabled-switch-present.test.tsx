@@ -99,7 +99,7 @@ describe("a turned-off binding's drawer has the switch its agents line names", (
         <QueryClientProvider client={queries}>
           <ConnectionDetailDrawer
             projectId={PROJECT}
-            card={{ key: name, status: "connected", meta: {} } as never}
+            card={{ key: name, status: "connected", configured: true, meta: { bindingId: `${CONNECTION}-${name === "coolify" ? "preview" : "live"}` } } as never}
             onClose={() => {}}
           />
         </QueryClientProvider>,
