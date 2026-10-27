@@ -3,7 +3,8 @@
  * to it or of a holder of it is a write, and the guard is refused, unless `readOnly` resolves it as
  * a plain read. What one file's reading still cannot see: a function the catch calls without
  * handing it the error or a holder, which reaches the error through a binding outside the catch the
- * catch stored it in (`lastErr = err; poison()` where `poison` writes `lastErr.code`).
+ * catch stored it in (`lastErr = err; poison()` where `poison` writes `lastErr.code`); and a holder
+ * property declared plain that is a setter at run time (a `Proxy`, a subclass's accessor on `this`).
  */
 
 import ts from 'typescript';
@@ -114,6 +115,21 @@ function primitive(node: ts.Expression, scan: Scan): boolean {
   return type.isUnion() ? type.types.every(flat) : flat(type);
 }
 
+function dataProperty(store: ts.AccessExpression, scan: Scan): boolean {
+  const key = ts.isPropertyAccessExpression(store) ? store.name : store.argumentExpression;
+  const declared = scan.checker.getSymbolAtLocation(key)?.declarations ?? [];
+  return (
+    declared.length > 0 &&
+    declared.every(
+      (d) =>
+        ts.isPropertyDeclaration(d) ||
+        ts.isPropertySignature(d) ||
+        ts.isPropertyAssignment(d) ||
+        ts.isShorthandPropertyAssignment(d),
+    )
+  );
+}
+
 function isWrapper(node: ts.Node): node is ts.Expression & { expression: ts.Expression } {
   return (
     ts.isParenthesizedExpression(node) ||
@@ -183,12 +199,12 @@ function testedOrDone(parent: ts.Node, at: ts.Node): boolean {
 }
 
 /**
- * Whether `mention` only reads the error: a value whose type holds no object; a comparison,
- * `instanceof`, `in`, `!`, `typeof`, `void` or test of it; a `throw`, `return` or statement of it;
- * a binding of a name to it, whose own uses answer; one argument to a `lib/db-errors.ts` reader or a
- * resolved `isX` helper; one store into a holder's property. A property read, cast, `?:`, `&&`,
- * `||`, `??`, comma, literal or assignment holding it reaches on; anything else is a write. Each
- * read ends the reach, runs none of the error's own code, or hands it to a body that only reads.
+ * Whether `mention` only reads the error, by a form that ends the reach or runs none of its code: a
+ * value whose type holds no object; a comparison, `instanceof`, `in`, `!`, `typeof`, `void` or test
+ * of it; a `throw`, `return` or statement of it; a binding of a name, whose own uses answer; one
+ * argument to a `lib/db-errors.ts` reader or resolved `isX` helper; one store into a holder's
+ * property declared plain. A property read, cast, `?:`, `&&`, `||`, `??`, comma, literal or
+ * assignment holding it reaches on; anything else is a write.
  */
 function readOnly(mention: ts.Node, symbol: ts.Symbol, aliases: Aliases, scan: Scan): boolean {
   const holder = !aliases.is.has(symbol);
@@ -207,7 +223,7 @@ function readOnly(mention: ts.Node, symbol: ts.Symbol, aliases: Aliases, scan: S
       parent.expression === at
     ) {
       steps += 1;
-      if (assignedTo(parent)) return holder && steps === 1;
+      if (assignedTo(parent)) return holder && steps === 1 && dataProperty(parent, scan);
       at = parent;
     } else if (ts.isCallExpression(parent)) {
       return parent.expression !== at && readsTheError(parent, symbol, scan);

@@ -440,6 +440,11 @@ import { isUniqueViolation, pgErrorCode } from '../lib/db-errors.js';
 
 declare const flag: boolean;
 class Wrapped extends Error {}
+class Trap {
+  set e(v: unknown) {
+    (v as ${coded}).code = '23505';
+  }
+}
 ${poisoned('refusesAWriteThroughAnAwait', `(await Promise.resolve(err as ${coded})).code = '23505';`)}
 ${poisoned('refusesAWriteThroughAComma', `((0, err) as ${coded}).code = '23505';`)}
 ${poisoned('refusesAWriteThroughAConditional', `((flag ? err : err) as ${coded}).code = '23505';`)}
@@ -454,6 +459,7 @@ ${poisoned('refusesAnAssignOntoTheError', "Object.assign(err as object, { code: 
 ${poisoned('refusesAWriteThroughAMapItWasSetIn', `const m = new Map<number, ${coded}>(); m.set(0, err as ${coded}); m.get(0)!.code = '23505';`)}
 ${poisoned('refusesAWriteThroughAShorthandHolder', `const e = err as ${coded}; const held = { e }; held.e.code = '23505';`)}
 ${poisoned('refusesAUseItCannotRead', 'const seen = String(err);')}
+${poisoned('refusesAStoreIntoASetter', 'const box = new Trap(); box.e = err;')}
 
 export async function refusesAUseBeforeAnExitItDecidesAt(tx: Tx) {
   try {
@@ -615,6 +621,7 @@ describe('a use of the caught error before its guard reads it', () => {
       'refusesAWriteThroughAMapItWasSetIn',
       'refusesAWriteThroughAShorthandHolder',
       'refusesAUseItCannotRead',
+      'refusesAStoreIntoASetter',
       'refusesAUseBeforeAnExitItDecidesAt',
       'refusesAMethodCalledOnAHolder',
     ];
