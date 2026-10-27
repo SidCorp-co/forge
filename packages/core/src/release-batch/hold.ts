@@ -16,6 +16,7 @@ import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
+import type { CriteriaBasis, LandingCriteriaReport } from './criteria-basis.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
 import { type ShippedEarlierUnsettled, withShippedEarlier } from './shipped-earlier-hold.js';
 
@@ -64,7 +65,9 @@ function criteriaNamed(numbers: readonly number[]): string {
 }
 
 /** One clause per distinct reason, carrying every criterion it holds, in first-criterion order. */
-function reasonsByWhy(report: IssueCriteriaReport): string {
+function reasonsByWhy(report: {
+  unearned: ReadonlyArray<{ criterion: number; why: string }>;
+}): string {
   const byWhy = new Map<string, number[]>();
   for (const c of report.unearned) byWhy.set(c.why, [...(byWhy.get(c.why) ?? []), c.criterion]);
   return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
@@ -137,6 +140,35 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
     owes: 'human',
     waitingFor:
       'a verdict on each criterion named at the running deployment, or the issue closed by hand',
+    criteria: report.unearned.map((c) => c.criterion),
+  };
+}
+
+/**
+ * A row weighed at its landing, where a promotion stands between the branch work lands on and the one
+ * production deploys from (`criteria-basis.ts`): what production serves cannot hold the change before
+ * the release that promotes it, so a verdict counts at the landing commit, or on the testing
+ * environment `delivery.judgedOn` names.
+ */
+export function landingCriteriaHold(
+  report: LandingCriteriaReport,
+  basis: Extract<CriteriaBasis, { kind: 'landing' }>,
+): ReleaseHold {
+  const at = report.landing
+    ? `judged at its landing commit \`${report.landing.slice(0, 12)}\` on \`${basis.landsOn}\``
+    : `judged at the commit it landed at on \`${basis.landsOn}\`, once its merge names one`;
+  return {
+    code: 'RELEASE_CRITERIA_UNEARNED',
+    reason:
+      'The automatic release carries only an issue whose every acceptance criterion is earned, and ' +
+      `this one is not — ${reasonsByWhy(report)}. This project's work lands on \`${basis.landsOn}\` ` +
+      `and production deploys \`${basis.deploysFrom}\` through a promotion, so a criterion is earned ` +
+      `where the change has landed, not where production is. A person clears this: record a verdict ` +
+      `on each criterion named, ${at} (or, where \`delivery.judgedOn\` names a testing environment, ` +
+      'one judged there at that commit); or move the issue out of `awaiting_release` if it is not ' +
+      'to ship.',
+    owes: 'human',
+    waitingFor: 'a verdict on each criterion named at its landing commit',
     criteria: report.unearned.map((c) => c.criterion),
   };
 }

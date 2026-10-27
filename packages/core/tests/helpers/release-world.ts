@@ -111,6 +111,32 @@ export async function seedProductionDeployTrigger(
   });
 }
 
+/**
+ * Work lands on the branch production deploys from, with no promotion between: landing IS deploying
+ * production, so the automatic release weighs a criterion at what production serves
+ * (`release-batch/criteria-basis.ts`). The world `declareProduction` seeds crosses a promotion.
+ */
+export async function landOnProduction(projectId: string, updatedBy: string): Promise<void> {
+  const [held] = await rows<{ document: ProjectDocument }>(
+    sql`SELECT document FROM project_config_documents WHERE project_id = ${projectId}`,
+  );
+  const current = held?.document;
+  const production = current
+    ? Object.values(current.environments).find((e) => e.tier === 'production')
+    : undefined;
+  if (!current || !production) {
+    throw new Error(`landOnProduction: project ${projectId} declares no production environment`);
+  }
+  await seedProjectDocument(projectId, updatedBy, {
+    environments: current.environments,
+    promotions: [],
+    // no `deploysFrom` deploys from where work already lands
+    defaultBranch:
+      production.deploysFrom ??
+      (current.source.type === 'git' ? current.source.git.defaultBranch : 'main'),
+  });
+}
+
 /** Answers each https probe url with `answer`, passing every other request through. */
 export function stubProbe(answers: Record<string, () => Response | Promise<Response>>): void {
   const passThrough = globalThis.fetch;

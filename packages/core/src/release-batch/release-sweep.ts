@@ -1,7 +1,9 @@
-// ISS-1117 — an issue at `awaiting_release` releases without a person acting, on a project
-// whose release policy already leaves nobody an act (production deploying `on-land` + a resolvable
-// release gate) and whose waiting issue has every numbered acceptance criterion earned
-// (`criteria-verdicts.ts`). Precedent: `runs-concluded.ts`'s own-tick noticing. The manual
+// ISS-1117 — an issue at `awaiting_release` is cut into a release without a person cutting it, on
+// a project whose production deploys `on-land` with a resolvable release gate, and whose waiting
+// issue has every numbered acceptance criterion earned where the project earns them
+// (`criteria-basis.ts`): at what production serves, or at its landing where a promotion stands
+// between. Where `release.approval.required` is set a person still approves the cut release before
+// production; the sweep only chooses what it carries. Precedent: `runs-concluded.ts`'s own-tick noticing. The manual
 // doors (`collectReleaseBlockers`, `forge advance`) are untouched; this only filters the
 // unattended path. ISS-1215: every way it declines a waiting row is a hold record on that row
 // (`release-batch/hold.ts`), never on the log alone — and so is what `closeShippedEarlier` could
@@ -19,6 +21,7 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
+import { type CriteriaBasis, criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import {
   abortBlockedIssues,
@@ -29,6 +32,7 @@ import {
   criteriaUnreadableHold,
   cutFailedHold,
   gateUnreadableHold,
+  landingCriteriaHold,
   NO_ACTOR_HOLD,
   NO_RELEASE_GATE_HOLD,
   queuedBehindHold,
@@ -202,6 +206,77 @@ async function readCriteria(
   }
 }
 
+type Base = Omit<HoldWrite, 'holdFor' | 'issueIds'>;
+
+/**
+ * The waiting rows the automatic release may carry, every other one held on why. Weighed where the
+ * project's criteria are earned (`criteria-basis.ts`): at what production serves, or, where a
+ * promotion stands between, at each row's landing. Null where nothing is eligible.
+ */
+async function weighWaiting(
+  projectId: string,
+  waiting: string[],
+  base: Base,
+): Promise<string[] | null> {
+  let basis: CriteriaBasis;
+  try {
+    basis = await criteriaBasisOf(projectId);
+  } catch (err) {
+    basis = { kind: 'unread', why: err instanceof Error ? err.message : String(err) };
+  }
+  if (basis.kind === 'unread') {
+    await holdAlike({ ...base, issueIds: waiting }, criteriaUnreadableHold(basis.why));
+    return null;
+  }
+  let excluded: string[];
+  if (basis.kind === 'landing') {
+    const landing = basis;
+    let reports: Awaited<ReturnType<typeof landingCriteriaReports>>;
+    try {
+      reports = await landingCriteriaReports(waiting);
+    } catch (err) {
+      logger.error({ err, projectId }, 'release-sweep: the criteria could not be read');
+      const why = err instanceof Error ? err.message : String(err);
+      await holdAlike({ ...base, issueIds: waiting }, criteriaUnreadableHold(why));
+      return null;
+    }
+    const held = new Map(reports.filter((r) => r.unearned.length > 0).map((r) => [r.issueId, r]));
+    excluded = [...held.keys()];
+    if (excluded.length > 0) {
+      await hold({
+        ...base,
+        issueIds: excluded,
+        holdFor: (id) => landingCriteriaHold(held.get(id) as (typeof reports)[number], landing),
+      });
+    }
+  } else {
+    const reports = await readCriteria(projectId, waiting);
+    if (!reports.ok) {
+      await holdAlike({ ...base, issueIds: waiting }, reports.hold);
+      return null;
+    }
+    reportUncorroborated(projectId, reports.value);
+    const held = reports.value.filter((r) => r.unearned.length > 0);
+    const heldById = new Map(held.map((r) => [r.issueId, r]));
+    excluded = [...heldById.keys()];
+    if (held.length > 0) {
+      reportHeldBack(projectId, held);
+      await holdOnCriteria({ ...base, issueIds: excluded }, heldById);
+    }
+  }
+  base.result.issuesExcluded += excluded.length;
+  const eligible = waiting.filter((id) => !excluded.includes(id));
+  if (eligible.length === 0) {
+    logger.info(
+      { projectId, excluded: excluded.length },
+      'release-sweep: nothing eligible this tick — every waiting issue still owes a judging run ' +
+        'on a criterion named above',
+    );
+    return null;
+  }
+  return eligible;
+}
+
 async function sweepProject(
   projectId: string,
   result: AutomaticReleaseSweepResult,
@@ -243,29 +318,9 @@ async function sweepProject(
     return;
   }
 
-  const reports = await readCriteria(projectId, waiting);
-  if (!reports.ok) {
-    await holdAlike({ ...base, issueIds: waiting }, reports.hold);
-    return;
-  }
-  reportUncorroborated(projectId, reports.value);
-  const held = reports.value.filter((r) => r.unearned.length > 0);
-  const heldById = new Map(held.map((r) => [r.issueId, r]));
-  const eligible = waiting.filter((id) => !heldById.has(id));
-  result.issuesExcluded += held.length;
-  if (held.length > 0) {
-    reportHeldBack(projectId, held);
-    await holdOnCriteria({ ...base, issueIds: held.map((r) => r.issueId) }, heldById);
-  }
-
-  if (eligible.length === 0) {
-    logger.info(
-      { projectId, excluded: held.length },
-      'release-sweep: nothing eligible this tick — every waiting issue still owes a judging run ' +
-        'on a criterion named above',
-    );
-    return;
-  }
+  const eligible = await weighWaiting(projectId, waiting, base);
+  if (!eligible) return;
+  const excluded = waiting.length - eligible.length;
 
   if (!owner) {
     logger.error(
@@ -286,7 +341,7 @@ async function sweepProject(
     result.issuesCut += outcome.named.length;
     await clearReleaseHolds(outcome.named);
     logger.info(
-      { projectId, cut: outcome.named.length, behind: behind.length, excluded: held.length },
+      { projectId, cut: outcome.named.length, behind: behind.length, excluded },
       `release-sweep: ${outcome.output}`,
     );
     return;

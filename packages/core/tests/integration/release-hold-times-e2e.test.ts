@@ -13,6 +13,7 @@ import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
 import {
   fakeCoolify,
+  landOnProduction,
   releaseWorld,
   seedProductionDeployTrigger,
 } from '../helpers/release-world.js';
@@ -61,6 +62,7 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
     async (column, says) => {
       await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] });
       await seedProductionDeployTrigger(projectId, ownerId, 'on-land');
+      await landOnProduction(projectId, ownerId);
       coolify.deployed(APP.resourceUuid, 'dep-1', SERVED, '2026-09-29T11:00:00Z');
       fx.serve(SERVED);
       const id = await fx.judgedRow(SERVED, MERGED);
@@ -98,6 +100,7 @@ describe('a printed reset reaches the release hold as the account claim', () => 
   it('names the printed reset beside the next try where the account printed one, and only there', async () => {
     await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] });
     await seedProductionDeployTrigger(projectId, ownerId, 'on-land');
+    await landOnProduction(projectId, ownerId);
     coolify.deployed(APP.resourceUuid, 'dep-1', SERVED, '2026-09-29T11:00:00Z');
     fx.serve(SERVED);
     const id = await fx.judgedRow(SERVED, MERGED);
@@ -136,6 +139,7 @@ describe('any other time moving in a hold is a new reason (criterion 19)', () =>
   it('records a moved deployment time as a new reason, and a hold written afresh after a clear', async () => {
     await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] }, 'none');
     await seedProductionDeployTrigger(projectId, ownerId, 'on-land');
+    await landOnProduction(projectId, ownerId);
     finishAt(FINISHED);
     const id = await fx.judgedRow(OLDER, MERGED);
     const reason = async () => String((await holdOf(id))?.reason);
@@ -163,6 +167,7 @@ describe('any other time moving in a hold is a new reason (criterion 19)', () =>
   it('keeps one record while only the moment the probe was read moves', async () => {
     await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] });
     await seedProductionDeployTrigger(projectId, ownerId, 'on-land');
+    await landOnProduction(projectId, ownerId);
     finishAt(FINISHED);
     fx.serve(SERVED);
     const id = await fx.judgedRow(OLDER, MERGED);
@@ -182,6 +187,7 @@ describe('the sweep acts on what the database holds, not a cached read', () => {
   it('reads the runner afresh each tick: a reset cleared lets the next tick cut', async () => {
     await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] });
     await seedProductionDeployTrigger(projectId, ownerId, 'on-land');
+    await landOnProduction(projectId, ownerId);
     coolify.deployed(APP.resourceUuid, 'dep-1', SERVED, '2026-09-29T11:00:00Z');
     fx.serve(SERVED);
     const id = await fx.judgedRow(SERVED, MERGED);

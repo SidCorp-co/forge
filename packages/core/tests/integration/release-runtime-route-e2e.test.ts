@@ -23,6 +23,7 @@ import {
 import {
   AT_RELEASE,
   fakeCoolify,
+  landOnProduction,
   RELEASE_LABEL,
   releaseWorld,
   seedProduction,
@@ -62,6 +63,7 @@ const APP = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
 async function bindCoolify(probes: 'none' | 'source' = 'none'): Promise<void> {
   await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] }, probes);
   await seedProductionDeployTrigger(projectId, ownerId, 'on-land');
+  await landOnProduction(projectId, ownerId);
 }
 
 const deployed = (uuid: string, commit: string, at: string, status?: string) =>
@@ -191,7 +193,6 @@ describe('a project nothing can read is told once', () => {
       config: { releaseRunnerLabel: RELEASE_LABEL },
       probes: 'none',
       trigger: 'on-land',
-      deploysFrom: 'production',
     });
   }
 
