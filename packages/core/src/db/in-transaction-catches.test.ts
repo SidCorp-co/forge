@@ -10,7 +10,8 @@ import {
 
 const PLANTED = 'db/in-transaction-catches.planted.ts';
 
-const plant = `import { db, type Db, type Tx } from './client.js';
+const plant = `import type postgres from 'postgres';
+import { db, type Db, type Tx } from './client.js';
 import { rethrowInTransaction } from './in-transaction.js';
 
 class Refused extends Error {}
@@ -28,6 +29,56 @@ function isSeen(err: unknown): boolean {
 
 /** Holds of one error only. */
 function isRefusal(err: unknown): boolean {
+  return (err as { code?: string }).code === '23505';
+}
+
+/** Holds of every object, read by its body. */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
+}
+
+/**
+ * Each below is read by its predicate alone: a body of more than one statement is one the scan does
+ * not read.
+ */
+function isObjectLike(v: unknown): v is Record<string, unknown> {
+  const kind = typeof v;
+  return kind === 'object' && v !== null;
+}
+
+function isErrno(err: unknown): err is NodeJS.ErrnoException {
+  const seen = err instanceof Error;
+  return seen;
+}
+
+function hasMessage(err: unknown): err is { message: string } {
+  const message = (err as { message?: unknown }).message;
+  return typeof message === 'string';
+}
+
+function hasCode(err: unknown): err is { code?: string } {
+  const code = (err as { code?: unknown }).code;
+  return code !== undefined;
+}
+
+function isServerError(err: unknown): err is postgres.PostgresError {
+  const name = (err as { name?: unknown }).name;
+  return name === 'PostgresError';
+}
+
+function isRecordedError(err: unknown): err is Error & Record<string, unknown> {
+  const seen = err instanceof Error;
+  return seen;
+}
+
+/** Names one error by its predicate. */
+function isUniqueViolation(err: unknown): err is postgres.PostgresError & { code: '23505' } {
+  const code = (err as { code?: unknown }).code;
+  return code === '23505';
+}
+
+/** Names one error by its body, whatever its predicate says. */
+function isCoded(err: unknown): err is { code: string } {
   return (err as { code?: string }).code === '23505';
 }
 
@@ -163,6 +214,114 @@ export async function narrowsByAHelperThatHoldsOfAll(tx: Tx) {
     return await tx.execute('select 1' as never);
   } catch (err) {
     if (!isFailure(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByARecordGuard(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isRecord(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByARecordPredicate(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isObjectLike(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAnErrnoPredicate(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isErrno(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAMessagePredicate(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!hasMessage(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAnOptionalPredicate(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!hasCode(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsToEveryServerError(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isServerError(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAnIntersectionOfEvery(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isRecordedError(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByTheNameEveryErrorHas(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as Error).name !== 'Error') throw err;
+    return null;
+  }
+}
+
+export async function narrowsByTheConstructorEveryErrorHas(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as Error).constructor !== Error) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAUniqueViolationPredicate(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByACodedBody(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isCoded(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAServerErrorName(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as Error).name !== 'PostgresError') throw err;
     return null;
   }
 }
@@ -319,6 +478,15 @@ describe('a catch around a statement on a handle that can be a transaction', () 
       ['narrowsToEveryError', 'tx'],
       ['narrowsToAnObject', 'tx'],
       ['narrowsByAHelperThatHoldsOfAll', 'tx'],
+      ['narrowsByARecordGuard', 'tx'],
+      ['narrowsByARecordPredicate', 'tx'],
+      ['narrowsByAnErrnoPredicate', 'tx'],
+      ['narrowsByAMessagePredicate', 'tx'],
+      ['narrowsByAnOptionalPredicate', 'tx'],
+      ['narrowsToEveryServerError', 'tx'],
+      ['narrowsByAnIntersectionOfEvery', 'tx'],
+      ['narrowsByTheNameEveryErrorHas', 'tx'],
+      ['narrowsByTheConstructorEveryErrorHas', 'tx'],
       ['returnsWhenNotNothing', 'tx'],
       ['narrowsByAHelperItCannotRead', 'tx'],
       ['continuesThroughASwitch', 'tx'],
@@ -345,6 +513,9 @@ describe('a catch around a statement on a handle that can be a transaction', () 
     expect(kindOf('returnsForTheNamed')).toBe('narrowed');
     expect(kindOf('narrowsByAHelperThatNamesOne')).toBe('narrowed');
     expect(kindOf('narrowsByCode')).toBe('narrowed');
+    expect(kindOf('narrowsByAUniqueViolationPredicate')).toBe('narrowed');
+    expect(kindOf('narrowsByACodedBody')).toBe('narrowed');
+    expect(kindOf('narrowsByAServerErrorName')).toBe('narrowed');
   });
 
   it('leaves alone a catch on the pool, one around a whole transaction, and a finally whose jump lands inside it', () => {
