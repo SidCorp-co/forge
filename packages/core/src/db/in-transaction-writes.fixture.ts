@@ -19,7 +19,6 @@ function isAssignment(node: ts.Node): node is ts.BinaryExpression {
 /** Where `this` holds the caught error: `this` is no name, so it stands for itself among them. */
 const THIS = { escapedName: 'this' } as unknown as ts.Symbol;
 
-/** The symbol a name or `this` stands for, where `node` is either. */
 function bound(node: ts.Node, scan: Scan): ts.Symbol | undefined {
   if (node.kind === ts.SyntaxKind.ThisKeyword) return THIS;
   return ts.isIdentifier(node) ? scan.checker.getSymbolAtLocation(node) : undefined;
@@ -31,7 +30,6 @@ function mentionsAny(node: ts.Node, among: ReadonlySet<ts.Symbol>, scan: Scan): 
   return ts.forEachChild(node, (c) => mentionsAny(c, among, scan) || undefined) ?? false;
 }
 
-/** The names `body` binds to the caught error, and those holding it in a property. */
 interface Aliases {
   /** The catch's own name, and each name bound to a value mentioning the error, as `const { cause } = err`. */
   is: Set<ts.Symbol>;
@@ -118,11 +116,8 @@ function primitive(node: ts.Expression, scan: Scan): boolean {
 }
 
 /**
- * Whether the access chain `node` writes into the caught error: its root is the error or an alias,
- * or holds one and the chain reaches past the property holding it, or a call along it is one an
- * alias names or is handed an alias, as `get().code` and `Object.getPrototypeOf(err).code`, whose
- * result may be the error or its prototype. A key, or an argument whose type holds no object, only
- * reads the error.
+ * A holder is written into only past the property holding the error; a key, or an argument whose
+ * type holds no object, only reads it.
  */
 function writesThrough(node: ts.Expression, aliases: Aliases, scan: Scan): boolean {
   let depth = 0;

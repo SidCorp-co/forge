@@ -26,12 +26,10 @@ export const STATEMENT_ERRORS = [
 ] as const;
 
 /**
- * Codes an error carries once its session is gone: the driver's for a lost connection, libuv's name
- * for each errno an open TCP or Unix socket's read or write fails with once its peer or the route to
- * it is gone (`recv(2)`, `send(2)`, `tcp(7)`), which the driver rejects a statement with, and the
- * SQLSTATEs the server ends a session with. A code only a connect or a file call raises
- * (`ECONNREFUSED`, `ENOENT`, `EACCES`, `EEXIST`) never reaches a statement on a session already open,
- * so a guard on one names no lost session.
+ * Codes an error carries once its session is gone: the driver's, libuv's name for each errno an
+ * open socket's read or write fails with once its peer or route is gone (`recv(2)`, `send(2)`,
+ * `tcp(7)`), and the SQLSTATEs the server ends a session with. A connect's or a file call's code
+ * (`ECONNREFUSED`, `ENOENT`, `EACCES`) never reaches a statement on a session already open.
  */
 export const SESSION_ENDED_CODES: ReadonlySet<string> = new Set([
   'CONNECTION_CLOSED',

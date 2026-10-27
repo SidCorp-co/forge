@@ -2,11 +2,10 @@ import { sql } from 'drizzle-orm';
 import type { TestDb } from './db.js';
 
 /**
- * Run `body` while the harness holds the advisory lock on `key`, so callers it starts can be caught
- * waiting on that key, and let the key go on every path out of it. `body` starts only once Postgres
- * has granted the lock: a caller started before that could take the key first, and the case would
- * then turn on which connection reached the server first. A holder that fails before it holds the
- * key fails the case with its own error.
+ * Run `body` while the harness holds the advisory lock on `key`, and let the key go on every path
+ * out of it. `body` starts only once Postgres has granted the lock: a caller started before that
+ * could take the key first, and the case would then turn on which connection reached the server
+ * first. A holder that fails before it holds the key fails the case with its own error.
  */
 export async function whileHolding<T>(db: TestDb, key: string, body: () => Promise<T>): Promise<T> {
   let letGo = () => {};
