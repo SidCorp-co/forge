@@ -1,1 +1,0 @@
-**A support turn replacing its resident session no longer dies mid-answer.** The box waits for the closed process to be reaped before spawning, and a message written for a turn still starting goes into that turn alone.

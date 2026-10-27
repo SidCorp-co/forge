@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.337] - 2026-10-27
+
+Support groups answer two simultaneous messages instead of failing the turn
+
+### Fixed
+
+- **A support turn replacing its resident session no longer dies mid-answer.** The box waits for the closed process to be reaped before spawning, and a message written for a turn still starting goes into that turn alone.
+
 ## [0.4.0-dev.336] - 2026-10-27
 
 Operations rooms: Babo and Sy bots act with the asker's own permissions
