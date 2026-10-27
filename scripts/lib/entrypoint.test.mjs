@@ -356,6 +356,26 @@ function entryReads(rel, text) {
         changed = bind(node.left.text, startOf(node.right)) || changed;
       }
       if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isObjectLiteralExpression(node.left) &&
+        isProcess(unwrap(node.right))
+      ) {
+        for (const el of node.left.properties) {
+          const target = ts.isShorthandPropertyAssignment(el)
+            ? el.name
+            : ts.isPropertyAssignment(el) && ts.isIdentifier(el.initializer)
+              ? el.initializer
+              : null;
+          const key = ts.isShorthandPropertyAssignment(el)
+            ? el.name.text
+            : ts.isPropertyAssignment(el)
+              ? keyOf(el.name)
+              : 'argv';
+          if (target && (key === 'argv' || key === null)) changed = bind(target.text, 0) || changed;
+        }
+      }
+      if (
         ts.isCallExpression(node) &&
         ts.isIdentifier(node.expression) &&
         functions.has(node.expression.text)
@@ -775,6 +795,16 @@ describe('no file decides it was launched by hand', () => {
       'scripts/process-spread.mjs',
       'const p = { ...process };\nif (import.meta.filename === p.argv[1]) main();\n',
       1,
+    ],
+    [
+      'scripts/assigned-key.mjs',
+      'let v;\n({ argv: v } = process);\nif (import.meta.filename === v[1]) main();\n',
+      3,
+    ],
+    [
+      'scripts/assigned-short.mjs',
+      'let argv;\n({ argv } = process);\nif (import.meta.filename === argv[1]) main();\n',
+      3,
     ],
     [
       'scripts/from.mjs',
