@@ -680,17 +680,23 @@ function entryReads(rel, text) {
     ) {
       nestedArgv({ elements: node.left.properties }, node);
     }
-    // Code built from a string is code no walk can read.
-    const built =
-      (ts.isCallExpression(node) || ts.isNewExpression(node)) &&
-      ts.isIdentifier(node.expression) &&
-      ['eval', 'Function'].includes(node.expression.text) &&
-      !shadowed(node.expression);
-    if (built)
+    // Code built from a string is code no walk can read: eval and Function however reached, and a
+    // function's own constructor called.
+    const CODE_BUILDERS = ['eval', 'Function'];
+    const builder =
+      (ts.isIdentifier(node) &&
+        CODE_BUILDERS.includes(node.text) &&
+        !naming(node) &&
+        !shadowed(node)) ||
+      (CODE_BUILDERS.includes(propName(node)) && isGlobal(unwrap(node.expression))) ||
+      ((ts.isCallExpression(node) || ts.isNewExpression(node)) &&
+        propName(unwrap(node.expression)) === 'constructor');
+    if (builder) {
       say(
         node,
         `code built from a string, which no walk can read for process or argv: ${node.getText(src)}`,
       );
+    }
     if (ts.isIdentifier(node) && naming(node)) return;
     if (
       !ts.isIdentifier(node) &&
@@ -1020,6 +1026,26 @@ describe('no file decides it was launched by hand', () => {
     [
       'scripts/constructed.mjs',
       "const read = new Function('return process.argv[1]');\nif (import.meta.filename === read()) main();\n",
+      1,
+    ],
+    [
+      'scripts/evaluated-global.mjs',
+      "if (import.meta.filename === globalThis.eval('process.argv[1]')) main();\n",
+      1,
+    ],
+    [
+      'scripts/constructed-global.mjs',
+      "if (import.meta.filename === globalThis.Function('return process.argv[1]')()) main();\n",
+      1,
+    ],
+    [
+      'scripts/evaluated-alias.mjs',
+      "const run = eval;\nif (import.meta.filename === run('process.argv[1]')) main();\n",
+      1,
+    ],
+    [
+      'scripts/constructed-own.mjs',
+      "const read = (() => {}).constructor('return process.argv[1]');\nif (import.meta.filename === read()) main();\n",
       1,
     ],
     [
