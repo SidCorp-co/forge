@@ -144,12 +144,12 @@ describe('when to retry, from Retry-After', () => {
   });
 
   it('never names a time sooner than the server allows', () => {
-    const after = (ms: number) => retryWhen(new ApiError(429, '', 'RATE_LIMITED', undefined, undefined, ms));
-    expect(after(0)).toBe('You can retry now.');
-    expect(after(1_000)).toBe('You can retry in 1 second.');
-    expect(after(89_000)).toBe('You can retry in 89 seconds.');
-    expect(after(149_000)).toBe('You can retry in 3 minutes.');
-    expect(after(8_940_000)).toBe('You can retry in 3 hours.');
+    const toldToWait = (ms: number) => retryWhen(new ApiError(429, '', 'RATE_LIMITED', undefined, undefined, ms));
+    expect(toldToWait(0)).toBe('You can retry now.');
+    expect(toldToWait(1_000)).toBe('You can retry in 1 second.');
+    expect(toldToWait(89_000)).toBe('You can retry in 89 seconds.');
+    expect(toldToWait(149_000)).toBe('You can retry in 3 minutes.');
+    expect(toldToWait(8_940_000)).toBe('You can retry in 3 hours.');
   });
 
   it('adds nothing where the server named no time', () => {
