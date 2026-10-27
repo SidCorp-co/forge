@@ -928,7 +928,7 @@ describe("a toast naming the element it keeps clear of", () => {
     }
   });
 
-  // r51 review F1: toasts taller than the screen leaves scroll in a lane wholly on it, never one pushed above its top.
+  // r51 review F1 (second read): a lane placed at the bottom edge was pushed above the top of the screen.
   it("keeps a lane of toasts taller than the screen leaves wholly on screen, above the tab bar", () => {
     wide(false);
     viewport(390, 600);
@@ -976,7 +976,7 @@ describe("a toast naming the element it keeps clear of", () => {
     }
   });
 
-  // r51 review F2: a toast taller than the screen leaves must scroll in a lane wholly on screen, never push past it.
+  // r51 review F2: the kept lane's cap grew past the screen above the tab bar.
   it("never holds a lane taller than the screen leaves it, so a toast too tall for it scrolls on screen", () => {
     wide(false);
     viewport(390, 600);
