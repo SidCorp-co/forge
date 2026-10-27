@@ -287,16 +287,29 @@ function entryReads(rel, text) {
     argvNames.set(name, start);
     return true;
   };
+  /** A property key's name where the source states it, null where it is computed. */
+  const keyOf = (key) => {
+    if (ts.isIdentifier(key) || ts.isStringLiteralLike(key) || ts.isNumericLiteral(key))
+      return key.text;
+    if (ts.isComputedPropertyName(key) && ts.isStringLiteralLike(key.expression))
+      return key.expression.text;
+    return null;
+  };
   for (let changed = true; changed; ) {
     changed = false;
     visit((node) => {
       if (ts.isVariableDeclaration(node) && node.initializer) {
-        if (ts.isIdentifier(node.name))
+        if (ts.isIdentifier(node.name)) {
           changed = bind(node.name.text, startOf(node.initializer)) || changed;
+          if (isProcess(unwrap(node.initializer)) && !processNames.has(node.name.text)) {
+            processNames.add(node.name.text);
+            changed = true;
+          }
+        }
         if (ts.isObjectBindingPattern(node.name) && isProcess(unwrap(node.initializer))) {
           for (const el of node.name.elements) {
-            const key = el.propertyName ?? el.name;
-            if (ts.isIdentifier(key) && key.text === 'argv' && ts.isIdentifier(el.name)) {
+            const key = keyOf(el.propertyName ?? el.name);
+            if ((key === 'argv' || key === null) && ts.isIdentifier(el.name)) {
               changed = bind(el.name.text, 0) || changed;
             }
           }
@@ -571,6 +584,21 @@ describe('no file decides it was launched by hand', () => {
     [
       'packages/core/src/asserted.ts',
       'const v = <string[]>process.argv;\nif (import.meta.filename === (v as string[])[1]!) main();\n',
+      2,
+    ],
+    [
+      'scripts/quoted.mjs',
+      "const { 'argv': v } = process;\nif (import.meta.filename === v[1]) main();\n",
+      2,
+    ],
+    [
+      'scripts/computed.mjs',
+      "const k = 'argv';\nconst { [k]: v } = process;\nif (import.meta.filename === v[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/process-alias.mjs',
+      'const p = process;\nif (import.meta.filename === p.argv[1]) main();\n',
       2,
     ],
     [
