@@ -420,11 +420,103 @@ export async function narrowsByAClassPatchedWhereTheListStandsElsewhere(tx: Tx) 
 `;
 }
 
+const WRITES = 'db/in-transaction-writes.planted.ts';
+/** A catch that does `use` with the error, then goes on for one code only. */
+const poisoned = (fn: string, use: string) => `
+export async function ${fn}(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    ${use}
+    if (pgErrorCode(err) === '23505') return null;
+    throw err;
+  }
+}
+`;
+const coded = '{ code?: string }';
+/** Uses of the caught error before its guard reads it, each shaped so the guard reads a code it was handed. */
+const writes = `import { type Tx } from './client.js';
+import { isUniqueViolation, pgErrorCode } from '../lib/db-errors.js';
+
+declare const flag: boolean;
+class Wrapped extends Error {}
+class Trap {
+  set e(v: unknown) {
+    (v as ${coded}).code = '23505';
+  }
+}
+${poisoned('refusesAWriteThroughAnAwait', `(await Promise.resolve(err as ${coded})).code = '23505';`)}
+${poisoned('refusesAWriteThroughAComma', `((0, err) as ${coded}).code = '23505';`)}
+${poisoned('refusesAWriteThroughAConditional', `((flag ? err : err) as ${coded}).code = '23505';`)}
+${poisoned('refusesAWriteThroughANullishDefault', `((err ?? {}) as ${coded}).code = '23505';`)}
+${poisoned('refusesAWriteThroughAnOr', `((err || {}) as ${coded}).code = '23505';`)}
+${poisoned('refusesACallbackHandedTheError', `[err as ${coded}].forEach((e) => { e.code = '23505'; });`)}
+${poisoned('refusesAnImmediateCallHandedTheError', `((e: ${coded}) => { e.code = '23505'; })(err as ${coded});`)}
+${poisoned('refusesAPropertyDefinedOnTheError', "Object.defineProperty(err, 'code', { value: '23505' });")}
+${poisoned('refusesAReflectedSet', "Reflect.set(err as object, 'code', '23505');")}
+${poisoned('refusesAWriteToThePrototypeOfTheError', "Object.setPrototypeOf(Object.getPrototypeOf(err), { code: '23505' });")}
+${poisoned('refusesAnAssignOntoTheError', "Object.assign(err as object, { code: '23505' });")}
+${poisoned('refusesAWriteThroughAMapItWasSetIn', `const m = new Map<number, ${coded}>(); m.set(0, err as ${coded}); m.get(0)!.code = '23505';`)}
+${poisoned('refusesAWriteThroughAShorthandHolder', `const e = err as ${coded}; const held = { e }; held.e.code = '23505';`)}
+${poisoned('refusesAUseItCannotRead', 'const seen = String(err);')}
+${poisoned('refusesAStoreIntoASetter', 'const box = new Trap(); box.e = err;')}
+
+export async function refusesAUseBeforeAnExitItDecidesAt(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      console.warn(err);
+      return null;
+    }
+    throw err;
+  }
+}
+
+export class Poisoner {
+  last: ${coded} | undefined;
+  poison() {
+    if (this.last) this.last.code = '23505';
+  }
+  async refusesAMethodCalledOnAHolder(tx: Tx) {
+    try {
+      return await tx.execute('select 1' as never);
+    } catch (err) {
+      this.last = err as ${coded};
+      this.poison();
+      if (pgErrorCode(err) === '23505') return null;
+      throw err;
+    }
+  }
+}
+
+export async function keepsAUseAfterItsOpeningGuard(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    console.warn(err);
+    return null;
+  }
+}
+
+export async function keepsAnErrorItAlwaysThrowsWrapped(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    throw new Wrapped(String(err), { cause: err });
+  }
+}
+
+${poisoned('keepsAStoreReadsAndADiscardedComma', `const box: { e?: unknown; n?: number } = {}; box.e = err; box.n = (err, 1); const message = (err as Error).message; if (typeof err === 'object' && !err && message) throw err;`)}
+`;
+
 const catches = guardedCatches(
   buildProgram(
     new Map([
       [PLANTED, plant],
       [SHIFTED, shifted()],
+      [WRITES, writes],
     ]),
   ),
 );
@@ -501,5 +593,49 @@ describe('a guard the scan reads as naming one error', () => {
   it('counts no code an open socket never fails with, as a connect or a file call raises or a statement carries', () => {
     for (const code of ['ENOENT', 'EEXIST', 'EACCES', 'ECONNREFUSED', 'EMFILE', '23505'])
       expect(SESSION_ENDED_CODES.has(code), code).toBe(false);
+    for (const code of ['CONNECT_TIMEOUT', '08001', '08004', '57P03'])
+      expect(SESSION_ENDED_CODES.has(code), code).toBe(false);
+  });
+});
+
+describe('a use of the caught error before its guard reads it', () => {
+  const kind = (fn: string) => catches.find((c) => c.file === WRITES && c.fn === fn)?.handler;
+  const line = (fn: string) => {
+    const opens = writes.search(new RegExp(`(?:function |async )${fn}\\(`));
+    return writes.slice(0, writes.indexOf('catch', opens)).split('\n').length;
+  };
+
+  it('refuses every use it cannot resolve as a plain read, naming its file, line and function', () => {
+    const refused = [
+      'refusesAWriteThroughAnAwait',
+      'refusesAWriteThroughAComma',
+      'refusesAWriteThroughAConditional',
+      'refusesAWriteThroughANullishDefault',
+      'refusesAWriteThroughAnOr',
+      'refusesACallbackHandedTheError',
+      'refusesAnImmediateCallHandedTheError',
+      'refusesAPropertyDefinedOnTheError',
+      'refusesAReflectedSet',
+      'refusesAWriteToThePrototypeOfTheError',
+      'refusesAnAssignOntoTheError',
+      'refusesAWriteThroughAMapItWasSetIn',
+      'refusesAWriteThroughAShorthandHolder',
+      'refusesAUseItCannotRead',
+      'refusesAStoreIntoASetter',
+      'refusesAUseBeforeAnExitItDecidesAt',
+      'refusesAMethodCalledOnAHolder',
+    ];
+    expect(refusals(catches.filter((c) => c.file === WRITES))).toEqual(
+      refused.map(
+        (fn) =>
+          `${WRITES}:${line(fn)} ${fn} catches a statement on tx, which can be a transaction, and can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back, or give it an EXCEPTIONS entry with its reason`,
+      ),
+    );
+  });
+
+  it('keeps a use after an opening guard, an error it always throws, a store, a read and a discarded comma', () => {
+    expect(kind('keepsAUseAfterItsOpeningGuard')).toBe('narrowed');
+    expect(kind('keepsAnErrorItAlwaysThrowsWrapped')).toBe('narrowed');
+    expect(kind('keepsAStoreReadsAndADiscardedComma')).toBe('narrowed');
   });
 });

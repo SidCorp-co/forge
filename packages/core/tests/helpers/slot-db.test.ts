@@ -142,12 +142,31 @@ describe('sever', () => {
     );
   });
 
-  it('refuses by pid a connection whose terminate threw', async () => {
+  it('refuses by pid a connection whose terminate the server denied, naming what denied it and claiming no wait', async () => {
     const { admin } = stubbornAdmin([43], async () => {
-      throw new Error('permission denied');
+      throw Object.assign(new Error('permission denied to terminate process'), {
+        code: '42501',
+        detail: 'Only roles with the privileges of the "pg_signal_backend" role may terminate it.',
+      });
     });
     // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
-    await expect(sever(admin as any, 'test_w_1_x')).rejects.toThrow('connection(s) 43 outlived');
+    const refusal = await sever(admin as any, 'test_w_1_x').then(
+      () => '',
+      (err: Error) => err.message,
+    );
+    expect(refusal).toContain(
+      `test_w_1_x: Postgres denied this connection's terminate of pid 43: permission denied to terminate process (Only roles with the privileges of the "pg_signal_backend" role may terminate it.)`,
+    );
+    expect(refusal).not.toMatch(/waited|outlived/);
+  });
+
+  it('hands up a terminate that failed for any reason but a denial, as it came', async () => {
+    const lost = Object.assign(new Error('write CONNECTION_CLOSED'), { code: 'CONNECTION_CLOSED' });
+    const { admin } = stubbornAdmin([43], async () => {
+      throw lost;
+    });
+    // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+    await expect(sever(admin as any, 'test_w_1_x')).rejects.toBe(lost);
   });
 
   it('answers how many it ended when none is left', async () => {
