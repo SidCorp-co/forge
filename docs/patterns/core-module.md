@@ -252,7 +252,9 @@ và CLI hơn thì không cần MCP"; on 2026-10-16, that it serves the product l
   on 2026-10-16 that a person works the product from an MCP client: releases, designs, questions
   and issues read each have a tool, and every answer about work in motion says whether it runs and
   when it is likely done. Delivery (deploys, the source host, Sentry, the storefront target)
-  stays REST and the CLI. An MCP client files no issue (`MCP_FILES_FEEDBACK_NOT_ISSUES`). The
+  stays REST and the CLI; a call to a delivery tool's old name is refused `MCP_DELIVERY_IS_REST`
+  naming the routes that replaced it (`packages/core/src/forge-door/retired.ts:RETIRED_MCP_TOOLS`),
+  never answered `Unknown tool`. An MCP client files no issue (`MCP_FILES_FEEDBACK_NOT_ISSUES`). The
   product tools compose several modules with the forecast, which none of them may import, so they
   live in the `product-door` door module.
 - **A tool that stays is one tool per resource with an `action` enum** whose verbs match the
