@@ -87,6 +87,13 @@ artifact outside the system already carries it.
 - **History is not rewritten.** Rows cut before this rule keep their versions. HOP's `0.3.0` and
   `0.4.0` stay aborted and `0.5.0` stays shipped. The link between them is derived at read time from
   roster identity, which is the same rule the cut uses. No migration writes it, and no row changes.
+  The same holds for a landing recorded before a recorded landing took a version (2026-10-26, such
+  as catalog-fe run c7bdb9b9, recorded at 04:57Z, before 0.1.0 at 07:26Z). It claimed no number
+  when it was recorded. A number allocated now would sit above a release that came after it, or
+  below the line in a form the counter never hands out. Either way the page would show a version
+  the landing was never recorded under. So it stays unversioned and claims nothing. The Releases
+  list shows it under "Recorded before versioning", with its branch, commit and issues
+  (`packages/core/src/release-batch/landing-records.ts:landingRecordsOf`).
 
 ## Consequences
 

@@ -409,17 +409,20 @@ export type ReleaseProduction =
 	| { ok: false; reason: string };
 
 /**
- * A landing recorded as the release of a project that declares no production environment: no
- * version and no deploy, only the branch and commit its issues landed at (core
- * `release-batch/recorded-landing.ts`).
+ * A landing recorded as the release of a project that declares no production environment before a
+ * recorded landing took a version (core `release-batch/recorded-landing.ts`, 2026-10-26): no
+ * version and no deploy, only the branch and commit its issues landed at. It claimed no number when
+ * it was recorded and is given none after (ADR 0011); every landing since is a release on the list.
  */
 export interface ReleaseLanding {
 	runId: string;
 	branch: string;
 	commit: string;
 	at: string;
-	/** The issues it closed, by key. */
+	/** The issues it named, by key. */
 	issues: string[];
+	/** False where some issue it named would not close, so the record ended failed. */
+	closedAll: boolean;
 }
 
 export interface ReleaseListResponse {
@@ -427,7 +430,7 @@ export interface ReleaseListResponse {
 	counts: Record<ReleaseAttentionGroup, number>;
 	approvalRequired: boolean;
 	production: ReleaseProduction;
-	/** Landings recorded as releases, newest first; empty on a project with production. */
+	/** Landings recorded before versioning, newest first, on any project; versioned ones are `releases`. */
 	landings: ReleaseLanding[];
 }
 

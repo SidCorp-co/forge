@@ -1,8 +1,9 @@
 import type { ReleaseLanding } from "@forge/contracts/releases";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 
-// The landings a project with no production environment records as its releases: each names the
-// branch and commit its issues landed at, and never reads as a deploy, since nothing was deployed.
+// The landings recorded before a recorded landing took a version (core `landing-records.ts`): each
+// names the branch and commit its issues landed at, says it has no version, and never reads as a
+// deploy, since nothing was deployed. A landing recorded since is a release on the list above.
 
 export function ReleaseLandings({ landings }: { landings: readonly ReleaseLanding[] }) {
   const t = useCopy();
@@ -16,6 +17,7 @@ export function ReleaseLandings({ landings }: { landings: readonly ReleaseLandin
           <li key={l.runId} className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-13" data-testid="release-landing">
             <span className="min-w-0 flex-1">{t("releases.landing", { branch: l.branch, sha: l.commit.slice(0, 7) })}</span>
             <span className="font-mono text-12 text-muted">{l.issues.join(", ")}</span>
+            {l.closedAll ? null : <span className="text-12 text-muted">{t("releases.landing.incomplete")}</span>}
             <span className="text-12 text-muted" title={time.dateTime(l.at)}>
               {time.relative(l.at)}
             </span>

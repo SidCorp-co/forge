@@ -281,9 +281,8 @@ export async function listReleases(
   const counts = Object.fromEntries(
     RELEASE_ATTENTION_GROUPS.map((a) => [a, releases.filter((r) => r.attentionGroup === a).length]),
   ) as ReleaseListResponse['counts'];
-  // Only a project that declares where work lands and no production records landings as releases.
-  const landings =
-    production.ok && production.name === null ? await landingRecordsOf(projectId) : [];
+  // A landing recorded before versioning stays listed after the project declares production.
+  const landings = await landingRecordsOf(projectId);
   return { releases, counts, approvalRequired: required, production, landings };
 }
 
