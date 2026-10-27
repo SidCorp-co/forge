@@ -239,6 +239,7 @@ if (mode === '--update-baseline') {
   );
   const accepted = new Set(
     process.argv
+      .slice(2)
       .filter((a) => a.startsWith('--accept-emptied-scope='))
       .map((a) => a.slice('--accept-emptied-scope='.length)),
   );

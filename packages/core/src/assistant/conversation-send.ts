@@ -44,8 +44,8 @@ import { projects } from '../db/schema.js';
 import type { ConversationMode, ConversationShape } from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
 import {
+  publishAcceptedToReaders,
   publishToConversationReaders,
-  WEB_CONVERSATION_ACCEPTED_EVENT,
   WEB_CONVERSATION_SETTLED_EVENT,
   type WebConversationFrame,
   webConversationPorts,
@@ -272,14 +272,12 @@ export async function sendWebConversationMessage(args: {
     );
   }
 
-  await publishToConversationReaders(collected.conversationId, {
-    event: WEB_CONVERSATION_ACCEPTED_EVENT,
-    data: {
-      conversationId: collected.conversationId,
-      messageId: collected.messageId,
-      seq: collected.seq,
-      clientToken: args.clientToken ?? null,
-    },
+  await publishAcceptedToReaders({
+    conversationId: collected.conversationId,
+    messageId: collected.messageId,
+    seq: collected.seq,
+    senderUserId: args.userId,
+    clientToken: args.clientToken ?? null,
   }).catch((err: unknown) =>
     logger.warn(
       { err, conversationId: collected.conversationId },

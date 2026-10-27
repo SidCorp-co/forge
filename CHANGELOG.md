@@ -3199,6 +3199,9 @@
 
 ### Fixed
 
+- **A message still sending is drawn above the reply it started**, where the room will show it, rather than below it until the room is read again. (ISS-1236)
+- **A new project whose repository settings were refused is not reported unsaved.** The toast says the project was created, which settings were not saved, and that they can be set in its Settings. (ISS-1236)
+- **The id a message is sent under reaches only its sender, over the live connection as well.** Everyone else in the room is told the message arrived without it. (ISS-1236)
 - **A list that failed to load says so with Retry, never as lost or empty**, on Agents, the rail, runner pools, pickers and the bell. Messages sign with a name or "A member"; rooms say which agents answer. (ISS-1229)
 - **Two rows of one integration never read alike.** Each names its label, store or host, then the day it was connected; an Epodsystem row's drawer is about that storefront alone, and Add storefront sits on the Integrations tab. (ISS-1421)
 - **The Integrations pages no longer say "binding".** They speak of connections and deploy targets, as the tab does. (ISS-1421)

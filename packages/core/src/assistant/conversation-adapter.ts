@@ -72,6 +72,29 @@ export async function publishToConversationReaders(
 }
 
 /**
+ * Tell every reader of the room that a typed message is a durable row: the sender's frame carries
+ * the `clientToken` it sent under and every other reader's carries null, as the room read answers it
+ * (ISS-1236 r7). Returns how many sockets took it.
+ */
+export async function publishAcceptedToReaders(accepted: {
+  conversationId: string;
+  messageId: string;
+  seq: number;
+  senderUserId: string;
+  clientToken: string | null;
+}): Promise<number> {
+  const { senderUserId, clientToken, ...data } = accepted;
+  let sockets = 0;
+  for (const userId of await conversationReaders(accepted.conversationId)) {
+    sockets += roomManager.publish(userRoom(userId), {
+      event: WEB_CONVERSATION_ACCEPTED_EVENT,
+      data: { ...data, clientToken: userId === senderUserId ? clientToken : null },
+    });
+  }
+  return sockets;
+}
+
+/**
  * The Forge UI's four ports.
  */
 export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame> = {

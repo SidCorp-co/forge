@@ -52,7 +52,8 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [repoSaved, setRepoSaved] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [onboardError, setOnboardError] = useState<string | null>(null);
-  const update = useUpdateProject(created?.id);
+  // The refusal toast is the dialog's own: only it knows the project already exists (ISS-1236 r7).
+  const update = useUpdateProject(created?.id, { toastFailure: false });
   const onboard = useOnboardProject(created?.id);
 
   // Reset the whole form each time the dialog opens — never leak a prior draft
@@ -155,7 +156,13 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
       setRepoSaved(true);
     } catch (err) {
-      setSeedError(formatApiError(err));
+      const said = formatApiError(err);
+      setSeedError(said);
+      toast({
+        title: 'Project created; its repository settings were not saved',
+        description: `${/[.!?]$/.test(said) ? said : `${said}.`} Set them in the project's Settings, under Repository.`,
+        tone: 'error',
+      });
     }
   }
 

@@ -8,10 +8,7 @@ import { db } from '../db/client.js';
 import { conversationWindows } from '../db/schema-conversations.js';
 import { isUniqueViolation, pgConstraintName } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
-import {
-  publishToConversationReaders,
-  WEB_CONVERSATION_ACCEPTED_EVENT,
-} from './conversation-adapter.js';
+import { publishAcceptedToReaders } from './conversation-adapter.js';
 import type { WebSendResult } from './conversation-send.js';
 
 /** The index that holds one message per sender and client token in a room (migration 0389). */
@@ -57,14 +54,12 @@ export async function repeatedWebSend(args: {
       `web conversations: message ${first.id} (seq ${first.seq}) is in no window of conversation ${args.conversationId}`,
     );
   }
-  await publishToConversationReaders(args.conversationId, {
-    event: WEB_CONVERSATION_ACCEPTED_EVENT,
-    data: {
-      conversationId: args.conversationId,
-      messageId: first.id,
-      seq: first.seq,
-      clientToken: args.clientToken,
-    },
+  await publishAcceptedToReaders({
+    conversationId: args.conversationId,
+    messageId: first.id,
+    seq: first.seq,
+    senderUserId: args.userId,
+    clientToken: args.clientToken,
   }).catch((err: unknown) =>
     logger.warn(
       { err, conversationId: args.conversationId },
