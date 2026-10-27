@@ -14,13 +14,11 @@ interface ErrorStateBase {
   technical?: string;
 }
 
-/** A failed read hands over its error with its Retry, and the one rule decides whether Retry shows; an answer
- *  no read changes is `final` (ISS-1229 r48, r50). */
+/** A failed read hands over its error with its Retry; an answer no read changes is `final` (ISS-1229 r50). */
 export type ErrorStateRetry =
   | { error: unknown; onRetry: () => void; final?: never }
   | { final: true; onRetry?: never; error?: never };
 
-/** `title` names what failed (r46); see `ErrorStateRetry` for its Retry. */
 export type ErrorStateProps = ErrorStateBase &
   ErrorStateRetry & {
     title: string;

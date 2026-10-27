@@ -1,4 +1,4 @@
-import { isRetryableApiError } from "@/lib/api/retry-rule";
+import { isRetryableApiError } from "@/lib/utils/retry-rule";
 import { cn } from "@/lib/utils/cn";
 
 /**

@@ -421,12 +421,11 @@ function roleWords(
   return roles.map((r, i) => `${i === 0 ? word(r.role) : word(r.role).toLowerCase()} on ${nameOf(r.projectId)}`).join(", ");
 }
 
-/** How a person is told apart in a room (ISS-1229 r50, the master's ruling on judge-152): their row's second line,
- *  the words added to their name wherever another person there reads alike, and whether they still read alike. */
+/** How a person is told apart in a room (ISS-1229 r50, the master's ruling on judge-152). */
 export interface PersonStanding {
   /** The row's second line: their role on the room's projects, and whether they opened it. */
   line: string;
-  /** Added after their name in the remove control and its question where another person reads alike; else null. */
+  /** The words added after their name where another person reads alike; else null. */
   apart: string | null;
   /** True where name, role and opening the room all match another person's: the row says so. */
   alike: boolean;
@@ -454,8 +453,6 @@ export function personStanding(
   return { line: `${line} · Can't be told apart from another person here`, apart: null, alike: true };
 }
 
-/** A person's name with the words that tell them apart, where another reads alike: what the remove control and its
- *  question say (criterion 494). */
 function namedApart(
   participant: ConversationParticipant,
   room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">>,
@@ -468,7 +465,7 @@ function namedApart(
   return apart ? `${name} ${apart}` : name;
 }
 
-/** The remove control's name for a member, in the words their row tells them apart by (criterion 494). */
+/** The remove control's name for a member (criterion 494). */
 export function removeControlName(
   participant: ConversationParticipant,
   room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">>,
@@ -546,8 +543,7 @@ export function composerRefusal(
   };
 }
 
-/** The question asked before a member is taken out, naming who (ISS-1229 r23) in the words their row tells
- *  them apart by (r50). */
+/** The question asked before a member is taken out, naming who (ISS-1229 r23). */
 export function removalQuestion(
   participant: ConversationParticipant,
   viewerId?: string | null,

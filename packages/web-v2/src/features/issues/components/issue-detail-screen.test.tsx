@@ -577,7 +577,7 @@ describe("which session holds the issue, while it cannot be read", () => {
     });
   };
 
-  // ISS-1229 r50 (criterion 478): one rule decides Retry; a 409 is a refusal a second read cannot change.
+  // ISS-1229 r50 (criterion 478): one rule decides Retry, and it refuses a 409.
   it("offers no Retry when the read is refused", async () => {
     holds = "refuse";
     renderLive();

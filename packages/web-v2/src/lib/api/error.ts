@@ -36,7 +36,7 @@ const FRIENDLY_CODES: Record<string, string> = {
   UNPARSABLE_MODULE_FLOW: 'A module stores a flow this generator cannot read.',
 };
 
-export { isRetryableApiError } from './retry-rule';
+export { isRetryableApiError } from '@/lib/utils/retry-rule';
 
 /** When the server asked to be asked again, as a sentence; null where it did not say. Each unit is
  *  rounded up, so a retry at the time it names is never sooner than the server allows. */

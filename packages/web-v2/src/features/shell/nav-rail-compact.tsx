@@ -427,8 +427,7 @@ export function NavRailCompact({
 
         {!activeProject && switcherProjects.length === 0 && projectsUnread && (
           <>
-            {/* What failed is visible text, not only the accessible name; the server's why is the switcher's (ISS-1229 r48).
-                The wait the server named is said too, and no Retry is offered where a second read cannot change the answer (r50). */}
+            {/* What failed is visible text, not only the accessible name; the server's why is the switcher's (ISS-1229 r48). */}
             <RailProjectsUnread unread={projectsUnread} />
 
             <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />

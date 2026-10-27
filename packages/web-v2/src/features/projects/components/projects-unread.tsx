@@ -6,14 +6,12 @@ import { formatApiError, retryWhen } from "@/lib/api/error";
 /** A projects read that failed with no list held: why, the failed read itself, and the act that reads it again. */
 export interface ProjectsUnread {
   message: string;
-  /** The failed read, which decides whether Retry is offered (ISS-1229 r50). */
   error: unknown;
   /** How long until a second read is accepted, where the answer said (Retry-After); null where it did not. */
   wait: string | null;
   onRetry: () => void;
 }
 
-/** A failed projects read as the places showing it read it: why, the read, its wait and its Retry. */
 export function projectsUnreadOf(error: unknown, onRetry: () => void): ProjectsUnread {
   return { message: formatApiError(error), error, wait: retryWhen(error), onRetry };
 }

@@ -3199,8 +3199,8 @@
 
 ### Fixed
 
-- **Retry is offered only where reading again can change the answer.** Every screen asks one rule: no answer, a timeout, too early, too many requests or a server error. A refused, missing or invalid read says why, with no Retry; a failure sentence no longer ends in two full stops. (ISS-1229)
-- **A failed read of your organizations or projects is said where you look for them.** The narrow rail says how long to wait before Retry and the open sidebar says the read failed. When the organization you were working in cannot be read, every page says which one is shown instead, and New project waits for it and says why. (ISS-1229)
+- **Retry is offered only where reading again can change the answer**: no answer, a timeout, too many requests or a server error. A refused or missing read says why, without Retry. (ISS-1229)
+- **A failed projects read shows in the sidebar, with the wait before Retry.** When your current organization cannot be read, every page names the one shown instead, and New project waits for it. (ISS-1229)
 - **Two people who read alike in a room are told apart by role, then by who opened it.** Where even that matches, the row and the removal question say so, never a date, an order or an address. (ISS-1229)
 - **The answer modes say what each does**, "Reads the project" or "Works in the repository", and the Creator and Label menus say inside the menu when their choices failed to load. (ISS-1229)
 - **A person with no display name is "A member" everywhere**, in notices, lists, rooms and the Account hint alike; a room's people list no longer adds when they were added. Notices already stored are reworded on deploy. (ISS-1229)

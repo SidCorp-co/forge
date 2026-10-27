@@ -922,8 +922,7 @@ export function IssuesListView({
   );
 }
 
-/** Inside an opened filter menu whose choices could not be read: a line saying so, never a choice
- *  (ISS-1229 r50, judge-152 on criterion 477). Its Retry stands beside the filters. */
+/** The opened menu's own line for a failed read, never a choice; its Retry stands beside the filters (ISS-1229 r50). */
 function unreadChoice(what: string, error: unknown): SelectOption {
   return {
     value: `unread:${what}`,

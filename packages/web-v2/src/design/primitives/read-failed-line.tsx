@@ -1,10 +1,7 @@
 import { RetryButton } from "@/design/primitives/retry-button";
 import { cn } from "@/lib/utils/cn";
 
-/**
- * A part of a page whose read failed, in the place its list or choice would stand: what could not be
- * loaded, why, and Retry where a second read can change the answer. Never the empty list or the missing section a read holding nothing shows (ISS-1229 r48).
- */
+/** A failed read where its list or choice would stand: what, why, and Retry where the one rule allows (ISS-1229 r48). */
 export function ReadFailedLine({
   what,
   why,

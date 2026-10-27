@@ -13,7 +13,6 @@ export function StaleReadLine({
   className,
 }: {
   said: string;
-  /** The failed refresh, which decides whether Retry is offered (ISS-1229 r50). */
   error: unknown;
   onRetry?: (() => void) | undefined;
   className?: string;
