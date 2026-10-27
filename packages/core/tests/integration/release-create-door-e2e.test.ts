@@ -151,10 +151,11 @@ interface Entry {
   httpStatus: number;
   message: string;
   details?: Record<string, unknown>;
+  reader?: string;
 }
 
-/** Readiness's entries as a caller reads them; the `reader` sentence beside each is the screen's
- *  alone, so it is checked present and left out of what the two doors must agree on. */
+/** Readiness's entries, each with the `reader` sentence a person reads. The create door carries the
+ *  same sentence in its details since ISS-1421 r37, so the two doors agree on it too. */
 async function readiness(w: World): Promise<Entry[]> {
   const res = await app.request(`/api/projects/${w.projectId}/release-readiness`, {
     headers: { Authorization: `Bearer ${w.token}` },
@@ -162,7 +163,7 @@ async function readiness(w: World): Promise<Entry[]> {
   expect(res.status).toBe(200);
   const listed = ((await res.json()) as { blockers: Array<Entry & { reader: string }> }).blockers;
   for (const b of listed) expect(typeof b.reader).toBe('string');
-  return listed.map(({ reader: _reader, ...caller }) => caller);
+  return listed;
 }
 
 async function create(w: World, issueIds: string[]) {
@@ -196,8 +197,9 @@ async function expectDoorsAgree(w: World, issueIds: string[]): Promise<string[]>
   expect(refused.status).toBe(head?.httpStatus);
   expect(refused.body.code).toBe(head?.code);
   expect(refused.body.message).toBe(head?.message);
-  const { alsoBlocking, ...details } = refused.body.details ?? {};
+  const { alsoBlocking, reader, ...details } = refused.body.details ?? {};
   expect(details).toEqual(head?.details ?? {});
+  expect(reader).toBe(head?.reader);
   expect(alsoBlocking ?? []).toEqual(rest);
   return listed.map((b) => b.code);
 }
