@@ -40,7 +40,7 @@ function walk(rel, acc, exts) {
   return acc;
 }
 
-const parsed = parseMode(process.argv, ['--all'], 'check-provider-literals.mjs');
+const parsed = parseMode(process.argv.slice(2), ['--all'], 'check-provider-literals.mjs');
 if (parsed.error) die(parsed.error);
 
 const { manifest, error } = readManifest(ROOT);

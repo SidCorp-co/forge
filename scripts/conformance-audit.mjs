@@ -24,6 +24,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { branchSetFaults, ciBranches, mergeTarget } from './lib/base-branch.mjs';
+import { entryOf } from './lib/entry-of.mjs';
 import { SIZE_RULES } from './lib/lint-budget.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
@@ -210,7 +211,7 @@ function biomeConfigs(dir = '', depth = 0, acc = []) {
 
 function uncountedWarnRules() {
   const scopesOf = (key) =>
-    (manifest?.checkers?.[key]?.scopes ?? []).map((s) => s.cwd).filter(Boolean);
+    (entryOf(manifest?.checkers, key)?.scopes ?? []).map((s) => s.cwd).filter(Boolean);
   const lint = scopesOf('lint-budget');
   const size = scopesOf('size-budget');
   const gaps = [];
@@ -412,7 +413,7 @@ for (const r of RULES) {
 }
 
 function shortfall(name) {
-  const p = PROFILES[name];
+  const p = entryOf(PROFILES, name);
   const miss = [];
   if (lvl(1) < p.at1) miss.push(`needs ${p.at1} axis/axes at level>=1, has ${lvl(1)}`);
   if (lvl(2) < p.at2) miss.push(`needs ${p.at2} at level>=2, has ${lvl(2)}`);
@@ -450,13 +451,13 @@ if (!claimed) {
   console.log('so the claim is one somebody else can fail you on.\n');
   process.exit(failed > 0 ? 1 : 0);
 }
-if (!PROFILES[claimed])
+if (!entryOf(PROFILES, claimed))
   die(`unknown profile "${claimed}" — one of ${Object.keys(PROFILES).join(', ')}`);
 
 const miss = shortfall(claimed);
 if (miss.length === 0) {
   console.log(
-    `\nconformance: meets the "${claimed}" profile it claims — ${PROFILES[claimed].blurb}\n`,
+    `\nconformance: meets the "${claimed}" profile it claims — ${entryOf(PROFILES, claimed).blurb}\n`,
   );
   process.exit(0);
 }

@@ -107,9 +107,9 @@ export function sortDeep(files) {
   );
 }
 
-/** @returns `{mode}` for a recognised mode, `{error}` otherwise — the caller exits 2. */
-export function parseMode(argv, allowed, script) {
-  const mode = argv[2] ?? '--all';
+/** `args` are the arguments after the script. @returns `{mode}` for a recognised mode, `{error}` otherwise — the caller exits 2. */
+export function parseMode(args, allowed, script) {
+  const mode = args[0] ?? '--all';
   if (!allowed.includes(mode)) return { error: `usage: ${script} [${allowed.join('|')}]` };
   return { mode };
 }

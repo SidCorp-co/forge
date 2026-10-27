@@ -18,6 +18,7 @@ const CARRIED = [
   'lib/base-branch.mjs',
   'lib/release-record.mjs',
   'lib/markdown.mjs',
+  'lib/entry-of.mjs',
 ];
 
 const SEALED_ENV = { PATH: process.env.PATH ?? '', LC_ALL: 'C' };

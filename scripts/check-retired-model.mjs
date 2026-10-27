@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { launched } from './lib/entrypoint.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
-const JSON_OUT = process.argv.includes('--json');
+const JSON_OUT = process.argv.slice(2).includes('--json');
 
 const SKIP =
   /(^|[/\\])(node_modules|\.next|dist|target|coverage|\.git|\.turbo|\.worktrees)([/\\]|$)/;

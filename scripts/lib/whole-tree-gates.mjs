@@ -1,11 +1,27 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { types } from 'node:util';
 import { climbsAfterMagic, globBase, physical } from './whole-tree-shell.mjs';
 
 export const DECLARATION_VALUES = ['whole-tree'];
+
+/** Where `id` resolves from the package at `dir`, or null where it does not: a path, nothing loaded. */
+export function resolveFrom(dir, id) {
+  try {
+    return createRequire(join(dir, 'package.json')).resolve(id);
+  } catch (e) {
+    if (e?.code !== 'MODULE_NOT_FOUND') throw e;
+    return null;
+  }
+}
+
+/** Core's TypeScript, by its literal name: kept here, out of the launch-check walk's reach (ISS-1236 r10). */
+export function coreTypescript(root) {
+  return createRequire(join(root, 'packages/core/package.json'))('typescript');
+}
 
 /** A declaration line: `@gate-input <value>`, opening a `//` comment or a line of a block comment. */
 const DECLARATION_RE = /^[ \t]*(?:\/\/|\/\*\*?|\*)[ \t]*@gate-input\b[ \t]*([^\s*]*)/gm;

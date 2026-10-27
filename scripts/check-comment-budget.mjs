@@ -40,7 +40,7 @@ function die(reason) {
 }
 
 const parsed = parseMode(
-  process.argv,
+  process.argv.slice(2),
   ['--all', '--changed', '--staged', '--update-baseline'],
   'check-comment-budget.mjs',
 );

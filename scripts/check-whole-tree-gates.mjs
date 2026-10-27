@@ -12,11 +12,11 @@
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { entryOf } from './lib/entry-of.mjs';
 import { CONFIG_RE } from './lib/test-reachability.mjs';
 import {
   declarationExit,
@@ -25,6 +25,8 @@ import {
   judgeDeclarations,
   judgeGlobs,
   judgeRun,
+  coreTypescript as loadCoreTypescript,
+  resolveFrom as resolvedFrom,
   runDirOf,
   SOURCE_FILE_RE,
   suiteMessage,
@@ -32,7 +34,7 @@ import {
 } from './lib/whole-tree-gates.mjs';
 
 const ROOT = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
-const RUN = process.argv.includes('--run');
+const RUN = process.argv.slice(2).includes('--run');
 
 function die(msg) {
   console.error(`whole-tree-gates: ${msg}`);
@@ -42,15 +44,13 @@ function die(msg) {
 /** Where `id` resolves from the package at `dir`, or exit 2: a checkout with no dependencies
  * installed cannot run this check, which is not a refusal of anything in the tree. */
 function resolveFrom(dir, id) {
-  try {
-    return createRequire(join(dir, 'package.json')).resolve(id);
-  } catch (e) {
-    if (e?.code !== 'MODULE_NOT_FOUND') throw e;
+  const path = resolvedFrom(dir, id);
+  if (path === null)
     return die(
       `\`${id}\` does not resolve from ${relative(ROOT, dir) || '.'}, so this check cannot run here — ` +
         'run `pnpm install` first. Exit 2: an uninstalled checkout is not a refused tree.',
     );
-  }
+  return path;
 }
 
 const ls = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
@@ -78,7 +78,7 @@ const globs = files.some((f) => GLOB_CALL_RE.test(f.source))
 
 function coreTypescript() {
   resolveFrom(join(ROOT, 'packages/core'), 'typescript');
-  return createRequire(join(ROOT, 'packages/core/package.json'))('typescript');
+  return loadCoreTypescript(ROOT);
 }
 /** The root and `test.setupFiles` vitest resolves for a config, loaded by the vitest its package
  * declares and started from the directory the config is run from. */
@@ -207,7 +207,7 @@ try {
     for (const row of rows) {
       const rel = relative(ROOT, row.file);
       if (!(rel in executed)) continue;
-      executed[rel] += row.ran;
+      executed[rel] = entryOf(executed, rel) + row.ran;
       // A module that failed with no case passing or failing never reached its assertions: an
       // import, a throw at load, or a hook that threw and left its cases skipped.
       if (row.state === 'failed' && row.ran === 0) {

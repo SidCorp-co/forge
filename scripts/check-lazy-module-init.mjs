@@ -153,7 +153,7 @@ export function importTimeReads(path, text) {
       const parent = node.parent;
       const record = (name, at) => {
         const { line } = sourceFile.getLineAndCharacterOfPosition(at.getStart(sourceFile));
-        found.push({ line: line + 1, name, text: (lines[line] ?? '').trim() });
+        found.push({ line: line + 1, name, text: (lines.at(line) ?? '').trim() });
       };
 
       // `ns.env` / `ns.db` through a namespace import. Read off the property access so the namespace
@@ -183,7 +183,7 @@ export function importTimeReads(path, text) {
 if (launched(import.meta.url)) main();
 
 function main() {
-  if (!process.argv.includes('--all')) {
+  if (!process.argv.slice(2).includes('--all')) {
     die(
       'only --all is supported: the property is repo-wide and a subset reports clean on a tree that is not',
     );

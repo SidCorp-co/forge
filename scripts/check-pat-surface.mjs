@@ -142,7 +142,9 @@ function patternMatches(pattern, path) {
   const want = pattern.split('/');
   const have = path.split('/');
   if (have.length < want.length) return false;
-  return want.every((seg, i) => (seg.startsWith(':') ? (have[i] ?? '') !== '' : seg === have[i]));
+  return want.every((seg, i) =>
+    seg.startsWith(':') ? (have.at(i) ?? '') !== '' : seg === have.at(i),
+  );
 }
 
 function declarationFindings(resources, excluded) {
@@ -345,7 +347,7 @@ function routesOf(file, varName) {
     }
   }
   return marks.map((mk, idx) => {
-    const end = idx + 1 < marks.length ? marks[idx + 1].line : lines.length;
+    const end = idx + 1 < marks.length ? marks.at(idx + 1).line : lines.length;
     return { ...mk, body: lines.slice(mk.line, end).join('\n') };
   });
 }
