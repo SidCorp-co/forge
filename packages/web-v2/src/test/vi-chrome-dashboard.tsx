@@ -19,9 +19,9 @@ export const SCREENS: ChromeScreen[] = [
         <BaFigures
           slug="hop"
           requirements={[{ state: "in_delivery", count: 2 }, { state: "delivered", count: 1 }] as never}
-          feedback={{ open: 3, untriaged: 1, stuck: 1 }}
-          release={null}
-          clock={clock}
+          criteria={{ proven: 3, total: 8 }}
+          feedback={{ open: 3, untriaged: 1, stuck: 1, moving: 1 }}
+          release={{ version: "0.1.0", progress: { total: 3, shipped: 1, awaitingRelease: 1, toDo: 1 } }}
         />
         <LandsThisWeek slug="hop" clock={clock} rows={[row("REQ-2"), row("REQ-3", { release: { version: "0.1.0", who: say("standing.who.holderOf", { perm: "releases.approve" }) } }), row("REQ-4", { release: { version: "0.1.0", who: say("standing.who.holderOf", { perm: "releases.approve" }) } })]} />
       </>

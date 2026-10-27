@@ -142,6 +142,21 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     expect(first.textContent?.split("What happens next on it").length).toBe(2);
   });
 
+  // the project home draws each decision dense: what it changes, its impact and the why sit behind the question
+  it("draws a dense decision as its question and buttons, the stakes and the why a hover away", () => {
+    renderWithQuery(<DecisionList read={READ} slug="hop" dense />);
+    const first = screen.getAllByTestId("needs-you-decision")[0];
+    if (!first) throw new Error("no decision drawn");
+    expect(within(first).queryByTestId("needs-you-decision-stakes")).toBeNull();
+    expect(within(first).queryByTestId("needs-you-decision-recommended")).toBeNull();
+    expect(within(first).queryByTestId("needs-you-decision-effects")).toBeNull();
+    const question = within(first).getByTestId("needs-you-decision-question");
+    expect(question.getAttribute("title")).toBe(
+      'Keep the old export format or move to the new one?\nChanges: What happens next on it\nImpact: It waits on this until it is decided.\nWhoever asked recommends "Move to the new one".',
+    );
+    expect(within(first).getByRole("button", { name: "Move to the new one" })).toHaveAttribute("title", "Sends this answer to the run that asked.");
+  });
+
   it("posts the button's own body to its route as the person, and says it was sent", async () => {
     const calls = fakeCore(() => ({ body: { ok: true } }));
     renderWithQuery(<DecisionList read={READ} slug="hop" />);

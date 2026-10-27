@@ -61,6 +61,7 @@ describe("the BA dashboard", () => {
     expect(requirementsByState([r("deferred")]).at(-1)).toEqual({ state: "deferred", count: 1 });
     const f = (phase: string, attentionGroup: string, stuck: boolean) => ({ phase, attentionGroup, times: { stuck: stuck ? { code: "nobody_serves" } : null } }) as never;
     // a month-old item core does not read stuck is not counted, whatever its age; a declined one is not open
-    expect(feedbackFigures([f("new", "needs_you", false), f("triaged", "stuck", true), f("verified", "done", false), f("declined", "done", false), f("reopened", "needs_you", true)])).toEqual({ open: 3, untriaged: 2, stuck: 2 });
+    expect(feedbackFigures([f("new", "needs_you", false), f("triaged", "stuck", true), f("verified", "done", false), f("declined", "done", false), f("reopened", "needs_you", true)])).toEqual({ open: 3, untriaged: 2, stuck: 2, moving: 0 });
+    expect(feedbackFigures([f("triaged", "needs_you", false), f("new", "needs_you", false), f("new", "stuck", true)])).toEqual({ open: 3, untriaged: 2, stuck: 1, moving: 1 });
   });
 });

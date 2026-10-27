@@ -41,3 +41,11 @@ export function atRiskRows(status: ProjectStatus | undefined, slug: string): AtR
   }
   return [...rows.values()];
 }
+
+/** Every record at risk: the rows listed, and the stuck items the status read counts and does not list. */
+export function atRiskCount(status: ProjectStatus, slug: string): number {
+  return atRiskRows(status, slug).length + unlistedStuck(status);
+}
+
+/** Stuck issues and feedback the status read counts and does not list (every stuck requirement is listed). */
+export const unlistedStuck = (status: ProjectStatus): number => Math.max((status.stuck?.count ?? 0) - (status.stuck?.items.length ?? 0), 0);

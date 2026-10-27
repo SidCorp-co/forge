@@ -21,7 +21,7 @@ const SURFACES: Surface[] = [
     path: "/projects/hop",
     render: () => (
       <Live>
-        <BaFigures slug="hop" requirements={[{ state: "in_delivery", count: 4 }, { state: "agreed", count: 2 }] as never} feedback={{ open: 12, untriaged: 2, stuck: 1 }} release={null} clock={clock} />
+        <BaFigures slug="hop" requirements={[{ state: "in_delivery", count: 4 }, { state: "agreed", count: 2 }] as never} criteria={null} feedback={{ open: 12, untriaged: 2, stuck: 1, moving: 9 }} release={null} />
         <ProjectHome projectId={PH} slug="hop" />
       </Live>
     ),

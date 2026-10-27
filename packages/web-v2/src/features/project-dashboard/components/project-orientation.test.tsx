@@ -1,7 +1,7 @@
 // The HOP journey walk (2026-10-08): the first screen was a release ticker and a 33-row ask table;
 // what HOP is, its modules and where it stands sat below 1.75 screens or nowhere. The home opens
-// with a header that says what the project is, its business modules, what is in delivery now, the
-// release, and what comes next; each line says so plainly when there is nothing to show.
+// with a header that says what the project is, its business modules, what is in delivery now and
+// what comes next, as chips with a count; each line says so plainly when there is nothing to show.
 
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -17,8 +17,6 @@ const HOP: OrientationProps = {
   modules: Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, name: `Module ${i + 1}`, slug: `module-${i + 1}` })),
   now: [item("REQ-7", "Referrals"), item("REQ-10", "Recall"), item("REQ-28", "Loyalty"), item("REQ-31", "No-show")],
   next: [item("REQ-12", "Campaign approval")],
-  live: { version: "0.5.0", where: "hop.auto.sidcorp.co" },
-  draft: { version: "0.6.0", eta: "around 14 Oct" },
 };
 
 const line = (name: string) => within(screen.getByTestId(`orient-${name}`));
@@ -36,21 +34,25 @@ describe("a project home that orients", () => {
     expect(line("modules").getByRole("link", { name: "+2 more" })).toHaveAttribute("href", "/projects/hop/modules");
   });
 
-  it("says what is in delivery now, the release, and what comes next", () => {
+  it("says what is in delivery now and what comes next, each a chip with its count", () => {
     render(<ProjectOrientation {...HOP} />);
-    expect(screen.getByTestId("orient-now")).toHaveTextContent("4 requirements in delivery");
+    expect(screen.getByTestId("orient-now")).toHaveTextContent(/^Now4/);
     expect(line("now").getByRole("link", { name: "REQ-7 Referrals" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-7");
-    expect(screen.getByTestId("orient-release")).toHaveTextContent("0.5.0 is live at hop.auto.sidcorp.co");
-    expect(screen.getByTestId("orient-release")).toHaveTextContent("0.6.0 is being prepared, around 14 Oct");
+    expect(line("now").getAllByRole("link")).toHaveLength(4);
     expect(line("next").getByRole("link", { name: "REQ-12 Campaign approval" })).toBeInTheDocument();
   });
 
+  it("names four requirements a row and counts the rest", () => {
+    render(<ProjectOrientation {...HOP} now={[...HOP.now, item("REQ-40", "Recall SMS"), item("REQ-41", "Waitlist")]} />);
+    expect(line("now").getAllByRole("link")).toHaveLength(4);
+    expect(screen.getByTestId("orient-now")).toHaveTextContent("+2 more");
+  });
+
   it("says so plainly where a line has nothing to show", () => {
-    render(<ProjectOrientation slug="hop" description={null} modules={[]} now={[]} next={[]} live={null} draft={null} />);
+    render(<ProjectOrientation slug="hop" description={null} modules={[]} now={[]} next={[]} />);
     expect(screen.getByTestId("orient-description")).toHaveTextContent("No description");
     expect(screen.getByTestId("orient-modules")).toHaveTextContent("No modules");
     expect(screen.getByTestId("orient-now")).toHaveTextContent("Nothing now");
-    expect(screen.getByTestId("orient-release")).toHaveTextContent("No release");
     expect(screen.getByTestId("orient-next")).toHaveTextContent("Nothing next");
   });
 });
