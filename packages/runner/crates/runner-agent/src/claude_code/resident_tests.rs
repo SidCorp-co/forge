@@ -266,3 +266,29 @@ async fn a_session_with_a_turn_being_placed_is_held_here() {
     drop(again);
     assert!(!runner.holds(&key).await);
 }
+
+/// Two closes of one resident overlap (core ending its residency while a turn replaces it): the one
+/// that timed out reaches its kill only after the resident was reaped and the replacement adopted.
+/// It kills nothing that is not the process it was closing.
+#[tokio::test]
+async fn a_late_kill_from_an_overlapping_close_never_touches_the_replacement() {
+    let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "device-token", 1);
+    stand_in(&runner, "s", "cat >/dev/null", true).await;
+    let closing = runner
+        .sessions
+        .lock()
+        .await
+        .get("s")
+        .map(|s| s.ended.clone())
+        .expect("the resident is held");
+    runner.close(&"s".to_string()).await;
+    let new = stand_in(&runner, "s", "cat >/dev/null", true).await;
+    runner.kill_holder("s", &closing).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        alive(new),
+        "a close's late kill reached the replacement adopted under the key it was closing"
+    );
+    assert_eq!(held_pid(&runner, "s").await, Some(new));
+    runner.close(&"s".to_string()).await;
+}

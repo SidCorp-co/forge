@@ -374,6 +374,22 @@ impl ClaudeCodeRunner {
         }
     }
 
+    /// Kill the process holding `id`, but only while it is still the one `ended` watches: a close
+    /// that timed out may run this after that process was reaped and a replacement adopted under
+    /// the same key, and the replacement is not its to kill.
+    pub(crate) async fn kill_holder(&self, id: &str, ended: &tokio::sync::watch::Receiver<bool>) {
+        let child = self
+            .sessions
+            .lock()
+            .await
+            .get_mut(id)
+            .filter(|s| s.ended.same_channel(ended))
+            .and_then(|s| s.child.take());
+        if let Some(mut child) = child {
+            graceful_kill(&mut child).await;
+        }
+    }
+
     /// Close whatever process holds `id` and return only once it is reaped and its entry gone,
     /// killing it where it has not ended within the close grace. Nothing may be spawned under a key
     /// a live process still holds: its completion task reaps by that key, and before this waited
@@ -397,15 +413,7 @@ impl ClaudeCodeRunner {
             "[claude] session={id} had not ended {}s after its stdin closed — killing it",
             self.close_grace.as_secs()
         );
-        let child = self
-            .sessions
-            .lock()
-            .await
-            .get_mut(id)
-            .and_then(|s| s.child.take());
-        if let Some(mut child) = child {
-            graceful_kill(&mut child).await;
-        }
+        self.kill_holder(id, &ended).await;
         if ended_within(ended, KILL_GRACE).await {
             return Ok(());
         }
