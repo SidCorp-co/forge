@@ -364,6 +364,276 @@ describe("a toast marked keep", () => {
 });
 
 
+// ISS-1236 r9, judge-149: at 390 the refused-repository toast stood over the path field it told the
+// person to correct (32 of 349 px left to tap) for its whole reading time, and over its right half at
+// 1280. A toast naming that field takes the lane to an edge that leaves it clear.
+describe("a toast naming the element it keeps clear of", () => {
+  const wide = (matches: boolean) => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: (query: string) => ({ matches, media: query, addEventListener: () => {}, removeEventListener: () => {} }),
+    });
+  };
+  const viewport = (width: number, height: number) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+  };
+  /** Each element's box by what it is: the lane, the dialog's panel, the field, or nothing. */
+  const boxes = (by: Record<string, Partial<DOMRect>>) =>
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const key = this.dataset.testid ?? (this.getAttribute("role") === "dialog" ? "dialog" : this.tagName.toLowerCase());
+      return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, ...by[key] } as DOMRect;
+    });
+  let field: HTMLInputElement | null = null;
+  function Dialog() {
+    return (
+      <SlideOver open onClose={() => {}} title="Set up pipeline">
+        <input
+          data-testid="path"
+          ref={(el) => {
+            field = el;
+          }}
+        />
+      </SlideOver>
+    );
+  }
+  const refused = { title: "Project created; its repository settings were not saved", tone: "error" as const };
+  const original = { width: window.innerWidth, height: window.innerHeight };
+  afterEach(() => {
+    Reflect.deleteProperty(window, "matchMedia");
+    viewport(original.width, original.height);
+  });
+
+  it("goes to the bottom edge on a phone when the top would stand over the field, with no tab bar under a dialog", () => {
+    wide(false);
+    viewport(390, 844);
+    const spy = boxes({
+      "toast-lane": { top: 61, bottom: 361, height: 300, width: 390, left: 0, right: 390 },
+      path: { top: 241, bottom: 283, left: 21, right: 370 },
+      dialog: { left: 0, right: 390 },
+      header: { bottom: 61 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Dialog />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: () => field }));
+      const lane = screen.getByTestId("toast-lane");
+      expect(lane.style.top).toBe("auto");
+      expect(lane.style.bottom).toBe("0px");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("goes beside the dialog on a wide screen, its right edge at the dialog's left", () => {
+    wide(true);
+    viewport(1280, 900);
+    const spy = boxes({
+      "toast-lane": { top: 56, bottom: 336, height: 280, width: 360, left: 920, right: 1280 },
+      path: { top: 221, bottom: 259, left: 841, right: 1260 },
+      dialog: { left: 820, right: 1280 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Dialog />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: () => field }));
+      const lane = screen.getByTestId("toast-lane");
+      expect(lane.style.right).toBe("460px");
+      expect(lane.style.bottom).toBe("");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // r9 plan consult F1: in a viewport too short for either edge, neither edge leaves the field clear.
+  it("takes the larger space beside the field, capped to it, where neither edge leaves it clear", () => {
+    wide(false);
+    viewport(390, 240);
+    const spy = boxes({
+      "toast-lane": { top: 61, bottom: 145, height: 84, width: 390, left: 0, right: 390 },
+      path: { top: 135, bottom: 177, left: 21, right: 370 },
+      header: { bottom: 61 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Dialog />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: () => field }));
+      const lane = screen.getByTestId("toast-lane");
+      // Above the field: 61 to 135 is 74 px; below it: 177 to 240 is 63 px.
+      expect(lane.style.top).toBe("61px");
+      expect(lane.style.maxHeight).toBe("74px");
+      // r9 review F1 (second read): the cap is the whole box, padding included, so a gap smaller than
+      // the lane's padding is not overrun by it.
+      expect(lane.style.paddingTop).toBe("0px");
+      expect(lane.style.paddingBottom).toBe("0px");
+      const top = Number.parseFloat(lane.style.top);
+      expect(top + Number.parseFloat(lane.style.maxHeight)).toBeLessThanOrEqual(135);
+
+      // r9 review F1: the capped lane now measures 74 px, padding gone, its toasts 60 px of the 84 px it
+      // takes uncapped. A later scroll must read back neither the cap nor the lost padding, and lift it.
+      spy.mockImplementation(function (this: HTMLElement) {
+        const by: Record<string, Partial<DOMRect>> = {
+          "toast-lane": { top: 61, bottom: 135, height: 74, width: 390, left: 0, right: 390 },
+          path: { top: 135, bottom: 177, left: 21, right: 370 },
+          header: { bottom: 61 },
+        };
+        const key = this.dataset.testid ?? this.tagName.toLowerCase();
+        return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, ...by[key] } as DOMRect;
+      });
+      const tall = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(60);
+      try {
+        act(() => {
+          window.dispatchEvent(new Event("scroll"));
+        });
+        expect(lane.style.top).toBe("61px");
+        expect(lane.style.maxHeight).toBe("74px");
+      } finally {
+        tall.mockRestore();
+      }
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // r9 review F2: a phone's bottom safe-area lifts the bottom edge; the check that clears the field
+  // must lift it the same, or the lane it places covers the field.
+  it("counts the bottom safe-area in the place it checks, as in the place it sets", () => {
+    wide(false);
+    viewport(390, 300);
+    const spy = boxes({
+      "toast-lane": { top: 61, bottom: 166, height: 105, width: 390, left: 0, right: 390 },
+      path: { top: 140, bottom: 190, left: 21, right: 370 },
+      header: { bottom: 61 },
+    });
+    const real = window.getComputedStyle;
+    const styled = vi.spyOn(window, "getComputedStyle").mockImplementation((el: Element, pseudo?: string | null) => {
+      const style = real(el, pseudo);
+      if ((el as HTMLElement).style?.visibility !== "hidden") return style;
+      return { ...style, paddingTop: "0px", paddingBottom: "34px" } as CSSStyleDeclaration;
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Dialog />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: () => field }));
+      const lane = screen.getByTestId("toast-lane");
+      // At the bottom it would span 161 to 266 over a field at 140 to 190: above it, 61 to 140, is larger.
+      expect(lane.style.bottom).toBe("");
+      expect(lane.style.top).toBe("61px");
+      expect(Number.parseFloat(lane.style.top) + Number.parseFloat(lane.style.maxHeight)).toBeLessThanOrEqual(140);
+    } finally {
+      styled.mockRestore();
+      spy.mockRestore();
+    }
+  });
+
+  // r9 review F1 (seventh read): on a phone a kept notice waits above the tab bar; moving the lane to
+  // the bottom to clear the field would cover it instead.
+  it("keeps clear of a kept notice at the bottom as well as of the field", () => {
+    wide(false);
+    viewport(390, 844);
+    const spy = boxes({
+      "toast-lane": { top: 61, bottom: 361, height: 300, width: 390, left: 0, right: 390 },
+      "toast-lane-kept": { top: 700, bottom: 788, height: 88, width: 390, left: 0, right: 390 },
+      path: { top: 241, bottom: 283, left: 21, right: 370 },
+      header: { bottom: 61 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Dialog />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => {
+        fire({ title: "This room was deleted", keep: true });
+        fire({ ...refused, duration: 0, clearOf: () => field });
+      });
+      const lane = screen.getByTestId("toast-lane");
+      // At the bottom it would span 544 to 844 over the kept notice at 700 to 788; between the field
+      // and the kept notice, 283 to 700, is the larger space.
+      expect(lane.style.bottom).toBe("");
+      expect(lane.style.top).toBe("283px");
+      expect(Number.parseFloat(lane.style.top) + Number.parseFloat(lane.style.maxHeight)).toBeLessThanOrEqual(700);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("stays at the top where the top leaves the field clear, and when no toast names one", () => {
+    wide(false);
+    viewport(390, 844);
+    const spy = boxes({
+      "toast-lane": { top: 61, bottom: 161, height: 100, width: 390, left: 0, right: 390 },
+      path: { top: 241, bottom: 283, left: 21, right: 370 },
+      header: { bottom: 61 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Dialog />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: () => field }));
+      expect(screen.getByTestId("toast-lane")).toHaveStyle({ top: "61px" });
+      expect(screen.getByTestId("toast-lane").style.bottom).toBe("");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("comes back to the top once the toast naming the field is gone", () => {
+    wide(false);
+    viewport(390, 844);
+    const spy = boxes({
+      "toast-lane": { top: 61, bottom: 361, height: 300, width: 390, left: 0, right: 390 },
+      path: { top: 241, bottom: 283, left: 21, right: 370 },
+      header: { bottom: 61 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Dialog />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => {
+        fire({ title: "Project created", duration: 0 });
+        fire({ ...refused, duration: 0, slot: "refused", clearOf: () => field });
+      });
+      expect(screen.getByTestId("toast-lane").style.top).toBe("auto");
+      act(() => dismiss("refused"));
+      expect(screen.getByTestId("toast-lane")).toHaveStyle({ top: "61px" });
+      expect(screen.getByTestId("toast-lane").style.bottom).toBe("");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 // ISS-1229 r32 review F1: a notice whose text is to be selected by hand keeps that text's spaces and
 // blank lines; the usual description collapses them.
 describe("a toast whose description is verbatim", () => {

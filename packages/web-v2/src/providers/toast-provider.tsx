@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useMediaQuery } from "@/design/hooks/use-media-query";
 import { Toast, type ToastView } from "@/design/primitives/toast";
@@ -22,6 +22,7 @@ interface ToastItem extends ToastView {
   id: number;
   slot?: string;
   keep?: boolean;
+  clearOf?: () => Element | null;
 }
 
 export interface ToastInput extends ToastView {
@@ -32,6 +33,9 @@ export interface ToastInput extends ToastView {
   slot?: string;
   /** Holds what the reader would otherwise lose, so it neither expires nor yields its place. */
   keep?: boolean;
+  /** The element the toast must not stand over, such as the field it tells the reader to correct:
+   *  while it shows, its lane moves to an edge that leaves that element clear. */
+  clearOf?: () => Element | null;
 }
 
 interface ToastApi {
@@ -59,7 +63,7 @@ export function useToast(): ToastApi {
 }
 
 function ToastStack({ items, remove, hold }: Pick<ToastLaneApi, "items" | "remove" | "hold">) {
-  return items.map((t) => (
+  return items.map(({ clearOf: _clearOf, ...t }) => (
     <div key={t.id} className="pointer-events-auto">
       <Toast
         {...t}
@@ -109,6 +113,127 @@ function useOpenDialogHeaderBottom(watch: boolean): number | null {
   return bottom;
 }
 
+interface Box {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+const overlaps = (a: Box, b: Box) => a.top < b.bottom && b.top < a.bottom && a.left < b.right && b.left < a.right;
+
+/** The lane's top edge when nothing moves it: under the top bar on a wide screen, under an open
+ *  drawer's header or at the top of the screen on a phone. */
+const WIDE_TOP_PX = 56;
+/** What the bottom edge keeps clear of: a phone's tab bar, unless a dialog covers it, or a margin. */
+const TAB_BAR_PX = 56;
+const WIDE_BOTTOM_PX = 16;
+/** The lane's own height cap, as its class states it: a share of the viewport's height. */
+const LANE_CAP = 0.35;
+/** The lane's vertical padding, as its class states it (`py-3`), which a capped place takes away. */
+const LANE_PAD_PX = 12;
+
+/** The device's safe-area insets in px, read off a probe: the space a fixed edge keeps clear of. */
+function safeInsets(): { top: number; bottom: number } {
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)";
+  document.body.appendChild(probe);
+  const style = getComputedStyle(probe);
+  const insets = { top: Number.parseFloat(style.paddingTop) || 0, bottom: Number.parseFloat(style.paddingBottom) || 0 };
+  probe.remove();
+  return insets;
+}
+
+/**
+ * Where the lane goes so that no toast in it stands over the element one of them names: the top edge
+ * when that leaves the element clear, else on a wide screen beside the dialog holding the element,
+ * else the bottom edge; where none does, the larger of the spaces above and below the element, the
+ * lane capped to it and scrolling inside. Null keeps the lane's own place. Measured again on every
+ * scroll and resize, since the element moves with the page under the lane (ISS-1236 r9, judge-149).
+ */
+function useKeepClear(
+  items: ToastItem[],
+  lane: React.RefObject<HTMLElement | null>,
+  keptLane: React.RefObject<HTMLElement | null>,
+  wide: boolean,
+  belowDialogHeader: number | null,
+): CSSProperties | null {
+  const [place, setPlace] = useState<CSSProperties | null>(null);
+  const named = items.some((t) => t.clearOf && (wide || !t.keep));
+  useLayoutEffect(() => {
+    if (!named) {
+      setPlace(null);
+      return;
+    }
+    const measure = () => {
+      const box = lane.current?.getBoundingClientRect();
+      const targets = items.flatMap((t) => {
+        const el = wide || !t.keep ? t.clearOf?.() : null;
+        return el ? [el] : [];
+      });
+      if (!box || targets.length === 0) {
+        setPlace(null);
+        return;
+      }
+      // The kept notices' own lane is in the way as much as the element: moving onto it hides them.
+      const kept = keptLane.current?.getBoundingClientRect();
+      const obstacles: Box[] = [
+        ...targets.map((el) => el.getBoundingClientRect()),
+        ...(kept && kept.height > 0 ? [kept] : []),
+      ];
+      const clear = (b: Box) => obstacles.every((o) => !overlaps(b, o));
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const inset = safeInsets();
+      // The height the lane takes where nothing caps it but its own class: neither a cap this placement
+      // set nor the padding it took away is read back as the lane's, or the next measure would undo it.
+      const laneStyle = lane.current ? getComputedStyle(lane.current) : null;
+      const padding =
+        (Number.parseFloat(laneStyle?.paddingTop ?? "") || 0) + (Number.parseFloat(laneStyle?.paddingBottom ?? "") || 0);
+      const content = (lane.current?.scrollHeight ?? 0) - padding;
+      const height = Math.max(box.height, Math.min(content + 2 * LANE_PAD_PX, vh * LANE_CAP));
+      const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : inset.top);
+      const left = wide ? vw - box.width : 0;
+      const atTop = { top, bottom: top + height, left, right: vw };
+      let next: CSSProperties | null = null;
+      if (!clear(atTop)) {
+        const dialog = targets[0].closest('[role="dialog"]') ?? targets[0];
+        const edge = dialog.getBoundingClientRect().left;
+        const beside = { ...atTop, left: edge - box.width, right: edge };
+        const dialogOpen = belowDialogHeader !== null || document.querySelector('[role="dialog"][aria-modal="true"]');
+        const gap = (wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX) + inset.bottom;
+        const atBottom = { ...atTop, top: vh - gap - height, bottom: vh - gap };
+        if (wide && beside.left >= 0 && clear(beside)) next = { right: vw - edge };
+        else if (clear(atBottom)) next = { top: "auto", bottom: gap };
+        else {
+          const rects = targets.map((el) => el.getBoundingClientRect());
+          const fieldTop = Math.min(...rects.map((r) => r.top));
+          const fieldBottom = Math.max(...rects.map((r) => r.bottom));
+          const above = fieldTop - top;
+          const below = Math.min(vh - gap, kept && kept.height > 0 ? kept.top : vh) - fieldBottom;
+          // The cap is the lane's whole box, so its own vertical padding goes too, or a gap smaller
+          // than that padding would still be overrun.
+          const capped = { paddingTop: 0, paddingBottom: 0 };
+          next =
+            below >= above
+              ? { ...capped, top: fieldBottom, maxHeight: Math.max(0, below) }
+              : { ...capped, top, maxHeight: Math.max(0, above) };
+        }
+      }
+      setPlace((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next));
+    };
+    measure();
+    window.addEventListener("scroll", measure, { capture: true, passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", measure, { capture: true });
+      window.removeEventListener("resize", measure);
+    };
+  }, [items, named, lane, keptLane, wide, belowDialogHeader]);
+  return place;
+}
+
 /**
  * Where a frame's toasts go: an overlay at every width, over the top edge and clear of the bottom
  * one, where a page's save bar and a phone's tab bar sit. A lane in the page flow took its height
@@ -125,19 +250,23 @@ export function ToastLane({ className }: { className?: string }) {
   const { items, remove, hold, registerLane } = lane;
   const wide = useMediaQuery(WIDE);
   const belowDialogHeader = useOpenDialogHeaderBottom(!wide && items.length > 0);
+  const laneRef = useRef<HTMLElement>(null);
+  const keptRef = useRef<HTMLElement>(null);
+  const kept = wide ? [] : items.filter((t) => t.keep);
+  const passing = wide ? items : items.filter((t) => !t.keep);
+  const clearPlace = useKeepClear(items, laneRef, keptRef, wide, belowDialogHeader);
 
   useEffect(() => registerLane(), [registerLane]);
 
   if (items.length === 0 || typeof document === "undefined") return null;
   // On a phone the top of the screen is where a list's first controls and rows are, so a toast that
   // stays until it is put away waits above the tab bar instead (ISS-1229 r30, judge-86).
-  const kept = wide ? [] : items.filter((t) => t.keep);
-  const passing = wide ? items : items.filter((t) => !t.keep);
   return (
     <>
       {passing.length > 0 &&
         createPortal(
           <section
+            ref={laneRef}
             aria-label="Notifications"
             data-testid="toast-lane"
             className={cn(
@@ -145,7 +274,7 @@ export function ToastLane({ className }: { className?: string }) {
               "pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-[60] md:left-auto md:top-14",
               className,
             )}
-            style={belowDialogHeader === null ? undefined : { top: belowDialogHeader }}
+            style={clearPlace ?? (belowDialogHeader === null ? undefined : { top: belowDialogHeader })}
           >
             <ToastStack items={passing} remove={remove} hold={hold} />
           </section>,
@@ -154,6 +283,7 @@ export function ToastLane({ className }: { className?: string }) {
       {kept.length > 0 &&
         createPortal(
           <section
+            ref={keptRef}
             aria-label="Kept notices"
             data-testid="toast-lane-kept"
             className={cn(
@@ -205,11 +335,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toast = useCallback<ToastApi["toast"]>(
-    ({ duration, slot, keep, ...view }) => {
+    ({ duration, slot, keep, clearOf, ...view }) => {
       const id = ++idRef.current;
       setItems((xs) => {
         const kept = slot === undefined ? xs : xs.filter((x) => x.slot !== slot);
-        const next = [...kept, { id, slot, keep, ...view }];
+        const next = [...kept, { id, slot, keep, clearOf, ...view }];
         const room = Math.max(1, MAX_VISIBLE_TOASTS - next.filter((x) => x.keep).length);
         const shown = new Set(next.filter((x) => !x.keep).slice(-room));
         return next.filter((x) => x.keep || shown.has(x));

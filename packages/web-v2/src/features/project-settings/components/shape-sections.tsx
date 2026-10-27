@@ -21,6 +21,7 @@ import {
   SlideOver,
   Textarea,
 } from "@/design";
+import { stickyTopEdge } from "@/design/patterns/settings-section";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { type Hop, IN_FLIGHT, type Shape, SHAPES, type ShapeDraft } from "../shape-form";
@@ -285,10 +286,7 @@ export function keepChosenShapeInView(): void {
   const chosen = document.querySelector('#shape [role="radio"][aria-checked="true"]');
   const row = chosen?.closest<HTMLElement>("[data-shape-row]");
   if (!row) return;
-  const covered = [...document.querySelectorAll("header")]
-    .filter((h) => ["sticky", "fixed"].includes(getComputedStyle(h).position))
-    .reduce((bottom, h) => Math.max(bottom, h.getBoundingClientRect().bottom), 0);
-  row.style.scrollMarginTop = `${Math.round(covered) + BELOW_TOP_BAR_PX}px`;
+  row.style.scrollMarginTop = `${Math.round(stickyTopEdge()) + BELOW_TOP_BAR_PX}px`;
   row.scrollIntoView?.({ block: "start", behavior: "smooth" });
 }
 
