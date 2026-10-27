@@ -225,9 +225,8 @@ function entryReads(rel, text) {
   if (!namesMeta) return [];
 
   // A global object's name, unless this file declares its own of that name.
-  const GLOBALS = new Set(
-    ['globalThis', 'global', 'self', 'window'].filter((g) => !declared.has(g)),
-  );
+  const GLOBAL_NAMES = ['globalThis', 'global', 'self', 'window'];
+  const GLOBALS = new Set(GLOBAL_NAMES.filter((g) => !declared.has(g)));
   /** The name a property read states, dotted or bracketed by a string; null where it is computed. */
   const propName = (node) =>
     ts.isPropertyAccessExpression(node)
@@ -235,6 +234,12 @@ function entryReads(rel, text) {
       : ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)
         ? node.argumentExpression.text
         : null;
+  /** The global object: a global's name or a name holding it, and its own self-properties. */
+  function isGlobal(node) {
+    if (ts.isIdentifier(node)) return GLOBALS.has(node.text);
+    const name = propName(node);
+    return GLOBAL_NAMES.includes(name) && isGlobal(unwrap(node.expression));
+  }
   function isProcess(node) {
     if (ts.isIdentifier(node)) return node.text === 'process' || processNames.has(node.text);
     if (ts.isAwaitExpression(node)) return isProcess(unwrap(node.expression));
@@ -244,8 +249,7 @@ function entryReads(rel, text) {
       return !!first && ts.isStringLiteralLike(first) && /^(node:)?process$/.test(first.text);
     }
     const name = propName(node);
-    if (name === 'process')
-      return ts.isIdentifier(node.expression) && GLOBALS.has(node.expression.text);
+    if (name === 'process') return isGlobal(unwrap(node.expression));
     if (name === 'default') return isProcess(unwrap(node.expression));
     return false;
   }
@@ -343,7 +347,7 @@ function entryReads(rel, text) {
   const receive = (name, value) => {
     const held = unwrap(value);
     let news = bind(name, startOf(value));
-    if (ts.isIdentifier(held) && GLOBALS.has(held.text)) news = hold(GLOBALS, name) || news;
+    if (isGlobal(held)) news = hold(GLOBALS, name) || news;
     if (isProcess(held)) news = hold(processNames, name) || news;
     return news;
   };
@@ -368,7 +372,7 @@ function entryReads(rel, text) {
   const destructure = (pattern, value) => {
     const held = unwrap(value);
     const fromProcess = isProcess(held);
-    const fromGlobal = ts.isIdentifier(held) && GLOBALS.has(held.text);
+    const fromGlobal = isGlobal(held);
     let news = false;
     for (const [key, name] of targets(pattern)) {
       if (fromProcess) {
@@ -612,7 +616,11 @@ function entryReads(rel, text) {
         const leak = processLeak(node);
         if (leak) say(node, leak);
       }
-      if (ts.isIdentifier(node) && !naming(node) && GLOBALS.has(node.text)) {
+      if (
+        !(ts.isIdentifier(node) && naming(node)) &&
+        !WRAPS.some((is) => is(node)) &&
+        isGlobal(node)
+      ) {
         const leak = processLeak(node, 'the global object');
         if (leak) say(node, leak);
       }
@@ -926,6 +934,16 @@ describe('no file decides it was launched by hand', () => {
       'scripts/global-nested.mjs',
       'const { process: { argv: v } } = globalThis;\nif (import.meta.filename === v[1]) main();\n',
       1,
+    ],
+    [
+      'scripts/global-self.mjs',
+      'if (import.meta.filename === globalThis.global.process.argv[1]) main();\n',
+      1,
+    ],
+    [
+      'scripts/global-self-alias.mjs',
+      "const g = globalThis['global'];\nif (import.meta.filename === g.process.argv[1]) main();\n",
+      2,
     ],
     [
       'scripts/from.mjs',
