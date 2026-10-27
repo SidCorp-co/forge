@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError, retryAfterOf, unsaidFailure } from './client';
+import { retryWaitWords } from '@/lib/utils/retry-rule';
 import {
   describeSettings,
   formatApiError,
@@ -9,7 +10,6 @@ import {
   formatSettingsWriteError,
   isRetryableApiError,
   readFailure,
-  retryWhen,
 } from './error';
 
 describe('formatPipelineConfigError', () => {
@@ -137,26 +137,46 @@ describe('when to retry, from Retry-After', () => {
     expect(retryAfterOf('soon')).toBeUndefined();
   });
 
-  it('says when after the server\'s own sentence, where it was given', () => {
+  // ISS-1229 r51, judge-158 on 479: the wait was fixed into the sentence when the answer came, so 47 seconds
+  // after a 30-second Retry-After the screen still said 30; and a 403 carrying one said "You can retry in 60
+  // seconds" where no Retry stands. The wait is read against the time it ends, beside the Retry it gates.
+  it('keeps the wait out of the failure sentence, which a screen holds while the wait passes', () => {
     const limited = new ApiError(429, 'Too many reads from this account.', 'RATE_LIMITED', undefined, undefined, 30_000);
-    expect(formatApiError(limited)).toBe('Too many reads from this account. You can retry in 30 seconds.');
-    expect(retryWhen(new ApiError(429, '', 'RATE_LIMITED', undefined, undefined, 300_000))).toBe('You can retry in 5 minutes.');
+    expect(formatApiError(limited)).toBe('Too many reads from this account.');
+  });
+
+  it('counts the wait down from when the answer came, and says nothing once it is over', () => {
+    const limited = new ApiError(429, '', 'RATE_LIMITED', undefined, undefined, 30_000);
+    const came = (limited.retryAt as number) - 30_000;
+    expect(retryWaitWords(limited, came)).toBe('You can retry in 30 seconds.');
+    expect(retryWaitWords(limited, came + 17_000)).toBe('You can retry in 13 seconds.');
+    expect(retryWaitWords(limited, came + 30_000)).toBeNull();
+    expect(retryWaitWords(limited, came + 47_000)).toBeNull();
   });
 
   it('never names a time sooner than the server allows', () => {
-    const toldToWait = (ms: number) => retryWhen(new ApiError(429, '', 'RATE_LIMITED', undefined, undefined, ms));
-    expect(toldToWait(0)).toBe('You can retry now.');
+    const toldToWait = (ms: number) => {
+      const e = new ApiError(429, '', 'RATE_LIMITED', undefined, undefined, ms);
+      return retryWaitWords(e, (e.retryAt as number) - ms);
+    };
     expect(toldToWait(1_000)).toBe('You can retry in 1 second.');
     expect(toldToWait(89_000)).toBe('You can retry in 89 seconds.');
     expect(toldToWait(149_000)).toBe('You can retry in 3 minutes.');
     expect(toldToWait(8_940_000)).toBe('You can retry in 3 hours.');
   });
 
+  it('says no wait where the rule offers no Retry, whatever the answer carried', () => {
+    const refused = new ApiError(403, 'You do not have access to this.', 'FORBIDDEN', undefined, undefined, 60_000);
+    expect(retryWaitWords(refused, (refused.retryAt as number) - 60_000)).toBeNull();
+    expect(formatApiError(refused)).toBe('You do not have access to this.');
+  });
+
   it('adds nothing where the server named no time', () => {
     expect(formatApiError(new ApiError(429, 'Too many reads from this account.', 'RATE_LIMITED'))).toBe(
       'Too many reads from this account.',
     );
-    expect(retryWhen(new Error('fetch failed'))).toBeNull();
+    expect(retryWaitWords(new ApiError(429, '', 'RATE_LIMITED'), Date.now())).toBeNull();
+    expect(retryWaitWords(new Error('fetch failed'), Date.now())).toBeNull();
   });
 });
 

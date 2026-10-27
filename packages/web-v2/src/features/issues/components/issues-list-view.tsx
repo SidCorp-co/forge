@@ -27,7 +27,7 @@ import {
 } from "@/design";
 import { WORK_STATE_LABELS, WORK_STATES } from "@forge/contracts/work-state";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
-import { asSentence, formatApiError } from "@/lib/api/error";
+import { asSentence, formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { replaceLocationSearch, useLocationSearch } from "@/lib/utils/use-location-search";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -922,12 +922,14 @@ export function IssuesListView({
   );
 }
 
-/** The opened menu's own line for a failed read, never a choice; its Retry stands beside the filters (ISS-1229 r50). */
+/** The opened menu's own line for a failed read, never a choice. It points at the Retry beside the filters only
+ *  where the one rule offers one (ISS-1229 r51, judge-158: a 403 pointed at a Retry that was not there). */
 function unreadChoice(what: string, error: unknown): SelectOption {
+  const why = asSentence(formatApiError(error));
   return {
     value: `unread:${what}`,
     label: `Couldn't load ${what}`,
-    detail: `${asSentence(formatApiError(error))} Retry is beside the filters.`,
+    detail: isRetryableApiError(error) ? `${why} Retry is beside the filters.` : why,
     icon: "alert",
     disabled: true,
   };

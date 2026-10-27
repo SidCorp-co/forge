@@ -19,6 +19,9 @@ import type { CreatedProject } from '../types';
 
 export { slugify };
 
+/** The Organization field's value before the person picks one, where the stored choice could not be read. */
+const UNCHOSEN = 'unchosen';
+
 /** The refused-repository toast, put away once the person edits the path it stands over. */
 const REFUSED_SLOT = 'new-project-repository-refused';
 /** The path field that toast tells the person to correct, which it keeps clear of. */
@@ -63,7 +66,10 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const { activeOrg, scopeRead, storedUnread } = useActiveOrg();
   // Until the organizations and the stored active choice are read, where the project lands is unknown:
   // nothing is created before then. A stored choice that failed is not read: its stand-in is no answer (r50).
-  const orgsKnown = orgsQ.data !== undefined && scopeRead && !storedUnread;
+  // The person's own pick is one, so where the stored choice cannot be read they are asked for it, and that is
+  // the way forward on a refusal no Retry is offered for (ISS-1229 r51, judge-158).
+  const askWhere = storedUnread !== null && orgsQ.data !== undefined && scopeRead && teamOrgs.length > 0;
+  const orgsKnown = orgsQ.data !== undefined && scopeRead && (!storedUnread || chosenOrgId !== null || teamOrgs.length === 0);
   const orgsReading = !orgsKnown && !orgsUnread && !storedUnread;
   const defaultOrgId = activeOrg && !activeOrg.isPersonal ? activeOrg.id : '';
   const orgId = chosenOrgId ?? defaultOrgId;
@@ -381,10 +387,18 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               Reading your organizations, to know where this project will live…
             </p>
           )}
-          {orgsKnown && teamOrgs.length > 0 && (
-            <Field label="Organization" hint="Where this project lives. Org owners/admins manage all of its projects.">
+          {(orgsKnown || askWhere) && teamOrgs.length > 0 && (
+            <Field
+              label="Organization"
+              hint={
+                askWhere && chosenOrgId === null
+                  ? "Choose where this project lives to create it. Org owners/admins manage all of its projects."
+                  : "Where this project lives. Org owners/admins manage all of its projects."
+              }
+            >
               <Select
-                value={orgId}
+                value={askWhere && chosenOrgId === null ? UNCHOSEN : orgId}
+                placeholder="Choose where it lives"
                 onChange={(v) => setChosenOrgId(v)}
                 options={[
                   { value: '', label: 'Personal' },

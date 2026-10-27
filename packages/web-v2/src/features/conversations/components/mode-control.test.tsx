@@ -84,8 +84,21 @@ describe("the blocked option", () => {
     renderControl({ offer: BLOCKED });
     fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
     const panel = screen.getByTestId("mode-blocked-panel");
-    expect(panel).toHaveTextContent("Agent needs a paired runner");
+    expect(panel).toHaveTextContent("Working in the repository needs a paired runner");
     expect(panel).toHaveTextContent("This project has no runner paired.");
+  });
+
+  // ISS-1229 r51, judge-158 on 503: the panel was headed "Agent needs a paired runner" and named "Agent is
+  // unavailable", which read as the agent itself being broken. It names the mode, and says the agent still answers.
+  it.each([
+    ["no runner is paired", undefined],
+    ["the runner is not this project's", { deviceName: "studio-mac", projectSlug: "shop" }],
+  ] as const)("names the mode and never the agent as unavailable, where %s", (_, unbound) => {
+    renderControl({ offer: { ...BLOCKED, ...(unbound ? { unbound } : {}) } as AgentModeOffer });
+    fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
+    const panel = screen.getByRole("dialog", { name: "Working in the repository is unavailable" });
+    expect(panel).not.toHaveTextContent(/\bAgent (needs|is)\b/);
+    expect(panel).toHaveTextContent("The agent still answers here when it reads the project.");
   });
 
   // `/pair` only approves a code the CLI printed and, reached with none, sends
@@ -163,9 +176,9 @@ describe("the blocked option, where the project's device is paired but not assig
 
   it("says what is missing: the device is not assigned to this project", () => {
     const panel = openPanel();
-    expect(panel).toHaveTextContent("Agent needs this project's runner");
+    expect(panel).toHaveTextContent("Working in the repository needs this project's runner");
     expect(panel).toHaveTextContent("studio-mac is paired but not assigned to shop");
-    expect(panel).not.toHaveTextContent("Agent needs a paired runner");
+    expect(panel).not.toHaveTextContent("needs a paired runner");
   });
 
   it("links to the project's own Runners page, where the device can be assigned", () => {

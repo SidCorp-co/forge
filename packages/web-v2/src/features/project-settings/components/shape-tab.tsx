@@ -8,8 +8,8 @@ import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import { useEffect, useMemo, useState } from "react";
 import {
   Banner,
-  Button,
   ErrorState,
+  RetryButton,
   SectionTitle,
   SettingsFormBar,
   SettingsSection,
@@ -92,9 +92,9 @@ export function ShapeTab({ project, canEdit }: { project: ProjectDetail; canEdit
           <Banner
             tone="attention"
             action={
-              <Button variant="ghost" size="sm" onClick={() => envQ.refetch()}>
+              <RetryButton variant="ghost" error={envQ.error} onRetry={() => void envQ.refetch()}>
                 Read again
-              </Button>
+              </RetryButton>
             }
           >
             The environments could not be read again ({formatApiError(envQ.error)}), so what is

@@ -21,6 +21,8 @@ import { ProjectMark } from '@/design/primitives/project-mark';
 import { assetPath } from '@/lib/asset';
 import { cn } from '@/lib/utils/cn';
 import { offersRetryFor, RetryButton } from '@/design/primitives/retry-button';
+import { useRetryWait } from '@/design/hooks/use-retry-wait';
+import { withStop } from '@/lib/api/error';
 
 export interface RailItem {
   key: string;
@@ -519,10 +521,12 @@ export function NavRailCompact({
   );
 }
 
-/** The narrow rail's tile for a failed projects read: Retry where the one rule offers it, with the wait the server named. */
+/** The narrow rail's tile for a failed projects read: Retry where the one rule offers it, and the wait the server
+ *  named in its place, counting down until Retry comes back (ISS-1229 r51). Its name says each thing once. */
 function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
   const retry = offersRetryFor(unread.error);
-  const named = ["Couldn't load your projects.", unread.wait, retry ? "Retry" : unread.message].filter(Boolean).join(" ");
+  const wait = useRetryWait(unread.error);
+  const named = ["Couldn't load your projects.", retry ? (wait ?? "Retry") : withStop(unread.message)].join(" ");
   const face = (
     <>
       <span className="inline-flex size-[30px] items-center justify-center rounded-md border border-[color:var(--flame-500)]">
@@ -531,15 +535,15 @@ function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
       <span className="px-0.5 text-center text-10 font-semibold leading-tight tracking-[-0.01em] text-fg">
         Projects not loaded
       </span>
-      {unread.wait && (
+      {wait && (
         <span data-testid="rail-projects-wait" className="px-0.5 text-center text-10 leading-tight text-muted">
-          {unread.wait}
+          {wait}
         </span>
       )}
     </>
   );
   const tile = "flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle";
-  if (!retry) {
+  if (!retry || wait) {
     return (
       <div role="status" aria-label={named} title={named} data-testid="rail-projects-unread" className={tile}>
         {face}

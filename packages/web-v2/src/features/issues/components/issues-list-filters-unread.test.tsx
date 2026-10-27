@@ -10,8 +10,14 @@ import { ToastProvider } from "@/providers/toast-provider";
 
 expect.extend(matchers);
 
-const reads = vi.hoisted(() => ({ membersFail: false, labelsFail: false, readMembers: vi.fn(), readLabels: vi.fn() }));
 const down = new Error("The server is down.");
+const reads = vi.hoisted(() => ({
+  membersFail: false,
+  labelsFail: false,
+  failure: null as unknown,
+  readMembers: vi.fn(),
+  readLabels: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/projects/forge-dev/issues",
@@ -31,11 +37,11 @@ vi.mock("../hooks", async () => {
     useModuleRollup: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: vi.fn() }),
     useProjectMembers: () =>
       reads.membersFail
-        ? { data: undefined, isError: true, error: down, refetch: reads.readMembers }
+        ? { data: undefined, isError: true, error: reads.failure, refetch: reads.readMembers }
         : { data: [], isError: false, error: null, refetch: reads.readMembers },
     useProjectLabels: () =>
       reads.labelsFail
-        ? { data: undefined, isError: true, error: down, refetch: reads.readLabels }
+        ? { data: undefined, isError: true, error: reads.failure, refetch: reads.readLabels }
         : { data: [], isError: false, error: null, refetch: reads.readLabels },
     useProjectModules: () => ({ modules: [], data: [], isLoading: false, isError: false, error: null, refetch: vi.fn() }),
     usePatchIssue: () => ({ mutate: vi.fn(), isPending: false }),
@@ -43,6 +49,7 @@ vi.mock("../hooks", async () => {
 });
 
 const { IssuesListView } = await import("./issues-list-view");
+const { ApiError } = await import("@/lib/api/client");
 
 function mount() {
   window.history.replaceState({}, "", "/projects/forge-dev/issues");
@@ -59,6 +66,7 @@ function mount() {
 beforeEach(() => {
   reads.membersFail = false;
   reads.labelsFail = false;
+  reads.failure = down;
   reads.readMembers.mockClear();
   reads.readLabels.mockClear();
 });
@@ -134,6 +142,21 @@ describe("an opened filter menu whose choices could not be read (criterion 504)"
     const line = screen.getByRole("option", { name: new RegExp(said) });
     expect(line).toHaveAttribute("aria-disabled", "true");
     expect(line).toHaveTextContent("The server is down. Retry is beside the filters.");
+  });
+
+  // ISS-1229 r51, judge-158 on 478: on a 403 the line still said "Retry is beside the filters." where none stood.
+  it.each([
+    ["Label filter", "labelsFail", "Couldn't load the labels to choose from"],
+    ["Creator filter", "membersFail", "Couldn't load the people to choose from"],
+  ] as const)("the %s points at no Retry where the rule offers none", (name, fail, said) => {
+    reads[fail] = true;
+    reads.failure = new ApiError(403, "You do not have access to this.");
+    mount();
+    expect(within(screen.getByTestId("filters-unread")).queryByRole("button", { name: "Retry" })).toBeNull();
+    fireEvent.click(screen.getAllByRole("combobox", { name })[0] as HTMLElement);
+    const line = screen.getByRole("option", { name: new RegExp(said) });
+    expect(line).toHaveTextContent("You do not have access to this.");
+    expect(line).not.toHaveTextContent(/Retry/);
   });
 
   it("holds no such line while the choices are read", () => {

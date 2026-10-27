@@ -1,6 +1,7 @@
+import { useRetryWait } from "@/design/hooks/use-retry-wait";
 import { isRetryableApiError } from "@/lib/utils/retry-rule";
 import { Button } from "@/design/primitives/button";
-import { RetryLink } from "@/design/primitives/retry-link";
+import { RetryLink, RetryWait } from "@/design/primitives/retry-link";
 
 /** Whether Retry is offered for this failed read: the web app's one rule (ISS-1229 r50, criterion 478). */
 export function offersRetryFor(error: unknown): boolean {
@@ -10,6 +11,7 @@ export function offersRetryFor(error: unknown): boolean {
 /**
  * The one Retry for a failed read. It draws nothing where a second read cannot change the answer, so no
  * screen decides that for itself (ISS-1229 r50, judge-152: most screens offered Retry on a 403, 404 or 422).
+ * Where the server named a wait, it says how long is left, counting down, and Retry comes back at zero (r51).
  */
 export function RetryButton({
   error,
@@ -40,6 +42,7 @@ export function RetryButton({
   children?: React.ReactNode;
   onKeyDown?: React.KeyboardEventHandler<HTMLButtonElement>;
 }) {
+  const wait = useRetryWait(onRetry ? error : null);
   if (look === "link") {
     return (
       <RetryLink
@@ -57,6 +60,7 @@ export function RetryButton({
     );
   }
   if (!onRetry || !offersRetryFor(error)) return null;
+  if (wait) return <RetryWait wait={wait} testId={testId} className={className} />;
   const text = children ?? "Retry";
   return (
     <Button

@@ -97,8 +97,13 @@ function asSentence(clause: string): string {
   return /[.!?]$/.test(capital) ? capital : `${capital}.`;
 }
 
+/** What the panel says of the mode it explains: the mode by what it does, never the agent, which still answers in
+ *  the other mode (ISS-1229 r51, judge-158: "Agent is unavailable" read as the agent itself being broken). */
+const BLOCKED_NAME = "Working in the repository is unavailable";
+const STILL_ANSWERS = "The agent still answers here when it reads the project.";
+
 /**
- * Why Agent cannot be picked, and the way out of it. Pressable rather than
+ * Why working in the repository cannot be picked, and the way out of it. Pressable rather than
  * greyed out: a control with a condition names the condition.
  *
  * Escape is taken here and marked taken, so the dock or slide-over this
@@ -131,7 +136,7 @@ function BlockedPanel({
       ref={ref}
       id="conversation-mode-blocked"
       role="dialog"
-      aria-label="Agent is unavailable"
+      aria-label={BLOCKED_NAME}
       data-testid="mode-blocked-panel"
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
@@ -152,9 +157,9 @@ function BlockedPanel({
         />
       ) : (
         <>
-          <p className="fg-body-sm font-semibold text-fg">Agent needs a paired runner</p>
+          <p className="fg-body-sm font-semibold text-fg">Working in the repository needs a paired runner</p>
           <p className="fg-caption mt-1 text-muted">
-            {asSentence(offer.reason ?? "no runner is paired with this project")}
+            {asSentence(offer.reason ?? "no runner is paired with this project")} {STILL_ANSWERS}
           </p>
           <Link ref={wayOut} href={PAIR_A_RUNNER} className={WAY_OUT}>
             <Icon name="link" size={14} />
@@ -185,13 +190,13 @@ function NotAssigned({
 }) {
   return (
     <>
-      <p className="fg-body-sm font-semibold text-fg">Agent needs this project&apos;s runner</p>
+      <p className="fg-body-sm font-semibold text-fg">Working in the repository needs this project&apos;s runner</p>
       <p className="fg-caption mt-1 text-muted">
         {device ?? "The device this project picked"} is paired but not assigned to {slug}, so it
         has no checkout of the project to run in. Assign it on the project&apos;s Runners page; to
         choose the folder it runs in, give the path there or, once it is assigned, run{" "}
         <code className="font-mono text-12 [overflow-wrap:anywhere]">forge-runner bind {slug} --path &lt;dir&gt;</code>{" "}
-        on {device ?? "that device"}.
+        on {device ?? "that device"}. {STILL_ANSWERS}
       </p>
       <Link ref={wayOut} href={`/projects/${slug}/settings?tab=runners`} className={WAY_OUT}>
         <Icon name="link" size={14} />

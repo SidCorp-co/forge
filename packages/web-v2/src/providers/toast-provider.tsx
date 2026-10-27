@@ -68,7 +68,7 @@ export function useToast(): ToastApi {
 
 function ToastStack({ items, remove, hold }: Pick<ToastLaneApi, "items" | "remove" | "hold">) {
   return items.map(({ clearOf: _clearOf, ...t }) => (
-    <div key={t.id} className="pointer-events-auto">
+    <div key={t.id} data-testid="toast-card" className="pointer-events-auto">
       <Toast
         {...t}
         // A clickable toast goes once its action runs; a kept one holds what the reader would lose, so it
@@ -90,20 +90,30 @@ function ToastStack({ items, remove, hold }: Pick<ToastLaneApi, "items" | "remov
 
 const WIDE = "(min-width: 768px)";
 
-/** Where the open dialog's header ends, or null. On a phone a toast at the top covered a drawer's title,
- *  state and close control (ISS-1421 r27), so the lane starts below that header instead. */
-function useOpenDialogHeaderBottom(watch: boolean): number | null {
-  const [bottom, setBottom] = useState<number | null>(null);
+interface OpenDialog {
+  /** A modal dialog is open over the page. */
+  open: boolean;
+  /** Where its header ends, or null. On a phone a toast at the top covered a drawer's title, state and close
+   *  control (ISS-1421 r27), so the lane starts below that header instead. */
+  headerBottom: number | null;
+}
+
+const NO_DIALOG: OpenDialog = { open: false, headerBottom: null };
+
+/** Whether a modal dialog is open, and where its header ends, watched while `watch` holds. */
+function useOpenDialog(watch: boolean): OpenDialog {
+  const [dialog, setDialog] = useState<OpenDialog>(NO_DIALOG);
   useEffect(() => {
     if (!watch) {
-      setBottom(null);
+      setDialog(NO_DIALOG);
       return;
     }
     const read = () => {
       const open = document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]');
       const header = open[open.length - 1]?.querySelector("header");
       const edge = header ? Math.round(header.getBoundingClientRect().bottom) : 0;
-      setBottom(edge > 0 ? edge : null);
+      const next = { open: open.length > 0, headerBottom: edge > 0 ? edge : null };
+      setDialog((was) => (was.open === next.open && was.headerBottom === next.headerBottom ? was : next));
     };
     read();
     const observer = new MutationObserver(read);
@@ -114,7 +124,7 @@ function useOpenDialogHeaderBottom(watch: boolean): number | null {
       window.removeEventListener("resize", read);
     };
   }, [watch]);
-  return bottom;
+  return dialog;
 }
 
 interface Box {
@@ -136,9 +146,36 @@ const WIDE_BOTTOM_PX = 16;
 const LANE_CAP = 0.35;
 /** The lane's vertical padding, as its class states it (`py-3`), which a capped place takes away. */
 const LANE_PAD_PX = 12;
-/** The least space a capped lane takes: a toast's title and the start of its words. Less hides the toast. */
+/** The least space a capped lane takes, whatever it measures: a toast's title and the start of its words. */
 const MIN_ROOM_PX = 72;
 const OVER_KEPT_Z = 61;
+
+/** The tallest toast card in a lane, so the lane never stands anywhere, nor caps itself, shorter than one whole
+ *  toast: a card cut short hid its second line and its link (ISS-1229 r51, judge-157 at 390×600). */
+function tallestCard(lane: HTMLElement | null): number {
+  if (!lane) return 0;
+  return Math.max(0, ...[...lane.querySelectorAll<HTMLElement>('[data-testid="toast-card"]')].map((c) => c.getBoundingClientRect().height));
+}
+
+/** The height a lane is held to: its class's share of the screen, or more where one whole toast needs it. */
+function useWholeCardCap(lane: React.RefObject<HTMLElement | null>, items: readonly unknown[]): number | null {
+  const [cap, setCap] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (items.length === 0) {
+      setCap(null);
+      return;
+    }
+    const measure = () => {
+      const need = tallestCard(lane.current) + 2 * LANE_PAD_PX;
+      const next = need > window.innerHeight * LANE_CAP ? Math.min(need, window.innerHeight) : null;
+      setCap((was) => (was === next ? was : next));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [lane, items]);
+  return cap;
+}
 
 /** The device's safe-area insets in px, read off a probe: the space a fixed edge keeps clear of. */
 function safeInsets(): { top: number; bottom: number } {
@@ -155,7 +192,7 @@ function safeInsets(): { top: number; bottom: number } {
 /**
  * Where the lane goes so that no toast in it stands over the elements one names, nor over the kept
  * notices: the top edge, beside the dialog on a wide screen, the bottom edge, the larger space above or
- * below them all, or the widest between them, capped, if it holds `MIN_ROOM_PX`. Failing that it goes
+ * below them all, or the widest between them, capped, if it holds a whole toast. Failing that it goes
  * over the kept notices, then lets go of the elements from the last, never the first (ISS-1236 r10).
  * Null keeps the lane's own place. Measured again on every scroll and resize, as the elements move.
  */
@@ -198,7 +235,9 @@ function useKeepClear(
       const padding =
         (Number.parseFloat(laneStyle?.paddingTop ?? "") || 0) + (Number.parseFloat(laneStyle?.paddingBottom ?? "") || 0);
       const content = (lane.current?.scrollHeight ?? 0) - padding;
-      const height = Math.max(box.height, Math.min(content + 2 * LANE_PAD_PX, vh * LANE_CAP));
+      // What the lane shows wherever it stands: up to its cap, and never less than its tallest toast whole.
+      const whole = Math.max(Math.min(content, vh * LANE_CAP - 2 * LANE_PAD_PX), tallestCard(lane.current));
+      const height = Math.max(box.height, whole + 2 * LANE_PAD_PX);
       const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : inset.top);
       const left = wide ? vw - box.width : 0;
       const atTop = { top, bottom: top + height, left, right: vw };
@@ -247,7 +286,8 @@ function useKeepClear(
         const first = Math.min(...held.map((r) => r.top));
         const last = Math.max(...held.map((r) => r.bottom));
         const outside = runs.filter((r) => r.top + r.room <= first || r.top >= last);
-        const space = [outside, runs].map((list) => list.reduce(larger, { top, room: 0 })).find((r) => r.room >= MIN_ROOM_PX);
+        // A space shorter than a whole toast would cut it, so it is no place: the elements are let go of first.
+        const space = [outside, runs].map((list) => list.reduce(larger, { top, room: 0 })).find((r) => r.room >= Math.max(whole, MIN_ROOM_PX));
         return space ? { ...lift, ...capped(space) } : undefined;
       };
       const tries: [number, boolean][] = [[rects.length, false]];
@@ -287,12 +327,18 @@ export function ToastLane({ className }: { className?: string }) {
   if (!lane) throw new Error("ToastLane must be used within <ToastProvider>");
   const { items, remove, hold, registerLane } = lane;
   const wide = useMediaQuery(WIDE);
-  const belowDialogHeader = useOpenDialogHeaderBottom(!wide && items.length > 0);
+  const dialog = useOpenDialog(!wide && items.length > 0);
+  const belowDialogHeader = dialog.headerBottom;
   const laneRef = useRef<HTMLElement>(null);
   const keptRef = useRef<HTMLElement>(null);
-  const kept = wide ? [] : items.filter((t) => t.keep);
+  // A kept notice holds something of the page's; on a phone a dialog covers the page, so the notice waits behind
+  // it, still kept, and comes back as it closes. Drawn over the dialog it covered its Save and the link of the
+  // dialog's own refusal (ISS-1229 r51, judge-157 and judge-158).
+  const kept = wide || dialog.open ? [] : items.filter((t) => t.keep);
   const passing = wide ? items : items.filter((t) => !t.keep);
   const clearPlace = useKeepClear(items, laneRef, keptRef, wide, belowDialogHeader);
+  const passingCap = useWholeCardCap(laneRef, passing);
+  const keptCap = useWholeCardCap(keptRef, kept);
 
   useEffect(() => registerLane(), [registerLane]);
 
@@ -312,7 +358,10 @@ export function ToastLane({ className }: { className?: string }) {
               "pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-[60] md:left-auto md:top-14",
               className,
             )}
-            style={clearPlace ?? (belowDialogHeader === null ? undefined : { top: belowDialogHeader })}
+            style={{
+              ...(passingCap === null ? {} : { maxHeight: passingCap }),
+              ...(clearPlace ?? (belowDialogHeader === null ? {} : { top: belowDialogHeader })),
+            }}
           >
             <ToastStack items={passing} remove={remove} hold={hold} />
           </section>,
@@ -328,6 +377,7 @@ export function ToastLane({ className }: { className?: string }) {
               "flex max-h-[35dvh] flex-col items-center gap-2.5 overflow-y-auto px-4 py-3",
               "pointer-events-none fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom))] z-[60]",
             )}
+            style={keptCap === null ? undefined : { maxHeight: keptCap }}
           >
             <ToastStack items={kept} remove={remove} hold={hold} />
           </section>,

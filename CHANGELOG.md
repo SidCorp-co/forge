@@ -3199,6 +3199,8 @@
 
 ### Fixed
 
+- **The wait before Retry counts down, and Retry comes back when it is over.** Every control that reads again follows the one Retry rule, so a refused read never points at a Retry or a wait; working in the repository says what it needs and that the agent still answers. (ISS-1229)
+- **On a phone, a kept notice waits behind an open dialog, and no notice is cut short.** New project lets you choose the organization when your current one cannot be read, and a room's people list shows each person's line whole. (ISS-1229)
 - **Retry is offered only where reading again can change the answer**: no answer, a timeout, too many requests or a server error. A refused or missing read says why, without Retry. (ISS-1229)
 - **A failed projects read shows in the sidebar, with the wait before Retry.** When your current organization cannot be read, every page names the one shown instead, and New project waits for it. (ISS-1229)
 - **Two people who read alike in a room are told apart by role, then by who opened it.** Where even that matches, the row and the removal question say so, never a date, an order or an address. (ISS-1229)

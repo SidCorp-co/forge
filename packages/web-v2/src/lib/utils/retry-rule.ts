@@ -12,6 +12,29 @@ export function isRetryableApiError(err: unknown): boolean {
   return status === null || status >= 500 || PASSING_REFUSALS.has(status);
 }
 
+/** When the server will take the read again (`Retry-After`, as a time), where it said and the rule offers Retry. */
+export function retryAt(err: unknown): number | null {
+  if (answeredStatus(err) === null || !isRetryableApiError(err)) return null;
+  const at = (err as { retryAt?: unknown }).retryAt;
+  return typeof at === "number" ? at : null;
+}
+
+/**
+ * How long until the read can be asked again, as a sentence, at `now`; null where the server named no wait,
+ * where the rule offers no Retry (a 403 carrying Retry-After is still final), or where the wait is over and
+ * Retry stands again (ISS-1229 r51, judge-158 on criterion 479). Each unit is rounded up, so a retry at the
+ * time it names is never sooner than the server allows.
+ */
+export function retryWaitWords(err: unknown, now: number): string | null {
+  const at = retryAt(err);
+  if (at === null) return null;
+  const seconds = Math.ceil((at - now) / 1000);
+  if (seconds <= 0) return null;
+  if (seconds < 90) return `You can retry in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`;
+  const minutes = Math.ceil(seconds / 60);
+  return minutes < 90 ? `You can retry in ${minutes} minutes.` : `You can retry in ${Math.ceil(minutes / 60)} hours.`;
+}
+
 export interface FailedRead {
   failed: boolean;
   error: unknown;
