@@ -146,6 +146,12 @@ const issueDetailFields = {
     .describe(
       'The merge commit of the most recently merged pull request Forge holds for this issue: the commit a Mark merged naming no commit compares with the mark. Null where Forge holds none.',
     ),
+  markCommitCheck: z
+    .enum(['checked', 'claim', 'refused'])
+    .nullable()
+    .describe(
+      "What a person's first Mark merged naming a commit meets on this issue's project: checked against its repository, kept as an unchecked claim where it names no repository, or refused where Forge cannot read the one it names. Null where the project's declaration could not be read.",
+    ),
   labels: z.array(issueLabelSchema),
   comments: z.array(z.never()),
   activity: z.array(z.never()),

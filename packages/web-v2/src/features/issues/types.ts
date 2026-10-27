@@ -115,6 +115,8 @@ export interface IssueRow {
   recordedBranch?: string | null;
   /** The newest merged pull request's merge commit Forge holds for this issue; null where none. */
   newestMergedPull?: string | null;
+  /** What a person's first Mark merged naming a commit meets on this project; null where core could not read it. */
+  markCommitCheck?: "checked" | "claim" | "refused" | null;
   createdAt: string;
   updatedAt: string;
   /** ISS-1257 — the oldest open question blocked on a person; null or absent when none is. */

@@ -61,15 +61,20 @@ export function AwaitingReleaseBanner({
 		return <Banner tone="info">{`${merged} — it is in a release, whose run says whether a box has started it`}</Banner>;
 	}
 
-	// A release would hand this issue straight back, so it offers none and says what is missing and
-	// what clears it (ISS-1337): one line per shortfall, each naming its door on this page (ISS-1421).
-	if (entry.closeRefusals.length > 0) {
+	// A release would hand this issue straight back, or Release now would be refused, so it offers none
+	// and says what is missing and what clears it (ISS-1337): one line per shortfall, each naming its
+	// door on this page (ISS-1421), and every reason no pick escapes (ISS-1421 r37).
+	const missing = [
+		...[...entry.closeRefusals, ...entry.releaseRefusals].map((r) => ({ key: r.code, said: r.saidHere })),
+		...data.blockingAll.map((b) => ({ key: `all-${b.code}`, said: b.said })),
+	];
+	if (missing.length > 0) {
 		return (
 			<Banner tone="attention">
 				<p className="font-medium">Not ready to release.</p>
 				<ul className="mt-1 flex flex-col gap-1" aria-label="What is missing">
-					{entry.closeRefusals.map((r) => (
-						<li key={r.code}>{r.saidHere}</li>
+					{missing.map((m) => (
+						<li key={m.key}>{m.said}</li>
 					))}
 				</ul>
 			</Banner>

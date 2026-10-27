@@ -30,6 +30,7 @@ function state(over: Partial<ReleaseRunState>) {
 				baseBranch: "main",
 				nextCutAt: null,
 				automaticRelease: false,
+				blockingAll: [],
 				issues: [],
 			},
 			attempts: [],
@@ -358,7 +359,8 @@ describe("the run screen, read by the person who pressed (ISS-1323 r2)", () => {
 				baseBranch: "main",
 				nextCutAt: null,
 				automaticRelease: false,
-				issues: [{ id: "g-5", displayId: "ISS-5", title: "At the gate now", mergedAt: null, waitingDays: null, claimedByRunId: null, closeRefusals: [], closeFailure: null }],
+				blockingAll: [],
+				issues: [{ id: "g-5", displayId: "ISS-5", title: "At the gate now", mergedAt: null, waitingDays: null, claimedByRunId: null, closeRefusals: [], closeFailure: null, releaseRefusals: [] }],
 			} as ReleaseRunState["roster"],
 			runIssues: [{ id: "r-1", displayId: "ISS-1", title: "Opened with the run", status: "releasing" }],
 		});

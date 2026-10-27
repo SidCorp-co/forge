@@ -25,7 +25,6 @@ import {
   restCredential,
 } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
-import { collectWorkEvidence } from '../pipeline/work-evidence.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
 import { AttachmentError } from './attachment-service.js';
@@ -49,9 +48,8 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { readLandingShape } from './landing-evidence.js';
+import { landingReads } from './landing-reads.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
-import { liveReachForIssue } from './live-reach-read.js';
-import { observedMergeForIssue } from './merge-record.js';
 import { isSelfReferentialBranch } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
@@ -251,9 +249,7 @@ issueProjectRoutes.get(
         ...serialized,
         ...creatorMap.get(issue.id),
         pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
-        liveReach: await liveReachForIssue(issue),
-        recordedBranch: (await collectWorkEvidence(issue.id)).branch,
-        newestMergedPull: (await observedMergeForIssue(db, issue.id))?.commitSha ?? null,
+        ...(await landingReads(issue)),
         labels: labelRows,
         comments: [],
         activity: [],
@@ -409,9 +405,7 @@ issueRoutes.get(
         agentSessions: agentBucket?.agentSessions ?? [],
         agentStatus: agentBucket?.agentStatus ?? null,
         pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
-        liveReach: await liveReachForIssue(issue),
-        recordedBranch: (await collectWorkEvidence(issue.id)).branch,
-        newestMergedPull: (await observedMergeForIssue(db, issue.id))?.commitSha ?? null,
+        ...(await landingReads(issue)),
         labels: labelRows,
         comments: [],
         activity: [],

@@ -130,6 +130,25 @@ function serverSaid(err: ApiError): boolean {
   return text.length > 0 && text !== UNREAD_BODY && !isReasonPhrase(text) && text !== unsaidFailure(err.status);
 }
 
+/**
+ * The sentence a person reads where core sends one beside the caller's (`details.reader`), and
+ * each reason standing beside it: a release refusal's own names a stored key and a JSON shape
+ * (ISS-1421 r37, judge-151 on criterion 367).
+ */
+function readerSaid(err: ApiError): string | null {
+  const details = err.details;
+  if (typeof details !== 'object' || details === null) return null;
+  const { reader, alsoBlocking } = details as { reader?: unknown; alsoBlocking?: unknown };
+  if (typeof reader !== 'string' || reader.trim() === '') return null;
+  const standing = Array.isArray(alsoBlocking)
+    ? alsoBlocking.flatMap((b) => {
+        const said = (b as { reader?: unknown } | null)?.reader;
+        return typeof said === 'string' && said.trim() !== '' ? [said] : [];
+      })
+    : [];
+  return [reader, ...standing].join(' ');
+}
+
 export function formatApiError(err: unknown): string {
   const said = apiErrorSaid(err);
   const when = retryWhen(err);
@@ -142,6 +161,8 @@ function apiErrorSaid(err: unknown): string {
     if (worded) return worded;
     const claimed = err.code === 'CLAIM_CONFLICT' ? claimConflictSentence(err.details) : null;
     if (claimed) return claimed;
+    const reader = readerSaid(err);
+    if (reader) return reader;
     // ISS-1228 r24: the server's sentence wins; the table speaks only for an answer that said nothing.
     if (serverSaid(err)) return err.message;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];

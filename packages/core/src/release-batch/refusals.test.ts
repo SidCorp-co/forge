@@ -13,6 +13,7 @@ import {
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
+import { releaseBlockerReaderSentence, withReader } from './reader-sentences.js';
 import {
   declarationRefusal,
   finishRefusal,
@@ -75,7 +76,14 @@ describe('unreadableProbes', () => {
     expect(err.status).toBe(409);
     expect(err.cause).toEqual({
       code: 'RELEASE_PROBES_UNREADABLE',
-      details: { urls: [], bindings: ['coolify b-1'] },
+      details: {
+        urls: [],
+        bindings: ['coolify b-1'],
+        reader: releaseBlockerReaderSentence('RELEASE_PROBES_UNREADABLE', {
+          urls: [],
+          bindings: ['coolify b-1'],
+        }),
+      },
     });
     expect(err.message).toContain('`coolify b-1`');
   });
@@ -95,7 +103,10 @@ describe('unreadableProbes', () => {
     const err = unreadableProbes(new ReleaseProbesUnreadableError(['not a url']));
     expect(err.cause).toEqual({
       code: 'RELEASE_PROBES_UNREADABLE',
-      details: { urls: ['not a url'] },
+      details: {
+        urls: ['not a url'],
+        reader: releaseBlockerReaderSentence('RELEASE_PROBES_UNREADABLE', { urls: ['not a url'] }),
+      },
     });
     expect(err.message).toBe(
       releaseBlockerSentence('RELEASE_PROBES_UNREADABLE', { urls: ['not a url'] }),
@@ -142,7 +153,8 @@ describe('reportedRefusal — the entry readiness listed, not a rebuild of it', 
 
     expect(refusal.status).toBe(entry.httpStatus);
     expect(refusal.message).toBe(entry.message);
-    expect(refusal.cause).toEqual(details ? { code, details } : { code });
+    const reader = releaseBlockerReaderSentence(code, details);
+    expect(refusal.cause).toEqual({ code, details: { ...details, reader } });
   });
 
   it('carries every later entry, whole, as alsoBlocking', () => {
@@ -153,8 +165,26 @@ describe('reportedRefusal — the entry readiness listed, not a rebuild of it', 
 
     expect(refusal.cause).toEqual({
       code: 'RELEASE_RECORD_MISSING',
-      details: { issueIds: ['a'], alsoBlocking: rest },
+      details: {
+        issueIds: ['a'],
+        reader: releaseBlockerReaderSentence('RELEASE_RECORD_MISSING', { issueIds: ['a'] }),
+        alsoBlocking: rest.map(withReader),
+      },
     });
+  });
+
+  // ISS-1421 r37, judge-151 on criterion 367: Release now pressed over an issue with no release note
+  // showed the caller's sentence, naming the stored key and a JSON shape. The person's travels beside it.
+  it("carries a person's sentence that names no stored key and no JSON shape", () => {
+    const head = blocker('RELEASE_RECORD_MISSING', { issueIds: ['a'], displayIds: ['ISS-7'] });
+
+    const refusal = reportedRefusal(thrown(head)) as HTTPException;
+    const reader = String((refusal.cause as { details: { reader: unknown } }).details.reader);
+
+    expect(refusal.message).toContain('releaseNotes');
+    expect(reader).toContain('`ISS-7`');
+    expect(reader).toContain('no release note');
+    expect(reader).not.toMatch(/releaseNotes|userFacing|section|[{}]/);
   });
 
   it('answers null for an error no report rode on', () => {

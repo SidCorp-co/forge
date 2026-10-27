@@ -121,6 +121,7 @@ describe("useBatchRelease — Release now refused", () => {
       baseBranch: "main",
       nextCutAt: null,
       automaticRelease: false,
+      blockingAll: [],
       issues: [
         {
           id: "iss-1",
@@ -131,6 +132,7 @@ describe("useBatchRelease — Release now refused", () => {
           claimedByRunId,
           closeRefusals: [],
           closeFailure: null,
+          releaseRefusals: [],
         },
       ],
     };

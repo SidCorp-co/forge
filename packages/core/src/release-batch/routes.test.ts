@@ -37,8 +37,11 @@ const findRunMock = vi.fn();
 vi.mock('./service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./service.js')>()),
   createReleaseBatch: (a: unknown) => createReleaseBatchMock(a),
-  loadReleaseRoster: (a: unknown) => loadReleaseRosterMock(a),
   findReleaseBatchRun: (a: unknown) => findRunMock(a),
+}));
+
+vi.mock('./gate-roster.js', () => ({
+  loadReleaseGateRoster: (a: unknown) => loadReleaseRosterMock(a),
 }));
 
 const recordReleaseMock = vi.fn();

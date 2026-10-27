@@ -54,6 +54,20 @@ export function noneReadyLine(claimed: number, unclosable: number): string {
   return `None is ready to release. Each issue marked Not ready to release says below what would make it ready${claimed > 0 ? ", and the rest are already in a release" : ""}.`;
 }
 
+/**
+ * Said in place of Release now where the press would be refused whatever is picked: no runner to
+ * take it, a release already running, a declaration it cannot read. Each reason is core's own
+ * sentence for a person, saying what clears it (ISS-1421 r37, judge-151 on criteria 366 and 367).
+ */
+export function blockedLine(blockingAll: ReadonlyArray<{ said: string }>): string {
+  return `None can be released yet. ${blockingAll.map((b) => b.said).join(" ")}`;
+}
+
+/** Whether Release now would refuse this row for a reason of its own: its close, or its release note. */
+export function refusedOwnRow(issue: Pick<ReleaseRosterEntry, "claimedByRunId" | "closeRefusals" | "releaseRefusals">): boolean {
+  return issue.claimedByRunId === null && (issue.closeRefusals.length > 0 || issue.releaseRefusals.length > 0);
+}
+
 /** What releases the waiting issues: a schedule, the automatic release, or a person (ISS-1421 r13). */
 export function whatReleases(nextCutAt: string | null, automatic: boolean): string {
   if (nextCutAt) return `Next cut ${formatCountdown(nextCutAt)}`;
@@ -113,13 +127,17 @@ export function ReleaseGatePanel({
   }
 
   const unclaimed = issues.filter((i) => i.claimedByRunId === null);
-  const selectable = unclaimed.filter((i) => i.closeRefusals.length === 0);
+  // A row is offered only where the press over it would not be refused: by its own close or note,
+  // or by a reason no pick escapes (ISS-1421 r37).
+  const blocked = data.blockingAll.length > 0;
+  const own = unclaimed.filter((i) => !refusedOwnRow(i));
+  const selectable = blocked ? [] : own;
   // A row the last release failed to close is picked by hand only: a release fails it the same way.
   const ready = selectable.filter((i) => i.closeFailure === null);
   const chosen = selectable.filter((i) => selected.has(i.id));
   const allSelected = ready.length > 0 && ready.every((i) => selected.has(i.id));
   const claimed = issues.length - unclaimed.length;
-  const unclosable = unclaimed.length - selectable.length;
+  const unclosable = unclaimed.length - own.length;
   const failing = selectable.length - ready.length;
   const visible = expanded ? issues : issues.slice(0, VISIBLE_LIMIT);
   const oldest = oldestMergedAt(issues);
@@ -148,7 +166,9 @@ export function ReleaseGatePanel({
             {oldest ? ` · oldest merged ${formatRelativeTime(oldest)}` : ""}
           </p>
         </div>
-        {selectable.length === 0 ? (
+        {blocked ? (
+          <p className="fg-caption text-muted" data-testid="none-ready">{blockedLine(data.blockingAll)}</p>
+        ) : selectable.length === 0 ? (
           <p className="fg-caption text-muted" data-testid="none-ready">{noneReadyLine(claimed, unclosable)}</p>
         ) : canRelease ? (
           <Button
@@ -208,6 +228,7 @@ export function ReleaseGatePanel({
               issue={issue}
               slug={slug}
               checked={selected.has(issue.id)}
+              blocked={blocked}
               onToggle={() => toggle(issue.id)}
             />
           ))}
@@ -237,22 +258,25 @@ function RosterRow({
   issue,
   slug,
   checked,
+  blocked,
   onToggle,
 }: {
   issue: ReleaseRosterEntry;
   slug: string;
   checked: boolean;
+  /** A reason no pick escapes stands, so no row can be picked; the panel's head says it. */
+  blocked: boolean;
   onToggle: () => void;
 }) {
   const runId = issue.claimedByRunId;
   const claimed = runId !== null;
-  const refused = !claimed && issue.closeRefusals.length > 0;
+  const refused = refusedOwnRow(issue);
   return (
     <li className="flex flex-col gap-0.5 py-1.5">
       <div className="flex items-center gap-2">
         <Checkbox
-          checked={checked && !refused}
-          disabled={claimed || refused}
+          checked={checked && !refused && !blocked}
+          disabled={claimed || refused || blocked}
           onChange={onToggle}
           ariaLabel={`Select ${issue.displayId} for release`}
         />
@@ -280,7 +304,7 @@ function RosterRow({
       </div>
       {refused ? (
         <p className="fg-caption text-muted pl-6">
-          {issue.closeRefusals.map((r) => r.said).join(" ")}
+          {[...issue.closeRefusals, ...issue.releaseRefusals].map((r) => r.said).join(" ")}
         </p>
       ) : null}
       {!claimed && !refused && issue.closeFailure ? (

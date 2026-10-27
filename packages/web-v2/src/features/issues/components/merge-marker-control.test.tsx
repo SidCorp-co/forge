@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import {
   BLURB,
-  COMMIT_HINT,
+  commitHint,
   LATER_COMMIT_HINT,
   COMMIT_PLACEHOLDER,
   CORRECTION_PLACEHOLDER,
@@ -87,9 +87,30 @@ describe("MergeMarkerControl", () => {
     render(<MergeMarkerControl issueId="i1" mergedAt={mergedAt} landingShape="git" />);
     fireEvent.click(screen.getByRole("button", { name: mergedAt ? "Mark a later merge" : "Mark merged" }));
     expect(screen.getByRole("textbox", { name: /^Commit/ })).toHaveAccessibleDescription(
-      mergedAt ? LATER_COMMIT_HINT : COMMIT_HINT,
+      mergedAt ? LATER_COMMIT_HINT : commitHint(undefined),
     );
     expect(COMMIT_PLACEHOLDER.length).toBeLessThanOrEqual(32);
+  });
+
+  // ISS-1421 r37, judge-151: the hint promised a claim on every project, and a project naming a
+  // repository Forge holds no key for then answered "Nothing was marked". It says the reader's case.
+  it.each([
+    ["checked", /^Checked against the project's repository; where Forge cannot read it, nothing is marked/],
+    ["claim", /^This project names no repository, so Forge has nothing to check the commit against: it is kept as a claim/],
+    ["refused", /^Forge cannot read this project's repository, so a commit named here is refused and nothing is marked/],
+  ] as const)("says under Commit what a first mark's commit meets on a %s project", (check, said) => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} landingShape="git" commitCheck={check} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    const field = screen.getByRole("textbox", { name: /^Commit/ });
+    expect(field).toHaveAccessibleDescription(said);
+    expect(field).toHaveAccessibleDescription(commitHint(check));
+  });
+
+  it("promises a claim only where the project names no repository", () => {
+    expect(commitHint("refused")).not.toMatch(/kept as a claim/);
+    expect(commitHint("checked")).not.toMatch(/kept as a claim/);
+    expect(commitHint(null)).toMatch(/Where the project names no repository, the commit is kept as a claim/);
+    expect(commitHint(null)).toMatch(/where it names one Forge cannot read, nothing is marked/);
   });
 
   // ISS-1300 r4 (judge-121): on a marked issue the field corrects where the work landed, so its

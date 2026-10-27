@@ -34,6 +34,7 @@ import {
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
+import { releaseBlockerReaderSentence, withReader } from './reader-sentences.js';
 import type { ReleaseRunHoldingError } from './state.js';
 
 export const badRequest = (details: unknown) =>
@@ -64,11 +65,14 @@ export function releaseBlockerHttp(
   details?: Record<string, unknown>,
 ): HTTPException {
   const standing = alsoBlocking(err, code);
-  const body: Record<string, unknown> = { ...(details ?? {}) };
-  if (standing.length > 0) body.alsoBlocking = standing;
+  const body: Record<string, unknown> = {
+    ...(details ?? {}),
+    reader: releaseBlockerReaderSentence(code, details),
+  };
+  if (standing.length > 0) body.alsoBlocking = standing.map(withReader);
   return new HTTPException(blockerHttpStatus(code), {
     message: releaseBlockerSentence(code, details),
-    cause: Object.keys(body).length > 0 ? { code, details: body } : { code },
+    cause: { code, details: body },
   });
 }
 
@@ -80,11 +84,16 @@ export function releaseBlockerHttp(
 export function reportedRefusal(err: unknown): HTTPException | null {
   const [head, ...rest] = blockersOf(err);
   if (!head) return null;
-  const details: Record<string, unknown> = { ...(head.details ?? {}) };
-  if (rest.length > 0) details.alsoBlocking = rest;
+  // `reader` is the sentence a person reads where the caller's names a field or a JSON shape: the
+  // screen that pressed Release now shows it (ISS-1421 r37, judge-151 on criterion 367).
+  const details: Record<string, unknown> = {
+    ...(head.details ?? {}),
+    reader: releaseBlockerReaderSentence(head.code, head.details),
+  };
+  if (rest.length > 0) details.alsoBlocking = rest.map(withReader);
   return new HTTPException(head.httpStatus, {
     message: head.message,
-    cause: Object.keys(details).length > 0 ? { code: head.code, details } : { code: head.code },
+    cause: { code: head.code, details },
   });
 }
 

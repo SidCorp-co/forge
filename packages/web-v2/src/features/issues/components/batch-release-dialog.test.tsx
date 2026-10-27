@@ -41,6 +41,7 @@ function rosterAnswer(): Response {
     claimedByRunId: null,
     closeRefusals: [],
     closeFailure,
+    releaseRefusals: [],
   }));
   return new Response(
     JSON.stringify({
@@ -51,6 +52,7 @@ function rosterAnswer(): Response {
       nextCutAt: null,
       automaticRelease: false,
       issues,
+      blockingAll: [],
     }),
     { status: 200, headers: { "content-type": "application/json" } },
   );
@@ -112,6 +114,7 @@ function draw({ read = true }: { read?: boolean } = {}) {
       nextCutAt: null,
       automaticRelease: false,
       issues: [],
+      blockingAll: [],
     });
   }
   const wrap = (node: ReactElement) => (
@@ -152,6 +155,25 @@ describe("a batch release the server refuses", () => {
     const drawer = screen.getByRole("dialog");
     const alert = await within(drawer).findByRole("alert");
     expect(alert).toHaveTextContent(REFUSAL);
+  });
+
+  // ISS-1421 r37, judge-151 on criterion 367: the refusal a person met named the stored key and a JSON
+  // shape. Core sends the person's sentence beside the caller's, and the dialog says that one.
+  it("says a refused press in the person's words where the server sends them, never the caller's", async () => {
+    answer(409, {
+      code: "RELEASE_RECORD_MISSING",
+      message: "1 issue named here (`ISS-2`) has no release note. Set `releaseNotes` first: `{ section, userFacing }`.",
+      details: {
+        issueIds: ["iss-b"],
+        reader: "1 issue named here (`ISS-2`) has no release note. Give it one first: the one line a user would read.",
+      },
+    });
+    draw();
+    press();
+
+    const alert = await within(screen.getByRole("dialog")).findByRole("alert");
+    expect(alert).toHaveTextContent("has no release note. Give it one first: the one line a user would read.");
+    expect(alert).not.toHaveTextContent(/releaseNotes|userFacing/);
   });
 
   it("keeps the dialog open with the same issues listed", async () => {

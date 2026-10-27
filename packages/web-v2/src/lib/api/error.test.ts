@@ -451,3 +451,27 @@ describe('a refused body core said why about', () => {
     );
   });
 });
+
+// ISS-1421 r37, judge-151 on criterion 367: Release now over an issue with no release note was refused
+// in the caller's words, naming the stored key and a JSON shape. Core sends a person's sentence beside it.
+describe("a refusal carrying a person's sentence", () => {
+  it("says the person's sentence, then each reason standing beside it, never the caller's", () => {
+    const err = new ApiError(409, 'Set `releaseNotes` first: `{ section, userFacing }`.', 'RELEASE_RECORD_MISSING', {
+      issueIds: ['a'],
+      reader: '1 issue named here (`ISS-5`) has no release note.',
+      alsoBlocking: [
+        { code: 'RELEASE_POOL_EMPTY', message: 'caller words', reader: 'This project has no runner registered.' },
+        { code: 'BATCH_IN_FLIGHT', message: 'no reader on this one' },
+      ],
+    });
+    expect(formatApiError(err)).toBe(
+      '1 issue named here (`ISS-5`) has no release note. This project has no runner registered.',
+    );
+  });
+
+  it("keeps the server's sentence where no person's sentence came with it", () => {
+    const err = new ApiError(409, 'Set `releaseNotes` first.', 'RELEASE_RECORD_MISSING', { issueIds: ['a'] });
+    expect(formatApiError(err)).toBe('Set `releaseNotes` first.');
+  });
+});
+

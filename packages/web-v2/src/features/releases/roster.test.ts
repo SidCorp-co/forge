@@ -12,6 +12,7 @@ const ENTRY = {
   claimedByRunId: null,
   closeRefusals: [],
   closeFailure: null,
+  releaseRefusals: [],
 };
 
 function body(over: Record<string, unknown> = {}) {
@@ -23,6 +24,7 @@ function body(over: Record<string, unknown> = {}) {
     nextCutAt: null,
     automaticRelease: false,
     issues: [ENTRY],
+    blockingAll: [],
     ...over,
   };
 }
@@ -44,6 +46,7 @@ describe("parseReleaseRoster", () => {
       nextCutAt: null,
       automaticRelease: false,
       issues: [ENTRY],
+      blockingAll: [],
     });
   });
 
@@ -173,5 +176,25 @@ describe("parseReleaseRoster — what a release could not close a row for", () =
     const closeRefusals = [{ code: "OPEN_QUESTIONS", reason: "x", clears: "y", said: "It x. y" }];
     const issues = [{ ...ENTRY, closeRefusals }];
     expect(() => parseReleaseRoster(body({ issues }), ENDPOINT)).toThrow(/closeRefusals\[0\]\.saidHere/);
+  });
+
+  // ISS-1421 r37: what Release now would be refused for, which the gate counts before it says ready.
+  it("reads a row's release refusal and the gate's refusals whatever is picked", () => {
+    const releaseRefusals = [{ code: "RELEASE_RECORD_MISSING", said: "It has no release note.", saidHere: "This issue has no release note." }];
+    const blockingAll = [{ code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered." }];
+    const parsed = parseReleaseRoster(body({ issues: [{ ...ENTRY, releaseRefusals }], blockingAll }), ENDPOINT);
+    expect(parsed.issues[0]?.releaseRefusals).toEqual(releaseRefusals);
+    expect(parsed.blockingAll).toEqual(blockingAll);
+  });
+
+  it("refuses a row with no releaseRefusals rather than reading it as ready", () => {
+    const { releaseRefusals: _dropped, ...entry } = ENTRY;
+    expect(() => parseReleaseRoster(body({ issues: [entry] }), ENDPOINT)).toThrow(
+      /issues\[0\]\.releaseRefusals should be an array/,
+    );
+  });
+
+  it("refuses a response with no blockingAll rather than reading Release now as unrefused", () => {
+    expect(() => parseReleaseRoster(without("blockingAll"), ENDPOINT)).toThrow(/blockingAll should be an array/);
   });
 });

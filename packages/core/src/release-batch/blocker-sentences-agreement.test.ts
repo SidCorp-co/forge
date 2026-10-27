@@ -140,13 +140,13 @@ describe('a live deploy binding whose verify Forge cannot read', () => {
 
   it('says the binding declares it, at one', () => {
     expect(sentence(['coolify-a'])).toContain(
-      'The live deploy binding `coolify-a` declares a `verify` Forge cannot read',
+      'The live deploy target `coolify-a` declares a `verify` Forge cannot read',
     );
   });
 
   it('says the bindings each declare one, at two', () => {
     expect(sentence(['coolify-a', 'coolify-b'])).toContain(
-      'The live deploy bindings `coolify-a`, `coolify-b` each declare a `verify` Forge cannot read',
+      'The live deploy targets `coolify-a`, `coolify-b` each declare a `verify` Forge cannot read',
     );
   });
 
