@@ -27,7 +27,7 @@ import { ForgeUnreached } from "@/features/auth/forge-unreached";
 import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
 import { useAuth, useUserInitials } from "@/providers/auth-provider";
 import { ToastLane, useToast } from "@/providers/toast-provider";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjects, useRetryProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
@@ -95,12 +95,12 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const projectsQ = useProjects();
   const projects = projectsQ.data;
-  const { refetch: readProjects } = projectsQ;
+  const readProjects = useRetryProjects();
   // A failed read with no list held is not a list of no projects: the rail and drawer say so (ISS-1229 r47).
   const projectsUnread = useMemo(
     () =>
       projectsQ.isError && projects === undefined
-        ? { message: formatApiError(projectsQ.error), onRetry: () => void readProjects() }
+        ? { message: formatApiError(projectsQ.error), onRetry: readProjects }
         : null,
     [projectsQ.isError, projectsQ.error, projects, readProjects],
   );

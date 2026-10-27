@@ -37,6 +37,7 @@ vi.mock("@/features/projects/hooks", () => ({
       ? { data: undefined, isLoading: false, isError: true, error: new Error("The server is down."), refetch: readProjects }
       : { data: state.projects, isLoading: state.projects === undefined, isError: false, error: null, refetch: readProjects },
   useOrgScopedProjects: () => ({ projects: state.projects ?? [], isLoading: false }),
+  useRetryProjects: () => readProjects,
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("../hooks", () => ({

@@ -24,6 +24,7 @@ import {
 	useProjectsIncludingArchived,
 } from "@/features/projects/hooks";
 import { ProjectRunnersScreen } from "@/features/runners/components/project-runners-screen";
+import { ProjectsUnread } from "@/features/projects/components/project-missing";
 import { formatApiError } from "@/lib/api/error";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { AdvancedTab } from "./advanced-tab";
@@ -94,12 +95,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 	if (projectsQ.isError) {
 		return (
 			<div className="grid min-h-[60vh] place-items-center">
-				<ErrorState
-					level={1}
-					title="Couldn't load this project"
-					message={formatApiError(projectsQ.error)}
-					onRetry={() => projectsQ.refetch()}
-				/>
+				<ProjectsUnread error={projectsQ.error} />
 			</div>
 		);
 	}

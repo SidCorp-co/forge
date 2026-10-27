@@ -36,12 +36,24 @@ const FRIENDLY_CODES: Record<string, string> = {
   UNPARSABLE_MODULE_FLOW: 'A module stores a flow this generator cannot read.',
 };
 
-/** ISS-1160 — a screen offers Retry only where retrying could change the answer.
- *  A 4xx is the same request meeting the same refusal again; only a network
- *  failure or a 5xx is worth resubmitting. */
+/** The refusals a second read can change: a timeout, a request sent too early, a rate limit (ISS-1229 r49). */
+const PASSING_REFUSALS = new Set([408, 425, 429]);
+
+/** ISS-1160 — a screen offers Retry only where retrying could change the answer: a network failure,
+ *  a 5xx or a passing refusal. Any other 4xx is the same request meeting the same refusal again. */
 export function isRetryableApiError(err: unknown): boolean {
-  if (err instanceof ApiError) return err.status >= 500;
+  if (err instanceof ApiError) return err.status >= 500 || PASSING_REFUSALS.has(err.status);
   return true;
+}
+
+/** When the server asked to be asked again, as a sentence; null where it did not say. */
+export function retryWhen(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.retryAfterMs === undefined) return null;
+  const seconds = Math.ceil(err.retryAfterMs / 1000);
+  if (seconds <= 1) return 'You can retry now.';
+  if (seconds < 90) return `You can retry in ${seconds} seconds.`;
+  const minutes = Math.round(seconds / 60);
+  return minutes < 90 ? `You can retry in ${minutes} minutes.` : `You can retry in ${Math.round(minutes / 60)} hours.`;
 }
 
 /**
@@ -118,6 +130,12 @@ function serverSaid(err: ApiError): boolean {
 }
 
 export function formatApiError(err: unknown): string {
+  const said = apiErrorSaid(err);
+  const when = retryWhen(err);
+  return when ? `${asSentence(said)} ${when}` : said;
+}
+
+function apiErrorSaid(err: unknown): string {
   if (err instanceof ApiError) {
     const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err) ?? landingShapeSentence(err);
     if (worded) return worded;

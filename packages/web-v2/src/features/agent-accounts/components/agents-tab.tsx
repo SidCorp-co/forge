@@ -32,7 +32,7 @@ import {
 } from "@/design";
 import { queryRead } from "@/design/patterns/badge-read";
 import { useActiveOrg } from "@/features/orgs/active-org";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
+import { useProjectsIncludingArchived, useRetryProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -56,6 +56,7 @@ export function AgentsTab() {
   const revoke = useRevokeAgentCredentials(orgId);
   const rename = useSetAgentDisplayName(orgId);
   const projectsQ = useProjectsIncludingArchived();
+  const readProjects = useRetryProjects();
   const busy = mint.isPending || revoke.isPending;
   const { toast } = useToast();
 
@@ -265,7 +266,7 @@ export function AgentsTab() {
           testId="agents-projects-unread"
           what="your projects, so the projects each agent is in cannot be named"
           why={formatApiError(projectsQ.error)}
-          onRetry={() => void projectsQ.refetch()}
+          onRetry={readProjects}
         />
       )}
 

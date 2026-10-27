@@ -7,13 +7,13 @@ import { useParams } from "next/navigation";
 import { ProjectLoader } from "@/design";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
 import { useProjects } from "@/features/projects/hooks";
-import { ProjectMissing, ProjectUnread } from "@/features/projects/components/project-missing";
+import { ProjectMissing, ProjectsUnread } from "@/features/projects/components/project-missing";
 
 export default function ProjectIssueDetailPage() {
   const params = useParams<{ slug: string; id: string }>();
   const slug = params?.slug;
   const id = params?.id;
-  const { data: projects, isLoading, isError, error, refetch } = useProjects();
+  const { data: projects, isLoading, isError, error } = useProjects();
 
   if (isLoading) {
     return (
@@ -26,7 +26,7 @@ export default function ProjectIssueDetailPage() {
   if (isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ProjectUnread error={error} onRetry={() => refetch()} />
+        <ProjectsUnread error={error} />
       </div>
     );
   }

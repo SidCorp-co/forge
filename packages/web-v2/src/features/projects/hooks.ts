@@ -15,6 +15,15 @@ import type {
   ProjectListItem,
 } from './types';
 
+/**
+ * Read every projects query again: the list, the list with archived projects and the health read. One
+ * failed read shows in several places, and a Retry in any of them answers for all (ISS-1229 r49).
+ */
+export function useRetryProjects(): () => void {
+  const qc = useQueryClient();
+  return useCallback(() => void qc.refetchQueries({ queryKey: ['projects'], type: 'active' }), [qc]);
+}
+
 /** Project console list. Keyed `['projects']` — see the WS contract above. */
 export function useProjects() {
   return useQuery({
@@ -43,8 +52,7 @@ export function useOrgScopedProjects(): OrgScopedProjects {
   );
   const projectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
   const projectSlugs = useMemo(() => new Set(projects.map((p) => p.slug)), [projects]);
-  const { refetch } = q;
-  const retry = useCallback(() => void refetch(), [refetch]);
+  const retry = useRetryProjects();
   const error = q.data === undefined ? q.error : null;
   return { projects, projectIds, projectSlugs, activeOrgId, isLoading: q.isLoading, error, refetch: retry };
 }

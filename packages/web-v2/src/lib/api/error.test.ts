@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, unsaidFailure } from './client';
+import { ApiError, retryAfterOf, unsaidFailure } from './client';
 import {
   describeSettings,
   formatApiError,
@@ -9,6 +9,7 @@ import {
   formatSettingsWriteError,
   isRetryableApiError,
   readFailure,
+  retryWhen,
 } from './error';
 
 describe('formatPipelineConfigError', () => {
@@ -116,6 +117,37 @@ describe('isRetryableApiError', () => {
 
   it('allows retry on a non-ApiError — a transport failure, not a refusal', () => {
     expect(isRetryableApiError(new Error('fetch failed'))).toBe(true);
+  });
+
+  // ISS-1229 r49, judge-146: a 429 or 408 read was drawn final, with no Retry, though a second read can answer.
+  it.each([408, 425, 429])('allows retry on a %i — a refusal that passes', (status) => {
+    expect(isRetryableApiError(new ApiError(status, 'later', 'RATE_LIMITED'))).toBe(true);
+  });
+
+  it.each([401, 409, 410, 413, 422])('refuses retry on a %i — a refusal a second read meets again', (status) => {
+    expect(isRetryableApiError(new ApiError(status, 'no', 'X'))).toBe(false);
+  });
+});
+
+describe('when to retry, from Retry-After', () => {
+  it('reads delta-seconds and an HTTP date, and nothing else', () => {
+    expect(retryAfterOf('30')).toBe(30_000);
+    expect(retryAfterOf('Tue, 27 Oct 2026 06:01:00 GMT', Date.parse('Tue, 27 Oct 2026 06:00:00 GMT'))).toBe(60_000);
+    expect(retryAfterOf(null)).toBeUndefined();
+    expect(retryAfterOf('soon')).toBeUndefined();
+  });
+
+  it('says when after the server\'s own sentence, where it was given', () => {
+    const limited = new ApiError(429, 'Too many reads from this account.', 'RATE_LIMITED', undefined, undefined, 30_000);
+    expect(formatApiError(limited)).toBe('Too many reads from this account. You can retry in 30 seconds.');
+    expect(retryWhen(new ApiError(429, '', 'RATE_LIMITED', undefined, undefined, 300_000))).toBe('You can retry in 5 minutes.');
+  });
+
+  it('adds nothing where the server named no time', () => {
+    expect(formatApiError(new ApiError(429, 'Too many reads from this account.', 'RATE_LIMITED'))).toBe(
+      'Too many reads from this account.',
+    );
+    expect(retryWhen(new Error('fetch failed'))).toBeNull();
   });
 });
 
