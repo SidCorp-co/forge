@@ -49,7 +49,7 @@ describe("the Decision waiting card's head", () => {
     expect(screen.queryByText("open")).toBeNull();
   });
 
-  it("says an answered question waiting on another agent the same way", () => {
+  it("says an answered question was asked of another agent, waiting on nobody", () => {
     render(
       <QuestionCard
         question={{ ...QUESTION, status: "answered", blockerKind: "master_or_peer" } as AgentQuestion}
@@ -57,6 +57,6 @@ describe("the Decision waiting card's head", () => {
         pending={false}
       />,
     );
-    expect(screen.getByTestId("question-state")).toHaveTextContent("Waits on another agent · answered");
+    expect(screen.getByTestId("question-state")).toHaveTextContent("Asked of another agent · answered");
   });
 });

@@ -1,10 +1,11 @@
 import type { BlockerKind, QuestionStatus } from "./types";
 
-/** Who a question waits on and whether it is answered, in words: no stored value is shown (ISS-1421 r38). */
-export const WAITS_ON: Record<BlockerKind, string> = {
-  human: "Waits on a person",
-  master_or_peer: "Waits on another agent",
-  machine: "Waits on an automated check",
+/** Who a question waits on and whether it is answered, in words: no stored value is shown (ISS-1421 r38).
+ *  One that is over is said in the past: it no longer waits on anyone. */
+const WHO: Record<BlockerKind, string> = {
+  human: "a person",
+  master_or_peer: "another agent",
+  machine: "an automated check",
 };
 
 export const ANSWERED_STATE: Record<QuestionStatus, string> = {
@@ -15,6 +16,9 @@ export const ANSWERED_STATE: Record<QuestionStatus, string> = {
   needs_info: "waiting on more information",
 };
 
+const STILL_WAITING: ReadonlySet<QuestionStatus> = new Set(["open", "needs_info"]);
+
 export function questionStateLine(kind: BlockerKind, status: QuestionStatus): string {
-  return `${WAITS_ON[kind]} · ${ANSWERED_STATE[status]}`;
+  const lead = STILL_WAITING.has(status) ? "Waits on" : "Asked of";
+  return `${lead} ${WHO[kind]} · ${ANSWERED_STATE[status]}`;
 }

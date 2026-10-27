@@ -1,7 +1,7 @@
 // ISS-1421 r38, judge-155: the Decision waiting card showed the stored values "human" and "open" as tags.
 
 import { describe, expect, it } from "vitest";
-import { ANSWERED_STATE, questionStateLine, WAITS_ON } from "./question-words";
+import { ANSWERED_STATE, questionStateLine } from "./question-words";
 import type { BlockerKind, QuestionStatus } from "./types";
 
 const KINDS: BlockerKind[] = ["human", "master_or_peer", "machine"];
@@ -21,7 +21,12 @@ describe("a question's state, as its card says it", () => {
   );
 
   it("tells every kind and every status apart", () => {
-    expect(new Set(Object.values(WAITS_ON)).size).toBe(KINDS.length);
+    expect(new Set(KINDS.map((k) => questionStateLine(k, "open"))).size).toBe(KINDS.length);
     expect(new Set(Object.values(ANSWERED_STATE)).size).toBe(STATUSES.length);
+  });
+
+  // Review F1: an answered, withdrawn or expired question waits on nobody.
+  it.each(["answered", "void", "expired"] as const)("says a %s question was asked, never that it waits", (status) => {
+    expect(questionStateLine("human", status)).toMatch(/^Asked of a person · /);
   });
 });
