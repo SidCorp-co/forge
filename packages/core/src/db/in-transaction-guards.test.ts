@@ -329,6 +329,21 @@ export async function narrowsAfterWritingThroughADefaultedBinding(tx: Tx) {
   }
 }
 
+const box: { error?: { code?: string } } = {};
+const getBox = () => box;
+
+export async function narrowsAfterWritingThroughAHolderACallReturns(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    getBox().error = err as { code?: string };
+    const again = getBox();
+    (again.error as { code?: string }).code = '23505';
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
+
 export class Retrier {
   last: { code?: string } | undefined;
 
@@ -447,6 +462,7 @@ describe('a guard the scan reads as naming one error', () => {
       'narrowsAfterWritingThroughAMapEntry',
       'narrowsAfterWritingThroughADefaultedParameter',
       'narrowsAfterWritingThroughADefaultedBinding',
+      'narrowsAfterWritingThroughAHolderACallReturns',
       'narrowsAfterWritingThroughThis',
     ];
     expect(refusals(planted)).toEqual(

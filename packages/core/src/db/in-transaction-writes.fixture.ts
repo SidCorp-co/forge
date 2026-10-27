@@ -43,7 +43,8 @@ interface Aliases {
  * Every name the caught error is bound to in `body`: the catch's own, each name a declaration, a
  * parameter's or a binding's default, a `for...of` or an assignment binds to a value mentioning one
  * of them, and a function declared with a body that mentions one, whose result may be the error.
- * Storing such a value in a property of a name, or of `this`, makes that name a holder of it.
+ * Storing such a value in a property of a name, of `this`, or of what a call returns makes that
+ * name, `this` or the callee a holder of it, and whatever a holder's call returns may be the holder.
  */
 function aliasesOf(body: ts.Node, param: ts.Symbol, scan: Scan): Aliases {
   const aliases: Aliases = { is: new Set([param]), holds: new Set() };
@@ -56,7 +57,11 @@ function aliasesOf(body: ts.Node, param: ts.Symbol, scan: Scan): Aliases {
   };
   const hold = (e: ts.Expression): void => {
     const root = unwrap(e);
-    if (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root))
+    if (
+      ts.isPropertyAccessExpression(root) ||
+      ts.isElementAccessExpression(root) ||
+      ts.isCallExpression(root)
+    )
       hold(root.expression);
     else add(aliases.holds, bound(root, scan));
   };
