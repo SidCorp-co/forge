@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 //
-// ISS-1229 r45, judge-129: a failed project read was headed "Couldn't load" alone, page and tab. r49,
-// judge-146: the read that failed is the reader's projects list, so the page names that read.
+// ISS-1229 r45 and r49: a failed projects read heads the page and the tab with the read that failed.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";

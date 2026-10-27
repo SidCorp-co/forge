@@ -63,7 +63,7 @@ interface ConversationSidebarProps {
   mayChange?: (row: ListedConversation) => boolean;
   /** Shown under the rows: the organization's rooms whose projects are gone (ISS-1229 r23). */
   below?: React.ReactNode;
-  /** Set while the open room is one the list's organization does not hold: the list never says there are none. */
+  /** Set only while the open room is another organization's, so the list never says it holds none. */
   openElsewhere?: OpenElsewhere | null;
 }
 

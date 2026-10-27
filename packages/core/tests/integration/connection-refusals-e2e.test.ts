@@ -185,9 +185,7 @@ describe('a refusal to change a connection names its owner', () => {
     // "a member" stands only in the phrase that says who they are, never as a bare name ("Ask a member").
     expect(body.message).not.toMatch(/\b[Aa] member(?! who has set no name)/);
     expect(body.message).not.toContain(rows[0]?.email ?? '@');
-    expect(listed.items?.find((i) => i.id === connection.id)?.access?.ownerName).toBe(
-      'a member',
-    );
+    expect(listed.items?.find((i) => i.id === connection.id)?.access?.ownerName).toBe('a member');
   });
 
   it.each([

@@ -117,7 +117,9 @@ describe('migration 0396: a person with no name reads "a member" in what core st
       expect.arrayContaining([
         expect.stringMatching(/A member mentioned you in "Fix the login"$/),
         expect.stringMatching(/A member invited you to Invoicing as member$/),
-        expect.stringMatching(/INV-3 is waiting for a member's decision — Invoicing$|is waiting for a member's decision — Invoicing$/),
+        expect.stringMatching(
+          /INV-3 is waiting for a member's decision — Invoicing$|is waiting for a member's decision — Invoicing$/,
+        ),
         expect.stringMatching(/is waiting for something only a member can supply — Invoicing$/),
       ]),
     );
@@ -126,11 +128,15 @@ describe('migration 0396: a person with no name reads "a member" in what core st
       for (const title of t.bell) expect(title).not.toMatch(/another member/i);
     }
     expect(said).toHaveLength(1);
-    expect(said[0]).toMatch(/^0396: "another member" re-rendered as "a member" in 4 notice title\(s\), 4 bell row title\(s\)/);
+    expect(said[0]).toMatch(
+      /^0396: "another member" re-rendered as "a member" in 4 notice title\(s\), 4 bell row title\(s\)/,
+    );
   });
 
   it('leaves an issue title that quotes the words as written', async () => {
-    const quoted = await told('Lan mentioned you in "Another member mentioned you in the old bell"');
+    const quoted = await told(
+      'Lan mentioned you in "Another member mentioned you in the old bell"',
+    );
     const asks = await told('INV-5 — Ask another member about the release');
     const before = await Promise.all([quoted, asks].map(titlesOf));
 
@@ -153,7 +159,9 @@ describe('migration 0396: a person with no name reads "a member" in what core st
 
   it('re-renders who decided in a ship-unverified release comment, and nothing a person wrote', async () => {
     const shipped = await comment(SHIPPED('Another member'));
-    const person = await comment('Another member decided, when pressing the release, to ship it unverified.');
+    const person = await comment(
+      'Another member decided, when pressing the release, to ship it unverified.',
+    );
 
     await runMigration();
 

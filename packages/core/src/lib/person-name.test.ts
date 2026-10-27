@@ -11,13 +11,10 @@ describe('what a person is called', () => {
     expect(personName('  Mai ')).toBe('Mai');
   });
 
-  it.each([null, undefined, '', '   '])(
-    'is "a member" where they gave none (%j)',
-    (given) => {
-      expect(personName(given)).toBe('a member');
-      expect(personName(given, 'start')).toBe('A member');
-    },
-  );
+  it.each([null, undefined, '', '   '])('is "a member" where they gave none (%j)', (given) => {
+    expect(personName(given)).toBe('a member');
+    expect(personName(given, 'start')).toBe('A member');
+  });
 
   it('is never an address, even one set as the display name', () => {
     expect(personName('mai@example.com')).toBe('a member');

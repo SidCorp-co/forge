@@ -87,8 +87,8 @@ describe("a project page whose projects list could not be read", () => {
   });
 });
 
-// ISS-1229 r49, judge-146: with the projects list failing, every page under a project's address said
-// "Couldn't load this project", naming a read that never ran.
+// ISS-1229 r49, judge-146: every page under a project's address said "Couldn't load this project", naming a
+// read that never ran.
 describe("a page under a project's address whose projects list could not be read", () => {
   const pages = [
     ["issues", () => import("@/app/(workspace)/projects/[slug]/issues/page")],

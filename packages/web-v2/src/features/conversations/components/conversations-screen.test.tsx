@@ -394,8 +394,7 @@ describe("the page when the reader's projects cannot be read", () => {
   });
 });
 
-// ISS-1229 r49, judge-146: the list said "No conversations yet" beside the reader's own open room, which is in
-// another organization than the one the list shows.
+// ISS-1229 r49, judge-146: the list said "No conversations yet" beside the reader's own open room.
 describe("a room open from another organization", () => {
   it("hands the list both organizations, so it never says there are none", () => {
     roomRead.answers[OLD] = { data: { id: OLD, scope: ["p2"], archivedAt: null } };
