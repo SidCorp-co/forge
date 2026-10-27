@@ -148,7 +148,7 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
         <ErrorState
           title="Couldn't load skills"
           message={formatApiError(error)}
-          onRetry={() => {
+          error={error} onRetry={() => {
             skillsQ.refetch();
             syncQ.refetch();
           }}

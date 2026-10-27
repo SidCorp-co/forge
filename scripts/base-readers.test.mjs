@@ -22,6 +22,7 @@ const CARRIED = [
   'lib/base-branch.mjs',
   'lib/changed-selection.mjs',
   'lib/prerequisite.mjs',
+  'lib/entry-of.mjs',
 ];
 
 const READERS = ['test-changed.mjs', 'conformance-status.mjs'];

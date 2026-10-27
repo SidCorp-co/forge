@@ -110,7 +110,7 @@ function PmConfigCard({ projectId, canManage }: { projectId: string; canManage: 
       <ErrorState
         title="Couldn't load PM configuration"
         message={formatApiError(configQ.error)}
-        onRetry={() => configQ.refetch()}
+        error={configQ.error} onRetry={() => configQ.refetch()}
       />
     );
   }
@@ -311,7 +311,7 @@ function PmDecisionsCard({ projectId }: { projectId: string }) {
           <ErrorState
             title="Couldn't load decisions"
             message={formatApiError(decisionsQ.error)}
-            onRetry={() => decisionsQ.refetch()}
+            error={decisionsQ.error} onRetry={() => decisionsQ.refetch()}
           />
         )}
 

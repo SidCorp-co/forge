@@ -87,7 +87,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           level={1}
           title="Couldn't load your projects"
           message={`${formatApiError(projectsError)} A conversation is about a project, so none can be started or listed until they are read.`}
-          onRetry={readProjects}
+          error={projectsError} onRetry={readProjects}
         />
       </div>
     );
@@ -126,7 +126,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
             <ErrorState
               title="Couldn't read which projects a room can start on"
               message={formatApiError(openersQ.error)}
-              onRetry={() => openersQ.refetch()}
+              error={openersQ.error} onRetry={() => openersQ.refetch()}
             />
           </div>
         )}
@@ -239,7 +239,7 @@ function Extras({
         <ErrorState
           title="Couldn't load who you can add"
           message={formatApiError(query.error)}
-          onRetry={() => query.refetch()}
+          error={query.error} onRetry={() => query.refetch()}
         />
       </div>
     );

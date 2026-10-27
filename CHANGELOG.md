@@ -3199,6 +3199,10 @@
 
 ### Fixed
 
+- **Retry is offered only where reading again can change the answer**: no answer, a timeout, too many requests or a server error. A refused or missing read says why, without Retry. (ISS-1229)
+- **A failed projects read shows in the sidebar, with the wait before Retry.** When your current organization cannot be read, every page names the one shown instead, and New project waits for it. (ISS-1229)
+- **Two people who read alike in a room are told apart by role, then by who opened it.** Where even that matches, the row and the removal question say so, never a date, an order or an address. (ISS-1229)
+- **The answer modes say what each does**, "Reads the project" or "Works in the repository", and the Creator and Label menus say inside the menu when their choices failed to load. (ISS-1229)
 - **A person with no display name is "A member" everywhere**, in notices, lists, rooms and the Account hint alike; a room's people list no longer adds when they were added. Notices already stored are reworded on deploy. (ISS-1229)
 - **A rate-limited or timed-out read offers Retry, and says when to retry where the server said.** One Retry on a failed projects read reloads it everywhere it shows, and pages under a project name that read. (ISS-1229)
 - **A new project lands in your current organization after Retry**, the Filters sheet shows which choices failed to load, the room list never says "No conversations yet" beside another organization's room, and replies are signed by the agent's handle. (ISS-1229)
@@ -3206,6 +3210,8 @@
 - **A new project whose repository settings were refused is not reported unsaved.** The toast says the project was created, which settings were not saved and to correct them here, and links to Shape & release in Settings for later. (ISS-1236)
 - **A notice stays while you read it.** Resting the pointer on it, or tabbing into it, holds it; a long one stays as long as it takes to read rather than four seconds. (ISS-1236)
 - **A refused repository path's notice no longer covers the field it asks you to fix.** It moves or shrinks to leave the field clear, and its Settings link opens on Repository. (ISS-1236)
+- **A new project's notices keep off its repository step.** "Project created" no longer covers the path field, and a refused path's notice keeps the label, the error and Save clear too, going over a kept notice first. (ISS-1236)
+- **A script's hand-written launch check is refused by what it reads, not by its spelling.** The check now allows a short named list of process reads and refuses everything else, so a new spelling fails instead of passing. (ISS-1236)
 - **The id a message is sent under reaches only its sender, over the live connection as well.** Everyone else in the room is told the message arrived without it. (ISS-1236)
 - **A list that failed to load says so with Retry, never as lost or empty**, on Agents, the rail, runner pools, pickers and the bell. Messages sign with a name or "A member"; rooms say which agents answer. (ISS-1229)
 - **Two rows of one integration never read alike.** Each names its label, store or host, then the day it was connected; an Epodsystem row's drawer is about that storefront alone, and Add storefront sits on the Integrations tab. (ISS-1421)

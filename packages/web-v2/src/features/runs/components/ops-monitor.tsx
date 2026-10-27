@@ -121,7 +121,7 @@ export function OpsMonitor() {
           level={1}
           title={projectsError ? "Couldn't load your projects" : "Couldn't load the projects' health"}
           message={formatApiError(projectsError ?? healthQ.error)}
-          onRetry={() => void (projectsError ? readProjects() : healthQ.refetch())}
+          error={projectsError ?? healthQ.error} onRetry={() => void (projectsError ? readProjects() : healthQ.refetch())}
         />
       </div>
     );
@@ -398,7 +398,7 @@ function RunsTab({
       </div>
     );
   }
-  if (error != null) return <ErrorState title="Couldn't load runs" message={formatApiError(error)} onRetry={onRetry} />;
+  if (error != null) return <ErrorState title="Couldn't load runs" message={formatApiError(error)} error={error} onRetry={onRetry} />;
   const rows = durations ?? [];
   if (rows.length === 0) {
     return <EmptyState title="No recent runs" message="No pipeline steps in the last 7 days." />;

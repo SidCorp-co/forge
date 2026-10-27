@@ -356,14 +356,18 @@ describe("the issue header's run", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  it("offers Retry for a run read the server refused, and none where it answered 401", () => {
-    journal = { data: undefined, isLoading: false, isError: true, error: new ApiError(409, "Try again in a minute.", "X"), refetch: vi.fn() };
+  // ISS-1229 r50 (judge-152, criterion 478): a refusal a second read cannot change is named without a Retry.
+  it("offers Retry for a run read the server could not answer, and none where it refused it", () => {
+    journal = { data: undefined, isLoading: false, isError: true, error: new ApiError(503, "Busy.", "X"), refetch: vi.fn() };
     const { unmount } = renderScreen();
     expect(within(failureRow()).getByRole("button", { name: "Retry" })).toBeInTheDocument();
     unmount();
-    journal = { ...journal, error: new ApiError(401, "Unauthenticated", "UNAUTHENTICATED") };
-    renderScreen();
-    expect(within(failureRow()).queryByRole("button", { name: "Retry" })).toBeNull();
+    for (const refusal of [new ApiError(409, "Try again in a minute.", "X"), new ApiError(403, "No.", "FORBIDDEN"), new ApiError(401, "Unauthenticated", "UNAUTHENTICATED")]) {
+      journal = { ...journal, error: refusal };
+      const again = renderScreen();
+      expect(within(failureRow()).queryByRole("button", { name: "Retry" })).toBeNull();
+      again.unmount();
+    }
   });
 
   // r20 review F2: the Retry lived in the primary action, which a closed issue never reaches.
@@ -519,7 +523,7 @@ describe("which session holds the issue, while it cannot be read", () => {
     { runId: "r1", ordinal: 1, kind: "issue", status: "running", group: null, startedAt: "2026-09-05T14:16:00Z",
       finishedAt: null, costUsd: null, sessionId: "s-run", attempts: [], reading: "running", runningSince: null },
   ];
-  let holds: "fail" | "hang" | "answer" | "refuse" | "forbid" | "missing" = "fail";
+  let holds: "fail" | "hang" | "answer" | "refuse" | "forbid" | "busy" | "missing" = "fail";
   /** A request in flight that has had no answer yet; the browser gives up on it in its own time. */
   const pending: Array<() => void> = [];
   const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -535,8 +539,13 @@ describe("which session holds the issue, while it cannot be read", () => {
         const refused = { code: "HOLDS_READ_REFUSED", message: "The holds could not be read while a migration holds the table. Try again in a minute." };
         return new Response(JSON.stringify(refused), { status: 409, headers: { "content-type": "application/json" } });
       }
-      if (holds === "forbid" || holds === "missing") {
-        const [status, code, message] = holds === "forbid" ? [403, "FORBIDDEN", "Not a project member."] : [404, "NOT_FOUND", "Project not found."];
+      if (holds === "forbid" || holds === "missing" || holds === "busy") {
+        const [status, code, message] =
+          holds === "forbid"
+            ? [403, "FORBIDDEN", "Not a project member."]
+            : holds === "busy"
+              ? [503, "UNAVAILABLE", "The server is busy."]
+              : [404, "NOT_FOUND", "Project not found."];
         return new Response(JSON.stringify({ code, message }), { status, headers: { "content-type": "application/json" } });
       }
       if (holds === "hang") {
@@ -568,12 +577,12 @@ describe("which session holds the issue, while it cannot be read", () => {
     });
   };
 
-  // Round 23 (master's read of the r23 after-shots): a refused read said to try again with no Retry.
-  it("offers Retry when the read is refused", async () => {
+  // ISS-1229 r50 (criterion 478): one rule decides Retry, and it refuses a 409.
+  it("offers no Retry when the read is refused", async () => {
     holds = "refuse";
     renderLive();
     expect(await within(header()).findByText(/Its session could not be read\. .*Try again in a minute\./)).toBeInTheDocument();
-    expect(within(header()).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(within(header()).queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   // Round 24 (judge-78, criterion 226): a refusal read "You do not have access to this resource." or
@@ -624,11 +633,11 @@ describe("which session holds the issue, while it cannot be read", () => {
   // Round 25 (judge-81, criteria 244 and 248): with both reads failing the header said one above the
   // title and one below the actions, each with its own Retry.
   it("says the run and its session on one row under the actions, with one Retry that reads both again", async () => {
-    holds = "forbid";
+    holds = "busy";
     const refetchRun = vi.fn();
-    journal = { data: undefined, isLoading: false, isError: true, error: new ApiError(403, "Not a project member.", "FORBIDDEN"), refetch: refetchRun };
+    journal = { data: undefined, isLoading: false, isError: true, error: new ApiError(503, "The server is busy.", "UNAVAILABLE"), refetch: refetchRun };
     renderLive();
-    const line = await within(header()).findByText("The run and its session could not be read. Not a project member.");
+    const line = await within(header()).findByText("The run and its session could not be read. The server is busy.");
     expect(line.closest('[data-header="failure"]')).not.toBeNull();
     expect(within(header()).getAllByText(/could not be read/)).toHaveLength(1);
     expect(within(header()).getAllByRole("button", { name: "Retry" })).toHaveLength(1);
@@ -682,7 +691,7 @@ describe("which session holds the issue, while it cannot be read", () => {
   // Judge-83 (244, 248, 252): once answered, a failed run read still read "Running · Issue work" with
   // Pause and the agent card, and a removed member's Retry re-asked the session read alone.
   const READ_AT = new Date(2026, 9, 21, 14, 2).getTime();
-  const refused = new ApiError(403, "Not a project member.", "FORBIDDEN");
+  const refused = new ApiError(503, "The server is busy.", "UNAVAILABLE");
   const LIVE = { agentSessions: [{ id: "s-run", status: "running", skill: "forge-code", startedAt: "2026-09-05T14:16:00Z", lastHeartbeatAt: new Date().toISOString() }] };
   const staleRun = (refetch = vi.fn()) => ({ data: SESSION_RUN, dataUpdatedAt: READ_AT, isLoading: false, isError: true, error: refused, refetch });
 
@@ -693,7 +702,7 @@ describe("which session holds the issue, while it cannot be read", () => {
     const refetchRun = vi.fn();
     journal = staleRun(refetchRun);
     renderLive();
-    const line = await within(header()).findByText("The run could not be read. Not a project member.");
+    const line = await within(header()).findByText("The run could not be read. The server is busy.");
     expect(line.closest('[data-header="failure"]')).not.toBeNull();
     expect(within(header()).getByText(/as of 14:02/)).toBeInTheDocument();
     expect(within(header()).queryByRole("button", { name: "Pause" })).toBeNull();
@@ -714,9 +723,9 @@ describe("which session holds the issue, while it cannot be read", () => {
     const qc = renderLive();
     expect(await within(header()).findByRole("link", { name: "Open session" })).toBeInTheDocument();
 
-    holds = "forbid";
+    holds = "busy";
     await poll(qc);
-    const line = await within(header()).findByText("The run and its session could not be read. Not a project member.");
+    const line = await within(header()).findByText("The run and its session could not be read. The server is busy.");
     expect(line.closest('[data-header="failure"]')).not.toBeNull();
     expect(within(header()).getAllByRole("button", { name: "Retry" })).toHaveLength(1);
     expect(within(header()).queryByRole("link", { name: "Open session" })).toBeNull();
@@ -737,7 +746,7 @@ describe("which session holds the issue, while it cannot be read", () => {
     const refetchIssue = vi.fn();
     issueRead = { isError: true, error: refused, dataUpdatedAt: READ_AT, refetch: refetchIssue };
     renderLive();
-    expect(await within(header()).findByText("The issue could not be read. Not a project member.")).toBeInTheDocument();
+    expect(await within(header()).findByText("The issue could not be read. The server is busy.")).toBeInTheDocument();
     expect(within(header()).getByText(ISSUE.title)).toBeInTheDocument();
     expect(within(header()).getByText("as of 14:02")).toBeInTheDocument();
     expect(within(header()).queryByRole("button", { name: "Pause" })).toBeNull();
@@ -753,7 +762,7 @@ describe("which session holds the issue, while it cannot be read", () => {
     holds = "answer";
     journal = { ...staleRun(), data: [{ ...SESSION_RUN[0], reading: "asking" }] };
     renderLive();
-    await within(header()).findByText("The run could not be read. Not a project member.");
+    await within(header()).findByText("The run could not be read. The server is busy.");
     const word = within(header()).getByText("Needs an answer");
     const time = within(header()).getByText("as of 14:02");
     expect(word.className).toContain("truncate");
@@ -785,9 +794,10 @@ describe("which session holds the issue, while it cannot be read", () => {
     holds = "answer";
     const refetchCost = vi.fn();
     const refetchDeps = vi.fn();
-    costRead = { data: undefined, isLoading: false, isError: true, error: refused, refetch: refetchCost };
-    depsRead = { data: undefined, isLoading: false, isError: true, error: refused, refetch: refetchDeps };
-    issueRead = { isError: true, error: refused, dataUpdatedAt: READ_AT, refetch: vi.fn() };
+    const forbidden = new ApiError(403, "Not a project member.", "FORBIDDEN");
+    costRead = { data: undefined, isLoading: false, isError: true, error: forbidden, refetch: refetchCost };
+    depsRead = { data: undefined, isLoading: false, isError: true, error: forbidden, refetch: refetchDeps };
+    issueRead = { isError: true, error: forbidden, dataUpdatedAt: READ_AT, refetch: vi.fn() };
     const qc = createQueryClient();
     qc.setDefaultOptions({ queries: { ...qc.getDefaultOptions().queries, retry: false } });
     const tree = () => (

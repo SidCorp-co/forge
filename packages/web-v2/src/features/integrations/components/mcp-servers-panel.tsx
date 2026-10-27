@@ -275,7 +275,7 @@ export function McpServersPanel({ projectId }: { projectId: string }) {
           <Skeleton className="h-16 w-full" />
         </div>
       ) : preview.isError ? (
-        <ErrorState title="Couldn't load MCP servers" message={formatApiError(preview.error)} onRetry={() => preview.refetch()} />
+        <ErrorState title="Couldn't load MCP servers" message={formatApiError(preview.error)} error={preview.error} onRetry={() => preview.refetch()} />
       ) : (
         <ul className="flex flex-col">
           {servers.map((entry) => (

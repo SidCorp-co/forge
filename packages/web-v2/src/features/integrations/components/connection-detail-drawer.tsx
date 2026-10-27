@@ -3,10 +3,10 @@
 import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   Banner,
-  Button,
   CardTitle,
   ConfirmDialog,
   ErrorState,
+  RetryButton,
   SegmentedControl,
   Skeleton,
   SlideOver,
@@ -144,7 +144,7 @@ function BindingsSection({
       ) : bindingsQ.isError ? (
         <ErrorState title="Couldn't load the projects using this connection"
           message={formatApiError(bindingsQ.error)}
-          onRetry={() => bindingsQ.refetch()}
+          error={bindingsQ.error} onRetry={() => bindingsQ.refetch()}
         />
       ) : (
         <BindingsList
@@ -353,6 +353,7 @@ export function ConnectionDetailDrawer({
   onClose,
   statusReadError = null,
   statusReadFailedAt = 0,
+  statusError,
   onRetryStatus,
   focus = null,
   adding = false,
@@ -368,6 +369,8 @@ export function ConnectionDetailDrawer({
   statusReadError?: string | null;
   /** When that read failed: a second failure with the same words is still a new one to show. */
   statusReadFailedAt?: number;
+  /** The failed status read, which decides whether Retry is offered (ISS-1229 r50). */
+  statusError?: unknown;
   onRetryStatus?: () => void;
 }) {
   const provider = card ? cardProvider(card.key) : null;
@@ -424,11 +427,7 @@ export function ConnectionDetailDrawer({
           <Banner
             tone="attention"
             action={
-              onRetryStatus ? (
-                <Button variant="ghost" size="sm" onClick={onRetryStatus}>
-                  Retry
-                </Button>
-              ) : undefined
+              <RetryButton variant="ghost" error={statusError} onRetry={onRetryStatus} />
             }
           >
             {`The status could not be refreshed, so the state above is the last one read. ${statusReadError}`}

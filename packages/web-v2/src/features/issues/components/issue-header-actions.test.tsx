@@ -157,15 +157,17 @@ describe("a session the page could not read", () => {
     const retry = vi.fn();
     const lost = new TypeError("Failed to fetch");
     markUnreachable(lost);
-    render(<HeaderReadFailure said={couldNotRead("Its session", lost)} retry={retry} />);
+    render(<HeaderReadFailure said={couldNotRead("Its session", lost)} error={lost} retry={retry} />);
     expect(screen.getByRole("status")).toHaveTextContent(`Its session could not be read. ${UNREACHABLE_SENTENCE}`);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it("says the server's own sentence for a refusal", () => {
-    render(<HeaderReadFailure said={couldNotRead("Its session", new ApiError(403, "Not a project member.", "FORBIDDEN"))} />);
+    const refused = new ApiError(403, "Not a project member.", "FORBIDDEN");
+    render(<HeaderReadFailure said={couldNotRead("Its session", refused)} error={refused} retry={() => {}} />);
     expect(screen.getByRole("status")).toHaveTextContent("Its session could not be read. Not a project member.");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("leaves the toolbar its actions alone, and links to no other session", () => {

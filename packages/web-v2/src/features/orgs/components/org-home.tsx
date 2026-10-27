@@ -81,7 +81,7 @@ function PersonalOrgProjects({ orgId }: { orgId: string }) {
         {projectsQ.isLoading ? (
           <Skeleton className="h-9 w-full rounded-md" />
         ) : projectsQ.isError ? (
-          <ErrorState title="Couldn't load projects" message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+          <ErrorState title="Couldn't load projects" message={formatApiError(projectsQ.error)} error={projectsQ.error} onRetry={() => projectsQ.refetch()} />
         ) : (projectsQ.data ?? []).length === 0 ? (
           <EmptyState
             title="No projects yet"

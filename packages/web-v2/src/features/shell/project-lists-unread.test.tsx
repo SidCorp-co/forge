@@ -28,6 +28,9 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => {} }) }));
 vi.mock("@/features/orgs/components/org-switcher", () => ({ OrgSwitcher: () => null }));
 
 const { NavRailCompact } = await import("./nav-rail-compact");
+const { projectsUnreadOf, ProjectsUnreadLine } = await import("@/features/projects/components/projects-unread");
+const { NavRail } = await import("@/design/patterns/nav-rail");
+const { ApiError } = await import("@/lib/api/client");
 const { MobileNavDrawer } = await import("./components/mobile-nav-drawer");
 const { ProjectFlyout } = await import("@/features/projects/components/project-flyout");
 
@@ -37,7 +40,7 @@ afterEach(() => {
   read.refetched = 0;
 });
 
-const unread = (onRetry: () => void) => ({ message: "The server ran into a problem and could not finish the request.", onRetry });
+const unread = (onRetry: () => void, error: unknown = new ApiError(500, "")) => projectsUnreadOf(error, onRetry);
 
 describe("a project list whose read failed", () => {
   it("is said on the narrow rail, with Retry, where Add stood for an organization holding none", () => {
@@ -121,6 +124,71 @@ describe("a project list whose read failed", () => {
     read.failed = false;
     render(<ProjectFlyout open onClose={() => {}} activeSlug={null} />);
     expect(screen.getByText("No projects match.")).toBeTruthy();
+    expect(screen.queryByTestId("projects-unread")).toBeNull();
+  });
+});
+
+const railWith = (projectsUnread: ReturnType<typeof unread>) => (
+  <NavRailCompact
+    workspaceItems={[{ key: "overview", label: "Overview", icon: "grid" }]}
+    activeKey="overview"
+    switcherProjects={[]}
+    projectsUnread={projectsUnread}
+    onNavigate={() => {}}
+    onSelectProject={() => {}}
+    onTogglePin={() => {}}
+    onAllProjects={() => {}}
+    onNewProject={() => {}}
+  />
+);
+
+// ISS-1229 r50, judge-152 on 479: "Projects not loaded / Retry" gave no wait where the answer carried Retry-After,
+// and on 478: it offered Retry on a refusal no second read changes.
+describe("the narrow rail's failed projects read (criteria 497, 498)", () => {
+  it("says how long to wait where the answer carried Retry-After, in visible text and in its name", () => {
+    render(railWith(unread(() => {}, new ApiError(429, "", undefined, undefined, undefined, 30_000))));
+    const tile = screen.getByTestId("rail-projects-unread");
+    expect(tile).toHaveTextContent("You can retry in 30 seconds.");
+    expect(tile).toHaveAttribute("aria-label", "Couldn't load your projects. You can retry in 30 seconds. Retry");
+  });
+
+  it.each([403, 404, 422])("offers no Retry where the read was answered %s, and says why", (status) => {
+    render(railWith(unread(() => {}, new ApiError(status, "You do not have access to this."))));
+    const tile = screen.getByTestId("rail-projects-unread");
+    expect(tile.tagName).not.toBe("BUTTON");
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+    expect(tile).toHaveTextContent("Projects not loaded");
+    expect(tile.getAttribute("aria-label")).toBe("Couldn't load your projects. You do not have access to this.");
+  });
+});
+
+// ISS-1229 r50, judge-152 on 451: with the sidebar expanded, a failed projects read dropped the project section,
+// line for line the sidebar of an organization holding no projects.
+describe("the expanded sidebar's failed projects read (criterion 499)", () => {
+  it("is said where the project switcher stands, with Retry", () => {
+    const onRetry = vi.fn();
+    render(
+      <NavRail
+        workspaceItems={[{ key: "overview", label: "Overview", icon: "grid" }]}
+        activeKey="overview"
+        projectsUnread={<ProjectsUnreadLine unread={unread(onRetry)} />}
+      />,
+    );
+    const line = screen.getByTestId("projects-unread");
+    expect(line).toHaveTextContent("Couldn't load your projects");
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("is not drawn where a project is open", () => {
+    render(
+      <NavRail
+        workspaceItems={[{ key: "overview", label: "Overview", icon: "grid" }]}
+        activeKey="overview"
+        project={{ name: "Desk", initials: "DE", tint: "#000", ink: "#fff" }}
+        projectsUnread={<ProjectsUnreadLine unread={unread(() => {})} />}
+      />,
+    );
     expect(screen.queryByTestId("projects-unread")).toBeNull();
   });
 });

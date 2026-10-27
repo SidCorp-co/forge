@@ -90,13 +90,28 @@ describe("the new-project dialog when its repository step is refused", () => {
     expect(said.link?.label).toMatch(/Shape & release/);
   });
 
-  // r9, judge-149: at 390 that toast stood over the path field for its whole reading time.
-  it("names the path field as what the refusal toast keeps clear of", async () => {
+  // judge-154 at b2c7b16: at 390×600 it covered Save, and with a kept notice the label and the error.
+  it("names the path field first, then its label, the inline error and Save, as what the refusal toast keeps clear of", async () => {
     update.mockRejectedValue(new ApiError(400, REFUSAL, "REPO_PATH_NOT_ABSOLUTE"));
     await createThenSaveRepository("~/code/app");
     await vi.waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
-    const said = toast.mock.calls[1]?.[0] as { clearOf?: () => Element | null };
-    expect(said.clearOf?.()).toBe(screen.getByLabelText(/^Repository path/));
+    const said = toast.mock.calls[1]?.[0] as { clearOf?: () => readonly (Element | null)[] };
+    const [field, label, error, save] = said.clearOf?.() ?? [];
+    expect(field).toBe(screen.getByLabelText(/^Repository path/));
+    expect(label).toBe(screen.getByText("Repository path", { selector: "label" }));
+    expect(error).toHaveTextContent(REFUSAL);
+    expect(save).toBe(screen.getByRole("button", { name: "Save repository settings" }));
+  });
+
+  // r10, judge-154: the "Project created" toast greeting the repository step stood over the path field.
+  it("names the path field and its label as what the Project created toast keeps clear of", async () => {
+    update.mockRejectedValue(new ApiError(400, REFUSAL, "REPO_PATH_NOT_ABSOLUTE"));
+    await createThenSaveRepository("~/code/app");
+    const said = toast.mock.calls[0]?.[0] as { title: string; clearOf?: () => readonly (Element | null)[] };
+    expect(said.title).toBe("Project created");
+    const [field, label] = said.clearOf?.() ?? [];
+    expect(field).toBe(screen.getByLabelText(/^Repository path/));
+    expect(label).toBe(screen.getByText("Repository path", { selector: "label" }));
   });
 
   it("says a fault the same way, the project still created", async () => {

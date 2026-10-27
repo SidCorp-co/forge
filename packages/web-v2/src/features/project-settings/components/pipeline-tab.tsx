@@ -322,7 +322,7 @@ export function PipelineTab({
     }
     return (
       <SettingsSection>
-        <ErrorState title="Couldn't load the pipeline settings" message={formatApiError(cfgQ.error)} onRetry={() => cfgQ.refetch()} />
+        <ErrorState title="Couldn't load the pipeline settings" message={formatApiError(cfgQ.error)} error={cfgQ.error} onRetry={() => cfgQ.refetch()} />
       </SettingsSection>
     );
   }
@@ -332,7 +332,7 @@ export function PipelineTab({
       <SettingsSection>
         <ErrorState title="Couldn't load this project"
           message={projectQ.error ? formatApiError(projectQ.error) : "The project could not be read."}
-          onRetry={() => projectQ.refetch()}
+          error={projectQ.error} onRetry={() => projectQ.refetch()}
         />
       </SettingsSection>
     );

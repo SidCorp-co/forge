@@ -1,6 +1,8 @@
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import { users } from '../db/schema.js';
+import { type ProjectMemberRole, users } from '../db/schema.js';
+import { conversations } from '../db/schema-conversations.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { personName } from '../lib/person-name.js';
 
 /** Whatever the store hands back, as far as this module needs to know. */
@@ -33,6 +35,44 @@ export async function withDisplayNames<T extends Nameable>(
     displayName:
       row.kind === 'handle' ? row.label : (named.get(row.userId ?? '') ?? row.label ?? null),
   }));
+}
+
+/** A person's role on one of the projects a room is about. */
+export interface RoomRole {
+  projectId: string;
+  role: ProjectMemberRole | null;
+}
+
+/**
+ * What tells two people of a room apart where their names read alike: each one's role on the projects the
+ * room is about, and whether they opened it — never when they were added, their place in an order or their
+ * address (ISS-1229 r50, the master's ruling on judge-152). An agent carries neither.
+ */
+export async function withStanding<T extends Nameable>(
+  rows: readonly T[],
+  conversationId: string,
+  scope: readonly string[],
+  db: typeof defaultDb = defaultDb,
+): Promise<Array<T & { roles: RoomRole[]; opener: boolean }>> {
+  const [room] = await db
+    .select({ createdBy: conversations.createdBy })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  const openerId = room?.createdBy ?? null;
+  return Promise.all(
+    rows.map(async (row) => {
+      if (row.kind !== 'person' || !row.userId) return { ...row, roles: [], opener: false };
+      const userId = row.userId;
+      const roles = await Promise.all(
+        scope.map(async (projectId) => ({
+          projectId,
+          role: (await effectiveProjectRole(userId, projectId))?.role ?? null,
+        })),
+      );
+      return { ...row, roles, opener: userId === openerId };
+    }),
+  );
 }
 
 /**

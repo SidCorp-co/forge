@@ -39,7 +39,7 @@ export function OrgsTab() {
     return (
       <ErrorState title="Couldn't load your organizations"
         message={formatApiError(orgsQ.error)}
-        onRetry={() => orgsQ.refetch()}
+        error={orgsQ.error} onRetry={() => orgsQ.refetch()}
       />
     );
   }

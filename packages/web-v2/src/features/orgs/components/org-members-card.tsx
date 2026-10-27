@@ -278,7 +278,7 @@ export function OrgMembersCard({
         ) : membersQ.isError ? (
           <ErrorState title="Couldn't load members"
             message={formatApiError(membersQ.error)}
-            onRetry={() => membersQ.refetch()}
+            error={membersQ.error} onRetry={() => membersQ.refetch()}
           />
         ) : (
           <ul className="divide-y divide-line" data-testid="org-card-rows">
@@ -398,7 +398,7 @@ export function OrgMembersCard({
           ) : projectsQ.isError ? (
             <ErrorState title="Couldn't load projects"
               message={formatApiError(projectsQ.error)}
-              onRetry={() => projectsQ.refetch()}
+              error={projectsQ.error} onRetry={() => projectsQ.refetch()}
             />
           ) : (projectsQ.data ?? []).length === 0 ? (
             <p className="fg-body-sm text-subtle">No projects yet.</p>
@@ -428,7 +428,7 @@ export function OrgMembersCard({
             ) : invitationsQ.isError ? (
               <ErrorState title="Couldn't load invitations"
                 message={formatApiError(invitationsQ.error)}
-                onRetry={() => invitationsQ.refetch()}
+                error={invitationsQ.error} onRetry={() => invitationsQ.refetch()}
               />
             ) : (invitationsQ.data ?? []).length === 0 ? (
               <p className="fg-body-sm text-subtle">No pending invitations.</p>

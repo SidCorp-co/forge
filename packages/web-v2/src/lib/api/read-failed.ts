@@ -42,11 +42,6 @@ export function projectGone(error: unknown): boolean {
 	return error instanceof ApiError && error.status === 404;
 }
 
-/** Every failed read offers Retry but a 401's, which signs the person out (ISS-1228). */
-export function offersRetry(error: unknown): boolean {
-	return !(error instanceof ApiError && error.status === 401);
-}
-
 const STANDING_REFUSALS = new Set([400, 401, 403, 404, 410, 422]);
 
 /** Forge refused this read for a reason another identical request cannot change (ISS-1228 r25). */

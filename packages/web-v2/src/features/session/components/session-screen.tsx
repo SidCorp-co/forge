@@ -251,7 +251,7 @@ export function SessionScreen({
             level={embedded ? 2 : 1}
             title="Couldn't load session"
             message={formatApiError(sessionQ.error)}
-            onRetry={() => sessionQ.refetch()}
+            error={sessionQ.error} onRetry={() => sessionQ.refetch()}
           />
         </div>
       </div>

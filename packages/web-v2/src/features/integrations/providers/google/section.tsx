@@ -75,7 +75,7 @@ export function GoogleSection({ projectId, bindingId }: { projectId: string; bin
     return (
       <ErrorState title="Couldn't load this project's integrations"
         message={`Could not read this project's integrations, so whether a Google account is already connected is unknown. ${formatApiError(list.error)}`}
-        onRetry={() => list.refetch()}
+        error={list.error} onRetry={() => list.refetch()}
         mascot={false}
       />
     );

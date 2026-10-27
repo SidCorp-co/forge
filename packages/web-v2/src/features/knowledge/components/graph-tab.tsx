@@ -61,7 +61,7 @@ export function GraphTab({ projectId, canManage }: GraphTabProps) {
         <ErrorState
           title="Couldn't load knowledge graph"
           message={formatApiError(edgesQ.error)}
-          onRetry={() => edgesQ.refetch()}
+          error={edgesQ.error} onRetry={() => edgesQ.refetch()}
         />
       )}
 

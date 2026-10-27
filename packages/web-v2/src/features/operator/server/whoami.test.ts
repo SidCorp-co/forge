@@ -50,7 +50,7 @@ describe("getOperatorWhoami", () => {
 
   it("returns an error with the status on a 5xx response", async () => {
     global.fetch = vi.fn().mockResolvedValue({ status: 500, ok: false });
-    expect(await getOperatorWhoami()).toEqual({ kind: "error", message: "Request failed (500)" });
+    expect(await getOperatorWhoami()).toEqual({ kind: "error", message: "Request failed (500)", status: 500 });
   });
 
   it("returns not-admin when the body says isAdmin: false", async () => {

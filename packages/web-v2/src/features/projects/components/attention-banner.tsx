@@ -4,7 +4,7 @@
 // offline runners, and toggles the attention-only filter. Where the health
 // rollup is not read, it says so: no banner would read as no project needing attention.
 import { formatApiError } from '@/lib/api/error';
-import { Banner, Button } from '@/design';
+import { Banner, Button, RetryButton } from '@/design';
 import type { QueryRead } from '@/design/patterns/badge-read';
 
 export interface AttentionBannerProps {
@@ -25,11 +25,7 @@ export function AttentionBanner({ count, read, error, attentionOnly, onToggle, o
         <Banner
           tone={read === 'failed' ? 'attention' : 'info'}
           action={
-            read === 'failed' ? (
-              <Button variant="ghost" size="sm" onClick={onRetry}>
-                Retry
-              </Button>
-            ) : undefined
+            read === 'failed' ? <RetryButton variant="ghost" error={error} onRetry={onRetry} /> : undefined
           }
         >
           {read === 'failed'

@@ -14,12 +14,12 @@ import workerThreads from 'node:worker_threads';
 import { FS_LISTING_CALLS, fsListing, spawnCwd } from './whole-tree-gates.mjs';
 import {
   gitConfigFiles,
+  LIB_DIR as HERE,
   physical,
   startupModuleKey,
   subprocessListing,
 } from './whole-tree-shell.mjs';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
 /** The repository root by its realpath, the one spelling every placement is compared against. */
 export const ROOT = physical(resolve(HERE, '..', '..')) ?? resolve(HERE, '..', '..');
 export const LOG_ENV = 'FORGE_WHOLE_TREE_LOG';

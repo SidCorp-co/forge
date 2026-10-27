@@ -120,7 +120,7 @@ export function RunnerPoolsSection({
         <ReadFailedLine
           what="this project's runners"
           why={formatApiError(runnersQuery.error)}
-          onRetry={() => void runnersQuery.refetch()}
+          error={runnersQuery.error} onRetry={() => void runnersQuery.refetch()}
         />
       ) : runnersQuery.isPending ? (
         <Skeleton className="h-32 w-full" />

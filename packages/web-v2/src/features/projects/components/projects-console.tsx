@@ -157,7 +157,7 @@ export function ProjectsConsole() {
           level={1}
           title="Couldn't load projects"
           message={formatApiError(error)}
-          onRetry={() => refetch()}
+          error={error} onRetry={() => refetch()}
         />
       ) : isLoading ? (
         <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(326px,1fr))]">

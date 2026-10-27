@@ -62,7 +62,7 @@ export function DiagramsTab({ projectId }: DiagramsTabProps) {
         <ErrorState
           title="Couldn’t load the diagram"
           message={formatApiError(q.error)}
-          onRetry={() => q.refetch()}
+          error={q.error} onRetry={() => q.refetch()}
         />
       )}
 

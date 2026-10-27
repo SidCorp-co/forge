@@ -120,7 +120,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 					level={1}
 					title="Couldn't load this project's settings"
 					message={formatApiError(detailQ.error)}
-					onRetry={() => detailQ.refetch()}
+					error={detailQ.error} onRetry={() => detailQ.refetch()}
 				/>
 			</div>
 		);

@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { EmptyState, ErrorState, Skeleton } from "@/design";
+import { EmptyState, ErrorState, RetryButton, Skeleton } from "@/design";
 import { QuestionCard } from "@/features/questions/components/question-card";
 import {
   useAnsweringQuestions,
@@ -131,7 +131,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
         <ErrorState
           title="Couldn't load this project's decisions"
           message={formatApiError(error)}
-          onRetry={() => refetch()}
+          error={error} onRetry={() => refetch()}
         />
       </div>
     );
@@ -199,13 +199,14 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
       {walkedOut && !onIssue && linked.unreachable && (
         <p className="fg-caption text-muted">
           That decision could not be looked up.{" "}
-          <button
-            type="button"
-            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-            onClick={() => void linked.refetch()}
+          <RetryButton
+            look="link"
+            className="text-inherit underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            error={linked.error}
+            onRetry={() => void linked.refetch()}
           >
             Try again
-          </button>
+          </RetryButton>
         </p>
       )}
     </div>

@@ -23,6 +23,22 @@ export { slugify };
 const REFUSED_SLOT = 'new-project-repository-refused';
 /** The path field that toast tells the person to correct, which it keeps clear of. */
 const PATH_FIELD_ID = 'new-project-repository-path';
+/** The step's inline error and its Save button, which that toast keeps clear of too. */
+const SEED_ERROR_ID = 'new-project-repository-error';
+const SAVE_ID = 'new-project-repository-save';
+
+/** The path field and its label: what greets the step, which the "Project created" toast keeps clear of. */
+const pathField = () => [
+  document.getElementById(PATH_FIELD_ID),
+  document.querySelector(`label[for="${PATH_FIELD_ID}"]`),
+];
+/** What the refusal toast keeps clear of: the path field first, which it never covers, then its label,
+ *  the inline error and Save, let go from the last where a short screen leaves no room (ISS-1236 r10). */
+const repositoryStep = () => [
+  ...pathField(),
+  document.getElementById(SEED_ERROR_ID),
+  document.getElementById(SAVE_ID),
+];
 
 export interface NewProjectDialogProps {
   open: boolean;
@@ -44,10 +60,11 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const orgsQ = useOrgs();
   const teamOrgs = (orgsQ.data ?? []).filter((o) => !o.isPersonal);
   const orgsUnread = orgsQ.isError && !orgsQ.data;
-  const { activeOrg, scopeRead } = useActiveOrg();
+  const { activeOrg, scopeRead, storedUnread } = useActiveOrg();
   // Until the organizations and the stored active choice are read, where the project lands is unknown:
-  // nothing is created before then.
-  const orgsKnown = orgsQ.data !== undefined && scopeRead;
+  // nothing is created before then. A stored choice that failed is not read: its stand-in is no answer (r50).
+  const orgsKnown = orgsQ.data !== undefined && scopeRead && !storedUnread;
+  const orgsReading = !orgsKnown && !orgsUnread && !storedUnread;
   const defaultOrgId = activeOrg && !activeOrg.isPersonal ? activeOrg.id : '';
   const orgId = chosenOrgId ?? defaultOrgId;
   const [errors, setErrors] = useState<{ name?: string; slug?: string; form?: string }>({});
@@ -126,7 +143,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
         ...(trimmedDesc ? { description: trimmedDesc } : {}),
         ...(orgId ? { orgId } : {}),
       });
-      toast({ title: 'Project created', description: row.name, tone: 'success' });
+      toast({ title: 'Project created', description: row.name, tone: 'success', clearOf: pathField });
       // ISS-453 — don't navigate yet: advance to the "Set up pipeline" step.
       setCreated(row);
     } catch (err) {
@@ -171,7 +188,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
         description: `${/[.!?]$/.test(said) ? said : `${said}.`} Correct them here and save again.`,
         tone: 'error',
         slot: REFUSED_SLOT,
-        clearOf: () => document.getElementById(PATH_FIELD_ID),
+        clearOf: repositoryStep,
         link: {
           label: 'Or set them later in Settings, on Shape & release',
           href: `/projects/${created.slug}/settings?tab=shape#repository`,
@@ -209,7 +226,11 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
     >
       {created ? (
         <div className="flex h-full flex-col gap-4">
-          {seedError && <Banner tone="danger">{seedError}</Banner>}
+          {seedError && (
+            <div id={SEED_ERROR_ID}>
+              <Banner tone="danger">{seedError}</Banner>
+            </div>
+          )}
           {repoSaved && <Banner tone="success">Repository settings saved.</Banner>}
 
           <Field
@@ -239,6 +260,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
           <div>
             <Button
+              id={SAVE_ID}
               variant="primary"
               loading={seeding}
               onClick={onSeed}
@@ -341,10 +363,25 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               testId="new-project-orgs-unread"
               what="your organizations, so where this project will live is not known"
               why={formatApiError(orgsQ.error)}
+              error={orgsQ.error}
               onRetry={() => void orgsQ.refetch()}
             />
           )}
-          {teamOrgs.length > 0 && (
+          {storedUnread && (
+            <ReadFailedLine
+              testId="new-project-stored-org-unread"
+              what="which organization you were working in, so where this project will live is not known"
+              why={formatApiError(storedUnread.error)}
+              error={storedUnread.error}
+              onRetry={storedUnread.retry}
+            />
+          )}
+          {orgsReading && (
+            <p role="status" data-testid="new-project-orgs-reading" className="fg-body-sm text-muted">
+              Reading your organizations, to know where this project will live…
+            </p>
+          )}
+          {orgsKnown && teamOrgs.length > 0 && (
             <Field label="Organization" hint="Where this project lives. Org owners/admins manage all of its projects.">
               <Select
                 value={orgId}

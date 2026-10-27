@@ -218,7 +218,7 @@ export function PrivateKeysScreen({ orgId }: { orgId: string | null }) {
 							<Skeleton className="h-20 w-full" />
 						</div>
 					) : keys.isError ? (
-						<ErrorState title="Couldn't load private keys" level={1} message={formatApiError(keys.error)} onRetry={() => keys.refetch()} />
+						<ErrorState title="Couldn't load private keys" level={1} message={formatApiError(keys.error)} error={keys.error} onRetry={() => keys.refetch()} />
 					) : rows.length === 0 ? (
 						<EmptyState
 							title="No private keys yet"

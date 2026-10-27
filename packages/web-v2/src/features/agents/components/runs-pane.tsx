@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { EmptyState, ErrorState, Input, MonoTag, Skeleton } from "@/design";
+import { EmptyState, ErrorState, Input, MonoTag, RetryButton, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
 import { NO_BOX_REPORTS_A_RUN, NO_RUN_WORKING, RUN_APPEARS } from "@/features/sessions/status-sentences";
@@ -189,15 +189,12 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
       <p className="fg-caption text-muted">
         Couldn&apos;t read this project&apos;s runs —{" "}
         {formatApiError(runsQ.error)}{" "}
-        <button
-          type="button"
-          className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          onClick={() => {
-            void runsQ.refetch();
-          }}
-        >
-          Retry
-        </button>
+        <RetryButton
+          look="link"
+          className="text-inherit underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          error={runsQ.error}
+          onRetry={() => void runsQ.refetch()}
+        />
       </p>
     );
   }
@@ -309,7 +306,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
         </div>
       ) : failed ? (
         <div className="grid min-h-[40vh] place-items-center">
-          <ErrorState title="Couldn't load runs" message={formatApiError(failed.error)} onRetry={() => failed.refetch()} />
+          <ErrorState title="Couldn't load runs" message={formatApiError(failed.error)} error={failed.error} onRetry={() => failed.refetch()} />
         </div>
       ) : nothing && !runsQ.isError && total === 0 ? (
         <div className="grid min-h-[40vh] place-items-center">

@@ -4,9 +4,9 @@
 // Markdown). Inferred entries get a Confirm button (PUT confidence:verified).
 // Manages its own open state so the full body is fetched lazily on expand.
 
-import { couldNotRead, offersRetry } from "@/lib/api/read-failed";
+import { couldNotRead } from "@/lib/api/read-failed";
 import { useState } from "react";
-import { Badge, Button, Icon, Markdown, Skeleton } from "@/design";
+import { Badge, Button, Icon, Markdown, RetryButton, Skeleton } from "@/design";
 import { useKnowledgeEntry, useUpsertEntry } from "../hooks";
 import type { KnowledgeListRow } from "../types";
 
@@ -81,11 +81,7 @@ export function EntryCard({ projectId, row, canManage, defaultOpen = false }: En
           {entryQ.isError && (
             <p role="status" className="fg-caption flex flex-wrap items-center gap-2 text-red-600">
               {couldNotRead("This entry's body", entryQ.error)}
-              {offersRetry(entryQ.error) && (
-                <Button variant="secondary" size="sm" icon="rerun" onClick={() => void entryQ.refetch()}>
-                  Retry
-                </Button>
-              )}
+              <RetryButton error={entryQ.error} onRetry={() => void entryQ.refetch()} />
             </p>
           )}
           {entryQ.data && (

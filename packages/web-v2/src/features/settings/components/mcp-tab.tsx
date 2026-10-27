@@ -108,7 +108,7 @@ export function McpTab() {
       <ErrorState
         title="Couldn't load projects"
         message={formatApiError(projectsQ.error)}
-        onRetry={() => projectsQ.refetch()}
+        error={projectsQ.error} onRetry={() => projectsQ.refetch()}
       />
     );
   }

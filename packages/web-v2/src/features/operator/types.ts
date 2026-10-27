@@ -34,4 +34,5 @@ export type OperatorWhoamiResult =
   | { kind: "not-admin" }
   | { kind: "unverified" }
   | { kind: "unauthenticated" }
-  | { kind: "error"; message: string };
+  /** `status` is the answer's, absent where the server never answered. */
+  | { kind: "error"; message: string; status?: number };

@@ -124,7 +124,7 @@ export function RunLog({
         <ReadFailedLine
           what="this message's run history"
           why={formatApiError(runsQ.error)}
-          onRetry={() => void runsQ.refetch()}
+          error={runsQ.error} onRetry={() => void runsQ.refetch()}
         />
       )}
       {!runsQ.isLoading && !runsQ.isError && runs.length === 0 && (
@@ -423,7 +423,7 @@ export function ImproveScreen({ scope }: ImproveScreenProps) {
         <ErrorState
           title="Couldn't load improvement messages"
           message={formatApiError(catalogQ.error)}
-          onRetry={() => catalogQ.refetch()}
+          error={catalogQ.error} onRetry={() => catalogQ.refetch()}
         />
       )}
 

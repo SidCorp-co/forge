@@ -7,6 +7,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
 
 expect.extend(matchers);
 
@@ -20,6 +21,8 @@ const state: {
   expanding?: boolean;
   failed: unknown[];
   expand: unknown[];
+  devicesError?: Error;
+  error?: Error;
 } = {
   read: "read",
   devicesRead: "read",
@@ -29,6 +32,8 @@ const state: {
   expand: [],
 };
 const refetch = vi.fn();
+const retryAttention = vi.fn();
+const retryDevices = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => {} }));
@@ -62,9 +67,11 @@ vi.mock("../hooks", () => ({
     read: state.read,
     devicesRead: state.devicesRead,
     expanding: state.expanding ?? false,
-    error: new Error("attention down"),
-    devicesError: new Error("devices down"),
+    error: state.error ?? new Error("attention down"),
+    devicesError: state.devicesError ?? new Error("devices down"),
     refetch,
+    retryAttention,
+    retryDevices,
     };
   },
 }));
@@ -75,6 +82,10 @@ afterEach(() => {
   cleanup();
   state.read = "read";
   state.devicesRead = "read";
+  state.devicesError = undefined;
+  state.error = undefined;
+  retryAttention.mockClear();
+  retryDevices.mockClear();
   state.offline = [];
   state.awaiting = [];
   state.awaitingTotal = undefined;
@@ -111,6 +122,14 @@ describe("the Attention inbox", () => {
     expect(screen.getByText(/attention down/u)).toBeInTheDocument();
   });
 
+  // ISS-1229 r50 (criterion 496): a reason that already ends with a stop is not given a second.
+  it("closes a reason that already ends with a stop once", () => {
+    state.devicesRead = "failed";
+    state.devicesError = new Error("You do not have access to this.");
+    render(<AttentionScreen />);
+    expect(screen.getByTestId("attention-devices-unread").textContent).not.toContain("this..");
+  });
+
   it("names both reads when both failed, and says no Inbox zero", () => {
     state.read = "failed";
     state.devicesRead = "failed";
@@ -127,7 +146,25 @@ describe("the Attention inbox", () => {
     expect(note).toHaveTextContent("Offline runners could not be read: devices down");
     expect(note).toHaveTextContent("does not say nothing needs you");
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(retryDevices).toHaveBeenCalledTimes(1);
+    expect(retryAttention).not.toHaveBeenCalled();
+  });
+});
+
+// ISS-1229 r50 review F1: the page's one Retry for both failed reads was decided by the inbox's error alone.
+describe("the Attention page's Retry where both reads failed", () => {
+  it.each([
+    ["the inbox refused and the runners busy", 403, 503],
+    ["the inbox busy and the runners refused", 503, 403],
+  ])("is offered with %s, and reads again only the busy read", (_, inbox, runners) => {
+    state.read = "failed";
+    state.devicesRead = "failed";
+    state.error = new ApiError(inbox, inbox === 403 ? "You do not have access to this." : "The server is busy.");
+    state.devicesError = new ApiError(runners, runners === 403 ? "You do not have access to this." : "The server is busy.");
+    render(<AttentionScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retryAttention).toHaveBeenCalledTimes(inbox === 503 ? 1 : 0);
+    expect(retryDevices).toHaveBeenCalledTimes(runners === 503 ? 1 : 0);
   });
 });
 

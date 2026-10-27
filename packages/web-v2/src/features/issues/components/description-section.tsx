@@ -7,9 +7,9 @@
 // typed wrong at create stayed wrong forever.
 
 import { useState } from "react";
-import { BodyView, Button, Skeleton, StaleReadLine } from "@/design";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { couldNotRefresh, offersRetry } from "@/lib/api/read-failed";
+import { BodyView, Button, RetryButton, Skeleton, StaleReadLine } from "@/design";
+import { formatApiError } from "@/lib/api/error";
+import { couldNotRefresh } from "@/lib/api/read-failed";
 import type { AttachmentRow, IssueDetail } from "../types";
 import { AttachmentList } from "./attachment-list";
 import { BodyEditor } from "./body-editor";
@@ -148,7 +148,8 @@ function IssueAttachments({
       <section aria-label="Attachments" className="mb-4 space-y-2">
         <StaleReadLine
           said={`Attachments: ${couldNotRefresh(readAt, error)}`}
-          onRetry={onRetry && offersRetry(error) ? onRetry : undefined}
+          error={error}
+          onRetry={onRetry}
         />
         {rows.length > 0 && <AttachmentList rows={rows} />}
       </section>
@@ -158,11 +159,7 @@ function IssueAttachments({
     return (
       <p role="alert" className="fg-body-sm mb-4 flex flex-wrap items-center gap-2 text-muted">
         <span>Couldn't load attachments — {formatApiError(error)}</span>
-        {onRetry && isRetryableApiError(error) && (
-          <Button variant="secondary" size="sm" icon="rerun" onClick={onRetry}>
-            Retry
-          </Button>
-        )}
+        <RetryButton error={error} onRetry={onRetry} />
       </p>
     );
   }

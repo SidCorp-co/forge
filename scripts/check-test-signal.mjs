@@ -31,6 +31,7 @@ import {
   tunedConfig,
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
+import { entryOf } from './lib/entry-of.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'test-signal-baseline.json');
@@ -132,7 +133,7 @@ function collectStaged() {
 }
 
 const parsed = parseMode(
-  process.argv,
+  process.argv.slice(2),
   ['--all', '--staged', '--update-baseline'],
   'check-test-signal.mjs',
 );
@@ -189,7 +190,7 @@ for (const { file } of failures) {
   console.error(`\n${file}`);
   const score = scoreFile(readFileSync(join(ROOT, file), 'utf8'));
   for (const r of violationsFor(score)) console.error(`  ${r}`);
-  const was = baseline[file];
+  const was = entryOf(baseline, file);
   if (was) {
     console.error(
       `  baseline allowed declaration=${was.declaration} mock=${was.mock}; ` +

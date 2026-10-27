@@ -10,10 +10,11 @@ import {
   CardTitle,
   Field,
   Input,
+  RetryButton,
   Select,
+  type SelectOption,
   Skeleton,
   Textarea,
-  type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -105,9 +106,9 @@ export function AgentSelfEditor({
     return (
       <div className="flex items-center gap-3" data-testid={`agent-self-error-${agentUserId}`}>
         <p className="fg-body-sm fg-danger">{formatApiError(selfQ.error)}</p>
-        <Button variant="secondary" onClick={() => void selfQ.refetch()}>
+        <RetryButton error={selfQ.error} onRetry={() => void selfQ.refetch()}>
           Try again
-        </Button>
+        </RetryButton>
       </div>
     );
   }

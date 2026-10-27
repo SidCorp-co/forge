@@ -8,7 +8,7 @@
 
 import { couldNotRead, couldNotRefresh } from "@/lib/api/read-failed";
 import type { ComponentProps } from "react";
-import { Avatar, Badge, Button, MonoTag, Stat } from "@/design";
+import { Avatar, Badge, Button, MonoTag, RetryButton, Stat } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-row-parts";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LANDING_SHAPE_ROW } from "@/lib/api/error";
@@ -181,16 +181,12 @@ function unreadWords(what: string, read: UnreadRead): string {
 }
 
 /** A rail row whose read failed: what could not be read, and Retry (ISS-1228 round 21). */
-function UnreadRow({ label, what, onRetry }: { label: string; what: string; onRetry: (() => void) | undefined }) {
+function UnreadRow({ label, what, read }: { label: string; what: string; read: UnreadRead }) {
   return (
     <Row label={label}>
       <span role="status" className="fg-caption inline-flex flex-wrap items-center justify-end gap-2 text-muted">
         {what}
-        {onRetry && (
-          <Button variant="secondary" size="sm" icon="rerun" onClick={onRetry}>
-            Retry
-          </Button>
-        )}
+        <RetryButton error={read.error} onRetry={read.retry} />
       </span>
     </Row>
   );
@@ -447,7 +443,7 @@ export function PropertiesRail({
           <LiveReachValue reach={issue.liveReach} />
         </Row>
       )}
-      {unread.cost && <UnreadRow label="Cost" what={unreadWords("The cost", unread.cost)} onRetry={unread.cost.retry} />}
+      {unread.cost && <UnreadRow label="Cost" what={unreadWords("The cost", unread.cost)} read={unread.cost} />}
       {cost && cost.estimatedCost > 0 && (
         <Row label="Cost">
           <Stat icon="dollar">{`$${cost.estimatedCost.toFixed(2)}`}</Stat>
@@ -489,7 +485,7 @@ export function PropertiesRail({
         </Row>
       )}
       {unread.deps && (
-        <UnreadRow label="Relations" what={unreadWords("Its relations", unread.deps)} onRetry={unread.deps.retry} />
+        <UnreadRow label="Relations" what={unreadWords("Its relations", unread.deps)} read={unread.deps} />
       )}
       <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
       <DepList edges={wasBlockedBy} self={issue.id} slug={slug} label="Was blocked by" />

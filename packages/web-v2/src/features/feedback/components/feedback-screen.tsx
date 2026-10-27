@@ -250,7 +250,7 @@ export function FeedbackScreen({ scope }: FeedbackScreenProps) {
         <ErrorState
           title="Couldn't load feedback"
           message={formatApiError(reportsQ.error)}
-          onRetry={() => reportsQ.refetch()}
+          error={reportsQ.error} onRetry={() => reportsQ.refetch()}
         />
       )}
 

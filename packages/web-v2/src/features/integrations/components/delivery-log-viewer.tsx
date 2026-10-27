@@ -154,7 +154,7 @@ export function DeliveryLogViewer({
     );
   }
   if (deliveries.isError) {
-    return <ErrorState title="Couldn't load deliveries" message={formatApiError(deliveries.error)} onRetry={() => deliveries.refetch()} />;
+    return <ErrorState title="Couldn't load deliveries" message={formatApiError(deliveries.error)} error={deliveries.error} onRetry={() => deliveries.refetch()} />;
   }
 
   const items = deliveries.data?.items ?? [];

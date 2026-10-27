@@ -123,7 +123,7 @@ describe("what a stored turn carries for its reader", () => {
     expect(names).toHaveLength(2);
     expect(new Set(names).size).toBe(2);
     expect(names[0]).toMatch(/^Copy message from Colin at /);
-    expect(names[1]).toMatch(/^Copy message from Assistant at /);
+    expect(names[1]).toMatch(/^Copy message from The agent at /);
   });
 
   it("shows the files that went with it", () => {
@@ -591,7 +591,8 @@ describe("who signs an agent's reply", () => {
     expect(screen.getByRole("button", { name: /^Copy message from @desk-bot at / })).toBeInTheDocument();
   });
 
-  it("keeps the stored label for a reply whose agent is no longer in the room", () => {
+  // r50: a reply with no label and no agent left in the room is signed "The agent", never "Assistant" (criterion 484).
+  it("signs a reply whose agent is no longer in the room, and that carries no label, as the agent", () => {
     render(
       <ConversationThread
         participants={[agent]}
@@ -599,6 +600,6 @@ describe("who signs an agent's reply", () => {
         windows={[]}
       />,
     );
-    expect(screen.getByTestId("message-actions").querySelector("span")?.textContent).toBe("Assistant");
+    expect(screen.getByTestId("message-actions").querySelector("span")?.textContent).toBe("The agent");
   });
 });

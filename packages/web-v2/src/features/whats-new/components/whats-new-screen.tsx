@@ -63,7 +63,7 @@ export function WhatsNewScreen() {
       ) : isError ? (
         <Card>
           <CardContent>
-            <ErrorState title="Couldn't load release notes" level={1} message={formatApiError(error)} onRetry={() => refetch()} />
+            <ErrorState title="Couldn't load release notes" level={1} message={formatApiError(error)} error={error} onRetry={() => refetch()} />
           </CardContent>
         </Card>
       ) : !data || data.length === 0 ? (

@@ -259,14 +259,14 @@ export function IntegrationsScreen() {
       ) : connections.isError ? (
         <ErrorState title="Couldn't load your connections" level={1}
           message={formatApiError(connections.error)}
-          onRetry={() => connections.refetch()}
+          error={connections.error} onRetry={() => connections.refetch()}
         />
       ) : scopeUnread ? (
         <ErrorState
           level={1}
           title="Couldn't load your projects"
           message={`${formatApiError(projectsQ.error)} Which connections belong to ${scopeName} turns on the projects that use them.`}
-          onRetry={() => projectsQ.refetch()}
+          error={projectsQ.error} onRetry={() => projectsQ.refetch()}
         />
       ) : items.length === 0 ? (
         <div className="border-y border-line" data-testid="connections-empty">

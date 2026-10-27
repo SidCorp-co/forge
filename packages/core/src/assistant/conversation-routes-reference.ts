@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
+import { projectMemberRoles } from '../db/project-vocabulary.js';
 import { answerInGroupModes } from '../db/schema-agent-selves.js';
 import {
   conversationAdapters,
@@ -132,6 +133,10 @@ export const participantSchema = z.object({
   reachable: z.boolean().nullable(),
   displayName: z.string().nullable(),
   addedAt: z.date(),
+  /** A person's role on each project the room is about, and whether they opened it: what tells two alike
+   *  names apart (ISS-1229 r50). Empty and false for an agent. */
+  roles: z.array(z.object({ projectId: z.string(), role: z.enum(projectMemberRoles).nullable() })),
+  opener: z.boolean(),
 });
 
 export const namedProjectSchema = z.object({ id: z.string(), name: z.string(), slug: z.string() });

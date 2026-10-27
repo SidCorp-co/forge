@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentModeOffer } from "../types";
 import { ComposerWidthContext } from "@/features/chat/components/chat-composer";
-import { ConversationModeControl, modePlaceholder } from "./mode-control";
+import { ConversationModeControl, MODES, modePlaceholder } from "./mode-control";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -63,13 +63,13 @@ describe("the choice, while the room is still empty", () => {
 
   it("marks the picked mode as the checked radio", () => {
     renderControl({ value: "agent", offer: FREE });
-    expect(screen.getByRole("radio", { name: /Agent/ })).toBeChecked();
-    expect(screen.getByRole("radio", { name: /Assistant/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /Works in the repository/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Reads the project/ })).not.toBeChecked();
   });
 
   it("picks the other mode when it is chosen", () => {
     const { onChange } = renderControl({ offer: FREE });
-    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
     expect(onChange).toHaveBeenCalledWith("agent");
   });
 });
@@ -77,12 +77,12 @@ describe("the choice, while the room is still empty", () => {
 describe("the blocked option", () => {
   it("stays reachable by keyboard rather than being skipped over", () => {
     renderControl({ offer: BLOCKED });
-    expect(screen.getByRole("radio", { name: /Agent/ })).not.toBeDisabled();
+    expect(screen.getByRole("radio", { name: /Works in the repository/ })).not.toBeDisabled();
   });
 
   it("opens a panel naming why it is unavailable", () => {
     renderControl({ offer: BLOCKED });
-    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
     const panel = screen.getByTestId("mode-blocked-panel");
     expect(panel).toHaveTextContent("Agent needs a paired runner");
     expect(panel).toHaveTextContent("This project has no runner paired.");
@@ -93,7 +93,7 @@ describe("the blocked option", () => {
   // code" are. The way out has to land where a pairing can start.
   it("offers the way out of it, on the page a pairing starts from", () => {
     renderControl({ offer: BLOCKED });
-    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
     const link = screen.getByRole("link", { name: "Pair a runner" });
     expect(link).toHaveAttribute("href", "/runners");
     expect(link).not.toHaveAttribute("href", "/pair");
@@ -101,7 +101,7 @@ describe("the blocked option", () => {
 
   it("does not pick the mode it could not run", () => {
     const { onChange } = renderControl({ offer: BLOCKED });
-    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -112,17 +112,17 @@ describe("the blocked option", () => {
 
   it("closes the panel on Escape and gives the caret back to the checked mode", () => {
     renderControl({ offer: BLOCKED });
-    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
     fireEvent.keyDown(screen.getByRole("link", { name: "Pair a runner" }), { key: "Escape" });
     expect(screen.queryByTestId("mode-blocked-panel")).not.toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /Assistant/ })).toHaveFocus();
+    expect(screen.getByRole("radio", { name: /Reads the project/ })).toHaveFocus();
   });
 
   // The dock and the slide-over close on Escape too. A panel that closes and
   // leaves the key unclaimed takes the whole conversation, draft and all, with it.
   it("claims the Escape it closes on, so what it sits in does not also close", () => {
     renderControl({ offer: BLOCKED });
-    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
     const reachedDocument = vi.fn();
     document.addEventListener("keydown", reachedDocument);
     const notCancelled = fireEvent.keyDown(screen.getByRole("link", { name: "Pair a runner" }), {
@@ -135,7 +135,7 @@ describe("the blocked option", () => {
 
   it("closes when the keyboard leaves it", () => {
     renderControl({ offer: BLOCKED });
-    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
     fireEvent.blur(screen.getByRole("link", { name: "Pair a runner" }), { relatedTarget: document.body });
     expect(screen.queryByTestId("mode-blocked-panel")).not.toBeInTheDocument();
   });
@@ -157,7 +157,7 @@ describe("the blocked option, where the project's device is paired but not assig
   };
   const openPanel = (offer: AgentModeOffer = UNBOUND) => {
     renderControl({ offer });
-    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Works in the repository/ }));
     return screen.getByTestId("mode-blocked-panel");
   };
 
@@ -208,7 +208,7 @@ describe("the blocked option, where the project's device is paired but not assig
 describe("below 480 pixels of composer width", () => {
   it("becomes one button naming the mode the room is in", () => {
     renderControl({ narrow: true, value: "agent" });
-    expect(screen.getByTestId("conversation-mode-menu-trigger")).toHaveTextContent("Agent");
+    expect(screen.getByTestId("conversation-mode-menu-trigger")).toHaveTextContent("Works in the repository");
     expect(screen.queryByRole("group")).not.toBeInTheDocument();
   });
 
@@ -216,29 +216,29 @@ describe("below 480 pixels of composer width", () => {
     renderControl({ narrow: true });
     fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
     const menu = screen.getByTestId("conversation-mode-menu");
-    expect(menu).toHaveTextContent("Assistant");
-    expect(menu).toHaveTextContent("Agent");
+    expect(menu).toHaveTextContent("Reads the project");
+    expect(menu).toHaveTextContent("Works in the repository");
   });
 
   it("puts the keyboard on the option already chosen when it opens", () => {
     renderControl({ narrow: true, value: "agent" });
     fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
-    expect(screen.getByRole("menuitemradio", { name: /Agent/ })).toHaveFocus();
+    expect(screen.getByRole("menuitemradio", { name: /Works in the repository/ })).toHaveFocus();
   });
 
   it("moves between the options with the arrow keys", () => {
     renderControl({ narrow: true, value: "assistant" });
     fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
-    const assistant = screen.getByRole("menuitemradio", { name: /Assistant/ });
+    const assistant = screen.getByRole("menuitemradio", { name: /Reads the project/ });
     fireEvent.keyDown(assistant, { key: "ArrowDown" });
-    expect(screen.getByRole("menuitemradio", { name: /Agent/ })).toHaveFocus();
+    expect(screen.getByRole("menuitemradio", { name: /Works in the repository/ })).toHaveFocus();
   });
 
   it("closes on Escape and gives the caret back to the button that opened it", () => {
     renderControl({ narrow: true });
     const trigger = screen.getByTestId("conversation-mode-menu-trigger");
     fireEvent.click(trigger);
-    fireEvent.keyDown(screen.getByRole("menuitemradio", { name: /Assistant/ }), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("menuitemradio", { name: /Reads the project/ }), { key: "Escape" });
     expect(screen.queryByTestId("conversation-mode-menu")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
   });
@@ -246,7 +246,7 @@ describe("below 480 pixels of composer width", () => {
   it("claims the Escape it closes on", () => {
     renderControl({ narrow: true });
     fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
-    const notCancelled = fireEvent.keyDown(screen.getByRole("menuitemradio", { name: /Assistant/ }), {
+    const notCancelled = fireEvent.keyDown(screen.getByRole("menuitemradio", { name: /Reads the project/ }), {
       key: "Escape",
     });
     expect(notCancelled).toBe(false);
@@ -262,7 +262,7 @@ describe("below 480 pixels of composer width", () => {
     renderControl({ narrow: true, offer: BLOCKED });
     const trigger = screen.getByTestId("conversation-mode-menu-trigger");
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Works in the repository/ }));
     fireEvent.keyDown(screen.getByRole("link", { name: "Pair a runner" }), { key: "Escape" });
     expect(screen.queryByTestId("mode-blocked-panel")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
@@ -271,14 +271,14 @@ describe("below 480 pixels of composer width", () => {
   it("gives the keyboard the way out when the option it stood on disappears", () => {
     renderControl({ narrow: true, offer: BLOCKED });
     fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Works in the repository/ }));
     expect(screen.getByRole("link", { name: "Pair a runner" })).toHaveFocus();
   });
 
   it("still refuses the blocked mode, with the same panel", () => {
     const { onChange } = renderControl({ narrow: true, offer: BLOCKED });
     fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Works in the repository/ }));
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByTestId("mode-blocked-panel")).toBeInTheDocument();
   });
@@ -318,7 +318,7 @@ describe("the width it reads that form from", () => {
 describe("once the room's mode is settled", () => {
   it("says which mode it is in rather than disappearing", () => {
     renderControl({ settled: "agent" });
-    expect(screen.getByTestId("conversation-mode-settled")).toHaveTextContent("Agent");
+    expect(screen.getByTestId("conversation-mode-settled")).toHaveTextContent("Works in the repository");
   });
 
   it("stops pretending to be a control", () => {
@@ -330,8 +330,8 @@ describe("once the room's mode is settled", () => {
 
 describe("the placeholder", () => {
   it("names each mode", () => {
-    expect(modePlaceholder("agent")).toContain("Agent");
-    expect(modePlaceholder("assistant")).toContain("Assistant");
+    expect(modePlaceholder("agent")).toContain("repository and a shell");
+    expect(modePlaceholder("assistant")).toContain("reads this project");
   });
 
   it("names neither where the room has not settled one", () => {
@@ -347,5 +347,24 @@ describe("the placeholder", () => {
       "Message @desk-bot and @ops — they have the repository and a shell…",
     );
     expect(modePlaceholder(null, ["@desk-bot"])).toBe("Message @desk-bot about this project…");
+  });
+});
+
+// ISS-1229 r50, judge-152's note on criterion 485: the settled tag read "Assistant" beside the agent's icon, a second
+// name for the agent the header names by handle.
+describe("the way a room's agent answers (criterion 503)", () => {
+  it("is named in words that are not a name, settled or still a choice", () => {
+    for (const mode of ["assistant", "agent"] as const) {
+      cleanup();
+      render(<ConversationModeControl value={mode} onChange={() => {}} offer={FREE} settled={mode} />);
+      const tag = screen.getByTestId("conversation-mode-settled").textContent ?? "";
+      expect(tag).not.toMatch(/\b(Assistant|Agent)\b/);
+    }
+    expect(MODES.map((m) => m.label)).toEqual(["Reads the project", "Works in the repository"]);
+  });
+
+  it("leaves no name in the box's words where no agent is named", () => {
+    expect(modePlaceholder("assistant")).toBe("Message the agent — it reads this project, not the repository…");
+    expect(modePlaceholder("agent")).toBe("Message the agent — it has the repository and a shell…");
   });
 });

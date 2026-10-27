@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mergeTarget } from './lib/base-branch.mjs';
 import { baseRevision, ratchetFault } from './lib/baseline-ratchet.mjs';
+import { entryOf } from './lib/entry-of.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -136,7 +137,7 @@ function measure(_axis, spec, decl) {
     none: null,
   };
   return [spec, ...(spec.also ?? [])]
-    .map((s) => measureOne(s, paths[s.from ?? 'baseline']))
+    .map((s) => measureOne(s, entryOf(paths, s.from ?? 'baseline')))
     .reduce((weakest, m) => {
       if (weakest.level === null) return weakest;
       return m.level === null || m.level < weakest.level ? m : weakest;
@@ -199,12 +200,12 @@ let disagreements = 0;
 let unmeasured = 0;
 
 for (const axis of axes) {
-  const spec = PROBES[axis];
+  const spec = entryOf(PROBES, axis);
   if (!spec) {
     rows.push({
       axis,
       gate: '—',
-      declared: declared[axis]?.level ?? '?',
+      declared: entryOf(declared, axis)?.level ?? '?',
       measured: '?',
       note: 'declared with no probe',
     });
@@ -222,15 +223,15 @@ for (const axis of axes) {
     disagreements++;
     continue;
   }
-  const m = measure(axis, spec, declared[axis]);
-  const d = declared[axis].level;
+  const m = measure(axis, spec, entryOf(declared, axis));
+  const d = entryOf(declared, axis).level;
   if (m.level === null) {
     unmeasured++;
     rows.push({ axis, gate: spec.gate, declared: d, measured: 'n/a', note: m.note });
     continue;
   }
   const fault =
-    declaredBaselines(declared[axis])
+    declaredBaselines(entryOf(declared, axis))
       .map((b) => baselineFault(d, b))
       .find(Boolean) ?? null;
   if (d !== m.level || fault) disagreements++;

@@ -200,8 +200,15 @@ describe("Group: module", () => {
   });
 
   // ISS-1228 round 23 (master's read of the r23 after-shots): a failed read said to try again with no Retry.
-  it("offers Retry beside counts the server refused, and refetches the rollup", () => {
+  // ISS-1229 r50 (criterion 478): only a read a second read can change offers Retry.
+  it("offers no Retry beside counts the server refused for good", () => {
     rollup = { data: undefined, isLoading: false, isError: true, error: new ApiError(409, "Try again in a minute.", "X") };
+    mountAt("?groupBy=module");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("offers Retry beside counts the server could not give, and refetches the rollup", () => {
+    rollup = { data: undefined, isLoading: false, isError: true, error: new ApiError(503, "Busy.", "X") };
     mountAt("?groupBy=module");
     const retries = screen.getAllByRole("button", { name: "Retry" });
     expect(retries.length).toBeGreaterThan(0);

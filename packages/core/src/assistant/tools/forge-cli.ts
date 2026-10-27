@@ -12,10 +12,10 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { mintPat, revokePat } from '../../auth/pat.js';
+import { resolvePackageFile } from '../../lib/package-path.js';
 import { logger } from '../../logger.js';
 import { chatWithheld, placeBody, stoppedMessage } from './forge-cli-argv.js';
 
@@ -24,11 +24,10 @@ const PAT_TTL_MS = 10 * 60 * 1000;
 const TIMEOUT_MS = 180_000;
 const OUTPUT_CAP = 200_000;
 
-const require = createRequire(import.meta.url);
 function bundledCli(): { bin: string; argv0: string[] } {
   const override = process.env.FORGE_CLI_PATH;
   if (override) return { bin: override, argv0: [] };
-  const pkg = require.resolve('forge-plugin/package.json');
+  const pkg = resolvePackageFile(import.meta.url, 'forge-plugin/package.json');
   return { bin: process.execPath, argv0: [join(dirname(pkg), 'plugin', 'src', 'cli.mjs')] };
 }
 

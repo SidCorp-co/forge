@@ -131,7 +131,7 @@ function CandidateList({
         <ErrorState
           title="Couldn't load the people"
           message={formatApiError(query.error)}
-          onRetry={() => query.refetch()}
+          error={query.error} onRetry={() => query.refetch()}
         />
       </div>
     );

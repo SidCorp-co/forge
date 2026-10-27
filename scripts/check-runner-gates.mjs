@@ -7,7 +7,7 @@ import { baseRef } from './lib/base-branch.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CRATE_DIR = resolve(ROOT, 'packages/runner');
-const all = process.argv.includes('--all');
+const all = process.argv.slice(2).includes('--all');
 
 const GATES = [
   {

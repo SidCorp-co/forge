@@ -32,6 +32,7 @@ import {
   total,
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
+import { entryOf } from './lib/entry-of.mjs';
 import {
   drainedLine,
   drainFaults,
@@ -140,11 +141,14 @@ function collect(scopes) {
       if (diag === null) continue;
       const { rule, line, message } = diag;
       const rel = relative(ROOT, join(cwd, diag.path));
-      measured[rel] ??= {};
-      measured[rel][rule] = (measured[rel][rule] ?? 0) + 1;
-      said[rel] ??= {};
-      said[rel][rule] ??= [];
-      said[rel][rule].push({ line, message });
+      const counts = entryOf(measured, rel) ?? {};
+      measured[rel] = counts;
+      counts[rule] = (entryOf(counts, rule) ?? 0) + 1;
+      const notes = entryOf(said, rel) ?? {};
+      said[rel] = notes;
+      const listed = entryOf(notes, rule) ?? [];
+      notes[rule] = listed;
+      listed.push({ line, message });
       scopeOf.set(rel, scope.cwd);
     }
   }
@@ -202,7 +206,7 @@ function totalsByScope(files, scopeOf, scopes) {
 }
 
 const parsed = parseMode(
-  process.argv,
+  process.argv.slice(2),
   ['--all', '--staged', '--update-baseline'],
   'check-lint-budget.mjs',
 );
@@ -261,7 +265,8 @@ if (mode === '--update-baseline') {
   console.log(
     `lint-budget baseline written: ${Object.keys(files).length} file(s), ${total(files)} violation(s) frozen`,
   );
-  for (const [scope, n] of currentByScope) console.log(drainedLine(scope, n, original[scope]));
+  for (const [scope, n] of currentByScope)
+    console.log(drainedLine(scope, n, entryOf(original, scope)));
   process.exit(0);
 }
 
@@ -329,7 +334,7 @@ console.log(
   `lint-budget: ${Object.keys(measured).length} file(s) with lint debt, ${total(measured)} violation(s) frozen against the baseline`,
 );
 for (const [scope, n] of currentByScope)
-  console.log(drainedLine(scope, n, baseline.original[scope]));
+  console.log(drainedLine(scope, n, entryOf(baseline.original, scope)));
 if (drainNote) console.log(`  ${drainNote}`);
 if (failures.length === 0) process.exit(0);
 
