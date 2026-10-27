@@ -1,1 +1,0 @@
-**A requirement counts a pass on a later build that holds its issue's landing.** A pass on the testing environment past the landing, or at a later commit holding it, counts; one at a commit not holding it never does.

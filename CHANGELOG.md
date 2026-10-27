@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.345] - 2026-10-27
+
+Requirement coverage counts a QA pass on a later build that holds the work
+
+### Fixed
+
+- **A requirement counts a pass on a later build that holds its issue's landing.** A pass on the testing environment past the landing, or at a later commit holding it, counts; one at a commit not holding it never does.
+
 ## [0.4.0-dev.344] - 2026-10-27
 
 Shipped work is recorded as fact; on-land environments deploy on merge again
