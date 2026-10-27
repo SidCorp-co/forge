@@ -1,0 +1,1 @@
+**A release crossing a promotion is no longer held for criteria production cannot show yet.** Where work lands on one branch and production deploys another, criteria count at the landing commit or the judged-on environment.

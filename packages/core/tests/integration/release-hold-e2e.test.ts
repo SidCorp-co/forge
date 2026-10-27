@@ -27,6 +27,7 @@ import {
 import {
   AT_RELEASE,
   fakeCoolify,
+  landOnProduction,
   PROBE_URL,
   releaseWorld,
   seedProductionDeployTrigger,
@@ -60,6 +61,7 @@ beforeEach(async () => {
   coolify.applications.clear();
   await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] });
   await seedProductionDeployTrigger(projectId, ownerId, 'on-land');
+  await landOnProduction(projectId, ownerId);
   serve(SERVING);
   await fx.seedReleaseRunner();
 });

@@ -14,6 +14,7 @@ import {
   type ReleaseWarning,
   uncorroboratedWarningSentence,
 } from './blocker-sentences.js';
+import { criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import { type ServingReading, whyUncorroborated } from './serving-reading.js';
 
@@ -68,6 +69,24 @@ export async function criteriaHold(
     out,
   );
   if (auto !== true) return;
+  // Where a promotion stands between the landing and production, what production serves cannot
+  // hold the change before its release: criteria are weighed at each issue's landing (sidcorp-mail).
+  const basis = await evaluate('criteria-basis', async () => await criteriaBasisOf(projectId), out);
+  if (!basis) return;
+  if (basis.kind === 'unread') {
+    const detail = `where this project's criteria are earned could not be read: ${basis.why}`;
+    out.push(blocker('RELEASE_CHECK_UNEVALUATED', { check: 'criteria', detail }));
+    return;
+  }
+  if (basis.kind === 'landing') {
+    const reports = await evaluate(
+      'criteria',
+      async () => await landingCriteriaReports(waiting),
+      out,
+    );
+    if (reports) await heldOrWarned(waiting, reports, out, warnings, null);
+    return;
+  }
   // This enumerator reaches no network, so the ONE reading for the roster is the caller's.
   if (!serving) {
     out.push(blocker('RELEASE_CHECK_UNEVALUATED', { check: 'criteria', detail: NO_READING }));
@@ -86,6 +105,20 @@ export async function criteriaHold(
   );
   if (!reports) return;
   await uncorroboratedWarning(reports, serving, warnings);
+  await heldOrWarned(waiting, reports, out, warnings, serving);
+}
+
+/**
+ * Every waiting issue owing a criterion blocks; some of them warns. `serving` is the reading they were
+ * weighed against, or null where they were weighed at their landing.
+ */
+async function heldOrWarned(
+  waiting: readonly string[],
+  reports: ReadonlyArray<{ issueId: string; unearned: ReadonlyArray<{ criterion: number }> }>,
+  out: ReleaseBlocker[],
+  warnings: ReleaseWarning[],
+  serving: ServingReading | null,
+): Promise<void> {
   const owing = reports.filter((r) => r.unearned.length > 0);
   if (owing.length === 0) return;
   // Beside the reason, never in front of it: a failed name read keeps the uuid.
@@ -100,7 +133,7 @@ export async function criteriaHold(
   }));
   if (owing.length === waiting.length) {
     // One project-level reason, not one per row, where no run could clear any of them (ISS-1346).
-    if (serving.kind === 'undeclared') {
+    if (serving?.kind === 'undeclared') {
       const { missing, route } = serving;
       out.push(blocker('RELEASE_RUNTIME_UNROUTED', { missing, route, held }, 'roster'));
       return;
@@ -109,7 +142,7 @@ export async function criteriaHold(
     return;
   }
   const route =
-    serving.kind === 'undeclared' ? { missing: serving.missing, route: serving.route } : {};
+    serving?.kind === 'undeclared' ? { missing: serving.missing, route: serving.route } : {};
   warnings.push({
     code: 'RELEASE_CRITERIA_HELD_BACK',
     message: heldBackWarningSentence(held, serving),

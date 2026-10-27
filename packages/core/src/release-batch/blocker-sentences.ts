@@ -94,9 +94,9 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_VERSION_UNDECIDED:
     'An earlier attempt at this same roster ended without saying whether anything outside Forge carries the version it wore, so the next attempt can neither wear that version again nor take a new one. Say what carries it on that attempt: `POST /api/projects/:projectId/release-batches/:runId/carried` with `{"carried": []}` when nothing does, or each `{"kind": "tag"|"commit"|"artifact"|"notice", "name": "…"}` that does.',
   RELEASE_CRITERIA_UNEARNED:
-    'This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion. Record a verdict for each criterion named below, or move the issue out of `awaiting_release` if it is not to ship.',
+    "The sweep that cuts this project's releases when work lands is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion, and the sweep carries only an issue whose every criterion is earned, whether or not a person approves the release after. Record a verdict for each criterion named below, or move the issue out of `awaiting_release` if it is not to ship.",
   RELEASE_RUNTIME_UNROUTED:
-    'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.',
+    "The sweep that cuts this project's releases when work lands carries only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.",
   RELEASE_CHANGE_REQUEST_MISSING:
     '{named} {have} no open change request delivering {them}, and this project releases by merging its change requests, so nothing would ship {them}. Open a merge request whose branch names the key (`fix/iss-N-…`, `feat/…-iss-N`) or whose description says `Closes ISS-N`, then cut again.',
   RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED:
@@ -425,11 +425,14 @@ export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string)
 
 /** Where nothing can read what the project serves, no judging run earns a criterion, so the remedy
  *  is the project's route and not a verdict (ISS-1346, judge r2 finding 1). */
-export function heldBackWarningSentence(held: HeldIssueRef[], serving: ServingReading): string {
+export function heldBackWarningSentence(
+  held: HeldIssueRef[],
+  serving: ServingReading | null,
+): string {
   const issues = counted(held.length, 'issue');
   const lead = `A release will still be cut, without ${issues} the sweep is holding back`;
   const why =
-    serving.kind === 'undeclared'
+    serving?.kind === 'undeclared'
       ? `${lead}: each owes an acceptance criterion, and nothing here can read what this project is serving, so no judging run can earn one until the project can be read. What is missing: ${serving.missing}. The way to give it one: ${serving.route}.`
       : `${lead}: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`;
   return withCosts('RELEASE_CRITERIA_HELD_BACK', heldIssuesSentence(why, held));
