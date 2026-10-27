@@ -112,16 +112,18 @@ fn a_box(core: &str, provisioned: &[(&str, &str)]) -> (Scratch, PathBuf) {
 /// `forge-runner api <path>` run in a pane started for `slug` by the daemon serving `daemon`.
 fn in_a_job_pane(root: &Path, daemon: &Path, project_id: &str, slug: &str, path: &str) -> Output {
     let (env, _) = runner_workspace::terminal::pane_env_in(project_id, slug, Some(daemon));
-    Command::new(env!("CARGO_BIN_EXE_forge-runner"))
-        .args(["api", path])
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_forge-runner"));
+    cmd.args(["api", path])
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("HOME", root.join("home"))
-        .env("FORGE_RUNNER_CRED_STORE", "file")
-        .envs(env)
-        .current_dir(root)
-        .output()
-        .unwrap()
+        .env("FORGE_RUNNER_CRED_STORE", "file");
+    // Winsock does not start without SystemRoot, so a cleared Windows environment refuses every
+    // socket and the call never reaches the stand-in core.
+    if let Some(system_root) = std::env::var_os("SYSTEMROOT") {
+        cmd.env("SYSTEMROOT", system_root);
+    }
+    cmd.envs(env).current_dir(root).output().unwrap()
 }
 
 #[test]
