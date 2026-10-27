@@ -149,8 +149,8 @@ describe('every guarded script runs where it is launched from', () => {
  *   dropped;
  *
  * - `typeof process`: a string. The global object (`globalThis`, `global`, `self`, `window`) is
- *   read only by a stated name other than `eval`, `Function`, `Reflect` and `require`; its `process`
- *   is judged as above.
+ *   read only by a stated name other than `eval`, `Function`, `Reflect`, `require` and the names
+ *   every object inherits (`valueOf` hands back the object itself); its `process` is judged as above.
  *
  * Refused outright wherever it stands in such a file, each a route to process, or to code built from
  * a string that names it, that no reading of this file can follow:
@@ -162,9 +162,13 @@ describe('every guarded script runs where it is launched from', () => {
  *
  * - a property read by a key the walk cannot resolve — bracketed, destructured or by `Reflect.get` —
  *   since that key can be `constructor`. A key resolves where it is a string literal, a const name
- *   holding one, a number (a numeric literal, arithmetic, or a name every write gives a number), a
- *   symbol, or a loop's name over a list of these written in place. `Reflect` is used only as
- *   `Reflect.<name>()`;
+ *   holding one, a number (a numeric literal, arithmetic, a function of `Math`, `Number()`,
+ *   `parseInt`, `parseFloat`, or a name every write gives a number), a well-known symbol or one
+ *   `Symbol()` makes, or a loop's name over a list of these written in place;
+ *
+ * - `Math`, `Number`, `Symbol`, `parseInt` and `parseFloat` other than called, read from or under
+ *   `typeof`: a key is trusted from them, and one changed here would answer with any string;
+ * - `Reflect` other than as `Reflect.<name>()`;
  * - a property descriptor read (`getOwnPropertyDescriptor(s)`, `__lookupGetter__`,
  *   `__lookupSetter__`), which hands a property's value without naming it, `constructor` among them;
  *
@@ -205,8 +209,24 @@ const WRAPS = [
 ];
 const GLOBAL_NAMES = ['globalThis', 'global', 'self', 'window'];
 const CODE_BUILDERS = ['eval', 'Function'];
-/** Names the global object is never read by: code builders, and what reads a property by any key. */
-const GLOBAL_REFUSED = [...CODE_BUILDERS, 'Reflect', 'require'];
+/** Names the global object is never read by: code builders, what reads a property by any key, and
+ *  what every object inherits, `valueOf` among them, which hands back the global object itself. */
+const GLOBAL_REFUSED = [
+  ...CODE_BUILDERS,
+  'Reflect',
+  'require',
+  ...Object.getOwnPropertyNames(Object.prototype),
+];
+/** Natives a key is trusted from: Math's functions and Number's parsers give numbers, and Symbol's own
+ *  symbols are symbols. A guarded file may call and read them, never change or hand them on. */
+const MATH_FUNCTIONS = new Set(
+  Object.getOwnPropertyNames(Math).filter((k) => typeof Math[k] === 'function'),
+);
+const NUMBER_PARSERS = new Set(['parseFloat', 'parseInt']);
+const WELL_KNOWN = new Set(
+  Object.getOwnPropertyNames(Symbol).filter((k) => typeof Symbol[k] === 'symbol'),
+);
+const TRUSTED = ['Math', 'Number', 'Symbol', 'parseInt', 'parseFloat'];
 /**
  * Node modules a guarded file may load: none hands back process or the launch entry. A child or a
  * worker runs with its own argv (a worker's is node and `[worker eval]` or its file), and `util`'s
@@ -317,7 +337,7 @@ function launchRoutes(rel, text) {
     const loop = decl.parent.parent;
     return ts.isForOfStatement(loop) || ts.isForInStatement(loop);
   };
-  const writes = writesByDecl(src, visit, bindingAt, unwrap);
+  const writes = writesByDecl(visit, bindingAt, unwrap);
   /** Whether an expression is always a number or a bigint, neither of which names `constructor`. */
   const numeric = (node, assumed = new Set()) => {
     const n = unwrap(node);
@@ -335,9 +355,11 @@ function launchRoutes(rel, text) {
     if (ts.isCallExpression(n)) {
       const callee = unwrap(n.expression);
       if (['Number', 'parseInt', 'parseFloat'].some((name) => global(callee, name))) return true;
+      if (!ts.isPropertyAccessExpression(callee)) return false;
+      const fn = callee.name.text;
       return (
-        ts.isPropertyAccessExpression(callee) &&
-        (global(callee.expression, 'Math') || global(callee.expression, 'Number'))
+        (global(callee.expression, 'Math') && MATH_FUNCTIONS.has(fn)) ||
+        (global(callee.expression, 'Number') && NUMBER_PARSERS.has(fn))
       );
     }
     if (!ts.isIdentifier(n)) return false;
@@ -367,7 +389,8 @@ function launchRoutes(rel, text) {
         resolved(decl.initializer)
       );
     }
-    if (ts.isPropertyAccessExpression(n)) return global(n.expression, 'Symbol');
+    if (ts.isPropertyAccessExpression(n))
+      return global(n.expression, 'Symbol') && WELL_KNOWN.has(n.name.text);
     if (!ts.isCallExpression(n)) return false;
     const callee = unwrap(n.expression);
     return (
@@ -473,6 +496,41 @@ function launchRoutes(rel, text) {
       : literalText(node.argumentExpression);
     return GLOBAL_NAMES.includes(name) && isGlobal(unwrap(node.expression));
   }
+  /** A native a key is trusted from, by its own name or off the global object. */
+  const trusted = (node) => {
+    if (ts.isIdentifier(node))
+      return !naming(node) && !inType(node) && TRUSTED.includes(node.text) && unbound(node);
+    if (!ts.isPropertyAccessExpression(node) && !ts.isElementAccessExpression(node)) return false;
+    const name = ts.isPropertyAccessExpression(node)
+      ? node.name.text
+      : literalText(node.argumentExpression);
+    return TRUSTED.includes(name) && isGlobal(unwrap(node.expression));
+  };
+  /** Whether an expression is changed: assigned, deleted, counted or destructured into. */
+  const changed = (node) => {
+    const o = outer(node);
+    const p = o.parent;
+    if (ts.isBinaryExpression(p) && p.left === o)
+      return (
+        p.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        p.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      );
+    if (ts.isPrefixUnaryExpression(p) || ts.isPostfixUnaryExpression(p))
+      return [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(p.operator);
+    return ts.isDeleteExpression(p) || destructuring(p);
+  };
+  /** Whether a trusted native is only called, read from or put under `typeof`, so it stays itself. */
+  const nativeKept = (node) => {
+    const o = outer(node);
+    const p = o.parent;
+    if (ts.isCallExpression(p) && p.expression === o) return true;
+    if (ts.isTypeOfExpression(p)) return true;
+    return (
+      (ts.isPropertyAccessExpression(p) || ts.isElementAccessExpression(p)) &&
+      p.expression === o &&
+      !changed(p)
+    );
+  };
   const literalAtLeast = (arg, n) => {
     const k = unwrap(arg);
     return !!k && ts.isNumericLiteral(k) && Number(k.text) >= n;
@@ -598,6 +656,11 @@ function launchRoutes(rel, text) {
       say(
         node,
         `process read outside what this walk allows: ${shown(outer(chain(node).end).parent)}`,
+      );
+    if (reference && trusted(node) && !nativeKept(node))
+      say(
+        node,
+        `a native this walk trusts for a key, where it can be changed: ${shown(outer(node).parent)}`,
       );
     if (reference && isGlobal(node)) {
       const { path } = chain(node);
@@ -739,7 +802,7 @@ function scopes(src, visit) {
  * Every write to a name a file declares, by its declaration: the assignment or update that wrote it,
  * or null where it was written by a destructuring or a loop, whose value the walk does not read.
  */
-function writesByDecl(src, visit, bindingAt, unwrap) {
+function writesByDecl(visit, bindingAt, unwrap) {
   const writes = new Map();
   const note = (id, how) => {
     for (const { decl } of bindingAt(id)) writes.set(decl, [...(writes.get(decl) ?? []), how]);
@@ -1554,9 +1617,9 @@ describe('no file decides it was launched by hand', () => {
       "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nimport { createRequire } from 'node:module';\nconst require = createRequire(import.meta.url);\nconst M = require('node:module');\nconst m = new M('x');\nm._compile('module.exports = process.argv[1]', '/x.js');\nconst entry = m.exports;\nif (entry === self) console.log('PLANTED RAN');\n",
       3,
     ],
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, searched rather than run
     [
       'scripts/slice-replaced.mjs',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, searched rather than run
       'Array.prototype.slice = function () {\n  return this[1];\n};\nconst entry = process.argv.slice(2);\nif (import.meta.url === `file://${entry}`) main();\n',
       1,
     ],
@@ -1717,6 +1780,53 @@ describe('no file decides it was launched by hand', () => {
       "export const NAME = 'x';\nimport { NAME as n } from './self-other.mjs';\nconst ROOT = import.meta.url + n;\n",
       2,
     ],
+    // r10 review: the global object handed back by a name every object inherits, and a native the
+    // walk trusts for a key changed in this file, directly, by an alias or off the global object.
+    [
+      'scripts/r10-review-global-valueof.mjs',
+      "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nconst g = globalThis.valueOf();\nconst entry = g.process.argv[1];\nif (entry === self) console.log('PLANTED RAN');\n",
+      3,
+    ],
+    [
+      'scripts/r10-review-global-getter.mjs',
+      "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nglobalThis.__defineGetter__('g', function () {\n  return this;\n});\nconst entry = globalThis.g.process.argv[1];\nif (entry === self) console.log('PLANTED RAN');\n",
+      3,
+    ],
+    [
+      'scripts/r10-review-math-key.mjs',
+      "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nMath.key = () => 'con' + 'structor';\nconst build = (() => {})[Math.key()];\nconst entry = build('return process.argv[1]')();\nif (entry === self) console.log('PLANTED RAN');\n",
+      3,
+    ],
+    [
+      'scripts/r10-review-math-floor.mjs',
+      "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nMath.floor = () => ['constr', 'uctor'].join('');\nconst build = (() => {})[Math.floor(1)];\nconst entry = build('return process.argv[1]')();\nif (entry === self) console.log('PLANTED RAN');\n",
+      3,
+    ],
+    [
+      'scripts/r10-review-symbol-key.mjs',
+      "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nSymbol.key = ['constr', 'uctor'].join('');\nconst build = (() => {})[Symbol.key];\nconst entry = build('return process.argv[1]')();\nif (entry === self) console.log('PLANTED RAN');\n",
+      3,
+    ],
+    [
+      'scripts/r10-review-math-alias.mjs',
+      "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nconst M = Math;\nM.max = () => ['constr', 'uctor'].join('');\nconst build = (() => {})[Math.max()];\nconst entry = build('return process.argv[1]')();\nif (entry === self) console.log('PLANTED RAN');\n",
+      3,
+    ],
+    [
+      'scripts/r10-review-number-assign.mjs',
+      "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nObject.assign(Number, { parseFloat: () => ['constr', 'uctor'].join('') });\nconst build = (() => {})[Number.parseFloat('1')];\nconst entry = build('return process.argv[1]')();\nif (entry === self) console.log('PLANTED RAN');\n",
+      3,
+    ],
+    [
+      'scripts/r10-review-global-math.mjs',
+      "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nglobalThis.Math.max = () => ['constr', 'uctor'].join('');\nconst build = (() => {})[Math.max()];\nconst entry = build('return process.argv[1]')();\nif (entry === self) console.log('PLANTED RAN');\n",
+      3,
+    ],
+    [
+      'scripts/r10-review-parseint-replaced.mjs',
+      "import { fileURLToPath } from 'node:url';\nconst self = fileURLToPath(import.meta.url);\nparseInt = () => ['constr', 'uctor'].join('');\nconst build = (() => {})[parseInt('1')];\nconst entry = build('return process.argv[1]')();\nif (entry === self) console.log('PLANTED RAN');\n",
+      3,
+    ],
   ];
 
   // FIXTURE TEXT — the forms of process the allow-list names, keys it resolves, the helpers, and
@@ -1739,9 +1849,9 @@ describe('no file decides it was launched by hand', () => {
       'scripts/local.mjs',
       "const argv = text.split(' ');\nconst [head, ...rest] = argv;\nconst x = argv[1];\nconst ROOT = import.meta.url;\n",
     ],
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, searched rather than run
     [
       'scripts/inline.mjs',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, searched rather than run
       'const SCRIPT = `const [url] = process.argv.slice(1); ${x}`;\n// compares import.meta.url with process.argv[1]\nconst ROOT = import.meta.url;\n',
     ],
     ['scripts/no-meta.mjs', 'const entry = process.argv[1];\n'],
@@ -1769,6 +1879,10 @@ describe('no file decides it was launched by hand', () => {
     [
       'scripts/class-constructor.mjs',
       'class A {\n  constructor(x) {\n    this.x = x;\n  }\n}\nconst ROOT = import.meta.url;\n',
+    ],
+    [
+      'scripts/natives-kept.mjs',
+      "use(obj[Math.floor(i / 2)], obj[Number('1')], obj[parseInt(s, 10)], obj[Number.parseFloat(s)]);\nuse(obj[Symbol.asyncIterator], obj[Symbol.for('k')], typeof Math, list.map((x) => Math.max(x, 1)));\nconst ROOT = import.meta.url;\n",
     ],
     [
       'scripts/entry-of.mjs',

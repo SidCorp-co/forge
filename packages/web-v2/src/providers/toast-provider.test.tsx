@@ -662,17 +662,17 @@ describe("a toast naming the element it keeps clear of", () => {
       );
       act(() => fire({ ...refused, duration: 0, clearOf: stepOrder }));
       const lane = screen.getByTestId("toast-lane");
-      // Above the error: 61 to 77; below Save: 449 to 600.
-      expect(lane.style.top).toBe("449px");
-      expect(lane.style.maxHeight).toBe("151px");
+      // Above the error 16 px, between the field and Save 162, below Save 151: the most room is between.
+      expect(lane.style.top).toBe("243px");
+      expect(lane.style.maxHeight).toBe("162px");
       clearOfAll(lane, ["error", "label", "path", "save"]);
     } finally {
       spy.mockRestore();
     }
   });
 
-  // judge-154 at b2c7b16: it took the room above the input, over its label and the error, sparing the notice.
-  it("goes over a kept notice before it covers anything it names, and above it", () => {
+  // r10 review W3: a gap between two named elements is room too.
+  it("keeps clear of a kept notice too where a space between the elements it names allows", () => {
     wide(false);
     viewport(390, 600);
     const spy = stepBoxes({ "toast-lane-kept": { top: 456, bottom: 544, height: 88, width: 390, left: 0, right: 390 } });
@@ -689,11 +689,41 @@ describe("a toast naming the element it keeps clear of", () => {
         fire({ ...refused, duration: 0, clearOf: stepOrder });
       });
       const lane = screen.getByTestId("toast-lane");
-      // Between Save and the kept notice is 7 px, above the error 16: neither holds a toast's first line.
-      expect(lane.style.top).toBe("449px");
-      expect(lane.style.maxHeight).toBe("151px");
-      expect(lane.style.zIndex).toBe("61");
+      expect(lane.style.top).toBe("243px");
+      expect(lane.style.maxHeight).toBe("162px");
+      expect(lane.style.zIndex).toBe("");
       clearOfAll(lane, ["error", "label", "path", "save"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // judge-154 at b2c7b16: it took the room above the input, over its label and the error, sparing the notice.
+  it("goes over a kept notice before it covers anything it names, and above it", () => {
+    wide(false);
+    viewport(390, 600);
+    // Save right under the field, and a long kept notice: no space clear of both holds a first line.
+    const spy = stepBoxes({
+      save: { top: 255, bottom: 299, left: 21, right: 370 },
+      "toast-lane-kept": { top: 350, bottom: 544, height: 194, width: 390, left: 0, right: 390 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => {
+        fire({ title: "This room was deleted", keep: true });
+        fire({ ...refused, duration: 0, clearOf: stepOrder });
+      });
+      const lane = screen.getByTestId("toast-lane");
+      expect(lane.style.top).toBe("auto");
+      expect(lane.style.zIndex).toBe("61");
+      const { top } = laneSpan(lane);
+      expect(top).toBeGreaterThanOrEqual(299);
     } finally {
       spy.mockRestore();
     }
@@ -702,8 +732,8 @@ describe("a toast naming the element it keeps clear of", () => {
   // r10 plan consult F3: a zero-height lane hid the refusal and its link.
   it("lets go of the last elements before it shrinks under a toast's first line, never the first", () => {
     wide(false);
-    viewport(390, 470);
-    const spy = stepBoxes();
+    viewport(390, 340);
+    const spy = stepBoxes({ save: { top: 255, bottom: 299, left: 21, right: 370 } });
     try {
       render(
         <ToastProvider>
@@ -714,10 +744,9 @@ describe("a toast naming the element it keeps clear of", () => {
       );
       act(() => fire({ ...refused, duration: 0, clearOf: stepOrder }));
       const lane = screen.getByTestId("toast-lane");
-      // Below Save is 21 px and above the error 16; let go of Save, the bottom edge clears the rest.
-      expect(lane.style.top).toBe("auto");
-      const { top, bottom } = laneSpan(lane);
-      expect(bottom - top).toBeGreaterThanOrEqual(72);
+      // Below Save is 41 px and every other space less: let go of Save, and the field's 97 px below holds.
+      expect(lane.style.top).toBe("243px");
+      expect(lane.style.maxHeight).toBe("97px");
       clearOfAll(lane, ["error", "label", "path"]);
     } finally {
       spy.mockRestore();
