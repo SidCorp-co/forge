@@ -9,7 +9,7 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
-## [0.4.0-dev.343] - 2026-10-27
+## [0.4.0-dev.344] - 2026-10-27
 
 Shipped work is recorded as fact; on-land environments deploy on merge again
 
