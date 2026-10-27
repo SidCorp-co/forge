@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // ISS-1229 r21, judge-62: the issue page's Creator field is a label, so it shows what core calls the
-// creator — the display name, else "Another member" — and never the address the payload also carries.
+// creator — the display name, else "A member" — and never the address the payload also carries.
 
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -55,9 +55,9 @@ function creatorRow(creatorLabel: string): HTMLElement {
 }
 
 describe("the issue page's Creator field", () => {
-  it("shows Another member, with its initials, for a creator with no display name", () => {
-    const row = creatorRow("Another member");
-    expect(within(row).getByText("Another member")).toBeTruthy();
+  it("shows A member, with its initials, for a creator with no display name", () => {
+    const row = creatorRow("A member");
+    expect(within(row).getByText("A member")).toBeTruthy();
     expect(within(row).getByText("AM")).toBeTruthy();
   });
 

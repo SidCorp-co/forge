@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // ISS-1229 r21, the coordinator's amended ruling: a picker is where a member chooses an identity, so
-// the creator filter offers each member by name, else "Another member", with their address as
+// the creator filter offers each member by name, else "A member", with their address as
 // secondary text — two members with no display name can be told apart there.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -53,7 +53,7 @@ vi.mock("../hooks", async () => {
 });
 
 describe("the issue list's creator filter", () => {
-  it("offers two members with no display name as Another member, each beside their own address", () => {
+  it("offers two members with no display name as A member, each beside their own address", () => {
     window.history.replaceState({}, "", "/projects/forge-dev/issues");
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -72,8 +72,8 @@ describe("the issue list's creator filter", () => {
     expect(offered).toEqual([
       "Creator: anyone · ",
       "Creator: any agent · ",
-      "Another member · lan.pham@example.com",
-      "Another member · kim@example.com",
+      "A member · lan.pham@example.com",
+      "A member · kim@example.com",
       "Mai Tran · mai.tran@example.com",
     ]);
   });

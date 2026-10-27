@@ -58,12 +58,12 @@ describe('a mention notice names who mentioned you, never their address (criteri
     emitted.length = 0;
   });
 
-  it('reads "Another member mentioned you in" where the display name is an email address', async () => {
+  it('reads "A member mentioned you in" where the display name is an email address', async () => {
     await mentionedBy('mai.tran@example.com');
     expect(emitted).toEqual([
       expect.objectContaining({
         userId: 'u-reader',
-        title: 'Another member mentioned you in "Fix login"',
+        title: 'A member mentioned you in "Fix login"',
       }),
     ]);
     expect(emitted[0]?.title).not.toContain('@');
@@ -71,7 +71,7 @@ describe('a mention notice names who mentioned you, never their address (criteri
 
   it('reads the same where no display name is set (criterion 155)', async () => {
     await mentionedBy(null);
-    expect(emitted[0]?.title).toBe('Another member mentioned you in "Fix login"');
+    expect(emitted[0]?.title).toBe('A member mentioned you in "Fix login"');
   });
 
   it('names a member by their display name (criterion 154)', async () => {

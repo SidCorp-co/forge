@@ -104,7 +104,7 @@ export function ConversationsScreen() {
   const projectIdList = useMemo(() => [...orgProjectIds].sort(), [orgProjectIds]);
   const addressed = useRef(addressedRoom());
   const [showArchived, setShowArchived] = useState(addressed.current.archived);
-  const { activeOrgId } = useActiveOrg();
+  const { activeOrgId, orgs } = useActiveOrg();
   const conversations = useConversationsAcrossProjects(projectIdList, showArchived);
 
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -200,6 +200,15 @@ export function ConversationsScreen() {
   }, [lookup, read, readProject, setLookup]);
 
   const openRoomId = selection?.conversationId ?? null;
+  // The open room is in an organization this list does not show: the list says so, never that there is none.
+  const openProjectOrg = selection ? projectsQ.data?.find((p) => p.id === selection.projectId)?.orgId : undefined;
+  const openElsewhere =
+    openRoomId && !conversations.isLoading && !conversations.rows.some((r) => r.id === openRoomId) && openProjectOrg !== activeOrgId
+      ? {
+          roomOrg: orgs.find((o) => o.id === openProjectOrg)?.name ?? null,
+          listOrg: orgs.find((o) => o.id === activeOrgId)?.name ?? null,
+        }
+      : null;
   const openArchived = selection?.archived === true;
   useEffect(() => {
     if (addressed.current.room || lookup || lookupRef.current) return;
@@ -225,6 +234,7 @@ export function ConversationsScreen() {
       }}
       onDelete={(row) => setConfirming(row)}
       mayChange={(row) => changesRoom(row, (id) => projectsQ.data?.find((p) => p.id === id)?.role)}
+      openElsewhere={openElsewhere}
       below={
         showArchived ? null : (
           <RoomsWithoutAProject
@@ -316,6 +326,7 @@ export function ConversationsScreen() {
       <SlideOver
         open={mobileHistoryOpen}
         onClose={() => setMobileHistoryOpen(false)}
+        title="Conversation history"
         hideHeader
         fitBody
         width="min(85vw, 320px)"

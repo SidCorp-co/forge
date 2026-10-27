@@ -1,6 +1,6 @@
 /**
  * ISS-1229 r21 — the master's ruling: everywhere core names a member to other members it reads
- * personName — the display name, else "Another member" — and never any part of their address.
+ * personName — the display name, else "A member" — and never any part of their address.
  */
 
 import { sql } from 'drizzle-orm';
@@ -20,8 +20,8 @@ async function owner(displayName: string | null, email: string): Promise<string>
 
 describe('core names a member as personName calls them, never by address', () => {
   it.each([
-    [null, 'Another member'],
-    ['lan.pham@example.com', 'Another member'],
+    [null, 'A member'],
+    ['lan.pham@example.com', 'A member'],
     [' Lan Pham ', 'Lan Pham'],
   ])(
     'a member whose display name is %j reads %j on every name core serves',

@@ -54,6 +54,7 @@ vi.mock("@/features/orgs/active-org", () => ({
 vi.mock("@/features/projects/hooks", () => ({
   useProjectsIncludingArchived: () => ({ data: [{ id: "p1", name: "alpha" }], isLoading: false }),
   useOrgScopedProjects: () => ({ projects: [{ id: "p1", name: "alpha" }], isLoading: false }),
+  useRetryProjects: () => () => {},
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: () => {} }) }));
 vi.mock("@/features/agent-accounts/hooks", () => ({

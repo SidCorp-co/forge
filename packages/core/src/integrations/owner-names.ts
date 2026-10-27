@@ -11,7 +11,7 @@ type Owned = Pick<IntegrationConnectionRow, 'id' | 'ownerType' | 'ownerId'>;
 
 /**
  * Each connection's owner as a sentence names them: an organization by name, a person as
- * `personName` calls them mid-sentence ("another member"), never by address (ISS-1216, ISS-1229).
+ * `personName` calls them mid-sentence ("a member"), never by address (ISS-1216, ISS-1229).
  * Keyed by connection id; an owner that no longer resolves is absent.
  */
 export async function ownerNamesOf(connections: Owned[]): Promise<Map<string, string>> {
@@ -40,7 +40,7 @@ export async function ownerNamesOf(connections: Owned[]): Promise<Map<string, st
 /** Where a reader finds a person who set no name: an organization both belong to, and its row there. */
 export interface ListedOwner {
   orgName: string;
-  /** The person as that organization's Members list draws them to the reader ("Another member (added 3 Oct 2026)"). */
+  /** The person as that organization's Members list draws them to the reader ("A member (added 3 Oct 2026)"). */
   listed: string;
 }
 

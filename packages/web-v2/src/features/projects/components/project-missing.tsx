@@ -5,7 +5,7 @@
 // project's slug answers a slug the live list lacks here: archived, saying when, or not found.
 import { EmptyState, ErrorState, ProjectLoader } from "@/design";
 import { useUnarchiveProject } from "@/features/project-settings/hooks";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
+import { useProjectsIncludingArchived, useRetryProjects } from "@/features/projects/hooks";
 import type { ProjectListItem } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
 
@@ -57,16 +57,7 @@ export function ProjectMissing({
   const archived = all.data?.find((p) => p.slug === slug && p.archivedAt !== null);
   if (all.isLoading) return <ProjectLoader label="loading project…" />;
   // A list that could not be read cannot say the project is missing from it (ISS-1229 r48).
-  if (all.isError && all.data === undefined) {
-    return (
-      <ErrorState
-        level={1}
-        title="Couldn't load your projects"
-        message={formatApiError(all.error)}
-        onRetry={() => void all.refetch()}
-      />
-    );
-  }
+  if (all.isError && all.data === undefined) return <ProjectsUnread error={all.error} />;
   if (archived && mayUnarchive(archived)) return <ArchivedWithUnarchive project={archived} />;
   if (archived) {
     return <EmptyState level={1} title="This project is archived" message={archivedProjectWords(archived)} />;
@@ -74,6 +65,11 @@ export function ProjectMissing({
   return <EmptyState level={1} title={title} message={message} />;
 }
 
-export function ProjectUnread({ error, onRetry }: { error: unknown; onRetry: () => void }) {
-  return <ErrorState level={1} title="Couldn't load this project" message={formatApiError(error)} onRetry={onRetry} />;
+/**
+ * The projects list a page resolves its slug against could not be read: the page says that read failed,
+ * never that this project did or that it is missing, and its Retry reads every projects query (ISS-1229 r49).
+ */
+export function ProjectsUnread({ error }: { error: unknown }) {
+  const retry = useRetryProjects();
+  return <ErrorState level={1} title="Couldn't load your projects" message={formatApiError(error)} onRetry={retry} />;
 }

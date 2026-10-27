@@ -294,7 +294,7 @@ describe('who a keyless switch-on and a key save answer (ISS-1421 r26, criteria 
     expect(after?.binding.active).toBe(true);
   });
 
-  it("lets a project admin bring another member's removed connection back in one save", async () => {
+  it("lets a project admin bring a member's removed connection back in one save", async () => {
     const project = await createTestProject(harness.db, ownerId);
     const { bindingId } = await removedSentry({ type: 'user', id: ownerId }, project.id);
     const url = `/api/projects/${project.id}/integrations/${bindingId}`;

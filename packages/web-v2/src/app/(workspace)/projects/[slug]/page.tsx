@@ -62,7 +62,7 @@ import { useSchedules } from "@/features/schedules/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { ProjectMissing } from "@/features/projects/components/project-missing";
+import { ProjectMissing, ProjectsUnread } from "@/features/projects/components/project-missing";
 
 /** The window the spend and where-time-goes sections read; the throughput section's is its own. */
 const METRICS_WINDOW_DAYS = 7;
@@ -113,17 +113,23 @@ export default function ProjectOverviewPage() {
     );
   }
 
+  // The projects list failed: the page names that read, never this project (ISS-1229 r49, judge-146).
+  if (projectsQ.isError) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center">
+        <ProjectsUnread error={projectsQ.error} />
+      </div>
+    );
+  }
+
   if (isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <ErrorState
           level={1}
           title="Couldn't load this project"
-          message={formatApiError(projectsQ.error ?? healthQ.error)}
-          onRetry={() => {
-            projectsQ.refetch();
-            healthQ.refetch();
-          }}
+          message={formatApiError(healthQ.error)}
+          onRetry={() => void healthQ.refetch()}
         />
       </div>
     );

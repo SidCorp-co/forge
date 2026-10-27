@@ -14,6 +14,8 @@ export class ApiError extends Error {
   readonly code?: string;
   readonly details?: unknown;
   readonly body?: unknown;
+  /** How long the server asked the caller to wait before asking again (`Retry-After`), where it said. */
+  readonly retryAfterMs?: number;
 
   constructor(
     status: number,
@@ -21,6 +23,7 @@ export class ApiError extends Error {
     code?: string,
     details?: unknown,
     body?: unknown,
+    retryAfterMs?: number,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -28,7 +31,17 @@ export class ApiError extends Error {
     if (code !== undefined) this.code = code;
     if (details !== undefined) this.details = details;
     if (body !== undefined) this.body = body;
+    if (retryAfterMs !== undefined) this.retryAfterMs = retryAfterMs;
   }
+}
+
+/** `Retry-After` as milliseconds from now: delta-seconds or an HTTP date; absent or unreadable is undefined. */
+export function retryAfterOf(header: string | null, now = Date.now()): number | undefined {
+  const value = header?.trim();
+  if (!value) return undefined;
+  if (/^\d+$/.test(value)) return Number(value) * 1000;
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? undefined : Math.max(0, at - now);
 }
 
 /** The standard HTTP reason phrases. A message that is one of these, whole, is the status's name
@@ -104,6 +117,12 @@ async function parseErrorBody(res: Response): Promise<{
   return { message: said(null) };
 }
 
+/** A refused answer as the error every caller reads, carrying when the server asked to be asked again. */
+async function errorOf(res: Response): Promise<ApiError> {
+  const { message, code, details, body } = await parseErrorBody(res);
+  return new ApiError(res.status, message, code, details, body, retryAfterOf(res.headers.get('Retry-After')));
+}
+
 /**
  * Every request this module makes goes out through here, and it is the ONLY
  * place a rejected `fetch` is reported.
@@ -132,8 +151,7 @@ async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Re
   });
 
   if (!res.ok) {
-    const { message, code, details, body } = await parseErrorBody(res);
-    throw new ApiError(res.status, message, code, details, body);
+    throw await errorOf(res);
   }
 
   return res;
@@ -158,8 +176,7 @@ export async function apiPutBytes<T>(endpoint: string, file: Blob): Promise<T> {
     headers: file.type ? { 'Content-Type': file.type } : undefined,
   });
   if (!res.ok) {
-    const { message, code, details, body } = await parseErrorBody(res);
-    throw new ApiError(res.status, message, code, details, body);
+    throw await errorOf(res);
   }
   return (await res.json()) as T;
 }
@@ -172,8 +189,7 @@ export async function apiMultipart<T>(endpoint: string, formData: FormData): Pro
     body: formData,
   });
   if (!res.ok) {
-    const { message, code, details, body } = await parseErrorBody(res);
-    throw new ApiError(res.status, message, code, details, body);
+    throw await errorOf(res);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

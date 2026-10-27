@@ -395,7 +395,7 @@ describe('createdBy filter + creator hydration (ISS-756)', () => {
           {
             creatorEmail: 'owner@example.com',
             creatorIsAgent: false,
-            creatorLabel: 'Another member',
+            creatorLabel: 'A member',
           },
         ],
         [
@@ -410,7 +410,7 @@ describe('createdBy filter + creator hydration (ISS-756)', () => {
     const body = ((await res.json()) as { items: Record<string, unknown>[] }).items;
     expect(body[0]).toMatchObject({
       id: ISSUE_A,
-      creatorLabel: 'Another member',
+      creatorLabel: 'A member',
       creatorIsAgent: false,
     });
     expect(body[1]).toMatchObject({

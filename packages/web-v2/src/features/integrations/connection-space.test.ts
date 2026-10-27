@@ -82,13 +82,13 @@ describe("which space a connection belongs in", () => {
 });
 
 describe("how a row names its owner and why it is read-only", () => {
-  // ISS-1229 r22: the label is core's name for the owner, else "Another member" — never "Another user".
+  // ISS-1229 r22: the label is core's name for the owner, else "A member" — never "Another user".
   it("labels another person's credential by core's name for its owner, not Personal", () => {
     const named = item({ access: { reach: "binding", canManage: false, ownerName: "Mai Tran" } });
-    const unnamed = item({ access: { reach: "binding", canManage: false, ownerName: "another member" } });
+    const unnamed = item({ access: { reach: "binding", canManage: false, ownerName: "a member" } });
     expect(connectionOwnerLabel(named, () => undefined)).toBe("Mai Tran");
-    expect(connectionOwnerLabel(unnamed, () => undefined)).toBe("Another member");
-    expect(connectionOwnerLabel(item(), () => undefined)).toBe("Another member");
+    expect(connectionOwnerLabel(unnamed, () => undefined)).toBe("A member");
+    expect(connectionOwnerLabel(item(), () => undefined)).toBe("A member");
     expect(
       connectionOwnerLabel(item({ access: { reach: "owner", canManage: true, ownerName: null } }), () => undefined),
     ).toBe("Personal");
@@ -105,7 +105,7 @@ describe("how a row names its owner and why it is read-only", () => {
     expect(readOnlyNote(item({ access: { reach: "binding", canManage: false, ownerName: "Mai Tran" } }), "Mai Tran")).toBe(
       "Read-only — only its owner, Mai Tran, can change this credential.",
     );
-    expect(readOnlyNote(item({ access: { reach: "binding", canManage: false, ownerName: "another member" } }), "Another member")).toBe(
+    expect(readOnlyNote(item({ access: { reach: "binding", canManage: false, ownerName: "a member" } }), "A member")).toBe(
       "Read-only — only the member who owns it can change this credential.",
     );
     const owned = item({ ownerType: "org", ownerId: "o1" });
@@ -117,8 +117,8 @@ describe("how a row names its owner and why it is read-only", () => {
 // connection; every who-may line there now reads this one answer.
 describe("who may change a connection", () => {
   it("is its owner alone on a person's, and an organization's owners and admins on its own", () => {
-    const person = item({ access: { reach: "binding", canManage: false, ownerName: "another member" } });
-    expect(whoChangesConnection(person, "Another member")).toBe("the member who owns it");
+    const person = item({ access: { reach: "binding", canManage: false, ownerName: "a member" } });
+    expect(whoChangesConnection(person, "A member")).toBe("the member who owns it");
     const named = item({ access: { reach: "binding", canManage: false, ownerName: "Mai Tran" } });
     expect(whoChangesConnection(named, "Mai Tran")).toBe("its owner, Mai Tran,");
     const owned = item({ ownerType: "org", ownerId: "o1" });

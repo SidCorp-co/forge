@@ -1,23 +1,11 @@
-// ISS-1229 r24, the master's ruling on judge-70's finding: with two unnamed people in a room, the
-// question before taking one out named both "another member". People who read alike are told apart
-// by when each was added — the day, then the minute, then the order — in the list and the question
-// in the same words.
+// What a room says of its people and agents before anyone changes who is in it, and in its empty and
+// refused states (ISS-1011, ISS-1229).
 
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { agentPanelWithoutProject, composerRefusal, issueDoorWithoutProject, emptyRoomState, memberName, orderedPeopleOf, removalClaim, removalQuestion, unopenableReason, viewerCannotPost } from "./membership";
 import type { ConversationParticipant } from "./types";
 
-// When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
-const zone = vi.hoisted(() => {
-  const was = process.env.TZ;
-  process.env.TZ = "Asia/Ho_Chi_Minh";
-  return was;
-});
-afterAll(() => {
-  process.env.TZ = zone;
-});
-
-const person = (id: string, userId: string, addedAt: string, displayName = "Another member"): ConversationParticipant => ({
+const person = (id: string, userId: string, addedAt: string, displayName = "A member"): ConversationParticipant => ({
   id,
   kind: "person",
   userId,
@@ -30,80 +18,35 @@ const person = (id: string, userId: string, addedAt: string, displayName = "Anot
 
 const roomOf = (...participants: ConversationParticipant[]) => ({ participants, scopeProjects: [] });
 
-describe("two people who read the same name", () => {
-  it("are told apart by the day each was added", () => {
-    const a = person("pa", "u2", "2026-10-03T09:15:00Z");
-    const b = person("pb", "u3", "2026-10-04T09:15:00Z");
-    const room = roomOf(a, b);
-    expect(memberName(a, "me", "start", room)).toBe("Another member (added 3 Oct 2026)");
-    expect(memberName(b, "me", "start", room)).toBe("Another member (added 4 Oct 2026)");
-    expect(removalQuestion(a, "me", room).title).toBe("Take another member (added 3 Oct 2026) out of this room?");
-    expect(removalClaim(b, room, "me")).toBe("Another member (added 4 Oct 2026) will no longer be listed in this room.");
-  });
-
-  it("are told apart by the minute where the day is the same", () => {
-    const a = person("pa", "u2", "2026-10-03T09:15:00Z");
-    const b = person("pb", "u3", "2026-10-03T14:05:00Z");
-    const room = roomOf(a, b);
-    expect(memberName(a, "me", "start", room)).toBe("Another member (added 3 Oct 2026, 16:15)");
-    expect(removalQuestion(b, "me", room).title).toBe("Take another member (added 3 Oct 2026, 21:05) out of this room?");
-  });
-
-  it("are told apart by the day the reader was living, not the server's", () => {
-    const a = person("pa", "u2", "2026-10-20T23:50:00Z");
-    const b = person("pb", "u3", "2026-10-20T09:15:00Z");
-    const room = roomOf(a, b);
-    expect(memberName(a, "me", "start", room)).toBe("Another member (added 21 Oct 2026)");
-    expect(memberName(b, "me", "start", room)).toBe("Another member (added 20 Oct 2026)");
-  });
-
-  it("are told apart by the order they were added where the minute is the same too", () => {
+// r49, the coordinator's ruling on judge-146: a room names a person as their messages are signed, the name
+// they gave or "A member", never when they were added or their place in that order; the list still
+// keeps that order.
+describe("people in a room who gave no name", () => {
+  it("read A member in the list, the question and the claim, with no added date or ordinal", () => {
     const a = person("pa", "u2", "2026-10-03T09:15:10Z");
     const b = person("pb", "u3", "2026-10-03T09:15:40Z");
     const room = roomOf(b, a);
-    expect(memberName(a, "me", "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the first)");
-    expect(memberName(b, "me", "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the second)");
-    expect(removalQuestion(b, "me", room).title).toBe(
-      "Take another member (added 3 Oct 2026, 16:15, the second) out of this room?",
-    );
-    // The button answers that question, so it keeps the short name and fits a phone's width.
-    expect(removalQuestion(b, "me", room).confirm).toBe("Take another member out");
+    expect(memberName(a, "me", "start")).toBe("A member");
+    expect(memberName(b, "me", "start")).toBe("A member");
+    expect(removalQuestion(b, "me")).toEqual({ title: "Take a member out of this room?", confirm: "Take a member out" });
+    expect(removalClaim(b, room, "me")).toBe("A member will no longer be listed in this room.");
   });
 
-  // r45, judge-129: everyone a room opens with is added in one transaction, at one moment, and the tie
-  // fell to each row's random id, so the person who opened the room read "the second".
-  it("call the person who opened the room the first among people added at one moment, whatever their row ids", () => {
+  it("are still listed in the order they were added, the opener first among people added at one moment", () => {
     const moment = "2026-10-03T09:15:10Z";
     const opener = person("p-zz", "u-opener", moment);
     const b = person("p-mm", "u-b", moment);
     const c = person("p-aa", "u-c", moment);
-    const room = roomOf(opener, b, c);
-    for (const reader of ["u-b", "outsider"]) {
-      expect(memberName(opener, reader, "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the first)");
-    }
-    expect(memberName(b, "outsider", "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the second)");
-    expect(orderedPeopleOf(room, "u-c").map((p) => p.userId)).toEqual(["u-c", "u-opener", "u-b"]);
+    expect(orderedPeopleOf(roomOf(opener, b, c), "u-c").map((p) => p.userId)).toEqual(["u-c", "u-opener", "u-b"]);
   });
 
-  it("give the ordinals to the unnamed alone where the opener has a name", () => {
-    const moment = "2026-10-03T09:15:10Z";
-    const opener = person("p-zz", "u-opener", moment, "Mai Tran");
-    const b = person("p-mm", "u-b", moment);
-    const c = person("p-aa", "u-c", moment);
-    const room = roomOf(opener, b, c);
-    expect(memberName(opener, "outsider", "start", room)).toBe("Mai Tran");
-    expect(memberName(b, "outsider", "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the first)");
-    expect(memberName(c, "outsider", "start", room)).toBe("Another member (added 3 Oct 2026, 16:15, the second)");
-  });
-
-  it("leaves a name nobody else in the room reads alone, and the reader as You", () => {
+  it("leaves a name as given, and the reader as You", () => {
     const a = person("pa", "u2", "2026-10-03T09:15:00Z", "Mai Tran");
     const b = person("pb", "u3", "2026-10-04T09:15:00Z");
     const me = person("pm", "me", "2026-10-03T09:15:00Z");
-    const room = roomOf(a, b, me);
-    expect(memberName(a, "me", "start", room)).toBe("Mai Tran");
-    expect(memberName(b, "me", "start", room)).toBe("Another member");
-    expect(memberName(me, "me", "start", room)).toBe("You");
+    expect(memberName(a, "me", "start")).toBe("Mai Tran");
+    expect(memberName(b, "me", "start")).toBe("A member");
+    expect(memberName(me, "me", "start")).toBe("You");
   });
 });
 

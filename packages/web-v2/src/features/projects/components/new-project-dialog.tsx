@@ -36,16 +36,18 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [slug, setSlug] = useState('');
   const [slugEdited, setSlugEdited] = useState(false);
   const [description, setDescription] = useState('');
-  // Target org — '' = the caller's personal org (server default). Defaults to
-  // the active org (ISS-470): a team org preselects its id, Personal → ''.
-  const [orgId, setOrgId] = useState('');
+  // Target org — '' = the caller's personal org (server default). Until the person picks one it is the
+  // active org (ISS-470), read whenever the organizations answer, a Retry's answer included (ISS-1229 r49).
+  const [chosenOrgId, setChosenOrgId] = useState<string | null>(null);
   const orgsQ = useOrgs();
   const teamOrgs = (orgsQ.data ?? []).filter((o) => !o.isPersonal);
-  // Until the organizations answer, where the project lands is unknown: nothing is created before then.
   const orgsUnread = orgsQ.isError && !orgsQ.data;
-  const orgsKnown = orgsQ.data !== undefined;
-  const { activeOrg } = useActiveOrg();
+  const { activeOrg, scopeRead } = useActiveOrg();
+  // Until the organizations and the stored active choice are read, where the project lands is unknown:
+  // nothing is created before then.
+  const orgsKnown = orgsQ.data !== undefined && scopeRead;
   const defaultOrgId = activeOrg && !activeOrg.isPersonal ? activeOrg.id : '';
+  const orgId = chosenOrgId ?? defaultOrgId;
   const [errors, setErrors] = useState<{ name?: string; slug?: string; form?: string }>({});
 
   // Step 2 — "Set up pipeline" (ISS-453). `created` non-null flips the wizard.
@@ -67,7 +69,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setSlug('');
       setSlugEdited(false);
       setDescription('');
-      setOrgId(defaultOrgId);
+      setChosenOrgId(null);
       setErrors({});
       setCreated(null);
       setRepoPath('');
@@ -342,7 +344,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             <Field label="Organization" hint="Where this project lives. Org owners/admins manage all of its projects.">
               <Select
                 value={orgId}
-                onChange={(v) => setOrgId(v)}
+                onChange={(v) => setChosenOrgId(v)}
                 options={[
                   { value: '', label: 'Personal' },
                   ...teamOrgs.map((o) => ({ value: o.id, label: o.name })),

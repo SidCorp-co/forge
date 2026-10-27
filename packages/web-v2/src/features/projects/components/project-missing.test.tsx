@@ -14,7 +14,13 @@ let rows: Array<Record<string, unknown>> = [];
 const mutate = vi.fn();
 const listRead = vi.hoisted(() => ({ failed: false, refetch: () => {} }));
 
+vi.mock("next/navigation", () => ({ useParams: () => ({ slug: "no-such-board" }) }));
 vi.mock("@/features/projects/hooks", () => ({
+  useRetryProjects: () => listRead.refetch,
+  useProjects: () =>
+    listRead.failed
+      ? { data: undefined, isLoading: false, isError: true, error: new Error("The server is down.") }
+      : { data: rows, isLoading: false, isError: false, error: null },
   useProjectsIncludingArchived: () =>
     listRead.failed
       ? { data: undefined, isLoading: false, isError: true, error: new Error("The server is down."), refetch: listRead.refetch }
@@ -75,6 +81,32 @@ describe("a project page whose projects list could not be read", () => {
     render(<ProjectMissing slug="old-board" />);
     expect(screen.queryByText("Project not found")).toBeNull();
     expect(screen.getByRole("heading", { level: 1, name: "Couldn't load your projects" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    listRead.failed = false;
+  });
+});
+
+// ISS-1229 r49, judge-146: every page under a project's address said "Couldn't load this project", naming a
+// read that never ran.
+describe("a page under a project's address whose projects list could not be read", () => {
+  const pages = [
+    ["issues", () => import("@/app/(workspace)/projects/[slug]/issues/page")],
+    ["agents", () => import("@/app/(workspace)/projects/[slug]/agents/page")],
+    ["library", () => import("@/app/(workspace)/projects/[slug]/library/page")],
+    ["pipeline", () => import("@/app/(workspace)/projects/[slug]/pipeline/page")],
+    ["automation", () => import("@/app/(workspace)/projects/[slug]/automation/page")],
+  ] as const;
+
+  it.each(pages)("names the projects read on the %s page, with a Retry that reads it again", async (_name, load) => {
+    listRead.failed = true;
+    const refetch = vi.fn();
+    listRead.refetch = refetch;
+    const Page = (await load()).default;
+    render(<Page />);
+    expect(screen.getByRole("heading", { level: 1, name: "Couldn't load your projects" })).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load this project")).toBeNull();
+    expect(screen.queryByText("Project not found")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalledTimes(1);
     listRead.failed = false;

@@ -684,7 +684,7 @@ describe("groupRows", () => {
 			status: "open",
 			priority: "low",
 			createdById: "u2",
-			creatorLabel: "Another member",
+			creatorLabel: "A member",
 		}),
 		row({
 			id: "c",
@@ -727,7 +727,7 @@ describe("groupRows", () => {
 		expect(g.map((x) => x.key)).toEqual(["u1", "u2", "a1", "a2"]);
 		expect(g.map((x) => x.label)).toEqual([
 			"Ann Lee",
-			"Another member",
+			"A member",
 			"master",
 			"reviewer",
 		]);
@@ -745,11 +745,11 @@ describe("groupRows by creator, people told apart", () => {
 		{ userId: "u-zed", createdAt: "2026-10-02T09:00:00.000Z" },
 	];
 	const mixed = [
-		creator("a", "u-late", "Another member"),
+		creator("a", "u-late", "A member"),
 		creator("b", "u-zed", "Zed"),
 		row({ id: "c", createdById: "a1", creatorIsAgent: true, creatorLabel: "master" }),
-		creator("d", "me", "Another member"),
-		creator("e", "u-early", "Another member"),
+		creator("d", "me", "A member"),
+		creator("e", "u-early", "A member"),
 	];
 
 	it("heads the reader's group first, then names, then the unnamed by when each was added, then agents", () => {
@@ -762,15 +762,15 @@ describe("groupRows by creator, people told apart", () => {
 		expect(g.map((x) => x.label)).toEqual([
 			"You",
 			"Zed",
-			"Another member (added 1 Oct 2026)",
-			"Another member (added 3 Oct 2026)",
+			"A member (added 1 Oct 2026)",
+			"A member (added 3 Oct 2026)",
 			"master",
 		]);
 	});
 
 	it("leaves a lone unnamed creator's group as it reads", () => {
 		const g = groupRows(mixed.filter((r) => r.createdById !== "u-early"), "creator", "me", members);
-		expect(g.map((x) => x.label)).toContain("Another member");
+		expect(g.map((x) => x.label)).toContain("A member");
 	});
 });
 
@@ -817,18 +817,18 @@ describe("groupRows by module", () => {
 
 // ISS-1229 r21: a member is named as personName says — never by address, never by a raw id.
 describe("memberLabel / initials", () => {
-	it("names a member by display name, else Another member, never by address or id", () => {
+	it("names a member by display name, else A member, never by address or id", () => {
 		expect(memberLabel("u1", [{ userId: "u1", displayName: "Bob Tran" }])).toBe("Bob Tran");
-		expect(memberLabel("u1", [{ userId: "u1", displayName: null }])).toBe("Another member");
+		expect(memberLabel("u1", [{ userId: "u1", displayName: null }])).toBe("A member");
 		expect(memberLabel("u1", [{ userId: "u1", displayName: "bob@x.co" }])).toBe(
-			"Another member",
+			"A member",
 		);
 		expect(memberLabel("abcdef1234", [])).toBe("Unknown user");
 		expect(memberLabel(null)).toBe("Unassigned");
 	});
 	it("derives two-letter initials from a name, never from an address", () => {
 		expect(initials("Ann Smith")).toBe("AS");
-		expect(initials("Another member")).toBe("AM");
+		expect(initials("A member")).toBe("AM");
 		expect(initials("ann.smith@x.co")).toBe("AM");
 	});
 });
@@ -836,10 +836,10 @@ describe("memberLabel / initials", () => {
 describe("creatorLabelOf", () => {
 	// ISS-1229 r23, judge-66: the reader read their own issue's creator as "Another member".
 	it("names the reader's own issue You, and anybody else's by core's name", () => {
-		const row = { creatorLabel: "Another member", createdById: "u-1" };
+		const row = { creatorLabel: "A member", createdById: "u-1" };
 		expect(creatorLabelOf(row, "u-1")).toBe("You");
-		expect(creatorLabelOf(row, "u-2")).toBe("Another member");
-		expect(creatorLabelOf(row)).toBe("Another member");
+		expect(creatorLabelOf(row, "u-2")).toBe("A member");
+		expect(creatorLabelOf(row)).toBe("A member");
 	});
 
 	it("is the server-provided creatorLabel", () => {

@@ -18,6 +18,8 @@ const archived = {
 };
 
 const desk = { id: "p1", name: "Desk", slug: "desk", orgId: "o1", role: "member" };
+/** A project of the reader's in another organization than the one the list shows. */
+const outer = { id: "p2", name: "Outer", slug: "outer", orgId: "o2", role: "owner" };
 /** Ids of rooms no list holds, each one core's room door takes. */
 const OLD = "5d0c1a7e-0000-4000-8000-0000000000a1";
 const GONE = "5d0c1a7e-0000-4000-8000-0000000000a2";
@@ -31,7 +33,7 @@ const roomRead = vi.hoisted(() => ({
 }));
 const reader = { role: "member", loading: false, unread: null as unknown, reads: 0 };
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [{ ...desk, role: reader.role }], isLoading: false }),
+  useProjects: () => ({ data: [{ ...desk, role: reader.role }, outer], isLoading: false }),
   useOrgScopedProjects: () => {
     const refetch = () => {
       reader.reads += 1;
@@ -48,7 +50,15 @@ vi.mock("@/features/projects/hooks", () => ({
         };
   },
 }));
-vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: "o1" }) }));
+vi.mock("@/features/orgs/active-org", () => ({
+  useActiveOrg: () => ({
+    activeOrgId: "o1",
+    orgs: [
+      { id: "o1", name: "Team One", isPersonal: false },
+      { id: "o2", name: "Second organization", isPersonal: false },
+    ],
+  }),
+}));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => {} }));
 vi.mock("../hooks", () => ({
   useConversationsAcrossProjects: (_ids: string[], showArchived: boolean) => ({
@@ -89,6 +99,7 @@ vi.mock("./conversation-sidebar", () => ({
     error,
     errorTitle,
     onRetry,
+    openElsewhere,
   }: {
     rows: Array<{ id: string; title: string }>;
     onOpen: (row: unknown) => void;
@@ -98,8 +109,10 @@ vi.mock("./conversation-sidebar", () => ({
     error?: unknown;
     errorTitle?: string;
     onRetry?: () => void;
+    openElsewhere?: { roomOrg: string | null; listOrg: string | null } | null;
   }) => (
     <ul>
+      {openElsewhere && <li data-testid="open-elsewhere">{JSON.stringify(openElsewhere)}</li>}
       {error != null && (
         <li>
           <p data-testid="list-failure-title">{errorTitle}</p>
@@ -212,6 +225,15 @@ describe("the open room, across a reload", () => {
     cleanup();
     render(<ConversationsScreen />);
     expect(screen.getByTestId("open-room").textContent).toBe("r1");
+  });
+});
+
+// ISS-1229 r49: the phone's history sheet drew no title bar and so had no name to announce.
+describe("the phone's history sheet", () => {
+  it("is announced by its name", () => {
+    render(<ConversationsScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Conversation history" }));
+    expect(screen.getByRole("dialog", { name: "Conversation history" })).toBeTruthy();
   });
 });
 
@@ -378,5 +400,26 @@ describe("the page when the reader's projects cannot be read", () => {
     at("/conversations");
     render(<ConversationsScreen />);
     expect(screen.getByTestId("list-failure-title").textContent).toBe("Couldn't load your projects");
+  });
+});
+
+// ISS-1229 r49, judge-146: the list said "No conversations yet" beside the reader's own open room.
+describe("a room open from another organization", () => {
+  it("hands the list both organizations, so it never says there are none", () => {
+    roomRead.answers[OLD] = { data: { id: OLD, scope: ["p2"], archivedAt: null } };
+    at(`/conversations?room=${OLD}`);
+    render(<ConversationsScreen />);
+    expect(screen.getByTestId("open-room").textContent).toBe(OLD);
+    expect(JSON.parse(screen.getByTestId("open-elsewhere").textContent ?? "null")).toEqual({
+      roomOrg: "Second organization",
+      listOrg: "Team One",
+    });
+  });
+
+  it("hands it nothing for a room the list holds", () => {
+    at("/conversations?room=r1");
+    render(<ConversationsScreen />);
+    expect(screen.getByTestId("open-room").textContent).toBe("r1");
+    expect(screen.queryByTestId("open-elsewhere")).toBeNull();
   });
 });

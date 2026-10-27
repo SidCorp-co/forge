@@ -1436,7 +1436,7 @@ describe('agent chat isolation — owner-or-admin reads (ISS-522)', () => {
     expect(res.status).toBe(200);
   });
 
-  it("GET /:id 200 for a project admin on another member's agent session", async () => {
+  it("GET /:id 200 for a project admin on a member's agent session", async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       {

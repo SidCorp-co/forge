@@ -37,14 +37,14 @@ vi.mock('./actor-resolution.js', () => {
         m.set(
           actorKey(r.type, r.id),
           r.type === 'user'
-            ? { type: 'user', id: r.id, displayName: 'Another member', isAgent: false }
+            ? { type: 'user', id: r.id, displayName: 'A member', isAgent: false }
             : {
                 type: 'device',
                 id: r.id,
                 displayName: 'Agent Device',
                 isAgent: true,
                 deviceId: r.id,
-                ownerName: 'another member',
+                ownerName: 'a member',
               },
         );
       }
@@ -161,7 +161,7 @@ describe('GET /api/issues/:id/activity', () => {
     expect(body.items[0]?.actor).toEqual({
       type: 'user',
       id: USER_ID,
-      displayName: 'Another member',
+      displayName: 'A member',
       isAgent: false,
     });
     expect(body.items[0]?.actorType).toBe('user');

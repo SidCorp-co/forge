@@ -24,7 +24,7 @@ const person = (id: string, addedAt: string) => ({
   userId: id,
   projectId: null,
   label: null,
-  displayName: "Another member",
+  displayName: "A member",
   reachable: null,
   addedAt,
 });
@@ -40,7 +40,7 @@ const agent = {
 const room = { shape: "group" as const, scopeProjects: [{ id: "p1", name: "Billing", slug: "billing" }] };
 
 describe("a room's people list", () => {
-  it("wraps a person's name rather than cutting off what tells two of them apart", () => {
+  it("wraps a person's name rather than cutting it off", () => {
     render(
       <ConversationMembers
         conversationId="c1"
@@ -53,7 +53,7 @@ describe("a room's people list", () => {
     const names = screen.getAllByTestId("member-row-person").map((row) => row.querySelector(".fg-body-sm"));
     expect(names).toHaveLength(2);
     for (const name of names) {
-      expect(name?.textContent).toMatch(/^Another member \(added .+, the (first|second)\)$/);
+      expect(name?.textContent).toBe("A member");
       expect(name?.classList.contains("truncate")).toBe(false);
       expect(name?.classList.contains("break-words")).toBe(true);
     }

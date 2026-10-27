@@ -2318,6 +2318,13 @@
       "when": 1817164800000,
       "tag": "0395_where_it_landed_and_what_was_cleared",
       "breakpoints": true
+    },
+    {
+      "idx": 396,
+      "version": "7",
+      "when": 1817251200000,
+      "tag": "0396_a_member_is_one_name",
+      "breakpoints": true
     }
   ]
 }

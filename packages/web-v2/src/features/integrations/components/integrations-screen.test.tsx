@@ -87,11 +87,11 @@ afterEach(() => {
 });
 
 describe("a credential reached only through a binding", () => {
-  it("is listed in the space of the org whose project binds it, as another member's and not Personal", async () => {
+  it("is listed in the space of the org whose project binds it, as a member's and not Personal", async () => {
     mount();
 
     expect(await screen.findByText("Forge GitHub App")).toBeInTheDocument();
-    expect(screen.getByText("Another member")).toBeInTheDocument();
+    expect(screen.getByText("A member")).toBeInTheDocument();
     expect(screen.queryByText("Personal")).toBeNull();
   });
 

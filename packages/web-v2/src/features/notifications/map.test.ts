@@ -127,14 +127,14 @@ describe("an invitation row", () => {
         kind: "project",
         token: "t1",
         name: "Invoicing",
-        inviterName: "Another member",
+        inviterName: "A member",
         role: "member",
         expiresAt: "2026-10-08T10:00:00.000Z",
         createdAt: "2026-10-01T10:00:00.000Z",
       },
       [],
     );
-    expect(item.text).toBe("Another member invited you to Invoicing as member");
+    expect(item.text).toBe("A member invited you to Invoicing as member");
     expect(item.text).not.toMatch(/@/);
   });
 });

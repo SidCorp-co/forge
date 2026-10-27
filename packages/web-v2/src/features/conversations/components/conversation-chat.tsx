@@ -46,6 +46,7 @@ import {
 } from "../hooks";
 import { useComposingMark, useMessageBoxFocus } from "../composing";
 import {
+  answeringAgentNames,
   composerRefusal,
   draftHeading,
   emptyRoomState,
@@ -259,6 +260,8 @@ export function ConversationChat({
   // person who may post still may, and the box and the thread say who cannot answer and why (r35).
   const empty = emptyRoomState(roomQ.data, { canPost: canWrite, projectName: viewedOnly?.name ?? project?.name });
   const unanswered = roomQ.data ? noAgentAnswers(roomQ.data) : null;
+  // The agents the header says answer here, by the same handles, for the box to name.
+  const answerers = roomQ.data ? answeringAgentNames(roomQ.data) : [];
 
   const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: resolvedId,
@@ -504,7 +507,7 @@ export function ConversationChat({
           queueWhileBusy
           sticky={false}
           attachments={CONVERSATION_ATTACHMENTS}
-          placeholder={unanswered ? "Message the room — no agent here will answer" : modePlaceholder(settledMode ?? pick)}
+          placeholder={unanswered ? "Message the room — no agent here will answer" : modePlaceholder(settledMode ?? pick, answerers)}
           onDraftChange={onDraftChange}
           {...(progress && resolvedId
             ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }

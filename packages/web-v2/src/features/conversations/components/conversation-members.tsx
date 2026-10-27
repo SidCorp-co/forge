@@ -58,7 +58,7 @@ export function ConversationMembers({
   const [removing, setRemoving] = useState<ConversationParticipant | null>(null);
   const remove = useRemoveParticipant(conversationId);
   const viewerId = useAuth().user?.id ?? null;
-  const asked = removing ? removalQuestion(removing, viewerId, room) : null;
+  const asked = removing ? removalQuestion(removing, viewerId) : null;
 
   const agents = agentsOf(room);
   const people = orderedPeopleOf(room, viewerId);
@@ -228,7 +228,7 @@ function MemberRow({
         )}
         <div className="min-w-0 flex-1">
           <span className={`fg-body-sm block ${isAgent ? "truncate font-mono" : "break-words"}`}>
-            {memberName(member, viewerId, "start", room)}
+            {memberName(member, viewerId, "start")}
           </span>
           <span className="fg-caption block truncate text-subtle">
             {isAgent ? (project?.name ?? "a project this room is no longer about") : "Person"}
@@ -252,7 +252,7 @@ function MemberRow({
             <IconButton
               icon="x"
               size="sm"
-              aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside", room)} out of the room`}
+              aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside")} out of the room`}
               aria-describedby={held ? heldReasonId : undefined}
               aria-disabled={held !== null || undefined}
               className={held ? "cursor-not-allowed opacity-50" : undefined}

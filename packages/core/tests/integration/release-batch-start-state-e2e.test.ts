@@ -181,7 +181,7 @@ describe('the state of a release batch says whether a box has started it', () =>
 
     expect(start.kind).toBe('aborted');
     // ISS-1229 r21: who aborted it is named as core calls them, never by address.
-    expect(start.by).toBe('Another member');
+    expect(start.by).toBe('A member');
     expect(start.by).not.toBe(ownerEmail);
     expect(start.why).toBe(reason);
     expect(typeof start.at).toBe('string');

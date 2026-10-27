@@ -307,15 +307,20 @@ export function IssuesListView({
     [membersQ.data, viewerId],
   );
 
-  // A filter whose choices could not be read offers "anyone" or "any" alone, as if there were none: said (ISS-1229 r48).
-  const filtersUnread = [
-    ...(membersQ.isError && membersQ.data === undefined
-      ? [{ what: "the people the Creator filter offers", error: membersQ.error, retry: () => void membersQ.refetch() }]
-      : []),
-    ...(labelsQ.isError && labelsQ.data === undefined
-      ? [{ what: "the labels the Label filter offers", error: labelsQ.error, retry: () => void labelsQ.refetch() }]
-      : []),
-  ];
+  // A filter whose choices could not be read offers "anyone" or "any" alone, as if there were none: said (ISS-1229 r48),
+  // beside the filter itself wherever it is drawn, the phone's Filters sheet included (r49, judge-146).
+  const creatorUnread =
+    membersQ.isError && membersQ.data === undefined
+      ? { what: "the people the Creator filter offers", error: membersQ.error, retry: () => void membersQ.refetch() }
+      : null;
+  const labelUnread =
+    labelsQ.isError && labelsQ.data === undefined
+      ? { what: "the labels the Label filter offers", error: labelsQ.error, retry: () => void labelsQ.refetch() }
+      : null;
+  const filtersUnread = [creatorUnread, labelUnread].filter((f) => f !== null);
+  const unreadLine = (f: NonNullable<typeof creatorUnread>) => (
+    <ReadFailedLine key={f.what} what={f.what} why={formatApiError(f.error)} onRetry={f.retry} />
+  );
 
   const labelFilterOptions = useMemo<SelectOption[]>(
     () => [
@@ -568,9 +573,7 @@ export function IssuesListView({
       </div>
       {filtersUnread.length > 0 && (
         <div data-testid="filters-unread" className="-mt-2 mb-4 flex flex-col gap-1.5">
-          {filtersUnread.map((f) => (
-            <ReadFailedLine key={f.what} what={f.what} why={formatApiError(f.error)} onRetry={f.retry} />
-          ))}
+          {filtersUnread.map(unreadLine)}
         </div>
       )}
 
@@ -601,6 +604,7 @@ export function IssuesListView({
             onChange={(v) => setParams({ createdBy: v, page: "" })}
             className="w-full"
           />
+          {creatorUnread && unreadLine(creatorUnread)}
           <Select
             aria-label="Label filter"
             value={label}
@@ -608,6 +612,7 @@ export function IssuesListView({
             onChange={(v) => setParams({ label: v, page: "" })}
             className="w-full"
           />
+          {labelUnread && unreadLine(labelUnread)}
           <Select
             aria-label="Module filter"
             value={moduleId}

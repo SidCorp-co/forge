@@ -17,7 +17,7 @@ vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
-vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null }) }));
+vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null, scopeRead: true }) }));
 vi.mock("@/features/orgs/hooks", () => ({ useOrgs: () => ({ data: [] }) }));
 vi.mock("@/features/project-settings/hooks", () => ({
   useUpdateProject: () => ({ mutateAsync: vi.fn(), isPending: false }),

@@ -46,23 +46,23 @@ describe("the reader's own comment", () => {
       <CommentThread
         issueId="i1"
         comments={[
-          node({ author: { type: "user", id: "me", displayName: "Another member", isAgent: false } }),
+          node({ author: { type: "user", id: "me", displayName: "A member", isAgent: false } }),
         ]}
         members={members}
         readOnly
       />,
     );
     expect(container.textContent).toContain("You");
-    expect(container.textContent).not.toContain("Another member");
+    expect(container.textContent).not.toContain("A member");
     expect(container.textContent).not.toContain("AM");
     expect(container.textContent).toContain(READER_INITIAL);
   });
 
-  it("names another member's comment as before", () => {
+  it("names a member's comment as before", () => {
     const { container } = render(
       <CommentThread issueId="i1" comments={[node({ authorId: "u2", author: null })]} members={members} readOnly />,
     );
-    expect(container.textContent).toContain("Another member");
+    expect(container.textContent).toContain("A member");
   });
 
   it('reads "via you" on a comment the reader\'s own agent wrote', () => {
@@ -77,7 +77,7 @@ describe("the reader's own comment", () => {
               id: "d1",
               displayName: "CI Runner",
               isAgent: true,
-              ownerName: "another member",
+              ownerName: "a member",
               ownerId: "me",
             },
           }),
@@ -91,17 +91,17 @@ describe("the reader's own comment", () => {
 });
 
 const row = (over: Partial<IssueRow>): IssueRow =>
-  ({ id: "i1", createdById: "me", creatorLabel: "Another member", status: "open", priority: "medium", ...over }) as IssueRow;
+  ({ id: "i1", createdById: "me", creatorLabel: "A member", status: "open", priority: "medium", ...over }) as IssueRow;
 
 describe("the reader as an issue's creator", () => {
   it('groups the reader\'s own issues under "You"', () => {
     const groups = groupRows([row({}), row({ id: "i2", createdById: "u2" })], "creator", "me");
-    expect(groups.map((g) => g.label).sort()).toEqual(["Another member", "You"]);
+    expect(groups.map((g) => g.label).sort()).toEqual(["A member", "You"]);
   });
 
   it('offers the reader as "You" in the creator filter, keeping their address to tell them apart', () => {
     expect(creatorChoice(members[0] as ProjectMember, "me")).toEqual({ label: "You", detail: "me@example.com" });
-    expect(creatorChoice(members[1] as ProjectMember, "me").label).toBe("Another member");
+    expect(creatorChoice(members[1] as ProjectMember, "me").label).toBe("A member");
   });
 
   it("initials the reader's own issue with their letter, never AM", () => {
@@ -112,6 +112,6 @@ describe("the reader as an issue's creator", () => {
 
   it('names the reader "You" as a project member', () => {
     expect(memberLabel("me", members, "me")).toBe("You");
-    expect(memberLabel("u2", members, "me")).toBe("Another member");
+    expect(memberLabel("u2", members, "me")).toBe("A member");
   });
 });

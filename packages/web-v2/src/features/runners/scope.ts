@@ -1,6 +1,8 @@
 /** Every sentence the Runners page uses to state a population or a count, so a
  *  claim it makes can be proved without rendering it (ISS-1162). */
 
+import { UNNAMED_PERSON } from "@forge/contracts/person-name";
+
 export type DeviceScope = "mine" | "org";
 
 /** A count the screen does not have yet — not zero, which nothing measured. */
@@ -58,7 +60,7 @@ export function rowActionNote(
 
 /** Who a box on the org list belongs to, where the viewer did not pair it. */
 export function pairedByLabel(heldBy: string | null | undefined): string {
-	return heldBy ? `held by the agent ${heldBy}` : "paired by another member";
+	return heldBy ? `held by the agent ${heldBy}` : `paired by ${UNNAMED_PERSON}`;
 }
 
 export interface ScopeEmptyState {

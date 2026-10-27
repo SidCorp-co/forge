@@ -337,4 +337,15 @@ describe("the placeholder", () => {
   it("names neither where the room has not settled one", () => {
     expect(modePlaceholder(null)).toBe("Ask the agent about this project…");
   });
+
+  // ISS-1229 r49, judge-146: the box said "Message Assistant" under a header naming @desk-bot.
+  it("names the agents that answer by the handles the header uses", () => {
+    expect(modePlaceholder("assistant", ["@desk-bot"])).toBe(
+      "Message @desk-bot — it reads this project, not the repository…",
+    );
+    expect(modePlaceholder("agent", ["@desk-bot", "@ops"])).toBe(
+      "Message @desk-bot and @ops — they have the repository and a shell…",
+    );
+    expect(modePlaceholder(null, ["@desk-bot"])).toBe("Message @desk-bot about this project…");
+  });
 });

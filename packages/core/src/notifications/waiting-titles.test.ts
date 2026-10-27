@@ -29,13 +29,13 @@ describe('a waiting park told to one reader', () => {
 
 // ISS-1229 r19, the master's ruling after judge-54: the person slot is the one place guarded.
 describe("a waiting park's person slot", () => {
-  it('reads an address there as another member, while the project name keeps its own', () => {
+  it('reads an address there as a member, while the project name keeps its own', () => {
     const said = waitingParkTitle({
       ref: 'ISS-2',
       projectName: 'Billing (ops@example.com)',
       waitingKind: 'needs_decision',
       owedBy: { you: false, name: 'mai@example.com' },
     });
-    expect(said).toBe("ISS-2 is waiting for another member's decision — Billing (ops@example.com)");
+    expect(said).toBe("ISS-2 is waiting for a member's decision — Billing (ops@example.com)");
   });
 });

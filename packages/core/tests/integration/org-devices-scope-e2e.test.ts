@@ -156,7 +156,7 @@ beforeEach(async () => {
 });
 
 describe('GET /api/orgs/:orgId/devices', () => {
-  it('lists a device another member paired, which the owner-scoped list never could', async () => {
+  it('lists a device a member paired, which the owner-scoped list never could', async () => {
     const f = await seed();
 
     const res = await app.fetch(get(`/api/orgs/${f.orgId}/devices`, f.callerToken));

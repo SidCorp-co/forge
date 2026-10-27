@@ -45,14 +45,14 @@ describe('hydrateCreatorsForIssues', () => {
 
   // ISS-1229 r21: a creator is never labelled by their address, whatever the display name holds.
   it.each([null, '  ', 'owner@example.com'])(
-    'a person whose display name is %j is labelled "Another member"',
+    'a person whose display name is %j is labelled "A member"',
     async (displayName) => {
       selectWhere.mockReturnValueOnce([person({ displayName })]);
       const map = await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'u1' }]);
       expect(map.get('i1')).toEqual({
         creatorEmail: 'owner@example.com',
         creatorIsAgent: false,
-        creatorLabel: 'Another member',
+        creatorLabel: 'A member',
       });
     },
   );
@@ -92,14 +92,14 @@ describe('hydrateCreatorsForIssues', () => {
     expect(map.get('i2')?.creatorIsAgent).toBe(true);
   });
 
-  it('an agent with no display name reads as another member, never its address', async () => {
+  it('an agent with no display name reads as a member, never its address', async () => {
     selectWhere.mockReturnValueOnce([
       person({ id: 'a1', email: 'nameless@agents.local', kind: 'agent' }),
     ]);
     expect((await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'a1' }])).get('i1')).toEqual({
       creatorEmail: 'nameless@agents.local',
       creatorIsAgent: true,
-      creatorLabel: 'Another member',
+      creatorLabel: 'A member',
     });
   });
 

@@ -141,14 +141,14 @@ describe('the credential answers, and a person on their own token is a person', 
     expect(row.createdById).toBe(personId);
     expect(row.creatorEmail).toBe(personEmail);
     // ISS-1229 r21: a person with no display name is labelled as core calls them, never by address.
-    expect(row.creatorLabel).toBe('Another member');
+    expect(row.creatorLabel).toBe('A member');
   });
 
   // ISS-1229 r21, judge-62: the issue page's Creator field is a label, so it reads the display name,
-  // else "Another member", and the only place the address travels is the creatorEmail wire field.
+  // else "A member", and the only place the address travels is the creatorEmail wire field.
   it.each([
-    [null, 'Another member'],
-    ['an address for a name', 'Another member'],
+    [null, 'A member'],
+    ['an address for a name', 'A member'],
     [' Lan Pham ', 'Lan Pham'],
   ])(
     'the issue page names a creator whose display name is %j as %j, never by address',
@@ -197,7 +197,7 @@ describe('the credential answers, and a person on their own token is a person', 
     const row = await rowOnList(jwt, id);
     expect(row.creatorIsAgent).toBe(false);
     expect(row.creatorEmail).toBe(personEmail);
-    expect(row.creatorLabel).toBe('Another member');
+    expect(row.creatorLabel).toBe('A member');
   });
 
   // Criteria 2, 4, 11 — an agent account's own credential, under its own name.

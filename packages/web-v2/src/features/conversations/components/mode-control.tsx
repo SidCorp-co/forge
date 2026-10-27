@@ -59,10 +59,29 @@ export const MODES: ModeMeta[] = [
 ];
 
 /** The box's own placeholder, so the mode is readable while typing too. */
-export function modePlaceholder(mode: ConversationMode | null): string {
-  if (mode === "agent") return "Message Agent — it has the repository and a shell…";
-  if (mode === "assistant") return "Message Assistant — it reads this project, not the repository…";
-  return "Ask the agent about this project…";
+/**
+ * What the message box says before anything is typed: who answers, by the handles the room's header names,
+ * and how they answer in this mode (ISS-1229 r49, judge-146: "Message Assistant" named no agent the header did).
+ */
+export function modePlaceholder(mode: ConversationMode | null, answerers: readonly string[] = []): string {
+  const one = answerers.length === 1;
+  const who =
+    answerers.length === 0
+      ? null
+      : one
+        ? answerers[0]
+        : `${answerers.slice(0, -1).join(", ")} and ${answerers[answerers.length - 1]}`;
+  if (mode === "agent") {
+    return who
+      ? `Message ${who} — ${one ? "it has" : "they have"} the repository and a shell…`
+      : "Message Agent — it has the repository and a shell…";
+  }
+  if (mode === "assistant") {
+    return who
+      ? `Message ${who} — ${one ? "it reads" : "they read"} this project, not the repository…`
+      : "Message Assistant — it reads this project, not the repository…";
+  }
+  return who ? `Message ${who} about this project…` : "Ask the agent about this project…";
 }
 
 function labelOf(mode: ConversationMode): string {

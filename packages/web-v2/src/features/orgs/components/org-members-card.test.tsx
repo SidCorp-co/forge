@@ -87,7 +87,7 @@ describe("a member's row on the organization page", () => {
     expect(read).toEqual([
       ["You", "lan@example.com"],
       ["Mai Tran", "a-long-address-for-a-member@example.com"],
-      ["Another member", "unnamed@example.com"],
+      ["A member", "unnamed@example.com"],
     ]);
     const who = screen.getAllByTestId("org-member-who")[1];
     expect(who.firstElementChild?.getAttribute("data-testid")).toBe("org-member-name");
@@ -129,8 +129,8 @@ describe("the organization page's people and agents", () => {
     card();
     expect(screen.getAllByTestId("org-member-name").map((n) => n.textContent)).toEqual([
       "You",
-      "Another member (added 2 Oct 2026)",
-      "Another member (added 5 Oct 2026)",
+      "A member (added 2 Oct 2026)",
+      "A member (added 5 Oct 2026)",
     ]);
     // At 390 a cut-off name hid the words that tell the two apart, so a name wraps (jsdom lays nothing out).
     for (const name of screen.getAllByTestId("org-member-name")) {

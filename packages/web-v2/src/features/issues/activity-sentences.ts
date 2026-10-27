@@ -152,7 +152,7 @@ const SENTENCES: Record<
 const known = new Set<string>(ISSUE_ACTIVITY_ACTIONS);
 
 /** Who acted, as core named them: "You" for the reader (ISS-1229 r23); one core could not resolve is
- *  "Another member", or "An agent" for a device. */
+ *  "A member", or "An agent" for a device. */
 function actorOf(item: ActivityItem, viewerId?: string | null): string {
   const userId = item.actor?.type === "user" ? item.actor.id : item.actorType === "user" ? item.actorId : null;
   if (viewerId && userId === viewerId) return "You";

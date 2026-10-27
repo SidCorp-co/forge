@@ -379,11 +379,11 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
       status: "cancelled",
       ranAt: null,
       failureCause: null,
-      cancelledBy: { kind: "person", userId: "u1", name: "another member" },
+      cancelledBy: { kind: "person", userId: "u1", name: "a member" },
     });
     expect(deriveActivityFeed([cancelled], undefined, "u1")[0]?.outcome).toBe("Cancelled by you");
-    expect(deriveActivityFeed([cancelled], undefined, "u2")[0]?.outcome).toBe("Cancelled by another member");
-    expect(deriveActivityFeed([cancelled])[0]?.outcome).toBe("Cancelled by another member");
+    expect(deriveActivityFeed([cancelled], undefined, "u2")[0]?.outcome).toBe("Cancelled by a member");
+    expect(deriveActivityFeed([cancelled])[0]?.outcome).toBe("Cancelled by a member");
   });
 
   // r20 review F1: an agent acting on the reader's account cancelled it, not the reader.
