@@ -210,3 +210,50 @@ describe("a message's client token, as each reader reads the room", () => {
     expect(tokenIn((await answered.json()) as Read, 'not yours')).toBeNull();
   });
 });
+
+// ISS-1236 r7, judge-144 at ae528e1: the socket's accepted frame carried the sender's client token to
+// every reader of the room, while the room read and the send answer carried it to the sender only.
+describe('the accepted frame a send publishes', () => {
+  async function acceptedFrames(act: () => Promise<unknown>): Promise<Record<string, unknown>> {
+    const { roomManager } = await import('../../src/ws/server.js');
+    const publish = vi.spyOn(roomManager, 'publish');
+    try {
+      await act();
+      const frames = publish.mock.calls
+        .map(([room, envelope]) => [String(room), envelope as { event?: string; data?: { clientToken?: unknown } }] as const)
+        .filter(([, envelope]) => envelope.event === 'conversation.accepted');
+      expect(new Set(frames.map(([room]) => room)).size).toBe(frames.length);
+      return Object.fromEntries(frames.map(([room, envelope]) => [room, envelope.data?.clientToken]));
+    } finally {
+      publish.mockRestore();
+    }
+  }
+
+  /** Every reader's room the frame went to, other than the sender's. */
+  const othersOf = (frames: Record<string, unknown>, sender: string) =>
+    Object.keys(frames).filter((room) => room !== `user:${sender}`);
+  /** The sender's room carrying `token`, and every other reader's carrying null. */
+  const expected = (frames: Record<string, unknown>, sender: string, token: string | null) => ({
+    ...Object.fromEntries(othersOf(frames, sender).map((room) => [room, null])),
+    [`user:${sender}`]: token,
+  });
+
+  it('carries the token to its sender and null to every other reader', async () => {
+    const frames = await acceptedFrames(() => send(ownerId, { content: 'first', clientToken: 'tok-f' }));
+    expect(othersOf(frames, ownerId)).toContain(`user:${memberId}`);
+    expect(frames).toEqual(expected(frames, ownerId, 'tok-f'));
+  });
+
+  it('does the same for a send repeating its token', async () => {
+    await send(ownerId, { content: 'again', clientToken: 'tok-again' });
+    const frames = await acceptedFrames(() => send(ownerId, { content: 'again', clientToken: 'tok-again' }));
+    expect(othersOf(frames, ownerId)).toContain(`user:${memberId}`);
+    expect(frames).toEqual(expected(frames, ownerId, 'tok-again'));
+  });
+
+  it('carries null to everyone for a send with no token', async () => {
+    const frames = await acceptedFrames(() => send(memberId, { content: 'untokened' }));
+    expect(othersOf(frames, memberId)).toContain(`user:${ownerId}`);
+    expect(frames).toEqual(expected(frames, memberId, null));
+  });
+});
