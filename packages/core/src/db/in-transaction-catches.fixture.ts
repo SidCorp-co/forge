@@ -3,11 +3,10 @@
  * parameter's constraint, a drizzle transaction is assignable to and which carries any member of
  * the transaction, so `Pick<Tx, 'insert'>`, `Pick<Db, 'select'>`, `Tx` and every local executor
  * alias count while the pool's own `Db` does not. A catch passes by calling
- * `rethrowInTransaction(<the error>, <the handle>)` first, by throwing on every path with no way out
- * of the catch short of a throw, or by going on only for an error it names, on every path out of the
- * branch that rethrows, with every use of the caught error one the write reading resolves as a plain
- * read; a `finally` that returns, breaks or continues out of a guarded try swallows whatever the try
- * threw. `EXCEPTIONS` names any allowed to fall back.
+ * `rethrowInTransaction(<the error>, <the handle>)` first, by throwing on every path, or by going
+ * on only for an error it names, on every path out of the branch that rethrows, with no use of the
+ * error the write reading refuses; a `finally` that leaves its block swallows what the try threw.
+ * `EXCEPTIONS` names any allowed to fall back.
  *
  * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`; which use of the error
  * is refused as a write, and what that reading still cannot see: `in-transaction-writes.fixture.ts`.

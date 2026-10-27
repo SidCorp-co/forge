@@ -1,32 +1,9 @@
 /**
- * Which uses of the caught error a catch may make before its guard reads it. Every use of the error,
- * of a name bound to it, or of a name or `this` holding it in a property, is refused as a write
- * unless the reading resolves it as a plain read: a value it reaches whose type holds no object,
- * which nothing can change; a comparison, `instanceof` with the error on the left, `in` with it on
- * the right, `!`, `typeof`, `void`, a test of an `if`, a loop or a `switch`, or the left of a comma,
- * none of which runs code of the error's; a `throw`, a `return` or a statement of its own, after
- * which nothing reads it; a declaration, a binding default or an assignment binding a name to it,
- * whose own uses answer for that name; one argument handed to a reader of `lib/db-errors.ts` or an
- * `isX` helper the guard reader resolves, whose body only reads; a property read off it, which
- * reaches what it holds and is read the same way; and one store into a property of a holder, which
- * replaces what the holder held and leaves the error as it was. A `?:`, `&&`, `||`, `??`, the
- * right of a comma, a parenthesis, a cast, an array or object literal holding it, or an assignment
- * whose value it is, reaches it too, and what takes that reach is read the same way.
- *
- * Everything else is a write, among them a call or `new` handed it (`Object.assign(err, …)`,
- * `Object.getPrototypeOf(err)`, `[err].forEach(…)`), a method called on it or on a holder, an
- * `await` of it, a conversion to a string or a number, a spread into a call or an array, and a
- * key computed from it.
- *
- * Which code is read is the catch scan's: only the test of a guard the catch opens with, since
- * what follows it runs once it has decided; the whole catch where it decides at each exit, uses
- * after a decision among them; and none of a catch that throws on every path.
- *
- * What one file's static reading still cannot see: a function the catch calls without handing it
- * the error or a holder, which reaches the error through a binding outside the catch the catch
- * stored it in (`lastErr = err; poison()` where `poison` writes `lastErr.code`), or through a holder
- * stored by an earlier call. The caller's caught error is matched by its binding, so another
- * binding of the same object reached that way is no name the reading knows.
+ * The write reading: before a catch's guard decides, every use of the caught error, of a name bound
+ * to it or of a holder of it is a write, and the guard is refused, unless `readOnly` resolves it as
+ * a plain read. What one file's reading still cannot see: a function the catch calls without
+ * handing it the error or a holder, which reaches the error through a binding outside the catch the
+ * catch stored it in (`lastErr = err; poison()` where `poison` writes `lastErr.code`).
  */
 
 import ts from 'typescript';
@@ -40,7 +17,6 @@ function isAssignment(node: ts.Node): node is ts.BinaryExpression {
   );
 }
 
-/** Where `this` holds the caught error: `this` is no name, so it stands for itself among them. */
 const THIS = { escapedName: 'this' } as unknown as ts.Symbol;
 
 function bound(node: ts.Node, scan: Scan): ts.Symbol | undefined {
@@ -59,18 +35,14 @@ function mentionsAny(node: ts.Node, among: ReadonlySet<ts.Symbol>, scan: Scan): 
 }
 
 interface Aliases {
-  /** The catch's own name, and each name bound to a value mentioning the error, as `const { cause } = err`. */
   is: Set<ts.Symbol>;
-  /** Each name, or `this`, a property of which was set to such a value, as `this.last = err`. */
   holds: Set<ts.Symbol>;
 }
 
 /**
- * Every name the caught error is bound to in `body`: the catch's own, each name a declaration, a
- * parameter's or a binding's default, a `for...of` or an assignment binds to a value mentioning one
- * of them, and a function declared with a body that mentions one, whose result may be the error.
- * Storing such a value in a property of a name, of `this`, or of what a call returns makes that
- * name, `this` or the callee a holder of it.
+ * Every name the caught error is bound to in `body` (`is`), by a declaration, a default, a
+ * `for...of`, an assignment or a function whose body mentions one, and every name, `this` or callee
+ * a property of which was set to such a value (`holds`).
  */
 function aliasesOf(body: ts.Node, param: ts.Symbol, scan: Scan): Aliases {
   const aliases: Aliases = { is: new Set([param]), holds: new Set() };
@@ -126,7 +98,6 @@ function aliasesOf(body: ts.Node, param: ts.Symbol, scan: Scan): Aliases {
   return aliases;
 }
 
-/** Whether `node`'s type says it holds a string, number, boolean or nothing, which no error is. */
 function primitive(node: ts.Expression, scan: Scan): boolean {
   const type = scan.checker.getTypeAtLocation(node);
   const flat = (t: ts.Type) =>
@@ -153,7 +124,6 @@ function isWrapper(node: ts.Node): node is ts.Expression & { expression: ts.Expr
   );
 }
 
-/** Whether `node` is assigned, incremented, deleted, or destructured into, through any pattern around it. */
 function assignedTo(node: ts.Node): boolean {
   const { parent } = node;
   if (isWrapper(parent)) return assignedTo(parent);
@@ -193,7 +163,6 @@ const BINDING = [
   ts.SyntaxKind.AmpersandAmpersandEqualsToken,
 ];
 
-/** Where a value standing as this statement's test, or as a statement, is only read. */
 function testedOrDone(parent: ts.Node, at: ts.Node): boolean {
   if (ts.isExpressionStatement(parent) || ts.isThrowStatement(parent)) return true;
   if (ts.isReturnStatement(parent)) return true;
@@ -214,9 +183,12 @@ function testedOrDone(parent: ts.Node, at: ts.Node): boolean {
 }
 
 /**
- * Whether `mention`, a use of `symbol`, only reads the error by the forms the header lists: walk
- * up from it while what it reaches may still be the error, and answer at the first form that
- * either ends the reach or runs code of the error's.
+ * Whether `mention` only reads the error: a value whose type holds no object; a comparison,
+ * `instanceof`, `in`, `!`, `typeof`, `void` or test of it; a `throw`, `return` or statement of it;
+ * a binding of a name to it, whose own uses answer; one argument to a `lib/db-errors.ts` reader or a
+ * resolved `isX` helper; one store into a holder's property. A property read, cast, `?:`, `&&`,
+ * `||`, `??`, comma, literal or assignment holding it reaches on; anything else is a write. Each
+ * read ends the reach, runs none of the error's own code, or hands it to a body that only reads.
  */
 function readOnly(mention: ts.Node, symbol: ts.Symbol, aliases: Aliases, scan: Scan): boolean {
   const holder = !aliases.is.has(symbol);
@@ -270,7 +242,6 @@ function readOnly(mention: ts.Node, symbol: ts.Symbol, aliases: Aliases, scan: S
   }
 }
 
-/** Whether `node` names a binding rather than using one: a declaration's own name. */
 function declares(node: ts.Identifier): boolean {
   const { parent } = node;
   return (
@@ -285,8 +256,11 @@ function declares(node: ts.Identifier): boolean {
 }
 
 /**
- * The first use in `body` of the caught error `param`, of a name bound to it or of a holder of it,
- * that the reading does not resolve as a plain read; `undefined` where every use is one.
+ * The first use `readOnly` does not resolve, `undefined` where none: a call or `new` handed the
+ * error (`Object.assign(err, …)`, `[err].forEach(…)`), a method of it or of a holder, an `await`, a
+ * conversion or a computed key among them. The catch scan hands it only the test of a guard the
+ * catch opens with, the whole catch where it decides at each exit, and none of one that throws on
+ * every path.
  */
 export function unreadUse(body: ts.Node, param: ts.Symbol, scan: Scan): ts.Node | undefined {
   const aliases = aliasesOf(body, param, scan);

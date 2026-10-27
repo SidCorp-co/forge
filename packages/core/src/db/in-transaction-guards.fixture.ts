@@ -11,8 +11,7 @@
  * class, or a prototype, changed by code outside `src` (a dependency, a preload), which it never
  * reads; and a code a layer above the socket raises (`ERR_SSL_*`, `ERR_STREAM_*`), which
  * `SESSION_ENDED_CODES` does not hold because no lost session has been seen to carry one. Which
- * uses of the caught error before the guard reads it are refused as writes:
- * `in-transaction-writes.fixture.ts`.
+ * uses of the caught error are writes: `in-transaction-writes.fixture.ts`.
  */
 
 import { dirname, join } from 'node:path';
@@ -306,7 +305,6 @@ function propertyRead(node: ts.Expression, param: ts.Symbol, scan: Scan): string
   return propertyRead(e.expression, param, scan) === 'cause' ? key : undefined;
 }
 
-/** Whether `call` only reads the error `param` names: a reader of `lib/db-errors.ts`, or an `isX` helper `namesAnError` resolves. */
 export function readsTheError(call: ts.CallExpression, param: ts.Symbol, scan: Scan): boolean {
   return readerOf(call, param, scan) !== undefined || namesAnError(call, param, scan);
 }
