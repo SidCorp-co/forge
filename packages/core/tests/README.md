@@ -155,7 +155,11 @@ writes into the rows, and a TOAST table, which it drops where no live column nee
 belonging to a TOAST table is left out, and the storage options a table set on its TOAST table are
 read as the table's. An object of the database is read by name and never by oid, so a rebuild that
 hands its indexes, constraints and foreign-key triggers new oids, as `ALTER COLUMN ... TYPE` to the
-type a column has does, is no difference. A rule, an aggregate, a comment, a collation, a
+type a column has does, is no difference. A stored expression (a default, a check, an index
+expression, a view's or rule's action, a policy, a trigger's `WHEN`, a partition bound, a SQL
+function body) holds the oids of what it reads, so it is read as Postgres prints it
+(`slot-digest.ts:EXPRESSIONS`), and a sequence or table made again under its own name is no
+difference either; an expression column a later Postgres adds and that map lacks is read by oid. A rule, an aggregate, a comment, a collation, a
 statistics object or a storage option is a difference as a table is;
 `tests/integration/slot-digest-names-every-change-e2e.test.ts` plants each kind and the use that is
 not one. Only once the hash moved are the rows grouped by the object they belong to and named the way
@@ -166,8 +170,15 @@ kept on the database's own comment, read without connecting to it. The file's `c
 the app's pool for good (`src/db/client.ts:closeDbFor`, lifted by the next `setupTestDatabase`), so
 work the app left running cannot open another one, and leaves the closed pool no socket to open, so
 a statement still in its queue is refused rather than run on a reopened connection; it ends its own client, and only then terminates
-whatever is still connected, naming it: what is left then is background work that outlived the
-file, and the database cannot leave the slot while anything holds it. A statement that work sends on
+whatever is still connected, naming each session's pid, application and last statement: what is
+left then is background work that outlived the file, and the database cannot leave the slot while
+anything holds it. A client ended while a statement was running resolves once that statement is
+done and its goodbye written, before the server has ended the session, so a session gets five
+seconds to leave on its own first, what Postgres gives one before `DROP DATABASE` calls it in use.
+Without that wait, main's CI runs 40419557573 to 40435211732 printed the line eight times, one
+connection each, for eight different files. Those lines named no session, so which statement each
+one was is not known; the session still ending is the one cause that reproduces, and it is planted
+in `a-file-gives-back-every-connection-e2e.test.ts`. A statement that work sends on
 a connection terminated under it is refused with `CONNECTION_CLOSED` by the patched driver
 (`patches/postgres@3.4.9.patch`), not written to the dead socket. It then reads the schema again, so a file that changes it is refused at its own teardown,
 naming the file and the objects it added, dropped or changed; the database is then renamed out of

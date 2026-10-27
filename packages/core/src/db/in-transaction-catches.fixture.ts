@@ -1,12 +1,15 @@
 /**
- * A handle is any expression bound outside the guarded code whose declared type a drizzle
- * transaction is assignable to and which carries `select` or `execute`, so `Pick<Db, 'select'>`,
- * `Tx` and every local executor alias count while the pool's own `Db` does not. A catch passes by
- * calling `rethrowInTransaction(<the error>, <the handle>)` first, or by `EXCEPTIONS` naming it.
+ * A handle is any expression bound outside the guarded code whose declared type, or a type
+ * parameter's constraint, a drizzle transaction is assignable to and which carries any member of
+ * the transaction, so `Pick<Tx, 'insert'>`, `Pick<Db, 'select'>`, `Tx` and every local executor
+ * alias count while the pool's own `Db` does not. A catch passes by calling
+ * `rethrowInTransaction(<the error>, <the handle>)` first, or by going on only for an error it
+ * names; a `finally` that returns, breaks or continues out of a guarded try swallows whatever the
+ * try threw. `EXCEPTIONS` names any allowed to fall back.
  *
  * Named residuals: a statement reached through a helper that closes over the transaction without
- * the guarded code naming any handle, and a rejection handled by anything other than `try`,
- * `.catch(fn)` or `.then(ok, fn)`.
+ * the guarded code naming any handle, a transaction cast to a type it is not, such as `typeof db`,
+ * and a rejection handled by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`.
  */
 
 import { readdirSync } from 'node:fs';
@@ -86,36 +89,46 @@ function isNestedFunction(node: ts.Node): boolean {
   return ts.isFunctionLike(node) && !ts.isCallSignatureDeclaration(node);
 }
 
+/** What the scan reads every catch against. */
+interface Scan {
+  program: ts.Program;
+  checker: ts.TypeChecker;
+  tx: ts.Type;
+  /** Every member of the transaction, any one of which a handle carries. */
+  members: ReadonlySet<string>;
+}
+
 /** The expressions in `guarded` that name a handle bound outside it. */
-function handlesIn(guarded: ts.Node, checker: ts.TypeChecker, tx: ts.Type): string[] {
+function handlesIn(guarded: ts.Node, scan: Scan): string[] {
   const found = new Set<string>();
   const visit = (n: ts.Node): void => {
     const candidate =
       (ts.isIdentifier(n) && !(ts.isPropertyAccessExpression(n.parent) && n.parent.name === n)) ||
       ts.isPropertyAccessExpression(n);
-    if (candidate && isHandle(n as ts.Expression, guarded, checker, tx)) found.add(n.getText());
+    if (candidate && isHandle(n as ts.Expression, guarded, scan)) found.add(n.getText());
     ts.forEachChild(n, visit);
   };
   visit(guarded);
   return [...found];
 }
 
-function isHandle(
-  node: ts.Expression,
-  guarded: ts.Node,
-  checker: ts.TypeChecker,
-  tx: ts.Type,
-): boolean {
+function isHandle(node: ts.Expression, guarded: ts.Node, scan: Scan): boolean {
+  const { checker } = scan;
   const symbol = checker.getSymbolAtLocation(
     ts.isPropertyAccessExpression(node) ? node.name : node,
   );
   if (!symbol || !(symbol.flags & ts.SymbolFlags.Value)) return false;
   const declared = symbol.valueDeclaration ?? symbol.declarations?.[0];
   if (!declared || within(declared, guarded)) return false;
-  const type = checker.getTypeAtLocation(node);
-  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return false;
-  if (!type.getProperty('select') && !type.getProperty('execute')) return false;
-  return checker.isTypeAssignableTo(tx, type);
+  const seen = checker.getTypeAtLocation(node);
+  const type =
+    seen.flags & ts.TypeFlags.TypeParameter
+      ? (checker.getBaseConstraintOfType(seen) ?? seen)
+      : seen;
+  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter))
+    return false;
+  if (!type.getProperties().some((p) => scan.members.has(p.name))) return false;
+  return checker.isTypeAssignableTo(scan.tx, type);
 }
 
 function mentions(node: ts.Node, name: string): boolean {
@@ -147,22 +160,79 @@ function unwrap(node: ts.Expression): ts.Expression {
 const EQUAL = [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken];
 const UNEQUAL = [ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken];
 
-/** One side names the caught error and the other does not, as in `err.code === '23505'`. */
-function comparesError(node: ts.BinaryExpression, param: string): boolean {
-  return mentions(node.left, param) !== mentions(node.right, param);
+/** `null`, `undefined` or `void x`: a value every error differs from, so naming none. */
+function isNothing(node: ts.Expression): boolean {
+  const e = unwrap(node);
+  return (
+    e.kind === ts.SyntaxKind.NullKeyword ||
+    (ts.isIdentifier(e) && e.text === 'undefined') ||
+    ts.isVoidExpression(e)
+  );
 }
 
 /**
- * True only for a test that holds of a named kind of error: `err instanceof X`, `isX(err)` or
- * `hasX(err)`, a comparison of the error with a value, or a conjunction of those.
+ * One side names the caught error and the other is a value, as in `err.code === '23505'`; never
+ * `typeof err`, which every error of a type shares, or a comparison with nothing.
  */
-function namesAnError(node: ts.Expression, param: string): boolean {
+function comparesError(node: ts.BinaryExpression, param: string): boolean {
+  const [error, other] = mentions(node.left, param)
+    ? [node.left, node.right]
+    : [node.right, node.left];
+  if (!mentions(error, param) || mentions(other, param)) return false;
+  return !ts.isTypeOfExpression(unwrap(error)) && !isNothing(other);
+}
+
+/** A type every error is: `Error`, `Object` or `object` as the default library declares them. */
+function holdsOfEveryError(type: ts.Type, scan: Scan): boolean {
+  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.NonPrimitive))
+    return true;
+  const decl = type.getSymbol()?.declarations?.[0];
+  return (
+    decl !== undefined &&
+    scan.program.isSourceFileDefaultLibrary(decl.getSourceFile()) &&
+    ['Error', 'Object'].includes(type.getSymbol()?.name ?? '')
+  );
+}
+
+/**
+ * Whether `isX(err)` holds of a named kind of error, read off its predicate or its own body: one
+ * returned expression the scan reads as naming one. A helper it cannot read names none.
+ */
+function helperNamesAnError(call: ts.CallExpression, param: string, scan: Scan, depth: number) {
+  const signature = scan.checker.getResolvedSignature(call);
+  const predicate = signature && scan.checker.getTypePredicateOfSignature(signature);
+  if (predicate?.type) return !holdsOfEveryError(predicate.type, scan);
+  const decl = signature?.getDeclaration();
+  if (!decl || decl.getSourceFile().isDeclarationFile || depth > 3) return false;
+  const index = call.arguments.findIndex((a) => mentions(a, param));
+  const own = decl.parameters[index];
+  const body = ts.isFunctionLike(decl) ? (decl as ts.FunctionLikeDeclaration).body : undefined;
+  const returned =
+    body && ts.isBlock(body)
+      ? body.statements.length === 1 && ts.isReturnStatement(body.statements[0] as ts.Statement)
+        ? (body.statements[0] as ts.ReturnStatement).expression
+        : undefined
+      : body;
+  if (!own || !ts.isIdentifier(own.name) || !returned) return false;
+  return namesAnError(returned, own.name.text, scan, depth + 1);
+}
+
+/**
+ * True only for a test that holds of a named kind of error: `err instanceof X` for an `X` that is
+ * not `Error` or `Object`, an `isX(err)` or `hasX(err)` whose predicate or body names one, a
+ * comparison of the error with a value, or a conjunction of those.
+ */
+function namesAnError(node: ts.Expression, param: string, scan: Scan, depth = 0): boolean {
   const e = unwrap(node);
   if (ts.isBinaryExpression(e)) {
     const op = e.operatorToken.kind;
-    if (op === ts.SyntaxKind.InstanceOfKeyword) return mentions(e.left, param);
+    if (op === ts.SyntaxKind.InstanceOfKeyword) {
+      if (!mentions(e.left, param)) return false;
+      const made = scan.checker.getTypeAtLocation(e.right).getConstructSignatures()[0];
+      return made === undefined || !holdsOfEveryError(made.getReturnType(), scan);
+    }
     if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
-      return namesAnError(e.left, param) || namesAnError(e.right, param);
+      return namesAnError(e.left, param, scan, depth) || namesAnError(e.right, param, scan, depth);
     }
     return EQUAL.includes(op) && comparesError(e, param);
   }
@@ -171,21 +241,22 @@ function namesAnError(node: ts.Expression, param: string): boolean {
     return (
       ts.isIdentifier(callee) &&
       /^(is|has)[A-Z]/.test(callee.text) &&
-      e.arguments.some((a) => mentions(a, param))
+      e.arguments.some((a) => mentions(a, param)) &&
+      helperNamesAnError(e, param, scan, depth)
     );
   }
   return false;
 }
 
-function admitsAllButNamed(node: ts.Expression, param: string): boolean {
+function admitsAllButNamed(node: ts.Expression, param: string, scan: Scan): boolean {
   const e = unwrap(node);
   if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
-    return namesAnError(e.operand, param);
+    return namesAnError(e.operand, param, scan);
   }
   if (ts.isBinaryExpression(e)) {
     const op = e.operatorToken.kind;
     if (op === ts.SyntaxKind.BarBarToken) {
-      return admitsAllButNamed(e.left, param) && admitsAllButNamed(e.right, param);
+      return admitsAllButNamed(e.left, param, scan) && admitsAllButNamed(e.right, param, scan);
     }
     return UNEQUAL.includes(op) && comparesError(e, param);
   }
@@ -196,12 +267,12 @@ function admitsAllButNamed(node: ts.Expression, param: string): boolean {
  * The handler goes on only for errors it named: it opens by throwing every error but a named kind,
  * or every exit from it short of a throw sits under a test naming one.
  */
-function exitsOnlyWhenNarrowed(block: ts.Block, param: string | null): boolean {
+function exitsOnlyWhenNarrowed(block: ts.Block, param: string | null, scan: Scan): boolean {
   if (param === null) return false;
   const first = block.statements[0];
   if (first && ts.isIfStatement(first) && !first.elseStatement) {
     if (
-      admitsAllButNamed(first.expression, param) &&
+      admitsAllButNamed(first.expression, param, scan) &&
       endsInThrow(statementsOf(first.thenStatement))
     )
       return true;
@@ -211,7 +282,7 @@ function exitsOnlyWhenNarrowed(block: ts.Block, param: string | null): boolean {
   const visit = (n: ts.Node): void => {
     if (!ok || isNestedFunction(n)) return;
     if (ts.isReturnStatement(n) || ts.isBreakStatement(n) || ts.isContinueStatement(n)) {
-      ok = narrowedBy(n, block, param);
+      ok = narrowedBy(n, block, param, scan);
       return;
     }
     ts.forEachChild(n, visit);
@@ -220,12 +291,12 @@ function exitsOnlyWhenNarrowed(block: ts.Block, param: string | null): boolean {
   return ok;
 }
 
-function narrowedBy(exit: ts.Node, block: ts.Block, param: string): boolean {
+function narrowedBy(exit: ts.Node, block: ts.Block, param: string, scan: Scan): boolean {
   for (let at = exit.parent; at && at !== block; at = at.parent) {
     if (
       ts.isIfStatement(at) &&
       within(exit, at.thenStatement) &&
-      namesAnError(at.expression, param)
+      namesAnError(at.expression, param, scan)
     ) {
       return true;
     }
@@ -249,9 +320,45 @@ function paramOf(
   return decl && ts.isIdentifier(decl.name) ? decl.name.text : null;
 }
 
-function handlerKind(handler: ts.Node, handles: string[]): GuardedCatch['handler'] {
+/** True where a jump in `block` lands on a statement inside it: its label's, or its loop or switch. */
+function landsInside(jump: ts.BreakOrContinueStatement, block: ts.Block): boolean {
+  for (let at = jump.parent; at && at !== block; at = at.parent) {
+    if (jump.label) {
+      if (ts.isLabeledStatement(at) && at.label.text === jump.label.text) return true;
+    } else if (
+      ts.isIterationStatement(at, false) ||
+      (ts.isBreakStatement(jump) && ts.isSwitchStatement(at))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True where a statement of `block` returns, or breaks or continues to a target outside it. */
+function leavesBlock(block: ts.Block): boolean {
+  let leaves = false;
+  const visit = (n: ts.Node): void => {
+    if (leaves || isNestedFunction(n)) return;
+    if (
+      ts.isReturnStatement(n) ||
+      ((ts.isBreakStatement(n) || ts.isContinueStatement(n)) && !landsInside(n, block))
+    ) {
+      leaves = true;
+      return;
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(block);
+  return leaves;
+}
+
+function handlerKind(handler: ts.Node, handles: string[], scan: Scan): GuardedCatch['handler'] {
   let body: ts.Block;
   let param: string | null;
+  if (ts.isBlock(handler) && ts.isTryStatement(handler.parent)) {
+    return 'swallows';
+  }
   if (ts.isCatchClause(handler)) {
     body = handler.block;
     param = paramOf(handler.variableDeclaration);
@@ -265,7 +372,7 @@ function handlerKind(handler: ts.Node, handles: string[]): GuardedCatch['handler
     return 'swallows';
   }
   if (rethrowsFirst(body, param, handles)) return 'rethrows';
-  return exitsOnlyWhenNarrowed(body, param) ? 'narrowed' : 'swallows';
+  return exitsOnlyWhenNarrowed(body, param, scan) ? 'narrowed' : 'swallows';
 }
 
 function enclosingName(node: ts.Node): string {
@@ -278,12 +385,18 @@ function enclosingName(node: ts.Node): string {
   return '<module>';
 }
 
-/** Each guarded statement and its handler: `try`, `.catch(fn)` and `.then(ok, fn)`. */
+/**
+ * Each guarded statement and its handler: `try`, `.catch(fn)`, `.then(ok, fn)`, and a `finally`
+ * that leaves its block, which ends whatever the try threw.
+ */
 function catchSites(sf: ts.SourceFile): Array<{ at: ts.Node; guarded: ts.Node; handler: ts.Node }> {
   const sites: Array<{ at: ts.Node; guarded: ts.Node; handler: ts.Node }> = [];
   const visit = (n: ts.Node): void => {
     if (ts.isTryStatement(n) && n.catchClause) {
       sites.push({ at: n.catchClause, guarded: n.tryBlock, handler: n.catchClause });
+    }
+    if (ts.isTryStatement(n) && n.finallyBlock && leavesBlock(n.finallyBlock)) {
+      sites.push({ at: n.finallyBlock, guarded: n.tryBlock, handler: n.finallyBlock });
     }
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
       const method = n.expression.name.text;
@@ -301,18 +414,20 @@ function catchSites(sf: ts.SourceFile): Array<{ at: ts.Node; guarded: ts.Node; h
 export function guardedCatches(program: ts.Program): GuardedCatch[] {
   const checker = program.getTypeChecker();
   const tx = transactionType(program, checker);
+  const members = new Set(tx.getProperties().map((p) => p.name));
+  const scan: Scan = { program, checker, tx, members };
   const found: GuardedCatch[] = [];
   for (const sf of program.getSourceFiles()) {
     if (!sf.fileName.startsWith(`${SRC}/`) || sf.fileName.includes('/node_modules/')) continue;
     for (const site of catchSites(sf)) {
-      const handles = handlesIn(site.guarded, checker, tx);
+      const handles = handlesIn(site.guarded, scan);
       if (handles.length === 0) continue;
       found.push({
         file: relative(SRC, sf.fileName),
         line: sf.getLineAndCharacterOfPosition(site.at.getStart(sf)).line + 1,
         fn: enclosingName(site.at),
         handles,
-        handler: handlerKind(site.handler, handles),
+        handler: handlerKind(site.handler, handles, scan),
       });
     }
   }

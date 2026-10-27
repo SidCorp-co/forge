@@ -182,8 +182,40 @@ function reference(cls: { name: string } | { expr: string }, obj: string, sub = 
   return `CASE WHEN (${obj})::oid < ${FIRST_NORMAL_OID} THEN (${obj})::text ELSE ${named} END`;
 }
 
+/**
+ * Every `pg_node_tree` column, read as Postgres prints it: a stored expression holds the oids of
+ * what it reads, so a sequence or table made again under its own name changes the tree and not the
+ * schema. A column a later Postgres adds and this map lacks is read as it stands, by oid.
+ */
+const EXPRESSIONS: Record<string, Record<string, string>> = {
+  pg_attrdef: { adbin: 'pg_get_expr(t.adbin, t.adrelid)' },
+  pg_class: { relpartbound: 'pg_get_expr(t.relpartbound, t.oid)' },
+  pg_constraint: { conbin: 'pg_get_expr(t.conbin, t.conrelid)' },
+  pg_index: {
+    indexprs: 'pg_get_expr(t.indexprs, t.indrelid)',
+    indpred: 'pg_get_expr(t.indpred, t.indrelid)',
+  },
+  pg_partitioned_table: { partexprs: 'pg_get_expr(t.partexprs, t.partrelid)' },
+  pg_policy: {
+    polqual: 'pg_get_expr(t.polqual, t.polrelid)',
+    polwithcheck: 'pg_get_expr(t.polwithcheck, t.polrelid)',
+  },
+  pg_proc: {
+    proargdefaults: 'pg_get_expr(t.proargdefaults, 0)',
+    prosqlbody: 'CASE WHEN t.prosqlbody IS NOT NULL THEN pg_get_function_sqlbody(t.oid) END',
+  },
+  pg_publication_rel: { prqual: 'pg_get_expr(t.prqual, t.prrelid)' },
+  // A rule's action and its condition are both in what pg_get_ruledef prints.
+  pg_rewrite: { ev_action: 'pg_get_ruledef(t.oid)', ev_qual: 'NULL' },
+  pg_statistic_ext: { stxexprs: 'pg_get_expr(t.stxexprs, t.stxrelid)' },
+  pg_trigger: { tgqual: 'CASE WHEN t.tgqual IS NOT NULL THEN pg_get_triggerdef(t.oid) END' },
+  pg_type: { typdefaultbin: 'pg_get_expr(t.typdefaultbin, 0)' },
+};
+
 /** A column of a catalog row as the digest reads it, an oid it holds named by `reference`. */
 function columnText(catalog: Catalog, col: string): string {
+  const printed = EXPRESSIONS[catalog.name]?.[col];
+  if (printed) return printed;
   const any = NAMES_ANY[catalog.name]?.[col];
   if (any) return reference({ expr: `t."${any[0]}"` }, `t."${any[1]}"`, `t."${any[2]}"`);
   if (catalog.name === 'pg_trigger' && col === 'tgname') {
