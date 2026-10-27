@@ -155,6 +155,7 @@ function safeInsets(): { top: number; bottom: number } {
 function useKeepClear(
   items: ToastItem[],
   lane: React.RefObject<HTMLElement | null>,
+  keptLane: React.RefObject<HTMLElement | null>,
   wide: boolean,
   belowDialogHeader: number | null,
 ): CSSProperties | null {
@@ -175,7 +176,13 @@ function useKeepClear(
         setPlace(null);
         return;
       }
-      const clear = (b: Box) => targets.every((el) => !overlaps(b, el.getBoundingClientRect()));
+      // The kept notices' own lane is in the way as much as the element: moving onto it hides them.
+      const kept = keptLane.current?.getBoundingClientRect();
+      const obstacles: Box[] = [
+        ...targets.map((el) => el.getBoundingClientRect()),
+        ...(kept && kept.height > 0 ? [kept] : []),
+      ];
+      const clear = (b: Box) => obstacles.every((o) => !overlaps(b, o));
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const inset = safeInsets();
@@ -204,7 +211,7 @@ function useKeepClear(
           const fieldTop = Math.min(...rects.map((r) => r.top));
           const fieldBottom = Math.max(...rects.map((r) => r.bottom));
           const above = fieldTop - top;
-          const below = vh - gap - fieldBottom;
+          const below = Math.min(vh - gap, kept && kept.height > 0 ? kept.top : vh) - fieldBottom;
           // The cap is the lane's whole box, so its own vertical padding goes too, or a gap smaller
           // than that padding would still be overrun.
           const capped = { paddingTop: 0, paddingBottom: 0 };
@@ -223,7 +230,7 @@ function useKeepClear(
       window.removeEventListener("scroll", measure, { capture: true });
       window.removeEventListener("resize", measure);
     };
-  }, [items, named, lane, wide, belowDialogHeader]);
+  }, [items, named, lane, keptLane, wide, belowDialogHeader]);
   return place;
 }
 
@@ -244,9 +251,10 @@ export function ToastLane({ className }: { className?: string }) {
   const wide = useMediaQuery(WIDE);
   const belowDialogHeader = useOpenDialogHeaderBottom(!wide && items.length > 0);
   const laneRef = useRef<HTMLElement>(null);
+  const keptRef = useRef<HTMLElement>(null);
   const kept = wide ? [] : items.filter((t) => t.keep);
   const passing = wide ? items : items.filter((t) => !t.keep);
-  const clearPlace = useKeepClear(items, laneRef, wide, belowDialogHeader);
+  const clearPlace = useKeepClear(items, laneRef, keptRef, wide, belowDialogHeader);
 
   useEffect(() => registerLane(), [registerLane]);
 
@@ -275,6 +283,7 @@ export function ToastLane({ className }: { className?: string }) {
       {kept.length > 0 &&
         createPortal(
           <section
+            ref={keptRef}
             aria-label="Kept notices"
             data-testid="toast-lane-kept"
             className={cn(

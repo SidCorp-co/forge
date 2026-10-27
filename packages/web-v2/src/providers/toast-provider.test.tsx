@@ -546,6 +546,40 @@ describe("a toast naming the element it keeps clear of", () => {
     }
   });
 
+  // r9 review F1 (seventh read): on a phone a kept notice waits above the tab bar; moving the lane to
+  // the bottom to clear the field would cover it instead.
+  it("keeps clear of a kept notice at the bottom as well as of the field", () => {
+    wide(false);
+    viewport(390, 844);
+    const spy = boxes({
+      "toast-lane": { top: 61, bottom: 361, height: 300, width: 390, left: 0, right: 390 },
+      "toast-lane-kept": { top: 700, bottom: 788, height: 88, width: 390, left: 0, right: 390 },
+      path: { top: 241, bottom: 283, left: 21, right: 370 },
+      header: { bottom: 61 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Dialog />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => {
+        fire({ title: "This room was deleted", keep: true });
+        fire({ ...refused, duration: 0, clearOf: () => field });
+      });
+      const lane = screen.getByTestId("toast-lane");
+      // At the bottom it would span 544 to 844 over the kept notice at 700 to 788; between the field
+      // and the kept notice, 283 to 700, is the larger space.
+      expect(lane.style.bottom).toBe("");
+      expect(lane.style.top).toBe("283px");
+      expect(Number.parseFloat(lane.style.top) + Number.parseFloat(lane.style.maxHeight)).toBeLessThanOrEqual(700);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("stays at the top where the top leaves the field clear, and when no toast names one", () => {
     wide(false);
     viewport(390, 844);
