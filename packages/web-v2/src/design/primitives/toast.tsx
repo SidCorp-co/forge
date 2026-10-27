@@ -64,6 +64,8 @@ export function Toast({
       onKeyDown={
         clickable
           ? (e) => {
+              // A control inside the card, its link or Dismiss, keeps its own keys.
+              if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 onClick?.();

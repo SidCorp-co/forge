@@ -224,6 +224,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setItems((xs) => xs.filter((x) => x.slot !== slot));
   }, []);
 
+  // A toast leaves by remove, by its slot, by dismiss or by the visible limit: whichever, its
+  // countdown, held or running, leaves with it.
+  useEffect(() => {
+    const shown = new Set(items.map((x) => x.id));
+    for (const [id, timer] of timers.current) {
+      if (shown.has(id)) continue;
+      if (timer.handle) clearTimeout(timer.handle);
+      timers.current.delete(id);
+    }
+  }, [items]);
+
   useEffect(() => {
     const live = timers.current;
     return () => {

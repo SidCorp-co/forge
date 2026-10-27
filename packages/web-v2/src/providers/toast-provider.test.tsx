@@ -448,3 +448,39 @@ describe("a toast carrying a link", () => {
     expect(screen.queryByText("Not saved")).not.toBeInTheDocument();
   });
 });
+
+// ISS-1236 r8 review: a toast that leaves by its slot, by dismiss or by the visible limit takes its
+// countdown with it, held or not.
+describe("a toast that leaves by any route", () => {
+  it("takes its countdown with it when its slot is dismissed", () => {
+    render(<Frame />);
+    const before = vi.getTimerCount();
+    act(() => fire({ title: "Slotted", slot: "s", duration: 4000 }));
+    expect(vi.getTimerCount()).toBe(before + 1);
+    act(() => dismiss("s"));
+    expect(vi.getTimerCount()).toBe(before);
+  });
+
+  it("takes its countdown with it when it gives up its place to newer toasts", () => {
+    render(<Frame />);
+    const before = vi.getTimerCount();
+    act(() => {
+      for (const n of [1, 2, 3, 4]) fire({ title: `Toast ${n}`, duration: 4000 });
+    });
+    expect(screen.queryByText("Toast 1")).not.toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(before + MAX_VISIBLE_TOASTS);
+  });
+});
+
+describe("a clickable toast carrying a link", () => {
+  it("leaves Enter on the link to the link, never the card's own action", () => {
+    const open = vi.fn();
+    render(<Frame />);
+    act(() => fire({ title: "Resolved", onClick: open, duration: 0, link: { label: "Elsewhere", href: "/x" } }));
+    const link = screen.getByRole("link", { name: "Elsewhere" });
+    link.focus();
+    const event = fireEvent.keyDown(link, { key: "Enter" });
+    expect(open).not.toHaveBeenCalled();
+    expect(event).toBe(true);
+  });
+});
