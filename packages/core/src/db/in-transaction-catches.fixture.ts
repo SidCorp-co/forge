@@ -8,13 +8,17 @@
  * `finally` that returns, breaks or continues out of a guarded try swallows whatever the try threw.
  * `EXCEPTIONS` names any allowed to fall back.
  *
- * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`.
+ * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`; which write changes the
+ * error before it reads it: `in-transaction-writes.fixture.ts`.
  *
  * Named residuals: a statement reached through a helper that closes over the transaction without
  * the guarded code naming any handle, a transaction cast to a type it is not, such as `typeof db`,
- * a call handed the caught error or an alias of it that changes it before the guard reads it, as
- * `Object.assign(err, …)` does, and a rejection handled by anything other than `try`, `.catch(fn)`
- * or `.then(ok, fn)`. The guard reader names its own.
+ * a function called from the catch that changes the caught error before the guard reads it, whether
+ * handed it (`Object.assign(err, …)`, `list.push(err)` then a write through `list`) or reaching it
+ * through what it closes over (`this.poison()` after `this.last = err`), since the body that runs is
+ * whatever value the callee holds and following it is a whole-program question, and a rejection
+ * handled by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`. The guard reader names its
+ * own.
  */
 
 import { readdirSync } from 'node:fs';
@@ -25,11 +29,11 @@ import {
   admitsAllButNamed,
   escapedClasses,
   namesAnError,
-  reassigns,
   type Scan,
   statementErrors,
   withBases,
 } from './in-transaction-guards.fixture.js';
+import { reassigns } from './in-transaction-writes.fixture.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TX_SOURCE = join(SRC, 'db', 'client.ts');
@@ -333,7 +337,7 @@ export function guardedCatches(program: ts.Program): GuardedCatch[] {
     members,
     kinds,
     names: new Set([...kinds].map((k) => k.name)),
-    escaped: escapedClasses(program, files, checker),
+    ...escapedClasses(program, files, checker),
   };
   const found: GuardedCatch[] = [];
   for (const sf of files) {
@@ -368,7 +372,7 @@ export function refusals(
       .filter((c) => !named.has(at(c)))
       .map(
         (c) =>
-          `${c.file}:${c.line} ${c.fn} catches a statement on ${c.handles.join(', ')}, which can be a transaction, and can fall back without rethrowInTransaction(<the error>, <the handle>) as its first statement`,
+          `${c.file}:${c.line} ${c.fn} catches a statement on ${c.handles.join(', ')}, which can be a transaction, and can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back, or give it an EXCEPTIONS entry with its reason`,
       ),
     ...[...named]
       .filter((n) => !swallows.some((c) => at(c) === n))

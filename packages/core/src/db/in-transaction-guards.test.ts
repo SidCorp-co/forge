@@ -6,7 +6,9 @@ import { buildProgram, guardedCatches, refusals } from './in-transaction-catches
 
 const PLANTED = 'db/in-transaction-guards.planted.ts';
 
-const plant = `import { type Tx } from './client.js';
+const plant = `import { mkdir, open, readFile } from 'node:fs/promises';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
+import { type Tx } from './client.js';
 import { pgErrorCode } from '../lib/db-errors.js';
 
 class Patched extends Error {}
@@ -29,6 +31,12 @@ class Kept extends Error {
     Error.captureStackTrace(this, Kept);
   }
 }
+
+class Reparented extends Error {}
+Object.setPrototypeOf(DrizzleQueryError.prototype, Reparented.prototype);
+
+class Recoded extends Error {}
+(Recoded.prototype as unknown as { code: string }).code = '23505';
 
 /** Its comparand defaults to the error's own code, so it holds of every error. */
 function isCodeDefaulted(e: unknown, c: '23505' = (e as { code: '23505' }).code) {
@@ -233,6 +241,164 @@ export async function narrowsByAHelperWhoseDefaultIsALiteral(tx: Tx) {
     return null;
   }
 }
+
+export async function narrowsByAClassAStatementErrorWasReparentedTo(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof Reparented)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAClassWhosePrototypeWasWritten(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof Recoded)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsAfterWritingThePrototypeOfTheError(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    (Object.getPrototypeOf(err) as { code?: string }).code = '23505';
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
+
+export async function narrowsAfterWritingThroughACallResult(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    const get = () => err as { code?: string };
+    get().code = '23505';
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
+
+export async function narrowsAfterWritingThroughADeclaredFunctionsResult(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    function get() {
+      return err as { code?: string };
+    }
+    get().code = '23505';
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
+
+export async function narrowsAfterWritingThroughAMapEntry(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    const held = new Map([[0, err as { code?: string }]]);
+    (held.get(0) as { code?: string }).code = '23505';
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
+
+export async function narrowsAfterWritingThroughADefaultedParameter(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    const recode = (e = err as { code?: string }) => {
+      e.code = '23505';
+    };
+    recode();
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
+
+export async function narrowsAfterWritingThroughADefaultedBinding(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    const { e = err as { code?: string } } = {} as { e?: { code?: string } };
+    e.code = '23505';
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
+
+const box: { error?: { code?: string } } = {};
+const getBox = () => box;
+
+export async function narrowsAfterWritingThroughAHolderACallReturns(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    getBox().error = err as { code?: string };
+    const again = getBox();
+    (again.error as { code?: string }).code = '23505';
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
+
+export class Retrier {
+  last: { code?: string } | undefined;
+
+  async narrowsAfterWritingThroughThis(tx: Tx) {
+    try {
+      return await tx.execute('select 1' as never);
+    } catch (err) {
+      this.last = err as { code?: string };
+      this.last.code = '23505';
+      if ((err as { code?: string }).code === '23505') return null;
+      throw err;
+    }
+  }
+}
+
+export async function returnsWhenTheSeedFileIsMissing(tx: Tx) {
+  try {
+    const seed = await readFile('/srv/seed.sql', 'utf8');
+    return await tx.execute(seed as never);
+  } catch (err) {
+    if ((err as { code?: string }).code !== 'ENOENT') throw err;
+    return null;
+  }
+}
+
+export async function returnsWhenTheDirectoryExists(tx: Tx) {
+  try {
+    await mkdir('/srv/exports');
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { code?: string }).code !== 'EEXIST') throw err;
+    return null;
+  }
+}
+
+export async function returnsWhenTheFileIsDenied(tx: Tx) {
+  try {
+    await (await open('/srv/report.csv', 'w')).close();
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { code?: string }).code === 'EACCES') return null;
+    throw err;
+  }
+}
+
+export async function narrowsAfterTheErrorIsOnlyLoggedAndCounted(tx: Tx) {
+  const seen = new Map<string, { count: number }>([['x', { count: 0 }]]);
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    (seen.get(String((err as Error).message)) as { count: number }).count += 1;
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
 `;
 
 const SHIFTED = 'db/in-transaction-guards-shifted.planted.ts';
@@ -265,7 +431,7 @@ const catches = guardedCatches(
 const planted = catches.filter((c) => c.file === PLANTED);
 const kindOf = (fn: string) => planted.find((c) => c.fn === fn)?.handler;
 function catchLine(fn: string): number {
-  const opens = plant.search(new RegExp(`function ${fn}\\(`));
+  const opens = plant.search(new RegExp(`(?:function |async )${fn}\\(`));
   return plant.slice(0, plant.indexOf('catch', opens)).split('\n').length;
 }
 
@@ -288,11 +454,21 @@ describe('a guard the scan reads as naming one error', () => {
       'narrowsByAClassPatchedThroughAnAlias',
       'narrowsByAClassWrittenByIndex',
       'narrowsByAHelperWhoseDefaultReadsTheError',
+      'narrowsByAClassAStatementErrorWasReparentedTo',
+      'narrowsByAClassWhosePrototypeWasWritten',
+      'narrowsAfterWritingThePrototypeOfTheError',
+      'narrowsAfterWritingThroughACallResult',
+      'narrowsAfterWritingThroughADeclaredFunctionsResult',
+      'narrowsAfterWritingThroughAMapEntry',
+      'narrowsAfterWritingThroughADefaultedParameter',
+      'narrowsAfterWritingThroughADefaultedBinding',
+      'narrowsAfterWritingThroughAHolderACallReturns',
+      'narrowsAfterWritingThroughThis',
     ];
     expect(refusals(planted)).toEqual(
       refused.map(
         (fn) =>
-          `${PLANTED}:${catchLine(fn)} ${fn} catches a statement on tx, which can be a transaction, and can fall back without rethrowInTransaction(<the error>, <the handle>) as its first statement`,
+          `${PLANTED}:${catchLine(fn)} ${fn} catches a statement on tx, which can be a transaction, and can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back, or give it an EXCEPTIONS entry with its reason`,
       ),
     );
   });
@@ -302,17 +478,28 @@ describe('a guard the scan reads as naming one error', () => {
     expect(kindOf('narrowsAfterRebindingAnAlias')).toBe('narrowed');
     expect(kindOf('narrowsByAClassOnlyThrownAndTested')).toBe('narrowed');
     expect(kindOf('narrowsByAHelperWhoseDefaultIsALiteral')).toBe('narrowed');
+    expect(kindOf('narrowsAfterTheErrorIsOnlyLoggedAndCounted')).toBe('narrowed');
+  });
+
+  it('keeps a guard on a code a file call raises, which no statement error carries', () => {
+    expect(kindOf('returnsWhenTheSeedFileIsMissing')).toBe('narrowed');
+    expect(kindOf('returnsWhenTheDirectoryExists')).toBe('narrowed');
+    expect(kindOf('returnsWhenTheFileIsDenied')).toBe('narrowed');
   });
 
   it('refuses a class patched in another file at the offsets the statement-error list holds in its own', () => {
     expect(refusals(catches.filter((c) => c.file === SHIFTED))).toEqual([
-      `${SHIFTED}:7 narrowsByAClassPatchedWhereTheListStandsElsewhere catches a statement on tx, which can be a transaction, and can fall back without rethrowInTransaction(<the error>, <the handle>) as its first statement`,
+      `${SHIFTED}:7 narrowsByAClassPatchedWhereTheListStandsElsewhere catches a statement on tx, which can be a transaction, and can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back, or give it an EXCEPTIONS entry with its reason`,
     ]);
   });
 
   it('counts every code the socket under a session can be rejected with as that session ending', () => {
     for (const code of ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'EHOSTUNREACH', '25P04', '57P04'])
       expect(SESSION_ENDED_CODES.has(code), code).toBe(true);
-    expect(SESSION_ENDED_CODES.has('23505')).toBe(false);
+  });
+
+  it('counts no code an open socket never fails with, as a connect or a file call raises or a statement carries', () => {
+    for (const code of ['ENOENT', 'EEXIST', 'EACCES', 'ECONNREFUSED', 'EMFILE', '23505'])
+      expect(SESSION_ENDED_CODES.has(code), code).toBe(false);
   });
 });

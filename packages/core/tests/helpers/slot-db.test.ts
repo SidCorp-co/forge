@@ -165,6 +165,50 @@ describe('sever', () => {
     // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
     await expect(sever(admin as any, 'test_w_1_x')).resolves.toEqual([{ pid: 44 }]);
   });
+
+  it('hands the database on past an autovacuum worker the server started after the terminate', async () => {
+    const { admin, looks } = sessionsAdmin([
+      [{ pid: 45, app: 'postgres.js' }],
+      [],
+      [{ pid: 46, app: '', kind: 'autovacuum worker' }],
+    ]);
+    // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+    const ended = await sever(admin as any, 'test_w_1_x');
+    expect(ended.map((s) => s.pid)).toEqual([45]);
+    expect(looks()).toBe(3);
+  });
+
+  it('refuses a client that connected after the terminate as a late arrival, not as one that outlived it', async () => {
+    const { admin } = sessionsAdmin([
+      [{ pid: 47, app: 'postgres.js' }],
+      [],
+      [{ pid: 48, app: 'arrived-late' }],
+    ]);
+    // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+    const refusal = await sever(admin as any, 'test_w_1_x').then(
+      () => '',
+      (err: Error) => err.message,
+    );
+    expect(refusal).toContain(
+      'test_w_1_x: pid 48 (client backend) arrived-late, idle after "SELECT 1" connected after every session on it was terminated',
+    );
+    expect(refusal).not.toContain('outlived');
+  });
+
+  it('names a terminated session that is still there apart from one that arrived after it', async () => {
+    const { admin } = sessionsAdmin([
+      [{ pid: 49, app: 'postgres.js' }],
+      [],
+      [
+        { pid: 49, app: 'postgres.js' },
+        { pid: 50, app: '', kind: 'autovacuum worker' },
+      ],
+    ]);
+    // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+    await expect(sever(admin as any, 'test_w_1_x')).rejects.toThrow(
+      /test_w_1_x: connection\(s\) 49 outlived a terminate waited on for 5s/,
+    );
+  });
 });
 
 /** An admin whose catalog answers `looks[n]` on its nth look at the database's sessions. */

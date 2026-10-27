@@ -18,6 +18,7 @@
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { waitingOn, whileHolding } from '../helpers/advisory-hold.js';
 import {
   bindTestRunner,
   createTestDevice,
@@ -109,67 +110,11 @@ async function aRunOver(issSeq: number, next: string) {
   return { user, project, device, issueIds: [issueId], session };
 }
 
-/**
- * Hold `key` until the returned `release` is called, so two callers can be caught waiting on it.
- * It answers only once Postgres has granted the lock to the holder: a caller started before that
- * could take the key first, and the case would then depend on which connection got there.
- */
-async function holding(key: string): Promise<{ release: () => Promise<void> }> {
-  let letGo = () => {};
-  const held = new Promise<void>((resolve) => {
-    letGo = resolve;
-  });
-  let granted = () => {};
-  const acquired = new Promise<void>((resolve) => {
-    granted = resolve;
-  });
-  const holder = harness.db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
-    granted();
-    await held;
-  });
-  // A holder that failed before it held the key settles this too, with its own error.
-  await Promise.race([acquired, holder]);
-  return {
-    release: async () => {
-      letGo();
-      await holder;
-    },
-  };
-}
-
-/** Wait until Postgres itself says both reports are blocked on this issue's marker key. */
-async function bothAreWaitingOn(key: string): Promise<void> {
-  const deadline = Date.now() + 10_000;
-  let seen = -1;
-  while (Date.now() < deadline) {
-    const rows = (await harness.db.execute(sql`
-      SELECT count(*)::int AS n
-        FROM pg_locks
-       WHERE locktype = 'advisory'
-         AND NOT granted
-         AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
-         AND classid = ((hashtextextended(${key}, 0) >> 32) & 4294967295)::oid
-         AND objid = (hashtextextended(${key}, 0) & 4294967295)::oid
-    `)) as unknown as { n: number }[];
-    seen = rows[0]?.n ?? 0;
-    if (seen >= 2) return;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  throw new Error(
-    `both callers should be BLOCKED on this key while the harness holds it; ` +
-      `Postgres reports ${seen} waiter(s) after 10s. A writer that does not wait on this key is ` +
-      `reading around the marker rather than claiming it.`,
-  );
-}
-
 describe('a report that arrives twice', () => {
   it('makes two reports of one close wait on each other, and writes once', async () => {
     const { device, issueIds, session } = await aRunOver(9, 'twice at once');
     const issueId = issueIds[0] as string;
     const key = `run-evidence:${issueId}:${mods.runEvidenceMarker(session.sessionId)}`;
-
-    const lock = await holding(key);
 
     const report = () =>
       mods.writeRunEvidence({
@@ -178,22 +123,29 @@ describe('a report that arrives twice', () => {
         checkpoint: A_CHECKPOINT,
       });
     const settled: string[] = [];
-    const first = report().then((r) => {
-      settled.push('first');
-      return r;
+    const [first, second] = await whileHolding(harness.db, key, async () => {
+      const reported = [
+        report().then((r) => {
+          settled.push('first');
+          return r;
+        }),
+        report().then((r) => {
+          settled.push('second');
+          return r;
+        }),
+      ] as const;
+      await waitingOn(
+        harness.db,
+        key,
+        2,
+        'A writer that does not wait on this key is reading around the marker rather than claiming it.',
+      );
+      expect(
+        settled,
+        'a writer that answers while another holds this issue marker key has not claimed it — it has read around it',
+      ).toEqual([]);
+      return reported;
     });
-    const second = report().then((r) => {
-      settled.push('second');
-      return r;
-    });
-    await bothAreWaitingOn(key);
-
-    expect(
-      settled,
-      'a writer that answers while another holds this issue marker key has not claimed it — it has read around it',
-    ).toEqual([]);
-
-    await lock.release();
     const both = await Promise.all([first, second]);
 
     expect(
