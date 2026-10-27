@@ -457,64 +457,6 @@ function entryReads(rel, text) {
     });
   }
 
-  /** How many times each name is written: declared, assigned, destructured into or updated. */
-  const writes = new Map();
-  const wrote = (id) => ts.isIdentifier(id) && writes.set(id.text, (writes.get(id.text) ?? 0) + 1);
-  const assignedTargets = (left) => {
-    if (ts.isIdentifier(left)) return wrote(left);
-    if (ts.isArrayLiteralExpression(left))
-      for (const el of left.elements) assignedTargets(ts.isSpreadElement(el) ? el.expression : el);
-    if (ts.isObjectLiteralExpression(left)) {
-      for (const el of left.properties) {
-        if (ts.isShorthandPropertyAssignment(el)) wrote(el.name);
-        if (ts.isPropertyAssignment(el)) assignedTargets(el.initializer);
-        if (ts.isSpreadAssignment(el)) assignedTargets(el.expression);
-      }
-    }
-    if (ts.isBinaryExpression(left) && left.operatorToken.kind === ts.SyntaxKind.EqualsToken)
-      assignedTargets(left.left);
-  };
-  visit((node) => {
-    if (
-      (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) &&
-      ts.isIdentifier(node.name)
-    )
-      wrote(node.name);
-    if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name)
-      wrote(node.name);
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-    ) {
-      assignedTargets(node.left);
-    }
-    if (
-      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
-      [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator)
-    ) {
-      wrote(node.operand);
-    }
-    if (
-      (ts.isForOfStatement(node) || ts.isForInStatement(node)) &&
-      !ts.isVariableDeclarationList(node.initializer)
-    )
-      assignedTargets(node.initializer);
-  });
-  /**
-   * Names holding one of process's own functions: a const read off process by a stated name other
-   * than argv, written nowhere else, so what it holds is what it was given.
-   */
-  const processMethods = new Set();
-  visit((node) => {
-    if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
-    if (!(node.parent.flags & ts.NodeFlags.Const) || writes.get(node.name.text) !== 1) return;
-    const held = unwrap(node.initializer);
-    const name = propName(held);
-    if (name !== null && name !== 'argv' && isProcess(unwrap(held.expression)))
-      processMethods.add(node.name.text);
-  });
-
   const found = [];
   const say = (node, how) => {
     const { line } = src.getLineAndCharacterOfPosition(node.getStart(src));
@@ -666,23 +608,6 @@ function entryReads(rel, text) {
       return stated ? null : `${what} read by a computed key: ${p.getText(src)}`;
     }
     if (ts.isTypeOfExpression(p)) return null;
-    // `process.binding.call(process, …)` hands process back to one of its own functions as `this`;
-    // any other function given process as `this` is one this walk would have to follow.
-    const fn =
-      ts.isCallExpression(p) &&
-      p.arguments[0] === self &&
-      ts.isPropertyAccessExpression(p.expression)
-        ? p.expression
-        : null;
-    if (fn && ['call', 'apply', 'bind'].includes(fn.name.text)) {
-      const target = unwrap(fn.expression);
-      const own =
-        (ts.isIdentifier(target) && processMethods.has(target.text)) ||
-        (propName(target) !== null &&
-          propName(target) !== 'argv' &&
-          isProcess(unwrap(target.expression)));
-      if (own) return null;
-    }
     const pattern =
       ts.isVariableDeclaration(p) && p.initializer === self
         ? p.name
@@ -1164,6 +1089,21 @@ describe('no file decides it was launched by hand', () => {
       3,
     ],
     [
+      'scripts/this-planted.mjs',
+      'process.entry = function () {\n  return this.argv[1];\n};\nconst binding = process.entry;\nif (import.meta.filename === binding.call(process)) main();\n',
+      5,
+    ],
+    [
+      'scripts/this-planted-direct.mjs',
+      "process['entry'] = function () {\n  return this.argv[1];\n};\nif (import.meta.filename === process.entry.apply(process)) main();\n",
+      4,
+    ],
+    [
+      'scripts/this-planted-computed.mjs',
+      "const k = 'entry';\nprocess[k] = function () {\n  return this.argv[1];\n};\nif (import.meta.filename === process.entry.bind(process)()) main();\n",
+      2,
+    ],
+    [
       'scripts/from.mjs',
       'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n',
       2,
@@ -1294,7 +1234,7 @@ describe('no file decides it was launched by hand', () => {
     ],
     [
       'scripts/process-uses.mjs',
-      "if (typeof process !== 'undefined') process.exitCode = 1;\nconst { env, platform } = process;\nconst home = process['env'].HOME;\nconst onServer = typeof window === 'undefined' && globalThis.fetch;\nconst binding = process.binding;\nconst sync = binding.call(process, 'spawn_sync');\nconst again = process.binding.call(process, 'fs');\nconst ROOT = import.meta.url;\n",
+      "if (typeof process !== 'undefined') process.exitCode = 1;\nconst { env, platform } = process;\nconst home = process['env'].HOME;\nconst onServer = typeof window === 'undefined' && globalThis.fetch;\nconst sync = process.binding('spawn_sync');\nconst ROOT = import.meta.url;\n",
     ],
     [
       'scripts/nested-tail.mjs',

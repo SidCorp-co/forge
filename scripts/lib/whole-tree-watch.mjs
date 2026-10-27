@@ -337,8 +337,8 @@ function install(state) {
     }
     return result;
   };
+  const spawnSync = process.binding('spawn_sync');
   const binding = process.binding;
-  const spawnSync = binding.call(process, 'spawn_sync');
   const syncSpawn = spawnSync.spawn;
   spawnSync.spawn = function watchedSyncSpawn(options) {
     if (options === null || typeof options !== 'object') return syncSpawn.call(this, options);
