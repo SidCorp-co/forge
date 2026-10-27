@@ -8,15 +8,19 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { collectReleaseBlockers } from '../../src/release-batch/blockers.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
+import { readServingNow } from '../../src/release-batch/serving-reading.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, truncateAll } from '../helpers/factories.js';
 import {
   AT_RELEASE,
   declareProductionDocument,
   fakeCoolify,
+  PRODUCTION_PROBE,
   releaseWorld,
   seedProductionDeployTrigger,
+  seedProjectDocument,
   verdictComment,
 } from '../helpers/release-world.js';
 
@@ -75,7 +79,9 @@ beforeEach(async () => {
   ownerId = (await createTestUser()).id;
   projectId = (await createTestProject(ownerId)).id;
   bindingId = await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] });
-  await seedProductionDeployTrigger(projectId, ownerId);
+  // work lands on the branch production deploys from, so landing IS deploying production and a
+  // criterion is earned at what production serves (the sidcorp-mail shape below crosses a promotion)
+  await declareProductionDocument({ projectId, ownerId, bindingId, trigger: 'on-land' });
   coolify.applications.clear();
   coolify.deployed(APP.resourceUuid, 'dep-1', SERVING, '2026-09-29T11:00:00Z');
   fx.serve(SERVING);
@@ -105,7 +111,6 @@ describe('release sweep (ISS-1117)', () => {
       projectId,
       ownerId,
       bindingId,
-      deploysFrom: 'production',
       probes: 'none',
       trigger: 'on-land',
     });
@@ -193,5 +198,93 @@ describe('release sweep (ISS-1117)', () => {
     expect((await holdOf(blocked))?.code).toBe('RELEASE_ABORT_BLOCKED');
     expect((await stored(blocked)).claim).toBeNull();
     expect((await holdOf(neighbour))?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+  });
+});
+
+// sidcorp-mail (project a417a126), 2026-10-27: work lands on `dev`, production deploys `master` on
+// land, and the promotion dev → master IS the release. The hold demanded ISS-1's criteria be earned
+// at what production served (225fb35), which can never hold the change before the release that
+// promotes it: every waiting issue was held for ever, RELEASE_CRITERIA_UNEARNED. Approval required.
+describe('a promotion stands between where work lands and what production deploys', () => {
+  async function sidcorpMailShape(judgedOn?: string): Promise<void> {
+    await seedProjectDocument(projectId, ownerId, {
+      defaultBranch: 'dev',
+      promotions: [{ from: 'dev', to: 'master', via: 'merge' }],
+      environments: {
+        dev: { tier: 'dev', deploysFrom: 'dev', deployment: { mode: 'external' } },
+        live: {
+          tier: 'production',
+          deploysFrom: 'master',
+          deployment: { binding: bindingId, trigger: 'on-land' },
+          verification: {
+            runtime: [
+              { type: 'http', url: PRODUCTION_PROBE, path: 'commit', identifies: 'source' },
+            ],
+          },
+        },
+      } as never,
+      extra: {
+        release: { approval: { required: true }, changeRequests: false },
+        ...(judgedOn ? { delivery: { judgedOn } } : {}),
+      } as never,
+    });
+  }
+
+  /** A waiting row merged on `dev` as `LANDED`, carrying `blocks` as its verdicts. */
+  async function landedRow(blocks: string[]): Promise<string> {
+    const id = await waitingRow(blocks.length, blocks);
+    await db.execute(sql`UPDATE issues SET merged_commit_sha = ${LANDED} WHERE id = ${id}`);
+    return id;
+  }
+
+  it('cuts an issue whose criteria passed at its landing commit, where today it is held', async () => {
+    await sidcorpMailShape();
+    const id = await landedRow([
+      verdictBlock(1, 'pass', `commit: ${LANDED}`),
+      verdictBlock(2, 'pass', `commit: ${LANDED}`),
+    ]);
+
+    const serving = await readServingNow(projectId);
+    const report = await collectReleaseBlockers(projectId, { door: 'batch', serving });
+    expect(report.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
+    expect(report.warnings.map((w) => w.code)).not.toContain('RELEASE_CRITERIA_HELD_BACK');
+
+    const result = await sweepAutomaticReleases();
+
+    expect(result).toMatchObject({ issuesCut: 1, issuesExcluded: 0 });
+    expect(await stored(id)).toMatchObject(AT_RELEASE);
+    expect(await holdOf(id)).toBeNull();
+  });
+
+  it('counts a runtime verdict at the landing commit on the environment `delivery.judgedOn` names', async () => {
+    await sidcorpMailShape('dev');
+    const id = await landedRow([verdictBlock(1, 'pass', `runtime: ${LANDED}`)]);
+
+    const result = await sweepAutomaticReleases();
+
+    expect(result).toMatchObject({ issuesCut: 1, issuesExcluded: 0 });
+    expect(await holdOf(id)).toBeNull();
+  });
+
+  it('still holds an issue judged at what production serves, naming its landing commit', async () => {
+    await sidcorpMailShape();
+    const id = await landedRow([verdictBlock(1, 'pass', `runtime: ${SERVING}`)]);
+    const before = await stored(id);
+
+    const serving = await readServingNow(projectId);
+    const report = await collectReleaseBlockers(projectId, { door: 'batch', serving });
+    const held = report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
+    expect(held?.message).toContain('owes criterion 1');
+    expect(held?.message).not.toContain('without a person acting');
+
+    const result = await sweepAutomaticReleases();
+
+    expect(result).toMatchObject({ issuesCut: 0, issuesExcluded: 1 });
+    expect(await stored(id)).toEqual(before);
+    const hold = await holdOf(id);
+    expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(hold?.reason).toContain(`landing commit \`${LANDED.slice(0, 12)}\``);
+    expect(hold?.reason).toContain('`dev`');
+    expect(hold?.reason).not.toContain('serving');
   });
 });

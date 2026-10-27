@@ -25,7 +25,10 @@ import {
   type ReleaseVersion,
 } from './version.js';
 
-/** One versioned release run as the rule reads it: a release batch's, or a recorded landing's. */
+/** What `metadata.source` reads on the run a recorded release writes, landing or performed by hand. */
+export const RELEASE_RECORD_SOURCE = 'release-record';
+
+/** One versioned release run as the rule reads it: a release batch's, or a recorded release's. */
 export interface LineageRun {
   id: string;
   version: string;
@@ -63,9 +66,12 @@ const endedUnshipped = (r: LineageRun) => !shipped(r) && isEnded(r);
  * An ended run with no release job was refused before it was attempted: it claims no number. A run
  * that SHIPPED claims its number for good whether or not a job ever ran it: a change-request release
  * the master merged by hand and a recorded landing have none (catalog-api 0.1.0, run 6c91e938,
- * 2026-10-26, shipped and read as never attempted, so the next draft read 0.1.0 again).
+ * 2026-10-26, shipped and read as never attempted, so the next draft read 0.1.0 again). A recorded
+ * release is never refused at the door: it is opened only once its evidence was read, and one that
+ * ended `failed` closed some issues under its number before one would not close.
  */
-const attempted = (r: LineageRun) => r.hasJob || shipped(r) || !ENDED.has(r.status);
+const attempted = (r: LineageRun) =>
+  r.hasJob || shipped(r) || !ENDED.has(r.status) || r.metadata.source === RELEASE_RECORD_SOURCE;
 
 /** The roster as a set, spelled once: order and duplicates never make two rosters differ. */
 export const rosterKey = (ids: readonly string[]): string => [...new Set(ids)].sort().join(',');

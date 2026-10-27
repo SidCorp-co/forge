@@ -76,9 +76,12 @@ artifact outside the system already carries it.
   reading a declaration is about to change.
 - **A new release starts above the highest version any attempt ever claimed**, shipped or not. An
   ended run with no release job was refused at the door. It was never attempted and claims nothing,
-  unless it shipped: a change-request release the master merges, and a landing recorded on a project
-  with no production environment, ship with no release job and claim their version (catalog-api
+  unless it shipped: a change-request release the master merges, a landing recorded on a project
+  with no production environment, and a release performed by hand and recorded on a project with
+  production all ship with no release job and claim their version (catalog-api
   `0.1.0`, run 6c91e938, 2026-10-26, was read as never attempted, so the next draft wore `0.1.0`).
+  A recorded release, landing or performed, takes its version through the same cut in the
+  transaction that records it.
 - **The list counts releases, not attempts.** A release is named by the version its last attempt
   wears. Each attempt shows its cut time, its outcome, the refusal word for word, the abort's reason
   and who ended it (`packages/core/src/release-batch/release-cuts.ts`). An older version whose roster went on under a
@@ -87,6 +90,13 @@ artifact outside the system already carries it.
 - **History is not rewritten.** Rows cut before this rule keep their versions. HOP's `0.3.0` and
   `0.4.0` stay aborted and `0.5.0` stays shipped. The link between them is derived at read time from
   roster identity, which is the same rule the cut uses. No migration writes it, and no row changes.
+  The same holds for a landing recorded before a recorded landing took a version (2026-10-26, such
+  as catalog-fe run c7bdb9b9, recorded at 04:57Z, before 0.1.0 at 07:26Z). It claimed no number
+  when it was recorded. A number allocated now would sit above a release that came after it, or
+  below the line in a form the counter never hands out. Either way the page would show a version
+  the landing was never recorded under. So it stays unversioned and claims nothing. The Releases
+  list shows it under "Recorded before versioning", with its branch, commit and issues
+  (`packages/core/src/release-batch/landing-records.ts:landingRecordsOf`).
 
 ## Consequences
 

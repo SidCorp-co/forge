@@ -9,6 +9,27 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.339] - 2026-10-27
+
+Releases recorded before versioning or by hand now show on the Releases page
+
+### Fixed
+
+- **Every recorded release shows on the Releases list.** A release recorded by hand now takes the next version, and landings recorded before versioning are listed with no version under their own heading.
+
+## [0.4.0-dev.338] - 2026-10-27
+
+Retired MCP delivery tools name their REST door; releases proven on the named testing environment
+
+### Added
+
+- **A release is proven on the testing environment the project names.** With `delivery.judgedOn`, only passes on the build it serves count, the owner's review waits for them, and an unjudged criterion reads "Not judged on dev".
+
+### Fixed
+
+- **A judging run a master declared reads its testing-profile secrets.** `GET /api/jobs/<run>/testing-profiles/<profile>/secrets` answers the box's credential naming its live declared run; another project's, an ended or an unadmitted run is refused by name.
+- **A retired delivery tool names its REST door instead of "Unknown tool".** `forge_source`, `forge_coolify_deploy`, `forge_sentry` and `forge_storefront_target` answer `MCP_DELIVERY_IS_REST` with their routes; a master opens a merge request at `POST …/integrations/source/change-requests`.
+
 ## [0.4.0-dev.337] - 2026-10-27
 
 Support groups answer two simultaneous messages instead of failing the turn

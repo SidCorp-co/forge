@@ -11,6 +11,7 @@
  * reader from the real history, standing in for the box that reads the bare repository.
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -73,9 +74,8 @@ describe('a landing is recorded as the release of a project with no production e
     expect(read).toMatchObject({ verification: 'landed', branch: BRANCH, commit: F4 });
 
     const list = await ok(api(token, 'GET', `/api/projects/${projectId}/releases`));
-    expect(list.landings).toEqual([
-      { runId, branch: BRANCH, commit: F4, at: expect.any(String), issues: ['ISS-5'] },
-    ]);
+    // a landing that took a version is a release on the list, never listed a second time beside it
+    expect(list.landings).toEqual([]);
     // catalog-api run 9ed968de, 2026-10-26: a recorded landing is a release like any other
     expect(res.body.version).toBe('0.1.0');
     // a landing on release/stg is not production: it reads landed there (owner, 2026-10-26)
@@ -246,6 +246,89 @@ describe('a landing is recorded as the release of a project with no production e
     const build = await ok(api(token, 'GET', `/api/issues/${issue}/judged-build`));
 
     expect(build).toMatchObject({ sha: F4, source: 'landed', version: null });
+  });
+});
+
+// catalog-fe run c7bdb9b9, 2026-10-26 04:57Z: 9 issues landed on `dev` at f44ff116 and recorded
+// before a recorded landing cut a version (2207abfeb); 855e79d1 at 07:26Z then took 0.1.0. The row
+// claimed no number then, and no number allocated now would be the one it was recorded under, so it
+// is listed as what it is: a landing recorded before versioning.
+describe('a landing recorded before Forge versioned recorded landings', () => {
+  async function legacyLanding(
+    seq: number,
+    status: 'completed' | 'failed',
+    at: string,
+  ): Promise<string> {
+    const issueId = randomUUID();
+    await db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
+      VALUES (${issueId}, ${projectId}, ${seq}, ${`issue ${seq}`}, 'closed', ${ownerId}, ${at}::timestamptz)
+    `);
+    const [row] = (await db.execute(sql`
+      INSERT INTO pipeline_runs (project_id, kind, status, started_at, finished_at, metadata)
+      VALUES (${projectId}, 'system', ${status}, ${at}::timestamptz, ${at}::timestamptz,
+              ${JSON.stringify({
+                source: 'release-record',
+                gateStatus: 'awaiting_release',
+                issueIds: [issueId],
+                commit: F4,
+                branch: BRANCH,
+                identity: F4,
+                verification: 'landed',
+                providerRef: null,
+                recordedBy: ownerId,
+                issues: [],
+              })}::jsonb)
+      RETURNING id::text AS id
+    `)) as unknown as Array<{ id: string }>;
+    return row?.id ?? '';
+  }
+
+  it('lists it as unversioned beside the releases, and the next landing still takes 0.1.0', async () => {
+    const closedAll = await legacyLanding(1, 'completed', '2026-10-22T13:48:10Z');
+    const incomplete = await legacyLanding(2, 'failed', '2026-10-26T04:57:01Z');
+    const issue = await landedIssue(5, F4);
+    await judgedAll(issue, F4);
+
+    const res = await record([issue], F4);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    // a row recorded with no version claimed none, so the line starts where it would have
+    expect(res.body.version).toBe('0.1.0');
+
+    const list = await ok(api(token, 'GET', `/api/projects/${projectId}/releases`));
+    expect(list.releases).toMatchObject([{ version: '0.1.0', state: 'landed' }]);
+    expect(list.landings).toEqual([
+      {
+        runId: incomplete,
+        branch: BRANCH,
+        commit: F4,
+        at: '2026-10-26T04:57:01.000Z',
+        issues: ['ISS-2'],
+        closedAll: false,
+      },
+      {
+        runId: closedAll,
+        branch: BRANCH,
+        commit: F4,
+        at: '2026-10-22T13:48:10.000Z',
+        issues: ['ISS-1'],
+        closedAll: true,
+      },
+    ]);
+    const [unversioned] = (await db.execute(sql`
+      SELECT count(*)::int AS n FROM pipeline_runs
+       WHERE project_id = ${projectId} AND release_version IS NULL
+    `)) as unknown as Array<{ n: number }>;
+    // nothing versions a row recorded before versioning: the two stay as they were recorded
+    expect(unversioned?.n).toBe(2);
+  });
+
+  it('still lists it once the project declares a production environment', async () => {
+    const runId = await legacyLanding(1, 'completed', '2026-10-22T13:48:10Z');
+    await seedProduction({ projectId, ownerId, probes: 'none' });
+
+    const list = await ok(api(token, 'GET', `/api/projects/${projectId}/releases`));
+    expect(list.landings).toMatchObject([{ runId, issues: ['ISS-1'], closedAll: true }]);
   });
 });
 
