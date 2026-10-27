@@ -4,7 +4,9 @@
 // why, and the buttons that answer it. A button
 // posts its own body to the route the record's page calls, as the person who presses it (BC-9);
 // nothing is decided here. Flat rows under hairlines, one heading per group; the project home and
-// the chat draw the same list.
+// the chat draw the same list. `dense` (the project home) draws each as its question and its buttons
+// only: what it changes, its impact and the recommendation's why sit behind the question, and each
+// answer's effect behind its button, a hover away.
 
 import {
   capDecisions,
@@ -30,47 +32,16 @@ export interface DecisionSettled {
   ok: boolean;
 }
 
-function OwedDecision({
-  d,
-  slug,
-  onSettled,
-}: {
-  d: NeedsYouDecision;
-  slug: string | undefined;
-  onSettled: ((s: DecisionSettled) => void) | undefined;
-}) {
+/** A dense decision's question, what it changes, its impact and the recommendation's why, one line each, for its hover. */
+const hoverOf = (d: NeedsYouDecision, t: ReturnType<typeof useCopy>): string =>
+  [d.question, `${t("needsYou.decisions.changes")}: ${d.changes}`, `${t("needsYou.decisions.impact")}: ${d.impact}`, d.recommended?.why ?? d.noRecommendation].filter(Boolean).join("\n");
+
+/** What deciding changes, its impact, and the recommended answer and why, or why there is none (REQ-68 BC-1). */
+function Stakes({ d }: { d: NeedsYouDecision }) {
   const t = useCopy();
-  const qc = useQueryClient();
-  const [typing, setTyping] = useState<DecisionAnswer | null>(null);
-  const [typed, setTyped] = useState("");
-  const press = useMutation({
-    mutationFn: ({ answer, text }: { answer: DecisionAnswer; text: string | null }) =>
-      needsYouApi.press(answer.path, pressBody(answer, text)),
-    onSuccess: () => {
-      setTyping(null);
-      void qc.invalidateQueries({ queryKey: NEEDS_YOU_ROOT });
-      onSettled?.({ decision: d, ok: true });
-    },
-    onError: () => onSettled?.({ decision: d, ok: false }),
-  });
-  const href = slug ? decisionHref(slug, d.opens) : null;
   const recommended = d.recommended ? d.answers.find((a) => a.id === d.recommended?.answerId) : undefined;
-  const sent = press.isSuccess ? press.variables?.answer : undefined;
   return (
-    <li className="flex flex-col gap-1.5 py-3" data-testid="needs-you-decision" data-group={d.group} data-key={d.key}>
-      <p className="fg-caption text-muted">
-        {href ? (
-          <Link href={href} className="font-mono text-fg underline-offset-2 hover:underline">
-            {d.opens?.key ?? d.key}
-          </Link>
-        ) : (
-          <span className="font-mono text-fg">{d.opens?.key ?? d.key}</span>
-        )}
-        {d.title && <span> · {d.title}</span>}
-      </p>
-      <p className="fg-body-sm whitespace-pre-wrap text-fg" data-testid="needs-you-decision-question">
-        {d.question}
-      </p>
+    <>
       <dl className="fg-caption flex flex-col gap-0.5 text-muted" data-testid="needs-you-decision-stakes">
         <div className="flex gap-2">
           <dt className="flex-none">{t("needsYou.decisions.changes")}</dt>
@@ -98,6 +69,57 @@ function OwedDecision({
           {t("needsYou.decisions.noRecommendation")}: {d.noRecommendation}
         </p>
       )}
+    </>
+  );
+}
+
+function OwedDecision({
+  d,
+  slug,
+  dense,
+  onSettled,
+}: {
+  d: NeedsYouDecision;
+  slug: string | undefined;
+  dense: boolean;
+  onSettled: ((s: DecisionSettled) => void) | undefined;
+}) {
+  const t = useCopy();
+  const qc = useQueryClient();
+  const [typing, setTyping] = useState<DecisionAnswer | null>(null);
+  const [typed, setTyped] = useState("");
+  const press = useMutation({
+    mutationFn: ({ answer, text }: { answer: DecisionAnswer; text: string | null }) =>
+      needsYouApi.press(answer.path, pressBody(answer, text)),
+    onSuccess: () => {
+      setTyping(null);
+      void qc.invalidateQueries({ queryKey: NEEDS_YOU_ROOT });
+      onSettled?.({ decision: d, ok: true });
+    },
+    onError: () => onSettled?.({ decision: d, ok: false }),
+  });
+  const href = slug ? decisionHref(slug, d.opens) : null;
+  const sent = press.isSuccess ? press.variables?.answer : undefined;
+  return (
+    <li className={dense ? "flex flex-col gap-1 py-2.5" : "flex flex-col gap-1.5 py-3"} data-testid="needs-you-decision" data-group={d.group} data-key={d.key}>
+      <p className={dense ? "fg-caption truncate text-muted" : "fg-caption text-muted"}>
+        {href ? (
+          <Link href={href} className="font-mono text-fg underline-offset-2 hover:underline">
+            {d.opens?.key ?? d.key}
+          </Link>
+        ) : (
+          <span className="font-mono text-fg">{d.opens?.key ?? d.key}</span>
+        )}
+        {d.title && <span> · {d.title}</span>}
+      </p>
+      <p
+        className={dense ? "fg-body-sm truncate text-fg" : "fg-body-sm whitespace-pre-wrap text-fg"}
+        title={dense ? hoverOf(d, t) : undefined}
+        data-testid="needs-you-decision-question"
+      >
+        {d.question}
+      </p>
+      {dense ? null : <Stakes d={d} />}
       {sent ? (
         <p className="fg-caption flex items-center gap-1 text-fg" role="status">
           <Icon name="check" size={12} />
@@ -156,7 +178,7 @@ function OwedDecision({
           ))}
         </div>
       )}
-      {!sent && !typing && d.answers.some((a) => a.effect) && (
+      {!dense && !sent && !typing && d.answers.some((a) => a.effect) && (
         <ul className="fg-caption flex flex-col gap-0.5 text-muted" data-testid="needs-you-decision-effects">
           {d.answers.flatMap((a) =>
             a.effect ? [
@@ -186,12 +208,15 @@ export function DecisionList({
   slug,
   cap,
   moreHref,
+  dense = false,
   onSettled,
 }: {
   read: Pick<NeedsYouDecisions, "decisions" | "total" | "notDecisions">;
   slug?: string | undefined;
   cap?: number;
   moreHref?: string;
+  /** Each decision as its question and its buttons, the rest behind a hover. */
+  dense?: boolean;
   /** Told when a press settles, either way. */
   onSettled?: ((s: DecisionSettled) => void) | undefined;
 }) {
@@ -212,7 +237,7 @@ export function DecisionList({
           </h3>
           <ul className="flex flex-col divide-y divide-line-subtle">
             {rows.map((d) => (
-              <OwedDecision key={d.id} d={d} slug={slug} onSettled={onSettled} />
+              <OwedDecision key={d.id} d={d} slug={slug} dense={dense} onSettled={onSettled} />
             ))}
           </ul>
         </div>

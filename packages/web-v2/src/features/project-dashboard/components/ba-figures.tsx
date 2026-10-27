@@ -1,77 +1,80 @@
 
-// The Dashboard's figures for a BA or PM, one flat row on a hairline: requirements by state,
-// feedback open and aging, the next release and when it is in people's hands. Every figure links to
-// the list it counts. Delivery's health over a window is `health-panel.tsx`, beside it.
+// The Dashboard's pictures for a BA or PM, side by side: requirements by state with how many of their
+// criteria are proven, open feedback by where it stands, and the next release's issues by how far
+// each has got. Each is a stacked bar over its whole with a legend of counts, and its title links to
+// the list it draws. Delivery's health over a window is `health-panel.tsx`, below them.
 
+import type { IssueProgress } from "@forge/contracts/forecast";
+import { REQUIREMENT_STATE_TONES } from "@forge/contracts/requirements";
+import type { ReactNode } from "react";
+import { BulletBar, CoverageBar, type CoverageSegment } from "@/design";
 import { Link } from "@/lib/navigation/router";
-import { EtaInline } from "@/features/forecast";
-import type { Eta, EtaClock } from "@/features/forecast";
 import { feedbackListHref } from "@/lib/routes/feedback";
 import { releaseHref, releasesListHref } from "@/lib/routes/releases";
 import { requirementsHref } from "@/lib/routes/requirements";
 import type { FeedbackFigures, requirementsByState } from "../ba-derive";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 
-const LINK = "rounded-sm hover:underline focus-visible:outline-none focus-visible:shadow-focus";
-
-/** `share`: the group's part of a wide row, by how many figures it holds. */
-function Group({ label, share, children }: { label: string; share: string; children: React.ReactNode }) {
+function Picture({ title, href, figure, children, testId }: { title: string; href: string; figure?: ReactNode; children: ReactNode; testId: string }) {
   return (
-    <div className={`min-w-0 ${share}`}>
-      <h3 className="text-12 font-semibold text-subtle">{label}</h3>
-      <div className="mt-1 flex flex-wrap items-baseline gap-x-5 gap-y-1">{children}</div>
-    </div>
+    <section aria-label={title} className="flex min-w-0 flex-1 flex-col gap-3" data-testid={testId}>
+      <div className="flex items-baseline justify-between gap-2">
+        <Link href={href} className="text-13 font-semibold text-fg underline-offset-2 hover:underline">
+          {title}
+        </Link>
+        {figure ? <span className="font-mono text-13 font-semibold tabular-nums text-muted">{figure}</span> : null}
+      </div>
+      {children}
+    </section>
   );
 }
 
-const Figure = ({ href, label, value, accent }: { href: string; label: string; value: number | string; accent?: boolean }) => (
-  <Link href={href} className={`inline-flex items-baseline gap-1.5 ${LINK}`}>
-    <span className={`text-20 font-semibold tabular-nums ${accent ? "text-accent-text" : "text-fg"}`}>{value}</span>
-    <span className="text-13 text-muted">{label}</span>
-  </Link>
-);
+const Nothing = ({ children }: { children: ReactNode }) => <p className="text-13 text-subtle">{children}</p>;
 
 interface BaFiguresProps {
   slug: string;
   requirements: ReturnType<typeof requirementsByState>;
+  /** Criteria proven across the requirements on the delivery line; null while it is read. */
+  criteria: { proven: number; total: number } | null;
   feedback: FeedbackFigures;
-  release: { version: string; eta: Eta | null } | null;
-  clock: EtaClock;
+  /** The release nearest people's hands and its issues' progress; null where none is on its way. */
+  release: { version: string; progress: IssueProgress } | null;
 }
 
-export function BaFigures({ slug, requirements, feedback, release, clock }: BaFiguresProps) {
+export function BaFigures({ slug, requirements, criteria, feedback, release }: BaFiguresProps) {
   const t = useCopy();
   const label = useLabel();
+  const reqTotal = requirements.reduce((n, r) => n + r.count, 0);
+  const reqSegments: CoverageSegment[] = requirements.map((r) => ({ key: r.state, label: label("requirementState", r.state), count: r.count, tone: REQUIREMENT_STATE_TONES[r.state] }));
+  const fbSegments: CoverageSegment[] = [
+    { key: "stuck", label: t("dash.fbStuck"), count: feedback.stuck, tone: "err" },
+    { key: "untriaged", label: t("dash.fbUntriaged"), count: feedback.open - feedback.stuck - feedback.moving, tone: "you" },
+    { key: "moving", label: t("dash.fbMoving"), count: feedback.moving, tone: "run" },
+  ];
+  const relSegments: CoverageSegment[] = release
+    ? [
+        { key: "shipped", label: t("dash.rel.shipped"), count: release.progress.shipped, tone: "ready" },
+        { key: "awaiting", label: t("dash.rel.awaiting"), count: release.progress.awaitingRelease, tone: "run" },
+        { key: "toDo", label: t("dash.rel.toDo"), count: release.progress.toDo, tone: "neutral" },
+      ]
+    : [];
   return (
-    <section
-      aria-label={t("dash.progress")}
-      data-testid="ba-figures"
-      className="grid gap-x-10 gap-y-4 border-y border-line-subtle py-4 md:flex"
-    >
-      <Group label={t("dash.requirements")} share="md:flex-10">
-        {requirements.map((r) => (
-          <Figure key={r.state} href={`${requirementsHref(slug)}?group=status`} label={label("requirementState", r.state)} value={r.count} />
-        ))}
-      </Group>
-      <Group label={t("dash.feedback")} share="md:flex-6">
-        <Figure href={feedbackListHref(slug)} label={t("dash.fbOpen")} value={feedback.open} />
-        <Figure href={feedbackListHref(slug)} label={t("dash.fbUntriaged")} value={feedback.untriaged} accent={feedback.untriaged > 0} />
-        <Figure href={feedbackListHref(slug)} label={t("dash.fbStuck")} value={feedback.stuck} accent={feedback.stuck > 0} />
-      </Group>
-      <Group label={t("dash.nextRelease")} share="md:flex-5">
-        {release ? (
-          <>
-            <Link href={releaseHref(slug, release.version)} className={`font-mono text-16 font-semibold text-link ${LINK}`}>
-              {release.version}
-            </Link>
-            {release.eta ? <EtaInline eta={release.eta} clock={clock} /> : null}
-          </>
-        ) : (
-          <Link href={releasesListHref(slug)} className={`text-13 text-muted ${LINK}`}>
-            {t("dash.nothingInPreparation")}
-          </Link>
-        )}
-      </Group>
-    </section>
+    <div aria-label={t("dash.progress")} role="group" data-testid="ba-figures" className="grid gap-x-10 gap-y-6 border-b border-line-subtle pb-6 md:flex">
+      <Picture title={t("dash.requirements")} href={`${requirementsHref(slug)}?group=status`} figure={reqTotal} testId="pic-requirements">
+        {reqTotal === 0 ? <Nothing>{t("dash.noRequirements")}</Nothing> : <CoverageBar segments={reqSegments} />}
+        {criteria && criteria.total > 0 ? <BulletBar label={t("dash.criteriaProven")} value={criteria.proven} total={criteria.total} color="var(--green-500)" /> : null}
+      </Picture>
+      <Picture title={t("dash.feedback")} href={feedbackListHref(slug)} figure={feedback.open} testId="pic-feedback">
+        {feedback.open === 0 ? <Nothing>{t("dash.noFeedback")}</Nothing> : <CoverageBar segments={fbSegments} />}
+      </Picture>
+      <Picture
+        title={release ? `${t("dash.nextRelease")} ${release.version}` : t("dash.nextRelease")}
+        href={release ? releaseHref(slug, release.version) : releasesListHref(slug)}
+        figure={release?.progress.total}
+        testId="pic-release"
+      >
+        {release && release.progress.total > 0 ? <CoverageBar segments={relSegments} /> : <Nothing>{t("dash.nothingInPreparation")}</Nothing>}
+      </Picture>
+    </div>
   );
 }

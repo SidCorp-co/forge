@@ -4,7 +4,6 @@ import {
   Badge,
   EmptyState,
   ErrorState,
-  Icon,
   IconButton,
   MonoTag,
   PageContainer,
@@ -12,8 +11,10 @@ import {
   ProjectLoader,
   ProjectMark,
 } from "@/design";
-import { feedbackFigures, landsThisWeek, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
+import { type FeedbackFigures, feedbackFigures, landsThisWeek, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
+import type { ProjectStatus } from "@forge/contracts/project-status";
 import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
+import { HeadlineFigures, type HeadlineFiguresProps } from "@/features/project-dashboard/components/headline-figures";
 import { ProjectHealthFigures, useHealthWindow } from "@/features/project-dashboard/components/health-panel";
 import { useProjectHealth } from "@/features/project-dashboard/health-api";
 import { LandsThisWeek } from "@/features/project-dashboard/components/plan-sections";
@@ -22,14 +23,13 @@ import { ProjectOrientation } from "@/features/project-dashboard/components/proj
 import { useModuleRollup } from "@/features/modules";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useComingNext, useFeedbackForecasts, useRequirementForecasts } from "@/features/forecast";
-import { etaInline, etaOfScope } from "@/features/forecast";
+import { type Eta, type EtaClock, etaInline, etaOfScope } from "@/features/forecast";
 import { useFeedbackList } from "@/features/feedback";
 import { useReleases } from "@/features/releases";
 import { useRequirements } from "@/features/requirements/hooks";
 import { useNeedsYouDecisions } from "@/features/needs-you";
-import { ProjectHome } from "@/features/project-home/components/project-home";
+import { atRiskCount, ProjectHome } from "@/features/project-home";
 import { useStewardBudget } from "@/features/standing";
-import { ShippedRecently } from "@/features/project-status/components/shipped-recently";
 import { useProjectStatus } from "@/features/project-status/hooks";
 import { OnboardingHint } from "@/features/onboarding";
 import { useProjectRef } from "@/features/projects/project-ref";
@@ -40,9 +40,33 @@ import { useProjectDocument } from "@/features/project-config";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
 import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { formatDate } from "@/lib/i18n/format";
+import { feedbackListHref } from "@/lib/routes/feedback";
+import { releaseHref } from "@/lib/routes/releases";
+import { statusReportHref } from "@/lib/routes/status";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useCopy } from "@/lib/i18n/interface-language";
+
+/** The project's business modules, the roots of its module tree; null while they are read. */
+const rootModules = (modules: { id: string; name: string; slug: string | null; parentId: string | null }[] | undefined) =>
+  modules ? modules.filter((m) => m.parentId === null).map((m) => ({ id: m.id, name: m.name, slug: m.slug })) : null;
+
+/** The headline row's figures from the reads the page already holds; a figure still being read is null. */
+function headlineOf(r: { slug: string; needsYou: number | null; status: ProjectStatus | undefined; feedback: FeedbackFigures; draft: { version: string; eta: Eta | null } | null; clock: EtaClock }): HeadlineFiguresProps {
+  const { slug, status, clock } = r;
+  const next = status?.nextRelease.version ?? null;
+  const shipped = status?.shipped.latest ?? null;
+  const eta = r.draft?.eta && next === r.draft.version ? etaInline(r.draft.eta, clock) : null;
+  return {
+    needsYou: r.needsYou,
+    running: status ? status.inFlight.runningCount : null,
+    atRisk: status ? atRiskCount(status, slug) : null,
+    feedback: { open: r.feedback.open, untriaged: r.feedback.untriaged, href: feedbackListHref(slug) },
+    next: next ? { version: next, eta, href: releaseHref(slug, next) } : null,
+    live: shipped ? { version: shipped.version, at: formatDate(shipped.releasedAt, clock.lang, clock.timeZone), href: statusReportHref(slug) } : null,
+  };
+}
 
 function ProjectOverviewPage() {
   const t = useCopy();
@@ -56,8 +80,10 @@ function ProjectOverviewPage() {
   // The page subscribes to THIS project's room so the reads below refresh as work moves (ISS-379).
   useRoom(projectId ? projectRoom(projectId) : null);
 
-  // A BA or PM's page: what needs them, how requirements and feedback stand, what lands this week and
-  // what is late. Every figure is a read core answers; Development's own figures live on Development.
+  // A BA or PM's page, figures first: one number per thing they check, the pictures of requirements,
+  // feedback and the next release, what the project is, then what needs them, what runs and what is
+  // at risk, delivery's health and what lands this week. Every figure is a read core answers;
+  // Development's own figures live on Development.
   const decisionsQ = useNeedsYouDecisions(projectId);
   const statusQ = useProjectStatus(projectId);
   const requirementsQ = useRequirements(projectId);
@@ -104,12 +130,13 @@ function ProjectOverviewPage() {
   const glyph = projectGlyph(project.id);
   const declared = projectDocumentQ.data?.declared ? projectDocumentQ.data.document : null;
   const describedAs = (declared?.project as { description?: unknown } | undefined)?.description;
-  const production = releasesQ.data?.production;
-  const productionHost = production?.ok && production.url ? production.url.replace(/^https?:\/\//, "").replace(/\/$/, "") : null;
-  const live = releasesQ.data?.releases.find((r) => r.current && r.state === "shipped");
+  const status = statusQ.data;
   // the decisions only this member can make: the read the home's Needs you table and the chat share
   const decisionCount = decisionsQ.data?.total ?? 0;
   const draft = releasesQ.data?.releases.find((r) => r.state === "draft");
+  const draftEta = etaOfScope(comingQ.data?.draft, clock);
+  const nextVersion = status?.nextRelease.version ?? null;
+  const feedback = feedbackFigures(feedbackQ.data?.feedback);
   const rows = planRows(
     {
       slug: project.slug,
@@ -120,6 +147,7 @@ function ProjectOverviewPage() {
     },
     clock,
   );
+  const weekRows = landsThisWeek(rows, clock);
 
   return (
     <>
@@ -133,31 +161,37 @@ function ProjectOverviewPage() {
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <MonoTag>{project.slug}</MonoTag>
             <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{t(project.role === "admin" ? "common.role.admin" : project.role === "member" ? "common.role.member" : project.role === "viewer" ? "common.role.viewer" : "common.role.org")}</Badge>
-            {decisionCount > 0 && (
-              <span className="fg-caption inline-flex items-center gap-1 font-semibold" style={{ color: "var(--accent-text)" }}>
-                <Icon name="inbox" size={13} />
-                {t("dash.needsAttention", { count: decisionCount })}
-              </span>
-            )}
           </div>
         </div>
         <IconButton icon="settings" aria-label={t("dash.projectSettings")} onClick={() => router.push(`/projects/${slug}/settings`)} />
       </header>
 
-      <div className="space-y-6">
-        {/* the home opens on what needs you, with what is running and what is at risk beside it; chat opens from Ask Agent */}
-        <ProjectHome projectId={project.id} slug={project.slug} />
+      <div className="space-y-8">
+        <HeadlineFigures {...headlineOf({ slug: project.slug, needsYou: decisionsQ.data ? decisionCount : null, status, feedback, draft: draft ? { version: draft.version, eta: draftEta } : null, clock })} />
 
-        {/* what the project is and where it stands comes first; the system map follows, the asks below it */}
+        <BaFigures
+          slug={project.slug}
+          requirements={requirementsByState(requirementsQ.data?.requirements)}
+          criteria={status ? { proven: status.requirements.proven, total: status.requirements.total } : null}
+          feedback={feedback}
+          release={status && nextVersion ? { version: nextVersion, progress: status.nextRelease.progress } : null}
+        />
+
+        {/* what the project is and where it stands, before the asks: the journey walk's first finding */}
         <ProjectOrientation
           slug={project.slug}
           description={typeof describedAs === "string" && describedAs.trim() ? describedAs : null}
-          modules={modulesQ.data ? modulesQ.data.modules.filter((m) => m.parentId === null).map((m) => ({ id: m.id, name: m.name, slug: m.slug })) : null}
-          now={statusQ.data?.roadmap.now ?? []}
-          next={statusQ.data?.roadmap.next ?? []}
-          live={live ? { version: live.version, where: productionHost } : null}
-          draft={draft ? { version: draft.version, eta: (() => { const eta = etaOfScope(comingQ.data?.draft, clock); return eta ? etaInline(eta, clock) : null; })() } : null}
+          modules={rootModules(modulesQ.data?.modules)}
+          now={status?.roadmap.now ?? []}
+          next={status?.roadmap.next ?? []}
         />
+
+        {/* what needs you, with what is running and what is at risk beside it; chat opens from Ask Agent */}
+        <ProjectHome projectId={project.id} slug={project.slug} />
+
+        <ProjectHealthFigures projectId={project.id} />
+
+        {weekRows.length > 0 ? <LandsThisWeek rows={weekRows} clock={clock} slug={project.slug} /> : null}
 
         {workflowsQ.data && workflowsQ.data.workflows.length > 0 ? (
           <SystemOverviewRegion
@@ -171,20 +205,6 @@ function ProjectOverviewPage() {
             variant="compact"
           />
         ) : null}
-
-        <BaFigures
-          slug={project.slug}
-          requirements={requirementsByState(requirementsQ.data?.requirements)}
-          feedback={feedbackFigures(feedbackQ.data?.feedback)}
-          release={draft ? { version: draft.version, eta: etaOfScope(comingQ.data?.draft, clock) } : null}
-          clock={clock}
-        />
-
-        <ProjectHealthFigures projectId={project.id} />
-
-        <LandsThisWeek rows={landsThisWeek(rows, clock)} clock={clock} slug={project.slug} />
-
-        <ShippedRecently shipped={statusQ.data?.shipped} slug={project.slug} clock={clock} />
 
         <ProjectMemory projectId={project.id} slug={project.slug} />
       </div>

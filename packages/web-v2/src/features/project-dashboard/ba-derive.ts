@@ -35,14 +35,18 @@ export interface FeedbackFigures {
   untriaged: number;
   /** Open items core reads stuck (`times.stuck`, REQ-48 BC-5): its rule, never an age this page picks. */
   stuck: number;
+  /** Open items neither stuck nor untriaged: the work moving. With `stuck` and the untriaged that are not stuck, it makes `open`. */
+  moving: number;
 }
 
 export function feedbackFigures(list: readonly Pick<FeedbackSummary, "phase" | "attentionGroup" | "times" | "snoozed">[] | undefined): FeedbackFigures {
   const open = (list ?? []).filter((f) => f.attentionGroup !== "done");
+  const untriaged = (f: (typeof open)[number]) => (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(f.phase) && !f.snoozed;
   return {
     open: open.length,
-    untriaged: open.filter((f) => (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(f.phase) && !f.snoozed).length,
+    untriaged: open.filter(untriaged).length,
     stuck: open.filter((f) => f.times.stuck !== null).length,
+    moving: open.filter((f) => f.times.stuck === null && !untriaged(f)).length,
   };
 }
 

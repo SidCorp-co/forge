@@ -24,7 +24,7 @@ export function HomeSectionTitle({ children, count }: { children: React.ReactNod
 export function RunningTable({ rows, total, slug }: { rows: StatusInFlightIssue[]; total: number; slug: string }) {
   const t = useCopy();
   return (
-    <section aria-label={t("home.running")} data-testid="home-running">
+    <section id="running" aria-label={t("home.running")} data-testid="home-running" className="scroll-mt-24">
       <HomeSectionTitle count={total}>{t("home.running")}</HomeSectionTitle>
       {rows.length === 0 ? (
         <p className="text-13 text-muted">{t("home.runningEmpty")}</p>
@@ -60,7 +60,7 @@ export function AtRiskTable({ rows, unlisted = 0, moreHref }: { rows: AtRiskRow[
   const t = useCopy();
   const lang = useInterfaceLanguage();
   return (
-    <section aria-label={t("home.atRisk")} data-testid="home-at-risk">
+    <section id="at-risk" aria-label={t("home.atRisk")} data-testid="home-at-risk" className="scroll-mt-24">
       <HomeSectionTitle count={rows.length + unlisted}>{t("home.atRisk")}</HomeSectionTitle>
       {rows.length === 0 ? (
         <p className="text-13 text-muted">{t("home.atRiskEmpty")}</p>
