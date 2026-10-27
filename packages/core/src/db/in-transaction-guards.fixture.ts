@@ -1,17 +1,10 @@
 /**
- * What the catch scan reads as a guard naming an error. A guard counts as one only where the scan
- * recognises it as one that no error in `lib/db-errors.ts:STATEMENT_ERRORS` passes as a kind: drizzle's
- * `DrizzleQueryError` and `TransactionRollbackError`, the driver's `PostgresError` and a plain
- * `Error`. That is `instanceof` a class
- * other than those and their bases, bound by a class declaration and carrying no `Symbol.hasInstance`
- * of its own; the error's `code`, constraint or `name` compared with a value known at compile time,
- * read off the error or by `lib/db-errors.ts`'s readers, a `name` never one of those classes', a code
- * never one of `SESSION_ENDED_CODES`; an `isX(err)` or `hasX(err)` bound by a function declaration or
- * a `const`, whose one returned expression is such a test; or those joined. A read through `cause` is
- * held to the same list, since a caller may wrap a wrapped error again. The caught error is matched
- * by its binding, never by its name, so an inner `err` shadowing it is a different value. Every guard
- * it does not so recognise is refused like a bare catch, among them one whose body it cannot read,
- * whatever its predicate says, and a comparison with a value it cannot resolve.
+ * What the catch scan reads as a guard naming an error: one no class in
+ * `lib/db-errors.ts:STATEMENT_ERRORS` passes as a kind, on the error or down its `cause`, by
+ * `instanceof`, a `code`, constraint or `name` compared with a value known at compile time, or an
+ * `isX(err)` whose one returned expression is such a test; or those joined. The caught error is
+ * matched by its binding, never its name. Every guard it does not so recognise is refused like a
+ * bare catch, among them one whose body it cannot read and a comparison it cannot resolve.
  */
 
 import { dirname, join } from 'node:path';
@@ -302,11 +295,7 @@ function writesTo(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
   return false;
 }
 
-/**
- * Whether anything in `node` assigns the caught error or a property reached through it, so a later
- * read may not be what was thrown. A call handed the error may change it too, which this does not
- * see.
- */
+/** Whether `node` assigns the caught error anywhere; a call handed the error is not seen. */
 export function reassigns(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
   const target = (n: ts.Node) => writesTo(n, param, scan);
   if (
