@@ -3199,6 +3199,9 @@
 
 ### Fixed
 
+- **A person with no display name is "A member" everywhere**, in notices, lists, rooms and the Account hint alike; a room's people list no longer adds when they were added. Notices already stored are reworded on deploy. (ISS-1229)
+- **A rate-limited or timed-out read offers Retry, and says when to retry where the server said.** One Retry on a failed projects read reloads it everywhere it shows, and pages under a project name that read. (ISS-1229)
+- **A new project is created in the organization you are working in after its Retry**, the Filters sheet shows which choices failed to load, the room list never says "No conversations yet" beside a room of another organization, and replies are signed by the agent's handle. (ISS-1229)
 - **A message still sending is drawn above the reply it started**, where the room will show it, rather than below it until the room is read again. (ISS-1236)
 - **A new project whose repository settings were refused is not reported unsaved.** The toast says the project was created, which settings were not saved, and that they can be set in its Settings. (ISS-1236)
 - **The id a message is sent under reaches only its sender, over the live connection as well.** Everyone else in the room is told the message arrived without it. (ISS-1236)
