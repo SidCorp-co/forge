@@ -12,12 +12,12 @@ import { postman } from "./postman";
 import { rocketchat } from "./rocketchat";
 import { sentry } from "./sentry";
 
-/** A provider's setup on a project; `stage` is the deploy stage the drawer was opened at, and
- *  `bindingId` the binding of the row that opened it, which the section reads and acts on. */
+/** A provider's setup on a project: the drawer's stage, its row's binding, or `adding` another. */
 export type ProjectSection = ComponentType<{
   projectId: string;
   stage?: DeployStage;
   bindingId?: string;
+  adding?: boolean;
 }>;
 export type ConnectionSection = ComponentType<{
   connection: { id: string; config: Record<string, unknown> };
@@ -45,6 +45,8 @@ export interface ProviderModule {
   mcpServerName: string | null;
   /** True where every binding injects its own suffixed entry rather than one winner taking the slot. */
   multiBinding: boolean;
+  /** The tab's button that adds another where a project holds several (ISS-1421 r35). */
+  addAnother?: string;
   target(config: Record<string, unknown>): string | null;
   /** The project-scoped detail section, or null where the provider has none. */
   section: (() => Promise<{ default: ProjectSection }>) | null;

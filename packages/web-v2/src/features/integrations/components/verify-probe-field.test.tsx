@@ -106,7 +106,7 @@ describe("what the section says is declared", () => {
 
 	it("says none is declared, and what a release then records", () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} />);
-		expect(screen.getByText(/None declared — a release reads nothing on this binding/)).toBeInTheDocument();
+		expect(screen.getByText(/None declared — a release reads nothing on this deploy target/)).toBeInTheDocument();
 		expect(screen.getByText(/the release closes unverified/)).toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "Remove all probes" })).toBeNull();
 	});
@@ -265,8 +265,8 @@ describe("removing every probe asks once, and says what goes", () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
 		expect(dialog()).toHaveTextContent("Remove all 2 probes?");
-		expect(dialog()).toHaveTextContent("This removes all 2 probes this binding declares.");
-		expect(dialog()).toHaveTextContent("No other live binding declares a probe, so a release then closes unverified.");
+		expect(dialog()).toHaveTextContent("This removes all 2 probes this deploy target declares.");
+		expect(dialog()).toHaveTextContent("No other live deploy target declares a probe, so a release then closes unverified.");
 		expect(sent()).toEqual([]);
 	});
 
@@ -275,7 +275,7 @@ describe("removing every probe asks once, and says what goes", () => {
 		listed = [declaring(TWO), other];
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
-		expect(dialog()).toHaveTextContent("A release then reads only the probes the project's other live bindings declare.");
+		expect(dialog()).toHaveTextContent("A release then reads only the probes the project's other live deploy targets declare.");
 	});
 
 	it("says a release is refused where another live binding declares a probe it cannot read", () => {
@@ -283,7 +283,7 @@ describe("removing every probe asks once, and says what goes", () => {
 		listed = [declaring(TWO), declaring({ probes: [PROBE] }, { id: "b2222222-2222-4222-8222-222222222222" }), other];
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
-		expect(dialog()).toHaveTextContent("Another live binding declares a probe a release cannot read, so a release is refused until that probe is corrected.");
+		expect(dialog()).toHaveTextContent("Another live deploy target declares a probe a release cannot read, so a release is refused until that probe is corrected.");
 		expect(dialog()).not.toHaveTextContent("closes unverified");
 	});
 
@@ -311,7 +311,7 @@ describe("removing every probe asks once, and says what goes", () => {
 		expect(dialog()).toHaveTextContent("Remove the probe?");
 		expect(dialog()).toHaveTextContent("goes with it, as it applies");
 		// ISS-1421 r27: "the 1 probe" read as a count where the question is about the only one.
-		expect(dialog()).toHaveTextContent("This removes the one probe this binding declares.");
+		expect(dialog()).toHaveTextContent("This removes the one probe this deploy target declares.");
 		expect(within(dialog()).queryByRole("button", { name: "Keep them" })).toBeNull();
 		expect(within(dialog()).queryByRole("button", { name: "Remove all probes" })).toBeNull();
 		fireEvent.click(within(dialog()).getByRole("button", { name: "Remove the probe" }));

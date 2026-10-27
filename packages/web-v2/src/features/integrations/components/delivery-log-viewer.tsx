@@ -149,7 +149,7 @@ export function DeliveryLogViewer({
   if (gone) {
     return (
       <p className="fg-body-sm text-muted">
-        {`This ${providerLabel(provider)} binding is no longer on this project, so it has no delivery log to show.`}
+        {`This ${providerLabel(provider)} connection is no longer on this project, so it has no delivery log to show.`}
       </p>
     );
   }

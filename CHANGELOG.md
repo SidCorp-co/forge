@@ -3199,6 +3199,8 @@
 
 ### Fixed
 
+- **Two rows of one integration never read alike.** Each names its label, store or host, then the day it was connected; an Epodsystem row's drawer is about that storefront alone, and Add storefront sits on the Integrations tab. (ISS-1421)
+- **The Integrations pages no longer say "binding".** They speak of connections and deploy targets, as the tab does. (ISS-1421)
 - **A failed read is never shown as an empty list, and every page has one heading its tab repeats**, whatever its reads answered. Someone whose project role was removed is told who can add them back. (ISS-1229)
 - **A pull request no longer gets a "contract could not be read" check when the database drops its connection mid-check.** The attempt shows as failed in the integration's delivery log instead. (ISS-1315)
 - **A message whose answer was lost after it was sent shows once, as sent.** It no longer also sits below, marked Couldn't send, until Try again is pressed. (ISS-1236)

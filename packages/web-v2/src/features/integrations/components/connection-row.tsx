@@ -82,7 +82,8 @@ export function connectionRowLabel(
 
 function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
   const remove = useRemoveConnection();
-  const count = connection.usage.bindings.length;
+  // Projects, not uses: one project can use a connection twice, at Preview and at Live.
+  const count = new Set(connection.usage.bindings.map((b) => b.projectId)).size;
   // A removed connection holds no key; a second delete clears it from the list (ISS-1421 r21).
   const removed = isRemovedConnection(connection);
   // The question is armed for the state it was asked about: a Delete accepted under it turned the
@@ -112,7 +113,7 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
       <span className="fg-body-sm min-w-0 text-muted">
         {removed
           ? count > 0
-            ? `Delete it for good, with its ${count} project binding${count > 1 ? "s" : ""}?`
+            ? `Delete it for good, and take it off ${count} project${count > 1 ? "s" : ""}?`
             : "Delete it for good?"
           : count > 0
             ? `Disconnects ${count} project${count > 1 ? "s" : ""}.`

@@ -23,7 +23,7 @@ export const NO_RELEASE_RUNNER_LABEL =
   "none — a release goes to any box in this project's pool";
 
 export const NO_CONNECTION_RUNNER_LABEL =
-  "none — each project bound to this credential uses its own binding, or its own pool";
+  "none — each project using this connection uses its own setting, or its own pool";
 
 const WHERE_THE_CONNECTION_IS_EDITED = "Integrations in the workspace rail";
 
@@ -81,7 +81,7 @@ function Editor({
         ) : inherited ? (
           <>
             <span className="font-mono">{inherited}</span> — inherited from the shared
-            connection behind this binding, which is where it is declared. Clearing it here
+            connection this project uses, which is where it is declared. Clearing it here
             removes nothing: change that one under {WHERE_THE_CONNECTION_IS_EDITED}.
           </>
         ) : (
@@ -209,7 +209,7 @@ export function ConnectionReleaseRunnerField({
       canEdit={canManage}
       // It named an org admin on a person's connection, which the server refuses (judge-119 on 332).
       disabledReason={`${onlyWho(whoChanges)} can change this.`}
-      hint="The release runner every project bound to this credential prefers. A project's own live deploy binding overrides it."
+      hint="The release runner every project using this connection prefers. A project's own live deploy target overrides it."
       none={NO_CONNECTION_RUNNER_LABEL}
       busy={update.isPending}
       failure={failure}

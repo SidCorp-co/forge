@@ -52,12 +52,14 @@ function ProviderSection({
   projectId,
   stage,
   bindingId,
+  adding,
   after,
 }: {
   provider: string;
   projectId: string;
   stage: DeployStage | null;
   bindingId: string | undefined;
+  adding: boolean;
   after?: ReactNode;
 }) {
   const Section = SECTIONS.get(provider);
@@ -73,7 +75,12 @@ function ProviderSection({
   }
   return (
     <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-      <Section projectId={projectId} {...(stage ? { stage } : {})} {...(bindingId ? { bindingId } : {})} />
+      <Section
+        projectId={projectId}
+        {...(stage ? { stage } : {})}
+        {...(bindingId ? { bindingId } : {})}
+        {...(adding ? { adding } : {})}
+      />
       {after}
     </Suspense>
   );
@@ -210,7 +217,7 @@ function GoneBinding({ provider, projectId, what }: { provider: string; projectI
   }, [qc, projectId]);
   return (
     <p className="fg-body-sm border-b border-line pb-2 text-muted">
-      {`This ${providerLabel(provider)} binding is no longer on this project, so ${what}`}
+      {`This ${providerLabel(provider)} connection is no longer on this project, so ${what}`}
     </p>
   );
 }
@@ -261,6 +268,7 @@ function ConfigPane({
   projectId,
   stageFromCardKey,
   bindingId,
+  adding,
   focus,
   onProbeDirty,
 }: {
@@ -268,10 +276,13 @@ function ConfigPane({
   projectId: string;
   stageFromCardKey: DeployStage | null;
   bindingId: string | undefined;
+  adding: boolean;
   focus: string | null;
   onProbeDirty: (dirty: boolean) => void;
 }) {
-  const binding = useBindingForCard(projectId, provider, stageFromCardKey, bindingId);
+  // Adding another is about none of the provider's bindings, so no control below reads one.
+  const found = useBindingForCard(projectId, provider, stageFromCardKey, bindingId);
+  const binding = adding ? undefined : found;
   const list = useIntegrationsList(projectId);
   const may = list.data?.may ?? null;
   // A provider this project has not connected is offered to a reader who may connect one, and
@@ -294,6 +305,7 @@ function ConfigPane({
         projectId={projectId}
         stage={stageFromCardKey}
         bindingId={bindingId}
+        adding={adding}
         after={
           // ISS-1339 r2 — what a release reads to learn the commit production serves, on every live
           // deploy binding whatever its provider; it renders itself away elsewhere.
@@ -343,10 +355,13 @@ export function ConnectionDetailDrawer({
   statusReadFailedAt = 0,
   onRetryStatus,
   focus = null,
+  adding = false,
 }: {
   projectId: string;
   card: StatusCard | null;
   onClose: () => void;
+  /** Opened by the tab's button that adds another of the provider, on none of its rows. */
+  adding?: boolean;
   /** The section a link opened the drawer for, scrolled to and focused once it is drawn. */
   focus?: string | null;
   /** Why the Integrations tab's last status read failed, said here so the open drawer stays open. */
@@ -396,7 +411,7 @@ export function ConnectionDetailDrawer({
   const title = (
     <span className="flex items-center gap-2.5">
       <span>{providerLabel(provider)}</span>
-      {goneRow ? null : <StatusPill card={card} />}
+      {goneRow || adding ? null : <StatusPill card={card} />}
     </span>
   );
 
@@ -425,7 +440,7 @@ export function ConnectionDetailDrawer({
         {card.configured && (card.status === "attention" || card.status === "error") && card.detail ? (
           <p className="fg-body-sm text-muted">{card.detail}</p>
         ) : null}
-        {caps.hasDeliveryLog ? (
+        {caps.hasDeliveryLog && !adding ? (
           <>
             <Tabs
               tabs={[
@@ -442,6 +457,7 @@ export function ConnectionDetailDrawer({
                 projectId={projectId}
                 stageFromCardKey={stageFromCardKey}
                 bindingId={bindingId}
+                adding={false}
                 focus={focus}
                 onProbeDirty={setProbeDirty}
               />
@@ -461,6 +477,7 @@ export function ConnectionDetailDrawer({
             projectId={projectId}
             stageFromCardKey={stageFromCardKey}
             bindingId={bindingId}
+            adding={adding}
             focus={focus}
             onProbeDirty={setProbeDirty}
           />

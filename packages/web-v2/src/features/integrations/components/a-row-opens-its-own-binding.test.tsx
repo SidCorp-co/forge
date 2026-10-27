@@ -243,13 +243,37 @@ describe("Epodsystem's storefronts after one was removed and connected again", (
     expect(screen.queryByText("default")).toBeNull();
   });
 
-  it("opened naming no row, it lists both by name and puts the chip on the one switched on, not the oldest", async () => {
+  // judge-141: a row's drawer repeated "Connect one or more Epodsystem storefronts" and offered Add
+  // storefront, about every storefront but the one it was opened on.
+  it.each([REMOVED, IN_USE])("a row's drawer is about its own storefront: no introduction, no Add storefront", async (id) => {
     provider = "epodsystem";
-    await open(null);
-    await waitFor(() => expect(screen.getAllByText("New in-use store").length).toBeGreaterThanOrEqual(1));
-    expect(screen.getAllByText("Old removed store").length).toBeGreaterThanOrEqual(1);
-    const chip = screen.getByText("default");
-    expect(chip.parentElement).toHaveTextContent("New in-use store");
+    await open(id);
+    await waitFor(() => expect(screen.getAllByText(/store$/).length).toBeGreaterThanOrEqual(1));
+    expect(screen.queryByText(/Connect one or more/)).toBeNull();
+    expect(screen.queryByText(/can add a storefront/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add storefront" })).toBeNull();
+  });
+
+  it("opened by the tab's Add storefront, it holds the add form and lists no storefront", async () => {
+    provider = "epodsystem";
+    render(
+      <QueryClientProvider client={queries}>
+        <LeaveGuardProvider>
+          <ConnectionDetailDrawer
+            projectId={PROJECT}
+            card={{ ...card(IN_USE), key: "epodsystem", meta: {} } as never}
+            adding
+            onClose={() => {}}
+          />
+        </LeaveGuardProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByPlaceholderText(/crmk_/)).toBeEnabled();
+    expect(screen.queryByText("New in-use store")).toBeNull();
+    expect(screen.queryByText("Old removed store")).toBeNull();
+    expect(screen.queryByRole("switch", { name: /Enabled for this project/ })).toBeNull();
+    // The header claims no state: adding is about none of the provider's storefronts.
+    expect(screen.queryByText("Last check failed")).toBeNull();
   });
 });
 
@@ -260,7 +284,7 @@ describe("a row naming a binding the list no longer holds", () => {
   it.each(PROVIDERS)("%s: its drawer says so and offers no other binding's controls", async (name) => {
     provider = name;
     await open(GONE);
-    await waitFor(() => expect(screen.getByText(/binding is no longer on this project, so/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/connection is no longer on this project, so/)).toBeInTheDocument());
     expect(screen.queryByRole("switch", { name: /Enabled for this project/ })).toBeNull();
     expect(screen.queryByRole("button", { name: DISCONNECT_FROM_PROJECT })).toBeNull();
     expect(screen.queryByDisplayValue(/new-in-use/)).toBeNull();
@@ -273,7 +297,7 @@ describe("a row naming a binding the list no longer holds", () => {
     queries.setQueryData(STATUS_KEY, { cards: [] });
     expect(queries.getQueryState(STATUS_KEY)?.isInvalidated).toBe(false);
     await open(GONE);
-    await waitFor(() => expect(screen.getByText(/binding is no longer on this project, so/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/connection is no longer on this project, so/)).toBeInTheDocument());
     await waitFor(() => expect(queries.getQueryState(STATUS_KEY)?.isInvalidated).toBe(true));
     expect(document.body.textContent).not.toMatch(/open its row again/);
   });
@@ -288,7 +312,7 @@ describe("a row naming a binding the list no longer holds", () => {
         </LeaveGuardProvider>
       </QueryClientProvider>,
     );
-    await waitFor(() => expect(screen.getByText(/binding is no longer on this project, so/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/connection is no longer on this project, so/)).toBeInTheDocument());
     expect(screen.queryByText("Not connected")).toBeNull();
   });
 });
@@ -301,7 +325,7 @@ describe("a row opened on a list read before its binding was cleared", () => {
     const cleared = { ...bindings()[0], id: GONE };
     queries.setQueryData(["integrations", "list", PROJECT], { items: [...bindings(), cleared], bindings: [...bindings(), cleared], may: ALL_MAY });
     await open(GONE);
-    await waitFor(() => expect(screen.getByText(/binding is no longer on this project, so/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/connection is no longer on this project, so/)).toBeInTheDocument());
     expect(screen.queryByRole("switch", { name: /Enabled for this project/ })).toBeNull();
   });
 });
@@ -320,7 +344,7 @@ describe("the delivery log of a row", () => {
     await open(GONE, true);
     fireEvent.click(screen.getByRole("tab", { name: "Delivery log" }));
     // Given another binding, it would read that one's log; given none, it says why there is none.
-    await waitFor(() => expect(screen.getAllByText(/binding is no longer on this project, so/).length).toBeGreaterThanOrEqual(1));
+    await waitFor(() => expect(screen.getAllByText(/connection is no longer on this project, so/).length).toBeGreaterThanOrEqual(1));
     expect(screen.queryByText(/Save this integration/)).toBeNull();
     expect(read.some((p) => p.endsWith("/deliveries"))).toBe(false);
   });
@@ -336,7 +360,7 @@ describe("the delivery log of a row", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Delivery log" }));
     if (name === "coolify") fireEvent.click(screen.getAllByRole("button", { name: /^Live/ }).at(-1) as HTMLElement);
     await waitFor(() =>
-      expect(screen.getByText(/binding is no longer on this project, so it has no delivery log to show\./)).toBeInTheDocument(),
+      expect(screen.getByText(/connection is no longer on this project, so it has no delivery log to show\./)).toBeInTheDocument(),
     );
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(screen.queryByText("Integration not found.")).toBeNull();

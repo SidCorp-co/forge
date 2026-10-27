@@ -185,8 +185,12 @@ export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecre
     label: PROVIDER_LABELS.postman,
     alwaysStageKeyed: false,
     cardMeta: (config) => {
-      const cfg = config as { region?: string; mode?: string };
-      return { region: cfg.region ?? 'us', mode: cfg.mode ?? 'minimal' };
+      const cfg = config as { region?: string; mode?: string; workspaceName?: string };
+      return {
+        region: cfg.region ?? 'us',
+        mode: cfg.mode ?? 'minimal',
+        workspaceName: cfg.workspaceName ?? null,
+      };
     },
   },
   adapter: postmanAdapterMethods,

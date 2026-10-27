@@ -6,13 +6,19 @@
 // configuring a project never bounces through the workspace hub. The workspace
 // `/integrations` page is now the owner connection directory.
 
-import { type KeyboardEvent, useEffect, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { Banner, Button, ErrorState, Icon, type IconName, SectionTitle, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { useIntegrationsStatus } from "../hooks";
-import { cardBindingId, cardProvider, groupCardsByProvider, isProviderCard } from "../derive";
-import { providerIcon as registryIcon } from "../providers/registry";
+import { toldApart } from "../connection-identity";
+import { useIntegrationsList, useIntegrationsStatus } from "../hooks";
+import { cardBindingId, cardProvider, getCapabilities, groupCardsByProvider, isProviderCard } from "../derive";
+import {
+  connectionTargetFor,
+  providerLabel,
+  providerModule,
+  providerIcon as registryIcon,
+} from "../providers/registry";
 import type { DeployStage, StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
 import { McpServersPanel } from "./mcp-servers-panel";
@@ -125,48 +131,86 @@ function scopeOf(card: StatusCard): string {
   return card.key.split(":")[1] ?? "";
 }
 
-/** What tells one binding's row from another's beside it: its label, else the store its card names, so
- *  a removed storefront and the one connected again read apart (ISS-1421 r34, judge-138). */
-function boundName(card: StatusCard): string | null {
-  for (const key of ["label", "storeName"] as const) {
-    const value = card.meta?.[key];
-    if (typeof value === "string" && value) return value;
-  }
-  return null;
+const metaText = (card: StatusCard, key: string): string | null => {
+  const value = card.meta?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+};
+
+/** What a row is called beside its stage: its label, else the store its card names, else the host
+ *  it points at (ISS-1421 r34, judge-138; r35, judge-141). */
+function boundName(provider: string, card: StatusCard): string | null {
+  return metaText(card, "label") ?? metaText(card, "storeName") ?? connectionTargetFor(provider, card.meta ?? {});
 }
 
 /**
- * A provider with more than one binding (e.g. Coolify): its name as the row's heading, then one
- * indented row per binding with its own state and Manage. No combined health is made up.
+ * The heading of each of a provider's rows, by card key: its stage and the name that tells it from
+ * the others, and where two still read alike, the day and time each was connected (`connectedAt`,
+ * by binding id), then a number, by the rule the share picker names connections by (ISS-1421 r35,
+ * judge-141: two unlabelled Coolify rows read "Preview / Turned off" twice).
+ */
+export function rowHeadings(
+  provider: string,
+  cards: StatusCard[],
+  connectedAt: ReadonlyMap<string, string>,
+): Map<string, string> {
+  const base = new Map<string, string>();
+  for (const card of cards) {
+    const name = boundName(provider, card);
+    base.set(card.key, name ? `${scopeOf(card)} · ${name}` : scopeOf(card));
+  }
+  const rows = cards.map((card) => ({
+    id: card.key,
+    createdAt: connectedAt.get(cardBindingId(card) ?? "") ?? "",
+  }));
+  return toldApart(rows, base, "connected");
+}
+
+/**
+ * A provider with more than one binding (e.g. Coolify), or one a project holds several of side by
+ * side (Epodsystem's storefronts): its name as the heading, with the button that adds another where
+ * the reader may, then one indented row per binding with its own state and Manage. No combined
+ * health is made up.
  */
 function GroupedIntegrationRows({
   provider,
   cards,
   onOpen,
+  add,
+  connectedAt,
 }: {
   provider: string;
   cards: StatusCard[];
   onOpen?: (card: StatusCard) => void;
+  add?: { label: string; onAdd: () => void };
+  connectedAt: ReadonlyMap<string, string>;
 }) {
+  const headings = rowHeadings(provider, cards, connectedAt);
+  const providerName = baseProviderLabel(cards[0]);
   return (
     <li className="py-3.5">
-      <span className="inline-flex items-center gap-4">
-        <Icon name={cardIcon(provider)} size={18} className="text-muted" />
-        <span className="fg-body font-semibold text-fg">{baseProviderLabel(cards[0])}</span>
-      </span>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-4">
+          <Icon name={cardIcon(provider)} size={18} className="text-muted" />
+          <span className="fg-body font-semibold text-fg">{providerName}</span>
+        </span>
+        {add ? (
+          <Button variant="ghost" size="sm" icon="plus" onClick={add.onAdd}>
+            {add.label}
+          </Button>
+        ) : null}
+      </div>
       <ul className="mt-1 divide-y divide-line pl-[34px]">
         {cards.map((card) => {
           const open = onOpen ? () => onOpen(card) : undefined;
+          const heading = headings.get(card.key) ?? scopeOf(card);
           return (
             <li
               key={card.key}
               className={`flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 ${open ? "cursor-pointer hover:bg-hover" : ""}`}
-              {...openable(card.label, open)}
+              {...openable(`${providerName} ${heading}`, open)}
             >
               <div className="min-w-0 flex-1 basis-[200px]">
-                <p className="fg-body-sm font-semibold text-fg">
-                  {boundName(card) ? `${scopeOf(card)} · ${boundName(card)}` : scopeOf(card)}
-                </p>
+                <p className="fg-body-sm font-semibold text-fg">{heading}</p>
                 <p className="fg-body-sm text-muted">{card.detail}</p>
               </div>
               <div className="flex items-center gap-4">
@@ -231,6 +275,19 @@ export function cardForLink(cards: StatusCard[], provider: string, stage?: Deplo
   return { ...card, key: `${provider}:${stage}`, meta: serving ? card.meta : meta };
 }
 
+/** The card the add drawer opens on: the provider alone, with its capabilities and no binding. */
+function addingCard(provider: string, cards: StatusCard[]): StatusCard {
+  return {
+    key: provider,
+    label: providerLabel(provider),
+    status: "not_configured",
+    detail: "",
+    lastSyncAt: null,
+    configured: false,
+    meta: { capabilities: getCapabilities(cards[0]) },
+  };
+}
+
 export function ProjectIntegrationsPanel({
   projectId,
   openProvider = null,
@@ -246,7 +303,18 @@ export function ProjectIntegrationsPanel({
   onDrawerClose?: () => void;
 }) {
   const status = useIntegrationsStatus(projectId);
+  // When each binding was connected, which tells two rows apart where nothing else does, and whether
+  // this reader may connect another: both off the project's integration list.
+  const list = useIntegrationsList(projectId);
+  const may = list.data?.may ?? null;
+  const connectedAt = useMemo(
+    () => new Map((list.data?.items ?? []).map((item) => [item.id, item.createdAt] as const)),
+    [list.data],
+  );
   const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
+  // The provider a reader is adding one more of, from the button beside its rows: a row's drawer is
+  // about that row alone, so adding lives on the tab (ISS-1421 r35, judge-141).
+  const [adding, setAdding] = useState<StatusCard | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const cards = status.data?.cards ?? [];
   // A failed refresh keeps what the last read showed: the open drawer and both writes stay in view,
@@ -286,6 +354,18 @@ export function ProjectIntegrationsPanel({
               {`The status could not be refreshed, so it shows the last read. ${readError}`}
             </Banner>
           ) : null}
+          {list.isError && !list.data ? (
+            <Banner
+              tone="attention"
+              action={
+                <Button variant="ghost" size="sm" onClick={() => list.refetch()}>
+                  Retry
+                </Button>
+              }
+            >
+              {`This project's integration list could not be read, so the rows cannot say when each was connected, and nothing can be added here. ${formatApiError(list.error)}`}
+            </Banner>
+          ) : null}
           <div className="flex items-center justify-between gap-2">
             <SectionTitle className="fg-h3">Status</SectionTitle>
             <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
@@ -293,13 +373,21 @@ export function ProjectIntegrationsPanel({
             </Button>
           </div>
           <ul className="divide-y divide-line border-y border-line" data-testid="integration-rows">
-            {groupCardsByProvider(cards).map((group) =>
-              group.cards.length > 1 ? (
+            {groupCardsByProvider(cards).map((group) => {
+              const addLabel = providerModule(group.provider)?.addAnother;
+              const holdsOne = Boolean(addLabel) && group.cards.some((c) => c.configured);
+              return group.cards.length > 1 || holdsOne ? (
                 <GroupedIntegrationRows
                   key={group.provider}
                   provider={group.provider}
                   cards={group.cards}
                   onOpen={isProviderCard(group.provider) ? (card) => setSelectedCard(card) : undefined}
+                  connectedAt={connectedAt}
+                  add={
+                    addLabel && holdsOne && may?.connect
+                      ? { label: addLabel, onAdd: () => setAdding(addingCard(group.provider, group.cards)) }
+                      : undefined
+                  }
                 />
               ) : (
                 <IntegrationRow
@@ -311,8 +399,8 @@ export function ProjectIntegrationsPanel({
                       : undefined
                   }
                 />
-              ),
-            )}
+              );
+            })}
           </ul>
 
           <McpServersPanel projectId={projectId} />
@@ -320,9 +408,11 @@ export function ProjectIntegrationsPanel({
       )}
       <ConnectionDetailDrawer
         projectId={projectId}
-        card={liveCard(selectedCard, cards)}
+        card={adding ?? liveCard(selectedCard, cards)}
+        adding={adding !== null}
         onClose={() => {
           setSelectedCard(null);
+          setAdding(null);
           setFocus(null);
           onDrawerClose?.();
         }}
