@@ -121,6 +121,10 @@ function titleOf(page: ReleasePage): string {
 
 function sectionsOf(page: ReleasePage, origin: string | undefined): Section[] {
 	const out: Section[] = [];
+	// what shipped failing leads, as on the page: the follow-up's evidence (REQ-45 BC-14)
+	const failing = page.header.shippedFailing;
+	if (failing)
+		out.push({ title: "Shipped failing", items: [{ text: failing.sentence }] });
 	const highlights = highlightItems(page.highlights, origin);
 	if (highlights.length > 0)
 		out.push({ title: "Highlights", items: highlights });

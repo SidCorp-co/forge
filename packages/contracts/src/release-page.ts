@@ -21,6 +21,7 @@ import {
 	RELEASE_VERIFIED_LEVELS,
 	type ReleaseChanges,
 	type ReleasePerson,
+	type ReleaseShippedFailing,
 	type ReleaseState,
 	type ReleaseVerified,
 } from "./releases.js";
@@ -512,6 +513,8 @@ export interface ReleasePageHeader {
 	build: string | null;
 	verified: ReleaseVerified;
 	approval: ReleasePageApproval;
+	/** What a recorded landing shipped failing, said loud to every reader (REQ-45 BC-14); null where nothing did. */
+	shippedFailing: ReleaseShippedFailing | null;
 }
 
 /**
@@ -804,6 +807,21 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 			by: PersonSchema.nullable(),
 			at: ISO.nullable(),
 		}),
+		// a share frozen before a landing said what it shipped failing reads as saying nothing
+		shippedFailing: z
+			.strictObject({
+				count: z.number().int().min(1),
+				criteria: z.array(
+					z.strictObject({
+						issueId: z.string().min(1),
+						issueKey: z.string().min(1),
+						criterion: z.number().int().min(1),
+					}),
+				),
+				sentence: z.string().min(1),
+			})
+			.nullable()
+			.default(null),
 	}),
 	highlights: ReleaseHighlightsSchema,
 	requirements: z.array(

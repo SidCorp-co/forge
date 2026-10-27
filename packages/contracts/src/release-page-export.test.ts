@@ -34,6 +34,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 				by: { id: "u1", name: "Ada", kind: "human" },
 				at: "2026-10-09T09:00:00.000Z",
 			},
+			shippedFailing: null,
 		},
 		highlights: {
 			state: "drafted",
@@ -320,5 +321,37 @@ describe("a release page as an email (BC-11)", () => {
 		expect(decode(bodies[0] ?? "")).toContain("Sửa lỗi ngày — ok");
 		for (const line of eml.split("\r\n"))
 			expect(line.length).toBeLessThanOrEqual(998);
+	});
+});
+
+// REQ-45 BC-14: a landing that shipped failing criteria says so first, to whoever reads the export
+describe("a release page that shipped failing criteria, exported", () => {
+	const failing = page({
+		header: {
+			...page().header,
+			shippedFailing: {
+				count: 1,
+				criteria: [{ issueId: "i5", issueKey: "ISS-5", criterion: 2 }],
+				sentence: "Shipped with 1 failing criterion: ISS-5 c2",
+			},
+		},
+	});
+
+	it("leads the Markdown with what shipped failing", () => {
+		const md = releasePageMarkdown(failing);
+		expect(md).toContain(
+			"## Shipped failing\n- Shipped with 1 failing criterion: ISS-5 c2",
+		);
+		expect(md.indexOf("## ")).toBe(md.indexOf("## Shipped failing"));
+	});
+
+	it("says it in both bodies of the email", () => {
+		const e = releasePageEmail(failing);
+		expect(e.text).toContain("Shipped with 1 failing criterion: ISS-5 c2");
+		expect(e.html).toContain("Shipped with 1 failing criterion: ISS-5 c2");
+	});
+
+	it("says nothing of it where nothing failed", () => {
+		expect(releasePageMarkdown(page())).not.toContain("Shipped failing");
 	});
 });

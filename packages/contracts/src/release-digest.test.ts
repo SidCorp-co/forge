@@ -28,6 +28,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 				judgedOn: null,
 			},
 			approval: { required: false, state: "not_asked", by: null, at: null },
+			shippedFailing: null,
 		},
 		highlights: { state: "none", why: "no build" },
 		requirements: [],
