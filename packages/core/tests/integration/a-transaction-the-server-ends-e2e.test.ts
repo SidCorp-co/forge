@@ -115,6 +115,21 @@ describe('a transaction whose connection the server ended', () => {
     });
   });
 
+  it('leaves a second reservation holding a reconnected connection when the first, ended, is released', async () => {
+    expect(await outcome(harness.url, 'reservedReleasedAfterReuse')).toEqual({
+      kind: 'reservedReleasedAfterReuse',
+      second: 'ran',
+      order: ['second released', 'pool'],
+    });
+  });
+
+  it('hands a reservation waiting for the pool’s only connection the one reconnected after the server ends it', async () => {
+    expect(await outcome(harness.url, 'reservedWaiting')).toEqual({
+      kind: 'reservedWaiting',
+      second: 'ran',
+    });
+  });
+
   it('runs the first statement on a reconnected session rather than rejecting it with the ended session’s FATAL', async () => {
     expect(await outcome(harness.url, 'staleError')).toEqual({
       kind: 'staleError',

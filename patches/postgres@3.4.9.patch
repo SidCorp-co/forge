@@ -9,8 +9,10 @@ With this patch it is refused with the CONNECTION_CLOSED error the transaction w
 a statement reaching a socketless connection is refused the same way, and the ended session's
 FATAL is no longer replayed onto the next session's first statement. A reserved connection
 (sql.reserve()) the server ends is treated the same way: its statements are refused with the close
-error rather than run on the session the pool reconnects, and release() no longer hands the dead
-connection to the pool's open queue, where every later statement routed to it was refused.
+error rather than run on the session the pool reconnects, and release() leaves the connection to
+the pool, which may already have handed it to another reservation, rather than putting it in the
+open queue. A reservation waiting when the server ends the pool's connection is handed the
+reconnected one; in 3.4.9 it waited for ever.
 
 Pinned by packages/core/tests/integration/a-transaction-the-server-ends-e2e.test.ts.
 Retired by a postgres release that fixes porsager/postgres#1248 (begin), #1208 (a statement on a
@@ -46,7 +48,7 @@ index 1b1cccde43b4570d5d071d6ffaab2669b3c2065a..ba2a606c67851bf700daf78b8defcb9b
      socket.removeListener('connect', connected)
      idleTimer.cancel()
 diff --git a/src/index.js b/src/index.js
-index c7fba3dace20173f4cb13f3f138bb6d213b43683..6ec6c9d32d322310ad2bea95c48e92316a361b16 100644
+index c7fba3dace20173f4cb13f3f138bb6d213b43683..5272baf39f7a10c0ea442c5385b9c9775d9f323f 100644
 --- a/src/index.js
 +++ b/src/index.js
 @@ -210,21 +210,37 @@ function Postgres(a, b) {
@@ -70,11 +72,11 @@ index c7fba3dace20173f4cb13f3f138bb6d213b43683..6ec6c9d32d322310ad2bea95c48e9231
  
      const sql = Sql(handler)
      sql.release = () => {
-       c.reserved = null
-+      // forge-core patch: a connection the pool already took back is not handed to onopen, which
-+      // would put a socketless one in open for every later statement to be refused on
++      // forge-core patch: a connection the pool already took back is left alone: it may be another
++      // reservation's by now, and onopen would put it in open under that one
 +      if (lost)
 +        return
+       c.reserved = null
 +      c.onclose = null
        onopen(c)
      }
@@ -119,6 +121,27 @@ index c7fba3dace20173f4cb13f3f138bb6d213b43683..6ec6c9d32d322310ad2bea95c48e9231
          q.catch(e => uncaughtError || (uncaughtError = e))
          c.queue === full
            ? queries.push(q)
+@@ -423,7 +450,19 @@ function Postgres(a, b) {
+     c.reserved = null
+     c.onclose && (c.onclose(e), c.onclose = null)
+     options.onclose && options.onclose(c.id)
+-    queries.length && connect(c, queries.shift())
++    if (!queries.length)
++      return
++    const query = queries.shift()
++    if (!query.reserve)
++      return connect(c, query)
++    // forge-core patch: a reservation waiting for a connection goes back to the head of the queue,
++    // so onopen hands it the reconnected one (shifted out, it was never handed one), and leaves the
++    // queue if the reconnect fails
++    const waiting = [query]
++    while (queries.length)
++      waiting.push(queries.shift())
++    waiting.forEach(queries.push)
++    connect(c, { reserve: query.reserve, reject: e => (queries.remove(query), query.reject(e)) })
+   }
+ }
+ 
 diff --git a/cjs/src/connection.js b/cjs/src/connection.js
 index 07f6716702ac888215c86ad6e0071aaf55ae519c..fc6301af3796939c3b63a41cd1b15110029d4d2f 100644
 --- a/cjs/src/connection.js
@@ -148,7 +171,7 @@ index 07f6716702ac888215c86ad6e0071aaf55ae519c..fc6301af3796939c3b63a41cd1b15110
      socket.removeListener('connect', connected)
      idleTimer.cancel()
 diff --git a/cjs/src/index.js b/cjs/src/index.js
-index f09c61c7e998f411560b95c9a8e1ed6a97972c11..e1094581f61b9a52f34abc2e1b5ed04c9ee14d32 100644
+index f09c61c7e998f411560b95c9a8e1ed6a97972c11..17e2cb9927fe232891a120be652fcf9960b03474 100644
 --- a/cjs/src/index.js
 +++ b/cjs/src/index.js
 @@ -210,21 +210,37 @@ function Postgres(a, b) {
@@ -172,11 +195,11 @@ index f09c61c7e998f411560b95c9a8e1ed6a97972c11..e1094581f61b9a52f34abc2e1b5ed04c
  
      const sql = Sql(handler)
      sql.release = () => {
-       c.reserved = null
-+      // forge-core patch: a connection the pool already took back is not handed to onopen, which
-+      // would put a socketless one in open for every later statement to be refused on
++      // forge-core patch: a connection the pool already took back is left alone: it may be another
++      // reservation's by now, and onopen would put it in open under that one
 +      if (lost)
 +        return
+       c.reserved = null
 +      c.onclose = null
        onopen(c)
      }
@@ -221,3 +244,24 @@ index f09c61c7e998f411560b95c9a8e1ed6a97972c11..e1094581f61b9a52f34abc2e1b5ed04c
          q.catch(e => uncaughtError || (uncaughtError = e))
          c.queue === full
            ? queries.push(q)
+@@ -423,7 +450,19 @@ function Postgres(a, b) {
+     c.reserved = null
+     c.onclose && (c.onclose(e), c.onclose = null)
+     options.onclose && options.onclose(c.id)
+-    queries.length && connect(c, queries.shift())
++    if (!queries.length)
++      return
++    const query = queries.shift()
++    if (!query.reserve)
++      return connect(c, query)
++    // forge-core patch: a reservation waiting for a connection goes back to the head of the queue,
++    // so onopen hands it the reconnected one (shifted out, it was never handed one), and leaves the
++    // queue if the reconnect fails
++    const waiting = [query]
++    while (queries.length)
++      waiting.push(queries.shift())
++    waiting.forEach(queries.push)
++    connect(c, { reserve: query.reserve, reject: e => (queries.remove(query), query.reject(e)) })
+   }
+ }
+ 
