@@ -51,14 +51,18 @@ export async function issueInvitationToken(
       const token = generateToken();
       const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
       try {
-        await tx.insert(projectInvitations).values({
-          token,
-          projectId: input.projectId,
-          email: input.email,
-          role: input.role,
-          inviterId: input.inviterId,
-          expiresAt,
-        });
+        // A savepoint per draw: a unique violation aborts the transaction it is raised in, and
+        // only rolling back to one leaves the next insert a transaction to run in.
+        await tx.transaction((sp) =>
+          sp.insert(projectInvitations).values({
+            token,
+            projectId: input.projectId,
+            email: input.email,
+            role: input.role,
+            inviterId: input.inviterId,
+            expiresAt,
+          }),
+        );
         return { token, expiresAt };
       } catch (err) {
         if (!isUniqueViolation(err)) throw err;

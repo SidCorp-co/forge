@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
+import { rethrowInTransaction } from '../db/in-transaction.js';
 import { activityLog, type IssueStatus, issueStatuses, issues } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { BASE_MERGE_STATE } from './merged-at.js';
@@ -104,6 +105,7 @@ export async function computeProjectProgress(
       computedAt: new Date(),
     };
   } catch (err) {
+    rethrowInTransaction(err, dbi);
     logger.error({ err, projectId }, 'issues/progress: computeProjectProgress query failed');
     return null;
   }

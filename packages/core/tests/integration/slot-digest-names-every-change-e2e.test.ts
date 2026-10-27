@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { setupTestDatabase, type TestDatabase } from '../helpers/db.js';
-import { readSchemaOn, schemaChangesOn } from '../helpers/slot-db.js';
+import { readSchemaOn, schemaChangesOn } from '../helpers/slot-digest.js';
 
 // A slot database goes from file to file, and what keeps one file's schema from the next is the
 // read its teardown compares (`tests/helpers/slot-db.ts:schemaChangesOn`): a hash over every catalog
@@ -211,6 +211,20 @@ describe('the slot digest names every kind of schema change a file can leave beh
     } finally {
       await whole.cleanup();
     }
+  });
+
+  // A column altered to the type it has rebuilds every index and constraint on it, and every foreign
+  // key that references it, under new oids; `pg_dump -s` prints the same schema (ISS-1315 r6).
+  it('names nothing for a column altered to the type it already has', async () => {
+    expect(await driftAfter(['ALTER TABLE projects ALTER COLUMN id TYPE uuid USING id'])).toEqual(
+      [],
+    );
+  });
+
+  it('still names a column altered to another type', async () => {
+    expect(
+      await driftAfter(['ALTER TABLE admin_thresholds ALTER COLUMN stuck_job_seconds TYPE bigint']),
+    ).toContain('changed columns of table admin_thresholds');
   });
 
   it('names only the index CLUSTER marks, and none of the columns its rewrite touched', async () => {

@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { type Db, db } from '../../db/client.js';
+import { rethrowInTransaction } from '../../db/in-transaction.js';
 import { type IssueStatus, issues } from '../../db/schema.js';
 import { readEntryCriteriaStrict } from '../../issues/entry-criteria.js';
 import type { EntryCriterionKey } from '../../issues/entry-criteria-keys.js';
@@ -64,6 +65,7 @@ export async function contractAnswerForIssue(
     }
     return { kind: 'judged', status: standing.status, ...reading, computedAt };
   } catch (err) {
+    rethrowInTransaction(err, executor);
     return {
       kind: 'unreadable',
       status,

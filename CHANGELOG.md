@@ -3200,6 +3200,7 @@
 ### Fixed
 
 - **A failed read is never shown as an empty list, and every page has one heading its tab repeats**, whatever its reads answered. Someone whose project role was removed is told who can add them back. (ISS-1229)
+- **A pull request no longer gets a "contract could not be read" check when the database drops its connection mid-check.** The attempt shows as failed in the integration's delivery log instead. (ISS-1315)
 - **A message whose answer was lost after it was sent shows once, as sent.** It no longer also sits below, marked Couldn't send, until Try again is pressed. (ISS-1236)
 - **Repository path says what it is for**: the path offered when a box is bound, never where runs work. Agent tools and a box's own binding now refuse a relative path too. (ISS-1236)
 - **Forge no longer goes down when the database ends a transaction under it.** A database restart, a dropped connection or a long wait used to stop the server or save half a change; now the action fails whole. (ISS-1315)
