@@ -4,7 +4,9 @@
 // "anyone" and "any", as if the project held nobody and no label. The failed read is said, with Retry.
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/providers/toast-provider";
 
@@ -163,5 +165,60 @@ describe("an opened filter menu whose choices could not be read (criterion 504)"
     mount();
     fireEvent.click(screen.getAllByRole("combobox", { name: "Label filter" })[0] as HTMLElement);
     expect(screen.queryByRole("option", { name: /Couldn't load/ })).toBeNull();
+  });
+});
+
+/** Core's own answer to a rate-limited read, as its source writes it: the body judge-162 planted. */
+function coreRateLimited(seconds: number) {
+  const source = readFileSync(join(__dirname, "../../../../../core/src/middleware/rate-limit.ts"), "utf8");
+  const template = /export function rateLimitedMessage[\s\S]*?return `([^`]*)`/.exec(source)?.[1] ?? "";
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: core's template, as its source spells it
+  const said = template.replace("${waitWords(retryAfterSeconds)}", `${seconds} seconds`);
+  expect(said).toContain(`Try again in ${seconds} seconds.`);
+  return new ApiError(429, said, "RATE_LIMITED", { retryAfterSeconds: seconds }, undefined, seconds * 1000);
+}
+
+// ISS-1229 r52, judge-162 on 479: with core's own 429, the line read "Too many requests in a short time. Try again in
+// 30 seconds. You can retry in 15 seconds.", two waits that disagree, and still "Try again in 30 seconds." beside the
+// Retry once the wait was over. One place says how long, and it counts.
+describe("a filter's failed read the server asked to wait on", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Element.prototype.scrollIntoView = () => {};
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("says the wait once, counting, and never the server's fixed time, during the wait and after it", () => {
+    reads.membersFail = true;
+    reads.failure = coreRateLimited(30);
+    mount();
+    const failure = screen.getByTestId("filters-unread");
+    expect(failure).toHaveTextContent("Couldn't load the people the Creator filter offers. Too many requests in a short time.");
+    expect(failure).toHaveTextContent("You can retry in 30 seconds.");
+    act(() => vi.advanceTimersByTime(15_000));
+    expect(failure).toHaveTextContent("You can retry in 15 seconds.");
+    expect(failure.textContent?.match(/\d+ seconds?/g)).toEqual(["15 seconds"]);
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(failure).not.toHaveTextContent(/\d/);
+    expect(failure).not.toHaveTextContent(/Try again/);
+    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    expect(reads.readMembers).toHaveBeenCalledTimes(1);
+  });
+
+  it("points the opened menu at the wait while it runs, and at Retry once it is over", () => {
+    reads.labelsFail = true;
+    reads.failure = coreRateLimited(30);
+    mount();
+    const open = () => fireEvent.click(screen.getAllByRole("combobox", { name: "Label filter" })[0] as HTMLElement);
+    open();
+    const during = screen.getByRole("option", { name: /Couldn't load the labels to choose from/ });
+    expect(during).toHaveTextContent("Too many requests in a short time. Retry comes back beside the filters when the wait there ends.");
+    expect(during).not.toHaveTextContent("Retry is beside the filters.");
+    act(() => vi.advanceTimersByTime(31_000));
+    const after = screen.getByRole("option", { name: /Couldn't load the labels to choose from/ });
+    expect(after).toHaveTextContent("Too many requests in a short time. Retry is beside the filters.");
+    expect(after).not.toHaveTextContent(/\d|when the wait/);
   });
 });

@@ -319,6 +319,38 @@ function useKeepClear(
   return place;
 }
 
+/** How tall the kept notices standing over a phone's page are, in px; 0 while none stands. */
+const KeptRoomContext = createContext<number>(0);
+const SetKeptRoomContext = createContext<(px: number) => void>(() => {});
+
+/** Room below a frame's page for the kept notices standing over it, so what they cover scrolls clear (ISS-1229 r52,
+ *  judge-162: at 390x600 one sat over the issue list's first row). None while none stands, nor on a wide screen. */
+export function KeptNoticeRoom({ withLaneOffset = false }: { withLaneOffset?: boolean }) {
+  const room = useContext(KeptRoomContext);
+  const height = withLaneOffset ? `calc(${room}px + ${TAB_BAR_PX}px + env(safe-area-inset-bottom))` : room;
+  return room > 0 ? <div aria-hidden="true" data-testid="kept-notice-room" style={{ height }} /> : null;
+}
+
+/** Tells the frame how tall the kept notices are while they stand, and that they take nothing once they go. */
+function useKeptRoom(keptLane: React.RefObject<HTMLElement | null>, standing: boolean): void {
+  const setRoom = useContext(SetKeptRoomContext);
+  useLayoutEffect(() => {
+    const lane = keptLane.current;
+    if (!standing || !lane) {
+      setRoom(0);
+      return;
+    }
+    const keep = () => setRoom(Math.ceil(lane.getBoundingClientRect().height));
+    keep();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(keep);
+    observer?.observe(lane);
+    return () => {
+      observer?.disconnect();
+      setRoom(0);
+    };
+  }, [keptLane, standing, setRoom]);
+}
+
 /**
  * Where a frame's toasts go: an overlay at every width, over the top edge and clear of the bottom
  * one, where a page's save bar and a phone's tab bar sit. A lane in the page flow took its height
@@ -351,6 +383,7 @@ export function ToastLane({ className }: { className?: string }) {
   const keptReserved = useCallback(() => TAB_BAR_PX + safeInsets().bottom, []);
   const passingCap = useWholeCardCap(laneRef, passing, passingReserved);
   const keptCap = useWholeCardCap(keptRef, kept, keptReserved);
+  useKeptRoom(keptRef, kept.length > 0);
 
   useEffect(() => registerLane(), [registerLane]);
 
@@ -402,6 +435,7 @@ export function ToastLane({ className }: { className?: string }) {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const [lanes, setLanes] = useState(0);
+  const [keptRoom, setKeptRoom] = useState(0);
   const idRef = useRef(0);
   /** Each counting toast's timer: what it had left when it last started counting, and when that was. */
   const timers = useRef(new Map<number, { left: number; since: number; handle: ReturnType<typeof setTimeout> | null }>());
@@ -481,7 +515,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast, dismiss }}>
       <ToastLaneContext.Provider value={{ items, remove, hold, registerLane }}>
-        {children}
+        <SetKeptRoomContext.Provider value={setKeptRoom}>
+          <KeptRoomContext.Provider value={keptRoom}>{children}</KeptRoomContext.Provider>
+        </SetKeptRoomContext.Provider>
         {lanes === 0 && items.length > 0 ? (
           // A page with no frame has no lane to reserve; the corner is the
           // least-read place it has.

@@ -19,18 +19,26 @@ export function retryAt(err: unknown): number | null {
   return typeof at === "number" ? at : null;
 }
 
-/**
- * The wait at `now` as a sentence, each unit rounded up; null where none was named, the rule offers no Retry
- * (a 403 carrying Retry-After stays final), or the wait is over (ISS-1229 r51, judge-158 on criterion 479).
- */
+/** The wait at `now` as a sentence; null where none was named, no Retry is offered, or it is over (ISS-1229 r51). */
 export function retryWaitWords(err: unknown, now: number): string | null {
   const at = retryAt(err);
-  if (at === null) return null;
-  const seconds = Math.ceil((at - now) / 1000);
-  if (seconds <= 0) return null;
-  if (seconds < 90) return `You can retry in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`;
+  if (at === null || at - now <= 0) return null;
+  return `You can retry in ${durationWords(at - now)}.`;
+}
+
+/** A wait in its largest whole unit, each rounded up, so no time is named sooner than the server allows. */
+function durationWords(ms: number): string {
+  const seconds = Math.ceil(ms / 1000);
+  if (seconds < 90) return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
   const minutes = Math.ceil(seconds / 60);
-  return minutes < 90 ? `You can retry in ${minutes} minutes.` : `You can retry in ${Math.ceil(minutes / 60)} hours.`;
+  return minutes < 90 ? `${minutes} minutes` : `${Math.ceil(minutes / 60)} hours`;
+}
+
+/** The wait the server asked for, said once as it starts: what was asked stays true, what is left does not (r52). */
+export function askedWaitWords(err: unknown): string | null {
+  const asked = (err as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+  if (retryAt(err) === null || typeof asked !== "number" || asked <= 0) return null;
+  return `The server asked for ${durationWords(asked)} before Retry.`;
 }
 
 export interface FailedRead {

@@ -21,7 +21,7 @@ import { ProjectMark } from '@/design/primitives/project-mark';
 import { assetPath } from '@/lib/asset';
 import { cn } from '@/lib/utils/cn';
 import { offersRetryFor, RetryButton } from '@/design/primitives/retry-button';
-import { useRetryWait } from '@/design/hooks/use-retry-wait';
+import { useRetryWait, useWaitAnnouncement } from '@/design/hooks/use-retry-wait';
 import { withStop } from '@/lib/api/error';
 
 export interface RailItem {
@@ -522,11 +522,15 @@ export function NavRailCompact({
 }
 
 /** The narrow rail's tile for a failed projects read: Retry where the one rule offers it, and the wait the server
- *  named in its place, counting down until Retry comes back (ISS-1229 r51). Its name says each thing once. */
+ *  named in its place, counting down until Retry comes back (ISS-1229 r51). Its name says each thing once, and only a
+ *  live region says the wait, once as it starts and once as it ends, so nothing is announced each second (r52). */
 function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
   const retry = offersRetryFor(unread.error);
   const wait = useRetryWait(unread.error);
-  const named = ["Couldn't load your projects.", retry ? (wait ?? "Retry") : withStop(unread.message)].join(" ");
+  const announced = useWaitAnnouncement(unread.error);
+  const named = ["Couldn't load your projects.", retry ? (wait ? null : "Retry") : withStop(unread.message)]
+    .filter((part) => part !== null)
+    .join(" ");
   const face = (
     <>
       <span className="inline-flex size-[30px] items-center justify-center rounded-md border border-[color:var(--flame-500)]">
@@ -536,14 +540,29 @@ function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
         Projects not loaded
       </span>
       {wait && (
-        <span data-testid="rail-projects-wait" className="px-0.5 text-center text-10 leading-tight text-muted">
+        <span role="timer" data-testid="rail-projects-wait" className="px-0.5 text-center text-10 leading-tight text-muted">
           {wait}
         </span>
       )}
     </>
   );
   const tile = "flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle";
-  if (!retry || wait) {
+  const said = retry && (
+    <span role="status" data-testid="rail-projects-announce" className="sr-only">
+      {announced}
+    </span>
+  );
+  if (wait) {
+    return (
+      <>
+        <div title={named} data-testid="rail-projects-unread" className={tile}>
+          {face}
+        </div>
+        {said}
+      </>
+    );
+  }
+  if (!retry) {
     return (
       <div role="status" aria-label={named} title={named} data-testid="rail-projects-unread" className={tile}>
         {face}
@@ -551,17 +570,20 @@ function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
     );
   }
   return (
-    <RetryButton
-      look="link"
-      error={unread.error}
-      onRetry={unread.onRetry}
-      label={named}
-      title={named}
-      testId="rail-projects-unread"
-      className={cn(tile, "no-underline transition-colors hover:bg-hover hover:no-underline")}
-    >
-      {face}
-      <span className="text-10 font-semibold tracking-[-0.01em] text-accent-text underline underline-offset-2">Retry</span>
-    </RetryButton>
+    <>
+      <RetryButton
+        look="link"
+        error={unread.error}
+        onRetry={unread.onRetry}
+        label={named}
+        title={named}
+        testId="rail-projects-unread"
+        className={cn(tile, "no-underline transition-colors hover:bg-hover hover:no-underline")}
+      >
+        {face}
+        <span className="text-10 font-semibold tracking-[-0.01em] text-accent-text underline underline-offset-2">Retry</span>
+      </RetryButton>
+      {said}
+    </>
   );
 }

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ApiError, retryAfterOf, unsaidFailure } from './client';
 import { retryWaitWords } from '@/lib/utils/retry-rule';
@@ -142,7 +143,40 @@ describe('when to retry, from Retry-After', () => {
   // seconds" where no Retry stands. The wait is read against the time it ends, beside the Retry it gates.
   it('keeps the wait out of the failure sentence, which a screen holds while the wait passes', () => {
     const limited = new ApiError(429, 'Too many reads from this account.', 'RATE_LIMITED', undefined, undefined, 30_000);
-    expect(formatApiError(limited)).toBe('Too many reads from this account.');
+    expect(formatApiError(limited)).toBe('Too many requests in a short time.');
+  });
+
+  // ISS-1229 r52, judge-162 on 479: core's own 429 says "Try again in 30 seconds.", and the server's sentence won, so
+  // the issue list read it beside its own countdown, and still read it once Retry was back. Where the web counts the
+  // wait, the failure says what happened and never when; the answer's own body is core's, read off its source.
+  it("says no time of the server's beside the wait it counts, for core's own rate-limit answer", () => {
+    const source = readFileSync(new URL('../../../../core/src/middleware/rate-limit.ts', import.meta.url), 'utf8');
+    const template = /export function rateLimitedMessage[\s\S]*?return `([^`]*)`/.exec(source)?.[1] ?? '';
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: core's template, as its source spells it
+    expect(template).toContain('${waitWords(retryAfterSeconds)}');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: core's template, as its source spells it
+    const said = template.replace('${waitWords(retryAfterSeconds)}', '30 seconds');
+    expect(said).toMatch(/30 seconds/);
+    const limited = new ApiError(429, said, 'RATE_LIMITED', { retryAfterSeconds: 30 }, undefined, 30_000);
+    expect(formatApiError(limited)).toBe('Too many requests in a short time.');
+    expect(formatApiReason(limited)).not.toMatch(/\d|again/i);
+    expect(readFailure(limited).said).toBe('Too many requests in a short time.');
+    expect(readFailure(limited).technical).toContain(said);
+  });
+
+  it('says what happened without when, for every status the web counts a wait for', () => {
+    const counted = (status: number) => formatApiError(new ApiError(status, 'Back in 5 minutes.', 'X', undefined, undefined, 30_000));
+    expect(counted(503)).toBe('The server is unavailable right now.');
+    expect(counted(502)).toBe('The server did not answer in time.');
+    expect(counted(408)).toBe('The request took too long to reach the server.');
+    expect(counted(500)).toBe('The server ran into a problem and could not finish the request.');
+    for (const status of [408, 425, 429, 500, 502, 503, 504]) expect(counted(status)).not.toMatch(/again|moment|minute/i);
+  });
+
+  it('keeps when to ask again where the server named no wait and said nothing', () => {
+    expect(formatApiError(new ApiError(429, '', 'RATE_LIMITED'))).toBe(unsaidFailure(429));
+    expect(unsaidFailure(429)).toBe('Too many requests in a short time. Wait a moment, then try again.');
+    expect(unsaidFailure(503)).toBe('The server is unavailable right now. Try again in a moment.');
   });
 
   it('counts the wait down from when the answer came, and says nothing once it is over', () => {

@@ -10,7 +10,7 @@ import { useOrgs } from '@/features/orgs/hooks';
 import { useUpdateProject } from '@/features/project-settings/hooks';
 import type { ProjectUpdateInput } from '@/features/project-settings/types';
 import { ApiError } from '@/lib/api/client';
-import { formatApiError } from '@/lib/api/error';
+import { formatApiError, withStop } from '@/lib/api/error';
 import { useToast } from '@/providers/toast-provider';
 import { SLUG_RE, slugify } from '@/lib/slug';
 import { useCreateProject, useOnboardProject } from '../hooks';
@@ -191,7 +191,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       // The fields are in front of the reader, so the toast says to fix them here; Settings is for later.
       toast({
         title: 'Project created; its repository settings were not saved',
-        description: `${/[.!?]$/.test(said) ? said : `${said}.`} Correct them here and save again.`,
+        description: `${withStop(said)} Correct them here and save again.`,
         tone: 'error',
         slot: REFUSED_SLOT,
         clearOf: repositoryStep,

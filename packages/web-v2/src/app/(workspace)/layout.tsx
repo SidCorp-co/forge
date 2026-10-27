@@ -26,7 +26,7 @@ import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { ForgeUnreached } from "@/features/auth/forge-unreached";
 import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
 import { useAuth, useUserInitials } from "@/providers/auth-provider";
-import { ToastLane, useToast } from "@/providers/toast-provider";
+import { KeptNoticeRoom, ToastLane, useToast } from "@/providers/toast-provider";
 import { useProjects, useRetryProjects } from "@/features/projects/hooks";
 import { ProjectsUnreadLine, projectsUnreadOf } from "@/features/projects/components/projects-unread";
 import { StoredOrgUnread } from "@/features/orgs/components/stored-org-unread";
@@ -527,6 +527,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         >
           <StoredOrgUnread />
           <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
+          <KeptNoticeRoom />
         </main>
 
         <ToastLane />
