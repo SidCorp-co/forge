@@ -174,6 +174,9 @@ function entryReads(rel, text) {
 
   /** Names bound by an import: a function another file owns, which this file's walk cannot read. */
   const imported = new Set();
+  /** Every name this file declares, and those holding a symbol (a key that is never 'process'). */
+  const declared = new Set();
+  const symbols = new Set();
   visit((node) => {
     if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword)
       namesMeta = true;
@@ -200,6 +203,17 @@ function entryReads(rel, text) {
     }
     if (ts.isFunctionDeclaration(node) && node.name) functions.set(node.name.text, node);
     if (
+      (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) &&
+      ts.isIdentifier(node.name)
+    ) {
+      declared.add(node.name.text);
+      const init = ts.isVariableDeclaration(node) ? node.initializer : undefined;
+      const callee = init && ts.isCallExpression(init) ? init.expression.getText(src) : '';
+      if (callee === 'Symbol' || callee === 'Symbol.for') symbols.add(node.name.text);
+    }
+    if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name)
+      declared.add(node.name.text);
+    if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
       node.initializer &&
@@ -210,29 +224,30 @@ function entryReads(rel, text) {
   });
   if (!namesMeta) return [];
 
-  const GLOBALS = new Set(['globalThis', 'global', 'self', 'window']);
+  // A global object's name, unless this file declares its own of that name.
+  const GLOBALS = new Set(
+    ['globalThis', 'global', 'self', 'window'].filter((g) => !declared.has(g)),
+  );
+  /** The name a property read states, dotted or bracketed by a string; null where it is computed. */
+  const propName = (node) =>
+    ts.isPropertyAccessExpression(node)
+      ? node.name.text
+      : ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)
+        ? node.argumentExpression.text
+        : null;
   function isProcess(node) {
-    return (
-      (ts.isIdentifier(node) && (node.text === 'process' || processNames.has(node.text))) ||
-      (ts.isPropertyAccessExpression(node) &&
-        node.name.text === 'process' &&
-        ts.isIdentifier(node.expression) &&
-        GLOBALS.has(node.expression.text)) ||
-      (ts.isElementAccessExpression(node) &&
-        ts.isStringLiteralLike(node.argumentExpression) &&
-        node.argumentExpression.text === 'process' &&
-        ts.isIdentifier(node.expression) &&
-        GLOBALS.has(node.expression.text)) ||
-      // Whatever loads the module by name — require, a require made elsewhere, import() — hands over process.
-      (ts.isCallExpression(node) &&
-        node.arguments.length >= 1 &&
-        ts.isStringLiteralLike(node.arguments[0]) &&
-        /^(node:)?process$/.test(node.arguments[0].text)) ||
-      (ts.isAwaitExpression(node) && isProcess(unwrap(node.expression))) ||
-      (ts.isPropertyAccessExpression(node) &&
-        node.name.text === 'default' &&
-        isProcess(unwrap(node.expression)))
-    );
+    if (ts.isIdentifier(node)) return node.text === 'process' || processNames.has(node.text);
+    if (ts.isAwaitExpression(node)) return isProcess(unwrap(node.expression));
+    // Whatever loads the module by name — require, a require made elsewhere, import() — hands over process.
+    if (ts.isCallExpression(node)) {
+      const [first] = node.arguments;
+      return !!first && ts.isStringLiteralLike(first) && /^(node:)?process$/.test(first.text);
+    }
+    const name = propName(node);
+    if (name === 'process')
+      return ts.isIdentifier(node.expression) && GLOBALS.has(node.expression.text);
+    if (name === 'default') return isProcess(unwrap(node.expression));
+    return false;
   }
   const unwrap = (node) => {
     let n = node;
@@ -321,6 +336,11 @@ function entryReads(rel, text) {
       if (ts.isVariableDeclaration(node) && node.initializer) {
         if (ts.isIdentifier(node.name)) {
           changed = bind(node.name.text, startOf(node.initializer)) || changed;
+          const held = unwrap(node.initializer);
+          if (ts.isIdentifier(held) && GLOBALS.has(held.text) && !GLOBALS.has(node.name.text)) {
+            GLOBALS.add(node.name.text);
+            changed = true;
+          }
           if (isProcess(unwrap(node.initializer)) && !processNames.has(node.name.text)) {
             processNames.add(node.name.text);
             changed = true;
@@ -362,6 +382,11 @@ function entryReads(rel, text) {
         ts.isIdentifier(node.left)
       ) {
         changed = bind(node.left.text, startOf(node.right)) || changed;
+        const held = unwrap(node.right);
+        if (ts.isIdentifier(held) && GLOBALS.has(held.text) && !GLOBALS.has(node.left.text)) {
+          GLOBALS.add(node.left.text);
+          changed = true;
+        }
         if (isProcess(unwrap(node.right)) && !processNames.has(node.left.text)) {
           processNames.add(node.left.text);
           changed = true;
@@ -537,7 +562,7 @@ function entryReads(rel, text) {
    * How a use of process could reach argv without naming it, or null where it cannot: a property
    * read by a stated name, a typeof, and a name or a destructuring by stated keys that holds it.
    */
-  const processLeak = (node) => {
+  const processLeak = (node, what = 'process') => {
     const self = outer(node);
     const p = self.parent;
     if (ts.isCallExpression(self) && self.expression.kind === ts.SyntaxKind.ImportKeyword) {
@@ -547,9 +572,9 @@ function entryReads(rel, text) {
     }
     if (ts.isPropertyAccessExpression(p) && p.expression === self) return null;
     if (ts.isElementAccessExpression(p) && p.expression === self) {
-      return ts.isStringLiteralLike(p.argumentExpression)
-        ? null
-        : `process read by a computed key: ${p.getText(src)}`;
+      const key = p.argumentExpression;
+      const stated = ts.isStringLiteralLike(key) || (ts.isIdentifier(key) && symbols.has(key.text));
+      return stated ? null : `${what} read by a computed key: ${p.getText(src)}`;
     }
     if (ts.isTypeOfExpression(p)) return null;
     // `fn.call(process, …)` hands process on as `this` to a native binding, never as a value read.
@@ -576,9 +601,9 @@ function entryReads(rel, text) {
         if (ts.isPropertyAssignment(el)) return keyOf(el.name) !== null;
         return ts.isShorthandPropertyAssignment(el);
       });
-      return stated ? null : `process destructured by a key it cannot state: ${p.getText(src)}`;
+      return stated ? null : `${what} destructured by a key it cannot state: ${p.getText(src)}`;
     }
-    return `process handed on whole: ${p.getText(src)}`;
+    return `${what} handed on whole: ${p.getText(src)}`;
   };
 
   visit((node) => {
@@ -591,6 +616,10 @@ function entryReads(rel, text) {
     ) {
       if (!WRAPS.some((is) => is(node)) && isProcess(node)) {
         const leak = processLeak(node);
+        if (leak) say(node, leak);
+      }
+      if (ts.isIdentifier(node) && !naming(node) && GLOBALS.has(node.text)) {
+        const leak = processLeak(node, 'the global object');
         if (leak) say(node, leak);
       }
     }
@@ -860,6 +889,21 @@ describe('no file decides it was launched by hand', () => {
       4,
     ],
     [
+      'scripts/dynamic-bracket.mjs',
+      "const p = (await import('node:process'))['default'];\nif (import.meta.filename === p.argv[1]) main();\n",
+      2,
+    ],
+    [
+      'scripts/global-alias.mjs',
+      'const g = globalThis;\nif (import.meta.filename === g.process.argv[1]) main();\n',
+      2,
+    ],
+    [
+      'scripts/global-reflected.mjs',
+      "if (import.meta.filename === Reflect.get(globalThis, 'process').argv[1]) main();\n",
+      1,
+    ],
+    [
       'scripts/from.mjs',
       'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n',
       2,
@@ -981,8 +1025,12 @@ describe('no file decides it was launched by hand', () => {
     ],
     ['scripts/tail.mjs', 'const [, , ...rest] = process.argv;\nconst ROOT = import.meta.url;\n'],
     [
+      'scripts/shadowed.mjs',
+      "const window = text.slice(0, 9);\nconst KEY = Symbol.for('x');\nconst held = globalThis[KEY];\nconst w = window.slice(1);\nconst ROOT = import.meta.url;\n",
+    ],
+    [
       'scripts/process-uses.mjs',
-      "if (typeof process !== 'undefined') process.exitCode = 1;\nconst { env, platform } = process;\nconst home = process['env'].HOME;\nconst sync = binding.call(process, 'spawn_sync');\nconst ROOT = import.meta.url;\n",
+      "if (typeof process !== 'undefined') process.exitCode = 1;\nconst { env, platform } = process;\nconst home = process['env'].HOME;\nconst onServer = typeof window === 'undefined' && globalThis.fetch;\nconst sync = binding.call(process, 'spawn_sync');\nconst ROOT = import.meta.url;\n",
     ],
     [
       'scripts/nested-tail.mjs',
