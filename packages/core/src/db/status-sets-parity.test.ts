@@ -8,6 +8,7 @@ import {
 import { REASON_REQUIRED_STATUSES } from '../issues/transition-reason.js';
 import * as CORE_WORK from '../issues/work-state.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { STANDING_QUESTION_STATUSES } from '../pipeline/runs-liveness.js';
 import { memoryReindexStates } from './schema-memory-chunks.js';
 import { terminalAgentSessionStatuses } from './session-vocabulary.js';
 
@@ -39,6 +40,10 @@ const MIRRORS: Record<string, { core: readonly string[]; contract: readonly stri
   MEMORY_REINDEX_STATES: {
     core: memoryReindexStates,
     contract: CONTRACT.MEMORY_REINDEX_STATES,
+  },
+  STANDING_QUESTION_STATUSES: {
+    core: STANDING_QUESTION_STATUSES,
+    contract: CONTRACT.STANDING_QUESTION_STATUSES,
   },
 };
 

@@ -1,3 +1,4 @@
+import { STANDING_QUESTION_STATUSES } from "@forge/contracts/status-sets";
 import type { BlockerKind, QuestionStatus } from "./types";
 
 /** Who a question waits on and whether it is answered, in words: no stored value is shown (ISS-1421 r38).
@@ -16,7 +17,7 @@ export const ANSWERED_STATE: Record<QuestionStatus, string> = {
   needs_info: "waiting on more information",
 };
 
-const STILL_WAITING: ReadonlySet<QuestionStatus> = new Set(["open", "needs_info"]);
+const STILL_WAITING: ReadonlySet<string> = new Set(STANDING_QUESTION_STATUSES);
 
 export function questionStateLine(kind: BlockerKind, status: QuestionStatus): string {
   const lead = STILL_WAITING.has(status) ? "Waits on" : "Asked of";
