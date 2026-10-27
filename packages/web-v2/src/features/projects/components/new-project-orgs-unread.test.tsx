@@ -21,9 +21,10 @@ vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn()
 // The active org is read off the same organizations read: unknown while it failed, the team org once it answers.
 const prefsRetry = vi.fn();
 let storedFail = false;
+let storedReading = false;
 vi.mock("@/features/orgs/active-org", () => ({
   useActiveOrg: () =>
-    orgsLoading || orgsFail
+    orgsLoading || orgsFail || storedReading
       ? { activeOrg: null, scopeRead: false, storedUnread: null }
       : storedFail
         ? {
@@ -61,6 +62,7 @@ beforeEach(() => {
   orgsFail = true;
   orgsLoading = false;
   storedFail = false;
+  storedReading = false;
   prefsRetry.mockClear();
   create.mockClear();
   orgsRefetch.mockClear();
@@ -150,6 +152,24 @@ describe("the new-project dialog while the stored active organization cannot be 
     orgsLoading = true;
     render(<NewProjectDialog open onClose={vi.fn()} />);
     expect(screen.getByTestId("new-project-orgs-reading")).toHaveTextContent("Reading your organizations");
+  });
+
+  // r50 after-shot: with the organizations answered and the stored one still read, the dialog said it was reading
+  // and beside that offered an Organization field set to Personal, a choice nothing had made.
+  it("offers no Organization field while the stored organization is still read, only that it is being read", () => {
+    orgsFail = false;
+    storedReading = true;
+    render(<NewProjectDialog open onClose={vi.fn()} />);
+    expect(screen.getByTestId("new-project-orgs-reading")).toHaveTextContent("Reading your organizations");
+    expect(screen.queryByText("Organization")).toBeNull();
+    expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
+  });
+
+  it("offers no Organization field set to the stand-in where the stored organization cannot be read", () => {
+    orgsFail = false;
+    storedFail = true;
+    render(<NewProjectDialog open onClose={vi.fn()} />);
+    expect(screen.queryByText("Organization")).toBeNull();
   });
 
   it("says nothing is being read once both have answered", () => {

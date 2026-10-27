@@ -360,7 +360,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               Reading your organizations, to know where this project will live…
             </p>
           )}
-          {teamOrgs.length > 0 && (
+          {orgsKnown && teamOrgs.length > 0 && (
             <Field label="Organization" hint="Where this project lives. Org owners/admins manage all of its projects.">
               <Select
                 value={orgId}
