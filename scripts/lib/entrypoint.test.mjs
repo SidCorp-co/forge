@@ -385,16 +385,11 @@ function entryReads(rel, text) {
    * What a name receives from a value: argv from where it starts, process, or a global object.
    * `value` is the expression assigned; true where any of the three is news.
    */
-  /** Names holding one of process's own functions, read off it by a stated name. */
-  const processMethods = new Set();
   const receive = (name, value) => {
     const held = unwrap(value);
     let news = bind(name, startOf(value));
     if (isGlobal(held)) news = hold(globalAliases, name) || news;
     if (isProcess(held)) news = hold(processNames, name) || news;
-    const ownMethod =
-      propName(held) !== null && propName(held) !== 'argv' && isProcess(unwrap(held.expression));
-    if (ownMethod) news = hold(processMethods, name) || news;
     return news;
   };
   /**
@@ -461,6 +456,64 @@ function entryReads(rel, text) {
       }
     });
   }
+
+  /** How many times each name is written: declared, assigned, destructured into or updated. */
+  const writes = new Map();
+  const wrote = (id) => ts.isIdentifier(id) && writes.set(id.text, (writes.get(id.text) ?? 0) + 1);
+  const assignedTargets = (left) => {
+    if (ts.isIdentifier(left)) return wrote(left);
+    if (ts.isArrayLiteralExpression(left))
+      for (const el of left.elements) assignedTargets(ts.isSpreadElement(el) ? el.expression : el);
+    if (ts.isObjectLiteralExpression(left)) {
+      for (const el of left.properties) {
+        if (ts.isShorthandPropertyAssignment(el)) wrote(el.name);
+        if (ts.isPropertyAssignment(el)) assignedTargets(el.initializer);
+        if (ts.isSpreadAssignment(el)) assignedTargets(el.expression);
+      }
+    }
+    if (ts.isBinaryExpression(left) && left.operatorToken.kind === ts.SyntaxKind.EqualsToken)
+      assignedTargets(left.left);
+  };
+  visit((node) => {
+    if (
+      (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) &&
+      ts.isIdentifier(node.name)
+    )
+      wrote(node.name);
+    if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name)
+      wrote(node.name);
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    ) {
+      assignedTargets(node.left);
+    }
+    if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator)
+    ) {
+      wrote(node.operand);
+    }
+    if (
+      (ts.isForOfStatement(node) || ts.isForInStatement(node)) &&
+      !ts.isVariableDeclarationList(node.initializer)
+    )
+      assignedTargets(node.initializer);
+  });
+  /**
+   * Names holding one of process's own functions: a const read off process by a stated name other
+   * than argv, written nowhere else, so what it holds is what it was given.
+   */
+  const processMethods = new Set();
+  visit((node) => {
+    if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
+    if (!(node.parent.flags & ts.NodeFlags.Const) || writes.get(node.name.text) !== 1) return;
+    const held = unwrap(node.initializer);
+    const name = propName(held);
+    if (name !== null && name !== 'argv' && isProcess(unwrap(held.expression)))
+      processMethods.add(node.name.text);
+  });
 
   const found = [];
   const say = (node, how) => {
@@ -1094,6 +1147,21 @@ describe('no file decides it was launched by hand', () => {
       'scripts/this-bind.mjs',
       'function entry() {\n  return this.argv[1];\n}\nif (import.meta.filename === entry.bind(process)()) main();\n',
       4,
+    ],
+    [
+      'scripts/this-reassigned.mjs',
+      'let binding = process.binding;\nbinding = function () {\n  return this.argv[1];\n};\nif (import.meta.filename === binding.call(process)) main();\n',
+      5,
+    ],
+    [
+      'scripts/this-reassigned-apply.mjs',
+      'let binding = process.binding;\n[binding] = [function () {\n  return this.argv[1];\n}];\nif (import.meta.filename === binding.apply(process)) main();\n',
+      5,
+    ],
+    [
+      'scripts/this-redeclared-bind.mjs',
+      'const binding = process.binding;\nfunction f(binding) {\n  return binding.bind(process)();\n}\nif (import.meta.filename === f(function () { return this.argv[1]; })) main();\n',
+      3,
     ],
     [
       'scripts/from.mjs',
