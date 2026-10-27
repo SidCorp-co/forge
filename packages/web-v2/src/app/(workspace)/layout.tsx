@@ -28,7 +28,6 @@ import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
 import { useAuth, useUserInitials } from "@/providers/auth-provider";
 import { ToastLane, useToast } from "@/providers/toast-provider";
 import { useProjects, useRetryProjects } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
 import { ProjectsUnreadLine, projectsUnreadOf } from "@/features/projects/components/projects-unread";
 import { StoredOrgUnread } from "@/features/orgs/components/stored-org-unread";
 import { usePinnedProjects } from "@/features/projects/pins";

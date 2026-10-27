@@ -92,7 +92,10 @@ async function as(userId: string, path: string, method = 'GET', body?: unknown):
 
 describe("a room's people, told apart by what core answers (ISS-1229 r50, criteria 486 and 492)", () => {
   it("carries each person's role on the room's project and whether they opened it, on the room and after a removal", async () => {
-    const opened = await as(openerId, '/api/conversations', 'POST', { projectId, people: [viewerId, memberId] });
+    const opened = await as(openerId, '/api/conversations', 'POST', {
+      projectId,
+      people: [viewerId, memberId],
+    });
     expect(opened.status, await opened.clone().text()).toBe(201);
     const { id } = (await opened.json()) as { id: string };
 
@@ -110,9 +113,15 @@ describe("a room's people, told apart by what core answers (ISS-1229 r50, criter
 
     // The membership answer a removal returns carries the same, so the list it redraws tells them apart too.
     const viewerRow = of(viewerId)?.id as string;
-    const removed = await as(openerId, `/api/conversations/${id}/participants/${viewerRow}`, 'DELETE');
+    const removed = await as(
+      openerId,
+      `/api/conversations/${id}/participants/${viewerRow}`,
+      'DELETE',
+    );
     expect(removed.status, await removed.clone().text()).toBe(200);
-    const left = ((await removed.json()) as { participants: Member[] }).participants.filter((p) => p.kind === 'person');
+    const left = ((await removed.json()) as { participants: Member[] }).participants.filter(
+      (p) => p.kind === 'person',
+    );
     expect(left.map((p) => [p.userId, p.roles[0]?.role, p.opener]).sort()).toEqual(
       [
         [openerId, 'admin', true],

@@ -62,7 +62,7 @@ function callName(node: ts.Node): string | null {
 }
 
 /** Every place in one file that breaks the rule, as `path:line what`. */
-export function offences(path: string, text: string): string[] {
+function offences(path: string, text: string): string[] {
   const rel = relative(SRC, path);
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const found: string[] = [];
@@ -131,6 +131,7 @@ describe("a failed read's Retry, across the web app (criteria 478, 495, 496)", (
   });
 
   it("refuses a second full stop after a failure sentence, in a template and in JSX", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder is the source text under test, not a template meant to interpolate
     const twice = "export const A = ({ e }) => <p>{`Could not: ${formatApiError(e)}.`} Runners: {formatApiError(e)}.</p>;";
     expect(offences(join(SRC, "features/x/a.tsx"), twice)).toHaveLength(2);
   });

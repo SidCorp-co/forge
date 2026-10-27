@@ -11,7 +11,6 @@ import { useRouter } from "next/navigation";
 import { Icon, Input, ProjectMark } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useProjects } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
 import { ProjectsUnreadLine, projectsUnreadOf } from "./projects-unread";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";

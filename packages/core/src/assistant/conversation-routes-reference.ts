@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
+import { projectMemberRoles } from '../db/project-vocabulary.js';
 import { answerInGroupModes } from '../db/schema-agent-selves.js';
 import {
   conversationAdapters,
@@ -10,7 +11,6 @@ import {
   conversationWindowCutReasons,
   conversationWindowDecisions,
 } from '../db/schema-conversations.js';
-import { projectMemberRoles } from '../db/project-vocabulary.js';
 
 /** A room's own routing thresholds; a key it did not set is absent. */
 const presenceSchema = z.object({

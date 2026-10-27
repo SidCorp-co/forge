@@ -26,7 +26,7 @@ import {
   SlideOver,
   type ErrorStateRetry,
 } from "@/design";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { formatApiError, } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import type { ProjectListItem } from "@/features/projects/types";
