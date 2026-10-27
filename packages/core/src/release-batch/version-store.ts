@@ -130,7 +130,7 @@ export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null):
   if (highest.shipped) {
     throw new ReleaseRecutRefusedError(
       recutOf,
-      `release run ${highest.runId} SHIPPED, and the patch digit is reserved for a re-cut after a ` +
+      `release run ${highest.runId} RELEASED, and the patch digit is reserved for a re-cut after a ` +
         'FAILED release. Omit `recutOf` to cut a new release',
     );
   }

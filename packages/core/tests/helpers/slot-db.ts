@@ -195,16 +195,32 @@ function describeSession(s: Session): string {
   return `pid ${s.pid} (${s.kind}) ${s.app || 'with no application name'}, ${s.state} after "${s.query}"`;
 }
 
+/** The SQLSTATE Postgres refuses a terminate with where the caller may not signal that backend. */
+const DENIED = '42501';
+
 /**
  * End every connection to `name` but the caller's and answer the sessions it ended, each as it was
- * last seen. It refuses by pid one it terminated that is still there after the wait, and one a file
- * opened after the terminate, which is another holder; an autovacuum worker the server started in
- * between is neither.
+ * last seen. It refuses by pid one whose terminate the server denied, naming what denied it; one it
+ * terminated that is still there after the wait; and one a file opened after the terminate, which
+ * is another holder. An autovacuum worker the server started in between is none of them, and any
+ * other failure of a terminate is the admin connection's own and goes up as it came.
  */
 export async function sever(admin: Sql, name: string): Promise<Session[]> {
   const rows = await sessionsOn(admin, name);
+  const denied: string[] = [];
   for (const { pid } of rows) {
-    await admin`SELECT pg_terminate_backend(${pid}, 5000)`.catch(() => {});
+    await admin`SELECT pg_terminate_backend(${pid}, 5000)`.catch((err: unknown) => {
+      const { code, message, detail } = err as { code?: string; message?: string; detail?: string };
+      if (code !== DENIED) throw err;
+      denied.push(`pid ${pid}: ${message}${detail ? ` (${detail})` : ''}`);
+    });
+  }
+  if (denied.length > 0) {
+    throw new Error(
+      `[db] ${name}: Postgres denied this connection's terminate of ${denied.join('; ')}, so the ` +
+        'database cannot be reset or handed on while those connections can still write; connect the ' +
+        'admin URL as a role that may signal them (a superuser, or a member of pg_signal_backend for a non-superuser).',
+    );
   }
   const ended = new Set(rows.map((r) => r.pid));
   const left = rows.length > 0 ? await sessionsOn(admin, name) : [];

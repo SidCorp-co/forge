@@ -27,7 +27,7 @@ export const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "release-runner-ambiguous":
     "Live deploy targets name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.",
   "release-target":
-    "This project declares a release but has no live deploy target to send it to — every issue would wait for a release nobody can cut. Add one, or, if this project ships nothing, choose \"Repository, no release\" below.",
+    "This project declares a release but has no live deploy target to send it to — every issue would wait for a release nobody can cut. Add one, or, if this project releases nothing, choose \"Repository, no release\" below.",
   rollback:
     "No rollback declared — a failed release aborts and comments, and rolls back nothing.",
   "rollback-prose":
@@ -205,7 +205,7 @@ function answerText(r: ReleaseReadiness): ReactNode {
     case "unread":
       return "This project's release declaration could not be read just now, so nothing here is a reading of it.";
     case "ships-nothing":
-      return "This project ships nothing: an issue closes when its work is done.";
+      return "This project releases nothing: an issue closes when its work is done.";
     case "blocked":
       return `A release cannot start now: ${a.count} ${a.count === 1 ? "thing stops" : "things stop"} it.`;
     case "undeclared":

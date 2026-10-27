@@ -6,7 +6,7 @@ import { agree, counted } from './counted.js';
 /** What the caller sends for the issues a range carries, in the number it carries. */
 export function carriedWaysOut(n: number): string {
   const w = (one: string, many: string) => agree(n, one, many);
-  return `${w('It does not', 'None of them')} ship${w('', 's')} without a decision. Send one${w('', ' per issue')} with the batch: \`ship-unverified\` with what is unverified; \`revert\` once its landing is reverted on the branch being promoted; or \`cut-below\`, which releases only what landed before it. Or move ${w('it', 'each')} to the release gate and name it on the roster.`;
+  return `${w('It is not', 'None of them is')} released without a decision. Send one${w('', ' per issue')} with the batch: \`ship-unverified\` with what is unverified; \`revert\` once its landing is reverted on the branch being promoted; or \`cut-below\`, which releases only what landed before it. Or move ${w('it', 'each')} to the release gate and name it on the roster.`;
 }
 
 const shortSha = (sha: unknown) => `\`${String(sha).slice(0, 12)}\``;
@@ -42,7 +42,7 @@ export function carriedSentence(
     const ids = details.displayIds as string[];
     const named = ids.map((id) => `\`${id}\``).join(', ');
     const w = (one: string, many: string) => agree(ids.length, one, many);
-    return `A \`cut-below\` moves this release to ${shortSha(details.cut)}, which leaves the landing of roster ${w('issue', 'issues')} ${named} above the cut, so the batch would name ${w('an issue', 'issues')} it does not ship. Take ${w('it', 'them')} off the roster, or decide the carried issue another way.`;
+    return `A \`cut-below\` moves this release to ${shortSha(details.cut)}, which leaves the landing of roster ${w('issue', 'issues')} ${named} above the cut, so the batch would name ${w('an issue', 'issues')} it does not release. Take ${w('it', 'them')} off the roster, or decide the carried issue another way.`;
   }
   return null;
 }

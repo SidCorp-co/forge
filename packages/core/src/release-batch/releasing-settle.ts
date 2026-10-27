@@ -123,15 +123,15 @@ export function findingSentence(
   const next = backAtGate(path, holds, doors);
   switch (finding.kind) {
     case 'carried':
-      return `Production's verified live deployment serves \`${finding.serving}\`. That carries this issue's landing commit \`${finding.landing}\`, so its code has shipped. A release record closes it now.`;
+      return `Production's verified live deployment serves \`${finding.serving}\`. That carries this issue's landing commit \`${finding.landing}\`, so its code is live. A release record closes it now.`;
     case 'not-carried':
-      return `Production's verified live deployment serves \`${finding.serving}\`. That does not carry this issue's landing commit \`${finding.landing}\`, so its code has not shipped. ${next}`;
+      return `Production's verified live deployment serves \`${finding.serving}\`. That does not carry this issue's landing commit \`${finding.landing}\`, so its code is not live yet. ${next}`;
     case 'unverified':
       return `This project's live deployment declares no verify probe, so nothing reads what production serves. The sweep closes nothing on a deployment nobody read. A verify probe is set on the live deploy target, under Settings, Integrations. ${next}`;
     case 'no-landing':
       return `This issue carries no landing commit, so nothing can say whether production has its code. ${next}`;
     case 'outside-git':
-      return `This issue's work lands outside git, so no commit production serves can show it shipped. The sweep closes nothing on a reading it cannot make. ${next}`;
+      return `This issue's work lands outside git, so no commit production serves can show it went out. The sweep closes nothing on a reading it cannot make. ${next}`;
     case 'not-read':
       return next;
     case 'unread':

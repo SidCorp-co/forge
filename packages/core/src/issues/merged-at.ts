@@ -107,7 +107,7 @@ export function refuseUnmarkOnClosed(status: IssueStatus): ShippedRuleRefusal | 
   if (status !== 'closed') return null;
   return {
     detail:
-      'This issue is Closed, and Closed means the work shipped, so its mark cannot be taken ' +
+      'This issue is Closed, and Closed means the work went out, so its mark cannot be taken ' +
       'back. Move it to Reopened first, then use Unmark. Where the work never landed, take ' +
       'Dropped from Reopened instead.',
     details: { status: 'closed', moveTo: 'reopen', useInstead: 'dropped' },

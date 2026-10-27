@@ -82,7 +82,7 @@ function strandedWorkSentence(err: ApiError): string | null {
     return (
       `${total} ${one ? 'issue waits' : 'issues wait'} at ${ISSUE_STATUS_LABELS.awaiting_release}, and with no release path nothing would ever release ${it}. ` +
       `Release ${it} first, or return ${one ? 'it' : 'each one'} to ${ISSUE_STATUS_LABELS.developed}, then save again. ` +
-      `Closing ${it} is not a way out: a close says the work shipped.`
+      `Closing ${it} is not a way out: a close says the work went out.`
     );
   }
   const outsideGit = detailStr(err.details, 'to') === 'website';

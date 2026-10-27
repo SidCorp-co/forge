@@ -109,10 +109,10 @@ describe('one sentence per stuck kind, on the bell and the project page alike', 
 
   it('says an owed close in the bell group’s words on the headline', () => {
     expect(SWEEP_DETECTORS['owed-close'].groupTitle).toBe(
-      'Issues that shipped their code and were never closed',
+      'Issues that were marked merged and never closed',
     );
     expect(stuckCountSentence('owed_close', 2)).toBe(
-      '2 issues shipped their code and were never closed.',
+      '2 issues were marked merged and never closed.',
     );
   });
 });

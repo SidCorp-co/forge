@@ -56,7 +56,7 @@ branch head. The release screen's readiness
 anyone presses and answers the same `carried` reading, so a range that was not read says so there
 with its reason. The batch release dialog
 (`packages/web-v2/src/features/issues/components/batch-release-dialog.tsx`) lists each carried
-issue by its title with Ship unverified (a reason is required), Reverted or Cut below, each choice
+issue by its title with Release unverified (a reason is required), Reverted or Cut below, each choice
 explained before it is picked, and sends the decisions when release is pressed again. A refusal is
 said directly above the Release button, and a decision the server refused is marked on its own row
 with why. Once the

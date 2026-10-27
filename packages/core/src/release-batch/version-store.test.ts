@@ -82,7 +82,7 @@ describe('ruleOnRecut — what it refuses, each by its own reason', () => {
     // `cancelled` is what `cancelConcludedRun` leaves on a release that COMPLETED and was aborted
     // afterwards, so ruling on status alone would hand a serving release's number out again.
     const reason = refusalFor('0.5.0', highestRow({ status: 'cancelled', shipped: true }));
-    expect(reason).toContain('SHIPPED');
+    expect(reason).toContain('RELEASED');
     expect(reason).toContain('reserved for a re-cut after a FAILED release');
   });
 

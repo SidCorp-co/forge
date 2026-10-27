@@ -186,7 +186,7 @@ function reportUncorroborated(projectId: string, reports: readonly IssueCriteria
       { projectId, issueId: report.issueId, criteria: report.uncorroborated, why },
       `release-sweep: ${report.issueId} earned criterion ${report.uncorroborated.join(', ')} at a ` +
         `runtime nothing here could re-read — ${why} The verdict counts, and it is weaker ` +
-        'evidence than a reading would have made it; whether this issue ships is its own criteria',
+        'evidence than a reading would have made it; whether this issue is released is its own criteria',
     );
   }
 }

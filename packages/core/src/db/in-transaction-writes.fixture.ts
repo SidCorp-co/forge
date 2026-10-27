@@ -1,12 +1,14 @@
 /**
- * Which writes in a catch change the error it caught before a guard reads it: a write to the error
- * or to any name bound to it, through `this`, through a call whose result may be the error or its
- * prototype, or through the property of an object holding it. What a function called from the catch
- * does to the error inside its own body is the catch scan's named residual.
+ * The write reading: before a catch's guard decides, every use of the caught error, of a name bound
+ * to it or of a holder of it is a write, and the guard is refused, unless `readOnly` resolves it as
+ * a plain read. What one file's reading still cannot see: a function the catch calls without
+ * handing it the error or a holder, which reaches the error through a binding outside the catch the
+ * catch stored it in (`lastErr = err; poison()` where `poison` writes `lastErr.code`); and a holder
+ * property declared plain that is a setter at run time (a `Proxy`, a subclass's accessor on `this`).
  */
 
 import ts from 'typescript';
-import { type Scan, unwrap } from './in-transaction-guards.fixture.js';
+import { readsTheError, type Scan, unwrap } from './in-transaction-guards.fixture.js';
 
 function isAssignment(node: ts.Node): node is ts.BinaryExpression {
   return (
@@ -16,12 +18,15 @@ function isAssignment(node: ts.Node): node is ts.BinaryExpression {
   );
 }
 
-/** Where `this` holds the caught error: `this` is no name, so it stands for itself among them. */
 const THIS = { escapedName: 'this' } as unknown as ts.Symbol;
 
 function bound(node: ts.Node, scan: Scan): ts.Symbol | undefined {
   if (node.kind === ts.SyntaxKind.ThisKeyword) return THIS;
-  return ts.isIdentifier(node) ? scan.checker.getSymbolAtLocation(node) : undefined;
+  if (!ts.isIdentifier(node)) return undefined;
+  const { parent } = node;
+  return ts.isShorthandPropertyAssignment(parent) && parent.name === node
+    ? scan.checker.getShorthandAssignmentValueSymbol(parent)
+    : scan.checker.getSymbolAtLocation(node);
 }
 
 function mentionsAny(node: ts.Node, among: ReadonlySet<ts.Symbol>, scan: Scan): boolean {
@@ -31,18 +36,14 @@ function mentionsAny(node: ts.Node, among: ReadonlySet<ts.Symbol>, scan: Scan): 
 }
 
 interface Aliases {
-  /** The catch's own name, and each name bound to a value mentioning the error, as `const { cause } = err`. */
   is: Set<ts.Symbol>;
-  /** Each name, or `this`, a property of which was set to such a value, as `this.last = err`. */
   holds: Set<ts.Symbol>;
 }
 
 /**
- * Every name the caught error is bound to in `body`: the catch's own, each name a declaration, a
- * parameter's or a binding's default, a `for...of` or an assignment binds to a value mentioning one
- * of them, and a function declared with a body that mentions one, whose result may be the error.
- * Storing such a value in a property of a name, of `this`, or of what a call returns makes that
- * name, `this` or the callee a holder of it, and whatever a holder's call returns may be the holder.
+ * Every name the caught error is bound to in `body` (`is`), by a declaration, a default, a
+ * `for...of`, an assignment or a function whose body mentions one, and every name, `this` or callee
+ * a property of which was set to such a value (`holds`).
  */
 function aliasesOf(body: ts.Node, param: ts.Symbol, scan: Scan): Aliases {
   const aliases: Aliases = { is: new Set([param]), holds: new Set() };
@@ -98,7 +99,6 @@ function aliasesOf(body: ts.Node, param: ts.Symbol, scan: Scan): Aliases {
   return aliases;
 }
 
-/** Whether `node`'s type says it holds a string, number, boolean or nothing, which no error is. */
 function primitive(node: ts.Expression, scan: Scan): boolean {
   const type = scan.checker.getTypeAtLocation(node);
   const flat = (t: ts.Type) =>
@@ -115,61 +115,185 @@ function primitive(node: ts.Expression, scan: Scan): boolean {
   return type.isUnion() ? type.types.every(flat) : flat(type);
 }
 
-/**
- * A holder is written into only past the property holding the error; a key, or an argument whose
- * type holds no object, only reads it.
- */
-function writesThrough(node: ts.Expression, aliases: Aliases, scan: Scan): boolean {
-  let depth = 0;
-  let at = unwrap(node);
-  for (;;) {
-    if (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) depth += 1;
-    else if (ts.isCallExpression(at)) {
-      const handed = at.arguments.some(
-        (a) => !primitive(a, scan) && mentionsAny(a, aliases.is, scan),
-      );
-      if (handed) return true;
-    } else break;
-    at = unwrap(at.expression);
-  }
-  const root = bound(at, scan);
-  return root !== undefined && (aliases.is.has(root) || (aliases.holds.has(root) && depth > 1));
+function dataProperty(store: ts.AccessExpression, scan: Scan): boolean {
+  const key = ts.isPropertyAccessExpression(store) ? store.name : store.argumentExpression;
+  const declared = scan.checker.getSymbolAtLocation(key)?.declarations ?? [];
+  return (
+    declared.length > 0 &&
+    declared.every(
+      (d) =>
+        ts.isPropertyDeclaration(d) ||
+        ts.isPropertySignature(d) ||
+        ts.isPropertyAssignment(d) ||
+        ts.isShorthandPropertyAssignment(d),
+    )
+  );
 }
 
-/**
- * Whether the assignment target `node` changes the caught error: binds `err` itself, or writes a
- * property `writesThrough` reaches it by, also inside a destructuring pattern. Binding an alias
- * anew, or setting the property of a holder that held it, leaves the error as it was.
- */
-function writesTo(node: ts.Node, aliases: Aliases, scan: Scan): boolean {
-  const e: ts.Node = ts.isExpression(node) ? unwrap(node) : node;
-  const again = (n: ts.Node): boolean => writesTo(n, aliases, scan);
-  const [param] = aliases.is;
-  if (ts.isIdentifier(e)) return scan.checker.getSymbolAtLocation(e) === param;
-  if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e))
-    return writesThrough(e, aliases, scan);
-  if (isAssignment(e) && e.operatorToken.kind === ts.SyntaxKind.EqualsToken) return again(e.left);
-  if (ts.isArrayLiteralExpression(e)) return e.elements.some((x) => again(x));
-  if (ts.isSpreadElement(e) || ts.isSpreadAssignment(e)) return again(e.expression);
-  if (ts.isObjectLiteralExpression(e)) return e.properties.some((x) => again(x));
-  if (ts.isPropertyAssignment(e)) return again(e.initializer);
-  if (ts.isShorthandPropertyAssignment(e))
-    return scan.checker.getShorthandAssignmentValueSymbol(e) === param;
+function isWrapper(node: ts.Node): node is ts.Expression & { expression: ts.Expression } {
+  return (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  );
+}
+
+function assignedTo(node: ts.Node): boolean {
+  const { parent } = node;
+  if (isWrapper(parent)) return assignedTo(parent);
+  if (isAssignment(parent)) return parent.left === node;
+  if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent))
+    return [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(parent.operator);
+  if (ts.isDeleteExpression(parent)) return true;
+  if (ts.isForOfStatement(parent) || ts.isForInStatement(parent))
+    return parent.initializer === node;
+  if (ts.isPropertyAssignment(parent)) return parent.initializer === node && assignedTo(parent);
+  if (
+    ts.isArrayLiteralExpression(parent) ||
+    ts.isObjectLiteralExpression(parent) ||
+    ts.isShorthandPropertyAssignment(parent) ||
+    ts.isSpreadElement(parent) ||
+    ts.isSpreadAssignment(parent)
+  )
+    return assignedTo(parent);
   return false;
 }
 
-/** True where `node` holds a write `writesTo` counts; what a call handed the error does inside it goes unseen. */
-export function reassigns(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
-  const aliases = aliasesOf(node, param, scan);
-  const target = (n: ts.Node) => writesTo(n, aliases, scan);
-  const visit = (n: ts.Node): boolean =>
-    (isAssignment(n) && target(n.left)) ||
-    ((ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) &&
-      [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(n.operator) &&
-      target(n.operand)) ||
-    ((ts.isForOfStatement(n) || ts.isForInStatement(n)) &&
-      !ts.isVariableDeclarationList(n.initializer) &&
-      target(n.initializer)) ||
-    (ts.forEachChild(n, (c) => visit(c) || undefined) ?? false);
-  return visit(node);
+const COMPARED = [
+  ts.SyntaxKind.EqualsEqualsEqualsToken,
+  ts.SyntaxKind.ExclamationEqualsEqualsToken,
+  ts.SyntaxKind.EqualsEqualsToken,
+  ts.SyntaxKind.ExclamationEqualsToken,
+];
+const PASSED_ON = [
+  ts.SyntaxKind.AmpersandAmpersandToken,
+  ts.SyntaxKind.BarBarToken,
+  ts.SyntaxKind.QuestionQuestionToken,
+];
+const BINDING = [
+  ts.SyntaxKind.EqualsToken,
+  ts.SyntaxKind.QuestionQuestionEqualsToken,
+  ts.SyntaxKind.BarBarEqualsToken,
+  ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+];
+
+function testedOrDone(parent: ts.Node, at: ts.Node): boolean {
+  if (ts.isExpressionStatement(parent) || ts.isThrowStatement(parent)) return true;
+  if (ts.isReturnStatement(parent)) return true;
+  if (
+    ts.isIfStatement(parent) ||
+    ts.isWhileStatement(parent) ||
+    ts.isDoStatement(parent) ||
+    ts.isSwitchStatement(parent) ||
+    ts.isCaseClause(parent)
+  )
+    return parent.expression === at;
+  if (ts.isForStatement(parent)) return parent.condition === at;
+  if (ts.isVariableDeclaration(parent))
+    return parent.initializer === at && !ts.isArrayBindingPattern(parent.name);
+  if (ts.isParameter(parent) || ts.isBindingElement(parent))
+    return parent.initializer === at && !ts.isArrayBindingPattern(parent.name);
+  return ts.isArrowFunction(parent) && parent.body === at;
+}
+
+/**
+ * Whether `mention` only reads the error, by a form that ends the reach or runs none of its code: a
+ * value whose type holds no object; a comparison, `instanceof`, `in`, `!`, `typeof`, `void` or test
+ * of it; a `throw`, `return` or statement of it; a binding of a name, whose own uses answer; one
+ * argument to a `lib/db-errors.ts` reader or resolved `isX` helper; one store into a holder's
+ * property declared plain. A property read, cast, `?:`, `&&`, `||`, `??`, comma, literal or
+ * assignment holding it reaches on; anything else is a write.
+ */
+function readOnly(mention: ts.Node, symbol: ts.Symbol, aliases: Aliases, scan: Scan): boolean {
+  const holder = !aliases.is.has(symbol);
+  const [param] = aliases.is;
+  if (assignedTo(mention)) return symbol !== param;
+  let at = (ts.isShorthandPropertyAssignment(mention.parent) ? mention.parent : mention) as ts.Node;
+  let steps = 0;
+  for (;;) {
+    if (ts.isExpression(at) && !ts.isShorthandPropertyAssignment(at) && primitive(at, scan))
+      return true;
+    const { parent } = at;
+    if (isWrapper(parent)) {
+      at = parent;
+    } else if (
+      (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent)) &&
+      parent.expression === at
+    ) {
+      steps += 1;
+      if (assignedTo(parent)) return holder && steps === 1 && dataProperty(parent, scan);
+      at = parent;
+    } else if (ts.isCallExpression(parent)) {
+      return parent.expression !== at && readsTheError(parent, symbol, scan);
+    } else if (ts.isBinaryExpression(parent)) {
+      const op = parent.operatorToken.kind;
+      if (COMPARED.includes(op)) return true;
+      if (op === ts.SyntaxKind.InstanceOfKeyword) return parent.left === at;
+      if (op === ts.SyntaxKind.InKeyword) return parent.right === at;
+      if (op === ts.SyntaxKind.CommaToken && parent.left === at) return true;
+      const reaches =
+        op === ts.SyntaxKind.CommaToken ||
+        PASSED_ON.includes(op) ||
+        (BINDING.includes(op) && parent.right === at);
+      if (!reaches) return false;
+      at = parent;
+    } else if (ts.isConditionalExpression(parent)) {
+      if (parent.condition === at) return true;
+      at = parent;
+    } else if (ts.isPrefixUnaryExpression(parent)) {
+      return parent.operator === ts.SyntaxKind.ExclamationToken;
+    } else if (ts.isTypeOfExpression(parent) || ts.isVoidExpression(parent)) {
+      return true;
+    } else if (ts.isArrayLiteralExpression(parent) || ts.isSpreadAssignment(parent)) {
+      at = ts.isSpreadAssignment(parent) ? parent.parent : parent;
+    } else if (ts.isPropertyAssignment(parent) && parent.initializer === at) {
+      at = parent.parent;
+    } else if (ts.isObjectLiteralExpression(parent)) {
+      at = parent;
+    } else {
+      return testedOrDone(parent, at);
+    }
+  }
+}
+
+function declares(node: ts.Identifier): boolean {
+  const { parent } = node;
+  return (
+    ((ts.isVariableDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isBindingElement(parent) ||
+      ts.isFunctionDeclaration(parent) ||
+      ts.isClassDeclaration(parent)) &&
+      parent.name === node) ||
+    (ts.isBindingElement(parent) && parent.propertyName === node)
+  );
+}
+
+/**
+ * The first use `readOnly` does not resolve, `undefined` where none: a call or `new` handed the
+ * error (`Object.assign(err, …)`, `[err].forEach(…)`), a method of it or of a holder, an `await`, a
+ * conversion or a computed key among them. The catch scan hands it only the test of a guard the
+ * catch opens with, the whole catch where it decides at each exit, and none of one that throws on
+ * every path.
+ */
+export function unreadUse(body: ts.Node, param: ts.Symbol, scan: Scan): ts.Node | undefined {
+  const aliases = aliasesOf(body, param, scan);
+  const among = new Set([...aliases.is, ...aliases.holds]);
+  let found: ts.Node | undefined;
+  const visit = (n: ts.Node): void => {
+    if (found) return;
+    const use =
+      (n.kind === ts.SyntaxKind.ThisKeyword || (ts.isIdentifier(n) && !declares(n))) &&
+      !ts.isPartOfTypeNode(n);
+    const symbol = use ? bound(n, scan) : undefined;
+    if (symbol && among.has(symbol) && !readOnly(n, symbol, aliases, scan)) {
+      found = n;
+      return;
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(body);
+  return found;
 }

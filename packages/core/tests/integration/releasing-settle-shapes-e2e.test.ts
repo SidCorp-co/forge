@@ -172,7 +172,7 @@ describe("the sweep's next step names only a door the project has (criteria 27-3
 
     expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     const [said] = await bodies(id);
-    expect(said).toContain('This project ships nothing, so no release will carry it');
+    expect(said).toContain('This project releases nothing, so no release will carry it');
     expect(said).toContain('choose a shape that releases under Shape & release');
     expect(said).toContain('If work remains, reopen it instead.');
     expect(said).not.toMatch(GATE_DOORS);

@@ -490,7 +490,7 @@ describe('a batch that finished and was aborted afterwards', () => {
 
     expect(await refusalCode(() => accept(runId, PUSHED))).toBe('RELEASE_BATCH_ABORTED');
     const said = await refusalMessage(() => accept(runId, PUSHED));
-    expect(said).toMatch(/already shipped, so the issues its finish closed stay closed/);
+    expect(said).toMatch(/already gone out, so the issues its finish closed stay closed/);
     expect(said).not.toMatch(/claims were released/);
     expect(await stored(runId)).toEqual(finished);
     for (const id of issueIds) expect(await closesOf(id)).toBe(1);

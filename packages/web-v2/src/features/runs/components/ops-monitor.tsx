@@ -297,7 +297,7 @@ function ProgressTab({
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <Tile label="Shipped · 30d" value={String(shipped)} />
+        <Tile label="Finished · 30d" value={String(shipped)} />
         <Tile label="Steps · 7d" value={String((durations ?? []).length)} />
         <Tile
           label="Spend · 7d"

@@ -3201,6 +3201,7 @@
 ### Fixed
 
 - **A rate-limited read says its wait once, counting down**, without the server's fixed "Try again in 30 seconds"; screen readers hear only its start and end. On a phone, the page scrolls clear of a kept notice. (ISS-1229)
+- **Release notes are asked for in plain words.** Several missing notes are asked for one per issue on its page; no sentence says ship; Save says what it waits for; comments inside one millisecond read in one order. (ISS-1421)
 - **The wait before Retry counts down, and Retry returns when it ends.** Every read-again control follows the one Retry rule, so a refused read never offers Retry or a wait. (ISS-1229)
 - **On a phone, a kept notice waits behind an open dialog, and no notice is cut short.** New project lets you pick the organization when your current one cannot be read. (ISS-1229)
 - **A room's mode panel says what working in the repository needs, and that the agent still answers.** Its people list shows each person's line whole on a phone. (ISS-1229)
