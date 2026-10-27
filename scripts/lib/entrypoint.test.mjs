@@ -262,7 +262,8 @@ function entryReads(rel, text) {
 
   // A global object's name, where no declaration of this file's shadows it, and every name holding one.
   const GLOBAL_NAMES = ['globalThis', 'global', 'self', 'window'];
-  const GLOBALS = new Set(GLOBAL_NAMES);
+  /** Names this file has given the global object: shadowing never applies to a proven alias. */
+  const globalAliases = new Set();
   /** The name a property read states, dotted or bracketed by a string; null where it is computed. */
   const propName = (node) =>
     ts.isPropertyAccessExpression(node)
@@ -273,7 +274,7 @@ function entryReads(rel, text) {
   /** The global object: a global's name or a name holding it, and its own self-properties. */
   function isGlobal(node) {
     if (ts.isIdentifier(node)) {
-      return GLOBALS.has(node.text) && !(GLOBAL_NAMES.includes(node.text) && shadowed(node));
+      return globalAliases.has(node.text) || (GLOBAL_NAMES.includes(node.text) && !shadowed(node));
     }
     const name = propName(node);
     return GLOBAL_NAMES.includes(name) && isGlobal(unwrap(node.expression));
@@ -385,7 +386,7 @@ function entryReads(rel, text) {
   const receive = (name, value) => {
     const held = unwrap(value);
     let news = bind(name, startOf(value));
-    if (isGlobal(held)) news = hold(GLOBALS, name) || news;
+    if (isGlobal(held)) news = hold(globalAliases, name) || news;
     if (isProcess(held)) news = hold(processNames, name) || news;
     return news;
   };
@@ -421,7 +422,7 @@ function entryReads(rel, text) {
       if (fromGlobal) {
         if (key === 'process' || key === null) news = hold(processNames, name) || news;
         if (key === '...' || key === null || GLOBAL_NAMES.includes(key))
-          news = hold(GLOBALS, name) || news;
+          news = hold(globalAliases, name) || news;
       }
     }
     return news;
@@ -997,6 +998,11 @@ describe('no file decides it was launched by hand', () => {
     [
       'scripts/global-shadow-elsewhere.mjs',
       'function unrelated(globalThis) {}\nif (import.meta.filename === globalThis.process.argv[1]) main();\n',
+      2,
+    ],
+    [
+      'scripts/global-alias-named.mjs',
+      'const window = globalThis;\nif (import.meta.filename === window.process.argv[1]) main();\n',
       2,
     ],
     [
