@@ -54,11 +54,8 @@ export function noneReadyLine(claimed: number, unclosable: number): string {
   return `None is ready to release. Each issue marked Not ready to release says below what would make it ready${claimed > 0 ? ", and the rest are already in a release" : ""}.`;
 }
 
-/**
- * Said in place of Release now where the press would be refused whatever is picked: no runner to
- * take it, a release already running, a declaration it cannot read. Each reason is core's own
- * sentence for a person, saying what clears it (ISS-1421 r37, judge-151 on criteria 366 and 367).
- */
+/** Where every pick would be refused (no runner, a release running, an unreadable declaration),
+ *  core's own sentences for each reason and what clears it (ISS-1421 r37, judge-151). */
 export function blockedLine(blockingAll: ReadonlyArray<{ said: string }>): string {
   return `None can be released yet. ${blockingAll.map((b) => b.said).join(" ")}`;
 }

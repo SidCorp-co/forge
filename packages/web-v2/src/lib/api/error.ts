@@ -130,11 +130,8 @@ function serverSaid(err: ApiError): boolean {
   return text.length > 0 && text !== UNREAD_BODY && !isReasonPhrase(text) && text !== unsaidFailure(err.status);
 }
 
-/**
- * The sentence a person reads where core sends one beside the caller's (`details.reader`), and
- * each reason standing beside it: a release refusal's own names a stored key and a JSON shape
- * (ISS-1421 r37, judge-151 on criterion 367).
- */
+/** The person's sentence core sends beside the caller's (`details.reader`), and each standing
+ *  reason's: a release refusal's own names a stored key (ISS-1421 r37, judge-151). */
 function readerSaid(err: ApiError): string | null {
   const details = err.details;
   if (typeof details !== 'object' || details === null) return null;

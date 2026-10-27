@@ -40,14 +40,11 @@ export const COMMIT_PLACEHOLDER = "e.g. 3f9c2ab, or the whole sha";
 /** The same field on a marked issue corrects where the work landed, so it says that, not a later
  *  round (ISS-1300 r4, judge-121). */
 export const CORRECTION_PLACEHOLDER = "e.g. 3f9c2ab, where it landed";
-/** What a first mark's commit meets on this project, as core reads its declaration (ISS-1421 r37). */
+/** What a first mark's commit meets here, as core reads its declaration; absent from an older server. */
 export type MarkCommitCheck = "checked" | "claim" | "refused";
 
-/**
- * The Commit hint for the case this reader's project is in. One sentence for every project was true
- * only where no repository is named: a named repository Forge cannot read refuses the mark
- * (ISS-1421 r37, judge-151). Where the case is unknown the hint says each case for what it is.
- */
+/** The Commit hint for the reader's own case; one sentence for all was true only with no repository
+ *  named (judge-151). Unknown, it says each case. */
 export function commitHint(check: MarkCommitCheck | null | undefined): string {
   if (check === "checked") return "Checked against the project's repository; where Forge cannot read it, nothing is marked and you are told why.";
   if (check === "claim") return "This project names no repository, so Forge has nothing to check the commit against: it is kept as a claim nothing checked.";
@@ -92,7 +89,6 @@ interface MergeMarkerControlProps {
   newestMergedPull?: string | null | undefined;
   markedTarget?: string | null | undefined;
   mergeMark?: string | undefined;
-  /** What a first mark's commit meets on this project; absent from an older server. */
   commitCheck?: MarkCommitCheck | null | undefined;
 }
 

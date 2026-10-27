@@ -1,7 +1,5 @@
-// The release gate as a person reads it: the waiting roster, and every reason Release now would be
-// refused for, read by the same enumerator the create door throws from (ISS-1127). A gate that
-// counted only the finish's refusals offered Release now over an issue with no release note, and the
-// press was refused (ISS-1421 r37, judge-151 on criteria 366 and 367).
+// The release gate as a person reads it: the roster, and every reason Release now would be refused
+// for, read by the enumerator the create door throws from (ISS-1127, ISS-1421 r37).
 
 import type { ReleaseBlocker, ReleaseBlockerCode } from './blocker-sentences.js';
 import { collectReleaseBlockers } from './blockers.js';
@@ -11,9 +9,8 @@ import { recordMissingForRow, releaseBlockerReaderSentence } from './reader-sent
 /** A reason Release now refuses one row for that its close would not: today, a missing note. */
 export interface RowReleaseRefusal {
   code: 'RELEASE_RECORD_MISSING';
-  /** Said on the gate's row. */
   said: string;
-  /** Said on the issue's own page. */
+  /** The same, on the issue's own page. */
   saidHere: string;
 }
 
@@ -31,11 +28,7 @@ export interface ReleaseGateRoster extends Omit<ReleaseRoster, 'issues'> {
   blockingAll: GateRefusal[];
 }
 
-/**
- * Reasons the gate shows on no line of its own. The close's own refusals are each row's
- * `closeRefusals` already, read by the same check, and the claim and the size answer a pick a
- * person has not made yet.
- */
+/** Shown elsewhere: the close's refusals are each row's `closeRefusals`; claim and size answer a pick. */
 const SHOWN_ELSEWHERE = new Set<ReleaseBlockerCode>([
   'RELEASE_WORK_UNMERGED',
   'RELEASE_ISSUES_UNCLOSABLE',
@@ -52,7 +45,6 @@ function idsOf(blocker: ReleaseBlocker): string[] {
 export async function loadReleaseGateRoster(projectId: string): Promise<ReleaseGateRoster> {
   const roster = await loadReleaseRoster(projectId);
   const unclaimed = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
-  // The door this button sends to, over every row it could pick: nothing unclaimed is nothing to press.
   const blockers =
     roster.gateStatus && unclaimed.length > 0
       ? (await collectReleaseBlockers(projectId, { door: 'batch', issueIds: unclaimed })).blockers

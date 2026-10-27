@@ -23,9 +23,7 @@ export interface CloseRefusal {
 /** What Release now would refuse this row for beyond its close: a missing note (ISS-1421 r37). */
 export interface ReleaseRefusal {
   code: string;
-  /** Said on the gate's row. */
   said: string;
-  /** Said on the issue's own page. */
   saidHere: string;
 }
 
@@ -46,7 +44,6 @@ export interface ReleaseRosterEntry {
   closeRefusals: CloseRefusal[];
   /** Where the last release failed this close short of a decision; the next one meets it again. */
   closeFailure: CloseFailure | null;
-  /** Empty where Release now over this row is refused for nothing of its own. */
   releaseRefusals: ReleaseRefusal[];
 }
 
@@ -73,7 +70,7 @@ export interface ReleaseRoster {
   /** The automatic release takes a waiting issue without a person. */
   automaticRelease: boolean;
   issues: ReleaseRosterEntry[];
-  /** Empty where Release now over the ready rows is refused for no reason outside them. */
+  /** What refuses Release now whatever is picked; empty where nothing does. */
   blockingAll: GateRefusal[];
 }
 
