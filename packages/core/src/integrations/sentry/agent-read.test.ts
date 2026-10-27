@@ -241,7 +241,7 @@ describe('the four walls in front of the call', () => {
     listBindingsForProject.mockResolvedValue([]);
     const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
     expect(refusal.reason).toBe('no_binding');
-    expect(refusal.message).toContain('no Sentry binding on this project');
+    expect(refusal.message).toContain('no Sentry connection on this project');
     expect(calls).toEqual([]);
   });
 
@@ -268,7 +268,7 @@ describe('the four walls in front of the call', () => {
     const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
     expect(refusal.reason).toBe('connection_disabled');
     expect(refusal.message).toBe(
-      "this project's Sentry binding exists, but the connection behind it was removed and holds no key. Only an owner or admin of the organization that owns it can save a new key to turn it back on. Nothing was asked of Sentry.",
+      'this project is connected to Sentry, but the connection behind it was removed and holds no key. Only an owner or admin of the organization that owns it can save a new key to turn it back on. Nothing was asked of Sentry.',
     );
   });
 
@@ -285,7 +285,7 @@ describe('the four walls in front of the call', () => {
     ]);
     const refusal = await refusalOf(() => readProjectSentryIssues({ projectId: PROJECT }));
     expect(refusal.message).toBe(
-      "this project's Sentry binding exists, but the connection behind it is switched off for every project sharing it. Only its owner can turn it back on with Enable on the Integrations page. Nothing was asked of Sentry.",
+      'this project is connected to Sentry, but the connection behind it is switched off for every project sharing it. Only its owner can turn it back on with Enable on the Integrations page. Nothing was asked of Sentry.',
     );
   });
 

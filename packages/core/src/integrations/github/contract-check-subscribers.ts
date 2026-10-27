@@ -19,7 +19,7 @@ import {
 export const PROJECT_REPUBLISH_CAP = 25;
 
 const cappedReason = (total: number) =>
-  `${total} open pull request(s) on this project all needed republishing at once and Forge publishes at most ${PROJECT_REPUBLISH_CAP} per event; this one is past that bound and its check still reports the previous answer. It republishes on its own next event — a push, a status move or a record written.`;
+  `${total} open pull request(s) on this project all needed republishing at once and Forge publishes at most ${PROJECT_REPUBLISH_CAP} per event; this one is past that limit and its check still reports the previous answer. It republishes on its own next event — a push, a status move or a record written.`;
 
 /** Publish for each of these, and record the ones past the cap rather than dropping them. */
 async function publishAll(pullRequestIds: string[], why: string): Promise<void> {

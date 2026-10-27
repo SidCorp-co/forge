@@ -42,7 +42,7 @@ const OPEN_APPS_KEY = "web-v2:integrations-open-apps";
 const EMPTY_APPS: string[] = [];
 
 const HELP_ACTIONS = [
-  "Click an app to open it, then a row — rename, replace the key, edit config, Test, drill into bound projects, or remove the connection",
+  "Click an app to open it, then a row — rename, replace the key, edit config, Test, see the projects it is shared with, or remove the connection",
   "Disable / Enable — switch a credential off (no project can use it) and back on",
   "A project's own settings for a connection (environment, webhooks, delivery log) stay in the project's settings → Integrations tab",
 ];

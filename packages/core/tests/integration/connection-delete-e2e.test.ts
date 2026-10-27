@@ -258,7 +258,7 @@ describe('a removed connection (criterion 216)', () => {
     });
     expect(on.status).toBe(409);
     expect(on.body.message).toBe(
-      'This connection holds no key, as removing it wiped its keys. Install the GitHub App again from a bound project whose App would belong to its owner, and it turns back on.',
+      'This connection holds no key, as removing it wiped its keys. Install the GitHub App again from a project it is shared with whose App would belong to its owner, and it turns back on.',
     );
   });
 

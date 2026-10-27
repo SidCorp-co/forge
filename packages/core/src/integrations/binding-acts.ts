@@ -86,7 +86,7 @@ const PEOPLE_WORDS: Record<People, string> = {
   projectAdmins: WHO_CHANGES,
   projectOrgAdmins: WHO_GRANTS_A_BOX,
   connectionOrgAdmins: 'an owner or admin of the organization that owns its connection',
-  personKeySavers: "its connection's owner or an admin of a project bound to it",
+  personKeySavers: "its connection's owner or an admin of a project it is shared with",
 };
 
 const PEOPLE_ORDER: readonly People[] = [

@@ -21,6 +21,7 @@ import {
   roleSchema,
   stagesSchema,
 } from './binding-shape.js';
+import { clearRemovedConnection } from './connection-clears.js';
 import {
   bindConnection,
   boundConnectionSchema,
@@ -57,6 +58,7 @@ import {
   listReachableConnections,
   memberProjectsBoundTo,
   type ReachedConnection,
+  unreachedRefusal,
 } from './reach.js';
 import { getAdapter, getIntegration, providerCanDeploy } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
@@ -82,7 +84,6 @@ import {
   turnsBackOn,
 } from './route-helpers.js';
 import {
-  clearRemovedConnection,
   createBinding,
   createConnection,
   type IntegrationConnectionRow,
@@ -105,7 +106,7 @@ import {
  */
 async function loadVisibleConnection(id: string, userId: string): Promise<ReachedConnection> {
   const reached = await findReachableConnection(userId, id);
-  if (!reached) throw connectionNotReachable(id);
+  if (!reached) throw await unreachedRefusal(userId, id, connectionNotReachable);
   return reached;
 }
 
@@ -273,7 +274,8 @@ integrationConnectionsRoutes.post(
         .limit(1);
       if (!targetProject || targetProject.orgId !== connection.ownerId) {
         throw new HTTPException(409, {
-          message: 'org connection can only bind to projects in its own org',
+          message:
+            "An organization's connection can be shared only with that organization's projects.",
           cause: { code: 'ORG_MISMATCH' },
         });
       }
@@ -351,7 +353,8 @@ integrationConnectionsRoutes.get('/:id/bindings', ...listConnectionBindings, asy
     findReachableConnection(userId, id),
     memberProjectsBoundTo(userId, id),
   ]);
-  if (!reached && memberOf.length === 0) throw connectionNotReachable(id);
+  if (!reached && memberOf.length === 0)
+    throw await unreachedRefusal(userId, id, connectionNotReachable);
   const all = await listBindingsForConnection(id);
   const shown = new Set(memberOf);
   const pairs = all.filter(
@@ -377,7 +380,8 @@ integrationConnectionsRoutes.post('/:id/test', ...testConnection, async (c) => {
   const pair = [...pairs].reverse().find((p) => p.binding.active);
   if (!pair) {
     throw new HTTPException(404, {
-      message: 'connection has no active binding to probe through — share it with a project first',
+      message:
+        'This connection is switched on for no project, so there is nothing to test it through. Share it with a project first.',
       cause: { code: 'NO_BINDING' },
     });
   }

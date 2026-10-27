@@ -67,8 +67,8 @@ export const connectionNotReachable = (connectionId: string) =>
     message:
       'This connection is not one you can reach. A connection is visible to the ' +
       'individual who owns it, to the members of the organization that owns it, and to an admin ' +
-      "of a project it is bound to. Only its owner (for an organization's connection, an owner or " +
-      'admin of that organization) can bind it to a project you administer, so ask them.',
+      "of a project it is shared with. Only its owner (for an organization's connection, an owner or " +
+      'admin of that organization) can share it with a project you administer, so ask them.',
     cause: { code: 'CONNECTION_NOT_REACHABLE', details: { connectionId } },
   });
 
@@ -180,7 +180,7 @@ export const noAgentPath = (provider: string) => badRequest(noAgentPathMessage(p
 /** `stages` say where a deploy binding sends code; the DB check holds any other role at none. */
 export const stagesOnNonDeployBinding = (role: string) =>
   new HTTPException(400, {
-    message: `stages say where a deploy binding sends code; this binding's role is \`${role}\`, which sends none. Change the role, or leave stages off this patch.`,
+    message: `stages say where a deploy target sends code; this connection is shared as \`${role}\`, which sends none. Change the role, or leave stages off this patch.`,
     cause: { code: 'STAGES_ON_NON_DEPLOY_BINDING', details: { role } },
   });
 

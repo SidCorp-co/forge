@@ -280,7 +280,7 @@ function RocketchatBindingPanel({
       ) : null}
 
       <p className="fg-body-sm text-muted">
-        The bot answers @-mentions in the bound rooms, reads the discussion, and can
+        The bot answers @-mentions in this project&apos;s rooms, reads the discussion, and can
         capture it as a <span className="font-mono">draft</span> Forge issue. A human
         moves drafts to <span className="font-mono">open</span> to start the pipeline.
       </p>
@@ -488,7 +488,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
       <p className="fg-body-sm text-muted">
         Create a bot user on your Rocket.Chat server, add it to the project&apos;s
         channel, and paste its personal-access token below. The bot replies to
-        @-mentions in the bound room.
+        @-mentions in that room.
       </p>
 
       <ConnectionOwnerField

@@ -404,7 +404,7 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
       if (!(await bindingReachesLive(projectId, existing.binding))) {
         throw new HTTPException(400, {
           message:
-            'This Coolify binding neither deploys to live nor deploys an application a live binding deploys, so no live deploy waits on it to be confirmed.',
+            'This Coolify deploy target neither deploys to live nor deploys an application a live deploy target deploys, so no live deploy waits on it to be confirmed.',
           cause: { code: 'NOT_LIVE_BINDING' },
         });
       }

@@ -31,6 +31,10 @@ const addedDay = (iso: string) =>
 const addedTime = (iso: string) =>
   new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 
+const addedSecond = (iso: string) => String(new Date(iso).getSeconds()).padStart(2, "0");
+
+const addedMillisecond = (iso: string) => String(new Date(iso).getMilliseconds()).padStart(3, "0");
+
 /** Each row's label, made longer by `more` only for the rows that still read like another one. */
 function apart(
   rows: ReadonlyArray<{ id: string; createdAt: string }>,
@@ -55,8 +59,9 @@ type Labelled = {
   createdAt: string;
 };
 
-/** Rows whose `labels` read alike, told apart by the day each was `word`, then the time, then a
- *  number (ISS-1421 r6, criterion 100; r35). A row like no other keeps its label. */
+/** Rows whose `labels` read alike, told apart by the day each was `word`, then the minute, second
+ *  and millisecond, then a number (ISS-1421 r6, r35). From each row's own time, so clearing another
+ *  never renumbers it (r36). A row like no other keeps its label. */
 export function toldApart(
   rows: ReadonlyArray<{ id: string; createdAt: string }>,
   labels: Map<string, string>,
@@ -68,15 +73,22 @@ export function toldApart(
   const dates = (c: { createdAt: string }) => !Number.isNaN(Date.parse(c.createdAt));
   const dated = apart(byOrder, labels, (c) => (dates(c) ? ` · ${word} ${addedDay(c.createdAt)}` : null));
   const timed = apart(byOrder, dated, (c) => (dates(c) ? `, ${addedTime(c.createdAt)}` : null));
+  const second = apart(byOrder, timed, (c) => (dates(c) ? `:${addedSecond(c.createdAt)}` : null));
+  const thousandth = apart(byOrder, second, (c) => (dates(c) ? `.${addedMillisecond(c.createdAt)}` : null));
   const out = new Map<string, string>();
   const seen = new Map<string, number>();
   for (const c of byOrder) {
-    const label = timed.get(c.id) as string;
+    const label = thousandth.get(c.id) as string;
     const n = (seen.get(label) ?? 0) + 1;
     seen.set(label, n);
     out.set(c.id, n === 1 ? label : `${label} (${n})`);
   }
   return out;
+}
+
+/** A word that says more than its provider does ("Postman · Postman", ISS-1421 r36). */
+function saysMore(word: string | null, provider: string): string | null {
+  return word && word.toLowerCase() !== provider.toLowerCase() ? word : null;
 }
 
 /** The one rule every list names a connection by: its name, else what it points at, else its
@@ -88,7 +100,7 @@ export function connectionLabels(
   const base = new Map<string, string>();
   for (const c of connections) {
     const provider = providerLabel(c.provider);
-    const name = connectionName(c) ?? connectionTarget(c);
+    const name = saysMore(connectionName(c), provider) ?? saysMore(connectionTarget(c), provider);
     base.set(c.id, name ? (withProvider ? `${name} · ${provider}` : name) : provider);
   }
   return toldApart(connections, base, "added");

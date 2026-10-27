@@ -24,7 +24,7 @@ export const googleConnectionConfigSchema = z
     if (offending.length === 0) return;
     ctx.addIssue({
       code: 'custom',
-      message: `${offending.join(', ')} ${offending.length === 1 ? 'is' : 'are'} the PROJECT's answer, not the credential's, so ${offending.length === 1 ? 'it belongs' : 'they belong'} on the binding — set via the project's own integration create, bind-existing, or binding PATCH. A Google connection holds the service-account key and the account identity read back out of it, and nothing else.`,
+      message: `${offending.join(', ')} ${offending.length === 1 ? 'is' : 'are'} the PROJECT's answer, not the credential's, so ${offending.length === 1 ? 'it belongs' : 'they belong'} on the project's own use of the connection — set via the project's own integration create, sharing an existing connection, or the project integration PATCH. A Google connection holds the service-account key and the account identity read back out of it, and nothing else.`,
     });
   });
 

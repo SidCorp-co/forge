@@ -185,7 +185,7 @@ describe('a plain project member over a removed connection (criteria 290, 308, 3
     const person = { ...(await sentryBinding({ type: 'user', id: owner.id }, true)), projectId };
     for (const [{ bindingId, projectId: at }, who] of [
       [org, 'only an owner or admin of the organization that owns it can change its key'],
-      [person, 'only its owner or an admin of a project bound to it can change its key'],
+      [person, 'only its owner or an admin of a project it is shared with can change its key'],
     ] as const) {
       projectId = at;
       const before = await rowOf(bindingId);

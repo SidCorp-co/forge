@@ -99,7 +99,7 @@ describe('a reader that holds the binding names it', () => {
   ) {
     expect(err.credential.bindingId).toBe(planted.bindingId);
     expect(err.message).toContain(
-      `(connection ${planted.connectionId}, read through binding ${planted.bindingId})`,
+      `(connection ${planted.connectionId}, read for a project through integration ${planted.bindingId})`,
     );
     expect(err.message).toContain('Enter the credential again');
     expectNothingSecret(err.message, planted.sealed);

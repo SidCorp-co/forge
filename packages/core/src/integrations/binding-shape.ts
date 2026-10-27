@@ -26,7 +26,7 @@ export function checkRoleStagesPairing(
       code: 'custom',
       path: ['stages'],
       message:
-        'a `service` binding serves no stage, so it takes no `stages` — it is a project-wide facility (an error tracker, a chat room, a repo host). Send `role: "deploy"` with `stages` if this binding is somewhere Forge deploys to.',
+        'a connection shared as a `service` serves no stage, so it takes no `stages` — it is a project-wide facility (an error tracker, a chat room, a repo host). Send `role: "deploy"` with `stages` if this connection is somewhere Forge deploys to.',
     });
     return;
   }
@@ -44,7 +44,7 @@ export function checkRoleStagesPairing(
       code: 'custom',
       path: ['stages'],
       message:
-        'a `deploy` binding must declare at least one stage: `["preview"]`, `["live"]`, or `["preview","live"]` for one endpoint that serves both (an epodsystem store, whose preview is the draft theme and whose live is the published one).',
+        'a deploy target must declare at least one stage: `["preview"]`, `["live"]`, or `["preview","live"]` for one endpoint that serves both (an epodsystem store, whose preview is the draft theme and whose live is the published one).',
     });
   }
 }
@@ -55,7 +55,7 @@ export function checkRoleStagesPairing(
  */
 export function cannotDeployMessage(provider: string): string {
   const deployable = labelsInWords(deployCapableProviders());
-  return `Forge cannot deploy to ${providerLabel(provider)}, so a binding of it can only be a service binding, \`role: "service"\`. Forge deploys to ${deployable}.`;
+  return `Forge cannot deploy to ${providerLabel(provider)}, so it can be shared with a project only as a service, \`role: "service"\`. Forge deploys to ${deployable}.`;
 }
 
 /**

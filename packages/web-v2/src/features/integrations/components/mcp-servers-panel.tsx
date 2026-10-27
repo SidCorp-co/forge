@@ -19,7 +19,8 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { STATE_WORDS } from "../derive";
 import { useIntegrationsList, useMcpPreview, useTestIntegration } from "../hooks";
-import { providerLabel } from "../providers/registry";
+import { toldApart } from "../connection-identity";
+import { connectionTargetFor, providerLabel } from "../providers/registry";
 import type { IntegrationSummary, IntegrationTestResult, McpServerPreviewEntry } from "../types";
 import { AgentAccessControl, GRANT_LABEL } from "./agent-access-control";
 import { Pill, scopeLabel } from "./status-pill";
@@ -84,6 +85,44 @@ export function rowTitle(entry: Pick<McpServerPreviewEntry, "provider" | "server
   return entry.provider ? providerLabel(entry.provider) : entry.serverName;
 }
 
+/**
+ * Each row's title, by the rule the Integrations tab's rows are named by (ISS-1421 r35): a provider
+ * shared with the project more than once names each row by its label, else what it points at, and
+ * where two still read alike under one scope, the day and time each was connected (r36, judge-145:
+ * two Coolify rows read "Coolify" twice). A provider shared once, or a server this project's settings
+ * declare, keeps its plain title.
+ */
+export function rowTitles<E extends Pick<McpServerPreviewEntry, "provider" | "serverName" | "bindingId" | "role" | "stages">>(
+  entries: readonly E[],
+  bindings: ReadonlyMap<string, Pick<IntegrationSummary, "label" | "config" | "createdAt">>,
+): Map<E, string> {
+  const keyOf = (e: E) => `${e.provider ?? ""}:${e.bindingId ?? e.serverName}`;
+  const shared = new Map<string, number>();
+  for (const e of entries) if (e.provider && e.bindingId) shared.set(e.provider, (shared.get(e.provider) ?? 0) + 1);
+  const titles = new Map<string, string>();
+  const keyed = new Map<string, string>();
+  const rows: { id: string; createdAt: string }[] = [];
+  for (const e of entries) {
+    const title = rowTitle(e);
+    const binding = e.bindingId ? bindings.get(e.bindingId) : undefined;
+    if (!e.provider || !binding || (shared.get(e.provider) ?? 0) < 2) {
+      titles.set(keyOf(e), title);
+      continue;
+    }
+    const name = binding.label.trim() || connectionTargetFor(e.provider, binding.config);
+    const named = name ? `${title} · ${name}` : title;
+    // The scope rides in the key so only rows alike under one scope are told apart, then comes off.
+    const scope = e.role !== null ? scopeLabel(e.role, e.stages) : "";
+    keyed.set(keyOf(e), `${named}\u0000${scope}`);
+    rows.push({ id: keyOf(e), createdAt: binding.createdAt });
+  }
+  for (const [id, label] of toldApart(rows, keyed, "connected")) {
+    const key = keyed.get(id) as string;
+    titles.set(id, `${key.split("\u0000")[0]}${label.slice(key.length)}`);
+  }
+  return new Map(entries.map((e) => [e, titles.get(keyOf(e)) ?? rowTitle(e)]));
+}
+
 export const MCP_PANEL_INTRO =
   "The tools each agent working on this project is given. They come from this project's settings and from the integrations shared with it. An integration reaches agents only once it is allowed on its row. Credentials are added when an agent starts, and never shown here.";
 
@@ -124,10 +163,13 @@ function VerifyResult({ result }: { result: IntegrationTestResult | { errorMessa
 
 function McpServerRow({
   entry,
+  title,
   projectId,
   binding,
 }: {
   entry: McpServerPreviewEntry;
+  /** What the row is called, told apart from its provider's other rows by `rowTitles`. */
+  title: string;
   projectId: string;
   /** The binding this row previews, absent for the synthetic not-configured row. */
   binding: IntegrationSummary | undefined;
@@ -153,7 +195,7 @@ function McpServerRow({
     <li className="flex flex-col gap-1.5 border-t border-line py-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Icon name="command" size={15} className="text-muted" />
-        <span className="text-13 font-semibold text-fg">{rowTitle(entry)}</span>
+        <span className="text-13 font-semibold text-fg">{title}</span>
         {entry.role !== null && (
           <span className="fg-body-sm whitespace-nowrap rounded-pill bg-sunken px-2 py-0.5 text-subtle">
             {scopeLabel(entry.role, entry.stages)}
@@ -216,6 +258,8 @@ export function McpServersPanel({ projectId }: { projectId: string }) {
   const preview = useMcpPreview(projectId);
   const bindings = useIntegrationsList(projectId);
   const byBindingId = new Map((bindings.data?.bindings ?? []).map((b) => [b.id, b]));
+  const servers = preview.data?.servers ?? [];
+  const titles = rowTitles(servers, byBindingId);
   const stateOnly = preview.data?.stateOnlyNames ?? [];
   const dropped = preview.data?.droppedNames ?? [];
 
@@ -234,10 +278,11 @@ export function McpServersPanel({ projectId }: { projectId: string }) {
         <ErrorState title="Couldn't load MCP servers" message={formatApiError(preview.error)} onRetry={() => preview.refetch()} />
       ) : (
         <ul className="flex flex-col">
-          {(preview.data?.servers ?? []).map((entry) => (
+          {servers.map((entry) => (
             <McpServerRow
               key={`${entry.source}:${entry.provider ?? entry.serverName}:${entry.bindingId ?? entry.serverName}`}
               entry={entry}
+              title={titles.get(entry) ?? rowTitle(entry)}
               projectId={projectId}
               binding={entry.bindingId ? byBindingId.get(entry.bindingId) : undefined}
             />

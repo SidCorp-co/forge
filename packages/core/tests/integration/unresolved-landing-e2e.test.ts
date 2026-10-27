@@ -493,7 +493,7 @@ describe('a recorded landing its bound repository refuses to be read for', () =>
     const carried = blockers.find((b) => b.details?.check === 'carried');
 
     expect(carried?.reader).toBe(
-      `Reading which landings this release would carry beyond its issues failed: Forge cannot read ${REPOSITORY}, and checks again once Forge can read ${REPOSITORY} again: give the GitHub App installation behind this project's binding access to it, or bind the project to where it now lives. Until then this answer cannot say whether a release would start: whatever that check would have found is missing from this list.`,
+      `Reading which landings this release would carry beyond its issues failed: Forge cannot read ${REPOSITORY}, and checks again once Forge can read ${REPOSITORY} again: give the GitHub App installation behind this project's GitHub connection access to it, or connect the project to where it now lives. Until then this answer cannot say whether a release would start: whatever that check would have found is missing from this list.`,
     );
     expect(blockers.map((b) => `${b.reader} ${b.message}`).join(' ')).not.toMatch(
       /retry|again to/i,

@@ -271,11 +271,27 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
     expect(dialogProps?.selectedIssues.map((i) => i.displayId)).toEqual(["ISS-1", "ISS-2"]);
   });
 
-  it("offers no release at all when every waiting row is one a release could not close", () => {
+  // r36, judge-145: with 0 ready the gate still offered a Release now nothing could enable. It offers
+  // none, and says what would make an issue ready.
+  it("offers no Release now when no waiting row can be released, and says where to read what would", () => {
     state({ issues: [REFUSED] });
     renderPanel();
     expect(screen.getByRole("checkbox", { name: "Select every issue that can be released" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /^Release now$/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /release/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("None is ready to release. Each issue marked Not ready to release says below what would make it ready."),
+    ).toBeInTheDocument();
+    cleanup();
+    state({ issues: [REFUSED, ISSUES[2]] });
+    renderPanel(false);
+    expect(screen.queryByRole("button", { name: /release/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId("none-ready")).toHaveTextContent(
+      "None is ready to release. Each issue marked Not ready to release says below what would make it ready, and the rest are already in a release.",
+    );
+    cleanup();
+    state({ issues: [ISSUES[2]] });
+    renderPanel();
+    expect(screen.getByText("None is ready to release: the one waiting is already in a release.")).toBeInTheDocument();
   });
 });
 

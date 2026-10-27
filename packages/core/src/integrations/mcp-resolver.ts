@@ -24,7 +24,7 @@ export async function resolveGrantedMcpEntries(
       // answer — the guard said one thing and the code did another.
       if (!Array.isArray(rows)) {
         throw new TypeError(
-          `granted-binding lookup for ${decl.provider} answered ${typeof rows}, not a list`,
+          `the lookup of ${decl.provider} connections agents may use answered ${typeof rows}, not a list`,
         );
       }
       pairs = rows;

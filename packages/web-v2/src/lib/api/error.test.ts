@@ -203,7 +203,7 @@ describe('the connection refusals (ISS-1216)', () => {
   // A 404 under `NOT_FOUND` prints "Not found." and drops the server's sentence, which is what the
   // connection drawer's red panel showed; these two codes are what keeps the sentence.
   const reachable =
-    'Connection 2679a042 is not one you can reach. Ask its owner, or an admin of a project it is bound to, to bind it to a project you administer.';
+    "This connection is not one you can reach. A connection is visible to the individual who owns it, to the members of the organization that owns it, and to an admin of a project it is shared with. Only its owner (for an organization's connection, an owner or admin of that organization) can share it with a project you administer, so ask them.";
 
   it('prints the server sentence for a connection the caller cannot reach, not "Not found."', () => {
     const err = new ApiError(404, reachable, 'CONNECTION_NOT_REACHABLE');

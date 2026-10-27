@@ -104,7 +104,7 @@ const SILENT_SINCE: Record<StallOrigin['from'], string> = {
 function reasonFor(silentMs: number, from: StallOrigin['from']): string {
   const minutes = Math.floor(silentMs / 60_000);
   const bound = BOUND_DEFAULTS.stall / 60_000;
-  return `nothing was written to this release's ledger in the ${minutes} minutes since ${SILENT_SINCE[from]} (the bound is ${bound}), so nothing is running it`;
+  return `nothing was written to this release's ledger in the ${minutes} minutes since ${SILENT_SINCE[from]} (the limit is ${bound}), so nothing is running it`;
 }
 
 /**

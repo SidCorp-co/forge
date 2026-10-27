@@ -247,7 +247,7 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
     expect(
       screen.getByText(
-        "This connection holds no key. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list.",
+        "This connection holds no key. No project it is shared with would give a new App to its owner, so nothing can turn it back on. Clear it from the list.",
       ),
     ).toBeInTheDocument();
   });
@@ -256,7 +256,7 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
     expect(
       screen.getByText(
-        "This connection holds no key and no project is bound to it, so nothing can turn it back on. Clear it from the list.",
+        "This connection holds no key and is shared with no project, so nothing can turn it back on. Clear it from the list.",
       ),
     ).toBeInTheDocument();
   });
@@ -331,15 +331,15 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
   // which core refuses (230), above "nothing can turn it back on".
   it("says no org project can be bound to an org's removed connection", () => {
     mount({ ...(mine as object), ownerType: "org", provider: "postman", active: false, hasSecrets: false });
-    expect(screen.queryByText(/any project in the org can be bound/)).toBeNull();
+    expect(screen.queryByText(/it can be shared with any project in the org/)).toBeNull();
   });
 
   it("keeps the org-shared line on an org's connection that holds its key, or was only disabled", () => {
     mount({ ...(mine as object), ownerType: "org", provider: "postman", active: true, hasSecrets: true });
-    expect(screen.getByText(/any project in the org can be bound/)).toBeInTheDocument();
+    expect(screen.getByText(/it can be shared with any project in the org/)).toBeInTheDocument();
     cleanup();
     mount({ ...(mine as object), ownerType: "org", provider: "postman", active: false, hasSecrets: true });
-    expect(screen.getByText(/any project in the org can be bound/)).toBeInTheDocument();
+    expect(screen.getByText(/it can be shared with any project in the org/)).toBeInTheDocument();
   });
 
   // judge-94 on 224: a member's list named a project they cannot open by its id.
@@ -355,7 +355,13 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     expect(screen.getByText("A project you cannot open")).toBeInTheDocument();
     expect(screen.queryByText(/9f1c2d3e/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Remove…" }));
-    expect(screen.getByText(/for 2 projects: Storefront, a project you cannot open\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /takes it away from 2 projects: Storefront and a project you cannot open\. Nothing on those projects can use it from then on\./,
+      ),
+    ).toBeInTheDocument();
+    // r36, judge-145: the question said "credential resolution" and "the next dispatch", a store's words.
+    expect(screen.queryByText(/credential resolution|next dispatch/)).toBeNull();
   });
 
   it("keeps Test connection and the share hint on a connection that holds its key", () => {
@@ -424,7 +430,7 @@ describe("the drawer for a reader who may not change the connection", () => {
       "Read-only — only an owner or admin of Acme can change this credential.",
     );
     expect(screen.queryByText(/edited per project/)).toBeNull();
-    expect(screen.getByText(/belong to this connection, so every project bound to it shares them/)).toBeInTheDocument();
+    expect(screen.getByText(/belong to this connection, so every project it is shared with shares them/)).toBeInTheDocument();
   });
 
   it("says nothing of the kind to a reader who may change it", () => {

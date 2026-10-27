@@ -86,7 +86,7 @@ async function expireLock(environment: string, by = '1 minute'): Promise<void> {
   `);
 }
 
-const request = (runId: string, subject = 'live deploy (binding b-1)') => ({
+const request = (runId: string, subject = 'live deploy (target b-1)') => ({
   projectId,
   runId,
   subject,

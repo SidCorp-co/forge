@@ -487,7 +487,7 @@ describe("a project with no binding, offered the Apps the directory lists", () =
     expect(picker()).toBeNull();
     expect(screen.getByRole("button", { name: /create github app/i })).toBeInTheDocument();
     expect(
-      screen.getByText(/Their App is owned by Dana Reyes, and only they can bind it/i),
+      screen.getByText(/Their App is owned by Dana Reyes, and only they can share it/i),
     ).toBeInTheDocument();
   });
 

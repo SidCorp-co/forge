@@ -44,7 +44,7 @@ export class ReleaseNothingToReadError extends Error {
   readonly code = 'RELEASE_NOTHING_TO_READ';
   constructor() {
     super(
-      'No live deploy binding of this project declares a verify probe, so there is nothing for Forge to read. Do not look: finish records this release as unverified, on your account alone.',
+      'No live deploy target of this project declares a verify probe, so there is nothing for Forge to read. Do not look: finish records this release as unverified, on your account alone.',
     );
     this.name = 'ReleaseNothingToReadError';
   }
@@ -87,7 +87,7 @@ export class ReleaseProbesUnreadableError extends Error {
     public readonly bindings: string[] = [],
   ) {
     super(
-      `RELEASE_PROBES_UNREADABLE: ${[...urls, ...bindings.map((b) => `binding ${b}`)].join(', ')}`,
+      `RELEASE_PROBES_UNREADABLE: ${[...urls, ...bindings.map((b) => `deploy target ${b}`)].join(', ')}`,
     );
     this.name = 'ReleaseProbesUnreadableError';
   }

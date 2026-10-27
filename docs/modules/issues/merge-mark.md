@@ -61,7 +61,8 @@ refusal by name and writes nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS
 `COMMIT_NOT_LANDED`. Where Forge cannot tell (the project declares no way to read its repository,
 the reader it has fails, or no base branch is named) the agent's commit is kept as a claim instead
 (below, ISS-1409), and `COMMIT_UNVERIFIED` is what a person's mark, or an agent's on an issue that
-already holds a branch, meets there. On the git route the cause is one of five. The first is that the name of the
+already holds a branch, meets there, except where the project names no repository at all: a first
+mark there keeps the commit as a claim too (ISS-1421 r36). On the git route the cause is one of five. The first is that the name of the
 host the URL names did not resolve, which is found before any connection is made
 (`packages/core/src/git/bounded-fetch.ts:unresolvedHostRefusal`). The other four are read from
 what the host said (`packages/core/src/git/bounded-fetch.ts:hostRefusal`): the host refused the key;
@@ -97,7 +98,10 @@ host is asked, naming how many digits it has
 ## Where Forge cannot verify the commit (ISS-1409)
 
 `COMMIT_UNVERIFIED` is the refusal a person's mark meets where the repository could not be read.
-An agent's mark is not refused there. Wherever Forge cannot tell whether the commit is this issue's
+An agent's mark is not refused there, and neither is a person's first mark on a project that names
+no repository and has no GitHub connection (`RepositoryAccess` answers `refused` with
+`noRepository: true`): no setting short of naming one could make that commit checkable, so the mark
+records it as a claim and its answer says Forge did not check it (ISS-1421 r36). Wherever Forge cannot tell whether the commit is this issue's
 landing — the project declares no way to read its repository (no GitHub binding, and no deploy key
 beside a repository URL: `RepositoryAccess` answers `refused` with `unbound: true`), a reader it
 has fails (a GitHub read or token-mint failure, a host that refuses the key or cannot be reached, a
@@ -128,7 +132,8 @@ whether it is `noReader`); a repository that was read and says no never carries 
   another issue's, not on the base or live branch) is refused as before, by name, and nothing is
   written. A person's mark naming a commit, and an agent's naming one on an issue that already
   holds a branch, still go through `resolveMarkCommit` and are refused
-  `COMMIT_UNVERIFIED` where nothing can read, on an issue not yet marked; only that refusal offers
+  `COMMIT_UNVERIFIED` where nothing can read, on an issue not yet marked, unless the project names
+  no repository (a person's mark is then kept as a claim, as above); only that refusal offers
   a mark naming no commit. On an issue already marked the call writes nothing and is answered, in
   its reply and its comment, with where the mark stays, the reason quoted (ISS-1421 r8).
 - **It is verified later by a repeat mark.** With a claim standing, `agentEvidence` reads the
@@ -282,6 +287,8 @@ resolved by the project's repository (`packages/core/src/issues/commit-landing.t
 read `readCommitLanding` takes). The repository holding no such commit refuses the mark
 `COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED` on an
 issue not yet marked, naming why, and a mark naming no commit is the route that still records. A
+project naming no repository is the exception: a person's first mark there keeps the commit as a
+claim (ISS-1421 r36). A
 resolved commit is named by the full sha the repository gives, never as the caller typed it. The
 one commit not read is the merged pull request's own merge sha, which Forge already holds.
 

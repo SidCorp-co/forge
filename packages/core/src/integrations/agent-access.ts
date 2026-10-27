@@ -47,5 +47,5 @@ export function notGrantedMessage(
   const who =
     agentAccessTier(getIntegration(provider)) === 'org-admin' ? WHO_ORG_ADMINS : WHO_ADMINS;
   const through = connection ? ` through ${connectionCalled(connection)}` : '';
-  return `This project's ${label} binding${through} is connected, but no agent on this project may use it: its "Agents on this project may use this" switch is off. Only ${who} can switch it on, in the ${label} drawer on this project's Integrations tab.`;
+  return `This project is connected to ${label}${through}, but no agent on this project may use it: its "Agents on this project may use this" switch is off. Only ${who} can switch it on, in the ${label} drawer on this project's Integrations tab.`;
 }

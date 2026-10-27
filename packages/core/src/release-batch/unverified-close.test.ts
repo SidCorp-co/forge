@@ -44,9 +44,9 @@ describe('the note on an issue a release closed with some bindings unread', () =
   it('names the binding nothing read, and says the others were', () => {
     const note = unverifiedCloseNote(RUN, 'abc1234', unread);
 
-    expect(note).toContain('verified at only some of its deploy bindings');
+    expect(note).toContain('verified at only some of its deploy targets');
     expect(note).toContain('coolify [eu] b-2');
-    expect(note).toContain('The bindings that do declare one were read and confirmed');
+    expect(note).toContain('The deploy targets that do declare one were read and confirmed');
     expect(note).toContain(unverifiedMarker(RUN));
   });
 

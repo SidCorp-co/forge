@@ -139,7 +139,7 @@ async function readTarget(
 }
 
 async function readBinding(pair: BindingWithConnection): Promise<TargetAnswer[]> {
-  const named = `the ${providerName(pair)} binding ${pair.binding.id} (${stagesOf(pair)})`;
+  const named = `the ${providerName(pair)} deploy target ${pair.binding.id} (${stagesOf(pair)})`;
   const read = getAdapter(pair.binding.provider)?.deployedCommit;
   let ctx: AdapterContext;
   try {
@@ -168,10 +168,10 @@ async function activeDeployBindings(projectId: string): Promise<BindingWithConne
 
 function unroutedWhy(pairs: readonly BindingWithConnection[]): string {
   if (pairs.length === 0) {
-    return 'this project has no active deploy binding, so Forge makes no deployment it could read a commit from';
+    return 'this project has no deploy target switched on, so Forge makes no deployment it could read a commit from';
   }
   const providers = labelsInWords([...new Set(pairs.map((p) => p.binding.provider))]);
-  return `its deploy bindings go through ${providers}, and none of them reports the commit a deployment built`;
+  return `its deploy targets go through ${providers}, and none of them reports the commit a deployment built`;
 }
 
 /** The act that would give this project a route, offered only where its bindings can take it: a
@@ -179,12 +179,12 @@ function unroutedWhy(pairs: readonly BindingWithConnection[]): string {
 function unroutedRoute(pairs: readonly BindingWithConnection[]): string {
   if (pairs.length === 0) {
     return (
-      'bind a deploy binding Forge deploys through whose provider reports the commit a deployment ' +
-      'built (Coolify does), or declare `verify.probes` on the live deploy binding'
+      'share as a deploy target a connection Forge deploys through whose provider reports the commit a deployment ' +
+      'built (Coolify does), or declare `verify.probes` on the live deploy target'
     );
   }
   return (
-    'declare `verify.probes` on the live deploy binding, naming an address of this project that ' +
+    'declare `verify.probes` on the live deploy target, naming an address of this project that ' +
     'answers with the commit it is serving'
   );
 }
@@ -201,7 +201,8 @@ export async function readForgeDeployments(projectId: string): Promise<DeployedR
   const silent = pairs
     .filter((p) => !reports(p))
     .map(
-      (p) => `the ${providerName(p)} binding ${p.binding.id} reports no commit a deployment built`,
+      (p) =>
+        `the ${providerName(p)} deploy target ${p.binding.id} reports no commit a deployment built`,
     );
   const served = answers.flatMap((a) => (a.served ? [a.served] : []));
   const unread = [...answers.flatMap((a) => (a.unread ? [a.unread] : [])), ...silent];

@@ -136,7 +136,7 @@ describe('the proof a release run is told about (ISS-1321)', () => {
 
     expect(out).toContain('- https://api.example.test/version');
     expect(out).toContain('- https://eu.example.test/version');
-    expect(out).toContain('1 more live deploy binding declares no probe');
+    expect(out).toContain('1 more live deploy target declares no probe');
     expect(out).toContain('`look` names it as `unread`');
   });
 

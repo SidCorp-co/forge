@@ -14,6 +14,22 @@ export interface SelectOption {
   detail?: string;
   icon?: IconName;
   disabled?: boolean;
+  /** The heading this option is listed under. Options of one group sit together, in the order
+   *  given; a list whose options name no group shows no heading. */
+  group?: string;
+}
+
+type Run = { group: string | undefined; start: number; items: SelectOption[] };
+
+/** Runs of consecutive options sharing a group, each with the index of its first option. */
+function grouped(options: SelectOption[]): Run[] {
+  const runs: Run[] = [];
+  options.forEach((o, i) => {
+    const last = runs[runs.length - 1];
+    if (last && last.group === o.group) last.items.push(o);
+    else runs.push({ group: o.group, start: i, items: [o] });
+  });
+  return runs;
 }
 
 export interface SelectProps {
@@ -171,32 +187,46 @@ export function Select({
         tabIndex={-1}
         className="forge-drop overflow-y-auto rounded-lg border border-line bg-surface p-1.5 shadow-lg"
       >
-        {options.map((o, i) => {
-          const isSel = o.value === value;
-          const isActive = i === active;
+        {grouped(options).map((run) => {
+          const items = run.items.map((o, at) => {
+            const i = run.start + at;
+            const isSel = o.value === value;
+            const isActive = i === active;
+            return (
+              <div
+                key={o.value}
+                id={`${baseId}-opt-${i}`}
+                data-idx={i}
+                role="option"
+                aria-selected={isSel}
+                aria-disabled={o.disabled || undefined}
+                onMouseEnter={() => !o.disabled && setActive(i)}
+                onClick={() => commit(i)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-13-5",
+                  o.disabled && "cursor-not-allowed",
+                  isActive && !o.disabled ? "bg-accent-tint text-accent-text" : "text-fg",
+                )}
+              >
+                {o.icon && <Icon name={o.icon} size={16} className={o.disabled ? "opacity-50" : undefined} style={isActive ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />}
+                <span className="flex min-w-0 flex-1 flex-col">
+                  {/* A disabled option fades its label only: its detail is why it cannot be picked, and is read (ISS-1229 r37). */}
+                  <span className={cn("[overflow-wrap:anywhere]", o.disabled && "text-subtle")} data-option-label>{o.label}</span>
+                  {o.detail && <span className="fg-caption text-muted [overflow-wrap:anywhere]" data-option-detail>{o.detail}</span>}
+                </span>
+                {isSel && <Icon name="check" size={15} strokeWidth={2.5} style={{ color: "var(--accent)" }} />}
+              </div>
+            );
+          });
+          if (run.group === undefined) return items;
+          const headingId = `${baseId}-group-${run.start}`;
           return (
-            <div
-              key={o.value}
-              id={`${baseId}-opt-${i}`}
-              data-idx={i}
-              role="option"
-              aria-selected={isSel}
-              aria-disabled={o.disabled || undefined}
-              onMouseEnter={() => !o.disabled && setActive(i)}
-              onClick={() => commit(i)}
-              className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-13-5",
-                o.disabled && "cursor-not-allowed",
-                isActive && !o.disabled ? "bg-accent-tint text-accent-text" : "text-fg",
-              )}
-            >
-              {o.icon && <Icon name={o.icon} size={16} className={o.disabled ? "opacity-50" : undefined} style={isActive ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />}
-              <span className="flex min-w-0 flex-1 flex-col">
-                {/* A disabled option fades its label only: its detail is why it cannot be picked, and is read (ISS-1229 r37). */}
-                <span className={cn("truncate", o.disabled && "text-subtle")} data-option-label>{o.label}</span>
-                {o.detail && <span className="fg-caption text-muted [overflow-wrap:anywhere]" data-option-detail>{o.detail}</span>}
-              </span>
-              {isSel && <Icon name="check" size={15} strokeWidth={2.5} style={{ color: "var(--accent)" }} />}
+            // biome-ignore lint/a11y/useSemanticElements: a listbox owns its options through role="group" only (WAI-ARIA listbox pattern); a <fieldset> groups form controls and is no child a listbox may have.
+            <div key={`group-${run.start}`} role="group" aria-labelledby={headingId}>
+              <div id={headingId} role="presentation" className="fg-caption px-2.5 pb-1 pt-2 font-semibold text-subtle">
+                {run.group}
+              </div>
+              {items}
             </div>
           );
         })}
@@ -223,11 +253,18 @@ export function NativeSelect({ options, className, ...props }: NativeSelectProps
         )}
         {...props}
       >
-        {options.map((o) => (
-          <option key={o.value} value={o.value} disabled={o.disabled}>
-            {o.detail ? `${o.label} (${o.detail})` : o.label}
-          </option>
-        ))}
+        {grouped(options).map((run) => {
+          const items = run.items.map((o) => (
+            <option key={o.value} value={o.value} disabled={o.disabled}>
+              {o.detail ? `${o.label} (${o.detail})` : o.label}
+            </option>
+          ));
+          return run.group === undefined ? items : (
+            <optgroup key={`group-${run.start}`} label={run.group}>
+              {items}
+            </optgroup>
+          );
+        })}
       </select>
       <Icon name="chevronDown" size={16} className="pointer-events-none absolute right-3 text-subtle" />
     </div>

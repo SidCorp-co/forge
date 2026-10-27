@@ -148,7 +148,7 @@ describe('the release runner label', () => {
     const message = runnerPreferenceUnmetSentence('release');
 
     expect(message).toContain(
-      'clear `releaseRunnerLabel` from the live deploy binding under Settings \u2192 Integrations',
+      'clear `releaseRunnerLabel` from the live deploy target under Settings \u2192 Integrations',
     );
     expect(message).toContain(
       'from the connection behind it under Integrations in the workspace rail',
@@ -425,7 +425,7 @@ describe('NO_RELEASE_GATE — what it means for the issues named', () => {
 
   it('names the screens where releasing through Forge is set up, both halves of it', () => {
     expect(sentence).toMatch(/release chain under Settings → Shape & release/);
-    expect(sentence).toMatch(/live deploy binding under Settings → Integrations/);
+    expect(sentence).toMatch(/live deploy target under Settings → Integrations/);
   });
 });
 

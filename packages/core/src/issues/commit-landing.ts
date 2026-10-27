@@ -236,6 +236,9 @@ export type CommitResolution =
       /** Where Forge could not read the repository: the host's reason, which a marked issue
        *  answers with where its mark stays rather than with this refusal. */
       unread?: { why: string };
+      /** The project names no repository at all, so no setting short of naming one lets Forge
+       *  check a commit, and a person's first mark keeps it as a claim (ISS-1421 r36). */
+      unchecked?: { why: string; clears: string; noReader: true };
     };
 
 /**
@@ -252,6 +255,7 @@ export async function resolveMarkCommit(
     why: string,
     route: RepositoryRoute,
     noReader: boolean,
+    noRepository = false,
   ): CommitResolution => ({
     ok: false,
     code: 'COMMIT_UNVERIFIED',
@@ -259,12 +263,20 @@ export async function resolveMarkCommit(
     details: { commit },
     reason: `the repository could not be read: ${why}`,
     unread: { why },
+    ...(noRepository
+      ? { unchecked: { why, clears: readableThrough(route), noReader: true as const } }
+      : {}),
   });
   return withRepository(
     projectId,
     async (access) => {
       if (access.kind === 'refused') {
-        return unresolved(saying(access), access.route, access.unbound);
+        return unresolved(
+          saying(access),
+          access.route,
+          access.unbound,
+          access.noRepository === true,
+        );
       }
       const { reader } = access;
       const looked = await reader.commit(commit);

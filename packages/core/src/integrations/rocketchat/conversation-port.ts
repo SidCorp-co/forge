@@ -256,7 +256,7 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
     const auth = await authForVenue(parts.namespace, parts.rid, venue.projectId);
     if (!auth) {
       throw new Error(
-        `rocketchat: no active connection on ${parts.namespace} holds a binding for room ${parts.rid} under project ${venue.projectId}, so ${venue.externalId} cannot be posted to — the room may have been rebound since this conversation was opened`,
+        `rocketchat: no connection switched on for ${parts.namespace} carries room ${parts.rid} for project ${venue.projectId}, so ${venue.externalId} cannot be posted to — the project may have moved to another room since this conversation was opened`,
       );
     }
     const text = opts?.addressee ? `@${opts.addressee} ${message.text}` : message.text;

@@ -36,8 +36,8 @@ export function turnsBackOn(
   if (returnsFrom.length > 0)
     return `This connection holds no key. Installing the GitHub App again from the Integrations tab of ${listed(returnsFrom, "or")} turns it back on.`;
   if (boundProjects.length > 0)
-    return "This connection holds no key. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list.";
-  return "This connection holds no key and no project is bound to it, so nothing can turn it back on. Clear it from the list.";
+    return "This connection holds no key. No project it is shared with would give a new App to its owner, so nothing can turn it back on. Clear it from the list.";
+  return "This connection holds no key and is shared with no project, so nothing can turn it back on. Clear it from the list.";
 }
 
 /** Disable/Enable + Remove with an inline confirm listing affected projects (AC5); Clear once removed. */
@@ -105,7 +105,7 @@ export function DangerZone({
               ? `Clearing this connection deletes it for good${boundProjects?.length ? ` and takes it off ${listed(boundProjects, "and")}` : ""}.`
               : `${
                   affectedProjects.length > 0
-                    ? `Removing this connection stops credential resolution for ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${affectedProjects.join(", ")}. Their integrations stop working on the next dispatch.`
+                    ? `Removing this connection takes it away from ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${listed(affectedProjects, "and")}. Nothing on ${affectedProjects.length === 1 ? "that project" : "those projects"} can use it from then on.`
                     : "No projects are actively using this connection."
                 } Removing it deletes its stored keys, and the connection stays listed as Turned off until it is cleared.`}
           </p>

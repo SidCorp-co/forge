@@ -177,7 +177,7 @@ describe("the Release section's prose", () => {
 	});
 
 	const RUNNERS_READ =
-		"Live bindings name 3 different release runners (box-a, box-b, box-c) — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.";
+		"Live deploy targets name 3 different release runners (box-a, box-b, box-c) — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.";
 
 	it("lists two release runners as stopping a release, never as only undeclared", () => {
 		readiness.mockReturnValue({
@@ -195,10 +195,10 @@ describe("the Release section's prose", () => {
 		const stops = screen.getByRole("list", { name: "What stops a release" });
 		expect(stops.querySelector("li")?.getAttribute("data-code")).toBe("RELEASE_RUNNER_AMBIGUOUS");
 		// ISS-1229 r11, judge-25: the line names which labels disagree, as the caller's sentence does.
-		expect(stops.textContent).toContain("Live bindings name 3 different release runners (box-a, box-b, box-c)");
+		expect(stops.textContent).toContain("Live deploy targets name 3 different release runners (box-a, box-b, box-c)");
 		expect(stops.textContent).not.toContain("RELEASE_RUNNER_AMBIGUOUS");
 		expect(screen.getByRole("list", { name: "What is not declared" }).textContent).not.toContain(
-			"Live bindings name different release runners",
+			"Live deploy targets name different release runners",
 		);
 	});
 

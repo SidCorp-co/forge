@@ -80,7 +80,7 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
   const binding = await findBindingById(data.bindingId);
   const connection = binding ? await findConnectionById(binding.connectionId) : null;
   if (!binding || !connection) {
-    return settle(data, 'failed', 'integration binding or connection is gone');
+    return settle(data, 'failed', 'the deploy target or its connection is gone');
   }
 
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>({ binding, connection });

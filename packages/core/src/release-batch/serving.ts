@@ -42,7 +42,7 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
     return {
       ok: false,
       code: 'PROBES_UNREADABLE',
-      detail: `the live deploy binding ${err.bindings.join(', ')} declares a \`verify\` Forge cannot read, so nothing there can be asked what it serves. Correct it, or remove it.`,
+      detail: `the live deploy target ${err.bindings.join(', ')} declares a \`verify\` Forge cannot read, so nothing there can be asked what it serves. Correct it, or remove it.`,
     };
   }
   if (verification.kind === 'unverified') {

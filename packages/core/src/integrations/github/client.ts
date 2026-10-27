@@ -160,14 +160,14 @@ export function buildRepoClient(args: {
   if (!owner || !repo) {
     throw new GitHubClientError(
       'no_repository',
-      `the GitHub binding on this project names no owner/repo — pick the repository on its Integrations tab`,
+      `this project's GitHub connection names no owner/repo — pick the repository on its Integrations tab`,
     );
   }
   const fullName = `${owner}/${repo}`;
   if (!installationId) {
     throw new GitHubClientError(
       'no_installation',
-      `${fullName} is bound but the App is not installed for that binding — install it on the account that owns ${owner}; reconnecting will not change this`,
+      `${fullName} is connected but the App is not installed for it — install it on the account that owns ${owner}; reconnecting will not change this`,
     );
   }
   const { appId, privateKey } = args.secrets;
@@ -311,14 +311,14 @@ export async function githubRepoClient(projectId: string): Promise<GitHubRepoCli
   if (!binding) {
     throw new GitHubClientError(
       'no_binding',
-      `this project has no active GitHub binding — bind a repository on its Integrations tab`,
+      `this project has no GitHub connection switched on — connect a repository on its Integrations tab`,
     );
   }
   const connection = await findConnectionById(binding.connectionId);
   if (!connection?.active) {
     throw new GitHubClientError(
       'no_connection',
-      `the GitHub connection behind this project's binding is gone or deactivated`,
+      `this project's GitHub connection is gone or deactivated`,
     );
   }
   return buildRepoClient({

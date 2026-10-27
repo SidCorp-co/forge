@@ -138,7 +138,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const RETIRED_WHY =
-  'a release no longer reads the commit it serves off the project\'s environments, only off the live deploy binding. Declare the probe as `verify.probes` on that binding — `{"probes":[{"url":"https://<host>/version","commitPath":"sourceCommit"}]}` — and send `live` with `url` and `apiUrl` only.';
+  'a release no longer reads the commit it serves off the project\'s environments, only off the live deploy target. Declare the probe as `verify.probes` on that deploy target — `{"probes":[{"url":"https://<host>/version","commitPath":"sourceCommit"}]}` — and send `live` with `url` and `apiUrl` only.';
 
 /** How a retired field is named in a refusal: as the field, and as sent where the two differ. */
 function retiredName(path: string, field: string): string {

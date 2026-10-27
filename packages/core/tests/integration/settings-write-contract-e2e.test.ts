@@ -422,7 +422,7 @@ describe('the environments document', () => {
       expect(res.json.code).toBe('ENVIRONMENTS_INVALID');
       const message = String(res.json.message);
       expect(message).toMatch(/`environments\.live\.commit(Url|Path)`.* was retired/);
-      expect(message).toContain('`verify.probes` on that binding');
+      expect(message).toContain('`verify.probes` on that deploy target');
       expect(message).not.toContain('is not a key');
       const conflicts = (res.json.details as { conflicts: { path: string }[] }).conflicts;
       expect(conflicts.map((c) => c.path)).toEqual([path]);

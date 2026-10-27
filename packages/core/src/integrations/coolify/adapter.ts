@@ -131,7 +131,8 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
       });
       return {
         status: 'error',
-        message: 'No deploy target is set on this binding, so there is nothing to check.',
+        message:
+          'No Coolify application is set on this deploy target, so there is nothing to check.',
         diagnostics: { targetCount: 0 },
       } satisfies HealthCheckResult;
     }
@@ -237,7 +238,7 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
 
     const targets = ctx.config.targets ?? [];
     if (targets.length === 0) {
-      throw new Error(`coolify: binding ${ctx.bindingId} has no deploy targets configured`);
+      throw new Error(`coolify: the deploy target ${ctx.bindingId} names no Coolify application`);
     }
 
     const client = buildClient(ctx);

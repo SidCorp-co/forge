@@ -28,7 +28,7 @@ export function deployLockIntent(
     if (reachesLive(binding)) environments.add('live');
   }
   const subject = pairs
-    .map(({ binding }) => `${targetLabelOf(binding)} (binding ${binding.id})`)
+    .map(({ binding }) => `${targetLabelOf(binding)} (target ${binding.id})`)
     .join(', ');
   return { projectId, environments: [...environments].sort(), subject };
 }

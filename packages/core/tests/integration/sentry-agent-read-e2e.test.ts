@@ -205,7 +205,7 @@ describe('forge_sentry over /mcp', () => {
     expect(after).not.toHaveProperty('issues');
     expect((after.refusal as Record<string, unknown>).reason).toBe('no_binding');
     expect(String((after.refusal as Record<string, unknown>).message)).toContain(
-      'no Sentry binding on this project',
+      'no Sentry connection on this project',
     );
     expect(asked, 'nothing should have been asked of Sentry').toEqual([]);
   });

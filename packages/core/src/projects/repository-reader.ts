@@ -115,5 +115,11 @@ export interface RepositoryReader {
 
 export type RepositoryAccess =
   | { kind: 'reader'; reader: RepositoryReader }
-  /** `unbound`: neither a GitHub binding nor a deploy key was declared. */
-  | ({ kind: 'refused'; unbound: boolean; route: RepositoryRoute } & Refused);
+  /** `unbound`: neither a GitHub connection nor a deploy key was declared. `noRepository`: nor
+   *  does the project name a repository URL, so there is nothing a key could be attached for. */
+  | ({
+      kind: 'refused';
+      unbound: boolean;
+      noRepository?: boolean;
+      route: RepositoryRoute;
+    } & Refused);

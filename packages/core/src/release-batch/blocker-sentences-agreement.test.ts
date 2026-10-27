@@ -229,7 +229,7 @@ describe('live bindings naming different release runners', () => {
 
   it('counts the labels it names, at two', () => {
     expect(sentence(['box-a', 'box-b'])).toContain(
-      'Live deploy bindings name 2 different release runners (box-a, box-b), so there is no one box',
+      'Live deploy targets name 2 different release runners (box-a, box-b), so there is no one box',
     );
   });
 

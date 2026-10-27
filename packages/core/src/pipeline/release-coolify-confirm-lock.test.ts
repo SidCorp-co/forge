@@ -135,7 +135,7 @@ describe('confirmPendingProdDeploy — resuming a parked release', () => {
   const lockIntent = {
     projectId: PROJECT_ID,
     environments: ['live'],
-    subject: `live deploy (binding ${PROD_INT})`,
+    subject: `live deploy (target ${PROD_INT})`,
   };
 
   const queueGate = (gate: Record<string, unknown>) => {
@@ -158,7 +158,7 @@ describe('confirmPendingProdDeploy — resuming a parked release', () => {
       projectId: PROJECT_ID,
       environment: 'live',
       runId: 'some-other-run',
-      subject: 'live deploy (binding x)',
+      subject: 'live deploy (target x)',
       acquiredAt: new Date().toISOString(),
       expiresAt: new Date().toISOString(),
     });

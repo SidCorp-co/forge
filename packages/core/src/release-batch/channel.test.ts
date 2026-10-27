@@ -257,7 +257,7 @@ describe('closeVerification (ISS-1321)', () => {
   it('throws RELEASE_PROBES_UNREADABLE naming a binding whose verify was refused', () => {
     const run = () => closeVerification([probed, refused] as unknown as Channels);
     expect(run).toThrow(ReleaseProbesUnreadableError);
-    expect(run).toThrow(/RELEASE_PROBES_UNREADABLE: binding coolify b-c/);
+    expect(run).toThrow(/RELEASE_PROBES_UNREADABLE: deploy target coolify b-c/);
   });
 
   it('names the store slug where the binding carries one', () => {

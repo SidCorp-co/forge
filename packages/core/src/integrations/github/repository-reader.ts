@@ -280,9 +280,9 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
   /** A 404 is GitHub refusing to show the repository, so it says nothing of the commit. */
   function hidden(ref: string): string {
     return (
-      `${repository} answered HTTP 404, which GitHub gives for a repository this binding's ` +
+      `${repository} answered HTTP 404, which GitHub gives for a repository this project's GitHub ` +
       `installation cannot see, so whether it holds ${ref} was not read. Restore ${repository} to ` +
-      "the GitHub App installation's repositories, or bind the project to where it now lives"
+      "the GitHub App installation's repositories, or connect the project to where it now lives"
     );
   }
 

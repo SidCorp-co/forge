@@ -177,7 +177,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
       serverName: 'sentry',
       previewSecrets: { authToken: '[redacted]' },
       justification:
-        'Core mediates the issue read itself: `forge_sentry` answers `list` and `get` against this binding without the credential leaving core. Everything past an issue — events, traces, Seer, the search syntax Sentry keeps adding to — has no core-mediated route, and the hosted https MCP is OAuth-only and unusable against a self-hosted instance, so reaching any of it means the runner executing `npx @sentry/mcp-server` with the token in its environment.',
+        "Core mediates the issue read itself: `forge_sentry` answers `list` and `get` against this project's Sentry connection without the credential leaving core. Everything past an issue — events, traces, Seer, the search syntax Sentry keeps adding to — has no core-mediated route, and the hosted https MCP is OAuth-only and unusable against a self-hosted instance, so reaching any of it means the runner executing `npx @sentry/mcp-server` with the token in its environment.",
       buildEntry: (config, secrets) => {
         const authToken = secrets.authToken;
         if (typeof authToken !== 'string' || authToken.length === 0) return null;

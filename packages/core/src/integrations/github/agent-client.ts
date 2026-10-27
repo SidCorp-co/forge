@@ -197,7 +197,7 @@ export async function resolveGrantedGitHubBinding(
   if (pairs.length === 0) {
     throw new GitHubAgentRefusal(
       'no_binding',
-      'this project has no GitHub binding — bind a repository on its Integrations tab. Nothing was sent to GitHub.',
+      'this project has no GitHub connection — connect a repository on its Integrations tab. Nothing was sent to GitHub.',
     );
   }
   const usable = pairs.filter((r) => r.binding.active && r.connection.active);
@@ -207,7 +207,7 @@ export async function resolveGrantedGitHubBinding(
     const why = await offBindingWords(dead, projectId);
     throw new GitHubAgentRefusal(
       'binding_disabled',
-      `this project's GitHub binding exists, but ${why} Nothing was sent to GitHub.`,
+      `this project is connected to GitHub, but ${why} Nothing was sent to GitHub.`,
       dead.binding.id,
     );
   }

@@ -202,7 +202,7 @@ describe('CoolifyClient reading a resource it was not given', () => {
     // ISS-1421 r16: the host answered 200, so the status carried is 200, never a 404 it never sent.
     await expect(client.getResource('res-uuid')).rejects.toMatchObject({
       status: 200,
-      message: 'Coolify lists no resource res-uuid. Check the resource this binding names.',
+      message: 'Coolify lists no resource res-uuid. Check the resource this deploy target names.',
       addressSuspect: false,
     });
   });

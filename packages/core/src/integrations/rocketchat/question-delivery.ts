@@ -287,11 +287,11 @@ export async function deliverOwedRound(
     step,
   });
   if (destination.kind === 'no_room') {
-    if (!owed.issueId) return refuse(owed, 'no Rocket.Chat room is bound to this project', now);
+    if (!owed.issueId) return refuse(owed, 'no Rocket.Chat room is connected to this project', now);
     // On its issue's page the question is delivered; a room bound later still gets it.
     await settle(
       owed,
-      { status: 'undeliverable', lastError: 'no Rocket.Chat room is bound to this project' },
+      { status: 'undeliverable', lastError: 'no Rocket.Chat room is connected to this project' },
       now,
     );
     await resolveNotifications(undeliverableKey(owed.questionId));

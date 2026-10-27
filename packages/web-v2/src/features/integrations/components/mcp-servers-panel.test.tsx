@@ -16,6 +16,7 @@ import {
   REASON_HINTS,
   reasonHint,
   rowTitle,
+  rowTitles,
 } from "./mcp-servers-panel";
 
 expect.extend(matchers);
@@ -127,3 +128,51 @@ describe("the not-granted hint", () => {
     expect(said).not.toMatch(/Switch on/);
   });
 });
+
+// ISS-1421 r36, judge-145: two Coolify deploy targets on one project read "Coolify" twice in the
+// Agent MCP servers list, where the Integrations tab tells them apart.
+describe("the titles of a provider's several rows", () => {
+  const entry = (bindingId: string | null, provider: "coolify" | "postman" | null, stages: ("preview" | "live")[] = ["preview"]) => ({
+    provider,
+    serverName: provider ?? "docs-search",
+    bindingId,
+    role: provider === "coolify" ? ("deploy" as const) : null,
+    stages: provider === "coolify" ? stages : [],
+  });
+  const binding = (label: string, config: Record<string, unknown>, createdAt: string) => ({ label, config, createdAt });
+
+  it("names each row by what it points at, as the tab's rows read", () => {
+    const rows = [entry("b1", "coolify"), entry("b2", "coolify"), entry(null, null)];
+    const titles = rowTitles(
+      rows,
+      new Map([
+        ["b1", binding("", { baseUrl: "https://one.example" }, "2026-10-27T03:34:10.000Z")],
+        ["b2", binding("", { baseUrl: "https://two.example" }, "2026-10-27T03:34:12.000Z")],
+      ]),
+    );
+    expect(rows.map((r) => titles.get(r))).toEqual(["Coolify · one.example", "Coolify · two.example", "docs-search"]);
+  });
+
+  it("tells two that point at one place apart by when each was connected, under one scope only", () => {
+    const rows = [entry("b1", "coolify"), entry("b2", "coolify"), entry("b3", "coolify", ["live"])];
+    const at = (createdAt: string) => binding("", { baseUrl: "https://same.example" }, createdAt);
+    const titles = rowTitles(
+      rows,
+      new Map([
+        ["b1", at("2026-10-26T03:34:10.000Z")],
+        ["b2", at("2026-10-27T03:34:12.000Z")],
+        ["b3", at("2026-10-27T03:40:00.000Z")],
+      ]),
+    );
+    const said = rows.map((r) => titles.get(r) as string);
+    expect(new Set(said.slice(0, 2)).size).toBe(2);
+    expect(said[0]).toMatch(/^Coolify · same\.example · connected /);
+    expect(said[2]).toBe("Coolify · same.example");
+  });
+
+  it("keeps a provider shared once titled by its name alone", () => {
+    const rows = [entry("b1", "postman")];
+    expect(rowTitles(rows, new Map([["b1", binding("", {}, "2026-10-27T03:34:10.000Z")]])).get(rows[0])).toBe("Postman");
+  });
+});
+
