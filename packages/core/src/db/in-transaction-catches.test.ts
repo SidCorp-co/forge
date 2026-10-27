@@ -10,7 +10,8 @@ import {
 
 const PLANTED = 'db/in-transaction-catches.planted.ts';
 
-const plant = `import type postgres from 'postgres';
+const plant = `import { DrizzleError, DrizzleQueryError } from 'drizzle-orm/errors';
+import postgres from 'postgres';
 import { db, type Db, type Tx } from './client.js';
 import { rethrowInTransaction } from './in-transaction.js';
 import { pgConstraintName, pgErrorCode, UNIQUE_VIOLATION } from '../lib/db-errors.js';
@@ -97,6 +98,30 @@ function isStackedError(err: unknown): err is Error & { stack: string } {
 function isCoded(err: unknown): err is { code: string } {
   return (err as { code?: string }).code === '23505';
 }
+
+/** Names one error, bound for good. */
+const isConstRefusal = (err: unknown) => (err as { code?: string }).code === '23505';
+
+/** Each below is bound where it can be replaced, so the body the scan reads may not be what runs. */
+let isMutableRefusal = (err: unknown) => (err as { code?: string }).code === '23505';
+isMutableRefusal = () => true;
+const refusalGuards = { isRefusal: (err: unknown) => (err as { code?: string }).code === '23505' };
+refusalGuards.isRefusal = () => true;
+let readCode = pgErrorCode;
+readCode = () => UNIQUE_VIOLATION;
+
+/** Its comparand is a parameter typed as one code, which the caller can feed the error's own. */
+function isCodeOf(err: unknown, code: '23505') {
+  return (err as { code?: string }).code === code;
+}
+
+/** A class whose instanceof holds of everything, and one inheriting that. */
+class AnyFailure {
+  static [Symbol.hasInstance](_value: unknown) {
+    return true;
+  }
+}
+class AnyRefusal extends AnyFailure {}
 
 export async function swallowsAPick(executor: Pick<Db, 'select'>) {
   try {
@@ -483,6 +508,244 @@ export async function narrowsByComparingTheErrorWithItself(tx: Tx) {
   }
 }
 
+export async function narrowsToTheDrizzleWrapper(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof DrizzleQueryError)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsToTheDrizzleBase(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof DrizzleError)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsToTheServerErrorOnTheCause(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!((err as { cause?: unknown }).cause instanceof postgres.PostgresError)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsToARewrappedCause(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!((err as { cause?: unknown }).cause instanceof DrizzleQueryError)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByTheWrappersName(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as Error).name !== 'DrizzleQueryError') throw err;
+    return null;
+  }
+}
+
+export async function narrowsToTheConnectionClosedOnTheCause(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { cause?: { code?: string } }).cause?.code !== 'CONNECTION_CLOSED') throw err;
+    return null;
+  }
+}
+
+export async function returnsForTheConnectionEnded(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { code?: string }).code === 'CONNECTION_ENDED') return null;
+    throw err;
+  }
+}
+
+export async function narrowsToTheServerShuttingDown(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (pgErrorCode(err) !== '57P01') throw err;
+    return null;
+  }
+}
+
+export async function returnsInsideTheRethrowBranch(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { code?: string }).code !== '23505') {
+      if (tx) return null;
+      throw err;
+    }
+    return null;
+  }
+}
+
+export async function returnsBeforeTheRethrow(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { code?: string }).code !== '23505') {
+      return null;
+      throw err;
+    }
+    return null;
+  }
+}
+
+export async function narrowsAfterReassigningTheError(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    err = { code: '23505' };
+    if ((err as { code?: string }).code === '23505') return null;
+    throw err;
+  }
+}
+
+export async function narrowsAShadowOfTheError(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    {
+      const err = { code: '23505' };
+      if (err.code === '23505') return null;
+    }
+    throw err;
+  }
+}
+
+export async function narrowsAfterWritingTheErrorsCode(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    (err as { cause?: { code?: string } }).cause = { code: '23505' };
+    if ((err as { cause?: { code?: string } }).cause?.code !== '23505') throw err;
+    return null;
+  }
+}
+
+export async function narrowsAfterDestructuringIntoTheError(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    ({ found: err } = { found: { code: '23505' } });
+    if ((err as { code?: string }).code !== '23505') throw err;
+    return null;
+  }
+}
+
+export async function narrowsThenIndexesByTheError(tx: Tx, seen: Record<string, boolean>) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof Refused)) throw err;
+    seen[err.message] = true;
+    return null;
+  }
+}
+
+export async function narrowsByAClassThatHoldsOfAll(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof AnyFailure)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAClassInheritingThat(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof AnyRefusal)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByACastClass(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof (Error as unknown as typeof Refused))) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAReassignedHelper(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isMutableRefusal(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAHelperOnAnObject(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!refusalGuards.isRefusal(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAReassignedReader(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (readCode(err) !== UNIQUE_VIOLATION) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAHelperFedTheErrorsOwnCode(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isCodeOf(err, (err as { code: '23505' }).code)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAConstHelper(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isConstRefusal(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByACodeOnTheCause(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { cause?: { code?: string } }).cause?.code !== '23505') throw err;
+    return null;
+  }
+}
+
+export async function narrowsToAnotherLibraryClassOnTheCause(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!((err as { cause?: unknown }).cause instanceof TypeError)) throw err;
+    return null;
+  }
+}
+
 export async function narrowsByTheCodeReader(tx: Tx) {
   try {
     return await tx.execute('select 1' as never);
@@ -643,6 +906,27 @@ describe('a catch around a statement on a handle that can be a transaction', () 
       ['narrowsByTheSeverityEveryServerErrorHas', 'tx'],
       ['narrowsByAClassItCannotResolve', 'tx'],
       ['narrowsByComparingTheErrorWithItself', 'tx'],
+      ['narrowsToTheDrizzleWrapper', 'tx'],
+      ['narrowsToTheDrizzleBase', 'tx'],
+      ['narrowsToTheServerErrorOnTheCause', 'tx'],
+      ['narrowsToARewrappedCause', 'tx'],
+      ['narrowsByTheWrappersName', 'tx'],
+      ['narrowsToTheConnectionClosedOnTheCause', 'tx'],
+      ['returnsForTheConnectionEnded', 'tx'],
+      ['narrowsToTheServerShuttingDown', 'tx'],
+      ['returnsInsideTheRethrowBranch', 'tx'],
+      ['returnsBeforeTheRethrow', 'tx'],
+      ['narrowsAfterReassigningTheError', 'tx'],
+      ['narrowsAShadowOfTheError', 'tx'],
+      ['narrowsAfterWritingTheErrorsCode', 'tx'],
+      ['narrowsAfterDestructuringIntoTheError', 'tx'],
+      ['narrowsByAClassThatHoldsOfAll', 'tx'],
+      ['narrowsByAClassInheritingThat', 'tx'],
+      ['narrowsByACastClass', 'tx'],
+      ['narrowsByAReassignedHelper', 'tx'],
+      ['narrowsByAHelperOnAnObject', 'tx'],
+      ['narrowsByAReassignedReader', 'tx'],
+      ['narrowsByAHelperFedTheErrorsOwnCode', 'tx'],
     ];
     expect(refusals(planted)).toEqual(
       swallows.map(
@@ -672,6 +956,10 @@ describe('a catch around a statement on a handle that can be a transaction', () 
     expect(kindOf('narrowsByACodeReadByIndex')).toBe('narrowed');
     expect(kindOf('narrowsByAnotherErrorsName')).toBe('narrowed');
     expect(kindOf('narrowsToOneOfTwoCodes')).toBe('narrowed');
+    expect(kindOf('narrowsByAConstHelper')).toBe('narrowed');
+    expect(kindOf('narrowsThenIndexesByTheError')).toBe('narrowed');
+    expect(kindOf('narrowsByACodeOnTheCause')).toBe('narrowed');
+    expect(kindOf('narrowsToAnotherLibraryClassOnTheCause')).toBe('narrowed');
   });
 
   it('leaves alone a catch on the pool, one around a whole transaction, and a finally whose jump lands inside it', () => {

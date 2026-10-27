@@ -3,10 +3,50 @@
  * `cause`, and a caller may wrap that again, so every read walks the cause chain.
  */
 
+import { DrizzleQueryError, TransactionRollbackError } from 'drizzle-orm/errors';
+import postgres from 'postgres';
+
 const SQLSTATE = /^[0-9A-Z]{5}$/;
 const MAX_CHAIN = 8;
 
 export const UNIQUE_VIOLATION = '23505';
+
+/**
+ * Every class a call on a transaction throws: drizzle wraps whatever the driver rejected a statement
+ * with in `DrizzleQueryError`, whose `cause` is the server's `PostgresError` or the plain `Error` the
+ * driver raises for a session it lost, and `tx.rollback()` throws `TransactionRollbackError`, which
+ * a catch that goes on turns into a commit. The catch scan (`src/db/in-transaction-catches.fixture.ts`)
+ * reads this list as the errors a guard has to tell apart.
+ */
+export const STATEMENT_ERRORS = [
+  DrizzleQueryError,
+  postgres.PostgresError,
+  TransactionRollbackError,
+  Error,
+] as const;
+
+/**
+ * The codes an error carries when the session that ran the statement is gone, and its transaction
+ * with it: the driver's own for a connection it lost, and the server's for one it ended.
+ */
+export const SESSION_ENDED_CODES: ReadonlySet<string> = new Set([
+  'CONNECTION_CLOSED',
+  'CONNECTION_ENDED',
+  'CONNECTION_DESTROYED',
+  'CONNECT_TIMEOUT',
+  '08000',
+  '08003',
+  '08006',
+  '08001',
+  '08004',
+  '08007',
+  '08P01',
+  '25P03',
+  '57P01',
+  '57P02',
+  '57P03',
+  '57P05',
+]);
 
 function* causeChain(err: unknown): Generator<Record<string, unknown>> {
   const seen = new Set<unknown>();

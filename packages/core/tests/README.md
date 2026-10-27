@@ -140,8 +140,9 @@ creates `test_w_<slot>_<token>` the first time a slot asks (`VITEST_POOL_ID`, 1 
 and hands the same database to every file the slot runs after that. Before handing it over it
 resets it, the same way for every file:
 
-1. ends every connection the previous file left (`pg_terminate_backend`, waited on), naming each
-   one a client opened and the file that held the slot,
+1. ends every connection the previous file left (`pg_terminate_backend`, waited on), naming the
+   file that held the slot and, by its kind, each session but an autovacuum worker (a `walsender`
+   or a parallel worker included),
 2. drops the schemas the queue makes at runtime (`slot-db.ts:RUNTIME_SCHEMAS`, which no migration
    makes), reads the schema and refuses on any difference from the clone it was,
 3. empties every table the way `truncateAll` does between cases and removes every large object,
@@ -171,7 +172,7 @@ kept on the database's own comment, read without connecting to it. The file's `c
 the app's pool for good (`src/db/client.ts:closeDbFor`, lifted by the next `setupTestDatabase`), so
 work the app left running cannot open another one, and leaves the closed pool no socket to open, so
 a statement still in its queue is refused rather than run on a reopened connection; it ends its own client, and only then terminates
-whatever is still connected, naming each session's pid, application and last statement: what is
+whatever is still connected, naming each session's pid, kind, application and last statement: what is
 left then is background work that outlived the file, and the database cannot leave the slot while
 anything holds it. A client ended while a statement was running resolves once that statement is
 done and its goodbye written, before the server has ended the session, so a session gets five
@@ -190,10 +191,11 @@ gave its database back without `cleanup()` is caught by the next file's step 2, 
 `slot-db.ts`. *"still open at teardown, severed now"* is the teardown's, naming each session the
 file left. *"left on it since <file> held it were severed before <file> was handed it"* is step 1's:
 a connection opened after the previous holder's teardown had severed everything, named by the file
-that held the slot (read off the database's record) and each session's pid, application, state and
-last statement. Both list every session but an autovacuum worker (`backend_type <> 'autovacuum
-worker'`), so a replication connection or a parallel worker is named like a client's own: the
-server's autovacuum worker connects to a database whose rows a file churned, no file opens or can
+that held the slot (read off the database's record) and each session's pid, kind
+(`pg_stat_activity.backend_type`, as `(client backend)`), application, state and last statement.
+Both list every session but an autovacuum worker (`backend_type <> 'autovacuum worker'`), so a
+replication connection or a parallel worker is named too, its kind telling a parallel worker from
+the leader whose application name it carries: the server's autovacuum worker connects to a database whose rows a file churned, no file opens or can
 close one, and severing one only cancels a vacuum the reset makes moot, so it is ended without a
 line. That worker is what the unnamed hand-over lines on `18a970ea3` were: before this
 filter, a hand-over in the e2e above named `pid 142 with no application name, active after

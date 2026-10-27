@@ -149,7 +149,7 @@ describe('a file that gives its database back', () => {
       await harness.cleanup();
 
       expect(reported.mock.calls.flat().join('\n')).toMatch(
-        /1 connection\(s\) still open at teardown, severed now: pid \d+ plant-held-by-this-file, idle after "SELECT 'still here' AS plant"/,
+        /1 connection\(s\) still open at teardown, severed now: pid \d+ \(client backend\) plant-held-by-this-file, idle after "SELECT 'still here' AS plant"/,
       );
     } finally {
       reported.mockRestore();
@@ -183,7 +183,7 @@ describe('a file that gives its database back', () => {
 
       expect(next.url).toBe(harness.url);
       expect(reported.mock.calls.flat().join('\n')).toMatch(
-        /1 connection\(s\) left on it since tests\/integration\/a-previous-holder\.test\.ts held it were severed before tests\/integration\/a-file-gives-back-every-connection-e2e\.test\.ts was handed it: pid \d+ plant-opened-after-teardown, idle after "SELECT 'opened late' AS plant"/,
+        /1 connection\(s\) left on it since tests\/integration\/a-previous-holder\.test\.ts held it were severed before tests\/integration\/a-file-gives-back-every-connection-e2e\.test\.ts was handed it: pid \d+ \(client backend\) plant-opened-after-teardown, idle after "SELECT 'opened late' AS plant"/,
       );
     } finally {
       reported.mockRestore();
