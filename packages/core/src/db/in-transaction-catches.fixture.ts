@@ -8,7 +8,8 @@
  * `finally` that returns, breaks or continues out of a guarded try swallows whatever the try threw.
  * `EXCEPTIONS` names any allowed to fall back.
  *
- * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`.
+ * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`; which write changes the
+ * error before it reads it: `in-transaction-writes.fixture.ts`.
  *
  * Named residuals: a statement reached through a helper that closes over the transaction without
  * the guarded code naming any handle, a transaction cast to a type it is not, such as `typeof db`,
@@ -28,11 +29,11 @@ import {
   admitsAllButNamed,
   escapedClasses,
   namesAnError,
-  reassigns,
   type Scan,
   statementErrors,
   withBases,
 } from './in-transaction-guards.fixture.js';
+import { reassigns } from './in-transaction-writes.fixture.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TX_SOURCE = join(SRC, 'db', 'client.ts');
