@@ -3,6 +3,7 @@
  * `cause`, and a caller may wrap that again, so every read walks the cause chain.
  */
 
+import { constants } from 'node:os';
 import { DrizzleQueryError, TransactionRollbackError } from 'drizzle-orm/errors';
 import postgres from 'postgres';
 
@@ -26,14 +27,16 @@ export const STATEMENT_ERRORS = [
 ] as const;
 
 /**
- * The codes an error carries when the session that ran the statement is gone, and its transaction
- * with it: the driver's own for a connection it lost, and the server's for one it ended.
+ * Codes an error carries once its session is gone: the driver's for a lost connection, every errno
+ * name (the driver rejects a statement with its socket's own error, whichever errno the system gave
+ * it), and the SQLSTATEs the server ends a session with.
  */
 export const SESSION_ENDED_CODES: ReadonlySet<string> = new Set([
   'CONNECTION_CLOSED',
   'CONNECTION_ENDED',
   'CONNECTION_DESTROYED',
   'CONNECT_TIMEOUT',
+  ...Object.keys(constants.errno),
   '08000',
   '08003',
   '08006',
@@ -42,9 +45,11 @@ export const SESSION_ENDED_CODES: ReadonlySet<string> = new Set([
   '08007',
   '08P01',
   '25P03',
+  '25P04',
   '57P01',
   '57P02',
   '57P03',
+  '57P04',
   '57P05',
 ]);
 

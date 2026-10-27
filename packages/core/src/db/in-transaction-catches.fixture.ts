@@ -12,8 +12,9 @@
  *
  * Named residuals: a statement reached through a helper that closes over the transaction without
  * the guarded code naming any handle, a transaction cast to a type it is not, such as `typeof db`,
- * a call handed the caught error that changes it before the guard reads it, and a rejection handled
- * by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`.
+ * a call handed the caught error or an alias of it that changes it before the guard reads it, as
+ * `Object.assign(err, …)` does, and a rejection handled by anything other than `try`, `.catch(fn)`
+ * or `.then(ok, fn)`. The guard reader names its own.
  */
 
 import { readdirSync } from 'node:fs';
@@ -22,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import {
   admitsAllButNamed,
+  escapedClasses,
   namesAnError,
   reassigns,
   type Scan,
@@ -321,6 +323,9 @@ export function guardedCatches(program: ts.Program): GuardedCatch[] {
   const tx = transactionType(program, checker);
   const members = new Set(tx.getProperties().map((p) => p.name));
   const kinds = withBases(statementErrors(program, checker), checker);
+  const files = program
+    .getSourceFiles()
+    .filter((sf) => sf.fileName.startsWith(`${SRC}/`) && !sf.fileName.includes('/node_modules/'));
   const scan: Scan = {
     program,
     checker,
@@ -328,10 +333,10 @@ export function guardedCatches(program: ts.Program): GuardedCatch[] {
     members,
     kinds,
     names: new Set([...kinds].map((k) => k.name)),
+    escaped: escapedClasses(program, files, checker),
   };
   const found: GuardedCatch[] = [];
-  for (const sf of program.getSourceFiles()) {
-    if (!sf.fileName.startsWith(`${SRC}/`) || sf.fileName.includes('/node_modules/')) continue;
+  for (const sf of files) {
     for (const site of catchSites(sf)) {
       const handles = handlesIn(site.guarded, scan);
       if (handles.length === 0) continue;

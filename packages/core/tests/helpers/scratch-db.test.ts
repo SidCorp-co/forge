@@ -173,13 +173,17 @@ describe('a database minted for one test case', () => {
     expect(() => caseDbName('iss 1046', TOKEN)).toThrow(/tag/);
   });
 
-  it('refuses a run whose TEST_PG_RUN_TOKEN is not a token this suite minted', () => {
+  it('refuses a run with no TEST_PG_RUN_TOKEN, and one whose token is not of the shape minted, naming which', () => {
     const was = process.env.TEST_PG_RUN_TOKEN;
     try {
-      for (const token of ['forge', undefined]) {
-        if (token === undefined) delete process.env.TEST_PG_RUN_TOKEN;
-        else process.env.TEST_PG_RUN_TOKEN = token;
-        expect(() => caseDbName('iss1046')).toThrow(/TEST_PG_RUN_TOKEN/);
+      delete process.env.TEST_PG_RUN_TOKEN;
+      expect(() => caseDbName('iss1046')).toThrow(/no TEST_PG_RUN_TOKEN/);
+      for (const token of ['forge', '', `${TOKEN}x`]) {
+        process.env.TEST_PG_RUN_TOKEN = token;
+        expect(() => caseDbName('iss1046')).toThrow(
+          `scratch-db: TEST_PG_RUN_TOKEN is "${token}", which is not a token mintRunToken makes: ` +
+            'base-36 milliseconds, an underscore and eight hex digits, as in "mvp8ygib_2f5f717d".',
+        );
       }
     } finally {
       if (was === undefined) delete process.env.TEST_PG_RUN_TOKEN;
