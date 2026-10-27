@@ -1,7 +1,7 @@
-import { useRetryWait } from "@/design/hooks/use-retry-wait";
 import { isRetryableApiError } from "@/lib/utils/retry-rule";
 import { Button } from "@/design/primitives/button";
-import { RetryLink, RetryWait } from "@/design/primitives/retry-link";
+import { RetryLink } from "@/design/primitives/retry-link";
+import { RetryWaitGate } from "@/design/primitives/retry-wait";
 
 /** Whether Retry is offered for this failed read: the web app's one rule (ISS-1229 r50, criterion 478). */
 export function offersRetryFor(error: unknown): boolean {
@@ -42,7 +42,6 @@ export function RetryButton({
   children?: React.ReactNode;
   onKeyDown?: React.KeyboardEventHandler<HTMLButtonElement>;
 }) {
-  const wait = useRetryWait(onRetry ? error : null);
   if (look === "link") {
     return (
       <RetryLink
@@ -60,21 +59,22 @@ export function RetryButton({
     );
   }
   if (!onRetry || !offersRetryFor(error)) return null;
-  if (wait) return <RetryWait wait={wait} testId={testId} className={className} />;
   const text = children ?? "Retry";
   return (
-    <Button
-      variant={variant}
-      size="sm"
-      icon={variant === "ghost" ? undefined : "rerun"}
-      aria-label={label}
-      title={title}
-      data-testid={testId}
-      disabled={disabled}
-      className={className}
-      onClick={onRetry}
-    >
-      {text}
-    </Button>
+    <RetryWaitGate error={error} testId={testId} className={className}>
+      <Button
+        variant={variant}
+        size="sm"
+        icon={variant === "ghost" ? undefined : "rerun"}
+        aria-label={label}
+        title={title}
+        data-testid={testId}
+        disabled={disabled}
+        className={className}
+        onClick={onRetry}
+      >
+        {text}
+      </Button>
+    </RetryWaitGate>
   );
 }

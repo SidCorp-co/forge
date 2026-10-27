@@ -1,15 +1,6 @@
-import { useRetryWait } from "@/design/hooks/use-retry-wait";
+import { RetryWaitGate } from "@/design/primitives/retry-wait";
 import { isRetryableApiError } from "@/lib/utils/retry-rule";
 import { cn } from "@/lib/utils/cn";
-
-/** Where a Retry waits on the server's word: how long is left, in its place until the wait is over (ISS-1229 r51). */
-export function RetryWait({ wait, testId, className }: { wait: string; testId?: string | undefined; className?: string | undefined }) {
-  return (
-    <span data-testid={testId ? `${testId}-wait` : "retry-wait"} className={cn("fg-caption text-muted", className)}>
-      {wait}
-    </span>
-  );
-}
 
 /**
  * The one Retry for a failed read, as a word inside a sentence. Like `RetryButton` it draws nothing where a
@@ -40,24 +31,24 @@ export function RetryLink({
   children?: React.ReactNode;
   onKeyDown?: React.KeyboardEventHandler<HTMLButtonElement> | undefined;
 }) {
-  const wait = useRetryWait(onRetry ? error : null);
   if (!onRetry || !isRetryableApiError(error)) return null;
-  if (wait) return <RetryWait wait={wait} testId={testId} />;
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={title}
-      data-testid={testId}
-      disabled={disabled}
-      onKeyDown={onKeyDown}
-      onClick={(e) => {
-        e.stopPropagation();
-        onRetry();
-      }}
-      className={cn("text-link hover:underline", className)}
-    >
-      {children ?? "Retry"}
-    </button>
+    <RetryWaitGate error={error} testId={testId}>
+      <button
+        type="button"
+        aria-label={label}
+        title={title}
+        data-testid={testId}
+        disabled={disabled}
+        onKeyDown={onKeyDown}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRetry();
+        }}
+        className={cn("text-link hover:underline", className)}
+      >
+        {children ?? "Retry"}
+      </button>
+    </RetryWaitGate>
   );
 }
