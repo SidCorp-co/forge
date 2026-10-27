@@ -192,7 +192,9 @@ function entryReads(rel, text) {
       if (bound && ts.isNamespaceImport(bound)) processNames.add(bound.name.text);
       if (bound && ts.isNamedImports(bound)) {
         for (const el of bound.elements) {
-          if ((el.propertyName ?? el.name).text === 'argv') argvNames.set(el.name.text, 0);
+          const name = (el.propertyName ?? el.name).text;
+          if (name === 'argv') argvNames.set(el.name.text, 0);
+          if (name === 'default') processNames.add(el.name.text);
         }
       }
     }
@@ -209,23 +211,29 @@ function entryReads(rel, text) {
   if (!namesMeta) return [];
 
   const GLOBALS = new Set(['globalThis', 'global', 'self', 'window']);
-  const isProcess = (node) =>
-    (ts.isIdentifier(node) && (node.text === 'process' || processNames.has(node.text))) ||
-    (ts.isPropertyAccessExpression(node) &&
-      node.name.text === 'process' &&
-      ts.isIdentifier(node.expression) &&
-      GLOBALS.has(node.expression.text)) ||
-    (ts.isElementAccessExpression(node) &&
-      ts.isStringLiteralLike(node.argumentExpression) &&
-      node.argumentExpression.text === 'process' &&
-      ts.isIdentifier(node.expression) &&
-      GLOBALS.has(node.expression.text)) ||
-    (ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === 'require' &&
-      node.arguments.length === 1 &&
-      ts.isStringLiteralLike(node.arguments[0]) &&
-      /^(node:)?process$/.test(node.arguments[0].text));
+  function isProcess(node) {
+    return (
+      (ts.isIdentifier(node) && (node.text === 'process' || processNames.has(node.text))) ||
+      (ts.isPropertyAccessExpression(node) &&
+        node.name.text === 'process' &&
+        ts.isIdentifier(node.expression) &&
+        GLOBALS.has(node.expression.text)) ||
+      (ts.isElementAccessExpression(node) &&
+        ts.isStringLiteralLike(node.argumentExpression) &&
+        node.argumentExpression.text === 'process' &&
+        ts.isIdentifier(node.expression) &&
+        GLOBALS.has(node.expression.text)) ||
+      // Whatever loads the module by name — require, a require made elsewhere, import() — hands over process.
+      (ts.isCallExpression(node) &&
+        node.arguments.length >= 1 &&
+        ts.isStringLiteralLike(node.arguments[0]) &&
+        /^(node:)?process$/.test(node.arguments[0].text)) ||
+      (ts.isAwaitExpression(node) && isProcess(unwrap(node.expression))) ||
+      (ts.isPropertyAccessExpression(node) &&
+        node.name.text === 'default' &&
+        isProcess(unwrap(node.expression)))
+    );
+  }
   const unwrap = (node) => {
     let n = node;
     while (n && WRAPS.some((is) => is(n))) n = n.expression;
@@ -532,6 +540,11 @@ function entryReads(rel, text) {
   const processLeak = (node) => {
     const self = outer(node);
     const p = self.parent;
+    if (ts.isCallExpression(self) && self.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      return ts.isAwaitExpression(p)
+        ? null
+        : `process module handed on as a promise: ${p.getText(src)}`;
+    }
     if (ts.isPropertyAccessExpression(p) && p.expression === self) return null;
     if (ts.isElementAccessExpression(p) && p.expression === self) {
       return ts.isStringLiteralLike(p.argumentExpression)
@@ -819,6 +832,26 @@ describe('no file decides it was launched by hand', () => {
       'scripts/process-assigned.mjs',
       'let p;\np = process;\nif (import.meta.filename === p.argv[1]) main();\n',
       3,
+    ],
+    [
+      'scripts/default-named.mjs',
+      "import { default as p } from 'node:process';\nif (import.meta.filename === p.argv[1]) main();\n",
+      2,
+    ],
+    [
+      'scripts/dynamic.mjs',
+      "const p = await import('node:process');\nif (import.meta.filename === p.default.argv[1]) main();\n",
+      2,
+    ],
+    [
+      'scripts/dynamic-then.mjs',
+      "import('process').then((m) => m.argv[1] === import.meta.filename && main());\n",
+      1,
+    ],
+    [
+      'scripts/required-alias.mjs',
+      "const r = require;\nif (import.meta.filename === r('process').argv[1]) main();\n",
+      2,
     ],
     [
       'scripts/from.mjs',
