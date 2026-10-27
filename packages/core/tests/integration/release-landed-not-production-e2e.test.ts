@@ -138,7 +138,7 @@ describe('a landing on a project that asks no release approval', () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body.readings).toContain(
-      `ISS-5: the project's document says its issues owe no verdict; 3 of 3 live criteria stand on a pass judged at \`${F4.slice(0, 12)}\``,
+      `ISS-5: the project's document says its issues owe no verdict; 3 live criteria, c1-3 pass at \`${F4.slice(0, 12)}\``,
     );
   });
 });
