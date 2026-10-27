@@ -102,13 +102,14 @@ async function stop(proc: ChildProcess, profile: string): Promise<void> {
   }
 }
 
-/** A start that never answered: Chrome said nothing and wrote no DevToolsActivePort in 30s. */
+/** A start that never answered: Chrome stayed up and wrote no DevToolsActivePort in 30s. */
 class Hung extends Error {}
 
 /** Chrome headless on a fresh profile, and the DevTools socket of its one page. A start that hung
- * silently is tried once more on a new profile: on a CI runner one cold start in many says nothing
- * for 30s (whole suite 40067716267), and the next start beside it answers. A second hang, a crash
- * or an exit fails by name. */
+ * is tried once more on a new profile: on a CI runner one cold start in many answers nothing for
+ * 30s (whole suite 40067716267), and the next start beside it answers. What it said does not
+ * decide that — the hang in whole suite 40519342592 printed only the runner's dbus warning. A
+ * second hang, a crash or an exit fails by name. */
 async function chrome(): Promise<{ proc: ChildProcess; page: string; profile: string }> {
   try {
     return await launch();
@@ -139,7 +140,7 @@ async function launch(): Promise<{ proc: ChildProcess; page: string; profile: st
   const refuse = async (why: string) => {
     await stop(proc, profile);
     const message = `${bin} ${why}. Chrome said: ${said.trim() || "nothing"}`;
-    return why.startsWith("wrote no") && said.trim() === "" ? new Hung(message) : new Error(message);
+    return why.startsWith("wrote no") ? new Hung(message) : new Error(message);
   };
   // 30s: a cold Chrome beside the web suite's workers on a CI runner has taken over 15s to start
   for (let i = 0; i < 300 && !existsSync(portFile); i++) {
