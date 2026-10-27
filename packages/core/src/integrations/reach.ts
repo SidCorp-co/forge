@@ -1,9 +1,11 @@
 import type { ConnectionReach } from '@forge/contracts';
 import { and, desc, eq, inArray, or, type SQL, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { fencedProjectIds } from '../auth/pat-scope.js';
 import { db } from '../db/client.js';
 import {
   integrationBindings,
+  integrationConnectionClears,
   integrationConnections,
   type OrgMemberRole,
   organizationMembers,
@@ -11,6 +13,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
+import { providerLabel } from './health-words.js';
 import type { IntegrationConnectionRow } from './store.js';
 
 export type { ConnectionReach };
@@ -222,4 +225,50 @@ export async function memberProjectsBoundTo(
     })),
   );
   return roles.filter((r) => r.role !== null).map((r) => r.projectId);
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const day = (at: Date) => `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`;
+
+/** Whether `userId` could reach a connection a Clear deleted (`connection-clears.ts`): its owner, a
+ *  member of the organization that owned it, or a member of a project it was shared with then. */
+async function couldReach(
+  userId: string,
+  cleared: { ownerType: 'user' | 'org'; ownerId: string; projectIds: string[] },
+): Promise<boolean> {
+  if (cleared.ownerType === 'user') {
+    if (cleared.ownerId === userId) return true;
+  } else if ((await orgRolesOf(userId)).has(cleared.ownerId)) {
+    return true;
+  }
+  for (const projectId of cleared.projectIds) {
+    if ((await effectiveProjectRole(userId, projectId))?.role) return true;
+  }
+  return false;
+}
+
+/**
+ * The refusal for a read of `connectionId` that `userId` does not reach: that a Clear deleted it,
+ * where one did and the reader could reach it then, and otherwise `notReachable`'s, which says
+ * nothing of whether the id ever existed.
+ */
+export async function unreachedRefusal(
+  userId: string,
+  connectionId: string,
+  notReachable: (connectionId: string) => HTTPException,
+): Promise<HTTPException> {
+  const [cleared] = await db
+    .select()
+    .from(integrationConnectionClears)
+    .where(eq(integrationConnectionClears.connectionId, connectionId))
+    .limit(1);
+  if (!cleared || !(await couldReach(userId, cleared))) return notReachable(connectionId);
+  return new HTTPException(410, {
+    message:
+      `This ${providerLabel(cleared.provider)} connection was cleared from the list on ${day(cleared.clearedAt)}, ` +
+      'which deleted it and took it off every project it was shared with. It cannot be turned back on: ' +
+      'connect a new one from the Integrations page.',
+    cause: { code: 'CONNECTION_CLEARED', details: { clearedAt: cleared.clearedAt.toISOString() } },
+  });
 }

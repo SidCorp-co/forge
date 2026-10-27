@@ -23,7 +23,7 @@ const ALL: BindingActs = {
   turnOn: true,
   grantAgents: true,
   whoChanges: "an admin of this project",
-  whoSavesKey: "its owner or an admin of a project bound to it",
+  whoSavesKey: "its owner or an admin of a project it is shared with",
   whoTurnsOn: "its owner",
   whoGrantsAgents: "an owner or admin of this project's organization",
 };

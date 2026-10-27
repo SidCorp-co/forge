@@ -163,7 +163,7 @@ describe('which refusal a caller meets', () => {
   it('separates a binding switched off for this project from a credential switched off for every one', async () => {
     listBindingsForProjectMock.mockResolvedValue([row({ bindingActive: false })]);
     await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toThrow(
-      /switched off for this project/,
+      /turned off for this project/,
     );
     listBindingsForProjectMock.mockResolvedValue([row({ connectionActive: false })]);
     await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toThrow(
@@ -177,7 +177,7 @@ describe('which refusal a caller meets', () => {
       row({ bindingActive: false, connectionActive: false }),
     ]);
     await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toThrow(
-      /switched off for every project sharing it\. .* This project's binding is switched off as well, and once the connection is on an admin of this project can switch it back on with Enabled on its Integrations tab\. Nothing was sent to GitHub\.$/,
+      /switched off for every project sharing it\. .* It is turned off for this project as well, and once the connection is on an admin of this project can turn it back on with Enabled on its Integrations tab\. Nothing was sent to GitHub\.$/,
     );
   });
 
@@ -189,7 +189,9 @@ describe('which refusal a caller meets', () => {
     const caught = await resolveGrantedGitHubBinding(PROJECT).catch((e: unknown) => e);
     expect(caught).toBeInstanceOf(GitHubAgentRefusal);
     expect((caught as InstanceType<typeof GitHubAgentRefusal>).reason).toBe('not_granted');
-    expect((caught as Error).message).toContain("This project's GitHub binding");
+    expect((caught as Error).message).toContain(
+      'This project is connected to GitHub, but no agent',
+    );
     expect((caught as Error).message).toContain(
       '"Agents on this project may use this" switch is off',
     );

@@ -27,7 +27,7 @@ import {
   listBoundProjectOrgs,
   turnsBackOnFrom,
 } from '../held-key.js';
-import { findReachableConnection } from '../reach.js';
+import { findReachableConnection, unreachedRefusal } from '../reach.js';
 import {
   alreadyExists,
   assertAdmin,
@@ -281,7 +281,7 @@ async function assertRemovedConnectionTakesTheApp(
   const reader = await removedReaderOf(removed.connection, { userId, role: 'admin', projectId });
   throw new HTTPException(409, {
     message:
-      "This project's GitHub binding names a removed connection that an App created here would not " +
+      'This project reaches GitHub through a removed connection that an App created here would not ' +
       `belong to, so the new App could not take its place. ${clearIt(removed.connection, reader)} ` +
       'Then the App can be created here.',
     cause: {
@@ -336,7 +336,8 @@ async function githubConnectionForPicker(args: {
   connectionId: string;
 }): Promise<IntegrationConnectionRow> {
   const reached = await findReachableConnection(args.userId, args.connectionId);
-  if (!reached) throw connectionNotReachable(args.connectionId);
+  if (!reached)
+    throw await unreachedRefusal(args.userId, args.connectionId, connectionNotReachable);
   if (reached.connection.provider !== 'github') {
     throw badRequest({ connectionId: 'is not a GitHub App, so it has no repositories to list' });
   }
@@ -513,7 +514,7 @@ githubCallbackRoutes.get(
     const pair = state
       ? await installedOn(state.bindingId as string, state.projectId)
       : await findBindingOwningInstallation({ userId, installationId });
-    if (!pair) throw notFound('github binding');
+    if (!pair) throw notFound('GitHub connection');
 
     const projectId = state?.projectId ?? pair.binding.projectId;
     assertAdmin(

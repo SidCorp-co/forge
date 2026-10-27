@@ -111,7 +111,7 @@ export async function resolveGrantedSentryBinding(
   if (!first) {
     throw new SentryRefusal(
       'no_binding',
-      'no Sentry binding on this project — connect Sentry and bind it under Settings → Integrations. Nothing was asked of Sentry.',
+      'no Sentry connection on this project — connect Sentry under Settings → Integrations. Nothing was asked of Sentry.',
     );
   }
   const usable = pairs.find((r) => r.binding.active && r.connection.active);
@@ -120,7 +120,7 @@ export async function resolveGrantedSentryBinding(
     const why = await offBindingWords(dead, projectId);
     throw new SentryRefusal(
       dead.binding.active ? 'connection_disabled' : 'binding_disabled',
-      `this project's Sentry binding exists, but ${why} Nothing was asked of Sentry.`,
+      `this project is connected to Sentry, but ${why} Nothing was asked of Sentry.`,
       { bindingId: dead.binding.id },
     );
   }
@@ -189,7 +189,7 @@ function assertHasTargets(ctx: SentryAdapterContext, bindingId: string): void {
   if (resolveSentryTargets(ctx.config).length === 0) {
     throw new SentryRefusal(
       'no_targets',
-      `binding ${bindingId} declares no Sentry targets, so no Sentry project can be named — give it an organization and project under Settings → Integrations.`,
+      `This project's Sentry connection declares no Sentry targets, so no Sentry project can be named — give it an organization and project under Settings → Integrations.`,
       { bindingId },
     );
   }

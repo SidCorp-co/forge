@@ -69,8 +69,9 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     expect(repo.reads).toEqual([]);
   });
 
+  // A project naming no repository keeps the commit as a claim instead (ISS-1421 r36, criterion 360):
+  // `a-later-mark-knows-where-it-landed-e2e.test.ts`.
   it.each([
-    ['no_binding', 'names no repository URL, so there is no repository to read'],
     ['read', 'HTTP 502'],
     ['mint', 'Minting an installation token: HTTP 404.'],
   ] as const)(

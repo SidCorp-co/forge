@@ -7,6 +7,20 @@ import { useCoolifyApplications, useCoolifyTargets } from "../../hooks";
 import type { CoolifyApplication, CoolifyTargetInput } from "../../types";
 
 const ALIGN_LABEL_COL = "hidden w-40 shrink-0 sm:block";
+
+/**
+ * Whether a failed application list may end on "fix the base URL and token above": only for a
+ * reader who may change them, and only while this deploy target and its connection are on. Over a
+ * removed connection there is no key to fix, and a turned-off target fails because it is off, which
+ * core's refusal says with how it turns back on (ISS-1421 r26; r36, judge-145 on 344).
+ */
+export function mayFixCredentials(
+  existing: { active: boolean } | undefined,
+  keyLocked: boolean,
+): boolean {
+  if (keyLocked) return false;
+  return !existing || existing.active;
+}
 const ALIGN_BUTTON_COL = "hidden w-9 shrink-0 sm:block";
 
 export function CoolifyTargetsField({

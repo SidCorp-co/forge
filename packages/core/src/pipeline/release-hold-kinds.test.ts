@@ -87,7 +87,7 @@ const UNREAD_REPORT: IssueCriteriaReport = {
   })),
 };
 const TARGET =
-  'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land.';
+  'This project declares a release chain and has no deploy target switched on that carries the `live` stage, so there is nowhere for a release to land.';
 
 /** ISS-1300: a recorded commit sharing a real one's first eight characters, as sid-desk ISS-578's did. */
 const ABSENT = '0d018a9a0e1cf5dadf2b1b3be9ba1b81c5e9cb40';
@@ -123,7 +123,7 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
     'no runtime route',
     runtimeUnroutedHold('this project has no active deploy binding', 'bind one'),
     "The automatic release cannot read what this project is serving, so no waiting issue's criteria can be weighed. " +
-      'A person gives this project a deploy binding that reports the commit it serves, under Settings → Integrations. ' +
+      'A person gives this project a deploy target that reports the commit it serves, under Settings → Integrations. ' +
       'The next sweep then weighs every waiting issue again.',
   ],
   [
@@ -195,7 +195,7 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
   [
     'no live deploy binding',
     targetUndeclaredHold(TARGET),
-    'A release has nowhere to land, because no active deploy binding of this project carries its live stage. ' +
+    'A release has nowhere to land: no deploy target of this project that is switched on carries its live stage. ' +
       'A person adds one under Settings → Integrations, or chooses "Repository, no release" under Shape & release. ' +
       'The next sweep then releases the waiting issues.',
   ],

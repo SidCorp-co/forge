@@ -11,7 +11,7 @@ import type { ListedOwner } from './owner-names.js';
 /** The connection tier of a binding PATCH, naming who may change what the asker sent (ISS-1421 r26, r27). */
 export const keyNotYours = (connection: { ownerType: 'user' | 'org' }) =>
   new HTTPException(403, {
-    message: `This binding's connection belongs to ${connection.ownerType === 'org' ? 'an organization' : 'a person'}, so only ${whoSavesKey(connection)} can change its key or its shared settings. Ask one of them.`,
+    message: `This connection belongs to ${connection.ownerType === 'org' ? 'an organization' : 'a person'}, so only ${whoSavesKey(connection)} can change its key or its shared settings. Ask one of them.`,
     cause: { code: 'FORBIDDEN' },
   });
 
@@ -76,7 +76,7 @@ function askAboutPersons(
   if (ownerName === null) {
     return {
       owner: 'a user who can no longer be found',
-      ask: 'an admin of a project it is bound to',
+      ask: 'an admin of a project it is shared with',
     };
   }
   if (ownerName === UNNAMED_PERSON) {

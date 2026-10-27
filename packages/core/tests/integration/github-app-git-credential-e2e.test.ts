@@ -153,7 +153,7 @@ describe('mintGitCredentialForDevice refuses', () => {
         host: 'github.com',
         path: `${OWNER}/some-other-repo.git`,
       }),
-    ).rejects.toThrow(/no active GitHub App binding for SidCorp-co\/some-other-repo/);
+    ).rejects.toThrow(/is connected to SidCorp-co\/some-other-repo through the GitHub App/);
   });
 
   it('a repository bound to a project this device does NOT run', async () => {
@@ -164,7 +164,7 @@ describe('mintGitCredentialForDevice refuses', () => {
         host: 'github.com',
         path: `${OWNER}/${REPO}.git`,
       }),
-    ).rejects.toThrow(/on any project this device runs/);
+    ).rejects.toThrow(/^no project this device runs is connected to /);
   });
 
   it('a binding whose App was never installed', async () => {
@@ -176,7 +176,7 @@ describe('mintGitCredentialForDevice refuses', () => {
         host: 'github.com',
         path: `${OWNER}/${REPO}.git`,
       }),
-    ).rejects.toThrow(/the App is not installed for that binding/);
+    ).rejects.toThrow(/is connected on project .* but the App is not installed for it/);
   });
 
   it('a path that is not owner/repo', async () => {

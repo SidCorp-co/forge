@@ -367,7 +367,7 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
     const { user, token } = await signedIn();
     const desk = await gitlabDesk(user.id, false);
     const row = await issue({ projectId: desk.id, userId: user.id, seq: 419 });
-    const reason = `Forge cannot read this project's repository on gitlab.com, since it holds no GitHub binding and no deploy key. Attach a deploy key with read access to ${GITLAB} under the project's Settings → Runners → Git access. Read access is all Forge needs; devices that push with it need write access.`;
+    const reason = `Forge cannot read this project's repository on gitlab.com, since it holds no GitHub connection and no deploy key. Attach a deploy key with read access to ${GITLAB} under the project's Settings → Runners → Git access. Read access is all Forge needs; devices that push with it need write access.`;
 
     const reach = (await get<{ liveReach: Reach }>(`/api/issues/${row}`, token)).liveReach;
     expect(reach).toMatchObject({ state: 'unmeasured', reason });
@@ -391,7 +391,7 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
     expect(reach).toMatchObject({
       state: 'unmeasured',
       reason:
-        "Forge cannot read SidCorp-co/sid-desk, and checks again once Forge can read SidCorp-co/sid-desk again: give the GitHub App installation behind this project's binding access to it, or bind the project to where it now lives",
+        "Forge cannot read SidCorp-co/sid-desk, and checks again once Forge can read SidCorp-co/sid-desk again: give the GitHub App installation behind this project's GitHub connection access to it, or connect the project to where it now lives",
     });
     expect(reach?.reason).not.toMatch(/GET \/repos|HTTP 404/);
     expect(reach?.detail).toMatch(

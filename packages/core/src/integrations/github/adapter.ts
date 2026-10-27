@@ -174,8 +174,9 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
 
     if (!appId || !privateKey)
       return finish('error', 'this connection holds no GitHub App credential');
-    if (!installationId) return finish('error', 'the App is not installed for this binding');
-    if (!owner || !repo) return finish('error', 'no owner/repo configured for this binding');
+    if (!installationId)
+      return finish('error', "the App is not installed for this project's repository");
+    if (!owner || !repo) return finish('error', 'no repository is picked for this project');
 
     try {
       const token = await installationToken({
@@ -287,7 +288,9 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     const expected =
       ctx.config?.owner && ctx.config?.repo ? `${ctx.config.owner}/${ctx.config.repo}` : null;
     if (arrived && expected && arrived.toLowerCase() !== expected.toLowerCase()) {
-      throw new Error(`github webhook: delivery is for ${arrived}, this binding is ${expected}`);
+      throw new Error(
+        `github webhook: delivery is for ${arrived}, and this project's GitHub connection is for ${expected}`,
+      );
     }
     const guid = input.headers['x-github-delivery'];
     const deliveryId = await recordDelivery({
@@ -329,7 +332,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       .where(and(eq(integrationBindings.id, ctx.bindingId), eq(integrationBindings.active, true)))
       .limit(1);
     if (!live) {
-      const message = `github: project ${ctx.projectId} has no active GitHub binding — binding ${ctx.bindingId} is gone or deactivated, so there is no repository to publish a contract check on`;
+      const message = `github: project ${ctx.projectId} has no GitHub connection switched on — the integration ${ctx.bindingId} is gone or switched off, so there is no repository to publish a contract check on`;
       await recordDelivery({
         bindingId: null,
         direction: 'outbound',
@@ -433,9 +436,9 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     notFromHere:
       "An App installed from this project would belong to someone other than this connection's owner, so it cannot turn it back on.",
     fromBound:
-      'Install the GitHub App again from a bound project whose App would belong to its owner, and it turns back on.',
+      'Install the GitHub App again from a project it is shared with whose App would belong to its owner, and it turns back on.',
     noneTakesIt:
-      'No project it is bound to would give a new App to its owner, so nothing can turn it back on.',
+      'No project it is shared with would give a new App to its owner, so nothing can turn it back on.',
   },
   adapter: githubAdapterMethods,
 });

@@ -46,6 +46,8 @@ export { boundConnectionSchema, connectionBindingListSchema, healthResultSchema,
 
 const unreachable =
   'the connection does not exist, or the caller neither owns it, shares its org nor administers a project it is bound to';
+const cleared =
+  'a Clear deleted the connection, and the caller could reach it then: its owner, a member of the org that owned it, or a member of a project it was shared with';
 const unmanageable =
   'the caller can see the connection but is not its owner (or an org owner or admin where an org owns it)';
 
@@ -95,6 +97,7 @@ export const bindConnection = onConnection(
         CONNECTION_REMOVED:
           'the connection was removed and holds no key, so no binding could resolve',
       }),
+      410: fail('CONNECTION_CLEARED', cleared),
     },
   }),
 );
@@ -105,6 +108,7 @@ export const listConnectionBindings = onConnection(
     responses: {
       200: json(connectionBindingListSchema),
       404: fail('CONNECTION_NOT_REACHABLE', unreachable),
+      410: fail('CONNECTION_CLEARED', cleared),
     },
   }),
 );
@@ -122,6 +126,7 @@ export const testConnection = onConnection(
         NO_BINDING: 'the connection has no active binding to probe through',
       }),
       409: fail('CONNECTION_REMOVED', 'the connection was removed and holds no key to test'),
+      410: fail('CONNECTION_CLEARED', cleared),
     },
   }),
 );
@@ -143,6 +148,7 @@ export const changeConnection = onConnection(
           'the connection was deleted and holds no key, so it is turned on only with a new key',
         CREDENTIAL_UNREADABLE: `${UNREADABLE_WHEN}, and only part of a new one was sent`,
       }),
+      410: fail('CONNECTION_CLEARED', cleared),
       503: vaultMissing,
     },
   }),

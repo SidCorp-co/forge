@@ -134,7 +134,7 @@ describe('POST /:projectId/release-batches — the declaration refusals', () => 
     expect(res.status).toBe(409);
     expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
     expect(body.message).toContain('release chain ends at `live`');
-    expect(body.message).toContain('no active deploy binding carrying the `live` stage');
+    expect(body.message).toContain('no deploy target switched on that carries the `live` stage');
   });
 
   it('answers 409 RELEASE_RUNNER_AMBIGUOUS, naming both labels', async () => {

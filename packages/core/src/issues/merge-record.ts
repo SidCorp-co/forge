@@ -137,8 +137,8 @@ export function checkStep(u: { why?: string; clears: string; noReader: boolean }
   if (/\bset an SSH clone URL/i.test(fix)) {
     return "Set the repository's SSH clone URL and a deploy key, then mark it again";
   }
-  return /\bbind the repository\b/.test(fix)
-    ? 'Attach a deploy key or bind the repository, then mark it again'
+  return /\bconnect the repository\b/.test(fix)
+    ? 'Attach a deploy key or connect the repository, then mark it again'
     : 'Attach a deploy key, then mark it again';
 }
 
@@ -385,6 +385,22 @@ export async function recordIssueMerge(
   return { wrote: false, ...held };
 }
 
+/**
+ * Where a mark that wrote said the work landed, kept beside it so a later mark opens on it (ISS-1421
+ * r36, judge-145: Mark a later merge opened with Where it landed empty). Written only while a mark
+ * stands; an unmark clears it with the rest.
+ */
+export async function keepMarkTarget(
+  executor: MergeRecordExecutor,
+  issueId: string,
+  target: string,
+): Promise<void> {
+  await executor
+    .update(issues)
+    .set({ mergedTarget: target })
+    .where(and(eq(issues.id, issueId), isNotNull(issues.mergedAt)));
+}
+
 /** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
  *  `closed` guard is IN the statement: a read then a write leaves a window where the row is closed
  *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). A row holding
@@ -402,6 +418,7 @@ export async function clearIssueMerge(
       mergedLanding: null,
       mergedClaimedCommit: null,
       mergedCommitStated: false,
+      mergedTarget: null,
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), ne(issues.status, 'closed'), isNotNull(issues.mergedAt)))

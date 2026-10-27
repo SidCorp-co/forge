@@ -307,7 +307,7 @@ export class CoolifyClient {
       throw new CoolifyApiError(
         status,
         '',
-        `Coolify lists no resource ${resourceUuid}. Check the resource this binding names.`,
+        `Coolify lists no resource ${resourceUuid}. Check the resource this deploy target names.`,
         route,
       );
     }

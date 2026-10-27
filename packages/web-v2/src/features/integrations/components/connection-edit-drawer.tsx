@@ -380,7 +380,7 @@ function ProjectsSection({
       {/* A removed connection is refused a binding by name (ISS-1421 r23, judge-94 on 229). */}
       {connection.ownerType === "org" && !isRemovedConnection(connection) && (
         <p className="fg-body-sm text-muted">
-          Org-shared — any project in the org can be bound to this connection.
+          Org-shared — it can be shared with any project in the org.
         </p>
       )}
     </section>

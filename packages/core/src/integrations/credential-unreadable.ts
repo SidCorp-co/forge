@@ -24,7 +24,9 @@ export const SEND_WHOLE =
 
 function credentialWords(credential: UnreadableCredential, clears: string): string {
   const named = credential.displayName ? ` "${credential.displayName}"` : '';
-  const through = credential.bindingId ? `, read through binding ${credential.bindingId}` : '';
+  const through = credential.bindingId
+    ? `, read for a project through integration ${credential.bindingId}`
+    : '';
   return (
     `The stored credential of the ${providerLabel(credential.provider)} connection${named} ` +
     `(connection ${credential.connectionId}${through}) could not be decrypted with the key this ` +

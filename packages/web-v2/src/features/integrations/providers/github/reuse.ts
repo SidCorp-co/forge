@@ -44,8 +44,8 @@ export function unbindableReason(
       return `${name} is owned by ${who}, and only a project in it can use it — this project is not. An owner or admin of ${owner ?? "that organization"} can use it from there.${mayCreate ? " Create a separate App below to use one here." : ""}`;
     }
     const org = project && first.ownerId === project.orgId ? project.orgName : (owner ?? "its organization");
-    return `${name} is owned by ${org}, and only an owner or admin of ${org} can bind it to this project — ask them${mayCreate ? ", or create a separate App below" : ""}.`;
+    return `${name} is owned by ${org}, and only an owner or admin of ${org} can share it with this project — ask them${mayCreate ? ", or create a separate App below" : ""}.`;
   }
   const person = personName(owner);
-  return `${name} is owned by ${person}, and only ${owner ? "they" : "its owner"} can bind it to this project — ask ${owner ? person : "its owner"}${mayCreate ? ", or create a separate App below" : ""}.`;
+  return `${name} is owned by ${person}, and only ${owner ? "they" : "its owner"} can share it with this project — ask ${owner ? person : "its owner"}${mayCreate ? ", or create a separate App below" : ""}.`;
 }

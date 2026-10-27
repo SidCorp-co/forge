@@ -16,13 +16,13 @@ export async function githubBindingCredential(bindingId: string): Promise<Bindin
     .limit(1);
   if (!binding) {
     return {
-      refusal: `the GitHub binding ${bindingId} this pull request was stored under is gone or deactivated`,
+      refusal: `the GitHub integration ${bindingId} this pull request was stored under is gone or deactivated`,
     };
   }
   const connection = await findConnectionById(binding.connectionId);
   if (!connection?.active) {
     return {
-      refusal: "the GitHub connection behind this project's binding is gone or deactivated",
+      refusal: "this project's GitHub connection is gone or deactivated",
     };
   }
   return {

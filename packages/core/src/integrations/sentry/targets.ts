@@ -61,7 +61,7 @@ export function resolveSentryTarget(
   if (targets.length === 0) {
     throw new SentryRefusal(
       'no_targets',
-      'sentry: this binding declares no targets, so no Sentry project can be named',
+      "sentry: this project's Sentry connection declares no targets, so no Sentry project can be named",
     );
   }
 
@@ -70,7 +70,7 @@ export function resolveSentryTarget(
     if (targets.length > 1) {
       throw new SentryRefusal(
         'target_ambiguous',
-        `sentry: no target label was named and this binding declares ${targets.length}: ${declared}`,
+        `sentry: no target label was named and this project's Sentry connection declares ${targets.length}: ${declared}`,
       );
     }
     chosen = targets[0];
@@ -79,14 +79,14 @@ export function resolveSentryTarget(
     if (!chosen) {
       throw new SentryRefusal(
         'target_unknown',
-        `sentry: no target labelled "${label}" — this binding declares: ${declared}`,
+        `sentry: no target labelled "${label}" — this project's Sentry connection declares: ${declared}`,
       );
     }
   }
   if (!chosen) {
     throw new SentryRefusal(
       'target_unknown',
-      `sentry: no target resolved — this binding declares: ${declared}`,
+      `sentry: no target resolved — this project's Sentry connection declares: ${declared}`,
     );
   }
   if (!chosen.organizationSlug) {

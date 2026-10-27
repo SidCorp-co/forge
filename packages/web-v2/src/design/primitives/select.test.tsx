@@ -74,6 +74,16 @@ describe("Select", () => {
     expect(activeOption()).toHaveTextContent("Oldest");
   });
 
+  // ISS-1421 r36: on a phone two connections alike up to their minute were cut off before it.
+  it("wraps a long option label rather than cutting off the end that tells it apart", () => {
+    render(<InTable />);
+    fireEvent.click(combobox());
+    for (const label of document.querySelectorAll("[data-option-label]")) {
+      expect(label.className).not.toMatch(/\btruncate\b/);
+      expect(label.className).toContain("[overflow-wrap:anywhere]");
+    }
+  });
+
   it("names no active option while closed", () => {
     render(<InTable />);
     expect(combobox()).not.toHaveAttribute("aria-activedescendant");
@@ -166,5 +176,41 @@ describe("Select", () => {
     const e = new WheelEvent("wheel", { deltaY: 200, bubbles: true, cancelable: true });
     screen.getByTestId("table").dispatchEvent(e);
     expect(e.defaultPrevented).toBe(true);
+  });
+});
+
+// ISS-1421 r36, judge-145: the share picker listed connections of every provider in the order they
+// were made. An option names its group, and the list shows each group under its heading.
+describe("a list whose options name their group", () => {
+  const GROUPED: SelectOption[] = [
+    { value: "c1", label: "box-a.example", group: "Coolify" },
+    { value: "c2", label: "box-b.example", group: "Coolify" },
+    { value: "s1", label: "sentry.example", group: "Sentry" },
+  ];
+
+  it("shows each group under its heading, its options inside it, and keeps the keys moving across them", () => {
+    const onChange = vi.fn();
+    render(<Select aria-label="Connection" options={GROUPED} value="" onChange={onChange} />);
+    fireEvent.click(screen.getByRole("combobox", { name: "Connection" }));
+    const coolify = screen.getByRole("group", { name: "Coolify" });
+    const sentry = screen.getByRole("group", { name: "Sentry" });
+    expect(Array.from(coolify.querySelectorAll('[role="option"]')).map((o) => o.textContent)).toEqual([
+      "box-a.example",
+      "box-b.example",
+    ]);
+    expect(Array.from(sentry.querySelectorAll('[role="option"]')).map((o) => o.textContent)).toEqual([
+      "sentry.example",
+    ]);
+    const combobox = screen.getByRole("combobox", { name: "Connection" });
+    fireEvent.keyDown(combobox, { key: "ArrowDown" });
+    fireEvent.keyDown(combobox, { key: "ArrowDown" });
+    fireEvent.keyDown(combobox, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("s1");
+  });
+
+  it("shows no heading where no option names a group", () => {
+    render(<Select aria-label="Sort" options={OPTIONS} value="newest" />);
+    fireEvent.click(screen.getByRole("combobox", { name: "Sort" }));
+    expect(screen.queryByRole("group")).toBeNull();
   });
 });

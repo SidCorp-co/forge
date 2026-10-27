@@ -475,18 +475,20 @@ describe('ISS-1350 — a mark naming a commit the repository does not resolve is
     expect((await storedMark(id)).merged_at).toBeNull();
   });
 
-  it('refuses a commit COMMIT_UNVERIFIED where the repository cannot be read, and takes a mark naming none', async () => {
+  // ISS-1421 r36: a project naming no repository has nothing to check a commit against, so a
+  // person's mark keeps it as a claim rather than refusing what no setting there can make checkable.
+  it('keeps a commit as a claim where the project names no repository, and takes a mark naming none', async () => {
     repo.down = 'no_binding';
     const { id, token } = await seed();
-    const said = await refused(
-      await mark(id, token, { target: 'base', commit: SHA }),
-      'COMMIT_UNVERIFIED',
-    );
-    expect(said).toContain('mark it naming no commit');
-    expect((await storedMark(id)).merged_at).toBeNull();
-    const named = await mark(id, token, { target: 'base' });
-    expect(named.status).toBe(200);
+    const claimed = await mark(id, token, { target: 'base', commit: SHA });
+    expect(claimed.status).toBe(200);
+    expect(((await claimed.json()) as { detail: string }).detail).toContain('is kept as a claim');
     expect(await storedMark(id)).toMatchObject({ merged_commit_sha: null });
     expect((await storedMark(id)).merged_at).not.toBeNull();
+    const other = await seed();
+    const named = await mark(other.id, other.token, { target: 'base' });
+    expect(named.status).toBe(200);
+    expect(await storedMark(other.id)).toMatchObject({ merged_commit_sha: null });
+    expect((await storedMark(other.id)).merged_at).not.toBeNull();
   });
 });

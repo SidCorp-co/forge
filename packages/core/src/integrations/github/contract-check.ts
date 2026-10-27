@@ -90,7 +90,7 @@ export async function publishForStoredPullRequest(
   if (expectBindingId !== undefined && row.bindingId !== expectBindingId) {
     throw new GitHubClientError(
       'no_binding',
-      `pull request ${pullRequestId} is stored under GitHub binding ${row.bindingId}, and this dispatch was authorised for ${expectBindingId} — Forge will not publish a check run on a repository the caller did not name`,
+      `pull request ${pullRequestId} is stored under GitHub integration ${row.bindingId}, and this dispatch was authorised for ${expectBindingId} — Forge will not publish a check run on a repository the caller did not name`,
     );
   }
 
@@ -109,7 +109,7 @@ export async function publishForStoredPullRequest(
   if (credential.config.contractCheck === false) {
     return skip(
       deliveryId,
-      'this binding sets `contractCheck: false`, so Forge publishes no contract check on it',
+      "this project's GitHub connection sets `contractCheck: false`, so Forge publishes no contract check on it",
     );
   }
 

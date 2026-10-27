@@ -187,14 +187,14 @@ export function runtimeUnroutedHold(missing: string, route: string): ReleaseHold
     reason:
       `The automatic release carries only an issue whose every acceptance criterion is earned at ` +
       `what this project is serving, and nothing here can read what it is serving: ${missing}, ` +
-      'and no live binding declares `verify.probes`. No verdict a run records can be weighed until ' +
+      'and no live deploy target declares `verify.probes`. No verdict a run records can be weighed until ' +
       `that changes, so this is the project's to answer and not this issue's: ${route}, and the ` +
       'next sweep weighs every waiting issue again.',
     owes: 'human',
     waitingFor: 'a way for this project to be read for what it is serving',
     words: [
       "The automatic release cannot read what this project is serving, so no waiting issue's criteria can be weighed.",
-      'A person gives this project a deploy binding that reports the commit it serves, under Settings → Integrations.',
+      'A person gives this project a deploy target that reports the commit it serves, under Settings → Integrations.',
       'The next sweep then weighs every waiting issue again.',
     ],
   };
@@ -294,9 +294,9 @@ export function targetUndeclaredHold(message: string): ReleaseHold {
     code: 'RELEASE_TARGET_UNDECLARED',
     reason: message,
     owes: 'human',
-    waitingFor: 'a live deploy binding for the release to land on',
+    waitingFor: 'a live deploy target for the release to land on',
     words: [
-      'A release has nowhere to land, because no active deploy binding of this project carries its live stage.',
+      'A release has nowhere to land: no deploy target of this project that is switched on carries its live stage.',
       'A person adds one under Settings → Integrations, or chooses "Repository, no release" under Shape & release.',
       'The next sweep then releases the waiting issues.',
     ],
@@ -348,7 +348,7 @@ export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
   reason:
     'This project declares no release (its release chain is empty), so there is no release for ' +
     'the automatic sweep to carry this issue into, and nothing will move it from ' +
-    'Awaiting release. Either declare a release chain with a live deploy binding, or close the ' +
+    'Awaiting release. Either declare a release chain with a live deploy target, or close the ' +
     'issue.',
   owes: 'human',
   waitingFor: 'a person to declare a release or close the issue',

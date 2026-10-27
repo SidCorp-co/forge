@@ -152,7 +152,7 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
       });
       return {
         status: 'degraded',
-        message: `Google accepted ${identity.clientEmail}, but this project declares no default spreadsheet, so nothing was read. Set one on the binding to prove the account can reach it.`,
+        message: `Google accepted ${identity.clientEmail}, but this project declares no default spreadsheet, so nothing was read. Set one on this project's Integrations tab to prove the account can reach it.`,
         diagnostics: identity,
       };
     }
@@ -236,7 +236,7 @@ export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>
     bindingConfigKeys: GOOGLE_BINDING_CONFIG_KEYS,
   },
   usage: {
-    hint: "Read and write the project's bound Google Sheets via the `forge_google_sheets` tool. Core holds the service-account key — there is none to fetch, and a sheet is reachable only once it is shared with the account.",
+    hint: "Read and write the project's Google Sheets via the `forge_google_sheets` tool. Core holds the service-account key — there is none to fetch, and a sheet is reachable only once it is shared with the account.",
     guideSlug: 'google-sheets',
   },
   presentation: {

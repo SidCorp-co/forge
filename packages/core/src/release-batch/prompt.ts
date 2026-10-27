@@ -146,7 +146,7 @@ function renderProof(probed: ReleasePlan['channels'], unprobed: number): string 
   const unread =
     unprobed === 0
       ? ''
-      : `\n\n${unprobed} more live deploy ${unprobed === 1 ? 'binding declares' : 'bindings declare'} no probe, so nothing reads ${unprobed === 1 ? 'it' : 'them'}: \`look\` names ${unprobed === 1 ? 'it' : 'them'} as \`unread\`, and every issue the release closes carries a note saying so. Check ${unprobed === 1 ? 'it' : 'them'} yourself and say how in what you record.`;
+      : `\n\n${unprobed} more live deploy ${unprobed === 1 ? 'target declares' : 'targets declare'} no probe, so nothing reads ${unprobed === 1 ? 'it' : 'them'}: \`look\` names ${unprobed === 1 ? 'it' : 'them'} as \`unread\`, and every issue the release closes carries a note saying so. Check ${unprobed === 1 ? 'it' : 'them'} yourself and say how in what you record.`;
   return `### Proof (Forge reads, you decide when)
 Once the deploy is made, call \`${RELEASE_BATCH_TOOL}\` action \`look\` with \`commit\`, the SHA you pushed. Forge reads these probes itself and keeps what each said, with the time:
 ${probes}
@@ -155,7 +155,7 @@ You decide when to look and how often; no clock is running. Each answer carries 
 }
 
 const UNVERIFIED_PROOF = `### Proof (this project declares none)
-No live deploy binding on this project declares a verify probe, so there is nothing for \`look\` to read and it is refused: \`finish\` closes the roster on your call alone, and every issue it closes carries a note that this release was NOT verified. That makes your own check the only one there is. Call \`finish\` only once you have seen the deploy come up serving what you pushed, pass \`commit\` — the SHA you pushed — so the record names it, and say in what you record how you saw it. Read the outcome with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.verification\` reads \`unverified\`.`;
+No live deploy target on this project declares a verify probe, so there is nothing for \`look\` to read and it is refused: \`finish\` closes the roster on your call alone, and every issue it closes carries a note that this release was NOT verified. That makes your own check the only one there is. Call \`finish\` only once you have seen the deploy come up serving what you pushed, pass \`commit\` — the SHA you pushed — so the record names it, and say in what you record how you saw it. Read the outcome with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.verification\` reads \`unverified\`.`;
 
 const UNDECLARED_PROCEDURE = `### This project's release procedure
 This project has declared none to Forge.

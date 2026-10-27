@@ -175,7 +175,7 @@ export async function attemptReading(
       identity: null,
       readings: null,
       verdict: 'failed' as const,
-      verdictReason: `the live deploy binding ${err.bindings.join(', ')} declares a \`verify\` Forge cannot read, so nothing could be read`,
+      verdictReason: `the live deploy target ${err.bindings.join(', ')} declares a \`verify\` Forge cannot read, so nothing could be read`,
     };
   }
   if (verification.kind === 'unverified') {

@@ -35,7 +35,7 @@ export function parseChoice(text: string, rounds: number): ParsedChoice {
 function optionSuffix(option: QuestionOption, recommended: boolean): string {
   const facts: string[] = [];
   if (option.authority === 'admin') facts.push('admins only');
-  if (option.bindsTo === 'this_call') facts.push(`binds to this call only: ${option.fingerprint}`);
+  if (option.bindsTo === 'this_call') facts.push(`holds for this call only: ${option.fingerprint}`);
   if (option.bindsTo === 'session') facts.push('holds for this session');
   if (option.bindsTo === 'project') facts.push('holds for the whole project');
   facts.push(`carried out by the ${option.executedBy}`);

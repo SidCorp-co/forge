@@ -272,7 +272,7 @@ async function readEveryBinding(
   const [head] = refused;
   if (head === undefined) {
     const [first] = confirmed;
-    if (first === undefined) throw new Error('a probed release named no binding to read');
+    if (first === undefined) throw new Error('a probed release named no deploy target to read');
     return { ok: true, health: 'up', identity: first.identity, readings };
   }
   const prefix = (name: string) => (channels.length > 1 ? `${name}: ` : '');

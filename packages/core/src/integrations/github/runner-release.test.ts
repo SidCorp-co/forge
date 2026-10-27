@@ -104,7 +104,7 @@ describe('the whole sequence when nothing is wrong', () => {
   it('records one reading per step it took', async () => {
     await start();
     expect(row()?.readings).toEqual([
-      'resolve_repository: SidCorp-co/forge via binding binding-1',
+      'resolve_repository: SidCorp-co/forge via GitHub integration binding-1',
       'resolve_commit: abc1234 (main)',
       'check_tag_absent: SidCorp-co/forge holds no runner-v0.13.3',
       'check_crate_version: Cargo.toml declares 0.13.3',

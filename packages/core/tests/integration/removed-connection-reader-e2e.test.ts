@@ -196,7 +196,7 @@ describe('a refusal about a removed connection, read by who asks (criteria 281 t
     );
     expect(started.body.code).toBe('REMOVED_CONNECTION_OTHER_OWNER');
     expect(started.body.message).toBe(
-      "This project's GitHub binding names a removed connection that an App created here would not " +
+      'This project reaches GitHub through a removed connection that an App created here would not ' +
         'belong to, so the new App could not take its place. Only its owner can clear it from the ' +
         'list on the Integrations page. Then the App can be created here.',
     );
@@ -219,7 +219,7 @@ describe('a refusal about a removed connection, read by who asks (criteria 281 t
       `/api/projects/${other.id}/integrations/${binding?.binding.id}/test`,
     );
     expect(tested.body.message).toBe(
-      'This connection was removed and holds no key, so it cannot be tested. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Only its owner can clear it from the list on the Integrations page.',
+      'This connection was removed and holds no key, so it cannot be tested. No project it is shared with would give a new App to its owner, so nothing can turn it back on. Only its owner can clear it from the list on the Integrations page.',
     );
     for (const said of [listed, started, tested]) {
       expect(String(said.body.message)).not.toMatch(/(^|\. )Clear it/);
@@ -326,7 +326,7 @@ describe('who a keyless switch-on and a key save answer (ISS-1421 r26, criteria 
       `/api/projects/${project.id}/integrations/${bindingId}/test`,
     );
     expect(tested.body.message).toBe(
-      'This connection was removed and holds no key, so it cannot be tested. Only its owner or an admin of a project bound to it can save a new key to turn it back on.',
+      'This connection was removed and holds no key, so it cannot be tested. Only its owner or an admin of a project it is shared with can save a new key to turn it back on.',
     );
   });
 });

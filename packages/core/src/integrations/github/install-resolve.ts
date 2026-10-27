@@ -29,9 +29,9 @@ export const installNotCompletable = (connection: { id: string; displayName: str
   new HTTPException(403, {
     message:
       `GitHub App ${connection.displayName ? `"${connection.displayName}" ` : ''}(connection ` +
-      `${connection.id}) owns this installation, but it is bound only to projects you do not ` +
+      `${connection.id}) owns this installation, but it is shared only with projects you do not ` +
       'administer, so you cannot record the installation on one of them. An admin of a project ' +
-      "it is bound to (or an owner or admin of that project's organization) can finish it from " +
+      "it is shared with (or an owner or admin of that project's organization) can finish it from " +
       "that project's GitHub settings.",
     cause: { code: 'INSTALL_NOT_COMPLETABLE' },
   });

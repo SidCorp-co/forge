@@ -58,7 +58,7 @@ export function servingClause(serving: Extract<ServingReading, { kind: 'serving'
 
 const REFUSED_DECLARATION =
   'every declared verification probe was refused as a declaration: a `verify` block is there and ' +
-  'nothing in it names a url to ask. Correct the declaration on the live deploy binding.';
+  'nothing in it names a url to ask. Correct the declaration on the live deploy target.';
 
 function invalidUrlLines(invalid: readonly string[]): string[] {
   const why = 'is not a url, so no request could be made to it — correct it, scheme included';
@@ -67,7 +67,7 @@ function invalidUrlLines(invalid: readonly string[]): string[] {
 
 export function whyUncorroborated(serving: ServingReading): string {
   if (serving.kind === 'undeclared') {
-    return `nothing here can read what this project is serving: ${serving.missing}, and no live binding declares \`verify.probes\`.`;
+    return `nothing here can read what this project is serving: ${serving.missing}, and no live deploy target declares \`verify.probes\`.`;
   }
   if (serving.kind === 'unreadable') {
     return `nothing could be read from what this project answers through — ${serving.why}`;

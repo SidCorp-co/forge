@@ -333,7 +333,7 @@ describe('a project nothing can read is told once', () => {
 
     const said = readiness?.warnings.find((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK')?.message;
     expect(said).toContain(`\`${(await fx.displayIds([owing]))[0]}\` owes criteria 1 and 2`);
-    expect(said).toContain('What is missing: its deploy bindings go through Epodsystem');
+    expect(said).toContain('What is missing: its deploy targets go through Epodsystem');
     expect(said).toContain('The way to give it one: declare `verify.probes`');
     expect(said).toContain('no judging run can earn one until the project can be read');
     expect(said).not.toContain('still owes a judging run');
@@ -351,7 +351,7 @@ describe('a project nothing can read is told once', () => {
     const hold = String((await holdOf(id))?.reason);
     const card = readiness?.blockers.find((b) => b.code === 'RELEASE_RUNTIME_UNROUTED')?.message;
     for (const said of [hold, String(card)]) {
-      expect(said).toContain('declare `verify.probes` on the live deploy binding');
+      expect(said).toContain('declare `verify.probes` on the live deploy target');
       expect(said).not.toMatch(/Coolify/);
     }
   }, 30_000);
@@ -396,7 +396,7 @@ describe('a reason every waiting row shares is said once (judge finding 1)', () 
         const hold = await holdOf(id);
         expect(hold?.code).toBe('RELEASE_TARGET_UNDECLARED');
         expect(String(hold?.reason)).toContain(
-          'no active deploy binding carrying the `live` stage',
+          'no deploy target switched on that carries the `live` stage',
         );
       }
       expect(await holdComments(oldest)).toBe(1);

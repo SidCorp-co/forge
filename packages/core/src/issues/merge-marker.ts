@@ -27,12 +27,14 @@ import {
 } from './landing-evidence.js';
 import { targetRequiredDetail } from './merge-input-refusal.js';
 import { announceMark } from './merge-mark-announce.js';
+import { MergeMarkerError } from './merge-marker-error.js';
 import {
   absentStays,
   alreadyMarkedSentence,
   CHANGE_THE_MARK,
   clearIssueMerge,
   describeMergeMark,
+  keepMarkTarget,
   keptClaimRepeat,
   type MergeMarkKind,
   type MergeRecord,
@@ -42,7 +44,6 @@ import {
   observedMergeForIssue,
   readMergeColumns,
   recordIssueMerge,
-  shortenCommits,
   threadBody,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
@@ -55,6 +56,8 @@ import {
   statedWords,
 } from './stated-landing.js';
 import { statusForCaller } from './status-sets.js';
+
+export { MergeMarkerError };
 
 /**
  * ISS-959 — the commit a merged mark was made at, on both doors.
@@ -86,6 +89,9 @@ async function recordedClaim(args: {
   claim: string | null;
   repository: string | null;
   unread?: { commit: string; why: string };
+  /** A first mark on a project naming no repository: the commit is kept as a claim nothing
+   *  checked, as an agent's is, rather than refused for a check no setting can make (r36). */
+  unchecked?: Extract<AgentEvidence, { kind: 'unverified' }>;
 }> {
   const { projectId, commit, observedSha } = args;
   if (!commit) return { claim: null, repository: null };
@@ -93,37 +99,18 @@ async function recordedClaim(args: {
     return { claim: commit, repository: null };
   }
   const read = await resolveMarkCommit({ projectId, commit });
+  if (!read.ok && read.unchecked && !args.marked) {
+    return {
+      claim: null,
+      repository: null,
+      unchecked: { kind: 'unverified', commit, ...read.unchecked },
+    };
+  }
   if (!read.ok && read.unread && args.marked) {
     return { claim: null, repository: null, unread: { commit, why: read.unread.why } };
   }
   if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
   return { claim: read.sha, repository: read.repository };
-}
-
-export class MergeMarkerError extends Error {
-  constructor(
-    readonly code:
-      | 'NO_WORK_EVIDENCE'
-      | 'ISSUE_NOT_FOUND'
-      | 'UNMARK_REQUIRES_NOT_CLOSED'
-      | 'NOT_MARKED_MERGED'
-      | 'LANDING_REQUIRED'
-      | 'LANDING_NOT_THIS_SHAPE'
-      | 'MARK_ALREADY_STANDS'
-      | 'TARGET_REQUIRED'
-      | 'PROJECT_KIND_UNKNOWN'
-      | 'LANDING_SHAPE_MOVED'
-      | 'LANDING_NOT_DESCENDANT'
-      | 'LANDING_COMMIT_REQUIRED'
-      | Exclude<CommitLanding, { ok: true }>['code'],
-    message: string,
-    readonly details?: Record<string, unknown>,
-  ) {
-    // A person reads seven characters of a commit; `details` keeps the whole sha (ISS-1421). A
-    // commit the repository lacks is quoted as typed: seven or twelve can equal a real one's (ISS-1300 r5).
-    super(code === 'COMMIT_NOT_IN_REPOSITORY' ? message : shortenCommits(message));
-    this.name = 'MergeMarkerError';
-  }
 }
 
 /** The lane a mark is judged against: the issue's own declaration, else its project's kind. A kind
@@ -406,6 +393,7 @@ export async function applyMergeMarker(args: {
             marked: before.mergedAt != null,
           })
         : null;
+    if (recorded?.unchecked) unverified = recorded.unchecked;
     const statedStamp = await stampStated(before, args, recorded, observed);
     stated = statedStamp?.stated ?? null;
     later =
@@ -482,6 +470,10 @@ export async function applyMergeMarker(args: {
       },
     });
     if (standing) throw new MergeMarkerError(standing.code, standing.detail, standing.details);
+    const target = args.target?.trim();
+    if (shape === 'git' && target && (stampResult.wrote || later?.kind === 'moved')) {
+      await keepMarkTarget(db, before.id, target);
+    }
   } else {
     await unmarkOrRefuse(before.id);
   }

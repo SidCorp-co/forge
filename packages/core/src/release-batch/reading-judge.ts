@@ -142,7 +142,7 @@ function keptFor(
 export function judgeReadings(input: JudgeInput): Judgement {
   const { bindings, readings, commitsBefore, claim, now } = input;
   // Nothing to judge is nothing proved: an empty set answering "ok" would close a roster on no read.
-  if (bindings.length === 0) throw new Error('judgeReadings: no binding was named to judge');
+  if (bindings.length === 0) throw new Error('judgeReadings: no deploy target was named to judge');
   const judged = bindings.map((binding) => {
     const { kept, elsewhere } = keptFor(binding, readings);
     const before = commitsBefore[binding.bindingId] ?? null;

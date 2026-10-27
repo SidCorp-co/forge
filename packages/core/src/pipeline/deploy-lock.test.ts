@@ -19,7 +19,7 @@ const holder = {
   projectId: '11111111-1111-4111-8111-111111111111',
   environment: 'live',
   runId: 'run-7',
-  subject: 'live deploy (binding b-7), preview deploy (binding b-8)',
+  subject: 'live deploy (target b-7), preview deploy (target b-8)',
   acquiredAt: '2026-09-26T10:00:00.000Z',
   expiresAt: '2026-09-26T10:30:00.000Z',
 };
@@ -40,7 +40,7 @@ describe('the refusal a held environment gives back', () => {
   });
 
   it('names what the holder is deploying', () => {
-    expect(message).toContain('live deploy (binding b-7), preview deploy (binding b-8)');
+    expect(message).toContain('live deploy (target b-7), preview deploy (target b-8)');
   });
 
   it('names when the hold was taken', () => {

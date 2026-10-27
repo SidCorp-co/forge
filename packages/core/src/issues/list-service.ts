@@ -50,6 +50,8 @@ export type IssueListRow = {
   /** ISS-1126 — carried so the browse row can say whether the mark was observed or asserted. */
   mergedCommitSha: string | null;
   mergedLanding: string | null;
+  /** ISS-1421 r36 — where a git mark said the work landed, which a later mark opens on. */
+  mergedTarget: string | null;
   /** ISS-1409 — the commit an `asserted` mark names that Forge could not verify; null on every other mark. */
   mergedClaimedCommit: string | null;
   /** ISS-1300 r3 — whether `mergedCommitSha` is a person's word rather than a merge Forge saw. */
@@ -118,6 +120,7 @@ export async function listIssueRows(
     mergedAt: issues.mergedAt,
     mergedCommitSha: issues.mergedCommitSha,
     mergedLanding: issues.mergedLanding,
+    mergedTarget: issues.mergedTarget,
     mergedClaimedCommit: issues.mergedClaimedCommit,
     mergedCommitStated: issues.mergedCommitStated,
     archivedAt: issues.archivedAt,

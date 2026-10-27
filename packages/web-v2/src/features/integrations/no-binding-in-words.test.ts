@@ -1,7 +1,8 @@
 // ISS-1421 r35, judge-141: a gone row's drawer said "This Sentry binding is no longer on this
 // project". "Binding" is the store's word for a project's use of a connection, and the Integrations
-// tab never shows it to a person, so no sentence this feature draws may say it. The Release section
-// beside it on project settings speaks to the same reader about the same rows.
+// tab never shows it to a person, so no sentence this feature draws may say it. r36 (judge-145)
+// found "bound" and "Bind" said the same thing in other words, and project settings saying them
+// beside it, so the word's whole family is held across both features.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -9,8 +10,8 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const FEATURES = resolve(__dirname, "..");
-const SURFACES = [resolve(__dirname), resolve(FEATURES, "project-settings/components/release-section.tsx")];
-const WORD = /\bbindings?\b/i;
+const SURFACES = [resolve(__dirname), resolve(FEATURES, "project-settings")];
+const WORD = /\b(bindings?|bound|bind|binds|unbind)\b/i;
 
 function sourceFiles(path: string): string[] {
   if (!statSync(path).isDirectory()) return [path];
@@ -42,6 +43,10 @@ function isWords(node: ts.Node, text: string): boolean {
   if (ts.isLiteralTypeNode(parent) || ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) return false;
   if ((ts.isPropertyAssignment(parent) || ts.isPropertySignature(parent)) && parent.name === node) return false;
   if (/\s/.test(text.trim()) || /^[A-Z]/.test(text)) return true;
+  // A template's text between values is the sentence around them: ` (binding \u0024{id})`.
+  if ((ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) && /\s/.test(text)) {
+    return true;
+  }
   return (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && interpolated(node);
 }
 
@@ -74,7 +79,7 @@ function bindingWords(body: string, file: string): string[] {
 }
 
 describe("the Integrations surface's words", () => {
-  it("never say binding to a person", () => {
+  it("never say binding, bound or bind to a person", () => {
     const hits = SURFACES.flatMap(sourceFiles).flatMap((file) =>
       bindingWords(readFileSync(file, "utf8"), file).map((hit) => `${relative(FEATURES, file)}:${hit}`),
     );
@@ -91,6 +96,8 @@ describe("the Integrations surface's words", () => {
       'const e: "binding" | "both" = "binding";',
       'const f = { queryKey: ["integration-connections", id, "bindings"] };',
       "const g = api(`/integration-connections/\u0024{id}/bindings`);",
+      'const i = "no room is bound to this project";',
+      "const j = `\u0024{label} (binding \u0024{id})`;",
       "// a binding named in a comment",
     ].join("\n");
     expect(bindingWords(planted, "planted.tsx").map((hit) => hit.split(": ")[0])).toEqual([
@@ -100,6 +107,8 @@ describe("the Integrations surface's words", () => {
       "4",
       "5",
       "5",
+      "9",
+      "10",
     ]);
   });
 });

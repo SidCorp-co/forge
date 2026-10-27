@@ -80,7 +80,7 @@ export function whoManages(connection: { ownerType: 'user' | 'org' }): string {
 export function whoSavesKey(connection: { ownerType: 'user' | 'org' }): string {
   return connection.ownerType === 'org'
     ? whoManages(connection)
-    : 'its owner or an admin of a project bound to it';
+    : 'its owner or an admin of a project it is shared with';
 }
 
 /** "Only …", opening a sentence. */
@@ -133,7 +133,7 @@ export function turnsBackOnFrom(
     return here ? `${install.notFromHere} ${fromBound}` : fromBound;
   }
   if (bound.length > 0) return `${install.noneTakesIt} ${clear}`;
-  return `No project is bound to it, so nothing can turn it back on. ${clear}`;
+  return `It is shared with no project, so nothing can turn it back on. ${clear}`;
 }
 
 /** No act is an agent's: the way back names who takes it. */
@@ -162,8 +162,8 @@ export async function offBindingWords(
   projectId: string,
 ): Promise<string> {
   const enabled =
-    'an admin of this project can switch it back on with Enabled on its Integrations tab';
-  if (connection.active) return `it is switched off for this project, and ${enabled}.`;
+    'an admin of this project can turn it back on with Enabled on its Integrations tab';
+  if (connection.active) return `it is turned off for this project, and ${enabled}.`;
   const removed = isRemovedConnection(connection);
   const bound =
     removed && getIntegration(connection.provider)?.noKeyTurnsBackOn
@@ -174,5 +174,5 @@ export async function offBindingWords(
     : `the connection behind it is switched off for every project sharing it. ${byWhoMay(false, connection, 'Turn it back on with Enable on the Integrations page.')}`;
   return binding.active
     ? why
-    : `${why} This project's binding is switched off as well, and once the connection is on ${enabled}.`;
+    : `${why} It is turned off for this project as well, and once the connection is on ${enabled}.`;
 }

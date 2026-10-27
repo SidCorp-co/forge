@@ -215,7 +215,7 @@ describe('forge_release_batch look is the agent’s act, and Forge takes the rea
     lookAtBatch.mockRejectedValue(new ReleaseNothingToReadError());
 
     await expect(tool().handler({ action: 'look', runId: RUN_ID })).rejects.toThrow(
-      /^RELEASE_NOTHING_TO_READ: No live deploy binding[\s\S]*unverified/,
+      /^RELEASE_NOTHING_TO_READ: No live deploy target[\s\S]*unverified/,
     );
   });
 
