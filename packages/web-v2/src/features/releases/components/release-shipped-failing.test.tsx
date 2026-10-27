@@ -53,7 +53,7 @@ describe("a release that shipped failing criteria, read from a shared link (REQ-
   it("says it shipped failing, naming the criterion, to a reader who is not signed in", () => {
     renderWithQuery(<ReleaseReader page={failing} authed={false} />);
     const banner = screen.getByTestId("release-shipped-failing");
-    expect(banner.textContent).toContain("Shipped with 1 failing criteria");
+    expect(banner.textContent).toContain("Shipped with 1 failing criterion");
     expect(banner.textContent).toContain("ISS-5 c2");
   });
 

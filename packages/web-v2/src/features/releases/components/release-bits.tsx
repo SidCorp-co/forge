@@ -147,7 +147,7 @@ export function ShippedFailingBanner({ r, className }: { r: Pick<ReleaseDetail, 
   const byIssue = new Map<string, number[]>();
   for (const c of f.criteria) byIssue.set(c.issueKey, [...(byIssue.get(c.issueKey) ?? []), c.criterion]);
   const named = [...byIssue].map(([key, ns]) => `${key} ${ns.map((n) => `c${n}`).join(", ")}`).join("; ");
-  return <WaitBanner tone="err" head={t("releases.shippedFailing", { n: f.count })} body={named} className={className} testId="release-shipped-failing" />;
+  return <WaitBanner tone="err" head={t(f.count === 1 ? "releases.shippedFailing.one" : "releases.shippedFailing.many", { n: f.count })} body={named} className={className} testId="release-shipped-failing" />;
 }
 
 export function RefusalText({ error }: { error: unknown }) {
