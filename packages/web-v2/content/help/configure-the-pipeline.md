@@ -7,7 +7,7 @@ audience: user
 
 # Configure the pipeline & approvals
 
-Your project's **pipeline** takes each issue from filed to shipped. One agent
+Your project's **pipeline** takes each issue from filed to released. One agent
 picks an issue up and carries it the whole way — it works out what is asked,
 builds it, checks it and hands it on for release. There is no list of stages to
 set one by one: you decide **whether work starts on its own**, **whether new
@@ -42,7 +42,7 @@ gated issue** tells the owner each time one arrives.
 
 Built and checked work waits at **Awaiting release** only while the project
 declares a release **and** a live deploy target serves it. Both are on
-**Settings → Shape & release**; a project that ships nothing closes each issue
+**Settings → Shape & release**; a project that releases nothing closes each issue
 once its work is done.
 
 At **Awaiting release**, the issue page says when it goes out — the next

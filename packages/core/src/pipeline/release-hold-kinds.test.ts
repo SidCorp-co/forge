@@ -57,6 +57,13 @@ const UNMERGED = {
   clearsHere:
     "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
 };
+// ISS-1421 r40: on a project naming no repository a mark naming no commit is accepted.
+const UNMERGED_NO_REPOSITORY = {
+  code: 'CLOSE_REQUIRES_SHIPPED',
+  reason: 'not marked merged',
+  clears:
+    "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed; with no repository named, Commit may stay empty.",
+};
 // ISS-1300 r5: outside git the panel takes no commit, so its step names none.
 const UNLANDED = {
   code: 'CLOSE_REQUIRES_SHIPPED',
@@ -138,6 +145,13 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
     closeRefusedHold([UNLANDED]),
     'The automatic release cannot close this issue.\n\n' +
       '- It has no mark naming where its work landed. Use Mark merged in its properties and fill in Where it landed.\n\n' +
+      'The next sweep releases it once that is done.',
+  ],
+  [
+    'close refused for a missing mark on a project naming no repository',
+    closeRefusedHold([UNMERGED_NO_REPOSITORY]),
+    'The automatic release cannot close this issue.\n\n' +
+      '- It is not marked merged. Use Mark merged in its properties and fill in Where it landed; with no repository named, Commit may stay empty.\n\n' +
       'The next sweep releases it once that is done.',
   ],
   [
@@ -241,7 +255,7 @@ describe('every hold kind is commented in three short sentences (ISS-1421 r8 rep
   // that clears itself), and each variant one of them words differently, is measured above.
   it('measures every kind a hold comes in', () => {
     expect(new Set(KINDS.map(([, hold]) => hold.code)).size).toBe(12);
-    expect(KINDS.length).toBe(19);
+    expect(KINDS.length).toBe(20);
   });
 
   it.each(KINDS)(

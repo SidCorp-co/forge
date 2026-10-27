@@ -8,6 +8,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { FORGE_GUIDES } from '../guides/registry.js';
+import { proseSaying, SHIP } from './plain-words.fixture.js';
 
 const SRC = resolve(__dirname, '..');
 
@@ -35,10 +37,11 @@ const RELEASE_SURFACES: ReadonlyArray<{ dir: string; file?: RegExp }> = [
   { dir: 'issues', file: /^drop-unblock\.ts$/ },
   { dir: 'pipeline', file: /^stranded-issues\.ts$/ },
   { dir: '../../contracts/src', file: /^stuck-words\.ts$/ },
+  // The llms.txt preface a person reads beside the guides (ISS-1421 r40, judge-164).
+  { dir: 'guides', file: /^routes\.ts$/ },
 ];
 
 const BINDING = /\b(bindings?|bound|bind|binds|unbind)\b/i;
-const SHIP = /\bship(s|ped|ping)?\b/i;
 
 /** A value a caller sends, marked as code: `ship-unverified` names the decision, not the act. */
 const CODE_MARK = /`[^`]*`/g;
@@ -254,6 +257,43 @@ describe("core's sentences to a person", () => {
 
   it('never say ship, outside a code mark naming a value a caller sends', () => {
     expect(hitsIn(RELEASE_SURFACES, SHIP, true)).toEqual([]);
+  });
+
+  it('never say ship in a guide /api/guides serves, outside a code mark', () => {
+    // A guide is read by people as well as agents: the master's ruling on judge-164 (ISS-1421 r40).
+    const hits = FORGE_GUIDES.flatMap((guide) =>
+      [guide.title, guide.summary, guide.body].flatMap((text) =>
+        proseSaying(text, SHIP).map((hit) => `${guide.slug}:${hit}`),
+      ),
+    );
+    expect(FORGE_GUIDES.length).toBeGreaterThan(10);
+    expect(hits).toEqual([]);
+  });
+
+  it('finds ship in a guide sentence, a table cell and a link text, and not in a code mark, a fenced block or a link target', () => {
+    const planted = [
+      '# A guide',
+      '',
+      'Closed means the work shipped, and',
+      'Dropped means it will not.',
+      '',
+      '| Status | Means |',
+      '| --- | --- |',
+      '| Closed | It shipped |',
+      '',
+      'Send `holdsUntil: "shipped"` on the edge, or read [how it ships](docs/shipped.md).',
+      '',
+      '```',
+      'whatever ships as code',
+      '```',
+      '',
+      'Read [the release notes](docs/when-it-shipped.md) first.',
+    ].join('\n');
+    expect(proseSaying(planted, SHIP)).toEqual([
+      '3: Closed means the work shipped, and Dropped means it will not.',
+      '6: It shipped',
+      '10: Send  on the edge, or read [how it ships].',
+    ]);
   });
 
   it('finds ship in a sentence, a template and a wording helper, and not in a code mark, a value or a word that only holds it', () => {

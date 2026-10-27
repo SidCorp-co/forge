@@ -102,7 +102,7 @@ export const FORGE_GUIDES: readonly ForgeGuide[] = [
     audience: 'agent',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'What belongs in a description, the four exits from draft (including the direct-ship route and the discard that does not stamp `merged_at`), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
+      'What belongs in a description, the four exits from draft (including the route straight to a release and the discard that does not stamp `merged_at`), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
     version: 10,
     body: guideBody('pipeline-and-issue-lifecycle'),
   },

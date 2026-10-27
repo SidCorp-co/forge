@@ -96,8 +96,10 @@ scheduled cut leaves it off and names it in its outcome. A refusal that arises a
 question asked mid-run, is still met at the finish below.
 
 On a project whose deploy is a person's, the finish does close every issue whose close stands. With
-no verify probe it is recorded unverified, written on each issue as whoever finished the release
-(`packages/core/src/release-batch/unverified-close.ts:noteUnverifiedCloses`), and claims no deploy.
+no verify probe it is recorded unverified, written on each issue it closes as whoever finished the
+release, inside that close's own transaction, so an issue whose close is refused carries no such note
+and one whose note cannot be written is not closed
+(`packages/core/src/release-batch/unverified-close.ts:noteUnverifiedClose`), and claims no deploy.
 
 ### A roster over the cap (ISS-1360)
 

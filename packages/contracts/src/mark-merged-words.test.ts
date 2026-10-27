@@ -28,4 +28,14 @@ describe('the Mark merged steps (ISS-1421 r4 repair 1)', () => {
     );
     expect(markMergedSteps(true)).not.toContain(COMMIT_FIELD);
   });
+
+  // ISS-1421 r40 (judge-164): a project naming no repository accepts a mark naming no commit.
+  it('says Commit may stay empty on a project naming no repository, and asks for no commit', () => {
+    const steps = markMergedSteps(false, true);
+    expect(steps).toBe(
+      `Use ${MARK_MERGED_ACTION} in the issue's properties. In the panel it opens, fill in ${WHERE_IT_LANDED_FIELD}; with no repository named, ${COMMIT_FIELD} may stay empty.`,
+    );
+    expect(steps).not.toContain('name the commit');
+    expect(markMergedSteps(true, true)).toBe(markMergedSteps(true));
+  });
 });

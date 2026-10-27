@@ -77,6 +77,17 @@ export function refusedOwnRow(issue: Pick<ReleaseRosterEntry, "claimedByRunId" |
   return issue.claimedByRunId === null && (issue.closeRefusals.length > 0 || issue.releaseRefusals.length > 0);
 }
 
+/** The rows Release now may carry: not in a release, refused for no reason of their own, and none
+ *  where a reason no pick escapes stands. Shape & release reads its answer off the same rule, so the
+ *  two never disagree about whether a release can start (ISS-1421 r40, judge-164). */
+export function pickableRows<T extends Pick<ReleaseRosterEntry, "claimedByRunId" | "closeRefusals" | "releaseRefusals">>(
+  issues: readonly T[],
+  blockingAll: readonly unknown[],
+): T[] {
+  if (blockingAll.length > 0) return [];
+  return issues.filter((i) => i.claimedByRunId === null && !refusedOwnRow(i));
+}
+
 /** What releases the waiting issues: a schedule, the automatic release, or a person (ISS-1421 r13). */
 export function whatReleases(nextCutAt: string | null, automatic: boolean): string {
   if (nextCutAt) return `Next cut ${formatCountdown(nextCutAt)}`;
@@ -140,7 +151,7 @@ export function ReleaseGatePanel({
   // or by a reason no pick escapes (ISS-1421 r37).
   const blocked = data.blockingAll.length > 0;
   const own = unclaimed.filter((i) => !refusedOwnRow(i));
-  const selectable = blocked ? [] : own;
+  const selectable = pickableRows(issues, data.blockingAll);
   // A row the last release failed to close is picked by hand only: a release fails it the same way.
   const ready = selectable.filter((i) => i.closeFailure === null);
   const chosen = selectable.filter((i) => selected.has(i.id));

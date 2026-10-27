@@ -164,6 +164,48 @@ describe('a project with no verify probe releases unverified', () => {
     expect(await fx.runStatus(runId)).toBe('completed');
   }, 40_000);
 
+  it('writes no unverified note on an issue whose close the finish refused, and one on the rest', async () => {
+    const a = await fx.insertIssue();
+    const b = await fx.insertIssue();
+    const { runId } = await fx.claim([a, b]);
+    // After the press, so the create door's own merge check has passed: the finish's close refuses it.
+    await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${b}`);
+
+    expect((await call('POST', `/release-batches/${runId}/finish`, {})).status).toBe(202);
+    await finished(runId);
+
+    expect((await fx.stored(a)).status).toBe('closed');
+    expect(await markedComments(a, runId)).toBe(1);
+    expect((await fx.stored(b)).status).toBe('awaiting_release');
+    expect(await markedComments(b, runId)).toBe(0);
+    const said = await harness.db.execute(sql`
+      SELECT body FROM comments WHERE issue_id = ${b} AND body LIKE '%closed by a release%'
+    `);
+    expect(said).toHaveLength(0);
+  }, 40_000);
+
+  it('closes no issue on which the finish could not write the unverified note', async () => {
+    const a = await fx.insertIssue();
+    const { runId } = await fx.claim([a]);
+    await harness.db.execute(sql`
+      CREATE OR REPLACE FUNCTION refuse_finish_note() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'comment store unavailable'; END; $$ LANGUAGE plpgsql
+    `);
+    await harness.db.execute(sql`
+      CREATE TRIGGER refuse_finish_note BEFORE INSERT ON comments
+      FOR EACH ROW WHEN (NEW.body LIKE '%release-verification: unverified%') EXECUTE FUNCTION refuse_finish_note()
+    `);
+    try {
+      expect((await call('POST', `/release-batches/${runId}/finish`, {})).status).toBe(202);
+      await finished(runId);
+
+      expect((await fx.stored(a)).status).toBe('awaiting_release');
+      expect(await markedComments(a, runId)).toBe(0);
+    } finally {
+      await harness.db.execute(sql`DROP TRIGGER IF EXISTS refuse_finish_note ON comments`);
+    }
+  }, 40_000);
+
   it('settles an attempt account as unverified rather than failed', async () => {
     const a = await fx.insertIssue();
     const { runId } = await fx.claim([a]);
@@ -204,23 +246,31 @@ describe('a project with no verify probe releases unverified', () => {
   });
 });
 
+/** The note as a close writes it: inside that close's own transaction. */
+async function noteInATransaction(runId: string, issueId: string, commit: string | null) {
+  const [{ db }, { noteUnverifiedClose }] = await Promise.all([
+    import('../../src/db/client.js'),
+    import('../../src/release-batch/unverified-close.js'),
+  ]);
+  const actor = { type: 'user', id: ownerId } as const;
+  return db.transaction((tx) => noteUnverifiedClose(tx, { runId, issueId, actor, commit }));
+}
+
 describe('the unverified note, once per issue per release run', () => {
   it('writes none twice for one run, and one more for a second run', async () => {
     const a = await fx.insertIssue();
-    const { noteUnverifiedCloses } = await import('../../src/release-batch/unverified-close.js');
     const [first, second] = [
       '11111111-1111-4111-8111-111111111111',
       '22222222-2222-4222-8222-222222222222',
     ];
-    const actor = { type: 'user', id: ownerId } as const;
 
     const written = [
-      await noteUnverifiedCloses({ runId: first, issueIds: [a], actor, commit: RELEASED }),
-      await noteUnverifiedCloses({ runId: first, issueIds: [a], actor, commit: RELEASED }),
-      await noteUnverifiedCloses({ runId: second, issueIds: [a], actor, commit: null }),
+      await noteInATransaction(first, a, RELEASED),
+      await noteInATransaction(first, a, RELEASED),
+      await noteInATransaction(second, a, null),
     ];
 
-    expect(written).toEqual([1, 0, 1]);
+    expect(written).toEqual([true, false, true]);
     expect(await markedComments(a, first)).toBe(1);
     expect(await markedComments(a, second)).toBe(1);
   });
@@ -228,26 +278,22 @@ describe('the unverified note, once per issue per release run', () => {
   it('writes no note on an archived issue, whose close the transition refuses', async () => {
     const a = await fx.insertIssue();
     await harness.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${a}`);
-    const { noteUnverifiedCloses } = await import('../../src/release-batch/unverified-close.js');
     const runId = '44444444-4444-4444-8444-444444444444';
-    const actor = { type: 'user', id: ownerId } as const;
 
-    const written = await noteUnverifiedCloses({ runId, issueIds: [a], actor, commit: null });
+    const written = await noteInATransaction(runId, a, null);
 
-    expect(written).toBe(0);
+    expect(written).toBe(false);
     expect(await markedComments(a, runId)).toBe(0);
   });
 
   it('writes one note when two workers of one run reach the same issue at once', async () => {
     const a = await fx.insertIssue();
-    const { noteUnverifiedCloses } = await import('../../src/release-batch/unverified-close.js');
     const runId = '33333333-3333-4333-8333-333333333333';
-    const actor = { type: 'user', id: ownerId } as const;
-    const pass = () => noteUnverifiedCloses({ runId, issueIds: [a], actor, commit: null });
+    const pass = () => noteInATransaction(runId, a, null);
 
     const written = await Promise.all([pass(), pass(), pass()]);
 
-    expect(written.reduce((n, w) => n + w, 0)).toBe(1);
+    expect(written.filter(Boolean)).toHaveLength(1);
     expect(await markedComments(a, runId)).toBe(1);
   });
 });

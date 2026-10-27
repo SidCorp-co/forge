@@ -18,7 +18,8 @@ export const BUILT_NOT_RELEASED: ReadonlySet<IssueStatus> = new Set<IssueStatus>
   "releasing",
 ]);
 
-function heading(status: IssueStatus): string {
+/** The section's heading by status, which the help quotes (ISS-1421 r40). */
+export function releaseNoteHeading(status: IssueStatus): string {
   if (status === "closed") return "What changed";
   if (BUILT_NOT_RELEASED.has(status)) return "What will change once it is released";
   return "Release note";
@@ -134,7 +135,7 @@ export function ReleaseNoteSection({
   if (!note && canWrite && NOTE_WRITTEN_HERE.has(issue.status)) return <ReleaseNoteWriter issueId={issue.id} />;
   if (!note || issue.status === "dropped") return null;
   return (
-    <FlatSection title={heading(issue.status)}>
+    <FlatSection title={releaseNoteHeading(issue.status)}>
       <Markdown>{sentence(issue.status, note.userFacing, note.section === "Skip")}</Markdown>
     </FlatSection>
   );

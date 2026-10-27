@@ -6,6 +6,7 @@ import { resolveDeclaredEntryCriteria } from '../issues/entry-criteria.js';
 import { refuseUnshippedClose } from '../issues/merged-at.js';
 import { checkTransitionEvidence } from '../issues/transition-evidence.js';
 import { issueHasSession } from '../pipeline/runs-of-issue.js';
+import { markCommitCheck } from '../projects/live-source.js';
 import { openQuestionIdsOn, openQuestionsFault } from '../questions/issue-coupling.js';
 import {
   entryRecordsShortfallWords,
@@ -26,13 +27,13 @@ export interface CloseShortfall extends ShortfallWords {
 /** Each issue that has a shortfall, mapped to every shortfall it has; an issue whose close stands is absent. */
 export type CloseShortfalls = Map<string, CloseShortfall[]>;
 
-function landingShortfallOf(refusal: {
-  detail: string;
-  details: Record<string, unknown>;
-}): CloseShortfall {
+function landingShortfallOf(
+  refusal: { detail: string; details: Record<string, unknown> },
+  noRepository: boolean,
+): CloseShortfall {
   const outside = refusal.details.shape === 'outside_git';
   return {
-    ...landingShortfallWords(outside),
+    ...landingShortfallWords(outside, noRepository),
     detail: refusal.detail,
     details: { ...refusal.details, shape: outside ? 'outside_git' : 'git' },
   };
@@ -42,10 +43,11 @@ async function shortfallsOf(
   projectId: string,
   issueId: string,
   declared: Awaited<ReturnType<typeof resolveDeclaredEntryCriteria>>,
+  noRepository: () => Promise<boolean>,
 ): Promise<CloseShortfall[]> {
   const found: CloseShortfall[] = [];
   const unshipped = await refuseUnshippedClose(db, { issueId, toStatus: 'closed' });
-  if (unshipped) found.push(landingShortfallOf(unshipped));
+  if (unshipped) found.push(landingShortfallOf(unshipped, await noRepository()));
 
   const asked = await openQuestionIdsOn(db, issueId);
   if (asked.length > 0) {
@@ -92,8 +94,14 @@ export async function rosterCloseShortfalls(
   const out: CloseShortfalls = new Map();
   if (issueIds.length === 0) return out;
   const declared = await resolveDeclaredEntryCriteria(projectId, 'closed');
+  // Read once, and only where an issue is not marked merged: whether a mark may name no commit.
+  let claim: Promise<boolean> | undefined;
+  const noRepository = () => {
+    claim ??= markCommitCheck(projectId).then((check) => check === 'claim');
+    return claim;
+  };
   for (const issueId of issueIds) {
-    const found = await shortfallsOf(projectId, issueId, declared);
+    const found = await shortfallsOf(projectId, issueId, declared, noRepository);
     if (found.length > 0) out.set(issueId, found);
   }
   return out;

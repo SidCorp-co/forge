@@ -62,9 +62,9 @@ const REFUSALS: Record<TransitionErrorCode, string> = {
   WAITING_KIND_REQUIRED: 'a move to `waiting` came without `waitingKind`',
   WAITING_KIND_NOT_APPLICABLE: '`waitingKind` was sent with a status other than `waiting`',
   RELEASE_RECORD_REQUIRED: 'the close needs a release record that was not made',
-  CLOSE_REQUIRES_SHIPPED: 'the close needs the work marked as shipped first',
+  CLOSE_REQUIRES_SHIPPED: 'the close needs the work marked as merged first',
   CLOSE_REQUIRES_RELEASE_TAG:
-    'the project ships by version tag and no matching tag contains the commit the issue landed as',
+    'the project releases by version tag and no matching tag contains the commit the issue landed as',
   RELEASE_TARGET_UNDECLARED:
     "the project's release chain names branches but has no active live deploy binding",
   RELEASE_TAG_UNREAD: "the repository's tags could not be read, so the close could not be checked",

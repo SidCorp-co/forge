@@ -193,7 +193,7 @@ guideRoutes.get('/llms.txt', readLlmsTxt, (c) => {
     '# Forge',
     '',
     '> Open-source control plane for Claude Code: full-stack project management plus an agent',
-    '> pipeline in which one Claude run carries an issue end to end, from filed to shipped. These',
+    '> pipeline in which one Claude run carries an issue end to end, from filed to released. These',
     '> guides are the same bytes the `forge_guide` MCP tool serves. Every URL below',
     '> is unauthenticated and returns raw markdown — fetch what you need, when you need it.',
     '>',

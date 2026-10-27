@@ -190,7 +190,7 @@ async function run(principal: McpPrincipal, input: Input, projectId: string): Pr
     case 'abort': {
       const result = await abortReleaseBatch(
         runId,
-        input.reason ?? 'aborted by agent',
+        input.reason ?? 'no reason was given',
         principal.userId,
         { promotedRoster: input.promotedRoster },
       );

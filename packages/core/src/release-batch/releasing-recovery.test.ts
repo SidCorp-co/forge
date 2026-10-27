@@ -3,7 +3,12 @@ import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
 import { TransitionError } from '../issues/apply-transition.js';
 import { transitions } from '../pipeline/state-machine.js';
-import { closeFailureText, closeRefusalOf, refusedCloseComment } from './releasing-recovery.js';
+import {
+  closeFailureText,
+  closeRefusalOf,
+  reasonSentence,
+  refusedCloseComment,
+} from './releasing-recovery.js';
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 
@@ -423,5 +428,17 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     expect(text).toContain('refund hook is still (a value of this write, withheld) funds');
     expect(text).not.toContain('[Redacted]');
     expect(text).not.toContain('releasing');
+  });
+});
+
+// ISS-1421 r40 (judge-164): an abort's comment opened "batch release aborted: …", and a reason that
+// already ended in a full stop was followed by another.
+describe('a hand-back reason as the opening sentence of its comment', () => {
+  it.each([
+    ['another batch was already in flight, so this one never started', 'Another batch was already in flight, so this one never started.'],
+    ['The release run failed, so nothing is carrying this issue to production.', 'The release run failed, so nothing is carrying this issue to production.'],
+    ['The release was aborted: a person stopped it. ', 'The release was aborted: a person stopped it.'],
+  ])('says %j as %j', (reason, said) => {
+    expect(reasonSentence(reason)).toBe(said);
   });
 });

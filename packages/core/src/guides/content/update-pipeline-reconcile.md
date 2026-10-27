@@ -7,7 +7,7 @@ meaning of a field, not to decide a verdict.
 ### How a reconcile run happens
 ```
 ⓪ AUTHOR    a human writes an Update Packet { change · story · intent_class · applies_to }
-① ENFORCE   whatever is expressible as platform policy ships as CODE → every project at once,
+① ENFORCE   whatever is expressible as platform policy goes out as CODE → every project at once,
             and emits the currently-effective invariant set
 ② RECONCILE per project: Master agent reads the bundle → verdict + gate
             → 3 independent verifiers vote → publish, park for a human, or escalate

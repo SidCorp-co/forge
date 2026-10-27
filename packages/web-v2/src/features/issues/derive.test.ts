@@ -930,7 +930,7 @@ describe("deriveCommentKind", () => {
 
 	it.each([
 		"Released outside a release batch, and recorded on the account of whoever released it.",
-		"**This issue is being closed by a release that was not verified.**",
+		"**This issue was closed by a release that was not verified.**",
 		"Not released: the deploy was rolled back.",
 		"Just a normal note here",
 	])("badges %j Released where core's release flow marked it, whatever its words", (body) => {

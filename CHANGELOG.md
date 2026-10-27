@@ -3200,6 +3200,7 @@
 
 ### Fixed
 
+- **The help says what the screen says, and a release says one thing per issue.** Help, guides and API reference drop "ship"; an issue a release could not close gets no unverified note; Shape & release agrees with the gate. (ISS-1421)
 - **A rate-limited read says its wait once, counting down**, without the server's fixed "Try again in 30 seconds"; screen readers hear only its start and end. On a phone, the page scrolls clear of a kept notice. (ISS-1229)
 - **Release notes are asked for in plain words.** Several missing notes are asked for one per issue on its page; no sentence says ship; Save says what it waits for; comments inside one millisecond read in one order. (ISS-1421)
 - **The wait before Retry counts down, and Retry returns when it ends.** Every read-again control follows the one Retry rule, so a refused read never offers Retry or a wait. (ISS-1229)

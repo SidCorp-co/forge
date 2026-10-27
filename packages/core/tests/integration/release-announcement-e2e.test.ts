@@ -102,16 +102,21 @@ describe('a release is a mark core records, not a reading of the words (ISS-1228
 
   it('marks the note an unverified release close writes, whatever its words', async () => {
     const a = await fx.insertIssue();
-    const { noteUnverifiedCloses } = await import('../../src/release-batch/unverified-close.js');
-    await noteUnverifiedCloses({
-      runId: RUN,
-      issueIds: [a],
-      actor: { type: 'user', id: ownerId },
-      commit: RELEASED,
-    });
+    const [{ db }, { noteUnverifiedClose }] = await Promise.all([
+      import('../../src/db/client.js'),
+      import('../../src/release-batch/unverified-close.js'),
+    ]);
+    await db.transaction((tx) =>
+      noteUnverifiedClose(tx, {
+        runId: RUN,
+        issueId: a,
+        actor: { type: 'user', id: ownerId },
+        commit: RELEASED,
+      }),
+    );
 
     const [note] = await thread(a);
-    expect(note?.body).toContain('This issue is being closed by a release that was not verified.');
+    expect(note?.body).toContain('This issue was closed by a release that was not verified.');
     expect(note?.announces).toBe('release');
   });
 

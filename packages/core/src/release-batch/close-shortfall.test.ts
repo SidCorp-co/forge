@@ -35,6 +35,11 @@ vi.mock('../pipeline/runs-of-issue.js', () => ({
   issueHasSession: (...a: unknown[]) => hasSession(...a),
 }));
 
+const commitCheck = vi.fn(async (..._a: unknown[]) => 'checked' as string | null);
+vi.mock('../projects/live-source.js', () => ({
+  markCommitCheck: (...a: unknown[]) => commitCheck(...a),
+}));
+
 const { ENTRY_RECORDS_CLEAR, rosterCloseShortfalls, shortfallLine, shortfallSaid } = await import(
   './close-shortfall.js'
 );
@@ -48,6 +53,7 @@ beforeEach(() => {
   declared.mockResolvedValue([]);
   evidence.mockResolvedValue(null);
   hasSession.mockResolvedValue(true);
+  commitCheck.mockResolvedValue('checked');
 });
 
 describe('rosterCloseShortfalls', () => {
@@ -79,6 +85,31 @@ describe('rosterCloseShortfalls', () => {
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(found).toMatchObject({ reason: 'not marked merged', details: { shape: 'git' } });
     expect(found?.clears).toBe(markMergedSteps(false));
+  });
+
+  // ISS-1421 r40 (judge-164): a project naming no repository accepts a mark naming no commit.
+  it('says Commit may stay empty for a missing merge on a project naming no repository', async () => {
+    unshipped.mockResolvedValue({ detail: 'no merged_at', details: { requires: 'mergedAt' } });
+    commitCheck.mockResolvedValue('claim');
+    const [found] = (await rosterCloseShortfalls(PROJECT, ['a', 'b'])).get('a') ?? [];
+    expect(found?.clears).toBe(markMergedSteps(false, true));
+    expect(found?.clears).not.toContain('name the commit');
+    expect(commitCheck).toHaveBeenCalledTimes(1);
+    expect(commitCheck).toHaveBeenCalledWith(PROJECT);
+  });
+
+  it('asks for the commit where the repository is read, or the check could not be made', async () => {
+    unshipped.mockResolvedValue({ detail: 'no merged_at', details: { requires: 'mergedAt' } });
+    for (const check of ['checked', 'refused', null]) {
+      commitCheck.mockResolvedValue(check);
+      const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
+      expect(found?.clears).toBe(markMergedSteps(false));
+    }
+  });
+
+  it('reads no commit check where every issue is marked merged', async () => {
+    await rosterCloseShortfalls(PROJECT, ['a']);
+    expect(commitCheck).not.toHaveBeenCalled();
   });
 
   it('names open questions with the sentence the close prints', async () => {

@@ -6,6 +6,7 @@
  */
 
 import {
+  COMMIT_MAY_STAY_EMPTY,
   MARK_MERGED_ACTION,
   NAME_THE_LANDED_COMMIT,
   WHERE_IT_LANDED_FIELD,
@@ -212,8 +213,12 @@ function shortfallStep(s: Shortfall): string {
   if (s.code === 'CLOSE_REQUIRES_SHIPPED') {
     // The panel Mark merged opens says what Where it landed takes; the step stays one short clause,
     // and in git names Commit, as the banner and the landing hold do (ISS-1300 r5).
-    return s.reason === landingShortfallWords(true).reason
-      ? `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}`
+    if (s.reason === landingShortfallWords(true).reason) {
+      return `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}`;
+    }
+    // A project naming no repository accepts a mark naming no commit (ISS-1421 r40).
+    return s.clears === landingShortfallWords(false, true).clears
+      ? `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}; ${COMMIT_MAY_STAY_EMPTY}`
       : `use ${MARK_MERGED_ACTION} in its properties, fill in ${WHERE_IT_LANDED_FIELD} and ${NAME_THE_LANDED_COMMIT}`;
   }
   const act = s.clearsHere ?? s.clears;

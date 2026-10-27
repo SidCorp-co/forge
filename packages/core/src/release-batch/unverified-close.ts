@@ -1,13 +1,13 @@
 // An unverified close says so on each issue, so it never reads as a verified one: sid-desk ISS-191
-// closed 42 issues on a release that was not running (ISS-1042, ISS-1321).
+// closed 42 issues on a release that was not running (ISS-1042, ISS-1321). The note is written in
+// the close's own transaction, so an issue whose close is refused carries none (ISS-1421 r40).
 
 import { and, eq, like, sql } from 'drizzle-orm';
 import { postSystemComment } from '../comments/system-write.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { comments, issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { issueArchiveSide } from '../issues/archive.js';
-import { logger } from '../logger.js';
 import type { ReleaseVerification } from './plan.js';
 
 /** The line a reader, or a query, finds an unverified close by. One per issue per release run. */
@@ -30,14 +30,14 @@ export function unverifiedCloseNote(
   const partial = unread.length > 0;
   return [
     partial
-      ? '**This issue is being closed by a release that was verified at only some of its deploy targets.**'
-      : '**This issue is being closed by a release that was not verified.**',
+      ? '**This issue was closed by a release that was verified at only some of its deploy targets.**'
+      : '**This issue was closed by a release that was not verified.**',
     '',
     partial
       ? `Nothing read what these live deploy targets serve, because none declares a verify probe: ${unread.join(', ')}. The deploy targets that do declare one were read and confirmed.`
       : `This project declares no verify probe, so nothing read the live deployment. ${reported}`,
     '',
-    'Look at the live deployment for this change, and reopen this issue if it is not there. If your live deployment can report the commit it serves, declaring `verify.probes` on the live deploy target makes the releases after that verified.',
+    "Look at the live deployment for this change, and reopen this issue if it is not there. If your live deployment can report the commit it serves, give the live deploy target a verify probe on the project's Integrations tab, and the releases after that are verified.",
     '',
     `\`${unverifiedMarker(runId)}\``,
   ].join('\n');
@@ -49,47 +49,41 @@ function authorOf(actor: TransitionActor): { authorId: string; authorDeviceId: s
     : { authorId: actor.ownerId, authorDeviceId: actor.id };
 }
 
-/** Before each close, on every issue not already carrying this run's marker. A failed write
- *  throws: a close that cannot say it was unverified does not happen. */
-export async function noteUnverifiedCloses(args: {
-  runId: string;
-  issueIds: readonly string[];
-  actor: TransitionActor;
-  commit: string | null;
-  unread?: readonly string[] | undefined;
-}): Promise<number> {
+/**
+ * Inside the close's own transaction, before it writes: the note commits only with the close, and a
+ * failed write throws, so a close that cannot say it was unverified does not happen. False where the
+ * issue already carries this run's note, or is archived (whose close the transition refuses).
+ */
+export async function noteUnverifiedClose(
+  tx: Tx,
+  args: {
+    runId: string;
+    issueId: string;
+    actor: TransitionActor;
+    commit: string | null;
+    unread?: readonly string[] | undefined;
+  },
+): Promise<boolean> {
   const marker = unverifiedMarker(args.runId);
+  // The row lock serialises two workers of one attempt.
+  const [live] = await tx
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(eq(issues.id, args.issueId), ...issueArchiveSide(false)))
+    .for('update');
+  if (!live) return false;
+  const [already] = await tx
+    .select({ id: comments.id })
+    .from(comments)
+    .where(and(eq(comments.issueId, args.issueId), like(comments.body, `%${marker}%`)))
+    .limit(1);
+  if (already) return false;
   const body = unverifiedCloseNote(args.runId, args.commit, args.unread);
-  const author = authorOf(args.actor);
-  let written = 0;
-  for (const issueId of args.issueIds) {
-    // The row lock serialises two workers of one attempt. An archived issue's close is refused by
-    // the transition, so it takes no note saying it is being closed.
-    const wrote = await db.transaction(async (tx) => {
-      const [live] = await tx
-        .select({ id: issues.id })
-        .from(issues)
-        .where(and(eq(issues.id, issueId), ...issueArchiveSide(false)))
-        .for('update');
-      if (!live) return false;
-      const [already] = await tx
-        .select({ id: comments.id })
-        .from(comments)
-        .where(and(eq(comments.issueId, issueId), like(comments.body, `%${marker}%`)))
-        .limit(1);
-      if (already) return false;
-      await postSystemComment({ issueId, ...author, body, announces: 'release' }, tx);
-      return true;
-    });
-    if (wrote) written += 1;
-  }
-  if (written > 0) {
-    logger.warn(
-      { runId: args.runId, written },
-      'release-batch: closing a roster no probe verified; each issue says so',
-    );
-  }
-  return written;
+  await postSystemComment(
+    { issueId: args.issueId, ...authorOf(args.actor), body, announces: 'release' },
+    tx,
+  );
+  return true;
 }
 
 /** The run carries how its close was proved, which may differ from how it opened. */
