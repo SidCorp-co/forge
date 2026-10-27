@@ -376,7 +376,13 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
           {storedUnread && (
             <ReadFailedLine
               testId="new-project-stored-org-unread"
-              what="which organization you were working in, so where this project will live is not known"
+              what={
+                orgsKnown
+                  ? "which organization you were working in"
+                  : askWhere
+                    ? "which organization you were working in, so choose below where this project will live"
+                    : "which organization you were working in, so where this project will live is not known"
+              }
               why={formatApiError(storedUnread.error)}
               error={storedUnread.error}
               onRetry={storedUnread.retry}

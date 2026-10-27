@@ -157,8 +157,14 @@ function tallestCard(lane: HTMLElement | null): number {
   return Math.max(0, ...[...lane.querySelectorAll<HTMLElement>('[data-testid="toast-card"]')].map((c) => c.getBoundingClientRect().height));
 }
 
-/** The height a lane is held to: its class's share of the screen, or more where one whole toast needs it. */
-function useWholeCardCap(lane: React.RefObject<HTMLElement | null>, items: readonly unknown[]): number | null {
+/** The height a lane is held to: its class's share of the screen, or more where one whole toast needs it, and
+ *  never more than the screen leaves it below its top or above its bottom edge, `reserved` px, so a toast too
+ *  tall for the screen scrolls inside a lane that is wholly on it (r51 review F2). */
+function useWholeCardCap(
+  lane: React.RefObject<HTMLElement | null>,
+  items: readonly unknown[],
+  reserved: () => number,
+): number | null {
   const [cap, setCap] = useState<number | null>(null);
   useLayoutEffect(() => {
     if (items.length === 0) {
@@ -167,13 +173,13 @@ function useWholeCardCap(lane: React.RefObject<HTMLElement | null>, items: reado
     }
     const measure = () => {
       const need = tallestCard(lane.current) + 2 * LANE_PAD_PX;
-      const next = need > window.innerHeight * LANE_CAP ? Math.min(need, window.innerHeight) : null;
+      const next = need > window.innerHeight * LANE_CAP ? Math.min(need, Math.max(0, window.innerHeight - reserved())) : null;
       setCap((was) => (was === next ? was : next));
     };
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [lane, items]);
+  }, [lane, items, reserved]);
   return cap;
 }
 
@@ -235,10 +241,14 @@ function useKeepClear(
       const padding =
         (Number.parseFloat(laneStyle?.paddingTop ?? "") || 0) + (Number.parseFloat(laneStyle?.paddingBottom ?? "") || 0);
       const content = (lane.current?.scrollHeight ?? 0) - padding;
-      // What the lane shows wherever it stands: up to its cap, and never less than its tallest toast whole.
-      const whole = Math.max(Math.min(content, vh * LANE_CAP - 2 * LANE_PAD_PX), tallestCard(lane.current));
-      const height = Math.max(box.height, whole + 2 * LANE_PAD_PX);
       const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : inset.top);
+      // What the lane shows wherever it stands: up to its cap, and never less than its tallest toast whole, unless
+      // the screen below its top cannot hold that toast at all.
+      const whole = Math.min(
+        Math.max(Math.min(content, vh * LANE_CAP - 2 * LANE_PAD_PX), tallestCard(lane.current)),
+        vh - top - 2 * LANE_PAD_PX,
+      );
+      const height = Math.max(box.height, whole + 2 * LANE_PAD_PX);
       const left = wide ? vw - box.width : 0;
       const atTop = { top, bottom: top + height, left, right: vw };
       const dialog = targets[0].closest('[role="dialog"]') ?? targets[0];
@@ -337,8 +347,15 @@ export function ToastLane({ className }: { className?: string }) {
   const kept = wide || dialog.open ? [] : items.filter((t) => t.keep);
   const passing = wide ? items : items.filter((t) => !t.keep);
   const clearPlace = useKeepClear(items, laneRef, keptRef, wide, belowDialogHeader);
-  const passingCap = useWholeCardCap(laneRef, passing);
-  const keptCap = useWholeCardCap(keptRef, kept);
+  // What the screen keeps from each lane: above the passing lane, the top bar or a dialog's header; below the kept
+  // one, the tab bar. Each is read where the lane's own class and place put it.
+  const passingReserved = useCallback(
+    () => (wide ? WIDE_TOP_PX + WIDE_BOTTOM_PX : (belowDialogHeader ?? safeInsets().top)),
+    [wide, belowDialogHeader],
+  );
+  const keptReserved = useCallback(() => TAB_BAR_PX + safeInsets().bottom, []);
+  const passingCap = useWholeCardCap(laneRef, passing, passingReserved);
+  const keptCap = useWholeCardCap(keptRef, kept, keptReserved);
 
   useEffect(() => registerLane(), [registerLane]);
 

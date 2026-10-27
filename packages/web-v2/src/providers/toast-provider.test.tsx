@@ -893,6 +893,21 @@ describe("a toast naming the element it keeps clear of", () => {
     }
   });
 
+  // r51 review F2: a toast taller than the screen leaves must scroll in a lane wholly on screen, never push past it.
+  it("never holds a lane taller than the screen leaves it, so a toast too tall for it scrolls on screen", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = stepBoxes({ "toast-card": { top: 0, bottom: 550, height: 550, left: 0, right: 390 } });
+    try {
+      render(<Frame />);
+      act(() => fire({ title: "This room was deleted", keep: true }));
+      // Above the 56 px tab bar, 544 px is all the kept lane has; its 550 px toast and padding scroll inside it.
+      expect(screen.getByTestId("toast-lane-kept").style.maxHeight).toBe("544px");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("comes back to the top once the toast naming the field is gone", () => {
     wide(false);
     viewport(390, 844);

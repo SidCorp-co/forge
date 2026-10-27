@@ -142,7 +142,7 @@ describe("the new-project dialog while the stored active organization cannot be 
     render(<NewProjectDialog open onClose={vi.fn()} />);
     const unread = screen.getByTestId("new-project-stored-org-unread");
     expect(unread).toHaveTextContent(
-      "Couldn't load which organization you were working in, so where this project will live is not known. The server is down.",
+      "Couldn't load which organization you were working in, so choose below where this project will live. The server is down.",
     );
     expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
     submitDesk();
@@ -188,6 +188,11 @@ describe("the new-project dialog while the stored active organization cannot be 
     fireEvent.click(screen.getByRole("combobox"));
     fireEvent.click(screen.getByRole("option", { name: "SidCorp" }));
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
+    // r51 review F1: once a pick is made, the line no longer says where the project lands is unknown.
+    expect(screen.getByTestId("new-project-stored-org-unread")).toHaveTextContent(
+      "Couldn't load which organization you were working in. You do not have access to this.",
+    );
+    expect(screen.getByTestId("new-project-stored-org-unread")).not.toHaveTextContent(/not known|choose below/);
     submitDesk();
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(create.mock.calls[0]).toEqual([{ slug: "desk", name: "Desk", orgId: "o1" }]);

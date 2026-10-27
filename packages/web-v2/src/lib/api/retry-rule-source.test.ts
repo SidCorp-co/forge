@@ -26,9 +26,6 @@ const PRESS_HANDLERS = new Set(["onClick", "onSelect", "onPress"]);
 /** Calls that read something again. */
 const READ_AGAIN_CALLS = new Set(["refetch", "refetchQueries", "invalidateQueries", "resetQueries", "reload"]);
 
-/** The calls that read again behind a handler's name: there a cache invalidation follows a write. */
-const NAMED_READ_AGAIN_CALLS = new Set(["refetch", "reload"]);
-
 /** Names a read-again handler goes by where it is handed on rather than written in place. */
 const READ_AGAIN_NAME = /^(on)?(retry|refetch|reload|reread|readagain)/i;
 
@@ -138,8 +135,7 @@ function writes(node: ts.Node, constants: Map<string, ts.Expression>, seen: Set<
 /** Whether pressing a handler reads something again: a refetch, a cache invalidation or a reload, written in
  *  place or behind a name, or a handler handed on under a retry's name. One that writes is an act. */
 function readsAgain(node: ts.Node, constants: Map<string, ts.Expression>, seen = new Set<string>()): boolean {
-  // Behind a name, a cache invalidation is a write's own follow-up, which reads nothing again for a failure.
-  const calls = seen.size === 0 ? READ_AGAIN_CALLS : NAMED_READ_AGAIN_CALLS;
+  const calls = READ_AGAIN_CALLS;
   if (ts.isIdentifier(node)) {
     if (READ_AGAIN_NAME.test(node.text)) return true;
     const held = constants.get(node.text);
@@ -289,8 +285,9 @@ describe("a failed read's Retry, across the web app (criteria 478, 495, 496)", (
     ["a control reading Read them again", `<Button variant="ghost" onClick={() => q.refetch()}>Read them again</Button>`],
     ["a control under words of its own", `<Button onClick={readAgain}>Fetch once more</Button>`],
     ["a menu item that reads again", `<Menu items={[{ label: "Check now", onSelect: () => qc.invalidateQueries({ queryKey: ["x"] }) }]} />`],
+    ["a named handler that invalidates a read", `<button onClick={refresh}>Check now</button>`],
   ])("is refused for %s", (_, control) => {
-    const file = `const AGAIN = "Retry";\nconst again = () => q.refetch();\nexport const A = ({ q, qc, readAgain }) => <p>Couldn't load the runs. ${control}</p>;`;
+    const file = `const AGAIN = "Retry";\nconst again = () => q.refetch();\nconst refresh = () => qc.invalidateQueries({ queryKey: ["x"] });\nexport const A = ({ q, qc, readAgain }) => <p>Couldn't load the runs. ${control}</p>;`;
     expect(offences(join(SRC, "features/x/a.tsx"), file).length).toBeGreaterThan(0);
   });
 
