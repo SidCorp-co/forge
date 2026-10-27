@@ -474,6 +474,15 @@ export async function narrowsByAClassItCannotResolve(tx: Tx) {
   }
 }
 
+export async function narrowsByComparingTheErrorWithItself(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { code: '23505' }).code !== (err as { code: '23505' }).code) throw err;
+    return null;
+  }
+}
+
 export async function narrowsByTheCodeReader(tx: Tx) {
   try {
     return await tx.execute('select 1' as never);
@@ -633,6 +642,7 @@ describe('a catch around a statement on a handle that can be a transaction', () 
       ['narrowsByAStackedErrorPredicate', 'tx'],
       ['narrowsByTheSeverityEveryServerErrorHas', 'tx'],
       ['narrowsByAClassItCannotResolve', 'tx'],
+      ['narrowsByComparingTheErrorWithItself', 'tx'],
     ];
     expect(refusals(planted)).toEqual(
       swallows.map(

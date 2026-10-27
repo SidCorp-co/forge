@@ -21,7 +21,6 @@ const READERS = new Map([
   ['pgConstraintName', 'constraint_name'],
 ]);
 
-/** The properties that tell one error from another. */
 const IDENTIFYING = new Set(['code', 'constraint_name', 'constraint', 'name']);
 
 /** What the scan reads every catch against. */
@@ -37,7 +36,6 @@ export interface Scan {
   names: ReadonlySet<string>;
 }
 
-/** The expression under its parentheses, type assertions and non-null marks. */
 function unwrap(node: ts.Expression): ts.Expression {
   return ts.isParenthesizedExpression(node) ||
     ts.isAsExpression(node) ||
@@ -86,10 +84,12 @@ function knownValue(node: ts.Expression, scan: Scan): string | number | undefine
   return type.isStringLiteral() || type.isNumberLiteral() ? type.value : undefined;
 }
 
-/**
- * One side reads a property that tells errors apart and the other is a value known at compile
- * time, as in `err.code === '23505'`; a `name` is never one every error of a kind carries.
- */
+function mentions(node: ts.Node, name: string): boolean {
+  if (ts.isIdentifier(node) && node.text === name) return true;
+  return ts.forEachChild(node, (c) => mentions(c, name) || undefined) ?? false;
+}
+
+/** `err.code === '23505'`: the other side reads nothing of the error, and a `name` is no kind's. */
 function comparesError(node: ts.BinaryExpression, param: string, scan: Scan): boolean {
   const sides = [
     [node.left, node.right],
@@ -98,7 +98,7 @@ function comparesError(node: ts.BinaryExpression, param: string, scan: Scan): bo
   for (const [error, other] of sides) {
     const key = propertyRead(error, param, scan);
     if (key === undefined || !IDENTIFYING.has(key)) continue;
-    const value = knownValue(other, scan);
+    const value = mentions(other, param) ? undefined : knownValue(other, scan);
     if (value === undefined) return false;
     return key !== 'name' || !scan.names.has(String(value));
   }
@@ -139,11 +139,6 @@ function helperNamesAnError(call: ts.CallExpression, param: string, scan: Scan, 
   );
 }
 
-/**
- * True only for a test the scan recognises as holding of a named kind of error: `err instanceof X`
- * for a class of its own, an `isX(err)` or `hasX(err)` whose body is one, a comparison of what
- * tells errors apart with a known value, or a conjunction or disjunction of those.
- */
 export function namesAnError(node: ts.Expression, param: string, scan: Scan, depth = 0): boolean {
   const e = unwrap(node);
   if (ts.isBinaryExpression(e)) {
