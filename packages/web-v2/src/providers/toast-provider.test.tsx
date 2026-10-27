@@ -879,6 +879,48 @@ describe("a toast naming the element it keeps clear of", () => {
     }
   });
 
+  // r51 after-shots at 390×600: with "Project created" still up, the lane held the taller refusal's height alone,
+  // and the refusal, second in it, ran past the lane's bottom edge with its link.
+  it("holds every toast it shows whole, the second one's link included, on a short phone", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const by: Record<string, Partial<DOMRect>> = {
+        "toast-lane": { top: 61, bottom: 261, height: 200, width: 390, left: 0, right: 390 },
+        ...Object.fromEntries(Object.entries(step).map(([k, v]) => [k, { ...v, left: 21, right: 370 }])),
+        header: { bottom: 61 },
+      };
+      if (this.dataset.testid === "toast-card") {
+        const h = this.textContent?.includes("not saved") ? 198 : 61;
+        return { top: 0, bottom: h, left: 0, right: 390, width: 390, height: h } as DOMRect;
+      }
+      const key = this.dataset.testid ?? (this.getAttribute("role") === "dialog" ? "dialog" : this.tagName.toLowerCase());
+      return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, ...by[key] } as DOMRect;
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => {
+        fire({ title: "Project created", duration: 0 });
+        fire({ ...refused, duration: 0, clearOf: stepOrder });
+      });
+      const lane = screen.getByTestId("toast-lane");
+      const { top, bottom } = laneSpan(lane);
+      const shown = lane.style.maxHeight ? Number.parseFloat(lane.style.maxHeight) : bottom - top;
+      // 61 and 198 px, the lane's 10 px gap between them and its padding: 293 px at least, wherever it stands.
+      expect(shown).toBeGreaterThanOrEqual(61 + 198);
+      expect(bottom).toBeLessThanOrEqual(600);
+      clearOfAll(lane, ["path"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("holds its height to one whole toast where 35% of a short screen is less", () => {
     wide(false);
     viewport(390, 600);

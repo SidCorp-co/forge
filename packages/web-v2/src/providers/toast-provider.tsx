@@ -150,16 +150,21 @@ const LANE_PAD_PX = 12;
 const MIN_ROOM_PX = 72;
 const OVER_KEPT_Z = 61;
 
-/** The tallest toast card in a lane, so the lane never stands anywhere, nor caps itself, shorter than one whole
- *  toast: a card cut short hid its second line and its link (ISS-1229 r51, judge-157 at 390×600). */
-function tallestCard(lane: HTMLElement | null): number {
+/** The height a lane's toasts take, each whole, without the lane's own padding: what the lane holds wherever
+ *  it stands, so no toast in it is cut short by its edge. Its cards are read too, as a scroll height is not
+ *  always laid out (ISS-1229 r51, judge-157 at 390×600: the refusal's second line and link were cut off). */
+function toastsHeight(lane: HTMLElement | null): number {
   if (!lane) return 0;
-  return Math.max(0, ...[...lane.querySelectorAll<HTMLElement>('[data-testid="toast-card"]')].map((c) => c.getBoundingClientRect().height));
+  const style = getComputedStyle(lane);
+  const padding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+  const cards = [...lane.querySelectorAll<HTMLElement>('[data-testid="toast-card"]')].map((c) => c.getBoundingClientRect().height);
+  const gaps = Math.max(0, cards.length - 1) * (Number.parseFloat(style.rowGap) || 0);
+  return Math.max(lane.scrollHeight - padding, cards.reduce((a, b) => a + b, 0) + gaps);
 }
 
-/** The height a lane is held to: its class's share of the screen, or more where one whole toast needs it, and
- *  never more than the screen leaves it below its top or above its bottom edge, `reserved` px, so a toast too
- *  tall for the screen scrolls inside a lane that is wholly on it (r51 review F2). */
+/** The height a lane is held to: its class's share of the screen, or more where its toasts need it to show each
+ *  whole, and never more than the screen leaves it below its top or above its bottom edge, `reserved` px, so
+ *  toasts too tall for the screen scroll inside a lane that is wholly on it (r51 review F2). */
 function useWholeCardCap(
   lane: React.RefObject<HTMLElement | null>,
   items: readonly unknown[],
@@ -172,7 +177,7 @@ function useWholeCardCap(
       return;
     }
     const measure = () => {
-      const need = tallestCard(lane.current) + 2 * LANE_PAD_PX;
+      const need = toastsHeight(lane.current) + 2 * LANE_PAD_PX;
       const next = need > window.innerHeight * LANE_CAP ? Math.min(need, Math.max(0, window.innerHeight - reserved())) : null;
       setCap((was) => (was === next ? was : next));
     };
@@ -242,12 +247,8 @@ function useKeepClear(
         (Number.parseFloat(laneStyle?.paddingTop ?? "") || 0) + (Number.parseFloat(laneStyle?.paddingBottom ?? "") || 0);
       const content = (lane.current?.scrollHeight ?? 0) - padding;
       const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : inset.top);
-      // What the lane shows wherever it stands: up to its cap, and never less than its tallest toast whole, unless
-      // the screen below its top cannot hold that toast at all.
-      const whole = Math.min(
-        Math.max(Math.min(content, vh * LANE_CAP - 2 * LANE_PAD_PX), tallestCard(lane.current)),
-        vh - top - 2 * LANE_PAD_PX,
-      );
+      // What the lane shows wherever it stands: every toast in it whole, unless the screen below its top cannot.
+      const whole = Math.min(Math.max(content, toastsHeight(lane.current)), vh - top - 2 * LANE_PAD_PX);
       const height = Math.max(box.height, whole + 2 * LANE_PAD_PX);
       const left = wide ? vw - box.width : 0;
       const atTop = { top, bottom: top + height, left, right: vw };
