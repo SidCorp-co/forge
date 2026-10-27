@@ -20,6 +20,12 @@ function isFailure(err: unknown): err is Error {
   return err instanceof Error;
 }
 
+/** Holds of every error, in a body the scan does not read. */
+function isSeen(err: unknown): boolean {
+  const seen = err !== undefined;
+  return seen;
+}
+
 /** Holds of one error only. */
 function isRefusal(err: unknown): boolean {
   return (err as { code?: string }).code === '23505';
@@ -188,6 +194,39 @@ export async function narrowsByCode(tx: Tx) {
   }
 }
 
+export async function narrowsByAHelperItCannotRead(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isSeen(err)) throw err;
+    return null;
+  }
+}
+
+export async function continuesThroughASwitch(tx: Tx, kinds: string[]) {
+  for (const kind of kinds) {
+    try {
+      await tx.execute('select 1' as never);
+    } finally {
+      switch (kind) {
+        case 'skip':
+          continue;
+      }
+    }
+  }
+  return null;
+}
+
+export async function breaksInsideItsFinally(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } finally {
+    inner: for (const n of [1]) {
+      if (n) break inner;
+    }
+  }
+}
+
 export async function swallowsOnThePool() {
   try {
     return await db.execute('select 1' as never);
@@ -281,6 +320,8 @@ describe('a catch around a statement on a handle that can be a transaction', () 
       ['narrowsToAnObject', 'tx'],
       ['narrowsByAHelperThatHoldsOfAll', 'tx'],
       ['returnsWhenNotNothing', 'tx'],
+      ['narrowsByAHelperItCannotRead', 'tx'],
+      ['continuesThroughASwitch', 'tx'],
     ];
     expect(refusals(planted)).toEqual(
       swallows.map(
@@ -306,9 +347,10 @@ describe('a catch around a statement on a handle that can be a transaction', () 
     expect(kindOf('narrowsByCode')).toBe('narrowed');
   });
 
-  it('leaves alone a catch on the pool, and one around a whole transaction', () => {
+  it('leaves alone a catch on the pool, one around a whole transaction, and a finally whose jump lands inside it', () => {
     expect(kindOf('swallowsOnThePool')).toBeUndefined();
     expect(kindOf('swallowsAWholeTransaction')).toBeUndefined();
+    expect(kindOf('breaksInsideItsFinally')).toBeUndefined();
   });
 
   it('allows a swallow only where an exception names it, and refuses an exception naming none', () => {

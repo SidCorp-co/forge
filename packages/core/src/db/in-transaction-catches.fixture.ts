@@ -194,13 +194,16 @@ function holdsOfEveryError(type: ts.Type, scan: Scan): boolean {
   );
 }
 
-/** Whether `isX(err)` holds of a named kind of error, read off its predicate or its own body. */
+/**
+ * Whether `isX(err)` holds of a named kind of error, read off its predicate or its own body: one
+ * returned expression the scan reads as naming one. A helper it cannot read names none.
+ */
 function helperNamesAnError(call: ts.CallExpression, param: string, scan: Scan, depth: number) {
   const signature = scan.checker.getResolvedSignature(call);
   const predicate = signature && scan.checker.getTypePredicateOfSignature(signature);
   if (predicate?.type) return !holdsOfEveryError(predicate.type, scan);
   const decl = signature?.getDeclaration();
-  if (!decl || decl.getSourceFile().isDeclarationFile || depth > 3) return true;
+  if (!decl || decl.getSourceFile().isDeclarationFile || depth > 3) return false;
   const index = call.arguments.findIndex((a) => mentions(a, param));
   const own = decl.parameters[index];
   const body = ts.isFunctionLike(decl) ? (decl as ts.FunctionLikeDeclaration).body : undefined;
@@ -210,7 +213,7 @@ function helperNamesAnError(call: ts.CallExpression, param: string, scan: Scan, 
         ? (body.statements[0] as ts.ReturnStatement).expression
         : undefined
       : body;
-  if (!own || !ts.isIdentifier(own.name) || !returned) return true;
+  if (!own || !ts.isIdentifier(own.name) || !returned) return false;
   return namesAnError(returned, own.name.text, scan, depth + 1);
 }
 
@@ -317,18 +320,36 @@ function paramOf(
   return decl && ts.isIdentifier(decl.name) ? decl.name.text : null;
 }
 
-/** True where a statement of `block` returns, breaks or continues out of it. */
+/** True where a jump in `block` lands on a statement inside it: its label's, or its loop or switch. */
+function landsInside(jump: ts.BreakOrContinueStatement, block: ts.Block): boolean {
+  for (let at = jump.parent; at && at !== block; at = at.parent) {
+    if (jump.label) {
+      if (ts.isLabeledStatement(at) && at.label.text === jump.label.text) return true;
+    } else if (
+      ts.isIterationStatement(at, false) ||
+      (ts.isBreakStatement(jump) && ts.isSwitchStatement(at))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True where a statement of `block` returns, or breaks or continues to a target outside it. */
 function leavesBlock(block: ts.Block): boolean {
   let leaves = false;
-  const visit = (n: ts.Node, inLoop: boolean): void => {
+  const visit = (n: ts.Node): void => {
     if (leaves || isNestedFunction(n)) return;
-    if (ts.isReturnStatement(n)) leaves = true;
-    else if ((ts.isBreakStatement(n) || ts.isContinueStatement(n)) && (n.label || !inLoop))
+    if (
+      ts.isReturnStatement(n) ||
+      ((ts.isBreakStatement(n) || ts.isContinueStatement(n)) && !landsInside(n, block))
+    ) {
       leaves = true;
-    const loops = inLoop || ts.isIterationStatement(n, false) || ts.isSwitchStatement(n);
-    ts.forEachChild(n, (c) => visit(c, loops));
+      return;
+    }
+    ts.forEachChild(n, visit);
   };
-  visit(block, false);
+  visit(block);
   return leaves;
 }
 
