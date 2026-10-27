@@ -177,7 +177,6 @@ function namesAnError(node: ts.Expression, param: string): boolean {
   return false;
 }
 
-/** True only for a guard that holds of every error but a named kind: the negation of `namesAnError`. */
 function admitsAllButNamed(node: ts.Expression, param: string): boolean {
   const e = unwrap(node);
   if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
