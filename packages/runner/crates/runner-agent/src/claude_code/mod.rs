@@ -150,7 +150,7 @@ impl ClaudeCodeRunner {
     }
 
     /// The same runner with a shorter wait before a closed resident is killed.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn with_close_grace(mut self, grace: Duration) -> Self {
         self.close_grace = grace;
         self
