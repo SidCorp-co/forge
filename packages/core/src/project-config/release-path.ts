@@ -7,6 +7,7 @@ import {
   type NamedEnvironment,
   type Promotion,
   productionOf,
+  promotionSourcesOf,
   releaseLandingOf,
 } from './promotion-path.js';
 import type { DeploymentTrigger, ProjectDocument } from './schema.js';
@@ -72,15 +73,22 @@ export function promotedBranch(path: ReleasePath): string | null {
   return path.crossing?.to ?? null;
 }
 
-export async function readLandingBranches(
-  projectId: string,
-): Promise<{ defaultBranch: string | null; promoted: string | null }> {
+/** Where work lands, the branch a promotion carries it to, and every branch a promotion leaves from. */
+export interface LandingBranches {
+  defaultBranch: string | null;
+  promoted: string | null;
+  /** A request whose head is one of these is a promotion of landed work (`promotionSourcesOf`). */
+  promotes: string[];
+}
+
+export async function readLandingBranches(projectId: string): Promise<LandingBranches> {
   const held = await readProjectDocument(projectId);
-  if (!held) return { defaultBranch: null, promoted: null };
+  if (!held) return { defaultBranch: null, promoted: null, promotes: [] };
   const path = releasePathOf(held.revision, held.document);
   return {
     defaultBranch: defaultBranchOf(held.document),
     promoted: path.ok ? promotedBranch(path.path) : null,
+    promotes: promotionSourcesOf(held.document),
   };
 }
 

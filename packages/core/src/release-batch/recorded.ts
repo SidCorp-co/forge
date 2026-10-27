@@ -51,6 +51,8 @@ export interface RecordPerformedReleaseArgs {
   account: string;
   /** The provider's own handle on the act — a deployment uuid, a tag. Never the evidence. */
   providerRef?: string | undefined;
+  /** Under release mode `none`, the branch the commit is on; the declared landing branch where absent. */
+  branch?: string | undefined;
   userId: string;
 }
 

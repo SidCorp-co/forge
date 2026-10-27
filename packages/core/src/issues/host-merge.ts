@@ -6,11 +6,12 @@ import {
   repoPullRequestIssueUnlinks,
   repoPullRequests,
 } from '../db/schema-repo-projection.js';
+import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { resolveIssuesForChangeRequest } from './head-ref-link.js';
 import { type MergeIdentity, mergeIdentityOf, recordRefusedStamp } from './merge-identity.js';
 import { recordIssueMerge } from './merge-record.js';
-import { projectCreatorOf } from './ports.js';
+import { projectCreatorOf, readLandingBranches } from './ports.js';
 
 /**
  * Every issue the merged branch delivers: each one Forge's record of its change request links, and
@@ -74,6 +75,17 @@ function assertReport(args: HostMergeReport): string {
 async function judgeHostMerge(
   args: HostMergeReport,
 ): Promise<Array<{ issueId: string; identity: MergeIdentity }>> {
+  // a request out of the landing branch (or a declared promotion's source) carries what already
+  // landed further, so it stamps nobody's landing: adminhub-api !5020 overwrote ISS-23/24/25's
+  // own merges on release/stg with the promotion into release/production (REQ-45 BC-16)
+  const { promotes } = await readLandingBranches(args.projectId);
+  if (promotes.includes(args.headRef) && args.baseRef !== args.headRef) {
+    logger.info(
+      { projectId: args.projectId, headRef: args.headRef, baseRef: args.baseRef },
+      'source.merged: a promotion of landed work, which is no issue’s landing',
+    );
+    return [];
+  }
   const delivered = await issuesDelivered(db, args.projectId, args.headRef);
   const judge = mergeIdentityOf({ projectId: args.projectId, commitSha: args.commitSha });
   const out: Array<{ issueId: string; identity: MergeIdentity }> = [];

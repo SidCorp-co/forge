@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -340,11 +340,22 @@ export async function tryDispatchCoolifyRelease(args: {
   return awaitingConfirm(parked);
 }
 
+/** A uuid fixed by `key`: the same act always names the same job. */
+function jobIdOf(key: string): string {
+  const h = createHash('sha256').update(key).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
 export async function dispatchCoolifyDeployDirect(args: {
   projectId: string;
   integrationId: string;
   /** Deploy only these targets of the binding: the fast lane's web-only deploy (REQ-39 BC-7). */
   targetLabels?: readonly string[] | undefined;
+  /**
+   * One act's own key, so a redelivered landing deploys once (`landing-deploy.ts`): the job is queued
+   * under an id derived from it, and a second send finds it there. Fresh where absent.
+   */
+  requestId?: string | undefined;
 }): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
   const pairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
@@ -354,16 +365,20 @@ export async function dispatchCoolifyDeployDirect(args: {
 
   if (await liveActionNeedsHumanConfirm(projectId, binding)) return awaitingConfirm([binding.id]);
 
-  const requestId = `direct:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
-  await enqueueOutboundDispatch({
-    jobKind: 'coolify.dispatch',
-    bindingId: binding.id,
-    runId: null,
-    issueId: null,
-    eventName: 'release.requested',
-    requestId,
-    ...targetPayload(null, null, args.targetLabels),
-  });
+  const requestId =
+    args.requestId ?? `direct:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
+  await enqueueOutboundDispatch(
+    {
+      jobKind: 'coolify.dispatch',
+      bindingId: binding.id,
+      runId: null,
+      issueId: null,
+      eventName: 'release.requested',
+      requestId,
+      ...targetPayload(null, null, args.targetLabels),
+    },
+    args.requestId ? { jobId: jobIdOf(args.requestId) } : {},
+  );
 
   traceStep({
     category: 'integration.coolify.dispatch',

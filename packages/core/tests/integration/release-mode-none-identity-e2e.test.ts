@@ -25,8 +25,8 @@ import {
   judgedAll,
   landedIssue,
   ok,
+  readingsOf,
   record,
-  refusalsOf,
   seedLandedWorld,
   statusOf,
   world,
@@ -163,27 +163,17 @@ describe('the verdict door, on a project that declares no production environment
 });
 
 describe('a runtime identity naming the landed sha, stored before the door refused it', () => {
-  it('is refused by the record door by name, as adminhub-api ISS-11 was not', async () => {
+  // REQ-45 BC-11, BC-14: the landing is recorded, and what each criterion stands on is said beside it
+  it('is read by the record door as runtime, never as a pass at the commit', async () => {
     const issue = await landedIssue(11, F4);
     for (const n of [1, 2, 3]) await storedRuntime(issue, n, F4);
 
     const res = await record([issue], F4);
 
-    expect(res.status, JSON.stringify(res.body)).toBe(422);
-    const refusals = refusalsOf(res.body);
-    expect(refusals.map((r) => r.code)).toEqual([
-      'RELEASE_LANDING_UNJUDGED',
-      'RELEASE_LANDING_UNJUDGED',
-      'RELEASE_LANDING_UNJUDGED',
-    ]);
-    expect(refusals[0]?.detail).toContain('ISS-11 criterion 1');
-    expect(refusals[0]?.detail).toContain(
-      `it was judged against runtime \`${F4}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts`,
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(readingsOf(res.body)).toContain(
+      `ISS-11: the project's document says its issues owe no verdict; 3 live criteria, c1-3 pass on runtime \`${F4}\``,
     );
-    expect(refusals[0]?.detail).toContain(
-      `it needs a verdict whose identity is commit \`${F4.slice(0, 12)}\``,
-    );
-    expect(await statusOf(issue)).toBe('awaiting_release');
   });
 
   it('is not counted by coverage either, naming the same rule', async () => {
@@ -208,21 +198,18 @@ describe('where none is owed', () => {
     expect((await record([issue], F4)).status).toBe(201);
   });
 
-  // ISS-630 c1, judge K64 at dev.304: the record closed the issue over this fail (201)
-  it('refuses a criterion judged fail at the landed commit by name, and the issue stays open', async () => {
+  // ISS-630 c1 closed this issue over a fail and said nothing of it; the record now says it
+  it('records the landing over a fail at the landed commit, naming the criterion beside it', async () => {
     const issue = await landedIssue(11, F4);
     await ok(judged(issue, 1, { kind: 'commit', sha: F4 }));
     await ok(judged(issue, 2, { kind: 'commit', sha: F4 }, 'fail'));
 
     const res = await record([issue], F4);
 
-    expect(res.status, JSON.stringify(res.body)).toBe(422);
-    const refusals = refusalsOf(res.body);
-    expect(refusals).toHaveLength(1);
-    expect(refusals[0]).toMatchObject({ code: 'RELEASE_LANDING_UNJUDGED' });
-    expect(refusals[0]?.detail).toContain('ISS-11 criterion 2: its verdict is `fail`');
-    expect(refusals[0]?.detail).toContain('a recorded fail never does');
-    expect(await statusOf(issue)).toBe('awaiting_release');
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(readingsOf(res.body)).toContain(
+      `ISS-11: the project's document says its issues owe no verdict; 3 live criteria, c1 pass at \`${F4.slice(0, 12)}\`; c2 no pass: its verdict is \`fail\`; c3 no pass: no verdict was recorded`,
+    );
   });
 
   it('closes over a fail judged at an earlier commit, which judged another build', async () => {
@@ -234,15 +221,16 @@ describe('where none is owed', () => {
 });
 
 describe('where verdicts are owed', () => {
-  it('refuses the same stored runtime identity by the same sentence', async () => {
+  it('reads the same stored runtime identity as runtime, and records the landing', async () => {
     await seedLandedWorld();
     const issue = await landedIssue(11, F4);
     for (const n of [1, 2, 3]) await storedRuntime(issue, n, F4);
 
-    const refusals = refusalsOf((await record([issue], F4)).body);
+    const res = await record([issue], F4);
 
-    expect(refusals[0]?.detail).toContain(
-      `ISS-11 criterion 1: it was judged against runtime \`${F4}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts, or, where the project names its testing environment (\`delivery.judgedOn\`), one judged on the whole commit it serves; it needs a \`pass\` whose identity is commit \`${F4.slice(0, 12)}\``,
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(readingsOf(res.body)).toContain(
+      `ISS-11: 3 live criteria, c1-3 pass on runtime \`${F4}\``,
     );
   });
 });

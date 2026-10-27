@@ -48,6 +48,17 @@ export function defaultBranchOf(document: ProjectDocument | null | undefined): s
   return document?.source.type === 'git' ? document.source.git.defaultBranch : null;
 }
 
+/**
+ * The branches a change request merging OUT of promotes what already landed, never lands new work:
+ * the branch work lands on, and the source of each promotion the document declares (adminhub-api
+ * !5020, release/stg into release/production, 2026-10-27, read as the landing of every issue it held).
+ */
+export function promotionSourcesOf(document: ProjectDocument | null | undefined): string[] {
+  if (!document) return [];
+  const landing = defaultBranchOf(document);
+  return [...new Set([...(landing ? [landing] : []), ...document.promotions.map((p) => p.from)])];
+}
+
 /** Where work lands and where production deploys from, and the promotions between them. */
 interface ReleaseLanding {
   /** `source.git.defaultBranch`, where work lands; null on a project with no git source. */

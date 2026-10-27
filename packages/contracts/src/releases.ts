@@ -796,12 +796,12 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_LANDING_UNRECORDED",
 	/** Under release mode `none`, an issue whose recorded merge is not in the record's commit. */
 	"RELEASE_LANDING_NOT_IN_COMMIT",
-	/** Under release mode `none`, an issue criterion with no counting pass at the record's commit. */
-	"RELEASE_LANDING_UNJUDGED",
 	/** Under release mode `none`, an ancestry nobody could read, so the record cannot be shown. */
 	"RELEASE_LANDING_UNREAD",
 	/** Under release mode `none`, a project whose source names no branch for work to land on. */
 	"RELEASE_LANDING_NO_BRANCH",
+	/** A record naming a landing's `branch` on a project with production, whose record reads what it serves. */
+	"RELEASE_RECORD_BRANCH_UNUSED",
 	"RELEASE_BATCH_ABORTED",
 	"RELEASE_FINISH_IN_FLIGHT",
 	"RELEASE_FINISHED_FOR_OTHER_COMMIT",

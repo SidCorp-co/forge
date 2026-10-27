@@ -231,7 +231,7 @@ interface IssuePorts {
   ) => Promise<Map<string, { code: string; revision: number }[]>>;
   readLandingBranches: (
     projectId: string,
-  ) => Promise<{ defaultBranch: string | null; promoted: string | null }>;
+  ) => Promise<{ defaultBranch: string | null; promoted: string | null; promotes: string[] }>;
   issueRefPattern: (prefixes: readonly string[]) => RegExp;
   declaredIssueSeqs: (message: string, pattern: RegExp, baseBranch: string) => number[];
   subjectOf: (message: string) => string;

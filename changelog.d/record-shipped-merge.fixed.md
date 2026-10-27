@@ -1,0 +1,1 @@
+**A merge already shipped is recorded, never refused over verdicts.** The landing record reports each criterion's pass beside it; a promotion merge no longer overwrites an issue's landing; and an `on-land` environment deploys when work lands on its branch.

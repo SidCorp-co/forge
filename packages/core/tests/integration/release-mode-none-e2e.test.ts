@@ -26,6 +26,7 @@ import {
   LATER,
   landedIssue,
   ok,
+  readingsOf,
   record,
   refusalsOf,
   seedLandedWorld,
@@ -139,49 +140,34 @@ describe('a landing is recorded as the release of a project with no production e
     expect(await statusOf(issue)).toBe('closed');
   });
 
-  it('counts a pass at a later head only on a record made at that head', async () => {
+  // REQ-45 BC-11, BC-14: a landing that happened is recorded; its verdicts are read beside it
+  it('records a landing whose passes stand at a later head, saying the commit does not hold them', async () => {
     const issue = await landedIssue(5, F4);
     await judgedAll(issue, LATER);
 
     const atMerge = await record([issue], F4);
 
-    expect(atMerge.status).toBe(422);
-    expect(refusalsOf(atMerge.body)[0]?.detail).toContain(
-      `it was judged at \`${LATER.slice(0, 12)}\`, not at \`${F4.slice(0, 12)}\``,
+    expect(atMerge.status, JSON.stringify(atMerge.body)).toBe(201);
+    expect(readingsOf(atMerge.body)).toContain(
+      `ISS-5: 3 live criteria, c1-3 no pass: it was judged at \`${LATER.slice(0, 12)}\`, which \`${F4.slice(0, 12)}\` does not hold`,
     );
-    expect(await statusOf(issue)).toBe('awaiting_release');
-
-    const atLater = await record([issue], LATER);
-
-    expect(atLater.status, JSON.stringify(atLater.body)).toBe(201);
-    expect(atLater.body).toMatchObject({ commit: LATER, branch: BRANCH });
     expect(await statusOf(issue)).toBe('closed');
   });
 
-  it('refuses criteria judged only at the pre-merge head d9fd508, naming each', async () => {
+  it('records a landing judged only at the pre-merge head d9fd508, reading it as an earlier commit', async () => {
     const issue = await landedIssue(5, F4);
     await judgedAll(issue, D9);
 
     const res = await record([issue], F4);
 
-    expect(res.status).toBe(422);
-    const refusals = refusalsOf(res.body);
-    expect(refusals.map((r) => r.code)).toEqual([
-      'RELEASE_LANDING_UNJUDGED',
-      'RELEASE_LANDING_UNJUDGED',
-      'RELEASE_LANDING_UNJUDGED',
-    ]);
-    expect(refusals[0]?.detail).toContain('ISS-5 criterion 1');
-    expect(refusals[0]?.detail).toContain(
-      `it was judged at \`${D9.slice(0, 12)}\`, not at \`${F4.slice(0, 12)}\``,
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(readingsOf(res.body)).toContain(
+      `ISS-5: 3 live criteria, c1-3 pass at \`${D9.slice(0, 12)}\`, which \`${F4.slice(0, 12)}\` holds`,
     );
-    expect(refusals[0]?.detail).toContain(
-      `it needs a \`pass\` whose identity is commit \`${F4.slice(0, 12)}\``,
-    );
-    expect(await statusOf(issue)).toBe('awaiting_release');
+    expect(await statusOf(issue)).toBe('closed');
   });
 
-  it('refuses a fail at the landed head, naming the criterion', async () => {
+  it('records a landing over a fail at the landed head, naming the criterion beside it', async () => {
     const issue = await landedIssue(5, F4);
     await verdict(issue, 1, 'pass', F4);
     await verdict(issue, 2, 'fail', F4);
@@ -189,12 +175,10 @@ describe('a landing is recorded as the release of a project with no production e
 
     const res = await record([issue], F4);
 
-    expect(res.status).toBe(422);
-    const refusals = refusalsOf(res.body);
-    expect(refusals).toHaveLength(1);
-    expect(refusals[0]).toMatchObject({ code: 'RELEASE_LANDING_UNJUDGED' });
-    expect(refusals[0]?.detail).toContain('ISS-5 criterion 2: its verdict is `fail`');
-    expect(await statusOf(issue)).toBe('awaiting_release');
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(readingsOf(res.body)).toContain(
+      `ISS-5: 3 live criteria, c1, c3 pass at \`${F4.slice(0, 12)}\`; c2 no pass: its verdict is \`fail\``,
+    );
   });
 
   it('refuses a merge commit that is not in the recorded commit', async () => {

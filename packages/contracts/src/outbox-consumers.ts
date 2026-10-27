@@ -47,7 +47,7 @@ export const OUTBOX_CONSUMERS = {
 	"skill.syncRequested": ["ws-broadcast"],
 	"runner.provisionRequested": ["ws-broadcast"],
 	"runner.provisionStatus": ["ws-broadcast"],
-	"source.pushed": ["ecosystem-builder", "live-reading"],
+	"source.pushed": ["ecosystem-builder", "live-reading", "on-land-deploy"],
 	"source.merged": ["issue-merge-stamp", "release-merge-settle"],
 	"source.reviewed": ["review-note"],
 	"integration.changed": ["ws-broadcast", "support-rooms"],

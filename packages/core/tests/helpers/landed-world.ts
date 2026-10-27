@@ -112,12 +112,16 @@ export async function judgedAll(issueId: string, commit: string) {
   for (const n of [1, 2, 3]) await verdict(issueId, n, 'pass', commit);
 }
 
-export const record = (issueIds: string[], commit: string) =>
+export const record = (issueIds: string[], commit: string, extra: Record<string, unknown> = {}) =>
   api(world.token, 'POST', `/api/projects/${world.projectId}/release-records`, {
     issueIds,
     commit,
     account: ACCOUNT,
+    ...extra,
   });
+
+/** The record's readings, as the ledger keeps them and `GET …/release-records/:runId` answers. */
+export const readingsOf = (body: Record<string, unknown>) => (body.readings ?? []) as string[];
 
 export async function statusOf(issueId: string): Promise<string> {
   const [row] = (await db.execute(
