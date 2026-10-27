@@ -148,7 +148,8 @@ export function escapedClasses(
   const visit = (n: ts.Node): void => {
     ts.forEachChild(n, visit);
     if (!ts.isIdentifier(n) || !names.has(n.text) || ts.isPartOfTypeNode(n)) return;
-    if (n.pos >= items.pos && n.end <= items.end) return;
+    if (n.getSourceFile() === items.getSourceFile() && n.pos >= items.pos && n.end <= items.end)
+      return;
     const symbol = checker.getSymbolAtLocation(n);
     const own =
       symbol && symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;

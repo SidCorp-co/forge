@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SESSION_ENDED_CODES } from '../lib/db-errors.js';
 import { buildProgram, guardedCatches, refusals } from './in-transaction-catches.fixture.js';
@@ -233,9 +235,34 @@ export async function narrowsByAHelperWhoseDefaultIsALiteral(tx: Tx) {
 }
 `;
 
-const planted = guardedCatches(buildProgram(new Map([[PLANTED, plant]]))).filter(
-  (c) => c.file === PLANTED,
+const SHIFTED = 'db/in-transaction-guards-shifted.planted.ts';
+/** A class patched by a call standing at the offsets `STATEMENT_ERRORS`'s list holds in its own file. */
+function shifted(): string {
+  const errors = readFileSync(join(import.meta.dirname, '..', 'lib', 'db-errors.ts'), 'utf8');
+  const head = `import { type Tx } from './client.js';\nclass Shifted extends Error {}\n`;
+  const call = 'Object.defineProperty(';
+  const pad = errors.indexOf('STATEMENT_ERRORS = [') + 24 - head.length - call.length;
+  return `${head}${' '.repeat(pad)}${call}Shifted, Symbol.hasInstance, { value: () => true });
+export async function narrowsByAClassPatchedWhereTheListStandsElsewhere(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof Shifted)) throw err;
+    return null;
+  }
+}
+`;
+}
+
+const catches = guardedCatches(
+  buildProgram(
+    new Map([
+      [PLANTED, plant],
+      [SHIFTED, shifted()],
+    ]),
+  ),
 );
+const planted = catches.filter((c) => c.file === PLANTED);
 const kindOf = (fn: string) => planted.find((c) => c.fn === fn)?.handler;
 function catchLine(fn: string): number {
   const opens = plant.search(new RegExp(`function ${fn}\\(`));
@@ -275,6 +302,12 @@ describe('a guard the scan reads as naming one error', () => {
     expect(kindOf('narrowsAfterRebindingAnAlias')).toBe('narrowed');
     expect(kindOf('narrowsByAClassOnlyThrownAndTested')).toBe('narrowed');
     expect(kindOf('narrowsByAHelperWhoseDefaultIsALiteral')).toBe('narrowed');
+  });
+
+  it('refuses a class patched in another file at the offsets the statement-error list holds in its own', () => {
+    expect(refusals(catches.filter((c) => c.file === SHIFTED))).toEqual([
+      `${SHIFTED}:7 narrowsByAClassPatchedWhereTheListStandsElsewhere catches a statement on tx, which can be a transaction, and can fall back without rethrowInTransaction(<the error>, <the handle>) as its first statement`,
+    ]);
   });
 
   it('counts every code the socket under a session can be rejected with as that session ending', () => {
