@@ -71,6 +71,13 @@ async function orgOf(id: string): Promise<string> {
   return rows[0]?.org_id as string;
 }
 
+async function idOf(slug: string): Promise<string> {
+  const rows = (await harness.db.execute(
+    sql`SELECT id FROM projects WHERE slug = ${slug}`,
+  )) as unknown as Array<{ id: string }>;
+  return rows[0]?.id as string;
+}
+
 const REFUSED = (path: string) => `REPO_PATH_NOT_ABSOLUTE: ${repoPathRefusal(path)}`;
 
 /** A REST refusal's code and sentence. */
@@ -127,6 +134,22 @@ describe('the project checkout hint, at every door', () => {
       repoPath: '/srv/created',
     });
     expect(created.refused).toBeUndefined();
+    expect(await hintOf(await idOf('absolute-hint'))).toBe('/srv/created');
+
+    const emptied = await callTool(pat, 'forge_projects.update', {
+      projectId,
+      patch: { repoPath: '' },
+    });
+    expect(emptied.refused).toBeUndefined();
+    expect(await hintOf(projectId)).toBe('');
+    const createdEmpty = await callTool(pat, 'forge_projects.create', {
+      slug: 'empty-hint',
+      name: 'Empty hint',
+      orgId: await orgOf(projectId),
+      repoPath: '',
+    });
+    expect(createdEmpty.refused).toBeUndefined();
+    expect(await hintOf(await idOf('empty-hint'))).toBe('');
   });
 });
 
