@@ -248,3 +248,51 @@ describe('a runtime verdict nothing places on a build', () => {
     expect(withLive(undefined)?.verdict).not.toBe('passing');
   });
 });
+
+// catalog-api ISS-12, 2026-10-27: delivery.judgedOn = "dev" and no production environment. A judge
+// passed all six criteria on dev at the landing 307f35d8 (runtime identity, the whole commit), and
+// the record door recorded 0.3.0 on them ("every live criterion (6) stands on a pass judged at
+// 307f35d8"), yet REQ-3 read judged 0 / passing 0: coverage set every runtime verdict aside on a
+// landed project, so it stood on the builder's older commit pass at 5bb85413. One rule
+// (contracts `landedCommitOf`) says what commit a verdict names on a landing, for both.
+describe('a runtime pass on the testing environment the project is judged on (delivery.judgedOn)', () => {
+  const L = '307f35d820bb5cb74a0f53954aaed97df036431a';
+  const B = '5bb85413ef'.padEnd(40, '0');
+  const onDev = (rows: StandingIssueCriterion[], judgedOn: string | null) =>
+    deriveStanding({
+      ...input([issue(12, 'closed', false)]),
+      criteria: [bc1],
+      issueCriteria: rows,
+      liveBuild: {
+        sha: null,
+        holds: new Map(),
+        runtimes: new Map(),
+        unanswered: new Map(),
+        landed: new Map([['i12', { sha: L, why: null }]]),
+        judgedOn,
+      },
+    }).coverage[0];
+  const judged = (ref: string): StandingIssueCriterion => ({
+    ...row(12, 'pass', '2026-10-27T08:34:08Z'),
+    identity: { kind: 'runtime', ref },
+    earlier: [{ ...row(12, 'pass', '2026-10-27T08:05:17Z', B), byBuilder: true }],
+  });
+
+  it('counts the pass judged on dev at the landing commit, as the record door does', () => {
+    const c = onDev([judged(L)], 'dev');
+    expect(c?.verdict).toBe('passing');
+    expect(c?.counts).toMatchObject({ verdict: 'pass', at: '2026-10-27T08:34:08.000Z' });
+  });
+
+  it('does not count one judged on dev at another commit, naming the landing', () => {
+    const c = onDev([judged(B)], 'dev');
+    expect(c?.verdict).not.toBe('passing');
+    expect(c?.issues[0]?.notCounted).toContain(`not at its issue's landing ${L.slice(0, 12)}`);
+  });
+
+  it('still sets it aside where the project names no testing environment', () => {
+    const c = onDev([judged(L)], null);
+    expect(c?.verdict).not.toBe('passing');
+    expect(c?.issues[0]?.notCounted).toContain(`not at its issue's landing ${L.slice(0, 12)}`);
+  });
+});

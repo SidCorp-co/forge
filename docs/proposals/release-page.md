@@ -121,11 +121,11 @@ verdict since its issue's last reopen (`release-facts.ts:criteriaAt`) and claims
   `<name>.png`. Over a stubbed core the
   screen witness records one (`pnpm --filter web-v2 witness <entry> --out <dir> --clip`). One over
   either ceiling fails by name, and the ceiling is never raised.
-- It is uploaded as an issue attachment and cited by name in the verdict's `evidence`, with its
-  still beside it. A `pass`, `short` or `fail` on an observable criterion that cites no clip is
+- It is uploaded as an issue attachment and cited in the verdict's `evidence` by its name, its id
+  or its download URL (`/api/attachments/:id/download`), with its still beside it. A `pass`, `short` or `fail` on an observable criterion that cites no clip is
   refused `VERDICT_CLIP_REQUIRED` unless it says why in `withoutClip` (`without-clip:` in a record);
   `reason` says what was found and never stands in for it
-  (`issues/criteria/verdict-record.ts:clipFault`).
+  (`issues/criteria/clip-citation.ts:clipFault`).
 - A highlight picks, from the clips and pictures cited by pass verdicts on criteria it claims, the
   clip first, then a picture; a clip opens on the picture its verdict cites beside it
   (`release-page/claims.ts:mediaOf`), else its own first frame, and plays inline, muted, with its

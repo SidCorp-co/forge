@@ -3,27 +3,26 @@
 
 import type { CriterionClass, CriterionJudge } from '@forge/contracts/issue-design';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { RELEASE_CLIP_MIMES } from '@forge/contracts/release-page';
 import { countedUnderCutover, type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import {
   criterionVerdicts,
   issueCriteria,
   type VerdictValue,
 } from '../../db/schema-issue-criteria.js';
-import { issueAttachments } from '../../db/schema-issues.js';
 import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
 import { RefusalError } from '../../lib/refusal.js';
 import { contractLookup } from '../../messaging/verdict-contract.js';
 import { designLookup } from '../../messaging/verdict-design.js';
 import { emitEvent } from '../../outbox/index.js';
 import type { Actor } from '../activity.js';
-import { verdictByBuilderSql } from '../built-by.js';
+import { declaredBeforeLandingSql, verdictByBuilderSql } from '../built-by.js';
 import { criterionRoutesOf } from '../design-record.js';
 import { readJudge, readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
 import { writeKernelRecord } from '../record-events/store.js';
+import { clipFault } from './clip-citation.js';
 import { probeNote } from './probe-rules.js';
 import { probeOfVerdict } from './probes.js';
 import { recordingSessionOf } from './recording-session.js';
@@ -105,50 +104,6 @@ const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
   VERDICT_RUN_UNKNOWN: '/run',
   VERDICT_SESSION_NOT_ADMITTED: '/run',
 };
-
-/** The judgements of an observable criterion that owe a clip: every one but a skip, which judged nothing. */
-const CLIPPED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'short', 'fail']);
-
-/**
- * REQ-40 BC-4: a judgement of a criterion the design classes observable cites a screen clip of the
- * run that shows it (a WebM or MP4 attached to the issue, named in `evidence`), so a release page has
- * something to show; one judged without a clip says why in `withoutClip`. A verdict's `reason` is
- * what it found, which every judge writes, so it never stands in for that why.
- */
-async function clipFault(
-  tx: Tx,
-  issueId: string,
-  draft: {
-    criterion: number;
-    verdict: string;
-    evidence: readonly string[];
-    withoutClip?: string | null | undefined;
-  },
-  criterionClass: CriterionClass | null,
-): Promise<VerdictRefusal | null> {
-  if (criterionClass !== 'observable' || !CLIPPED_VERDICTS.has(draft.verdict)) return null;
-  if (draft.withoutClip?.trim()) return null;
-  const cited = draft.evidence.map((e) => e.trim()).filter(Boolean);
-  if (cited.length > 0) {
-    const clips = await tx
-      .select({ name: issueAttachments.name })
-      .from(issueAttachments)
-      .where(
-        and(
-          eq(issueAttachments.issueId, issueId),
-          inArray(issueAttachments.name, cited),
-          inArray(issueAttachments.mime, [...RELEASE_CLIP_MIMES]),
-        ),
-      )
-      .limit(1);
-    if (clips.length > 0) return null;
-  }
-  return {
-    code: 'VERDICT_CLIP_REQUIRED',
-    criterion: draft.criterion,
-    detail: `criterion ${draft.criterion} is observable on the running build, and a \`${draft.verdict}\` on it cites a screen clip of the run that shows it: record one (the project's knowledge names its recorder), attach the WebM or MP4 to the issue (\`POST /api/issues/:id/attachments\`, field \`file\`) and name it in \`evidence\`; or say why it was judged without one in \`withoutClip\` (a \`without-clip\` line in a record). \`reason\` says what was found and never stands in for it`,
-  };
-}
 
 /** A verdict refused by name, in the envelope both doors answer. */
 function verdictRefused(refusal: VerdictRefusal): RefusalError {
@@ -335,10 +290,13 @@ async function countingOf(
       authorDevice: sql`v.author_device_id`,
       at: sql`v.created_at`,
       runSession: sql`v.run_session_id`,
-    })} AS by_builder, v.created_at AS recorded_at
+    })} AS by_builder, v.created_at AS recorded_at,
+      CASE WHEN v.run_session_id IS NULL THEN NULL
+           ELSE ${declaredBeforeLandingSql(sql`v.issue_id`, sql`v.run_session_id`)} END AS opened_at
       FROM criterion_verdicts v WHERE v.id = ${verdict.id}`)) as unknown as {
     by_builder: boolean | null;
     recorded_at: string | Date;
+    opened_at: string | null;
   }[];
   const judge = await readJudge(projectId);
   const read = {
@@ -348,7 +306,7 @@ async function countingOf(
     recordedAt: rows[0]?.recorded_at ?? null,
   };
   return {
-    notCounted: notCountedOf(read, judge),
+    notCounted: notCountedOf(read, judge, rows[0]?.opened_at ?? null),
     countedUnderCutover: countedUnderCutover(read, judge),
   };
 }

@@ -7,7 +7,7 @@
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import {
-  landedIdentityWhy,
+  landedCommitOf,
   type StorefrontDraftPart,
   storefrontDraftsPhrase,
 } from '@forge/contracts/verdict-identity';
@@ -152,14 +152,10 @@ export function resolve(
   if (!identity) return none('it names nothing it was judged against');
   const landed = live?.landed;
   if (landed) {
-    if (identity.kind === 'commit') {
-      return atLanding(identity.sha, landed.get(issueId.toLowerCase()) ?? null);
-    }
-    const why = landedIdentityWhy(identity.kind, identityValue(identity), live?.judgedOn ?? null);
-    if (why === null && identity.kind === 'runtime') {
-      return atLanding(identity.ref.toLowerCase(), landed.get(issueId.toLowerCase()) ?? null);
-    }
-    return none(why as string);
+    // the record door's reading of the commit a verdict names (contracts `landedCommitOf`)
+    const named = landedCommitOf(identity.kind, identityValue(identity), live?.judgedOn ?? null);
+    if ('why' in named) return none(named.why);
+    return atLanding(named.sha, landed.get(issueId.toLowerCase()) ?? null);
   }
   switch (identity.kind) {
     case 'commit':

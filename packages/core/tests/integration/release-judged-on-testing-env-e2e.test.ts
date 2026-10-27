@@ -19,16 +19,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../helpers/api.js';
 import { agreedRequirement, bcOf, traced } from '../helpers/landed-requirement.js';
 import {
+  ASIDE,
   BRANCH,
   F4,
   judgedAll,
+  LATER,
   landedIssue,
   ok,
   record,
   seedLandedWorld,
   world,
 } from '../helpers/landed-world.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+import { fakeCoolify, seedDeployBinding, seedProjectDocument } from '../helpers/release-world.js';
 
 vi.mock('../../src/release-batch/shipped-earlier.js', async (importOriginal) => {
   const { reader } = await import('../helpers/landed-history.js');
@@ -221,6 +223,24 @@ describe('a project that names dev as its testing environment (BC-18, BC-19)', (
       total: 3,
     });
   });
+
+  // catalog-api ISS-12, 2026-10-27: commit passes at another commit, then the judge's runtime passes
+  // on dev at the landing 307f35d8. The record door recorded 0.3.0 on them; REQ-3 read passing 0,
+  // its coverage setting every runtime verdict aside and standing on the older commit pass.
+  it('counts in coverage the runtime passes on dev the record door counted, over older commit passes elsewhere', async () => {
+    const req = await agreedRequirement();
+    const issue = await landedIssue(5, F4);
+    await traced(req, issue, 5);
+    await judgedAll(issue, ASIDE);
+    for (const n of [1, 2, 3]) await ok(judged(issue, n, { kind: 'runtime', ref: F4 }));
+
+    const res = await record([issue], F4);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const bc = await bcOf(req);
+    expect(bc.issues[0]?.notCounted ?? null).toBeNull();
+    expect(bc.verdict).toBe('passing');
+  });
 });
 
 describe('a project that names no testing environment (BC-20)', () => {
@@ -252,5 +272,53 @@ describe('a project that names no testing environment (BC-20)', () => {
     expect(refusals?.map((r) => r.code)).toEqual(['VERDICT_RUNTIME_UNOBSERVED']);
     expect(refusals?.[0]?.detail).toContain('names no testing environment');
     expect(refusals?.[0]?.detail).toContain('`delivery.judgedOn`');
+  });
+});
+
+// catalog-fe (feaf7d40), 2026-10-27: judgedOn "dev", whose Coolify deployment serves a36f27ef, yet
+// GET judged-build on ISS-11..19, closed by the f44ff116 recorded landing, answered f44ff116,
+// source "landed", basis "this project declares no production environment" (REQ-36 BC-18)
+describe('the build a verdict defaults to on a project judged on dev', () => {
+  const coolify = fakeCoolify();
+  const APP = { id: 't-app', label: 'App', resourceUuid: 'catalog-fe-dev' };
+
+  beforeEach(async () => {
+    await seedLandedWorld();
+    const binding = await seedDeployBinding(world.projectId, world.ownerId, {
+      baseUrl: coolify.url(),
+      targets: [APP],
+    });
+    await seedProjectDocument(world.projectId, world.ownerId, {
+      environments: {
+        dev: { tier: 'dev', deploysFrom: BRANCH, deployment: { binding, trigger: 'on-land' } },
+      },
+      defaultBranch: BRANCH,
+      extra: {
+        delivery: { verdictsRequired: true, judgedOn: 'dev' },
+        release: { approval: { required: true }, changeRequests: false },
+      },
+    });
+    coolify.applications.clear();
+  });
+
+  it('is the commit dev serves where it holds the recorded landing, judged there', async () => {
+    const { issue } = await landedOnCommitVerdicts();
+    coolify.deployed(APP.resourceUuid, 'dep-1', LATER, '2026-10-27T07:00:00Z');
+
+    const build = await ok(api(world.token, 'GET', `/api/issues/${issue}/judged-build`));
+
+    expect(build).toMatchObject({ sha: LATER, source: 'judged-on', version: null });
+    expect(String(build.basis)).toContain('`dev` serves');
+    expect(String(build.basis)).not.toContain('declares no production environment');
+  });
+
+  it('stays the landing, saying why, where dev serves a commit that does not hold it', async () => {
+    const { issue } = await landedOnCommitVerdicts();
+    coolify.deployed(APP.resourceUuid, 'dep-1', ASIDE, '2026-10-27T07:00:00Z');
+
+    const build = await ok(api(world.token, 'GET', `/api/issues/${issue}/judged-build`));
+
+    expect(build).toMatchObject({ sha: F4, source: 'landed' });
+    expect(String(build.basis)).toContain(`\`dev\` serves \`${ASIDE}\`, which does not hold it`);
   });
 });
