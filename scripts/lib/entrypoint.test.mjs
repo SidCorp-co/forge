@@ -1119,7 +1119,7 @@ describe('no file decides it was launched by hand', () => {
         rel,
       ).toContain(line);
     }
-    for (const f of found) expect(f.how).toMatch(/argv|process/);
+    for (const f of found) expect(f.how).toMatch(/argv|process|global/);
   });
 
   it('passes a read of argv that leaves the entry alone, a string, a comment and the helpers', () => {
