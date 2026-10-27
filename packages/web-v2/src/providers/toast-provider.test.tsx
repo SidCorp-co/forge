@@ -381,3 +381,70 @@ describe("a toast whose description is verbatim", () => {
     expect(screen.getByText("All good.")).toHaveClass("whitespace-pre-line");
   });
 });
+
+// ISS-1236 r8, judge-147: a 50-word error toast was gone in 4 seconds, and resting the pointer on it
+// did not hold it.
+describe("a toast is given the time it takes to read", () => {
+  const card = (title: string) => screen.getByText(title).closest('[role="status"]') as HTMLElement;
+  const LONG =
+    "repoPath must be an absolute path on the device (it starts with /), not ~/code/app — a relative path names a different directory on every box. Correct the path here and save again, or set it later in the project's Settings, on Shape & release, under Repository.";
+
+  it("holds while the pointer rests on it, and resumes with what was left", () => {
+    render(<Frame />);
+    act(() => fire({ title: "Held", duration: 4000 }));
+    act(() => vi.advanceTimersByTime(3000));
+    fireEvent.mouseEnter(card("Held"));
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(screen.getByText("Held")).toBeInTheDocument();
+
+    fireEvent.mouseLeave(card("Held"));
+    act(() => vi.advanceTimersByTime(999));
+    expect(screen.getByText("Held")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByText("Held")).not.toBeInTheDocument();
+  });
+
+  it("holds while focus is inside it", () => {
+    render(<Frame />);
+    act(() => fire({ title: "Focused", duration: 4000 }));
+    act(() => within(card("Focused")).getByRole("button", { name: "Dismiss" }).focus());
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(screen.getByText("Focused")).toBeInTheDocument();
+  });
+
+  it("keeps a long error toast past 4 seconds, and still lets it go once read", () => {
+    render(<Frame />);
+    act(() => fire({ title: "Project created; its repository settings were not saved", description: LONG, tone: "error" }));
+    act(() => vi.advanceTimersByTime(4000));
+    expect(screen.getByText(LONG)).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.queryByText(LONG)).not.toBeInTheDocument();
+  });
+
+  it("lets a short toast go at 4 seconds, as before", () => {
+    render(<Frame />);
+    act(() => fire({ title: "Saved" }));
+    act(() => vi.advanceTimersByTime(3999));
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+  });
+});
+
+// ISS-1236 r8: a toast that names a place carries it as a link, so the reader lands where it says.
+describe("a toast carrying a link", () => {
+  it("renders the link to where it names, and following it puts the toast away", () => {
+    render(<Frame />);
+    act(() =>
+      fire({
+        title: "Not saved",
+        tone: "error",
+        link: { label: "Open Shape & release", href: "/projects/desk/settings?tab=shape#repository" },
+      }),
+    );
+    const link = screen.getByRole("link", { name: "Open Shape & release" });
+    expect(link).toHaveAttribute("href", "/projects/desk/settings?tab=shape#repository");
+    fireEvent.click(link);
+    expect(screen.queryByText("Not saved")).not.toBeInTheDocument();
+  });
+});
