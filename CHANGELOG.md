@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.342] - 2026-10-27
+
+Verdict clips cited by id or link, and testing-build verdicts count
+
+### Fixed
+
+- **A requirement counts the testing-environment passes its release was recorded on.** On a project judged on dev, coverage weighs a runtime pass at the landing as the record door does, so it no longer reads 0 passing.
+- **The verdict door says what it reads, and judged-on projects default to the right build.** A clip can be cited by its id or download URL, a judge declared after the merge counts, and judged-build names the testing environment's build.
+
 ## [0.4.0-dev.341] - 2026-10-27
 
 Release jobs act with their own project's credential; fenced tokens refused by name
