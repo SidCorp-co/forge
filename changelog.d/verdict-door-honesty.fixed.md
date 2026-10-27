@@ -1,1 +1,0 @@
-**The verdict door says what it reads, and judged-on projects default to the right build.** A clip can be cited by its id or download URL, a judge declared after the merge counts, and judged-build names the testing environment's build.

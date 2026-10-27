@@ -1,1 +1,0 @@
-**The project Dashboard opens on figures and pictures, not prose.** Headline numbers, stacked bars for requirements, feedback and the next release, roadmap chips, health trends with arrows, and each decision shown as its question and buttons.
