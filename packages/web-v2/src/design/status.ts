@@ -19,7 +19,7 @@ export type SemanticTone =
 
 export const TONE_META: Record<SemanticTone, ColorMeta> = {
   success: { label: "Success", fg: "var(--green-600)", bg: "var(--green-50)", dot: "var(--green-500)" },
-  shipped: { label: "Shipped", fg: "var(--flame-700)", bg: "var(--flame-50)", dot: "var(--flame-600)" },
+  shipped: { label: "Released", fg: "var(--flame-700)", bg: "var(--flame-50)", dot: "var(--flame-600)" },
   // `archived` = closed/filed-away. Heavier ink than `blocked` (ink-700/paper-200)
   // so a closed issue is distinct from a parked `on_hold`. ISS-511.
   archived: { label: "Archived", fg: "var(--ink-900)", bg: "var(--paper-300)", dot: "var(--ink-600)" },

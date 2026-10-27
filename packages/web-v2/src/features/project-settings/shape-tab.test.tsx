@@ -793,7 +793,7 @@ describe("the Live block's deploy connections", () => {
 		clear("Base branch");
 		const live = document.getElementById("environment-live") as HTMLElement;
 		expect(await within(live).findByText("None serves Live, so a release has nowhere to land.")).toBeInTheDocument();
-		expect(within(live).queryByText(/ships nothing/)).toBeNull();
+		expect(within(live).queryByText(/releases nothing/)).toBeNull();
 		expect(within(live).getByText("None yet — name the base branch.")).toBeInTheDocument();
 	});
 
@@ -801,6 +801,6 @@ describe("the Live block's deploy connections", () => {
 		await mount(project());
 		fireEvent.click(radio(/repository, no release/i));
 		const live = document.getElementById("environment-live") as HTMLElement;
-		expect(await within(live).findByText("None needed: this project ships nothing, so no release lands here.")).toBeInTheDocument();
+		expect(await within(live).findByText("None needed: this project releases nothing, so no release lands here.")).toBeInTheDocument();
 	});
 });

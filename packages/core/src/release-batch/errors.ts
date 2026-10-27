@@ -332,7 +332,7 @@ export class ReleaseIssuesUnclosableError extends Error {
 export class ReleaseWorkUnmergedError extends Error {
   constructor(public readonly issueIds: string[]) {
     super(
-      `RELEASE_WORK_UNMERGED: ${counted(issueIds.length, 'issue')} ${agree(issueIds.length, 'has', 'have')} no merge Forge watched land`,
+      `RELEASE_WORK_UNMERGED: ${counted(issueIds.length, 'issue')} ${agree(issueIds.length, 'is', 'are')} not marked merged`,
     );
     this.name = 'ReleaseWorkUnmergedError';
   }

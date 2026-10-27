@@ -54,7 +54,7 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
 
 projectId: ${projectId}
 runId: ${runId}
-releaseChain: ${releaseChain.length === 0 ? 'empty — this project ships nothing' : releaseChain.map((e) => (e.from ? `${e.from} → ${e.branch}` : e.branch)).join(', then ')}${baseLine}${liveLine}${runnerLine}
+releaseChain: ${releaseChain.length === 0 ? 'empty — this project releases nothing' : releaseChain.map((e) => (e.from ? `${e.from} → ${e.branch}` : e.branch)).join(', then ')}${baseLine}${liveLine}${runnerLine}
 ${channelLines}
 
 ### Issues in this batch (${issues.length})

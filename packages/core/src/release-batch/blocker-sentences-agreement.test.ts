@@ -1,7 +1,7 @@
 /**
  * Every word in a release sentence that agrees with a count follows it, not only the noun
  * (ISS-1229 r8, judge-20): with one roster issue the cut-below refusal read "roster issue ISS-1
- * above the cut, so the batch would name issues it does not ship. Take them off the roster".
+ * above the cut, so the batch would name issues it does not release. Take them off the roster".
  * Each sentence that counts is read here at one and at two.
  */
 
@@ -33,13 +33,13 @@ describe('a cut-below that leaves roster issues above it', () => {
 
   it('names one issue as it, at one', () => {
     expect(sentence(1)).toContain(
-      'roster issue `ISS-1` above the cut, so the batch would name an issue it does not ship. Take it off the roster,',
+      'roster issue `ISS-1` above the cut, so the batch would name an issue it does not release. Take it off the roster,',
     );
   });
 
   it('names them as them, at two', () => {
     expect(sentence(2)).toContain(
-      'roster issues `ISS-1`, `ISS-2` above the cut, so the batch would name issues it does not ship. Take them off the roster,',
+      'roster issues `ISS-1`, `ISS-2` above the cut, so the batch would name issues it does not release. Take them off the roster,',
     );
   });
 });
@@ -51,15 +51,17 @@ describe('a range carrying issues the batch does not name', () => {
       carried: ids(n).map((displayId) => ({ displayId, status: 'developed' })),
     });
 
-  it('says it does not ship without a decision, at one', () => {
-    expect(sentence(1)).toContain('It does not ship without a decision. Send one with the batch:');
+  it('says it is not released without a decision, at one', () => {
+    expect(sentence(1)).toContain(
+      'It is not released without a decision. Send one with the batch:',
+    );
     expect(sentence(1)).toContain('Or move it to the release gate and name it on the roster.');
     expect(sentence(1)).not.toMatch(/\b(them|None of)\b/);
   });
 
-  it('says none of them ships without one, at two', () => {
+  it('says none of them is released without one, at two', () => {
     expect(sentence(2)).toContain(
-      'None of them ships without a decision. Send one per issue with the batch:',
+      'None of them is released without a decision. Send one per issue with the batch:',
     );
     expect(sentence(2)).toContain('Or move each to the release gate and name it on the roster.');
   });

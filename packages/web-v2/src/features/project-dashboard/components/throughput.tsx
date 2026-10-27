@@ -29,11 +29,11 @@ export function Throughput({ rows, isLoading, error, onRetry }: ThroughputProps)
 
   // A week that shipped nothing is one line, as every empty panel is; a failed or malformed read is not empty.
   if (!error && !isLoading && total === 0) {
-    return <EmptyLine title="Throughput" status={`nothing shipped in ${WINDOW_DAYS} days`} />;
+    return <EmptyLine title="Throughput" status={`nothing finished in ${WINDOW_DAYS} days`} />;
   }
 
   return (
-    <DashboardSection title="Throughput" aside={comparison ?? `shipped · ${WINDOW_DAYS}-day`}>
+    <DashboardSection title="Throughput" aside={comparison ?? `finished · ${WINDOW_DAYS}-day`}>
       {error ? (
         <ErrorState
           title="Couldn't load throughput"
@@ -107,7 +107,7 @@ export function ThroughputChart({ rows }: { rows: ThroughputRow[] | undefined })
               <span
                 className="absolute inset-x-0 bottom-0 block rounded-t bg-[var(--fg-muted)]"
                 style={{ height: r.count === 0 ? "0%" : `${Math.max(4, (r.count / max) * 100)}%` }}
-                title={`${r.count} shipped on ${r.date}`}
+                title={`${r.count} finished on ${r.date}`}
               />
             </div>
           </div>
@@ -126,7 +126,7 @@ export function ThroughputChart({ rows }: { rows: ThroughputRow[] | undefined })
         ))}
       </div>
       <p className="fg-body-sm text-muted">
-        <span className="font-mono text-fg">{total}</span> shipped over the last {WINDOW_DAYS} days
+        <span className="font-mono text-fg">{total}</span> finished over the last {WINDOW_DAYS} days
         (UTC).
       </p>
     </div>

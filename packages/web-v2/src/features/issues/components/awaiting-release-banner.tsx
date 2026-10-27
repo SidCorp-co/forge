@@ -100,12 +100,12 @@ export function AwaitingReleaseBanner({
 
 	return (
 		<Banner tone="info" action={action}>
-			<span className="font-medium">{merged} — not shipped yet.</span>{" "}
+			<span className="font-medium">{merged} — not released yet.</span>{" "}
 			{data.nextCutAt
 				? `The next release cut runs ${formatCountdown(data.nextCutAt)}.`
 				: data.automaticRelease
 					? "Forge releases it on its own once its criteria pass and nothing holds it."
-					: "No release is scheduled, so this ships when a person cuts one."}
+					: "No release is scheduled, so this goes out when a person cuts one."}
 			{askWhoReleases && ` ${askWho("it")}`}
 		</Banner>
 	);

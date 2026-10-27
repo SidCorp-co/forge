@@ -160,6 +160,20 @@ export function closeFailureText(refusal: CloseRefusal): string {
   return [`${refusal.code}: ${refusal.detail}`, ...refusal.steps].join('\n');
 }
 
+/** Why the close was refused, in words; the code stays in what a caller reads (ISS-1421 r39). */
+function personRefusedFor(refusal: Extract<CloseRefusal, { kind: 'refused' }>): string {
+  switch (refusal.code) {
+    case 'OPEN_QUESTIONS':
+      return 'The close was refused because the issue holds open questions.';
+    case 'CLOSE_REQUIRES_SHIPPED':
+      return 'The close was refused because the issue is not marked merged.';
+    case 'STALE_TRANSITION':
+      return 'The close was refused because the issue changed while the release was closing it.';
+    default:
+      return 'The close was refused.';
+  }
+}
+
 /**
  * What clears a refusal, as an act the issue's page offers at the release gate; a code with none
  * keeps its own detail. No act there moves the issue to Closed or withdraws a question (ISS-1381 r3).
@@ -229,7 +243,7 @@ export function refusedCloseComment(args: {
   const shipped = version ? `as version ${version}` : 'with this batch';
   const why =
     refusal.kind === 'refused'
-      ? `The close was refused with \`${refusal.code}\`. ${
+      ? `${personRefusedFor(refusal)} ${
           refusal.blocking.length > 0
             ? `Blocking it: ${countedBlockers(refusal.blocking)}.`
             : 'The refusal named no blocking object.'
@@ -239,7 +253,7 @@ export function refusedCloseComment(args: {
     repeats.length > 0
       ? ` The release${repeats.length === 1 ? '' : 's'} before it (${releasesNamed(repeats)}) could not close it for the same reason either.`
       : '';
-  const opening = `The release finished and shipped ${shipped}, but this issue could not be closed.${before} ${why}\n\n`;
+  const opening = `The release finished and went out ${shipped}, but this issue could not be closed.${before} ${why}\n\n`;
   if (held) {
     const again = refusal.kind === 'refused' ? 'refused' : 'failed';
     return `${opening}${held} Clear the reason above first, or that close is ${again} again.`;

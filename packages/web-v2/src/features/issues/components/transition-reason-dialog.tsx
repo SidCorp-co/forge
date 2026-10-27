@@ -67,14 +67,14 @@ const COPY: Record<DialogMode, CopySpec> = {
     confirm: "Withdraw it and resume",
     blurb:
       "Withdraws the open question with your reason and resumes the issue where its work stopped, in one move. The reason is posted on the thread and kept on the question.",
-    placeholder: "e.g. the owner decided in standup — ship the smaller reading",
+    placeholder: "e.g. the owner decided in standup — release the smaller reading",
   },
   void_questions: {
     title: "Questions are still open on this issue",
     confirm: "Withdraw them and continue",
     blurb:
       "An agent asked a person something on this issue and nobody has answered. Finishing the work withdraws those questions — say why they no longer matter, and that sentence is recorded on each one. To answer them instead, cancel and use their \"Decision waiting\" cards on the issue.",
-    placeholder: "e.g. the fix shipped without needing the tenant — the question is moot",
+    placeholder: "e.g. the fix went out without needing the tenant — the question is moot",
   },
 };
 

@@ -423,12 +423,12 @@ describe("issues the release would ship without naming them", () => {
 
     const seven = await screen.findByTestId("carried-ISS-7");
     for (const row of [seven, screen.getByTestId("carried-ISS-8")]) {
-      for (const label of ["Ship unverified", "Reverted", "Cut below"]) expect(row).toHaveTextContent(label);
+      for (const label of ["Release unverified", "Reverted", "Cut below"]) expect(row).toHaveTextContent(label);
     }
     expect(seven).toHaveTextContent("Needs info");
   });
 
-  it("holds the release until each is decided, and a Ship unverified carries its reason", async () => {
+  it("holds the release until each is decided, and a Release unverified carries its reason", async () => {
     answer(409, CARRIES);
     draw();
     press();
@@ -553,7 +553,7 @@ describe("a carried decision the server refuses (ISS-1386 r2)", () => {
     const row = await screen.findByTestId("carried-ISS-7");
     expect(row).toHaveTextContent(/every landing above it/i);
     expect(row).toHaveTextContent(/revert .*already on/i);
-    expect(row).toHaveTextContent(/ships as it is/i);
+    expect(row).toHaveTextContent(/goes out as it is/i);
   });
 });
 

@@ -163,7 +163,7 @@ describe('every reason Shape & release lists, as a person reads it', () => {
   it('tells a person how to decide a carried issue, in the dialog that decides it', () => {
     const [, details] = ON_THE_SCREEN[2] as [ReleaseBlockerCode, Record<string, unknown>];
     expect(releaseBlockerReaderSentence('RELEASE_CARRIES_UNDECIDED', details)).toContain(
-      'It does not ship until a person decides it: when you release, choose Ship unverified, Reverted or Cut below for it in the Batch release dialog',
+      'It is not released until a person decides it: when you release, choose Release unverified, Reverted or Cut below for it in the Batch release dialog',
     );
   });
 
@@ -341,6 +341,21 @@ describe('a runner that cannot take a release, as a person at the gate reads it'
     expect(said).not.toMatch(STORED);
   });
 
+  // ISS-1421 r39, judge-160: a box whose heartbeats stopped was said to have "reported itself
+  // offline"; Forge marks it offline, the box says nothing.
+  it('says a box Forge marked offline stopped reporting, to a person and to a caller', () => {
+    const details = {
+      runners: runners({ reason: 'disconnected', lastSeenSeconds: 269, reporting: false }),
+    };
+    for (const said of [
+      releaseBlockerReaderSentence('NO_RUNNER_ONLINE', details),
+      releaseBlockerSentence('NO_RUNNER_ONLINE', details),
+    ]) {
+      expect(said).toContain('stopped reporting, and Forge marked it offline');
+      expect(said).not.toContain('reported itself offline');
+    }
+  });
+
   it('says a rate limit ends at a moment in words', () => {
     const said = releaseBlockerReaderSentence('NO_RUNNER_ONLINE', {
       runners: runners({ reason: 'rate-limited', detail: '2026-10-27T14:05:00.000Z' }),
@@ -373,6 +388,74 @@ describe("a missing release note, as the gate's row and the issue's page say it"
         issueIds: ['u-2'],
         displayIds: ['ISS-2'],
       }),
-    ).toContain('Give it one first, under Release note on its page');
+    ).toContain("Write one first, under Release note on the issue's page");
+  });
+
+  // ISS-1421 r39, judge-160: at two or more the request read "Give each one first, under Release
+  // note on each page", which a person read as giving the issue, and which named no page.
+  const KEYS = ['ISS-1', 'ISS-2', 'ISS-3', 'ISS-4', 'ISS-5'];
+  const missing = (n: number) =>
+    releaseBlockerReaderSentence('RELEASE_RECORD_MISSING', {
+      issueIds: KEYS.slice(0, n).map((_, i) => `u-${i}`),
+      displayIds: KEYS.slice(0, n),
+    });
+
+  it.each([1, 2, 5])(
+    'names every issue and says its note is written on its own page, at %i',
+    (n) => {
+      const said = missing(n);
+      for (const key of KEYS.slice(0, n)) expect(said).toContain(key);
+      expect(said).toMatch(
+        n === 1
+          ? /under Release note on the issue's page/
+          : /under Release note on each issue's own page/,
+      );
+      expect(said).not.toMatch(/Give each one|each page|\bship/);
+    },
+  );
+
+  it('asks for one note per issue in the plural, and one note in the singular', () => {
+    expect(missing(2)).toContain(
+      'have no release note, so a release would close them with nothing telling users what changed. Write a note for each of them first',
+    );
+    expect(missing(1)).toContain(
+      'has no release note, so a release would close it with nothing telling users what changed. Write one first',
+    );
+  });
+
+  it("says on the gate's row what a release would do, not that it would claim a ship", () => {
+    expect(recordMissingForRow(false)).toContain(
+      'so a release would close it with nothing telling users what changed',
+    );
+  });
+});
+
+describe('an issue not marked merged, as a person reads it', () => {
+  it('says it is not marked merged and names Mark merged, never that Forge watched no merge land', () => {
+    const one = releaseBlockerReaderSentence('RELEASE_WORK_UNMERGED', {
+      issueIds: ['u-1'],
+      displayIds: ['ISS-1'],
+      shape: 'git',
+    });
+    expect(one).toContain('is not marked merged');
+    expect(one).toContain("Use Mark merged in the issue's properties first");
+    const two = releaseBlockerReaderSentence('RELEASE_WORK_UNMERGED', {
+      issueIds: ['u-1', 'u-2'],
+      displayIds: ['ISS-1', 'ISS-2'],
+      shape: 'git',
+    });
+    expect(two).toContain('are not marked merged');
+    expect(two).toContain("Use Mark merged in each issue's properties first");
+    for (const said of [
+      one,
+      two,
+      releaseBlockerSentence('RELEASE_WORK_UNMERGED', {
+        issueIds: ['u-1'],
+        displayIds: ['ISS-1'],
+        shape: 'git',
+      }),
+    ]) {
+      expect(said).not.toMatch(/watched land|\bship/);
+    }
   });
 });

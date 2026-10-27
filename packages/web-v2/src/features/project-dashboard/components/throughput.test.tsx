@@ -55,7 +55,7 @@ describe("ThroughputChart — seven calendar days, a zero day in place (ISS-1149
   it("sums exactly the bars drawn into the caption", () => {
     render(<ThroughputChart rows={WEEK} />);
     expect(screen.getByText("217")).toBeInTheDocument();
-    expect(screen.getByText(/shipped over the last 7 days/)).toBeInTheDocument();
+    expect(screen.getByText(/finished over the last 7 days/)).toBeInTheDocument();
   });
 
   it("draws a week in which nothing shipped as seven zero bars", () => {
@@ -116,7 +116,7 @@ describe("Throughput — the tile around the chart (ISS-1154)", () => {
     mount({ rows: undefined, isLoading: true });
     expect(counts()).toEqual([]);
     expect(screen.getByText("The throughput is still being read.")).toBeInTheDocument();
-    expect(screen.queryByText(/nothing shipped/)).toBeNull();
+    expect(screen.queryByText(/nothing finished/)).toBeNull();
     expect(screen.queryByText("Throughput can't be drawn")).toBeNull();
   });
 

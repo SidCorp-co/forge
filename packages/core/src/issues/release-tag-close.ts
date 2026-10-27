@@ -51,7 +51,7 @@ function noLandingRefusal(pattern: string): ReleaseTagRefusal {
   return {
     code: 'CLOSE_REQUIRES_RELEASE_TAG',
     detail:
-      `This project ships by version tag, so Closed means a tag matching \`${pattern}\` contains the commit the work landed as, and this issue carries no landing commit to look for in one. ` +
+      `This project releases by version tag, so Closed means a tag matching \`${pattern}\` contains the commit the work landed as, and this issue carries no landing commit to look for in one. ` +
       'Mark it merged naming the commit it landed at (`forge_issues` `mark_merged`, `data.commit`). It rests at Awaiting release until a tag contains that commit. ' +
       DROPPED_FOR_NON_WORK,
     details: {
@@ -68,7 +68,7 @@ function unreadRefusal(pattern: string, landing: string, why: string): ReleaseTa
   return {
     code: 'RELEASE_TAG_UNREAD',
     detail:
-      `This project ships by version tag, so Closed means a tag matching \`${pattern}\` contains the landing commit ${landing}. ` +
+      `This project releases by version tag, so Closed means a tag matching \`${pattern}\` contains the landing commit ${landing}. ` +
       'The tags could not be read, so nothing was closed: a tag list that could not be read is not read as one holding no tag. ' +
       `Fix what let the read fail, then close again.\n${why}`,
     details: { requires: 'releaseTag', pattern, landing, read: 'unread', why },
@@ -84,7 +84,7 @@ function notContainedRefusal(pattern: string, read: Extract<TagContainment, { co
   const refusal: ReleaseTagRefusal = {
     code: 'CLOSE_REQUIRES_RELEASE_TAG',
     detail:
-      `This project ships by version tag, so Closed means a tag matching \`${pattern}\` contains the landing commit ${read.commit}, and ${standing}. ` +
+      `This project releases by version tag, so Closed means a tag matching \`${pattern}\` contains the landing commit ${read.commit}, and ${standing}. ` +
       `The issue rests at ${statusLabel(RELEASE_TAG_RESTING_STATUS)} until a tag that contains it is cut and deployed; once one is, close it again and nothing else needs editing. ` +
       DROPPED_FOR_NON_WORK,
     details: {

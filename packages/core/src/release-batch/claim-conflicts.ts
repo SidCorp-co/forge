@@ -142,7 +142,7 @@ function statusSentence(status: string, gateStatus: string, list: ClaimConflict[
   const subject = `${keys(list)} ${isAre(list)} at ${statusLabel(status)}`;
   if (status === 'closed') {
     const it = list.length === 1 ? 'one' : 'any of them';
-    return `${subject}: already shipped, and a release carries an issue once. If ${it} has to ship again, reopen it and bring it back through the pipeline to the release gate.`;
+    return `${subject}: already released, and a release carries an issue once. If ${it} has to go out again, reopen it and bring it back through the pipeline to the release gate.`;
   }
   if (status === 'dropped') {
     return `${subject}: set down as not work, so no release carries ${list.length === 1 ? 'it' : 'them'}.`;

@@ -268,7 +268,7 @@ describe('a re-cut is refused unless the release it names actually failed', () =
     await expect(cutRelease(() => projectId, shipped.version)).rejects.toThrow(
       ReleaseRecutRefusedError,
     );
-    await expect(cutRelease(() => projectId, shipped.version)).rejects.toThrow(/SHIPPED/);
+    await expect(cutRelease(() => projectId, shipped.version)).rejects.toThrow(/RELEASED/);
   });
 
   it('refuses a minor that would leave the nine-digit domain, by its own name', async () => {

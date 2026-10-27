@@ -142,7 +142,7 @@ describe('entering releasing (ISS-1421)', () => {
       to: 'releasing',
     });
     expect(refusal?.code).toBe('RELEASING_STARTS_FROM_RELEASE');
-    expect(refusal?.detail).toContain('This project ships nothing');
+    expect(refusal?.detail).toContain('This project releases nothing');
     expect(refusal?.detail).toContain(
       "To release them, choose a shape that releases under Shape & release in the project's settings.",
     );

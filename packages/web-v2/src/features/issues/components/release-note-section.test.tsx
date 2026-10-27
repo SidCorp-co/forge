@@ -51,16 +51,16 @@ describe("the release note on an issue's page", () => {
     expect(screen.getByText(FIXED.userFacing)).toBeInTheDocument();
   });
 
-  it("speaks of a change still to ship at Awaiting release, the status the done page names", () => {
+  it("speaks of a change still to be released at Awaiting release, the status the done page names", () => {
     show("awaiting_release", FIXED);
-    expect(screen.getByText("What will change once it ships")).toBeInTheDocument();
+    expect(screen.getByText("What will change once it is released")).toBeInTheDocument();
   });
 
   it.each([...BUILT_NOT_RELEASED])(
-    "speaks of a change still to ship at %s",
+    "speaks of a change still to be released at %s",
     (status) => {
       show(status, FIXED);
-      expect(screen.getByText("What will change once it ships")).toBeInTheDocument();
+      expect(screen.getByText("What will change once it is released")).toBeInTheDocument();
       expect(screen.getByText(FIXED.userFacing)).toBeInTheDocument();
     },
   );
@@ -70,7 +70,7 @@ describe("the release note on an issue's page", () => {
     (status) => {
       show(status, FIXED);
       expect(screen.getByText("Release note")).toBeInTheDocument();
-      expect(screen.queryByText("What will change once it ships")).toBeNull();
+      expect(screen.queryByText("What will change once it is released")).toBeNull();
       expect(screen.queryByText("What changed")).toBeNull();
     },
   );
@@ -119,6 +119,25 @@ describe("a release note the release gate asks for, written on the issue's page"
       "This issue has no release note, and a release will not close it without one.",
     );
     expect(screen.getByRole("button", { name: "Save release note" })).toBeDisabled();
+  });
+
+  // ISS-1421 r39, judge-160: a note typed with no kind chosen left Save dimmed and said nothing.
+  it("says beside a disabled Save what it waits for, and nothing once it may be pressed", () => {
+    show("awaiting_release", null, true);
+    const save = () => screen.getByRole("button", { name: "Save release note" });
+    fireEvent.change(screen.getByRole("textbox", { name: /What a user will see/ }), {
+      target: { value: "Invoices show the tax line." },
+    });
+    expect(save()).toBeDisabled();
+    expect(save()).toHaveAccessibleDescription("Choose what kind of change this is to save the note.");
+    fireEvent.change(screen.getByRole("textbox", { name: /What a user will see/ }), { target: { value: "  " } });
+    fireEvent.click(screen.getByRole("radio", { name: "A fix" }));
+    expect(save()).toHaveAccessibleDescription("Write what a user will see to save the note.");
+    fireEvent.change(screen.getByRole("textbox", { name: /What a user will see/ }), {
+      target: { value: "Invoices show the tax line." },
+    });
+    expect(save()).toBeEnabled();
+    expect(save()).not.toHaveAttribute("aria-describedby");
   });
 
   it("saves the line a user would read under the kind picked", async () => {

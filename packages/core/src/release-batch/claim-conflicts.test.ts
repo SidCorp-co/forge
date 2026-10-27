@@ -121,18 +121,18 @@ describe('claimConflictSentence', () => {
       at('ISS-6', 'testing'),
     ]);
     expect(s).toContain('ISS-4, ISS-6 are at Testing, not Awaiting release');
-    expect(s).toContain('ISS-5 is at Closed: already shipped');
+    expect(s).toContain('ISS-5 is at Closed: already released');
   });
 
-  it('tells an issue at closed it already shipped, and not to wait for the gate', () => {
+  it('tells an issue at closed it was already released, and not to wait for the gate', () => {
     const one = claimConflictSentence(P, GATE, [at('ISS-5', 'closed')]);
     expect(one).toContain(
-      'ISS-5 is at Closed: already shipped, and a release carries an issue once. If one has to ship again, reopen it',
+      'ISS-5 is at Closed: already released, and a release carries an issue once. If one has to go out again, reopen it',
     );
     expect(one).not.toContain('only once it reaches the release gate');
     const two = claimConflictSentence(P, GATE, [at('ISS-5', 'closed'), at('ISS-7', 'closed')]);
-    expect(two).toContain('ISS-5, ISS-7 are at Closed: already shipped');
-    expect(two).toContain('If any of them has to ship again');
+    expect(two).toContain('ISS-5, ISS-7 are at Closed: already released');
+    expect(two).toContain('If any of them has to go out again');
   });
 
   it('tells an issue at dropped it was set down as not work, and not to wait for the gate', () => {

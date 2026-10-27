@@ -208,7 +208,7 @@ describe('an agent closing on a project that declared a release gate', () => {
     await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
     const body = String(insertValues.mock.calls[0]?.[0]?.body ?? '');
-    expect(body).toContain('merged, not shipped');
+    expect(body).toContain('merged, not released');
   });
 
   it('lets `dropped` through the gate untouched', async () => {

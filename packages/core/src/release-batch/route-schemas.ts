@@ -36,7 +36,7 @@ export const createBodySchema = z
             .object({
               issueId: z.uuid(),
               decision: z.literal('ship-unverified'),
-              why: z.string().trim().min(1, 'say what ships unverified').max(2000),
+              why: z.string().trim().min(1, 'say what is released unverified').max(2000),
             })
             .strict(),
           z.object({ issueId: z.uuid(), decision: z.literal('revert') }).strict(),

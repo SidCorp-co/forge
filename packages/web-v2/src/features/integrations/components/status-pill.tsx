@@ -8,7 +8,7 @@ import type { BindingRole, DeployStage, StatusCard } from "../types";
 export const STAGE_LABEL: Record<string, string> = { preview: "Preview", live: "Live" };
 
 export const STAGE_OPTIONS: { value: DeployStage; label: string; hint: string }[] = [
-  { value: "preview", label: "Preview", hint: "where a change is seen before it ships" },
+  { value: "preview", label: "Preview", hint: "where a change is seen before it is released" },
   { value: "live", label: "Live", hint: "where the people using this product are" },
 ];
 

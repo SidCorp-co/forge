@@ -143,7 +143,7 @@ describe('a close failure ends at the close after it (ISS-1381 r5)', () => {
       const said = await failureComments(issue);
       expect(said).toHaveLength(2);
       expect(said[0]).toEqual(before);
-      expect(said[1]?.body).toContain(`shipped as version ${failedAgain.version}`);
+      expect(said[1]?.body).toContain(`went out as version ${failedAgain.version}`);
       expect(said[1]?.body).not.toContain('for the same reason');
       expect(said[1]?.body).not.toContain(`version ${failedFirst.version}`);
       expect((await bannerEntry(issue))?.closeFailure?.version).toBe(failedAgain.version);

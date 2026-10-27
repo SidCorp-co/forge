@@ -147,6 +147,10 @@ export function ReleaseGatePanel({
   const allSelected = ready.length > 0 && ready.every((i) => selected.has(i.id));
   const claimed = issues.length - unclaimed.length;
   const unclosable = unclaimed.length - own.length;
+  // Where a reason no pick escapes stands, every row not in a release waits on it, so each is counted
+  // not ready and the counts add up to the rows (ISS-1421 r39, judge-160 read "0 ready · 1 not ready"
+  // over four rows).
+  const notReady = blocked ? unclaimed.length : unclosable;
   const failing = selectable.length - ready.length;
   const visible = expanded ? issues : issues.slice(0, VISIBLE_LIMIT);
   const oldest = oldestMergedAt(issues);
@@ -210,8 +214,8 @@ export function ReleaseGatePanel({
           </span>
           {data.releaseRunnerLabel ? (
             <span>
-              Prefers runners labelled <MonoTag>{data.releaseRunnerLabel}</MonoTag>, and ships on
-              another box when none is available
+              Prefers runners labelled <MonoTag>{data.releaseRunnerLabel}</MonoTag>, and releases
+              on another box when none is available
             </span>
           ) : null}
         </div>
@@ -227,7 +231,7 @@ export function ReleaseGatePanel({
           <span className="fg-caption text-muted">
             {chosen.length > 0 ? `${chosen.length} selected` : `${ready.length} ready`}
             {claimed > 0 ? ` · ${claimed} in a release` : ""}
-            {unclosable > 0 ? ` · ${unclosable} not ready to release` : ""}
+            {notReady > 0 ? ` · ${notReady} not ready to release` : ""}
             {failing > 0 ? ` · ${failing} the last release failed to close` : ""}
           </span>
         </div>

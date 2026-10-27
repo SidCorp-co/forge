@@ -144,10 +144,10 @@ describe('buildReleaseBatchPrompt', () => {
     expect(oneBranchOut).toContain('releaseChain: dev');
   });
 
-  it('says out loud that an empty chain ships nothing, rather than printing a blank list', () => {
+  it('says out loud that an empty chain releases nothing, rather than printing a blank list', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, releaseChain: [], plan: plan() });
 
-    expect(out).toContain('releaseChain: empty — this project ships nothing');
+    expect(out).toContain('releaseChain: empty — this project releases nothing');
   });
 
   it('still frames the issue title as untrusted data', () => {

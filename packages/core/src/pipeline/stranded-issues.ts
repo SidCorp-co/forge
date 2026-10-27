@@ -355,7 +355,7 @@ export async function detectOwedCloses(
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: owedCloseResolutionKey(row.id),
-        title: `${ref} shipped but never closed — ${row.projectName}`,
+        title: `${ref} merged but never closed — ${row.projectName}`,
         body: `${ref} "${row.title}" has carried a merge mark for ${age} while it still reads ${statusLabel(row.status)}, with nothing running on it.`,
       });
       if (sent < 0) unreachable += 1;

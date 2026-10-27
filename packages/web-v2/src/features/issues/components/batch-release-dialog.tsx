@@ -59,8 +59,8 @@ type CarriedChoice = { decision: CarriedDecisionBody["decision"] | ""; why: stri
 const CHOICES: Array<{ value: CarriedDecisionBody["decision"]; label: string; explains: string }> = [
   {
     value: "ship-unverified",
-    label: "Ship unverified",
-    explains: "It ships as it is, with this release. Say what is unverified; that is written on the issue.",
+    label: "Release unverified",
+    explains: "It goes out as it is, with this release. Say what is unverified; that is written on the issue.",
   },
   {
     value: "revert",
@@ -122,7 +122,7 @@ function refusalMessage(err: unknown): string {
   const head = err instanceof ApiError ? err.code : null;
   if (head === "RELEASE_CARRIES_UNDECIDED") {
     const n = carriedIn(err)?.length ?? 0;
-    return `This release would also ship ${n === 1 ? "an issue" : `${n} issues`} nobody put on it. Decide each one above, then press Release again.`;
+    return `This release would also release ${n === 1 ? "an issue" : `${n} issues`} nobody put on it. Decide each one above, then press Release again.`;
   }
   if (head === "RELEASE_CARRIED_DECISION_REFUSED") {
     const n = Object.keys(refusedIn(err)).length;
@@ -271,7 +271,7 @@ export function BatchReleaseDialog({
         {carried.length > 0 && (
           <section className="flex flex-col gap-3" aria-label="Issues this release carries">
             <p className="fg-body-sm text-fg">
-              This release would also ship these issues. Decide each one before releasing.
+              This release would also carry these issues. Decide each one before releasing.
             </p>
             {carried.map((issue) => {
               const choice = choices[issue.issueId] ?? { decision: "", why: "" };
@@ -311,7 +311,7 @@ export function BatchReleaseDialog({
                     <Textarea
                       rows={2}
                       aria-label={`What is unverified in ${issue.displayId}`}
-                      placeholder="What ships unverified, and why that is acceptable"
+                      placeholder="What is released unverified, and why that is acceptable"
                       value={choice.why}
                       aria-invalid={choice.why.trim() === ""}
                       onChange={(e) => choose(issue.issueId, { why: e.target.value })}
@@ -358,7 +358,7 @@ export function BatchReleaseDialog({
                 : !roster
                 ? "Waits until it is known which of these the last release failed to close"
                 : undecided > 0
-                  ? `Decide ${undecided} carried issue${undecided === 1 ? "" : "s"} first — a Ship unverified decision needs its reason`
+                  ? `Decide ${undecided} carried issue${undecided === 1 ? "" : "s"} first — a Release unverified decision needs its reason`
                   : undefined
             }
             onClick={handleConfirm}

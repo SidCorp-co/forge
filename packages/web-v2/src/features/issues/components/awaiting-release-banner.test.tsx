@@ -78,7 +78,7 @@ describe("AwaitingReleaseBanner", () => {
   it("says a mark that is only a claim is claimed, never merged into the base branch", () => {
     state({});
     render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canRelease mergeMark="asserted" />);
-    expect(screen.getByText(/Claimed as merged 3h ago, naming no commit — not shipped yet\./)).toBeInTheDocument();
+    expect(screen.getByText(/Claimed as merged 3h ago, naming no commit — not released yet\./)).toBeInTheDocument();
     expect(screen.queryByText(/Merged into/)).not.toBeInTheDocument();
   });
 
@@ -243,7 +243,7 @@ describe("AwaitingReleaseBanner — an issue whose last release failed its close
       screen.getByText(/Release now fails the same way until whoever operates Forge fixes it/),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /release now/i })).toBeInTheDocument();
-    expect(screen.queryByText(/not shipped yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/not released yet/)).not.toBeInTheDocument();
   });
 
   it("says nothing of a failure on an issue whose last release met none", () => {

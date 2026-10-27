@@ -479,7 +479,19 @@ describe("ReleaseGatePanel — ready means Release now is not refused", () => {
     );
     expect(screen.getByRole("checkbox", { name: "Select ISS-1 for release" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Select every issue that can be released" })).toBeDisabled();
-    expect(screen.getByText(/^0 ready · 1 in a release$/)).toBeInTheDocument();
+    expect(screen.getByText(/^0 ready · 1 in a release · 2 not ready to release$/)).toBeInTheDocument();
+  });
+
+  // ISS-1421 r39, judge-160: with no runner the gate read "0 ready · 1 not ready to release" over
+  // four rows, counting only the row refused for its own note.
+  it("counts every row a shared reason holds as not ready, so the counts add up to the rows", () => {
+    const blockingAll = [
+      { code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered.", runId: null },
+    ];
+    state({ issues: [...ISSUES, UNNOTED], blockingAll });
+    renderPanel();
+    expect(screen.getAllByRole("listitem")).toHaveLength(ISSUES.length + 1);
+    expect(screen.getByText(/^0 ready · 1 in a release · 3 not ready to release$/)).toBeInTheDocument();
   });
 
   // ISS-1421 r38, judge-155: the gate said a running release would claim the same issues, told a

@@ -28,7 +28,7 @@ export async function recordDropUnblock(
       dependents.map((dependent) => ({
         issueId: dependent.issueId,
         authorId,
-        body: `Unblocked — ${label} was dropped, so its \`blocks\` edge on this issue expired and this issue can dispatch. \`merged_at\` was NOT stamped on ${label}: dropped means the work will not happen, not that it shipped. If this issue genuinely needs that work, re-point the dependency rather than letting it proceed.`,
+        body: `Unblocked — ${label} was dropped, so its \`blocks\` edge on this issue expired and this issue can dispatch. \`merged_at\` was NOT stamped on ${label}: dropped means the work will not happen, not that it went out. If this issue genuinely needs that work, re-point the dependency rather than letting it proceed.`,
         parentId: null,
       })),
     );

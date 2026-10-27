@@ -252,7 +252,7 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     const answer = await recordRefused([shipped]);
     expect(answer.code).toBe('CLAIM_CONFLICT');
     expect(answer.message).toMatch(
-      new RegExp(`\\b${await keyOf(shipped)} is at Closed: already shipped`),
+      new RegExp(`\\b${await keyOf(shipped)} is at Closed: already released`),
     );
     expect(answer.message).not.toMatch(/abort/i);
     expect(answer.details.conflicts).toEqual([
@@ -396,7 +396,7 @@ describe('an issue past the release gate is not told to wait for it', () => {
     const closed = await fx.insertIssue('closed');
     const answer = await recordRefused([closed]);
     expect(answer.message).toMatch(new RegExp(`\\b${await keyOf(closed)} is at Closed`));
-    expect(answer.message).toContain('already shipped');
+    expect(answer.message).toContain('already released');
     expect(answer.message).not.toContain('only once it reaches the release gate');
   }, 30_000);
 

@@ -382,7 +382,7 @@ describe('the codes this change did not touch', () => {
       '2 issues named here (`ISS-1`, `ISS-2`) have no release note',
     );
     expect(releaseBlockerSentence('RELEASE_WORK_UNMERGED', details)).toContain(
-      '2 issues named here (`ISS-1`, `ISS-2`) have no merge',
+      '2 issues named here (`ISS-1`, `ISS-2`) are not marked merged',
     );
     expect(
       releaseBlockerSentence('RELEASE_WORK_UNMERGED', { ...details, shape: 'outside_git' }),
@@ -408,8 +408,8 @@ describe('the codes this change did not touch', () => {
 describe('NO_RELEASE_GATE — what it means for the issues named', () => {
   const sentence = releaseBlockerSentence('NO_RELEASE_GATE');
 
-  it('says that on this project closing an issue is what ships it', () => {
-    expect(sentence).toMatch(/closing an issue is what ships it/);
+  it('says that on this project closing an issue is what releases it', () => {
+    expect(sentence).toMatch(/closing an issue is what releases it/);
   });
 
   // Every door reads this one sentence, and none of them names the issues it was sent with, so a

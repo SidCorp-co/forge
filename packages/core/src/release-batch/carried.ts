@@ -122,7 +122,7 @@ const short = (sha: string) => sha.slice(0, 12);
 function refuseRevert(final: ReadRange, landing: string): string {
   const undone = undoneRevert(final, landing);
   if (undone) {
-    return `its landing ${short(landing)} was reverted by ${short(undone.revert)}, and that revert was reverted by ${short(undone.undo)}, so the landing ships with this release; revert the landing again on \`${final.start}\`, or decide \`ship-unverified\` or \`cut-below\` instead`;
+    return `its landing ${short(landing)} was reverted by ${short(undone.revert)}, and that revert was reverted by ${short(undone.undo)}, so the landing goes out with this release; revert the landing again on \`${final.start}\`, or decide \`ship-unverified\` or \`cut-below\` instead`;
   }
   return `no commit up to the cut reverts its landing ${short(landing)}; revert it on \`${final.start}\` first`;
 }
@@ -318,9 +318,9 @@ export async function noteShipUnverified(args: {
       issueId: i.issueId,
       authorId: userId,
       body:
-        `Release ${version} ships this issue's landing ${short(i.landing)} ` +
+        `Release ${version} carries this issue's landing ${short(i.landing)} ` +
         `while it stands at ${ISSUE_STATUS_LABELS[i.status as IssueStatus] ?? i.status} and off the release's roster. ${decider} decided, ` +
-        `when pressing the release, to ship it unverified: ${i.why ?? ''}`,
+        `when pressing the release, to release it unverified: ${i.why ?? ''}`,
     })),
   );
 }

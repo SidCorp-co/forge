@@ -72,7 +72,7 @@ function tagIssues(chain: ReleaseChain, ctx: z.RefinementCtx): void {
     ctx.addIssue({
       code: 'custom',
       path: [i, 'tag'],
-      message: `${RELEASE_CHAIN_TAG_NOT_LAST}: entry ${i} names \`${entry.branch}\` and declares \`tag: ${JSON.stringify(entry.tag)}\`, but only the LAST entry of a release chain, the one that is live, may name the tag that ships it. Move \`tag\` to entry ${chain.length - 1} (\`${chain[chain.length - 1]?.branch}\`), or drop it. Valid: ${RELEASE_TAG_PATTERN_SHAPE}.`,
+      message: `${RELEASE_CHAIN_TAG_NOT_LAST}: entry ${i} names \`${entry.branch}\` and declares \`tag: ${JSON.stringify(entry.tag)}\`, but only the LAST entry of a release chain, the one that is live, may name the tag that releases it. Move \`tag\` to entry ${chain.length - 1} (\`${chain[chain.length - 1]?.branch}\`), or drop it. Valid: ${RELEASE_TAG_PATTERN_SHAPE}.`,
     });
   });
 }

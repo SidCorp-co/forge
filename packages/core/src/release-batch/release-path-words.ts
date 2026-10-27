@@ -45,12 +45,12 @@ export async function readGateHolds(projectId: string, issueId: string): Promise
 }
 
 const SHIPS_NOTHING_REFUSAL = [
-  'This project ships nothing, so no release carries its issues.',
+  'This project releases nothing, so no release carries its issues.',
   "To release them, choose a shape that releases under Shape & release in the project's settings.",
 ];
 
 const SHIPS_NOTHING_AT_GATE = [
-  'This project ships nothing, so no release will carry it.',
+  'This project releases nothing, so no release will carry it.',
   "To release it, choose a shape that releases under Shape & release in the project's settings.",
   'If work remains, reopen it instead.',
 ];

@@ -203,7 +203,7 @@ describe("a project with stuck issues (ISS-1229 r12)", () => {
       }),
     );
     expect(r.headline).toBe(
-      "3 issues have been waiting for you for over six hours. 2 issues are in a live status with no live work behind them. 1 issue shipped its code and was never closed.",
+      "3 issues have been waiting for you for over six hours. 2 issues are in a live status with no live work behind them. 1 issue was marked merged and never closed.",
     );
   });
 

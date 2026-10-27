@@ -27,13 +27,10 @@ describe('a release refusal counts its issues in their number', () => {
       new ReleaseRecordMissingError(['a', 'b']),
       'RELEASE_RECORD_MISSING: 2 issues have no release note',
     ],
-    [
-      new ReleaseWorkUnmergedError(['a']),
-      'RELEASE_WORK_UNMERGED: 1 issue has no merge Forge watched land',
-    ],
+    [new ReleaseWorkUnmergedError(['a']), 'RELEASE_WORK_UNMERGED: 1 issue is not marked merged'],
     [
       new ReleaseWorkUnmergedError(['a', 'b']),
-      'RELEASE_WORK_UNMERGED: 2 issues have no merge Forge watched land',
+      'RELEASE_WORK_UNMERGED: 2 issues are not marked merged',
     ],
     [
       new ReleaseIssuesUnclosableError(['a']),
@@ -82,12 +79,12 @@ describe('a release sentence that counts says it in the number it counts', () =>
     [
       'RELEASE_WORK_UNMERGED',
       one,
-      '1 issue named here (`ISS-1`) has no merge Forge watched land, so nothing says its work',
+      '1 issue named here (`ISS-1`) is not marked merged, so nothing says its work',
     ],
     [
       'RELEASE_WORK_UNMERGED',
       two,
-      '2 issues named here (`ISS-1`, `ISS-2`) have no merge Forge watched land, so nothing says their work',
+      '2 issues named here (`ISS-1`, `ISS-2`) are not marked merged, so nothing says their work',
     ],
     [
       'RELEASE_WORK_UNMERGED',
