@@ -3,8 +3,9 @@
  * `lib/db-errors.ts:STATEMENT_ERRORS` passes as a kind, on the error or down its `cause`, by
  * `instanceof`, a `code`, constraint or `name` compared with a value known at compile time, or an
  * `isX(err)` whose one returned expression is such a test; or those joined. The caught error is
- * matched by its binding, never its name. Every guard it does not so recognise is refused like a
- * bare catch, among them one whose body it cannot read and a comparison it cannot resolve.
+ * matched by its binding, never its name, as is a comparand whose value can come from it
+ * (`in-transaction-paths.fixture.ts:mentions`). Every guard it does not so recognise is refused
+ * like a bare catch, among them one whose body it cannot read and a comparison it cannot resolve.
  *
  * Named residuals, each beyond what a reading of the files in `src` can decide: a comparand whose
  * type claims a literal its value does not hold, since the reader takes the checker's word for it; a
@@ -18,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { SESSION_ENDED_CODES } from '../lib/db-errors.js';
+import { mentions } from './in-transaction-paths.fixture.js';
 
 const DB_ERRORS = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'db-errors.ts');
 
@@ -27,7 +29,12 @@ const READERS = new Map([
   ['pgConstraintName', 'constraint_name'],
 ]);
 
-const IDENTIFYING = new Set(['code', 'constraint_name', 'constraint', 'name']);
+export const IDENTIFYING: ReadonlySet<string> = new Set([
+  'code',
+  'constraint_name',
+  'constraint',
+  'name',
+]);
 
 /** What the scan reads every catch against. */
 export interface Scan {
@@ -323,11 +330,6 @@ function knownValue(node: ts.Expression, scan: Scan): string | number | undefine
   return type.isStringLiteral() || type.isNumberLiteral() ? type.value : undefined;
 }
 
-function mentions(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
-  if (ts.isIdentifier(node) && scan.checker.getSymbolAtLocation(node) === param) return true;
-  return ts.forEachChild(node, (c) => mentions(c, param, scan) || undefined) ?? false;
-}
-
 /**
  * `err.code === '23505'`: the other side reads nothing of the error, a `name` is no statement
  * error's, a code is not one the error carries when the session ended, and no statement error's
@@ -343,7 +345,7 @@ function comparesError(node: ts.BinaryExpression, param: ts.Symbol, scan: Scan):
   for (const [error, other] of sides) {
     const key = propertyRead(error, param, scan);
     if (key === undefined || !IDENTIFYING.has(key)) continue;
-    const value = mentions(other, param, scan) ? undefined : knownValue(other, scan);
+    const value = mentions(other, param, scan.checker) ? undefined : knownValue(other, scan);
     if (value === undefined) return false;
     if (key === 'name') return !scan.names.has(String(value));
     return key !== 'code' || !SESSION_ENDED_CODES.has(String(value));
@@ -389,14 +391,16 @@ function helperNamesAnError(call: ts.CallExpression, param: ts.Symbol, scan: Sca
   const index = call.arguments.findIndex((a) => isParam(a, param, scan));
   const decl = fixedCallee(call, scan);
   if (index === -1 || depth > 3 || !decl || decl.getSourceFile().isDeclarationFile) return false;
-  if (call.arguments.some((a, at) => at !== index && mentions(a, param, scan))) return false;
+  if (call.arguments.some((a, at) => at !== index && mentions(a, param, scan.checker)))
+    return false;
   const params = decl.parameters.flatMap((p) => {
     const s = ts.isIdentifier(p.name) && scan.checker.getSymbolAtLocation(p.name);
     return s ? [s] : [];
   });
   if (
     decl.parameters.some(
-      (p) => p.initializer && params.some((s) => mentions(p.initializer as ts.Node, s, scan)),
+      (p) =>
+        p.initializer && params.some((s) => mentions(p.initializer as ts.Node, s, scan.checker)),
     )
   )
     return false;

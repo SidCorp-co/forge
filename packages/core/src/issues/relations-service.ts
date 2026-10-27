@@ -99,8 +99,7 @@ export type PendingIssueRelation = {
 };
 
 /** A relation naming no issue says which entry and which of its fields names it. */
-function namingTheField(err: unknown, index: number, rel: IssueRelationInput): unknown {
-  if (!(err instanceof IssueDependencyError) || err.code !== 'NOT_FOUND') return err;
+function namingTheField(index: number, rel: IssueRelationInput): IssueDependencyError {
   const field = rel.dependsOnId != null ? 'dependsOnId' : 'blocksId';
   const named = rel.dependsOnId ?? rel.blocksId;
   return new IssueDependencyError(
@@ -139,7 +138,8 @@ export async function writeIssueRelations(
       holdsUntil: rel.holdsUntil,
     };
     const written = await writeIssueDependency(input, writer, ex).catch((err: unknown) => {
-      throw namingTheField(err, index, rel);
+      if (!(err instanceof IssueDependencyError) || err.code !== 'NOT_FOUND') throw err;
+      throw namingTheField(index, rel);
     });
     pending.push({
       input,

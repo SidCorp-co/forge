@@ -1,22 +1,23 @@
 /**
- * The write reading: before a catch's guard decides, every use of the caught error, of a name bound
- * to it or of a holder of it is a write, and the guard is refused, unless `readOnly` resolves it as
- * a plain read. What one file's reading still cannot see: a function the catch calls without
- * handing it the error or a holder, which reaches the error through a binding outside the catch the
- * catch stored it in (`lastErr = err; poison()` where `poison` writes `lastErr.code`); and a holder
- * property declared plain that is a setter at run time (a `Proxy`, a subclass's accessor on `this`).
+ * The write reading: on a path an error the catch does not name can take, a rethrowing one
+ * included, every use of the caught error, of a name bound to it or of a holder of it is a write,
+ * and the catch is refused, unless `readOnly` resolves it as a plain read; so are `arguments` and a
+ * direct `eval` there, which reach the error by no name (biome refuses both too: `noArguments`,
+ * `noGlobalEval`). A store to a key of the error is a plain read only where no guard the scan
+ * reads looks at that key: any but `code`, `constraint_name`, `constraint`, `name`, `cause` and
+ * `__proto__`, which swaps its class.
+ *
+ * What one file's reading still cannot see: a function the catch calls without handing it the
+ * error or a holder, which reaches the error through a binding outside the catch the catch stored
+ * it in (`lastErr = err; poison()` where `poison` writes `lastErr.code`); a property declared plain
+ * that is a setter at run time (a `Proxy`, a subclass's accessor on `this`); and code the error
+ * object itself carries, a getter, `toString`, `valueOf`, `Symbol.toPrimitive` or a `Proxy` trap,
+ * which a property read, comparison, `in` or conversion runs and which no driver's error has.
  */
 
 import ts from 'typescript';
-import { readsTheError, type Scan, unwrap } from './in-transaction-guards.fixture.js';
-
-function isAssignment(node: ts.Node): node is ts.BinaryExpression {
-  return (
-    ts.isBinaryExpression(node) &&
-    node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-    node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-  );
-}
+import { IDENTIFYING, readsTheError, type Scan, unwrap } from './in-transaction-guards.fixture.js';
+import { assignedTo, isAssignment, isWrapper } from './in-transaction-paths.fixture.js';
 
 const THIS = { escapedName: 'this' } as unknown as ts.Symbol;
 
@@ -115,6 +116,17 @@ function primitive(node: ts.Expression, scan: Scan): boolean {
   return type.isUnion() ? type.types.every(flat) : flat(type);
 }
 
+const GUARDED = new Set([...IDENTIFYING, 'cause', '__proto__']);
+
+function unguarded(store: ts.AccessExpression): boolean {
+  const key = ts.isPropertyAccessExpression(store)
+    ? store.name.text
+    : ts.isStringLiteralLike(store.argumentExpression)
+      ? store.argumentExpression.text
+      : undefined;
+  return key !== undefined && !GUARDED.has(key);
+}
+
 function dataProperty(store: ts.AccessExpression, scan: Scan): boolean {
   const key = ts.isPropertyAccessExpression(store) ? store.name : store.argumentExpression;
   const declared = scan.checker.getSymbolAtLocation(key)?.declarations ?? [];
@@ -128,37 +140,6 @@ function dataProperty(store: ts.AccessExpression, scan: Scan): boolean {
         ts.isShorthandPropertyAssignment(d),
     )
   );
-}
-
-function isWrapper(node: ts.Node): node is ts.Expression & { expression: ts.Expression } {
-  return (
-    ts.isParenthesizedExpression(node) ||
-    ts.isAsExpression(node) ||
-    ts.isTypeAssertionExpression(node) ||
-    ts.isNonNullExpression(node) ||
-    ts.isSatisfiesExpression(node)
-  );
-}
-
-function assignedTo(node: ts.Node): boolean {
-  const { parent } = node;
-  if (isWrapper(parent)) return assignedTo(parent);
-  if (isAssignment(parent)) return parent.left === node;
-  if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent))
-    return [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(parent.operator);
-  if (ts.isDeleteExpression(parent)) return true;
-  if (ts.isForOfStatement(parent) || ts.isForInStatement(parent))
-    return parent.initializer === node;
-  if (ts.isPropertyAssignment(parent)) return parent.initializer === node && assignedTo(parent);
-  if (
-    ts.isArrayLiteralExpression(parent) ||
-    ts.isObjectLiteralExpression(parent) ||
-    ts.isShorthandPropertyAssignment(parent) ||
-    ts.isSpreadElement(parent) ||
-    ts.isSpreadAssignment(parent)
-  )
-    return assignedTo(parent);
-  return false;
 }
 
 const COMPARED = [
@@ -203,8 +184,9 @@ function testedOrDone(parent: ts.Node, at: ts.Node): boolean {
  * value whose type holds no object; a comparison, `instanceof`, `in`, `!`, `typeof`, `void` or test
  * of it; a `throw`, `return` or statement of it; a binding of a name, whose own uses answer; one
  * argument to a `lib/db-errors.ts` reader or resolved `isX` helper; one store into a holder's
- * property declared plain. A property read, cast, `?:`, `&&`, `||`, `??`, comma, literal or
- * assignment holding it reaches on; anything else is a write.
+ * property declared plain, or into the error's own where no guard reads that key. A property read,
+ * cast, `?:`, `&&`, `||`, `??`, comma, literal or assignment holding it reaches on; anything else
+ * is a write.
  */
 function readOnly(mention: ts.Node, symbol: ts.Symbol, aliases: Aliases, scan: Scan): boolean {
   const holder = !aliases.is.has(symbol);
@@ -223,7 +205,8 @@ function readOnly(mention: ts.Node, symbol: ts.Symbol, aliases: Aliases, scan: S
       parent.expression === at
     ) {
       steps += 1;
-      if (assignedTo(parent)) return holder && steps === 1 && dataProperty(parent, scan);
+      if (assignedTo(parent))
+        return steps === 1 && dataProperty(parent, scan) && (holder || unguarded(parent));
       at = parent;
     } else if (ts.isCallExpression(parent)) {
       return parent.expression !== at && readsTheError(parent, symbol, scan);
@@ -271,19 +254,40 @@ function declares(node: ts.Identifier): boolean {
   );
 }
 
+/** `arguments`, or a direct `eval`: each reaches the error by no name the reading follows. */
+function unnamedReach(node: ts.Node): boolean {
+  if (!ts.isIdentifier(node)) return false;
+  const { parent } = node;
+  if (
+    (ts.isPropertyAccessExpression(parent) || ts.isPropertyAssignment(parent)) &&
+    parent.name === node
+  )
+    return false;
+  if (node.text === 'arguments') return true;
+  return node.text === 'eval' && ts.isCallExpression(parent) && parent.expression === node;
+}
+
 /**
- * The first use `readOnly` does not resolve, `undefined` where none: a call or `new` handed the
- * error (`Object.assign(err, …)`, `[err].forEach(…)`), a method of it or of a holder, an `await`, a
- * conversion or a computed key among them. The catch scan hands it only the test of a guard the
- * catch opens with, the whole catch where it decides at each exit, and none of one that throws on
- * every path.
+ * The first use `readOnly` does not resolve outside the parts of `body` in `named`, `undefined`
+ * where none: a call or `new` handed the error (`Object.assign(err, …)`, `[err].forEach(…)`), a
+ * method of it or of a holder, an `await`, a conversion or a computed key among them; and any
+ * `arguments` or direct `eval`, which biome refuses anyway (`noArguments`, `noGlobalEval`).
  */
-export function unreadUse(body: ts.Node, param: ts.Symbol, scan: Scan): ts.Node | undefined {
+export function unreadUse(
+  body: ts.Node,
+  param: ts.Symbol,
+  scan: Scan,
+  named: ReadonlySet<ts.Node> = new Set(),
+): ts.Node | undefined {
   const aliases = aliasesOf(body, param, scan);
   const among = new Set([...aliases.is, ...aliases.holds]);
   let found: ts.Node | undefined;
   const visit = (n: ts.Node): void => {
-    if (found) return;
+    if (found || named.has(n)) return;
+    if (unnamedReach(n)) {
+      found = n;
+      return;
+    }
     const use =
       (n.kind === ts.SyntaxKind.ThisKeyword || (ts.isIdentifier(n) && !declares(n))) &&
       !ts.isPartOfTypeNode(n);
