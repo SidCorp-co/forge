@@ -90,6 +90,15 @@ describe("the new-project dialog when its repository step is refused", () => {
     expect(said.link?.label).toMatch(/Shape & release/);
   });
 
+  // r9, judge-149: at 390 that toast stood over the path field for its whole reading time.
+  it("names the path field as what the refusal toast keeps clear of", async () => {
+    update.mockRejectedValue(new ApiError(400, REFUSAL, "REPO_PATH_NOT_ABSOLUTE"));
+    await createThenSaveRepository("~/code/app");
+    await vi.waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
+    const said = toast.mock.calls[1]?.[0] as { clearOf?: () => Element | null };
+    expect(said.clearOf?.()).toBe(screen.getByLabelText(/^Repository path/));
+  });
+
   it("says a fault the same way, the project still created", async () => {
     update.mockRejectedValue(new ApiError(503, "The server is down"));
     await createThenSaveRepository("/srv/desk");

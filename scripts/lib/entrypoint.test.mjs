@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, posix, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -137,17 +137,26 @@ describe('every guarded script runs where it is launched from', () => {
  * Its bound is static reading of the one file's own code (ISS-1236 r8). Inside it, process and argv
  * are followed through names, aliases, destructuring, the parameters and `arguments` of the
  * function a call names where it is made, a function's `this`, process's methods returning process,
- * the file's own exports imported back, and a module loaded by a name it cannot read, which is taken
- * as process.
+ * the file's own exports imported back by any specifier Node resolves to the file, and a module
+ * loaded by a name it cannot read, which is taken as process. Code built from a string is refused
+ * where it is built: `eval`, `Function`, and a value's `constructor` taken, which off a function is
+ * `Function` or one of its kin.
  *
- * Outside it, and so passed rather than refused:
- * - code built from a string other than `eval` and `Function` (which are refused): `vm.runInThisContext`,
- *   `vm.Script` and its kin, an import of a `data:` URL;
- * - the launch entry read from anything but `process.argv`: `process.report`, `/proc/self/cmdline`,
- *   `process.execArgv`;
- * - a launch check in a file that never names `import.meta`;
- * - a function of another file handed argv or process, which is that file's to answer;
- * - a native handed `this` as its receiver (`fn.call(this)`), taken as using it, not returning it.
+ * What static reading of the file's own code cannot see, and so passes:
+ * - what code built from a string runs, where the builder is `vm.runInThisContext`, `vm.Script` and
+ *   its kin, or an import of a `data:` URL: the string is data the walk does not parse, and these
+ *   builders are not refused where they are built;
+ * - a function of another file handed argv or process, whose body is in that file;
+ * - a native handed `this` as its receiver (`fn.call(this)`), whose body is not in any file;
+ * - the file named through what lies outside it: a specifier reaching it through a symlink, a
+ *   package's own name or an import map;
+ * - a key computed at run time, which can name `constructor` off a value not written here as a
+ *   function.
+ *
+ * What criterion 29 leaves outside by its own words, though static reading sees it:
+ * - a launch check in a file that never names `import.meta`: the criterion is about files that do;
+ * - the launch entry read from anything but `process.argv` — `process.report`,
+ *   `/proc/self/cmdline`: the criterion is about `process.argv`.
  */
 function handWrittenLaunchChecks(files) {
   return files
@@ -271,11 +280,21 @@ function entryReads(rel, text) {
     return ts.isArrowFunction(init) || ts.isFunctionExpression(init) ? init : null;
   };
   const MODULE_SPEC = /^(node:)?process$/;
-  /** Whether a module specifier names this file itself, by a relative path with or without its extension. */
+  /**
+   * Whether a module specifier names this file itself, resolved as Node resolves one: a relative or
+   * absolute path or a `file:` URL, read as a URL against the file's own, its query and fragment
+   * dropped and its escapes decoded, with or without the file's extension.
+   */
   const stem = (p) => p.replace(/\.[mc]?[jt]sx?$/, '');
-  const isSelf = (spec) =>
-    /^\.\.?\//.test(spec) &&
-    stem(posix.normalize(posix.join(posix.dirname(rel), spec))) === stem(posix.normalize(rel));
+  const own = pathToFileURL(join(ROOT, rel));
+  const isSelf = (spec) => {
+    if (!/^(\.\.?\/|\/|file:)/.test(spec)) return false;
+    try {
+      return stem(resolve(fileURLToPath(new URL(spec, own)))) === stem(fileURLToPath(own));
+    } catch {
+      return false;
+    }
+  };
   const exported = (node) =>
     ts.canHaveModifiers(node) &&
     (ts.getModifiers(node) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
@@ -698,6 +717,60 @@ function entryReads(rel, text) {
     while (n.parent && WRAPS.some((is) => is(n.parent))) n = n.parent;
     return n;
   };
+  /** Whether a function of this file is what `node` holds: one written here, or a name bound to one. */
+  const isFunctionValue = (node) => {
+    const n = unwrap(node);
+    if (!n) return false;
+    if (ts.isArrowFunction(n) || ts.isFunctionExpression(n) || ts.isClassExpression(n)) return true;
+    return (
+      ts.isIdentifier(n) &&
+      bindingAt(n).some(({ decl }) => fnOf(decl) !== null || ts.isClassDeclaration(decl))
+    );
+  };
+  /**
+   * Whether `node` takes a value's `constructor` for use: read by its name, destructured, asked of
+   * `Reflect.get` and its kin by name, or read off a function by a key computed at run time. Only its
+   * `name` read, a comparison of it and a write to it leave it unused.
+   */
+  const constructorTaken = (node) => {
+    if (ts.isBindingElement(node) || ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) {
+      const key = ts.isBindingElement(node) ? (node.propertyName ?? node.name) : node.name;
+      const named = (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) && key.text === 'constructor';
+      if (!named) return false;
+      if (ts.isBindingElement(node)) return true;
+      const obj = node.parent;
+      const p = outer(obj).parent;
+      return ts.isBinaryExpression(p) && p.left === outer(obj) && p.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+    }
+    if (ts.isStringLiteralLike(node) && node.text === 'constructor') {
+      const p = outer(node).parent;
+      return ts.isCallExpression(p) && p.arguments.includes(outer(node));
+    }
+    if (!ts.isPropertyAccessExpression(node) && !ts.isElementAccessExpression(node)) return false;
+    const self = outer(node);
+    const p = self.parent;
+    const written =
+      ts.isBinaryExpression(p) && p.left === self && p.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+    if (ts.isElementAccessExpression(node) && propName(node) === null && literal(node.argumentExpression) === null)
+      return !written && isFunctionValue(node.expression);
+    if (propName(node) !== 'constructor' || written) return false;
+    if (ts.isPropertyAccessExpression(p) && p.expression === self && p.name.text === 'name') return false;
+    if (ts.isTypeOfExpression(p)) return false;
+    if (ts.isBinaryExpression(p)) {
+      const op = p.operatorToken.kind;
+      if (
+        [
+          ts.SyntaxKind.EqualsEqualsEqualsToken,
+          ts.SyntaxKind.ExclamationEqualsEqualsToken,
+          ts.SyntaxKind.EqualsEqualsToken,
+          ts.SyntaxKind.ExclamationEqualsToken,
+        ].includes(op)
+      )
+        return false;
+      if (op === ts.SyntaxKind.InstanceOfKeyword && p.right === self) return false;
+    }
+    return true;
+  };
   /** An identifier that names something rather than reading it. */
   const naming = (id) => {
     const p = id.parent;
@@ -913,15 +986,14 @@ function entryReads(rel, text) {
       nestedArgv({ elements: node.left.properties }, node);
     }
     // Code built from a string is code no walk can read: eval and Function however reached, and a
-    // function's own constructor called.
+    // value's `constructor` taken, which off any function is Function or one of its kin.
     const builder =
       (ts.isIdentifier(node) &&
         CODE_BUILDERS.includes(node.text) &&
         !naming(node) &&
         !shadowed(node)) ||
       (CODE_BUILDERS.includes(propName(node)) && isGlobal(unwrap(node.expression))) ||
-      ((ts.isCallExpression(node) || ts.isNewExpression(node)) &&
-        propName(unwrap(node.expression)) === 'constructor');
+      constructorTaken(node);
     if (builder) {
       say(
         node,
@@ -1567,6 +1639,93 @@ describe('no file decides it was launched by hand', () => {
       1,
     ],
     ['scripts/c.cts', 'const isMain = import.meta && process.argv.at(1);\n', 1],
+    // ISS-1236 r9, judge-149: a specifier Node resolves to the file itself by a query, a fragment, an
+    // escape or the file's own URL, and a function's constructor held before it is called.
+    [
+      'scripts/self-query.mjs',
+      "export { argv } from 'node:process';\nimport { argv as av } from './self-query.mjs?q';\nif (import.meta.url === av[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/self-hash.mjs',
+      "export { argv } from 'node:process';\nimport { argv as av } from './self-hash.mjs#h';\nif (import.meta.url === av[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/self-star-query.mjs',
+      "export * from 'node:process';\nimport * as me from './self-star-query.mjs?q';\nif (import.meta.url === me.argv[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/self-escaped.mjs',
+      "export { argv } from 'node:process';\nimport { argv as av } from './%73elf-escaped.mjs';\nif (import.meta.url === av[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/self-url.mjs',
+      `export { argv } from 'node:process';\nimport { argv as av } from '${pathToFileURL(join(ROOT, 'scripts/self-url.mjs')).href}';\nif (import.meta.url === av[1]) main();\n`,
+      3,
+    ],
+    [
+      'scripts/self-rooted.mjs',
+      `export { argv } from 'node:process';\nimport { argv as av } from '${join(ROOT, 'scripts/self-rooted.mjs')}?x';\nif (import.meta.url === av[1]) main();\n`,
+      3,
+    ],
+    [
+      'scripts/self-doubled.mjs',
+      "export { argv } from 'node:process';\nimport { argv as av } from '././/self-doubled.mjs';\nif (import.meta.url === av[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/self-dynamic-query.mjs',
+      "export const entry = process.argv;\nconst { entry: e } = await import('./self-dynamic-query.mjs?q');\nif (import.meta.url === e.at(1)) main();\n",
+      3,
+    ],
+    [
+      'scripts/constructor-held.mjs',
+      "const F = (() => {}).constructor;\nconst entry = F('return process.argv[1]')();\nif (import.meta.url === entry) main();\n",
+      1,
+    ],
+    [
+      'scripts/constructor-async.mjs',
+      "const AF = Object.getPrototypeOf(async function () {}).constructor;\nconst entry = await AF('return process.argv[1]')();\nif (import.meta.url === entry) main();\n",
+      1,
+    ],
+    [
+      'scripts/constructor-generator.mjs',
+      "const GF = function* () {}.constructor;\nconst entry = GF('yield process.argv[1]')().next().value;\nif (import.meta.url === entry) main();\n",
+      1,
+    ],
+    [
+      'scripts/constructor-method.mjs',
+      "const o = { m() {} };\nconst F = o.m['constructor'];\nif (import.meta.url === F('return process.argv[1]')()) main();\n",
+      2,
+    ],
+    [
+      'scripts/constructor-bound.mjs',
+      "function f() {}\nconst F = f.bind(null).constructor;\nif (import.meta.url === F('return process.argv[1]')()) main();\n",
+      2,
+    ],
+    [
+      'scripts/constructor-destructured.mjs',
+      "const { constructor: F } = () => {};\nif (import.meta.url === F('return process.argv[1]')()) main();\n",
+      1,
+    ],
+    [
+      'scripts/constructor-assigned.mjs',
+      "let F;\n({ constructor: F } = () => {});\nif (import.meta.url === F('return process.argv[1]')()) main();\n",
+      2,
+    ],
+    [
+      'scripts/constructor-reflect.mjs',
+      "const F = Reflect.get(() => {}, 'constructor');\nif (import.meta.url === F('return process.argv[1]')()) main();\n",
+      1,
+    ],
+    [
+      'scripts/constructor-computed.mjs',
+      "const k = ['constr', 'uctor'].join('');\nfunction f() {}\nconst F = f[k];\nif (import.meta.url === F('return process.argv[1]')()) main();\n",
+      3,
+    ],
   ];
 
   // FIXTURE TEXT — reads of argv that never touch the launch entry, and launch checks through a helper.
@@ -1635,6 +1794,14 @@ describe('no file decides it was launched by hand', () => {
     [
       'scripts/arguments-tail.mjs',
       'function flags() {\n  return arguments[0].slice(2).concat(arguments.length);\n}\nflags(process.argv);\nconst ROOT = import.meta.url;\n',
+    ],
+    [
+      'scripts/constructor-uses.mjs',
+      "class A {\n  constructor(x) {\n    this.x = x;\n  }\n}\nconst kind = err.constructor.name;\nconst same = err.constructor === TypeError;\nconst made = err instanceof A.prototype.constructor;\nA.prototype.constructor = A;\nconst plain = typeof v.constructor;\nconst k = 'constructor';\nconst ROOT = import.meta.url;\n",
+    ],
+    [
+      'scripts/self-sibling.mjs',
+      "export { argv } from 'node:process';\nimport { argv as av } from './self-sibling-two.mjs?q';\nimport { x } from 'pkg/self-sibling.mjs';\nconst ROOT = import.meta.url + av[1] + x;\n",
     ],
     [
       'scripts/self-other.mjs',

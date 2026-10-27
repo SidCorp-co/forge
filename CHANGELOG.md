@@ -3205,6 +3205,7 @@
 - **A message still sending is drawn above the reply it started**, where the room will show it, rather than below it until the room is read again. (ISS-1236)
 - **A new project whose repository settings were refused is not reported unsaved.** The toast says the project was created, which settings were not saved and to correct them here, and links to Shape & release in Settings for later. (ISS-1236)
 - **A notice stays while you read it.** Resting the pointer on it, or tabbing into it, holds it; a long one stays as long as it takes to read rather than four seconds. (ISS-1236)
+- **A refused repository path's notice no longer covers the field it asks you to fix.** On a phone it moves to the bottom of the screen, on a wide screen beside the dialog; its link to Settings opens with Repository in view. (ISS-1236)
 - **The id a message is sent under reaches only its sender, over the live connection as well.** Everyone else in the room is told the message arrived without it. (ISS-1236)
 - **A list that failed to load says so with Retry, never as lost or empty**, on Agents, the rail, runner pools, pickers and the bell. Messages sign with a name or "A member"; rooms say which agents answer. (ISS-1229)
 - **Two rows of one integration never read alike.** Each names its label, store or host, then the day it was connected; an Epodsystem row's drawer is about that storefront alone, and Add storefront sits on the Integrations tab. (ISS-1421)

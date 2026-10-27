@@ -21,6 +21,8 @@ export { slugify };
 
 /** The refused-repository toast, put away once the person edits the path it stands over. */
 const REFUSED_SLOT = 'new-project-repository-refused';
+/** The path field that toast tells the person to correct, which it keeps clear of. */
+const PATH_FIELD_ID = 'new-project-repository-path';
 
 export interface NewProjectDialogProps {
   open: boolean;
@@ -169,6 +171,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
         description: `${/[.!?]$/.test(said) ? said : `${said}.`} Correct them here and save again.`,
         tone: 'error',
         slot: REFUSED_SLOT,
+        clearOf: () => document.getElementById(PATH_FIELD_ID),
         link: {
           label: 'Or set them later in Settings, on Shape & release',
           href: `/projects/${created.slug}/settings?tab=shape#repository`,
@@ -211,6 +214,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
           <Field
             label="Repository path"
+            htmlFor={PATH_FIELD_ID}
             hint={REPOSITORY_PATH_HINT}
           >
             <Input
