@@ -11,6 +11,7 @@ import { agrees, counted } from '../lib/plural.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
+import { RELEASE_RECORD_SOURCE } from './version-rule.js';
 
 /**
  * Inside the close's own transaction: refuses unless `runId` still claims the issue, holding the
@@ -32,8 +33,7 @@ export async function refuseLostReleaseClaim(
   }
 }
 
-/** What `metadata.source` reads on the run a recorded release writes. */
-export const RELEASE_RECORD_SOURCE = 'release-record';
+export { RELEASE_RECORD_SOURCE };
 
 /** One refused issue. `key` is its `ISS-nn`, or the id as sent where no issue on the project has it. */
 type ClaimConflict =

@@ -1,0 +1,1 @@
+**Every recorded release shows on the Releases list.** A release recorded by hand now takes the next version, and landings recorded before versioning are listed with no version under their own heading.

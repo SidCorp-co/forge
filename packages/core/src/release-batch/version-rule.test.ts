@@ -193,6 +193,25 @@ describe('a release that shipped with no job', () => {
     });
   });
 
+  // a recorded release that closed some of its issues and ended `failed` closed them under its
+  // number: handing that number to the next roster would make one version name two deliveries
+  it('claims its version where a recorded release ended failed: it closed issues under it', () => {
+    const partly = run({
+      version: '0.1.0',
+      status: 'failed',
+      hasJob: false,
+      reachedBox: false,
+      roster: ['x', 'y'],
+      metadata: { source: 'release-record', verification: 'deployment' },
+    });
+    expect(decideVersion([partly], ['a'], null)).toMatchObject({ kind: 'first', version: '0.2.0' });
+    expect(decideVersion([partly], ['y', 'x'], null)).toMatchObject({
+      kind: 'reused',
+      version: '0.1.0',
+      attempt: 2,
+    });
+  });
+
   it('still claims nothing where a run ended unshipped with no job: it was refused at the door', () => {
     const refused = run({ version: '0.1.0', status: 'cancelled', hasJob: false, roster: ['x'] });
     expect(decideVersion([refused], ['a'], null)).toMatchObject({

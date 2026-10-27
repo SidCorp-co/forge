@@ -19,7 +19,8 @@ import { releaseAttempts } from '../db/schema-release-ledger.js';
 import { accountActor, releaseRunClaims, transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { closeRunIfOneShot, openOneShotRun } from '../pipeline/index.js';
+import { emitEvent } from '../outbox/index.js';
+import { closeRunIfOneShot, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
 import {
   type CloseVerification,
@@ -30,11 +31,13 @@ import {
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { verifyByDeploymentRecord } from './deployment-verify.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
+import { carryNaming } from './naming.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { askProviderLiveGate, type GateOffRecord } from './provider-live.js';
 import { verifyByProviderRecord } from './provider-verify.js';
 import { notVerifiedRefusal, providerNotVerifiedRefusal, reasonOf } from './refuse.js';
 import { verifyServingNow } from './verify.js';
+import { cutReleaseVersion } from './version-store.js';
 
 /** The one ledger key a recorded release writes under. */
 const RECORD_ATTEMPT_KEY = 'release-record';
@@ -68,8 +71,8 @@ export interface RecordPerformedReleaseResult {
   verification: RecordedVerification;
   /** The working branch a landing record names; absent on a release production serves. */
   branch?: string;
-  /** The version a landing record took, as every release does; absent on a release production serves. */
-  version?: string;
+  /** The version the record took, through the one rule every release is cut by (`cutReleaseVersion`). */
+  version: string;
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
   issues: RecordedIssue[];
@@ -205,21 +208,37 @@ export async function recordPerformedRelease(
   };
   const identity = outcome.identity;
 
-  const run = await openOneShotRun({
-    projectId,
-    kind: 'system',
-    metadata: {
-      source: RELEASE_RECORD_SOURCE,
-      gateStatus,
-      issueIds,
-      commit,
-      identity,
-      verification: verification.kind,
-      providerRef,
-      recordedBy: userId,
-      issues: roster,
-      ...(providerLiveGateOff.length ? { providerLiveGateOff } : {}),
-    },
+  // A release performed by hand happened now, so it takes the next version and its name in the
+  // transaction that opens it, as a recorded landing does; before, it opened with none, and no page
+  // could list it nor any later cut count it (coordinator ruling, 2026-10-27).
+  const { run, version } = await db.transaction(async (tx) => {
+    const row = await insertOneShotRun(tx, {
+      projectId,
+      kind: 'system',
+      metadata: {
+        source: RELEASE_RECORD_SOURCE,
+        gateStatus,
+        issueIds,
+        commit,
+        identity,
+        verification: verification.kind,
+        providerRef,
+        recordedBy: userId,
+        issues: roster,
+        ...(providerLiveGateOff.length ? { providerLiveGateOff } : {}),
+      },
+    });
+    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
+    await carryNaming(tx, {
+      projectId,
+      version: cut,
+      runId: row.id,
+      given: null,
+      by: userId,
+      roster: issueIds,
+    });
+    await emitEvent(tx, 'release.cut', { projectId, runId: row.id, version: cut });
+    return { run: row, version: cut };
   });
 
   await claimRoster(projectId, issueIds, run.id);
@@ -248,9 +267,13 @@ export async function recordPerformedRelease(
       .map((f) => `${f.id} (${f.reason})`)
       .join('; ')}`,
   });
+  // production was read serving the commit before anything was claimed: a record that closed what it
+  // claimed shipped, as a finished release does
+  if (failed.length === 0) await stampReleaseShipped(run.id);
 
   return {
     runId: run.id,
+    version,
     commit,
     identity,
     readings: outcome.readings,
