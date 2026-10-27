@@ -540,6 +540,7 @@
     "issues.verdictAct.clipChosen": "Clip {name} · {size}, cited when you record.",
     "issues.verdictAct.clipTooLargeRefused": "{name} is over the {cap} cap for a clip. Record the criterion's steps tighter.",
     "issues.verdictAct.commit": "Judged at commit",
+    "issues.verdictAct.commitJudgedOn": "The commit the testing environment runs ({build}), judged there: {basis}.",
     "issues.verdictAct.commitLanded": "The commit it landed at, with no environment ({build}): {basis}.",
     "issues.verdictAct.commitLive": "The commit the live deployment runs ({build}): {basis}.",
     "issues.verdictAct.commitLoading": "Reading which build carries this issue's work…",

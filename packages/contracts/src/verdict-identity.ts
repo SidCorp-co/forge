@@ -196,7 +196,34 @@ export function landedIdentityWhy(
 	return `judged against ${kind} \`${value}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts${there}`;
 }
 
-export const JUDGED_BUILD_SOURCES = ["live", "shipped", "merged", "landed", "change-request"] as const;
+/**
+ * Under release mode `none`, the whole commit (lower case) a verdict of identity `kind` naming
+ * `value` was judged at, or why it names none (`landedIdentityWhy`, then a whole-commit check): the
+ * one reading of a verdict's commit on a landing, which the record door, the steward, the criteria
+ * sweep and a requirement's coverage all weigh against the landed build.
+ */
+export function landedCommitOf(
+	kind: string,
+	value: string,
+	judgedOn: string | null,
+): { sha: string } | { why: string } {
+	const why = landedIdentityWhy(kind, value, judgedOn);
+	if (why !== null) return { why };
+	const sha = value.trim().toLowerCase();
+	return /^[0-9a-f]{40}$/.test(sha)
+		? { sha }
+		: { why: `judged at \`${value}\`, which is not a whole commit` };
+}
+
+export const JUDGED_BUILD_SOURCES = [
+	"live",
+	"shipped",
+	"merged",
+	"landed",
+	"change-request",
+	// what the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18) serves
+	"judged-on",
+] as const;
 export type JudgedBuildSource = (typeof JUDGED_BUILD_SOURCES)[number];
 
 export interface JudgedBuild {

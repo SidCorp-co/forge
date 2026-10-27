@@ -27,6 +27,7 @@ import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import {
   type JudgedBuild,
+  landedCommitOf,
   landedIdentityWhy,
   verdictEarns,
 } from '@forge/contracts/verdict-identity';
@@ -293,8 +294,9 @@ export type LandedCriterion =
   | { criterion: number; counts: false; why: string };
 
 /**
- * The whole commit a verdict was judged at, or why it names none; on a project naming its testing
- * environment (`judgedOn`), a runtime verdict at a whole commit names it (REQ-36 BC-18).
+ * The whole commit a verdict was judged at, or why it names none, by the one reading coverage shares
+ * (contracts `landedCommitOf`); on a project naming its testing environment (`judgedOn`), a runtime
+ * verdict at a whole commit names it (REQ-36 BC-18).
  */
 function judgedCommit(
   verdict: CriterionVerdict,
@@ -302,16 +304,8 @@ function judgedCommit(
 ): { sha: string } | { why: string } {
   const at = verdict.at;
   if (!at) return { why: 'it names nothing it was judged against' };
-  const misshapen = landedIdentityWhy(
-    at.kind === 'source' ? 'commit' : at.kind,
-    at.value,
-    judgedOn,
-  );
-  if (misshapen) return { why: `it was ${misshapen}` };
-  const sha = at.value.trim().toLowerCase();
-  return WHOLE.test(sha)
-    ? { sha }
-    : { why: `it was judged at \`${at.value}\`, which is not a whole commit` };
+  const named = landedCommitOf(at.kind === 'source' ? 'commit' : at.kind, at.value, judgedOn);
+  return 'why' in named ? { why: `it was ${named.why}` } : named;
 }
 
 /** Why a verdict at `judged` does not count on `build`, naming both commits. */

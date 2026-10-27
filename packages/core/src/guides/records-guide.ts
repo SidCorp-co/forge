@@ -168,8 +168,9 @@ Attach the file first and cite it by its name: an attachment written only to a r
 not been attached.
 
 A block judging a criterion the design classes observable — \`pass\`, \`fail\` or \`short\` —
-cites a screen clip of the run among its \`evidence:\` lines (a WebM or MP4, with its opening still
-beside it), or carries a \`without-clip:\` line saying why none could show it. The \`why:\` line
+cites a screen clip of the run among its \`evidence:\` lines (a WebM or MP4 attached to this issue,
+with its opening still beside it) by its name, its id or its download URL
+(\`/api/attachments/:id/download\`, relative or whole), or carries a \`without-clip:\` line saying why none could show it. The \`why:\` line
 says what was found and never stands in for it; a block with neither is refused
 \`VERDICT_CLIP_REQUIRED\` (REQ-40 BC-4).
 

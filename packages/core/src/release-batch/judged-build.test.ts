@@ -152,6 +152,90 @@ describe('the build a verdict defaults to', () => {
 
 // coverage-truth: a requirement's coverage counts a verdict only where the live build holds the
 // commit it was judged at; what production serves and each commit's ancestry are read here
+// catalog-fe (feaf7d40), 2026-10-27: delivery.judgedOn = "dev". ISS-11..19 were closed by the
+// f44ff116 recorded landing and passed on dev at a36f27ef, yet judged-build answered f44ff116,
+// source "landed", basis "this project declares no production environment" (REQ-36 BC-18).
+describe('on a project naming its testing environment (delivery.judgedOn)', () => {
+  const F44 = 'f44ff116'.padEnd(40, '1');
+  const A36 = 'a36f27ef'.padEnd(40, '2');
+  const LANDED = {
+    sha: F44,
+    source: 'landed' as const,
+    version: null,
+    basis:
+      'ISS-11 was closed by a landing record at `f44ff116`; this project declares no production environment, so its landing is the build a verdict counts on, judged at that commit',
+  };
+  function onDev(
+    served: string | { why: string },
+    ancestry: AncestrySource = { kind: 'none', why: 'no source host and no box' },
+  ): JudgedBuildDeps {
+    return {
+      ...deps({ why: 'no production environment is declared' }, [], ancestry),
+      landed: async () => LANDED,
+      testing: async () => ({
+        name: 'dev',
+        served:
+          typeof served === 'string' ? { ok: true, value: served } : { ok: false, why: served.why },
+      }),
+    };
+  }
+  const ISS_11 = { ...ISSUE, id: 'iss-11', mergedCommitSha: F44 };
+
+  it('is the build dev serves where it holds the landing (ISS-11 at a36f27ef)', async () => {
+    const r = reader({ [`${F44}@${A36}`]: true });
+    const built = await judgedBuildOf(ISS_11, onDev(A36, r.source));
+    expect(built).toMatchObject({ sha: A36, source: 'judged-on', version: null });
+    expect(built.basis).toContain('`dev` serves');
+    expect(built.basis).toContain('delivery.judgedOn');
+    expect(built.basis).not.toContain('declares no production environment');
+  });
+
+  it('stays the landing where dev serves a build that does not hold it, and says so', async () => {
+    // another served commit: an ancestry answer is kept for the process
+    const aside = 'b47c0de0'.padEnd(40, '3');
+    const r = reader({ [`${F44}@${aside}`]: false });
+    const built = await judgedBuildOf(ISS_11, onDev(aside, r.source));
+    expect(built).toMatchObject({ sha: F44, source: 'landed' });
+    expect(built.basis).toContain(`\`dev\` serves \`${aside}\`, which does not hold it`);
+  });
+
+  it('stays the landing where what dev serves cannot be read, naming why', async () => {
+    const built = await judgedBuildOf(ISS_11, onDev({ why: 'the deploy record names no commit' }));
+    expect(built).toMatchObject({ sha: F44, source: 'landed' });
+    expect(built.basis).toContain('the deploy record names no commit');
+  });
+
+  // with production too, production's live build is answered only where dev cannot be: a commit
+  // verdict there proves no release of a project judged on dev (`judgedOnReleaseBuild`)
+  const withProduction = (served: string | { why: string }, ancestry: AncestrySource) => ({
+    ...deps(DEV_192.commit, [DEV_192], ancestry),
+    testing: async () => ({
+      name: 'dev',
+      served:
+        typeof served === 'string'
+          ? { ok: true as const, value: served }
+          : { ok: false as const, why: served.why },
+    }),
+  });
+
+  it("is dev's build, not production's, where both hold the release that shipped the issue", async () => {
+    const onDevNow = 'c0ffee00'.padEnd(40, '4');
+    const r = reader({ [`${DEV_192.commit}@${onDevNow}`]: true });
+    const built = await judgedBuildOf(ISSUE, withProduction(onDevNow, r.source));
+    expect(built).toMatchObject({ sha: onDevNow, source: 'judged-on', version: null });
+    expect(built.basis).toContain(`holds this issue's work \`${DEV_192.commit}\``);
+  });
+
+  it("is production's live build where dev cannot be read, naming why", async () => {
+    const built = await judgedBuildOf(
+      ISSUE,
+      withProduction({ why: 'dev is not deployed' }, reader({}).source),
+    );
+    expect(built).toMatchObject({ sha: DEV_192.commit, source: 'live' });
+    expect(built.basis).toContain('dev is not deployed');
+  });
+});
+
 describe('what the live build holds of verdict commits', () => {
   it('answers each commit: the served one itself, an ancestor, one it lacks; an unread one is left out', async () => {
     const live = sha('9');

@@ -90,6 +90,8 @@ interface VerdictDraft {
   verdict: PersonVerdict;
   /** Blank only on `skipped`, which may name no build. */
   sha: string;
+  /** Judged on the running build of the project's testing environment (`delivery.judgedOn`) at `sha`, sent as a runtime identity. */
+  onTesting?: boolean;
   note: string;
   evidence: VerdictEvidence;
 }
@@ -154,7 +156,8 @@ export function useRecordVerdict(issueId: string) {
           criterion: d.criterion,
           verdict: d.verdict,
           reason: d.note.trim() || null,
-          identity: sha ? { kind: "commit", sha } : null,
+          // a release judged on its testing environment is proven only by a verdict on the build it runs (REQ-36 BC-18)
+          identity: sha ? (d.onTesting ? { kind: "runtime", ref: sha } : { kind: "commit", sha }) : null,
           evidence,
         }),
       });

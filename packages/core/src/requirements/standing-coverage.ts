@@ -14,7 +14,7 @@ import type {
   CoverageRequirementVerdict,
   RequirementCoverage,
 } from '@forge/contracts/requirements';
-import { verdictExercised } from '@forge/contracts/verdict-identity';
+import { landedCommitOf, verdictExercised } from '@forge/contracts/verdict-identity';
 import { judgesVerdict, unverifiedWhy } from '@forge/contracts/verified-rule';
 import { liveAt } from './rules.js';
 import {
@@ -247,13 +247,15 @@ function standsAtLanding(
 
 /**
  * Whether a verdict is a runtime judgement no build Forge holds can be placed under: on a project
- * with no production environment, where nothing runs that Forge observes and only a verdict at the
- * landing counts, or where no release Forge verified served that runtime. A fail is everyone's
- * evidence and is never one of these.
+ * with no production environment, one that names no commit by the reading the record door weighs a
+ * landing with (contracts `landedCommitOf`: a runtime names its whole commit only where the project
+ * names the testing environment it is judged on, `delivery.judgedOn`), or where no release Forge
+ * verified served that runtime. A fail is everyone's evidence and is never one of these.
  */
 function unplaced(v: StandingVerdict, live: LiveBuildHolds | null): boolean {
   if (v.verdict === null || v.verdict === 'fail' || v.identity?.kind !== 'runtime') return false;
-  if (live?.landed) return true;
+  if (live?.landed)
+    return 'why' in landedCommitOf('runtime', v.identity.ref, live.judgedOn ?? null);
   return live?.runtimes.get(v.identity.ref.toLowerCase()) === null;
 }
 

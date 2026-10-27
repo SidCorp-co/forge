@@ -242,6 +242,27 @@ describe('the media a highlight may show', () => {
     expect(mediaOf(readClaims([alone], BUILD, null, null), stills, BUILD)[0]?.poster).toBeNull();
   });
 
+  // the verdict door takes a clip cited by its id or download URL (adminhub-fe ISS-53); the page
+  // shows the same file, or a citation the door took would show nothing
+  it('shows a clip cited by its id or its download URL, as one cited by name', () => {
+    const id = '0f6c2a1e-7b3d-4c5e-9a8f-1d2e3f4a5b6c';
+    const byId: IssueFile[] = [
+      { id, issueId: 'issue-1', name: 'flow.webm', mime: 'video/webm', bytes: 9000 },
+    ];
+    for (const cited of [
+      id,
+      `/api/attachments/${id}/download`,
+      `https://forge.example/api/attachments/${id.toUpperCase()}/download`,
+    ]) {
+      const judged = criterion(1, 'BC-1', [
+        verdict('pass', BUILD, '2026-10-09T10:00:00.000Z', { evidence: [cited] }),
+      ]);
+      expect(mediaOf(readClaims([judged], BUILD, null, null), byId, BUILD)).toMatchObject([
+        { kind: 'clip', attachmentId: id },
+      ]);
+    }
+  });
+
   it('shows nothing a pass on another build cites', () => {
     const elsewhere = criterion(1, 'BC-1', [
       verdict('pass', MERGED, '2026-10-09T10:00:00.000Z', { evidence: ['clip.webm'] }),

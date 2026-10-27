@@ -309,6 +309,62 @@ describe('c1: the building run records its pass, which never counts, named VERDI
   });
 });
 
+// adminhub-api, 2026-10-27: judge run bc3a1c72 (box run 4a73a09c) was declared at 07:04 over
+// ISS-23/24, merged at 06:45 and 06:50 but still `in_progress` (`developed` is refused
+// ISSUE_STATUS_LEGACY), so the run's opening status read it as the builder and 13 passes did not
+// count, the detail saying only "recorded by the run that built this issue"
+describe('a run declared after the work landed is not its builder, whatever status word it opened at', () => {
+  const mergedEarlier = (issueId: string) =>
+    db.execute(sql`
+      UPDATE issues SET merged_at = now() - interval '10 minutes', merged_commit_sha = ${NEW}
+       WHERE id = ${issueId}`);
+
+  it('counts the pass of a judge declared over an in_progress issue whose merge was recorded before it', async () => {
+    const req = await agreedRequirement();
+    const issue = await issueTracing(req);
+    await declaredRun(issue.key, 'open', true);
+    await mergedEarlier(issue.id);
+    const judge = await declaredRun(issue.key, 'in_progress', true);
+
+    const res = await ok(verdict(issue.id, 1, 'pass'));
+
+    expect(res.notCounted).toBeNull();
+    expect(await recordedSession(String(res.verdictId))).toBe(judge.session);
+    expect(await bc(req, 'BC-1')).toMatchObject({ verdict: 'passing' });
+  });
+
+  it('names the status a run was declared over before the work landed, and the way out', async () => {
+    const req = await agreedRequirement();
+    const issue = await issueTracing(req);
+    await declaredRun(issue.key, 'in_progress', true);
+
+    const res = await ok(verdict(issue.id, 1, 'pass'));
+
+    expect(res.notCounted).toMatchObject({ code: 'VERDICT_BY_BUILDER' });
+    const detail = String((res.notCounted as Doc).detail);
+    expect(detail).toContain(
+      'declared while this issue stood at `in_progress` with no merge recorded',
+    );
+    expect(detail).toContain('`awaiting_release`');
+    expect(detail).toContain('declare a new judge run');
+  });
+
+  it("reads a run declared after a design approval's stamp alone as the builder: that stamp lands no code", async () => {
+    const req = await agreedRequirement();
+    const issue = await issueTracing(req);
+    await db.execute(sql`
+      UPDATE issues SET merged_at = now() - interval '10 minutes',
+             merged_artifacts = ${JSON.stringify([{ surface: 'design', ref: 'checkout@rev2', change: 'changed' }])}::jsonb
+       WHERE id = ${issue.id}`);
+    await declaredRun(issue.key, 'in_progress', true);
+
+    const res = await ok(verdict(issue.id, 1, 'pass'));
+
+    expect(res.notCounted).toMatchObject({ code: 'VERDICT_BY_BUILDER' });
+    expect(await bc(req, 'BC-1')).not.toMatchObject({ verdict: 'passing' });
+  });
+});
+
 describe('c2: the independent judge on the release is the verdict that counts', () => {
   it("counts the pass of a judge run declared over the awaiting_release issue on the builder's box, the builder still live", async () => {
     const req = await agreedRequirement();

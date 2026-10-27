@@ -1,0 +1,1 @@
+**A requirement counts the testing-environment passes its release was recorded on.** On a project judged on dev, coverage weighs a runtime pass at the landing as the record door does, so it no longer reads 0 passing.

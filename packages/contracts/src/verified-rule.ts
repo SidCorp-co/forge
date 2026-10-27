@@ -94,9 +94,17 @@ export interface NotCounted {
 export function notCountedOf(
 	v: JudgedVerdict,
 	judge: PolicyQaMode | null,
+	/** The status the recording run was declared over the issue at, where that, before any merge, is why it reads as the builder (core `built-by.ts:declaredBeforeLandingSql`). */
+	declaredAt: string | null = null,
 ): NotCounted | null {
 	if (!barred(v, judge)) return null;
 	if (v.verdict !== "pass" && v.verdict !== "short") return null;
+	if (declaredAt !== null) {
+		return {
+			code: VERDICT_BY_BUILDER,
+			detail: `recorded by a run declared while this issue stood at \`${declaredAt}\` with no merge recorded, and a run declared before the work landed is read as the run that built it: this verdict is kept as that run's evidence and never counts, whatever the project's \`qa\`. Once the work has landed, record its merge (\`POST /api/issues/:id/merge\`), move the issue to its landed status (\`awaiting_release\`) and declare a new judge run over it; that run's verdicts count`,
+		};
+	}
 	return {
 		code: VERDICT_BY_BUILDER,
 		detail:

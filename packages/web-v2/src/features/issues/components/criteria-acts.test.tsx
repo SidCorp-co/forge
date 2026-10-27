@@ -88,6 +88,23 @@ describe("the build a verdict is judged at, by default", () => {
   });
 });
 
+describe("recording a verdict on a project judged on its testing environment", () => {
+  // catalog-fe ISS-11, 2026-10-27: judgedOn "dev", and its releases count only a verdict judged on
+  // the build dev runs (REQ-36 BC-18), so the default sends that build as a runtime identity
+  it("sends the build the testing environment runs as a runtime identity, and a typed commit as a commit", async () => {
+    const calls = core(
+      (c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined),
+      { sha: LIVE, source: "judged-on", version: null, basis: "`dev` serves it, which holds this issue's work" },
+    );
+    renderWithQuery(<IssueCriteria issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { user, form } = await openJudge(1);
+    expect(await within(form).findByDisplayValue(LIVE)).toBeInTheDocument();
+    expect(form).toHaveTextContent("The commit the testing environment runs");
+    await user.click(screen.getByRole("button", { name: "Record verdict" }));
+    await waitFor(() => expect(verdictPosted(calls)).toMatchObject({ identity: { kind: "runtime", ref: LIVE } }));
+  });
+});
+
 describe("recording a verdict from a criterion row", () => {
   it("sends pass at the deployed commit with the note as its reason, on a closed issue", async () => {
     const calls = core((c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined));
