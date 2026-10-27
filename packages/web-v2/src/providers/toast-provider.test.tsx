@@ -484,8 +484,8 @@ describe("a toast naming the element it keeps clear of", () => {
       const top = Number.parseFloat(lane.style.top);
       expect(top + Number.parseFloat(lane.style.maxHeight)).toBeLessThanOrEqual(135);
 
-      // r9 review F1: the capped lane now measures 74 px, its toasts still 84 px tall inside it. A
-      // later scroll must not read the cap back as the lane's height and lift it.
+      // r9 review F1: the capped lane now measures 74 px, padding gone, its toasts 60 px of the 84 px it
+      // takes uncapped. A later scroll must read back neither the cap nor the lost padding, and lift it.
       spy.mockImplementation(function (this: HTMLElement) {
         const by: Record<string, Partial<DOMRect>> = {
           "toast-lane": { top: 61, bottom: 135, height: 74, width: 390, left: 0, right: 390 },
@@ -495,7 +495,7 @@ describe("a toast naming the element it keeps clear of", () => {
         const key = this.dataset.testid ?? this.tagName.toLowerCase();
         return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, ...by[key] } as DOMRect;
       });
-      const tall = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(84);
+      const tall = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(60);
       try {
         act(() => {
           window.dispatchEvent(new Event("scroll"));

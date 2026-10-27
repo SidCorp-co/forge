@@ -130,6 +130,8 @@ const TAB_BAR_PX = 56;
 const WIDE_BOTTOM_PX = 16;
 /** The lane's own height cap, as its class states it: a share of the viewport's height. */
 const LANE_CAP = 0.35;
+/** The lane's vertical padding, as its class states it (`py-3`), which a capped place takes away. */
+const LANE_PAD_PX = 12;
 
 /** The device's safe-area insets in px, read off a probe: the space a fixed edge keeps clear of. */
 function safeInsets(): { top: number; bottom: number } {
@@ -177,9 +179,13 @@ function useKeepClear(
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const inset = safeInsets();
-      // The height the lane takes where nothing caps it but its own class: a cap this placement set
-      // is never read back as the lane's height, or the next measure would undo it.
-      const height = Math.max(box.height, Math.min(lane.current?.scrollHeight ?? 0, vh * LANE_CAP));
+      // The height the lane takes where nothing caps it but its own class: neither a cap this placement
+      // set nor the padding it took away is read back as the lane's, or the next measure would undo it.
+      const laneStyle = lane.current ? getComputedStyle(lane.current) : null;
+      const padding =
+        (Number.parseFloat(laneStyle?.paddingTop ?? "") || 0) + (Number.parseFloat(laneStyle?.paddingBottom ?? "") || 0);
+      const content = (lane.current?.scrollHeight ?? 0) - padding;
+      const height = Math.max(box.height, Math.min(content + 2 * LANE_PAD_PX, vh * LANE_CAP));
       const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : inset.top);
       const left = wide ? vw - box.width : 0;
       const atTop = { top, bottom: top + height, left, right: vw };
