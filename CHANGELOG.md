@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.340] - 2026-10-27
+
+Promoted releases count verdicts earned at the landing, not production
+
+### Fixed
+
+- **A release crossing a promotion is no longer held for criteria production cannot show yet.** Where work lands on one branch and production deploys another, criteria count at the landing commit or the judged-on environment.
+
 ## [0.4.0-dev.339] - 2026-10-27
 
 Releases recorded before versioning or by hand now show on the Releases page
