@@ -16,9 +16,9 @@ use super::Ctx;
 
 /// `forge-runner api <PATH>` — call any Forge REST endpoint with a personal
 /// access token, fenced to the projects that token may speak for. Shaped after
-/// `gh api`. In a master pane that token is the checkout's own credential, the
-/// one its `forge` CLI borrows (`mcp::config::borrowed_credential`), sent only to the core that
-/// minted it; elsewhere it is
+/// `gh api`. In a pane a box started for a project, master or job, that token is the
+/// checkout's own credential, the one its `forge` CLI borrows
+/// (`mcp::config::borrowed_credential`), sent only to the core that minted it; elsewhere it is
 /// `$FORGE_PAT` or the stored PAT. The device token is a different credential.
 #[derive(ClapArgs)]
 #[command(after_help = EXIT_TAXONOMY)]
@@ -67,6 +67,13 @@ pub struct Args {
 /// person, never as the device. The outer error is a fault reading this box's own files; the inner
 /// one a refusal to say as a usage failure.
 pub(crate) fn rest_client(ctx: &Ctx) -> anyhow::Result<Result<CoreClient, String>> {
+    Ok(rest_credential(ctx)?.map(|(client, _)| client))
+}
+
+/// [`rest_client`], with the line naming the credential the call goes out on — never the token —
+/// for a refusal to say: which credential was used is what a `404 project not found` from a fenced
+/// token leaves out.
+fn rest_credential(ctx: &Ctx) -> anyhow::Result<Result<(CoreClient, String), String>> {
     let cfg = Config::load()?;
     let borrowed = match runner_workspace::mcp::config::borrowed_credential() {
         Ok(b) => b,
@@ -75,15 +82,20 @@ pub(crate) fn rest_client(ctx: &Ctx) -> anyhow::Result<Result<CoreClient, String
     let env_pat = std::env::var("FORGE_PAT")
         .ok()
         .is_some_and(|v| !v.trim().is_empty());
-    let (core_url, token) = match credential_for(ctx.resolve_core_url(&cfg), borrowed, env_pat) {
+    let (core_url, token, sent_as) = match credential_for(ctx.resolve_core_url(&cfg), borrowed, env_pat) {
         Credential::Borrowed { url, token, note } => {
             if let Some(note) = note {
                 eprintln!("{note}");
             }
-            (url, token)
+            let from = std::env::var(runner_workspace::mcp::config::CLI_BORROW_VAR).unwrap_or_default();
+            let sent_as = format!(
+                "this pane's checkout credential, read from {from} (${})",
+                runner_workspace::mcp::config::CLI_BORROW_VAR
+            );
+            (url, token, sent_as)
         }
         Credential::Own(url) => match cred_store::load_pat()? {
-            Some(token) => (url, token),
+            Some(token) => (url, token, own_pat_source(env_pat)),
             None => return Ok(Err(
                 "no personal access token — the REST API is reached with a PAT, not the device token. \
                  Mint one in the web UI under Settings → Access tokens, then either \
@@ -93,11 +105,39 @@ pub(crate) fn rest_client(ctx: &Ctx) -> anyhow::Result<Result<CoreClient, String
         },
         Credential::Refused(why) => return Ok(Err(why)),
     };
-    Ok(Ok(CoreClient::new(core_url, token)))
+    Ok(Ok((CoreClient::new(core_url, token), sent_as)))
+}
+
+/// Where `cred_store::load_pat` took this person's own PAT from, in its own order.
+fn own_pat_source(env_pat: bool) -> String {
+    if env_pat {
+        return "the personal access token in $FORGE_PAT".to_string();
+    }
+    match cred_store::active_backend() {
+        cred_store::Backend::Keychain => {
+            "this box's stored personal access token, from the OS keychain".to_string()
+        }
+        cred_store::Backend::File => format!(
+            "this box's stored personal access token, the `pat` key of {}",
+            cred_store::credential_file_path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "its credential file".to_string())
+        ),
+    }
+}
+
+/// The line a refusal is followed by: a `403` or `404` from core is answered to one credential,
+/// and on a box serving several projects which one went out is not otherwise visible.
+fn refused_on(exit_code: i32, sent_as: &str) -> Option<String> {
+    matches!(exit_code, 4 | 5).then(|| {
+        format!(
+            "note: this call went out on {sent_as}; a credential reaches only the projects it was minted for, so a refusal here may be the credential's, not the route's"
+        )
+    })
 }
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
-    let client = match rest_client(&ctx)? {
+    let (client, sent_as) = match rest_credential(&ctx)? {
         Ok(c) => c,
         Err(why) => return usage(&why),
     };
@@ -155,6 +195,9 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     if !resp.stderr.is_empty() {
         eprintln!("{}", resp.stderr);
     }
+    if let Some(note) = refused_on(resp.outcome.exit_code, &sent_as) {
+        eprintln!("{note}");
+    }
     std::process::exit(resp.outcome.exit_code);
 }
 
@@ -196,7 +239,7 @@ fn credential_for(
     };
     if let Some(url) = resolved.as_deref().filter(|u| !same_core(u, &b.url)) {
         return Credential::Refused(format!(
-            "API_BORROW_OTHER_CORE: this pane's checkout credential (${}) was minted by {}, and this call is addressed to {url}, so it is not sent there — drop --core-url to call {}, or run outside the master pane to call {url} as yourself",
+            "API_BORROW_OTHER_CORE: this pane's checkout credential (${}) was minted by {}, and this call is addressed to {url}, so it is not sent there — drop --core-url to call {}, or run outside the project's pane to call {url} as yourself",
             runner_workspace::mcp::config::CLI_BORROW_VAR,
             b.url,
             b.url
@@ -204,7 +247,7 @@ fn credential_for(
     }
     let note = env_pat.then(|| {
         format!(
-            "note: FORGE_PAT is set, but this is a master pane, so the call goes out as the checkout's credential (${}) and not as FORGE_PAT's account",
+            "note: FORGE_PAT is set, but this pane was started for a project, so the call goes out as the checkout's credential (${}) and not as FORGE_PAT's account",
             runner_workspace::mcp::config::CLI_BORROW_VAR
         )
     });
@@ -300,6 +343,18 @@ mod tests {
             panic!("refused");
         };
         assert!(note.is_some_and(|n| n.contains("FORGE_PAT")));
+    }
+
+    #[test]
+    fn a_refusal_names_the_credential_it_went_out_on_and_nothing_else_does() {
+        let sent_as = "this pane's checkout credential, read from /x/forge-cli.json";
+        for refused in [4, 5] {
+            let note = refused_on(refused, sent_as).expect("a 403/404 named no credential");
+            assert!(note.contains(sent_as), "{note}");
+        }
+        for answered in [0, 2, 3, 6, 7, 8] {
+            assert_eq!(refused_on(answered, sent_as), None, "exit {answered}");
+        }
     }
 
     #[test]

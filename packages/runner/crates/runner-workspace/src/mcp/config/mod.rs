@@ -413,7 +413,7 @@ pub fn write_persistent(
 /// config file whose `url` and `token` it takes in place of its own home's.
 pub const CLI_BORROW_VAR: &str = "FORGE_BORROW_FROM";
 
-/// What [`write_cli_borrow`] left for a project's master pane.
+/// What [`write_cli_borrow`] left for a project's panes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliBorrow {
     /// The checkout's credential, at this path, for the pane's `forge` CLI.
@@ -423,14 +423,22 @@ pub enum CliBorrow {
     Absent,
 }
 
-/// The file a project's master pane hands its `forge` CLI under
+/// The file every pane started for a project, master or job, hands its `forge` CLI under
 /// [`CLI_BORROW_VAR`], beside the pane's transcript and last exit.
 pub fn cli_borrow_path(slug: &str) -> Result<PathBuf> {
-    Ok(runner_platform::config::master_dir(slug)?.join("forge-cli.json"))
+    Ok(cli_borrow_path_in(
+        &runner_platform::config::base_dir()?,
+        slug,
+    ))
+}
+
+/// [`cli_borrow_path`] under the daemon config directory `base`.
+pub fn cli_borrow_path_in(base: &Path, slug: &str) -> PathBuf {
+    runner_platform::config::master_dir_in(base, slug).join("forge-cli.json")
 }
 
 // one credential per checkout: the token core minted for it is what `.mcp.json` carries, so the pane's CLI borrows that same token and never the box's operator PAT, which reaches the projects one person pasted it for
-/// Leave the checkout's credential where its master pane's `forge` CLI borrows
+/// Leave the checkout's credential where its panes' `forge` CLI borrows
 /// it: `{url, token}` owner-only, or no file at all where core minted none.
 pub fn write_cli_borrow(slug: &str, core_url: &str, credential: Option<&str>) -> Result<CliBorrow> {
     write_cli_borrow_at(&cli_borrow_path(slug)?, core_url, credential)
@@ -456,7 +464,7 @@ fn write_cli_borrow_at(path: &Path, core_url: &str, credential: Option<&str>) ->
     Ok(CliBorrow::Written(path.to_path_buf()))
 }
 
-/// A checkout credential a master pane borrows, and the one core it was minted by.
+/// A checkout credential a project's pane borrows, and the one core it was minted by.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Borrowed {
     /// The core URL the credential was minted by, with no trailing `/`: the only one it is sent to.
@@ -473,10 +481,10 @@ impl std::fmt::Debug for Borrowed {
     }
 }
 
-/// The checkout credential a master pane was started with under
+/// The checkout credential a project's pane was started with under
 /// [`CLI_BORROW_VAR`], with the core it belongs to, for any CLI in the pane that
 /// speaks to core as its project: `None` where the variable is unset (not a
-/// master pane). A variable naming a file that is missing or holds no `url` and
+/// pane a box started for a project, or one whose checkout holds no credential). A variable naming a file that is missing or holds no `url` and
 /// `token` is refused by path rather than passed over, since what a caller would
 /// pass over to is the box's operator PAT, which reaches only the projects one
 /// person pasted it for.

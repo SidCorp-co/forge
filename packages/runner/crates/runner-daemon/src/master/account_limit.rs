@@ -14,36 +14,6 @@ pub(crate) fn account_record(
     master_limit::newest_record(&tail, now_unix)
 }
 
-/// The pane's `forge` CLI borrows the account its checkout was provisioned with,
-/// so it reaches this project as the agent the pane's MCP server is — or, where
-/// the provision left none, nothing is set and it reads its home's own account.
-pub(crate) fn cli_borrow_env(slug: &str) -> Option<(String, String)> {
-    let path = runner_workspace::mcp::config::cli_borrow_path(slug).ok()?;
-    if !path.is_file() {
-        tracing::warn!(
-            "[master] {slug}: no checkout credential at {} — this pane's forge CLI reads the box's own account, which may not reach {slug}; re-provision the checkout",
-            path.display()
-        );
-        return None;
-    }
-    Some(cli_borrow_pair(&path))
-}
-
-/// What [`cli_borrow_env`] would hand a pane started now, read without saying
-/// anything: a sweep asks this of every live pane, and the warning belongs to
-/// the placement that starts one without it.
-pub(crate) fn cli_borrow_read(slug: &str) -> Option<(String, String)> {
-    let path = runner_workspace::mcp::config::cli_borrow_path(slug).ok()?;
-    path.is_file().then(|| cli_borrow_pair(&path))
-}
-
-fn cli_borrow_pair(path: &std::path::Path) -> (String, String) {
-    (
-        runner_workspace::mcp::config::CLI_BORROW_VAR.to_string(),
-        path.to_string_lossy().into_owned(),
-    )
-}
-
 pub(crate) async fn report_account_limit(
     client: &CoreClient,
     said: &[master_limit::Decisive],

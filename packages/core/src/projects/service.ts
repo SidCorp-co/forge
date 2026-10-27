@@ -70,6 +70,19 @@ export async function findProjectOrgIds(
   return new Map(rows.map((r) => [r.id, r.orgId]));
 }
 
+/** The slug of each of these projects that exists, keyed by project id. */
+export async function findProjectSlugs(
+  projectIds: readonly string[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(projectIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: projects.id, slug: projects.slug })
+    .from(projects)
+    .where(inArray(projects.id, ids));
+  return new Map(rows.map((r) => [r.id, r.slug]));
+}
+
 /** A project's org as a scalar SQL subquery over a project id expression; null when it is gone. */
 export function projectOrgIdSql(projectId: SQLWrapper): SQL {
   return sql`(SELECT ${projects.orgId} FROM ${projects} WHERE ${projects.id} = ${projectId})`;

@@ -418,7 +418,13 @@ pub fn config_dir() -> Option<PathBuf> {
 /// The daemon writes the record here, so it resolves through
 /// [`crate::config::base_dir`].
 pub fn master_dir(slug: &str) -> crate::error::Result<PathBuf> {
-    Ok(base_dir()?.join("master").join(slug))
+    Ok(master_dir_in(&base_dir()?, slug))
+}
+
+/// [`master_dir`] under the config directory `base`, for a reader handed the daemon's directory
+/// rather than resolving it from this process's environment.
+pub fn master_dir_in(base: &std::path::Path, slug: &str) -> PathBuf {
+    base.join("master").join(slug)
 }
 
 #[cfg(test)]

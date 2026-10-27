@@ -374,6 +374,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     web-host/host.ts HonoRequest.url in publicOrigin
     web-host/host.ts HonoRequest.url in webHost
     middleware/route-refs.ts Request.url in resolveRouteRefs
+    middleware/pat-rest-surface.ts HonoRequest.url in beginPatRequest
     devices/install-routes.ts HonoRequest.url in module code
     guides/routes.ts HonoRequest.url in module code
     lib/reached-origin.ts HonoRequest.url in reachedOrigin
