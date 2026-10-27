@@ -330,87 +330,72 @@ function entryReads(rel, text) {
       return key.expression.text;
     return null;
   };
+  /** Mark `name` as holding process, or a global object; true where that is news. */
+  const hold = (set, name) => {
+    if (set.has(name)) return false;
+    set.add(name);
+    return true;
+  };
+  /**
+   * What a name receives from a value: argv from where it starts, process, or a global object.
+   * `value` is the expression assigned; true where any of the three is news.
+   */
+  const receive = (name, value) => {
+    const held = unwrap(value);
+    let news = bind(name, startOf(value));
+    if (ts.isIdentifier(held) && GLOBALS.has(held.text)) news = hold(GLOBALS, name) || news;
+    if (isProcess(held)) news = hold(processNames, name) || news;
+    return news;
+  };
+  /**
+   * The bindings an object destructuring of process or a global takes: each target with its stated
+   * key (null where computed, '...' for a rest). Works on a declared pattern and an assigned literal.
+   */
+  const targets = (pattern) =>
+    (ts.isObjectBindingPattern(pattern) ? pattern.elements : pattern.properties).flatMap((el) => {
+      if (ts.isBindingElement(el)) {
+        if (!ts.isIdentifier(el.name)) return [];
+        return [[el.dotDotDotToken ? '...' : keyOf(el.propertyName ?? el.name), el.name.text]];
+      }
+      if (ts.isShorthandPropertyAssignment(el)) return [[el.name.text, el.name.text]];
+      if (ts.isSpreadAssignment(el) && ts.isIdentifier(el.expression))
+        return [['...', el.expression.text]];
+      if (ts.isPropertyAssignment(el) && ts.isIdentifier(el.initializer))
+        return [[keyOf(el.name), el.initializer.text]];
+      return [];
+    });
+  /** Bind what a destructuring of `value` hands each of its targets. */
+  const destructure = (pattern, value) => {
+    const held = unwrap(value);
+    const fromProcess = isProcess(held);
+    const fromGlobal = ts.isIdentifier(held) && GLOBALS.has(held.text);
+    let news = false;
+    for (const [key, name] of targets(pattern)) {
+      if (fromProcess) {
+        if (key === 'argv' || key === null) news = bind(name, 0) || news;
+        if (key === 'default' || key === '...' || key === null)
+          news = hold(processNames, name) || news;
+      }
+      if (fromGlobal) {
+        if (key === 'process' || key === null) news = hold(processNames, name) || news;
+        if (key === '...') news = hold(GLOBALS, name) || news;
+      }
+    }
+    return news;
+  };
   for (let changed = true; changed; ) {
     changed = false;
     visit((node) => {
       if (ts.isVariableDeclaration(node) && node.initializer) {
-        if (ts.isIdentifier(node.name)) {
-          changed = bind(node.name.text, startOf(node.initializer)) || changed;
-          const held = unwrap(node.initializer);
-          if (ts.isIdentifier(held) && GLOBALS.has(held.text) && !GLOBALS.has(node.name.text)) {
-            GLOBALS.add(node.name.text);
-            changed = true;
-          }
-          if (isProcess(unwrap(node.initializer)) && !processNames.has(node.name.text)) {
-            processNames.add(node.name.text);
-            changed = true;
-          }
-        }
-        if (ts.isObjectBindingPattern(node.name) && isProcess(unwrap(node.initializer))) {
-          for (const el of node.name.elements) {
-            const key = keyOf(el.propertyName ?? el.name);
-            if (el.dotDotDotToken && ts.isIdentifier(el.name) && !processNames.has(el.name.text)) {
-              processNames.add(el.name.text);
-              changed = true;
-            } else if ((key === 'argv' || key === null) && ts.isIdentifier(el.name)) {
-              changed = bind(el.name.text, 0) || changed;
-            }
-          }
-        }
-        const init = unwrap(node.initializer);
-        if (
-          ts.isObjectBindingPattern(node.name) &&
-          ts.isIdentifier(init) &&
-          GLOBALS.has(init.text)
-        ) {
-          for (const el of node.name.elements) {
-            const key = keyOf(el.propertyName ?? el.name);
-            if (
-              (key === 'process' || key === null) &&
-              ts.isIdentifier(el.name) &&
-              !processNames.has(el.name.text)
-            ) {
-              processNames.add(el.name.text);
-              changed = true;
-            }
-          }
-        }
+        if (ts.isIdentifier(node.name))
+          changed = receive(node.name.text, node.initializer) || changed;
+        if (ts.isObjectBindingPattern(node.name))
+          changed = destructure(node.name, node.initializer) || changed;
       }
-      if (
-        ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isIdentifier(node.left)
-      ) {
-        changed = bind(node.left.text, startOf(node.right)) || changed;
-        const held = unwrap(node.right);
-        if (ts.isIdentifier(held) && GLOBALS.has(held.text) && !GLOBALS.has(node.left.text)) {
-          GLOBALS.add(node.left.text);
-          changed = true;
-        }
-        if (isProcess(unwrap(node.right)) && !processNames.has(node.left.text)) {
-          processNames.add(node.left.text);
-          changed = true;
-        }
-      }
-      if (
-        ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isObjectLiteralExpression(node.left) &&
-        isProcess(unwrap(node.right))
-      ) {
-        for (const el of node.left.properties) {
-          const target = ts.isShorthandPropertyAssignment(el)
-            ? el.name
-            : ts.isPropertyAssignment(el) && ts.isIdentifier(el.initializer)
-              ? el.initializer
-              : null;
-          const key = ts.isShorthandPropertyAssignment(el)
-            ? el.name.text
-            : ts.isPropertyAssignment(el)
-              ? keyOf(el.name)
-              : 'argv';
-          if (target && (key === 'argv' || key === null)) changed = bind(target.text, 0) || changed;
-        }
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        if (ts.isIdentifier(node.left)) changed = receive(node.left.text, node.right) || changed;
+        if (ts.isObjectLiteralExpression(node.left))
+          changed = destructure(node.left, node.right) || changed;
       }
       if (
         ts.isCallExpression(node) &&
@@ -420,7 +405,7 @@ function entryReads(rel, text) {
         const params = functions.get(node.expression.text).parameters;
         node.arguments.forEach((arg, i) => {
           const param = params[i]?.name;
-          if (param && ts.isIdentifier(param)) changed = bind(param.text, startOf(arg)) || changed;
+          if (param && ts.isIdentifier(param)) changed = receive(param.text, arg) || changed;
         });
       }
     });
@@ -902,6 +887,26 @@ describe('no file decides it was launched by hand', () => {
       'scripts/global-reflected.mjs',
       "if (import.meta.filename === Reflect.get(globalThis, 'process').argv[1]) main();\n",
       1,
+    ],
+    [
+      'scripts/dynamic-default.mjs',
+      "const { default: p } = await import('node:process');\nif (import.meta.filename === p.argv[1]) main();\n",
+      2,
+    ],
+    [
+      'scripts/dynamic-default-assigned.mjs',
+      "let p;\n({ default: p } = await import('node:process'));\nif (import.meta.filename === p.argv[1]) main();\n",
+      3,
+    ],
+    [
+      'scripts/global-taken-assigned.mjs',
+      'let p;\n({ process: p } = globalThis);\nif (import.meta.filename === p.argv[1]) main();\n',
+      3,
+    ],
+    [
+      'scripts/process-passed-param.mjs',
+      'function f(p) {\n  return p.argv[1];\n}\nconst x = 1;\nif (import.meta.filename === f(globalThis.process)) main();\n',
+      5,
     ],
     [
       'scripts/from.mjs',
