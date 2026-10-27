@@ -138,7 +138,9 @@ describe('every guarded script runs where it is launched from', () => {
  * are followed through names, aliases, destructuring, the parameters and `arguments` of the
  * function a call names where it is made, a function's `this`, process's methods returning process,
  * the file's own exports imported back, and a module loaded by a name it cannot read, which is taken
- * as process. Outside it, and so passed rather than refused:
+ * as process.
+ *
+ * Outside it, and so passed rather than refused:
  * - code built from a string other than `eval` and `Function` (which are refused): `vm.runInThisContext`,
  *   `vm.Script` and its kin, an import of a `data:` URL;
  * - the launch entry read from anything but `process.argv`: `process.report`, `/proc/self/cmdline`,
@@ -303,7 +305,8 @@ function entryReads(rel, text) {
       }
       if (/^(node:)?module$/.test(spec) && bound && ts.isNamedImports(bound)) {
         for (const el of bound.elements)
-          if ((el.propertyName ?? el.name).text === 'createRequire') requireMakers.add(el.name.text);
+          if ((el.propertyName ?? el.name).text === 'createRequire')
+            requireMakers.add(el.name.text);
       }
       if (isSelf(spec)) {
         if (clause?.name) selfImports.set(clause.name.text, 'default');
@@ -314,9 +317,10 @@ function entryReads(rel, text) {
       }
     }
     if (ts.isExportDeclaration(node)) {
-      const spec = node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)
-        ? node.moduleSpecifier.text
-        : null;
+      const spec =
+        node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)
+          ? node.moduleSpecifier.text
+          : null;
       const clause = node.exportClause;
       if (spec !== null && MODULE_SPEC.test(spec)) {
         if (!clause) exportsAllOfProcess = true;
@@ -368,7 +372,8 @@ function entryReads(rel, text) {
     const fn = here.map((d) => fnOf(d.decl)).find(Boolean);
     if (fn) return { fn };
     const imports = here.some(
-      (d) => ts.isImportSpecifier(d.decl) || ts.isImportClause(d.decl) || ts.isNamespaceImport(d.decl),
+      (d) =>
+        ts.isImportSpecifier(d.decl) || ts.isImportClause(d.decl) || ts.isNamespaceImport(d.decl),
     );
     if (!imports) return {};
     if (!selfImports.has(id.text)) return { foreign: true };
@@ -419,7 +424,9 @@ function entryReads(rel, text) {
     if (name === 'require' || name === 'getBuiltinModule') return true;
     if (!ts.isCallExpression(n)) return false;
     const made = unwrap(n.expression);
-    return (ts.isIdentifier(made) && requireMakers.has(made.text)) || propName(made) === 'createRequire';
+    return (
+      (ts.isIdentifier(made) && requireMakers.has(made.text)) || propName(made) === 'createRequire'
+    );
   }
   const loads = (call) =>
     call.expression.kind === ts.SyntaxKind.ImportKeyword || isLoader(call.expression);
@@ -485,7 +492,7 @@ function entryReads(rel, text) {
     while (fn && (!ts.isFunctionLike(fn) || ts.isArrowFunction(fn))) fn = fn.parent;
     return fn ? heldArguments.get(fn) : undefined;
   };
-  /** Where in argv the file's export `name` starts, when it holds argv; null when it does not. */
+  /** What the file's export `name` holds of argv: the index it starts from, or null. */
   function exportStart(name) {
     if (exportsLocal.has(name)) return argvNames.get(exportsLocal.get(name)) ?? null;
     if (exportsProcess.has(name)) return exportsProcess.get(name) === 'argv' ? 0 : null;
@@ -929,7 +936,8 @@ function entryReads(rel, text) {
       const indexed = ts.isElementAccessExpression(p) && p.expression === self;
       if (indexed && literal(p.argumentExpression) === null)
         say(p, `arguments of a function handed argv read by a computed index: ${p.getText(src)}`);
-      const counted = ts.isPropertyAccessExpression(p) && p.expression === self && p.name.text === 'length';
+      const counted =
+        ts.isPropertyAccessExpression(p) && p.expression === self && p.name.text === 'length';
       if (!indexed && !counted)
         say(node, `arguments of a function handed argv used whole: ${p.getText(src)}`);
     }
@@ -1616,7 +1624,10 @@ describe('no file decides it was launched by hand', () => {
       'scripts/scoped-allowed.mjs',
       "function pick(list) {\n  return list.slice(2);\n}\nfunction other() {\n  function pick(x) {\n    return x[1];\n  }\n  return pick(['a', 'b']);\n}\npick(process.argv);\nconst ROOT = import.meta.url;\n",
     ],
-    ['scripts/import-computed-read.mjs', 'const { resolveConfig } = await import(url);\nconst ROOT = import.meta.url;\n'],
+    [
+      'scripts/import-computed-read.mjs',
+      'const { resolveConfig } = await import(url);\nconst ROOT = import.meta.url;\n',
+    ],
     [
       'scripts/require-literal.mjs',
       "import { createRequire } from 'node:module';\nconst ts = createRequire(import.meta.url)('typescript');\nuse(ts);\n",

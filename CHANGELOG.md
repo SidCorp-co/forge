@@ -3200,7 +3200,7 @@
 ### Fixed
 
 - **A message still sending is drawn above the reply it started**, where the room will show it, rather than below it until the room is read again. (ISS-1236)
-- **A new project whose repository settings were refused is not reported unsaved.** The toast says the project was created and which settings were not saved, to correct them in the dialog, and links to Shape & release in its Settings for later. (ISS-1236)
+- **A new project whose repository settings were refused is not reported unsaved.** The toast says the project was created, which settings were not saved and to correct them here, and links to Shape & release in Settings for later. (ISS-1236)
 - **A notice stays while you read it.** Resting the pointer on it, or tabbing into it, holds it; a long one stays as long as it takes to read rather than four seconds. (ISS-1236)
 - **The id a message is sent under reaches only its sender, over the live connection as well.** Everyone else in the room is told the message arrived without it. (ISS-1236)
 - **A list that failed to load says so with Retry, never as lost or empty**, on Agents, the rail, runner pools, pickers and the bell. Messages sign with a name or "A member"; rooms say which agents answer. (ISS-1229)
