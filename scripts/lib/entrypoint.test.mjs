@@ -262,6 +262,8 @@ function entryReads(rel, text) {
 
   // A global object's name, where no declaration of this file's shadows it, and every name holding one.
   const GLOBAL_NAMES = ['globalThis', 'global', 'self', 'window'];
+  /** The globals that turn a string into code: whatever reaches one reaches code no walk can read. */
+  const CODE_BUILDERS = ['eval', 'Function'];
   /** Names this file has given the global object: shadowing never applies to a proven alias. */
   const globalAliases = new Set();
   /** The name a property read states, dotted or bracketed by a string; null where it is computed. */
@@ -628,6 +630,7 @@ function entryReads(rel, text) {
       // nested pattern is judged as argv's own. Anything deeper is a binding this walk cannot follow.
       const followed = (key, target) =>
         key !== null &&
+        !(what !== 'process' && CODE_BUILDERS.includes(key)) &&
         (ts.isIdentifier(target) ||
           (key === 'argv' &&
             (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target))));
@@ -635,7 +638,7 @@ function entryReads(rel, text) {
         if (ts.isBindingElement(el))
           return !el.dotDotDotToken && followed(keyOf(el.propertyName ?? el.name), el.name);
         if (ts.isPropertyAssignment(el)) return followed(keyOf(el.name), el.initializer);
-        return ts.isShorthandPropertyAssignment(el);
+        return ts.isShorthandPropertyAssignment(el) && followed(el.name.text, el.name);
       });
       return stated
         ? null
@@ -682,7 +685,6 @@ function entryReads(rel, text) {
     }
     // Code built from a string is code no walk can read: eval and Function however reached, and a
     // function's own constructor called.
-    const CODE_BUILDERS = ['eval', 'Function'];
     const builder =
       (ts.isIdentifier(node) &&
         CODE_BUILDERS.includes(node.text) &&
@@ -1047,6 +1049,21 @@ describe('no file decides it was launched by hand', () => {
       'scripts/constructed-own.mjs',
       "const read = (() => {}).constructor('return process.argv[1]');\nif (import.meta.filename === read()) main();\n",
       1,
+    ],
+    [
+      'scripts/evaluated-taken.mjs',
+      "const { eval: run } = globalThis;\nif (import.meta.filename === run('process.argv[1]')) main();\n",
+      1,
+    ],
+    [
+      'scripts/constructed-taken.mjs',
+      "const { Function: Build } = globalThis;\nif (import.meta.filename === Build('return process.argv[1]')()) main();\n",
+      1,
+    ],
+    [
+      'scripts/evaluated-assigned.mjs',
+      "let run;\n({ eval: run } = globalThis);\nif (import.meta.filename === run('process.argv[1]')) main();\n",
+      2,
     ],
     [
       'scripts/from.mjs',
