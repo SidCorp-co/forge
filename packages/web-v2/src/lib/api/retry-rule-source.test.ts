@@ -276,6 +276,23 @@ function importsOf(file: ts.SourceFile): Map<string, { from: string; name: strin
   return found;
 }
 
+/** The components a file's JSX names, as that file names them: its own, or one it imports under any name, from the file
+ *  that exports it (r52 review F1); a name this walk cannot place is looked up across the source. */
+function resolverFor(file: ts.SourceFile, elsewhere: Index): Resolver {
+  const own = definitionsOf(file);
+  const imports = importsOf(file);
+  return (tag) => {
+    const local = own.get(tag);
+    if (local) return local;
+    const imported = imports.get(tag);
+    if (!imported) return elsewhere.byName.get(tag) ?? [];
+    const there = filesFor(imported.from, file.fileName).map((f) => elsewhere.byFile.get(f)?.get(imported.name)).find((d) => d);
+    return there ?? elsewhere.byName.get(imported.name) ?? [];
+  };
+}
+
+type Resolver = (tag: string) => Definition[];
+
 /** The files a module path written in `from` can name, where it is one of the web source's own. */
 function filesFor(from: string, path: string): string[] {
   const base = from.startsWith("@/") ? join(SRC, from.slice(2)) : from.startsWith(".") ? join(dirname(path), from) : null;
@@ -311,7 +328,8 @@ function landingOf(element: ts.JsxOpeningLikeElement, prop: string, at: ts.Node)
 function pressesProp(
   tag: string,
   prop: string,
-  definitions: (tag: string) => Definition[],
+  definitions: Resolver,
+  elsewhere: Index,
   depth = 0,
   seen = new Set<string>(),
 ): boolean {
@@ -336,7 +354,8 @@ function pressesProp(
     }
     const lands = (landing: Landing) =>
       landing.kind === "pressed" ||
-      (landing.kind === "handed" && pressesProp(landing.tag, landing.prop, definitions, depth + 1, seen));
+      (landing.kind === "handed" &&
+        pressesProp(landing.tag, landing.prop, resolverFor(fn.getSourceFile(), elsewhere), elsewhere, depth + 1, seen));
     let pressed = false;
     const reached = (node: ts.Node): boolean =>
       (ts.isIdentifier(node) && names.has(node.text) && !ts.isBindingElement(node.parent)) ||
@@ -379,17 +398,7 @@ function offences(path: string, text: string, elsewhere: Index = { byFile: new M
   const rel = relative(SRC, path);
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const constants = constantsOf(file);
-  const own = definitionsOf(file);
-  const imports = importsOf(file);
-  // A component imported under another name is the one its file exports (r52 review F1).
-  const definitions = (tag: string): Definition[] => {
-    const local = own.get(tag);
-    if (local) return local;
-    const imported = imports.get(tag);
-    if (!imported) return elsewhere.byName.get(tag) ?? [];
-    const there = filesFor(imported.from, path).map((f) => elsewhere.byFile.get(f)?.get(imported.name)).find((d) => d);
-    return there ?? elsewhere.byName.get(imported.name) ?? [];
-  };
+  const definitions = resolverFor(file, elsewhere);
   const found: string[] = [];
   const at = (node: ts.Node, what: string) =>
     found.push(`${rel}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1} ${what}`);
@@ -424,7 +433,7 @@ function offences(path: string, text: string, elsewhere: Index = { byFile: new M
         : undefined;
     if (ts.isJsxAttribute(node) && handed && readsAgain(handed, constants) && !writes(handed, constants, new Set()) && !act(handed)) {
       const landing = landingOf(elementOf(node), node.name.getText(), node);
-      if (landing.kind === "handed" && !FAILURE_PRIMITIVES.has(landing.tag) && pressesProp(landing.tag, landing.prop, definitions)) {
+      if (landing.kind === "handed" && !FAILURE_PRIMITIVES.has(landing.tag) && pressesProp(landing.tag, landing.prop, definitions, elsewhere)) {
         at(node, `hands a read-again to <${landing.tag}> as ${landing.prop}, which presses it outside RetryButton, the one rule`);
       }
     }
@@ -538,6 +547,21 @@ describe("a failed read's Retry, across the web app (criteria 478, 495, 496)", (
     const file = `${imported}\nexport const A = ({ q }) => <${tag} onAction={() => q.refetch()} />;`;
     expect(offences(join(SRC, "features/x/a.tsx"), file, elsewhere)).toEqual([
       expect.stringContaining(`hands a read-again to <${tag}> as onAction`),
+    ]);
+  });
+
+  // r52 review F1 (second read): a part handing the Retry on resolves the next part by its own file's imports.
+  it("is refused for a Retry an imported part hands on to a part it imports under another name", () => {
+    const elsewhere = indexOf([
+      [join(SRC, "features/x/press.tsx"), `export function Press({ go }) { return <button onClick={go}>Load</button>; }`],
+      [
+        join(SRC, "features/x/notice.tsx"),
+        `import { Press as Trigger } from "./press";\nexport function Notice({ onAction }) { return <Trigger go={onAction} />; }`,
+      ],
+    ]);
+    const file = `import { Notice } from "@/features/x/notice";\nexport const A = ({ q }) => <Notice onAction={() => q.refetch()} />;`;
+    expect(offences(join(SRC, "features/y/a.tsx"), file, elsewhere)).toEqual([
+      expect.stringContaining("hands a read-again to <Notice> as onAction"),
     ]);
   });
 
