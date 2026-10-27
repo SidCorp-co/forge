@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.343] - 2026-10-27
+
+Shipped work is recorded as fact; on-land environments deploy on merge again
+
+### Fixed
+
+- **A merge already shipped is recorded, never refused over verdicts.** The record reports each criterion beside it and says loud which shipped failing; a promotion no longer overwrites an issue's landing; on-land environments deploy when work lands.
+
 ## [0.4.0-dev.342] - 2026-10-27
 
 Verdict clips cited by id or link, and testing-build verdicts count

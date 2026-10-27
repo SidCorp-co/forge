@@ -1,1 +1,0 @@
-**A merge already shipped is recorded, never refused over verdicts.** The record reports each criterion beside it and says loud which shipped failing; a promotion no longer overwrites an issue's landing; on-land environments deploy when work lands.
