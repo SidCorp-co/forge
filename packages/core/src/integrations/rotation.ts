@@ -1,3 +1,4 @@
+import { utcMomentWords } from '../lib/elapsed-words.js';
 import type { IntegrationDeclaration } from './types.js';
 
 export const ROTATION_WINDOW_MS = 24 * 60 * 60_000;
@@ -45,24 +46,6 @@ export function isPreviousCredentialValid(
   return parsed > Date.now();
 }
 
-/** "21 October 2026, 14:53 UTC", the time a previous key stops being used. */
-function untilWords(iso: string): string {
-  const at = new Date(iso);
-  const day = at.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-  const time = at.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-  });
-  return `${day}, ${time} UTC`;
-}
-
 /**
  * Test connection's Needs re-auth where the new key was refused and the previous one works, saying
  * until when Forge's calls use the previous key (ISS-1421 r20). `subject` names who refused it.
@@ -78,7 +61,7 @@ export function newKeyRefused(
   const until = String(secrets.previousTokenExpiresAt);
   return {
     status: 'needs_reauth',
-    message: `${subject} refused the new key. Forge is still using the previous key until ${untilWords(until)}.`,
+    message: `${subject} refused the new key. Forge is still using the previous key until ${utcMomentWords(until)}.`,
     diagnostics: { newKeyRefused: true, previousKeyUntil: until },
   };
 }

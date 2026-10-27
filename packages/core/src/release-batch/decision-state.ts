@@ -191,16 +191,30 @@ export async function inFlightDecision(
   return { displayId: reading.issue?.displayId ?? null };
 }
 
-/** The details `BATCH_IN_FLIGHT` carries: the run, and what it waits on where it waits on a person. */
-export async function inFlightDetails(runId: string): Promise<Record<string, unknown>> {
+/** The details `BATCH_IN_FLIGHT` carries: the run, the issues it carries by name, and what it
+ *  waits on where it waits on a person. A read that fails leaves its part out, never the refusal. */
+export async function inFlightDetails(
+  runId: string,
+  issueIds: string[],
+): Promise<Record<string, unknown>> {
+  const details: Record<string, unknown> = { runId };
+  try {
+    const shown = await issueDisplayIds(issueIds);
+    details.carries = issueIds.flatMap((id) => shown.get(id) ?? []);
+  } catch (err) {
+    logger.warn(
+      { err, runId },
+      'release-batch: the names of what the release in flight carries could not be read',
+    );
+  }
   try {
     const waiting = await inFlightDecision(runId);
-    return waiting ? { runId, decision: waiting } : { runId };
+    if (waiting) details.decision = waiting;
   } catch (err) {
     logger.warn(
       { err, runId },
       'release-batch: what the release in flight waits on could not be read',
     );
-    return { runId };
   }
+  return details;
 }

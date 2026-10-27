@@ -1,5 +1,5 @@
 // The release gate as a person reads it: the roster, and every reason Release now would be refused
-// for, read by the enumerator the create door throws from (ISS-1127, ISS-1421 r37).
+// for, read by the enumerator the create door throws from (ISS-1127, ISS-1421 r37, r38).
 
 import type { ReleaseBlocker, ReleaseBlockerCode } from './blocker-sentences.js';
 import { collectReleaseBlockers } from './blockers.js';
@@ -18,6 +18,8 @@ export interface RowReleaseRefusal {
 export interface GateRefusal {
   code: ReleaseBlockerCode;
   said: string;
+  /** The running release, whose page the gate links, where the reason is that one is running. */
+  runId: string | null;
 }
 
 export type ReleaseGateEntry = ReleaseRosterEntry & { releaseRefusals: RowReleaseRefusal[] };
@@ -36,6 +38,16 @@ const SHOWN_ELSEWHERE = new Set<ReleaseBlockerCode>([
   'RELEASE_ROSTER_OVERSIZE',
 ]);
 
+/** A running release is said with the waiting issues it leaves, which only the gate lists. */
+function gateRefusal(b: ReleaseBlocker, waiting: string[]): GateRefusal {
+  if (b.code !== 'BATCH_IN_FLIGHT') {
+    return { code: b.code, said: releaseBlockerReaderSentence(b.code, b.details), runId: null };
+  }
+  const runId = typeof b.details?.runId === 'string' ? b.details.runId : null;
+  const said = releaseBlockerReaderSentence(b.code, { ...b.details, rest: waiting });
+  return { code: b.code, said, runId };
+}
+
 function idsOf(blocker: ReleaseBlocker): string[] {
   const ids = blocker.details?.issueIds;
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
@@ -44,7 +56,8 @@ function idsOf(blocker: ReleaseBlocker): string[] {
 /** The roster, each row with what Release now would refuse it for, and what refuses every row. */
 export async function loadReleaseGateRoster(projectId: string): Promise<ReleaseGateRoster> {
   const roster = await loadReleaseRoster(projectId);
-  const unclaimed = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
+  const waiting = roster.issues.filter((i) => i.claimedByRunId === null);
+  const unclaimed = waiting.map((i) => i.id);
   const blockers =
     roster.gateStatus && unclaimed.length > 0
       ? (await collectReleaseBlockers(projectId, { door: 'batch', issueIds: unclaimed })).blockers
@@ -54,7 +67,12 @@ export async function loadReleaseGateRoster(projectId: string): Promise<ReleaseG
   );
   const blockingAll = blockers
     .filter((b) => b.code !== 'RELEASE_RECORD_MISSING' && !SHOWN_ELSEWHERE.has(b.code))
-    .map((b) => ({ code: b.code, said: releaseBlockerReaderSentence(b.code, b.details) }));
+    .map((b) =>
+      gateRefusal(
+        b,
+        waiting.map((i) => i.displayId),
+      ),
+    );
   return {
     ...roster,
     issues: roster.issues.map((issue) => ({

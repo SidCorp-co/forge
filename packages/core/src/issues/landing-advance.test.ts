@@ -32,9 +32,20 @@ vi.mock('./merge-record.js', async (original) => ({
     return { wrote: true };
   },
 }));
-vi.mock('../db/client.js', () => ({ db: {} }));
+const said = vi.hoisted(() => [] as string[]);
+vi.mock('../comments/system-write.js', () => ({
+  postSystemComment: async (row: { body: string }) => {
+    said.push(row.body);
+  },
+}));
+vi.mock('../comments/forge-author.js', () => ({ forgeAuthorId: async () => 'forge' }));
+vi.mock('../db/client.js', () => ({
+  db: { transaction: (work: (tx: unknown) => unknown) => work({ execute: async () => [] }) },
+}));
 
-const { moveLandingForward, standingAgainst, sameCommit } = await import('./landing-advance.js');
+const { moveLandingForward, movedSentence, standingAgainst, sameCommit } = await import(
+  './landing-advance.js'
+);
 
 const A = 'a'.repeat(40);
 const B = 'b'.repeat(40);
@@ -70,6 +81,7 @@ const via = (client: GitHubRepoClient) => ({
 const line = via(github({ [B]: [A], [C]: [A, B] }));
 
 beforeEach(() => {
+  said.length = 0;
   held.length = 0;
   writes.length = 0;
   lose = 0;
@@ -161,6 +173,20 @@ describe('moveLandingForward', () => {
     );
     expect(outcome.kind).toBe('unread');
     expect(writes).toHaveLength(3);
+  });
+
+  it('says the move once, from the write that took, and says nothing unasked', async () => {
+    held.push(A, B);
+    lose = 1;
+    await moveLandingForward(
+      { issueId: 'i', projectId: 'p', candidate: candidate(C), announce: true },
+      line,
+    );
+    expect(said).toEqual([movedSentence(B, C)]);
+    held.length = 0;
+    held.push(A);
+    await moveLandingForward({ issueId: 'i', projectId: 'p', candidate: candidate(C) }, line);
+    expect(said).toHaveLength(1);
   });
 
   it('has nothing to move from on a row that holds no commit', async () => {

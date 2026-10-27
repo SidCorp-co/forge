@@ -32,7 +32,7 @@ const issue = {
 const page = () =>
   renderToStaticMarkup(
     <>
-      <ReleaseNoteSection issue={issue} />
+      <ReleaseNoteSection issue={issue} canWrite={false} />
       <DescriptionSection issue={issue} attachments={[]} canWrite />
       <FlatSection title="Steps">
         <p>None yet.</p>

@@ -10,10 +10,12 @@ import { fileURLToPath } from 'node:url';
 import type { ReleaseBlockerCode } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
 import { readableThrough } from '../projects/repository-access.js';
+import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
 import { blocker } from './blocker-kit.js';
 import { releaseBlockerSentence } from './blocker-sentences.js';
 import {
   RELEASE_CHECK_WORDS,
+  recordMissingForRow,
   releaseBlockerReaderSentence,
   warningWithReader,
   withReader,
@@ -238,5 +240,139 @@ describe('live bindings naming different release runners, as a person reads it',
     expect(releaseBlockerReaderSentence('RELEASE_RUNNER_AMBIGUOUS', { labels: [] })).not.toMatch(
       /\(\)/,
     );
+  });
+});
+
+// Judge-155 at c0f8105 (criterion 367): the gate said "a second one would claim the same issues. Let
+// it finish, or abort it" of a release carrying ISS-3 only, and no screen offers an abort.
+describe('a release already running, as a person at the gate reads it', () => {
+  const read = (details: Record<string, unknown>) =>
+    releaseBlockerReaderSentence('BATCH_IN_FLIGHT', details);
+
+  it('names what the running release carries and what the other waiting issues do', () => {
+    const said = read({ runId: 'r1', carries: ['ISS-3'], rest: ['ISS-1', 'ISS-2'] });
+    expect(said).toBe(
+      'A release is already running for this project, carrying ISS-3. A project runs one release at a time, so ISS-1 and ISS-2 are on no release and wait until it finishes.',
+    );
+  });
+
+  it('claims no overlap it did not read, and tells a person to abort nothing', () => {
+    for (const details of [
+      { runId: 'r1' },
+      { runId: 'r1', carries: ['ISS-3'], rest: ['ISS-1'] },
+      { runId: 'r1', carries: ['ISS-3'], decision: { displayId: 'ISS-3' } },
+    ]) {
+      const said = read(details);
+      expect(said).not.toMatch(/same issues|abort/i);
+      expect(said).not.toContain('`');
+    }
+  });
+
+  it('says the waiting issue in the singular and every other issue where the gate lists none', () => {
+    expect(read({ runId: 'r1', carries: ['ISS-3'], rest: ['ISS-1'] })).toContain(
+      'so ISS-1 is on no release and waits until it finishes.',
+    );
+    expect(read({ runId: 'r1', carries: ['ISS-3', 'ISS-4', 'ISS-5'] })).toBe(
+      'A release is already running for this project, carrying ISS-3, ISS-4 and ISS-5. A project runs one release at a time, so every other issue waits until it finishes.',
+    );
+  });
+
+  it('says where the decision it waits on is answered', () => {
+    expect(read({ runId: 'r1', carries: ['ISS-3'], decision: { displayId: 'ISS-64' } })).toContain(
+      'It is waiting on a decision: its agent stopped on a question on ISS-64. Answer it in its Decision waiting card and that release goes on.',
+    );
+    expect(read({ runId: 'r1', decision: { displayId: null } })).toContain(
+      "a question among this project's questions",
+    );
+  });
+
+  it('leaves the caller its own sentence, which no longer claims the same issues', () => {
+    const caller = releaseBlockerSentence('BATCH_IN_FLIGHT', { runId: 'r1', carries: ['ISS-3'] });
+    expect(caller).toBe(
+      'A release is already running for this project, and a project runs one release at a time. Let it finish, or abort it with what you found.',
+    );
+  });
+});
+
+// Judge-155: "`j155-scratch-box` has not finished provisioning its workspace (`queued`)" on the gate.
+describe('a runner that cannot take a release, as a person at the gate reads it', () => {
+  const runners = (over: Partial<RunnerHold>): RunnerHold[] => [
+    {
+      deviceName: 'j155-box',
+      reason: 'provisioning',
+      lastSeenSeconds: 13,
+      reporting: true,
+      ...over,
+    },
+  ];
+  const STORED =
+    /`|\b(?:queued|cloning|syncing_skills|writing_mcp|needs_manual_setup|draining|disabled)\b|\d{4}-\d\d-\d\dT/;
+
+  it('names the box and says a provision in words', () => {
+    const said = releaseBlockerReaderSentence('NO_RUNNER_ONLINE', {
+      runners: runners({ detail: 'queued' }),
+    });
+    expect(said).toBe(
+      'This project has 1 runner registered and it cannot take a release right now. The box j155-box has not finished setting up its workspace for this project: it is waiting its turn to start. Watch it under Settings → Runners; a setup that is stuck is run again from there. It is up and reporting, last seen less than a minute ago.',
+    );
+  });
+
+  it.each<[RunnerHoldReason, string | undefined]>([
+    ['device-disabled', undefined],
+    ['retired', 'draining'],
+    ['retired', 'disabled'],
+    ['never-connected', undefined],
+    ['disconnected', undefined],
+    ['stale', undefined],
+    ['auth', undefined],
+    ['rate-limited', '2026-10-27T14:05:00.000Z'],
+    ['quarantined', '2026-10-27T14:05:00.000Z'],
+    ['provisioning', 'cloning'],
+    ['provisioning', 'syncing_skills'],
+    ['provisioning', 'writing_mcp'],
+    ['provisioning', 'needs_manual_setup'],
+    ['provision-stalled', 'cloning'],
+    ['below-floor', '0.0.0-j155'],
+  ])('%s (%s) carries no code mark, stored value or ISO stamp', (reason, detail) => {
+    const said = releaseBlockerReaderSentence('NO_RUNNER_ONLINE', {
+      runners: runners({ reason, ...(detail ? { detail } : {}), stalledSeconds: 7200 }),
+    });
+    expect(said).toContain('The box j155-box ');
+    expect(said).not.toMatch(STORED);
+  });
+
+  it('says a rate limit ends at a moment in words', () => {
+    const said = releaseBlockerReaderSentence('NO_RUNNER_ONLINE', {
+      runners: runners({ reason: 'rate-limited', detail: '2026-10-27T14:05:00.000Z' }),
+    });
+    expect(said).toContain('is rate limited until 27 October 2026, 14:05 UTC.');
+  });
+
+  it('leaves the caller its own clause, the box and the state marked as values', () => {
+    const caller = releaseBlockerSentence('NO_RUNNER_ONLINE', {
+      runners: runners({ detail: 'queued' }),
+    });
+    expect(caller).toContain('`j155-box` has not finished provisioning its workspace (`queued`)');
+  });
+});
+
+describe("a missing release note, as the gate's row and the issue's page say it", () => {
+  it('says it is written under Release note on the issue page, asking nobody', () => {
+    expect(recordMissingForRow(false)).toContain(
+      "A member of the project writes one under Release note on the issue's page",
+    );
+    expect(recordMissingForRow(true)).toContain('writes one under Release note on this page');
+    for (const said of [recordMissingForRow(false), recordMissingForRow(true)]) {
+      expect(said).not.toMatch(/ask for it|The agent that lands/);
+    }
+  });
+
+  it('says the same in the refusal a person meets on pressing Release now', () => {
+    expect(
+      releaseBlockerReaderSentence('RELEASE_RECORD_MISSING', {
+        issueIds: ['u-2'],
+        displayIds: ['ISS-2'],
+      }),
+    ).toContain('Give it one first, under Release note on its page');
   });
 });

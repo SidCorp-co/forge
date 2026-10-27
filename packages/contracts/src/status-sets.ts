@@ -5,12 +5,7 @@
 
 /* status-tuple: differs — the browser's copy of core's `jobs/status-sets.ts` LIVE_JOB_STATUSES,
    read by the pipeline activity feed; status-sets-parity.test.ts binds the two. */
-export const LIVE_JOB_STATUSES = [
-  'queued',
-  'dispatched',
-  'running',
-  'held',
-] as const;
+export const LIVE_JOB_STATUSES = ['queued', 'dispatched', 'running', 'held'] as const;
 
 /* status-tuple: differs — the browser's copy of core's `issues/transition-reason.ts`
    REASON_REQUIRED_STATUSES, read by the transition dialog so the browser asks for the reason the
@@ -61,3 +56,8 @@ export const BLOCKER_SETTLED_STATUSES = [
 export const BLOCKER_SHIPPED_STATUSES = ['closed'] as const;
 
 export type MemoryReindexState = (typeof MEMORY_REINDEX_STATES)[number];
+
+/* status-tuple: differs — the browser's copy of core's `pipeline/runs-liveness.ts`
+   STANDING_QUESTION_STATUSES, read by the question card to say whether a question still waits;
+   status-sets-parity.test.ts binds the two. */
+export const STANDING_QUESTION_STATUSES = ['open', 'needs_info'] as const;

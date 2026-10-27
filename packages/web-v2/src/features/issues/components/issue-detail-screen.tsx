@@ -502,7 +502,7 @@ export function IssueDetailScreen({
             />
           )}
 
-          <ReleaseNoteSection issue={issue} />
+          <ReleaseNoteSection issue={issue} canWrite={mayWrite} />
 
           {/* Said once for Description and the rail, which each hold their edits without repeating it (ISS-1228 r26). */}
           {agentHolds && (

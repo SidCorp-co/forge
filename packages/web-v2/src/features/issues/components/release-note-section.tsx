@@ -1,6 +1,9 @@
 "use client";
 
-import { Markdown } from "@/design";
+import type { ReleaseNotes } from "@forge/contracts";
+import { useState } from "react";
+import { Button, Field, Markdown, Radio, RadioGroup, Textarea } from "@/design";
+import { useSaveReleaseNote } from "../hooks";
 import type { IssueDetail, IssueStatus } from "../types";
 import { FlatSection } from "./flat-section";
 
@@ -28,14 +31,91 @@ function sentence(status: IssueStatus, userFacing: string, skip: boolean): strin
     : "Nothing you would see changes — this work has no user-facing part.";
 }
 
+/* status-tuple: differs — the built statuses before a release claims the issue, where the release
+   gate asks for a note; once a release holds it, the note it closes with is the one it carries. */
+export const NOTE_WRITTEN_HERE: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
+  "developed",
+  "testing",
+  "tested",
+  "awaiting_release",
+]);
+
+/** Each kind of change in a person's words, and the one that says nothing a user sees changed. */
+const KINDS: ReadonlyArray<{ value: ReleaseNotes["section"]; label: string }> = [
+  { value: "Added", label: "Something new" },
+  { value: "Changed", label: "A change to something that was there" },
+  { value: "Fixed", label: "A fix" },
+  { value: "Removed", label: "Something taken away" },
+  { value: "Security", label: "A security fix" },
+  { value: "Skip", label: "Nothing a user sees changes" },
+];
+
+const NOTE_MAX = 500;
+
+/** The note the release gate asks for, written where it asks (ISS-1421 r38, judge-155 found no field). */
+function ReleaseNoteWriter({ issueId }: { issueId: string }) {
+  const save = useSaveReleaseNote(issueId);
+  const [section, setSection] = useState<ReleaseNotes["section"] | "">("");
+  const [line, setLine] = useState("");
+  const skip = section === "Skip";
+  const said = line.trim();
+  const ready = section !== "" && (skip || said.length > 0);
+  return (
+    <FlatSection title="Release note">
+      <div className="flex flex-col gap-3">
+        <p className="fg-body-sm text-muted">
+          This issue has no release note, and a release will not close it without one. Write the one line a user
+          would read about this change, or say that nothing a user sees changes.
+        </p>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="fg-label mb-2">What kind of change</legend>
+          <RadioGroup name={`release-note-${issueId}`} value={section} onChange={(v) => setSection(v as ReleaseNotes["section"])}>
+            {KINDS.map((k) => (
+              <Radio key={k.value} value={k.value} label={k.label} />
+            ))}
+          </RadioGroup>
+        </fieldset>
+        {!skip && (
+          <Field label="What a user will see" required>
+            <Textarea rows={2} maxLength={NOTE_MAX} value={line} onChange={(e) => setLine(e.target.value)} />
+          </Field>
+        )}
+        <div className="flex justify-end">
+          <Button
+            variant="primary"
+            size="sm"
+            loading={save.isPending}
+            disabled={!ready || save.isPending}
+            onClick={() => {
+              if (section === "") return;
+              save.mutate({ section, userFacing: skip ? "-" : said });
+            }}
+          >
+            Save release note
+          </Button>
+        </div>
+      </div>
+    </FlatSection>
+  );
+}
+
 /**
  * The release note's plain-language line, on the issue page of the person who filed the work,
  * rendered as the markdown it is written in so its markup never shows as characters. The heading
  * says only what the status establishes: a Reopened issue keeps its earlier note under "Release
- * note" instead of calling work that already shipped a change still to come.
+ * note" instead of calling work that already shipped a change still to come. Where the release
+ * gate would ask for a missing one, a reader who may change the issue writes it here.
  */
-export function ReleaseNoteSection({ issue }: { issue: Pick<IssueDetail, "status" | "releaseNotes"> }) {
+export function ReleaseNoteSection({
+  issue,
+  canWrite,
+}: {
+  issue: Pick<IssueDetail, "id" | "status" | "releaseNotes">;
+  /** Whether the reader holds the member role the issue's PATCH takes. */
+  canWrite: boolean;
+}) {
   const note = issue.releaseNotes;
+  if (!note && canWrite && NOTE_WRITTEN_HERE.has(issue.status)) return <ReleaseNoteWriter issueId={issue.id} />;
   if (!note || issue.status === "dropped") return null;
   return (
     <FlatSection title={heading(issue.status)}>

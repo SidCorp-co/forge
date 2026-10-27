@@ -138,7 +138,14 @@ export function issuesUnnamed(projectId: string): HTTPException {
     message:
       `This call names no issue to release, and issues are waiting at the release gate. Send the ids GET /api/projects/${projectId}/release-batches/roster lists, oldest merge first, at most ` +
       `${RELEASE_ROSTER_LIMIT} in one release.`,
-    cause: { code: 'RELEASE_ISSUES_UNNAMED' },
+    cause: {
+      code: 'RELEASE_ISSUES_UNNAMED',
+      // A screen sends no empty pick, and one that did is told in its own words (ISS-1421 r38).
+      details: {
+        reader:
+          'No issue was picked, so nothing was released. Pick the issues to release from those the release gate lists as ready.',
+      },
+    },
   });
 }
 

@@ -296,7 +296,7 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
         ),
       ),
     )
-    .orderBy(comments.createdAt);
+    .orderBy(comments.createdAt, comments.id);
   const replies = await db
     .select({
       id: comments.id,
@@ -312,7 +312,7 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
         or(isNull(comments.authorDeviceId), like(comments.body, '%forge-record: answer%')),
       ),
     )
-    .orderBy(comments.createdAt);
+    .orderBy(comments.createdAt, comments.id);
   return readPark({
     status,
     waitingKind: (issue.waitingKind as WaitingKind | null) ?? null,

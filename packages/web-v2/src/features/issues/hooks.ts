@@ -1,6 +1,7 @@
 "use client";
 
 
+import type { ReleaseNotes } from "@forge/contracts";
 import { markIsSentence } from "@forge/contracts/mark-merged-words";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef } from "react";
@@ -204,6 +205,30 @@ export function useSaveDescription(id: string) {
           options?.onSuccess?.();
         },
       }),
+  };
+}
+
+/** A release note written on the issue's page: the page, its activity and the release gate read it
+ *  again, so the gate's row stops asking for one (ISS-1421 r38). */
+export function useSaveReleaseNote(id: string) {
+  const qc = useQueryClient();
+  const mut = useIssueMutation(
+    (body: { releaseNotes: ReleaseNotes }) => issuesApi.patch(id, body),
+    { successMessage: "Release note saved" },
+  );
+  return {
+    ...mut,
+    mutate: (releaseNotes: ReleaseNotes) =>
+      mut.mutate(
+        { releaseNotes },
+        {
+          onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["issue"] });
+            qc.invalidateQueries({ queryKey: ["activities", id] });
+            qc.invalidateQueries({ queryKey: ["release-roster"] });
+          },
+        },
+      ),
   };
 }
 

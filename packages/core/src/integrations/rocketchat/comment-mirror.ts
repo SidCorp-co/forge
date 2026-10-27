@@ -124,7 +124,7 @@ export async function owedComments(
     .innerJoin(issues, eq(issues.id, comments.issueId))
     .leftJoin(rocketchatCommentMirrors, eq(rocketchatCommentMirrors.commentId, comments.id))
     .where(scope)
-    .orderBy(comments.createdAt)
+    .orderBy(comments.createdAt, comments.id)
     .limit(limit);
   return rows.map((r) => ({
     commentId: r.commentId,
