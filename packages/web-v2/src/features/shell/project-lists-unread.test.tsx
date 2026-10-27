@@ -154,7 +154,8 @@ describe("the narrow rail's failed projects read (criteria 497, 498)", () => {
       render(railWith(unread(onRetry, new ApiError(429, "", undefined, undefined, undefined, 30_000))));
       const tile = () => screen.getByTestId("rail-projects-unread");
       expect(tile()).toHaveTextContent("You can retry in 30 seconds.");
-      expect(tile()).toHaveAttribute("aria-label", "Couldn't load your projects.");
+      expect(tile()).toHaveTextContent("Projects not loaded");
+      expect(tile()).not.toHaveAttribute("role");
       expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
       act(() => void vi.advanceTimersByTime(17_000));
       expect(screen.getByRole("timer")).toHaveTextContent("You can retry in 13 seconds.");

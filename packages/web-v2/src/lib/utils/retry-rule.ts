@@ -19,10 +19,7 @@ export function retryAt(err: unknown): number | null {
   return typeof at === "number" ? at : null;
 }
 
-/**
- * The wait at `now` as a sentence, each unit rounded up; null where none was named, the rule offers no Retry
- * (a 403 carrying Retry-After stays final), or the wait is over (ISS-1229 r51, judge-158 on criterion 479).
- */
+/** The wait at `now` as a sentence; null where none was named, no Retry is offered, or it is over (ISS-1229 r51). */
 export function retryWaitWords(err: unknown, now: number): string | null {
   const at = retryAt(err);
   if (at === null || at - now <= 0) return null;

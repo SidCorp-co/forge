@@ -555,7 +555,7 @@ function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
   if (wait) {
     return (
       <>
-        <div role="group" aria-label={named} title={named} data-testid="rail-projects-unread" className={tile}>
+        <div title={named} data-testid="rail-projects-unread" className={tile}>
           {face}
         </div>
         {said}
