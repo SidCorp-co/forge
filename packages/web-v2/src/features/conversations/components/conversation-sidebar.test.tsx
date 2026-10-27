@@ -119,3 +119,37 @@ describe("the room list whose read failed", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 });
+
+// ISS-1229 r49, judge-146: "No conversations yet" stood beside the reader's own open room, held by another
+// organization than the one the list shows.
+describe("the room list beside a room another organization holds", () => {
+  const elsewhere = { roomOrg: "Second organization", listOrg: "Team One" };
+
+  it("never says there are no conversations, and names both organizations", () => {
+    render(<ConversationSidebar {...props} openElsewhere={elsewhere} />);
+    expect(screen.queryByText("No conversations yet")).toBeNull();
+    expect(screen.getByText("No conversations in Team One")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The room open beside this list is in Second organization; this list shows the rooms of Team One only.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says why the open room is not among the rows it does list", () => {
+    const row = {
+      id: "r1",
+      projectId: "p1",
+      title: "Desk triage",
+      scope: ["p1"],
+      archivedAt: null,
+      lastMessageAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    } as unknown as ListedConversation;
+    render(<ConversationSidebar {...props} rows={[row]} openElsewhere={elsewhere} />);
+    expect(screen.getByTestId("open-room-elsewhere").textContent).toBe(
+      "The room open beside this list is in Second organization; this list shows the rooms of Team One only.",
+    );
+  });
+});

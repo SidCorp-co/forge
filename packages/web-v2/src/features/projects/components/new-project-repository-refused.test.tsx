@@ -17,7 +17,7 @@ const update = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
-vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null }) }));
+vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null, scopeRead: true }) }));
 vi.mock("@/features/orgs/hooks", () => ({
   useOrgs: () => ({ data: [], isError: false, error: null, refetch: vi.fn() }),
 }));

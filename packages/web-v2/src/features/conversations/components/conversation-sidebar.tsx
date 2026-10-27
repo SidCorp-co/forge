@@ -13,6 +13,17 @@ import { ConversationRow, projectsOfRow } from "./conversation-row";
 
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
+/** The room open beside the list, where the list's organization does not hold it: the organizations by name, where known. */
+export interface OpenElsewhere {
+  roomOrg: string | null;
+  listOrg: string | null;
+}
+
+/** Why the open room is not in the list: the list holds one organization's rooms (ISS-1229 r49, judge-146). */
+export function openElsewhereLine({ roomOrg, listOrg }: OpenElsewhere): string {
+  return `The room open beside this list is in ${roomOrg ?? "another organization"}; this list shows the rooms of ${listOrg ?? "this organization"} only.`;
+}
+
 interface ProjectInfo {
   name: string;
   slug: string;
@@ -52,6 +63,8 @@ interface ConversationSidebarProps {
   mayChange?: (row: ListedConversation) => boolean;
   /** Shown under the rows: the organization's rooms whose projects are gone (ISS-1229 r23). */
   below?: React.ReactNode;
+  /** Set while the open room is one the list's organization does not hold: the list never says there are none. */
+  openElsewhere?: OpenElsewhere | null;
 }
 
 export function ConversationSidebar({
@@ -75,7 +88,9 @@ export function ConversationSidebar({
   onArchive,
   onDelete,
   mayChange = () => true,
+  openElsewhere = null,
 }: ConversationSidebarProps) {
+  const elsewhere = openElsewhere && !showArchived ? openElsewhere : null;
   return (
     <div
       data-testid="conversation-sidebar"
@@ -142,18 +157,32 @@ export function ConversationSidebar({
 
           {!loading && error == null && rows.length === 0 && (
             <EmptyState
-              title={showArchived ? "Nothing archived" : "No conversations yet"}
+              title={
+                showArchived
+                  ? "Nothing archived"
+                  : elsewhere
+                    ? `No conversations in ${elsewhere.listOrg ?? "this organization"}`
+                    : "No conversations yet"
+              }
               message={
                 showArchived
                   ? "Archive a conversation and it waits for you here."
-                  : onNew
-                    ? "Start a conversation with the agent on any project — it'll show up here."
-                    : READ_ONLY_LIST_EMPTY
+                  : elsewhere
+                    ? openElsewhereLine(elsewhere)
+                    : onNew
+                      ? "Start a conversation with the agent on any project — it'll show up here."
+                      : READ_ONLY_LIST_EMPTY
               }
               {...(showArchived || !onNew
                 ? {}
                 : { action: { label: "New conversation", onClick: onNew, icon: "plus" } })}
             />
+          )}
+
+          {!loading && error == null && rows.length > 0 && elsewhere && (
+            <p className="fg-caption mb-3 px-1 text-muted" data-testid="open-room-elsewhere">
+              {openElsewhereLine(elsewhere)}
+            </p>
           )}
 
           {!loading && error == null && rows.length > 0 && (

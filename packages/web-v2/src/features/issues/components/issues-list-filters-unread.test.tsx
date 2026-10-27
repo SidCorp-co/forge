@@ -88,3 +88,30 @@ describe("the issue list's filters whose choices could not be read", () => {
     expect(screen.queryByTestId("filters-unread")).toBeNull();
   });
 });
+
+// ISS-1229 r49, judge-146 at 390: the Filters sheet showed "Label: any" as for a project with no label, while
+// the failure lines stood on the page behind the sheet.
+describe("the phone's Filters sheet whose choices could not be read", () => {
+  it("says each failure, with its Retry, under the filter it holds back", () => {
+    reads.membersFail = true;
+    reads.labelsFail = true;
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const sheet = screen.getByRole("dialog", { name: "Filters" });
+    const lines = within(sheet).getAllByText(/^Couldn't load the (people|labels)/);
+    expect(lines.map((l) => l.closest("[data-testid]")?.textContent ?? l.textContent)).toHaveLength(2);
+    expect(sheet).toHaveTextContent("Couldn't load the people the Creator filter offers. The server is down.");
+    expect(sheet).toHaveTextContent("Couldn't load the labels the Label filter offers. The server is down.");
+    const retries = within(sheet).getAllByRole("button", { name: "Retry" });
+    fireEvent.click(retries[0] as HTMLElement);
+    fireEvent.click(retries[1] as HTMLElement);
+    expect(reads.readMembers).toHaveBeenCalledTimes(1);
+    expect(reads.readLabels).toHaveBeenCalledTimes(1);
+  });
+
+  it("says nothing of the kind in the sheet while both are read", () => {
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    expect(within(screen.getByRole("dialog", { name: "Filters" })).queryByText(/^Couldn't load/)).toBeNull();
+  });
+});

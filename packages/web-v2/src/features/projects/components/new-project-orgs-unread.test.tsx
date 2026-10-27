@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
 afterEach(cleanup);
+// The organization picker scrolls its chosen option into view, which jsdom does not draw.
+Element.prototype.scrollIntoView = () => {};
 
 const create = vi.fn(async () => ({ id: "p1", slug: "desk", name: "Desk", orgId: "o1" }));
 const orgsRefetch = vi.fn();
@@ -16,7 +18,13 @@ let orgsLoading = false;
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
-vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null }) }));
+// The active org is read off the same organizations read: unknown while it failed, the team org once it answers.
+vi.mock("@/features/orgs/active-org", () => ({
+  useActiveOrg: () =>
+    orgsLoading || orgsFail
+      ? { activeOrg: null, scopeRead: false }
+      : { activeOrg: { id: "o1", name: "SidCorp", isPersonal: false }, scopeRead: true },
+}));
 vi.mock("@/features/orgs/hooks", () => ({
   useOrgs: () =>
     orgsLoading
@@ -77,6 +85,25 @@ describe("the new-project dialog while the organizations read failed", () => {
     expect(screen.getByLabelText(/^Name/)).toHaveValue("Desk");
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
     fireEvent.submit(screen.getByLabelText(/^Name/).closest("form") as HTMLFormElement);
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]).toEqual([{ slug: "desk", name: "Desk", orgId: "o1" }]);
+  });
+
+  // ISS-1229 r49, judge-146: after Retry the picker read Personal and Create filed the project there.
+  it("shows the organization being worked in once Retry's read answers, never Personal", () => {
+    const { rerender } = render(<NewProjectDialog open onClose={vi.fn()} />);
+    orgsFail = false;
+    rerender(<NewProjectDialog open onClose={vi.fn()} />);
+    expect(screen.getByRole("combobox")).toHaveTextContent("SidCorp");
+  });
+
+  it("keeps the organization the person picked when the read answers again", async () => {
+    orgsFail = false;
+    const { rerender } = render(<NewProjectDialog open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "Personal" }));
+    rerender(<NewProjectDialog open onClose={vi.fn()} />);
+    submitDesk();
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(create.mock.calls[0]).toEqual([{ slug: "desk", name: "Desk" }]);
   });
