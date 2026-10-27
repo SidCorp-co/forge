@@ -293,7 +293,13 @@ naming its own rule before the green counts.
 
 ### 6. Land, mark, move
 1. Land onto the base branch by the project's route — the brief or the project's knowledge says
-   which: a fast-forward, a pull request, a merge.
+   which: a fast-forward, a pull request, a merge. A pull or merge request is opened through core,
+   which holds the source host's credential and records what it opened:
+   \`POST /api/projects/:projectId/integrations/source/change-requests\` \`{ head, base, title, body?, draft? }\`
+   (\`forge-runner api projects/<projectId>/integrations/source/change-requests -X POST\` from a
+   pane), refused \`SOURCE_HOST_UNAVAILABLE\` naming why where the binding is missing, off or not
+   granted to agents. Never with a host token of your own. Core merges it at
+   \`POST /api/issues/:id/merge-pull-request\`.
 2. \`POST /api/issues/:id/merge\` \`{ commit, target, note }\`, the commit as it stands on the target,
    whole: an abbreviated sha is refused \`COMMIT_NOT_WHOLE\`. It is refused \`COMMIT_NOT_LANDED\`
    until it is there, and \`COMMIT_UNVERIFIED\` where core cannot read the project's repository;

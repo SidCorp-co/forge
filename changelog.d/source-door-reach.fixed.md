@@ -1,0 +1,1 @@
+**A retired delivery tool names its REST door instead of "Unknown tool".** `forge_source`, `forge_coolify_deploy`, `forge_sentry` and `forge_storefront_target` answer `MCP_DELIVERY_IS_REST` with their routes; a master opens a merge request at `POST …/integrations/source/change-requests`.
