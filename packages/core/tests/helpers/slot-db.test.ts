@@ -10,7 +10,7 @@ import {
   WORKER_PREFIX,
   workerDbName,
 } from './scratch-db.js';
-import { sever } from './slot-db.js';
+import { reportLingeringConnections, sever } from './slot-db.js';
 
 const TOKEN = mintRunToken();
 
@@ -164,5 +164,58 @@ describe('sever', () => {
     }) as unknown;
     // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
     await expect(sever(admin as any, 'test_w_1_x')).resolves.toBe(1);
+  });
+});
+
+/** An admin whose catalog answers `looks[n]` on its nth look at the database's sessions. */
+function sessionsAdmin(looks: Array<Array<{ pid: number; app: string }>>) {
+  let n = 0;
+  const admin = (() => {
+    const at = Math.min(n, looks.length - 1);
+    n += 1;
+    return Promise.resolve(
+      (looks[at] ?? []).map((s) => ({ ...s, state: 'idle', query: 'SELECT 1' })),
+    );
+  }) as unknown;
+  return { admin, looks: () => n };
+}
+
+describe('reportLingeringConnections', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('names nothing for a session that leaves on a later look, as one the server is still ending does', async () => {
+    vi.useFakeTimers();
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { admin, looks } = sessionsAdmin([[{ pid: 51, app: 'postgres.js' }], []]);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+      const done = reportLingeringConnections(admin as any, 'test_w_1_x');
+      await vi.advanceTimersByTimeAsync(5_000);
+      await done;
+      expect(looks()).toBe(2);
+      expect(reported).not.toHaveBeenCalled();
+    } finally {
+      reported.mockRestore();
+    }
+  });
+
+  it('names a session still there after fifty looks by pid and application', async () => {
+    vi.useFakeTimers();
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { admin, looks } = sessionsAdmin([[{ pid: 52, app: 'held-here' }]]);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+      const done = reportLingeringConnections(admin as any, 'test_w_1_x');
+      await vi.advanceTimersByTimeAsync(5_000);
+      await done;
+      expect(looks()).toBe(50);
+      expect(reported.mock.calls.flat().join('\n')).toContain(
+        '1 connection(s) still open at teardown, severed now: pid 52 held-here, idle after "SELECT 1"',
+      );
+    } finally {
+      reported.mockRestore();
+    }
   });
 });
