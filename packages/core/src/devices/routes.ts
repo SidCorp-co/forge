@@ -8,6 +8,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { devices, pairingCodes, projects, runners } from '../db/schema.js';
+import { refusedRepoPath } from '../lib/absolute-path.js';
 import { assertOrgAccess, assertRoleFor, loadProjectAccess } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -464,7 +465,7 @@ deviceAuthRoutes.patch(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   zValidator('json', meRunnerPatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw refusedRepoPath(r.error) ?? badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const device = c.get('device');

@@ -171,7 +171,7 @@ export function buildProviderCards(opts: {
 /** Build the full status-card set for a project (caller has already authz'd). */
 export async function buildIntegrationsStatusCards(projectId: string): Promise<StatusCard[]> {
   const [project] = await db
-    .select({ repoPath: projects.repoPathHint, baseBranch: projects.baseBranch })
+    .select({ repoPathHint: projects.repoPathHint, baseBranch: projects.baseBranch })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -210,7 +210,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
   const cards: StatusCard[] = [];
 
   // --- GitHub (repo + per-device push-cred) ---
-  const remoteUrl = project.repoPath ? await readGitRemote(project.repoPath) : null;
+  const remoteUrl = project.repoPathHint ? await readGitRemote(project.repoPathHint) : null;
   const transport = classifyGitRemote(remoteUrl);
   const deviceCreds = runnerRows
     .filter((r) => r.deviceId)

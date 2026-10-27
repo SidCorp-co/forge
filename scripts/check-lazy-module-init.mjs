@@ -4,6 +4,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { launched } from './lib/entrypoint.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCAN_ROOT = join(ROOT, 'packages', 'core', 'src');
@@ -57,30 +58,36 @@ function trackedNames(sourceFile) {
   return { direct, namespaces };
 }
 
+/** The module core's launch check lives in, and the one export that answers it (ISS-1236 r6). */
+const ENTRYPOINT_MODULE = /(^|\/)lib\/entrypoint\.js$/;
+const ENTRYPOINT_EXPORT = 'isEntrypoint';
+
 function entrypointBindings(sourceFile) {
-  const names = new Set();
+  const helpers = new Set();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (!ENTRYPOINT_MODULE.test(statement.moduleSpecifier.text)) continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) {
+      if ((element.propertyName ?? element.name).text === ENTRYPOINT_EXPORT) {
+        helpers.add(element.name.text);
+      }
+    }
+  }
   const isImportMetaUrl = (node) =>
     ts.isPropertyAccessExpression(node) && node.getText(sourceFile) === 'import.meta.url';
-  const isProcessArgvOne = (node) =>
-    ts.isElementAccessExpression(node) &&
-    ts.isPropertyAccessExpression(node.expression) &&
-    node.expression.getText(sourceFile) === 'process.argv' &&
-    ts.isNumericLiteral(node.argumentExpression) &&
-    node.argumentExpression.text === '1';
-  const isEntrypointUrlTemplate = (node) =>
-    ts.isTemplateExpression(node) &&
-    node.head.text === 'file://' &&
-    node.templateSpans.length === 1 &&
-    node.templateSpans[0].literal.text === '' &&
-    isProcessArgvOne(node.templateSpans[0].expression);
-  const isEntrypointTest = (node) => {
-    if (node === undefined || !ts.isBinaryExpression(node)) return false;
-    if (node.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) return false;
-    const sides = [node.left, node.right];
-    const urlSide = sides.findIndex(isImportMetaUrl);
-    if (urlSide === -1) return false;
-    return isEntrypointUrlTemplate(sides[1 - urlSide]);
-  };
+  // `isEntrypoint(import.meta.url)`, the helper imported from core's lib/entrypoint: a launch check
+  // written any other way is not one (scripts/lib/entrypoint.test.mjs refuses it outright).
+  const isEntrypointTest = (node) =>
+    node !== undefined &&
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    helpers.has(node.expression.text) &&
+    node.arguments.length === 1 &&
+    isImportMetaUrl(node.arguments[0]);
+  const names = new Set();
   for (const statement of sourceFile.statements) {
     if (!ts.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
@@ -173,7 +180,7 @@ export function importTimeReads(path, text) {
   return found;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (launched(import.meta.url)) main();
 
 function main() {
   if (!process.argv.includes('--all')) {

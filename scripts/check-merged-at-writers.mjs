@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launched } from './lib/entrypoint.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OWNER = 'packages/core/src/issues/merge-record.ts';
@@ -107,4 +108,4 @@ function main() {
   console.log(`merged-at-writers: ${files.length} file(s) scanned, one writer`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (launched(import.meta.url)) main();

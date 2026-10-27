@@ -11,13 +11,13 @@ export interface KnowledgeObligation {
 
 /** What the contract is a function of. Every field is a project column. */
 export interface ProjectDeclarations {
-  repoPath: string | null;
+  repoPathHint: string | null;
   repoUrl: string | null;
   releaseChain: ReleaseChain;
 }
 
 export function declaresRepository(p: ProjectDeclarations): boolean {
-  return (p.repoPath ?? '').trim().length > 0 || (p.repoUrl ?? '').trim().length > 0;
+  return (p.repoPathHint ?? '').trim().length > 0 || (p.repoUrl ?? '').trim().length > 0;
 }
 
 export function requiredProjectKnowledge(p: ProjectDeclarations): KnowledgeObligation[] {

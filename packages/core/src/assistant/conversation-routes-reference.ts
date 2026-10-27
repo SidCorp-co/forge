@@ -85,6 +85,12 @@ export const messageSchema = z.object({
       'Why a draft the reply check withdrew keeps no text: `credential` where it read as holding one, so none of it is stored',
     ),
   silenceReason: z.string().nullable(),
+  clientToken: z
+    .string()
+    .nullable()
+    .describe(
+      'The `clientToken` this message was sent under, answered only to the person who sent it and null to every other reader, so a browser whose send lost its answer knows the message it sees is its own',
+    ),
   createdAt: z.date(),
 });
 

@@ -26,7 +26,7 @@ type ReleaseChannelRead = NonNullable<
   Awaited<ReturnType<typeof collectReleaseBlockers>>['channels']
 >[number];
 interface ProjectRow {
-  repoPath: string | null;
+  repoPathHint: string | null;
   baseBranch: string | null;
   repoUrl: string | null;
   releaseChain: ReleaseChain;
@@ -92,7 +92,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   const row = await guarded('project', blockers, async () => {
     const [found] = await db
       .select({
-        repoPath: projects.repoPathHint,
+        repoPathHint: projects.repoPathHint,
         baseBranch: projects.baseBranch,
         repoUrl: projects.repoUrl,
         releaseChain: projects.releaseChain,
@@ -170,7 +170,7 @@ function declarationGaps(input: GapInput): ReleaseGapKey[] {
   // A gap is an ABSENCE somebody can act on, never a read nobody managed to make (ISS-1127).
   if (row !== undefined && held !== undefined) {
     const declarations = {
-      repoPath: row?.repoPath ?? null,
+      repoPathHint: row?.repoPathHint ?? null,
       repoUrl: row?.repoUrl ?? null,
       releaseChain: row?.releaseChain ?? [],
     };

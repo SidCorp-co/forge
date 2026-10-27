@@ -90,7 +90,7 @@ const idsOf = (from: number, to: number) =>
 function ready(waiting: unknown[]) {
   selectLimit.mockResolvedValue([
     {
-      repoPath: '/srv/app',
+      repoPathHint: '/srv/app',
       repoUrl: null,
       baseBranch: 'main',
       releaseChain: [{ branch: 'main' }],

@@ -83,6 +83,7 @@ export interface ConversationMessage {
   withdrawnFor?: "credential" | null;
   /** Set INSTEAD of text: this turn ran and chose to say nothing. */
   silenceReason: string | null;
+  clientToken?: string | null;
   createdAt: string;
 }
 

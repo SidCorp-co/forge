@@ -101,6 +101,7 @@ import { knowledgeRoutes } from './knowledge/routes.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { moduleDiagramRoutes } from './labels/module-diagram-routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
+import { isEntrypoint } from './lib/entrypoint.js';
 import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { registerMaintenanceJobs } from './maintenance-jobs.js';
@@ -428,9 +429,7 @@ if (isEnabled('pmAgent')) {
 app.route('/api/projects', pmReadRoutes);
 app.route('/api/projects', agentSessionProjectReadRoutes);
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
-
-if (isMain) {
+if (isEntrypoint(import.meta.url)) {
   const port = env.PORT;
 
   if (env.EMBEDDINGS_DIM !== MEMORY_EMBEDDING_DIM) {

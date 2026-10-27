@@ -5,6 +5,7 @@
  * version. <tag> <commit> [--remote <name>] [--cwd <dir>]
  */
 import { execFileSync } from 'node:child_process';
+import { launched } from './lib/entrypoint.mjs';
 
 function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -81,7 +82,7 @@ function main() {
   process.stdout.write(`cut ${tag} at ${commit}\n`);
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (launched(import.meta.url)) {
   try {
     main();
   } catch (err) {

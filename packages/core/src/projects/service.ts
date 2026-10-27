@@ -205,7 +205,7 @@ export async function readProjectWithConfig(projectId: string) {
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      repoPath: projects.repoPathHint,
+      repoPathHint: projects.repoPathHint,
       baseBranch: projects.baseBranch,
       releaseChain: projects.releaseChain,
       agentConfig: projects.agentConfig,

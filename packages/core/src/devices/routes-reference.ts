@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 import { tableRow } from '../api-reference/declare/rows.js';
 import { devicePlatforms, devices, runnerProvisionStatuses, runners } from '../db/schema.js';
+import { repoPathField } from '../lib/absolute-path.js';
 import { gateConditionSchema } from './gate-report.js';
 
 const deviceRow = tableRow(devices);
@@ -154,7 +155,7 @@ export const updateDeviceSchema = z
 
 export const meRunnerPatchSchema = z
   .object({
-    repoPath: z.string().trim().max(500).nullable().optional(),
+    repoPath: repoPathField.nullable().optional(),
     branch: z.string().trim().max(100).nullable().optional(),
   })
   .strict();
@@ -284,6 +285,10 @@ export const patchOwnRunner = describeOperation({
   summary: "Set the repo path and branch of one of this device's runner bindings",
   responses: {
     200: json(runnerPathSchema, 'The binding after the change'),
+    400: fail({
+      REPO_PATH_NOT_ABSOLUTE: '`repoPath` is not an absolute path, so nothing was saved',
+      BAD_REQUEST: 'the body is not a repo path and a branch',
+    }),
     401: fail('UNAUTHENTICATED', 'the device is revoked'),
     404: fail('RUNNER_NOT_FOUND', 'the runner is not this device'),
   },

@@ -61,14 +61,14 @@ function project(over: {
   baseBranch?: string;
   releaseChain?: { branch: string; from?: string }[];
   facts?: Record<string, unknown>;
-  repoPath?: string | null;
+  repoPathHint?: string | null;
   environments?: unknown;
 }) {
   const row = {
     // Every real project declares a repository — the pipeline cannot check one out otherwise — so
     // the fixture does too: the build/test obligations hang off that declaration, and a fixture
     // missing it would pass by owing nothing. The repo-less case is its own test.
-    repoPath: over.repoPath === undefined ? '/srv/app' : over.repoPath,
+    repoPathHint: over.repoPathHint === undefined ? '/srv/app' : over.repoPathHint,
     repoUrl: null,
     baseBranch: over.baseBranch ?? 'main',
     releaseChain: over.releaseChain ?? [],

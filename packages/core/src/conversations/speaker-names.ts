@@ -11,11 +11,13 @@ interface Spoken {
   role: string;
   authorUserId: string | null;
   authorLabel: string | null;
+  clientToken?: string | null;
 }
 
 /**
  * Each person's message named by its author's current name, and the reader's own as "You", the word
  * the web thread uses for them (ISS-1236); every other message as it was. No reader, no "You".
+ * Only the reader who sent a message reads its `clientToken`.
  */
 export async function nameSpeakers<T extends Spoken>(
   messages: readonly T[],
@@ -23,13 +25,14 @@ export async function nameSpeakers<T extends Spoken>(
 ): Promise<T[]> {
   const ids = [...new Set(messages.flatMap((m) => (spokenByAPerson(m) ? [m.authorUserId] : [])))];
   const names = await userLabels(ids, 'start');
-  return messages.map((m) => ({
-    ...m,
-    authorLabel:
-      readerId !== null && spokenByAPerson(m) && m.authorUserId === readerId
-        ? readerName(m.authorUserId, readerId, null)
-        : speakerOf(m, names),
-  }));
+  return messages.map((m) => {
+    const own = readerId !== null && spokenByAPerson(m) && m.authorUserId === readerId;
+    return {
+      ...m,
+      authorLabel: own ? readerName(m.authorUserId, readerId, null) : speakerOf(m, names),
+      ...('clientToken' in m ? { clientToken: own ? (m.clientToken ?? null) : null } : {}),
+    };
+  });
 }
 
 /** What everyone who has spoken in this room is called now, for a reader that names them later. */

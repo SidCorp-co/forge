@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launched } from './lib/entrypoint.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE = 'packages/core/src';
@@ -18,6 +19,8 @@ export const HINT = /repo_?path_?hint/i;
 /**
  * The files that may name the hint, each for a reason that is not a working directory. A working
  * directory is a device's (`runners.repoPath`), read through `readDeviceBinding` in READER — ISS-1236.
+ * Inside core the hint keeps this name; only an answer that leaves core calls it `repoPath`
+ * (`ANSWERED_AS_REPO_PATH`), and a read of that answer's `.repoPath` is one this search cannot see.
  */
 export const DECLARED = new Map([
   ['packages/core/src/db/schema.ts', 'defines the column'],
@@ -52,7 +55,25 @@ export const DECLARED = new Map([
     'packages/core/src/projects/agent-config-schema.ts',
     'names the column in the refusal of the retired `agentConfig.repoPath`; reads nothing',
   ],
+  [
+    'packages/core/src/mcp/tools/forge-config.ts',
+    "answers it as `forge_config`'s `config.repoPath`",
+  ],
+  [
+    'packages/core/src/projects/autonomous-contract.ts',
+    'whether the project declares a repository (`declaresRepository`), from the readers that read it',
+  ],
 ]);
+
+/** The declared readers whose answers leave core carrying the hint under the API's name `repoPath`. */
+export const ANSWERED_AS_REPO_PATH = [
+  'packages/core/src/projects/projections.ts',
+  'packages/core/src/projects/service.ts',
+  'packages/core/src/projects/routes.ts',
+  'packages/core/src/mcp/tools/forge-projects.ts',
+  'packages/core/src/mcp/tools/forge-config.ts',
+  'packages/core/src/projects/health-routes.ts',
+];
 
 function die(message) {
   console.error(`check-repo-path-readers: ${message}`);
@@ -142,4 +163,4 @@ function main() {
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (launched(import.meta.url)) main();

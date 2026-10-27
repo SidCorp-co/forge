@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type ProjectMemberRole, projectKinds } from '../../db/project-vocabulary.js';
+import { parseRefusingRelativeRepoPath, repoPathField } from '../../lib/absolute-path.js';
 import {
   effectiveProjectRole,
   loadOrgRole,
@@ -90,7 +91,7 @@ const createInputSchema = z
     slug: slugField,
     name: z.string().trim().min(1).max(200),
     description: z.string().trim().max(2000).optional(),
-    repoPath: z.string().trim().max(500).optional(),
+    repoPath: repoPathField.optional(),
     baseBranch: z.string().trim().max(100).optional(),
     releaseChain: releaseChainSchema.optional(),
     // Org tier — omitted = the caller's personal org.
@@ -104,7 +105,7 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
     "Create a new project in an org (orgId optional — defaults to the caller's personal org; the caller becomes a project admin). Accepts slug+name plus optional initial description/repoPath/baseBranch/releaseChain. PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Returns id/slug/name/orgId/createdBy/createdAt.",
   inputSchema: zodToMcpSchema(createInputSchema),
   handler: async (args) => {
-    const input = createInputSchema.parse(args);
+    const input = parseRefusingRelativeRepoPath(createInputSchema, args);
     const { principal } = ctx;
 
     if (principal.kind === 'pat') {
@@ -200,7 +201,7 @@ const updateInputSchema = z
           .object({
             name: z.string().trim().min(1).max(200).optional(),
             description: z.string().trim().max(2000).nullable().optional(),
-            repoPath: z.string().trim().max(500).nullable().optional(),
+            repoPath: repoPathField.nullable().optional(),
             baseBranch: z.string().trim().max(100).nullable().optional(),
             releaseChain: releaseChainSchema.optional(),
             kind: z.enum(projectKinds).optional(),
@@ -242,7 +243,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     "Update project settings (name, description, repoPath, baseBranch, releaseChain, kind). `releaseChain` is the ordered release path — `[]` ships nothing, `[{branch}]` deploys that branch, `[{branch: 'dev'}, {branch: 'main', from: 'merge-branch'}]` crosses then deploys — and it REPLACES the whole list rather than patching it. The last entry may carry `tag` (a glob such as `v*.*.*`) for a project that ships by version tag: `[{branch: 'dev', tag: 'v*.*.*'}]` refuses `closed` until a matching tag contains the issue's landing commit. `releaseModel`, `liveBranch` and `releaseStrategy` were retired by ISS-1311 and a patch naming one is refused by name. The chain's first entry and `baseBranch` must name the same branch: send both together when either moves. Two writes that would strand work are refused by name: emptying a non-empty `releaseChain` while issues wait at `awaiting_release` (`RELEASE_CHAIN_STRANDS_WORK` — release them or return them to `developed` first), and a `kind` change that would make an unclosed issue's merge mark stop counting as a landing (`PROJECT_KIND_STRANDS_WORK` — declare that issue's own `landingShape` first). `kind` is the project's SHAPE, not a label: `website` means an Epodsystem-backed storefront where the store is the source of truth and a git repo is optional, and the runner then skips the git preflight and the workspace refresh for every job. Set it on a project that has no repo; never set it on one that does, or its stages stop verifying the checkout they run in. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. `workspaceSetup` is prose describing how to bring this repo's workspace to a state a stage can build, test and commit in (install commands, hook setup, toolchain quirks) — the runner's setup agent reads it before every stage that lands in a broken workspace, so writing it once retires a per-job derivation. Record only a procedure you actually ran; null clears it. Sensitive fields (webhookSecret, agentConfig, defaultDeviceId) stay on REST; `environments` is otherwise read-only via forge_projects.get, with ONE scoped exception: `environmentsLimits` writes `environments.limits` and leaves every other key of the blob — the credentials included — exactly as it found them. `limits` answers ONE question: what does this environment NOT have? (which surfaces the test account cannot reach, which states this environment never contains, what must not be faked). The field it replaced invited anything and was filled on 4 of 32 projects. NEVER put a secret in it: it is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`. null clears it. `previewDeployNotes` was retired by ISS-1069 and is refused by name.",
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
-    const input = updateInputSchema.parse(args);
+    const input = parseRefusingRelativeRepoPath(updateInputSchema, args, ['patch', 'repoPath']);
     const { principal } = ctx;
 
     if (principal.kind === 'pat' && !principal.scopes.includes('write')) {

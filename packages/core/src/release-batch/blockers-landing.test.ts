@@ -85,7 +85,7 @@ const DECLARED = {
 
 beforeEach(() => {
   selectLimit.mockResolvedValue([
-    { repoPath: null, repoUrl: null, baseBranch: 'main', releaseChain: [{ branch: 'main' }] },
+    { repoPathHint: null, repoUrl: null, baseBranch: 'main', releaseChain: [{ branch: 'main' }] },
   ]);
   selectRows.mockResolvedValue([
     { id: ISSUE, status: 'awaiting_release', claimed: null },

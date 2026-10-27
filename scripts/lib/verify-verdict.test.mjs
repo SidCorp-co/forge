@@ -59,6 +59,7 @@ describe('a checker of this repository that fails without a count', () => {
       join(SCRIPTS, 'check-merged-at-writers.mjs'),
       join(root, 'scripts/check-merged-at-writers.mjs'),
     );
+    cpSync(join(SCRIPTS, 'lib/entrypoint.mjs'), join(root, 'scripts/lib/entrypoint.mjs'));
     mkdirSync(join(root, 'packages/core/src/issues'), { recursive: true });
     mkdirSync(join(root, 'packages/web-v2/src'), { recursive: true });
     writeFileSync(join(root, 'packages/core/src/issues/merge-record.ts'), 'export {};\n');

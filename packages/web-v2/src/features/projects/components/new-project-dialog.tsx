@@ -14,6 +14,7 @@ import { formatApiError } from '@/lib/api/error';
 import { useToast } from '@/providers/toast-provider';
 import { SLUG_RE, slugify } from '@/lib/slug';
 import { useCreateProject, useOnboardProject } from '../hooks';
+import { REPOSITORY_PATH_HINT } from '../repository-path';
 import type { CreatedProject } from '../types';
 
 export { slugify };
@@ -188,7 +189,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
           <Field
             label="Repository path"
-            hint="Absolute path on the runner host where the repo is checked out."
+            hint={REPOSITORY_PATH_HINT}
           >
             <Input
               value={repoPath}

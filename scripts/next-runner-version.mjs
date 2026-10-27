@@ -7,6 +7,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { launched } from './lib/entrypoint.mjs';
 
 const CARGO_PATH = 'packages/runner/Cargo.toml';
 const TAG_PREFIX = 'runner-v';
@@ -76,7 +77,7 @@ function main() {
   process.stdout.write(`version=${version}\ntag=${tag}\n`);
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (launched(import.meta.url)) {
   try {
     main();
   } catch (err) {
