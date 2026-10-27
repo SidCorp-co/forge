@@ -6,7 +6,7 @@
 // real canary job's terminal status. Every verdict carries its freshness
 // timestamp ("PASS as of …").
 import { useMemo } from "react";
-import { Badge, Button, Card, CardContent, MonoTag, Spinner, Tooltip } from "@/design";
+import { Badge, Button, Card, CardContent, MonoTag, ReadFailedLine, Spinner, Tooltip } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useRunSmokeVerify, useSkillSmokeVerify } from "../hooks";
@@ -101,9 +101,12 @@ export function SmokeVerifyPanel({ projectId, canManage }: SmokeVerifyPanelProps
         )}
 
         {reportQ.isError && (
-          <p className="fg-caption mt-3 text-red-600">
-            Couldn&apos;t load the report: {formatApiError(reportQ.error)}
-          </p>
+          <ReadFailedLine
+            className="mt-3"
+            what="the verification report"
+            why={formatApiError(reportQ.error)}
+            onRetry={() => void reportQ.refetch()}
+          />
         )}
 
         {report && (

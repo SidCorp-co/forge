@@ -87,6 +87,7 @@ vi.mock("./conversation-sidebar", () => ({
     onToggleArchived,
     below,
     error,
+    errorTitle,
     onRetry,
   }: {
     rows: Array<{ id: string; title: string }>;
@@ -95,11 +96,13 @@ vi.mock("./conversation-sidebar", () => ({
     onToggleArchived: () => void;
     below?: ReactNode;
     error?: unknown;
+    errorTitle?: string;
     onRetry?: () => void;
   }) => (
     <ul>
       {error != null && (
         <li>
+          <p data-testid="list-failure-title">{errorTitle}</p>
           <button type="button" onClick={onRetry}>
             Read the list again
           </button>
@@ -367,5 +370,13 @@ describe("the page when the reader's projects cannot be read", () => {
     });
     expect(reader.reads).toBe(1);
     expect(screen.queryByRole("button", { name: "New conversation" })).toBeNull();
+  });
+
+  // ISS-1229 r48, judge-142: the list's state was titled "Couldn't load conversations" though the projects failed.
+  it("titles the list's failure after the projects read, never the conversations", () => {
+    reader.unread = new ApiError(500, "The server ran into a problem.");
+    at("/conversations");
+    render(<ConversationsScreen />);
+    expect(screen.getByTestId("list-failure-title").textContent).toBe("Couldn't load your projects");
   });
 });

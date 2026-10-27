@@ -17,7 +17,7 @@ import {
 } from "@/design";
 import { HELP_DOCS } from "../help-content.generated";
 import { deriveToc, groupSections, HELP_SECTION_ORDER, matchExcerpt, searchDocs } from "../reader";
-import { DocsArticle, DocsLayout, type DocsNavItem, DocsSidebar } from "./docs-reader";
+import { articleTitle, DocsArticle, DocsLayout, type DocsNavItem, DocsSidebar } from "./docs-reader";
 
 export function DocsScreen() {
   const searchParams = useSearchParams();
@@ -48,7 +48,10 @@ export function DocsScreen() {
     <PageContainer className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <PageTitle className="fg-h2">Docs</PageTitle>
+          {/* With a document open, its title heads the page and names the tab (ISS-1229 r48). */}
+          <PageTitle className="fg-h2" heads={!doc}>
+            Docs
+          </PageTitle>
           <p className="fg-body-sm text-muted">Guides for using Forge.</p>
         </div>
         <HelpButton
@@ -95,7 +98,12 @@ export function DocsScreen() {
               mascot={false}
             />
           ) : (
-            <DocsArticle crumbs={[doc.section, doc.title]} body={doc.body} docBasePath={doc.slug} />
+            <DocsArticle
+              crumbs={[doc.section, doc.title]}
+              title={articleTitle(doc.body, doc.title)}
+              body={doc.body}
+              docBasePath={doc.slug}
+            />
           )}
         </DocsLayout>
       )}

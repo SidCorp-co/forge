@@ -13,6 +13,7 @@ import {
   Field,
   Input,
   NativeSelect,
+  ReadFailedLine,
   Spinner,
   SettingsSection,
 } from "@/design";
@@ -395,6 +396,15 @@ function refusedFor(projectsQ: { refetch: () => Promise<unknown> }): null {
 function AppOwner({ projectId, act }: { projectId: string; act: "create" | "install" }) {
   const projectsQ = useProjects();
   const project = projectsQ.data?.find((p) => p.id === projectId);
+  if (!project && projectsQ.isError)
+    return (
+      <ReadFailedLine
+        testId="app-owner-unread"
+        what="your projects, so who the App will belong to is not known"
+        why={formatApiError(projectsQ.error)}
+        onRetry={() => void projectsQ.refetch()}
+      />
+    );
   if (!project) return null;
   if (project.orgIsPersonal)
     return (

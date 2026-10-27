@@ -53,7 +53,11 @@ export function OrphanRoomView({
               <ProjectLoader label="loading conversation…" />
             </div>
           ) : roomQ.isError ? (
-            <ErrorState title="Couldn't load this conversation" message={formatApiError(roomQ.error)} />
+            <ErrorState
+              title="Couldn't load this conversation"
+              message={formatApiError(roomQ.error)}
+              onRetry={() => void roomQ.refetch()}
+            />
           ) : messages.length === 0 ? (
             <EmptyState title="Nothing was said here" message="This room was opened, and nobody wrote in it." />
           ) : (

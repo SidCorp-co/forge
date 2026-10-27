@@ -17,6 +17,7 @@ import {
   MonoTag,
   PageContainer,
   PageTitle,
+  ReadFailedLine,
   Select,
   Skeleton,
   Spinner,
@@ -98,8 +99,8 @@ function RunItem({ run, slug }: { run: ScheduleRun; slug: string | undefined }) 
   return body;
 }
 
-/** Expandable run log for one message's schedule. */
-function RunLog({
+/** Expandable run log for one message's schedule; exported for its failure test. */
+export function RunLog({
   projectId,
   scheduleId,
   slug,
@@ -120,9 +121,11 @@ function RunLog({
         </span>
       )}
       {runsQ.isError && (
-        <span className="fg-caption fg-danger">
-          Couldn&apos;t load run history — {formatApiError(runsQ.error)}
-        </span>
+        <ReadFailedLine
+          what="this message's run history"
+          why={formatApiError(runsQ.error)}
+          onRetry={() => void runsQ.refetch()}
+        />
       )}
       {!runsQ.isLoading && !runsQ.isError && runs.length === 0 && (
         <span className="fg-caption text-subtle">No runs yet.</span>

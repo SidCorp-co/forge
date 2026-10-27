@@ -60,6 +60,27 @@ describe("a project list whose read failed", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  // ISS-1229 r48, judge-142: the only visible word was "Retry", and the hover title was the server's sentence.
+  it("says on the narrow rail, as visible text, that the projects were not loaded, and its tooltip names them", () => {
+    render(
+      <NavRailCompact
+        workspaceItems={[{ key: "overview", label: "Overview", icon: "grid" }]}
+        activeKey="overview"
+        switcherProjects={[]}
+        projectsUnread={unread(() => {})}
+        onNavigate={() => {}}
+        onSelectProject={() => {}}
+        onTogglePin={() => {}}
+        onAllProjects={() => {}}
+        onNewProject={() => {}}
+      />,
+    );
+    const retry = screen.getByTestId("rail-projects-unread");
+    expect(retry).toHaveTextContent(/^Projects not loadedRetry$/);
+    expect(retry).toHaveAttribute("title", "Couldn't load your projects. Retry");
+    expect(retry.getAttribute("title")).not.toContain("server");
+  });
+
   it("is said in the phone drawer, with Retry, never as no projects yet", () => {
     const onRetry = vi.fn();
     render(

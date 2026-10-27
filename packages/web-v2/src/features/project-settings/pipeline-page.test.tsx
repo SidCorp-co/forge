@@ -33,6 +33,9 @@ let pluginsFail: boolean;
 let pluginsFailsWith: string;
 /** The runners the project answers for. */
 let runners: Array<{ deviceId: string; deviceName: string; deviceStatus: string; runnerStatus: string }>;
+/** Set to make the runners read fail (ISS-1229 r48). */
+let runnersFail: boolean;
+const runnersRefetch = vi.fn();
 
 vi.mock("@/lib/api/client", async () => {
 	const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -81,10 +84,10 @@ const toast = vi.fn();
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
 vi.mock("@/features/runners/hooks", () => ({
-	useProjectRunners: () => ({
-		data: runners,
-		isPending: false,
-	}),
+	useProjectRunners: () =>
+		runnersFail
+			? { data: undefined, isPending: false, isError: true, error: new Error("The server is down."), refetch: runnersRefetch }
+			: { data: runners, isPending: false },
 }));
 
 const START: Doc = {
@@ -125,6 +128,7 @@ beforeEach(() => {
 	pluginWrites = [];
 	pluginsFail = false;
 	pluginsFailsWith = "the plugins store is down";
+	runnersFail = false;
 	runners = [
 		{ deviceId: "box-a", deviceName: "box-a", deviceStatus: "online", runnerStatus: "online" },
 		{ deviceId: "box-b", deviceName: "box-b", deviceStatus: "online", runnerStatus: "online" },
@@ -508,5 +512,21 @@ describe("a pool that names a box this project has no runner for", () => {
 			intakeGate: { enabled: true },
 			states: { open: { deviceIds: null } },
 		});
+	});
+});
+
+describe("a pinned pool while the project's runners cannot be read (ISS-1229 r48)", () => {
+	it("does not hold Save, and the pools say the read failed with Retry", async () => {
+		runnersFail = true;
+		runnersRefetch.mockClear();
+		stored = applyDocumentPatch(stored, { states: { open: { deviceIds: ["box-a"] } } });
+		mountPage();
+		await ready();
+		toggle("Require human approval for new issues");
+		await waitFor(() => expect(saveButton()).toBeEnabled());
+		expect(screen.queryByText(/names a device this project has no runner for/i)).toBeNull();
+		const unread = screen.getByText(/Couldn't load this project's runners/).closest("[role=alert]") as HTMLElement;
+		fireEvent.click(within(unread).getByRole("button", { name: "Retry" }));
+		expect(runnersRefetch).toHaveBeenCalledTimes(1);
 	});
 });

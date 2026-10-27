@@ -40,6 +40,7 @@ export default function ProjectReleaseRunPage() {
 					level={1}
 					title="Release run not found"
 					message="This project doesn't exist, you don't have access to it, or the run id is missing from the address."
+					final
 				/>
 			</div>
 		);

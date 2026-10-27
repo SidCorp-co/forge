@@ -12,10 +12,19 @@ import type { AgentAccountRow } from "../types";
 expect.extend(matchers);
 
 const REMOVED_ID = "7dca1ad6-ab90-443f-a188-98f3e770265b";
-const state: { agents: AgentAccountRow[]; projects: { id: string; name: string }[] | undefined } = {
+const state: {
+  agents: AgentAccountRow[];
+  projects: { id: string; name: string }[] | undefined;
+  projectsFail: boolean;
+  agentsFail: boolean;
+} = {
   agents: [],
   projects: [],
+  projectsFail: false,
+  agentsFail: false,
 };
+const readProjects = vi.fn();
+const readAgents = vi.fn();
 const mintMutate = vi.fn(async () => ({ plaintext: "forge_pat_secret" }));
 const revokeMutate = vi.fn(async () => ({ revoked: 1 }));
 
@@ -23,12 +32,18 @@ vi.mock("@/features/orgs/active-org", () => ({
   useActiveOrg: () => ({ activeOrg: { id: "o1", name: "Acme", role: "admin" } }),
 }));
 vi.mock("@/features/projects/hooks", () => ({
-  useProjectsIncludingArchived: () => ({ data: state.projects, isLoading: state.projects === undefined }),
+  useProjectsIncludingArchived: () =>
+    state.projectsFail
+      ? { data: undefined, isLoading: false, isError: true, error: new Error("The server is down."), refetch: readProjects }
+      : { data: state.projects, isLoading: state.projects === undefined, isError: false, error: null, refetch: readProjects },
   useOrgScopedProjects: () => ({ projects: state.projects ?? [], isLoading: false }),
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("../hooks", () => ({
-  useAgentAccounts: () => ({ data: state.agents, isLoading: false, isError: false }),
+  useAgentAccounts: () =>
+    state.agentsFail
+      ? { data: undefined, isLoading: false, isError: true, error: new Error("The server is down."), refetch: readAgents }
+      : { data: state.agents, isLoading: false, isError: false, refetch: readAgents },
   useMintAgentCredential: () => ({ mutateAsync: mintMutate, isPending: false }),
   useRevokeAgentCredentials: () => ({ mutateAsync: revokeMutate, isPending: false }),
   useSetAgentDisplayName: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -60,6 +75,10 @@ beforeEach(() => {
     agent(12, { projects: [{ id: REMOVED_ID, role: "member" }], activeTokens: 1, canAct: true }),
   ];
   state.projects = [{ id: "p1", name: "alpha" }];
+  state.projectsFail = false;
+  state.agentsFail = false;
+  readProjects.mockClear();
+  readAgents.mockClear();
   mintMutate.mockClear();
   revokeMutate.mockClear();
 });
@@ -181,5 +200,34 @@ describe("AgentsTab — the New agent form sits below the table", () => {
     expect(screen.getByRole("textbox", { name: "Search projects" })).toBeInTheDocument();
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     expect(screen.getByRole("button", { name: "Create agent" })).toBeInTheDocument();
+  });
+});
+
+// ISS-1229 r48, judge-142: with the projects read failing every Projects cell said "1 project removed or
+// not shared with you", and with the agents read failing "Could not load agents" had no Retry.
+describe("AgentsTab — a failed read is said, with Retry, never as a lost project", () => {
+  it("never calls a project removed or not shared while the projects cannot be read", () => {
+    state.projectsFail = true;
+    render(<AgentsTab />);
+    expect(within(table()).queryByText(/removed or not shared/)).toBeNull();
+    expect(within(table()).getAllByText("1 project whose name could not be loaded").length).toBeGreaterThan(0);
+  });
+
+  it("says above the table that the projects could not be loaded, and Retry reads them again", () => {
+    state.projectsFail = true;
+    render(<AgentsTab />);
+    const failure = screen.getByTestId("agents-projects-unread");
+    expect(failure).toHaveTextContent("Couldn't load your projects");
+    expect(failure).toHaveTextContent("The server is down.");
+    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    expect(readProjects).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Retry on the agents' own failure, which reads the agents again", () => {
+    state.agentsFail = true;
+    render(<AgentsTab />);
+    expect(screen.getByRole("heading", { name: "Couldn't load the agents" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(readAgents).toHaveBeenCalledTimes(1);
   });
 });

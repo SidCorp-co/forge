@@ -56,6 +56,17 @@ export function ProjectMissing({
   const all = useProjectsIncludingArchived();
   const archived = all.data?.find((p) => p.slug === slug && p.archivedAt !== null);
   if (all.isLoading) return <ProjectLoader label="loading project…" />;
+  // A list that could not be read cannot say the project is missing from it (ISS-1229 r48).
+  if (all.isError && all.data === undefined) {
+    return (
+      <ErrorState
+        level={1}
+        title="Couldn't load your projects"
+        message={formatApiError(all.error)}
+        onRetry={() => void all.refetch()}
+      />
+    );
+  }
   if (archived && mayUnarchive(archived)) return <ArchivedWithUnarchive project={archived} />;
   if (archived) {
     return <EmptyState level={1} title="This project is archived" message={archivedProjectWords(archived)} />;

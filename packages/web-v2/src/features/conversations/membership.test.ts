@@ -269,3 +269,21 @@ describe("the New issue door with no project open", () => {
     expect(issueDoorWithoutProject(true).description).toBe("Open a project to create an issue.");
   });
 });
+
+// ISS-1229 r48, the master's ruling on judge-142: no room says "Nobody chooses it".
+describe("what a room being opened says it will be about", () => {
+  it("names its projects as its agents', in plain words, never that nobody chooses it", async () => {
+    const { roomOpeningClaims } = await import("./membership");
+    const [scope] = roomOpeningClaims({ projects: [{ id: "p1", name: "Billing", slug: "billing" }], agentCount: 1 });
+    expect(scope?.text).toBe("This room will be about Billing, the project of the agent in it.");
+    const [two] = roomOpeningClaims({
+      projects: [
+        { id: "p1", name: "Billing", slug: "billing" },
+        { id: "p2", name: "Ops", slug: "ops" },
+      ],
+      agentCount: 2,
+    });
+    expect(two?.text).toBe("This room will be about Billing and Ops, the projects of the agents in it.");
+    expect(two?.text).not.toMatch(/nobody chooses/i);
+  });
+});

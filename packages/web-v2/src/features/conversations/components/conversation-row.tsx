@@ -40,8 +40,17 @@ export function projectsOfRow(
   });
 }
 
-const namesOf = (projects: readonly ProjectInfo[]): string => {
+export function unnamedOfRow(
+  row: Pick<ListedConversation, "scope" | "projectId">,
+  nameOf: (projectId: string) => ProjectInfo | undefined,
+): number {
+  const ids = row.scope.length > 0 ? row.scope : [row.projectId];
+  return ids.filter((id) => !nameOf(id)).length;
+}
+
+const namesOf = (projects: readonly ProjectInfo[], notLoaded: number): string => {
   const names = projects.map((p) => p.name);
+  if (notLoaded > 0) names.push(`${notLoaded} project${notLoaded === 1 ? "" : "s"} not loaded`);
   if (names.length === 0) return "Unknown project";
   if (names.length === 1) return names[0] as string;
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -59,6 +68,7 @@ export interface ConversationRowActions {
 export function ConversationRow({
   row,
   projects,
+  notLoaded = 0,
   open,
   onOpen,
   onRename,
@@ -68,6 +78,8 @@ export function ConversationRow({
   row: ListedConversation;
   /** Every project the room is about, as `projectsOfRow` reads them. */
   projects: readonly ProjectInfo[];
+  /** How many of its projects could not be named because the projects read failed: said, never "Unknown". */
+  notLoaded?: number;
   /** Already the open conversation — the row's single "open" signal. */
   open?: boolean;
   onOpen: () => void;
@@ -75,7 +87,7 @@ export function ConversationRow({
   const project = projects[0];
   const glyph = projectGlyph(project?.slug ?? row.projectId);
   const initials = projectInitials(project?.name ?? "?");
-  const about = namesOf(projects);
+  const about = namesOf(projects, notLoaded);
   const archived = row.archivedAt !== null;
 
   const [editing, setEditing] = useState<string | null>(null);
@@ -119,7 +131,7 @@ export function ConversationRow({
         type="button"
         onClick={onOpen}
         aria-current={open ? "true" : undefined}
-        aria-label={`Open ${conversationTitle(row)} in ${projects.length > 0 ? about : "an unknown project"}`}
+        aria-label={`Open ${conversationTitle(row)} in ${projects.length > 0 || notLoaded > 0 ? about : "an unknown project"}`}
         className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
       >
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />

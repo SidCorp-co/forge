@@ -50,9 +50,10 @@ describe("what a stored turn carries for its reader", () => {
   });
 
   // ISS-1229 r25: a message core could not name read "You" to everyone; "You" is the reader's word alone.
-  it("names another member where nobody is named, never You", () => {
+  // r48 (the master's ruling on judge-142): an unnamed sender signs "A member".
+  it("signs A member where nobody is named, never You", () => {
     render(<ConversationThread messages={[said({ authorLabel: null })]} windows={[]} />);
-    expect(screen.getByTestId("message-actions")).toHaveTextContent("Another member");
+    expect(screen.getByTestId("message-actions").querySelector("span")?.textContent).toBe("A member");
     expect(screen.getByTestId("message-actions")).not.toHaveTextContent("You");
   });
 
@@ -102,8 +103,8 @@ describe("what a stored turn carries for its reader", () => {
   // ISS-1229 r22: the control's name is a sentence, so a person with no display name reads lower-case in it.
   it("names an unnamed author lower-case inside the copy control's name", () => {
     render(<ConversationThread messages={[said({ authorLabel: "Another member" })]} windows={[]} />);
-    expect(screen.getByTestId("message-actions")).toHaveTextContent("Another member");
-    expect(screen.getByRole("button", { name: /^Copy message from another member/ })).toBeInTheDocument();
+    expect(screen.getByTestId("message-actions").querySelector("span")?.textContent).toBe("A member");
+    expect(screen.getByRole("button", { name: /^Copy message from a member/ })).toBeInTheDocument();
   });
 
   it("says which message each copy control takes, so a list of them is not seven 'Copy's", () => {
@@ -499,26 +500,27 @@ describe("a withdrawn reply read back after a reload", () => {
   });
 });
 
-// ISS-1229 r43, judge-120: in a group room every other person read "Another member", so with three people
-// nobody could tell who said what. Each message names its author as the room's members list does.
+// ISS-1229 r43 told unnamed senders apart by when each was added; r48 (the master's ruling on judge-142):
+// a message is signed with the name its sender gave or "A member", never an added date or an ordinal.
 describe("who said each message in a room of people none of whom set a name", () => {
-  const person = (id: string, userId: string, addedAt: string) => ({
+  const person = (id: string, userId: string, addedAt: string, displayName: string | null = null) => ({
     id,
     kind: "person" as const,
     userId,
     projectId: null,
     label: null,
-    displayName: null,
+    displayName,
     reachable: null,
     addedAt,
   });
   const participants = [
     person("pm", "me", "2026-10-26T03:30:00.000Z"),
-    person("p2", "u2", "2026-10-26T03:31:00.000Z"),
-    person("p3", "u3", "2026-10-26T03:32:00.000Z"),
+    person("p2", "u2", "2026-10-26T03:30:00.000Z"),
+    person("p3", "u3", "2026-10-26T03:30:00.000Z"),
+    person("p4", "u4", "2026-10-26T03:31:00.000Z", "Mai"),
   ];
 
-  it("names each person as the members list does, so no two read alike", () => {
+  it("signs each unnamed person A member, a named one by their name, and the reader You", () => {
     render(
       <ConversationThread
         participants={participants}
@@ -526,41 +528,28 @@ describe("who said each message in a room of people none of whom set a name", ()
           said({ id: "m1", seq: 0, authorUserId: "u2", authorLabel: "Another member" }),
           said({ id: "m2", seq: 1, authorUserId: "u3", authorLabel: "Another member" }),
           said({ id: "m3", seq: 2, authorUserId: "me", authorLabel: "Another member" }),
+          said({ id: "m4", seq: 3, authorUserId: "u4", authorLabel: "Another member" }),
         ]}
         windows={[]}
       />,
     );
     const authors = screen.getAllByTestId("message-actions").map((el) => el.querySelector("span")?.textContent);
-    expect(authors[0]).toMatch(/^Another member \(added .+\)$/);
-    expect(authors[1]).toMatch(/^Another member \(added .+\)$/);
-    expect(authors[2]).toBe("You");
-    expect(new Set(authors).size).toBe(3);
+    expect(authors).toEqual(["A member", "A member", "You", "Mai"]);
   });
 
-  // ISS-1229 r44, judge-124: two readers of one room meant different people by "the first", because each
-  // left themself out of the people told apart.
-  it("names the same person by the same words for every reader of the room", () => {
-    const sameMinute = [
-      person("pa", "ua", "2026-10-26T03:30:01.000Z"),
-      person("pb", "ub", "2026-10-26T03:30:02.000Z"),
-      person("pc", "uc", "2026-10-26T03:30:03.000Z"),
-    ];
-    const messages = ["ua", "ub", "uc"].map((userId, seq) =>
-      said({ id: `m${seq}`, seq, authorUserId: userId, authorLabel: "Another member" }),
+  it("never signs a message with when its sender was added, or their place in that order", () => {
+    render(
+      <ConversationThread
+        participants={participants}
+        messages={[
+          said({ id: "m1", seq: 0, authorUserId: "u2", authorLabel: "Another member" }),
+          said({ id: "m2", seq: 1, authorUserId: "u3", authorLabel: "Another member" }),
+        ]}
+        windows={[]}
+      />,
     );
-    const heard: Record<string, Record<string, string>> = {};
-    for (const who of ["ua", "ub", "uc"]) {
-      reader.id = who;
-      render(<ConversationThread participants={sameMinute} messages={messages} windows={[]} />);
-      const authors = screen.getAllByTestId("message-actions").map((el) => el.querySelector("span")?.textContent ?? "");
-      heard[who] = Object.fromEntries(["ua", "ub", "uc"].map((id, i) => [id, authors[i] as string]));
-      cleanup();
-    }
-    reader.id = "me";
-    for (const [id, place] of [["ua", "first"], ["ub", "second"], ["uc", "third"]] as const) {
-      for (const who of ["ua", "ub", "uc"]) {
-        expect(heard[who]?.[id], `${who} reading ${id}`).toMatch(who === id ? /^You$/ : new RegExp(`, the ${place}\\)$`));
-      }
+    for (const el of screen.getAllByTestId("message-actions")) {
+      expect(el.textContent).not.toMatch(/added|the first|the second/);
     }
   });
 

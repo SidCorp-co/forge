@@ -4,7 +4,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Banner, Button, Field, Input, Select, SlideOver, Textarea } from '@/design';
+import { Banner, Button, Field, Input, ReadFailedLine, Select, SlideOver, Textarea } from '@/design';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { useOrgs } from '@/features/orgs/hooks';
 import { useUpdateProject } from '@/features/project-settings/hooks';
@@ -38,6 +38,9 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [orgId, setOrgId] = useState('');
   const orgsQ = useOrgs();
   const teamOrgs = (orgsQ.data ?? []).filter((o) => !o.isPersonal);
+  // Until the organizations answer, where the project lands is unknown: nothing is created before then.
+  const orgsUnread = orgsQ.isError && !orgsQ.data;
+  const orgsKnown = orgsQ.data !== undefined;
   const { activeOrg } = useActiveOrg();
   const defaultOrgId = activeOrg && !activeOrg.isPersonal ? activeOrg.id : '';
   const [errors, setErrors] = useState<{ name?: string; slug?: string; form?: string }>({});
@@ -97,6 +100,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!orgsKnown) return;
     const trimmedName = name.trim();
     const trimmedSlug = slug.trim();
     const fieldErrors = validate(trimmedName, trimmedSlug);
@@ -307,6 +311,14 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             />
           </Field>
 
+          {orgsUnread && (
+            <ReadFailedLine
+              testId="new-project-orgs-unread"
+              what="your organizations, so where this project will live is not known"
+              why={formatApiError(orgsQ.error)}
+              onRetry={() => void orgsQ.refetch()}
+            />
+          )}
           {teamOrgs.length > 0 && (
             <Field label="Organization" hint="Where this project lives. Org owners/admins manage all of its projects.">
               <Select
@@ -334,7 +346,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" icon="plus" loading={create.isPending}>
+            <Button type="submit" variant="primary" icon="plus" loading={create.isPending} disabled={!orgsKnown}>
               Create project
             </Button>
           </div>

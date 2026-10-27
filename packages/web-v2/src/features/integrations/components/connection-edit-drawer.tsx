@@ -24,6 +24,8 @@ import {
   Input,
   Skeleton,
   SlideOver,
+  retryOrFinal,
+  type ErrorStateRetry,
 } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -295,7 +297,7 @@ function ProjectsSection({
   bindings,
   bindingsError,
   bindingsLoading,
-  onRetry,
+  retry,
   onNavigate,
 }: {
   connection: ConnectionSummary;
@@ -304,8 +306,8 @@ function ProjectsSection({
   bindings: BindingSummary[];
   bindingsError: string | null;
   bindingsLoading: boolean;
-  /** Absent where retrying would meet the same refusal (a 4xx), so no control promises what it cannot do. */
-  onRetry?: () => void;
+  /** `final` where retrying would meet the same refusal (a 4xx), so no control promises what it cannot do. */
+  retry: ErrorStateRetry;
   onNavigate: () => void;
 }) {
   const byId = useMemo(() => {
@@ -320,7 +322,7 @@ function ProjectsSection({
       {bindingsLoading ? (
         <Skeleton className="h-8 w-full" />
       ) : bindingsError ? (
-        <ErrorState title="Couldn't load the projects using it" message={bindingsError} onRetry={onRetry} />
+        <ErrorState title="Couldn't load the projects using it" message={bindingsError} {...retry} />
       ) : bindings.length === 0 ? (
         // A removed connection cannot be shared (ISS-1421 r22): its Danger zone says what it can do.
         <p className="fg-body-sm border-b border-line pb-2 text-muted">
@@ -461,7 +463,7 @@ export function ConnectionEditDrawer({
           bindings={bindings}
           bindingsLoading={bindingsQ.isLoading}
           bindingsError={bindingsQ.isError ? formatApiError(bindingsQ.error) : null}
-          onRetry={isRetryableApiError(bindingsQ.error) ? () => bindingsQ.refetch() : undefined}
+          retry={retryOrFinal(isRetryableApiError(bindingsQ.error), () => void bindingsQ.refetch())}
           onNavigate={onClose}
         />
         {canManage && (

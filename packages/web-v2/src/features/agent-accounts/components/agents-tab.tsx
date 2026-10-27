@@ -24,11 +24,13 @@ import {
   Field,
   Input,
   MonoTag,
+  ReadFailedLine,
   RowActions,
   SectionTitle,
   Skeleton,
   Truncated,
 } from "@/design";
+import { queryRead } from "@/design/patterns/badge-read";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -72,7 +74,13 @@ export function AgentsTab() {
 
   if (!orgId || agentsQ.isLoading) return <Skeleton className="h-40 w-full" />;
   if (agentsQ.isError) {
-    return <ErrorState title="Could not load agents" message={formatApiError(agentsQ.error)} />;
+    return (
+      <ErrorState
+        title="Couldn't load the agents"
+        message={formatApiError(agentsQ.error)}
+        onRetry={() => void agentsQ.refetch()}
+      />
+    );
   }
 
   const agents = agentsQ.data ?? [];
@@ -113,6 +121,7 @@ export function AgentsTab() {
   }
 
   const nameOf = (projectId: string) => projectsQ.data?.find((p) => p.id === projectId)?.name;
+  const projectsRead = queryRead(projectsQ);
   const openAgent = selfOpen ? agents.find((a) => a.userId === selfOpen) : undefined;
 
   const columns: DataTableColumn<AgentAccountRow>[] = [
@@ -159,7 +168,7 @@ export function AgentsTab() {
     {
       id: "projects",
       header: "Projects",
-      cell: (agent) => agentProjectNames(agent, nameOf, projectsQ.isLoading),
+      cell: (agent) => agentProjectNames(agent, nameOf, projectsRead),
     },
     {
       id: "canAct",
@@ -249,6 +258,15 @@ export function AgentsTab() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {projectsQ.isError && (
+        <ReadFailedLine
+          testId="agents-projects-unread"
+          what="your projects, so the projects each agent is in cannot be named"
+          why={formatApiError(projectsQ.error)}
+          onRetry={() => void projectsQ.refetch()}
+        />
       )}
 
       {agents.length === 0 ? (

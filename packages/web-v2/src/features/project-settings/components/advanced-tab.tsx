@@ -4,6 +4,7 @@ import {
   Button,
   Field,
   Input,
+  ReadFailedLine,
   SectionTitle,
   Select,
   type SelectOption,
@@ -12,6 +13,7 @@ import {
 import { useOrgs } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import type { ProjectDetail } from "@/features/projects/types";
+import { formatApiError } from "@/lib/api/error";
 // Project settings → Advanced. Move-to-org + soft archive / unarchive
 // (ISS-353). Owner-only (the buttons are disabled for non-owners and the
 // server returns 403). Archiving requires type-to-confirm of the project name;
@@ -137,7 +139,7 @@ export function AdvancedTab({
 
 /** Move the project to another org the caller administers (owner/admin on the
  *  destination; core also requires admin on the current org). */
-function MoveToOrgCard({ project }: { project: ProjectDetail }) {
+export function MoveToOrgCard({ project }: { project: ProjectDetail }) {
   const orgsQ = useOrgs();
   const projectsQ = useProjectsIncludingArchived();
   const update = useUpdateProject(project.id);
@@ -154,6 +156,25 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
     label: o.name,
   }));
 
+  // Organizations that could not be read are not organizations there are none of (ISS-1229 r48).
+  const unread =
+    orgsQ.isError && orgsQ.data === undefined
+      ? { what: "your organizations", error: orgsQ.error, retry: () => void orgsQ.refetch() }
+      : projectsQ.isError && projectsQ.data === undefined
+        ? {
+            what: "your projects, so this project's organization is not known",
+            error: projectsQ.error,
+            retry: () => void projectsQ.refetch(),
+          }
+        : null;
+  if (unread) {
+    return (
+      <SettingsSection>
+        <SectionTitle className="fg-h3 mb-1">Move to organization</SectionTitle>
+        <ReadFailedLine what={unread.what} why={formatApiError(unread.error)} onRetry={unread.retry} />
+      </SettingsSection>
+    );
+  }
   if (targets.length === 0) return null;
 
   function move() {

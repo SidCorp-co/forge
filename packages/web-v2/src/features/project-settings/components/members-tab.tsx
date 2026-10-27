@@ -8,6 +8,7 @@ import {
   Field,
   IconButton,
   Input,
+  ReadFailedLine,
   SectionTitle,
   Select,
   Skeleton,
@@ -188,6 +189,27 @@ export function MembersTab({
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {/* A read this choice stands on that failed is said where the choice would be (ISS-1229 r48). */}
+      {canEdit && projectsQ.isError && !listItem && (
+        <div className="mt-4 border-t border-line pt-4">
+          <ReadFailedLine
+            what="your projects, so this project's organization is not known"
+            why={formatApiError(projectsQ.error)}
+            onRetry={() => void projectsQ.refetch()}
+          />
+        </div>
+      )}
+      {canEdit && orgId && orgMembersQ.isError && orgMembersQ.data === undefined && (
+        <div className="mt-4 space-y-3 border-t border-line pt-4">
+          <CardTitle className="fg-label text-fg">Add from organization</CardTitle>
+          <ReadFailedLine
+            what="the organization's members"
+            why={formatApiError(orgMembersQ.error)}
+            onRetry={() => void orgMembersQ.refetch()}
+          />
         </div>
       )}
 

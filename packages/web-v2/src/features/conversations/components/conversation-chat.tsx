@@ -419,7 +419,7 @@ export function ConversationChat({
         {header}
         <div className="grid min-h-0 flex-1 place-items-center px-4 py-12">
           {refusedForScope(roomQ.error) ? (
-            <ErrorState level={level} title={NO_ACCESS_TITLE} message={roomQ.error.message} />
+            <ErrorState level={level} title={NO_ACCESS_TITLE} message={roomQ.error.message} final />
           ) : (
             <ErrorState
               level={level}

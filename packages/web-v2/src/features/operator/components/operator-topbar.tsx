@@ -7,7 +7,7 @@ import type { OperatorSectionKey } from "../types";
 const STATUS_PILLS = ["db", "queue", "ws"] as const;
 
 function StatusPill({ pill }: { pill: string }) {
-  const note = `${pill.toUpperCase()} health checks aren't wired up yet`;
+  const note = `Forge does not check ${pill.toUpperCase()} health yet`;
   return (
     <Tooltip label={note}>
       <span

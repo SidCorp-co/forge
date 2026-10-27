@@ -1,3 +1,4 @@
+import type { QueryRead } from "@/design/patterns/badge-read";
 import type { AgentAccountRow } from "./types";
 
 
@@ -11,14 +12,15 @@ export function agentLabel(agent: Pick<AgentAccountRow, "displayName" | "handle"
   return agent.email;
 }
 
-/** An id is never a name: one that does not resolve is removed or not shared, which the list cannot tell apart. */
+/** An id is never a name: one that does not resolve is removed or not shared, which the list cannot tell
+ *  apart; where the projects read failed it is only a name that could not be loaded (ISS-1229 r48). */
 export function agentProjectNames(
   agent: Pick<AgentAccountRow, "projects">,
   nameOf: (projectId: string) => string | undefined,
-  loading = false,
+  read: QueryRead = "read",
 ): string {
   if (agent.projects.length === 0) return "none";
-  if (loading) return "Loading projects…";
+  if (read === "pending") return "Loading projects…";
   const names: string[] = [];
   let unresolved = 0;
   for (const { id } of agent.projects) {
@@ -27,7 +29,12 @@ export function agentProjectNames(
     else names.push(name);
   }
   if (unresolved > 0) {
-    names.push(`${unresolved} project${unresolved === 1 ? "" : "s"} removed or not shared with you`);
+    const one = unresolved === 1;
+    names.push(
+      read === "failed"
+        ? `${unresolved} project${one ? "" : "s"} whose name${one ? "" : "s"} could not be loaded`
+        : `${unresolved} project${one ? "" : "s"} removed or not shared with you`,
+    );
   }
   return names.join(", ");
 }

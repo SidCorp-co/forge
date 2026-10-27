@@ -268,6 +268,11 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
           expandedId={expandedId}
           expandedMembers={expandedMembers}
           expandedLoading={membersQuery.isLoading}
+          expandedUnread={
+            membersQuery.isError && membersQuery.data === undefined
+              ? { why: formatApiError(membersQuery.error), onRetry: () => void membersQuery.refetch() }
+              : null
+          }
           onToggleGroup={onToggleGroup}
           onSelectMember={onSelectMember}
         />

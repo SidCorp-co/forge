@@ -7,7 +7,7 @@
 // row.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { ALL_ACTS } from "../../test-acts";
@@ -64,6 +64,8 @@ let project = {
   orgIsPersonal: false,
   orgRole: "owner" as "owner" | "admin" | "member" | null,
 };
+/** Set to make the projects read fail (ISS-1229 r48). */
+let projectsFailure: Error | null = null;
 /** A refused start re-reads the reader's projects, whose role decides what is offered. */
 const projectsRefetch = vi.fn(async (): Promise<unknown> => undefined);
 /** What a re-read hands the screen: bumping it re-renders every reader of the projects. */
@@ -84,7 +86,9 @@ vi.mock("@/features/projects/hooks", async () => {
         },
         () => projectsRead.version,
       );
-      return { data: [project], refetch: projectsRefetch };
+      return projectsFailure
+        ? { data: undefined, isError: true, error: projectsFailure, refetch: projectsRefetch }
+        : { data: [project], isError: false, error: null, refetch: projectsRefetch };
     },
   };
 });
@@ -507,6 +511,19 @@ describe("the screen that creates a new App", () => {
     items = [];
     connections = [];
     project = { ...project, orgIsPersonal: false, orgName: "SidCorp", orgRole: "owner" };
+    projectsFailure = null;
+  });
+
+  it("says who the App will belong to cannot be known while the projects read failed, with Retry", () => {
+    projectsFailure = new Error("The server is down.");
+    projectsRefetch.mockClear();
+    mount();
+
+    expect(screen.getByTestId("app-owner-unread")).toHaveTextContent(
+      "Couldn't load your projects, so who the App will belong to is not known.",
+    );
+    fireEvent.click(within(screen.getByTestId("app-owner-unread")).getByRole("button", { name: "Retry" }));
+    expect(projectsRefetch).toHaveBeenCalledTimes(1);
   });
 
   // r24 ruling: a reader who cannot act is told who can, not how the act goes.

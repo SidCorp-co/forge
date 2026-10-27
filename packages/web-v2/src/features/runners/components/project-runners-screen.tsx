@@ -25,6 +25,7 @@ import {
   MonoTag,
   PageContainer,
   PageTitle,
+  ReadFailedLine,
   Select,
   Skeleton,
   useNow,
@@ -744,7 +745,7 @@ function RunnerRow({
 }
 
 /** Assign an already-paired device, or pair one inline (it then appears here). */
-function AssignDevice({
+export function AssignDevice({
 	projectId,
 	defaultRepoPath,
 	assignedDeviceIds,
@@ -788,11 +789,20 @@ function AssignDevice({
 			<div className="flex flex-col gap-4">
 				<div className="grid gap-3 sm:grid-cols-2">
 					<Field label="Device">
-						<Select
-							options={options}
-							value={deviceId}
-							onChange={setDeviceId}
-						/>
+						{/* Devices that could not be read are not devices there are none of (ISS-1229 r48). */}
+						{devices.isError && devices.data === undefined ? (
+							<ReadFailedLine
+								what="your devices"
+								why={formatApiError(devices.error)}
+								onRetry={() => void devices.refetch()}
+							/>
+						) : (
+							<Select
+								options={options}
+								value={deviceId}
+								onChange={setDeviceId}
+							/>
+						)}
 					</Field>
 					<Field
 						label="Repo path"

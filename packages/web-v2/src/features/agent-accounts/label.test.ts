@@ -28,7 +28,15 @@ describe("agentProjectNames", () => {
   });
 
   it("says the projects are loading while the names are not known, rather than calling every project removed", () => {
-    expect(agentProjectNames(agent(["p1"]), () => undefined, true)).toBe("Loading projects…");
+    expect(agentProjectNames(agent(["p1"]), () => undefined, "pending")).toBe("Loading projects…");
+  });
+
+  // ISS-1229 r48, judge-142: a failed read named the agent's project as removed or not shared.
+  it("says a project's name could not be loaded where the projects read failed, never that it was removed", () => {
+    const text = agentProjectNames(agent(["p1", "x", "y"]), (id) => (id === "p1" ? "alpha" : undefined), "failed");
+    expect(text).toBe("alpha, 2 projects whose names could not be loaded");
+    expect(text).not.toMatch(/removed|not shared/);
+    expect(agentProjectNames(agent(["x"]), () => undefined, "failed")).toBe("1 project whose name could not be loaded");
   });
 });
 

@@ -243,6 +243,7 @@ export function ConversationsScreen() {
       loading={conversations.isLoading}
       // With no projects read there is no list to show, only an empty one (ISS-1229 r47, judge-137).
       error={projectsUnread ?? conversations.error}
+      errorTitle={projectsUnread ? "Couldn't load your projects" : "Couldn't load conversations"}
       onRetry={projectsUnread ? readProjects : conversations.refetch}
     />
   );
@@ -367,11 +368,12 @@ function AddressedRoom({
         level={1}
         title="Conversation not found"
         message={`It was deleted, or you are not one of its people. ${startsNone ? "Pick a conversation from the list." : "Pick a conversation from the list, or start one."}`}
+        final
       />,
     );
   }
   // Refused for a project role, the room is there: core's sentence says so and who can add them (ISS-1229 r47).
-  if (refusedForScope(error)) return pane(<ErrorState level={1} title={NO_ACCESS_TITLE} message={error.message} />);
+  if (refusedForScope(error)) return pane(<ErrorState level={1} title={NO_ACCESS_TITLE} message={error.message} final />);
   if (error) {
     return pane(<ErrorState level={1} title="Couldn't load this conversation" message={formatApiError(error)} onRetry={onRetry} />);
   }

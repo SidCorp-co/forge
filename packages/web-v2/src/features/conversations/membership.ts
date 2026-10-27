@@ -66,11 +66,14 @@ export function initialsOf(name: string): string {
   return (letters.join("") || "?").toUpperCase();
 }
 
-/** Where a room's projects come from, said as the derivation it is. */
-export function scopeDerivation(
-  room: Partial<Pick<ConversationMembership, "scopeProjects">>,
-): string {
-  return `Read from the agents in this room — ${list(room.scopeProjects)}. Nobody chooses it.`;
+/** Which agents answer in this room, in plain words: each that can, by its handle (ISS-1229 r48). */
+export function answeringAgents(room: Partial<Pick<ConversationMembership, "participants">>): string {
+  const names = agentsOf(room)
+    .filter((p) => p.reachable !== false)
+    .map((p) => memberName(p));
+  if (names.length === 0) return "No agent in this room can answer.";
+  if (names.length === 1) return `${names[0]} answers in this room.`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} answer in this room.`;
 }
 
 /**
@@ -310,7 +313,7 @@ export function roomOpeningClaims(args: {
   const claims: MembershipClaim[] = [
     {
       key: "room-scope",
-      text: `This room will be about ${list(projects)}. That is read from the agents in it, and nobody chooses it.`,
+      text: `This room will be about ${list(projects)}, ${projects.length > 1 ? "the projects of the agents" : "the project of the agent"} in it.`,
     },
   ];
   if (projects.length > 1) {

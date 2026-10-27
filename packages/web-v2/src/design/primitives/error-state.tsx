@@ -5,7 +5,6 @@ import { TabTitle } from "./tab-title";
 interface ErrorStateBase {
   /** Plain cause + remedy — never apologetic. */
   message: string;
-  onRetry?: () => void;
   /** A page to go on to, where trying again cannot change the answer. */
   action?: { label: string; href: string };
   /** Lead with the mascot (default). Set false for dense inline spots. */
@@ -14,11 +13,19 @@ interface ErrorStateBase {
   technical?: string;
 }
 
-/** `title` names what failed: no default stands in for it (ISS-1229 r46). */
-export interface ErrorStateProps extends ErrorStateBase {
-  title: string;
-  level?: 1 | 2 | 3;
+export type ErrorStateRetry = { onRetry: () => void; final?: never } | { final: true; onRetry?: never };
+
+/** Retry where a second read can change the answer, else the state is final. */
+export function retryOrFinal(retryable: boolean, retry: () => void): ErrorStateRetry {
+  return retryable ? { onRetry: retry } : { final: true };
 }
+
+/** `title` names what failed (r46); a failed read writes its Retry, an answer no read changes is `final` (ISS-1229 r48). */
+export type ErrorStateProps = ErrorStateBase &
+  ErrorStateRetry & {
+    title: string;
+    level?: 1 | 2 | 3;
+  };
 
 /** Failure state — mascot (flame stilled), a heading at `level` (1 where it is the whole page, naming the tab too), a retry. */
 export function ErrorState({ title, message, onRetry, action, mascot = true, technical, level = 2 }: ErrorStateProps) {

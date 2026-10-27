@@ -17,6 +17,7 @@ import {
   Menu,
   Pagination,
   Popover,
+  ReadFailedLine,
   SegmentedControl,
   Select,
   SlideOver,
@@ -306,6 +307,16 @@ export function IssuesListView({
     [membersQ.data, viewerId],
   );
 
+  // A filter whose choices could not be read offers "anyone" or "any" alone, as if there were none: said (ISS-1229 r48).
+  const filtersUnread = [
+    ...(membersQ.isError && membersQ.data === undefined
+      ? [{ what: "the people the Creator filter offers", error: membersQ.error, retry: () => void membersQ.refetch() }]
+      : []),
+    ...(labelsQ.isError && labelsQ.data === undefined
+      ? [{ what: "the labels the Label filter offers", error: labelsQ.error, retry: () => void labelsQ.refetch() }]
+      : []),
+  ];
+
   const labelFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Label: any" },
@@ -555,6 +566,13 @@ export function IssuesListView({
           </Popover>
         </div>
       </div>
+      {filtersUnread.length > 0 && (
+        <div data-testid="filters-unread" className="-mt-2 mb-4 flex flex-col gap-1.5">
+          {filtersUnread.map((f) => (
+            <ReadFailedLine key={f.what} what={f.what} why={formatApiError(f.error)} onRetry={f.retry} />
+          ))}
+        </div>
+      )}
 
       <SlideOver
         open={filtersOpen}

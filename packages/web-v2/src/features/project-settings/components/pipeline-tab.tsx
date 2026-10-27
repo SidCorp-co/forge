@@ -85,6 +85,19 @@ function PipelineGroup({ title, hint, children }: { title: string; hint: string;
   );
 }
 
+/** Why Save is held, or null: a pool naming a device no runner answers for, once the runners are read
+ *  (unread runners name none unknown, ISS-1229 r48), else a field marked invalid. */
+export function pipelineSaveHold(args: {
+  states: PipelineDraft["states"];
+  runners: readonly { deviceId?: string | null }[] | undefined;
+  invalid: boolean;
+}): string | null {
+  if (unknownPoolDevices(args.states, args.runners ?? null).length > 0) {
+    return "A runner pool names a device this project has no runner for. Clear that pool before saving.";
+  }
+  return args.invalid ? "Fix what is marked above before saving." : null;
+}
+
 function PipelinePage({
   projectId,
   canEdit,
@@ -125,13 +138,7 @@ function PipelinePage({
   });
   const draft = form.draft;
 
-  const unknownDevices = unknownPoolDevices(draft.states, runnersQ.data ?? []);
-  const blockedBy =
-    unknownDevices.length > 0
-      ? "A runner pool names a device this project has no runner for. Clear that pool before saving."
-      : form.invalid
-        ? "Fix what is marked above before saving."
-        : null;
+  const blockedBy = pipelineSaveHold({ states: draft.states, runners: runnersQ.data, invalid: form.invalid });
 
   async function save() {
     setPluginsFailure(null);

@@ -26,13 +26,13 @@ import { useAuth } from "@/providers/auth-provider";
 import { useRemoveParticipant } from "../hooks";
 import {
   agentsOf,
+  answeringAgents,
   cannotAnswerReason,
   memberName,
   orderedPeopleOf,
   removalClaim,
   removalHeld,
   removalQuestion,
-  scopeDerivation,
 } from "../membership";
 import type { ConversationMembership, ConversationParticipant } from "../types";
 import { AddAgentDialog } from "./add-agent-dialog";
@@ -67,8 +67,8 @@ export function ConversationMembers({
     <>
       <SlideOver open={open} onClose={onClose} title="Who is in this room" width={420}>
         <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto">
-          <p className="fg-caption text-subtle" data-testid="members-scope-derivation">
-            {scopeDerivation(room)}
+          <p className="fg-caption text-subtle" data-testid="members-agents-answer">
+            {answeringAgents(room)}
           </p>
 
           {remove.isError && (

@@ -18,6 +18,7 @@ import {
   Markdown,
   MonoTag,
   PageContainer,
+  retryOrFinal,
   ProjectLoader,
   Skeleton,
   StaleReadLine,
@@ -239,6 +240,7 @@ export function IssueDetailScreen({
           title={`This issue is not in ${here}`}
           message={`It belongs to ${owner} you are not a member of. An admin of ${name ?? "that project"}, or an owner or admin of its organization, can add you.`}
           action={{ label: `Back to ${here}'s issues`, href: `/projects/${slug}/issues` }}
+          final
         />
       </div>
     );
@@ -250,7 +252,7 @@ export function IssueDetailScreen({
           level={1}
           title="Couldn't load issue"
           message={formatApiError(issueQ.error)}
-          onRetry={isRetryableApiError(issueQ.error) ? () => issueQ.refetch() : undefined}
+          {...retryOrFinal(isRetryableApiError(issueQ.error), () => void issueQ.refetch())}
         />
       </div>
     );
@@ -267,6 +269,7 @@ export function IssueDetailScreen({
             level={1}
             title={`${issue.displayId} is not in ${here}`}
             message="It belongs to another project, which this address does not name."
+            final
           />
         )}
       </div>
@@ -693,7 +696,7 @@ function TabError({
     <ErrorState
       title={`Couldn't load ${what}`}
       message={formatApiError(query.error)}
-      onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
+      {...retryOrFinal(isRetryableApiError(query.error), () => void query.refetch())}
     />
   );
 }

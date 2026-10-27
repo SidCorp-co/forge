@@ -2,6 +2,7 @@
 
 import { Button } from "@/design/primitives/button";
 import { MonoTag } from "@/design/primitives/mono-tag";
+import type { KeyboardEvent } from "react";
 
 export interface NotificationAction {
   id: string;
@@ -61,9 +62,14 @@ export interface NotificationsMenuProps {
   expandedId?: string | null;
   expandedMembers?: NotificationGroupMember[];
   expandedLoading?: boolean;
+  /** Why the expanded group's records could not be read, and the act that reads them again (ISS-1229 r48). */
+  expandedUnread?: { why: string; onRetry: () => void } | null;
   onToggleGroup?: (id: string) => void;
   onSelectMember?: (memberId: string) => void;
 }
+
+/** A key pressed on a control inside a row is that control's, never the row's. */
+const keepKeys = (e: KeyboardEvent<HTMLButtonElement>) => e.stopPropagation();
 
 export function NotificationsMenu({
   items,
@@ -76,6 +82,7 @@ export function NotificationsMenu({
   expandedId,
   expandedMembers,
   expandedLoading,
+  expandedUnread = null,
   onToggleGroup,
   onSelectMember,
 }: NotificationsMenuProps) {
@@ -152,6 +159,7 @@ export function NotificationsMenu({
                           carrying one. */}
                       <button
                         type="button"
+                        onKeyDown={keepKeys}
                         onClick={(e) => {
                           e.stopPropagation();
                           onToggleGroup?.(n.id);
@@ -165,11 +173,30 @@ export function NotificationsMenu({
                       {expandedId === n.id && (
                         <ul className="mt-1.5 border-l border-line-subtle pl-2.5">
                           {expandedLoading && <li className="fg-caption py-1">Loading…</li>}
+                          {!expandedLoading && expandedUnread && (
+                            <li role="alert" data-testid="group-members-unread" className="fg-caption py-1 text-fg">
+                              Couldn&apos;t load this group&apos;s notifications. {expandedUnread.why}{" "}
+                              <button
+                                type="button"
+                                aria-label="Retry this group"
+                                onKeyDown={keepKeys}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  expandedUnread.onRetry();
+                                }}
+                                className="inline-flex min-h-11 items-center text-link hover:underline"
+                              >
+                                Retry
+                              </button>
+                            </li>
+                          )}
                           {!expandedLoading &&
+                            !expandedUnread &&
                             (expandedMembers ?? []).map((m) => (
                               <li key={m.id}>
                                 <button
                                   type="button"
+                                  onKeyDown={keepKeys}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     onSelectMember?.(m.id);
