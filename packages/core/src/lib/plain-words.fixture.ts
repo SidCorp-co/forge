@@ -6,11 +6,18 @@ export const SHIP = /\bship(s|ped|ping)?\b/i;
 
 const FENCE = /^\s*(```|~~~)/;
 
+/** Strips to a fixed point: one pass leaves the tag a nested one wraps (`<scr<i>ipt>`). */
+export function untagged(text: string): string {
+  let said = text;
+  for (let was = ''; was !== said; ) {
+    was = said;
+    said = said.replace(/<[^<>]*>/g, '');
+  }
+  return said.replace(/[<>]/g, ' ');
+}
+
 function uncoded(text: string): string {
-  return text
-    .replace(/`[^`]*`/g, '')
-    .replace(/\]\([^)]*\)/g, ']')
-    .replace(/<[^>]+>/g, '');
+  return untagged(text.replace(/`[^`]*`/g, '').replace(/\]\([^)]*\)/g, ']'));
 }
 
 /** Every sentence of `markdown` saying `word` outside a code mark, as `<line>: <sentence>`, the

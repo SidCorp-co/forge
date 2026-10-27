@@ -9,7 +9,7 @@ import { join, relative, resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { FORGE_GUIDES } from '../guides/registry.js';
-import { proseSaying, SHIP } from './plain-words.fixture.js';
+import { proseSaying, SHIP, untagged } from './plain-words.fixture.js';
 
 const SRC = resolve(__dirname, '..');
 
@@ -288,12 +288,22 @@ describe("core's sentences to a person", () => {
       '```',
       '',
       'Read [the release notes](docs/when-it-shipped.md) first.',
+      '',
+      'The fix <scr<i>ipt>shipped</i> on Monday.',
     ].join('\n');
     expect(proseSaying(planted, SHIP)).toEqual([
       '3: Closed means the work shipped, and Dropped means it will not.',
       '6: It shipped',
       '10: Send  on the edge, or read [how it ships].',
+      '18: The fix shipped on Monday.',
     ]);
+  });
+
+  it('leaves no tag behind, however the tags nest', () => {
+    for (const markup of ['<scr<script>ipt>', '<<b>script>', '<b><i>x</i></b>', 'a < b > c']) {
+      expect(untagged(markup)).not.toMatch(/<[a-z]/i);
+    }
+    expect(untagged('a <b>bold</b> word')).toBe('a bold word');
   });
 
   it('finds ship in a sentence, a template and a wording helper, and not in a code mark, a value or a word that only holds it', () => {

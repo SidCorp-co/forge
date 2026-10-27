@@ -190,11 +190,21 @@ describe("the web's words", () => {
       "```",
       "it ships",
       "```",
+      "",
+      "The fix <scr<i>ipt>shipped</i> on Monday.",
     ].join("\n");
     expect(proseSaying(planted, SHIP)).toEqual([
       "5: Forge refuses to close an issue unless the work shipped, so Closed means it went out.",
       "8: No release is scheduled, so this ships when a person cuts one.",
+      "17: The fix shipped on Monday.",
     ]);
+  });
+
+  it("leaves no tag behind, however the tags nest", () => {
+    for (const markup of ["<scr<script>ipt>", "<<b>script>", "<b><i>x</i></b>", "a < b > c"]) {
+      expect(untagged(markup)).not.toMatch(/<[a-z]/i);
+    }
+    expect(untagged("a <b>bold</b> word")).toBe("a bold word");
   });
 });
 
@@ -207,6 +217,17 @@ function helpPages(path = HELP): string[] {
   });
 }
 
+/** Tags taken out until none is left, then any bracket a broken one leaves: one pass leaves the tag
+ *  a nested one wraps around (`<scr<i>ipt>`). */
+function untagged(text: string): string {
+  let said = text;
+  for (let was = ""; was !== said; ) {
+    was = said;
+    said = said.replace(/<[^<>]*>/g, "");
+  }
+  return said.replace(/[<>]/g, " ");
+}
+
 /** Every sentence of `markdown` saying `word` outside a code mark, a fenced block or a link target,
  *  as `<line>: <sentence>`, the line being where its paragraph opens; a table cell is a sentence. */
 function proseSaying(markdown: string, word: RegExp): string[] {
@@ -215,11 +236,12 @@ function proseSaying(markdown: string, word: RegExp): string[] {
   let block: string[] = [];
   let opens = 0;
   const flush = () => {
-    const said = block
-      .join(" ")
-      .replace(/`[^`]*`/g, "")
-      .replace(/\]\([^)]*\)/g, "]")
-      .replace(/<[^>]+>/g, "");
+    const said = untagged(
+      block
+        .join(" ")
+        .replace(/`[^`]*`/g, "")
+        .replace(/\]\([^)]*\)/g, "]"),
+    );
     for (const sentence of said.split(/(?<=[.!?])\s+|\s*\|\s*/)) {
       if (word.test(sentence)) found.push(`${opens}: ${sentence.trim()}`);
     }
