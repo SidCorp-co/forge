@@ -295,7 +295,7 @@ commentRoutes.get(
       .select(commentThreadColumns)
       .from(comments)
       .where(eq(comments.parentId, id))
-      .orderBy(asc(comments.createdAt))
+      .orderBy(asc(comments.createdAt), asc(comments.id))
       .limit(limit)
       .offset(offset);
 

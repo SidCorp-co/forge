@@ -84,6 +84,23 @@ export async function standingAgainst(
   );
 }
 
+/** One lock per issue's landing: moves, and what is said of them, take it in one order. */
+async function lockLanding(tx: Tx, issueId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`landing:${issueId}`}))`);
+}
+
+/** The move's comment, in a savepoint: a comment that cannot be written never undoes the move. */
+async function sayMoved(tx: Tx, issueId: string, from: string, to: string): Promise<void> {
+  try {
+    await tx.transaction(async (inner) => {
+      const authorId = await forgeAuthorId(inner);
+      await postSystemComment({ issueId, authorId, body: movedSentence(from, to) }, inner);
+    });
+  } catch (err) {
+    logger.warn({ err, issueId }, 'landing advance: the comment was not written');
+  }
+}
+
 /**
  * Move the row's observed commit to `candidate` where it carries the one held. A write that loses
  * its compare-and-swap reads the row again and compares again; only a write that took is a move.
@@ -97,6 +114,9 @@ export async function moveLandingForward(
     declared?: string | null;
     /** Where the mark moving it said the work landed, written with the move. */
     target?: string | undefined;
+    /** Say the move on the issue in the move's own transaction, under the issue's landing lock,
+     *  so the thread reads two racing moves in the order the mark took them. */
+    announce?: boolean;
   },
   deps: Partial<RepositoryAccessDeps> = {},
 ): Promise<LandingAdvance> {
@@ -110,19 +130,25 @@ export async function moveLandingForward(
     if (standing.kind === 'contained') return { kind: 'contained', held };
     if (standing.kind === 'other') return { kind: 'other', held };
     if (standing.kind === 'unread') return { kind: 'unread', held, why: standing.why };
-    const wrote = await recordIssueMerge(db, {
-      issueId,
-      ...(args.declared === undefined ? {} : { declared: args.declared }),
-      ...(args.target ? { target: args.target } : {}),
-      evidence: {
-        kind: 'observed',
-        commitSha: candidate.sha,
-        mergedAt: candidate.at,
-        via: candidate.via,
-        supersedes: held,
-      },
+    const from = held;
+    const wrote = await db.transaction(async (tx) => {
+      await lockLanding(tx, issueId);
+      const record = await recordIssueMerge(tx, {
+        issueId,
+        ...(args.declared === undefined ? {} : { declared: args.declared }),
+        ...(args.target ? { target: args.target } : {}),
+        evidence: {
+          kind: 'observed',
+          commitSha: candidate.sha,
+          mergedAt: candidate.at,
+          via: candidate.via,
+          supersedes: from,
+        },
+      });
+      if (record.wrote && args.announce) await sayMoved(tx, issueId, from, candidate.sha);
+      return record.wrote;
     });
-    if (wrote.wrote) return { kind: 'moved', from: held, to: candidate.sha };
+    if (wrote) return { kind: 'moved', from: held, to: candidate.sha };
   }
   return {
     kind: 'unread',
@@ -191,17 +217,14 @@ export async function advanceObservedLanding(
   args: { issueId: string; projectId: string; candidate: LandingCandidate },
   deps: Partial<RepositoryAccessDeps> = {},
 ): Promise<LandingAdvance> {
-  const outcome = await moveLandingForward(args, deps);
-  const body =
-    outcome.kind === 'moved'
-      ? movedSentence(outcome.from, outcome.to)
-      : stayedComment(outcome, args.candidate.sha);
+  const outcome = await moveLandingForward({ ...args, announce: true }, deps);
+  const body = stayedComment(outcome, args.candidate.sha);
   if (!body) return outcome;
   try {
-    // One lock per issue: GitHub's event and Forge's own merge, reporting one merge, say it once.
+    // GitHub's event and Forge's own merge, reporting one merge that stayed, say it once.
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`landing:${args.issueId}`}))`);
-      if (outcome.kind !== 'moved' && (await alreadySaid(tx, args.issueId, body))) return;
+      await lockLanding(tx, args.issueId);
+      if (await alreadySaid(tx, args.issueId, body)) return;
       await postSystemComment(
         { issueId: args.issueId, authorId: await forgeAuthorId(tx), body },
         tx,

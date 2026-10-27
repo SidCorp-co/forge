@@ -3200,6 +3200,7 @@
 
 ### Fixed
 
+- **Comments written at the same instant read in one order on every load.** Two moves of one landing are said in the order the mark took them, and a thread page neither repeats nor drops a reply. (ISS-1421)
 - **While a release runs, the release gate names what it carries, links it and says the rest wait.** Runner states read in words; Batch release stops where nothing can be released; a question's card says who it waits on. (ISS-1421)
 - **Retry is offered only where reading again can change the answer**: no answer, a timeout, too many requests or a server error. A refused or missing read says why, without Retry. (ISS-1229)
 - **A failed projects read shows in the sidebar, with the wait before Retry.** When your current organization cannot be read, every page names the one shown instead, and New project waits for it. (ISS-1229)

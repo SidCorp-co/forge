@@ -233,7 +233,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
     .from(comments)
     .innerJoin(issues, and(eq(comments.issueId, issues.id), isNull(issues.archivedAt)))
     .where(and(eq(issues.projectId, projectId), gte(comments.createdAt, since)))
-    .orderBy(desc(comments.createdAt))
+    .orderBy(desc(comments.createdAt), desc(comments.id))
     .limit(MAX_SIGNAL_COMMENTS);
 
   const statusChanges = await db

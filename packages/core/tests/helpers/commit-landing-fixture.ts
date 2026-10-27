@@ -329,7 +329,7 @@ export function useCommitLandingWorld() {
 
     async comments(id: string): Promise<string[]> {
       const rows = await harness.db.execute<{ body: string }>(
-        sql`SELECT body FROM comments WHERE issue_id = ${id} ORDER BY created_at ASC`,
+        sql`SELECT body FROM comments WHERE issue_id = ${id} ORDER BY created_at ASC, id ASC`,
       );
       return [...rows].map((r) => r.body);
     },
