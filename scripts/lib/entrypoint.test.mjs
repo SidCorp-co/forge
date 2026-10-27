@@ -385,11 +385,16 @@ function entryReads(rel, text) {
    * What a name receives from a value: argv from where it starts, process, or a global object.
    * `value` is the expression assigned; true where any of the three is news.
    */
+  /** Names holding one of process's own functions, read off it by a stated name. */
+  const processMethods = new Set();
   const receive = (name, value) => {
     const held = unwrap(value);
     let news = bind(name, startOf(value));
     if (isGlobal(held)) news = hold(globalAliases, name) || news;
     if (isProcess(held)) news = hold(processNames, name) || news;
+    const ownMethod =
+      propName(held) !== null && propName(held) !== 'argv' && isProcess(unwrap(held.expression));
+    if (ownMethod) news = hold(processMethods, name) || news;
     return news;
   };
   /**
@@ -608,13 +613,23 @@ function entryReads(rel, text) {
       return stated ? null : `${what} read by a computed key: ${p.getText(src)}`;
     }
     if (ts.isTypeOfExpression(p)) return null;
-    // `fn.call(process, …)` hands process on as `this` to a native binding, never as a value read.
-    const thisArg =
+    // `process.binding.call(process, …)` hands process back to one of its own functions as `this`;
+    // any other function given process as `this` is one this walk would have to follow.
+    const fn =
       ts.isCallExpression(p) &&
       p.arguments[0] === self &&
-      ts.isPropertyAccessExpression(p.expression) &&
-      ['call', 'apply', 'bind'].includes(p.expression.name.text);
-    if (thisArg) return null;
+      ts.isPropertyAccessExpression(p.expression)
+        ? p.expression
+        : null;
+    if (fn && ['call', 'apply', 'bind'].includes(fn.name.text)) {
+      const target = unwrap(fn.expression);
+      const own =
+        (ts.isIdentifier(target) && processMethods.has(target.text)) ||
+        (propName(target) !== null &&
+          propName(target) !== 'argv' &&
+          isProcess(unwrap(target.expression)));
+      if (own) return null;
+    }
     const pattern =
       ts.isVariableDeclaration(p) && p.initializer === self
         ? p.name
@@ -1066,6 +1081,21 @@ describe('no file decides it was launched by hand', () => {
       2,
     ],
     [
+      'scripts/this-call.mjs',
+      'function entry() {\n  return this.argv[1];\n}\nif (import.meta.filename === entry.call(process)) main();\n',
+      4,
+    ],
+    [
+      'scripts/this-apply.mjs',
+      'function entry() {\n  return this.argv[1];\n}\nif (import.meta.filename === entry.apply(process)) main();\n',
+      4,
+    ],
+    [
+      'scripts/this-bind.mjs',
+      'function entry() {\n  return this.argv[1];\n}\nif (import.meta.filename === entry.bind(process)()) main();\n',
+      4,
+    ],
+    [
       'scripts/from.mjs',
       'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n',
       2,
@@ -1196,7 +1226,7 @@ describe('no file decides it was launched by hand', () => {
     ],
     [
       'scripts/process-uses.mjs',
-      "if (typeof process !== 'undefined') process.exitCode = 1;\nconst { env, platform } = process;\nconst home = process['env'].HOME;\nconst onServer = typeof window === 'undefined' && globalThis.fetch;\nconst sync = binding.call(process, 'spawn_sync');\nconst ROOT = import.meta.url;\n",
+      "if (typeof process !== 'undefined') process.exitCode = 1;\nconst { env, platform } = process;\nconst home = process['env'].HOME;\nconst onServer = typeof window === 'undefined' && globalThis.fetch;\nconst binding = process.binding;\nconst sync = binding.call(process, 'spawn_sync');\nconst again = process.binding.call(process, 'fs');\nconst ROOT = import.meta.url;\n",
     ],
     [
       'scripts/nested-tail.mjs',
