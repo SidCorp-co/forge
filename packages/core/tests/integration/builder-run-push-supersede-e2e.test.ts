@@ -159,10 +159,10 @@ describe("the project's master replaces an invalid run through its own project (
 
     const fenced = await supersede('masterForge', 'plugin', run.document.id, reason);
     expect(fenced.status, JSON.stringify(fenced.json)).toBe(403);
-    expect(codes(fenced)).toEqual(['PERMISSION_FORBIDDEN']);
+    // the PAT door refuses a token fenced to another project before any route reads the run
+    expect(codes(fenced)).toEqual(['PAT_PROJECT_OUTSIDE_FENCE']);
     expect(fenced.json.detail).toContain(w.project.plugin);
-    expect(fenced.json.detail).toContain('project.write');
-    expect(fenced.json.detail).toContain('this token is fenced to other projects');
+    expect(fenced.json.detail).toContain('which it does not reach');
 
     const viewer = await supersede('viewer', 'plugin', run.document.id, reason);
     expect(viewer.status, JSON.stringify(viewer.json)).toBe(403);
