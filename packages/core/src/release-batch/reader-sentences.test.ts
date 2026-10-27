@@ -188,7 +188,7 @@ describe('a verify step Forge cannot read, as a person reads it at one and at tw
 
   it('speaks of the one binding in the singular', () => {
     const one = read(['coolify-a']);
-    expect(one).toContain('The live deploy binding `coolify-a` declares a verify step');
+    expect(one).toContain('The live deploy target `coolify-a` declares a verify step');
     expect(one).toContain('it names no probe with a url');
     expect(one).toContain('proved there and none closes past it. Give its probe a full url');
     expect(one).toContain('or remove the verify step, and a release with no probe');
@@ -197,7 +197,7 @@ describe('a verify step Forge cannot read, as a person reads it at one and at tw
   it('speaks of two bindings in the plural throughout', () => {
     const two = read(['coolify-a', 'coolify-b']);
     expect(two).toContain(
-      'The live deploy bindings `coolify-a`, `coolify-b` each declare a verify step',
+      'The live deploy targets `coolify-a`, `coolify-b` each declare a verify step',
     );
     expect(two).toContain('none of them names a probe with a url');
     expect(two).toContain(

@@ -391,7 +391,7 @@ export function refuseUnknownMcpServerNames(raw: unknown, ctx: z.RefinementCtx):
       ctx.addIssue({
         code: 'custom',
         path: [...path, name],
-        message: `mcpServers entry "${name}" is not a known catalog server (${MCP_CATALOG_NAMES.join(', ')}) — fix the name, or use an object spec for a custom server. An integration is not named here: whether an agent may use one is the agent-access switch on that integration's binding, under Settings -> Integrations.`,
+        message: `mcpServers entry "${name}" is not a known catalog server (${MCP_CATALOG_NAMES.join(', ')}) — fix the name, or use an object spec for a custom server. An integration is not named here: whether an agent may use one is that integration's “Agents on this project may use this” switch, in its drawer on the project's Integrations tab.`,
       });
     }
   };

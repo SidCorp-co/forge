@@ -139,6 +139,28 @@ export async function resolveLiveSource(
   return { kind: 'deploy_key', repoUrl, privateKey };
 }
 
+/**
+ * What a person's first mark naming a commit meets on this project, read off what the project
+ * declares and never off the repository: `checked` where Forge has a reader for it, `claim` where it
+ * names no repository at all and the commit is kept unchecked (ISS-1421 criterion 360), and `refused`
+ * where it names one Forge holds no way to read (criterion 362). Null where the declaration could not
+ * be read, so the Commit hint says both cases rather than guess one (ISS-1421 r37, judge-151).
+ */
+export type MarkCommitCheck = 'checked' | 'claim' | 'refused';
+
+export async function markCommitCheck(
+  projectId: string,
+  deps: LiveSourceDeps = defaultDeps,
+): Promise<MarkCommitCheck | null> {
+  try {
+    const source = await resolveLiveSource(projectId, deps);
+    if (source.kind !== 'refused') return 'checked';
+    return source.noRepository ? 'claim' : 'refused';
+  } catch {
+    return null;
+  }
+}
+
 export interface ProjectDivergenceDeps {
   source: (projectId: string) => Promise<LiveSource>;
   github: typeof readLiveDivergence;

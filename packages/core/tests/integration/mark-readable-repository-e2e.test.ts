@@ -206,6 +206,22 @@ describe("a person's mark naming a commit the repository holds (criterion 122)",
   }, 60_000);
 });
 
+// ISS-1421 r37, judge-151: the Commit hint promised a claim on every project. It now says the case the
+// project's own declaration puts it in, read here off the real rows a mark reads.
+describe("what a person's first mark naming a commit meets, read off the project's declaration", () => {
+  it('reads checked with a key beside the URL, refused with the URL alone, and a claim with neither', async () => {
+    const { markCommitCheck } = await import('../../src/projects/live-source.js');
+    const { db, projectId } = current();
+    expect(await markCommitCheck(projectId)).toBe('checked');
+
+    await db.execute(sql`DELETE FROM project_git_credentials WHERE project_id = ${projectId}`);
+    expect(await markCommitCheck(projectId)).toBe('refused');
+
+    await db.execute(sql`UPDATE projects SET repo_url = NULL WHERE id = ${projectId}`);
+    expect(await markCommitCheck(projectId)).toBe('claim');
+  });
+});
+
 describe('a host that stops answering leaves an observed mark where it stood (criterion 113)', () => {
   it('answers where the mark stays, quoting the host, and offers no mark naming no commit', async () => {
     const issue = await seed();

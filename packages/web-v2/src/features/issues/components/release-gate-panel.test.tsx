@@ -41,6 +41,7 @@ const ISSUES: ReleaseRoster["issues"] = [
     claimedByRunId: null,
     closeRefusals: [],
     closeFailure: null,
+    releaseRefusals: [],
   },
   {
     id: "iss-2",
@@ -51,6 +52,7 @@ const ISSUES: ReleaseRoster["issues"] = [
     claimedByRunId: null,
     closeRefusals: [],
     closeFailure: null,
+    releaseRefusals: [],
   },
   {
     id: "iss-3",
@@ -61,12 +63,13 @@ const ISSUES: ReleaseRoster["issues"] = [
     claimedByRunId: "run-9",
     closeRefusals: [],
     closeFailure: null,
+    releaseRefusals: [],
   },
 ];
 
 function state(over: Partial<ReleaseRoster> | null, flags: Record<string, unknown> = {}) {
   roster.mockReturnValue({
-    data: over === null ? undefined : { gateStatus: "tested", nextCutAt: null, automaticRelease: false, channels: ["coolify"], releaseRunnerLabel: null, issues: [], ...over },
+    data: over === null ? undefined : { gateStatus: "tested", nextCutAt: null, automaticRelease: false, channels: ["coolify"], releaseRunnerLabel: null, issues: [], blockingAll: [], ...over },
     isLoading: false,
     isError: false,
     error: null,
@@ -247,6 +250,7 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
       },
     ],
     closeFailure: null,
+    releaseRefusals: [],
   };
 
   it("cannot be selected, and says on its row what the close is refused for and what clears it", () => {
@@ -306,6 +310,7 @@ describe("ReleaseGatePanel — a row whose last release failed its close", () =>
     claimedByRunId: null,
     closeRefusals: [],
     closeFailure: { reason: "the database refused the write (23514)", version: "0.6.0" },
+    releaseRefusals: [],
   };
 
   it("stays selectable and says on its row that a release fails the same way until it is fixed", () => {
@@ -415,5 +420,65 @@ describe("ReleaseGatePanel — laid out flat", () => {
     expect(container.querySelector(".shadow-sm")).toBeNull();
     expect(container.querySelector(".rounded-lg.border")).toBeNull();
     expect(container.querySelector("section.border-y")).not.toBeNull();
+  });
+});
+
+// ISS-1421 r37, judge-151 on criteria 366 and 367: a project whose only waiting issue had no release
+// note read "1 ready" and offered Release now, which the create door then refused. A row is ready only
+// where the press over it would not be refused.
+describe("ReleaseGatePanel — ready means Release now is not refused", () => {
+  const UNNOTED: ReleaseRoster["issues"][number] = {
+    id: "iss-5",
+    displayId: "ISS-5",
+    title: "Invoices show the tax line",
+    mergedAt: "2026-08-26T10:00:00.000Z",
+    waitingDays: 0,
+    claimedByRunId: null,
+    closeRefusals: [],
+    closeFailure: null,
+    releaseRefusals: [
+      {
+        code: "RELEASE_RECORD_MISSING",
+        said: "It has no release note. It needs one before it can be released.",
+        saidHere: "This issue has no release note. It needs one before it can be released.",
+      },
+    ],
+  };
+
+  it("offers no Release now over a lone issue with no release note, and says on its row what makes it ready", () => {
+    state({ issues: [UNNOTED] });
+    renderPanel();
+    expect(screen.queryByRole("button", { name: /release/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select ISS-5 for release" })).toBeDisabled();
+    expect(screen.getByText(/^0 ready · 1 not ready to release$/)).toBeInTheDocument();
+    expect(screen.getByText("Not ready to release")).toBeInTheDocument();
+    expect(screen.getByText("It has no release note. It needs one before it can be released.")).toBeInTheDocument();
+    expect(screen.getByTestId("none-ready")).toHaveTextContent(
+      "None is ready to release. Each issue marked Not ready to release says below what would make it ready.",
+    );
+  });
+
+  it("leaves a row with no release note out of select-all and the dialog", () => {
+    state({ issues: [ISSUES[0] as ReleaseRoster["issues"][number], UNNOTED] });
+    renderPanel();
+    expect(screen.getByText(/^1 ready · 1 not ready to release$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select every issue that can be released" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Release 1 now$/ }));
+    expect(dialogProps?.selectedIssues.map((i) => i.displayId)).toEqual(["ISS-1"]);
+  });
+
+  it("offers no Release now where every pick would be refused, and says why and what clears it", () => {
+    const blockingAll = [
+      { code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered, so there is no box a release could run on. Pair a box to this project first." },
+    ];
+    state({ issues: ISSUES, blockingAll });
+    renderPanel();
+    expect(screen.queryByRole("button", { name: /release/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId("none-ready")).toHaveTextContent(
+      "None can be released yet. This project has no runner registered, so there is no box a release could run on. Pair a box to this project first.",
+    );
+    expect(screen.getByRole("checkbox", { name: "Select ISS-1 for release" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Select every issue that can be released" })).toBeDisabled();
+    expect(screen.getByText(/^0 ready · 1 in a release$/)).toBeInTheDocument();
   });
 });

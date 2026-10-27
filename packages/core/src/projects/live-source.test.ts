@@ -7,6 +7,7 @@ import { encryptSecret } from '../integrations/vault.js';
 import {
   type DeployKeyRow,
   type LiveSourceDeps,
+  markCommitCheck,
   readProjectDivergence,
   resolveLiveSource,
 } from './live-source.js';
@@ -160,6 +161,40 @@ describe('resolveLiveSource', () => {
     vi.stubEnv('INTEGRATION_MASTER_KEY', '');
     const s = await resolveLiveSource('p', deps({}));
     expect(s.kind === 'refused' && s.reason).toMatch(/no secret vault configured/);
+  });
+});
+
+// ISS-1421 r37, judge-151: the Commit hint said "kept as a claim" on every project, and a project naming
+// a repository with no key then answered "Nothing was marked". The hint reads which case this is.
+describe('markCommitCheck', () => {
+  it('checks the commit where Forge has a reader: a GitHub connection, or a key beside the URL', async () => {
+    expect(await markCommitCheck('p', deps({ githubClient: async () => client }))).toBe('checked');
+    expect(await markCommitCheck('p', deps({}))).toBe('checked');
+  });
+
+  it('keeps the commit as a claim where the project names no repository at all', async () => {
+    const row = { repoUrl: null, privateKeyEnc: null };
+    expect(await markCommitCheck('p', deps({ row }))).toBe('claim');
+    expect(
+      await markCommitCheck('p', deps({ row: { repoUrl: '  ', privateKeyEnc: keyEnc } })),
+    ).toBe('claim');
+  });
+
+  it('refuses where a repository is named and Forge holds no way to read it', async () => {
+    expect(
+      await markCommitCheck('p', deps({ row: { repoUrl: GITLAB, privateKeyEnc: null } })),
+    ).toBe('refused');
+    const unusable = async (): Promise<GitHubRepoClient> => {
+      throw new GitHubClientError('no_installation', 'the GitHub App is not installed');
+    };
+    expect(await markCommitCheck('p', deps({ githubClient: unusable }))).toBe('refused');
+  });
+
+  it('says it does not know where the declaration could not be read', async () => {
+    const broken = async (): Promise<DeployKeyRow> => {
+      throw new Error('connection refused');
+    };
+    expect(await markCommitCheck('p', deps({ deployKey: broken }))).toBeNull();
   });
 });
 

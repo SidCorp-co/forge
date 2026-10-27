@@ -14,6 +14,7 @@ const ROSTER = {
   baseBranch: "main",
   nextCutAt: null,
   automaticRelease: false,
+  blockingAll: [],
   issues: [],
 };
 

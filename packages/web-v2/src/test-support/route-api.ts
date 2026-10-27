@@ -292,7 +292,7 @@ const RELEASE_STATE = {
   runId: RUN_ID,
   projectId: PROJECT_ID,
   runStatus: "running",
-  roster: { gateStatus: "releasing", channels: [], releaseRunnerLabel: null, baseBranch: "main", nextCutAt: null, automaticRelease: false, issues: [] },
+  roster: { gateStatus: "releasing", channels: [], releaseRunnerLabel: null, baseBranch: "main", nextCutAt: null, automaticRelease: false, issues: [], blockingAll: [] },
   runIssues: [],
   attempts: [],
   live: null,
@@ -600,7 +600,7 @@ export const ENTRIES: Entry[] = [
   { match: /^\/questions$/, empty: ok({ questions: [] } satisfies QuestionListResponse) },
   {
     match: /^\/projects\/[^/]+\/release-batches\/roster$/,
-    empty: ok({ gateStatus: null, channels: [], releaseRunnerLabel: null, baseBranch: "main", nextCutAt: null, automaticRelease: false, issues: [] } satisfies ReleaseRoster),
+    empty: ok({ gateStatus: null, channels: [], releaseRunnerLabel: null, baseBranch: "main", nextCutAt: null, automaticRelease: false, issues: [], blockingAll: [] } satisfies ReleaseRoster),
   },
   { match: /^\/auth\/preferences\/changes$/, empty: ok({ items: [] }) },
   { match: /^\/issues\/[^/]+\/dependencies$/, empty: ok({ outgoing: [], incoming: [] } satisfies IssueDependencies) },

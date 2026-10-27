@@ -97,7 +97,7 @@ const createSchema = z
       const what =
         kind === 'release_batch'
           ? 'it cuts whatever is waiting at the gate'
-          : "it pulls whatever the project's Sentry binding declares";
+          : "it pulls whatever the project's Sentry connection declares";
       for (const field of ['prompt', 'script', 'templateKey'] as const) {
         if (data[field] !== undefined && data[field] !== null) {
           ctx.addIssue({

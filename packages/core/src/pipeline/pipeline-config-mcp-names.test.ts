@@ -26,7 +26,7 @@ describe('mcpServers validation (ISS-623 W1 / ISS-1071 rule 7)', () => {
 
   it('the WRITE schema now rejects a PROVIDER name, and says where the switch moved to', () => {
     expect(() => pipelineConfigPatchSchema.parse({ mcpServers: { epodsystem: true } })).toThrow(
-      /agent-access switch on that integration's binding/,
+      /“Agents on this project may use this” switch, in its drawer on the project's Integrations tab/,
     );
     expect(() =>
       pipelineConfigPatchSchema.parse({ mcpServers: { epodsystem_store_a: true } }),

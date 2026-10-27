@@ -20,6 +20,19 @@ export interface CloseRefusal {
   saidHere: string;
 }
 
+/** What Release now would refuse this row for beyond its close: a missing note (ISS-1421 r37). */
+export interface ReleaseRefusal {
+  code: string;
+  said: string;
+  saidHere: string;
+}
+
+/** A reason Release now is refused whatever is picked, as core words it for a person. */
+export interface GateRefusal {
+  code: string;
+  said: string;
+}
+
 export interface ReleaseRosterEntry {
   id: string;
   displayId: string;
@@ -31,6 +44,7 @@ export interface ReleaseRosterEntry {
   closeRefusals: CloseRefusal[];
   /** Where the last release failed this close short of a decision; the next one meets it again. */
   closeFailure: CloseFailure | null;
+  releaseRefusals: ReleaseRefusal[];
 }
 
 /** A close that failed on a fault nothing on the issue clears, and the release that met it (ISS-1381 r4). */
@@ -56,6 +70,8 @@ export interface ReleaseRoster {
   /** The automatic release takes a waiting issue without a person. */
   automaticRelease: boolean;
   issues: ReleaseRosterEntry[];
+  /** What refuses Release now whatever is picked; empty where nothing does. */
+  blockingAll: GateRefusal[];
 }
 
 export class RosterShapeError extends Error {
@@ -158,6 +174,31 @@ function refusalsAt(o: Record<string, unknown>, endpoint: string, where: string)
   });
 }
 
+function releaseRefusalsAt(o: Record<string, unknown>, endpoint: string, where: string): ReleaseRefusal[] {
+  const v = keyAt(o, "releaseRefusals");
+  if (!Array.isArray(v)) throw new RosterShapeError(endpoint, where, "an array", v);
+  return v.map((item, i) => {
+    const r = objectAt(item, endpoint, `${where}[${i}]`);
+    return {
+      code: stringAt(r, "code", endpoint, `${where}[${i}].code`),
+      said: stringAt(r, "said", endpoint, `${where}[${i}].said`),
+      saidHere: stringAt(r, "saidHere", endpoint, `${where}[${i}].saidHere`),
+    };
+  });
+}
+
+function blockingAllAt(o: Record<string, unknown>, endpoint: string): GateRefusal[] {
+  const v = keyAt(o, "blockingAll");
+  if (!Array.isArray(v)) throw new RosterShapeError(endpoint, "blockingAll", "an array", v);
+  return v.map((item, i) => {
+    const r = objectAt(item, endpoint, `blockingAll[${i}]`);
+    return {
+      code: stringAt(r, "code", endpoint, `blockingAll[${i}].code`),
+      said: stringAt(r, "said", endpoint, `blockingAll[${i}].said`),
+    };
+  });
+}
+
 function failureAt(o: Record<string, unknown>, endpoint: string, where: string): CloseFailure | null {
   const v = keyAt(o, "closeFailure");
   if (v === null) return null;
@@ -182,6 +223,7 @@ function entryAt(raw: unknown, endpoint: string, where: string): ReleaseRosterEn
     claimedByRunId: nullableStringAt(o, "claimedByRunId", endpoint, `${where}.claimedByRunId`),
     closeRefusals: refusalsAt(o, endpoint, `${where}.closeRefusals`),
     closeFailure: failureAt(o, endpoint, `${where}.closeFailure`),
+    releaseRefusals: releaseRefusalsAt(o, endpoint, `${where}.releaseRefusals`),
   };
 }
 
@@ -210,5 +252,6 @@ export function parseReleaseRoster(raw: unknown, endpoint: string): ReleaseRoste
     nextCutAt: nullableStringAt(o, "nextCutAt", endpoint, "nextCutAt"),
     automaticRelease: booleanAt(o, "automaticRelease", endpoint, "automaticRelease"),
     issues: issues.map((entry, i) => entryAt(entry, endpoint, `issues[${i}]`)),
+    blockingAll: blockingAllAt(o, endpoint),
   };
 }

@@ -466,7 +466,7 @@ export function unreadableSentence(
     const which = bindings.map((b) => `\`${b}\``).join(', ');
     const w = (one: string, many: string) => agree(bindings.length, one, many);
     parts.push(
-      `The live deploy ${w('binding', 'bindings')} ${which} ${w('declares', 'each declare')} ${refused(bindings.length)}`,
+      `The live deploy ${w('target', 'targets')} ${which} ${w('declares', 'each declare')} ${refused(bindings.length)}`,
     );
   }
   return parts.length > 0 ? parts.join(' ') : remedy;

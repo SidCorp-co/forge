@@ -10,6 +10,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { IssueDetail } from "../types";
 import { PropertiesRail } from "./properties-rail";
 
@@ -24,8 +25,16 @@ vi.mock("./inline-edit-cell", async () => {
   return { ...actual, StatusEdit: () => <span>status</span> };
 });
 
+vi.mock("./landing-shape-control", () => ({
+  LandingShapeControl: () => null,
+}));
+
+const controlProps: Array<Record<string, unknown>> = [];
 vi.mock("./merge-marker-control", () => ({
-  MergeMarkerControl: () => null,
+  MergeMarkerControl: (props: Record<string, unknown>) => {
+    controlProps.push(props);
+    return null;
+  },
 }));
 
 afterEach(cleanup);
@@ -168,3 +177,44 @@ describe("a mark naming where the work landed outside git (ISS-1327)", () => {
     expect(screen.queryByTitle(/pull request/)).toBeNull();
   });
 });
+
+// ISS-1421 r37, judge-151: the Commit hint promised a claim on a project whose named repository Forge
+// cannot read. The rail hands the control what core read for this issue's project.
+describe("Mark merged is told what a commit meets on this project", () => {
+  it.each(["checked", "claim", "refused", null] as const)("hands on %s, on an unmarked and a marked issue", (check) => {
+    for (const mergedAt of [null, MERGED_AT]) {
+      controlProps.length = 0;
+      const issue = {
+        id: "i1",
+        displayId: "ISS-1126",
+        status: "developed",
+        agentStatus: "idle",
+        priority: "critical",
+        complexity: "m",
+        labels: [],
+        mergedAt,
+        mergeMark: mergedAt ? "asserted" : undefined,
+        landingShape: "git",
+        markCommitCheck: check,
+      } as unknown as IssueDetail;
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <PropertiesRail
+            issue={issue}
+            slug="p1"
+            cost={undefined}
+            deps={undefined}
+            pending={false}
+            canMarkMerged
+            onPatch={vi.fn()}
+            onTransition={vi.fn()}
+          />
+        </QueryClientProvider>,
+      );
+      expect(controlProps.length).toBeGreaterThan(0);
+      for (const props of controlProps) expect(props.commitCheck).toBe(check);
+      cleanup();
+    }
+  });
+});
+

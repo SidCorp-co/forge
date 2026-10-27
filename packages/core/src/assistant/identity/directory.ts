@@ -91,7 +91,7 @@ export async function lookupSpeakerProfile(args: {
       refusal: {
         code: 'SPEAKER_DIRECTORY_UNREACHABLE',
         message:
-          'this project has no active Rocket.Chat binding, so no server can be asked who that speaker is. Connect Rocket.Chat to the project first.',
+          'this project has no Rocket.Chat connection switched on, so no server can be asked who that speaker is. Connect Rocket.Chat to the project first.',
       },
     };
   }

@@ -6,6 +6,7 @@ import { assertRoleFor, loadProjectAccess, type ProjectAccess } from '../lib/aut
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { resolveReleaseChannels } from './channel.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
+import { loadReleaseGateRoster } from './gate-roster.js';
 import {
   attemptReading,
   openAttempt,
@@ -85,7 +86,6 @@ import {
   findReleaseBatchRun,
   getActiveReleaseBatch,
   loadReleaseBatchContext,
-  loadReleaseRoster,
   NoReleaseGateError,
   ReleaseIssuesUnnamedError,
   ReleaseRecutRefusedError,
@@ -185,7 +185,7 @@ releaseBatchRoutes.get(
     assertRoleFor(access, 'member', 'read its release roster');
 
     try {
-      return c.json(answer(rosterSchema, await loadReleaseRoster(projectId)));
+      return c.json(answer(rosterSchema, await loadReleaseGateRoster(projectId)));
     } catch (err) {
       const declined = declarationRefusal(err);
       if (declined) throw declined;

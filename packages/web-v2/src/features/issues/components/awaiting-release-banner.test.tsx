@@ -26,6 +26,7 @@ function state(
   claimed: string | null = null,
   closeRefusals: ReleaseRoster["issues"][number]["closeRefusals"] = [],
   closeFailure: ReleaseRoster["issues"][number]["closeFailure"] = null,
+  releaseRefusals: ReleaseRoster["issues"][number]["releaseRefusals"] = [],
 ) {
   roster.mockReturnValue({
     data: {
@@ -45,8 +46,10 @@ function state(
           claimedByRunId: claimed,
           closeRefusals,
           closeFailure,
+          releaseRefusals,
         },
       ],
+      blockingAll: [],
       ...over,
     },
   });
@@ -249,3 +252,26 @@ describe("AwaitingReleaseBanner — an issue whose last release failed its close
     expect(screen.queryByText(/fails the same way/)).not.toBeInTheDocument();
   });
 });
+
+// ISS-1421 r37, judge-151 on criteria 366 and 367: the issue's own Release now was offered over an
+// issue with no release note, and over a project no pick could release; both presses were refused.
+describe("AwaitingReleaseBanner — Release now only where it is not refused", () => {
+  it("offers no Release now on an issue with no release note, and says what makes it ready", () => {
+    const releaseRefusals = [
+      { code: "RELEASE_RECORD_MISSING", said: "It has no release note.", saidHere: "This issue has no release note. It needs one before it can be released." },
+    ];
+    state({}, null, [], null, releaseRefusals);
+    renderBanner();
+    expect(screen.getByText("Not ready to release.")).toBeInTheDocument();
+    expect(screen.getByText("This issue has no release note. It needs one before it can be released.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
+  });
+
+  it("offers no Release now where the project refuses every pick, and says why", () => {
+    state({ blockingAll: [{ code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered. Pair a box to this project first." }] });
+    renderBanner();
+    expect(screen.getByText("This project has no runner registered. Pair a box to this project first.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
+  });
+});
+

@@ -80,8 +80,20 @@ export const rosterSchema = z.object({
       claimedByRunId: z.string().nullable(),
       closeRefusals: z.array(closeRefusalSchema),
       closeFailure: z.object({ reason: z.string(), version: z.string().nullable() }).nullable(),
+      /** What Release now would refuse this row for beyond its close, said on the gate and on the
+       *  issue's own page (ISS-1421 r37). */
+      releaseRefusals: z.array(
+        z.object({
+          code: z.literal('RELEASE_RECORD_MISSING'),
+          said: z.string(),
+          saidHere: z.string(),
+        }),
+      ),
     }),
   ),
+  /** What Release now is refused for whatever is picked, each as a person reads it. Empty where
+   *  pressing it over the ready rows is not refused for a reason outside them. */
+  blockingAll: z.array(z.object({ code: z.string(), said: z.string() })),
 });
 
 export const createdSchema = z.object({

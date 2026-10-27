@@ -40,8 +40,17 @@ export const COMMIT_PLACEHOLDER = "e.g. 3f9c2ab, or the whole sha";
 /** The same field on a marked issue corrects where the work landed, so it says that, not a later
  *  round (ISS-1300 r4, judge-121). */
 export const CORRECTION_PLACEHOLDER = "e.g. 3f9c2ab, where it landed";
-/** A person's commit is checked against the repository and recorded as where the work landed. */
-export const COMMIT_HINT = "Checked against the project's repository where Forge can read it; where it cannot, the commit is kept as a claim nothing checked.";
+/** What a first mark's commit meets here, as core reads its declaration; absent from an older server. */
+export type MarkCommitCheck = "checked" | "claim" | "refused";
+
+/** The Commit hint for the reader's own case; one sentence for all was true only with no repository
+ *  named (judge-151). Unknown, it says each case. */
+export function commitHint(check: MarkCommitCheck | null | undefined): string {
+  if (check === "checked") return "Checked against the project's repository; where Forge cannot read it, nothing is marked and you are told why.";
+  if (check === "claim") return "This project names no repository, so Forge has nothing to check the commit against: it is kept as a claim nothing checked.";
+  if (check === "refused") return "Forge cannot read this project's repository, so a commit named here is refused and nothing is marked; the refusal says what to attach. Leave Commit empty to record a claim naming no commit.";
+  return "Checked against the project's repository where Forge can read it. Where the project names no repository, the commit is kept as a claim nothing checked; where it names one Forge cannot read, nothing is marked and you are told why.";
+}
 /** On a later merge an unreadable repository moves nothing (criterion 123), so no claim is kept. */
 export const LATER_COMMIT_HINT = "Checked against the project's repository; where Forge cannot read it, the mark stays where it is and you are told why.";
 /** Said only where Forge holds a merged pull request at another commit than the mark's: anywhere
@@ -80,6 +89,7 @@ interface MergeMarkerControlProps {
   newestMergedPull?: string | null | undefined;
   markedTarget?: string | null | undefined;
   mergeMark?: string | undefined;
+  commitCheck?: MarkCommitCheck | null | undefined;
 }
 
 /** Where this issue's work lands and who said so, since the two can differ. */
@@ -99,6 +109,7 @@ export function MergeMarkerControl({
   newestMergedPull,
   markedTarget,
   mergeMark,
+  commitCheck,
 }: MergeMarkerControlProps) {
   const outsideGit = landingShape === "outside_git";
   const [open, setOpen] = useState(false);
@@ -185,7 +196,7 @@ export function MergeMarkerControl({
               />
             </Field>
             {!outsideGit && (
-              <Field label={COMMIT_FIELD} hint={later ? LATER_COMMIT_HINT : COMMIT_HINT}>
+              <Field label={COMMIT_FIELD} hint={later ? LATER_COMMIT_HINT : commitHint(commitCheck)}>
                 {/* Wraps rather than scrolls, so a whole sha shows at phone width and a refusal
                     quoting it can be read against every digit typed (ISS-1300 r5). */}
                 <Textarea

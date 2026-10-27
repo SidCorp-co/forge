@@ -12,16 +12,12 @@ import {
 import { type DecisionReading, readDecisionReading } from './decision-state.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
+import { loadReleaseGateRoster, type ReleaseGateRoster } from './gate-roster.js';
 import { type ReleaseStart, readReleaseStart } from './job-start.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import type { ReleaseVerification } from './plan.js';
-import {
-  loadReleaseRoster,
-  loadRunIssues,
-  type ReleaseRoster,
-  type ReleaseRunIssue,
-} from './queries.js';
+import { loadRunIssues, type ReleaseRunIssue } from './queries.js';
 import { listReadings, type ReadingView, viewOf } from './readings.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 
@@ -35,7 +31,7 @@ export interface ReleaseRunState {
   /** The version this release cut. `null` only on a release row nothing versioned. */
   version: string | null;
   /** The release gate now, not this run; the run's own roster is `runIssues`. */
-  roster: ReleaseRoster;
+  roster: ReleaseGateRoster;
   runIssues: ReleaseRunIssue[];
   attempts: ReleaseAttemptRow[];
   /**
@@ -111,7 +107,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
   const channels = await resolveReleaseChannels(first.projectId);
   const verify = liveProbes(channels);
   const [roster, attempts, live, kept] = await Promise.all([
-    loadReleaseRoster(first.projectId),
+    loadReleaseGateRoster(first.projectId),
     listAttempts(runId),
     verify ? readLiveState(verify) : Promise.resolve(null),
     listReadings(runId),
