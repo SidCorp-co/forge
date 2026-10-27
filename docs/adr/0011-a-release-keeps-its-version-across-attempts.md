@@ -76,9 +76,12 @@ artifact outside the system already carries it.
   reading a declaration is about to change.
 - **A new release starts above the highest version any attempt ever claimed**, shipped or not. An
   ended run with no release job was refused at the door. It was never attempted and claims nothing,
-  unless it shipped: a change-request release the master merges, and a landing recorded on a project
-  with no production environment, ship with no release job and claim their version (catalog-api
+  unless it shipped: a change-request release the master merges, a landing recorded on a project
+  with no production environment, and a release performed by hand and recorded on a project with
+  production all ship with no release job and claim their version (catalog-api
   `0.1.0`, run 6c91e938, 2026-10-26, was read as never attempted, so the next draft wore `0.1.0`).
+  A recorded release, landing or performed, takes its version through the same cut in the
+  transaction that records it.
 - **The list counts releases, not attempts.** A release is named by the version its last attempt
   wears. Each attempt shows its cut time, its outcome, the refusal word for word, the abort's reason
   and who ended it (`packages/core/src/release-batch/release-cuts.ts`). An older version whose roster went on under a

@@ -1,1 +1,1 @@
-**Landings recorded before versioning show on the Releases list.** They are listed with no version under their own heading, even after production is declared, and a versioned landing is no longer listed twice.
+**Every recorded release shows on the Releases list.** A release recorded by hand now takes the next version, and landings recorded before versioning are listed with no version under their own heading.

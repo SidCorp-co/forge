@@ -59,8 +59,9 @@ const idsIn = (list: unknown): string[] =>
 
 /**
  * Every versioned release run of the project the rule decides over, `except` the one being cut: a
- * release batch's, and a recorded landing's, which takes the next version as any release does
- * (`recorded-landing.ts:recordLanding`), so the two never hand out one number twice.
+ * release batch's, and a recorded release's — a landing (`recorded-landing.ts:recordLanding`) or a
+ * release performed by hand (`recorded.ts:recordPerformedRelease`) — which takes the next version as
+ * any release does, so none of them hands out one number twice.
  */
 export async function readLineageRuns(
   executor: Pick<Tx, 'execute'>,
