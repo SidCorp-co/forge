@@ -38,7 +38,9 @@ describe('the note on an issue an unverified release closes', () => {
   it('says where the verify probe is given in words, naming no stored key (ISS-1421 r40)', () => {
     for (const unread of [[], ['coolify [eu] b-2']]) {
       const note = unverifiedCloseNote(RUN, null, unread);
-      expect(note).toContain("give the live deploy target a verify probe on the project's Integrations tab");
+      expect(note).toContain(
+        "give the live deploy target a verify probe on the project's Integrations tab",
+      );
       expect(note.replace(unverifiedMarker(RUN), '')).not.toMatch(/`[^`]*\.[^`]*`|verify\.probes/);
     }
   });

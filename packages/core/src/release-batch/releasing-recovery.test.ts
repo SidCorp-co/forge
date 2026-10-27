@@ -435,9 +435,18 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
 // already ended in a full stop was followed by another.
 describe('a hand-back reason as the opening sentence of its comment', () => {
   it.each([
-    ['another batch was already in flight, so this one never started', 'Another batch was already in flight, so this one never started.'],
-    ['The release run failed, so nothing is carrying this issue to production.', 'The release run failed, so nothing is carrying this issue to production.'],
-    ['The release was aborted: a person stopped it. ', 'The release was aborted: a person stopped it.'],
+    [
+      'another batch was already in flight, so this one never started',
+      'Another batch was already in flight, so this one never started.',
+    ],
+    [
+      'The release run failed, so nothing is carrying this issue to production.',
+      'The release run failed, so nothing is carrying this issue to production.',
+    ],
+    [
+      'The release was aborted: a person stopped it. ',
+      'The release was aborted: a person stopped it.',
+    ],
   ])('says %j as %j', (reason, said) => {
     expect(reasonSentence(reason)).toBe(said);
   });

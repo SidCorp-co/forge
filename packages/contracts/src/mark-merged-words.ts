@@ -10,8 +10,6 @@ export const WORK_LANDS_ROW = 'Work lands';
 /** The act the issue's hold names for a landing in git, so the banner names the same one (ISS-1300 r5). */
 export const NAME_THE_LANDED_COMMIT = `name the commit that landed under ${COMMIT_FIELD}`;
 
-/** On a project naming no repository a mark naming no commit is accepted, so the step says so
- *  rather than asking for one (ISS-1421 r40, judge-164). */
 export const COMMIT_MAY_STAY_EMPTY = `with no repository named, ${COMMIT_FIELD} may stay empty`;
 
 export function markMergedSteps(outsideGit: boolean, noRepository = false): string {

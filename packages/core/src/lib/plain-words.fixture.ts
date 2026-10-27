@@ -1,13 +1,11 @@
-// The prose a person reads that is not a TypeScript literal: a guide's markdown, and the API
-// reference's descriptions. Each is read with its code marks, fenced blocks and link targets taken
-// out, since those name values, paths and addresses rather than saying anything (ISS-1421 r40).
+// Prose a person reads outside a TypeScript literal, read without its code marks, fenced blocks and
+// link targets, which name values rather than say anything (ISS-1421 r40).
 
 /** "Ship" is the team's word for a release, and a person outside the team reads it as a boat. */
 export const SHIP = /\bship(s|ped|ping)?\b/i;
 
 const FENCE = /^\s*(```|~~~)/;
 
-/** A paragraph's words as a reader meets them: no code mark, no link target, no tag. */
 function uncoded(text: string): string {
   return text
     .replace(/`[^`]*`/g, '')

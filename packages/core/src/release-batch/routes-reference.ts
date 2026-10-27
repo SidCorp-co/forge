@@ -64,7 +64,8 @@ export const createBatch = describeOperation({
     404: noProject,
     409: fail({
       ...blockerWhen,
-      RELEASE_RECUT_REFUSED: '`recutOf` does not name the highest release, or that release went out',
+      RELEASE_RECUT_REFUSED:
+        '`recutOf` does not name the highest release, or that release went out',
       RELEASE_VERSION_CONFLICT: 'another release took the version between the cut and the write',
       RELEASE_VERSION_EXHAUSTED: 'the version space of this release line is used up',
       RELEASE_ROSTER_REFUSED:

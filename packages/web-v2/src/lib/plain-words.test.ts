@@ -232,7 +232,10 @@ function proseSaying(markdown: string, word: RegExp): string[] {
       return;
     }
     if (fenced) return;
-    if (line.trim() === "") return flush();
+    if (line.trim() === "") {
+      flush();
+      return;
+    }
     if (block.length === 0) opens = at + 1;
     block.push(line.trim());
   });
