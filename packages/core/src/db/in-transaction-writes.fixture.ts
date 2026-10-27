@@ -17,14 +17,7 @@
 
 import ts from 'typescript';
 import { IDENTIFYING, readsTheError, type Scan, unwrap } from './in-transaction-guards.fixture.js';
-
-function isAssignment(node: ts.Node): node is ts.BinaryExpression {
-  return (
-    ts.isBinaryExpression(node) &&
-    node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-    node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-  );
-}
+import { assignedTo, isAssignment, isWrapper } from './in-transaction-paths.fixture.js';
 
 const THIS = { escapedName: 'this' } as unknown as ts.Symbol;
 
@@ -149,37 +142,6 @@ function dataProperty(store: ts.AccessExpression, scan: Scan): boolean {
         ts.isShorthandPropertyAssignment(d),
     )
   );
-}
-
-function isWrapper(node: ts.Node): node is ts.Expression & { expression: ts.Expression } {
-  return (
-    ts.isParenthesizedExpression(node) ||
-    ts.isAsExpression(node) ||
-    ts.isTypeAssertionExpression(node) ||
-    ts.isNonNullExpression(node) ||
-    ts.isSatisfiesExpression(node)
-  );
-}
-
-function assignedTo(node: ts.Node): boolean {
-  const { parent } = node;
-  if (isWrapper(parent)) return assignedTo(parent);
-  if (isAssignment(parent)) return parent.left === node;
-  if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent))
-    return [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(parent.operator);
-  if (ts.isDeleteExpression(parent)) return true;
-  if (ts.isForOfStatement(parent) || ts.isForInStatement(parent))
-    return parent.initializer === node;
-  if (ts.isPropertyAssignment(parent)) return parent.initializer === node && assignedTo(parent);
-  if (
-    ts.isArrayLiteralExpression(parent) ||
-    ts.isObjectLiteralExpression(parent) ||
-    ts.isShorthandPropertyAssignment(parent) ||
-    ts.isSpreadElement(parent) ||
-    ts.isSpreadAssignment(parent)
-  )
-    return assignedTo(parent);
-  return false;
 }
 
 const COMPARED = [

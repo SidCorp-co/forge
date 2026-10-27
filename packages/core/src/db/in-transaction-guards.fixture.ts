@@ -3,7 +3,9 @@
  * `lib/db-errors.ts:STATEMENT_ERRORS` passes as a kind, on the error or down its `cause`, by
  * `instanceof`, a `code`, constraint or `name` compared with a value known at compile time, or an
  * `isX(err)` whose one returned expression is such a test; or those joined. The caught error is
- * matched by its binding, never its name. Every guard it does not so recognise is refused like a
+ * matched by its binding, never its name, and a comparand holding a value that can come from it
+ * counts as the error (`in-transaction-paths.fixture.ts:mentions`), among them any `let`, `var` or
+ * parameter written past its declaration. Every guard it does not so recognise is refused like a
  * bare catch, among them one whose body it cannot read and a comparison it cannot resolve.
  *
  * Named residuals, each beyond what a reading of the files in `src` can decide: a comparand whose
@@ -18,6 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { SESSION_ENDED_CODES } from '../lib/db-errors.js';
+import { mentions } from './in-transaction-paths.fixture.js';
 
 const DB_ERRORS = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'db-errors.ts');
 
@@ -330,35 +333,6 @@ function knownValue(node: ts.Expression, scan: Scan): string | number | undefine
 }
 
 /**
- * Whether `node` reads `param`, itself or through a name its declaration binds from it
- * (`const c = err.code`, `const { code } = err`), where a comparison would set the error beside
- * itself.
- */
-function mentions(
-  node: ts.Node,
-  param: ts.Symbol,
-  scan: Scan,
-  seen: Set<ts.Symbol> = new Set(),
-): boolean {
-  if (ts.isIdentifier(node)) {
-    const symbol = scan.checker.getSymbolAtLocation(node);
-    if (symbol === param) return true;
-    const decl = symbol?.valueDeclaration;
-    const from =
-      decl && ts.isBindingElement(decl)
-        ? [decl.initializer, ts.walkUpBindingElementsAndPatterns(decl).initializer]
-        : decl && ts.isVariableDeclaration(decl)
-          ? [decl.initializer]
-          : [];
-    if (symbol && !seen.has(symbol)) {
-      seen.add(symbol);
-      if (from.some((e) => e !== undefined && mentions(e, param, scan, seen))) return true;
-    }
-  }
-  return ts.forEachChild(node, (c) => mentions(c, param, scan, seen) || undefined) ?? false;
-}
-
-/**
  * `err.code === '23505'`: the other side reads nothing of the error, a `name` is no statement
  * error's, a code is not one the error carries when the session ended, and no statement error's
  * prototype is one `escapedClasses` found something could change, which would give every statement
@@ -373,7 +347,7 @@ function comparesError(node: ts.BinaryExpression, param: ts.Symbol, scan: Scan):
   for (const [error, other] of sides) {
     const key = propertyRead(error, param, scan);
     if (key === undefined || !IDENTIFYING.has(key)) continue;
-    const value = mentions(other, param, scan) ? undefined : knownValue(other, scan);
+    const value = mentions(other, param, scan.checker) ? undefined : knownValue(other, scan);
     if (value === undefined) return false;
     if (key === 'name') return !scan.names.has(String(value));
     return key !== 'code' || !SESSION_ENDED_CODES.has(String(value));
@@ -419,14 +393,16 @@ function helperNamesAnError(call: ts.CallExpression, param: ts.Symbol, scan: Sca
   const index = call.arguments.findIndex((a) => isParam(a, param, scan));
   const decl = fixedCallee(call, scan);
   if (index === -1 || depth > 3 || !decl || decl.getSourceFile().isDeclarationFile) return false;
-  if (call.arguments.some((a, at) => at !== index && mentions(a, param, scan))) return false;
+  if (call.arguments.some((a, at) => at !== index && mentions(a, param, scan.checker)))
+    return false;
   const params = decl.parameters.flatMap((p) => {
     const s = ts.isIdentifier(p.name) && scan.checker.getSymbolAtLocation(p.name);
     return s ? [s] : [];
   });
   if (
     decl.parameters.some(
-      (p) => p.initializer && params.some((s) => mentions(p.initializer as ts.Node, s, scan)),
+      (p) =>
+        p.initializer && params.some((s) => mentions(p.initializer as ts.Node, s, scan.checker)),
     )
   )
     return false;

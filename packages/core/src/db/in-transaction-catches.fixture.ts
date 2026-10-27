@@ -16,7 +16,8 @@
  *
  * Named residuals: a statement reached through a helper that closes over the transaction without
  * the guarded code naming any handle, and so a catch around such a helper that replaces or rewrites
- * what it throws, which the scan never reads; a transaction cast to a type it is not, such as
+ * what it throws, which the scan never reads; a replacement thrown by a function declared outside
+ * the catch that it calls, which it does not read; a transaction cast to a type it is not, such as
  * `typeof db`; and a rejection handled by anything other than `try`, `.catch(fn)` or
  * `.then(ok, fn)` written inline, among them the same rejection taken again off the statement's
  * own promise (`p.catch((e) => …)`). The guard reader and the write reading name their own.
@@ -232,13 +233,44 @@ function passesOn(
   );
 }
 
-/** The first throw of anything but the caught error on a path an error it does not name can take. */
+/** A function `n` declares under a name, which runs only where something calls it. */
+function declaredOnly(n: ts.Node): n is ts.FunctionLikeDeclaration {
+  return (
+    ts.isFunctionDeclaration(n) ||
+    ((ts.isArrowFunction(n) || ts.isFunctionExpression(n)) &&
+      ts.isVariableDeclaration(n.parent) &&
+      n.parent.initializer === n)
+  );
+}
+
+/** The function declared under a name inside `body` that `call` runs, if it runs one. */
+function calledHere(call: ts.CallExpression, body: ts.Block, scan: Scan) {
+  const decl = ts.isIdentifier(call.expression)
+    ? scan.checker.getSymbolAtLocation(call.expression)?.valueDeclaration
+    : undefined;
+  const fn = decl && ts.isVariableDeclaration(decl) ? decl.initializer : decl;
+  return fn && declaredOnly(fn) && within(fn, body) ? fn : undefined;
+}
+
+/**
+ * The first throw of anything but the caught error on a path an error it does not name can take,
+ * reading a function the catch declares under a name where a call on such a path runs it.
+ */
 function replacement(body: ts.Block, param: ts.Symbol, named: ReadonlySet<ts.Node>, scan: Scan) {
   let found: ts.ThrowStatement | undefined;
+  const ran = new Set<ts.Node>();
   const visit = (n: ts.Node): void => {
-    if (found || named.has(n)) return;
-    if (ts.isThrowStatement(n) && !passesOn(n.expression, body, param, named, scan)) found = n;
-    else ts.forEachChild(n, visit);
+    if (found || named.has(n) || declaredOnly(n)) return;
+    if (ts.isThrowStatement(n) && !passesOn(n.expression, body, param, named, scan)) {
+      found = n;
+      return;
+    }
+    const fn = ts.isCallExpression(n) ? calledHere(n, body, scan) : undefined;
+    if (fn?.body && !ran.has(fn)) {
+      ran.add(fn);
+      ts.forEachChild(fn.body, visit);
+    }
+    ts.forEachChild(n, visit);
   };
   visit(body);
   return found;

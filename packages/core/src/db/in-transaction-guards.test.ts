@@ -456,6 +456,17 @@ export async function narrowsByAComparandDestructuredFromTheError(tx: Tx) {
     return null;
   }
 }
+
+export async function narrowsByAComparandAssignedFromTheError(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    let known: '23505' = '23505';
+    known = (err as { code: '23505' }).code;
+    if ((err as { code?: string }).code !== known) throw err;
+    return null;
+  }
+}
 `;
 
 const SHIFTED = 'db/in-transaction-guards-shifted.planted.ts';
@@ -628,6 +639,43 @@ export async function refusesAWrapItAlwaysThrows(tx: Tx) {
   }
 }
 
+export async function refusesAHelperItRunsOnTheRethrow(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    const fail = (): void => {
+      throw new Error('insert failed');
+    };
+    if (isUniqueViolation(err)) return null;
+    fail();
+    throw err;
+  }
+}
+
+export async function refusesAReplacementItRunsAtOnce(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (isUniqueViolation(err)) return null;
+    (() => {
+      throw new Error('insert failed');
+    })();
+    throw err;
+  }
+}
+
+export async function keepsAHelperItRunsAfterItsGuard(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    function fail(): never {
+      throw new Error('a duplicate, named');
+    }
+    if (!isUniqueViolation(err)) throw err;
+    fail();
+  }
+}
+
 export async function annotatesWhatItRethrows(tx: Tx) {
   try {
     return await tx.execute('select 1' as never);
@@ -722,6 +770,7 @@ describe('a guard the scan reads as naming one error', () => {
       'narrowsAfterWritingThroughThis',
       'narrowsByAComparandBoundFromTheError',
       'narrowsByAComparandDestructuredFromTheError',
+      'narrowsByAComparandAssignedFromTheError',
     ];
     const used: Record<string, string> = {
       narrowsAfterWritingThroughAnAlias: "alias.code = '23505'",
@@ -843,6 +892,8 @@ describe('a use of the caught error on a path an error it does not name can take
       ['logsOnTheRethrow', { use: "log.error({ err }, 'insert failed')" }],
       ['wrapsOnTheRethrow', { throws: "throw new Error('insert failed', { cause: err })" }],
       ['refusesAWrapItAlwaysThrows', { throws: 'throw new Wrapped(String(err), { cause: err })' }],
+      ['refusesAHelperItRunsOnTheRethrow', { throws: "throw new Error('insert failed')" }],
+      ['refusesAReplacementItRunsAtOnce', { throws: "throw new Error('insert failed')" }],
       ['refusesAMethodCalledOnAHolder', { use: 'this.poison()' }],
     ];
     expect(refusals(catches.filter((c) => c.file === WRITES))).toEqual(
@@ -856,10 +907,11 @@ describe('a use of the caught error on a path an error it does not name can take
     expect(kinds('translatesEveryErrorToItsOwnClass')).toEqual(['narrowed', 'swallows']);
   });
 
-  it('keeps a use after its opening guard or on a branch it named, a store to a key no guard reads, a read and a discarded comma', () => {
+  it('keeps a use after its opening guard or on a branch it named, a helper run only there, a store to a key no guard reads, a read and a discarded comma', () => {
     expect(kinds('keepsAUseAfterItsOpeningGuard')).toEqual(['narrowed']);
     expect(kinds('keepsAUseOnTheBranchItNamed')).toEqual(['narrowed']);
     expect(kinds('annotatesWhatItRethrows')).toEqual(['narrowed']);
+    expect(kinds('keepsAHelperItRunsAfterItsGuard')).toEqual(['narrowed']);
     expect(kinds('keepsAStoreReadsAndADiscardedComma')).toEqual(['narrowed']);
   });
 
