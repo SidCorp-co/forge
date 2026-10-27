@@ -159,8 +159,17 @@ function entryReads(rel, text) {
     walk(src);
   };
 
+  /** Names bound by an import: a function another file owns, which this file's walk cannot read. */
+  const imported = new Set();
   visit((node) => {
     if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) namesMeta = true;
+    if (ts.isImportDeclaration(node)) {
+      const clause = node.importClause;
+      if (clause?.name) imported.add(clause.name.text);
+      const bound = clause?.namedBindings;
+      if (bound && ts.isNamespaceImport(bound)) imported.add(bound.name.text);
+      if (bound && ts.isNamedImports(bound)) for (const el of bound.elements) imported.add(el.name.text);
+    }
     if (ts.isImportDeclaration(node) && /^(node:)?process$/.test(node.moduleSpecifier.text ?? '')) {
       const clause = node.importClause;
       if (clause?.name) processNames.add(clause.name.text);
@@ -281,7 +290,7 @@ function entryReads(rel, text) {
   const found = [];
   const say = (node, how) => {
     const { line } = src.getLineAndCharacterOfPosition(node.getStart(src));
-    found.push({ file: rel, line: line + 1, how });
+    if (!found.some((f) => f.line === line + 1)) found.push({ file: rel, line: line + 1, how });
   };
   /** Whether a destructuring of argv from `start` binds its entry, by itself or in a rest. */
   const bindsEntry = (elements, start) =>
@@ -291,49 +300,83 @@ function entryReads(rel, text) {
       return rest ? start + i <= 1 : start + i === 1;
     });
   const reachesEntry = (start, index) => (index === null || index < 0 ? start <= 1 : start + index === 1);
+  const WRAPS = [ts.isParenthesizedExpression, ts.isAsExpression, ts.isNonNullExpression, ts.isSatisfiesExpression];
+  const outer = (node) => {
+    let n = node;
+    while (n.parent && WRAPS.some((is) => is(n.parent))) n = n.parent;
+    return n;
+  };
+  /** An identifier that names something rather than reading it. */
+  const naming = (id) => {
+    const p = id.parent;
+    return (
+      (ts.isPropertyAccessExpression(p) && p.name === id) ||
+      ((ts.isVariableDeclaration(p) || ts.isParameter(p) || ts.isBindingElement(p)) && p.name === id) ||
+      (ts.isBindingElement(p) && p.propertyName === id) ||
+      ((ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p) || ts.isPropertyDeclaration(p)) && p.name === id) ||
+      ((ts.isFunctionDeclaration(p) || ts.isFunctionExpression(p)) && p.name === id) ||
+      ts.isImportSpecifier(p) ||
+      ts.isImportClause(p) ||
+      ts.isNamespaceImport(p)
+    );
+  };
+
+  /**
+   * How a use of a value holding argv from its entry reads that entry, or null where it cannot: the
+   * uses that leave the entry alone are named, and every other use is a read.
+   */
+  const entryRead = (node, start) => {
+    const self = outer(node);
+    const p = self.parent;
+    const text = () => p.getText(src);
+    if (ts.isPropertyAccessExpression(p) && p.expression === self) {
+      const method = p.name.text;
+      const call = ts.isCallExpression(p.parent) && p.parent.expression === p ? p.parent : null;
+      if (!call) return method === 'length' ? null : `argv read by .${method}: ${text()}`;
+      if (method === 'slice') {
+        const kept = startOf(call);
+        if (kept === null) return `argv sliced from where it cannot be told: ${call.getText(src)}`;
+        return kept <= 1 ? `argv sliced keeping its entry: ${call.getText(src)}` : null;
+      }
+      if (method === 'at') return reachesEntry(start, literal(call.arguments[0])) ? `argv read by .at(): ${call.getText(src)}` : null;
+      const flagTest =
+        FLAG_TESTS.has(method) && call.arguments.every((x) => ts.isStringLiteralLike(x) || ts.isNumericLiteral(x));
+      return flagTest ? null : `argv walked by .${method}(): ${call.getText(src)}`;
+    }
+    if (ts.isElementAccessExpression(p) && p.expression === self) {
+      return reachesEntry(start, literal(p.argumentExpression)) ? `argv read by index: ${text()}` : null;
+    }
+    if (ts.isVariableDeclaration(p) && p.initializer === self) {
+      if (ts.isIdentifier(p.name)) return null;
+      if (ts.isArrayBindingPattern(p.name)) return bindsEntry(p.name.elements, start) ? `argv destructured: ${text()}` : null;
+      return `argv destructured: ${text()}`;
+    }
+    if (ts.isBinaryExpression(p) && p.right === self && p.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = p.left;
+      if (ts.isIdentifier(left)) return null;
+      if (ts.isArrayLiteralExpression(left)) return bindsEntry(left.elements, start) ? `argv destructured: ${text()}` : null;
+      return `argv destructured: ${text()}`;
+    }
+    if (ts.isSpreadElement(p) && ts.isArrayLiteralExpression(p.parent) && p.parent.elements.length === 1) return null;
+    if (ts.isCallExpression(p) && p.arguments.includes(self)) {
+      const callee = p.expression;
+      if (startOf(p) !== null) return null;
+      if (ts.isIdentifier(callee) && (functions.has(callee.text) || imported.has(callee.text))) return null;
+      return `argv handed to ${callee.getText(src)}(): ${text()}`;
+    }
+    return `argv used whole: ${text()}`;
+  };
 
   visit((node) => {
-    if (ts.isElementAccessExpression(node)) {
-      const start = startOf(node.expression);
-      if (start !== null && reachesEntry(start, literal(node.argumentExpression))) {
-        say(node, `argv read by index: ${node.getText(src)}`);
-      }
+    if (ts.isIdentifier(node) && naming(node)) return;
+    if (!ts.isIdentifier(node) && !ts.isPropertyAccessExpression(node) && !ts.isElementAccessExpression(node) && !ts.isCallExpression(node) && !ts.isArrayLiteralExpression(node)) {
+      return;
     }
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-      const start = startOf(node.expression.expression);
-      const method = node.expression.name.text;
-      if (start !== null && start <= 1 && method !== 'slice') {
-        if (method === 'at') {
-          if (reachesEntry(start, literal(node.arguments[0]))) say(node, `argv read by .at(): ${node.getText(src)}`);
-        } else if (
-          !FLAG_TESTS.has(method) ||
-          !node.arguments.every((a) => ts.isStringLiteralLike(a) || ts.isNumericLiteral(a))
-        ) {
-          say(node, `argv walked by .${method}(): ${node.getText(src)}`);
-        }
-      }
-      if (start !== null && method === 'slice') {
-        const kept = startOf(node);
-        if (kept === null) say(node, `argv sliced from where it cannot be told: ${node.getText(src)}`);
-        else if (start <= 1 && kept <= 1) say(node, `argv sliced keeping its entry: ${node.getText(src)}`);
-      }
-    }
-    if (ts.isVariableDeclaration(node) && node.initializer && ts.isArrayBindingPattern(node.name)) {
-      const start = startOf(node.initializer);
-      if (start !== null && bindsEntry(node.name.elements, start)) say(node, `argv destructured: ${node.getText(src)}`);
-    }
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isArrayLiteralExpression(node.left)
-    ) {
-      const start = startOf(node.right);
-      if (start !== null && bindsEntry(node.left.elements, start)) say(node, `argv destructured: ${node.getText(src)}`);
-    }
-    if (ts.isForOfStatement(node)) {
-      const start = startOf(node.expression);
-      if (start !== null && start <= 1) say(node.expression, `argv walked by for...of: ${node.expression.getText(src)}`);
-    }
+    if (WRAPS.some((is) => is(node))) return;
+    const start = startOf(node);
+    if (start === null || start > 1) return;
+    const how = entryRead(node, start);
+    if (how) say(node, how);
   });
   return found;
 }
@@ -356,6 +399,11 @@ describe('no file decides it was launched by hand', () => {
     ['scripts/sliced-alone.mjs', 'export const all = process.argv.slice(1);\nexport const ROOT = import.meta.url;\n', 1],
     ['scripts/sliced-all.mjs', 'const all = process.argv.slice();\nif (import.meta.url === all.pop()) main();\n', 1],
     ['scripts/joined.mjs', "if (process.argv.join(' ').includes(fileURLToPath(import.meta.url))) main();\n", 1],
+    ['scripts/keyed.mjs', 'const { 1: entry } = process.argv;\nif (import.meta.filename === entry) main();\n', 1],
+    ['scripts/keyed-assigned.mjs', 'let entry;\n({ 1: entry } = process.argv);\nif (import.meta.filename === entry) main();\n', 2],
+    ['scripts/keyed-string.mjs', "if (import.meta.filename === process.argv['1']) main();\n", 1],
+    ['scripts/stringified.mjs', 'if (JSON.stringify(process.argv).includes(import.meta.filename)) main();\n', 1],
+    ['scripts/returned.mjs', 'function args() {\n  return process.argv;\n}\nif (import.meta.url.endsWith(args()[1])) main();\n', 2],
     ['scripts/from.mjs', 'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n', 2],
     ['scripts/var.mjs', 'const args = process.argv;\n\nif (import.meta.url === pathToFileURL(args[1]).href) main();\n', 3],
     ['scripts/var-var.mjs', 'const a = process.argv;\nconst b = a;\nif (import.meta.url === b.at(1)) main();\n', 3],
