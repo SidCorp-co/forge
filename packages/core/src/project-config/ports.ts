@@ -15,6 +15,19 @@ export interface SecretResolveAudit {
   deviceId: string | null;
 }
 
+/** A run a master declared on the caller's box, named by the id the call sends. */
+export type DeclaredRunRead =
+  | { kind: 'none' }
+  | { kind: 'refused'; reason: 'ended' | 'queued' | 'foreign'; detail: string }
+  | { kind: 'run'; sessionId: string; runId: string; projectId: string; issueIds: string[] };
+
+export interface RunSecretResolveAudit extends SecretResolveAudit {
+  issueId: string;
+  sessionId: string;
+  runId: string;
+  deviceId: string;
+}
+
 type JobCredentialRead =
   | { ok: true; context: { agentSessionId: string; jobId: string | null } }
   | { ok: false; reason: 'not_pipeline_context' | 'ambiguous_pipeline_context'; detail: string };
@@ -34,8 +47,15 @@ interface ProjectConfigPorts {
   ): Promise<JobCredentialRead>;
   /** Audit a resolve on the job's event log, committed before any value leaves. */
   recordSecretResolve(jobId: string, audit: SecretResolveAudit): Promise<void>;
-  /** Hand the scrubber the values this job now holds. */
-  rememberHandedOut(jobId: string, values: readonly string[]): void;
+  /** Hand the scrubber the values this job, or this declared run's session, now holds. */
+  rememberHandedOut(jobOrSessionId: string, values: readonly string[]): void;
+  /** The run a master declared on the caller's box that `asked` names. */
+  declaredRunOfCall(
+    caller: Pick<PatPrincipal, 'deviceId' | 'boundProjectId' | 'projectIds'>,
+    asked: string,
+  ): Promise<DeclaredRunRead>;
+  /** Audit a declared run's resolve on the issue it judges, committed before any value leaves. */
+  recordRunSecretResolve(audit: RunSecretResolveAudit): Promise<void>;
 }
 
 const slot = portSlot<ProjectConfigPorts>('project-config', 'provideProjectConfigPorts');

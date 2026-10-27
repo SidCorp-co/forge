@@ -61,9 +61,11 @@ read from `scripts/export-legacy-project-config.mjs` run against the database be
   value behind one is `GET /api/jobs/self/testing-profiles/<profile>/secrets` (`self`, or the job's own
   id)
   (`packages/core/src/project-config/testing-secrets.ts:resolveTestingSecrets`): it answers only a
-  running job's own credential, only for the profile named by the environment whose `deploysFrom`
-  is the target its issue's merge mark recorded, audits each read and scrubs each value from that
-  job's output.
+  running job's own credential, or a box's credential naming, in place of the job id, a live run a
+  master on that box declared for a project the box serves (2026-10-27, adminhub-fe's stg judges);
+  only for the profile named by the environment whose `deploysFrom` is the target its issue's merge
+  mark recorded; it audits each read (a job's on its event log, a run's on the issue) and scrubs each
+  value from that job's or run's output.
 - **forge-plugin reads the deleted fields.** It reads `releaseModel`, `liveBranch`,
   `releaseStrategy`, `environments` and a binding's `stages`. Those readers break until that repository moves to the
   document. This is a boundary, not an amnesty: this repository cannot edit it.

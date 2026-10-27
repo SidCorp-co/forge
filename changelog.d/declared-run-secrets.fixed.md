@@ -1,0 +1,1 @@
+**A judging run a master declared reads its testing-profile secrets.** `GET /api/jobs/<run>/testing-profiles/<profile>/secrets` answers the box's credential naming its live declared run; another project's, an ended or an unadmitted run is refused by name.
