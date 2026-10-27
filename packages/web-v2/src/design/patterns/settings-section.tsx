@@ -17,13 +17,8 @@ export function stickyTopEdge(): number {
     .reduce((bottom, h) => Math.max(bottom, h.getBoundingClientRect().bottom), 0);
 }
 
-/**
- * A flat settings section: no card chrome, a hairline above every one but the first. One whose `id`
- * is the page's fragment brings its heading into view under the top bar when it mounts, so a link to
- * `#repository` lands on Repository rather than wherever the page happened to open (ISS-1236 r9,
- * judge-149: at 390 it opened at the top with Repository under the sticky Save bar). It holds that
- * place while content above it is still arriving, until the reader acts or the page settles.
- */
+/** A flat settings section: no card chrome, a hairline above every one but the first. One the page's
+ *  fragment names comes into view under the top bar and holds there while the page settles (ISS-1236). */
 export function SettingsSection({ className, id, ...props }: HTMLAttributes<HTMLElement>) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {

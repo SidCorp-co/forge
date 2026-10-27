@@ -148,6 +148,7 @@ describe('every guarded script runs where it is launched from', () => {
  *   builders are not refused where they are built;
  * - a function of another file handed argv or process, whose body is in that file;
  * - a native handed `this` as its receiver (`fn.call(this)`), whose body is not in any file;
+ *
  * - the file named through what lies outside it: a specifier reaching it through a symlink, a
  *   package's own name or an import map;
  * - a key computed at run time, which can name `constructor` off a value not written here as a
@@ -733,14 +734,23 @@ function entryReads(rel, text) {
    * `name` read, a comparison of it and a write to it leave it unused.
    */
   const constructorTaken = (node) => {
-    if (ts.isBindingElement(node) || ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) {
+    if (
+      ts.isBindingElement(node) ||
+      ts.isPropertyAssignment(node) ||
+      ts.isShorthandPropertyAssignment(node)
+    ) {
       const key = ts.isBindingElement(node) ? (node.propertyName ?? node.name) : node.name;
-      const named = (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) && key.text === 'constructor';
+      const named =
+        (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) && key.text === 'constructor';
       if (!named) return false;
       if (ts.isBindingElement(node)) return true;
       const obj = node.parent;
       const p = outer(obj).parent;
-      return ts.isBinaryExpression(p) && p.left === outer(obj) && p.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+      return (
+        ts.isBinaryExpression(p) &&
+        p.left === outer(obj) &&
+        p.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      );
     }
     if (ts.isStringLiteralLike(node) && node.text === 'constructor') {
       const p = outer(node).parent;
@@ -750,11 +760,18 @@ function entryReads(rel, text) {
     const self = outer(node);
     const p = self.parent;
     const written =
-      ts.isBinaryExpression(p) && p.left === self && p.operatorToken.kind === ts.SyntaxKind.EqualsToken;
-    if (ts.isElementAccessExpression(node) && propName(node) === null && literal(node.argumentExpression) === null)
+      ts.isBinaryExpression(p) &&
+      p.left === self &&
+      p.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+    if (
+      ts.isElementAccessExpression(node) &&
+      propName(node) === null &&
+      literal(node.argumentExpression) === null
+    )
       return !written && isFunctionValue(node.expression);
     if (propName(node) !== 'constructor' || written) return false;
-    if (ts.isPropertyAccessExpression(p) && p.expression === self && p.name.text === 'name') return false;
+    if (ts.isPropertyAccessExpression(p) && p.expression === self && p.name.text === 'name')
+      return false;
     if (ts.isTypeOfExpression(p)) return false;
     if (ts.isBinaryExpression(p)) {
       const op = p.operatorToken.kind;
@@ -985,8 +1002,6 @@ function entryReads(rel, text) {
     ) {
       nestedArgv({ elements: node.left.properties }, node);
     }
-    // Code built from a string is code no walk can read: eval and Function however reached, and a
-    // value's `constructor` taken, which off any function is Function or one of its kin.
     const builder =
       (ts.isIdentifier(node) &&
         CODE_BUILDERS.includes(node.text) &&
