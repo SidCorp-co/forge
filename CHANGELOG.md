@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.341] - 2026-10-27
+
+Release jobs act with their own project's credential; fenced tokens refused by name
+
+### Fixed
+
+- **A release job reaches its own project and runs its deploy.** Every project pane carries its checkout credential, the project agent holds `deploys.run`, and a token fenced elsewhere is refused `PAT_PROJECT_OUTSIDE_FENCE` naming itself and its projects.
+
 ## [0.4.0-dev.340] - 2026-10-27
 
 Promoted releases count verdicts earned at the landing, not production
