@@ -680,6 +680,17 @@ function entryReads(rel, text) {
     ) {
       nestedArgv({ elements: node.left.properties }, node);
     }
+    // Code built from a string is code no walk can read.
+    const built =
+      (ts.isCallExpression(node) || ts.isNewExpression(node)) &&
+      ts.isIdentifier(node.expression) &&
+      ['eval', 'Function'].includes(node.expression.text) &&
+      !shadowed(node.expression);
+    if (built)
+      say(
+        node,
+        `code built from a string, which no walk can read for process or argv: ${node.getText(src)}`,
+      );
     if (ts.isIdentifier(node) && naming(node)) return;
     if (
       !ts.isIdentifier(node) &&
@@ -1004,6 +1015,12 @@ describe('no file decides it was launched by hand', () => {
       'scripts/global-alias-named.mjs',
       'const window = globalThis;\nif (import.meta.filename === window.process.argv[1]) main();\n',
       2,
+    ],
+    ['scripts/evaluated.mjs', "if (import.meta.filename === eval('process.argv[1]')) main();\n", 1],
+    [
+      'scripts/constructed.mjs',
+      "const read = new Function('return process.argv[1]');\nif (import.meta.filename === read()) main();\n",
+      1,
     ],
     [
       'scripts/from.mjs',
