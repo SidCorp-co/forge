@@ -59,3 +59,13 @@ async function clientOfGrant(grantId: string): Promise<TokenClient> {
     throw new Error(`credentials: OAuth grant ${grantId} minted a live token and is not stored`);
   return row;
 }
+
+/** The name a token was minted under, which its holder reads in their token list; null for a token gone from the table. */
+export async function tokenNameOf(tokenId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ name: personalAccessTokens.name })
+    .from(personalAccessTokens)
+    .where(eq(personalAccessTokens.id, tokenId))
+    .limit(1);
+  return row?.name ?? null;
+}

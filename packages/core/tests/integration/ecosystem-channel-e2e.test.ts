@@ -318,8 +318,8 @@ describe('every document records who wrote it, and through what', () => {
       `${plugin()}/drafts`,
       acknowledgement(w, 'FP-CN-1'),
     );
-    expect(fenced.status).toBe(403);
-    expect(fenced.json.detail).toMatch(/holds no role on project/);
+    expect([fenced.status, fenced.json.error.code]).toEqual([403, 'PAT_PROJECT_OUTSIDE_FENCE']);
+    expect(fenced.json.detail).toMatch(/names project \S+, which it does not reach/);
   });
 });
 

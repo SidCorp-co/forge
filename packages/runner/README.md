@@ -97,9 +97,10 @@ be used to discover which project ids are real. Routes that resolve no project
 token that could mint another token would have no scope at all. A token minted
 without the `write` scope gets `INSUFFICIENT_SCOPE` on anything but a read.
 
-### A master pane's credential
+### A project pane's credential
 
-A master pane acts as its project's own **agent**, through one credential: the
+A pane the box starts for a project — its master, or a pool job such as a release — acts as the
+project's own **agent**, through one credential: the
 token core mints for the checkout at provision
 (`packages/core/src/devices/workspace-credential.ts:issueCheckoutCredential`).
 It is held by the box's agent where the box was paired as one, and otherwise by the project's agent account, which a person
@@ -108,13 +109,18 @@ It is fenced to that one project, so a pane cannot write another project's
 records, and it is never served as a person.
 
 Both halves of the pane read it. Its MCP `forge` server takes it from the
-checkout's `.mcp.json`. Its `forge` CLI borrows it through
-`FORGE_BORROW_FROM`, which the daemon sets to
+checkout's `.mcp.json`. Its `forge` CLI and `forge-runner api` borrow it through
+`FORGE_BORROW_FROM`, which the daemon sets for every pane of the project
+(`crates/runner-workspace/src/terminal/pane_env.rs:pane_env_in`) to
 `<config>/forge-runner/master/<slug>/forge-cli.json` (`{url, token}`, `0600`,
-written at provision). A checkout core sent no credential for gets no file, and
-that pane's CLI reads its home's own account. A pane started before its
-checkout was provisioned holds neither: re-provision, then end the pane so the
-next sweep places it again.
+written at provision). The box's stored PAT is never what a project's pane calls
+its project with while that file stands: it is one person's, fenced to the projects
+they named, and a job for any other project was answered `404 project not found`.
+A checkout core sent no credential for gets no file, the daemon logs it as the
+pane starts, and that pane's CLI reads its home's own account; `forge-runner api`
+then names the credential it went out on whenever it is refused. A pane started
+before its checkout was provisioned holds neither: re-provision, then end the
+pane so the next sweep places it again.
 
 `forge-runner run declare --project` takes the project's id or its slug, and
 names the pane's own project when it refuses another.

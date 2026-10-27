@@ -12,6 +12,8 @@ import { type AuthVars, requireUserOrDevice } from './auth.js';
  */
 export interface RouteRefSources {
   projectIdOfSlug(slug: string): Promise<string | null>;
+  /** The slug of each of these projects that exists, for a refusal naming projects by both. */
+  projectSlugsOf(projectIds: readonly string[]): Promise<Map<string, string>>;
   issueIdOfKey(key: string, projectId: string): Promise<string | null>;
   /** Throws the named refusal for a key `issueIdOfKey` could not resolve, once `userId` is shown to read the project. */
   refuseIssueKey(key: string, projectId: string, userId: string | undefined): Promise<void>;
@@ -22,6 +24,11 @@ let sources: RouteRefSources | null = null;
 /** The projects and issues domains answer what a slug and a key name; the HTTP door provides them at boot. */
 export function provideRouteRefSources(provided: RouteRefSources): void {
   sources = provided;
+}
+
+/** What a project's slug and id name, for a door past routing that reads a project by either. */
+export function projectNames(): Pick<RouteRefSources, 'projectIdOfSlug' | 'projectSlugsOf'> {
+  return sourcesOf();
 }
 
 function sourcesOf(): RouteRefSources {

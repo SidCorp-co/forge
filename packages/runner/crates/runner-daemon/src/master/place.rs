@@ -253,8 +253,7 @@ fn prepare_pane(
     })?;
     install_hooks_logged(&resolved.repo_path, &resolved.slug);
     runner_workspace::trust::pre_trust_logged(&resolved.repo_path, &resolved.slug);
-    let mut env = terminal::pane_env(project_id, &resolved.slug);
-    env.extend(cli_borrow_env(&resolved.slug));
+    let env = terminal::pane_env(project_id, &resolved.slug);
     let standing = master_build::Inputs::of(&master_build::Handed {
         slug: &resolved.slug,
         repo: &resolved.repo_path,

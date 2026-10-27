@@ -18,6 +18,7 @@ import {
 } from '../credentials/pat-permissions.js';
 import type { PatScope } from '../credentials/pat-scope.js';
 import { patEffectiveProjectIds } from '../lib/tool.js';
+import { projectNamedBy, refuseOutsideFence } from './pat-fence.js';
 import { authenticatePat, type PatPrincipal } from './require-pat.js';
 
 export const PAT_ALLOWED_PREFIXES: readonly string[] = patPermissionPrefixes();
@@ -109,6 +110,15 @@ export async function beginPatRequest(
   }
   const effectiveProjectIds = patEffectiveProjectIds(principal);
   assertReach(c.req.path, effectiveProjectIds);
+  await refuseOutsideFence({
+    tokenId: principal.tokenId,
+    fence: effectiveProjectIds,
+    named: projectNamedBy(
+      c.req.path,
+      new URL(c.req.url).searchParams.get('projectId') ?? undefined,
+      c.req.header('x-forge-project-slug'),
+    ),
+  });
   assertEpoch(principal, c.req.path);
   assertGranted(principal, c.req.path, level, wanted);
   const resolution: PatRequestResolution = {

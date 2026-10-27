@@ -22,6 +22,7 @@ export {
   findProjectIdBySlug,
   findProjectOrgId,
   findProjectOrgIds,
+  findProjectSlugs,
   findVisibleProjectIds,
   listVisibleProjectsWithRole,
   projectDocumentNames,
