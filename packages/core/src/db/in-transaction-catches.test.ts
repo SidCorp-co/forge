@@ -54,6 +54,42 @@ export async function narrowsFirst(tx: Tx) {
   }
 }
 
+export async function rethrowsOnlyTheNamed(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (err instanceof Refused) throw err;
+    return null;
+  }
+}
+
+export async function rethrowsOnlyNothing(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!err) throw err;
+    return null;
+  }
+}
+
+export async function returnsUnlessNothing(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (err) return null;
+    throw err;
+  }
+}
+
+export async function returnsForTheNamed(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (err instanceof Refused) return null;
+    throw err;
+  }
+}
+
 export async function swallowsOnThePool() {
   try {
     return await db.execute('select 1' as never);
@@ -74,6 +110,11 @@ export async function swallowsAWholeTransaction() {
 const catches = guardedCatches(buildProgram(new Map([[PLANTED, plant]])));
 const planted = catches.filter((c) => c.file === PLANTED);
 const live = catches.filter((c) => c.file !== PLANTED);
+/** The line of the first catch after `fn` opens in the plant. */
+function catchLine(fn: string): number {
+  const at = plant.indexOf('catch', plant.indexOf(`function ${fn}(`));
+  return plant.slice(0, at).split('\n').length;
+}
 const kindOf = (fn: string): GuardedCatch['handler'] | undefined =>
   planted.find((c) => c.fn === fn)?.handler;
 
@@ -97,16 +138,26 @@ describe('a catch around a statement on a handle that can be a transaction', () 
   });
 
   it('refuses a planted swallow by file, line and function', () => {
-    expect(refusals(planted)).toEqual([
-      `${PLANTED}:9 swallowsAPick catches a statement on executor, which can be a transaction, and can fall back without rethrowInTransaction(<the error>, <the handle>) as its first statement`,
-      `${PLANTED}:18 swallowsInACallback catches a statement on tx, which can be a transaction, and can fall back without rethrowInTransaction(<the error>, <the handle>) as its first statement`,
-      `${PLANTED}:26 swallowsAPromise catches a statement on tx, which can be a transaction, and can fall back without rethrowInTransaction(<the error>, <the handle>) as its first statement`,
-    ]);
+    const swallows = [
+      ['swallowsAPick', 'executor'],
+      ['swallowsInACallback', 'tx'],
+      ['swallowsAPromise', 'tx'],
+      ['rethrowsOnlyTheNamed', 'tx'],
+      ['rethrowsOnlyNothing', 'tx'],
+      ['returnsUnlessNothing', 'tx'],
+    ];
+    expect(refusals(planted)).toEqual(
+      swallows.map(
+        ([fn, handle]) =>
+          `${PLANTED}:${catchLine(fn as string)} ${fn} catches a statement on ${handle}, which can be a transaction, and can fall back without rethrowInTransaction(<the error>, <the handle>) as its first statement`,
+      ),
+    );
   });
 
-  it('passes a catch that rethrows inside a transaction first, or rethrows all it does not name', () => {
+  it('passes a catch that rethrows inside a transaction first, or falls back only for an error it names', () => {
     expect(kindOf('rethrowsFirst')).toBe('rethrows');
     expect(kindOf('narrowsFirst')).toBe('narrowed');
+    expect(kindOf('returnsForTheNamed')).toBe('narrowed');
   });
 
   it('leaves alone a catch on the pool, and one around a whole transaction', () => {

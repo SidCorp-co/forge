@@ -140,14 +140,71 @@ function endsInThrow(stmts: readonly ts.Statement[]): boolean {
   return false;
 }
 
+function unwrap(node: ts.Expression): ts.Expression {
+  return ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;
+}
+
+const EQUAL = [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken];
+const UNEQUAL = [ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken];
+
+/** One side names the caught error and the other does not, as in `err.code === '23505'`. */
+function comparesError(node: ts.BinaryExpression, param: string): boolean {
+  return mentions(node.left, param) !== mentions(node.right, param);
+}
+
 /**
- * The handler goes on only for errors it named: it opens by throwing whatever a condition on the
- * caught error does not admit, or every exit from it short of a throw sits under such a condition.
+ * True only for a test that holds of a named kind of error: `err instanceof X`, `isX(err)` or
+ * `hasX(err)`, a comparison of the error with a value, or a conjunction of those.
+ */
+function namesAnError(node: ts.Expression, param: string): boolean {
+  const e = unwrap(node);
+  if (ts.isBinaryExpression(e)) {
+    const op = e.operatorToken.kind;
+    if (op === ts.SyntaxKind.InstanceOfKeyword) return mentions(e.left, param);
+    if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
+      return namesAnError(e.left, param) || namesAnError(e.right, param);
+    }
+    return EQUAL.includes(op) && comparesError(e, param);
+  }
+  if (ts.isCallExpression(e)) {
+    const callee = ts.isPropertyAccessExpression(e.expression) ? e.expression.name : e.expression;
+    return (
+      ts.isIdentifier(callee) &&
+      /^(is|has)[A-Z]/.test(callee.text) &&
+      e.arguments.some((a) => mentions(a, param))
+    );
+  }
+  return false;
+}
+
+/** True only for a guard that holds of every error but a named kind: the negation of `namesAnError`. */
+function admitsAllButNamed(node: ts.Expression, param: string): boolean {
+  const e = unwrap(node);
+  if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
+    return namesAnError(e.operand, param);
+  }
+  if (ts.isBinaryExpression(e)) {
+    const op = e.operatorToken.kind;
+    if (op === ts.SyntaxKind.BarBarToken) {
+      return admitsAllButNamed(e.left, param) && admitsAllButNamed(e.right, param);
+    }
+    return UNEQUAL.includes(op) && comparesError(e, param);
+  }
+  return false;
+}
+
+/**
+ * The handler goes on only for errors it named: it opens by throwing every error but a named kind,
+ * or every exit from it short of a throw sits under a test naming one.
  */
 function exitsOnlyWhenNarrowed(block: ts.Block, param: string | null): boolean {
+  if (param === null) return false;
   const first = block.statements[0];
-  if (param !== null && first && ts.isIfStatement(first) && !first.elseStatement) {
-    if (mentions(first.expression, param) && endsInThrow(statementsOf(first.thenStatement)))
+  if (first && ts.isIfStatement(first) && !first.elseStatement) {
+    if (
+      admitsAllButNamed(first.expression, param) &&
+      endsInThrow(statementsOf(first.thenStatement))
+    )
       return true;
   }
   if (!endsInThrow(block.statements)) return false;
@@ -155,7 +212,7 @@ function exitsOnlyWhenNarrowed(block: ts.Block, param: string | null): boolean {
   const visit = (n: ts.Node): void => {
     if (!ok || isNestedFunction(n)) return;
     if (ts.isReturnStatement(n) || ts.isBreakStatement(n) || ts.isContinueStatement(n)) {
-      ok = param !== null && narrowedBy(n, block, param);
+      ok = narrowedBy(n, block, param);
       return;
     }
     ts.forEachChild(n, visit);
@@ -166,7 +223,11 @@ function exitsOnlyWhenNarrowed(block: ts.Block, param: string | null): boolean {
 
 function narrowedBy(exit: ts.Node, block: ts.Block, param: string): boolean {
   for (let at = exit.parent; at && at !== block; at = at.parent) {
-    if (ts.isIfStatement(at) && within(exit, at.thenStatement) && mentions(at.expression, param)) {
+    if (
+      ts.isIfStatement(at) &&
+      within(exit, at.thenStatement) &&
+      namesAnError(at.expression, param)
+    ) {
       return true;
     }
   }
