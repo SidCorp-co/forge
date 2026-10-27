@@ -1,1 +1,0 @@
-**A release is proven on the testing environment the project names.** With `delivery.judgedOn`, only passes on the build it serves count, the owner's review waits for them, and an unjudged criterion reads "Not judged on dev".
