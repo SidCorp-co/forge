@@ -135,12 +135,13 @@ describe('a release finish that cannot close an issue', () => {
     expect((await fx.stored(free)).status).toBe('closed');
     expect((await fx.stored(held)).status).toBe('awaiting_release');
     const said = await lastComment(held);
-    expect(said).toContain('`OPEN_QUESTIONS`');
+    expect(said).toContain('The close was refused because the issue holds open questions.');
+    expect(said).not.toContain('OPEN_QUESTIONS');
     expect(said).toContain('Blocking it: 2 open questions.');
     expect(said).not.toContain(first);
     expect(said).not.toContain(second);
     expect(said).toContain('"Decision waiting" card');
-    expect(said).toContain(`shipped as version ${version}`);
+    expect(said).toContain(`went out as version ${version}`);
     expect(said).toContain('Release now');
     expect(said).not.toMatch(/\/api\/|voidQuestions/);
   });
@@ -200,12 +201,12 @@ describe('a release finish that cannot close an issue', () => {
     expect(result.closed).toEqual([free]);
     expect((await fx.stored(held)).status).toBe('releasing');
     const said = await lastComment(held);
-    expect(said).toContain('`OPEN_QUESTIONS`');
+    expect(said).toContain('The close was refused because the issue holds open questions.');
     expect(said).toContain('Blocking it: 1 open question.');
     expect(said).toContain(
       'What clears it: answer each open question in its "Decision waiting" card',
     );
-    expect(said).toContain(`shipped as version ${version}`);
+    expect(said).toContain(`went out as version ${version}`);
     expect(said).toContain('stay at Releasing and claimed while its run is live');
     expect(said).toContain("Forge's releasing sweep settles them within a minute");
     expect(said).toContain('View release on the issue shows where its run stands.');
@@ -222,7 +223,7 @@ describe('a release finish that cannot close an issue', () => {
     await finishReleaseBatch(runId, { type: 'device', id: randomUUID(), ownerId });
 
     const said = await lastComment(held);
-    expect(said).toContain('`OPEN_QUESTIONS`');
+    expect(said).toContain('The close was refused because the issue holds open questions.');
     expect(said).toContain('Blocking it: 1 open question.');
     expect(said).not.toContain(question);
   });
@@ -345,7 +346,7 @@ describe('a close that fails the same way in two releases (ISS-1381 r4)', () => 
 
       const said = await failureComments(broken);
       expect(said).toHaveLength(1);
-      expect(said[0]).toContain(`shipped as version ${second.version}`);
+      expect(said[0]).toContain(`went out as version ${second.version}`);
       expect(said[0]).toContain(`version ${first.version}`);
       expect(said[0]).toContain('for the same reason');
       expect(said[0]?.match(/gj_closed_needs_ledger/g)).toHaveLength(1);

@@ -30,7 +30,8 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       version: '1.4.0',
       destination: 'awaiting_release',
     });
-    expect(said).toContain('refused with `OPEN_QUESTIONS`');
+    expect(said).toContain('The close was refused because the issue holds open questions.');
+    expect(said).not.toMatch(/`|OPEN_QUESTIONS/);
     expect(said).toContain('Blocking it: 1 blocking run, 2 open questions.');
     expect(said).not.toMatch(/q-1|q-2|r-9/);
     expect(said).toContain('went out as version 1.4.0');
