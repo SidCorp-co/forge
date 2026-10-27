@@ -73,6 +73,9 @@ struct Session {
     head_sha: Option<String>,
     permit: Option<tokio::sync::OwnedSemaphorePermit>,
     project_slug: Option<String>,
+    /// Raised by the completion task once it has reaped the process and removed this entry: what
+    /// a close waits on before anything else is spawned under the same key.
+    ended: tokio::sync::watch::Receiver<bool>,
 }
 
 /// The current turn's event sink. Shared by the stdout reader, the completion
@@ -83,6 +86,16 @@ type Sessions = Arc<Mutex<HashMap<String, Session>>>;
 
 const RESULT_EXIT_GRACE: Duration = Duration::from_secs(5);
 
+/// How long a closed resident has to end on its own once its stdin is closed, before it is killed.
+/// One between turns exits within a couple of seconds of EOF.
+const CLOSE_GRACE: Duration = Duration::from_secs(10);
+
+/// How long a killed resident's completion task has to reap it and give up its key.
+const KILL_GRACE: Duration = Duration::from_secs(10);
+
+/// Turns this box has been handed and not yet placed in a process, by session key, with how many.
+type Placing = Arc<std::sync::Mutex<HashMap<String, (usize, tokio::sync::watch::Sender<bool>)>>>;
+
 pub struct ClaudeCodeRunner {
     core_url: String,
     device_token: String,
@@ -90,6 +103,32 @@ pub struct ClaudeCodeRunner {
     session_sem: Arc<tokio::sync::Semaphore>,
     session_cap: usize,
     pending_permits: Arc<std::sync::Mutex<HashMap<String, String>>>,
+    placing: Placing,
+    close_grace: Duration,
+}
+
+/// A turn core handed this box for a session, held from the moment its frame is read until the
+/// turn is written into a process (or fails to be). An inbox write for the session waits while
+/// one is held, so it goes into the process the turn runs in and never into the resident that
+/// turn is about to close.
+pub struct TurnPlacing {
+    placing: Placing,
+    id: String,
+}
+
+impl Drop for TurnPlacing {
+    fn drop(&mut self) {
+        let Ok(mut map) = self.placing.lock() else {
+            return;
+        };
+        if let Some((n, placed)) = map.get_mut(&self.id) {
+            *n -= 1;
+            if *n == 0 {
+                let _ = placed.send(true);
+                map.remove(&self.id);
+            }
+        }
+    }
 }
 
 impl ClaudeCodeRunner {
@@ -105,7 +144,45 @@ impl ClaudeCodeRunner {
             session_sem: Arc::new(tokio::sync::Semaphore::new(session_cap.max(1))),
             session_cap: session_cap.max(1),
             pending_permits: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            placing: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            close_grace: CLOSE_GRACE,
         }
+    }
+
+    /// The same runner with a shorter wait before a closed resident is killed.
+    #[cfg(all(test, unix))]
+    pub(crate) fn with_close_grace(mut self, grace: Duration) -> Self {
+        self.close_grace = grace;
+        self
+    }
+
+    /// Hold `id` as having a turn on its way to a process; dropped once the turn is placed.
+    pub fn place_turn(&self, id: &str) -> TurnPlacing {
+        if let Ok(mut map) = self.placing.lock() {
+            map.entry(id.to_string())
+                .or_insert_with(|| (0, tokio::sync::watch::channel(false).0))
+                .0 += 1;
+        }
+        TurnPlacing {
+            placing: self.placing.clone(),
+            id: id.to_string(),
+        }
+    }
+
+    /// Wait until no turn handed for `id` is still on its way to a process.
+    async fn placed(&self, id: &str) {
+        let waiting = self
+            .placing
+            .lock()
+            .ok()
+            .and_then(|map| map.get(id).map(|(_, placed)| placed.subscribe()));
+        if let Some(mut placed) = waiting {
+            let _ = placed.wait_for(|done| *done).await;
+        }
+    }
+
+    fn placing_turn(&self, id: &str) -> bool {
+        self.placing.lock().is_ok_and(|map| map.contains_key(id))
     }
 
     /// Project slugs of everything currently holding a duplex permit.
@@ -225,13 +302,18 @@ impl ClaudeCodeRunner {
     /// An inbox message for a session this runner holds: written in at once, and taken by the
     /// turn in flight. A session core keeps resident takes input only within a turn core started
     /// (its token is that turn's), so one with none in flight refuses it, and core hands the
-    /// message to its next turn instead.
+    /// message to its next turn instead. Where a turn core handed this box is still on its way to
+    /// a process, the message waits for it and goes into that turn: core wrote it for the turn it
+    /// had just started, and the resident that turn may close is not fed (2026-10-27, Sidcorp
+    /// Mail's room: a message written into the closing resident was answered there under a revoked
+    /// token, and again by the replacement that resumed its transcript).
     pub async fn inject_resident(
         &self,
         id: &SessionId,
         message: &str,
         pending: (String, u64),
     ) -> Result<()> {
+        self.placed(id).await;
         {
             let map = self.sessions.lock().await;
             let sess = map
@@ -248,10 +330,11 @@ impl ClaudeCodeRunner {
         self.send_resident(id, message, Some(pending)).await
     }
 
-    /// Whether this runner holds a session under `id` at all, resident or closed. A session it
-    /// does not hold is one it can say nothing about, which is not the same as one that ended.
+    /// Whether this runner holds a session under `id` at all, resident or closed, or has been
+    /// handed a turn for it that is not yet in a process. A session it does not hold is one it can
+    /// say nothing about, which is not the same as one that ended.
     pub async fn holds(&self, id: &SessionId) -> bool {
-        self.sessions.lock().await.contains_key(id)
+        self.placing_turn(id) || self.sessions.lock().await.contains_key(id)
     }
 
     pub async fn send_resident(
@@ -282,13 +365,63 @@ impl ClaudeCodeRunner {
         }
     }
 
-    /// End a live session between turns: EOF on stdin, then let the completion
-    /// task reap. Used when the next turn cannot reuse it (a model change), and
-    /// when core ends its residency.
+    /// End a live session between turns: EOF on stdin, then wait for its completion task to reap
+    /// it and give up its key. Used when the next turn cannot reuse it (a model change, a turn
+    /// carrying its own token), and when core ends its residency. See [`Self::retire`].
     pub async fn close(&self, id: &SessionId) {
-        if let Some(s) = self.sessions.lock().await.get_mut(id) {
-            s.stdin = None;
+        if let Err(e) = self.retire(id).await {
+            tracing::error!("[claude] session={id}: {e}");
         }
+    }
+
+    /// Kill the process holding `id`, but only while it is still the one `ended` watches: a close
+    /// that timed out may run this after that process was reaped and a replacement adopted under
+    /// the same key, and the replacement is not its to kill.
+    pub(crate) async fn kill_holder(&self, id: &str, ended: &tokio::sync::watch::Receiver<bool>) {
+        let child = self
+            .sessions
+            .lock()
+            .await
+            .get_mut(id)
+            .filter(|s| s.ended.same_channel(ended))
+            .and_then(|s| s.child.take());
+        if let Some(mut child) = child {
+            graceful_kill(&mut child).await;
+        }
+    }
+
+    /// Close whatever process holds `id` and return only once it is reaped and its entry gone,
+    /// killing it where it has not ended within the close grace. Nothing may be spawned under a key
+    /// a live process still holds: its completion task reaps by that key, and before this waited
+    /// it took a replacement's child for its own, killed it mid-turn and removed its entry
+    /// (2026-10-27, `[NO_RESULT_EXIT] no exit code, no result event`). Waiting rather than giving
+    /// each spawn its own handle is also what keeps two processes off one Claude session: the
+    /// replacement resumes the same transcript the closed one would otherwise still be writing.
+    pub(crate) async fn retire(&self, id: &str) -> Result<()> {
+        let ended = {
+            let mut map = self.sessions.lock().await;
+            let Some(s) = map.get_mut(id) else {
+                return Ok(());
+            };
+            s.stdin = None;
+            s.ended.clone()
+        };
+        if ended_within(ended.clone(), self.close_grace).await {
+            return Ok(());
+        }
+        tracing::warn!(
+            "[claude] session={id} had not ended {}s after its stdin closed — killing it",
+            self.close_grace.as_secs()
+        );
+        self.kill_holder(id, &ended).await;
+        if ended_within(ended, KILL_GRACE).await {
+            return Ok(());
+        }
+        Err(Error::Other(format!(
+            "[RESIDENT_NOT_REAPED] the process session {id} was closed on was killed and its \
+             completion task still holds the key {}s later; nothing is spawned under it",
+            KILL_GRACE.as_secs()
+        )))
     }
 
     pub const CHECKPOINT_PROMPT: &'static str = "Write down where you are before this session ends: \
@@ -373,6 +506,29 @@ impl ClaudeCodeRunner {
     }
 }
 
+/// A process spawned under a key a live one still holds: killed, and refused by name. A key is
+/// reused only once its last process is reaped, since that process's tasks reap by it.
+async fn refuse_held_key(
+    job_id: &str,
+    mut child: tokio::process::Child,
+    mcp_path: &std::path::Path,
+) -> Error {
+    graceful_kill(&mut child).await;
+    let _ = std::fs::remove_file(mcp_path);
+    Error::Other(format!(
+        "[SESSION_KEY_HELD] a process still holds session {job_id}, so the one just spawned for \
+         it was killed: a key is reused only once its last process is reaped"
+    ))
+}
+
+/// Whether the session `ended` watches is reaped within `within`. A completion task gone without
+/// saying so has nothing left to reap.
+async fn ended_within(mut ended: tokio::sync::watch::Receiver<bool>, within: Duration) -> bool {
+    tokio::time::timeout(within, ended.wait_for(|done| *done))
+        .await
+        .is_ok()
+}
+
 /// The credential a session holds: the one core handed it, else — for a run only — this box's
 /// own. A confined session handed none is refused rather than given the box's.
 fn session_credential(spec: &JobSpec) -> Result<String> {
@@ -408,46 +564,45 @@ fn mcp_config_for(
     Ok((path, None))
 }
 
-#[async_trait]
-impl Runner for ClaudeCodeRunner {
-    async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
-        let job_id = spec.job_id.clone();
+/// A process just spawned for a session, its first turn already written into `stdin`: what
+/// [`ClaudeCodeRunner::adopt`] makes a session of.
+pub(crate) struct Spawned {
+    pub(crate) job_id: String,
+    pub(crate) child: tokio::process::Child,
+    pub(crate) stdin: tokio::process::ChildStdin,
+    pub(crate) egress: Option<EgressGuard>,
+    pub(crate) mcp_path: std::path::PathBuf,
+    pub(crate) bearer_dir: Option<std::path::PathBuf>,
+    pub(crate) invoked_with_resume: bool,
+    pub(crate) permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    pub(crate) keep_resident: bool,
+    pub(crate) model: Option<String>,
+    pub(crate) project_slug: Option<String>,
+}
 
-        let effective_repo = spec.repo_path.to_string_lossy().to_string();
-
-        // No skill seeding at job start: the job consumes whatever is already
-        // in `<worktree>/.claude/skills/`, delivered ahead of time by the disk
-        // sync channel (`workspace::skill_sync`, driven by provision / the
-        // `skill.sync` event / background auto-pull), plus any device-scope
-        // plugin skills inherited from the config dir. A job-start re-seed was
-        // removed because it clobbered project-shadowed skills mid-flight.
-        //
-
-        let prompt = spec
-            .prompt
-            .clone()
-            .ok_or_else(|| Error::Other("job has no prompt".into()))?;
-        let credential = session_credential(&spec)?;
-
-        let invoked_with_resume = spec.resume_id.is_some();
-
-        let (session_permit, pending_permit) = self.permit_for(&spec).await?;
-
-        let (mcp_path, bearer_dir) = mcp_config_for(&self.core_url, &spec, &credential)?;
+impl ClaudeCodeRunner {
+    /// Make a session of a spawned process: record it under its key, and start the stdout reader
+    /// and the completion task that runs its turns and reaps it.
+    pub(crate) async fn adopt(
+        &self,
+        spawned: Spawned,
+        tx: mpsc::Sender<RunnerEvent>,
+    ) -> Result<()> {
+        let Spawned {
+            job_id,
+            mut child,
+            stdin,
+            egress,
+            mcp_path,
+            bearer_dir,
+            invoked_with_resume,
+            permit,
+            keep_resident,
+            model,
+            project_slug,
+        } = spawned;
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
-        let (mut child, egress) = spawn_claude(
-            &spec,
-            &effective_repo,
-            &credential,
-            &mcp_path,
-            bearer_dir.as_deref(),
-            &self.core_url,
-        )
-        .await?;
-        tracing::info!("[claude] spawned job={job_id}");
-        let session_stdin = Some(write_first_turn(&mut child, &prompt).await?);
-
         let stdout = child
             .stdout
             .take()
@@ -457,35 +612,40 @@ impl Runner for ClaudeCodeRunner {
             .take()
             .ok_or_else(|| Error::Other("no stderr".into()))?;
 
+        let (ended_tx, ended) = tokio::sync::watch::channel(false);
+        let turn_tx: TurnTx = Arc::new(Mutex::new(tx.clone()));
+        let mut map = self.sessions.lock().await;
+        if map.contains_key(&job_id) {
+            drop(map);
+            return Err(refuse_held_key(&job_id, child, &mcp_path).await);
+        }
         if let Some(pid) = child.id() {
             inflight::record(&job_id, pid);
         }
         let _ = tx.send(RunnerEvent::StateChanged("working")).await;
-        let turn_tx: TurnTx = Arc::new(Mutex::new(tx.clone()));
-        self.sessions.lock().await.insert(
+        map.insert(
             job_id.clone(),
             Session {
                 child: Some(child),
                 claude_session_id: None,
-                stdin: session_stdin,
+                stdin: Some(stdin),
                 turn_tx: turn_tx.clone(),
                 turn_started: turn_started.clone(),
                 pending_inbox: Vec::new(),
                 unreplayed: 1,
                 in_turn: true,
-                keep_resident: spec.keep_resident,
+                keep_resident,
                 bearer_dir: bearer_dir.clone(),
                 turns: 0,
                 turn_done: turn_done.clone(),
-                model: spec.model.clone(),
+                model,
                 head_sha: None,
-                permit: session_permit,
-                project_slug: spec.project_slug.clone(),
+                permit,
+                project_slug,
+                ended,
             },
         );
-        // The session row is now the countable record; hand over rather than
-        // let both report the same permit.
-        drop(pending_permit);
+        drop(map);
 
         // Shared outcome written incrementally so it survives a reader abort.
         let outcome: Arc<Mutex<Outcome>> = Arc::new(Mutex::new(Outcome::default()));
@@ -512,7 +672,7 @@ impl Runner for ClaudeCodeRunner {
         );
         tokio::spawn(stream::complete(stream::Completion {
             sessions: self.sessions.clone(),
-            job_id: job_id.clone(),
+            job_id,
             core: Some(runner_transport::CoreClient::new(
                 self.core_url.clone(),
                 self.device_token.clone(),
@@ -529,8 +689,71 @@ impl Runner for ClaudeCodeRunner {
             egress,
             invoked_with_resume,
             tx,
+            ended: ended_tx,
         }));
+        Ok(())
+    }
+}
 
+#[async_trait]
+impl Runner for ClaudeCodeRunner {
+    async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
+        let job_id = spec.job_id.clone();
+
+        let effective_repo = spec.repo_path.to_string_lossy().to_string();
+
+        // No skill seeding at job start: the job consumes whatever is already
+        // in `<worktree>/.claude/skills/`, delivered ahead of time by the disk
+        // sync channel (`workspace::skill_sync`, driven by provision / the
+        // `skill.sync` event / background auto-pull), plus any device-scope
+        // plugin skills inherited from the config dir. A job-start re-seed was
+        // removed because it clobbered project-shadowed skills mid-flight.
+        //
+
+        let prompt = spec
+            .prompt
+            .clone()
+            .ok_or_else(|| Error::Other("job has no prompt".into()))?;
+        let credential = session_credential(&spec)?;
+        // whatever still holds this key ends first: a closed resident's reaper reaps by it
+        self.retire(&job_id).await?;
+
+        let invoked_with_resume = spec.resume_id.is_some();
+
+        let (session_permit, pending_permit) = self.permit_for(&spec).await?;
+
+        let (mcp_path, bearer_dir) = mcp_config_for(&self.core_url, &spec, &credential)?;
+        let (mut child, egress) = spawn_claude(
+            &spec,
+            &effective_repo,
+            &credential,
+            &mcp_path,
+            bearer_dir.as_deref(),
+            &self.core_url,
+        )
+        .await?;
+        tracing::info!("[claude] spawned job={job_id}");
+        let stdin = write_first_turn(&mut child, &prompt).await?;
+        self.adopt(
+            Spawned {
+                job_id: job_id.clone(),
+                child,
+                stdin,
+                egress,
+                mcp_path,
+                bearer_dir,
+                invoked_with_resume,
+                permit: session_permit,
+                keep_resident: spec.keep_resident,
+                model: spec.model.clone(),
+                project_slug: spec.project_slug.clone(),
+            },
+            tx,
+        )
+        .await?;
+        // The session row is now the countable record; hand over rather than
+        // let both report the same permit.
+        drop(pending_permit);
         Ok(job_id)
     }
 
@@ -803,6 +1026,9 @@ fn project_env(spec: &JobSpec) -> Vec<(&'static str, String)> {
 
 #[cfg(all(test, target_os = "linux"))]
 mod confine_tests;
+
+#[cfg(all(test, unix))]
+mod resident_tests;
 
 #[cfg(all(test, not(target_os = "linux")))]
 mod confine_elsewhere_tests {

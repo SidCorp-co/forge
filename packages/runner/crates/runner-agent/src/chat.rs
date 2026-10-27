@@ -30,7 +30,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::claude_code::{ClaudeCodeRunner, Resident};
+use crate::claude_code::{ClaudeCodeRunner, Resident, TurnPlacing};
 use crate::Confinement;
 use crate::JobSpec;
 use crate::Runner;
@@ -268,6 +268,7 @@ pub async fn handle_start(
     client: &CoreClient,
     runner: Arc<ClaudeCodeRunner>,
     data: Value,
+    placing: Option<TurnPlacing>,
 ) -> Result<()> {
     let f: StartFrame =
         serde_json::from_value(data).map_err(|e| Error::Other(format!("bad agent:start: {e}")))?;
@@ -305,6 +306,7 @@ pub async fn handle_start(
             ungated: f.ungated,
             keep_resident: f.keep_resident,
         },
+        placing,
     )
     .await
 }
@@ -315,6 +317,7 @@ pub async fn handle_send(
     client: &CoreClient,
     runner: Arc<ClaudeCodeRunner>,
     data: Value,
+    placing: Option<TurnPlacing>,
 ) -> Result<()> {
     let f: SendFrame =
         serde_json::from_value(data).map_err(|e| Error::Other(format!("bad agent:send: {e}")))?;
@@ -349,6 +352,7 @@ pub async fn handle_send(
             ungated: f.ungated,
             keep_resident: f.keep_resident,
         },
+        placing,
     )
     .await
 }
@@ -422,7 +426,15 @@ fn resident_disposition(resident: Option<&Resident>, turn: &Turn) -> Disposition
     }
 }
 
-async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn) -> Result<()> {
+/// Run one turn core handed this box. `placing` holds the session as having this turn on its way
+/// to a process, and is let go once the turn is written into one or has failed to be: an inbox
+/// write that arrives meanwhile waits, and goes into this turn's process.
+async fn run_turn(
+    client: &CoreClient,
+    runner: Arc<ClaudeCodeRunner>,
+    turn: Turn,
+    placing: Option<TurnPlacing>,
+) -> Result<()> {
     // ISS-584 (C): ack the turn the moment we own it, before claude starts. Lets
     // core tell apart "no runner ever got this" (never acked) from "runner got it
     // but claude died on startup" (acked, no claudeSessionId), and fast-fail the
@@ -503,6 +515,7 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
     } else {
         runner.start(spec, tx).await.map(|_| ())
     };
+    drop(placing);
     if let Err(e) = started {
         let msg = format!("failed to start chat turn: {e}");
         tracing::error!("[chat {session_id}] {msg}");
