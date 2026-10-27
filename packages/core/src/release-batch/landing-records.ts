@@ -11,7 +11,8 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
-import { LANDED_VERIFICATION, landedBuildHolds } from './landed-build.js';
+import { LANDED_VERIFICATION } from './landed-build.js';
+import { landedBuildHolds } from './landed-build-holds.js';
 
 interface LandingRow {
   id: string;

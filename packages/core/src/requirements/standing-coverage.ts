@@ -408,7 +408,7 @@ function whyOf(
     const also = rest.length > 0 ? `; not counted either: ${named(rest)}` : '';
     const at = off.map((l) => `${l.label}: ${l.identity}`).join('; ');
     if (landed) {
-      return `judged only at commits other than their issue's landing (${at}): judge it again at the landing${also}`;
+      return `judged only at commits other than their issue's landing and not holding it (${at}): judge it again at the landing or at a later build that holds it${also}`;
     }
     return `judged only at builds the live one does not hold (${at}): judge it again on the live build${also}`;
   }

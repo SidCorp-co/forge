@@ -36,7 +36,8 @@ export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job
 export { runningBuildObserved } from './gate.js';
 export { abortBlockedIssues, releaseHoldsOf } from './hold.js';
 export { judgedBuildOf, liveBuildHolds, unobservedBuildOf } from './judged-build.js';
-export { deliveryHeadsOf, landedBuildHolds } from './landed-build.js';
+export { deliveryHeadsOf } from './landed-build.js';
+export { landedBuildHolds } from './landed-build-holds.js';
 export { registerLandingDeploy } from './landing-deploy.js';
 export {
   type IssueLanding,
