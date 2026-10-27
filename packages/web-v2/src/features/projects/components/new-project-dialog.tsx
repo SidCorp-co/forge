@@ -23,6 +23,22 @@ export { slugify };
 const REFUSED_SLOT = 'new-project-repository-refused';
 /** The path field that toast tells the person to correct, which it keeps clear of. */
 const PATH_FIELD_ID = 'new-project-repository-path';
+/** The step's inline error and its Save button, which that toast keeps clear of too. */
+const SEED_ERROR_ID = 'new-project-repository-error';
+const SAVE_ID = 'new-project-repository-save';
+
+/** The path field and its label: what greets the step, which the "Project created" toast keeps clear of. */
+const pathField = () => [
+  document.getElementById(PATH_FIELD_ID),
+  document.querySelector(`label[for="${PATH_FIELD_ID}"]`),
+];
+/** What the refusal toast keeps clear of: the path field first, which it never covers, then its label,
+ *  the inline error and Save, let go from the last where a short screen leaves no room (ISS-1236 r10). */
+const repositoryStep = () => [
+  ...pathField(),
+  document.getElementById(SEED_ERROR_ID),
+  document.getElementById(SAVE_ID),
+];
 
 export interface NewProjectDialogProps {
   open: boolean;
@@ -126,7 +142,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
         ...(trimmedDesc ? { description: trimmedDesc } : {}),
         ...(orgId ? { orgId } : {}),
       });
-      toast({ title: 'Project created', description: row.name, tone: 'success' });
+      toast({ title: 'Project created', description: row.name, tone: 'success', clearOf: pathField });
       // ISS-453 — don't navigate yet: advance to the "Set up pipeline" step.
       setCreated(row);
     } catch (err) {
@@ -171,7 +187,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
         description: `${/[.!?]$/.test(said) ? said : `${said}.`} Correct them here and save again.`,
         tone: 'error',
         slot: REFUSED_SLOT,
-        clearOf: () => document.getElementById(PATH_FIELD_ID),
+        clearOf: repositoryStep,
         link: {
           label: 'Or set them later in Settings, on Shape & release',
           href: `/projects/${created.slug}/settings?tab=shape#repository`,
@@ -209,7 +225,11 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
     >
       {created ? (
         <div className="flex h-full flex-col gap-4">
-          {seedError && <Banner tone="danger">{seedError}</Banner>}
+          {seedError && (
+            <div id={SEED_ERROR_ID}>
+              <Banner tone="danger">{seedError}</Banner>
+            </div>
+          )}
           {repoSaved && <Banner tone="success">Repository settings saved.</Banner>}
 
           <Field
@@ -239,6 +259,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
           <div>
             <Button
+              id={SAVE_ID}
               variant="primary"
               loading={seeding}
               onClick={onSeed}

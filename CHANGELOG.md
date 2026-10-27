@@ -3206,6 +3206,7 @@
 - **A new project whose repository settings were refused is not reported unsaved.** The toast says the project was created, which settings were not saved and to correct them here, and links to Shape & release in Settings for later. (ISS-1236)
 - **A notice stays while you read it.** Resting the pointer on it, or tabbing into it, holds it; a long one stays as long as it takes to read rather than four seconds. (ISS-1236)
 - **A refused repository path's notice no longer covers the field it asks you to fix.** It moves or shrinks to leave the field clear, and its Settings link opens on Repository. (ISS-1236)
+- **A new project's notices keep off its repository step.** "Project created" no longer covers the path field, and a refused path's notice keeps the label, the error and Save clear too, going over a kept notice first. (ISS-1236)
 - **A script's hand-written launch check is refused by what it reads, not by its spelling.** The check now allows a short named list of process reads and refuses everything else, so a new spelling fails instead of passing. (ISS-1236)
 - **The id a message is sent under reaches only its sender, over the live connection as well.** Everyone else in the room is told the message arrived without it. (ISS-1236)
 - **A list that failed to load says so with Retry, never as lost or empty**, on Agents, the rail, runner pools, pickers and the bell. Messages sign with a name or "A member"; rooms say which agents answer. (ISS-1229)

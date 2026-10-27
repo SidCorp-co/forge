@@ -18,11 +18,14 @@ export function readingMs({ title, description }: Pick<ToastView, "title" | "des
   return Math.max(LEAST_MS, 2000 + words * 300);
 }
 
+/** What a toast keeps clear of: one element, or several, the first the one it must never cover. */
+type ClearOf = () => Element | null | readonly (Element | null)[];
+
 interface ToastItem extends ToastView {
   id: number;
   slot?: string;
   keep?: boolean;
-  clearOf?: () => Element | null;
+  clearOf?: ClearOf;
 }
 
 export interface ToastInput extends ToastView {
@@ -33,9 +36,10 @@ export interface ToastInput extends ToastView {
   slot?: string;
   /** Holds what the reader would otherwise lose, so it neither expires nor yields its place. */
   keep?: boolean;
-  /** The element the toast must not stand over, such as the field it tells the reader to correct:
-   *  while it shows, its lane moves to an edge that leaves that element clear. */
-  clearOf?: () => Element | null;
+  /** The elements the toast must not stand over, such as the field it tells the reader to correct:
+   *  while it shows, its lane moves to where it leaves them clear. Where no place clears them all, the
+   *  last are let go first; the first is the one it must never cover. */
+  clearOf?: ClearOf;
 }
 
 interface ToastApi {
@@ -132,6 +136,9 @@ const WIDE_BOTTOM_PX = 16;
 const LANE_CAP = 0.35;
 /** The lane's vertical padding, as its class states it (`py-3`), which a capped place takes away. */
 const LANE_PAD_PX = 12;
+/** The least space a capped lane takes: a toast's title and the start of its words. Less hides the toast. */
+const MIN_ROOM_PX = 72;
+const OVER_KEPT_Z = 61;
 
 /** The device's safe-area insets in px, read off a probe: the space a fixed edge keeps clear of. */
 function safeInsets(): { top: number; bottom: number } {
@@ -146,11 +153,11 @@ function safeInsets(): { top: number; bottom: number } {
 }
 
 /**
- * Where the lane goes so that no toast in it stands over the element one of them names: the top edge
- * when that leaves the element clear, else on a wide screen beside the dialog holding the element,
- * else the bottom edge; where none does, the larger of the spaces above and below the element, the
- * lane capped to it and scrolling inside. Null keeps the lane's own place. Measured again on every
- * scroll and resize, since the element moves with the page under the lane (ISS-1236 r9, judge-149).
+ * Where the lane goes so that no toast in it stands over the elements one names, nor over the kept
+ * notices: the top edge, beside the dialog on a wide screen, the bottom edge, or the larger space above
+ * or below them all, capped, if it holds `MIN_ROOM_PX`. Failing that it goes over the kept notices,
+ * then lets go of the elements from the last, never the first (ISS-1236 r10). Null keeps the lane's
+ * own place. Measured again on every scroll and resize, as the elements move under it (r9).
  */
 function useKeepClear(
   items: ToastItem[],
@@ -169,20 +176,19 @@ function useKeepClear(
     const measure = () => {
       const box = lane.current?.getBoundingClientRect();
       const targets = items.flatMap((t) => {
-        const el = wide || !t.keep ? t.clearOf?.() : null;
-        return el ? [el] : [];
+        const given = wide || !t.keep ? t.clearOf?.() : null;
+        const list: readonly (Element | null | undefined)[] = Array.isArray(given)
+          ? given
+          : [given as Element | null | undefined];
+        return list.filter((el): el is Element => !!el);
       });
       if (!box || targets.length === 0) {
         setPlace(null);
         return;
       }
-      // The kept notices' own lane is in the way as much as the element: moving onto it hides them.
-      const kept = keptLane.current?.getBoundingClientRect();
-      const obstacles: Box[] = [
-        ...targets.map((el) => el.getBoundingClientRect()),
-        ...(kept && kept.height > 0 ? [kept] : []),
-      ];
-      const clear = (b: Box) => obstacles.every((o) => !overlaps(b, o));
+      const rects: Box[] = targets.map((el) => el.getBoundingClientRect());
+      const keptBox = keptLane.current?.getBoundingClientRect();
+      const kept = keptBox && keptBox.height > 0 ? keptBox : null;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const inset = safeInsets();
@@ -196,32 +202,52 @@ function useKeepClear(
       const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : inset.top);
       const left = wide ? vw - box.width : 0;
       const atTop = { top, bottom: top + height, left, right: vw };
-      let next: CSSProperties | null = null;
-      if (!clear(atTop)) {
-        const dialog = targets[0].closest('[role="dialog"]') ?? targets[0];
-        const edge = dialog.getBoundingClientRect().left;
-        const beside = { ...atTop, left: edge - box.width, right: edge };
-        const dialogOpen = belowDialogHeader !== null || document.querySelector('[role="dialog"][aria-modal="true"]');
-        const gap = (wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX) + inset.bottom;
-        const atBottom = { ...atTop, top: vh - gap - height, bottom: vh - gap };
-        if (wide && beside.left >= 0 && clear(beside)) next = { right: vw - edge };
-        else if (clear(atBottom)) next = { top: "auto", bottom: gap };
-        else {
-          const rects = targets.map((el) => el.getBoundingClientRect());
-          const fieldTop = Math.min(...rects.map((r) => r.top));
-          const fieldBottom = Math.max(...rects.map((r) => r.bottom));
-          const above = fieldTop - top;
-          const below = Math.min(vh - gap, kept && kept.height > 0 ? kept.top : vh) - fieldBottom;
-          // The cap is the lane's whole box, so its own vertical padding goes too, or a gap smaller
-          // than that padding would still be overrun.
-          const capped = { paddingTop: 0, paddingBottom: 0 };
-          next =
-            below >= above
-              ? { ...capped, top: fieldBottom, maxHeight: Math.max(0, below) }
-              : { ...capped, top, maxHeight: Math.max(0, above) };
-        }
+      const dialog = targets[0].closest('[role="dialog"]') ?? targets[0];
+      const edge = dialog.getBoundingClientRect().left;
+      const beside = { ...atTop, left: edge - box.width, right: edge };
+      const dialogOpen = belowDialogHeader !== null || document.querySelector('[role="dialog"][aria-modal="true"]');
+      const gap = (wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX) + inset.bottom;
+      const atBottom = { ...atTop, top: vh - gap - height, bottom: vh - gap };
+
+      /** A place clear of the first `n` elements, and of the kept notices where `overKept` is false. */
+      const placeFor = (n: number, overKept: boolean): CSSProperties | null | undefined => {
+        const held = rects.slice(0, n);
+        const obstacles = [...held, ...(kept && !overKept ? [kept] : [])];
+        const clear = (b: Box) => obstacles.every((o) => !overlaps(b, o));
+        const lift = overKept && kept ? { zIndex: OVER_KEPT_Z } : {};
+        if (clear(atTop)) return n === rects.length && !overKept ? null : { ...lift, top };
+        if (wide && beside.left >= 0 && clear(beside)) return { ...lift, right: vw - edge };
+        if (clear(atBottom)) return { ...lift, top: "auto", bottom: gap };
+        const fieldTop = Math.min(...held.map((r) => r.top));
+        const fieldBottom = Math.max(...held.map((r) => r.bottom));
+        const above = fieldTop - top;
+        const below = Math.min(vh - gap, kept && !overKept ? kept.top : vh) - fieldBottom;
+        if (Math.max(above, below) < MIN_ROOM_PX) return undefined;
+        // The cap is the lane's whole box, so its own padding goes too, or a small gap is overrun.
+        const capped = { ...lift, paddingTop: 0, paddingBottom: 0 };
+        return below >= above
+          ? { ...capped, top: fieldBottom, maxHeight: below }
+          : { ...capped, top, maxHeight: above };
+      };
+      const tries: [number, boolean][] = [[rects.length, false]];
+      for (let n = rects.length; n >= 1; n--) tries.push([n, true]);
+      let next: CSSProperties | null | undefined;
+      for (const [n, overKept] of tries) {
+        next = placeFor(n, overKept);
+        if (next !== undefined) break;
       }
-      setPlace((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next));
+      // Nowhere holds a toast's first line clear of the first element: the larger space, however small.
+      if (next === undefined) {
+        const first = rects[0];
+        const above = first.top - top;
+        const below = vh - gap - first.bottom;
+        const capped = { zIndex: OVER_KEPT_Z, paddingTop: 0, paddingBottom: 0 };
+        next =
+          below >= above
+            ? { ...capped, top: first.bottom, maxHeight: Math.max(0, below) }
+            : { ...capped, top, maxHeight: Math.max(0, above) };
+      }
+      setPlace((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : (next ?? null)));
     };
     measure();
     window.addEventListener("scroll", measure, { capture: true, passive: true });
