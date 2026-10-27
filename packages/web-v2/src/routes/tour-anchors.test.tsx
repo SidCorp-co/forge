@@ -42,7 +42,7 @@ const RELEASE = {
   state: "shipped",
   runId: "run-1",
   approval: null,
-  verified: { level: "none", proven: 0, total: 0, check: null, provider: null },
+  verified: { level: "none", proven: 0, total: 0, check: null, provider: null, judgedOn: null },
   issues: [],
   gates: [],
   cuts: [],

@@ -80,7 +80,7 @@ const doorRefusals = (body: unknown) =>
   ((body as { error?: { refusals?: Refusal[] } }).error?.refusals ?? []) as Refusal[];
 
 const NO_PRODUCTION =
-  'and this project declares no production environment: nothing runs there that Forge observes, so a runtime verdict never counts';
+  'and this project declares no production environment and names no testing environment: nothing runs there that Forge observes, so a runtime verdict never counts';
 
 describe('the verdict door, on a project that declares no production environment', () => {
   it('refuses a runtime identity by name, naming the commit verdict at the landing, and writes nothing', async () => {
@@ -196,7 +196,7 @@ describe('a runtime identity naming the landed sha, stored before the door refus
 
     expect(bc.verdict).toBe('not_judged');
     expect(bc.issues[0]?.notCounted).toBe(
-      `judged against runtime \`${F4}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts`,
+      `judged against runtime \`${F4}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts, or, where the project names its testing environment (\`delivery.judgedOn\`), one judged on the whole commit it serves`,
     );
   });
 });
@@ -242,7 +242,7 @@ describe('where verdicts are owed', () => {
     const refusals = refusalsOf((await record([issue], F4)).body);
 
     expect(refusals[0]?.detail).toContain(
-      `ISS-11 criterion 1: it was judged against runtime \`${F4}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts; it needs a \`pass\` whose identity is commit \`${F4.slice(0, 12)}\``,
+      `ISS-11 criterion 1: it was judged against runtime \`${F4}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts, or, where the project names its testing environment (\`delivery.judgedOn\`), one judged on the whole commit it serves; it needs a \`pass\` whose identity is commit \`${F4.slice(0, 12)}\``,
     );
   });
 });

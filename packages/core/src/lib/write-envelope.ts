@@ -14,6 +14,15 @@ function parseWriteEnvelope(raw: unknown):
     } {
   if (!isRecord(raw)) return { ok: false, message: 'the body must be { baseRevision, document }' };
   const extra = Object.keys(raw).filter((k) => k !== 'baseRevision' && k !== 'document');
+  // `{ base, patch }` is another door's shape (a settings patch), and the natural reading of a
+  // revisioned write: named, so the caller learns this one is written whole
+  if ('patch' in raw || 'base' in raw) {
+    return {
+      ok: false,
+      message:
+        'this document is written whole, not patched: { baseRevision, document }. GET it, change the document, and PUT it back with the revision you read; { base, patch } is not a write shape here',
+    };
+  }
   if (extra.length > 0) {
     return {
       ok: false,

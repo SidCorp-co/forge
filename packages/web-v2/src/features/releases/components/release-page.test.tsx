@@ -20,7 +20,7 @@ const DETAIL = {
   state: "shipped",
   runId: "run-1",
   approval: null,
-  verified: { level: "criteria", proven: 2, total: 3, check: null, provider: null },
+  verified: { level: "criteria", proven: 2, total: 3, check: null, provider: null, judgedOn: null },
   issues: [],
   gates: [],
   cuts: [],
@@ -117,7 +117,7 @@ describe("the release page screen", () => {
 // code, and one of an issue tracing no requirement. Core counts the record and the page by one rule;
 // the screen draws the header, the panel and the list from those numbers and rows.
 describe("the rail and the Technical view's list say one count (BC-5)", () => {
-  const verified = { level: "some_criteria" as const, proven: 4, total: 6, check: null, provider: null };
+  const verified = { level: "some_criteria" as const, proven: 4, total: 6, check: null, provider: null, judgedOn: null };
   const page = releasePage({
     header: { ...releasePage().header, verified },
     requirements: [

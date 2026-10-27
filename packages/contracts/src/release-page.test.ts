@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { refusalStatusOf } from "./refusal-statuses.js";
+import { landedIdentityWhy } from "./verdict-identity.js";
 import {
+	judgedOnReleaseBuild,
 	judgeHighlights,
 	numeralsIn,
 	RELEASE_CLIP_MAX_BYTES,
@@ -29,7 +31,7 @@ const v = (
 	commitSha: string | null,
 	at: string,
 	identityKind: string | null = "commit",
-): ReleaseVerdictReading => ({ verdict, identityKind, commitSha, at });
+): ReleaseVerdictReading => ({ verdict, identityKind, commitSha, runtimeRef: null, at });
 
 describe("the truth rule: a page claims a criterion only with a pass on its build (BC-13)", () => {
 	it("claims a pass on the build", () => {
@@ -433,5 +435,50 @@ describe("release page refusals", () => {
 		expect(releasePagePath("p1", "a/b", "user")).toContain(
 			"/releases/a%2Fb/page",
 		);
+	});
+});
+
+// REQ-36 BC-18..BC-20: which verdicts a release reads on its build, by its testing environment
+describe("the verdicts a release reads on its build", () => {
+	const runtime = (ref: string) => ({
+		identityKind: "runtime",
+		commitSha: null,
+		runtimeRef: ref,
+	});
+	const commit = { identityKind: "commit", commitSha: BUILD, runtimeRef: null };
+
+	it("reads the commit verdict where the project names no testing environment", () => {
+		expect(judgedOnReleaseBuild(commit, BUILD, null)).toBe(true);
+		expect(judgedOnReleaseBuild(runtime(BUILD), BUILD, null)).toBe(false);
+	});
+
+	it("reads only the runtime verdict at the build where it names one", () => {
+		expect(judgedOnReleaseBuild(commit, BUILD, "dev")).toBe(false);
+		expect(judgedOnReleaseBuild(runtime(BUILD), BUILD, "dev")).toBe(true);
+		expect(judgedOnReleaseBuild(runtime(BUILD.toUpperCase()), BUILD, "dev")).toBe(true);
+		expect(judgedOnReleaseBuild(runtime(MERGED), BUILD, "dev")).toBe(false);
+	});
+
+	it("claims a runtime pass on the build, and not a commit pass, on a project judged on dev", () => {
+		const at = "2026-10-27T10:00:00Z";
+		expect(
+			releaseClaimOf(
+				[{ verdict: "pass", ...runtime(BUILD), at }],
+				BUILD,
+				"dev",
+			),
+		).toEqual({ claimed: true, at });
+		expect(
+			releaseClaimOf([{ verdict: "pass", ...commit, at }], BUILD, "dev"),
+		).toMatchObject({ claimed: false, standing: "not_judged" });
+	});
+
+	it("weighs a whole-commit runtime at a landing only where a testing environment is named", () => {
+		expect(landedIdentityWhy("runtime", BUILD, "dev")).toBeNull();
+		expect(landedIdentityWhy("runtime", BUILD, null)).toContain("not a commit");
+		expect(landedIdentityWhy("runtime", `${BUILD}${"0".repeat(24)}`, "dev")).toContain(
+			"not a commit",
+		);
+		expect(landedIdentityWhy("design", "flow rev 2", "dev")).toContain("not a commit");
 	});
 });

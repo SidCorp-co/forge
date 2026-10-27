@@ -55,7 +55,7 @@ function facts(n: number): ReleaseFacts {
       },
     });
   }
-  return { issues, requirements: new Map(), cutters: new Map(), judge: null };
+  return { issues, requirements: new Map(), cutters: new Map(), judge: null, judgedOn: null };
 }
 
 const gate = (code: string): ReleaseGateView => ({
@@ -185,6 +185,7 @@ describe('what a release says it verified', () => {
     verdict: v,
     identityKind: 'commit',
     commitSha: 'a'.repeat(40),
+    runtimeRef: null,
     at: new Date(T0).toISOString(),
     reason: null,
     evidence: [],
@@ -216,6 +217,7 @@ describe('what a release says it verified', () => {
       total: 0,
       check: 'probed',
       provider: null,
+      judgedOn: null,
     });
   });
 

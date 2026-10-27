@@ -383,6 +383,11 @@ export interface ReleaseVerified {
 	 * (`Autoflow`), so the sentence names who served it; null on any other check or where none is bound.
 	 */
 	provider: string | null;
+	/**
+	 * The testing environment `proven` was counted on (`delivery.judgedOn`, REQ-36 BC-18): a pass
+	 * judged on the build it serves; null where a commit verdict at the release's build counts (BC-20).
+	 */
+	judgedOn: string | null;
 }
 
 /** The one rule for `ReleaseVerified.level`, so every surface states the same level. */

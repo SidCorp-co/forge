@@ -487,9 +487,12 @@ export async function recordVerdict(
     ],
     commentId: args.commentId ?? null,
   });
-  // a verdict against a commit changes what a release page carrying the issue may claim (REQ-40 BC-13),
-  // and a fail sends the issue that owns the work back to reopen, whichever door recorded it (REQ-74 BC-3)
+  // a verdict against a commit, or on the running build of one (a release proven on its testing
+  // environment, REQ-36 BC-18), changes what a release page carrying the issue may claim (REQ-40
+  // BC-13), and a fail sends the issue that owns the work back to reopen, whichever door recorded it
+  // (REQ-74 BC-3)
   const commitSha = identity.identityKind === 'commit' ? (identity.commitSha ?? null) : null;
+  const runtimeRef = identity.identityKind === 'runtime' ? (identity.runtimeRef ?? null) : null;
   const failed =
     draft.verdict === 'fail' && args.reopens !== false
       ? {
@@ -501,12 +504,13 @@ export async function recordVerdict(
           agency: author.agency,
         }
       : null;
-  if (commitSha || failed) {
+  if (commitSha || runtimeRef || failed) {
     await emitEvent(tx, 'verdict.recorded', {
       projectId: issue.projectId,
       issueId: issue.id,
       verdictId: row.id,
       commitSha,
+      runtimeRef,
       failed,
     });
   }

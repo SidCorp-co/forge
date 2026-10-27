@@ -44,6 +44,12 @@ export interface LiveBuildHolds {
    * live build for every commit and runtime verdict.
    */
   landed?: ReadonlyMap<string, LandedHolds>;
+  /**
+   * Beside `landed`, the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18): a runtime
+   * verdict at a whole commit is weighed at its landing as a commit verdict is. Null or absent, it
+   * names no landed commit.
+   */
+  judgedOn?: string | null;
 }
 
 /** One issue's landed build, or why it has none. */
@@ -149,7 +155,11 @@ export function resolve(
     if (identity.kind === 'commit') {
       return atLanding(identity.sha, landed.get(issueId.toLowerCase()) ?? null);
     }
-    return none(landedIdentityWhy(identity.kind, identityValue(identity)) as string);
+    const why = landedIdentityWhy(identity.kind, identityValue(identity), live?.judgedOn ?? null);
+    if (why === null && identity.kind === 'runtime') {
+      return atLanding(identity.ref.toLowerCase(), landed.get(issueId.toLowerCase()) ?? null);
+    }
+    return none(why as string);
   }
   switch (identity.kind) {
     case 'commit':

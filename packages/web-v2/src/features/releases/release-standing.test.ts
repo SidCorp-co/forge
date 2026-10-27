@@ -12,7 +12,7 @@ const base = {
   approval: null,
   approvalRequired: true,
   landedOn: null,
-  verified: { level: "none", proven: 0, total: 0, check: null, provider: null },
+  verified: { level: "none", proven: 0, total: 0, check: null, provider: null, judgedOn: null },
 } as const;
 
 type Facts = Parameters<typeof releaseStandingOf>[0];
@@ -66,5 +66,30 @@ describe("a release that landed on a branch production does not deploy from", ()
     const s = standing({ state: "landed", landedOn: "dev", approvalRequired: false });
     expect(s.status).toBe("Landed on dev, not in production");
     expect(s.next).toBeNull();
+  });
+});
+
+// REQ-36 BC-18, BC-19 (catalog-api 0.2.0, 2026-10-27): 26/26 proven on commits judged locally while
+// dev served older code. On a project naming its testing environment the count is of passes there.
+describe("a release of a project that names its testing environment", () => {
+  const onDev = (proven: number, total: number) =>
+    ({ level: proven === total ? "criteria" : "some_criteria", proven, total, check: "landed", provider: null, judgedOn: "dev" }) as const;
+
+  it("says it was not judged on dev by name, and asks for that before the owner's review", () => {
+    const s = standing({ state: "landed", landedOn: "release/stg", verified: onDev(0, 26) });
+    expect(s.verified).toBe("Not judged on dev: 0 of 26 checks met");
+    expect(s.next).toBe("Have it judged on dev first");
+  });
+
+  it("counts what passed on dev, and asks the owner once every one has", () => {
+    expect(standing({ state: "landed", landedOn: "release/stg", verified: onDev(3, 26) }).verified).toBe("3 of 26 checks met on dev");
+    const ready = standing({ state: "landed", landedOn: "release/stg", verified: onDev(26, 26) });
+    expect(ready.verified).toBe("All 26 checks met on dev");
+    expect(ready.next).not.toBe("Have it judged on dev first");
+  });
+
+  it("reads as before where the project names none", () => {
+    const s = standing({ state: "landed", landedOn: "release/stg", verified: { ...onDev(26, 26), judgedOn: null } });
+    expect(s.verified).toBe("All 26 checks met");
   });
 });

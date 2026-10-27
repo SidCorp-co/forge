@@ -7,7 +7,7 @@ const vi = productCopy("vi");
 
 describe("what a release verified, in words", () => {
   it("names the provider that served a provider-checked deploy, in both languages", () => {
-    const v = { level: "criteria", proven: 3, total: 3, check: "provider", provider: "Autoflow" } as const;
+    const v = { level: "criteria", proven: 3, total: 3, check: "provider", provider: "Autoflow", judgedOn: null } as const;
     expect(verifiedSentence(v, en)).toBe("Verified: 3 checks met, and the deploy checked by what Autoflow serves");
     const named = vi("releases.verified.byNamedProvider", { provider: "Autoflow" });
     expect(named).toContain("Autoflow");
@@ -16,18 +16,25 @@ describe("what a release verified, in words", () => {
   });
 
   it("says production's provider only where the facts name none, never a blank name", () => {
-    const v = { level: "criteria", proven: 3, total: 3, check: "provider", provider: null } as const;
+    const v = { level: "criteria", proven: 3, total: 3, check: "provider", provider: null, judgedOn: null } as const;
     expect(verifiedSentence(v, en)).toBe("Verified: 3 checks met, and the deploy checked by what production's provider serves");
     expect(verifiedSentence(v, vi).endsWith(vi("releases.verified.byProvider"))).toBe(true);
     expect(verifiedSentence({ ...v, provider: "" }, en)).toBe(verifiedSentence(v, en));
   });
 
   it("says a probed deploy by the probes, and a deploy-only level alone", () => {
-    expect(verifiedSentence({ level: "some_criteria", proven: 1, total: 2, check: "probed", provider: null }, en)).toBe(
+    expect(verifiedSentence({ level: "some_criteria", proven: 1, total: 2, check: "probed", provider: null, judgedOn: null }, en)).toBe(
       "Partly verified: 1 of 2 checks met, and the deploy checked by the production probes",
     );
-    expect(verifiedSentence({ level: "deploy_only", proven: 0, total: 0, check: "probed", provider: null }, en)).toBe(
+    expect(verifiedSentence({ level: "deploy_only", proven: 0, total: 0, check: "probed", provider: null, judgedOn: null }, en)).toBe(
       "Deploy check only",
     );
+  });
+
+  it("names the testing environment the criteria were counted on (REQ-36 BC-18)", () => {
+    expect(verifiedSentence({ level: "some_criteria", proven: 3, total: 26, check: null, provider: null, judgedOn: "dev" }, en)).toBe(
+      "Partly verified: 3 of 26 checks met on dev",
+    );
+    expect(verifiedSentence({ level: "none", proven: 0, total: 0, check: null, provider: null, judgedOn: "dev" }, en)).toBe("Not verified");
   });
 });

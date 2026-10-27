@@ -564,7 +564,7 @@ export interface OutboxEventPayloads
 		decidedAt: string;
 	};
 	/**
-	 * A verdict was recorded on an issue criterion against a commit: what a release page claims
+	 * A verdict was recorded on an issue criterion against a commit or a running build: what a release page claims
 	 * changes for every release carrying the issue whose build is that commit (REQ-40 BC-13). Also
 	 * emitted for every fail, on any identity and at the requirement too, naming the issue that owns
 	 * the work in `issueId`: that issue goes back to `reopen` where it is past its build, never a new
@@ -575,6 +575,8 @@ export interface OutboxEventPayloads
 		issueId: string;
 		verdictId: string;
 		commitSha: string | null;
+		/** The running build a `runtime` verdict was judged on: a release proven on its testing environment counts it (REQ-36 BC-18). */
+		runtimeRef?: string | null;
 		failed?: VerdictFailed | null;
 	};
 	/**

@@ -117,8 +117,32 @@ export interface ReleaseVerdictReading {
 	verdict: "pass" | "short" | "fail" | "skipped";
 	identityKind: string | null;
 	commitSha: string | null;
+	/** The build a `runtime` verdict was judged on, as it served it; null on every other identity. */
+	runtimeRef: string | null;
 	at: string;
 }
+
+/**
+ * Whether a verdict was judged on a release's `build`, the one place every count of a release's proof
+ * reads it (REQ-36 BC-18..BC-20): where the project names no testing environment (`judgedOn` null),
+ * a verdict whose identity is that commit; where it names one, only a verdict judged on the running
+ * build at that commit (`runtime`, whatever corroborated it), and never a commit verdict, which gates
+ * the merge and proves no release criterion.
+ */
+export function judgedOnReleaseBuild(
+	v: Pick<ReleaseVerdictReading, "identityKind" | "commitSha" | "runtimeRef">,
+	build: string,
+	judgedOn: string | null,
+): boolean {
+	if (judgedOn === null) {
+		return v.identityKind === "commit" && v.commitSha === build;
+	}
+	return v.identityKind === "runtime" && v.runtimeRef?.toLowerCase() === build;
+}
+
+/** Why a release criterion with no verdict on the running build is not proven, naming the environment (REQ-36 BC-19). */
+export const notJudgedOnWhy = (judgedOn: string, build: string): string =>
+	`Not judged on ${judgedOn}: a release of this project is proven only by a pass judged on the build ${judgedOn} serves at ${build.slice(0, 12)} (a runtime verdict), and a commit verdict gates the merge only`;
 
 export type ReleaseClaim =
 	| { claimed: true; at: string }
@@ -133,22 +157,21 @@ export type ReleaseClaim =
 	  };
 
 /**
- * Whether a release page may claim a criterion: only the newest verdict whose identity is the commit
- * `build` counts, and only a pass is claimed. A short, a fail or a skip on the build is a known issue
+ * Whether a release page may claim a criterion: only the newest verdict judged on `build`
+ * (`judgedOnReleaseBuild`) counts, and only a pass is claimed. A short, a fail or a skip on the build is a known issue
  * as itself; a pass on any other commit, or no verdict on it, is `not_judged`. With no cut
  * build (`null`) nothing is claimed.
  */
 export function releaseClaimOf(
 	verdicts: readonly ReleaseVerdictReading[],
 	build: string | null,
+	judgedOn: string | null = null,
 ): ReleaseClaim {
 	const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
 	const onBuild =
 		build === null
 			? undefined
-			: newestFirst.find(
-					(v) => v.identityKind === "commit" && v.commitSha === build,
-				);
+			: newestFirst.find((v) => judgedOnReleaseBuild(v, build, judgedOn));
 	if (onBuild?.verdict === "pass") return { claimed: true, at: onBuild.at };
 	if (onBuild)
 		return { claimed: false, standing: onBuild.verdict, elsewhere: null };
@@ -747,6 +770,8 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 			total: z.number().int().min(0),
 			check: z.enum(RELEASE_VERIFICATIONS).nullable(),
 			provider: z.string().nullable(),
+			// a share frozen before the testing environment was read counted commit verdicts
+			judgedOn: z.string().nullable().default(null),
 		}),
 		approval: z.strictObject({
 			required: z.boolean(),

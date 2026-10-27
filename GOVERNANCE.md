@@ -39,7 +39,10 @@ criterion, which is recorded on the issue rather than on the pull request and ju
 release that carries the work: `awaiting_release` asks only for the recorded merge (REQ-45 BC-1,
 BC-2). The release hold asks for passing verdicts where the project document's
 `delivery.verdictsRequired` is true, the default; where it is false, the release takes an issue
-without them.
+without them. Where the document names a testing environment (`delivery.judgedOn`, REQ-36
+BC-18..BC-20), a commit verdict still gates the merge, but a release is proven, and its owner's
+review owed, only by passes judged on the build that environment serves (a `runtime` verdict at
+the release's commit); a criterion not judged there reads "Not judged on <environment>".
 
 ## Release authority
 

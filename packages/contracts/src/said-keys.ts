@@ -692,6 +692,10 @@ export const SAID = {
 		en: "approve design {what}",
 		vars: { what: "name" },
 	},
+	"standing.act.judgeReleaseOn": {
+		en: "judge {v} on {environment}",
+		vars: { v: "version", environment: "name" },
+	},
 	"standing.act.reviewAndPromote": {
 		en: "review {v} and promote it to production",
 		vars: { v: "version" },
@@ -1422,6 +1426,10 @@ export const SAID = {
 	"releases.rule.acceptedMerges": {
 		en: "accepted: the agent merges its {n} {requests} in order",
 		vars: { n: "count", requests: "agreement" },
+	},
+	"releases.rule.notJudgedOn": {
+		en: "Not judged on {environment}: {proven} of {total} criteria pass there",
+		vars: { environment: "name", proven: "count", total: "count" },
 	},
 	"releases.rule.landedOwesProduction": {
 		en: "landed on {branch}; production serves it once a release approver promotes it",

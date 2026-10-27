@@ -6,7 +6,7 @@
  * steward moves no issue back (`steward/door-writes.ts`): what an issue lacks goes in its note.
  */
 
-import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import { judgedOnOf, verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -42,6 +42,10 @@ export async function stewardReleaseFacts(
   const owes = verdictsRequiredOf(document?.document.delivery)
     ? 'Its delivery policy owes a counting verdict on every criterion before release (delivery.verdictsRequired: true).'
     : 'Its delivery policy owes no verdict at awaiting_release (delivery.verdictsRequired: false): criteria are judged on the build the release ships, by the judge that follows the release, so a missing verdict or proof at the gate is not a reason to send an issue back.';
+  const judgedOn = judgedOnOf(document?.document.delivery);
+  const testing = judgedOn
+    ? `Its releases are proven on its testing environment \`${judgedOn}\` (delivery.judgedOn): a release criterion counts only a pass judged on the build \`${judgedOn}\` serves, a runtime verdict at the release's commit; a commit verdict gates the merge and proves no release criterion.`
+    : null;
   const claim = issueId ? await liveClaimOf(issueId) : null;
   const member = claim
     ? `This issue is a member of release batch ${claim.run}, still ${claim.status}: its code ships with that release whatever its status says.`
@@ -50,7 +54,7 @@ export async function stewardReleaseFacts(
   const landed = issueId
     ? ((await landedCompleteFact(issueId)) ?? (await landedVerdictsOwedFact(issueId)))
     : null;
-  return [where, owes, member, head, landed].filter(Boolean).join('\n');
+  return [where, owes, testing, member, head, landed].filter(Boolean).join('\n');
 }
 
 /**

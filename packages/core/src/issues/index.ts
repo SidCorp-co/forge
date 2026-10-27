@@ -60,12 +60,15 @@ export {
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
 export { type VerdictRefusal, verdictDraftFault } from './criteria/verdict-input.js';
 export {
-  type CriterionVerdict,
-  type IssueCriteriaReport,
+  type IssueStandingCriteria,
   type StandingCriterion,
   standingCriteriaOf,
-  unearnedCriteriaReports,
   verdictWeighingInputs,
+} from './criteria-standing.js';
+export {
+  type CriterionVerdict,
+  type IssueCriteriaReport,
+  unearnedCriteriaReports,
 } from './criteria-verdicts.js';
 export type { IssueDependencyExecutor } from './dependency-executor.js';
 export { allRelationDigests, loadIssueRelationsForIssues } from './dependency-read.js';
