@@ -164,31 +164,11 @@ async function writeRecord(admin: Sql, name: string, record: SlotRecord): Promis
   await admin.unsafe(`COMMENT ON DATABASE "${name}" IS ${literal(JSON.stringify(record))}`);
 }
 
-/**
- * End every connection to `name` but the caller's and answer how many there were, refusing by pid
- * any that is still there after its termination was waited on.
- */
-export async function sever(admin: Sql, name: string): Promise<number> {
-  const others = () => admin<{ pid: number }[]>`
-    SELECT pid FROM pg_stat_activity WHERE datname = ${name} AND pid <> pg_backend_pid()
-  `;
-  const rows = await others();
-  for (const { pid } of rows) {
-    await admin`SELECT pg_terminate_backend(${pid}, 5000)`.catch(() => {});
-  }
-  const left = rows.length > 0 ? await others() : [];
-  if (left.length > 0) {
-    throw new Error(
-      `[db] ${name}: connection(s) ${left.map((r) => r.pid).join(', ')} outlived a terminate ` +
-        'waited on for 5s, so the database cannot be reset or handed on while they can still write.',
-    );
-  }
-  return rows.length;
-}
-
-/** A session connected to a database, as a lingering-connection line names it. */
+/** A session connected to a database, as a report names it. */
 interface Session {
   pid: number;
+  /** `pg_stat_activity.backend_type`: `client backend` for a connection somebody opened. */
+  kind: string;
   app: string;
   state: string | null;
   query: string | null;
@@ -196,9 +176,41 @@ interface Session {
 
 function sessionsOn(admin: Sql, name: string): Promise<Session[]> {
   return admin<Session[]>`
-    SELECT pid, application_name AS app, state, left(regexp_replace(query, '[[:space:]]+', ' ', 'g'), 120) AS query
+    SELECT pid, backend_type AS kind, application_name AS app, state, left(regexp_replace(query, '[[:space:]]+', ' ', 'g'), 120) AS query
     FROM pg_stat_activity WHERE datname = ${name} AND pid <> pg_backend_pid() ORDER BY pid
   `;
+}
+
+/**
+ * A connection a client opened, which a file can leave behind. The server's own workers connect to
+ * a database too, autovacuum after a file's rows churned a table, and no file opened or can close
+ * one: severing one cancels a vacuum the next file's reset makes moot.
+ */
+function opened(s: Session): boolean {
+  return s.kind === 'client backend';
+}
+
+function describeSession(s: Session): string {
+  return `pid ${s.pid} ${s.app || 'with no application name'}, ${s.state} after "${s.query}"`;
+}
+
+/**
+ * End every connection to `name` but the caller's and answer the sessions it ended, each as it was
+ * last seen, refusing by pid any that is still there after its termination was waited on.
+ */
+export async function sever(admin: Sql, name: string): Promise<Session[]> {
+  const rows = await sessionsOn(admin, name);
+  for (const { pid } of rows) {
+    await admin`SELECT pg_terminate_backend(${pid}, 5000)`.catch(() => {});
+  }
+  const left = rows.length > 0 ? await sessionsOn(admin, name) : [];
+  if (left.length > 0) {
+    throw new Error(
+      `[db] ${name}: connection(s) ${left.map((r) => r.pid).join(', ')} outlived a terminate ` +
+        'waited on for 5s, so the database cannot be reset or handed on while they can still write.',
+    );
+  }
+  return rows;
 }
 
 /**
@@ -208,22 +220,27 @@ function sessionsOn(admin: Sql, name: string): Promise<Session[]> {
  * before `DROP DATABASE` calls it in use (`CountOtherDBBackends`): fifty looks, 100ms apart.
  */
 export async function reportLingeringConnections(admin: Sql, name: string): Promise<void> {
+  let held: Session[];
   try {
-    let held = await sessionsOn(admin, name);
+    held = (await sessionsOn(admin, name)).filter(opened);
     for (let look = 1; held.length > 0 && look < 50; look++) {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      held = await sessionsOn(admin, name);
+      held = (await sessionsOn(admin, name)).filter(opened);
     }
-    if (held.length > 0) {
-      const named = held.map(
-        (s) => `pid ${s.pid} ${s.app || 'with no application name'}, ${s.state} after "${s.query}"`,
-      );
-      console.error(
-        `[db] ${name}: ${held.length} connection(s) still open at teardown, severed now: ` +
-          `${named.join('; ')}. Whatever holds them is background work that outlived this file.`,
-      );
-    }
-  } catch {}
+  } catch (err) {
+    console.error(
+      `[db] ${name}: could not read what is still connected at teardown, so nothing still open ` +
+        `is named: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return;
+  }
+  if (held.length > 0) {
+    console.error(
+      `[db] ${name}: ${held.length} connection(s) still open at teardown, severed now: ` +
+        `${held.map(describeSession).join('; ')}. Whatever holds them is background work that ` +
+        'outlived this file.',
+    );
+  }
 }
 
 /**
@@ -285,14 +302,16 @@ export async function claimSlotDatabase(
     let fresh = await cloneUnlessHeld(admin, name, template, explain);
     let prior: SlotRecord | null = null;
     if (!fresh) {
-      const severed = await sever(admin, name);
-      if (severed > 0) {
+      prior = await readRecord(admin, name);
+      const severed = (await sever(admin, name)).filter(opened);
+      if (severed.length > 0) {
+        const since = prior ? prior.holder : 'a file that left no record';
         console.error(
-          `[db] ${name}: ${severed} connection(s) the previous file in this slot left were severed ` +
-            `before ${holder} was handed the database.`,
+          `[db] ${name}: ${severed.length} connection(s) left on it since ${since} held it were ` +
+            `severed before ${holder} was handed it: ` +
+            `${severed.map(describeSession).join('; ')}.`,
         );
       }
-      prior = await readRecord(admin, name);
       if (prior === null) {
         console.error(
           `[db] ${name} carries no record of the clone it was, so a file that created it died ` +

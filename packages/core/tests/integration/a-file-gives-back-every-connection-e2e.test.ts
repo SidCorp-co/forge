@@ -8,8 +8,12 @@
  * ISS-1315 r7 — a client ended while a statement was running resolves once that statement is done,
  * having only written its goodbye, so the server is still ending the session when the teardown
  * looks; main's CI printed "still open at teardown" for eight files that held nothing that way.
+ *
+ * ISS-1315 r8 — a connection opened after a file's teardown is severed when the next file in the
+ * slot is handed the database, and that line named neither the session nor the file it came from.
  */
 
+import { dirname, join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { describe, expect, it, vi } from 'vitest';
@@ -150,6 +154,41 @@ describe('a file that gives its database back', () => {
     } finally {
       reported.mockRestore();
       await held.end({ timeout: 0 }).catch(() => {});
+    }
+  });
+
+  it('names the file that held the slot and each session it left, when the next file is handed it', async () => {
+    // The slot's previous holder goes by another file's name, so the line has two names to keep apart.
+    const thisFile = expect.getState().testPath as string;
+    expect.setState({ testPath: join(dirname(thisFile), 'a-previous-holder.test.ts') });
+    let harness: Awaited<ReturnType<typeof setupTestDatabase>>;
+    try {
+      harness = await setupTestDatabase();
+    } finally {
+      expect.setState({ testPath: thisFile });
+    }
+    await harness.cleanup();
+    // Opened once the file had given its database back, as work outliving the file would.
+    const late = postgres(harness.url, {
+      max: 1,
+      onnotice: () => {},
+      connection: { application_name: 'plant-opened-after-teardown' },
+    });
+    const reported = vi.spyOn(console, 'error');
+    let next: Awaited<ReturnType<typeof setupTestDatabase>> | undefined;
+    try {
+      await late`SELECT 'opened late' AS plant`;
+
+      next = await setupTestDatabase();
+
+      expect(next.url).toBe(harness.url);
+      expect(reported.mock.calls.flat().join('\n')).toMatch(
+        /1 connection\(s\) left on it since tests\/integration\/a-previous-holder\.test\.ts held it were severed before tests\/integration\/a-file-gives-back-every-connection-e2e\.test\.ts was handed it: pid \d+ plant-opened-after-teardown, idle after "SELECT 'opened late' AS plant"/,
+      );
+    } finally {
+      reported.mockRestore();
+      await late.end({ timeout: 0 }).catch(() => {});
+      await next?.cleanup();
     }
   });
 });

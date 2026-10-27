@@ -140,7 +140,8 @@ creates `test_w_<slot>_<token>` the first time a slot asks (`VITEST_POOL_ID`, 1 
 and hands the same database to every file the slot runs after that. Before handing it over it
 resets it, the same way for every file:
 
-1. ends every connection the previous file left (`pg_terminate_backend`, waited on),
+1. ends every connection the previous file left (`pg_terminate_backend`, waited on), naming each
+   one a client opened and the file that held the slot,
 2. drops the schemas the queue makes at runtime (`slot-db.ts:RUNTIME_SCHEMAS`, which no migration
    makes), reads the schema and refuses on any difference from the clone it was,
 3. empties every table the way `truncateAll` does between cases and removes every large object,
@@ -184,6 +185,31 @@ a connection terminated under it is refused with `CONNECTION_CLOSED` by the patc
 naming the file and the objects it added, dropped or changed; the database is then renamed out of
 the slot and dropped behind the run, and the next file in the slot gets a fresh clone. A file that
 gave its database back without `cleanup()` is caught by the next file's step 2, which names it.
+
+**The two connection lines, and what each names.** Both are `[db]` lines on stderr from
+`slot-db.ts`. *"still open at teardown, severed now"* is the teardown's, naming each session the
+file left. *"left on it since <file> held it were severed before <file> was handed it"* is step 1's:
+a connection opened after the previous holder's teardown had severed everything, named by the file
+that held the slot (read off the database's record) and each session's pid, application, state and
+last statement. Both list only connections a client opened (`backend_type = 'client backend'`): the
+server's own autovacuum worker also connects to a database whose rows a file churned, no file opens
+or can close one, and severing one only cancels a vacuum the reset makes moot, so it is ended
+without a line. That worker is what the unnamed hand-over lines on `18a970ea3` were: before this
+filter, a hand-over in the e2e above named `pid 142 with no application name, active after
+"autovacuum: ..."`, and the server logged `terminating autovacuum process` for that pid. One whole
+run after it at 432 files and 4459 tests, `--silent=false`, printed only the e2e's two plants while
+the server logged three autovacuum workers terminated, all on `pg_class` or `pg_trigger`. A teardown that cannot read `pg_stat_activity` says so, naming the database and the
+error, rather than saying nothing.
+
+**How a run is read for them.** Under an agent (vitest reads `isAgent` from `std-env`, which an
+agent's shell sets, as Claude Code's does), vitest takes its `agent` reporter, and that reporter
+hides the console of every test that passed unless the run is given `--silent=false`. A person's
+terminal and GitHub Actions take the default reporter, which shows it, so CI's log carries the lines
+as they happen. A local run read for these lines is therefore started with `--silent=false`, and
+read for `[db]` lines under their `stderr |` headers. The last case of
+`a-file-gives-back-every-connection-e2e.test.ts` prints one teardown line and one hand-over line on
+every run that shows the console, so a whole-suite log carrying neither of its plants showed
+nothing, and is no evidence that nothing was printed.
 
 **A file that writes schema or runs a migration declares it** at its own call site,
 `setupTestDatabase({ own: '<what it changes>' })`, and gets a `test_own_` clone nobody else is

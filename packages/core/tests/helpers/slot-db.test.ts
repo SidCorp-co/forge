@@ -163,18 +163,23 @@ describe('sever', () => {
       return Promise.resolve(left.map((pid) => ({ pid })));
     }) as unknown;
     // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
-    await expect(sever(admin as any, 'test_w_1_x')).resolves.toBe(1);
+    await expect(sever(admin as any, 'test_w_1_x')).resolves.toEqual([{ pid: 44 }]);
   });
 });
 
 /** An admin whose catalog answers `looks[n]` on its nth look at the database's sessions. */
-function sessionsAdmin(looks: Array<Array<{ pid: number; app: string }>>) {
+function sessionsAdmin(looks: Array<Array<{ pid: number; app: string; kind?: string }>>) {
   let n = 0;
   const admin = (() => {
     const at = Math.min(n, looks.length - 1);
     n += 1;
     return Promise.resolve(
-      (looks[at] ?? []).map((s) => ({ ...s, state: 'idle', query: 'SELECT 1' })),
+      (looks[at] ?? []).map((s) => ({
+        kind: 'client backend',
+        state: 'idle',
+        query: 'SELECT 1',
+        ...s,
+      })),
     );
   }) as unknown;
   return { admin, looks: () => n };
@@ -196,6 +201,36 @@ describe('reportLingeringConnections', () => {
       await done;
       expect(looks()).toBe(2);
       expect(reported).not.toHaveBeenCalled();
+    } finally {
+      reported.mockRestore();
+    }
+  });
+
+  it('neither names nor waits on a worker of the server\u2019s own, which no file opened', async () => {
+    vi.useFakeTimers();
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { admin, looks } = sessionsAdmin([[{ pid: 53, app: '', kind: 'autovacuum worker' }]]);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+      const done = reportLingeringConnections(admin as any, 'test_w_1_x');
+      await vi.advanceTimersByTimeAsync(5_000);
+      await done;
+      expect(looks()).toBe(1);
+      expect(reported).not.toHaveBeenCalled();
+    } finally {
+      reported.mockRestore();
+    }
+  });
+
+  it('says by name that it could not read what is connected, rather than saying nothing', async () => {
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const admin = (() => Promise.reject(new Error('connection refused by plant'))) as unknown;
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+      await reportLingeringConnections(admin as any, 'test_w_1_x');
+      expect(reported.mock.calls.flat().join('\n')).toContain(
+        'test_w_1_x: could not read what is still connected at teardown, so nothing still open is named: connection refused by plant',
+      );
     } finally {
       reported.mockRestore();
     }
