@@ -501,7 +501,61 @@ function entryReads(rel, text) {
     }
   };
 
+  /**
+   * How a use of process could reach argv without naming it, or null where it cannot: a property
+   * read by a stated name, a typeof, and a name or a destructuring by stated keys that holds it.
+   */
+  const processLeak = (node) => {
+    const self = outer(node);
+    const p = self.parent;
+    if (ts.isPropertyAccessExpression(p) && p.expression === self) return null;
+    if (ts.isElementAccessExpression(p) && p.expression === self) {
+      return ts.isStringLiteralLike(p.argumentExpression)
+        ? null
+        : `process read by a computed key: ${p.getText(src)}`;
+    }
+    if (ts.isTypeOfExpression(p)) return null;
+    // `fn.call(process, …)` hands process on as `this` to a native binding, never as a value read.
+    const thisArg =
+      ts.isCallExpression(p) &&
+      p.arguments[0] === self &&
+      ts.isPropertyAccessExpression(p.expression) &&
+      ['call', 'apply', 'bind'].includes(p.expression.name.text);
+    if (thisArg) return null;
+    const pattern =
+      ts.isVariableDeclaration(p) && p.initializer === self
+        ? p.name
+        : ts.isBinaryExpression(p) &&
+            p.right === self &&
+            p.operatorToken.kind === ts.SyntaxKind.EqualsToken
+          ? p.left
+          : null;
+    if (pattern && ts.isIdentifier(pattern)) return null;
+    if (pattern && (ts.isObjectBindingPattern(pattern) || ts.isObjectLiteralExpression(pattern))) {
+      const items = ts.isObjectBindingPattern(pattern) ? pattern.elements : pattern.properties;
+      const stated = items.every((el) => {
+        if (ts.isBindingElement(el))
+          return !el.dotDotDotToken && keyOf(el.propertyName ?? el.name) !== null;
+        if (ts.isPropertyAssignment(el)) return keyOf(el.name) !== null;
+        return ts.isShorthandPropertyAssignment(el);
+      });
+      return stated ? null : `process destructured by a key it cannot state: ${p.getText(src)}`;
+    }
+    return `process handed on whole: ${p.getText(src)}`;
+  };
+
   visit((node) => {
+    if (
+      (ts.isIdentifier(node) && !naming(node)) ||
+      ts.isPropertyAccessExpression(node) ||
+      ts.isElementAccessExpression(node) ||
+      ts.isCallExpression(node)
+    ) {
+      if (!WRAPS.some((is) => is(node)) && isProcess(node)) {
+        const leak = processLeak(node);
+        if (leak) say(node, leak);
+      }
+    }
     if (
       ts.isVariableDeclaration(node) &&
       node.initializer &&
@@ -708,6 +762,21 @@ describe('no file decides it was launched by hand', () => {
       2,
     ],
     [
+      'scripts/process-passed.mjs',
+      'const read = (p) => p.argv[1];\nif (import.meta.filename === read(process)) main();\n',
+      2,
+    ],
+    [
+      'scripts/process-computed.mjs',
+      "const k = 'argv';\nif (import.meta.filename === process[k][1]) main();\n",
+      2,
+    ],
+    [
+      'scripts/process-spread.mjs',
+      'const p = { ...process };\nif (import.meta.filename === p.argv[1]) main();\n',
+      1,
+    ],
+    [
       'scripts/from.mjs',
       'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n',
       2,
@@ -829,6 +898,10 @@ describe('no file decides it was launched by hand', () => {
     ],
     ['scripts/tail.mjs', 'const [, , ...rest] = process.argv;\nconst ROOT = import.meta.url;\n'],
     [
+      'scripts/process-uses.mjs',
+      "if (typeof process !== 'undefined') process.exitCode = 1;\nconst { env, platform } = process;\nconst home = process['env'].HOME;\nconst sync = binding.call(process, 'spawn_sync');\nconst ROOT = import.meta.url;\n",
+    ],
+    [
       'scripts/nested-tail.mjs',
       'const { argv: [, , ...rest] } = process;\nconst ROOT = import.meta.url;\n',
     ],
@@ -862,7 +935,7 @@ describe('no file decides it was launched by hand', () => {
         rel,
       ).toContain(line);
     }
-    for (const f of found) expect(f.how).toMatch(/argv/);
+    for (const f of found) expect(f.how).toMatch(/argv|process/);
   });
 
   it('passes a read of argv that leaves the entry alone, a string, a comment and the helpers', () => {
