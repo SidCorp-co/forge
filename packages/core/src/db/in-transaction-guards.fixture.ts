@@ -1,17 +1,23 @@
 /**
  * What the catch scan reads as a guard naming an error. A guard counts as one only where the scan
- * recognises it as one that neither a plain `Error` nor the driver's `PostgresError` passes:
- * `instanceof` a class other than those two and their bases; the error's `code`, constraint or
- * `name` compared with a value known at compile time, read off the error or by `lib/db-errors.ts`'s
- * readers, a `name` never one of those two classes'; an `isX(err)` or `hasX(err)` whose one
- * returned expression is such a test; or those joined. Every guard it does not so recognise is
- * refused like a bare catch, among them one whose body it cannot read, whatever its predicate says,
- * and a comparison with a value it cannot resolve.
+ * recognises it as one that no error in `lib/db-errors.ts:STATEMENT_ERRORS` passes as a kind: drizzle's
+ * `DrizzleQueryError` and `TransactionRollbackError`, the driver's `PostgresError` and a plain
+ * `Error`. That is `instanceof` a class
+ * other than those and their bases, bound by a class declaration and carrying no `Symbol.hasInstance`
+ * of its own; the error's `code`, constraint or `name` compared with a value known at compile time,
+ * read off the error or by `lib/db-errors.ts`'s readers, a `name` never one of those classes', a code
+ * never one of `SESSION_ENDED_CODES`; an `isX(err)` or `hasX(err)` bound by a function declaration or
+ * a `const`, whose one returned expression is such a test; or those joined. A read through `cause` is
+ * held to the same list, since a caller may wrap a wrapped error again. The caught error is matched
+ * by its binding, never by its name, so an inner `err` shadowing it is a different value. Every guard
+ * it does not so recognise is refused like a bare catch, among them one whose body it cannot read,
+ * whatever its predicate says, and a comparison with a value it cannot resolve.
  */
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { SESSION_ENDED_CODES } from '../lib/db-errors.js';
 
 const DB_ERRORS = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'db-errors.ts');
 
@@ -30,10 +36,41 @@ export interface Scan {
   tx: ts.Type;
   /** Every member of the transaction, any one of which a handle carries. */
   members: ReadonlySet<string>;
-  /** Every kind of error a statement on a transaction throws. */
-  errors: readonly ts.Type[];
-  /** The `name` of each of those kinds, which every error of it carries. */
+  /** Every class a statement on a transaction throws, and each of their bases. */
+  kinds: ReadonlySet<ts.Symbol>;
+  /** The `name` of each of those classes. */
   names: ReadonlySet<string>;
+}
+
+/** The classes `lib/db-errors.ts:STATEMENT_ERRORS` lists, read off the program the scan compiled. */
+export function statementErrors(program: ts.Program, checker: ts.TypeChecker): ts.Type[] {
+  const list = program
+    .getSourceFile(DB_ERRORS)
+    ?.statements.filter(ts.isVariableStatement)
+    .flatMap((s) => [...s.declarationList.declarations])
+    .find((d) => ts.isIdentifier(d.name) && d.name.text === 'STATEMENT_ERRORS')?.initializer;
+  const items = list && ts.isAsExpression(list) ? list.expression : list;
+  if (!items || !ts.isArrayLiteralExpression(items)) {
+    throw new Error(`${DB_ERRORS} no longer declares STATEMENT_ERRORS as an array of classes`);
+  }
+  return items.elements.map((element) => {
+    const made = checker.getTypeAtLocation(element).getConstructSignatures()[0];
+    if (!made) throw new Error(`STATEMENT_ERRORS lists ${element.getText()}, which is no class`);
+    return made.getReturnType();
+  });
+}
+
+/** Each class in `errors` and every class it extends. */
+export function withBases(errors: readonly ts.Type[], checker: ts.TypeChecker): Set<ts.Symbol> {
+  const found = new Set<ts.Symbol>();
+  const visit = (type: ts.Type): void => {
+    const symbol = type.getSymbol();
+    if (!symbol || found.has(symbol)) return;
+    found.add(symbol);
+    if (type.isClassOrInterface()) checker.getBaseTypes(type).forEach(visit);
+  };
+  errors.forEach(visit);
+  return found;
 }
 
 function unwrap(node: ts.Expression): ts.Expression {
@@ -49,16 +86,54 @@ function unwrap(node: ts.Expression): ts.Expression {
 const EQUAL = [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken];
 const UNEQUAL = [ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken];
 
-function isParam(node: ts.Expression, param: string): boolean {
+function isParam(node: ts.Expression, param: ts.Symbol, scan: Scan): boolean {
   const e = unwrap(node);
-  return ts.isIdentifier(e) && e.text === param;
+  return ts.isIdentifier(e) && scan.checker.getSymbolAtLocation(e) === param;
+}
+
+/** The symbol an imported name stands for, or `symbol` itself. */
+function resolved(symbol: ts.Symbol | undefined, scan: Scan): ts.Symbol | undefined {
+  return symbol && symbol.flags & ts.SymbolFlags.Alias
+    ? scan.checker.getAliasedSymbol(symbol)
+    : symbol;
+}
+
+/** The symbol `node` names, where it is a name or a property access and nothing computed or cast. */
+function named(node: ts.Expression, scan: Scan): ts.Symbol | undefined {
+  const name = ts.isIdentifier(node)
+    ? node
+    : ts.isPropertyAccessExpression(node)
+      ? node.name
+      : undefined;
+  return name && resolved(scan.checker.getSymbolAtLocation(name), scan);
+}
+
+/**
+ * The function `call` runs, where its callee is bound for good: a function declaration, or a
+ * `const` holding a function. A `let`, a property or anything else may hold another by the time it
+ * runs, so the body the scan would read is not the one that answers.
+ */
+function fixedCallee(call: ts.CallExpression, scan: Scan): ts.FunctionLikeDeclaration | undefined {
+  const decl = named(call.expression, scan)?.valueDeclaration;
+  let fn: ts.FunctionLikeDeclaration | undefined;
+  if (decl && ts.isFunctionDeclaration(decl)) fn = decl;
+  else if (
+    decl &&
+    ts.isVariableDeclaration(decl) &&
+    ts.isVariableDeclarationList(decl.parent) &&
+    decl.parent.flags & ts.NodeFlags.Const &&
+    decl.initializer &&
+    (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))
+  )
+    fn = decl.initializer;
+  return fn && scan.checker.getResolvedSignature(call)?.getDeclaration() === fn ? fn : undefined;
 }
 
 /**
  * The property of the caught error `node` reads: `err.code`, `err['code']`, the same down its
  * `cause` chain, or a reader of `lib/db-errors.ts` given the error.
  */
-function propertyRead(node: ts.Expression, param: string, scan: Scan): string | undefined {
+function propertyRead(node: ts.Expression, param: ts.Symbol, scan: Scan): string | undefined {
   const e = unwrap(node);
   if (ts.isCallExpression(e)) return readerOf(e, param, scan);
   let key: string;
@@ -66,14 +141,14 @@ function propertyRead(node: ts.Expression, param: string, scan: Scan): string | 
   else if (ts.isElementAccessExpression(e) && ts.isStringLiteralLike(e.argumentExpression))
     key = e.argumentExpression.text;
   else return undefined;
-  if (isParam(e.expression, param)) return key;
+  if (isParam(e.expression, param, scan)) return key;
   return propertyRead(e.expression, param, scan) === 'cause' ? key : undefined;
 }
 
-function readerOf(call: ts.CallExpression, param: string, scan: Scan): string | undefined {
+function readerOf(call: ts.CallExpression, param: ts.Symbol, scan: Scan): string | undefined {
   const [arg, ...more] = call.arguments;
-  if (!arg || more.length > 0 || !isParam(arg, param)) return undefined;
-  const decl = scan.checker.getResolvedSignature(call)?.getDeclaration();
+  if (!arg || more.length > 0 || !isParam(arg, param, scan)) return undefined;
+  const decl = fixedCallee(call, scan);
   if (!decl || !ts.isFunctionDeclaration(decl) || !decl.name) return undefined;
   return decl.getSourceFile().fileName === DB_ERRORS ? READERS.get(decl.name.text) : undefined;
 }
@@ -84,13 +159,16 @@ function knownValue(node: ts.Expression, scan: Scan): string | number | undefine
   return type.isStringLiteral() || type.isNumberLiteral() ? type.value : undefined;
 }
 
-function mentions(node: ts.Node, name: string): boolean {
-  if (ts.isIdentifier(node) && node.text === name) return true;
-  return ts.forEachChild(node, (c) => mentions(c, name) || undefined) ?? false;
+function mentions(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
+  if (ts.isIdentifier(node) && scan.checker.getSymbolAtLocation(node) === param) return true;
+  return ts.forEachChild(node, (c) => mentions(c, param, scan) || undefined) ?? false;
 }
 
-/** `err.code === '23505'`: the other side reads nothing of the error, and a `name` is no kind's. */
-function comparesError(node: ts.BinaryExpression, param: string, scan: Scan): boolean {
+/**
+ * `err.code === '23505'`: the other side reads nothing of the error, a `name` is no statement
+ * error's, and a code is not one the error carries when the session ended.
+ */
+function comparesError(node: ts.BinaryExpression, param: ts.Symbol, scan: Scan): boolean {
   const sides = [
     [node.left, node.right],
     [node.right, node.left],
@@ -98,55 +176,76 @@ function comparesError(node: ts.BinaryExpression, param: string, scan: Scan): bo
   for (const [error, other] of sides) {
     const key = propertyRead(error, param, scan);
     if (key === undefined || !IDENTIFYING.has(key)) continue;
-    const value = mentions(other, param) ? undefined : knownValue(other, scan);
+    const value = mentions(other, param, scan) ? undefined : knownValue(other, scan);
     if (value === undefined) return false;
-    return key !== 'name' || !scan.names.has(String(value));
+    if (key === 'name') return !scan.names.has(String(value));
+    return key !== 'code' || !SESSION_ENDED_CODES.has(String(value));
   }
   return false;
 }
 
-/** Whether the class an `instanceof` names is declared, and no database error's kind or base. */
-function isOwnClass(type: ts.Type, scan: Scan): boolean {
-  const symbol = type.getSymbol();
-  const decl = symbol?.declarations?.[0];
-  if (symbol === undefined || decl === undefined) return false;
-  if (scan.errors.some((e) => e.getSymbol() === symbol)) return false;
-  return !(
-    scan.program.isSourceFileDefaultLibrary(decl.getSourceFile()) &&
-    ['Error', 'Object'].includes(symbol.name)
-  );
+/**
+ * Whether `right` names a class no statement error is: bound by a class declaration, or a default
+ * library's, not one of those errors or their bases, and with no `Symbol.hasInstance` beside the
+ * one every function has, which would answer `instanceof` with whatever it likes.
+ */
+function namesOwnClass(right: ts.Expression, scan: Scan): boolean {
+  const symbol = named(right, scan);
+  const decl = symbol?.valueDeclaration;
+  const lib = (n: ts.Node) => scan.program.isSourceFileDefaultLibrary(n.getSourceFile());
+  if (
+    !symbol ||
+    !decl ||
+    !(ts.isClassDeclaration(decl) || (ts.isVariableDeclaration(decl) && lib(decl)))
+  )
+    return false;
+  const statics = scan.checker.getTypeOfSymbolAtLocation(symbol, right);
+  const answers = statics
+    .getProperties()
+    .some(
+      (p) => p.escapedName.toString().startsWith('__@hasInstance') && !p.declarations?.every(lib),
+    );
+  const kind = statics.getConstructSignatures()[0]?.getReturnType().getSymbol();
+  if (answers || kind === undefined || scan.kinds.has(kind)) return false;
+  return !(kind.declarations?.some(lib) && ['Error', 'Object'].includes(kind.name));
 }
 
-/** Whether `isX(err)` names an error, read off its body's one returned expression, which runs. */
-function helperNamesAnError(call: ts.CallExpression, param: string, scan: Scan, depth: number) {
-  const index = call.arguments.findIndex((a) => isParam(a, param));
-  const decl = scan.checker.getResolvedSignature(call)?.getDeclaration();
-  if (index === -1 || depth > 3 || !decl || !ts.isFunctionLike(decl)) return false;
-  if (decl.getSourceFile().isDeclarationFile) return false;
+/**
+ * Whether `isX(err)` names an error, read off its body's one returned expression, which runs. No
+ * other argument may read the error, which would hand the body a comparand of the error's own.
+ */
+function helperNamesAnError(call: ts.CallExpression, param: ts.Symbol, scan: Scan, depth: number) {
+  const index = call.arguments.findIndex((a) => isParam(a, param, scan));
+  const decl = fixedCallee(call, scan);
+  if (index === -1 || depth > 3 || !decl || decl.getSourceFile().isDeclarationFile) return false;
+  if (call.arguments.some((a, at) => at !== index && mentions(a, param, scan))) return false;
   const own = decl.parameters[index];
-  const body = (decl as ts.FunctionLikeDeclaration).body;
+  const body = decl.body;
   const returned =
     body && ts.isBlock(body)
       ? body.statements.length === 1 && ts.isReturnStatement(body.statements[0] as ts.Statement)
         ? (body.statements[0] as ts.ReturnStatement).expression
         : undefined
       : body;
+  const ownSymbol = own && ts.isIdentifier(own.name) && scan.checker.getSymbolAtLocation(own.name);
   return (
-    own !== undefined &&
-    ts.isIdentifier(own.name) &&
-    returned !== undefined &&
-    namesAnError(returned, own.name.text, scan, depth + 1)
+    !!ownSymbol && returned !== undefined && namesAnError(returned, ownSymbol, scan, depth + 1)
   );
 }
 
-export function namesAnError(node: ts.Expression, param: string, scan: Scan, depth = 0): boolean {
+export function namesAnError(
+  node: ts.Expression,
+  param: ts.Symbol,
+  scan: Scan,
+  depth = 0,
+): boolean {
   const e = unwrap(node);
   if (ts.isBinaryExpression(e)) {
     const op = e.operatorToken.kind;
     if (op === ts.SyntaxKind.InstanceOfKeyword) {
-      if (!isParam(e.left, param) && propertyRead(e.left, param, scan) !== 'cause') return false;
-      const made = scan.checker.getTypeAtLocation(e.right).getConstructSignatures()[0];
-      return made !== undefined && isOwnClass(made.getReturnType(), scan);
+      if (!isParam(e.left, param, scan) && propertyRead(e.left, param, scan) !== 'cause')
+        return false;
+      return namesOwnClass(e.right, scan);
     }
     if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
       return namesAnError(e.left, param, scan, depth) || namesAnError(e.right, param, scan, depth);
@@ -167,7 +266,7 @@ export function namesAnError(node: ts.Expression, param: string, scan: Scan, dep
   return false;
 }
 
-export function admitsAllButNamed(node: ts.Expression, param: string, scan: Scan): boolean {
+export function admitsAllButNamed(node: ts.Expression, param: ts.Symbol, scan: Scan): boolean {
   const e = unwrap(node);
   if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
     return namesAnError(e.operand, param, scan);
@@ -180,4 +279,23 @@ export function admitsAllButNamed(node: ts.Expression, param: string, scan: Scan
     return UNEQUAL.includes(op) && comparesError(e, param, scan);
   }
   return false;
+}
+
+/** Whether anything in `node` assigns the caught error, so a later read may not be what was thrown. */
+export function reassigns(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
+  const target = (n: ts.Node) => mentions(n, param, scan);
+  if (
+    (ts.isBinaryExpression(node) &&
+      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      target(node.left)) ||
+    ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator) &&
+      target(node.operand)) ||
+    ((ts.isForOfStatement(node) || ts.isForInStatement(node)) &&
+      !ts.isVariableDeclarationList(node.initializer) &&
+      target(node.initializer))
+  )
+    return true;
+  return ts.forEachChild(node, (c) => reassigns(c, param, scan) || undefined) ?? false;
 }

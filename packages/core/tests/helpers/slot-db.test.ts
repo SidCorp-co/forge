@@ -235,7 +235,7 @@ describe('reportLingeringConnections', () => {
       await done;
       expect(looks()).toBe(50);
       expect(reported.mock.calls.flat().join('\n')).toContain(
-        '1 connection(s) still open at teardown, severed now: pid 54 subscriber-left-here, idle after "SELECT 1"',
+        '1 connection(s) still open at teardown, severed now: pid 54 (walsender) subscriber-left-here, idle after "SELECT 1"',
       );
     } finally {
       reported.mockRestore();
@@ -267,7 +267,29 @@ describe('reportLingeringConnections', () => {
       await done;
       expect(looks()).toBe(50);
       expect(reported.mock.calls.flat().join('\n')).toContain(
-        '1 connection(s) still open at teardown, severed now: pid 52 held-here, idle after "SELECT 1"',
+        '1 connection(s) still open at teardown, severed now: pid 52 (client backend) held-here, idle after "SELECT 1"',
+      );
+    } finally {
+      reported.mockRestore();
+    }
+  });
+
+  it('names a parallel worker by its kind, apart from the leader whose application name it carries', async () => {
+    vi.useFakeTimers();
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { admin } = sessionsAdmin([
+      [
+        { pid: 60, app: 'leader-here' },
+        { pid: 61, app: 'leader-here', kind: 'parallel worker' },
+      ],
+    ]);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+      const done = reportLingeringConnections(admin as any, 'test_w_1_x');
+      await vi.advanceTimersByTimeAsync(5_000);
+      await done;
+      expect(reported.mock.calls.flat().join('\n')).toContain(
+        '2 connection(s) still open at teardown, severed now: pid 60 (client backend) leader-here, idle after "SELECT 1"; pid 61 (parallel worker) leader-here, idle after "SELECT 1"',
       );
     } finally {
       reported.mockRestore();

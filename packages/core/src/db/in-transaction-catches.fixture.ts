@@ -4,8 +4,9 @@
  * the transaction, so `Pick<Tx, 'insert'>`, `Pick<Db, 'select'>`, `Tx` and every local executor
  * alias count while the pool's own `Db` does not. A catch passes by calling
  * `rethrowInTransaction(<the error>, <the handle>)` first, or by going on only for an error it
- * names; a `finally` that returns, breaks or continues out of a guarded try swallows whatever the
- * try threw. `EXCEPTIONS` names any allowed to fall back.
+ * names, on every path out of the branch that rethrows, without assigning the caught error first; a
+ * `finally` that returns, breaks or continues out of a guarded try swallows whatever the try threw.
+ * `EXCEPTIONS` names any allowed to fall back.
  *
  * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`.
  *
@@ -18,7 +19,14 @@ import { readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { admitsAllButNamed, namesAnError, type Scan } from './in-transaction-guards.fixture.js';
+import {
+  admitsAllButNamed,
+  namesAnError,
+  reassigns,
+  type Scan,
+  statementErrors,
+  withBases,
+} from './in-transaction-guards.fixture.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TX_SOURCE = join(SRC, 'db', 'client.ts');
@@ -92,27 +100,6 @@ function isNestedFunction(node: ts.Node): boolean {
   return ts.isFunctionLike(node) && !ts.isCallSignatureDeclaration(node);
 }
 
-/**
- * What a statement on a transaction can throw: the server's `PostgresError`, and the plain `Error`
- * the driver raises for a connection it lost, as `CONNECTION_CLOSED`.
- */
-function everyDatabaseError(program: ts.Program, checker: ts.TypeChecker): ts.Type[] {
-  const sf = program.getSourceFile(TX_SOURCE);
-  const error = sf && checker.resolveName('Error', sf, ts.SymbolFlags.Type, false);
-  if (!error) throw new Error('the default library no longer declares Error');
-  const driver = sf?.statements
-    .filter(ts.isImportDeclaration)
-    .find((s) => ts.isStringLiteral(s.moduleSpecifier) && s.moduleSpecifier.text === 'postgres')
-    ?.importClause?.name;
-  const imported = driver && checker.getSymbolAtLocation(driver);
-  const server =
-    imported && checker.getAliasedSymbol(imported).exports?.get('PostgresError' as ts.__String);
-  if (!server) {
-    throw new Error(`${TX_SOURCE} no longer imports postgres, whose PostgresError the scan reads`);
-  }
-  return [checker.getDeclaredTypeOfSymbol(error), checker.getDeclaredTypeOfSymbol(server)];
-}
-
 /** The expressions in `guarded` that name a handle bound outside it. */
 function handlesIn(guarded: ts.Node, scan: Scan): string[] {
   const found = new Set<string>();
@@ -150,7 +137,7 @@ function statementsOf(node: ts.Statement): readonly ts.Statement[] {
   return ts.isBlock(node) ? node.statements : [node];
 }
 
-/** True where control cannot leave `stmts` normally: its last statement throws on every path. */
+/** True where `stmts`' last statement throws on every path; `leaves` reads the exits before it. */
 function endsInThrow(stmts: readonly ts.Statement[]): boolean {
   const last = stmts.at(-1);
   if (!last) return false;
@@ -165,15 +152,17 @@ function endsInThrow(stmts: readonly ts.Statement[]): boolean {
 
 /**
  * The handler goes on only for errors it named: it opens by throwing every error but a named kind,
- * or every exit from it short of a throw sits under a test naming one.
+ * on every path out of that branch, or every exit from it short of a throw sits under a test naming
+ * one.
  */
-function exitsOnlyWhenNarrowed(block: ts.Block, param: string | null, scan: Scan): boolean {
+function exitsOnlyWhenNarrowed(block: ts.Block, param: ts.Symbol | null, scan: Scan): boolean {
   if (param === null) return false;
   const first = block.statements[0];
   if (first && ts.isIfStatement(first) && !first.elseStatement) {
     if (
       admitsAllButNamed(first.expression, param, scan) &&
-      endsInThrow(statementsOf(first.thenStatement))
+      endsInThrow(statementsOf(first.thenStatement)) &&
+      !leaves(first.thenStatement)
     )
       return true;
   }
@@ -191,7 +180,7 @@ function exitsOnlyWhenNarrowed(block: ts.Block, param: string | null, scan: Scan
   return ok;
 }
 
-function narrowedBy(exit: ts.Node, block: ts.Block, param: string, scan: Scan): boolean {
+function narrowedBy(exit: ts.Node, block: ts.Block, param: ts.Symbol, scan: Scan): boolean {
   for (let at = exit.parent; at && at !== block; at = at.parent) {
     if (
       ts.isIfStatement(at) &&
@@ -204,24 +193,38 @@ function narrowedBy(exit: ts.Node, block: ts.Block, param: string, scan: Scan): 
   return false;
 }
 
-function rethrowsFirst(block: ts.Block, param: string | null, handles: string[]): boolean {
+function rethrowsFirst(
+  block: ts.Block,
+  param: ts.Symbol | null,
+  handles: string[],
+  scan: Scan,
+): boolean {
   const first = block.statements[0];
   if (!first || param === null || !ts.isExpressionStatement(first)) return false;
   const call = first.expression;
   if (!ts.isCallExpression(call) || call.expression.getText() !== 'rethrowInTransaction')
     return false;
   const [err, handle] = call.arguments;
-  return err?.getText() === param && handle !== undefined && handles.includes(handle.getText());
+  return (
+    err !== undefined &&
+    ts.isIdentifier(err) &&
+    scan.checker.getSymbolAtLocation(err) === param &&
+    handle !== undefined &&
+    handles.includes(handle.getText())
+  );
 }
 
 function paramOf(
   decl: ts.ParameterDeclaration | ts.VariableDeclaration | undefined,
-): string | null {
-  return decl && ts.isIdentifier(decl.name) ? decl.name.text : null;
+  scan: Scan,
+): ts.Symbol | null {
+  return (
+    (decl && ts.isIdentifier(decl.name) && scan.checker.getSymbolAtLocation(decl.name)) || null
+  );
 }
 
 /** True where a jump in `block` lands on a statement inside it: its label's, or its loop or switch. */
-function landsInside(jump: ts.BreakOrContinueStatement, block: ts.Block): boolean {
+function landsInside(jump: ts.BreakOrContinueStatement, block: ts.Node): boolean {
   for (let at = jump.parent; at && at !== block; at = at.parent) {
     if (jump.label) {
       if (ts.isLabeledStatement(at) && at.label.text === jump.label.text) return true;
@@ -236,7 +239,7 @@ function landsInside(jump: ts.BreakOrContinueStatement, block: ts.Block): boolea
 }
 
 /** True where a statement of `block` returns, or breaks or continues to a target outside it. */
-function leavesBlock(block: ts.Block): boolean {
+function leaves(block: ts.Node): boolean {
   let leaves = false;
   const visit = (n: ts.Node): void => {
     if (leaves || isNestedFunction(n)) return;
@@ -255,23 +258,24 @@ function leavesBlock(block: ts.Block): boolean {
 
 function handlerKind(handler: ts.Node, handles: string[], scan: Scan): GuardedCatch['handler'] {
   let body: ts.Block;
-  let param: string | null;
+  let param: ts.Symbol | null;
   if (ts.isBlock(handler) && ts.isTryStatement(handler.parent)) {
     return 'swallows';
   }
   if (ts.isCatchClause(handler)) {
     body = handler.block;
-    param = paramOf(handler.variableDeclaration);
+    param = paramOf(handler.variableDeclaration, scan);
   } else if (
     (ts.isArrowFunction(handler) || ts.isFunctionExpression(handler)) &&
     ts.isBlock(handler.body)
   ) {
     body = handler.body;
-    param = paramOf(handler.parameters[0]);
+    param = paramOf(handler.parameters[0], scan);
   } else {
     return 'swallows';
   }
-  if (rethrowsFirst(body, param, handles)) return 'rethrows';
+  if (rethrowsFirst(body, param, handles, scan)) return 'rethrows';
+  if (param !== null && reassigns(body, param, scan)) return 'swallows';
   return exitsOnlyWhenNarrowed(body, param, scan) ? 'narrowed' : 'swallows';
 }
 
@@ -295,7 +299,7 @@ function catchSites(sf: ts.SourceFile): Array<{ at: ts.Node; guarded: ts.Node; h
     if (ts.isTryStatement(n) && n.catchClause) {
       sites.push({ at: n.catchClause, guarded: n.tryBlock, handler: n.catchClause });
     }
-    if (ts.isTryStatement(n) && n.finallyBlock && leavesBlock(n.finallyBlock)) {
+    if (ts.isTryStatement(n) && n.finallyBlock && leaves(n.finallyBlock)) {
       sites.push({ at: n.finallyBlock, guarded: n.tryBlock, handler: n.finallyBlock });
     }
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
@@ -315,14 +319,14 @@ export function guardedCatches(program: ts.Program): GuardedCatch[] {
   const checker = program.getTypeChecker();
   const tx = transactionType(program, checker);
   const members = new Set(tx.getProperties().map((p) => p.name));
-  const errors = everyDatabaseError(program, checker);
+  const kinds = withBases(statementErrors(program, checker), checker);
   const scan: Scan = {
     program,
     checker,
     tx,
     members,
-    errors,
-    names: new Set(errors.map((e) => e.getSymbol()?.name ?? '')),
+    kinds,
+    names: new Set([...kinds].map((k) => k.name)),
   };
   const found: GuardedCatch[] = [];
   for (const sf of program.getSourceFiles()) {

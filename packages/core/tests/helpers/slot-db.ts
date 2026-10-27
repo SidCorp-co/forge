@@ -184,15 +184,15 @@ function sessionsOn(admin: Sql, name: string): Promise<Session[]> {
 /**
  * A session a file can have left behind: every one but an autovacuum worker, which the server
  * starts on a database whose rows a file churned and no file opened or can close, so severing one
- * cancels a vacuum the next file's reset makes moot. A replication connection, a `walsender`, or a
- * parallel worker of a client's statement is named like the client's own.
+ * cancels a vacuum the next file's reset makes moot. A `walsender` or a parallel worker of a client's
+ * statement is named too, by its kind, since a parallel worker carries its leader's application name.
  */
 function opened(s: Session): boolean {
   return s.kind !== 'autovacuum worker';
 }
 
 function describeSession(s: Session): string {
-  return `pid ${s.pid} ${s.app || 'with no application name'}, ${s.state} after "${s.query}"`;
+  return `pid ${s.pid} (${s.kind}) ${s.app || 'with no application name'}, ${s.state} after "${s.query}"`;
 }
 
 /**
