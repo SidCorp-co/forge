@@ -103,7 +103,7 @@ vi.mock("@/features/integrations/components/connection-detail-drawer", () => ({
     ) : null,
 }));
 
-const { IntegrationsTab } = await import("./integrations-tab");
+const { IntegrationsTab, sharePickerOptions } = await import("./integrations-tab");
 
 afterEach(() => {
   cleanup();
@@ -328,3 +328,35 @@ describe("who the share form is offered to", () => {
     expect(screen.queryByText(/Org Coolify/)).toBeNull();
   });
 });
+
+// ISS-1421 r36, judge-145: the share picker listed every provider's connections in the order they
+// were made, Coolify, GitHub and Sentry interleaved.
+describe("the share picker's order", () => {
+  const conn = (id: string, provider: string, displayName: string | null, createdAt: string) => ({
+    id,
+    provider,
+    displayName,
+    config: {},
+    createdAt,
+  });
+
+  it("groups connections under their provider, providers by name, and sorts each group by name", () => {
+    const options = sharePickerOptions([
+      conn("s1", "sentry", "logs.example", "2026-10-01T09:00:00.000Z"),
+      conn("c2", "coolify", "box-b.example", "2026-10-02T09:00:00.000Z"),
+      conn("g1", "github", null, "2026-10-03T09:00:00.000Z"),
+      conn("c1", "coolify", "Box-a.example", "2026-10-04T09:00:00.000Z"),
+      conn("c10", "coolify", "box-10.example", "2026-10-05T09:00:00.000Z"),
+      conn("c9", "coolify", "box-9.example", "2026-10-06T09:00:00.000Z"),
+    ]);
+    expect(options.map((o) => [o.group, o.value])).toEqual([
+      ["Coolify", "c9"],
+      ["Coolify", "c10"],
+      ["Coolify", "c1"],
+      ["Coolify", "c2"],
+      ["GitHub", "g1"],
+      ["Sentry", "s1"],
+    ]);
+  });
+});
+

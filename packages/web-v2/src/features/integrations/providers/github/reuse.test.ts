@@ -65,7 +65,7 @@ describe("what a project is told when it cannot bind the App it can see", () => 
     const reason = unbindableReason([theirs], PROJECT);
 
     expect(reason).toContain("Forge App");
-    expect(reason).toMatch(/owned by Dana Reyes, and only they can bind it/);
+    expect(reason).toMatch(/owned by Dana Reyes, and only they can share it/);
     expect(reason).toMatch(/ask Dana Reyes/);
   });
 
@@ -76,7 +76,7 @@ describe("what a project is told when it cannot bind the App it can see", () => 
       access: { reach: "binding", canManage: false, ownerName: null },
     });
 
-    expect(unbindableReason([theirs], PROJECT)).toMatch(/owned by a member, and only its owner can bind it/);
+    expect(unbindableReason([theirs], PROJECT)).toMatch(/owned by a member, and only its owner can share it/);
   });
 
   // ISS-1229 r22: the owner sits inside the sentence, so a person with no display name reads lower-case.
@@ -88,7 +88,7 @@ describe("what a project is told when it cannot bind the App it can see", () => 
     });
 
     const reason = unbindableReason([theirs], PROJECT) ?? "";
-    expect(reason).toMatch(/owned by a member, and only they can bind it/);
+    expect(reason).toMatch(/owned by a member, and only they can share it/);
     expect(reason).toMatch(/ask a member,/);
   });
 
@@ -96,7 +96,7 @@ describe("what a project is told when it cannot bind the App it can see", () => 
     const owned = app({ access: { reach: "org", canManage: false, ownerName: "Beta" } });
 
     expect(unbindableReason([owned], PROJECT)).toMatch(
-      /owned by Beta, and only an owner or admin of Beta can bind it to this project/,
+      /owned by Beta, and only an owner or admin of Beta can share it with this project/,
     );
   });
 
@@ -105,7 +105,7 @@ describe("what a project is told when it cannot bind the App it can see", () => 
     const owned = app({ access: { reach: "org", canManage: false, ownerName: "Beta" } });
 
     expect(unbindableReason([owned], PROJECT)).toMatch(/ask them, or create a separate App below\.$/);
-    expect(unbindableReason([owned], PROJECT, false)).toMatch(/can bind it to this project — ask them\.$/);
+    expect(unbindableReason([owned], PROJECT, false)).toMatch(/can share it with this project — ask them\.$/);
   });
 
   it("names the other organization and who can use the App, for an App reached through a project of another org", () => {

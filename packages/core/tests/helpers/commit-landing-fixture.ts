@@ -106,7 +106,7 @@ export function fakeGitHubClient(real: typeof GitHubClient): typeof GitHubClient
       if (repo.down === 'no_binding') {
         throw new real.GitHubClientError(
           'no_binding',
-          'this project has no active GitHub binding — bind a repository on its Integrations tab',
+          'this project has no GitHub connection switched on — connect a repository on its Integrations tab',
         );
       }
       return {
@@ -278,15 +278,15 @@ export function useCommitLandingWorld() {
       issue: Issue,
       commit: string | undefined,
       agency: Agency = 'agent',
-      extra: { landing?: string } = {},
+      extra: { landing?: string; target?: string } = {},
     ) {
       const { applyMergeMarker } = await import('../../src/issues/merge-marker.js');
       return applyMergeMarker({
         issue,
         op: 'mark',
-        target: 'main',
         ...(commit ? { commit } : {}),
         ...extra,
+        target: extra.target ?? 'main',
         actor: actor(agency),
       });
     },

@@ -28,7 +28,7 @@ const coolifyTargetSchema = z
 export const COOLIFY_ROLLBACK_MODE = 'coolify-image' as const;
 
 const COOLIFY_ROLLBACK_PROSE_REFUSAL =
-  'rollback on a Coolify binding is an action, not a paragraph: Coolify exposes `GET /applications/{uuid}/rollback-images` and `POST /applications/{uuid}/rollback`, and Forge performs them. Send {"mode":"coolify-image"}. Free text is kept only for channels whose API cannot express a rollback (ISS-925).';
+  'rollback on a Coolify deploy target is an action, not a paragraph: Coolify exposes `GET /applications/{uuid}/rollback-images` and `POST /applications/{uuid}/rollback`, and Forge performs them. Send {"mode":"coolify-image"}. Free text is kept only for channels whose API cannot express a rollback (ISS-925).';
 
 /**
  * The Coolify override of `releaseChannelFields.rollback`. Written as a hand rolled refinement
@@ -69,7 +69,7 @@ export const coolifyConfigSchema = z.strictObject({
         if (seen.has(t.label)) {
           ctx.addIssue({
             code: 'custom',
-            message: `two deploy targets are both labelled "${t.label}" — a label names one application and must be unique within this binding`,
+            message: `two deploy targets are both labelled "${t.label}" — a label names one application and must be unique within this deploy target`,
           });
           return;
         }

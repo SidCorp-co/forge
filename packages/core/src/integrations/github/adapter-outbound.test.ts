@@ -125,7 +125,7 @@ describe('what it refuses, and by what name', () => {
     bindingRows = [];
     await expect(
       dispatch()?.(ctx, { eventName: CHECK_PUBLISH_EVENT, payload: { pullRequestId: PR_ID } }),
-    ).rejects.toThrow(/no active GitHub binding/);
+    ).rejects.toThrow(/no GitHub connection switched on/);
     expect(recordDelivery).toHaveBeenCalledWith(
       expect.objectContaining({
         bindingId: null,

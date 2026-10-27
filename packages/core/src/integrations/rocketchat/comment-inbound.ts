@@ -32,7 +32,7 @@ async function say(transport: ReplyTransport, text: string): Promise<void> {
 }
 
 export const RETIRED_THREAD_REPLY =
-  'This thread belonged to an issue whose project is now bound to a different room, so nothing written here reaches it. Open the issue in Forge, or say it in the room this project is bound to now.';
+  'This thread belonged to an issue whose project now uses a different room, so nothing written here reaches it. Open the issue in Forge, or say it in the room this project uses now.';
 
 /** Raised inside the transaction when another delivery of this message already owns a comment. */
 class DuplicateDelivery extends Error {}

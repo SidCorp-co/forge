@@ -90,7 +90,7 @@ const holder = {
   projectId: PROJECT_ID,
   environment: 'live',
   runId: 'run-holding',
-  subject: 'live deploy (binding b-7)',
+  subject: 'live deploy (target b-7)',
   acquiredAt: '2026-09-26T10:00:00.000Z',
   expiresAt: '2026-09-26T10:30:00.000Z',
 };
@@ -118,7 +118,7 @@ describe('POST confirm-prod-deploy, when the environment is held', () => {
     const body = (await (await confirm()).json()) as { message: string };
 
     expect(body.message).toContain('run-holding');
-    expect(body.message).toContain('live deploy (binding b-7)');
+    expect(body.message).toContain('live deploy (target b-7)');
     expect(body.message).toContain('2026-09-26T10:30:00.000Z');
   });
 

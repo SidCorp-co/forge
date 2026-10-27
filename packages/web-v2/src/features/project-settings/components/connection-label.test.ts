@@ -86,13 +86,56 @@ describe("the picker's labels", () => {
     expect(labels.join(" ")).not.toMatch(/\(\d\)/);
   });
 
-  it("numbers only two added in the same minute, which nothing else tells apart", () => {
+  // r36, judge-145: six alike rows added in one minute read "(2)" to "(6)", and clearing one moved the
+  // number of every row after it. A row's words now come from its own time alone.
+  it("tells apart two added in the same minute by the second, then the thousandth, never a number", () => {
     expect(
       labelsOf([
         conn({ id: "a", provider: "sentry", createdAt: "2026-10-02T09:00:10.000Z" }),
         conn({ id: "b", provider: "sentry", createdAt: "2026-10-02T09:00:40.000Z" }),
       ]),
-    ).toEqual(["Sentry · added 2 Oct 2026, 16:00", "Sentry · added 2 Oct 2026, 16:00 (2)"]);
+    ).toEqual(["Sentry · added 2 Oct 2026, 16:00:10", "Sentry · added 2 Oct 2026, 16:00:40"]);
+    expect(
+      labelsOf([
+        conn({ id: "a", provider: "sentry", createdAt: "2026-10-02T09:00:10.120Z" }),
+        conn({ id: "b", provider: "sentry", createdAt: "2026-10-02T09:00:10.480Z" }),
+      ]),
+    ).toEqual(["Sentry · added 2 Oct 2026, 16:00:10.120", "Sentry · added 2 Oct 2026, 16:00:10.480"]);
+  });
+
+  it("keeps every other row's name when one of several alike is cleared", () => {
+    const six = [10, 12, 15, 21, 33, 47].map((second, i) =>
+      conn({ id: `s${i}`, provider: "sentry", config: { host: "same-host.example" }, createdAt: `2026-10-27T03:34:${second}.000Z` }),
+    );
+    const before = connectionPickerLabels(six);
+    const after = connectionPickerLabels(six.filter((c) => c.id !== "s2"));
+    for (const c of six.filter((x) => x.id !== "s2")) expect(after.get(c.id)).toBe(before.get(c.id));
+    expect([...before.values()].join(" ")).not.toMatch(/\(\d\)/);
+  });
+
+  it("numbers only rows added in the same thousandth of a second", () => {
+    expect(
+      labelsOf([
+        conn({ id: "a", provider: "sentry", createdAt: "2026-10-02T09:00:10.120Z" }),
+        conn({ id: "b", provider: "sentry", createdAt: "2026-10-02T09:00:10.120Z" }),
+      ]),
+    ).toEqual(["Sentry · added 2 Oct 2026, 16:00:10.120", "Sentry · added 2 Oct 2026, 16:00:10.120 (2)"]);
+  });
+
+  // r36, judge-145: a connection named "Postman" read "Postman · Postman".
+  it("says a name that is only its provider's once", () => {
+    expect(labelsOf([conn({ id: "a", provider: "postman", displayName: "Postman" })])).toEqual(["Postman"]);
+    expect(labelsOf([conn({ id: "a", provider: "postman", displayName: "postman" })])).toEqual(["Postman"]);
+    // What it points at is held to the same rule: a workspace named Postman is no second word.
+    expect(
+      labelsOf([conn({ id: "a", provider: "postman", displayName: "Postman", config: { workspaceName: "Postman" } })]),
+    ).toEqual(["Postman"]);
+    expect(
+      labelsOf([conn({ id: "a", provider: "sentry", displayName: "Sentry", config: { host: "sentry.one.example" } })]),
+    ).toEqual(["sentry.one.example · Sentry"]);
+    expect(connectionLabels([conn({ id: "a", provider: "postman", displayName: "Postman" })], false).get("a")).toBe(
+      "Postman",
+    );
   });
 
   it("reads the day in the reader's time zone, not the server's", () => {

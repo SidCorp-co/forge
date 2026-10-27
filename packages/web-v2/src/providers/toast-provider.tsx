@@ -9,6 +9,15 @@ import { cn } from "@/lib/utils/cn";
 /** More than this and the oldest visible toast gives up its place. */
 export const MAX_VISIBLE_TOASTS = 3;
 
+/** The least a toast given no duration stays; one with more to read stays as long as reading it takes. */
+const LEAST_MS = 4000;
+
+/** How long a toast's words take to read: about 200 words a minute, and two seconds to find it. */
+export function readingMs({ title, description }: Pick<ToastView, "title" | "description">): number {
+  const words = `${title} ${description ?? ""}`.split(/\s+/).filter(Boolean).length;
+  return Math.max(LEAST_MS, 2000 + words * 300);
+}
+
 interface ToastItem extends ToastView {
   id: number;
   slot?: string;
@@ -16,6 +25,7 @@ interface ToastItem extends ToastView {
 }
 
 export interface ToastInput extends ToastView {
+  /** How long it stays, in ms, while nothing holds it; 0 stays until put away. Unset: its reading time. */
   duration?: number;
   /** A toast naming a slot replaces the visible one holding the same slot, so
    *  a burst of one kind of event takes one card rather than a stack. */
@@ -34,6 +44,8 @@ interface ToastApi {
 interface ToastLaneApi {
   items: ToastItem[];
   remove: (id: number) => void;
+  /** Pauses a toast's countdown while the reader is on it, and resumes it with what was left. */
+  hold: (id: number, held: boolean) => void;
   registerLane: () => () => void;
 }
 
@@ -46,7 +58,7 @@ export function useToast(): ToastApi {
   return ctx;
 }
 
-function ToastStack({ items, remove }: Pick<ToastLaneApi, "items" | "remove">) {
+function ToastStack({ items, remove, hold }: Pick<ToastLaneApi, "items" | "remove" | "hold">) {
   return items.map((t) => (
     <div key={t.id} className="pointer-events-auto">
       <Toast
@@ -62,6 +74,7 @@ function ToastStack({ items, remove }: Pick<ToastLaneApi, "items" | "remove">) {
             : undefined
         }
         onClose={() => remove(t.id)}
+        onHold={(held) => hold(t.id, held)}
       />
     </div>
   ));
@@ -109,7 +122,7 @@ function useOpenDialogHeaderBottom(watch: boolean): number | null {
 export function ToastLane({ className }: { className?: string }) {
   const lane = useContext(ToastLaneContext);
   if (!lane) throw new Error("ToastLane must be used within <ToastProvider>");
-  const { items, remove, registerLane } = lane;
+  const { items, remove, hold, registerLane } = lane;
   const wide = useMediaQuery(WIDE);
   const belowDialogHeader = useOpenDialogHeaderBottom(!wide && items.length > 0);
 
@@ -134,7 +147,7 @@ export function ToastLane({ className }: { className?: string }) {
             )}
             style={belowDialogHeader === null ? undefined : { top: belowDialogHeader }}
           >
-            <ToastStack items={passing} remove={remove} />
+            <ToastStack items={passing} remove={remove} hold={hold} />
           </section>,
           document.body,
         )}
@@ -148,7 +161,7 @@ export function ToastLane({ className }: { className?: string }) {
               "pointer-events-none fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom))] z-[60]",
             )}
           >
-            <ToastStack items={kept} remove={remove} />
+            <ToastStack items={kept} remove={remove} hold={hold} />
           </section>,
           document.body,
         )}
@@ -160,13 +173,39 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const [lanes, setLanes] = useState(0);
   const idRef = useRef(0);
+  /** Each counting toast's timer: what it had left when it last started counting, and when that was. */
+  const timers = useRef(new Map<number, { left: number; since: number; handle: ReturnType<typeof setTimeout> | null }>());
 
   const remove = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer?.handle) clearTimeout(timer.handle);
+    timers.current.delete(id);
     setItems((xs) => xs.filter((x) => x.id !== id));
   }, []);
 
+  const count = useCallback(
+    (id: number, left: number) => {
+      timers.current.set(id, { left, since: Date.now(), handle: setTimeout(() => remove(id), left) });
+    },
+    [remove],
+  );
+
+  const hold = useCallback<ToastLaneApi["hold"]>(
+    (id, held) => {
+      const timer = timers.current.get(id);
+      if (!timer) return;
+      if (held && timer.handle) {
+        clearTimeout(timer.handle);
+        timers.current.set(id, { left: timer.left - (Date.now() - timer.since), since: 0, handle: null });
+      } else if (!held && !timer.handle) {
+        count(id, Math.max(0, timer.left));
+      }
+    },
+    [count],
+  );
+
   const toast = useCallback<ToastApi["toast"]>(
-    ({ duration = 4000, slot, keep, ...view }) => {
+    ({ duration, slot, keep, ...view }) => {
       const id = ++idRef.current;
       setItems((xs) => {
         const kept = slot === undefined ? xs : xs.filter((x) => x.slot !== slot);
@@ -175,13 +214,33 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         const shown = new Set(next.filter((x) => !x.keep).slice(-room));
         return next.filter((x) => x.keep || shown.has(x));
       });
-      if (duration > 0 && !keep) setTimeout(() => remove(id), duration);
+      const lasts = duration ?? readingMs(view);
+      if (lasts > 0 && !keep) count(id, lasts);
     },
-    [remove],
+    [count],
   );
 
   const dismiss = useCallback<ToastApi["dismiss"]>((slot) => {
     setItems((xs) => xs.filter((x) => x.slot !== slot));
+  }, []);
+
+  // A toast leaves by remove, by its slot, by dismiss or by the visible limit: whichever, its
+  // countdown, held or running, leaves with it.
+  useEffect(() => {
+    const shown = new Set(items.map((x) => x.id));
+    for (const [id, timer] of timers.current) {
+      if (shown.has(id)) continue;
+      if (timer.handle) clearTimeout(timer.handle);
+      timers.current.delete(id);
+    }
+  }, [items]);
+
+  useEffect(() => {
+    const live = timers.current;
+    return () => {
+      for (const timer of live.values()) if (timer.handle) clearTimeout(timer.handle);
+      live.clear();
+    };
   }, []);
 
   const registerLane = useCallback(() => {
@@ -191,7 +250,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastContext.Provider value={{ toast, dismiss }}>
-      <ToastLaneContext.Provider value={{ items, remove, registerLane }}>
+      <ToastLaneContext.Provider value={{ items, remove, hold, registerLane }}>
         {children}
         {lanes === 0 && items.length > 0 ? (
           // A page with no frame has no lane to reserve; the corner is the
@@ -200,7 +259,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             data-testid="toast-corner"
             className="pointer-events-none fixed bottom-5 right-5 z-[60] flex flex-col gap-2.5"
           >
-            <ToastStack items={items} remove={remove} />
+            <ToastStack items={items} remove={remove} hold={hold} />
           </div>
         ) : null}
       </ToastLaneContext.Provider>

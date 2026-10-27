@@ -301,7 +301,7 @@ describe('ISS-1398 — the range a merge-branch release carries, read through th
 
     const warned = readiness?.warnings.find((w) => w.code === 'RELEASE_CARRIED_UNREAD');
     expect(warned?.message).toContain(
-      `\nForge cannot read this project's repository on gitlab.com, since it holds no GitHub binding and no deploy key. Attach a deploy key with read access to ${GITLAB_URL} under the project's Settings → Runners → Git access. Read access is all Forge needs; devices that push with it need write access.`,
+      `\nForge cannot read this project's repository on gitlab.com, since it holds no GitHub connection and no deploy key. Attach a deploy key with read access to ${GITLAB_URL} under the project's Settings → Runners → Git access. Read access is all Forge needs; devices that push with it need write access.`,
     );
     expect(warned?.message).not.toMatch(/bind (a|the) repository|Integrations/);
   }, 60_000);

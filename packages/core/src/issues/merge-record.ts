@@ -137,8 +137,8 @@ export function checkStep(u: { why?: string; clears: string; noReader: boolean }
   if (/\bset an SSH clone URL/i.test(fix)) {
     return "Set the repository's SSH clone URL and a deploy key, then mark it again";
   }
-  return /\bbind the repository\b/.test(fix)
-    ? 'Attach a deploy key or bind the repository, then mark it again'
+  return /\bconnect the repository\b/.test(fix)
+    ? 'Attach a deploy key or connect the repository, then mark it again'
     : 'Attach a deploy key, then mark it again';
 }
 
@@ -290,6 +290,9 @@ export async function recordIssueMerge(
     evidence: MergeEvidence;
     /** The issue's declared lane the mark was judged on; the stamp lands only while it still holds. */
     declared?: string | null;
+    /** Where a git mark said the work landed: written by this same guarded statement, so it lands
+     *  only with the mark it describes, never on a mark another request recorded (ISS-1421 r36). */
+    target?: string | undefined;
   },
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
@@ -340,6 +343,7 @@ export async function recordIssueMerge(
       mergedAt: claimsOnly ? sql`coalesce(${issues.mergedAt}, ${stampExpr})` : stampExpr,
       // When the mark was first set, which the owed-close sweep counts from; a later write keeps it.
       mergeMarkedAt: sql`coalesce(${issues.mergeMarkedAt}, now())`,
+      ...(args.target ? { mergedTarget: args.target } : {}),
       // A commit replaces any claim here: the CHECK holds a claim beside no commit.
       ...(withCommit
         ? {
@@ -402,6 +406,7 @@ export async function clearIssueMerge(
       mergedLanding: null,
       mergedClaimedCommit: null,
       mergedCommitStated: false,
+      mergedTarget: null,
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), ne(issues.status, 'closed'), isNotNull(issues.mergedAt)))

@@ -112,7 +112,8 @@ export function forgeIssuesDescription(refClause: string): string {
     'reaches the audit trail as YOUR CLAIM, and on a git issue only once the repository ' +
     'resolves it, recorded by the full sha it resolves to - refused COMMIT_NOT_IN_REPOSITORY ' +
     'where the repository holds no such commit, and COMMIT_UNVERIFIED where it cannot be read on ' +
-    'an issue not yet marked, in which case mark naming no commit; on an issue already marked the ' +
+    'an issue not yet marked, in which case mark naming no commit (a project naming no repository ' +
+    'keeps the commit as a claim instead); on an issue already marked the ' +
     'call changes nothing and its detail says where the mark stays. A person marking with ' +
     'data.commit is held to this, and the commit stays in the audit comment, never a column. ' +
     'data.target base, prod or feature is written in the comment as the branch it means. ' +

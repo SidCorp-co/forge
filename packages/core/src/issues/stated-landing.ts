@@ -89,7 +89,7 @@ export async function statedAt(issueId: string, commit: string): Promise<boolean
 /** The stated commit stamped, where there is one. */
 export async function stampStated(
   issue: { id: string; projectId: string; declaredLandingShape: LandingShape | null },
-  args: { actor: { agency: ActorAgency }; mergedAt?: Date | null },
+  args: { actor: { agency: ActorAgency }; mergedAt?: Date | null; target?: string | undefined },
   recorded: { claim: string | null; repository: string | null } | null,
   observed: { commitSha: string } | null,
 ): Promise<{ stated: Stated; stamp: MergeRecord } | null> {
@@ -104,6 +104,7 @@ export async function stampStated(
   const stamp = await recordIssueMerge(db, {
     issueId: issue.id,
     declared: issue.declaredLandingShape ?? null,
+    ...(args.target ? { target: args.target } : {}),
     evidence: {
       kind: 'stated',
       commitSha: stated.commit,

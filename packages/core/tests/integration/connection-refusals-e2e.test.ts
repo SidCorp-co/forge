@@ -321,7 +321,7 @@ describe('finishing a GitHub installation for an App the caller reaches by a bin
     expect(res.status).toBe(403);
     expect(body.code).toBe('INSTALL_NOT_COMPLETABLE');
     expect(body.message).toContain('GitHub App forge-test');
-    expect(body.message).toMatch(/admin of a project it is bound to/);
+    expect(body.message).toMatch(/admin of a project it is shared with/);
     expect(await installationOn(foreignProjectId)).toBeUndefined();
   });
 

@@ -13,7 +13,7 @@ describe('notGrantedMessage', () => {
     expect(
       notGrantedMessage('coolify', { displayName: 'Production box', provider: 'coolify' }),
     ).toBe(
-      'This project\'s Coolify binding through the connection "Production box" is connected, but no agent on this project may use it: its "Agents on this project may use this" switch is off. Only an admin of this project can switch it on, in the Coolify drawer on this project\'s Integrations tab.',
+      'This project is connected to Coolify through the connection "Production box", but no agent on this project may use it: its "Agents on this project may use this" switch is off. Only an admin of this project can switch it on, in the Coolify drawer on this project\'s Integrations tab.',
     );
   });
 
@@ -25,7 +25,7 @@ describe('notGrantedMessage', () => {
 
   it('names a project admin for a provider whose calls Forge makes itself', () => {
     expect(notGrantedMessage('google')).toContain(
-      "This project's Google Sheets binding is connected",
+      'This project is connected to Google Sheets, but no agent',
     );
     expect(notGrantedMessage('google')).toContain('Only an admin of this project can switch it on');
   });

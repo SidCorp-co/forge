@@ -90,11 +90,11 @@ export function describeEmptyProjection(report: ProjectionPipeReport): string | 
   if (report.rows > 0) return null;
   const door =
     report.inbound.count === 0
-      ? `Forge has recorded no webhook delivery at all on ${report.bindings === 1 ? 'its GitHub binding' : `any of its ${report.bindings} GitHub bindings`} — either GitHub has never called, or its calls are being turned away before they are recorded, which is what a wrong or rotated webhook secret looks like from here`
-      : `Forge has recorded ${report.inbound.count} inbound deliver${report.inbound.count === 1 ? 'y' : 'ies'} on its GitHub bindings, the last at ${report.inbound.lastAt?.toISOString() ?? 'a time nothing recorded'}, and none of them wrote a pull request`;
+      ? `Forge has recorded no webhook delivery at all on ${report.bindings === 1 ? 'its GitHub connection' : `any of its ${report.bindings} GitHub connections`} — either GitHub has never called, or its calls are being turned away before they are recorded, which is what a wrong or rotated webhook secret looks like from here`
+      : `Forge has recorded ${report.inbound.count} inbound deliver${report.inbound.count === 1 ? 'y' : 'ies'} on its GitHub connections, the last at ${report.inbound.lastAt?.toISOString() ?? 'a time nothing recorded'}, and none of them wrote a pull request`;
   const bound =
     report.bindings === 0
-      ? 'this project has bound no GitHub repository, so nothing could write one'
+      ? 'this project has connected no GitHub repository, so nothing could write one'
       : door;
   return (
     "Forge's projection of this repository holds no pull request at all for this project, so there is " +

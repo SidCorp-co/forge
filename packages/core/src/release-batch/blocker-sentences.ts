@@ -141,9 +141,9 @@ function namedSentence(code: NamedCode, details: Record<string, unknown> | null)
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
-    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. To release through Forge instead, declare a release chain under Settings → Shape & release and give it a live deploy binding under Settings → Integrations.',
+    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. To release through Forge instead, declare a release chain under Settings → Shape & release and give it a live deploy target under Settings → Integrations.',
   RELEASE_TARGET_UNDECLARED:
-    'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.',
+    'This project declares a release chain and has no deploy target switched on that carries the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.',
   CLAIM_CONFLICT: namedSentence('CLAIM_CONFLICT', null),
   RELEASE_ROSTER_EMPTY: `Nothing is ready to release: no issue is at ${ISSUE_STATUS_LABELS.awaiting_release}.`,
   RELEASE_ROSTER_OVERSIZE: `More issues are waiting than one release may carry. A release names at most ${RELEASE_ROSTER_LIMIT} issues, so cut this roster in parts, oldest merge first.`,
@@ -151,7 +151,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_WORK_UNMERGED: namedSentence('RELEASE_WORK_UNMERGED', null),
   RELEASE_ISSUES_UNCLOSABLE: namedSentence('RELEASE_ISSUES_UNCLOSABLE', null),
   RELEASE_RUNNER_AMBIGUOUS:
-    'Live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
+    'Live deploy targets name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
   RELEASE_PROBES_UNREADABLE:
     'A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
   RELEASE_POOL_EMPTY:
@@ -349,7 +349,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_TARGET_UNDECLARED' && Array.isArray(details?.releaseChain)) {
     const chain = details.releaseChain as { branch?: unknown }[];
     const last = chain[chain.length - 1]?.branch;
-    return `This project's release chain ends at \`${String(last)}\` and it has no active deploy binding carrying the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.`;
+    return `This project's release chain ends at \`${String(last)}\` and it has no deploy target switched on that carries the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.`;
   }
   if (
     code === 'RELEASE_RUNNER_AMBIGUOUS' &&
@@ -357,7 +357,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     details.labels.length > 0
   ) {
     const labels = details.labels as string[];
-    return `Live deploy bindings name ${counted(labels.length, 'different release runner')} (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
+    return `Live deploy targets name ${counted(labels.length, 'different release runner')} (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
   }
   const standings = code === 'CLAIM_CONFLICT' ? readClaimConflictDetails(details) : null;
   if (standings) {
@@ -439,7 +439,7 @@ export type RefusedDeclaration = (bindings: number) => string;
 /** A `verify` Forge refused stops the release, so removing it is a repair and not silence. */
 const refusedDeclarationSentence: RefusedDeclaration = (n) => {
   const w = (one: string, many: string) => agree(n, one, many);
-  return `a \`verify\` Forge cannot read — ${w('it names no probe', 'none of them names a probe')} with a url — so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Correct ${w('it', 'each')} to \`{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}\`, or remove ${w('it', 'them')}, and a release with no probe on any live binding is recorded unverified.`;
+  return `a \`verify\` Forge cannot read — ${w('it names no probe', 'none of them names a probe')} with a url — so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Correct ${w('it', 'each')} to \`{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}\`, or remove ${w('it', 'them')}, and a release with no probe on any live deploy target is recorded unverified.`;
 };
 
 /** Urls as code, so a sentence that opens on one reads the same wherever it is answered. */
@@ -518,6 +518,6 @@ export function runnerPreferenceUnmetSentence(
 ): string {
   return withCosts(
     'RELEASE_RUNNER_PREFERENCE_UNMET',
-    `No box carries the release label \`${label}\`, so this release goes to the pool this project has. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear ${field} from the live deploy binding under ${INTEGRATIONS_TAB} and from the connection behind it under ${CONNECTIONS_DIRECTORY}, since the binding falls back to it. Either one is complete, and this warning goes with the label.`,
+    `No box carries the release label \`${label}\`, so this release goes to the pool this project has. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear ${field} from the live deploy target under ${INTEGRATIONS_TAB} and from the connection behind it under ${CONNECTIONS_DIRECTORY}, since the deploy target falls back to it. Either one is complete, and this warning goes with the label.`,
   );
 }

@@ -218,7 +218,7 @@ describe('the runner label warning, as a person reads it', () => {
   it('names the field by the heading the screen shows, not the stored key', () => {
     const { reader, message } = warningWithReader(warning);
     expect(message).toBe('caller sentence');
-    expect(reader).toContain('clear the Release runner label from the live deploy binding');
+    expect(reader).toContain('clear the Release runner label from the live deploy target');
     expect(reader).not.toMatch(CALLER_WORDING);
   });
 });
@@ -230,7 +230,7 @@ describe('live bindings naming different release runners, as a person reads it',
       labels: ['box-a', 'box-b', 'box-c'],
     });
     expect(read).toBe(
-      'Live bindings name 3 different release runners (box-a, box-b, box-c) — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.',
+      'Live deploy targets name 3 different release runners (box-a, box-b, box-c) — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.',
     );
   });
 

@@ -104,7 +104,7 @@ export async function mintGitCredentialForDevice(args: {
   if (!row) {
     throw new GitCredentialError(
       404,
-      `no active GitHub App binding for ${full} on any project this device runs — bind the repository on the project's Integrations tab, and assign this device a runner there`,
+      `no project this device runs is connected to ${full} through the GitHub App — connect the repository on the project's Integrations tab, and assign this device a runner there`,
     );
   }
 
@@ -113,7 +113,7 @@ export async function mintGitCredentialForDevice(args: {
   if (!config.installationId) {
     throw new GitCredentialError(
       409,
-      `${canonical} is bound on project ${row.slug} but the App is not installed for that binding — install it on the account that owns ${owner}`,
+      `${canonical} is connected on project ${row.slug} but the App is not installed for it — install it on the account that owns ${owner}`,
     );
   }
 

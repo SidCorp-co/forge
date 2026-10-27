@@ -196,11 +196,14 @@ describe("ISS-1409 — a reader that was read keeps its refusals, and a person's
     },
   );
 
-  it("refuses a person's mark naming a commit where no reader is declared (criterion 13)", async () => {
+  // Criterion 13 refused this; ISS-1421 r36 (criterion 360) keeps it as a claim, since a project
+  // naming no repository has nothing a person could set to make the commit checkable.
+  it("keeps a person's mark naming a commit where no reader is declared as a claim", async () => {
     noReader();
     const issue = await seed({ sessionContext: {} });
-    const refused = await refusal(() => mark(issue, OWN, 'human'));
-    expect(refused.code).toBe('COMMIT_UNVERIFIED');
+    const res = await mark(issue, OWN, 'human');
+    expect(res.mark).toBe('asserted');
+    expect(await claimOf(issue.id)).toBe(OWN);
   });
 });
 

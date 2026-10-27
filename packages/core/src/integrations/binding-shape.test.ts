@@ -10,7 +10,7 @@ describe('cannotDeployMessage', () => {
   it('names the provider and every one Forge deploys to as the Integrations page labels them', () => {
     const said = cannotDeployMessage('sentry');
     expect(said).toMatch(
-      /^Forge cannot deploy to Sentry, so a binding of it can only be a service binding/,
+      /^Forge cannot deploy to Sentry, so it can be shared with a project only as a service/,
     );
     expect(said).toContain('Coolify');
     expect(said).toContain('Epodsystem');

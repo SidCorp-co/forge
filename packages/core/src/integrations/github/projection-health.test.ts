@@ -30,7 +30,9 @@ describe('describeEmptyProjection', () => {
   it('names the door nobody has knocked on where no delivery has ever arrived', () => {
     const said = describeEmptyProjection(report()) ?? '';
     expect(said).toContain('holds no pull request at all');
-    expect(said).toContain('Forge has recorded no webhook delivery at all on its GitHub binding');
+    expect(said).toContain(
+      'Forge has recorded no webhook delivery at all on its GitHub connection',
+    );
     // F2: the count is of deliveries RECORDED. A call turned away at the signature check never
     // reaches the recorder, so this must not tell an operator GitHub never called.
     expect(said).toContain('turned away before they are recorded');
@@ -40,7 +42,7 @@ describe('describeEmptyProjection', () => {
 
   it('counts the bindings rather than implying there is one', () => {
     expect(describeEmptyProjection(report({ bindings: 3 })) ?? '').toContain(
-      'any of its 3 GitHub bindings',
+      'any of its 3 GitHub connections',
     );
   });
 
@@ -57,7 +59,7 @@ describe('describeEmptyProjection', () => {
 
   it('says a project has bound no repository rather than blaming a door it does not have', () => {
     expect(describeEmptyProjection(report({ bindings: 0 })) ?? '').toContain(
-      'bound no GitHub repository',
+      'connected no GitHub repository',
     );
   });
 

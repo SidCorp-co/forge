@@ -326,7 +326,7 @@ describe('every exit before the cut is written on the row', () => {
     expect(posted).toHaveLength(1);
     expect(posted[0]).toBe(
       `**Held by the automatic release** for ${names[0]}, ${names[1]} and ${names[2]}\n\n` +
-        'A release has nowhere to land, because no active deploy binding of this project carries its live stage. ' +
+        'A release has nowhere to land: no deploy target of this project that is switched on carries its live stage. ' +
         'A person adds one under Settings → Integrations, or chooses "Repository, no release" under Shape & release. ' +
         'The next sweep then releases the waiting issues.',
     );

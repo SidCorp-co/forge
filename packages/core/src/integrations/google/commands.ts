@@ -62,7 +62,7 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
   if (rows.length === 0) {
     throw new GoogleCommandError(
       'NO_CONNECTION',
-      'this project has no Google connection bound — add one under Settings → Integrations → Google, or bind an existing org service account to this project.',
+      'this project has no Google connection — add one under Settings → Integrations → Google, or share an existing org service account with this project.',
     );
   }
   const usable = rows
@@ -72,7 +72,7 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
     const why = await offBindingWords(rows[0] as BindingWithConnection, projectId);
     throw new GoogleCommandError(
       'BINDING_DISABLED',
-      `this project's Google binding exists, but ${why} Nothing was sent to Google.`,
+      `this project is connected to Google, but ${why} Nothing was sent to Google.`,
     );
   }
   if (!grantHolds(getIntegration('google'), usable[0].binding)) {
@@ -92,7 +92,7 @@ export function resolveSpreadsheetId(
   if (typeof fallback === 'string' && fallback.length > 0) return fallback;
   throw new GoogleCommandError(
     'NO_SPREADSHEET',
-    "no spreadsheet was named and this project's Google binding declares no default — pass `spreadsheetId`, or set a default spreadsheet on the binding. Nothing was sent to Google.",
+    "no spreadsheet was named and this project's Google connection declares no default — pass `spreadsheetId`, or set a default spreadsheet on this project's Integrations tab. Nothing was sent to Google.",
   );
 }
 
@@ -102,7 +102,7 @@ function clientArgsFor(pair: BindingWithConnection): GoogleClientArgs {
   if (typeof serviceAccountJson !== 'string' || serviceAccountJson.length === 0) {
     throw new GoogleCommandError(
       'ACCOUNT_REJECTED',
-      'the bound Google connection holds no service-account key — re-enter the key file under Settings → Integrations → Google.',
+      "this project's Google connection holds no service-account key — re-enter the key file under Settings → Integrations → Google.",
     );
   }
   const previous = secrets.previousServiceAccountJson;

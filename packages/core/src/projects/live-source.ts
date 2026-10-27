@@ -27,8 +27,10 @@ export type LiveSource =
       kind: 'refused';
       /** `cause` and `clears` as one sentence. */
       reason: string;
-      /** No route was declared: neither a GitHub binding nor a deploy key beside a repository URL. */
+      /** No route was declared: neither a GitHub connection nor a deploy key beside a repository URL. */
       unbound: boolean;
+      /** Nor a repository URL: the project names no repository at all (ISS-1421 r36). */
+      noRepository?: boolean;
       /** The route the reason is about, so a sentence around it names the one to repair. */
       route: RepositoryRoute;
     } & Refused);
@@ -63,20 +65,32 @@ function noCredential(repoUrl: string | null): Refused {
   if (!repoUrl?.trim()) {
     return {
       cause:
-        'this project has no GitHub binding and names no repository URL, so there is no repository to read',
+        'this project has no GitHub connection and names no repository URL, so there is no repository to read',
       clears: `set an SSH clone URL under ${REPO_URL_AT}. Then attach a deploy key under ${GIT_ACCESS}`,
     };
   }
   const host = hostOf(repoUrl);
-  const github = host === 'github.com' ? '. Or bind the repository on its Integrations tab' : '';
+  const github = host === 'github.com' ? '. Or connect the repository on its Integrations tab' : '';
   return {
-    cause: `Forge cannot read this project's repository on ${host}, since it holds no GitHub binding and no deploy key`,
+    cause: `Forge cannot read this project's repository on ${host}, since it holds no GitHub connection and no deploy key`,
     clears: `attach a deploy key with ${KEY_ACCESS} to ${repoUrl.trim()} under ${GIT_ACCESS}. ${READ_ACCESS_IS}${github}`,
   };
 }
 
-function refused(said: Refused, unbound: boolean, route: RepositoryRoute): LiveSource {
-  return { kind: 'refused', reason: saying(said), ...said, unbound, route };
+function refused(
+  said: Refused,
+  unbound: boolean,
+  route: RepositoryRoute,
+  noRepository = false,
+): LiveSource {
+  return {
+    kind: 'refused',
+    reason: saying(said),
+    ...said,
+    unbound,
+    route,
+    ...(noRepository ? { noRepository } : {}),
+  };
 }
 
 /**
@@ -99,7 +113,7 @@ export async function resolveLiveSource(
   const row = await deps.deployKey(projectId);
   const repoUrl = row.repoUrl?.trim() ?? '';
   if (!row.privateKeyEnc || !repoUrl) {
-    return refused(noCredential(repoUrl), true, 'deploy_key');
+    return refused(noCredential(repoUrl), true, 'deploy_key', !repoUrl);
   }
   const keyRefused = (said: Refused) => refused(said, false, 'deploy_key');
   if (classifyGitRemote(repoUrl) !== 'ssh') {

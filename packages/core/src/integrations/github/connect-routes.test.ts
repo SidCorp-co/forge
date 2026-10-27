@@ -113,7 +113,6 @@ const store = vi.hoisted(() => ({
     appId: '42',
     privateKey: 'pk',
   })),
-  listActiveBindingsForProjectProvider: vi.fn(async () => [] as unknown[]),
   listBindingsForConnection: vi.fn(async (): Promise<unknown[]> => []),
   listBindingsForProject: vi.fn(async (): Promise<unknown[]> => []),
   removedConnectionBoundTo: vi.fn(async (): Promise<unknown> => null),
@@ -125,12 +124,13 @@ vi.mock('../store.js', () => store);
 vi.mock('../binding-installation.js', () => ({ recordInstallation: vi.fn(async () => true) }));
 
 /**
- * The reach rule is `../reach.ts`'s, tested against real rows in
- * `tests/integration/connection-reach-e2e.test.ts`. What this door owes is what it does with the
- * answer: resolve the App, refuse by name, or refuse a provider that has no repositories.
+ * The reach rule, and the refusal of a connection a Clear deleted, are `../reach.ts`'s, tested on
+ * real rows under `tests/integration/`. What this door owes is what it does with the answer:
+ * resolve the App, refuse by name, or refuse a provider that has no repositories.
  */
 const reach = vi.hoisted(() => ({
   findReachableConnection: vi.fn(async (_userId: string, _connectionId: string) => null as unknown),
+  unreachedRefusal: async (_u: string, id: string, refuse: (id: string) => Error) => refuse(id),
 }));
 vi.mock('../reach.js', () => reach);
 

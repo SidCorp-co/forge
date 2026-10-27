@@ -316,7 +316,7 @@ export async function startRunnerRelease(
   await appendReading(
     row.id,
     row.attempt,
-    `resolve_repository: ${client.fullName} via binding ${client.bindingId}`,
+    `resolve_repository: ${client.fullName} via GitHub integration ${client.bindingId}`,
   );
   const preflight = await runPreflight(client, row, args);
   if ('started' in preflight) return preflight;

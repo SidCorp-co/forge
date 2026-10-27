@@ -30,7 +30,7 @@ const defaultDeps: RepositoryAccessDeps = {
 export function readableThrough(route: RepositoryRoute, repository: string | null = null): string {
   const repo = repository ?? "the project's repository";
   return route === 'binding'
-    ? `once Forge can read ${repo} again: give the GitHub App installation behind this project's binding access to it, or bind the project to where it now lives`
+    ? `once Forge can read ${repo} again: give the GitHub App installation behind this project's GitHub connection access to it, or connect the project to where it now lives`
     : `once Forge can read ${repo} again: attach a deploy key that can read it under ${GIT_ACCESS}, with the SSH clone URL set under ${REPO_URL_AT}`;
 }
 
@@ -50,9 +50,15 @@ export async function withRepository<T>(
   const { source: sourceOf, deployKey } = { ...defaultDeps, ...deps };
   const source = await sourceOf(projectId);
   if (source.kind === 'refused') {
-    const { cause, clears, unbound, route } = source;
+    const { cause, clears, unbound, route, noRepository } = source;
     const said = clears === undefined ? { cause } : { cause, clears };
-    return fn({ kind: 'refused', ...said, unbound, route });
+    return fn({
+      kind: 'refused',
+      ...said,
+      unbound,
+      route,
+      ...(noRepository ? { noRepository } : {}),
+    });
   }
   if (source.kind === 'binding') {
     return fn({ kind: 'reader', reader: githubRepositoryReader(source.client) });

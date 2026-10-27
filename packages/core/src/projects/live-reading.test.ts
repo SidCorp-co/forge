@@ -216,7 +216,7 @@ describe("a comparison GitHub refused, in a person's words", () => {
     expect(r).toMatchObject({
       kind: 'refused',
       reason:
-        "Forge cannot read SidCorp-co/forge, and checks again once Forge can read SidCorp-co/forge again: give the GitHub App installation behind this project's binding access to it, or bind the project to where it now lives",
+        "Forge cannot read SidCorp-co/forge, and checks again once Forge can read SidCorp-co/forge again: give the GitHub App installation behind this project's GitHub connection access to it, or connect the project to where it now lives",
       detail: why,
     });
     expect(r?.kind === 'refused' && r.reason).not.toMatch(/GET \/repos|HTTP 404/);

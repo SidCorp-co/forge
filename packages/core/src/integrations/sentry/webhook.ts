@@ -62,7 +62,7 @@ export function selectSentryTarget(
   if (targets.length === 0) {
     return {
       refusal:
-        'this binding declares no Sentry targets, so no delivery can be attributed to one — declare a target on the binding before pointing Sentry at this project',
+        "this project's Sentry connection declares no Sentry targets, so no delivery can be attributed to one — declare a target on it before pointing Sentry at this project",
     };
   }
 
@@ -84,10 +84,10 @@ export function selectSentryTarget(
 
   return projectSlug === null
     ? {
-        refusal: `this delivery names no Sentry project, and every target this binding declares is scoped to one (${declared}) — it cannot be confined to any of them`,
+        refusal: `this delivery names no Sentry project, and every target this project's Sentry connection declares is scoped to one (${declared}) — it cannot be confined to any of them`,
       }
     : {
-        refusal: `this delivery belongs to Sentry project "${projectSlug}", which no target this binding declares is scoped to and no org-wide target covers — this binding declares: ${declared}`,
+        refusal: `this delivery belongs to Sentry project "${projectSlug}", which no target this project's Sentry connection declares is scoped to and no org-wide target covers — it declares: ${declared}`,
       };
 }
 
@@ -122,7 +122,7 @@ export async function handleSentryWebhook(
 ): Promise<InboundDispatchResult> {
   if (!ctx.integrationSecret) {
     throw new Error(
-      'sentry: this binding has no integration secret, so no delivery can be verified',
+      "sentry: this project's Sentry connection has no integration secret, so no delivery can be verified",
     );
   }
   const signature = input.headers[SENTRY_SIGNATURE_HEADER] ?? null;

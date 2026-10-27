@@ -210,7 +210,7 @@ export async function mergeStoredPullRequest(
   if (expectBindingId !== undefined && row.bindingId !== expectBindingId) {
     throw new GitHubClientError(
       'no_binding',
-      `pull request ${req.pullRequestId} is stored under GitHub binding ${row.bindingId}, and this merge was authorised for ${expectBindingId} — Forge will not merge on a repository the caller did not name`,
+      `pull request ${req.pullRequestId} is stored under GitHub integration ${row.bindingId}, and this merge was authorised for ${expectBindingId} — Forge will not merge on a repository the caller did not name`,
     );
   }
   await assertCaller(req, row.projectId);

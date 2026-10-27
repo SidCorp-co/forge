@@ -11,12 +11,14 @@ import { ApiError } from "@/lib/api/client";
 import {
   BLURB,
   COMMIT_HINT,
+  LATER_COMMIT_HINT,
   COMMIT_PLACEHOLDER,
   CORRECTION_PLACEHOLDER,
   EMPTY_COMMIT_LINE,
   LANDING_BLURB,
   LATER_BLURB,
   MergeMarkerControl,
+  unknownTargetLine,
 } from "./merge-marker-control";
 
 expect.extend(matchers);
@@ -84,7 +86,9 @@ describe("MergeMarkerControl", () => {
   it.each([null, "2026-10-20T09:00:00Z"])("says under Commit that it is checked (mergedAt %s)", (mergedAt) => {
     render(<MergeMarkerControl issueId="i1" mergedAt={mergedAt} landingShape="git" />);
     fireEvent.click(screen.getByRole("button", { name: mergedAt ? "Mark a later merge" : "Mark merged" }));
-    expect(screen.getByRole("textbox", { name: /^Commit/ })).toHaveAccessibleDescription(COMMIT_HINT);
+    expect(screen.getByRole("textbox", { name: /^Commit/ })).toHaveAccessibleDescription(
+      mergedAt ? LATER_COMMIT_HINT : COMMIT_HINT,
+    );
     expect(COMMIT_PLACEHOLDER.length).toBeLessThanOrEqual(32);
   });
 
@@ -437,3 +441,33 @@ describe("the Mark merged panel's introduction", () => {
     expect(text).not.toMatch(/shipped/);
   });
 });
+
+// ISS-1421 r36, judge-145: Mark a later merge opened with Where it landed empty although the mark
+// had named main, and Mark merged stayed greyed until it was typed again.
+describe("Mark a later merge, where it said the work landed", () => {
+  const MARKED = "2026-10-27T03:00:00.000Z";
+
+  it("opens with Where it landed as the standing mark said it, and sends it unchanged", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={MARKED} landingShape="git" markedTarget="main" mergeMark="asserted" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark a later merge" }));
+    expect(screen.getByRole("textbox", { name: /Where it landed/ })).toHaveValue("main");
+    expect(screen.queryByTestId("target-unknown")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    expect(mark).toHaveBeenCalledWith({ target: "main" }, expect.anything());
+  });
+
+  it("says why Where it landed is empty where Forge kept no target", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={MARKED} landingShape="git" markedTarget={null} mergeMark="asserted" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark a later merge" }));
+    expect(screen.getByRole("textbox", { name: /Where it landed/ })).toHaveValue("");
+    expect(screen.getByTestId("target-unknown")).toHaveTextContent(unknownTargetLine("asserted"));
+    expect(unknownTargetLine("observed")).toMatch(/^Forge saw this merge in a pull request and kept no branch for it/);
+  });
+
+  it("still opens a first mark empty, whatever the issue holds", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} landingShape="git" markedTarget="main" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    expect(screen.getByRole("textbox", { name: /Where it landed/ })).toHaveValue("");
+  });
+});
+

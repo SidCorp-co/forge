@@ -109,7 +109,7 @@ describe('the declaration moving is the one case that fans out', () => {
     expect(noted).toHaveBeenCalledTimes(3);
     expect(noted.mock.calls.map((c) => c[0])).toEqual(ids.slice(PROJECT_REPUBLISH_CAP));
     expect(noted.mock.calls[0]?.[1]).toContain(String(ids.length));
-    expect(noted.mock.calls[0]?.[1]).toContain('past that bound');
+    expect(noted.mock.calls[0]?.[1]).toContain('past that limit');
   });
 
   it('asks GitHub nothing when the project has no open pull requests', async () => {

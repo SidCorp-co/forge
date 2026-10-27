@@ -181,7 +181,7 @@ export const createSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['label'],
-        message: `${providerLabel(decl.provider)} holds one binding per project, so it takes no label. A label tells apart several bindings of one provider, and only ${labelsInWords(providerNames().filter((p) => getIntegration(p)?.capabilities.multiBinding))} can hold several.`,
+        message: `${providerLabel(decl.provider)} connects to a project once, so it takes no label. A label tells apart several connections of one provider on a project, and only ${labelsInWords(providerNames().filter((p) => getIntegration(p)?.capabilities.multiBinding))} can be connected several times.`,
       });
       return z.NEVER;
     }

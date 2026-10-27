@@ -61,7 +61,7 @@ describe('bindingActs — one rule for what a drawer offers and a door accepts (
   it('names who may each act whether or not the reader may', () => {
     const acts = bindingActs(reader('member', 'member'), someoneElses, provider);
     expect(acts.whoChanges).toBe('an admin of this project');
-    expect(acts.whoSavesKey).toBe('its owner or an admin of a project bound to it');
+    expect(acts.whoSavesKey).toBe('its owner or an admin of a project it is shared with');
     expect(acts.whoTurnsOn).toBe('its owner');
     expect(bindingActs(reader('member', 'member'), orgs, provider).whoSavesKey).toBe(
       'an owner or admin of the organization that owns it',

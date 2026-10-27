@@ -6,7 +6,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CoolifyTargetsField } from "./targets-field";
+import { CoolifyTargetsField, mayFixCredentials } from "./targets-field";
 
 expect.extend(matchers);
 
@@ -95,5 +95,21 @@ describe("CoolifyTargetsField", () => {
       screen.getByText(/Could not read the application list\. This connection was removed and holds no key\.$/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/by hand/)).toBeNull();
+  });
+
+  // ISS-1421 r36, judge-145 on 344: a turned-off deploy target's drawer read core's "answers nothing:
+  // it is switched off" and then "fix the base URL and token above and try again", which cannot turn
+  // it on.
+  it("never tells a reader to fix the base URL and token of a deploy target that is turned off", () => {
+    expect(mayFixCredentials({ active: false }, false)).toBe(false);
+    expect(mayFixCredentials({ active: true }, false)).toBe(true);
+    expect(mayFixCredentials(undefined, false)).toBe(true);
+    expect(mayFixCredentials({ active: true }, true)).toBe(false);
+    listError = new Error(
+      "This project's Coolify deploy target answers nothing: it is turned off for this project, and an admin of this project can turn it back on with Enabled on its Integrations tab. Nothing was asked of Coolify.",
+    );
+    renderField([{ label: "", resourceUuid: "" }], mayFixCredentials({ active: false }, false));
+    expect(screen.getByText(/it is turned off for this project, and an admin of this project can turn it back on/)).toBeInTheDocument();
+    expect(screen.queryByText(/base URL and token/)).toBeNull();
   });
 });

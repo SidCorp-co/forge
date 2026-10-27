@@ -27,7 +27,7 @@ export const RELEASE_CHECK_WORDS = {
   project: "Reading this project's settings",
   knowledge: "Reading this project's written instructions",
   declaration: "Reading this project's release declaration",
-  channels: "Reading this project's live deploy bindings",
+  channels: "Reading this project's live deploy targets",
   'auto-release': 'Reading whether this project releases without a person',
   roster: 'Reading which issues wait at the release gate',
   'near-gate': 'Counting the issues one move short of the release gate',
@@ -94,7 +94,7 @@ function unmergedForReader(details: Details): string | null {
 
 const unreadableDeclarationForReader: RefusedDeclaration = (n) => {
   const w = (one: string, many: string) => agree(n, one, many);
-  return `a verify step Forge cannot read: ${w('it names no probe', 'none of them names a probe')} with a url, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Give ${w('its probe', 'each probe')} a full url, scheme included, or remove ${w('the verify step', 'those verify steps')}, and a release with no probe on any live binding is recorded unverified.`;
+  return `a verify step Forge cannot read: ${w('it names no probe', 'none of them names a probe')} with a url, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Give ${w('its probe', 'each probe')} a full url, scheme included, or remove ${w('the verify step', 'those verify steps')}, and a release with no probe on any live deploy target is recorded unverified.`;
 };
 
 function unreadableForReader(details: Details): string | null {
@@ -107,7 +107,7 @@ function unreadableForReader(details: Details): string | null {
 function runnersForReader(details: Details): string | null {
   const labels = Array.isArray(details?.labels) ? (details.labels as string[]) : [];
   if (labels.length === 0) return null;
-  return `Live bindings name ${counted(labels.length, 'different release runner')} (${labels.join(', ')}) — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.`;
+  return `Live deploy targets name ${counted(labels.length, 'different release runner')} (${labels.join(', ')}) — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.`;
 }
 
 function unclosableForReader(details: Details): string | null {

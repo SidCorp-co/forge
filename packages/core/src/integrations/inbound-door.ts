@@ -199,8 +199,8 @@ export function describeInboundDoor(args: {
     case 'unjudged':
       return (
         (expectedUrl === null
-          ? `Nothing here could build the inbound URL this binding needs: this core resolves no public API origin — PUBLIC_API_BASE_URL, OAUTH_REDIRECT_BASE and APP_BASE_URL are all unset — or this binding's project carries no slug.`
-          : `Nothing has asked the provider where it calls in since this binding was last probed, so the address it holds is unknown here. This binding needs ${expectedUrl}.`) +
+          ? `Nothing here could build the inbound URL this project's connection needs: this core resolves no public API origin — PUBLIC_API_BASE_URL, OAUTH_REDIRECT_BASE and APP_BASE_URL are all unset — or this project carries no slug.`
+          : `Nothing has asked the provider where it calls in since this connection was last tested here, so the address it holds is unknown here. This project's connection needs ${expectedUrl}.`) +
         ` Until then the address half of this door is unjudged, and deliveries recorded earlier say only that it opened once.${turnedAway}`
       );
     case 'unreadable':
@@ -213,12 +213,12 @@ export function describeInboundDoor(args: {
         (observed?.url
           ? `The provider holds a webhook for this App and it is switched off, so it will call nothing.`
           : `The provider holds no webhook address for this App, so it will call nothing.`) +
-        ` This binding needs ${expectedUrl ?? 'an inbound URL nothing here could build'}.${turnedAway}`
+        ` This project's connection needs ${expectedUrl ?? 'an inbound URL nothing here could build'}.${turnedAway}`
       );
     case 'elsewhere':
       return (
-        `The provider is addressed at ${observed?.url}, and this binding needs ${expectedUrl ?? 'an inbound URL nothing here could build'}. ` +
-        `Nothing it sends can reach this binding until those are the same address.${turnedAway}`
+        `The provider is addressed at ${observed?.url}, and this project's connection needs ${expectedUrl ?? 'an inbound URL nothing here could build'}. ` +
+        `Nothing it sends can reach this project until those are the same address.${turnedAway}`
       );
     default:
       return (

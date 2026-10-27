@@ -307,7 +307,7 @@ describe('each live binding is read', () => {
 
     expect(done.closed).toEqual(issueIds);
     for (const id of issueIds) {
-      expect(await markedComments(id, 'verified at only some of its deploy bindings')).toBe(1);
+      expect(await markedComments(id, 'verified at only some of its deploy targets')).toBe(1);
     }
   }, 40_000);
 });

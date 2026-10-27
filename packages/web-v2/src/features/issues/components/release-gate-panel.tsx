@@ -44,6 +44,16 @@ function emptyGateDetail(nextCutAt: string | null, automatic: boolean): string {
   return `Next cut ${formatCountdown(nextCutAt)}`;
 }
 
+/**
+ * Said in place of Release now where no waiting issue can be picked: each row below says what it
+ * waits on, so the line says where to look rather than offering a button nothing can enable
+ * (ISS-1421 r36, judge-145: the gate offered Release now with 0 ready).
+ */
+export function noneReadyLine(claimed: number, unclosable: number): string {
+  if (unclosable === 0) return `None is ready to release: ${claimed === 1 ? "the one waiting is" : "every one waiting is"} already in a release.`;
+  return `None is ready to release. Each issue marked Not ready to release says below what would make it ready${claimed > 0 ? ", and the rest are already in a release" : ""}.`;
+}
+
 /** What releases the waiting issues: a schedule, the automatic release, or a person (ISS-1421 r13). */
 export function whatReleases(nextCutAt: string | null, automatic: boolean): string {
   if (nextCutAt) return `Next cut ${formatCountdown(nextCutAt)}`;
@@ -138,7 +148,9 @@ export function ReleaseGatePanel({
             {oldest ? ` · oldest merged ${formatRelativeTime(oldest)}` : ""}
           </p>
         </div>
-        {canRelease ? (
+        {selectable.length === 0 ? (
+          <p className="fg-caption text-muted" data-testid="none-ready">{noneReadyLine(claimed, unclosable)}</p>
+        ) : canRelease ? (
           <Button
             variant="primary"
             size="sm"

@@ -108,13 +108,7 @@ function ShareExistingCard({
     [connectionsQ.data],
   );
 
-  const connectionOptions: SelectOption[] = useMemo(
-    () => {
-      const labels = connectionPickerLabels(eligible);
-      return eligible.map((c) => ({ value: c.id, label: labels.get(c.id) ?? c.id }));
-    },
-    [eligible],
-  );
+  const connectionOptions: SelectOption[] = useMemo(() => sharePickerOptions(eligible), [eligible]);
 
   const isEmpty = !connectionsQ.isLoading && eligible.length === 0;
 
@@ -190,7 +184,7 @@ function ShareExistingCard({
     <SettingsSection id={LIVE_DEPLOY_TARGET}>
       <SectionTitle className="fg-h3 mb-1">Share an existing connection</SectionTitle>
       <p className="fg-body-sm mb-4 text-muted">
-        Bind one of your connections to this project without re-entering the credential. The
+        Share one of your connections with this project without entering its key again. The
         connection&apos;s owner keeps it; this project gets a webhook secret of its own. A live
         deploy target is a connection shared as <b>Deploy target</b> with <b>Live</b> ticked; one
         you have not connected yet starts from its provider on this tab.
@@ -290,6 +284,19 @@ function ShareExistingCard({
       )}
     </SettingsSection>
   );
+}
+
+/**
+ * The share picker's options: each connection under its provider's heading, providers in the order
+ * alphabetically by the name the Integrations page gives them, and within one by name (ISS-1421 r36,
+ * judge-145: the picker listed connections in the order they were made, providers interleaved).
+ */
+export function sharePickerOptions(connections: Parameters<typeof connectionPickerLabels>[0]): SelectOption[] {
+  const labels = connectionPickerLabels(connections);
+  const byName = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+  return connections
+    .map((c) => ({ value: c.id, label: labels.get(c.id) ?? c.id, group: providerLabel(c.provider) }))
+    .sort((a, b) => byName.compare(a.group, b.group) || byName.compare(a.label, b.label));
 }
 
 /**

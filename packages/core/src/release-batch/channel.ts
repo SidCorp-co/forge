@@ -165,7 +165,7 @@ export class ReleaseRunnerAmbiguousError extends Error {
     readonly labels: string[],
   ) {
     super(
-      `RELEASE_RUNNER_AMBIGUOUS: project ${projectId} has live deploy bindings declaring different releaseRunnerLabel values (${labels.join(', ')}), so there is no one box the release job may be offered to. Core returns the whole deploy SET and never picks among it — but the runner label selects a machine, and two answers is an undeclared pool rather than a set to work. Make the labels agree, or clear all but one.`,
+      `RELEASE_RUNNER_AMBIGUOUS: project ${projectId} has live deploy targets declaring different releaseRunnerLabel values (${labels.join(', ')}), so there is no one box the release job may be offered to. Core returns the whole deploy SET and never picks among it — but the runner label selects a machine, and two answers is an undeclared pool rather than a set to work. Make the labels agree, or clear all but one.`,
     );
     this.name = 'ReleaseRunnerAmbiguousError';
   }

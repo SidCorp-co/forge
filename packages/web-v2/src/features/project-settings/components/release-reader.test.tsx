@@ -131,15 +131,15 @@ describe("a release reason on Shape & release", () => {
 				warnings: [
 					{
 						code: "RELEASE_RUNNER_PREFERENCE_UNMET",
-						message: "Or clear `releaseRunnerLabel` from the live deploy binding.",
-						reader: "Or clear the Release runner label from the live deploy binding.",
+						message: "Or clear `releaseRunnerLabel` from the live deploy target.",
+						reader: "Or clear the Release runner label from the live deploy target.",
 					},
 				],
 			}),
 		);
 
 		const text = container.textContent ?? "";
-		expect(text).toContain("clear the Release runner label from the live deploy binding");
+		expect(text).toContain("clear the Release runner label from the live deploy target");
 		expect(text).not.toContain("releaseRunnerLabel");
 	});
 });

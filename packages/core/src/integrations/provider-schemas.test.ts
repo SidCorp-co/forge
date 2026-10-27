@@ -264,9 +264,9 @@ describe('a provider named in a create refusal', () => {
       secrets: {},
     });
     expect(said).toContain(
-      'label: Google Sheets holds one binding per project, so it takes no label.',
+      'label: Google Sheets connects to a project once, so it takes no label.',
     );
-    expect(said).toContain('only Epodsystem can hold several');
+    expect(said).toContain('only Epodsystem can be connected several times');
     expect(said).not.toMatch(/`google`|multiBinding/);
   });
 

@@ -154,7 +154,7 @@ export function refuseMachineKeys(body: Record<string, unknown>): void {
 export function holding(err: ReleaseRunHoldingError): HTTPException {
   return conflict(
     'RELEASE_RUN_HOLDING',
-    `This release run is past its ${err.crossed.join(' and ')} bound, so it records no further attempts. Read GET .../state, then either finish it or abort it with what you found.`,
+    `This release run is past its ${err.crossed.join(' and ')} limit, so it records no further attempts. Read GET .../state, then either finish it or abort it with what you found.`,
   );
 }
 

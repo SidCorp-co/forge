@@ -188,7 +188,7 @@ describe('a Coolify read over a binding that answers nothing says why and who ma
     );
     expect(said.status, JSON.stringify(said.body)).toBe(400);
     expect(String(said.body.message)).toContain(
-      'it is switched off for this project, and an admin of this project can switch it back on',
+      'it is turned off for this project, and an admin of this project can turn it back on',
     );
   });
 
@@ -205,7 +205,9 @@ describe('a Coolify read over a binding that answers nothing says why and who ma
     const { projectId } = await coolifyProject();
     const said = await images(owner.token, projectId, randomUUID());
     expect(said.status).toBe(400);
-    expect(String(said.body.message)).toContain("None of this project's Coolify bindings has");
+    expect(String(said.body.message)).toContain(
+      "None of this project's Coolify deploy targets has",
+    );
     expect(String(said.body.message)).not.toContain('integrationId');
   });
 
@@ -221,7 +223,7 @@ describe('a Coolify read over a binding that answers nothing says why and who ma
     });
     const said = await images(owner.token, projectId);
     expect(said.status).toBe(400);
-    expect(String(said.body.message)).toContain('2 Coolify bindings switched on');
+    expect(String(said.body.message)).toContain('2 Coolify deploy targets switched on');
     expect(String(said.body.message)).not.toContain('integrationId');
   });
 });
@@ -330,7 +332,7 @@ describe('round 30: every Coolify door says why it refuses, and who may', () => 
     });
     expect(said.status, JSON.stringify(said.body)).toBe(400);
     expect(String(said.body.message)).toContain(
-      'it is switched off for this project, and an admin of this project can switch it back on',
+      'it is turned off for this project, and an admin of this project can turn it back on',
     );
     expect(asked).not.toContain(new URL(NOWHERE).host);
   });
@@ -400,7 +402,7 @@ describe('confirming a live deploy (criterion 344)', () => {
     expect(said.status).toBe(400);
     expect(said.body.code).toBe('NOT_LIVE_BINDING');
     expect(said.body.message).toBe(
-      'This Coolify binding neither deploys to live nor deploys an application a live binding deploys, so no live deploy waits on it to be confirmed.',
+      'This Coolify deploy target neither deploys to live nor deploys an application a live deploy target deploys, so no live deploy waits on it to be confirmed.',
     );
   });
 });

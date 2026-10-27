@@ -276,7 +276,7 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
     );
     expect(fromOther.body.code).toBe('CONNECTION_REMOVED');
     expect(fromOther.body.message).toBe(
-      'This GitHub connection was removed, so it holds no App. Install the GitHub App again from a bound project whose App would belong to its owner, and it turns back on.',
+      'This GitHub connection was removed, so it holds no App. Install the GitHub App again from a project it is shared with whose App would belong to its owner, and it turns back on.',
     );
     const [binding] = await store.listBindingsForConnection(connection.id);
     const tested = await call(
@@ -291,7 +291,7 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
       role: 'service',
     });
     expect(shared.body.message).toBe(
-      'This connection was removed and holds no key, so it cannot be shared. Install the GitHub App again from a bound project whose App would belong to its owner, and it turns back on.',
+      'This connection was removed and holds no key, so it cannot be shared. Install the GitHub App again from a project it is shared with whose App would belong to its owner, and it turns back on.',
     );
   });
 
@@ -303,7 +303,7 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
       sql`DELETE FROM integration_bindings WHERE connection_id = ${connection.id}`,
     );
     const nothing =
-      'No project is bound to it, so nothing can turn it back on. Clear it from the list on the Integrations page.';
+      'It is shared with no project, so nothing can turn it back on. Clear it from the list on the Integrations page.';
     const listed = await call(
       'GET',
       `/api/projects/${other.id}/integrations/github/repositories?connectionId=${connection.id}`,
@@ -337,7 +337,7 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
       `/api/projects/${project.id}/integrations/github/repositories?connectionId=${connection.id}`,
     );
     expect(listed.body.message).toBe(
-      'This GitHub connection was removed, so it holds no App. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list on the Integrations page.',
+      'This GitHub connection was removed, so it holds no App. No project it is shared with would give a new App to its owner, so nothing can turn it back on. Clear it from the list on the Integrations page.',
     );
     const [binding] = await store.listBindingsForConnection(connection.id);
     const tested = await call(
@@ -380,7 +380,7 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
 });
 
 const OTHER_OWNER =
-  "This project's GitHub binding names a removed connection that an App created here would not " +
+  'This project reaches GitHub through a removed connection that an App created here would not ' +
   'belong to, so the new App could not take its place. Clear it from the list on the Integrations ' +
   'page. Then the App can be created here.';
 
@@ -397,7 +397,11 @@ describe('a write that races another (criteria 227, 238)', () => {
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     expect(await rowOf(connection.id)).toMatchObject({ active: false, wiped: false });
 
-    expect(await store.clearRemovedConnection(read as NonNullable<typeof read>)).toBe(false);
+    expect(
+      await (await import('../../src/integrations/connection-clears.js')).clearRemovedConnection(
+        read as NonNullable<typeof read>,
+      ),
+    ).toBe(false);
     expect(await rowOf(connection.id)).toMatchObject({ wiped: false });
     expect(await bindingCount(connection.id)).toBe(1);
   });

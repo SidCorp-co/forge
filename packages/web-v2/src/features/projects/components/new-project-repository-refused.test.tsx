@@ -3,6 +3,8 @@
 // ISS-1236 r7, judge-144 at ae528e1: the new-project dialog creates the project, then saves its
 // repository settings. When that second write was refused, a toast titled "The project was not saved"
 // stood over a project that had been saved, inviting a second create into a taken slug.
+// r8, judge-147: the toast sent a person to Settings while the field stood in front of them, and its
+// "Settings, under Repository" landed on General, where there is no Repository.
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -13,10 +15,11 @@ expect.extend(matchers);
 afterEach(cleanup);
 
 const toast = vi.fn();
+const dismiss = vi.fn();
 const update = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
+vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast, dismiss }) }));
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null, scopeRead: true }) }));
 vi.mock("@/features/orgs/hooks", () => ({
   useOrgs: () => ({ data: [], isError: false, error: null, refetch: vi.fn() }),
@@ -53,6 +56,7 @@ const titles = () => toast.mock.calls.map(([t]) => (t as { title: string }).titl
 
 beforeEach(() => {
   toast.mockClear();
+  dismiss.mockClear();
   update.mockReset();
 });
 
@@ -64,16 +68,26 @@ describe("the new-project dialog when its repository step is refused", () => {
     expect(titles()).not.toContain("The project was not saved");
   });
 
-  it("says the project was created, what was not saved, and where to set it", async () => {
+  it("says the project was created, what was not saved, and to correct it here", async () => {
     update.mockRejectedValue(new ApiError(400, REFUSAL, "REPO_PATH_NOT_ABSOLUTE"));
     await createThenSaveRepository("~/code/app");
     await vi.waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
     const said = toast.mock.calls[1]?.[0] as { title: string; description: string; tone: string };
     expect(said.title).toBe("Project created; its repository settings were not saved");
     expect(said.description).toContain(REFUSAL);
-    expect(said.description).toContain("Settings, under Repository");
+    expect(said.description).toMatch(/Correct them here and save again\.$/);
+    expect(said.description).not.toMatch(/Settings/);
     expect(said.tone).toBe("error");
     expect(screen.getByText(REFUSAL)).toBeInTheDocument();
+  });
+
+  it("links to the project's Settings on Shape & release, where Repository is", async () => {
+    update.mockRejectedValue(new ApiError(400, REFUSAL, "REPO_PATH_NOT_ABSOLUTE"));
+    await createThenSaveRepository("~/code/app");
+    await vi.waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
+    const said = toast.mock.calls[1]?.[0] as { link?: { label: string; href: string } };
+    expect(said.link?.href).toBe("/projects/desk/settings?tab=shape#repository");
+    expect(said.link?.label).toMatch(/Shape & release/);
   });
 
   it("says a fault the same way, the project still created", async () => {
@@ -82,9 +96,19 @@ describe("the new-project dialog when its repository step is refused", () => {
     await vi.waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
     expect(titles()[1]).toBe("Project created; its repository settings were not saved");
     const said = toast.mock.calls[1]?.[0] as { description: string } | undefined;
-    expect(said?.description).toMatch(
-      /\. Set them in the project's Settings, under Repository\.$/,
-    );
+    expect(said?.description).toMatch(/^The server is down\. Correct them here and save again\.$/);
+  });
+
+  // At 390 the toast stands over the field it says to correct, for as long as it takes to read.
+  it("puts the refusal toast away once the person edits the path", async () => {
+    update.mockRejectedValue(new ApiError(400, REFUSAL, "REPO_PATH_NOT_ABSOLUTE"));
+    await createThenSaveRepository("~/code/app");
+    await vi.waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
+    const said = toast.mock.calls[1]?.[0] as { slot?: string };
+    expect(said.slot).toBeTruthy();
+    dismiss.mockClear();
+    fireEvent.change(screen.getByLabelText(/^Repository path/), { target: { value: "/srv/app" } });
+    expect(dismiss).toHaveBeenCalledWith(said.slot);
   });
 
   it("still says the settings were saved when the step is accepted", async () => {

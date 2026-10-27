@@ -86,6 +86,10 @@ export const listGithubRepositories = onProject(
         CONNECTION_REMOVED:
           'the connection was removed, so it holds no App until one is installed again',
       }),
+      410: fail(
+        'CONNECTION_CLEARED',
+        'a Clear deleted the connection, and the caller could reach it then',
+      ),
     },
   }),
 );

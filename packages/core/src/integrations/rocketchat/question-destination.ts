@@ -182,7 +182,7 @@ export async function resolveQuestionDestination(
   if (!connectionId) {
     return {
       kind: 'unresolvable',
-      reason: `no active Rocket.Chat connection binds room ${venue.rid} under this project any more, so the conversation this question was asked in has no route back`,
+      reason: `no Rocket.Chat connection switched on for this project carries room ${venue.rid} any more, so the conversation this question was asked in has no route back`,
     };
   }
 
@@ -204,7 +204,7 @@ export async function resolveQuestionDestination(
     if (!directBinding) {
       return {
         kind: 'unresolvable',
-        reason: `this round is private to whoever asked, and their direct room (${direct.rid}) is not among the rooms bound to this project — a reply typed there would reach nothing, so the round is not posted. Bind that room to this project, or ask this round in the open.`,
+        reason: `this round is private to whoever asked, and their direct room (${direct.rid}) is not among the rooms connected to this project — a reply typed there would reach nothing, so the round is not posted. Connect that room to this project, or ask this round in the open.`,
       };
     }
     return {

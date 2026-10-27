@@ -78,7 +78,7 @@ export function assertAgentMayDeployCoolify(
   const refused = notGrantedMessage('coolify', ungranted.pair.connection);
   if (integrationId) throw new CoolifyCommandError(refused);
   throw new CoolifyCommandError(
-    `${refused} This call named no integrationId, so it would have read every Coolify binding on the project, that one included. Name the binding you mean with integrationId and a granted one still answers.`,
+    `${refused} This call named no integrationId, so it would have read every Coolify deploy target on the project, that one included. Name the deploy target you mean with integrationId and a granted one still answers.`,
   );
 }
 
@@ -112,7 +112,7 @@ export async function resolveIntegrationRow<T extends { id: string }>(
   if (row) return row;
   if (rows.length > 1 && !input.integrationId) {
     throw new CoolifyCommandError(
-      `This project has ${rows.length} Coolify bindings switched on, so Forge cannot tell which one is meant. Name the one meant by its id, which the list of this project's Coolify bindings gives. ${NOTHING_ASKED}`,
+      `This project has ${rows.length} Coolify deploy targets switched on, so Forge cannot tell which one is meant. Name the one meant by its id, which the list of this project's Coolify deploy targets gives. ${NOTHING_ASKED}`,
     );
   }
   const bound = (await listBindingsForProject(projectId)).filter(
@@ -124,7 +124,7 @@ export async function resolveIntegrationRow<T extends { id: string }>(
   if (dead) throw await offBindingRefusal(dead, projectId);
   if (input.integrationId) {
     throw new CoolifyCommandError(
-      `None of this project's Coolify bindings has the id that was named; the list of this project's Coolify bindings gives the ids it has. ${NOTHING_ASKED}`,
+      `None of this project's Coolify deploy targets has the id that was named; the list of this project's Coolify deploy targets gives the ids it has. ${NOTHING_ASKED}`,
     );
   }
   return null;
@@ -135,7 +135,7 @@ export async function offBindingRefusal(
   dead: OffPair,
   projectId: string,
 ): Promise<CoolifyCommandError> {
-  const said = `This project's Coolify binding answers nothing: ${await offBindingWords(dead, projectId)} ${NOTHING_ASKED}`;
+  const said = `This project's Coolify deploy target answers nothing: ${await offBindingWords(dead, projectId)} ${NOTHING_ASKED}`;
   return isRemovedConnection(dead.connection)
     ? new CoolifyConnectionRemovedError(said)
     : new CoolifyCommandError(said);

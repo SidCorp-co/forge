@@ -425,7 +425,7 @@ describe('readings taken with probes the binding no longer declares', () => {
 
 describe('what it will not judge', () => {
   it('throws where no binding was named, because nothing to judge is nothing proved', () => {
-    expect(() => judge({ bindings: [] })).toThrow('no binding was named to judge');
+    expect(() => judge({ bindings: [] })).toThrow('no deploy target was named to judge');
   });
 
   it('is judged by the clock it is handed and by no other', () => {

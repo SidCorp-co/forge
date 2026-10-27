@@ -41,10 +41,19 @@ export const COMMIT_PLACEHOLDER = "e.g. 3f9c2ab, or the whole sha";
  *  round (ISS-1300 r4, judge-121). */
 export const CORRECTION_PLACEHOLDER = "e.g. 3f9c2ab, where it landed";
 /** A person's commit is checked against the repository and recorded as where the work landed. */
-export const COMMIT_HINT = "Checked against the project's repository before it is recorded.";
+export const COMMIT_HINT = "Checked against the project's repository where Forge can read it; where it cannot, the commit is kept as a claim nothing checked.";
+/** On a later merge an unreadable repository moves nothing (criterion 123), so no claim is kept. */
+export const LATER_COMMIT_HINT = "Checked against the project's repository; where Forge cannot read it, the mark stays where it is and you are told why.";
 /** Said only where Forge holds a merged pull request at another commit than the mark's: anywhere
  *  else an empty Commit has nothing to compare and changes nothing (ISS-1421 r8, criterion 127). */
 export const EMPTY_COMMIT_LINE = "Leave Commit empty to use the newest merged pull request.";
+
+/** Why a later merge opens with Where it landed empty: a seen merge or an older mark names no branch (ISS-1421 r36). */
+export function unknownTargetLine(mark: string | undefined): string {
+  return mark === "observed"
+    ? `Forge saw this merge in a pull request and kept no branch for it, so say under ${WHERE_IT_LANDED_FIELD} where it landed.`
+    : `This mark was made before Forge kept where a mark says the work landed, so say it again under ${WHERE_IT_LANDED_FIELD}.`;
+}
 
 export function emptyCommitCompares(newestMergedPull: string | null | undefined, held: string | null | undefined): boolean {
   if (!newestMergedPull) return false;
@@ -69,6 +78,8 @@ interface MergeMarkerControlProps {
   landingSource?: "issue" | "project" | undefined;
   mergedCommitSha?: string | null | undefined;
   newestMergedPull?: string | null | undefined;
+  markedTarget?: string | null | undefined;
+  mergeMark?: string | undefined;
 }
 
 /** Where this issue's work lands and who said so, since the two can differ. */
@@ -86,11 +97,13 @@ export function MergeMarkerControl({
   landingSource,
   mergedCommitSha,
   newestMergedPull,
+  markedTarget,
+  mergeMark,
 }: MergeMarkerControlProps) {
   const outsideGit = landingShape === "outside_git";
   const [open, setOpen] = useState(false);
-  // Starts empty: whatever it holds is sent as where the work landed, so a value filled in for the
-  // reader (once the issue's own key) became a mark saying the work merged into the issue.
+  // A first mark starts empty: whatever it holds is sent as where the work landed, so a value filled
+  // in for the reader (once the issue's own key) became a mark saying the work merged into the issue.
   const [target, setTarget] = useState("");
   const [note, setNote] = useState("");
   const [commit, setCommit] = useState("");
@@ -99,12 +112,12 @@ export function MergeMarkerControl({
 
   useEffect(() => {
     if (open) {
-      setTarget("");
+      setTarget(mergedAt && !outsideGit ? (markedTarget ?? "") : "");
       setNote("");
       setCommit("");
       setRefusal(null);
     }
-  }, [open]);
+  }, [open, mergedAt, outsideGit, markedTarget]);
 
   const unmarkButton = (
     <Button variant="ghost" size="sm" disabled={marker.isPending} onClick={() => marker.unmark()}>
@@ -144,6 +157,11 @@ export function MergeMarkerControl({
                   ? LANDING_BLURB
                   : BLURB}
             </p>
+            {later && !markedTarget && (
+              <p className="fg-body-sm text-muted" data-testid="target-unknown">
+                {unknownTargetLine(mergeMark)}
+              </p>
+            )}
             <Field
               label={WHERE_IT_LANDED_FIELD}
               required
@@ -167,7 +185,7 @@ export function MergeMarkerControl({
               />
             </Field>
             {!outsideGit && (
-              <Field label={COMMIT_FIELD} hint={COMMIT_HINT}>
+              <Field label={COMMIT_FIELD} hint={later ? LATER_COMMIT_HINT : COMMIT_HINT}>
                 {/* Wraps rather than scrolls, so a whole sha shows at phone width and a refusal
                     quoting it can be read against every digit typed (ISS-1300 r5). */}
                 <Textarea

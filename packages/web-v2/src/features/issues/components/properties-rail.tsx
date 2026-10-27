@@ -434,6 +434,8 @@ export function PropertiesRail({
                 landingSource={landingSource}
                 mergedCommitSha={issue.mergedCommitSha}
                 newestMergedPull={issue.newestMergedPull}
+                markedTarget={issue.mergedTarget}
+                mergeMark={issue.mergeMark}
               />
             )}
           </div>

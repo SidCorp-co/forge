@@ -38,7 +38,7 @@ import {
   removedKeyHint,
 } from "../../components/integration-enabled-control";
 import { coolify } from "./index";
-import { CoolifyTargetsField } from "./targets-field";
+import { CoolifyTargetsField, mayFixCredentials } from "./targets-field";
 import { DisconnectFromProject } from "../../components/disconnect-from-project";
 import { STAGE_OPTIONS } from "../../components/status-pill";
 import {
@@ -271,8 +271,8 @@ function StagePanel({
           Coolify server · shared credential
         </legend>
         <p className="fg-body-sm text-muted">
-          One Coolify server + API token, reused by every project bound to this
-          connection. Forge calls it to trigger deploys (Forge → Coolify).
+          One Coolify server + API token, reused by every project this connection
+          is shared with. Forge calls it to trigger deploys (Forge → Coolify).
         </p>
         {!existing && (
           <ConnectionOwnerField
@@ -324,7 +324,7 @@ function StagePanel({
         targets={targets}
         onChange={setTargets}
         inherited={targetsInherited}
-        canFixCredentials={!keyLocked && !(existing && bindsRemovedConnection(existing))}
+        canFixCredentials={mayFixCredentials(existing, keyLocked)}
         canEditTargets={!bindingLocked}
       />
       </fieldset>

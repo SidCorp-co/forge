@@ -101,7 +101,7 @@ export async function runSentryPull(args: { projectId: string }): Promise<Sentry
       status: 'failed',
       output: '',
       error:
-        'sentry pull: this project has no active Sentry binding, so there is nothing to pull from — connect Sentry and bind it to this project',
+        'sentry pull: this project has no Sentry connection switched on, so there is nothing to pull from — connect Sentry to this project',
     };
   }
 
@@ -114,7 +114,7 @@ export async function runSentryPull(args: { projectId: string }): Promise<Sentry
     return {
       status: 'failed',
       output: '',
-      error: `sentry pull: binding ${pair.binding.id} declares no targets, so no Sentry project can be named`,
+      error: `sentry pull: the Sentry integration ${pair.binding.id} declares no targets, so no Sentry project can be named`,
     };
   }
 

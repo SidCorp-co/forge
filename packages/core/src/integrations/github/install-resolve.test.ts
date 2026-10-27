@@ -170,7 +170,7 @@ describe('an App bound to more than one project', () => {
       cause: { code: 'INSTALL_NOT_COMPLETABLE' },
     });
     expect((refusal as Error).message).toMatch(/connection a\b/);
-    expect((refusal as Error).message).toMatch(/admin of a project it is bound to/);
+    expect((refusal as Error).message).toMatch(/admin of a project it is shared with/);
   });
 
   it('names the App by its display name when it has one', () => {

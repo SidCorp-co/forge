@@ -974,6 +974,9 @@ export const issues = pgTable(
     mergeMarkedAt: timestamp('merge_marked_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
+    // ISS-1421 r36 — where a git mark said the work landed (a branch or a pull request), so a later
+    // mark opens on it. Only ever beside a mark: the CHECK below holds it to one.
+    mergedTarget: text('merged_target'),
     mergedClaimedCommit: text('merged_claimed_commit'),
     // ISS-1300 r3 — `merged_commit_sha` is a commit a person named, which the repository holds.
     mergedCommitStated: boolean('merged_commit_stated').notNull().default(false),
@@ -1023,6 +1026,10 @@ export const issues = pgTable(
     mergedLandingChk: check(
       'issues_merged_landing_chk',
       sql`${t.mergedLanding} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedLanding} ~ '[^[:space:]]' AND char_length(${t.mergedLanding}) <= 2000)`,
+    ),
+    mergedTargetChk: check(
+      'issues_merged_target_chk',
+      sql`${t.mergedTarget} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedTarget} ~ '[^[:space:]]' AND char_length(${t.mergedTarget}) <= 200)`,
     ),
     mergedClaimedCommitChk: check(
       'issues_merged_claimed_commit_chk',
@@ -2453,6 +2460,21 @@ export const integrationConnections = pgTable(
       .where(sql`active = true`),
   }),
 );
+
+/**
+ * What a Clear left of a connection it deleted (ISS-1421 r36, judge-145): a later read of that id by
+ * someone who could reach it is told it was cleared, rather than that it is not one they can reach.
+ * No FK on the connection, which is gone, nor on its owner, whose namespace `owner_type` names.
+ */
+export const integrationConnectionClears = pgTable('integration_connection_clears', {
+  connectionId: uuid('connection_id').primaryKey(),
+  provider: text('provider').notNull(),
+  ownerType: text('owner_type', { enum: ints.integrationOwnerTypes }).notNull(),
+  ownerId: uuid('owner_id').notNull(),
+  /** The projects it was shared with when cleared, whose members could read it then. */
+  projectIds: uuid('project_ids').array().notNull().default(sql`'{}'::uuid[]`),
+  clearedAt: timestamp('cleared_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const integrationBindings = pgTable(
   'integration_bindings',
