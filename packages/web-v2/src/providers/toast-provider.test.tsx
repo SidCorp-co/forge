@@ -424,7 +424,7 @@ describe("a toast naming the element it keeps clear of", () => {
       act(() => fire({ ...refused, duration: 0, clearOf: () => field }));
       const lane = screen.getByTestId("toast-lane");
       expect(lane.style.top).toBe("auto");
-      expect(lane.style.bottom).toBe("calc(0px + env(safe-area-inset-bottom))");
+      expect(lane.style.bottom).toBe("0px");
     } finally {
       spy.mockRestore();
     }
@@ -479,7 +479,65 @@ describe("a toast naming the element it keeps clear of", () => {
       expect(lane.style.maxHeight).toBe("74px");
       const top = Number.parseFloat(lane.style.top);
       expect(top + Number.parseFloat(lane.style.maxHeight)).toBeLessThanOrEqual(135);
+
+      // r9 review F1: the capped lane now measures 74 px, its toasts still 84 px tall inside it. A
+      // later scroll must not read the cap back as the lane's height and lift it.
+      spy.mockImplementation(function (this: HTMLElement) {
+        const by: Record<string, Partial<DOMRect>> = {
+          "toast-lane": { top: 61, bottom: 135, height: 74, width: 390, left: 0, right: 390 },
+          path: { top: 135, bottom: 177, left: 21, right: 370 },
+          header: { bottom: 61 },
+        };
+        const key = this.dataset.testid ?? this.tagName.toLowerCase();
+        return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, ...by[key] } as DOMRect;
+      });
+      const tall = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(84);
+      try {
+        act(() => {
+          window.dispatchEvent(new Event("scroll"));
+        });
+        expect(lane.style.top).toBe("61px");
+        expect(lane.style.maxHeight).toBe("74px");
+      } finally {
+        tall.mockRestore();
+      }
     } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // r9 review F2: a phone's bottom safe-area lifts the bottom edge; the check that clears the field
+  // must lift it the same, or the lane it places covers the field.
+  it("counts the bottom safe-area in the place it checks, as in the place it sets", () => {
+    wide(false);
+    viewport(390, 300);
+    const spy = boxes({
+      "toast-lane": { top: 61, bottom: 166, height: 105, width: 390, left: 0, right: 390 },
+      path: { top: 140, bottom: 190, left: 21, right: 370 },
+      header: { bottom: 61 },
+    });
+    const real = window.getComputedStyle;
+    const styled = vi.spyOn(window, "getComputedStyle").mockImplementation((el: Element, pseudo?: string | null) => {
+      const style = real(el, pseudo);
+      if ((el as HTMLElement).style?.visibility !== "hidden") return style;
+      return { ...style, paddingTop: "0px", paddingBottom: "34px" } as CSSStyleDeclaration;
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Dialog />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: () => field }));
+      const lane = screen.getByTestId("toast-lane");
+      // At the bottom it would span 161 to 266 over a field at 140 to 190: above it, 61 to 140, is larger.
+      expect(lane.style.bottom).toBe("");
+      expect(lane.style.top).toBe("61px");
+      expect(Number.parseFloat(lane.style.top) + Number.parseFloat(lane.style.maxHeight)).toBeLessThanOrEqual(140);
+    } finally {
+      styled.mockRestore();
       spy.mockRestore();
     }
   });

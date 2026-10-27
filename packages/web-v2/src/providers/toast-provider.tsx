@@ -128,6 +128,20 @@ const WIDE_TOP_PX = 56;
 /** What the bottom edge keeps clear of: a phone's tab bar, unless a dialog covers it, or a margin. */
 const TAB_BAR_PX = 56;
 const WIDE_BOTTOM_PX = 16;
+/** The lane's own height cap, as its class states it: a share of the viewport's height. */
+const LANE_CAP = 0.35;
+
+/** The device's safe-area insets in px, read off a probe: the space a fixed edge keeps clear of. */
+function safeInsets(): { top: number; bottom: number } {
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)";
+  document.body.appendChild(probe);
+  const style = getComputedStyle(probe);
+  const insets = { top: Number.parseFloat(style.paddingTop) || 0, bottom: Number.parseFloat(style.paddingBottom) || 0 };
+  probe.remove();
+  return insets;
+}
 
 /**
  * Where the lane goes so that no toast in it stands over the element one of them names: the top edge
@@ -162,19 +176,23 @@ function useKeepClear(
       const clear = (b: Box) => targets.every((el) => !overlaps(b, el.getBoundingClientRect()));
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : 0);
+      const inset = safeInsets();
+      // The height the lane takes where nothing caps it but its own class: a cap this placement set
+      // is never read back as the lane's height, or the next measure would undo it.
+      const height = Math.max(box.height, Math.min(lane.current?.scrollHeight ?? 0, vh * LANE_CAP));
+      const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : inset.top);
       const left = wide ? vw - box.width : 0;
-      const atTop = { top, bottom: top + box.height, left, right: vw };
+      const atTop = { top, bottom: top + height, left, right: vw };
       let next: CSSProperties | null = null;
       if (!clear(atTop)) {
         const dialog = targets[0].closest('[role="dialog"]') ?? targets[0];
         const edge = dialog.getBoundingClientRect().left;
         const beside = { ...atTop, left: edge - box.width, right: edge };
         const dialogOpen = belowDialogHeader !== null || document.querySelector('[role="dialog"][aria-modal="true"]');
-        const gap = wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX;
-        const atBottom = { ...atTop, top: vh - gap - box.height, bottom: vh - gap };
+        const gap = (wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX) + inset.bottom;
+        const atBottom = { ...atTop, top: vh - gap - height, bottom: vh - gap };
         if (wide && beside.left >= 0 && clear(beside)) next = { right: vw - edge };
-        else if (clear(atBottom)) next = { top: "auto", bottom: `calc(${gap}px + env(safe-area-inset-bottom))` };
+        else if (clear(atBottom)) next = { top: "auto", bottom: gap };
         else {
           const rects = targets.map((el) => el.getBoundingClientRect());
           const fieldTop = Math.min(...rects.map((r) => r.top));
