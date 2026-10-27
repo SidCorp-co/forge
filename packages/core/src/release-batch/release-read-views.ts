@@ -18,6 +18,7 @@ import {
   type ReleaseNoteEntry,
   type ReleaseNoteSection,
   type ReleasePerson,
+  type ReleaseShippedFailing,
   type ReleaseSplit,
   type ReleaseState,
   type ReleaseSummary,
@@ -71,6 +72,8 @@ export interface Part {
   mergeSteps: ReleaseMergeStep[] | null;
   /** The branch a recorded landing put it on, off production's branch (`versions.ts:landedOffProduction`); else null. */
   landedOn: string | null;
+  /** What a recorded landing shipped failing (`metadata.shippedFailing`); null elsewhere. */
+  shippedFailing: ReleaseShippedFailing | null;
 }
 
 export interface Shared {
@@ -284,6 +287,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
     state: p.state,
     current: s.current === p.version,
     landedOn: p.landedOn,
+    shippedFailing: p.shippedFailing,
     ...turn,
     name: p.naming?.name ?? null,
     summary: p.naming?.summary ?? null,

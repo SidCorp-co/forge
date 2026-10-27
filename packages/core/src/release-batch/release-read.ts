@@ -3,6 +3,7 @@ import type {
   ReleaseDetail,
   ReleaseListResponse,
   ReleaseProduction,
+  ReleaseShippedFailing,
 } from '@forge/contracts/releases';
 import { RELEASE_ATTENTION_GROUPS, releaseThroughChangeRequests } from '@forge/contracts/releases';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
@@ -89,6 +90,7 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       naming: await draftNaming(projectId, version),
       mergeSteps: null,
       landedOn: null,
+      shippedFailing: null,
     },
   };
 }
@@ -160,7 +162,14 @@ function runPart(
     naming: readReleaseNaming(run.metadata),
     mergeSteps: mergeStepsOf(run.metadata),
     landedOn: run.releasedAt ? landedOffProduction(run.metadata, deploysFrom) : null,
+    shippedFailing: shippedFailingOf(run.metadata),
   };
+}
+
+/** What the recorded landing wrote it shipped failing, whole, or null where it wrote nothing. */
+function shippedFailingOf(metadata: unknown): ReleaseShippedFailing | null {
+  const held = (metadata as { shippedFailing?: ReleaseShippedFailing } | null)?.shippedFailing;
+  return held && typeof held.sentence === 'string' && Array.isArray(held.criteria) ? held : null;
 }
 
 /** The verification a run stamped on its row, or `null` where it stamped none it could name. */

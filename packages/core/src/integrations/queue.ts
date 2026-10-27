@@ -84,6 +84,11 @@ interface EnqueueOptions {
   retryLimit?: number;
   retryBackoff?: boolean;
   retryDelay?: number;
+  /**
+   * The job's own id, for an act that happens once whatever asks it again: a second send under it
+   * is the job already queued, and answers that id (`release-batch/landing-deploy.ts`).
+   */
+  jobId?: string;
 }
 
 export async function enqueueOutboundDispatch(
@@ -95,7 +100,9 @@ export async function enqueueOutboundDispatch(
     retryBackoff: opts.retryBackoff ?? true,
     retryDelay: opts.retryDelay ?? 30,
     ...(job.requestId ? { singletonKey: job.requestId } : {}),
+    ...(opts.jobId ? { id: opts.jobId } : {}),
   });
-  if (!id) throw new Error(`integrations: the ${job.jobKind} dispatch was not queued`);
-  return id;
+  if (id) return id;
+  if (opts.jobId) return opts.jobId;
+  throw new Error(`integrations: the ${job.jobKind} dispatch was not queued`);
 }

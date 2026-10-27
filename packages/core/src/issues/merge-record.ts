@@ -1,6 +1,6 @@
 import type { LandingArtifact, MergedHead, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { MergeStampVia, OutboxActor } from '@forge/contracts/outbox-events';
-import { and, desc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 import type { Db, Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
@@ -513,6 +513,7 @@ export async function observedMergesForIssue(
   executor: MergeRecordExecutor,
   issueId: string,
   base?: string,
+  promotes: readonly string[] = [],
 ): Promise<Array<{ commitSha: string; mergedAt: Date; target: string }>> {
   const rows = await executor
     .select({
@@ -529,6 +530,8 @@ export async function observedMergesForIssue(
         isNotNull(repoPullRequests.mergeCommitSha),
         isNotNull(repoPullRequests.mergedAt),
         base === undefined ? undefined : eq(repoPullRequests.baseRef, base),
+        // a promotion of landed work is nobody's landing (REQ-45 BC-16)
+        promotes.length > 0 ? notInArray(repoPullRequests.headRef, [...promotes]) : undefined,
       ),
     )
     .orderBy(desc(repoPullRequests.mergedAt));

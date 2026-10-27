@@ -14,7 +14,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { ANCHOR, type Anchor, GROUP_TITLE, type Reach } from "./release-anchors";
 import { BeforeYouRelease, ChangeGroup, GroupTitle, OtherChanges, Requirements, StillOpen } from "./release-groups";
-import { DisclosureToggle } from "./release-bits";
+import { DisclosureToggle, ShippedFailingBanner } from "./release-bits";
 import { ReleaseHighlightList } from "./release-highlights";
 import { checksByIssue } from "./release-row-detail";
 import { Technical } from "./release-technical";
@@ -188,6 +188,8 @@ export function ReleaseReader({
       <ContentsMenu items={contents} label={t("releases.page.contents")} testId="page-contents" className={railContents ? "-mb-4 lg:hidden" : "-mb-4"} />
       <div className="grid gap-3" data-testid="page-header" data-state={page.header.state} data-approval={page.header.approval.state}>
         <ReleaseSummary page={page} />
+        {/* what a landing shipped failing is said to every reader, a shared link's included */}
+        <ShippedFailingBanner r={{ shippedFailing: page.header.shippedFailing ?? null }} />
         <ReleaseTally glance={glance} />
       </div>
       {/* the summary and the tally are this page's lead: below 1024px the rail follows them */}

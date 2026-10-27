@@ -37,6 +37,7 @@ export { runningBuildObserved } from './gate.js';
 export { abortBlockedIssues, releaseHoldsOf } from './hold.js';
 export { judgedBuildOf, liveBuildHolds, unobservedBuildOf } from './judged-build.js';
 export { deliveryHeadsOf, landedBuildHolds } from './landed-build.js';
+export { registerLandingDeploy } from './landing-deploy.js';
 export {
   type IssueLanding,
   landedRecordOf,

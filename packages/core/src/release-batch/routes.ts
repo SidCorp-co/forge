@@ -27,6 +27,7 @@ import {
 import { loadReleaseReadiness } from './readiness.js';
 import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
 import { recordLanding } from './recorded-landing.js';
+import { refuseRelease } from './refuse.js';
 import { rangeBaseOf, rangeReads, recordRange } from './shipped-range.js';
 import { readReleaseRunState } from './state.js';
 import { releaseVersionRoutes } from './version-routes.js';
@@ -198,6 +199,8 @@ const releaseRecordBodySchema = z
     commit: z.string().trim().min(1).max(200),
     account: z.string().trim().min(20).max(20_000),
     providerRef: z.string().trim().max(500).optional(),
+    /** A landing's branch, where it is not the one work lands on (adminhub-api !5020, 2026-10-27). */
+    branch: z.string().trim().min(1).max(255).optional(),
   })
   .strict();
 
@@ -363,6 +366,13 @@ releaseBatchRoutes.post(
     // With no production environment the landing is the delivery, and the record says so.
     const declared = await resolveReleaseDeclaration(projectId);
     const sent = { projectId, userId, ...c.req.valid('json') };
+    if (declared?.kind !== 'no-release' && sent.branch !== undefined) {
+      throw refuseRelease(
+        'RELEASE_RECORD_BRANCH_UNUSED',
+        `\`branch\` names where a landing is recorded, and this project declares a production environment, whose record reads the commit production serves: send the record without \`branch\`.`,
+        '/branch',
+      );
+    }
     const result =
       declared?.kind === 'no-release'
         ? await recordLanding(sent, declared.defaultBranch)

@@ -136,6 +136,20 @@ export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: 
   return <WaitBanner tone={BANNER_TONE[r.attentionGroup]} head={head} body={body} rule={w.rule || undefined} effect={w.effect} className={className} />;
 }
 
+/**
+ * What a recorded landing shipped failing, said loud above the page (REQ-45 BC-14): the issues
+ * closed because the work shipped, and these criteria are the follow-up's evidence.
+ */
+export function ShippedFailingBanner({ r, className }: { r: Pick<ReleaseDetail, "shippedFailing">; className?: string }) {
+  const t = useCopy();
+  const f = r.shippedFailing;
+  if (!f) return null;
+  const byIssue = new Map<string, number[]>();
+  for (const c of f.criteria) byIssue.set(c.issueKey, [...(byIssue.get(c.issueKey) ?? []), c.criterion]);
+  const named = [...byIssue].map(([key, ns]) => `${key} ${ns.map((n) => `c${n}`).join(", ")}`).join("; ");
+  return <WaitBanner tone="err" head={t(f.count === 1 ? "releases.shippedFailing.one" : "releases.shippedFailing.many", { n: f.count })} body={named} className={className} testId="release-shipped-failing" />;
+}
+
 export function RefusalText({ error }: { error: unknown }) {
   if (!error) return null;
   const code = error instanceof ApiError ? error.code : null;

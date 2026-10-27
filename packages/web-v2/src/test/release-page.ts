@@ -17,6 +17,7 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
       build: BUILD,
       verified: { level: "criteria", proven: 2, total: 3, check: null, provider: null, judgedOn: null },
       approval: { required: true, state: "approved", by: { id: "u1", name: "Ada", kind: "human" }, at: "2026-10-09T09:00:00.000Z" },
+      shippedFailing: null,
     },
     highlights: {
       state: "drafted",

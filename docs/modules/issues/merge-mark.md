@@ -113,6 +113,12 @@ commits landed through another one — sharing its head, its links naming issues
 supersedes the mark an issue holds from its own merge. Every stamp written carries its actor, so its
 `issue.updated` row is written too.
 
+A request whose head is the branch work lands on, or a declared promotion's source
+(`packages/core/src/project-config/promotion-path.ts:promotionSourcesOf`), promotes what already
+landed and is nobody's landing (REQ-45 BC-16): a host report of its merge stamps nothing, its links
+never make its commit an issue's, and a mark never rests on it. adminhub-api !5020 (`release/stg`
+into `release/production`, 2026-10-27) had overwritten ISS-23/24/25's own merges with its commit.
+
 ## A merge whose answer was lost
 
 Forge's own merge can reach the host and lose its answer: adminhub-fe !1994 merged at 8ab74c9f

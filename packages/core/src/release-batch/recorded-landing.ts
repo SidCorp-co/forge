@@ -3,13 +3,14 @@
 // release a closed issue owes (`CLOSE_ONLY_BY_RELEASE`) is this record: it names the branch and the
 // commit, says nothing was deployed, and closes what it claimed as a finished release does.
 //
-// It is held to evidence the record can show, read before anything is claimed: every issue's landing
-// (`landed-build.ts`) is in the commit, and every live criterion stands on a pass judged at that very
-// commit — the landed head the record names, never an ancestor of it and never a later head. Whether
-// the landing is in the commit is read by the project's ancestry reader — the source host, or the box
-// holding a bound checkout where the repository is local to it — and a pair nobody could read refuses
-// the record by name. Whether the commit is on the branch is read only where a source host is bound;
-// the box answers commit pairs, never a branch, and the record says which.
+// A landing that happened is recorded as the fact it is (REQ-45 BC-11, owner ruling 2026-10-27): it
+// refuses only what is not a fact — a malformed body, an issue whose landing the commit does not
+// hold, a commit the source host reads as not on the named branch. Verdicts are gates before a
+// merge or a cut (BC-15), never after: each issue's coverage at the commit is read beside the
+// record (`landing-coverage.ts`, BC-14). Whether the landing is in the commit is read by the
+// project's ancestry reader — the source host, or the box holding a bound checkout — and a pair
+// nobody could read refuses by name, since the record could not show it. Whether the commit is on
+// the branch is read only where a source host is bound; the box answers commit pairs, never a branch.
 
 import { db } from '../db/client.js';
 import { issueDisplayIds, releaseRunClaims } from '../issues/index.js';
@@ -26,9 +27,9 @@ import {
   holdingPair,
   LANDED_VERIFICATION,
   landedBuildsOf,
-  landedStandings,
   readHolding,
 } from './landed-build.js';
+import { landingCoverage, shippedFailingOf } from './landing-coverage.js';
 import { carryNaming } from './naming.js';
 import {
   admissibleIssues,
@@ -112,17 +113,19 @@ function landingNote(branch: string, commit: string, readings: readonly string[]
 
 /**
  * Record a landing as the release of a project with no production environment, and close what it
- * carried. Everything is read before anything is claimed, so a record that cannot be earned leaves
- * every issue where it stood, and names each reason at once.
+ * carried. `args.branch` names the branch the commit is on, the declared landing branch where it
+ * names none. Everything is read before anything is claimed, so a record that cannot be shown
+ * leaves every issue where it stood, and names each reason at once.
  */
 export async function recordLanding(
   args: RecordPerformedReleaseArgs,
-  branch: string | null,
+  declared: string | null,
   deps?: LandingDeps,
 ): Promise<RecordPerformedReleaseResult> {
   const { projectId, account, userId } = args;
   const commit = args.commit.trim().toLowerCase();
   const providerRef = args.providerRef ?? null;
+  const branch = args.branch ?? declared;
   if (!branch) {
     throw refuseRelease(
       'RELEASE_LANDING_NO_BRANCH',
@@ -142,43 +145,42 @@ export async function recordLanding(
   const landings = [...landed.values()].flatMap((b) => (b.sha ? [holdingPair(b.sha, commit)] : []));
   const holding = await readHolding(projectId, landings, deps);
   const refusals = landingRefusals(issueIds, shown, landed, holding, commit);
-  const standings = await landedStandings(issueIds, () => commit);
-  for (const s of standings) {
-    const key = shown.get(s.issueId) ?? s.issueId;
-    for (const c of s.criteria) {
-      if (c.counts) continue;
-      refusals.push({
-        code: 'RELEASE_LANDING_UNJUDGED',
-        path: '/issueIds',
-        detail: `${key} criterion ${c.criterion}: ${c.why}`,
-      });
-    }
-  }
   if (refusals.length > 0) throw new RefusalError(refusals, 'RELEASE_REFUSED');
+  const onBranch = await branchReading(projectId, branch, commit);
+  if (onBranch.off) {
+    const named = branch === declared ? ", the branch this project's work lands on" : '';
+    throw refuseRelease(
+      'RELEASE_LANDING_NOT_IN_COMMIT',
+      `the source host reads \`${commit}\` as not on \`${branch}\`${named}: record a commit on \`${branch}\`, or name the branch it is on in \`branch\`.`,
+      '/commit',
+    );
+  }
 
+  // the record's own commit is the build here, so a merged head's tree identity speaks only for it
+  const headOf = (id: string) => {
+    const build = landed.get(id);
+    return build?.sha === commit ? (build.head ?? null) : null;
+  };
+  const { readings: covered, coverage } = await landingCoverage(
+    projectId,
+    issueIds,
+    commit,
+    shown,
+    headOf,
+    deps,
+  );
+  // a fail that shipped is said first and whole: it is the evidence the follow-up starts from
+  const shippedFailing = shippedFailingOf(issueIds, coverage, shown);
   const readings = [
+    ...(shippedFailing ? [shippedFailing.sentence] : []),
     ...issueIds.map((id) => {
       const build = landed.get(id);
       const via = build?.sha === commit ? 'is' : 'is held by';
       return `${build?.sha ? build.basis : id}, which ${via} \`${short(commit)}\``;
     }),
-    ...standings.map((s) => {
-      const key = shown.get(s.issueId) ?? s.issueId;
-      return s.owes
-        ? `${key}: every live criterion (${s.criteria.length}) stands on a pass judged at \`${short(commit)}\``
-        : // owed or not, a pass recorded at the commit is named (adminhub-fe ISS-50 read "owe no verdict" over 3 passes)
-          `${key}: the project's document says its issues owe no verdict; ${s.passing} of ${s.live} live criteria stand on a pass judged at \`${short(commit)}\``;
-    }),
+    ...covered,
+    onBranch.reading,
   ];
-  const onBranch = await branchReading(projectId, branch, commit);
-  if (onBranch.off) {
-    throw refuseRelease(
-      'RELEASE_LANDING_NOT_IN_COMMIT',
-      `the source host reads \`${commit}\` as not on \`${branch}\`, the branch this project's work lands on: record a commit on \`${branch}\`.`,
-      '/commit',
-    );
-  }
-  readings.push(onBranch.reading);
 
   const roster = await admissibleIssues(projectId, issueIds);
   // A recorded landing is a release like any other: it takes the next version and its name in the
@@ -199,6 +201,7 @@ export async function recordLanding(
         providerRef,
         recordedBy: userId,
         issues: roster,
+        ...(shippedFailing ? { shippedFailing } : {}),
       },
     });
     const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
@@ -252,5 +255,6 @@ export async function recordLanding(
     closed,
     failed,
     issues: roster,
+    shippedFailing,
   };
 }

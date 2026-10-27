@@ -242,8 +242,8 @@ export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
   reason:
     'This project declares no production environment, so no automatic release carries this issue: ' +
     'its landing on the working branch is its delivery, and it closes when a person records that ' +
-    'landing (`POST /api/projects/:id/release-records`) at the commit it landed at, with every live ' +
-    'criterion passing at that commit.',
+    'landing (`POST /api/projects/:id/release-records`) at a commit holding its merge; the record ' +
+    'reports each criterion by the pass it stands on.',
   owes: 'human',
   waitingFor: 'a person to record the landing',
 };

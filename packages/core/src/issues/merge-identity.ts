@@ -16,7 +16,7 @@
 
 import type { CommitLandingRefusalCode } from '@forge/contracts/issues';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
@@ -89,10 +89,15 @@ async function readCommitOnce(projectId: string, sha: string): Promise<CommitRea
   };
 }
 
-/** Whether any of the project's requests numbered `numbers` (or the one Forge merged) links the issue. */
+/**
+ * Whether any of the project's requests numbered `numbers` (or the one Forge merged) links the issue.
+ * A request out of a branch in `promotes` delivers nothing: it promotes what already landed, so its
+ * links never make its merge an issue's landing (REQ-45 BC-16).
+ */
 async function linkedThrough(
   issueId: string,
   where: { projectId: string; numbers: number[] } | { pullRequestId: string },
+  promotes: readonly string[],
 ): Promise<boolean> {
   if ('numbers' in where && where.numbers.length === 0) return false;
   const [hit] = await db
@@ -102,6 +107,7 @@ async function linkedThrough(
     .where(
       and(
         eq(repoPullRequestIssues.issueId, issueId),
+        promotes.length > 0 ? notInArray(repoPullRequests.headRef, [...promotes]) : undefined,
         'pullRequestId' in where
           ? eq(repoPullRequests.id, where.pullRequestId)
           : and(
@@ -124,11 +130,14 @@ export function mergeIdentityOf(args: {
   mergedRequestId?: string | null;
 }): (issueId: string) => Promise<MergeIdentity> {
   let commit: Promise<CommitRead> | null = null;
-  let context: Promise<{ base: string; pattern: RegExp; ref: (n: number) => string }> | null = null;
+  let branches: ReturnType<typeof readLandingBranches> | null = null;
+  let context: Promise<{ pattern: RegExp; ref: (n: number) => string }> | null = null;
   return async (issueId) => {
+    branches ??= readLandingBranches(args.projectId);
+    const { defaultBranch, promotes } = await branches;
     if (
       args.mergedRequestId &&
-      (await linkedThrough(issueId, { pullRequestId: args.mergedRequestId }))
+      (await linkedThrough(issueId, { pullRequestId: args.mergedRequestId }, promotes))
     ) {
       return { holds: true, by: 'change-request' };
     }
@@ -136,11 +145,11 @@ export function mergeIdentityOf(args: {
     const got = await commit;
     if ('refused' in got) return got.refused;
     context ??= (async () => ({
-      base: (await readLandingBranches(args.projectId)).defaultBranch ?? '',
       pattern: issueRefPattern(await heldIssuePrefixes(args.projectId)),
       ref: await issueRefFormatter(args.projectId),
     }))();
-    const { base, pattern, ref } = await context;
+    const { pattern, ref } = await context;
+    const base = defaultBranch ?? '';
     const [row] = await db
       .select({ issSeq: issues.issSeq })
       .from(issues)
@@ -151,7 +160,7 @@ export function mergeIdentityOf(args: {
       return { holds: true, by: 'subject' };
     }
     const named = changeRequestsNamed(got.read.message);
-    if (await linkedThrough(issueId, { projectId: args.projectId, numbers: named })) {
+    if (await linkedThrough(issueId, { projectId: args.projectId, numbers: named }, promotes)) {
       return { holds: true, by: 'change-request' };
     }
     const key = seq === null ? `issue ${issueId}` : ref(seq);
@@ -216,14 +225,15 @@ export async function identifiedMergeForIssue(
   actor: OutboxActor,
   base?: string,
 ): Promise<{ commitSha: string; mergedAt: Date; target: string } | null> {
-  const merges = await observedMergesForIssue(db, issueId, base);
-  if (merges.length === 0) return null;
   const [row] = await db
     .select({ projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!row) return null;
+  const { promotes } = await readLandingBranches(row.projectId);
+  const merges = await observedMergesForIssue(db, issueId, base, promotes);
+  if (merges.length === 0) return null;
   const refused: Array<{
     merge: (typeof merges)[number];
     refusal: Extract<MergeIdentity, { holds: false }>;

@@ -31,6 +31,7 @@ import { registerLiveReadingInvalidation } from './projects/index.js';
 import { registerQuestionSuggest } from './questions/index.js';
 import {
   registerChangeRequestSettle,
+  registerLandingDeploy,
   registerReleaseApprovalWake,
   registerReleaseBatchClaimSubscriber,
 } from './release-batch/index.js';
@@ -70,6 +71,7 @@ export function registerOutboxConsumers(): void {
   registerReviewNotes();
   registerSourcePushReactions();
   registerLiveReadingInvalidation();
+  registerLandingDeploy();
   registerRequirementNotifications();
   registerFirstRequirementsCase();
   registerReasonAnswers();

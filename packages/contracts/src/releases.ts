@@ -293,6 +293,17 @@ export interface ReleaseContinuation {
 	shipped: boolean;
 }
 
+/**
+ * The criteria a recorded landing shipped failing (REQ-45 BC-14): the work shipped and its issues
+ * closed, and this is said whole on the record and its release, as the follow-up's evidence.
+ */
+export interface ReleaseShippedFailing {
+	count: number;
+	criteria: Array<{ issueId: string; issueKey: string; criterion: number }>;
+	/** `Shipped with 2 failing criteria: ISS-5 c2, ISS-7 c1`. */
+	sentence: string;
+}
+
 export interface ReleaseSummary
 	extends Standing<ReleaseAttentionGroup, ReleaseWaitingKind> {
 	key: string;
@@ -305,6 +316,8 @@ export interface ReleaseSummary
 	 * (state `landed`): production does not serve it. Null on every other release.
 	 */
 	landedOn: string | null;
+	/** What a recorded landing shipped failing; null where nothing it carried failed. */
+	shippedFailing: ReleaseShippedFailing | null;
 	/** The release's name and its two-to-three-sentence summary, written when it was cut (REQ-40 BC-14); null until written, and on a draft nobody cut. */
 	name: string | null;
 	summary: string | null;
@@ -796,12 +809,12 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_LANDING_UNRECORDED",
 	/** Under release mode `none`, an issue whose recorded merge is not in the record's commit. */
 	"RELEASE_LANDING_NOT_IN_COMMIT",
-	/** Under release mode `none`, an issue criterion with no counting pass at the record's commit. */
-	"RELEASE_LANDING_UNJUDGED",
 	/** Under release mode `none`, an ancestry nobody could read, so the record cannot be shown. */
 	"RELEASE_LANDING_UNREAD",
 	/** Under release mode `none`, a project whose source names no branch for work to land on. */
 	"RELEASE_LANDING_NO_BRANCH",
+	/** A record naming a landing's `branch` on a project with production, whose record reads what it serves. */
+	"RELEASE_RECORD_BRANCH_UNUSED",
 	"RELEASE_BATCH_ABORTED",
 	"RELEASE_FINISH_IN_FLIGHT",
 	"RELEASE_FINISHED_FOR_OTHER_COMMIT",

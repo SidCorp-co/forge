@@ -78,6 +78,7 @@ export function headerOf(
       level: releaseVerifiedLevel(counted, detail.verified.check),
     },
     approval: approvalOf(detail),
+    shippedFailing: detail.shippedFailing,
   };
 }
 
