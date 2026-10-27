@@ -477,6 +477,10 @@ describe("a toast naming the element it keeps clear of", () => {
       // Above the field: 61 to 135 is 74 px; below it: 177 to 240 is 63 px.
       expect(lane.style.top).toBe("61px");
       expect(lane.style.maxHeight).toBe("74px");
+      // r9 review F1 (second read): the cap is the whole box, padding included, so a gap smaller than
+      // the lane's padding is not overrun by it.
+      expect(lane.style.paddingTop).toBe("0px");
+      expect(lane.style.paddingBottom).toBe("0px");
       const top = Number.parseFloat(lane.style.top);
       expect(top + Number.parseFloat(lane.style.maxHeight)).toBeLessThanOrEqual(135);
 

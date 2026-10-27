@@ -199,10 +199,13 @@ function useKeepClear(
           const fieldBottom = Math.max(...rects.map((r) => r.bottom));
           const above = fieldTop - top;
           const below = vh - gap - fieldBottom;
+          // The cap is the lane's whole box, so its own vertical padding goes too, or a gap smaller
+          // than that padding would still be overrun.
+          const capped = { paddingTop: 0, paddingBottom: 0 };
           next =
             below >= above
-              ? { top: fieldBottom, maxHeight: Math.max(0, below) }
-              : { top, maxHeight: Math.max(0, above) };
+              ? { ...capped, top: fieldBottom, maxHeight: Math.max(0, below) }
+              : { ...capped, top, maxHeight: Math.max(0, above) };
         }
       }
       setPlace((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next));
