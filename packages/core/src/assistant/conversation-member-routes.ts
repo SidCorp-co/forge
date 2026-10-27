@@ -55,7 +55,7 @@ import {
   removeFromRoom,
   roomOpenersRead,
 } from './conversation-member-routes-reference.js';
-import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
+import { nameLostReaders, namePeople, type RoomRole, withDisplayNames, withStanding } from './conversation-people.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 const projectQuerySchema = z.object({ projectId: z.uuid() }).strict();
@@ -78,7 +78,7 @@ export async function membershipOf(
 ): Promise<{
   shape: ConversationShape;
   canChangeMembership: boolean;
-  participants: Array<ParticipantRow & { displayName: string | null }>;
+  participants: Array<ParticipantRow & { displayName: string | null; roles: RoomRole[]; opener: boolean }>;
   scope: string[];
   scopeProjects: Awaited<ReturnType<typeof projectsNamed>>;
 }> {
@@ -90,7 +90,7 @@ export async function membershipOf(
   return {
     shape: row?.shape ?? 'direct',
     canChangeMembership: row ? await mayChangeMembership(row, userId) : false,
-    participants: await withDisplayNames(participants),
+    participants: await withStanding(await withDisplayNames(participants), conversationId, scope),
     scope,
     scopeProjects: await projectsNamed(scope),
   };

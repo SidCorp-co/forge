@@ -10,6 +10,7 @@ import {
   conversationWindowCutReasons,
   conversationWindowDecisions,
 } from '../db/schema-conversations.js';
+import { projectMemberRoles } from '../db/project-vocabulary.js';
 
 /** A room's own routing thresholds; a key it did not set is absent. */
 const presenceSchema = z.object({
@@ -132,6 +133,10 @@ export const participantSchema = z.object({
   reachable: z.boolean().nullable(),
   displayName: z.string().nullable(),
   addedAt: z.date(),
+  /** A person's role on each project the room is about, and whether they opened it: what tells two alike
+   *  names apart (ISS-1229 r50). Empty and false for an agent. */
+  roles: z.array(z.object({ projectId: z.string(), role: z.enum(projectMemberRoles).nullable() })),
+  opener: z.boolean(),
 });
 
 export const namedProjectSchema = z.object({ id: z.string(), name: z.string(), slug: z.string() });
