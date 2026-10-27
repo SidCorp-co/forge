@@ -314,8 +314,10 @@ export function threadEntries(
         out.push({ kind: "silence", key: w.id, decision: w.decision, detail: w.decisionDetail });
     }
   }
-  const asked = outbox.filter((m) => m.state === "sent");
-  const unasked = outbox.filter((m) => m.state !== "sent");
+  // A message on its way, confirmed or not, lands before the reply in progress, which is written when
+  // its turn ends: it is drawn above that reply, as the room read will order it (ISS-1236 r7).
+  const asked = outbox.filter((m) => m.state === "sent" || m.state === "sending");
+  const unasked = outbox.filter((m) => m.state !== "sent" && m.state !== "sending");
   for (const item of asked) out.push({ kind: "outbox", key: item.id, item });
   if (live) out.push({ kind: "progress", key: `progress-${live.entry.id}`, progress: live });
   for (const item of unasked) out.push({ kind: "outbox", key: item.id, item });
