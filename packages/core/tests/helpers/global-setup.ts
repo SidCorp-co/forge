@@ -1,5 +1,6 @@
 import type { TestProject } from 'vitest/node';
 import { integrationWorkers, workerLine } from './integration-workers.js';
+import { postgresPatchRefusal } from './postgres-patch.js';
 import { resolveDbSource } from './schema-mode.js';
 import {
   freshTemplateName,
@@ -83,6 +84,8 @@ function reportWorkers(project: TestProject): void {
 }
 
 export async function setup(project: TestProject): Promise<void> {
+  const unpatched = postgresPatchRefusal();
+  if (unpatched) throw new Error(unpatched);
   const source = resolveDbSource(process.env);
   reportWorkers(project);
   let adminUrl = source.mode === 'schema' ? source.url : undefined;

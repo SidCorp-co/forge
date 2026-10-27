@@ -1,6 +1,8 @@
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js';
 import { describe, expect, it, vi } from 'vitest';
 import { TERMINAL_SESSION_BRIDGE_MARKERS } from '../agent-sessions/terminal-effects.js';
+import { contractAnswerForIssue } from '../integrations/github/contract-answer.js';
+import { computeProjectProgress } from '../issues/progress.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { ROLE_HOLDER } from '../messaging/audiences.js';
 import { gatherFacts } from '../messaging/gather.js';
@@ -33,6 +35,9 @@ function endedTransaction(served = 0, rows?: unknown[]): never {
     selects += 1;
     if (selects > served) throw CLOSED;
     return emptyChain();
+  };
+  tx.execute = () => {
+    throw CLOSED;
   };
   tx.transaction = async () => rows ?? [];
   return tx as never;
@@ -83,5 +88,35 @@ describe('a read that falls back on failure, run inside a transaction that has e
         source: 'test',
       } as never),
     ).rejects.toBe(CLOSED);
+  });
+
+  it('the contract check rethrows instead of posting the contract as unreadable', async () => {
+    await expect(contractAnswerForIssue('i1', endedTransaction())).rejects.toBe(CLOSED);
+  });
+
+  it('the progress figures rethrow instead of leaving them out', async () => {
+    await expect(computeProjectProgress('p1', endedTransaction())).rejects.toBe(CLOSED);
+  });
+});
+
+describe('the same reads on the pool', () => {
+  const failing = {
+    select: () => {
+      throw CLOSED;
+    },
+    execute: () => {
+      throw CLOSED;
+    },
+  } as never;
+
+  it('the contract check still answers unreadable', async () => {
+    await expect(contractAnswerForIssue('i1', failing)).resolves.toMatchObject({
+      kind: 'unreadable',
+      reason: 'write CONNECTION_CLOSED',
+    });
+  });
+
+  it('the progress figures are still left out', async () => {
+    await expect(computeProjectProgress('p1', failing)).resolves.toBeNull();
   });
 });

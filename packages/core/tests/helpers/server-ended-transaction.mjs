@@ -120,6 +120,63 @@ const cases = {
     out.second = code(await outcome(reserved`SELECT 1`));
   },
 
+  async reservedReleased() {
+    // A reserved connection the server ended, handed back: the pool serves every later statement.
+    const client = postgres(url, { max: 2 });
+    const reserved = await client.reserve();
+    const [{ pid }] = await reserved`SELECT pg_backend_pid() AS pid`;
+    await admin`SELECT pg_terminate_backend(${pid})`;
+    await sleep(300);
+    reserved.release();
+    const after = await Promise.all(Array.from({ length: 20 }, () => outcome(client`SELECT 1`)));
+    out.refused = after.filter((r) => r !== 'ran').map(code);
+  },
+
+  async reservedReconnected() {
+    const client = postgres(url, { max: 1 });
+    const reserved = await client.reserve();
+    const [{ pid }] = await reserved`SELECT pg_backend_pid() AS pid`;
+    const queued = client`SELECT pg_backend_pid() AS pid`;
+    await admin`SELECT pg_terminate_backend(${pid})`;
+    const [{ pid: poolPid }] = await queued;
+    out.next = code(await outcome(reserved`SELECT pg_backend_pid() AS pid`));
+    out.poolMoved = poolPid !== pid;
+    reserved.release();
+    out.after = code(await outcome(client`SELECT 1`));
+  },
+
+  async reservedReleasedAfterReuse() {
+    // The pool reconnects the first reservation's connection for a second one before the first
+    // lets go; the first's release must leave the second holding it.
+    const client = postgres(url, { max: 1 });
+    const first = await client.reserve();
+    const [{ pid }] = await first`SELECT pg_backend_pid() AS pid`;
+    await admin`SELECT pg_terminate_backend(${pid})`;
+    await sleep(300);
+    const second = await client.reserve();
+    first.release();
+    const order = [];
+    const pool = client`SELECT 1`.then(() => order.push('pool'));
+    out.second = code(await outcome(second`SELECT 1`));
+    await sleep(300);
+    order.push('second released');
+    second.release();
+    await Promise.race([pool, sleep(5000)]);
+    out.order = order;
+  },
+
+  async reservedWaiting() {
+    // A reservation waiting for the pool's only connection when the server ends it.
+    const client = postgres(url, { max: 1 });
+    const first = await client.reserve();
+    const [{ pid }] = await first`SELECT pg_backend_pid() AS pid`;
+    const second = client.reserve().then((held) => held`SELECT 1`);
+    await admin`SELECT pg_terminate_backend(${pid})`;
+    out.second = code(
+      await Promise.race([outcome(second), sleep(5000).then(() => 'never handed one')]),
+    );
+  },
+
   async staleError() {
     const client = postgres(url, { max: 1 });
     const [{ pid }] = await client`SELECT pg_backend_pid() AS pid`;

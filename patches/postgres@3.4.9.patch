@@ -7,77 +7,18 @@ statement either runs in autocommit on the session the pool reconnects, or is wr
 setImmediate(nextWrite) to a null socket, which throws where nothing can catch it and exits core.
 With this patch it is refused with the CONNECTION_CLOSED error the transaction was rejected with,
 a statement reaching a socketless connection is refused the same way, and the ended session's
-FATAL is no longer replayed onto the next session's first statement.
+FATAL is no longer replayed onto the next session's first statement. A reserved connection
+(sql.reserve()) the server ends is treated the same way: its statements are refused with the close
+error rather than run on the session the pool reconnects, and release() leaves the connection to
+the pool, which may already have handed it to another reservation, rather than putting it in the
+open queue. A reservation waiting when the server ends the pool's connection is handed the
+reconnected one; in 3.4.9 it waited for ever.
 
 Pinned by packages/core/tests/integration/a-transaction-the-server-ends-e2e.test.ts.
 Retired by a postgres release that fixes porsager/postgres#1248 (begin), #1208 (a statement on a
 socketless connection) and the stale errorResponse that issue describes: drop this file and the
 patchedDependencies entry in package.json, and the test above must still pass unpatched.
 
-diff --git a/cjs/src/connection.js b/cjs/src/connection.js
-index 07f6716702ac888215c86ad6e0071aaf55ae519c..fc6301af3796939c3b63a41cd1b15110029d4d2f 100644
---- a/cjs/src/connection.js
-+++ b/cjs/src/connection.js
-@@ -163,6 +163,13 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
-     if (q.cancelled)
-       return
- 
-+    // forge-core patch: with no socket the statement fails as a lost connection here, instead of
-+    // being queued for a nextWrite that would throw from an immediate
-+    if (!socket) {
-+      queryError(q, Errors.connection('CONNECTION_CLOSED', options))
-+      return true
-+    }
-+
-     try {
-       q.state = backend
-       query
-@@ -438,6 +445,9 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
-     remaining = 0
-     incomings = null
-     clearImmediate(nextWriteTimer)
-+    // forge-core patch: a FATAL the ended session sent is that session's; left set, the next
-+    // session's first ReadyForQuery rejects a statement it never sent with it
-+    errorResponse = null
-     socket.removeListener('data', data)
-     socket.removeListener('connect', connected)
-     idleTimer.cancel()
-diff --git a/cjs/src/index.js b/cjs/src/index.js
-index f09c61c7e998f411560b95c9a8e1ed6a97972c11..65a3fa9c9680c1de003cad96308e5e17983289f4 100644
---- a/cjs/src/index.js
-+++ b/cjs/src/index.js
-@@ -237,12 +237,21 @@ function Postgres(a, b) {
-     let savepoints = 0
-       , connection
-       , prepare = null
-+      , lost = null
- 
-     try {
-       await sql.unsafe('begin ' + options.replace(/[^a-z ]/ig, ''), [], { onexecute }).execute()
-       return await Promise.race([
-         scope(connection, fn),
--        new Promise((_, reject) => connection.onclose = reject)
-+        // forge-core patch: the session ended under the transaction, so its queued statements and
-+        // every later one (savepoints and the scope's rollback included) fail with the close error
-+        // rather than reach the dead socket or the session this connection opens next
-+        new Promise((_, reject) => connection.onclose = e => {
-+          lost = e
-+          while (queries.length)
-+            queries.shift().reject(e)
-+          reject(e)
-+        })
-       ])
-     } catch (error) {
-       throw error
-@@ -289,6 +298,8 @@ function Postgres(a, b) {
-       }
- 
-       function handler(q) {
-+        if (lost)
-+          return q.reject(lost)
-         q.catch(e => uncaughtError || (uncaughtError = e))
-         c.queue === full
-           ? queries.push(q)
 diff --git a/src/connection.js b/src/connection.js
 index 1b1cccde43b4570d5d071d6ffaab2669b3c2065a..ba2a606c67851bf700daf78b8defcb9befe9d3b0 100644
 --- a/src/connection.js
@@ -107,10 +48,48 @@ index 1b1cccde43b4570d5d071d6ffaab2669b3c2065a..ba2a606c67851bf700daf78b8defcb9b
      socket.removeListener('connect', connected)
      idleTimer.cancel()
 diff --git a/src/index.js b/src/index.js
-index c7fba3dace20173f4cb13f3f138bb6d213b43683..29ab4e21d17003c16d48f6f4884eb71dd3d7eaaf 100644
+index c7fba3dace20173f4cb13f3f138bb6d213b43683..5272baf39f7a10c0ea442c5385b9c9775d9f323f 100644
 --- a/src/index.js
 +++ b/src/index.js
-@@ -237,12 +237,21 @@ function Postgres(a, b) {
+@@ -210,21 +210,37 @@ function Postgres(a, b) {
+         closed.length && connect(closed.shift(), query)
+       })
+ 
++    let lost = null
+     move(c, reserved)
+     c.reserved = () => queue.length
+       ? c.execute(queue.shift())
+       : move(c, reserved)
+     c.reserved.release = true
++    // forge-core patch: the session ended under the reservation, so onclose already gave the
++    // connection back to the pool; its statements, and every later one, fail with the close error
++    // rather than reach the dead socket or the session the pool opens on it next
++    c.onclose = e => {
++      lost = e
++      while (queue.length)
++        queue.shift().reject(e)
++    }
+ 
+     const sql = Sql(handler)
+     sql.release = () => {
++      // forge-core patch: a connection the pool already took back is left alone: it may be another
++      // reservation's by now, and onopen would put it in open under that one
++      if (lost)
++        return
+       c.reserved = null
++      c.onclose = null
+       onopen(c)
+     }
+ 
+     return sql
+ 
+     function handler(q) {
++      if (lost)
++        return q.reject(lost)
+       c.queue === full
+         ? queue.push(q)
+         : c.execute(q) || move(c, full)
+@@ -237,12 +253,21 @@ function Postgres(a, b) {
      let savepoints = 0
        , connection
        , prepare = null
@@ -133,7 +112,7 @@ index c7fba3dace20173f4cb13f3f138bb6d213b43683..29ab4e21d17003c16d48f6f4884eb71d
        ])
      } catch (error) {
        throw error
-@@ -289,6 +298,8 @@ function Postgres(a, b) {
+@@ -289,6 +314,8 @@ function Postgres(a, b) {
        }
  
        function handler(q) {
@@ -142,3 +121,147 @@ index c7fba3dace20173f4cb13f3f138bb6d213b43683..29ab4e21d17003c16d48f6f4884eb71d
          q.catch(e => uncaughtError || (uncaughtError = e))
          c.queue === full
            ? queries.push(q)
+@@ -423,7 +450,19 @@ function Postgres(a, b) {
+     c.reserved = null
+     c.onclose && (c.onclose(e), c.onclose = null)
+     options.onclose && options.onclose(c.id)
+-    queries.length && connect(c, queries.shift())
++    if (!queries.length)
++      return
++    const query = queries.shift()
++    if (!query.reserve)
++      return connect(c, query)
++    // forge-core patch: a reservation waiting for a connection goes back to the head of the queue,
++    // so onopen hands it the reconnected one (shifted out, it was never handed one), and leaves the
++    // queue if the reconnect fails
++    const waiting = [query]
++    while (queries.length)
++      waiting.push(queries.shift())
++    waiting.forEach(queries.push)
++    connect(c, { reserve: query.reserve, reject: e => (queries.remove(query), query.reject(e)) })
+   }
+ }
+ 
+diff --git a/cjs/src/connection.js b/cjs/src/connection.js
+index 07f6716702ac888215c86ad6e0071aaf55ae519c..fc6301af3796939c3b63a41cd1b15110029d4d2f 100644
+--- a/cjs/src/connection.js
++++ b/cjs/src/connection.js
+@@ -163,6 +163,13 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+     if (q.cancelled)
+       return
+ 
++    // forge-core patch: with no socket the statement fails as a lost connection here, instead of
++    // being queued for a nextWrite that would throw from an immediate
++    if (!socket) {
++      queryError(q, Errors.connection('CONNECTION_CLOSED', options))
++      return true
++    }
++
+     try {
+       q.state = backend
+       query
+@@ -438,6 +445,9 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+     remaining = 0
+     incomings = null
+     clearImmediate(nextWriteTimer)
++    // forge-core patch: a FATAL the ended session sent is that session's; left set, the next
++    // session's first ReadyForQuery rejects a statement it never sent with it
++    errorResponse = null
+     socket.removeListener('data', data)
+     socket.removeListener('connect', connected)
+     idleTimer.cancel()
+diff --git a/cjs/src/index.js b/cjs/src/index.js
+index f09c61c7e998f411560b95c9a8e1ed6a97972c11..17e2cb9927fe232891a120be652fcf9960b03474 100644
+--- a/cjs/src/index.js
++++ b/cjs/src/index.js
+@@ -210,21 +210,37 @@ function Postgres(a, b) {
+         closed.length && connect(closed.shift(), query)
+       })
+ 
++    let lost = null
+     move(c, reserved)
+     c.reserved = () => queue.length
+       ? c.execute(queue.shift())
+       : move(c, reserved)
+     c.reserved.release = true
++    // forge-core patch: the session ended under the reservation, so onclose already gave the
++    // connection back to the pool; its statements, and every later one, fail with the close error
++    // rather than reach the dead socket or the session the pool opens on it next
++    c.onclose = e => {
++      lost = e
++      while (queue.length)
++        queue.shift().reject(e)
++    }
+ 
+     const sql = Sql(handler)
+     sql.release = () => {
++      // forge-core patch: a connection the pool already took back is left alone: it may be another
++      // reservation's by now, and onopen would put it in open under that one
++      if (lost)
++        return
+       c.reserved = null
++      c.onclose = null
+       onopen(c)
+     }
+ 
+     return sql
+ 
+     function handler(q) {
++      if (lost)
++        return q.reject(lost)
+       c.queue === full
+         ? queue.push(q)
+         : c.execute(q) || move(c, full)
+@@ -237,12 +253,21 @@ function Postgres(a, b) {
+     let savepoints = 0
+       , connection
+       , prepare = null
++      , lost = null
+ 
+     try {
+       await sql.unsafe('begin ' + options.replace(/[^a-z ]/ig, ''), [], { onexecute }).execute()
+       return await Promise.race([
+         scope(connection, fn),
+-        new Promise((_, reject) => connection.onclose = reject)
++        // forge-core patch: the session ended under the transaction, so its queued statements and
++        // every later one (savepoints and the scope's rollback included) fail with the close error
++        // rather than reach the dead socket or the session this connection opens next
++        new Promise((_, reject) => connection.onclose = e => {
++          lost = e
++          while (queries.length)
++            queries.shift().reject(e)
++          reject(e)
++        })
+       ])
+     } catch (error) {
+       throw error
+@@ -289,6 +314,8 @@ function Postgres(a, b) {
+       }
+ 
+       function handler(q) {
++        if (lost)
++          return q.reject(lost)
+         q.catch(e => uncaughtError || (uncaughtError = e))
+         c.queue === full
+           ? queries.push(q)
+@@ -423,7 +450,19 @@ function Postgres(a, b) {
+     c.reserved = null
+     c.onclose && (c.onclose(e), c.onclose = null)
+     options.onclose && options.onclose(c.id)
+-    queries.length && connect(c, queries.shift())
++    if (!queries.length)
++      return
++    const query = queries.shift()
++    if (!query.reserve)
++      return connect(c, query)
++    // forge-core patch: a reservation waiting for a connection goes back to the head of the queue,
++    // so onopen hands it the reconnected one (shifted out, it was never handed one), and leaves the
++    // queue if the reconnect fails
++    const waiting = [query]
++    while (queries.length)
++      waiting.push(queries.shift())
++    waiting.forEach(queries.push)
++    connect(c, { reserve: query.reserve, reject: e => (queries.remove(query), query.reject(e)) })
+   }
+ }
+ 

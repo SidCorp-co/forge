@@ -153,7 +153,9 @@ use (storage, row estimates, freeze horizons) and what a rewrite (`VACUUM FULL`,
 without changing the schema: a column's missing value (`atthasmissing`, `attmissingval`), which it
 writes into the rows, and a TOAST table, which it drops where no live column needs one. Every row
 belonging to a TOAST table is left out, and the storage options a table set on its TOAST table are
-read as the table's. A rule, an aggregate, a comment, a collation, a
+read as the table's. An object of the database is read by name and never by oid, so a rebuild that
+hands its indexes, constraints and foreign-key triggers new oids, as `ALTER COLUMN ... TYPE` to the
+type a column has does, is no difference. A rule, an aggregate, a comment, a collation, a
 statistics object or a storage option is a difference as a table is;
 `tests/integration/slot-digest-names-every-change-e2e.test.ts` plants each kind and the use that is
 not one. Only once the hash moved are the rows grouped by the object they belong to and named the way
@@ -164,8 +166,10 @@ kept on the database's own comment, read without connecting to it. The file's `c
 the app's pool for good (`src/db/client.ts:closeDbFor`, lifted by the next `setupTestDatabase`), so
 work the app left running cannot open another one, and leaves the closed pool no socket to open, so
 a statement still in its queue is refused rather than run on a reopened connection; it ends its own client, and only then terminates
-whatever is still connected, naming it, since a connection cut off from the server's side under a
-transaction is one postgres.js goes on writing to. It then reads the schema again, so a file that changes it is refused at its own teardown,
+whatever is still connected, naming it: what is left then is background work that outlived the
+file, and the database cannot leave the slot while anything holds it. A statement that work sends on
+a connection terminated under it is refused with `CONNECTION_CLOSED` by the patched driver
+(`patches/postgres@3.4.9.patch`), not written to the dead socket. It then reads the schema again, so a file that changes it is refused at its own teardown,
 naming the file and the objects it added, dropped or changed; the database is then renamed out of
 the slot and dropped behind the run, and the next file in the slot gets a fresh clone. A file that
 gave its database back without `cleanup()` is caught by the next file's step 2, which names it.

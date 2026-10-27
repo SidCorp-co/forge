@@ -87,6 +87,8 @@ async function take(folder: string, migrate: (url: string) => Promise<void>) {
 }
 
 const existing = (name: string) => templateRow(admin, name);
+/** What this file made: every reap it triggers judges only these, so another suite's are never its to drop. */
+const ours = (name: string) => touched.has(name);
 const holders = (name: string) => useLockHolders(admin, name);
 
 /** `sql`, with `hook` run right after any query that reads a database's marker, on this or a reserved connection. */
@@ -197,22 +199,25 @@ describe('a template whose content is not on the instance', () => {
       const folder = migrations(`fail-${mintRunToken()}`);
       const name = sharedTemplateName(hashMigrations(folder));
       touched.add(name);
-      const before = await admin<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM pg_database WHERE datname LIKE 'forge\\_test\\_tpl\\_stg\\_%'`;
+      // The staging database this build made, read off the URL it migrates: a count over the
+      // instance also counts a build another suite has under way (ISS-1315).
+      const staged: string[] = [];
 
       await expect(
         acquireSharedTemplate({
           adminUrl,
           migrationsFolder: folder,
-          migrate: async () => {
+          migrate: async (url) => {
+            staged.push(decodeURIComponent(new URL(url).pathname.slice(1)));
+            expect(await existing(staged[0] as string)).toBeDefined();
             throw new Error('migration 0001 refused');
           },
         }),
       ).rejects.toThrow(/migration 0001 refused/);
 
-      const after = await admin<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM pg_database WHERE datname LIKE 'forge\\_test\\_tpl\\_stg\\_%'`;
-      expect(after[0]?.n).toBeLessThanOrEqual(before[0]?.n as number);
+      expect(staged).toHaveLength(1);
+      expect(staged[0]).toMatch(/^forge_test_tpl_stg_/);
+      expect(await existing(staged[0] as string)).toBeUndefined();
       expect(await existing(name)).toBeUndefined();
     },
     SLOW,
@@ -337,6 +342,8 @@ describe('reapAbandoned, over a shared template', () => {
   const DAY = IDLE_REAP_AFTER_MS;
   // A second suite on this instance reaps on the real clock, planted as `other`: a case's template
   // aged past the day on it is that suite's to drop, so these age to just short and reap ahead.
+  // The reap ahead judges only this file's templates: run unscoped, it drops the template the same
+  // case in a suite started alongside is aging (ISS-1315).
   const SOON = 60 * 1000;
   let other: postgres.Sql;
   beforeAll(() => {
@@ -352,7 +359,7 @@ describe('reapAbandoned, over a shared template', () => {
       const got = await take(migrations(`held-${mintRunToken()}`), counted().migrate);
       await age(got.name, 3 * DAY);
 
-      const dropped = await reapAbandoned(admin);
+      const dropped = await reapAbandoned(admin, Date.now(), ours);
 
       expect(dropped).not.toContain(got.name);
       expect(await existing(got.name)).toBeDefined();
@@ -368,7 +375,7 @@ describe('reapAbandoned, over a shared template', () => {
       held.length = 0;
       await age(got.name, DAY - 60 * 60 * 1000);
 
-      expect(await reapAbandoned(admin)).not.toContain(got.name);
+      expect(await reapAbandoned(admin, Date.now(), ours)).not.toContain(got.name);
       expect(await existing(got.name)).toBeDefined();
     },
     SLOW,
@@ -381,10 +388,38 @@ describe('reapAbandoned, over a shared template', () => {
       await got.release();
       held.length = 0;
       await age(got.name, DAY - SOON);
-      await reapAbandoned(other);
+      await reapAbandoned(other, Date.now(), ours);
 
-      expect(await reapAbandoned(admin, Date.now() + 2 * SOON)).toContain(got.name);
+      expect(await reapAbandoned(admin, Date.now() + 2 * SOON, ours)).toContain(got.name);
       expect(await existing(got.name)).toBeUndefined();
+    },
+    SLOW,
+  );
+
+  it(
+    'never drops the template the same case in a suite started alongside is aging',
+    async () => {
+      const theirs = await acquireSharedTemplate({
+        adminUrl,
+        migrationsFolder: migrations(`alongside-${mintRunToken()}`),
+        migrate: counted().migrate,
+      });
+      try {
+        await theirs.release();
+        await age(theirs.name, DAY - SOON);
+        const got = await take(migrations(`idle-${mintRunToken()}`), counted().migrate);
+        await got.release();
+        held.length = 0;
+        await age(got.name, DAY - SOON);
+
+        const dropped = await reapAbandoned(admin, Date.now() + 2 * SOON, ours);
+
+        expect(dropped).toContain(got.name);
+        expect(dropped).not.toContain(theirs.name);
+        expect(await existing(theirs.name)).toBeDefined();
+      } finally {
+        retireScratchDb(adminUrl, theirs.name);
+      }
     },
     SLOW,
   );
@@ -400,7 +435,7 @@ describe('reapAbandoned, over a shared template', () => {
       );
       const row = await existing(name);
 
-      expect(await reapAbandoned(admin)).not.toContain(name);
+      expect(await reapAbandoned(admin, Date.now(), ours)).not.toContain(name);
       expect((await existing(name))?.oid).toBe(row?.oid);
     },
     SLOW,
@@ -428,7 +463,7 @@ describe('reapAbandoned, over a shared template', () => {
       touched.add(name);
       await admin.unsafe(`CREATE DATABASE "${name}"`);
 
-      expect(await reapAbandoned(admin)).not.toContain(name);
+      expect(await reapAbandoned(admin, Date.now(), ours)).not.toContain(name);
       expect(await existing(name)).toBeDefined();
     },
     SLOW,
