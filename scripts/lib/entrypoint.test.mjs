@@ -140,6 +140,15 @@ function handWrittenLaunchChecks(files) {
     .flatMap(([rel, text]) => entryReads(rel, text));
 }
 
+/** What wraps an expression without changing its value: argv inside one is still argv. */
+const WRAPS = [
+  ts.isParenthesizedExpression,
+  ts.isAsExpression,
+  ts.isTypeAssertionExpression,
+  ts.isNonNullExpression,
+  ts.isSatisfiesExpression,
+];
+
 /** Methods that ask whether argv holds a literal flag: the only walks of the entry that compare nothing to it. */
 const FLAG_TESTS = new Set(['includes', 'indexOf', 'lastIndexOf']);
 
@@ -201,9 +210,7 @@ function entryReads(rel, text) {
       node.expression.text === 'globalThis');
   const unwrap = (node) => {
     let n = node;
-    while (n && (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isNonNullExpression(n))) {
-      n = n.expression;
-    }
+    while (n && WRAPS.some((is) => is(n))) n = n.expression;
     return n;
   };
   const literal = (node) => {
@@ -300,7 +307,6 @@ function entryReads(rel, text) {
       return rest ? start + i <= 1 : start + i === 1;
     });
   const reachesEntry = (start, index) => (index === null || index < 0 ? start <= 1 : start + index === 1);
-  const WRAPS = [ts.isParenthesizedExpression, ts.isAsExpression, ts.isNonNullExpression, ts.isSatisfiesExpression];
   const outer = (node) => {
     let n = node;
     while (n.parent && WRAPS.some((is) => is(n.parent))) n = n.parent;
@@ -415,6 +421,9 @@ describe('no file decides it was launched by hand', () => {
     ['scripts/param-keyed.mjs', 'function isMain({ 1: entry }) {\n  return import.meta.filename === entry;\n}\nif (isMain(process.argv)) main();\n', 4],
     ['scripts/param-hole.mjs', 'function isMain([, entry]) {\n  return import.meta.filename === entry;\n}\nisMain(process.argv);\n', 4],
     ['scripts/param-rest.mjs', 'const isMain = (...all) => import.meta.filename === all[0][1];\nisMain(process.argv);\n', 2],
+    ['packages/core/src/satisfies.ts', 'function isMain(v: string[]) {\n  return import.meta.filename === v[1];\n}\nisMain(process.argv satisfies string[]);\n', 2],
+    ['packages/core/src/satisfies-var.ts', 'const v = process.argv satisfies string[];\nif (import.meta.filename === v[1]) main();\n', 2],
+    ['packages/core/src/asserted.ts', 'const v = <string[]>process.argv;\nif (import.meta.filename === (v as string[])[1]!) main();\n', 2],
     ['scripts/from.mjs', 'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n', 2],
     ['scripts/var.mjs', 'const args = process.argv;\n\nif (import.meta.url === pathToFileURL(args[1]).href) main();\n', 3],
     ['scripts/var-var.mjs', 'const a = process.argv;\nconst b = a;\nif (import.meta.url === b.at(1)) main();\n', 3],
