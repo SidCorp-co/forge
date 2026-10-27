@@ -13,6 +13,17 @@ vi.mock('./pipeline-health.js', () => ({
   publishPipelineHealthChanged: (projectId: string, ids: string[]) => publishSpy(projectId, ids),
 }));
 
+const { IssueDependencyError } = vi.hoisted(() => ({
+  IssueDependencyError: class IssueDependencyError extends Error {
+    constructor(
+      readonly code: string,
+      readonly detail?: string,
+    ) {
+      super(detail ? `${code}: ${detail}` : code);
+    }
+  },
+}));
+
 let inFlight = 0;
 let sawOverlap = false;
 const setEdgeSpy = vi.fn(async (input: { toIssueId: string }, _writer: unknown, _ex?: unknown) => {
@@ -31,6 +42,7 @@ const emitEdgeSpy = vi.fn(
   ) => undefined,
 );
 vi.mock('./dependency-service.js', () => ({
+  IssueDependencyError,
   writeIssueDependency: (input: { toIssueId: string }, writer: unknown, ex?: unknown) =>
     setEdgeSpy(input, writer, ex),
   emitIssueDependencyEffects: (
@@ -137,5 +149,28 @@ describe('applyIssueRelations — health publish is batched, never per edge', ()
     ).rejects.toThrow(/exactly one of dependsOnId or blocksId/);
     expect(setEdgeSpy).not.toHaveBeenCalled();
     expect(publishSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyIssueRelations — an edge write that fails', () => {
+  it('names the entry and the field of a relation whose issue is not in the project', async () => {
+    setEdgeSpy.mockRejectedValueOnce(new IssueDependencyError('NOT_FOUND'));
+    const failed = applyIssueRelations(writer, PROJECT_ID, ISSUE_ID, [
+      { kind: 'blocks', blocksId: BLOCKED_C },
+    ]);
+    await expect(failed).rejects.toBeInstanceOf(IssueDependencyError);
+    await expect(failed).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(failed).rejects.toThrow(
+      `\`relations[0].blocksId\` names ${BLOCKED_C}, which is no issue of this project's`,
+    );
+  });
+
+  it('passes any other failure up as the very error the edge write threw', async () => {
+    const cycle = new IssueDependencyError('CYCLE');
+    const lost = Object.assign(new Error('write CONNECTION_CLOSED'), { code: 'CONNECTION_CLOSED' });
+    setEdgeSpy.mockRejectedValueOnce(cycle).mockRejectedValueOnce(lost);
+    const relations = [{ kind: 'blocks' as const, dependsOnId: BLOCKER_A }];
+    await expect(applyIssueRelations(writer, PROJECT_ID, ISSUE_ID, relations)).rejects.toBe(cycle);
+    await expect(applyIssueRelations(writer, PROJECT_ID, ISSUE_ID, relations)).rejects.toBe(lost);
   });
 });

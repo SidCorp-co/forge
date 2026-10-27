@@ -928,10 +928,26 @@ describe('a catch around a statement on a handle that can be a transaction', () 
       ['narrowsByAReassignedReader', 'tx'],
       ['narrowsByAHelperFedTheErrorsOwnCode', 'tx'],
     ];
+    /** The use each catch refused for a use of its error is refused at, and the rest fall back. */
+    const used: Record<string, string> = {
+      narrowsAfterReassigningTheError: "err = { code: '23505' }",
+      narrowsAfterWritingTheErrorsCode:
+        "(err as { cause?: { code?: string } }).cause = { code: '23505' }",
+      narrowsAfterDestructuringIntoTheError: "({ found: err } = { found: { code: '23505' } })",
+    };
+    const why = (fn: string): string => {
+      const use = used[fn];
+      if (use === undefined)
+        return 'can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back';
+      const line = plant
+        .slice(0, plant.indexOf(use, plant.indexOf(`function ${fn}(`)))
+        .split('\n').length;
+      return `uses the error at line ${line} in \`${use}\`, which the scan cannot read as a plain read, on a path an error it does not name can take, where the error goes on to its guard or up to the catch around it: there use it only by a comparison, instanceof, typeof, a property read down to a primitive, a lib/db-errors.ts reader or isX helper, a store to a key no guard reads, or a throw of it unchanged; or open the catch with if (!<names the one error>) throw <the error>; and do it after that, where only that error reaches`;
+    };
     expect(refusals(planted)).toEqual(
       swallows.map(
         ([fn, handle]) =>
-          `${PLANTED}:${catchLine(fn as string)} ${fn} catches a statement on ${handle}, which can be a transaction, and can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back, or give it an EXCEPTIONS entry with its reason`,
+          `${PLANTED}:${catchLine(fn as string)} ${fn} catches a statement on ${handle}, which can be a transaction, and ${why(fn as string)}, or give it an EXCEPTIONS entry with its reason`,
       ),
     );
   });

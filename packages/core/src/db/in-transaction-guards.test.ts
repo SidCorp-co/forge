@@ -6,6 +6,43 @@ import { buildProgram, guardedCatches, refusals } from './in-transaction-catches
 
 const PLANTED = 'db/in-transaction-guards.planted.ts';
 
+const FALLS_BACK =
+  'can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back';
+const AFTER_THE_GUARD =
+  'open the catch with if (!<names the one error>) throw <the error>; and do it after that, where only that error reaches';
+const usesTheError = (line: number, text: string) =>
+  `uses the error at line ${line} in \`${text}\`, which the scan cannot read as a plain read, on a path an error it does not name can take, where the error goes on to its guard or up to the catch around it: there use it only by a comparison, instanceof, typeof, a property read down to a primitive, a lib/db-errors.ts reader or isX helper, a store to a key no guard reads, or a throw of it unchanged; or ${AFTER_THE_GUARD}`;
+const replacesTheError = (line: number, text: string) =>
+  `throws at line ${line} \`${text}\` in place of an error it does not name, which a catch around it can mistake for the one it names: throw the error it caught unchanged there, start the catch with rethrowInTransaction(<the error>, <the handle>) where a replacement must not reach a transaction, or ${AFTER_THE_GUARD}`;
+
+/** The line `text` first stands on in `source` after `fn` opens. */
+function lineIn(source: string, fn: string, text: string): number {
+  const opens = source.search(new RegExp(`(?:function |async )${fn}\\(`));
+  const at = source.indexOf(text, opens);
+  if (opens === -1 || at === -1) throw new Error(`${fn} holds no \`${text}\``);
+  return source.slice(0, at).split('\n').length;
+}
+
+/**
+ * The refusal of `fn`'s first catch in `file`, whose text is `source`: for the use or the throw
+ * whose text `why` names, at the line that text first stands on after `fn` opens, or a fall-back.
+ */
+function refusalOf(
+  file: string,
+  source: string,
+  fn: string,
+  why: { use: string } | { throws: string } | undefined,
+): string {
+  const lineOf = (text: string) => lineIn(source, fn, text);
+  const reason =
+    why === undefined
+      ? FALLS_BACK
+      : 'use' in why
+        ? usesTheError(lineOf(why.use), why.use)
+        : replacesTheError(lineOf(why.throws), why.throws);
+  return `${file}:${lineOf('catch')} ${fn} catches a statement on tx, which can be a transaction, and ${reason}, or give it an EXCEPTIONS entry with its reason`;
+}
+
 const plant = `import { mkdir, open, readFile } from 'node:fs/promises';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { type Tx } from './client.js';
@@ -399,6 +436,26 @@ export async function narrowsAfterTheErrorIsOnlyLoggedAndCounted(tx: Tx) {
     throw err;
   }
 }
+
+export async function narrowsByAComparandBoundFromTheError(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    const known = (err as { code: '23505' }).code;
+    if ((err as { code?: string }).code !== known) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAComparandDestructuredFromTheError(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    const { code: known } = err as { code: '23505' };
+    if ((err as { code?: string }).code !== known) throw err;
+    return null;
+  }
+}
 `;
 
 const SHIFTED = 'db/in-transaction-guards-shifted.planted.ts';
@@ -439,7 +496,9 @@ const writes = `import { type Tx } from './client.js';
 import { isUniqueViolation, pgErrorCode } from '../lib/db-errors.js';
 
 declare const flag: boolean;
+declare const log: { warn(o: object, m: string): void; error(o: object, m: string): void };
 class Wrapped extends Error {}
+class Conflict extends Error {}
 class Trap {
   set e(v: unknown) {
     (v as ${coded}).code = '23505';
@@ -460,8 +519,125 @@ ${poisoned('refusesAWriteThroughAMapItWasSetIn', `const m = new Map<number, ${co
 ${poisoned('refusesAWriteThroughAShorthandHolder', `const e = err as ${coded}; const held = { e }; held.e.code = '23505';`)}
 ${poisoned('refusesAUseItCannotRead', 'const seen = String(err);')}
 ${poisoned('refusesAStoreIntoASetter', 'const box = new Trap(); box.e = err;')}
+${poisoned('refusesADirectEval', `eval("err.code = '23505'");`)}
 
-export async function refusesAUseBeforeAnExitItDecidesAt(tx: Tx) {
+export function refusesArgumentsInAFunctionHandler(tx: Tx) {
+  return tx.execute('select 1' as never).catch(function (err: unknown) {
+    (arguments[0] as ${coded}).code = '23505';
+    if (pgErrorCode(err) === '23505') return null;
+    throw err;
+  });
+}
+
+export async function rewritesWhatItRethrows(tx: Tx) {
+  try {
+    try {
+      return await tx.execute('select 1' as never);
+    } catch (e) {
+      (e as ${coded}).code = '23505';
+      throw e;
+    }
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    return null;
+  }
+}
+
+export async function rewritesOnTheBranchItRethrows(tx: Tx) {
+  try {
+    try {
+      return await tx.execute('select 1' as never);
+    } catch (e) {
+      if (!isUniqueViolation(e)) {
+        (e as ${coded}).code = '23505';
+        throw e;
+      }
+      return null;
+    }
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    return null;
+  }
+}
+
+export async function translatesEveryErrorToItsOwnClass(tx: Tx) {
+  try {
+    try {
+      return await tx.execute('select 1' as never);
+    } catch (e) {
+      throw new Conflict('exists', { cause: e });
+    }
+  } catch (err) {
+    if (!(err instanceof Conflict)) throw err;
+    return null;
+  }
+}
+
+export async function annotatesTheCauseItRethrows(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (e) {
+    (e as { cause?: unknown }).cause = { code: '23505' };
+    throw e;
+  }
+}
+
+export async function swapsTheClassOfWhatItRethrows(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (e) {
+    (e as { __proto__?: object }).__proto__ = {};
+    throw e;
+  }
+}
+
+export async function logsBeforeDeciding(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    log.warn({ err }, 'insert failed');
+    if (isUniqueViolation(err)) return null;
+    throw err;
+  }
+}
+
+export async function logsOnTheRethrow(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (isUniqueViolation(err)) return null;
+    log.error({ err }, 'insert failed');
+    throw err;
+  }
+}
+
+export async function wrapsOnTheRethrow(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (isUniqueViolation(err)) return null;
+    throw new Error('insert failed', { cause: err });
+  }
+}
+
+export async function refusesAWrapItAlwaysThrows(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    throw new Wrapped(String(err), { cause: err });
+  }
+}
+
+export async function annotatesWhatItRethrows(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (e) {
+    (e as { context?: string }).context = 'inserting the row';
+    throw e;
+  }
+}
+
+export async function keepsAUseOnTheBranchItNamed(tx: Tx) {
   try {
     return await tx.execute('select 1' as never);
   } catch (err) {
@@ -500,14 +676,6 @@ export async function keepsAUseAfterItsOpeningGuard(tx: Tx) {
   }
 }
 
-export async function keepsAnErrorItAlwaysThrowsWrapped(tx: Tx) {
-  try {
-    return await tx.execute('select 1' as never);
-  } catch (err) {
-    throw new Wrapped(String(err), { cause: err });
-  }
-}
-
 ${poisoned('keepsAStoreReadsAndADiscardedComma', `const box: { e?: unknown; n?: number } = {}; box.e = err; box.n = (err, 1); const message = (err as Error).message; if (typeof err === 'object' && !err && message) throw err;`)}
 `;
 
@@ -522,13 +690,9 @@ const catches = guardedCatches(
 );
 const planted = catches.filter((c) => c.file === PLANTED);
 const kindOf = (fn: string) => planted.find((c) => c.fn === fn)?.handler;
-function catchLine(fn: string): number {
-  const opens = plant.search(new RegExp(`(?:function |async )${fn}\\(`));
-  return plant.slice(0, plant.indexOf('catch', opens)).split('\n').length;
-}
 
 describe('a guard the scan reads as naming one error', () => {
-  it('names neither a lost session, an alias written before it reads, a class something changes, nor a comparand defaulted to the error', () => {
+  it('names neither a lost session, an alias written before it reads, a class something changes, nor a comparand defaulted to or bound from the error', () => {
     const refused = [
       'narrowsToAReset',
       'narrowsToABrokenPipe',
@@ -556,12 +720,30 @@ describe('a guard the scan reads as naming one error', () => {
       'narrowsAfterWritingThroughADefaultedBinding',
       'narrowsAfterWritingThroughAHolderACallReturns',
       'narrowsAfterWritingThroughThis',
+      'narrowsByAComparandBoundFromTheError',
+      'narrowsByAComparandDestructuredFromTheError',
     ];
+    const used: Record<string, string> = {
+      narrowsAfterWritingThroughAnAlias: "alias.code = '23505'",
+      narrowsAfterWritingTheDestructuredCause: "cause.code = '23505'",
+      narrowsAfterWritingAForOfVariable: '[err]',
+      narrowsAfterWritingAnAssignedAlias: "(held as { code?: string }).code = '23505'",
+      narrowsAfterWritingADestructuredAssignment: "cause.code = '23505'",
+      narrowsAfterWritingThePrototypeOfTheError:
+        "(Object.getPrototypeOf(err) as { code?: string }).code = '23505'",
+      narrowsAfterWritingThroughACallResult: "get().code = '23505'",
+      narrowsAfterWritingThroughADeclaredFunctionsResult: "get().code = '23505'",
+      narrowsAfterWritingThroughAMapEntry: 'const held = new Map([[0, err as { code?: string }]])',
+      narrowsAfterWritingThroughADefaultedParameter: "e.code = '23505'",
+      narrowsAfterWritingThroughADefaultedBinding: "e.code = '23505'",
+      narrowsAfterWritingThroughAHolderACallReturns: 'getBox().error = err as { code?: string }',
+      narrowsAfterWritingThroughThis: "this.last.code = '23505'",
+    };
     expect(refusals(planted)).toEqual(
-      refused.map(
-        (fn) =>
-          `${PLANTED}:${catchLine(fn)} ${fn} catches a statement on tx, which can be a transaction, and can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back, or give it an EXCEPTIONS entry with its reason`,
-      ),
+      refused.map((fn) => {
+        const use = used[fn];
+        return refusalOf(PLANTED, plant, fn, use === undefined ? undefined : { use });
+      }),
     );
   });
 
@@ -581,7 +763,7 @@ describe('a guard the scan reads as naming one error', () => {
 
   it('refuses a class patched in another file at the offsets the statement-error list holds in its own', () => {
     expect(refusals(catches.filter((c) => c.file === SHIFTED))).toEqual([
-      `${SHIFTED}:7 narrowsByAClassPatchedWhereTheListStandsElsewhere catches a statement on tx, which can be a transaction, and can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back, or give it an EXCEPTIONS entry with its reason`,
+      `${SHIFTED}:7 narrowsByAClassPatchedWhereTheListStandsElsewhere catches a statement on tx, which can be a transaction, and ${FALLS_BACK}, or give it an EXCEPTIONS entry with its reason`,
     ]);
   });
 
@@ -598,44 +780,98 @@ describe('a guard the scan reads as naming one error', () => {
   });
 });
 
-describe('a use of the caught error before its guard reads it', () => {
-  const kind = (fn: string) => catches.find((c) => c.file === WRITES && c.fn === fn)?.handler;
-  const line = (fn: string) => {
-    const opens = writes.search(new RegExp(`(?:function |async )${fn}\\(`));
-    return writes.slice(0, writes.indexOf('catch', opens)).split('\n').length;
-  };
+describe('a use of the caught error on a path an error it does not name can take', () => {
+  const kinds = (fn: string) =>
+    catches.filter((c) => c.file === WRITES && c.fn === fn).map((c) => c.handler);
 
-  it('refuses every use it cannot resolve as a plain read, naming its file, line and function', () => {
-    const refused = [
-      'refusesAWriteThroughAnAwait',
-      'refusesAWriteThroughAComma',
-      'refusesAWriteThroughAConditional',
-      'refusesAWriteThroughANullishDefault',
-      'refusesAWriteThroughAnOr',
-      'refusesACallbackHandedTheError',
-      'refusesAnImmediateCallHandedTheError',
-      'refusesAPropertyDefinedOnTheError',
-      'refusesAReflectedSet',
-      'refusesAWriteToThePrototypeOfTheError',
-      'refusesAnAssignOntoTheError',
-      'refusesAWriteThroughAMapItWasSetIn',
-      'refusesAWriteThroughAShorthandHolder',
-      'refusesAUseItCannotRead',
-      'refusesAStoreIntoASetter',
-      'refusesAUseBeforeAnExitItDecidesAt',
-      'refusesAMethodCalledOnAHolder',
+  it('refuses each use it cannot read as a plain read, or a replacement it throws, naming which and where', () => {
+    const coded = "(e as { code?: string }).code = '23505'";
+    const refused: Array<[string, { use: string } | { throws: string }]> = [
+      [
+        'refusesAWriteThroughAnAwait',
+        { use: "(await Promise.resolve(err as { code?: string })).code = '23505'" },
+      ],
+      ['refusesAWriteThroughAComma', { use: "((0, err) as { code?: string }).code = '23505'" }],
+      [
+        'refusesAWriteThroughAConditional',
+        { use: "((flag ? err : err) as { code?: string }).code = '23505'" },
+      ],
+      [
+        'refusesAWriteThroughANullishDefault',
+        { use: "((err ?? {}) as { code?: string }).code = '23505'" },
+      ],
+      ['refusesAWriteThroughAnOr', { use: "((err || {}) as { code?: string }).code = '23505'" }],
+      [
+        'refusesACallbackHandedTheError',
+        { use: "[err as { code?: string }].forEach((e) => { e.code = '23505'; })" },
+      ],
+      [
+        'refusesAnImmediateCallHandedTheError',
+        { use: "((e: { code?: string }) => { e.code = '23505'; })(err as { code?: string })" },
+      ],
+      [
+        'refusesAPropertyDefinedOnTheError',
+        { use: "Object.defineProperty(err, 'code', { value: '23505' })" },
+      ],
+      ['refusesAReflectedSet', { use: "Reflect.set(err as object, 'code', '23505')" }],
+      [
+        'refusesAWriteToThePrototypeOfTheError',
+        { use: "Object.setPrototypeOf(Object.getPrototypeOf(err), { code: '23505' })" },
+      ],
+      ['refusesAnAssignOntoTheError', { use: "Object.assign(err as object, { code: '23505' })" }],
+      ['refusesAWriteThroughAMapItWasSetIn', { use: 'm.set(0, err as { code?: string })' }],
+      ['refusesAWriteThroughAShorthandHolder', { use: "held.e.code = '23505'" }],
+      ['refusesAUseItCannotRead', { use: 'const seen = String(err)' }],
+      ['refusesAStoreIntoASetter', { use: 'box.e = err' }],
+      ['refusesADirectEval', { use: `eval("err.code = '23505'")` }],
+      [
+        'refusesArgumentsInAFunctionHandler',
+        { use: "(arguments[0] as { code?: string }).code = '23505'" },
+      ],
+      ['rewritesWhatItRethrows', { use: coded }],
+      ['rewritesOnTheBranchItRethrows', { use: coded }],
+      [
+        'translatesEveryErrorToItsOwnClass',
+        { throws: "throw new Conflict('exists', { cause: e })" },
+      ],
+      [
+        'annotatesTheCauseItRethrows',
+        { use: "(e as { cause?: unknown }).cause = { code: '23505' }" },
+      ],
+      ['swapsTheClassOfWhatItRethrows', { use: '(e as { __proto__?: object }).__proto__ = {}' }],
+      ['logsBeforeDeciding', { use: "log.warn({ err }, 'insert failed')" }],
+      ['logsOnTheRethrow', { use: "log.error({ err }, 'insert failed')" }],
+      ['wrapsOnTheRethrow', { throws: "throw new Error('insert failed', { cause: err })" }],
+      ['refusesAWrapItAlwaysThrows', { throws: 'throw new Wrapped(String(err), { cause: err })' }],
+      ['refusesAMethodCalledOnAHolder', { use: 'this.poison()' }],
     ];
     expect(refusals(catches.filter((c) => c.file === WRITES))).toEqual(
-      refused.map(
-        (fn) =>
-          `${WRITES}:${line(fn)} ${fn} catches a statement on tx, which can be a transaction, and can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back, or give it an EXCEPTIONS entry with its reason`,
-      ),
+      refused.map(([fn, why]) => refusalOf(WRITES, writes, fn, why)),
     );
   });
 
-  it('keeps a use after an opening guard, an error it always throws, a store, a read and a discarded comma', () => {
-    expect(kind('keepsAUseAfterItsOpeningGuard')).toBe('narrowed');
-    expect(kind('keepsAnErrorItAlwaysThrowsWrapped')).toBe('narrowed');
-    expect(kind('keepsAStoreReadsAndADiscardedComma')).toBe('narrowed');
+  it("keeps the outer catch around an inner one it refuses, since what reaches the outer is the inner's to answer", () => {
+    expect(kinds('rewritesWhatItRethrows')).toEqual(['narrowed', 'swallows']);
+    expect(kinds('rewritesOnTheBranchItRethrows')).toEqual(['narrowed', 'swallows']);
+    expect(kinds('translatesEveryErrorToItsOwnClass')).toEqual(['narrowed', 'swallows']);
+  });
+
+  it('keeps a use after its opening guard or on a branch it named, a store to a key no guard reads, a read and a discarded comma', () => {
+    expect(kinds('keepsAUseAfterItsOpeningGuard')).toEqual(['narrowed']);
+    expect(kinds('keepsAUseOnTheBranchItNamed')).toEqual(['narrowed']);
+    expect(kinds('annotatesWhatItRethrows')).toEqual(['narrowed']);
+    expect(kinds('keepsAStoreReadsAndADiscardedComma')).toEqual(['narrowed']);
+  });
+
+  it('says which use or throw it refused, at which line, and the way past it', () => {
+    const said = refusals(catches.filter((c) => c.file === WRITES));
+    const logs = (text: string) => lineIn(writes, 'logsOnTheRethrow', text);
+    const wraps = (text: string) => lineIn(writes, 'wrapsOnTheRethrow', text);
+    expect(said).toContain(
+      `${WRITES}:${logs('catch')} logsOnTheRethrow catches a statement on tx, which can be a transaction, and uses the error at line ${logs('log.error')} in \`log.error({ err }, 'insert failed')\`, which the scan cannot read as a plain read, on a path an error it does not name can take, where the error goes on to its guard or up to the catch around it: there use it only by a comparison, instanceof, typeof, a property read down to a primitive, a lib/db-errors.ts reader or isX helper, a store to a key no guard reads, or a throw of it unchanged; or open the catch with if (!<names the one error>) throw <the error>; and do it after that, where only that error reaches, or give it an EXCEPTIONS entry with its reason`,
+    );
+    expect(said).toContain(
+      `${WRITES}:${wraps('catch')} wrapsOnTheRethrow catches a statement on tx, which can be a transaction, and throws at line ${wraps('throw new')} \`throw new Error('insert failed', { cause: err })\` in place of an error it does not name, which a catch around it can mistake for the one it names: throw the error it caught unchanged there, start the catch with rethrowInTransaction(<the error>, <the handle>) where a replacement must not reach a transaction, or open the catch with if (!<names the one error>) throw <the error>; and do it after that, where only that error reaches, or give it an EXCEPTIONS entry with its reason`,
+    );
   });
 });

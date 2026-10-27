@@ -27,7 +27,13 @@ const READERS = new Map([
   ['pgConstraintName', 'constraint_name'],
 ]);
 
-const IDENTIFYING = new Set(['code', 'constraint_name', 'constraint', 'name']);
+/** The keys of the error a guard the scan reads may compare; it reads its `cause` and class too. */
+export const IDENTIFYING: ReadonlySet<string> = new Set([
+  'code',
+  'constraint_name',
+  'constraint',
+  'name',
+]);
 
 /** What the scan reads every catch against. */
 export interface Scan {
@@ -323,9 +329,33 @@ function knownValue(node: ts.Expression, scan: Scan): string | number | undefine
   return type.isStringLiteral() || type.isNumberLiteral() ? type.value : undefined;
 }
 
-function mentions(node: ts.Node, param: ts.Symbol, scan: Scan): boolean {
-  if (ts.isIdentifier(node) && scan.checker.getSymbolAtLocation(node) === param) return true;
-  return ts.forEachChild(node, (c) => mentions(c, param, scan) || undefined) ?? false;
+/**
+ * Whether `node` reads `param`, itself or through a name its declaration binds from it
+ * (`const c = err.code`, `const { code } = err`), where a comparison would set the error beside
+ * itself.
+ */
+function mentions(
+  node: ts.Node,
+  param: ts.Symbol,
+  scan: Scan,
+  seen: Set<ts.Symbol> = new Set(),
+): boolean {
+  if (ts.isIdentifier(node)) {
+    const symbol = scan.checker.getSymbolAtLocation(node);
+    if (symbol === param) return true;
+    const decl = symbol?.valueDeclaration;
+    const from =
+      decl && ts.isBindingElement(decl)
+        ? [decl.initializer, ts.walkUpBindingElementsAndPatterns(decl).initializer]
+        : decl && ts.isVariableDeclaration(decl)
+          ? [decl.initializer]
+          : [];
+    if (symbol && !seen.has(symbol)) {
+      seen.add(symbol);
+      if (from.some((e) => e !== undefined && mentions(e, param, scan, seen))) return true;
+    }
+  }
+  return ts.forEachChild(node, (c) => mentions(c, param, scan, seen) || undefined) ?? false;
 }
 
 /**

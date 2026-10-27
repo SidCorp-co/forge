@@ -3,18 +3,23 @@
  * parameter's constraint, a drizzle transaction is assignable to and which carries any member of
  * the transaction, so `Pick<Tx, 'insert'>`, `Pick<Db, 'select'>`, `Tx` and every local executor
  * alias count while the pool's own `Db` does not. A catch passes by calling
- * `rethrowInTransaction(<the error>, <the handle>)` first, by throwing on every path, or by going
- * on only for an error it names, on every path out of the branch that rethrows, with no use of the
- * error the write reading refuses; a `finally` that leaves its block swallows what the try threw.
- * `EXCEPTIONS` names any allowed to fall back.
+ * `rethrowInTransaction(<the error>, <the handle>)` first, or by handing every error it does not
+ * name up unchanged: on each path such an error can take it leaves only by throwing the error it
+ * caught, throws no replacement for it, and makes no use of it the write reading refuses, since
+ * what it does there reaches the guard deciding on the error or the catch the error goes up to,
+ * which may name one error and fall back. A path only a named error reaches is not read
+ * (`in-transaction-paths.fixture.ts:namedPaths`). A `finally` that leaves its block swallows what
+ * the try threw. `EXCEPTIONS` names any allowed to fall back.
  *
  * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`; which use of the error
  * is refused as a write, and what that reading still cannot see: `in-transaction-writes.fixture.ts`.
  *
  * Named residuals: a statement reached through a helper that closes over the transaction without
- * the guarded code naming any handle, a transaction cast to a type it is not, such as `typeof db`,
- * and a rejection handled by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`. The guard
- * reader and the write reading name their own.
+ * the guarded code naming any handle, and so a catch around such a helper that replaces or rewrites
+ * what it throws, which the scan never reads; a transaction cast to a type it is not, such as
+ * `typeof db`; and a rejection handled by anything other than `try`, `.catch(fn)` or
+ * `.then(ok, fn)` written inline, among them the same rejection taken again off the statement's
+ * own promise (`p.catch((e) => …)`). The guard reader and the write reading name their own.
  */
 
 import { readdirSync } from 'node:fs';
@@ -27,8 +32,18 @@ import {
   namesAnError,
   type Scan,
   statementErrors,
+  unwrap,
   withBases,
 } from './in-transaction-guards.fixture.js';
+import {
+  exitsOf,
+  isNestedFunction,
+  leaves,
+  namedPaths,
+  onANamedPath,
+  statementsOf,
+  within,
+} from './in-transaction-paths.fixture.js';
 import { unreadUse } from './in-transaction-writes.fixture.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -37,12 +52,20 @@ const TX_SOURCE = join(SRC, 'db', 'client.ts');
 /** A catch that may fall back inside a transaction, each with why it is allowed to. */
 export const EXCEPTIONS: ReadonlyArray<{ at: string; reason: string }> = [];
 
+/** What refused a catch that decides only for an error it names: a use of the error, or a throw. */
+export interface Refused {
+  what: 'use' | 'replacement';
+  line: number;
+  text: string;
+}
+
 export interface GuardedCatch {
   file: string;
   line: number;
   fn: string;
   handles: string[];
   handler: 'rethrows' | 'narrowed' | 'swallows';
+  refused?: Refused;
 }
 
 function sourceFilesIn(dir: string): string[] {
@@ -95,14 +118,6 @@ function transactionType(program: ts.Program, checker: ts.TypeChecker): ts.Type 
   return found;
 }
 
-function within(node: ts.Node, outer: ts.Node): boolean {
-  return node.pos >= outer.pos && node.end <= outer.end;
-}
-
-function isNestedFunction(node: ts.Node): boolean {
-  return ts.isFunctionLike(node) && !ts.isCallSignatureDeclaration(node);
-}
-
 /** The expressions in `guarded` that name a handle bound outside it. */
 function handlesIn(guarded: ts.Node, scan: Scan): string[] {
   const found = new Set<string>();
@@ -136,66 +151,6 @@ function isHandle(node: ts.Expression, guarded: ts.Node, scan: Scan): boolean {
   return checker.isTypeAssignableTo(scan.tx, type);
 }
 
-function statementsOf(node: ts.Statement): readonly ts.Statement[] {
-  return ts.isBlock(node) ? node.statements : [node];
-}
-
-/** True where `stmts`' last statement throws on every path; `leaves` reads the exits before it. */
-function endsInThrow(stmts: readonly ts.Statement[]): boolean {
-  const last = stmts.at(-1);
-  if (!last) return false;
-  if (ts.isThrowStatement(last)) return true;
-  if (ts.isIfStatement(last) && last.elseStatement) {
-    return (
-      endsInThrow(statementsOf(last.thenStatement)) && endsInThrow(statementsOf(last.elseStatement))
-    );
-  }
-  return false;
-}
-
-/**
- * Where the handler decides to go on only for errors it named, as the code a write before the
- * decision could stand in: the test of an opening branch that throws every error but a named kind,
- * on every path out of it, which runs before anything else; or the whole block, where every exit
- * from it short of a throw sits under a test naming one. `undefined` where it can go on for another.
- */
-function decidedIn(block: ts.Block, param: ts.Symbol, scan: Scan): ts.Node | undefined {
-  const first = block.statements[0];
-  if (first && ts.isIfStatement(first) && !first.elseStatement) {
-    if (
-      admitsAllButNamed(first.expression, param, scan) &&
-      endsInThrow(statementsOf(first.thenStatement)) &&
-      !leaves(first.thenStatement)
-    )
-      return first.expression;
-  }
-  if (!endsInThrow(block.statements)) return undefined;
-  let ok = true;
-  const visit = (n: ts.Node): void => {
-    if (!ok || isNestedFunction(n)) return;
-    if (ts.isReturnStatement(n) || ts.isBreakStatement(n) || ts.isContinueStatement(n)) {
-      ok = narrowedBy(n, block, param, scan);
-      return;
-    }
-    ts.forEachChild(n, visit);
-  };
-  block.statements.forEach(visit);
-  return ok ? block : undefined;
-}
-
-function narrowedBy(exit: ts.Node, block: ts.Block, param: ts.Symbol, scan: Scan): boolean {
-  for (let at = exit.parent; at && at !== block; at = at.parent) {
-    if (
-      ts.isIfStatement(at) &&
-      within(exit, at.thenStatement) &&
-      namesAnError(at.expression, param, scan)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function rethrowsFirst(
   block: ts.Block,
   param: ts.Symbol | null,
@@ -226,44 +181,85 @@ function paramOf(
   );
 }
 
-/** True where a jump in `block` lands on a statement inside it: its label's, or its loop or switch. */
-function landsInside(jump: ts.BreakOrContinueStatement, block: ts.Node): boolean {
-  for (let at = jump.parent; at && at !== block; at = at.parent) {
-    if (jump.label) {
-      if (ts.isLabeledStatement(at) && at.label.text === jump.label.text) return true;
-    } else if (
-      ts.isIterationStatement(at, false) ||
-      (ts.isBreakStatement(jump) && ts.isSwitchStatement(at))
-    ) {
-      return true;
-    }
-  }
-  return false;
+/** Whether running off the end of `stmts` is open only to a named error, given `allBut`. */
+function endsNamed(
+  stmts: readonly ts.Statement[],
+  body: ts.Block,
+  named: ReadonlySet<ts.Node>,
+  allBut: (test: ts.Expression) => boolean,
+): boolean {
+  const last = stmts.at(-1);
+  if (!last) return false;
+  if (ts.isThrowStatement(last) || onANamedPath(last, body, named)) return true;
+  if (!ts.isIfStatement(last)) return false;
+  const other = last.elseStatement;
+  return (
+    endsNamed(statementsOf(last.thenStatement), body, named, allBut) &&
+    (other ? endsNamed(statementsOf(other), body, named, allBut) : allBut(last.expression))
+  );
 }
 
-/** True where a statement of `block` returns, or breaks or continues to a target outside it. */
-function leaves(block: ts.Node): boolean {
-  let leaves = false;
+/**
+ * Whether every way out of `body` an error it does not name can take is a throw: each return,
+ * break or continue leaving it, and its end, lie on a path only a named error reaches.
+ */
+function decides(
+  body: ts.Block,
+  named: ReadonlySet<ts.Node>,
+  allBut: (test: ts.Expression) => boolean,
+): boolean {
+  return (
+    endsNamed(body.statements, body, named, allBut) &&
+    exitsOf(body).every((exit) => onANamedPath(exit, body, named))
+  );
+}
+
+/** Whether `thrown` is the caught error itself, on each branch an error it does not name takes. */
+function passesOn(
+  thrown: ts.Expression,
+  at: ts.Block,
+  param: ts.Symbol,
+  named: ReadonlySet<ts.Node>,
+  scan: Scan,
+): boolean {
+  const e = unwrap(thrown);
+  if (onANamedPath(e, at, named)) return true;
+  if (ts.isIdentifier(e)) return scan.checker.getSymbolAtLocation(e) === param;
+  return (
+    ts.isConditionalExpression(e) &&
+    passesOn(e.whenTrue, at, param, named, scan) &&
+    passesOn(e.whenFalse, at, param, named, scan)
+  );
+}
+
+/** The first throw of anything but the caught error on a path an error it does not name can take. */
+function replacement(body: ts.Block, param: ts.Symbol, named: ReadonlySet<ts.Node>, scan: Scan) {
+  let found: ts.ThrowStatement | undefined;
   const visit = (n: ts.Node): void => {
-    if (leaves || isNestedFunction(n)) return;
-    if (
-      ts.isReturnStatement(n) ||
-      ((ts.isBreakStatement(n) || ts.isContinueStatement(n)) && !landsInside(n, block))
-    ) {
-      leaves = true;
-      return;
-    }
-    ts.forEachChild(n, visit);
+    if (found || named.has(n)) return;
+    if (ts.isThrowStatement(n) && !passesOn(n.expression, body, param, named, scan)) found = n;
+    else ts.forEachChild(n, visit);
   };
-  visit(block);
-  return leaves;
+  visit(body);
+  return found;
 }
 
-function handlerKind(handler: ts.Node, handles: string[], scan: Scan): GuardedCatch['handler'] {
+/**
+ * A handler passes where it rethrows inside a transaction first, or where, on every path an error
+ * it does not name can take, it throws that error unchanged: it leaves by no other way, throws no
+ * replacement a catch around it could name, and makes no use of the error the write reading
+ * refuses, since what it does to the error there reaches the guard deciding on it or the catch the
+ * error goes up to. A part only a named error reaches is not read.
+ */
+function handlerKind(
+  handler: ts.Node,
+  handles: string[],
+  scan: Scan,
+): { handler: GuardedCatch['handler']; refused?: { what: Refused['what']; node: ts.Node } } {
   let body: ts.Block;
   let param: ts.Symbol | null;
   if (ts.isBlock(handler) && ts.isTryStatement(handler.parent)) {
-    return 'swallows';
+    return { handler: 'swallows' };
   }
   if (ts.isCatchClause(handler)) {
     body = handler.block;
@@ -275,13 +271,35 @@ function handlerKind(handler: ts.Node, handles: string[], scan: Scan): GuardedCa
     body = handler.body;
     param = paramOf(handler.parameters[0], scan);
   } else {
-    return 'swallows';
+    return { handler: 'swallows' };
   }
-  if (rethrowsFirst(body, param, handles, scan)) return 'rethrows';
-  const decided = param === null ? undefined : decidedIn(body, param, scan);
-  if (param === null || decided === undefined) return 'swallows';
-  if (endsInThrow(body.statements) && !leaves(body)) return 'narrowed';
-  return unreadUse(decided, param, scan) === undefined ? 'narrowed' : 'swallows';
+  if (rethrowsFirst(body, param, handles, scan)) return { handler: 'rethrows' };
+  if (param === null) return { handler: 'swallows' };
+  const caught = param;
+  const allBut = (test: ts.Expression) => admitsAllButNamed(test, caught, scan);
+  const named = namedPaths(body, (test) => namesAnError(test, caught, scan), allBut);
+  if (!decides(body, named, allBut)) return { handler: 'swallows' };
+  const thrown = replacement(body, caught, named, scan);
+  if (thrown) return { handler: 'swallows', refused: { what: 'replacement', node: thrown } };
+  const use = unreadUse(body, caught, scan, named);
+  return use
+    ? { handler: 'swallows', refused: { what: 'use', node: use } }
+    : { handler: 'narrowed' };
+}
+
+/** The statement `node` stands in, or the test it is part of, on one line. */
+function shown(node: ts.Node): string {
+  let at = node;
+  for (let up = at.parent; up && !ts.isBlock(up) && !ts.isCaseOrDefaultClause(up); up = up.parent) {
+    if (
+      isNestedFunction(up) ||
+      ((ts.isIfStatement(up) || ts.isIterationStatement(up, false)) && !ts.isStatement(at))
+    )
+      break;
+    at = up;
+  }
+  const text = at.getText().replace(/\s+/g, ' ').replace(/;$/, '');
+  return text.length > 100 ? `${text.slice(0, 99)}…` : text;
 }
 
 function enclosingName(node: ts.Node): string {
@@ -342,21 +360,46 @@ export function guardedCatches(program: ts.Program): GuardedCatch[] {
     for (const site of catchSites(sf)) {
       const handles = handlesIn(site.guarded, scan);
       if (handles.length === 0) continue;
+      const lineOf = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
+      const kind = handlerKind(site.handler, handles, scan);
       found.push({
         file: relative(SRC, sf.fileName),
-        line: sf.getLineAndCharacterOfPosition(site.at.getStart(sf)).line + 1,
+        line: lineOf(site.at),
         fn: enclosingName(site.at),
         handles,
-        handler: handlerKind(site.handler, handles, scan),
+        handler: kind.handler,
+        ...(kind.refused && {
+          refused: {
+            what: kind.refused.what,
+            line: lineOf(kind.refused.node),
+            text: shown(kind.refused.node),
+          },
+        }),
       });
     }
   }
   return found;
 }
 
+const OPEN_WITH_THE_GUARD =
+  'open the catch with if (!<names the one error>) throw <the error>; and do it after that, where only that error reaches';
+
+/** Why `c` is refused, and the way past it. */
+function refusedFor(c: GuardedCatch): string {
+  const { refused } = c;
+  if (refused?.what === 'use') {
+    return `uses the error at line ${refused.line} in \`${refused.text}\`, which the scan cannot read as a plain read, on a path an error it does not name can take, where the error goes on to its guard or up to the catch around it: there use it only by a comparison, instanceof, typeof, a property read down to a primitive, a lib/db-errors.ts reader or isX helper, a store to a key no guard reads, or a throw of it unchanged; or ${OPEN_WITH_THE_GUARD}`;
+  }
+  if (refused?.what === 'replacement') {
+    return `throws at line ${refused.line} \`${refused.text}\` in place of an error it does not name, which a catch around it can mistake for the one it names: throw the error it caught unchanged there, start the catch with rethrowInTransaction(<the error>, <the handle>) where a replacement must not reach a transaction, or ${OPEN_WITH_THE_GUARD}`;
+  }
+  return 'can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back';
+}
+
 /**
- * The catches that fall back inside a transaction and that `EXCEPTIONS` does not name, each as
- * `file:line fn`, plus every exception that names no such catch any more.
+ * The catches that fall back inside a transaction, or hand on an error they do not name changed or
+ * replaced, and that `EXCEPTIONS` does not name, each as `file:line fn` with why and the way past
+ * it, plus every exception that names no such catch any more.
  */
 export function refusals(
   catches: GuardedCatch[],
@@ -370,7 +413,7 @@ export function refusals(
       .filter((c) => !named.has(at(c)))
       .map(
         (c) =>
-          `${c.file}:${c.line} ${c.fn} catches a statement on ${c.handles.join(', ')}, which can be a transaction, and can fall back for an error it does not name: guard on the one error it means, move what is not a statement out of the try and catch that apart, start the catch with rethrowInTransaction(<the error>, <the handle>) where it must not fall back, or give it an EXCEPTIONS entry with its reason`,
+          `${c.file}:${c.line} ${c.fn} catches a statement on ${c.handles.join(', ')}, which can be a transaction, and ${refusedFor(c)}, or give it an EXCEPTIONS entry with its reason`,
       ),
     ...[...named]
       .filter((n) => !swallows.some((c) => at(c) === n))
