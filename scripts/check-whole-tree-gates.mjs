@@ -70,14 +70,16 @@ const configs = tracked.filter((f) => CONFIG_RE.test(f));
 const judged = judgeDeclarations({ files });
 const { tests, declared } = judged;
 // vite expands `import.meta.glob` before a test runs, where no watch sees it, so every tracked file
-// is read for one here; the TypeScript compiler is core's own, loaded only when a file holds one.
+// is read for one here; the TypeScript compiler is core's own, loaded only when a file holds one, by
+// its literal name from core's package once `resolveFrom` has found it there.
 const globs = files.some((f) => GLOB_CALL_RE.test(f.source))
-  ? judgeGlobs({
-      files,
-      root: ROOT,
-      ts: createRequire(import.meta.url)(resolveFrom(join(ROOT, 'packages/core'), 'typescript')),
-    })
+  ? judgeGlobs({ files, root: ROOT, ts: coreTypescript() })
   : [];
+
+function coreTypescript() {
+  resolveFrom(join(ROOT, 'packages/core'), 'typescript');
+  return createRequire(join(ROOT, 'packages/core/package.json'))('typescript');
+}
 /** The root and `test.setupFiles` vitest resolves for a config, loaded by the vitest its package
  * declares and started from the directory the config is run from. */
 function setupFilesOf(path) {

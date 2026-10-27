@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 
@@ -20,6 +21,8 @@ export interface ToastView {
   /** The description's spaces and blank lines are kept as written: text a reader is to select and copy
    *  by hand must be the text itself (ISS-1229 r32). */
   verbatim?: boolean;
+  /** A place the toast sends the reader, as a link under its text; following it puts the toast away. */
+  link?: { label: string; href: string };
 }
 
 /** Presentational toast card. State/stacking lives in the ToastProvider. */
@@ -29,8 +32,14 @@ export function Toast({
   tone = "default",
   onClick,
   verbatim = false,
+  link,
   onClose,
-}: ToastView & { onClose?: () => void }) {
+  onHold,
+}: ToastView & {
+  onClose?: () => void;
+  /** Told true while the pointer rests on the card or focus is inside it, and false once neither is. */
+  onHold?: (held: boolean) => void;
+}) {
   const t = TONE[tone];
   const clickable = typeof onClick === "function";
   return (
@@ -42,9 +51,21 @@ export function Toast({
       role={clickable ? "button" : "status"}
       tabIndex={clickable ? 0 : undefined}
       onClick={clickable ? onClick : undefined}
+      onMouseEnter={() => onHold?.(true)}
+      onMouseLeave={(e) => {
+        if (!e.currentTarget.contains(document.activeElement)) onHold?.(false);
+      }}
+      onFocus={() => onHold?.(true)}
+      onBlur={(e) => {
+        const into = e.relatedTarget;
+        if (!(into instanceof Node && e.currentTarget.contains(into)) && !e.currentTarget.matches(":hover"))
+          onHold?.(false);
+      }}
       onKeyDown={
         clickable
           ? (e) => {
+              // A control inside the card, its link or Dismiss, keeps its own keys.
+              if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 onClick?.();
@@ -60,6 +81,18 @@ export function Toast({
           <p className={cn("fg-caption mt-0.5", verbatim ? "whitespace-pre-wrap" : "whitespace-pre-line")}>
             {description}
           </p>
+        )}
+        {link && (
+          <Link
+            href={link.href}
+            className="mt-1 inline-block text-xs font-medium text-accent hover:underline"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose?.();
+            }}
+          >
+            {link.label}
+          </Link>
         )}
       </div>
       {onClose && (
