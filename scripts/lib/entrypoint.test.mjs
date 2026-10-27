@@ -354,6 +354,10 @@ function entryReads(rel, text) {
         ts.isIdentifier(node.left)
       ) {
         changed = bind(node.left.text, startOf(node.right)) || changed;
+        if (isProcess(unwrap(node.right)) && !processNames.has(node.left.text)) {
+          processNames.add(node.left.text);
+          changed = true;
+        }
       }
       if (
         ts.isBinaryExpression(node) &&
@@ -810,6 +814,11 @@ describe('no file decides it was launched by hand', () => {
       'scripts/joined-key.mjs',
       "const k = 'ar' + 'gv';\nif (import.meta.filename === process[k][1]) main();\n",
       2,
+    ],
+    [
+      'scripts/process-assigned.mjs',
+      'let p;\np = process;\nif (import.meta.filename === p.argv[1]) main();\n',
+      3,
     ],
     [
       'scripts/from.mjs',
