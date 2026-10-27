@@ -16,7 +16,12 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { entryOf } from './entry-of.mjs';
 import { launched } from './entrypoint.mjs';
+
+/** The directory this module stands in: `whole-tree-watch.mjs` places its preload by it without naming
+ * `import.meta`, which would put its patching of `vm` and `process.binding` under the launch-check walk. */
+export const LIB_DIR = dirname(fileURLToPath(import.meta.url));
 
 /** The file every watched Node process preloads; a NODE_OPTIONS still naming it keeps the watch. */
 export const PRELOAD_MARK = 'whole-tree-child.mjs';
@@ -459,17 +464,21 @@ function envOutside(bin, env, baseEnv) {
   // puts it outside, while a key inherited unchanged from the worker (the machine's own environment,
   // trusted) or dropped is safe. This is what lets a test seal its env down, or run under the
   // worker's own EDITOR, while a planted LD_PRELOAD or BASH_FUNC_ is caught.
-  const added = (key) => isWord(cur[key]) && cur[key] !== '' && cur[key] !== b[key];
+  const added = (key) => {
+    const now = entryOf(cur, key);
+    return isWord(now) && now !== '' && now !== entryOf(b, key);
+  };
   for (const key of STARTUP_KEYS)
     if (added(key)) return `the spawn sets the startup variable \`${key}\``;
   for (const key of Object.keys(cur))
     if (runsProgram(key) && added(key)) return `the spawn sets the startup variable \`${key}\``;
   for (const key of EDITOR_KEYS)
-    if (added(key) && !NO_EDITOR.test(cur[key])) return `the spawn sets \`${key}\` to a program`;
+    if (added(key) && !NO_EDITOR.test(entryOf(cur, key)))
+      return `the spawn sets \`${key}\` to a program`;
   if (bin === 'git')
     for (const key of Object.keys(cur)) {
       if (!key.startsWith('GIT_') || GIT_ENV_ALLOWED.has(key)) continue;
-      if (GIT_EDITOR_ENV.has(key) && NO_EDITOR.test(cur[key] ?? '')) continue;
+      if (GIT_EDITOR_ENV.has(key) && NO_EDITOR.test(entryOf(cur, key) ?? '')) continue;
       return `git's environment holds \`${key}\`, which its allow list does not name`;
     }
   if (bin === 'grep')
@@ -506,7 +515,7 @@ function gitListing(argv, cwd, repoRoot, env, base, refuse) {
   }
   const sub = argv[i];
   if (!isWord(sub)) return refuse('git with a subcommand named by a substitution');
-  const spec = GIT_SUBCOMMANDS[sub];
+  const spec = entryOf(GIT_SUBCOMMANDS, sub);
   if (!spec) return refuse(`the git subcommand \`${sub}\` is outside the grammar`);
   const tail = argv.slice(i + 1);
 
@@ -683,7 +692,7 @@ function parseGit(spec, tail) {
     if (Object.hasOwn(spec.valued, flag)) {
       if (['-m', '-am', '--message'].includes(flag)) sawMessage = true;
       if (flag === '-e') sawPattern = true;
-      const kind = spec.valued[flag];
+      const kind = entryOf(spec.valued, flag);
       if ((kind === 'next' || kind === 'both') && !a.includes('=')) k++;
       continue;
     }
@@ -845,7 +854,7 @@ function configTrust(env, base) {
       try {
         now = readFileSync(file, 'utf8');
       } catch {}
-      if (now !== baseFiles[file]) return `a changed \`${file}\``;
+      if (now !== entryOf(baseFiles, file)) return `a changed \`${file}\``;
       continue;
     }
     const bad = badConfigKey(file);

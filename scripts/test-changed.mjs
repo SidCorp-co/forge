@@ -6,6 +6,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BASIS, baseRevision } from './lib/baseline-ratchet.mjs';
 import { selectionFor } from './lib/changed-selection.mjs';
+import { entryOf } from './lib/entry-of.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -73,7 +74,7 @@ if (!base)
     'no base revision — HEAD has no parent here (a single-commit checkout, or a shallow one of depth 1), so nothing says what changed',
   );
 
-console.log(`test-changed: selecting against ${base.slice(0, 8)}, ${BASIS[basis]}`);
+console.log(`test-changed: selecting against ${base.slice(0, 8)}, ${entryOf(BASIS, basis)}`);
 
 let worst = 0;
 

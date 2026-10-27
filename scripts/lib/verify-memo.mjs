@@ -21,6 +21,7 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { entryOf } from './entry-of.mjs';
 import { listFiles } from './verify-memo-git.mjs';
 import { spawnFault } from './verify-memo-spawn.mjs';
 
@@ -317,7 +318,7 @@ export function keyFor({ check, decl, tree, git, native = null, env = process.en
     shape: sha(shape(tree, decl.roots).join('\n')),
     git: decl.git ? git : null,
     native: decl.blind ? native : null,
-    env: ENV_READ.map((k) => env[k] ?? null),
+    env: ENV_READ.map((k) => entryOf(env, k) ?? null),
   };
   return { key: sha(JSON.stringify(body)), count: files.length + built.length };
 }

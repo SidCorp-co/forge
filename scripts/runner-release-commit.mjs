@@ -50,7 +50,7 @@ function main() {
   const args = process.argv.slice(2);
   const opt = (name, fallback) => {
     const i = args.indexOf(`--${name}`);
-    return i === -1 ? fallback : args[i + 1];
+    return i === -1 ? fallback : args.at(i + 1);
   };
   process.stdout.write(
     `${runnerReleaseCommit({ cwd: opt('cwd', process.cwd()), ref: opt('ref', 'HEAD') })}\n`,

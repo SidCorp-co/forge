@@ -96,7 +96,7 @@ process.exit(0);
 `;
 }
 
-const parsed = parseMode(process.argv, ['--all'], 'check-integration-declarations.mjs');
+const parsed = parseMode(process.argv.slice(2), ['--all'], 'check-integration-declarations.mjs');
 if (parsed.error) die(parsed.error);
 
 const missing = absentPrerequisites(ROOT, ['deps']);

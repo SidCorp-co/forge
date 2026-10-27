@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { baseRef } from './lib/base-branch.mjs';
 import { undeclared } from './lib/check-inputs.mjs';
+import { entryOf } from './lib/entry-of.mjs';
 import { launched } from './lib/entrypoint.mjs';
 import { notRunHereLines } from './lib/not-run-here.mjs';
 import { absentPrerequisites, blockedAside, remedyLines } from './lib/prerequisite.mjs';
@@ -724,7 +725,7 @@ function ciParity(quiet, said = []) {
 /** One post-merge job as a line: its name, its platforms, and what each step is locally or in CI. */
 function afterMergeLine({ job, steps, os }) {
   const what = steps.map((step) => {
-    const local = CI_COVERAGE[step];
+    const local = entryOf(CI_COVERAGE, step);
     return local && !local.startsWith('verify') ? local : step;
   });
   return `${job}${os.length > 0 ? ` (${os.join(', ')})` : ''}: ${what.join('; ')}`;
@@ -864,7 +865,7 @@ async function main() {
   }
   const checks = checksFor(mode, CHECKS);
   console.log(
-    `verify: ${checks.length} checks against ${base.slice(0, 8)} on ${BASE_REF} — ${MODES[mode]}`,
+    `verify: ${checks.length} checks against ${base.slice(0, 8)} on ${BASE_REF} — ${entryOf(MODES, mode)}`,
   );
   if (mode === 'entry') {
     const left = CHECKS.filter((c) => c.layer === 'shared').map((c) => c.label);

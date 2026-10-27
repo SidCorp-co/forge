@@ -47,8 +47,7 @@ const LANG_PICKER_RE =
 const RED = '\x1b[31;1m';
 const RESET = '\x1b[0m';
 
-function parseArgs(argv) {
-  const args = argv.slice(2);
+function parseArgs(args) {
   if (args.length === 0) return 'staged';
   if (args.length === 1 && (args[0] === '--staged' || args[0] === '--all')) {
     return args[0].slice(2);
@@ -202,7 +201,7 @@ function report(violations, mode, fileCount) {
 }
 
 function main() {
-  const mode = parseArgs(process.argv);
+  const mode = parseArgs(process.argv.slice(2));
   if (!mode) {
     console.error('Usage: check-source-language.mjs [--staged|--all]');
     process.exit(2);

@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { entryOf } from './lib/entry-of.mjs';
 import { launched } from './lib/entrypoint.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -140,7 +141,7 @@ export function attributeVocabulary(members, context, vocabularies) {
     .map(([name]) => name);
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0];
-  const named = candidates.filter((name) => DISCRIMINATOR[name].test(context));
+  const named = candidates.filter((name) => entryOf(DISCRIMINATOR, name).test(context));
   return named.length === 1 ? named[0] : null;
 }
 

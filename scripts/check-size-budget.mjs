@@ -28,6 +28,7 @@ import {
   stagedFiles,
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
+import { entryOf } from './lib/entry-of.mjs';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -92,7 +93,7 @@ function collect(scopes) {
 }
 
 const parsed = parseMode(
-  process.argv,
+  process.argv.slice(2),
   ['--all', '--staged', '--update-baseline'],
   'check-size-budget.mjs',
 );
@@ -155,7 +156,7 @@ if (mode === '--staged') {
 const failures = [];
 for (const [file, now] of measured) {
   if (scope && !scope.has(file)) continue;
-  const was = baseline[file] ?? { fileLines: 0, maxFunctionLines: 0 };
+  const was = entryOf(baseline, file) ?? { fileLines: 0, maxFunctionLines: 0 };
   const reasons = [];
   if (now.fileLines > was.fileLines) {
     reasons.push(`file is ${now.fileLines} lines (baseline allowed ${was.fileLines || 'none'})`);

@@ -604,6 +604,175 @@ describe("a toast naming the element it keeps clear of", () => {
     }
   });
 
+  /** The repository step at 390×600: its inline error, the path field's label and input, and Save. */
+  const step = { error: { top: 77, bottom: 157 }, label: { top: 173, bottom: 193 }, path: { top: 199, bottom: 243 }, save: { top: 405, bottom: 449 } };
+  const stepBoxes = (extra: Record<string, Partial<DOMRect>> = {}) =>
+    boxes({
+      "toast-lane": { top: 61, bottom: 261, height: 200, width: 390, left: 0, right: 390 },
+      ...Object.fromEntries(Object.entries(step).map(([k, v]) => [k, { ...v, left: 21, right: 370 }])),
+      header: { bottom: 61 },
+      ...extra,
+    });
+  const elements: Record<string, HTMLElement> = {};
+  function Step() {
+    return (
+      <SlideOver open onClose={() => {}} title="Set up pipeline">
+        {Object.keys(step).map((k) => (
+          <div
+            key={k}
+            data-testid={k}
+            ref={(el) => {
+              if (el) elements[k] = el;
+            }}
+          />
+        ))}
+      </SlideOver>
+    );
+  }
+  const stepOrder = () => [elements.path, elements.label, elements.error, elements.save];
+  /** Where the lane stands, from the place set on it: an edge with its own 200 px, or a capped space. */
+  const laneSpan = (lane: HTMLElement) => {
+    if (lane.style.top === "auto") {
+      const bottom = window.innerHeight - Number.parseFloat(lane.style.bottom);
+      return { top: bottom - 200, bottom };
+    }
+    const top = Number.parseFloat(lane.style.top);
+    return { top, bottom: top + (lane.style.maxHeight ? Number.parseFloat(lane.style.maxHeight) : 200) };
+  };
+  const clearOfAll = (lane: HTMLElement, names: string[]) => {
+    const { top, bottom } = laneSpan(lane);
+    for (const name of names) {
+      const b = step[name as keyof typeof step];
+      expect(bottom <= b.top || top >= b.bottom, `${name} at ${b.top}-${b.bottom}, lane ${top}-${bottom}`).toBe(true);
+    }
+  };
+
+  // r10, judge-154: at 390×600 the refusal toast covered Save until the first keystroke.
+  it("keeps clear of every element it names at 390×600: the label, the error and Save as well as the field", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = stepBoxes();
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: stepOrder }));
+      const lane = screen.getByTestId("toast-lane");
+      // Above the error 16 px and below Save 151: below, which covers nothing between them.
+      expect(lane.style.top).toBe("449px");
+      expect(lane.style.maxHeight).toBe("151px");
+      clearOfAll(lane, ["error", "label", "path", "save"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // r10 review W3: a gap between two named elements is room too.
+  it("keeps clear of a kept notice too where a space between the elements it names allows", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = stepBoxes({ "toast-lane-kept": { top: 456, bottom: 544, height: 88, width: 390, left: 0, right: 390 } });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => {
+        fire({ title: "This room was deleted", keep: true });
+        fire({ ...refused, duration: 0, clearOf: stepOrder });
+      });
+      const lane = screen.getByTestId("toast-lane");
+      expect(lane.style.top).toBe("243px");
+      expect(lane.style.maxHeight).toBe("162px");
+      expect(lane.style.zIndex).toBe("");
+      clearOfAll(lane, ["error", "label", "path", "save"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // judge-154 at b2c7b16: it took the room above the input, over its label and the error, sparing the notice.
+  it("goes over a kept notice before it covers anything it names, and above it", () => {
+    wide(false);
+    viewport(390, 600);
+    // Save right under the field, and a long kept notice: no space clear of both holds a first line.
+    const spy = stepBoxes({
+      save: { top: 255, bottom: 299, left: 21, right: 370 },
+      "toast-lane-kept": { top: 350, bottom: 544, height: 194, width: 390, left: 0, right: 390 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => {
+        fire({ title: "This room was deleted", keep: true });
+        fire({ ...refused, duration: 0, clearOf: stepOrder });
+      });
+      const lane = screen.getByTestId("toast-lane");
+      expect(lane.style.top).toBe("auto");
+      expect(lane.style.zIndex).toBe("61");
+      const { top } = laneSpan(lane);
+      expect(top).toBeGreaterThanOrEqual(299);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // r10 plan consult F3: a zero-height lane hid the refusal and its link.
+  it("lets go of the last elements before it shrinks under a toast's first line, never the first", () => {
+    wide(false);
+    viewport(390, 340);
+    const spy = stepBoxes({ save: { top: 255, bottom: 299, left: 21, right: 370 } });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: stepOrder }));
+      const lane = screen.getByTestId("toast-lane");
+      // Below Save is 41 px and every other space less: let go of Save, and the field's 97 px below holds.
+      expect(lane.style.top).toBe("243px");
+      expect(lane.style.maxHeight).toBe("97px");
+      clearOfAll(lane, ["error", "label", "path"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("reads a list with a missing element as the elements it holds", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = stepBoxes();
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <Step />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: () => [elements.path, null, elements.save] }));
+      const lane = screen.getByTestId("toast-lane");
+      clearOfAll(lane, ["path", "save"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("comes back to the top once the toast naming the field is gone", () => {
     wide(false);
     viewport(390, 844);

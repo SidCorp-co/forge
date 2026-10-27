@@ -164,12 +164,12 @@ describe('sortDeep', () => {
 
 describe('parseMode', () => {
   it('defaults to --all and accepts a declared mode', () => {
-    expect(parseMode(['node', 's'], ['--all', '--staged'], 's').mode).toBe('--all');
-    expect(parseMode(['node', 's', '--staged'], ['--all', '--staged'], 's').mode).toBe('--staged');
+    expect(parseMode([], ['--all', '--staged'], 's').mode).toBe('--all');
+    expect(parseMode(['--staged'], ['--all', '--staged'], 's').mode).toBe('--staged');
   });
 
   it('names the script and its modes when the mode is not one of them', () => {
-    const { error } = parseMode(['node', 's', '--nope'], ['--all', '--staged'], 'check-x.mjs');
+    const { error } = parseMode(['--nope'], ['--all', '--staged'], 'check-x.mjs');
     expect(error).toBe('usage: check-x.mjs [--all|--staged]');
   });
 });
