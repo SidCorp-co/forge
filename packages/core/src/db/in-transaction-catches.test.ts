@@ -13,6 +13,7 @@ const PLANTED = 'db/in-transaction-catches.planted.ts';
 const plant = `import type postgres from 'postgres';
 import { db, type Db, type Tx } from './client.js';
 import { rethrowInTransaction } from './in-transaction.js';
+import { pgConstraintName, pgErrorCode, UNIQUE_VIOLATION } from '../lib/db-errors.js';
 
 class Refused extends Error {}
 
@@ -38,8 +39,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * Each below is read by its predicate alone: a body of more than one statement is one the scan does
- * not read.
+ * Each below has a body of more than one statement, which the scan does not read, so each is refused
+ * whatever its predicate says: nothing checks a predicate at run time.
  */
 function isObjectLike(v: unknown): v is Record<string, unknown> {
   const kind = typeof v;
@@ -71,10 +72,25 @@ function isRecordedError(err: unknown): err is Error & Record<string, unknown> {
   return seen;
 }
 
-/** Names one error by its predicate. */
+/** Names one error by its predicate alone, which is not read. */
 function isUniqueViolation(err: unknown): err is postgres.PostgresError & { code: '23505' } {
   const code = (err as { code?: unknown }).code;
   return code === '23505';
+}
+
+function isNamedError(err: unknown): err is Error & { name: 'Error' } {
+  const seen = err instanceof Error;
+  return seen;
+}
+
+function hasStack(err: unknown): err is { stack: string } {
+  const stack = (err as { stack?: unknown }).stack;
+  return typeof stack === 'string';
+}
+
+function isStackedError(err: unknown): err is Error & { stack: string } {
+  const seen = err instanceof Error;
+  return seen;
 }
 
 /** Names one error by its body, whatever its predicate says. */
@@ -386,6 +402,132 @@ export async function breaksInsideItsFinally(tx: Tx) {
   }
 }
 
+export async function narrowsByTheNameReadByIndex(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as Error)['name'] !== 'Error') throw err;
+    return null;
+  }
+}
+
+export async function narrowsByTheNameOfErrorItself(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as Error).name !== Error.name) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByTheNameAsAString(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (String((err as Error).name) !== 'Error') throw err;
+    return null;
+  }
+}
+
+export async function narrowsByANamedErrorPredicate(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isNamedError(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAStackPredicate(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!hasStack(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAStackedErrorPredicate(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!isStackedError(err)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByTheSeverityEveryServerErrorHas(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as postgres.PostgresError).severity !== 'ERROR') throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAClassItCannotResolve(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (!(err instanceof (globalThis as any).Refusal)) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByComparingTheErrorWithItself(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { code: '23505' }).code !== (err as { code: '23505' }).code) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByTheCodeReader(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (pgErrorCode(err) !== UNIQUE_VIOLATION) throw err;
+    return null;
+  }
+}
+
+export async function narrowsByTheConstraintReader(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (pgConstraintName(err) !== 'pat_user_name_uniq') throw err;
+    return null;
+  }
+}
+
+export async function narrowsByACodeReadByIndex(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as { code?: string })['code'] !== '23505') throw err;
+    return null;
+  }
+}
+
+export async function narrowsByAnotherErrorsName(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if ((err as Error).name !== 'AbortError') throw err;
+    return null;
+  }
+}
+
+export async function narrowsToOneOfTwoCodes(tx: Tx) {
+  try {
+    return await tx.execute('select 1' as never);
+  } catch (err) {
+    if (isRefusal(err) || (err as { code?: string }).code === '23503') return null;
+    throw err;
+  }
+}
+
 export async function swallowsOnThePool() {
   try {
     return await db.execute('select 1' as never);
@@ -487,9 +629,20 @@ describe('a catch around a statement on a handle that can be a transaction', () 
       ['narrowsByAnIntersectionOfEvery', 'tx'],
       ['narrowsByTheNameEveryErrorHas', 'tx'],
       ['narrowsByTheConstructorEveryErrorHas', 'tx'],
+      ['narrowsByAUniqueViolationPredicate', 'tx'],
+      ['narrowsByAServerErrorName', 'tx'],
       ['returnsWhenNotNothing', 'tx'],
       ['narrowsByAHelperItCannotRead', 'tx'],
       ['continuesThroughASwitch', 'tx'],
+      ['narrowsByTheNameReadByIndex', 'tx'],
+      ['narrowsByTheNameOfErrorItself', 'tx'],
+      ['narrowsByTheNameAsAString', 'tx'],
+      ['narrowsByANamedErrorPredicate', 'tx'],
+      ['narrowsByAStackPredicate', 'tx'],
+      ['narrowsByAStackedErrorPredicate', 'tx'],
+      ['narrowsByTheSeverityEveryServerErrorHas', 'tx'],
+      ['narrowsByAClassItCannotResolve', 'tx'],
+      ['narrowsByComparingTheErrorWithItself', 'tx'],
     ];
     expect(refusals(planted)).toEqual(
       swallows.map(
@@ -513,9 +666,12 @@ describe('a catch around a statement on a handle that can be a transaction', () 
     expect(kindOf('returnsForTheNamed')).toBe('narrowed');
     expect(kindOf('narrowsByAHelperThatNamesOne')).toBe('narrowed');
     expect(kindOf('narrowsByCode')).toBe('narrowed');
-    expect(kindOf('narrowsByAUniqueViolationPredicate')).toBe('narrowed');
     expect(kindOf('narrowsByACodedBody')).toBe('narrowed');
-    expect(kindOf('narrowsByAServerErrorName')).toBe('narrowed');
+    expect(kindOf('narrowsByTheCodeReader')).toBe('narrowed');
+    expect(kindOf('narrowsByTheConstraintReader')).toBe('narrowed');
+    expect(kindOf('narrowsByACodeReadByIndex')).toBe('narrowed');
+    expect(kindOf('narrowsByAnotherErrorsName')).toBe('narrowed');
+    expect(kindOf('narrowsToOneOfTwoCodes')).toBe('narrowed');
   });
 
   it('leaves alone a catch on the pool, one around a whole transaction, and a finally whose jump lands inside it', () => {

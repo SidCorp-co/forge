@@ -191,10 +191,11 @@ gave its database back without `cleanup()` is caught by the next file's step 2, 
 file left. *"left on it since <file> held it were severed before <file> was handed it"* is step 1's:
 a connection opened after the previous holder's teardown had severed everything, named by the file
 that held the slot (read off the database's record) and each session's pid, application, state and
-last statement. Both list only connections a client opened (`backend_type = 'client backend'`): the
-server's own autovacuum worker also connects to a database whose rows a file churned, no file opens
-or can close one, and severing one only cancels a vacuum the reset makes moot, so it is ended
-without a line. That worker is what the unnamed hand-over lines on `18a970ea3` were: before this
+last statement. Both list every session but an autovacuum worker (`backend_type <> 'autovacuum
+worker'`), so a replication connection or a parallel worker is named like a client's own: the
+server's autovacuum worker connects to a database whose rows a file churned, no file opens or can
+close one, and severing one only cancels a vacuum the reset makes moot, so it is ended without a
+line. That worker is what the unnamed hand-over lines on `18a970ea3` were: before this
 filter, a hand-over in the e2e above named `pid 142 with no application name, active after
 "autovacuum: ..."`, and the server logged `terminating autovacuum process` for that pid. One whole
 run after it at 432 files and 4459 tests, `--silent=false`, printed only the e2e's two plants while
@@ -206,10 +207,12 @@ agent's shell sets, as Claude Code's does), vitest takes its `agent` reporter, a
 hides the console of every test that passed unless the run is given `--silent=false`. A person's
 terminal and GitHub Actions take the default reporter, which shows it, so CI's log carries the lines
 as they happen. A local run read for these lines is therefore started with `--silent=false`, and
-read for `[db]` lines under their `stderr |` headers. The last case of
-`a-file-gives-back-every-connection-e2e.test.ts` prints one teardown line and one hand-over line on
-every run that shows the console, so a whole-suite log carrying neither of its plants showed
-nothing, and is no evidence that nothing was printed.
+read for `[db]` lines under their `stderr |` headers. Two cases of
+`a-file-gives-back-every-connection-e2e.test.ts` print one line each on every run that shows the
+console: *names what still holds a connection at teardown* prints the teardown line, and the last
+case, *names the file that held the slot and each session it left*, the hand-over line. A
+whole-suite log carrying neither of those plants showed nothing, and is no evidence that nothing
+was printed.
 
 **A file that writes schema or runs a migration declares it** at its own call site,
 `setupTestDatabase({ own: '<what it changes>' })`, and gets a `test_own_` clone nobody else is

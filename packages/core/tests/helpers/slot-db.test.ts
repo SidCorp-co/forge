@@ -222,6 +222,26 @@ describe('reportLingeringConnections', () => {
     }
   });
 
+  it('names a session of any other kind still there after fifty looks, a replication connection among them', async () => {
+    vi.useFakeTimers();
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { admin, looks } = sessionsAdmin([
+      [{ pid: 54, app: 'subscriber-left-here', kind: 'walsender' }],
+    ]);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: the stub stands in for a postgres-js tag function
+      const done = reportLingeringConnections(admin as any, 'test_w_1_x');
+      await vi.advanceTimersByTimeAsync(5_000);
+      await done;
+      expect(looks()).toBe(50);
+      expect(reported.mock.calls.flat().join('\n')).toContain(
+        '1 connection(s) still open at teardown, severed now: pid 54 subscriber-left-here, idle after "SELECT 1"',
+      );
+    } finally {
+      reported.mockRestore();
+    }
+  });
+
   it('says by name that it could not read what is connected, rather than saying nothing', async () => {
     const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
     const admin = (() => Promise.reject(new Error('connection refused by plant'))) as unknown;
