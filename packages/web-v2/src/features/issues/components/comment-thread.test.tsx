@@ -1,6 +1,4 @@
-// ISS-1421 r39: two comments inside one millisecond read in one order on every surface. The thread
-// lists them in the database's order; the issue page shows newest first, which must be that order
-// turned round exactly, the pair included.
+// ISS-1421 r39: newest first is the thread's own order turned round, a pair inside one millisecond included.
 
 import { describe, expect, it } from "vitest";
 import { newestFirst } from "./comment-thread";

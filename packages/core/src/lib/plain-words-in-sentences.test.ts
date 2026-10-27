@@ -43,6 +43,9 @@ const SHIP = /\bship(s|ped|ping)?\b/i;
 /** A value a caller sends, marked as code: `ship-unverified` names the decision, not the act. */
 const CODE_MARK = /`[^`]*`/g;
 
+const SLOT = '\uE000';
+const NOT_SLOT = /[^\uE000]/g;
+
 /** A literal's text with its code marks taken out. A template's marks can open in one part and close
  *  in the next (`\`${id}\``), so they are read across the whole template, a value standing for each
  *  `${...}`, and only this part's share kept. */
@@ -56,9 +59,9 @@ function uncodedText(node: ts.Node & { text: string }): string {
   const parts = [template.head, ...template.templateSpans.map((s) => s.literal)];
   const kept = parts
     .map((p) => p.text)
-    .join('\u0000')
-    .replace(CODE_MARK, (mark) => mark.replace(/[^\u0000]/g, ''))
-    .split('\u0000');
+    .join(SLOT)
+    .replace(CODE_MARK, (mark) => mark.replace(NOT_SLOT, ''))
+    .split(SLOT);
   return kept[parts.indexOf(node as (typeof parts)[number])] ?? '';
 }
 
@@ -268,13 +271,9 @@ describe("core's sentences to a person", () => {
       'const k = `\\`\u0024{id}\\` shipped, or decide \\`ship-unverified\\``;',
       "const l = `\u0024{status === 'shipped' ? 'done' : 'open'}`;",
     ].join('\n');
-    expect(wordsSaying(planted, 'planted.ts', SHIP, true).map((hit) => hit.split(': ')[0])).toEqual([
-      '1',
-      '2',
-      '3',
-      '8',
-      '11',
-    ]);
+    expect(wordsSaying(planted, 'planted.ts', SHIP, true).map((hit) => hit.split(': ')[0])).toEqual(
+      ['1', '2', '3', '8', '11'],
+    );
   });
 
   it('finds the word in a sentence, a template, an interpolated word and a word handed to a wording helper, and not in code or a log', () => {

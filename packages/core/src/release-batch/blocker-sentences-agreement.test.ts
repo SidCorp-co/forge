@@ -52,7 +52,9 @@ describe('a range carrying issues the batch does not name', () => {
     });
 
   it('says it is not released without a decision, at one', () => {
-    expect(sentence(1)).toContain('It is not released without a decision. Send one with the batch:');
+    expect(sentence(1)).toContain(
+      'It is not released without a decision. Send one with the batch:',
+    );
     expect(sentence(1)).toContain('Or move it to the release gate and name it on the roster.');
     expect(sentence(1)).not.toMatch(/\b(them|None of)\b/);
   });

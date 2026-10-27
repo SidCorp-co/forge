@@ -27,10 +27,7 @@ describe('a release refusal counts its issues in their number', () => {
       new ReleaseRecordMissingError(['a', 'b']),
       'RELEASE_RECORD_MISSING: 2 issues have no release note',
     ],
-    [
-      new ReleaseWorkUnmergedError(['a']),
-      'RELEASE_WORK_UNMERGED: 1 issue is not marked merged',
-    ],
+    [new ReleaseWorkUnmergedError(['a']), 'RELEASE_WORK_UNMERGED: 1 issue is not marked merged'],
     [
       new ReleaseWorkUnmergedError(['a', 'b']),
       'RELEASE_WORK_UNMERGED: 2 issues are not marked merged',

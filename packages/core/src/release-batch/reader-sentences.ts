@@ -79,10 +79,8 @@ function carriedForReader(details: Details): string | null {
   return carriedUndecidedSentence(details, carriedWaysOutForReader);
 }
 
-/** What a missing note costs, said as what happens rather than in the team's word for a release. */
 const NOTHING_TOLD = 'with nothing telling users what changed';
 
-/** What a note holds, wherever one is asked for. */
 const NOTE_HOLDS = 'the one line a user would read, or that nothing a user sees changed';
 
 /** One issue's note and several issues' notes are two sentences: "give each one" read as giving the

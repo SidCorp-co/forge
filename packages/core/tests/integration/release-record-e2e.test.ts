@@ -493,9 +493,7 @@ describe('a release that did not happen is refused by name', () => {
     const { issueDisplayIds } = await import('../../src/issues/display-ids.js');
     const shown = String((await issueDisplayIds([b])).get(b));
     expect((cause.details as { displayIds?: string[] }).displayIds).toEqual([shown]);
-    expect(cause.message).toContain(
-      `1 issue named here (\`${shown}\`) is not marked merged`,
-    );
+    expect(cause.message).toContain(`1 issue named here (\`${shown}\`) is not marked merged`);
   });
 
   it('closes nothing when one named issue was never merged', async () => {

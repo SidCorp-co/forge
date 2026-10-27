@@ -344,7 +344,9 @@ describe('a runner that cannot take a release, as a person at the gate reads it'
   // ISS-1421 r39, judge-160: a box whose heartbeats stopped was said to have "reported itself
   // offline"; Forge marks it offline, the box says nothing.
   it('says a box Forge marked offline stopped reporting, to a person and to a caller', () => {
-    const details = { runners: runners({ reason: 'disconnected', lastSeenSeconds: 269, reporting: false }) };
+    const details = {
+      runners: runners({ reason: 'disconnected', lastSeenSeconds: 269, reporting: false }),
+    };
     for (const said of [
       releaseBlockerReaderSentence('NO_RUNNER_ONLINE', details),
       releaseBlockerSentence('NO_RUNNER_ONLINE', details),
@@ -398,32 +400,61 @@ describe("a missing release note, as the gate's row and the issue's page say it"
       displayIds: KEYS.slice(0, n),
     });
 
-  it.each([1, 2, 5])('names every issue and says its note is written on its own page, at %i', (n) => {
-    const said = missing(n);
-    for (const key of KEYS.slice(0, n)) expect(said).toContain(key);
-    expect(said).toMatch(n === 1 ? /under Release note on the issue's page/ : /under Release note on each issue's own page/);
-    expect(said).not.toMatch(/Give each one|each page|\bship/);
-  });
+  it.each([1, 2, 5])(
+    'names every issue and says its note is written on its own page, at %i',
+    (n) => {
+      const said = missing(n);
+      for (const key of KEYS.slice(0, n)) expect(said).toContain(key);
+      expect(said).toMatch(
+        n === 1
+          ? /under Release note on the issue's page/
+          : /under Release note on each issue's own page/,
+      );
+      expect(said).not.toMatch(/Give each one|each page|\bship/);
+    },
+  );
 
   it('asks for one note per issue in the plural, and one note in the singular', () => {
-    expect(missing(2)).toContain('have no release note, so a release would close them with nothing telling users what changed. Write a note for each of them first');
-    expect(missing(1)).toContain('has no release note, so a release would close it with nothing telling users what changed. Write one first');
+    expect(missing(2)).toContain(
+      'have no release note, so a release would close them with nothing telling users what changed. Write a note for each of them first',
+    );
+    expect(missing(1)).toContain(
+      'has no release note, so a release would close it with nothing telling users what changed. Write one first',
+    );
   });
 
   it("says on the gate's row what a release would do, not that it would claim a ship", () => {
-    expect(recordMissingForRow(false)).toContain('so a release would close it with nothing telling users what changed');
+    expect(recordMissingForRow(false)).toContain(
+      'so a release would close it with nothing telling users what changed',
+    );
   });
 });
 
 describe('an issue not marked merged, as a person reads it', () => {
   it('says it is not marked merged and names Mark merged, never that Forge watched no merge land', () => {
-    const one = releaseBlockerReaderSentence('RELEASE_WORK_UNMERGED', { issueIds: ['u-1'], displayIds: ['ISS-1'], shape: 'git' });
+    const one = releaseBlockerReaderSentence('RELEASE_WORK_UNMERGED', {
+      issueIds: ['u-1'],
+      displayIds: ['ISS-1'],
+      shape: 'git',
+    });
     expect(one).toContain('is not marked merged');
     expect(one).toContain("Use Mark merged in the issue's properties first");
-    const two = releaseBlockerReaderSentence('RELEASE_WORK_UNMERGED', { issueIds: ['u-1', 'u-2'], displayIds: ['ISS-1', 'ISS-2'], shape: 'git' });
+    const two = releaseBlockerReaderSentence('RELEASE_WORK_UNMERGED', {
+      issueIds: ['u-1', 'u-2'],
+      displayIds: ['ISS-1', 'ISS-2'],
+      shape: 'git',
+    });
     expect(two).toContain('are not marked merged');
     expect(two).toContain("Use Mark merged in each issue's properties first");
-    for (const said of [one, two, releaseBlockerSentence('RELEASE_WORK_UNMERGED', { issueIds: ['u-1'], displayIds: ['ISS-1'], shape: 'git' })]) {
+    for (const said of [
+      one,
+      two,
+      releaseBlockerSentence('RELEASE_WORK_UNMERGED', {
+        issueIds: ['u-1'],
+        displayIds: ['ISS-1'],
+        shape: 'git',
+      }),
+    ]) {
       expect(said).not.toMatch(/watched land|\bship/);
     }
   });

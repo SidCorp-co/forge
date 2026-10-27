@@ -120,7 +120,7 @@ describe("the web's words", () => {
       "const b = <span>— not shipped yet.</span>;",
       'const c = { value: "ship-unverified", label: "Ship unverified" };',
       'const d = <Tile label="Shipped · 30d" />;',
-      'const e = `${n} shipped on ${date}`;',
+      'const e = `\u0024{n} shipped on \u0024{date}`;',
       'const f = decision === "ship-unverified" && <textarea />;',
       'const g: "settled" | "shipped" = "shipped";',
       'const h = <p>{done ? "shipped" : "open"}</p>;',

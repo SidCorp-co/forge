@@ -220,7 +220,9 @@ describe('finishRefusal — what the abort did to this batch', () => {
   });
 
   it('says a batch that shipped before the abort keeps the issues its finish closed', () => {
-    expect(said('shipped')).toMatch(/already gone out, so the issues its finish closed stay closed/);
+    expect(said('shipped')).toMatch(
+      /already gone out, so the issues its finish closed stay closed/,
+    );
     expect(said('shipped')).not.toMatch(/claims were released/);
   });
 
