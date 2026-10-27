@@ -87,7 +87,9 @@ describe('the release gate a person reads', () => {
     expect(refusal?.said).toMatch(/^It has no release note/);
     expect(refusal?.saidHere).toMatch(/^This issue has no release note/);
     for (const said of [refusal?.said, refusal?.saidHere]) {
-      expect(said).toContain('It needs one before it can be released');
+      expect(said).toMatch(
+        /A member of the project writes one under Release note on (this|the issue's) page/,
+      );
       expect(said).not.toMatch(/ready once/);
       expect(said).not.toMatch(/releaseNotes|userFacing|[{}`]/);
     }
@@ -127,7 +129,25 @@ describe('the release gate a person reads', () => {
 
     expect(gate.blockingAll.map((b) => b.code)).toEqual(['RELEASE_POOL_EMPTY', 'BATCH_IN_FLIGHT']);
     expect(gate.blockingAll[0]?.said).toMatch(/no runner registered/);
+    expect(gate.blockingAll.map((b) => b.runId)).toEqual([null, 'run-9']);
     expect(gate.issues[0]?.releaseRefusals).toEqual([]);
+  });
+
+  // Judge-155 at c0f8105: the running release carried ISS-3 only, the gate said a second one would
+  // claim the same issues, and it linked to no run.
+  it('names what a running release carries, what the waiting rows do, and links its run', async () => {
+    rosterMock.mockResolvedValueOnce(roster([row('ISS-1'), row('ISS-2'), row('ISS-3', 'run-9')]));
+    reports(blocker('BATCH_IN_FLIGHT', { runId: 'run-9', carries: ['ISS-3'] }));
+
+    const gate = await loadReleaseGateRoster('p');
+
+    expect(gate.blockingAll).toEqual([
+      {
+        code: 'BATCH_IN_FLIGHT',
+        runId: 'run-9',
+        said: 'A release is already running for this project, carrying ISS-3. A project runs one release at a time, so ISS-1 and ISS-2 are on no release and wait until it finishes.',
+      },
+    ]);
   });
 
   it('leaves to each row what its close refuses, and to the press what a pick decides', async () => {

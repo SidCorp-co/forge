@@ -31,6 +31,8 @@ export interface ReleaseRefusal {
 export interface GateRefusal {
   code: string;
   said: string;
+  /** The running release, whose page the gate links, where that is the reason; null otherwise. */
+  runId: string | null;
 }
 
 export interface ReleaseRosterEntry {
@@ -195,6 +197,7 @@ function blockingAllAt(o: Record<string, unknown>, endpoint: string): GateRefusa
     return {
       code: stringAt(r, "code", endpoint, `blockingAll[${i}].code`),
       said: stringAt(r, "said", endpoint, `blockingAll[${i}].said`),
+      runId: nullableStringAt(r, "runId", endpoint, `blockingAll[${i}].runId`),
     };
   });
 }

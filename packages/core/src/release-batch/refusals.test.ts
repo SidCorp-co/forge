@@ -323,6 +323,14 @@ describe('issuesUnnamed — the path it sends is real', () => {
     expect(message).toContain('GET /api/projects/proj-7/release-batches/roster');
     expect(message).not.toMatch(/\{projectId\}/);
   });
+
+  // Judge-155: the Batch release dialog, emptied by a refusal, sent [] and showed this route.
+  it('gives a person their own sentence, naming no route', () => {
+    const cause = issuesUnnamed('proj-7').cause as { details?: { reader?: unknown } };
+    expect(cause.details?.reader).toBe(
+      'No issue was picked, so nothing was released. Pick the issues to release from those the release gate lists as ready.',
+    );
+  });
 });
 
 describe('finishRefusal — a finish already in flight', () => {

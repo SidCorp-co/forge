@@ -16,7 +16,6 @@ import {
   CardHeader,
   CardTitle,
   Field,
-  MonoTag,
   Textarea,
 } from "@/design";
 import {
@@ -32,6 +31,7 @@ import {
   roundCountOf,
   type VisibleOption,
 } from "../types";
+import { questionStateLine } from "../question-words";
 
 const AUTHORITY_MEANS: Record<OptionAuthority, string> = {
   writer: "Any project member can choose this",
@@ -264,8 +264,9 @@ export function QuestionCard({
         >
           {answerable ? "Decision waiting" : "Decision"}
         </CardTitle>
-        <MonoTag>{question.blockerKind}</MonoTag>
-        <MonoTag>{question.status}</MonoTag>
+        <span className="fg-caption text-muted" data-testid="question-state">
+          {questionStateLine(question.blockerKind, question.status)}
+        </span>
         {context}
       </CardHeader>
       <CardContent className="space-y-3">

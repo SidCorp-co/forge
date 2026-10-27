@@ -7,6 +7,7 @@
 
 import type { ReleaseBlockerCode } from '@forge/contracts';
 import { lackingCheckClause, refusedCheckClause } from '../issues/landing-correction.js';
+import type { RunnerHold } from '../runners/ineligible.js';
 import {
   namedHere,
   type RefusedDeclaration,
@@ -21,6 +22,7 @@ import {
 } from './blocker-sentences.js';
 import { carriedUndecidedSentence } from './carried-sentences.js';
 import { agree, counted } from './counted.js';
+import { runnerHoldReaderClause, runnersHeldSentence } from './runner-hold-sentences.js';
 
 /** Every check a release reason can stand in for, as a person names the work it does. */
 export const RELEASE_CHECK_WORDS = {
@@ -82,14 +84,58 @@ function recordMissingForReader(details: Details): string {
   const who =
     details && Array.isArray(details.issueIds) ? namedHere(details) : 'The issues named here';
   const w = (one: string, many: string) => agree(n, one, many);
-  return `${who} ${w('has', 'have')} no release note, and closing ${w('it', 'them')} would claim a ship nobody wrote anything about. Give ${w('it', 'each')} one first: the one line a user would read, or a note that nothing a user sees changed.`;
+  return `${who} ${w('has', 'have')} no release note, and closing ${w('it', 'them')} would claim a ship nobody wrote anything about. Give ${w('it', 'each')} one first, under Release note on ${w('its', 'each')} page: the one line a user would read, or that nothing a user sees changed.`;
 }
 
-/** One issue's missing note, on the gate's row about it or on its own page (`here`), and who
- *  writes one: no page here has a field for it. It promises no readiness, since the same row can
- *  owe its close something too (ISS-1421 r37, consult F1). */
+/** One issue's missing note, on the gate's row about it or on its own page (`here`), and where it
+ *  is written: under Release note on the issue's page, by a member (ISS-1421 r38, judge-155). It
+ *  promises no readiness, since the same row can owe its close something too (ISS-1421 r37). */
 export function recordMissingForRow(here: boolean): string {
-  return `${here ? 'This issue' : 'It'} has no release note, so a release would close it claiming a ship nobody wrote anything about, and Release now refuses it. It needs one before it can be released: the one line a user would read, or a note that nothing a user sees changed. The agent that lands the work writes it; where none did, ask for it on the issue.`;
+  const where = here ? 'under Release note on this page' : "under Release note on the issue's page";
+  return `${here ? 'This issue' : 'It'} has no release note, so a release would close it claiming a ship nobody wrote anything about, and Release now refuses it. A member of the project writes one ${where}: the one line a user would read, or that nothing a user sees changed.`;
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
+
+/** "ISS-1", "ISS-1 and ISS-2", "ISS-1, ISS-2 and ISS-3". */
+function namesInWords(ids: string[]): string {
+  return ids.length < 2
+    ? ids.join('')
+    : `${ids.slice(0, -1).join(', ')} and ${ids[ids.length - 1]}`;
+}
+
+/** A release running, as a person reads it: what it carries, what it waits on, and what the other
+ *  waiting issues (`rest`, where the gate lists them) do meanwhile. No abort: no screen offers one,
+ *  and the screen links the release's own page beside this (ISS-1421 r38, judge-155). */
+function inFlightForReader(details: Details): string {
+  const carries = strings(details?.carries);
+  const rest = strings(details?.rest);
+  const lead =
+    carries.length > 0
+      ? `A release is already running for this project, carrying ${namesInWords(carries)}.`
+      : 'A release is already running for this project.';
+  const decision = details?.decision;
+  const shown =
+    decision && typeof decision === 'object'
+      ? (decision as { displayId?: unknown }).displayId
+      : undefined;
+  const where = typeof shown === 'string' ? `on ${shown}` : "among this project's questions";
+  const waits =
+    decision && typeof decision === 'object'
+      ? ` It is waiting on a decision: its agent stopped on a question ${where}. Answer it in its Decision waiting card and that release goes on.`
+      : '';
+  const others =
+    rest.length > 0
+      ? `${namesInWords(rest)} ${agree(rest.length, 'is', 'are')} on no release and ${agree(rest.length, 'waits', 'wait')} until it finishes`
+      : 'every other issue waits until it finishes';
+  return `${lead}${waits} A project runs one release at a time, so ${others}.`;
+}
+
+function runnersForReaderHeld(details: Details): string | null {
+  const holds = Array.isArray(details?.runners) ? (details.runners as RunnerHold[]) : [];
+  return runnersHeldSentence(holds, runnerHoldReaderClause);
 }
 
 function unmergedForReader(details: Details): string | null {
@@ -140,8 +186,8 @@ const READER: Record<ReleaseBlockerCode, Reader> = {
   RELEASE_RUNNER_AMBIGUOUS: runnersForReader,
   RELEASE_PROBES_UNREADABLE: unreadableForReader,
   RELEASE_POOL_EMPTY: 'same',
-  NO_RUNNER_ONLINE: 'same',
-  BATCH_IN_FLIGHT: 'same',
+  NO_RUNNER_ONLINE: runnersForReaderHeld,
+  BATCH_IN_FLIGHT: inFlightForReader,
   RELEASE_CRITERIA_UNEARNED: 'same',
   RELEASE_RUNTIME_UNROUTED: 'same',
   RELEASE_CARRIES_UNDECIDED: carriedForReader,

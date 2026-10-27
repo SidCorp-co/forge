@@ -1,11 +1,13 @@
 /**
  * What an operator is told about each box a release cannot use: the state it was read in, how
- * long, and the act that clears it. `blocker-sentences.ts` re-exports `runnerHoldClause`.
+ * long, and the act that clears it. `blocker-sentences.ts` re-exports `runnerHoldClause`; a person
+ * at the release gate reads `runnerHoldReaderClause`, the same in words (ISS-1421 r38, judge-155).
  */
 
-import { durationWords } from '../lib/elapsed-words.js';
+import { durationWords, utcMomentWords } from '../lib/elapsed-words.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../runners/device-cap.js';
 import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
+import { agree, counted } from './counted.js';
 
 export const RUNNERS_TAB = 'Settings → Runners';
 
@@ -43,6 +45,44 @@ const RUNNER_HOLD_ACT: Record<RunnerHoldReason, (hold: RunnerHold) => string> = 
     `runs agent version ${h.detail ?? 'unreported'}, below the ${AGENT_NAMING_MIN_RUNNER} a claim needs. Upgrade \`forge-runner\` on that box.`,
 };
 
+/** A box's workspace setup step, as a person says it rather than as it is stored. */
+const PROVISION_WORDS: Record<string, string> = {
+  queued: 'waiting its turn to start',
+  cloning: 'copying the repository',
+  syncing_skills: 'syncing its skills',
+  writing_mcp: 'writing its tool settings',
+  needs_manual_setup: 'waiting on a setup step a person takes by hand',
+  failed: 'stopped on a failure',
+};
+
+function provisionWords(detail: string | undefined): string {
+  return (detail && PROVISION_WORDS[detail]) ?? 'still in progress';
+}
+
+const RUNNER = 'the Forge runner';
+
+/** The same readings for a person: no code marks, no stored value, a moment in words. */
+const RUNNER_HOLD_READER_ACT: Record<RunnerHoldReason, (hold: RunnerHold) => string> = {
+  'device-disabled': RUNNER_HOLD_ACT['device-disabled'],
+  retired: (h) =>
+    `${h.detail === 'disabled' ? 'is switched off' : 'is winding down'}, so it takes nothing from the pool. Switch "Takes jobs from the pool" back on for it under ${RUNNERS_TAB}.`,
+  'never-connected': () => `is registered and has never reported in. Start ${RUNNER} on that box.`,
+  disconnected: () =>
+    `reported itself offline. Start ${RUNNER} on that box, or wait for it to reconnect.`,
+  stale: () => `has stopped reporting. Check ${RUNNER} is still running on that box.`,
+  auth: RUNNER_HOLD_ACT.auth,
+  'rate-limited': (h) =>
+    `is rate limited until ${h.detail ? utcMomentWords(h.detail) : 'it clears'}. Nothing here clears it sooner — wait it out, or bring another box up.`,
+  quarantined: (h) =>
+    `is quarantined until ${h.detail ? utcMomentWords(h.detail) : 'it clears'} after repeated failures. Wait it out, or clear the quarantine under ${RUNNERS_TAB}.`,
+  provisioning: (h) =>
+    `has not finished setting up its workspace for this project: it is ${provisionWords(h.detail)}. Watch it under ${RUNNERS_TAB}; a setup that is stuck is run again from there.`,
+  'provision-stalled': (h) =>
+    `has been ${provisionWords(h.detail)} for ${durationPhrase(h.stalledSeconds)} with no report from the box, so setting up its workspace did not finish and is not in progress. The box runs it again on its next sweep once it is polling again; to run it again now, use Re-provision under ${RUNNERS_TAB}.`,
+  'below-floor': (h) =>
+    `runs agent version ${h.detail ?? 'unreported'}, below the ${AGENT_NAMING_MIN_RUNNER} a release needs. Upgrade ${RUNNER} on that box.`,
+};
+
 /** Readings whose own words already say when the box last reported. */
 const HOLD_STATES_ITS_OWN_AGE: ReadonlySet<RunnerHoldReason> = new Set([
   'never-connected',
@@ -58,12 +98,29 @@ function lastSeenPhrase(hold: RunnerHold): string {
     : ` It last reported ${ago}.`;
 }
 
+function agePhrase(hold: RunnerHold): string {
+  if (!HOLD_STATES_ITS_OWN_AGE.has(hold.reason)) return lastSeenPhrase(hold);
+  return hold.lastSeenSeconds === null
+    ? ''
+    : ` Last seen ${durationWords(hold.lastSeenSeconds * 1000)} ago.`;
+}
+
 export function runnerHoldClause(hold: RunnerHold): string {
-  const act = RUNNER_HOLD_ACT[hold.reason](hold);
-  const age = HOLD_STATES_ITS_OWN_AGE.has(hold.reason)
-    ? hold.lastSeenSeconds === null
-      ? ''
-      : ` Last seen ${durationWords(hold.lastSeenSeconds * 1000)} ago.`
-    : lastSeenPhrase(hold);
-  return `\`${hold.deviceName}\` ${act}${age}`;
+  return `\`${hold.deviceName}\` ${RUNNER_HOLD_ACT[hold.reason](hold)}${agePhrase(hold)}`;
+}
+
+/** The box by its name, as Settings → Runners lists it, and the rest in words. */
+export function runnerHoldReaderClause(hold: RunnerHold): string {
+  return `The box ${hold.deviceName} ${RUNNER_HOLD_READER_ACT[hold.reason](hold)}${agePhrase(hold)}`;
+}
+
+/** Every box's hold, each by `clause`: the caller's, or a person's (`runnerHoldReaderClause`). */
+export function runnersHeldSentence(
+  holds: RunnerHold[],
+  clause: (hold: RunnerHold) => string = runnerHoldClause,
+): string | null {
+  if (holds.length === 0) return null;
+  const can = agree(holds.length, 'it cannot', 'not one of them can');
+  const head = `This project has ${counted(holds.length, 'runner')} registered and ${can} take a release right now.`;
+  return `${head} ${holds.map(clause).join(' ')}`;
 }

@@ -268,7 +268,7 @@ describe("AwaitingReleaseBanner — Release now only where it is not refused", (
   });
 
   it("offers no Release now where the project refuses every pick, and says why", () => {
-    state({ blockingAll: [{ code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered. Pair a box to this project first." }] });
+    state({ blockingAll: [{ code: "RELEASE_POOL_EMPTY", said: "This project has no runner registered. Pair a box to this project first.", runId: null }] });
     renderBanner();
     expect(screen.getByText("This project has no runner registered. Pair a box to this project first.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
