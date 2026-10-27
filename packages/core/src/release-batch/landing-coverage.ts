@@ -9,7 +9,7 @@
  */
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
-import { verdictEarns } from '@forge/contracts/verdict-identity';
+import { landedIdentityWhy, verdictEarns } from '@forge/contracts/verdict-identity';
 import { type StandingCriterion, standingCriteriaOf } from '../issues/index.js';
 import { pairKey } from '../runners/index.js';
 import type { JudgedBuildDeps } from './judged-build.js';
@@ -51,16 +51,17 @@ function place(
   if (!verdictEarns(v.verdict)) return none(`its verdict is \`${v.verdict}\``);
   if (v.unverified)
     return { criterion: c.criterion, basis: 'unverified', at: null, why: v.unverified };
-  if (v.at?.kind === 'runtime') {
-    return { criterion: c.criterion, basis: 'runtime', at: v.at.value, why: null };
+  const at = v.at;
+  if (!at) return none('it names nothing it was judged against');
+  // the commit a verdict names on a landing, read by the rule the record door weighs it with
+  const why = landedIdentityWhy(at.kind === 'source' ? 'commit' : at.kind, at.value, judgedOn);
+  if (why && at.kind === 'runtime') {
+    return { criterion: c.criterion, basis: 'runtime', at: at.value, why: null };
   }
-  const sha = v.at?.kind === 'source' ? v.at.value.trim().toLowerCase() : '';
+  if (why) return none(`it was ${why}`);
+  const sha = at.value.trim().toLowerCase();
   if (WHOLE.test(sha)) return { criterion: c.criterion, candidate: sha };
-  return none(
-    v.at
-      ? `it was judged at ${v.at.kind} \`${v.at.value}\`, not at a commit`
-      : 'it names nothing it was judged against',
-  );
+  return none(`it was judged at \`${at.value}\`, which is not a whole commit`);
 }
 
 /** `c1, c2-4`: criterion numbers, consecutive runs folded. */
