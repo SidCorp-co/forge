@@ -64,8 +64,10 @@ describe('a file that gives its database back', () => {
       return end(options);
     };
     const reported = vi.spyOn(console, 'error');
+    let givenBack = false;
 
     try {
+      givenBack = true;
       await harness.cleanup();
       const outcome = await late.then(
         () => 'committed',
@@ -78,6 +80,7 @@ describe('a file that gives its database back', () => {
     } finally {
       release();
       reported.mockRestore();
+      if (!givenBack) await harness.cleanup();
     }
   });
 
@@ -86,6 +89,7 @@ describe('a file that gives its database back', () => {
     appEnv(harness.url);
     const { db, closeDb } = await import('../../src/db/client.js');
     const reported = vi.spyOn(console, 'error');
+    let givenBack = false;
     try {
       // More statements than the pool has connections, handed to it now: the tenth on wait in its
       // queue for a connection to come free.
@@ -99,12 +103,14 @@ describe('a file that gives its database back', () => {
         () => 'ran after the close',
         (err: Error) => `${err.message} ${String((err.cause as Error | undefined)?.message)}`,
       );
+      givenBack = true;
       await harness.cleanup();
 
       expect(outcome).not.toBe('ran after the close');
       expect(reported.mock.calls.flat().join('\n')).not.toContain('still open at teardown');
     } finally {
       reported.mockRestore();
+      if (!givenBack) await harness.cleanup();
     }
   });
 
@@ -112,26 +118,30 @@ describe('a file that gives its database back', () => {
     const harness = await setupTestDatabase();
     const own = postgres(harness.url, { max: 1, onnotice: () => {} });
     const reported = vi.spyOn(console, 'error');
+    let givenBack = false;
     try {
       // The server drops a session's temporary tables as it ends it, so four hundred of them keep
       // the session listed for most of a second after its client is gone.
       await own.unsafe(
         "DO $$ BEGIN FOR i IN 1..400 LOOP EXECUTE format('CREATE TEMP TABLE plant_%s (id int)', i); END LOOP; END $$",
       );
+      const [session] = await own<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
       const running = own`SELECT count(*) FROM pg_class`.execute();
       await own.end({ timeout: 5 });
       await running;
       const [listed] = await harness.client<{ n: number }[]>`
-        SELECT count(*)::int AS n FROM pg_stat_activity
-        WHERE datname = current_database() AND pid <> pg_backend_pid()
+        SELECT count(*)::int AS n FROM pg_stat_activity WHERE pid = ${session?.pid ?? 0}
       `;
       expect(listed?.n, 'the ended session was already gone, so this case shows nothing').toBe(1);
 
+      givenBack = true;
       await harness.cleanup();
 
       expect(reported.mock.calls.flat().join('\n')).not.toContain('still open at teardown');
     } finally {
       reported.mockRestore();
+      await own.end({ timeout: 0 }).catch(() => {});
+      if (!givenBack) await harness.cleanup();
     }
   });
 
@@ -143,9 +153,11 @@ describe('a file that gives its database back', () => {
       connection: { application_name: 'plant-held-by-this-file' },
     });
     const reported = vi.spyOn(console, 'error');
+    let givenBack = false;
     try {
       await held`SELECT 'still here' AS plant`;
 
+      givenBack = true;
       await harness.cleanup();
 
       expect(reported.mock.calls.flat().join('\n')).toMatch(
@@ -154,6 +166,7 @@ describe('a file that gives its database back', () => {
     } finally {
       reported.mockRestore();
       await held.end({ timeout: 0 }).catch(() => {});
+      if (!givenBack) await harness.cleanup();
     }
   });
 

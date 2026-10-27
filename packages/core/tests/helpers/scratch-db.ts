@@ -41,7 +41,12 @@ export function freshTemplateName(token: string): string {
 
 /** The token every scratch database of THIS run carries, read off `TEST_PG_RUN_TOKEN`. */
 function runToken(token: string | undefined = process.env.TEST_PG_RUN_TOKEN): string | null {
-  return token !== undefined && TOKEN_SHAPE.test(token) ? token : null;
+  if (token === undefined) return null;
+  if (TOKEN_SHAPE.test(token)) return token;
+  throw new Error(
+    `scratch-db: TEST_PG_RUN_TOKEN is "${token}", which is not a token mintRunToken makes: ` +
+      'base-36 milliseconds, an underscore and eight hex digits, as in "mvp8ygib_2f5f717d".',
+  );
 }
 
 /** The one database worker slot `slot` holds for this whole run: the same name every time it is asked. */
