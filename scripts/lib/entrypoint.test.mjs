@@ -149,6 +149,23 @@ const WRAPS = [
   ts.isSatisfiesExpression,
 ];
 
+/**
+ * Process's methods that hand back process itself (an emitter's chainable calls, and valueOf): the
+ * call is process as much as the name it was made on.
+ */
+const RETURNS_PROCESS = new Set([
+  'addListener',
+  'off',
+  'on',
+  'once',
+  'prependListener',
+  'prependOnceListener',
+  'removeAllListeners',
+  'removeListener',
+  'setMaxListeners',
+  'valueOf',
+]);
+
 /** Methods that ask whether argv holds a literal flag: the only walks of the entry that compare nothing to it. */
 const FLAG_TESTS = new Set(['includes', 'indexOf', 'lastIndexOf']);
 
@@ -281,9 +298,26 @@ function entryReads(rel, text) {
     const name = propName(node);
     return GLOBAL_NAMES.includes(name) && isGlobal(unwrap(node.expression));
   }
+  /**
+   * Whether `this` here is the instance a constructor is building. Anywhere else a function's
+   * `this` is whatever it was called on, process included once the function sits on process.
+   */
+  function constructed(node) {
+    let at = node.parent;
+    while (at && (ts.isArrowFunction(at) || !ts.isFunctionLike(at))) at = at.parent;
+    return !!at && ts.isConstructorDeclaration(at);
+  }
   function isProcess(node) {
     if (ts.isIdentifier(node)) return node.text === 'process' || processNames.has(node.text);
+    if (node.kind === ts.SyntaxKind.ThisKeyword) return !constructed(node);
     if (ts.isAwaitExpression(node)) return isProcess(unwrap(node.expression));
+    if (
+      ts.isCallExpression(node) &&
+      RETURNS_PROCESS.has(propName(unwrap(node.expression))) &&
+      isProcess(unwrap(unwrap(node.expression).expression))
+    ) {
+      return true;
+    }
     // Whatever loads the module by name — require, a require made elsewhere, import() — hands over process.
     if (ts.isCallExpression(node)) {
       const [first] = node.arguments;
@@ -608,6 +642,15 @@ function entryReads(rel, text) {
       return stated ? null : `${what} read by a computed key: ${p.getText(src)}`;
     }
     if (ts.isTypeOfExpression(p)) return null;
+    // A wrapper handing its own `this` on as the receiver of what it wraps: a function of this file
+    // has its `this` judged where it is read, like this one.
+    const forwarded =
+      self.kind === ts.SyntaxKind.ThisKeyword &&
+      ts.isCallExpression(p) &&
+      p.arguments[0] === self &&
+      ['call', 'apply', 'bind'].includes(propName(p.expression));
+    if (forwarded) return null;
+    if (ts.isExpressionStatement(p) && ts.isCallExpression(self)) return null;
     const pattern =
       ts.isVariableDeclaration(p) && p.initializer === self
         ? p.name
@@ -646,7 +689,8 @@ function entryReads(rel, text) {
       ts.isPropertyAccessExpression(node) ||
       ts.isElementAccessExpression(node) ||
       ts.isCallExpression(node) ||
-      ts.isAwaitExpression(node)
+      ts.isAwaitExpression(node) ||
+      node.kind === ts.SyntaxKind.ThisKeyword
     ) {
       if (!WRAPS.some((is) => is(node)) && isProcess(node)) {
         const leak = processLeak(node);
@@ -1104,6 +1148,36 @@ describe('no file decides it was launched by hand', () => {
       2,
     ],
     [
+      'scripts/this-method.mjs',
+      'process.entry = function () {\n  return this.argv[1];\n};\nif (import.meta.filename === process.entry()) main();\n',
+      2,
+    ],
+    [
+      'scripts/this-getter.mjs',
+      "Object.defineProperty(Object.prototype, 'entry', {\n  get() {\n    return this.argv.at(1);\n  },\n});\nif (import.meta.url === process.entry) main();\n",
+      3,
+    ],
+    [
+      'scripts/this-alias.mjs',
+      'function entry() {\n  const self = this;\n  return self.argv[1];\n}\nprocess.entry = entry;\nif (import.meta.filename === process.entry()) main();\n',
+      3,
+    ],
+    [
+      'scripts/this-class-method.mjs',
+      'class Entry {\n  read() {\n    const [, entry] = this.argv;\n    return entry;\n  }\n}\nprocess.read = Entry.prototype.read;\nif (import.meta.filename === process.read()) main();\n',
+      3,
+    ],
+    [
+      'scripts/chained.mjs',
+      "if (import.meta.filename === process.on('exit', () => {}).argv[1]) main();\n",
+      1,
+    ],
+    [
+      'scripts/value-of.mjs',
+      'const p = process.valueOf();\nif (import.meta.filename === p.argv[1]) main();\n',
+      2,
+    ],
+    [
       'scripts/from.mjs',
       'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n',
       2,
@@ -1234,7 +1308,7 @@ describe('no file decides it was launched by hand', () => {
     ],
     [
       'scripts/process-uses.mjs',
-      "if (typeof process !== 'undefined') process.exitCode = 1;\nconst { env, platform } = process;\nconst home = process['env'].HOME;\nconst onServer = typeof window === 'undefined' && globalThis.fetch;\nconst sync = process.binding('spawn_sync');\nconst ROOT = import.meta.url;\n",
+      "if (typeof process !== 'undefined') process.exitCode = 1;\nconst { env, platform } = process;\nconst home = process['env'].HOME;\nconst onServer = typeof window === 'undefined' && globalThis.fetch;\nconst sync = process.binding('spawn_sync');\nprocess.on('exit', () => {}).once('beforeExit', () => {});\nfunction watched(...args) {\n  return original.apply(this, args);\n}\nclass Watched extends Base {\n  constructor() {\n    super();\n    live.add(this);\n    this.once('exit', () => live.delete(this));\n  }\n}\nconst ROOT = import.meta.url;\n",
     ],
     [
       'scripts/nested-tail.mjs',
