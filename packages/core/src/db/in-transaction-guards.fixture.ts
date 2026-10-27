@@ -3,10 +3,9 @@
  * `lib/db-errors.ts:STATEMENT_ERRORS` passes as a kind, on the error or down its `cause`, by
  * `instanceof`, a `code`, constraint or `name` compared with a value known at compile time, or an
  * `isX(err)` whose one returned expression is such a test; or those joined. The caught error is
- * matched by its binding, never its name, and a comparand holding a value that can come from it
- * counts as the error (`in-transaction-paths.fixture.ts:mentions`), among them any `let`, `var` or
- * parameter written past its declaration. Every guard it does not so recognise is refused like a
- * bare catch, among them one whose body it cannot read and a comparison it cannot resolve.
+ * matched by its binding, never its name, as is a comparand whose value can come from it
+ * (`in-transaction-paths.fixture.ts:mentions`). Every guard it does not so recognise is refused
+ * like a bare catch, among them one whose body it cannot read and a comparison it cannot resolve.
  *
  * Named residuals, each beyond what a reading of the files in `src` can decide: a comparand whose
  * type claims a literal its value does not hold, since the reader takes the checker's word for it; a
@@ -30,7 +29,6 @@ const READERS = new Map([
   ['pgConstraintName', 'constraint_name'],
 ]);
 
-/** The keys of the error a guard the scan reads may compare; it reads its `cause` and class too. */
 export const IDENTIFYING: ReadonlySet<string> = new Set([
   'code',
   'constraint_name',

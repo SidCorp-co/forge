@@ -116,10 +116,8 @@ function primitive(node: ts.Expression, scan: Scan): boolean {
   return type.isUnion() ? type.types.every(flat) : flat(type);
 }
 
-/** Every key a guard the scan reads looks at on the error, and the one that swaps its class. */
 const GUARDED = new Set([...IDENTIFYING, 'cause', '__proto__']);
 
-/** A store to a key named in the source that no guard the scan reads looks at. */
 function unguarded(store: ts.AccessExpression): boolean {
   const key = ts.isPropertyAccessExpression(store)
     ? store.name.text

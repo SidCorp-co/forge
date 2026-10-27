@@ -2,14 +2,14 @@
  * A handle is any expression bound outside the guarded code whose declared type, or a type
  * parameter's constraint, a drizzle transaction is assignable to and which carries any member of
  * the transaction, so `Pick<Tx, 'insert'>`, `Pick<Db, 'select'>`, `Tx` and every local executor
- * alias count while the pool's own `Db` does not. A catch passes by calling
- * `rethrowInTransaction(<the error>, <the handle>)` first, or by handing every error it does not
- * name up unchanged: on each path such an error can take it leaves only by throwing the error it
- * caught, throws no replacement for it, and makes no use of it the write reading refuses, since
- * what it does there reaches the guard deciding on the error or the catch the error goes up to,
- * which may name one error and fall back. A path only a named error reaches is not read
- * (`in-transaction-paths.fixture.ts:namedPaths`). A `finally` that leaves its block swallows what
- * the try threw. `EXCEPTIONS` names any allowed to fall back.
+ * alias count while the pool's own `Db` does not. `EXCEPTIONS` names any catch allowed to fall back.
+ *
+ * A catch passes by calling `rethrowInTransaction(<the error>, <the handle>)` first, or by handing
+ * every error it does not name up unchanged: on each path such an error can take it leaves only
+ * by throwing the error it caught, throws no replacement for it, and makes no use of it the write
+ * reading refuses, since what it does there reaches the guard deciding on the error or the catch
+ * the error goes up to. A path only a named error reaches is not read
+ * (`in-transaction-paths.fixture.ts:namedPaths`). A `finally` that leaves its block swallows.
  *
  * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`; which use of the error
  * is refused as a write, and what that reading still cannot see: `in-transaction-writes.fixture.ts`.
@@ -302,13 +302,7 @@ function replacement(body: ts.Block, param: ts.Symbol, named: ReadonlySet<ts.Nod
   return found;
 }
 
-/**
- * A handler passes where it rethrows inside a transaction first, or where, on every path an error
- * it does not name can take, it throws that error unchanged: it leaves by no other way, throws no
- * replacement a catch around it could name, and makes no use of the error the write reading
- * refuses, since what it does to the error there reaches the guard deciding on it or the catch the
- * error goes up to. A part only a named error reaches is not read.
- */
+/** The handler's kind by the rule the header states, and the use or throw that refused it. */
 function handlerKind(
   handler: ts.Node,
   handles: string[],

@@ -1,7 +1,4 @@
-/**
- * Which paths through a catch an error reaches: where a block throws on every path, where it leaves,
- * which of its parts only an error the catch names can reach, and what a name was bound from.
- */
+/** The control flow and bindings the catch scan reads a handler by. */
 
 import ts from 'typescript';
 
@@ -67,16 +64,16 @@ export function leaves(block: ts.Node): boolean {
   return exitsOf(block).length > 0;
 }
 
-/** True where `branch` throws on every path and leaves by no other way. */
+/** A branch with no way out but a throw. */
 export function alwaysThrows(branch: ts.Statement): boolean {
   return endsInThrow(statementsOf(branch)) && !leaves(branch);
 }
 
 /**
- * The parts of `body` only an error the catch names can reach: the branch an `if`, `?:` or `&&`
- * takes on a test that `names` one; the other branch of a test that `allBut` holds of every error
- * but a named kind, `else`, `?:`'s second or `||`'s right; and each statement after an `if` on such
- * a test whose branch throws on every path. Everything else is a path any error can take.
+ * The parts of `body` no error but a named one reaches: the branch an `if`, `?:` or `&&` takes on
+ * a test that `names` one; the other branch of a test that `allBut` holds of every error but a
+ * named kind, `else`, `?:`'s second or `||`'s right; and each statement after an `if` on such a
+ * test whose branch has no way out but a throw. Any error can take every other path.
  */
 export function namedPaths(
   body: ts.Node,

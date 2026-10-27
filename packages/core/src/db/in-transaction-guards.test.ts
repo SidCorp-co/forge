@@ -23,10 +23,7 @@ function lineIn(source: string, fn: string, text: string): number {
   return source.slice(0, at).split('\n').length;
 }
 
-/**
- * The refusal of `fn`'s first catch in `file`, whose text is `source`: for the use or the throw
- * whose text `why` names, at the line that text first stands on after `fn` opens, or a fall-back.
- */
+/** The refusal of `fn`'s first catch in `file`, for the use or the throw `why` quotes, or a fall-back. */
 function refusalOf(
   file: string,
   source: string,
