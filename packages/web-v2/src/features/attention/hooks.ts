@@ -102,6 +102,8 @@ export function useAttention(
       else attentionQ.refetch();
       devicesQ.refetch();
     },
+    retryAttention: () => (scopeError ? active.retryScope() : void attentionQ.refetch()),
+    retryDevices: () => void devicesQ.refetch(),
   };
 }
 

@@ -9,14 +9,15 @@ import {
   PageContainer,
   PageTitle,
   Select,
-  Skeleton,
   type SelectOption,
+  Skeleton,
 } from "@/design";
-import { cn } from "@/lib/utils/cn";
 import { formatApiError } from "@/lib/api/error";
+import { cn } from "@/lib/utils/cn";
+import { retryFailedReads } from "@/lib/utils/retry-rule";
 import { useKnowledgeEntries } from "../hooks";
-import { EntryCard } from "./entry-card";
 import { DiagramsTab } from "./diagrams-tab";
+import { EntryCard } from "./entry-card";
 import { GraphTab } from "./graph-tab";
 import { RulesTab } from "./rules-tab";
 
@@ -278,7 +279,10 @@ function ReferencesTab({ projectId, canManage }: { projectId: string; canManage:
       <ErrorState
         title="Couldn't load references"
         message={formatApiError((refQ.error ?? glossQ.error) as Error)}
-        error={(refQ.error ?? glossQ.error) as Error} onRetry={() => { refQ.refetch(); glossQ.refetch(); }}
+        {...retryFailedReads([
+          { failed: refQ.isError, error: refQ.error, retry: () => void refQ.refetch() },
+          { failed: glossQ.isError, error: glossQ.error, retry: () => void glossQ.refetch() },
+        ])}
       />
     );
   }

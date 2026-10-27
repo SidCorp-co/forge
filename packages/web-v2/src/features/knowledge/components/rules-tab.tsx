@@ -25,6 +25,7 @@ import {
   useDebounced,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { retryFailedReads } from "@/lib/utils/retry-rule";
 import { useDeleteEntry, useKnowledgeEntries, useKnowledgeEntry, useUpsertEntry } from "../hooks";
 import type { KnowledgeInjection, KnowledgeKind, KnowledgeListRow } from "../types";
 
@@ -68,10 +69,10 @@ export function RulesTab({ projectId, canManage }: RulesTabProps) {
     ? formatApiError(entriesQ.error)
     : formatApiError(guidesQ.error as Error);
 
-  function retry() {
-    entriesQ.refetch();
-    guidesQ.refetch();
-  }
+  const retry = retryFailedReads([
+    { failed: entriesQ.isError, error: entriesQ.error, retry: () => void entriesQ.refetch() },
+    { failed: guidesQ.isError, error: guidesQ.error, retry: () => void guidesQ.refetch() },
+  ]);
 
   if (isLoading) {
     return (
@@ -83,7 +84,7 @@ export function RulesTab({ projectId, canManage }: RulesTabProps) {
   }
 
   if (isError) {
-    return <ErrorState title="Couldn't load rules" message={errorMsg} error={entriesQ.error ?? guidesQ.error} onRetry={retry} />;
+    return <ErrorState title="Couldn't load rules" message={errorMsg} {...retry} />;
   }
 
   return (

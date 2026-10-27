@@ -105,6 +105,22 @@ describe("two people who read alike in a room (criteria 486, 492, 493, 494)", ()
     });
   });
 
+  // r50 review F2: the second admin was named only "who did not open this room", which the viewer is as well.
+  it("keep the role beside the opener where the opener tells apart only those holding that role", () => {
+    const opened = person("o", null, "admin", true);
+    const admin = person("a", null, "admin");
+    const looker = person("v", null, "viewer");
+    const room = roomOf(opened, admin, looker, mai);
+    expect(removeControlName(admin, room, "mai")).toBe(
+      "Take a member with the admin role who did not open this room out of the room",
+    );
+    expect(removalQuestion(admin, "mai", room).title).toBe(
+      "Take a member with the admin role who did not open this room out of this room?",
+    );
+    expect(removeControlName(looker, room, "mai")).toBe("Take a member with the viewer role out of the room");
+    expect(removeControlName(opened, room, "mai")).toBe("Take a member who opened this room out of the room");
+  });
+
   it("say so on each row and in the removal question where name, role and opening it all match", () => {
     const one = person("o", null, "viewer");
     const two = person("x", null, "viewer");

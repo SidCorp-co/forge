@@ -8,9 +8,9 @@
 // `useRoom` per project (the Ops-monitor pattern) — the `['attention']`
 // invalidations in `lib/ws/event-router.ts` then refetch.
 
-import { type ReactNode, useState } from "react";
+import { stuckClause } from "@forge/contracts/stuck-words";
 import { useRouter } from "next/navigation";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { type ReactNode, useState } from "react";
 import {
   Button,
   EmptyState,
@@ -22,16 +22,17 @@ import {
   ProjectLoader,
   RetryButton,
 } from "@/design";
-import { TONE_META, type SemanticTone } from "@/design/status";
+import { PageTitle, SectionTitle } from "@/design/primitives/heading";
+import { type SemanticTone, TONE_META } from "@/design/status";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError, withStop } from "@/lib/api/error";
+import { formatRelativeTime } from "@/lib/utils/format";
+import { retryFailedReads } from "@/lib/utils/retry-rule";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { stuckClause } from "@forge/contracts/stuck-words";
 import { failedJobClause, failedJobWords } from "../failed-job-words";
 import { useAttention } from "../hooks";
 import type { AttentionBucket, AttentionItem, AttentionKind } from "../types";
-import { PageTitle, SectionTitle } from "@/design/primitives/heading";
 
 /** Per-kind presentation. ISS-509: color resolves through the semantic tone
  *  layer (one source of truth) so a `failed` job (failure/red) and an offline
@@ -219,7 +220,7 @@ export function AttentionScreen() {
   const router = useRouter();
   // A capped group the person asked to see whole is read whole; the others keep their caps.
   const [expand, setExpand] = useState<AttentionBucket[]>([]);
-  const { view, read, devicesRead, expanding, error, devicesError, refetch } = useAttention({
+  const { view, read, devicesRead, expanding, error, devicesError, retryAttention, retryDevices } = useAttention({
     expand,
   });
   const listAll = (bucket: AttentionBucket) =>
@@ -244,7 +245,10 @@ export function AttentionScreen() {
               ? `${formatApiError(error)} Offline runners could not be read either: ${withStop(formatApiError(devicesError))}`
               : formatApiError(error)
           }
-          error={error} onRetry={() => refetch()}
+          {...retryFailedReads([
+            { failed: true, error, retry: retryAttention },
+            { failed: devicesRead === "failed", error: devicesError, retry: retryDevices },
+          ])}
         />
       </div>
     );
@@ -282,7 +286,7 @@ export function AttentionScreen() {
           {total === 0
             ? "Nothing else is listed, and that does not say nothing needs you."
             : "The list below may leave some out."}{" "}
-          <RetryButton error={devicesError} onRetry={() => refetch()}>
+          <RetryButton error={devicesError} onRetry={retryDevices}>
             Try again
           </RetryButton>
         </p>

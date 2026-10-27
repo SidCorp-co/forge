@@ -11,3 +11,21 @@ export function isRetryableApiError(err: unknown): boolean {
   const status = answeredStatus(err);
   return status === null || status >= 500 || PASSING_REFUSALS.has(status);
 }
+
+export interface FailedRead {
+  failed: boolean;
+  error: unknown;
+  retry: () => void;
+}
+
+/** One Retry for several reads: offered where any failed read allows one, and reading only those again. */
+export function retryFailedReads(reads: FailedRead[]): { error: unknown; onRetry: () => void } {
+  const failed = reads.filter((r) => r.failed);
+  const again = failed.filter((r) => isRetryableApiError(r.error));
+  return {
+    error: (again[0] ?? failed[0])?.error,
+    onRetry: () => {
+      for (const r of again) r.retry();
+    },
+  };
+}

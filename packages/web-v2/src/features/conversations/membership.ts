@@ -448,7 +448,9 @@ export function personStanding(
   const opener = Boolean(participant.opener);
   const sameOpening = sameRole.filter((p) => Boolean(p.opener) === opener);
   if (sameOpening.length === 0) {
-    return { line, apart: opener ? "who opened this room" : "who did not open this room", alike: false };
+    if (opener) return { line, apart: "who opened this room", alike: false };
+    const roleToo = rolePhrase && sameRole.length < same.length ? `${rolePhrase} ` : "";
+    return { line, apart: `${roleToo}who did not open this room`, alike: false };
   }
   return { line: `${line} · Can't be told apart from another person here`, apart: null, alike: true };
 }
