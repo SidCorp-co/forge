@@ -654,7 +654,7 @@ describe("a toast naming the element it keeps clear of", () => {
   const laneSpan = (lane: HTMLElement) => {
     if (lane.style.top === "auto") {
       const bottom = window.innerHeight - Number.parseFloat(lane.style.bottom);
-      return { top: bottom - 200, bottom };
+      return { top: bottom - (lane.style.maxHeight ? Number.parseFloat(lane.style.maxHeight) : 200), bottom };
     }
     const top = Number.parseFloat(lane.style.top);
     return { top, bottom: top + (lane.style.maxHeight ? Number.parseFloat(lane.style.maxHeight) : 200) };
@@ -691,8 +691,7 @@ describe("a toast naming the element it keeps clear of", () => {
     }
   });
 
-  // r10 review W3: a gap between two named elements is room too. On a page: under a dialog a kept notice gives
-  // way (r51), so these two read the kept notice where it stands, on a page with no dialog over it.
+  // r10 review W3: a gap between two named elements is room too. Under a dialog a kept notice gives way (r51).
   it("keeps clear of a kept notice too where a space between the elements it names allows", () => {
     wide(false);
     viewport(390, 600);
@@ -897,6 +896,13 @@ describe("a toast naming the element it keeps clear of", () => {
       const key = this.dataset.testid ?? (this.getAttribute("role") === "dialog" ? "dialog" : this.tagName.toLowerCase());
       return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, ...by[key] } as DOMRect;
     });
+    // The lane's class gives it 12 px of padding above and below and 10 px between toasts; jsdom computes neither.
+    const real = window.getComputedStyle;
+    const styled = vi.spyOn(window, "getComputedStyle").mockImplementation((el: Element) => {
+      const style = real(el);
+      if ((el as HTMLElement).dataset?.testid !== "toast-lane" || (el as HTMLElement).style.paddingTop === "0px") return style;
+      return { ...style, paddingTop: "12px", paddingBottom: "12px", rowGap: "10px" } as CSSStyleDeclaration;
+    });
     try {
       render(
         <ToastProvider>
@@ -911,11 +917,46 @@ describe("a toast naming the element it keeps clear of", () => {
       });
       const lane = screen.getByTestId("toast-lane");
       const { top, bottom } = laneSpan(lane);
-      const shown = lane.style.maxHeight ? Number.parseFloat(lane.style.maxHeight) : bottom - top;
-      // 61 and 198 px, the lane's 10 px gap between them and its padding: 293 px at least, wherever it stands.
-      expect(shown).toBeGreaterThanOrEqual(61 + 198);
+      // 61 and 198 px, the 10 px between them and 12 px of padding at each end: 293 px, wherever it stands.
+      expect(bottom - top).toBeGreaterThanOrEqual(293);
+      expect(top).toBeGreaterThanOrEqual(0);
       expect(bottom).toBeLessThanOrEqual(600);
       clearOfAll(lane, ["path"]);
+    } finally {
+      styled.mockRestore();
+      spy.mockRestore();
+    }
+  });
+
+  // r51 review F1: toasts taller than the screen leaves scroll in a lane wholly on it, never one pushed above its top.
+  it("keeps a lane of toasts taller than the screen leaves wholly on screen, above the tab bar", () => {
+    wide(false);
+    viewport(390, 600);
+    const spy = boxes({
+      "toast-lane": { top: 0, bottom: 200, height: 200, width: 390, left: 0, right: 390 },
+      "toast-card": { top: 0, bottom: 550, height: 550, left: 0, right: 390 },
+      path: { top: 550, bottom: 590, left: 21, right: 370 },
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger />
+          <input
+            data-testid="path"
+            ref={(el) => {
+              field = el;
+            }}
+          />
+          <ToastLane />
+        </ToastProvider>,
+      );
+      act(() => fire({ ...refused, duration: 0, clearOf: () => field }));
+      const lane = screen.getByTestId("toast-lane");
+      // With no place set the lane keeps its class's own, at the top of the screen.
+      const top = Number.parseFloat(lane.style.top) || 0;
+      const bottom = top + Number.parseFloat(lane.style.maxHeight);
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(bottom).toBeLessThanOrEqual(600 - 56);
     } finally {
       spy.mockRestore();
     }

@@ -150,9 +150,7 @@ const LANE_PAD_PX = 12;
 const MIN_ROOM_PX = 72;
 const OVER_KEPT_Z = 61;
 
-/** The height a lane's toasts take, each whole, without the lane's own padding: what the lane holds wherever
- *  it stands, so no toast in it is cut short by its edge. Its cards are read too, as a scroll height is not
- *  always laid out (ISS-1229 r51, judge-157 at 390×600: the refusal's second line and link were cut off). */
+/** The height a lane's toasts take, each whole, without its padding, so none is cut short (ISS-1229 r51). */
 function toastsHeight(lane: HTMLElement | null): number {
   if (!lane) return 0;
   const style = getComputedStyle(lane);
@@ -162,9 +160,7 @@ function toastsHeight(lane: HTMLElement | null): number {
   return Math.max(lane.scrollHeight - padding, cards.reduce((a, b) => a + b, 0) + gaps);
 }
 
-/** The height a lane is held to: its class's share of the screen, or more where its toasts need it to show each
- *  whole, and never more than the screen leaves it below its top or above its bottom edge, `reserved` px, so
- *  toasts too tall for the screen scroll inside a lane that is wholly on it (r51 review F2). */
+/** A lane's height: what its toasts take whole, past its class's share, never past the screen less `reserved`. */
 function useWholeCardCap(
   lane: React.RefObject<HTMLElement | null>,
   items: readonly unknown[],
@@ -247,16 +243,17 @@ function useKeepClear(
         (Number.parseFloat(laneStyle?.paddingTop ?? "") || 0) + (Number.parseFloat(laneStyle?.paddingBottom ?? "") || 0);
       const content = (lane.current?.scrollHeight ?? 0) - padding;
       const top = belowDialogHeader ?? (wide ? WIDE_TOP_PX : inset.top);
-      // What the lane shows wherever it stands: every toast in it whole, unless the screen below its top cannot.
-      const whole = Math.min(Math.max(content, toastsHeight(lane.current)), vh - top - 2 * LANE_PAD_PX);
-      const height = Math.max(box.height, whole + 2 * LANE_PAD_PX);
+      const dialogOpen = belowDialogHeader !== null || document.querySelector('[role="dialog"][aria-modal="true"]');
+      const gap = (wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX) + inset.bottom;
+      // Every toast whole, unless the screen between its edges cannot hold them: then it scrolls, wholly on screen.
+      const room = Math.max(0, vh - top - gap);
+      const whole = Math.min(Math.max(content, toastsHeight(lane.current)), room - 2 * LANE_PAD_PX);
+      const height = Math.min(room, Math.max(box.height, whole + 2 * LANE_PAD_PX));
       const left = wide ? vw - box.width : 0;
       const atTop = { top, bottom: top + height, left, right: vw };
       const dialog = targets[0].closest('[role="dialog"]') ?? targets[0];
       const edge = dialog.getBoundingClientRect().left;
       const beside = { ...atTop, left: edge - box.width, right: edge };
-      const dialogOpen = belowDialogHeader !== null || document.querySelector('[role="dialog"][aria-modal="true"]');
-      const gap = (wide ? WIDE_BOTTOM_PX : dialogOpen ? 0 : TAB_BAR_PX) + inset.bottom;
       const atBottom = { ...atTop, top: vh - gap - height, bottom: vh - gap };
       /** The runs of the lane's column, between its top and bottom edges, that no obstacle crosses. */
       const spaces = (obstacles: Box[]) => {
@@ -291,13 +288,12 @@ function useKeepClear(
         const lift = overKept && kept ? { zIndex: OVER_KEPT_Z } : {};
         if (clear(atTop)) return n === rects.length && !overKept ? null : { ...lift, top };
         if (wide && beside.left >= 0 && clear(beside)) return { ...lift, right: vw - edge };
-        if (clear(atBottom)) return { ...lift, top: "auto", bottom: gap };
+        if (clear(atBottom)) return { ...lift, top: "auto", bottom: gap, maxHeight: height };
         // Above or below the elements first, where it covers none of what lies between them.
         const runs = spaces(obstacles);
         const first = Math.min(...held.map((r) => r.top));
         const last = Math.max(...held.map((r) => r.bottom));
         const outside = runs.filter((r) => r.top + r.room <= first || r.top >= last);
-        // A space shorter than a whole toast would cut it, so it is no place: the elements are let go of first.
         const space = [outside, runs].map((list) => list.reduce(larger, { top, room: 0 })).find((r) => r.room >= Math.max(whole, MIN_ROOM_PX));
         return space ? { ...lift, ...capped(space) } : undefined;
       };
@@ -328,8 +324,7 @@ function useKeepClear(
  * one, where a page's save bar and a phone's tab bar sit. A lane in the page flow took its height
  * out of the column and lifted every bottom-anchored thing for as long as a toast showed (ISS-1171),
  * so it lets touches through everywhere but the toasts instead. On a wide screen it keeps to the
- * right, below the top bar. Its height is capped so the reading area keeps most of the column;
- * anything past the cap scrolls inside the lane. `className` carries the frame's own clearance.
+ * right, below the top bar. Its height takes its toasts whole, or scrolls. `className` carries the frame's clearance.
  * It renders through a portal on `<body>`, as every layer in popover.tsx's stacking note does, so
  * its tier is compared with an open dialog's and not trapped under it by the frame (ISS-1289).
  */
@@ -342,18 +337,17 @@ export function ToastLane({ className }: { className?: string }) {
   const belowDialogHeader = dialog.headerBottom;
   const laneRef = useRef<HTMLElement>(null);
   const keptRef = useRef<HTMLElement>(null);
-  // A kept notice holds something of the page's; on a phone a dialog covers the page, so the notice waits behind
-  // it, still kept, and comes back as it closes. Drawn over the dialog it covered its Save and the link of the
-  // dialog's own refusal (ISS-1229 r51, judge-157 and judge-158).
+  // A kept notice is the page's: on a phone a dialog covers the page, so the notice waits behind it, still kept,
+  // and comes back as it closes. Over the dialog it covered Save (ISS-1229 r51, judge-157 and judge-158).
   const kept = wide || dialog.open ? [] : items.filter((t) => t.keep);
   const passing = wide ? items : items.filter((t) => !t.keep);
   const clearPlace = useKeepClear(items, laneRef, keptRef, wide, belowDialogHeader);
-  // What the screen keeps from each lane: above the passing lane, the top bar or a dialog's header; below the kept
-  // one, the tab bar. Each is read where the lane's own class and place put it.
-  const passingReserved = useCallback(
-    () => (wide ? WIDE_TOP_PX + WIDE_BOTTOM_PX : (belowDialogHeader ?? safeInsets().top)),
-    [wide, belowDialogHeader],
-  );
+  // What the screen keeps from each lane: the top bar or a dialog's header above, the tab bar below the kept one.
+  const passingReserved = useCallback(() => {
+    if (wide) return WIDE_TOP_PX + WIDE_BOTTOM_PX;
+    const inset = safeInsets();
+    return (belowDialogHeader ?? inset.top) + (dialog.open ? 0 : TAB_BAR_PX) + inset.bottom;
+  }, [wide, belowDialogHeader, dialog.open]);
   const keptReserved = useCallback(() => TAB_BAR_PX + safeInsets().bottom, []);
   const passingCap = useWholeCardCap(laneRef, passing, passingReserved);
   const keptCap = useWholeCardCap(keptRef, kept, keptReserved);

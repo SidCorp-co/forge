@@ -20,10 +20,8 @@ export function retryAt(err: unknown): number | null {
 }
 
 /**
- * How long until the read can be asked again, as a sentence, at `now`; null where the server named no wait,
- * where the rule offers no Retry (a 403 carrying Retry-After is still final), or where the wait is over and
- * Retry stands again (ISS-1229 r51, judge-158 on criterion 479). Each unit is rounded up, so a retry at the
- * time it names is never sooner than the server allows.
+ * The wait at `now` as a sentence, each unit rounded up; null where none was named, the rule offers no Retry
+ * (a 403 carrying Retry-After stays final), or the wait is over (ISS-1229 r51, judge-158 on criterion 479).
  */
 export function retryWaitWords(err: unknown, now: number): string | null {
   const at = retryAt(err);
