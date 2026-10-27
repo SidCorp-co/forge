@@ -361,7 +361,15 @@ function entryReads(rel, text) {
     if (ts.isCallExpression(p) && p.arguments.includes(self)) {
       const callee = p.expression;
       if (startOf(p) !== null) return null;
-      if (ts.isIdentifier(callee) && (functions.has(callee.text) || imported.has(callee.text))) return null;
+      if (ts.isIdentifier(callee) && imported.has(callee.text)) return null;
+      if (ts.isIdentifier(callee) && functions.has(callee.text)) {
+        const param = functions.get(callee.text).parameters[p.arguments.indexOf(self)];
+        if (param && !param.dotDotDotToken && ts.isIdentifier(param.name)) return null;
+        if (param && !param.dotDotDotToken && ts.isArrayBindingPattern(param.name)) {
+          return bindsEntry(param.name.elements, start) ? `argv destructured by ${callee.text}(): ${text()}` : null;
+        }
+        return `argv destructured by ${callee.text}(): ${text()}`;
+      }
       return `argv handed to ${callee.getText(src)}(): ${text()}`;
     }
     return `argv used whole: ${text()}`;
@@ -404,6 +412,9 @@ describe('no file decides it was launched by hand', () => {
     ['scripts/keyed-string.mjs', "if (import.meta.filename === process.argv['1']) main();\n", 1],
     ['scripts/stringified.mjs', 'if (JSON.stringify(process.argv).includes(import.meta.filename)) main();\n', 1],
     ['scripts/returned.mjs', 'function args() {\n  return process.argv;\n}\nif (import.meta.url.endsWith(args()[1])) main();\n', 2],
+    ['scripts/param-keyed.mjs', 'function isMain({ 1: entry }) {\n  return import.meta.filename === entry;\n}\nif (isMain(process.argv)) main();\n', 4],
+    ['scripts/param-hole.mjs', 'function isMain([, entry]) {\n  return import.meta.filename === entry;\n}\nisMain(process.argv);\n', 4],
+    ['scripts/param-rest.mjs', 'const isMain = (...all) => import.meta.filename === all[0][1];\nisMain(process.argv);\n', 2],
     ['scripts/from.mjs', 'const a = Array.from(process.argv);\nif (import.meta.url === a[1]) main();\n', 2],
     ['scripts/var.mjs', 'const args = process.argv;\n\nif (import.meta.url === pathToFileURL(args[1]).href) main();\n', 3],
     ['scripts/var-var.mjs', 'const a = process.argv;\nconst b = a;\nif (import.meta.url === b.at(1)) main();\n', 3],
@@ -445,6 +456,7 @@ describe('no file decides it was launched by hand', () => {
     ['scripts/node.mjs', 'const node = process.argv[0];\nconst ROOT = import.meta.url;\n'],
     ['scripts/parsed.mjs', 'function parse(v) {\n  return v.slice(2);\n}\nparse(process.argv);\nconst ROOT = import.meta.url;\n'],
     ['scripts/tail.mjs', 'const [, , ...rest] = process.argv;\nconst ROOT = import.meta.url;\n'],
+    ['scripts/param-tail.mjs', 'function flags([, , ...rest]) {\n  return rest;\n}\nflags(process.argv);\nconst ROOT = import.meta.url;\n'],
     ['scripts/local.mjs', "const argv = text.split(' ');\nconst [head, ...rest] = argv;\nconst x = argv[1];\nconst ROOT = import.meta.url;\n"],
     [
       'scripts/inline.mjs',
