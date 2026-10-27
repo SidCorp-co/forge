@@ -187,6 +187,9 @@ export class SessionBox {
     this.turns.push(turn);
     this.running.set(turn.sessionId, { turn, injected: [] });
     if (!turn.warmUp) await this.model(turn, (args) => this.tool(turn.token, args));
+    // a test that ended this turn itself while the model ran has reported it: ending it again
+    // would complete whichever turn runs now, or be refused STALE_TRANSITION
+    if (this.running.get(turn.sessionId)?.turn !== turn) return;
     if (!this.finishTurns && !turn.warmUp) return;
     await this.finish(
       turn.sessionId,
