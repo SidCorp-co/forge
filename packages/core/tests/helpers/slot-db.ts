@@ -182,12 +182,13 @@ function sessionsOn(admin: Sql, name: string): Promise<Session[]> {
 }
 
 /**
- * A connection a client opened, which a file can leave behind. The server's own workers connect to
- * a database too, autovacuum after a file's rows churned a table, and no file opened or can close
- * one: severing one cancels a vacuum the next file's reset makes moot.
+ * A session a file can have left behind: every one but an autovacuum worker, which the server
+ * starts on a database whose rows a file churned and no file opened or can close, so severing one
+ * cancels a vacuum the next file's reset makes moot. A replication connection, a `walsender`, or a
+ * parallel worker of a client's statement is named like the client's own.
  */
 function opened(s: Session): boolean {
-  return s.kind === 'client backend';
+  return s.kind !== 'autovacuum worker';
 }
 
 function describeSession(s: Session): string {

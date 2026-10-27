@@ -7,16 +7,18 @@
  * names; a `finally` that returns, breaks or continues out of a guarded try swallows whatever the
  * try threw. `EXCEPTIONS` names any allowed to fall back.
  *
+ * Which guard counts as naming an error: `in-transaction-guards.fixture.ts`.
+ *
  * Named residuals: a statement reached through a helper that closes over the transaction without
  * the guarded code naming any handle, a transaction cast to a type it is not, such as `typeof db`,
- * a rejection handled by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`, and a guard
- * whose body the scan cannot read, judged by a predicate nothing checks at run time.
+ * and a rejection handled by anything other than `try`, `.catch(fn)` or `.then(ok, fn)`.
  */
 
 import { readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { admitsAllButNamed, namesAnError, type Scan } from './in-transaction-guards.fixture.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TX_SOURCE = join(SRC, 'db', 'client.ts');
@@ -111,17 +113,6 @@ function everyDatabaseError(program: ts.Program, checker: ts.TypeChecker): ts.Ty
   return [checker.getDeclaredTypeOfSymbol(error), checker.getDeclaredTypeOfSymbol(server)];
 }
 
-/** What the scan reads every catch against. */
-interface Scan {
-  program: ts.Program;
-  checker: ts.TypeChecker;
-  tx: ts.Type;
-  /** Every member of the transaction, any one of which a handle carries. */
-  members: ReadonlySet<string>;
-  /** Every kind of error a statement on a transaction throws. */
-  errors: readonly ts.Type[];
-}
-
 /** The expressions in `guarded` that name a handle bound outside it. */
 function handlesIn(guarded: ts.Node, scan: Scan): string[] {
   const found = new Set<string>();
@@ -155,11 +146,6 @@ function isHandle(node: ts.Expression, guarded: ts.Node, scan: Scan): boolean {
   return checker.isTypeAssignableTo(scan.tx, type);
 }
 
-function mentions(node: ts.Node, name: string): boolean {
-  if (ts.isIdentifier(node) && node.text === name) return true;
-  return ts.forEachChild(node, (c) => mentions(c, name) || undefined) ?? false;
-}
-
 function statementsOf(node: ts.Statement): readonly ts.Statement[] {
   return ts.isBlock(node) ? node.statements : [node];
 }
@@ -173,158 +159,6 @@ function endsInThrow(stmts: readonly ts.Statement[]): boolean {
     return (
       endsInThrow(statementsOf(last.thenStatement)) && endsInThrow(statementsOf(last.elseStatement))
     );
-  }
-  return false;
-}
-
-function unwrap(node: ts.Expression): ts.Expression {
-  return ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;
-}
-
-const EQUAL = [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken];
-const UNEQUAL = [ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken];
-
-/** `null`, `undefined` or `void x`: a value every error differs from, so naming none. */
-function isNothing(node: ts.Expression): boolean {
-  const e = unwrap(node);
-  return (
-    e.kind === ts.SyntaxKind.NullKeyword ||
-    (ts.isIdentifier(e) && e.text === 'undefined') ||
-    ts.isVoidExpression(e)
-  );
-}
-
-/** `err.name` against `'Error'`, or `err.constructor` against `Error`. */
-function isEveryErrorsOwn(error: ts.Expression, other: ts.Expression, scan: Scan): boolean {
-  const e = unwrap(error);
-  const o = unwrap(other);
-  const prop = ts.isPropertyAccessExpression(e) ? e.name.text : undefined;
-  if (prop === 'name' && ts.isStringLiteralLike(o)) {
-    return ['Error', 'Object'].includes(o.text);
-  }
-  if (prop === 'constructor') {
-    const made = scan.checker.getTypeAtLocation(o).getConstructSignatures()[0];
-    return made !== undefined && isEveryErrorClass(made.getReturnType(), scan);
-  }
-  return false;
-}
-
-/**
- * One side names the caught error and the other is a value, as in `err.code === '23505'`; never
- * `typeof err`, which every error of a type shares, a comparison with nothing, or one with the name
- * or constructor every error shares.
- */
-function comparesError(node: ts.BinaryExpression, param: string, scan: Scan): boolean {
-  const [error, other] = mentions(node.left, param)
-    ? [node.left, node.right]
-    : [node.right, node.left];
-  if (!mentions(error, param) || mentions(other, param)) return false;
-  return (
-    !ts.isTypeOfExpression(unwrap(error)) &&
-    !isNothing(other) &&
-    !isEveryErrorsOwn(error, other, scan)
-  );
-}
-
-/** Read by name and not by shape, as `instanceof` reads the prototype chain. */
-function isEveryErrorClass(type: ts.Type, scan: Scan): boolean {
-  const symbol = type.getSymbol();
-  const decl = symbol?.declarations?.[0];
-  if (decl === undefined) return false;
-  if (scan.errors.some((e) => e.getSymbol() === symbol)) return true;
-  return (
-    scan.program.isSourceFileDefaultLibrary(decl.getSourceFile()) &&
-    ['Error', 'Object'].includes(symbol?.name ?? '')
-  );
-}
-
-/**
- * Whether a type predicate's type holds of every database error, read by shape since a predicate
- * is checked by nothing at run time: some kind the scan knows is assignable to it, or it requires
- * no property at all, as `Record<string, unknown>` and `{ code?: string }` do.
- */
-function holdsOfEveryError(type: ts.Type, scan: Scan): boolean {
-  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.NonPrimitive))
-    return true;
-  if (type.isUnion()) return type.types.some((t) => holdsOfEveryError(t, scan));
-  if (type.isIntersection()) return type.types.every((t) => holdsOfEveryError(t, scan));
-  if (scan.errors.some((e) => scan.checker.isTypeAssignableTo(e, type))) return true;
-  return (
-    (type.flags & ts.TypeFlags.Object) !== 0 &&
-    type.getCallSignatures().length === 0 &&
-    type.getProperties().every((p) => (p.flags & ts.SymbolFlags.Optional) !== 0)
-  );
-}
-
-/**
- * Whether `isX(err)` holds of a named kind of error, read off its own body where that is one
- * returned expression, since that is what runs; else off its predicate, which must leave out some
- * database error. A helper with neither names none.
- */
-function helperNamesAnError(call: ts.CallExpression, param: string, scan: Scan, depth: number) {
-  const signature = scan.checker.getResolvedSignature(call);
-  const decl = signature?.getDeclaration();
-  const index = call.arguments.findIndex((a) => mentions(a, param));
-  const own = decl?.parameters[index];
-  const body =
-    decl && !decl.getSourceFile().isDeclarationFile && ts.isFunctionLike(decl)
-      ? (decl as ts.FunctionLikeDeclaration).body
-      : undefined;
-  const returned =
-    body && ts.isBlock(body)
-      ? body.statements.length === 1 && ts.isReturnStatement(body.statements[0] as ts.Statement)
-        ? (body.statements[0] as ts.ReturnStatement).expression
-        : undefined
-      : body;
-  if (own && ts.isIdentifier(own.name) && returned && depth <= 3) {
-    return namesAnError(returned, own.name.text, scan, depth + 1);
-  }
-  const predicate = signature && scan.checker.getTypePredicateOfSignature(signature);
-  return predicate?.type !== undefined && !holdsOfEveryError(predicate.type, scan);
-}
-
-/**
- * True only for a test that holds of a named kind of error: `err instanceof X` for an `X` that is
- * not `Error` or `Object`, an `isX(err)` or `hasX(err)` whose predicate or body names one, a
- * comparison of the error with a value, or a conjunction of those.
- */
-function namesAnError(node: ts.Expression, param: string, scan: Scan, depth = 0): boolean {
-  const e = unwrap(node);
-  if (ts.isBinaryExpression(e)) {
-    const op = e.operatorToken.kind;
-    if (op === ts.SyntaxKind.InstanceOfKeyword) {
-      if (!mentions(e.left, param)) return false;
-      const made = scan.checker.getTypeAtLocation(e.right).getConstructSignatures()[0];
-      return made === undefined || !isEveryErrorClass(made.getReturnType(), scan);
-    }
-    if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
-      return namesAnError(e.left, param, scan, depth) || namesAnError(e.right, param, scan, depth);
-    }
-    return EQUAL.includes(op) && comparesError(e, param, scan);
-  }
-  if (ts.isCallExpression(e)) {
-    const callee = ts.isPropertyAccessExpression(e.expression) ? e.expression.name : e.expression;
-    return (
-      ts.isIdentifier(callee) &&
-      /^(is|has)[A-Z]/.test(callee.text) &&
-      e.arguments.some((a) => mentions(a, param)) &&
-      helperNamesAnError(e, param, scan, depth)
-    );
-  }
-  return false;
-}
-
-function admitsAllButNamed(node: ts.Expression, param: string, scan: Scan): boolean {
-  const e = unwrap(node);
-  if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
-    return namesAnError(e.operand, param, scan);
-  }
-  if (ts.isBinaryExpression(e)) {
-    const op = e.operatorToken.kind;
-    if (op === ts.SyntaxKind.BarBarToken) {
-      return admitsAllButNamed(e.left, param, scan) && admitsAllButNamed(e.right, param, scan);
-    }
-    return UNEQUAL.includes(op) && comparesError(e, param, scan);
   }
   return false;
 }
@@ -481,12 +315,14 @@ export function guardedCatches(program: ts.Program): GuardedCatch[] {
   const checker = program.getTypeChecker();
   const tx = transactionType(program, checker);
   const members = new Set(tx.getProperties().map((p) => p.name));
+  const errors = everyDatabaseError(program, checker);
   const scan: Scan = {
     program,
     checker,
     tx,
     members,
-    errors: everyDatabaseError(program, checker),
+    errors,
+    names: new Set(errors.map((e) => e.getSymbol()?.name ?? '')),
   };
   const found: GuardedCatch[] = [];
   for (const sf of program.getSourceFiles()) {
