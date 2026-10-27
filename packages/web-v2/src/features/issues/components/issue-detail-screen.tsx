@@ -18,6 +18,7 @@ import {
   Markdown,
   MonoTag,
   PageContainer,
+  retryOrFinal,
   ProjectLoader,
   Skeleton,
   StaleReadLine,
@@ -251,7 +252,7 @@ export function IssueDetailScreen({
           level={1}
           title="Couldn't load issue"
           message={formatApiError(issueQ.error)}
-          onRetry={isRetryableApiError(issueQ.error) ? () => issueQ.refetch() : undefined}
+          {...retryOrFinal(isRetryableApiError(issueQ.error), () => void issueQ.refetch())}
         />
       </div>
     );
@@ -695,7 +696,7 @@ function TabError({
     <ErrorState
       title={`Couldn't load ${what}`}
       message={formatApiError(query.error)}
-      onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
+      {...retryOrFinal(isRetryableApiError(query.error), () => void query.refetch())}
     />
   );
 }

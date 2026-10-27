@@ -13,9 +13,12 @@ interface ErrorStateBase {
   technical?: string;
 }
 
-export type ErrorStateRetry =
-  | { onRetry: (() => void) | undefined; final?: never }
-  | { final: true; onRetry?: never };
+export type ErrorStateRetry = { onRetry: () => void; final?: never } | { final: true; onRetry?: never };
+
+/** Retry where a second read can change the answer, else the state is final. */
+export function retryOrFinal(retryable: boolean, retry: () => void): ErrorStateRetry {
+  return retryable ? { onRetry: retry } : { final: true };
+}
 
 /** `title` names what failed (r46); a failed read writes its Retry, an answer no read changes is `final` (ISS-1229 r48). */
 export type ErrorStateProps = ErrorStateBase &

@@ -209,4 +209,16 @@ describe("a grouped row whose notifications cannot be read", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry this group" }));
     expect(state.membersRead).toBe(1);
   });
+
+  it("keeps a key pressed on its Retry from selecting the row", () => {
+    state.membersFail = true;
+    mount();
+    fireEvent.click(screen.getByText("Issues whose code shipped and whose close was never written"));
+    const retry = screen.getByRole("button", { name: "Retry this group" });
+    fireEvent.keyDown(retry, { key: "Enter" });
+    fireEvent.keyDown(retry, { key: " " });
+    expect(screen.getByRole("button", { name: "Retry this group" })).toBeInTheDocument();
+    expect(state.marked).toEqual([]);
+    expect(state.pushed).toEqual([]);
+  });
 });

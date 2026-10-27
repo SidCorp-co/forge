@@ -2,6 +2,7 @@
 
 import { Button } from "@/design/primitives/button";
 import { MonoTag } from "@/design/primitives/mono-tag";
+import type { KeyboardEvent } from "react";
 
 export interface NotificationAction {
   id: string;
@@ -66,6 +67,9 @@ export interface NotificationsMenuProps {
   onToggleGroup?: (id: string) => void;
   onSelectMember?: (memberId: string) => void;
 }
+
+/** A key pressed on a control inside a row is that control's, never the row's. */
+const keepKeys = (e: KeyboardEvent<HTMLButtonElement>) => e.stopPropagation();
 
 export function NotificationsMenu({
   items,
@@ -155,6 +159,7 @@ export function NotificationsMenu({
                           carrying one. */}
                       <button
                         type="button"
+                        onKeyDown={keepKeys}
                         onClick={(e) => {
                           e.stopPropagation();
                           onToggleGroup?.(n.id);
@@ -174,6 +179,7 @@ export function NotificationsMenu({
                               <button
                                 type="button"
                                 aria-label="Retry this group"
+                                onKeyDown={keepKeys}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   expandedUnread.onRetry();
@@ -190,6 +196,7 @@ export function NotificationsMenu({
                               <li key={m.id}>
                                 <button
                                   type="button"
+                                  onKeyDown={keepKeys}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     onSelectMember?.(m.id);

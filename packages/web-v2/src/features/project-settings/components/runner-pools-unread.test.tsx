@@ -29,6 +29,7 @@ vi.mock("@/features/runners/hooks", async (importActual) => {
 });
 
 const { RunnerPoolsSection, unknownPoolDevices } = await import("./runner-pools-section");
+const { pipelineSaveHold } = await import("./pipeline-tab");
 
 const PINNED = { states: { open: { deviceIds: ["d-1"] } } } as Parameters<typeof readPipeline>[0];
 
@@ -71,5 +72,11 @@ describe("runner pools while the project's runners cannot be read", () => {
     const { states } = readPipeline(PINNED, []);
     expect(unknownPoolDevices(states, null)).toEqual([]);
     expect(unknownPoolDevices(states, [])).toEqual(["d-1"]);
+  });
+
+  it("holds the page's Save for no device while the runners are unread, and for an unknown one once read", () => {
+    const { states } = readPipeline(PINNED, []);
+    expect(pipelineSaveHold({ states, runners: undefined, invalid: false })).toBeNull();
+    expect(pipelineSaveHold({ states, runners: [], invalid: false })).toMatch(/names a device this project has no runner for/);
   });
 });

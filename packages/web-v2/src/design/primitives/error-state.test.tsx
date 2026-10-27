@@ -56,6 +56,12 @@ describe("an error state's Retry", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
+  it("is refused by the type check where a failed read's Retry may be undefined", () => {
+    // @ts-expect-error a failed read's Retry is a function; an error no read changes is final instead
+    render(<ErrorState mascot={false} title="Couldn't load the agents" message="Unavailable" onRetry={undefined} />);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("is refused by the type check where a final state is also given a Retry", () => {
     // @ts-expect-error a final answer takes no Retry
     render(<ErrorState mascot={false} title="Page not found" message="This page moved." final onRetry={() => {}} />);
