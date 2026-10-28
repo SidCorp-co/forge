@@ -1,11 +1,10 @@
-// What the issue kernel needs from modules it may not import: the domains of its own context
-// (questions, comments), the project document and the projects domain, execution (jobs, sessions,
-// usage, agent reports), the design and release domains, knowledge, and the adapters (storage,
-// embeddings, the source host, a storefront). A kernel imports only kernels and the platform, so
-// each need is declared here and the composition root fills it at boot (`provideProjectOrg` is the
-// pattern).
+// What the issue kernel needs from modules it may not import — its own context's domains, the
+// project document, execution, design, release, ecosystem, knowledge and the adapters — declared here
+// because a kernel imports only kernels and the platform; the composition root fills each at boot
+// (`provideProjectOrg` is the pattern).
 
 import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import type { AdoptionReading } from '@forge/contracts/ecosystem';
 import type { FastLaneRefusalCode } from '@forge/contracts/fast-lane';
 import type { GatesConfig, ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { MergeCheckReport } from '@forge/contracts/merge-check';
@@ -360,6 +359,8 @@ interface IssuePorts {
   ) => Promise<{ code: 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_UNNAMED'; detail: string } | null>;
   /** Why `contract` (`<project>/<contract>`) is no contract the project publishes or consumes, or null. */
   contractAboutRefusal: (projectId: string, contract: string) => Promise<string | null>;
+  /** The adoption record each named version is, read off the project's interface and links (REQ-5 BC-17). */
+  adoptionRecord: (projectId: string, refs: readonly string[]) => Promise<AdoptionReading>;
 
   guideRef: (slug: 'pipeline-and-issue-lifecycle') => string;
   deleteMemory: (projectId: string, source: 'issue', sourceRef: string) => Promise<number>;
@@ -488,6 +489,7 @@ export const approvalRequired = port('approvalRequired');
 export const policyGapsOf = port('policyGapsOf');
 export const contractDrift = port('contractDrift');
 export const contractAboutRefusal = port('contractAboutRefusal');
+export const adoptionRecord = port('adoptionRecord');
 
 export const guideRef = port('guideRef');
 export const deleteMemory = port('deleteMemory');

@@ -110,6 +110,21 @@ const CONTRACT_REFUSAL_CODES = [
 	"CONTRACT_ARTIFACT_NOT_MOCKABLE",
 ] as const;
 
+/** One adopted contract version as Forge read it off a consumer's interface and links (REQ-5 BC-17). */
+export interface AdoptionHeld {
+	/** `<project>/<contract>@<version>`, as the mark names it. */
+	ref: string;
+	/** The interface revision that consumes the contract built against the version. */
+	interfaceRevision: number;
+	/** How many links the project holds to the contract, every one pinned at the version. */
+	links: number;
+}
+
+/** An adoption record read for a mark: every named version held, or the first that is not, by name. */
+export type AdoptionReading =
+	| { ok: true; held: AdoptionHeld[] }
+	| { ok: false; code: "ADOPTION_NOT_RECORDED"; detail: string; ref: string };
+
 /** What `POST /api/projects/:id/interface/adopt` refuses before it moves a consumption and its links to an additive version. */
 export const ADOPT_REFUSAL_CODES = [
 	"ADOPT_CONTRACT_NOT_CONSUMED",

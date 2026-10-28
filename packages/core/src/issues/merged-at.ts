@@ -2,9 +2,11 @@ import { and, eq, sql } from 'drizzle-orm';
 import { type IssueStatus, issues } from '../db/schema.js';
 import { projectConfigDocuments } from '../db/schema-project-config.js';
 import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
+import { readAdoptionDelivery } from './adoption-delivery.js';
 import { designOnlyMarkSql } from './design-delivery.js';
 import { landedSql } from './host-landing.js';
 import {
+  CLEAR_THE_MARK,
   type LandingShape,
   landingRoute,
   landingShortfall,
@@ -54,6 +56,22 @@ export async function mergeNotRecorded(
   | null
 > {
   const code = args.to === 'closed' ? 'CLOSE_REQUIRES_SHIPPED' : 'MERGE_NOT_RECORDED';
+  // an adoption record is the landing of an issue that changed no code, on every shape, while it
+  // holds (REQ-5 BC-17); one whose links or interface moved off the version is refused by name
+  const adoption = await readAdoptionDelivery(executor, args.issueId);
+  if (adoption.refs) {
+    if (!adoption.shortfall) return null;
+    return {
+      code,
+      detail: `\`${args.to}\` is entered on this issue's adoption record of ${adoption.refs.join(', ')}, and it no longer holds: ${adoption.shortfall} Adopt the version again, or ${CLEAR_THE_MARK} and land the code that moved it.`,
+      details: {
+        to: args.to,
+        requires: 'adoptionRecord',
+        adopted: adoption.refs,
+        useInstead: 'dropped',
+      },
+    };
+  }
   if (await stampWithoutHostMerge(executor, args.issueId)) {
     if (args.to === 'awaiting_release' && (await changeRequestWaits(executor, args.issueId))) {
       return null;

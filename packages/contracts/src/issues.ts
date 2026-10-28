@@ -115,6 +115,12 @@ export const MERGE_REFUSAL_CODES = [
 	"MARK_HOST_UNREACHABLE",
 	/** A mark's `commit` that is not the whole 40-character sha, which is the only claim a release can place (REQ-71). */
 	"COMMIT_NOT_WHOLE",
+	/** A named adoption the project's interface or links are not built against (REQ-5 BC-18). */
+	"ADOPTION_NOT_RECORDED",
+	/** An adoption mark on an issue that carries code, or names a commit, paths or a landing beside it (REQ-5 BC-18). */
+	"ADOPTION_BESIDE_CODE",
+	/** An `adoption` artifact sent by hand: only `adoptions`, which Forge reads, stamps one (REQ-5 BC-17). */
+	"ARTIFACTS_ADOPTION_BY_HAND",
 	...COMMIT_LANDING_REFUSAL_CODES,
 ] as const;
 export type MergeRefusalCode = (typeof MERGE_REFUSAL_CODES)[number];
