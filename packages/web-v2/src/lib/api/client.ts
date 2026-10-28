@@ -172,30 +172,34 @@ interface HeldRead {
 const HELD_PREFIX = 'forge.heldRead:';
 const ownReads = new Map<string, HeldRead>();
 
-function stored(read: string): HeldRead | undefined {
+/** Every hold recorded on a read, by this tab or another: each refusal is an entry of its own, which no write replaces. */
+function storedHolds(read: string): HeldRead[] {
+  const holds: HeldRead[] = [];
   try {
-    const refusal = JSON.parse(window.localStorage.getItem(`${HELD_PREFIX}${read}`) ?? 'null') as HeldRead | null;
-    return typeof refusal?.retryAt === 'number' ? refusal : undefined;
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (!key?.startsWith(HELD_PREFIX) || key.slice(HELD_PREFIX.length, key.lastIndexOf('@')) !== read) continue;
+      const refusal = JSON.parse(window.localStorage.getItem(key) ?? 'null') as HeldRead | null;
+      if (typeof refusal?.retryAt === 'number') holds.push(refusal);
+    }
   } catch {
-    return undefined;
   }
+  return holds;
 }
 
 function heldOn(read: string): HeldRead | undefined {
   const now = Date.now();
-  const holds = [ownReads.get(read), stored(read)].filter((refusal): refusal is HeldRead => (refusal?.retryAt ?? 0) > now);
+  const holds = [ownReads.get(read), ...storedHolds(read)].filter((refusal): refusal is HeldRead => (refusal?.retryAt ?? 0) > now);
   return holds.sort((a, b) => b.retryAt - a.retryAt)[0];
 }
 
-function storeHeld(read: string, refusal: HeldRead | null): void {
-  if (refusal) ownReads.set(read, refusal);
-  else ownReads.delete(read);
+function storeHeld(read: string, refusal: HeldRead): void {
+  ownReads.set(read, refusal);
   try {
-    if (refusal) window.localStorage.setItem(`${HELD_PREFIX}${read}`, JSON.stringify(refusal));
-    else window.localStorage.removeItem(`${HELD_PREFIX}${read}`);
+    window.localStorage.setItem(`${HELD_PREFIX}${read}@${refusal.retryAt}`, JSON.stringify(refusal));
     for (let i = window.localStorage.length - 1; i >= 0; i--) {
       const key = window.localStorage.key(i);
-      if (key?.startsWith(HELD_PREFIX) && !heldOn(key.slice(HELD_PREFIX.length))) window.localStorage.removeItem(key);
+      if (key?.startsWith(HELD_PREFIX) && Number(key.slice(key.lastIndexOf('@') + 1)) <= Date.now()) window.localStorage.removeItem(key);
     }
   } catch {
   }
@@ -213,28 +217,18 @@ function heldRefusal(read: string): ApiError | null {
   return new ApiError(status, message, code, details, body, asked, retryAt, read);
 }
 
-/** A hold still running is cut short by no answer already in flight when it was set; a longer wait replaces it. */
+/** A hold ends when its wait does: no answer already in flight when it was set cuts it short; a longer wait outlasts it. */
 function noteAnswer(read: string, refused: ApiError | null): void {
-  const standing = heldOn(read);
-  if (standing && (refused?.retryAt ?? 0) <= standing.retryAt) return;
-  if (refused?.retryAt !== undefined && refused.retryAfterMs !== undefined) {
-    const { status, message, code, details, body, retryAfterMs: asked, retryAt } = refused;
-    storeHeld(read, { status, message, code, details, body, asked, retryAt });
-  } else if (ownReads.has(read) || stored(read)) {
-    storeHeld(read, null);
-  }
+  if (refused?.retryAt === undefined || refused.retryAfterMs === undefined) return;
+  if (refused.retryAt <= (heldOn(read)?.retryAt ?? 0)) return;
+  const { status, message, code, details, body, retryAfterMs: asked, retryAt } = refused;
+  storeHeld(read, { status, message, code, details, body, asked, retryAt });
 }
 
 /** Which read a request is, as the client holds it: the address it goes to, whichever caller names it (r55 review F2). */
 function readOf(method: string | undefined, url: string): string | undefined {
   if (typeof window === 'undefined' || !isRead(method)) return undefined;
   return `${(method ?? 'GET').toUpperCase()} ${url.split('#')[0]}`;
-}
-
-/** Until when a file on the core is held, by this tab or another; null where it is not (r55 review F3). */
-export function fileHeldUntil(path: string): number | null {
-  const read = readOf('GET', coreFileUrl(path));
-  return (read && heldOn(read)?.retryAt) || null;
 }
 
 /** Forgets every held read: a test's fresh browser. */

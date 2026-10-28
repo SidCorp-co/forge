@@ -91,8 +91,8 @@ describe("a core file the server refused with a wait (criterion 495, judge-170)"
     expect(sent).toEqual([`GET ${IMAGE}`]);
   });
 
-  // r55 review F3: the image was loaded here, then another tab was refused it.
-  it("offers no Open original for an image loaded here once another tab holds it", async () => {
+  // r55 review F3: the image was loaded here, then another tab was refused it; the original opens from memory.
+  it("opens the original of an image loaded here from its bytes, never from the core's address another tab holds", async () => {
     vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       sent.push(`${init?.method ?? "GET"} ${String(input)}`);
       return sent.length === 1
@@ -105,7 +105,7 @@ describe("a core file the server refused with a wait (criterion 495, judge-170)"
     const otherTab = await import("./client");
     await expect(otherTab.apiFile(IMAGE)).rejects.toMatchObject({ status: 429 });
     fireEvent.click(screen.getByRole("button", { name: /photo\.png/ }));
-    expect(screen.queryByRole("link", { name: "Open original" })).toBeNull();
+    expect(await screen.findByRole("link", { name: "Open original" })).toHaveAttribute("href", expect.stringMatching(/^blob:/));
     expect(sent).toEqual([`GET ${IMAGE}`, `GET ${IMAGE}`]);
   });
 

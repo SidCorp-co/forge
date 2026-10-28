@@ -283,29 +283,39 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     expect(sent).toEqual(["GET /api/runs"]);
   });
 
-  // r55 review F1: a hold is written as an entry of its own, so a tab recording another read's refusal at the same
-  // moment rewrites nothing of it.
-  it("records a refusal under its own entry and touches no other read's", async () => {
-    await readRuns().catch(() => {});
-    const written: string[] = [];
-    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
-      written.push(key);
-      setItem.mockRestore();
-      this.setItem(key, value);
-    });
-    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+  // r55 review F1: each refusal is written as an entry of its own, so a tab recording another refusal at the same moment,
+  // of this read or another, replaces nothing of it and a fresh tab is held until the longest wait ends.
+  it("records each refusal under its own entry, so no tab's write replaces another's hold", async () => {
+    const answers: ((res: Response) => void)[] = [];
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       sent.push(`${init?.method ?? "GET"} ${String(input)}`);
-      return new Response(JSON.stringify(refusedBody), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "20" } });
+      return new Promise<Response>((resolve) => answers.push(resolve));
+    });
+    const refusedAfter = (seconds: number) =>
+      new Response(JSON.stringify(refusedBody), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(seconds) } });
+    const written: string[] = [];
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      expect(this.getItem(key)).toBeNull();
+      written.push(key);
+      setItem.call(this, key, value);
     });
     vi.resetModules();
     const otherTab = await import("./client");
-    await expect(otherTab.apiClient("/labels")).rejects.toMatchObject({ status: 429 });
-    expect(written).toEqual(["forge.heldRead:GET /api/labels"]);
+    const reads = [readRuns().catch(() => {}), otherTab.apiClient(RUNS).catch(() => {}), otherTab.apiClient("/labels").catch(() => {})];
+    answers[1]?.(refusedAfter(60));
+    await reads[1];
+    answers[0]?.(refusedAfter(20));
+    await reads[0];
+    answers[2]?.(refusedAfter(20));
+    await reads[2];
+    const now = Date.now();
+    expect(written).toEqual(expect.arrayContaining([`forge.heldRead:GET /api/runs@${now + 60_000}`, `forge.heldRead:GET /api/labels@${now + 20_000}`]));
+    vi.setSystemTime(now + 30_000);
     vi.resetModules();
     const thirdTab = await import("./client");
-    await expect(thirdTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429 });
-    await expect(thirdTab.apiClient("/labels")).rejects.toMatchObject({ status: 429 });
-    expect(sent).toEqual(["GET /api/runs", "GET /api/labels"]);
+    await expect(thirdTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429, retryAt: now + 60_000 });
+    expect(sent).toHaveLength(3);
   });
 
   it("refuses by name a file that is not on the core, and sends nothing", async () => {
