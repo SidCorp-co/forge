@@ -14,12 +14,15 @@ export function projectsUnreadOf(error: unknown, onRetry: () => void): ProjectsU
   return { message: formatApiError(error), error, onRetry };
 }
 
-/** Where a project list would stand: the read failed, which is not a list holding no project (ISS-1229 r47). */
+/** Where a project list would stand: the read failed, which is not a list holding no project (ISS-1229 r47).
+ *  The alert holds the two lines alone, never the wait counted beside Retry (r53, judge-165). */
 export function ProjectsUnreadLine({ unread, className }: { unread: ProjectsUnread; className?: string }) {
   return (
-    <div role="alert" data-testid="projects-unread" className={className}>
-      <p className="fg-body-sm text-fg">Couldn&apos;t load your projects</p>
-      <p className="fg-caption mt-0.5 text-muted">{unread.message}</p>
+    <div data-testid="projects-unread" className={className}>
+      <div role="alert">
+        <p className="fg-body-sm text-fg">Couldn&apos;t load your projects</p>
+        <p className="fg-caption mt-0.5 text-muted">{unread.message}</p>
+      </div>
       <RetryButton className="mt-1.5" error={unread.error} onRetry={unread.onRetry} />
     </div>
   );

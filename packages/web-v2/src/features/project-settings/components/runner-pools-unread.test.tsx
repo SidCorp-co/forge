@@ -64,7 +64,7 @@ describe("runner pools while the project's runners cannot be read", () => {
     draw();
     const failure = screen.getByRole("alert");
     expect(failure).toHaveTextContent("Couldn't load this project's runners. The server is down.");
-    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failure.parentElement as HTMLElement).getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 

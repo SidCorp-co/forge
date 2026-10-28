@@ -64,8 +64,8 @@ function Connections({
       {q.isLoading ? (
         <p className="fg-caption text-muted">Reading…</p>
       ) : q.isError ? (
-        <p role="status" className="fg-caption flex flex-wrap items-center gap-2 text-muted">
-          {couldNotRead("The connections", q.error)}
+        <p className="fg-caption flex flex-wrap items-center gap-2 text-muted">
+          <span role="status">{couldNotRead("The connections", q.error)}</span>
           <RetryButton error={q.error} onRetry={() => void q.refetch()} />
         </p>
       ) : serving.length === 0 ? (

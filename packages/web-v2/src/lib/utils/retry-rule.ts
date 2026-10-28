@@ -34,6 +34,13 @@ function durationWords(ms: number): string {
   return minutes < 90 ? `${minutes} minutes` : `${Math.ceil(minutes / 60)} hours`;
 }
 
+/** When to ask again, where the server named a wait no Retry counts: a write's, said with the time it named (r53). */
+export function askAgainWords(err: unknown): string | null {
+  const asked = (err as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+  if (answeredStatus(err) === null || !isRetryableApiError(err) || retryAt(err) !== null || typeof asked !== "number" || asked <= 0) return null;
+  return `Try again in ${durationWords(asked)}.`;
+}
+
 /** The wait the server asked for, said once as it starts: what was asked stays true, what is left does not (r52). */
 export function askedWaitWords(err: unknown): string | null {
   const asked = (err as { retryAfterMs?: unknown } | null)?.retryAfterMs;

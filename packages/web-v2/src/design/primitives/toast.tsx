@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useRef } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 
@@ -37,11 +40,12 @@ export function Toast({
   onHold,
 }: ToastView & {
   onClose?: () => void;
-  /** Told true while the pointer rests on the card or focus is inside it, and false once neither is. */
+  /** Told true while a mouse pointer rests on the card or focus is inside it, and false once neither is. */
   onHold?: (held: boolean) => void;
 }) {
   const t = TONE[tone];
   const clickable = typeof onClick === "function";
+  const resting = useRef(false);
   return (
     <div
       className={cn(
@@ -51,15 +55,22 @@ export function Toast({
       role={clickable ? "button" : "status"}
       tabIndex={clickable ? 0 : undefined}
       onClick={clickable ? onClick : undefined}
-      onMouseEnter={() => onHold?.(true)}
-      onMouseLeave={(e) => {
+      // A resting mouse holds it; a finger does not rest, and a tap on a phone left it held over Save for as long
+      // as nothing else was tapped (ISS-1229 r53, judge-165).
+      onPointerEnter={(e) => {
+        if (e.pointerType !== "mouse") return;
+        resting.current = true;
+        onHold?.(true);
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType !== "mouse") return;
+        resting.current = false;
         if (!e.currentTarget.contains(document.activeElement)) onHold?.(false);
       }}
       onFocus={() => onHold?.(true)}
       onBlur={(e) => {
         const into = e.relatedTarget;
-        if (!(into instanceof Node && e.currentTarget.contains(into)) && !e.currentTarget.matches(":hover"))
-          onHold?.(false);
+        if (!(into instanceof Node && e.currentTarget.contains(into)) && !resting.current) onHold?.(false);
       }}
       onKeyDown={
         clickable

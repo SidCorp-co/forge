@@ -449,8 +449,8 @@ export function TokensTab() {
             >
               {/* Unread projects are not projects there are none of: only "None" would be offered (ISS-1229 r47). */}
               {projectsQ.isError && projectsQ.data === undefined && (
-                <p className="fg-body-sm mb-1.5" role="alert" data-testid="token-projects-unread">
-                  Your projects could not be read, so none can be chosen: {formatApiError(projectsQ.error)}{" "}
+                <p className="fg-body-sm mb-1.5" data-testid="token-projects-unread">
+                  <span role="alert">Your projects could not be read, so none can be chosen: {formatApiError(projectsQ.error)}</span>{" "}
                   <RetryButton error={projectsQ.error} onRetry={() => void projectsQ.refetch()} />
                 </p>
               )}

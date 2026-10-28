@@ -28,7 +28,7 @@ describe("a run log whose read failed", () => {
     const failure = screen.getByRole("alert");
     expect(failure).toHaveTextContent("Couldn't load this message's run history. The server is down.");
     expect(screen.queryByText("No runs yet.")).toBeNull();
-    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failure.parentElement as HTMLElement).getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 });

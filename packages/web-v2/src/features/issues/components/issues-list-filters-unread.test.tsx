@@ -168,6 +168,13 @@ describe("an opened filter menu whose choices could not be read (criterion 504)"
   });
 });
 
+/** What a line shows a sighted reader: its text, without the status a screen reader alone is handed. */
+function shown(el: HTMLElement): string {
+  const copy = el.cloneNode(true) as HTMLElement;
+  for (const status of copy.querySelectorAll('[role="status"]')) status.remove();
+  return copy.textContent ?? "";
+}
+
 /** Core's own answer to a rate-limited read, as its source writes it: the body judge-162 planted. */
 function coreRateLimited(seconds: number) {
   const source = readFileSync(join(__dirname, "../../../../../core/src/middleware/rate-limit.ts"), "utf8");
@@ -199,12 +206,36 @@ describe("a filter's failed read the server asked to wait on", () => {
     expect(failure).toHaveTextContent("You can retry in 30 seconds.");
     act(() => vi.advanceTimersByTime(15_000));
     expect(failure).toHaveTextContent("You can retry in 15 seconds.");
-    expect(failure.textContent?.match(/\d+ seconds?/g)).toEqual(["15 seconds"]);
+    expect(shown(failure).match(/\d+ seconds?/g)).toEqual(["15 seconds"]);
     act(() => vi.advanceTimersByTime(20_000));
     expect(failure).not.toHaveTextContent(/\d/);
     expect(failure).not.toHaveTextContent(/Try again/);
     fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
     expect(reads.readMembers).toHaveBeenCalledTimes(1);
+  });
+
+  // ISS-1229 r53, judge-165: both lines counted inside role="alert", 38 announcements in 20 seconds at 1280. A screen
+  // reader is told each line's wait as it starts and as it ends, and nothing while it counts.
+  it("hands a screen reader each line's wait at its start and its end, never a tick", () => {
+    reads.membersFail = true;
+    reads.labelsFail = true;
+    reads.failure = coreRateLimited(20);
+    mount();
+    const live = '[role="alert"], [role="status"], [role="log"], [aria-live="polite"], [aria-live="assertive"]';
+    const said: string[] = [];
+    let last = new Map<Element, string>();
+    for (let t = 0; t <= 46; t++) {
+      const now = new Map([...document.querySelectorAll(live)].map((el) => [el, el.textContent ?? ""] as const));
+      for (const [el, text] of now) if (last.get(el) !== text && /retry|asked/i.test(text)) said.push(text);
+      last = now;
+      act(() => vi.advanceTimersByTime(500));
+    }
+    expect(said).toEqual([
+      "The server asked for 20 seconds before Retry.",
+      "The server asked for 20 seconds before Retry.",
+      "You can retry now.",
+      "You can retry now.",
+    ]);
   });
 
   it("points the opened menu at the wait while it runs, and at Retry once it is over", () => {

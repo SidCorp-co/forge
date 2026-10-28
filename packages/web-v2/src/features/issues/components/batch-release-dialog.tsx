@@ -236,16 +236,14 @@ export function BatchReleaseDialog({
         {roster || listed.length === 0 ? (
           <p className="fg-body-sm text-fg">{leadSentence(listed)}</p>
         ) : rosterRead.isError ? (
-          <div role="alert">
-            <Banner
-              tone="danger"
-              action={
-                <RetryButton variant="ghost" error={rosterRead.error} onRetry={() => void rosterRead.refetch()} />
-              }
-            >
+          <Banner
+            tone="danger"
+            action={<RetryButton variant="ghost" error={rosterRead.error} onRetry={() => void rosterRead.refetch()} />}
+          >
+            <span role="alert">
               {`${following(listed.length)}, but whether the last release failed to close any of them could not be read: ${formatApiError(rosterRead.error)}`}
-            </Banner>
-          </div>
+            </span>
+          </Banner>
         ) : (
           <p className="fg-body-sm text-fg">
             {`${following(listed.length)}. Reading whether the last release failed to close any of them…`}

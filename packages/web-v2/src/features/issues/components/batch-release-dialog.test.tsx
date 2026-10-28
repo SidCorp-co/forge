@@ -280,7 +280,7 @@ describe("what the dialog promises before the press", () => {
     expect(alert).toHaveTextContent("could not be read");
     expect(drawer).not.toHaveTextContent(/closed in one batch/);
     expect(screen.getByRole("button", { name: /release 2 now/i })).toBeDisabled();
-    expect(within(alert).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });
 

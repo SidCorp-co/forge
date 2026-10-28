@@ -1116,15 +1116,29 @@ describe("a toast is given the time it takes to read", () => {
     render(<Frame />);
     act(() => fire({ title: "Held", duration: 4000 }));
     act(() => vi.advanceTimersByTime(3000));
-    fireEvent.mouseEnter(card("Held"));
+    fireEvent.pointerEnter(card("Held"), { pointerType: "mouse" });
     act(() => vi.advanceTimersByTime(30_000));
     expect(screen.getByText("Held")).toBeInTheDocument();
 
-    fireEvent.mouseLeave(card("Held"));
+    fireEvent.pointerLeave(card("Held"), { pointerType: "mouse" });
     act(() => vi.advanceTimersByTime(999));
     expect(screen.getByText("Held")).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1));
     expect(screen.queryByText("Held")).not.toBeInTheDocument();
+  });
+
+  // ISS-1229 r53, judge-165: on a phone a tap on the toast held it over Save for 45 seconds and more, because the
+  // tap left the pointer "resting" there. A finger does not rest: only a mouse holds a toast.
+  it("is not held by a tap on a touch screen, and leaves at its time", () => {
+    render(<Frame />);
+    act(() => fire({ title: "Tapped", duration: 4000 }));
+    act(() => vi.advanceTimersByTime(1600));
+    fireEvent.pointerEnter(card("Tapped"), { pointerType: "touch" });
+    fireEvent.mouseEnter(card("Tapped"));
+    act(() => vi.advanceTimersByTime(2399));
+    expect(screen.getByText("Tapped")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByText("Tapped")).not.toBeInTheDocument();
   });
 
   it("holds while focus is inside it", () => {

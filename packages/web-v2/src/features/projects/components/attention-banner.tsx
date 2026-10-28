@@ -21,16 +21,18 @@ export interface AttentionBannerProps {
 export function AttentionBanner({ count, read, error, attentionOnly, onToggle, onRetry }: AttentionBannerProps) {
   if (read !== 'read') {
     return (
-      <div className="mb-4" role="status">
+      <div className="mb-4">
         <Banner
           tone={read === 'failed' ? 'attention' : 'info'}
           action={
             read === 'failed' ? <RetryButton variant="ghost" error={error} onRetry={onRetry} /> : undefined
           }
         >
-          {read === 'failed'
-            ? `Which projects need attention could not be read, so no figure below is a count. ${formatApiError(error)}`
-            : 'Reading which projects need attention…'}
+          <span role="status">
+            {read === 'failed'
+              ? `Which projects need attention could not be read, so no figure below is a count. ${formatApiError(error)}`
+              : 'Reading which projects need attention…'}
+          </span>
         </Banner>
       </div>
     );

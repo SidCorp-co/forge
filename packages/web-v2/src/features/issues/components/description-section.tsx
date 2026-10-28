@@ -157,8 +157,8 @@ function IssueAttachments({
   }
   if (error) {
     return (
-      <p role="alert" className="fg-body-sm mb-4 flex flex-wrap items-center gap-2 text-muted">
-        <span>Couldn't load attachments — {formatApiError(error)}</span>
+      <p className="fg-body-sm mb-4 flex flex-wrap items-center gap-2 text-muted">
+        <span role="alert">Couldn't load attachments — {formatApiError(error)}</span>
         <RetryButton error={error} onRetry={onRetry} />
       </p>
     );

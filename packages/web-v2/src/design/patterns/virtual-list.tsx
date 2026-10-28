@@ -47,9 +47,8 @@ const FRAME_CLASS = "max-h-[min(70vh,40rem)] overflow-y-auto";
 /**
  * A list of rows that puts only the ones in view in the document: the feed pattern, so each row says
  * "3 of 1,300" whether or not its neighbours exist, the arrow keys and PageDown and PageUp walk from
- * row to row, and the row holding focus is never recycled out from under it. It scrolls inside a frame of its own, which
- * a long list needs in order to know what is in view. Rows load as the end of what is held comes
- * into view.
+ * row to row, and the row holding focus is never recycled out from under it. It scrolls inside a frame of
+ * its own, which a long list needs to know what is in view; rows load as the end of what is held shows.
  */
 export function VirtualList<Row>({
   rows,
@@ -134,15 +133,9 @@ export function VirtualList<Row>({
         })}
       </div>
       {more && (more.loading || more.failed) ? (
-        <div role="status" className="fg-caption flex items-center justify-center gap-2 px-4 py-3 text-muted">
-          {more.failed ? (
-            <>
-              <span>{more.why ? `Couldn't load more. ${more.why}` : "Couldn't load more."}</span>
-              <RetryLink error={more.error} onRetry={more.onLoad} />
-            </>
-          ) : (
-            <span>Loading more…</span>
-          )}
+        <div className="fg-caption flex items-center justify-center gap-2 px-4 py-3 text-muted">
+          <span role="status">{more.failed ? (more.why ? `Couldn't load more. ${more.why}` : "Couldn't load more.") : "Loading more…"}</span>
+          {more.failed && <RetryLink error={more.error} onRetry={more.onLoad} />}
         </div>
       ) : null}
     </div>

@@ -76,7 +76,7 @@ describe("Add from organization, on a project's Members", () => {
     render(<MembersTab projectId="p1" canEdit />);
     const failure = screen.getByRole("alert");
     expect(failure).toHaveTextContent("Couldn't load the organization's members. The server is down.");
-    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failure.parentElement as HTMLElement).getByRole("button", { name: "Retry" }));
     expect(reads.refetchOrgMembers).toHaveBeenCalledTimes(1);
   });
 
@@ -85,7 +85,7 @@ describe("Add from organization, on a project's Members", () => {
     render(<MembersTab projectId="p1" canEdit />);
     const failure = screen.getByRole("alert");
     expect(failure).toHaveTextContent("Couldn't load your projects, so this project's organization is not known.");
-    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failure.parentElement as HTMLElement).getByRole("button", { name: "Retry" }));
     expect(reads.refetchProjects).toHaveBeenCalledTimes(1);
   });
 });
@@ -99,7 +99,7 @@ describe("Move to organization, on a project's Advanced", () => {
     expect(screen.getByRole("heading", { name: "Move to organization" })).toBeInTheDocument();
     const failure = screen.getByRole("alert");
     expect(failure).toHaveTextContent("Couldn't load your organizations. The server is down.");
-    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failure.parentElement as HTMLElement).getByRole("button", { name: "Retry" }));
     expect(reads.refetchOrgs).toHaveBeenCalledTimes(1);
   });
 });
@@ -110,7 +110,7 @@ describe("Add a device, on a project's Runners", () => {
     render(<AssignDevice projectId="p1" defaultRepoPath={null} assignedDeviceIds={new Set()} hasRepoUrl />);
     const failure = screen.getByRole("alert");
     expect(failure).toHaveTextContent("Couldn't load your devices. The server is down.");
-    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failure.parentElement as HTMLElement).getByRole("button", { name: "Retry" }));
     expect(reads.refetchDevices).toHaveBeenCalledTimes(1);
   });
 });

@@ -155,6 +155,28 @@ describe('rateLimit middleware', () => {
     expect(res.headers.get('X-RateLimit-Remaining')).toBe('2');
     expect(res.headers.get('X-RateLimit-Reset')).toMatch(/^\d+$/);
   });
+
+  // ISS-1229 r53: on beta a token's knowledge search read Limit 300 beside Scope "write", which the token's write
+  // bucket had set before the route's own limit replaced the numbers: the four headers described two buckets.
+  it('names its own rule in X-RateLimit-Scope, over a scope a limit before it set', async () => {
+    const app = new Hono();
+    app.use('/hit', async (c, next) => {
+      c.header('X-RateLimit-Scope', 'write');
+      await next();
+    });
+    app.use(
+      '/hit',
+      rateLimit({ windowMs: 60_000, max: 300, by: 'ip' }, { name: 'knowledge-search' }),
+    );
+    app.get('/hit', (c) => c.json({ ok: true }));
+    const res = await app.request(
+      '/hit',
+      {},
+      { incoming: { socket: { remoteAddress: '9.9.9.8' } } },
+    );
+    expect(res.headers.get('X-RateLimit-Limit')).toBe('300');
+    expect(res.headers.get('X-RateLimit-Scope')).toBe('knowledge-search');
+  });
 });
 
 // ISS-1421 r5 — the limiter keyed on the left-most X-Forwarded-For entry, which the client writes:

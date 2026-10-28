@@ -109,8 +109,8 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
               <p className="fg-body-sm">Loading projects…</p>
             ) : projectsUnread ? (
               // Projects that could not be read are not projects the organization has none of (ISS-1229 r47).
-              <p className="fg-body-sm" role="alert" data-testid="agent-projects-unread">
-                This organization&apos;s projects could not be read: {formatApiError(projectsUnread)}{" "}
+              <p className="fg-body-sm" data-testid="agent-projects-unread">
+                <span role="alert">This organization&apos;s projects could not be read: {formatApiError(projectsUnread)}</span>{" "}
                 <RetryButton error={projectsUnread} onRetry={readProjects} />
               </p>
             ) : projects.length === 0 ? (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ApiError } from "@/lib/api/client";
 import {
   Avatar, Badge, Banner, BoardRowSkeleton, Breadcrumb, Button, Card, CardContent,
   CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, DataTable, Divider, EmptyState,
@@ -25,6 +26,9 @@ import {
 } from "@/features/shell";
 import { useToast } from "@/providers/toast-provider";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
+
+/** The failed read the kit's error state stands for: a 503, which the one rule offers Retry on. */
+const SAMPLE_FAILED_READ = new ApiError(503, "The server is unavailable right now.");
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -818,7 +822,7 @@ export default function KitPage() {
           <Section id="feedback" title="Feedback — error & toasts" hint="Distinct error state with retry; toasts on create / sweep / failure (bottom-right).">
             <div className="flex flex-col gap-6">
               <div className="rounded-md border border-line">
-                <ErrorState title="Couldn't load runs" message="Couldn't load runs. Check your connection, then retry." error={undefined} onRetry={() => {}} />
+                <ErrorState title="Couldn't load runs" message="Couldn't load runs. Check your connection, then retry." error={SAMPLE_FAILED_READ} onRetry={() => {}} />
               </div>
               <ToastButtons />
             </div>
