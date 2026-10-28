@@ -9,6 +9,7 @@ import { and, count, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirementReturns } from '../db/schema-requirement-acts.js';
 import {
+  type RequirementStatus,
   type RevisionState,
   requirementCriteria,
   requirementRevisions,
@@ -23,8 +24,9 @@ import {
   newRevisionIn,
   type RevisionWrite,
   rewriteRevisionIn,
+  withdrawRevisionIn,
 } from './revision-write.js';
-import { staleBaseRefusal, stateRefusal } from './rules.js';
+import { droppedRefusal, staleBaseRefusal, stateRefusal } from './rules.js';
 import {
   answer,
   inTx,
@@ -70,6 +72,13 @@ export async function writeRevision(input: {
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
+    const gone = droppedRefusal(
+      current.status as RequirementStatus,
+      requirementKey(current.reqSeq),
+      input.revision === undefined ? 'a new revision' : `rewriting revision ${input.revision}`,
+      input.revision === undefined ? '/baseRevision' : '/revision',
+    );
+    if (gone) return [gone];
     if (input.revision === undefined) {
       return newRevisionIn(tx, {
         requirementId: row.id,
@@ -109,6 +118,11 @@ export async function proposeRevision(input: {
     const current = await rowIn(tx, projectId, row.id);
     const target = await revisionIn(tx, current, input.revision);
     const refusal =
+      droppedRefusal(
+        current.status as RequirementStatus,
+        requirementKey(current.reqSeq),
+        `proposing revision ${target.revision}`,
+      ) ??
       stateRefusal(target.revision, target.state as RevisionState, 'draft') ??
       staleBaseRefusal(target.baseRevision, current.currentRevision);
     if (refusal) return [refusal];
@@ -212,6 +226,56 @@ export async function returnRevision(input: {
       authorAgency: target.authorAgency,
     });
     return null;
+  });
+  return answer(projectId, row.id, actor, refusals);
+}
+
+/**
+ * Withdraws open draft `revision` with why (REQ-41 BC-12): its author may, anyone else holds
+ * requirements.approve, as a steward's "withdraw" answer asks. Withdrawn is terminal, so the draft no
+ * longer holds the requirement's one open revision; on a dropped requirement it is the one act left.
+ */
+export async function withdrawRevision(input: {
+  projectId: string;
+  ref: string;
+  actor: RequirementActor;
+  revision: number;
+  reason: string;
+}): Promise<RequirementOutcome> {
+  const { projectId, actor } = input;
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  const row = await rowIn(db, projectId, input.ref);
+  if (!input.reason.trim()) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'REVISION_REASON_REQUIRED',
+          path: '/reason',
+          detail: 'a withdrawn draft says why.',
+        },
+      ],
+    };
+  }
+  const reason = storedText(await dataPolicyOf(projectId), input.reason.trim()).text;
+  const refusals = await inTx(async (tx) => {
+    await lockRequirements(tx, projectId);
+    const target = await revisionIn(tx, row, input.revision);
+    if (target.authorId !== actor.userId) {
+      const signer = await signerRefusal(
+        actor,
+        projectId,
+        'withdrawing a draft revision someone else wrote',
+        row,
+      );
+      if (signer) return [signer];
+    }
+    return withdrawRevisionIn(tx, {
+      requirementId: row.id,
+      revision: target.revision,
+      reason,
+      actor,
+    });
   });
   return answer(projectId, row.id, actor, refusals);
 }

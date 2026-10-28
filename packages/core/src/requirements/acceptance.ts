@@ -41,6 +41,7 @@ import {
 import { postWaivedDecisionIn, waivedOf } from './acceptance-waived.js';
 import { acceptanceAnswersOf, uncitedVerdictsIn } from './checklist-record.js';
 import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js';
+import { openRevisionOf, withdrawRevisionIn } from './revision-write.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
 import { deliveryAt, type LiveBuildHolds, type ProofIssue } from './standing.js';
 import { issueCriteriaOf, liveBuildOf, requirementVerdictsOf } from './standing-facts.js';
@@ -340,6 +341,17 @@ export async function dropIn(
     returning: ['id'],
   });
   movedRow(dropped);
+  // a dropped requirement takes no revision (`rules.ts:droppedRefusal`), so a draft it held would
+  // stand open for ever, written on by nobody; it is withdrawn with the drop's own reason
+  const open = await openRevisionOf(tx, rowId);
+  if (open?.state === 'draft') {
+    await withdrawRevisionIn(tx, {
+      requirementId: rowId,
+      revision: open.revision,
+      reason: `the requirement was dropped: ${reason.trim()}`,
+      actor,
+    });
+  }
   return null;
 }
 

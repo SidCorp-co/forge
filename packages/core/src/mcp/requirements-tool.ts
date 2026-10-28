@@ -1,6 +1,6 @@
 // forge_requirements: a BA's door onto a project's requirements over /mcp (owner direction
 // 2026-10-16: /mcp serves the product layer). Every action is a REST route's own service call —
-// GET/POST /api/projects/:id/requirements, …/:req/revisions, …/revisions/:n/propose, and
+// GET/POST /api/projects/:id/requirements, …/:req/revisions, …/revisions/:n/propose, …/withdraw, and
 // POST /api/questions/:id/answer for a question standing on one — and every read carries the
 // progress block (`product-progress.ts`).
 
@@ -31,6 +31,7 @@ import {
   readRequirementAs,
   revisionFields,
   similarRequirements,
+  withdrawRevision,
   writeRevision,
 } from '../requirements/index.js';
 import { requirementDetail, requirementProgress, requirementRow } from './requirement-views.js';
@@ -43,6 +44,7 @@ const ACTIONS = [
   'create',
   'revise',
   'propose',
+  'withdraw',
   'answer',
 ] as const;
 const READS = ['list', 'get', 'progress', 'similar'] as const;
@@ -86,7 +88,7 @@ const inputSchema = z.strictObject({
     .min(1)
     .optional()
     .describe(
-      'revise: the draft revision to rewrite whole; propose: the draft revision to propose',
+      'revise: the draft revision to rewrite whole; propose: the draft revision to propose; withdraw: the draft revision to withdraw',
     ),
   questionId: z.uuid().optional().describe('answer: a question standing on the requirement'),
   round: z.number().int().optional().describe('answer: the round being answered'),
@@ -112,6 +114,7 @@ const DESCRIPTION = [
   'create {title, criteria?, reason?, spec?, tldr?, kind?, picture?, designs?, writtenLang?}: a NEW draft requirement at revision 1, as POST /api/projects/:id/requirements writes it; with no reason its author is asked why. REQUIREMENT_DESIGN_UNKNOWN names a design the project lacks.',
   'revise {requirement, baseRevision, criteria, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement. Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a draft or proposed revision is open, so pass revision: n to rewrite that draft instead. REQUIREMENT_REVISION_STALE: the head moved, get it again.',
   'propose {requirement, revision}: put a draft revision before the people who agree it.',
+  'withdraw {requirement, revision, reason}: withdraw an open draft revision for good, saying why, as POST …/revisions/:n/withdraw does: its author may, anyone else needs requirements.approve. It frees the one open revision (REQUIREMENT_REVISION_OPEN) and is the one act left on a dropped requirement (REQUIREMENT_DROPPED).',
   `answer {requirement, questionId, round, optionId | answer}: answer a question standing on the requirement (one get lists under questions), as POST /api/questions/:id/answer does — ${ANSWER_SHAPE}, the free answer passed here as answer. Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, the spec or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers a question a person owes, within what they could answer signed in; one blocked on another agent is refused QUESTION_BLOCKED_ON_AGENT. QUESTION_NOT_OPEN: it is already answered.`,
   'Agreeing, accepting, returning, deferring and dropping are a person’s sign-off on the requirement page; this tool does none of them.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
@@ -126,6 +129,7 @@ const GRANT = {
     create: 'projects:write',
     revise: 'projects:write',
     propose: 'projects:write',
+    withdraw: 'projects:write',
     answer: 'questions:write',
   },
 } as const;
@@ -281,6 +285,21 @@ async function propose(ctx: McpContext, projectId: string, input: Input) {
   );
 }
 
+async function withdraw(ctx: McpContext, projectId: string, input: Input) {
+  const { requirement: ref, revision } = need(input, input.action, 'requirement', 'revision');
+  return written(
+    ctx,
+    projectId,
+    await withdrawRevision({
+      projectId,
+      ref,
+      actor: actorOf(ctx),
+      revision,
+      reason: input.reason ?? '',
+    }),
+  );
+}
+
 /** A question standing on the requirement, answered as the token's holder; one standing elsewhere is not found here. */
 async function answer(ctx: McpContext, projectId: string, input: Input) {
   const { requirement: key, questionId } = need(input, input.action, 'requirement', 'questionId');
@@ -309,7 +328,17 @@ async function answer(ctx: McpContext, projectId: string, input: Input) {
   });
 }
 
-const HANDLERS = { list, get, progress, similar, create, revise, propose, answer } as const;
+const HANDLERS = {
+  list,
+  get,
+  progress,
+  similar,
+  create,
+  revise,
+  propose,
+  withdraw,
+  answer,
+} as const;
 
 export const forgeRequirementsMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_requirements',

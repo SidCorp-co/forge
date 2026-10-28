@@ -1,0 +1,1 @@
+**A dropped requirement takes no revision, and a goal's gaps come at once.** Refused `REQUIREMENT_DROPPED`; an open draft is withdrawn by its own door or by the drop; an unlabelled opening stays the problem once `Value:` is added.

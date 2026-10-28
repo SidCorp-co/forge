@@ -130,6 +130,28 @@ describe('the ready checklist, read from the head revision', () => {
     expect(goalAnswers('   ')).toEqual({});
   });
 
+  // forge-dev REQ-5 r5, 2026-10-28: the first accept was refused for value and measured only; with
+  // "Value:" and "Measured by:" lines added, the next was refused for the problem, because once any
+  // line was labelled the unlabelled first line no longer read as it. Every gap names itself at
+  // once, and adding one label never takes another answer away.
+  it('names every goal gap in one pass, and keeps the unlabelled opening as the problem once labels are added', () => {
+    const opening = 'Referral managers lose referrals between intake and triage.';
+    const gapsOf = (goal: string) =>
+      checklistRefusals(judge({ ...ready, spec: { ...ready.spec, goal } }))
+        .map((r) => r.question)
+        .filter((q) => q !== null && ['problem', 'value', 'measured'].includes(q));
+
+    expect(gapsOf(opening)).toEqual(['value', 'measured']);
+    const labelled = `${opening}\nValue: every referral reaches a clinician.\nMeasured by: lost referrals per month.`;
+    expect(gapsOf(labelled)).toEqual([]);
+    expect(goalAnswers(labelled).problem).toBe(opening);
+    // an explicit Problem: line still states it, and a line after a label belongs to nobody
+    expect(goalAnswers(`${opening}\nProblem: lost referrals.\nValue: v.`).problem).toBe(
+      'lost referrals.',
+    );
+    expect(goalAnswers('Value: x\nsomething else')).toEqual({ value: 'x' });
+  });
+
   it('names every question a requirement with no current revision leaves open', () => {
     const e = judge({ ...ready, head: null });
     expect(e.complete).toBe(false);

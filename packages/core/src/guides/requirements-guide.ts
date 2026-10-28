@@ -24,7 +24,9 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
 - **The requirement's status**: \`draft\` (being written; nothing is built against it), \`agreed\` (a
   revision was signed off under a baseline), \`in_delivery\` and \`delivered\` (each moved there by
   an act, below), \`deferred\` (out of the current release), \`accepted\` (delivered and accepted),
-  \`dropped\` (no longer wanted) and \`refused\` (its value check refused it, below). A status moves
+  \`dropped\` (no longer wanted; terminal, so no act brings it back and it takes no new revision,
+  rewrite, proposal or accept: \`REQUIREMENT_DROPPED\`, naming a new requirement as the way to carry
+  the work, and a draft it held is withdrawn by the drop) and \`refused\` (its value check refused it, below). A status moves
   only by an explicit act of a person, the assistant or an agent; no read derives one from results.
 - **Each revision's state**: \`draft → proposed → current → superseded\`. \`current\` is the head, the
   revision that was accepted. A requirement holds **one open revision at a time** (a draft or a
@@ -68,10 +70,11 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
    ask's \`about\`), and \`unclear\` counts the open ones; an answer reaches it as a decision.
    **edit** rewrites a draft in place, whole: send the criteria list you read back, codes included,
    and a code the draft itself gave keeps that code, as a live code of its base does. Anything past
-   draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`. A stuck draft revision of an agreed requirement that a
-   person answers "withdraw" on the steward's question is **withdrawn** (terminal, with the question and
-   their reason); it no longer counts as the open revision, and editing or proposing it is
-   \`REQUIREMENT_REVISION_WITHDRAWN\`. A stuck draft requirement is asked merge, drop or keep.
+   draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`. An open draft is **withdrawn** for good with
+   \`POST …/requirements/:req/revisions/:n/withdraw { reason }\` (its author may; anyone else holds
+   requirements.approve), or when a person answers "withdraw" on the steward's question about a stuck
+   one; it keeps why, by whom and when, no longer counts as the open revision, and editing or proposing
+   it is \`REQUIREMENT_REVISION_WITHDRAWN\`. A stuck draft requirement is asked merge, drop or keep.
 3. **propose** puts the draft in front of whoever approves it. Proposing also checks the base is still the head. Every revision
    read back carries \`criteriaChanges\`: the BC codes it added, reworded and removed against the revision
    it was written against, computed from the criteria, never typed (null for a first revision).
@@ -82,7 +85,8 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
    read from the head: the problem, who it is for, the value and how it is measured, the business
    criteria, no blocking open question, and a linked workflow design; its kind, out of scope and roadmap
    lane take a recommended answer when unstated. The goal answers the problem, value, measure and lane on
-   lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`; a revision written in
+   lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`, and where no \`Problem:\` line
+   states it, the unlabelled lines before the first label do, so adding a label never takes it away; a revision written in
    Vietnamese (\`writtenLang: vi\`) may label them in its own language, ${(['problem', 'value', 'measured', 'roadmap'] as const).map((l) => `\`${GOAL_LABEL_WORDS.vi[l]}:\``).join(', ')},
    and the English labels are read in either. Each blocking gap is
    refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it. \`GET …/requirements/:req/checklist\`
