@@ -256,14 +256,16 @@ describe('each decision shows its question, a recommended answer and a button (R
     expect(d?.noRecommendation).toContain('The run that asked gave no recommended answer');
   });
 
-  it('a proposed revision: accept recommended by rule, return asks a reason', async () => {
+  // an accept is a sign-off and records why (REQ-4 BC-16): its button carries the recommendation's why
+  it('a proposed revision: accept recommended by rule with its why as the reason, return asks one', async () => {
     const d = byKey((await read()).decisions, 'REQ-1');
     expect(d).toMatchObject({ group: 'approve', recommended: { answerId: 'accept', by: 'rule' } });
+    expect(d?.answers[0]?.body).toEqual({ reason: d?.recommended?.why });
     expect(d?.answers.map((a) => [a.act, a.path, a.needsReason])).toEqual([
       [
         'revision.accept',
         `/api/projects/${projectId}/requirements/REQ-1/revisions/2/accept`,
-        false,
+        true,
       ],
       ['revision.return', `/api/projects/${projectId}/requirements/REQ-1/revisions/2/return`, true],
     ]);
@@ -284,6 +286,11 @@ describe('each decision shows its question, a recommended answer and a button (R
     const after = await read();
     expect(after.decisions).toEqual([]);
     expect(after.total).toBe(0);
+    // the accept pressed as offered recorded the recommendation's why as its reason (REQ-4 BC-16)
+    const [accepted] = await rows<{ accept_reason: string | null }>(sql`
+      SELECT v.accept_reason FROM requirement_revisions v JOIN requirements r ON r.id = v.requirement_id
+       WHERE r.project_id = ${projectId} AND r.req_seq = 1 AND v.revision = 2`);
+    expect(accepted?.accept_reason).toBe(byKey(before.decisions, 'REQ-1')?.recommended?.why);
   });
 });
 

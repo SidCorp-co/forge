@@ -104,6 +104,20 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
     );
   });
 
+  // ISS-645, REQ-4 BC-16: every sign-off records why, so the accept sends nothing until one is typed
+  it("keeps a proposed revision's accept off until a reason is typed", async () => {
+    const calls = fakeCore(() => ({ body: detail([]) }));
+    const user = userEvent.setup();
+    renderWithQuery(<ProposalDecision projectId="p1" d={detail([])} revision={2} />);
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+    const confirm = within(step()).getByRole("button", { name: "Accept r2" });
+    expect(confirm).toBeDisabled();
+    await typeReason(user, "   ");
+    expect(confirm).toBeDisabled();
+    await user.click(confirm);
+    expect(calls).toEqual([]);
+  });
+
   it("accepts a proposed revision with the typed reason, and Cancel sends nothing", async () => {
     const calls = fakeCore(() => ({ body: detail([]) }));
     const user = userEvent.setup();

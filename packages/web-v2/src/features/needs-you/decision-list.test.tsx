@@ -54,7 +54,7 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
       recommended: { answerId: "accept", why: "Its author proposed revision 2 for sign-off.", by: "rule" },
       noRecommendation: null,
       answers: [
-        { id: "accept", label: "Accept revision 2", act: "revision.accept", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/accept`, body: {}, needsReason: false, declines: false, effect: null, recommended: true },
+        { id: "accept", label: "Accept revision 2", act: "revision.accept", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/accept`, body: { reason: "Its author proposed revision 2 for sign-off." }, needsReason: true, declines: false, effect: null, recommended: true },
         { id: "return", label: "Return with a reason", act: "revision.return", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/return`, body: {}, needsReason: true, declines: true, effect: null, recommended: false },
       ],
       touchedAt: "2026-10-08T11:00:00.000Z",

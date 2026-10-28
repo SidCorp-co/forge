@@ -28,7 +28,7 @@ export async function agreedRequirement(
   const key = String(created.key);
   await makeAgreeReady(world.projectId, Number(key.slice(4)), world.ownerId);
   await ok(onProject('POST', `/requirements/${key}/revisions/1/propose`, {}));
-  await ok(onProject('POST', `/requirements/${key}/revisions/1/accept`, {}));
+  await ok(onProject('POST', `/requirements/${key}/revisions/1/accept`, { reason: 'Accepted for this test.' }));
   await ok(
     onProject('POST', `/requirements/${key}/agree`, {
       revision: 1,

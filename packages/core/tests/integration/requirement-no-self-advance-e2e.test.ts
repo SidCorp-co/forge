@@ -40,6 +40,10 @@ beforeEach(async () => {
 const on = (token: string, method: 'GET' | 'POST', path: string, body?: unknown) =>
   api(token, method, `/api/projects/${projectId}${path}`, body) as Promise<Res>;
 
+/** An accept says why (REQ-4 BC-16); every other step of the walk takes an empty body. */
+const bodyFor = (path: string) =>
+  path.endsWith('/accept') ? { reason: 'Accepted for this test.' } : {};
+
 /** `REQ-n` as its author left it, with every ready answer in: a draft holding a draft revision 1. */
 async function readyDraft(): Promise<{ key: string; seq: number }> {
   const made = await on(owner, 'POST', '/requirements', {
@@ -83,7 +87,7 @@ describe('a requirement whose ready checklist is complete', () => {
       `/requirements/${key}/revisions/1/propose`,
       `/requirements/${key}/revisions/1/accept`,
     ]) {
-      const r = await on(agent, 'POST', path, {});
+      const r = await on(agent, 'POST', path, bodyFor(path));
       expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);
     }
     const agreed = await on(agent, 'POST', `/requirements/${key}/agree`, {

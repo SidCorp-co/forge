@@ -208,7 +208,7 @@ describe('the Needs you read lists every approval waiting on the viewer, and onl
     const revision = read.decisions.find((d: Doc) => d.entity === 'requirement');
     expect(revision.title).toContain('The case reaches its owner');
     expect(acts(revision)).toEqual(
-      expect.arrayContaining(['revision.accept', 'revision.return (reason)']),
+      expect.arrayContaining(['revision.accept (reason)', 'revision.return (reason)']),
     );
 
     const preview = read.decisions.find((d: Doc) => d.topic === 'preview');

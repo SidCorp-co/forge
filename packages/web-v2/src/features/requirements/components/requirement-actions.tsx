@@ -445,7 +445,7 @@ function ReasonAct({
   );
 }
 
-/** Accept or return the proposed revision: the accept through its confirm step, the return carrying why. */
+/** Accept or return the proposed revision: each carries why, the accept through its confirm step. */
 export function ProposalDecision({ projectId, d, revision }: { projectId: string; d: RequirementDetail; revision: number }) {
   const t = useCopy();
   const act = useRequirementAction(projectId, d.key);
@@ -466,9 +466,11 @@ export function ProposalDecision({ projectId, d, revision }: { projectId: string
         <AcceptStep
           confirmLabel={t("requirements.act.acceptR", { r: revision })}
           consequence={t("requirements.act.acceptConsequence", { r: revision })}
+          // every sign-off records why (REQ-4 BC-16): the confirm stays off until a reason is typed
+          reasonRequired
           loading={busy}
           onCancel={() => setStep(null)}
-          onConfirm={(why) => act.mutate({ kind: "accept", revision, reason: why }, { onSuccess: () => setStep(null) })}
+          onConfirm={(why) => act.mutate({ kind: "accept", revision, reason: why ?? "" }, { onSuccess: () => setStep(null) })}
         />
       ) : null}
       {step === "return" ? (

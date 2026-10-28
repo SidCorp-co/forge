@@ -78,8 +78,10 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
 3. **propose** puts the draft in front of whoever approves it. Proposing also checks the base is still the head. Every revision
    read back carries \`criteriaChanges\`: the BC codes it added, reworded and removed against the revision
    it was written against, computed from the criteria, never typed (null for a first revision).
-4. Its approver (see *Who may act*) **accepts** it (it becomes current, the previous current is superseded) or **returns** it
-   with a reason (it goes back to draft, and each return is kept as its own record).
+4. Its approver (see *Who may act*) **accepts** it with \`{ reason }\`, why and on whose authority (it becomes current, the
+   previous current is superseded, and the reason is kept on the revision), or **returns** it with a reason (it goes back
+   to draft, and each return is kept as its own record). An accept with no reason, or a blank one, is
+   \`REQUIREMENT_SIGNOFF_REASON_REQUIRED\` whoever accepts, as an agree or a re-pin without one is.
 5. Its approver **agrees** the head: the requirement becomes \`agreed\` and a **baseline** is written that
    pins each linked design at its approved revision. The kernel judges the agree by the ready checklist,
    read from the head: the problem, who it is for, the value and how it is measured, the business
