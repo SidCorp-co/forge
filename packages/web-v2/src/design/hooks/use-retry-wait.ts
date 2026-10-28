@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { showWait } from "@/design/hooks/wait-announcer";
+import { showWait, WAIT_OVER } from "@/design/hooks/wait-announcer";
 import { askedWaitWords, retryAt, retryWaitWords } from "@/lib/utils/retry-rule";
 
 /** The wait before a failed read's Retry, counted down each second; null where there is none or once it is over. */
@@ -37,13 +37,14 @@ export function useRetryWaiting(error: unknown): boolean {
 
 /** Tells a screen reader this failed read's wait, once as it starts and once as it ends, however many places show
  *  it: the place registers and the read is what is told (ISS-1229 r54, judge-168). */
-export function useWaitAnnounced(error: unknown): void {
+export function useWaitAnnounced(error: unknown, said?: { started: string | null; ended: string }): void {
   const at = retryAt(error);
-  const started = askedWaitWords(error);
+  const started = said ? said.started : askedWaitWords(error);
+  const ended = said?.ended ?? WAIT_OVER;
   const read = (error as { read?: unknown } | null)?.read;
   const key = at === null ? null : `${typeof read === "string" ? read : ""}@${at}`;
   useEffect(() => {
     if (key === null || at === null || started === null) return;
-    return showWait(key, at, started);
-  }, [key, at, started]);
+    return showWait(key, at, started, ended);
+  }, [key, at, started, ended]);
 }

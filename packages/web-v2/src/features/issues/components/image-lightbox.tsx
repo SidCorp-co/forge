@@ -6,11 +6,14 @@ import {
   type WheelEvent as ReactWheelEvent,
   useCallback,
   useEffect,
+  useReducer,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { CoreImage, useCoreFileHeld } from "@/design/patterns/core-image";
+import { CoreImage } from "@/design/patterns/core-image";
+import { useCoreFileHeld } from "@/lib/api/core-file";
+import { fileHeldUntil } from "@/lib/api/client";
 import { coreFileUrl } from "@/lib/utils/core-url";
 
 export interface LightboxImage {
@@ -53,6 +56,7 @@ export function ImageLightbox({
   const current = images[index];
   // Opening the original while the server's wait runs would ask around the hold, so it is not offered then.
   const held = useCoreFileHeld(current?.path ?? "");
+  const [, recheck] = useReducer((n: number) => n + 1, 0);
   const restoreRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -268,6 +272,12 @@ export function ImageLightbox({
           {!held && (
             <a
               href={coreFileUrl(current.path)}
+              onClick={(e) => {
+                // A hold another tab set since this was drawn: the original is not opened around it.
+                if (fileHeldUntil(current.path) === null) return;
+                e.preventDefault();
+                recheck();
+              }}
               target="_blank"
               rel="noreferrer noopener"
               className="ml-1 hidden rounded-md text-12 font-medium px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"

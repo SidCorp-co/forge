@@ -203,7 +203,7 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     const again = await readRuns().then(() => null, refusal);
     expect(sent).toEqual(["GET /api/runs"]);
     expect(again).toBeInstanceOf(ApiError);
-    expect(again).toMatchObject({ status: 429, code: "RATE_LIMITED", message: first?.message, retryAt: first?.retryAt, read: "GET /runs" });
+    expect(again).toMatchObject({ status: 429, code: "RATE_LIMITED", message: first?.message, retryAt: first?.retryAt, read: "GET /api/runs" });
     expect((again?.retryAt ?? 0) - Date.now()).toBe(15_000);
   });
 
@@ -243,7 +243,7 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     window.sessionStorage.clear();
     vi.resetModules();
     const secondTab = await import("./client");
-    await expect(secondTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429, read: "GET /runs" });
+    await expect(secondTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429, read: "GET /api/runs" });
     expect(sent).toEqual(["GET /api/runs"]);
   });
 
@@ -273,6 +273,39 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     vi.setSystemTime(Date.now() + 1_500);
     await expect(apiFile(file)).resolves.toBeInstanceOf(Blob);
     expect(sent).toEqual([`GET ${file}`, `GET ${file}`]);
+  });
+
+  // r55 review F2: one address is one read, whichever caller names it.
+  it("is held for the same address asked by another caller or with a fragment", async () => {
+    await expect(apiFile("/api/runs")).rejects.toMatchObject({ status: 429 });
+    await expect(readRuns()).rejects.toMatchObject({ status: 429, read: "GET /api/runs" });
+    await expect(apiFile("/api/runs#top")).rejects.toMatchObject({ status: 429 });
+    expect(sent).toEqual(["GET /api/runs"]);
+  });
+
+  // r55 review F1: a hold is written as an entry of its own, so a tab recording another read's refusal at the same
+  // moment rewrites nothing of it.
+  it("records a refusal under its own entry and touches no other read's", async () => {
+    await readRuns().catch(() => {});
+    const written: string[] = [];
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      written.push(key);
+      setItem.mockRestore();
+      this.setItem(key, value);
+    });
+    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(`${init?.method ?? "GET"} ${String(input)}`);
+      return new Response(JSON.stringify(refusedBody), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "20" } });
+    });
+    vi.resetModules();
+    const otherTab = await import("./client");
+    await expect(otherTab.apiClient("/labels")).rejects.toMatchObject({ status: 429 });
+    expect(written).toEqual(["forge.heldRead:GET /api/labels"]);
+    vi.resetModules();
+    const thirdTab = await import("./client");
+    await expect(thirdTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429 });
+    await expect(thirdTab.apiClient("/labels")).rejects.toMatchObject({ status: 429 });
+    expect(sent).toEqual(["GET /api/runs", "GET /api/labels"]);
   });
 
   it("refuses by name a file that is not on the core, and sends nothing", async () => {

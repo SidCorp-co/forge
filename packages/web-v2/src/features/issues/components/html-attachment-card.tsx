@@ -9,12 +9,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { HtmlArtifact, Icon, Spinner } from "@/design";
-import { useRetryWait } from "@/design/hooks/use-retry-wait";
+import { useRetryWait, useWaitAnnounced } from "@/design/hooks/use-retry-wait";
 import { RetryWait } from "@/design/primitives/retry-wait";
 import { apiFile } from "@/lib/api/client";
 import { useAskedAgainAfterTheWait } from "@/lib/api/core-file";
 import { coreFileUrl } from "@/lib/utils/core-url";
-import { shownAgainWords } from "@/lib/utils/retry-rule";
+import { fileWaitWords, shownAgainWords } from "@/lib/utils/retry-rule";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -41,6 +41,7 @@ export function HtmlAttachmentCard({
   });
   useAskedAgainAfterTheWait(q.error, q.refetch);
   const wait = useRetryWait(q.isError ? q.error : null, shownAgainWords);
+  useWaitAnnounced(q.isError ? q.error : null, fileWaitWords(q.error, name));
 
   // While the server's wait runs the file is not offered as a link either: opening it would ask around the hold.
   if (wait) {

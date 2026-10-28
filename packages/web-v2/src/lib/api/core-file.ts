@@ -2,22 +2,23 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useRetryWaiting } from "@/design/hooks/use-retry-wait";
+import type { CoreFiles } from "@/design/patterns/core-image";
 import { retryAt } from "@/lib/utils/retry-rule";
-import { apiFile } from "./client";
+import { apiFile, fileHeldUntil } from "./client";
 
 const KEPT_FOR_MS = 5 * 60 * 1000;
 
-/** One core file's bytes, read through the client and shared by every place that shows it. */
-export function coreFileQuery(path: string) {
+function coreFileQuery(path: string) {
   return { queryKey: ["core-file", path], queryFn: () => apiFile(path), staleTime: KEPT_FOR_MS };
 }
 
 /**
- * A core file a page shows by itself, such as an image attachment, as an address only this page can load: its bytes
- * come through the client, so a refusal with a wait holds it, and it is read again once that wait is over (ISS-1229
+ * A core file shown by the page itself, such as an image attachment, as an address only this page can load. Its bytes
+ * come through the client, so a refusal with a wait holds it and it is read again once that wait is over (ISS-1229
  * r55, judge-170: an `<img src>` on the core went out again on every return and every reload, inside the wait).
  */
-export function useCoreFile(path: string, enabled = true) {
+function useCoreFile(path: string, enabled: boolean) {
   const q = useQuery({ ...coreFileQuery(path), enabled });
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
@@ -31,6 +32,16 @@ export function useCoreFile(path: string, enabled = true) {
   }, [q.data]);
   useAskedAgainAfterTheWait(q.error, q.refetch);
   return { src, error: q.isError ? q.error : null };
+}
+
+/** The kit's reader of core files, which the app hands it. */
+export const coreFiles: CoreFiles = { useFile: useCoreFile };
+
+/** Whether a core file's read is held on a wait still running, in this tab or another; it asks nothing. */
+export function useCoreFileHeld(path: string): boolean {
+  const q = useQuery({ ...coreFileQuery(path), enabled: false });
+  const failedHere = useRetryWaiting(q.isError ? q.error : null);
+  return failedHere || (fileHeldUntil(path) ?? 0) > Date.now();
 }
 
 /** A failed file read asked again once, when the server's wait ends, and never before. */

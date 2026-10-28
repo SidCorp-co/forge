@@ -20,7 +20,7 @@ export class ApiError extends Error {
    *  from here rather than starting over (ISS-1229 r51). Only a read's: the web counts a wait beside a failed
    *  read's Retry and nowhere else, so a write keeps the server's sentence and the time it names (r53). */
   readonly retryAt?: number;
-  /** Which read this answers, as the client holds it (`GET /projects`): one read's wait is told once, wherever shown (r54). */
+  /** Which read this answers, as the client holds it (`GET /api/projects`): one read's wait is told once, wherever shown (r54). */
   readonly read?: string;
 
   /** `counted` is true for a read's wait, which counts from now; false for a write's; a time for a held read's,
@@ -168,31 +168,35 @@ interface HeldRead {
   retryAt: number;
 }
 
-/** Where the held reads outlive a page load and reach every tab of this browser: a reload and a second tab are each one
- *  more way of asking again (judge-168 z4; judge-170, whose second tab began with no hold under sessionStorage). */
-const HELD_KEY = 'forge.heldReads';
-/** This page's own copy, which still holds where the browser keeps nothing for it. */
-let ownReads = new Map<string, HeldRead>();
+/** Held reads outlive a reload and reach every tab (judge-168 z4, judge-170), one entry a read so no tab's write drops another's. */
+const HELD_PREFIX = 'forge.heldRead:';
+const ownReads = new Map<string, HeldRead>();
 
-/** Every hold still running, this page's and any other tab's, read afresh each time so a hold another tab set is seen. */
-function held(): Map<string, HeldRead> {
-  const now = Date.now();
-  const reads = new Map([...ownReads].filter(([, refusal]) => refusal.retryAt > now));
+function stored(read: string): HeldRead | undefined {
   try {
-    const stored = JSON.parse(window.localStorage.getItem(HELD_KEY) ?? '{}') as Record<string, HeldRead>;
-    for (const [read, refusal] of Object.entries(stored)) {
-      if (typeof refusal?.retryAt === 'number' && refusal.retryAt > Math.max(now, reads.get(read)?.retryAt ?? 0)) reads.set(read, refusal);
-    }
+    const refusal = JSON.parse(window.localStorage.getItem(`${HELD_PREFIX}${read}`) ?? 'null') as HeldRead | null;
+    return typeof refusal?.retryAt === 'number' ? refusal : undefined;
   } catch {
+    return undefined;
   }
-  return reads;
 }
 
-function storeHeld(reads: Map<string, HeldRead>): void {
-  ownReads = reads;
+function heldOn(read: string): HeldRead | undefined {
+  const now = Date.now();
+  const holds = [ownReads.get(read), stored(read)].filter((refusal): refusal is HeldRead => (refusal?.retryAt ?? 0) > now);
+  return holds.sort((a, b) => b.retryAt - a.retryAt)[0];
+}
+
+function storeHeld(read: string, refusal: HeldRead | null): void {
+  if (refusal) ownReads.set(read, refusal);
+  else ownReads.delete(read);
   try {
-    if (reads.size === 0) window.localStorage.removeItem(HELD_KEY);
-    else window.localStorage.setItem(HELD_KEY, JSON.stringify(Object.fromEntries(reads)));
+    if (refusal) window.localStorage.setItem(`${HELD_PREFIX}${read}`, JSON.stringify(refusal));
+    else window.localStorage.removeItem(`${HELD_PREFIX}${read}`);
+    for (let i = window.localStorage.length - 1; i >= 0; i--) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith(HELD_PREFIX) && !heldOn(key.slice(HELD_PREFIX.length))) window.localStorage.removeItem(key);
+    }
   } catch {
   }
 }
@@ -203,7 +207,7 @@ function storeHeld(reads: Map<string, HeldRead>): void {
  * changed key, an effect run again, a reload, another tab. The one Retry waits the wait out and then sends.
  */
 function heldRefusal(read: string): ApiError | null {
-  const refusal = held().get(read);
+  const refusal = heldOn(read);
   if (!refusal) return null;
   const { status, message, code, details, body, asked, retryAt } = refusal;
   return new ApiError(status, message, code, details, body, asked, retryAt, read);
@@ -211,21 +215,38 @@ function heldRefusal(read: string): ApiError | null {
 
 /** A hold still running is cut short by no answer already in flight when it was set; a longer wait replaces it. */
 function noteAnswer(read: string, refused: ApiError | null): void {
-  const reads = held();
-  const standing = reads.get(read);
-  if (standing && standing.retryAt > Date.now() && (refused?.retryAt ?? 0) <= standing.retryAt) return;
+  const standing = heldOn(read);
+  if (standing && (refused?.retryAt ?? 0) <= standing.retryAt) return;
   if (refused?.retryAt !== undefined && refused.retryAfterMs !== undefined) {
     const { status, message, code, details, body, retryAfterMs: asked, retryAt } = refused;
-    reads.set(read, { status, message, code, details, body, asked, retryAt });
-  } else if (!reads.delete(read)) {
-    return;
+    storeHeld(read, { status, message, code, details, body, asked, retryAt });
+  } else if (ownReads.has(read) || stored(read)) {
+    storeHeld(read, null);
   }
-  storeHeld(reads);
+}
+
+/** Which read a request is, as the client holds it: the address it goes to, whichever caller names it (r55 review F2). */
+function readOf(method: string | undefined, url: string): string | undefined {
+  if (typeof window === 'undefined' || !isRead(method)) return undefined;
+  return `${(method ?? 'GET').toUpperCase()} ${url.split('#')[0]}`;
+}
+
+/** Until when a file on the core is held, by this tab or another; null where it is not (r55 review F3). */
+export function fileHeldUntil(path: string): number | null {
+  const read = readOf('GET', coreFileUrl(path));
+  return (read && heldOn(read)?.retryAt) || null;
 }
 
 /** Forgets every held read: a test's fresh browser. */
 export function forgetHeldReads(): void {
-  storeHeld(new Map());
+  ownReads.clear();
+  try {
+    for (let i = window.localStorage.length - 1; i >= 0; i--) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith(HELD_PREFIX)) window.localStorage.removeItem(key);
+    }
+  } catch {
+  }
 }
 
 /**
@@ -242,14 +263,14 @@ async function sendRequest(url: string, init: RequestInit): Promise<Response> {
   }
 }
 
-async function fetchRaw(endpoint: string, options: RequestInit = {}, url = `${API_URL}${endpoint}`): Promise<Response> {
+async function fetchRaw(url: string, options: RequestInit = {}): Promise<Response> {
   const hasBody = options.body !== undefined && options.body !== null;
   const headers = new Headers(options.headers as HeadersInit | undefined);
   if (hasBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
   // Held in the browser only: a server render answers many people, and one person's wait is not another's.
-  const read = typeof window !== 'undefined' && isRead(options.method) ? `${(options.method ?? 'GET').toUpperCase()} ${endpoint}` : undefined;
+  const read = readOf(options.method, url);
   const refusal = read === undefined ? null : heldRefusal(read);
   if (refusal) throw refusal;
   const res = await sendRequest(url, {
@@ -267,19 +288,15 @@ async function fetchRaw(endpoint: string, options: RequestInit = {}, url = `${AP
 
 /** JSON-returning client. Returns `undefined` on 204 No Content. */
 export async function apiClient<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetchRaw(endpoint, options);
+  const res = await fetchRaw(`${API_URL}${endpoint}`, options);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
-/**
- * A file on the core, such as an attachment's bytes, by its core path (`/api/attachments/<id>/download`). It is a read
- * like any other, so a refusal with a wait holds it here too (ISS-1229 r55, judge-170: the attachment was read around
- * the client and asked again eight times inside the wait).
- */
+/** A file on the core by its path (`/api/attachments/<id>/download`), held like any read (ISS-1229 r55, judge-170). */
 export async function apiFile(path: string): Promise<Blob> {
   if (!path.startsWith('/api/')) throw new Error(`${path}: not a file on the core, whose path starts with /api/`);
-  const res = await fetchRaw(path, {}, coreFileUrl(path));
+  const res = await fetchRaw(coreFileUrl(path));
   return await res.blob();
 }
 
@@ -323,7 +340,7 @@ export async function apiClientList<T, E = unknown>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<{ items: T[]; totalCount: number; extra?: E }> {
-  const res = await fetchRaw(endpoint, options);
+  const res = await fetchRaw(`${API_URL}${endpoint}`, options);
   if (res.status === 204) return { items: [], totalCount: 0 };
 
   const body = (await res.json()) as T[] | ({ items: T[]; total: number } & Record<string, unknown>);
@@ -370,7 +387,7 @@ export async function apiClientCursorAll<T>(
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const url = cursor === null ? endpoint : `${endpoint}${joiner}cursor=${encodeURIComponent(cursor)}`;
-    const res = await fetchRaw(url, options);
+    const res = await fetchRaw(`${API_URL}${url}`, options);
     if (res.status === 204) return { items, totalCount };
 
     const body = (await res.json()) as

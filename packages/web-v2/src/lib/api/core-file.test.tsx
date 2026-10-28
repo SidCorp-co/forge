@@ -14,7 +14,10 @@ import { BodyImage } from "@/design/patterns/body-link";
 import { AttachmentList } from "@/features/issues/components/attachment-list";
 import { HtmlAttachmentCard } from "@/features/issues/components/html-attachment-card";
 import { createQueryClient } from "@/providers/query-provider";
+import { forgetWaits } from "@/design/hooks/wait-announcer";
+import { CoreFilesProvider, CoreImage } from "@/design/patterns/core-image";
 import { forgetHeldReads } from "./client";
+import { coreFiles } from "./core-file";
 
 expect.extend(matchers);
 
@@ -27,6 +30,7 @@ let sent: string[] = [];
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
   forgetHeldReads();
+  forgetWaits();
   sent = [];
   const answered = new Map<string, number>();
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -49,7 +53,11 @@ afterEach(() => {
 });
 
 function draw(part: ReactNode) {
-  return render(<QueryClientProvider client={createQueryClient()}>{part}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={createQueryClient()}>
+      <CoreFilesProvider value={coreFiles}>{part}</CoreFilesProvider>
+    </QueryClientProvider>,
+  );
 }
 
 async function settle() {
@@ -83,6 +91,36 @@ describe("a core file the server refused with a wait (criterion 495, judge-170)"
     expect(sent).toEqual([`GET ${IMAGE}`]);
   });
 
+  // r55 review F3: the image was loaded here, then another tab was refused it.
+  it("offers no Open original for an image loaded here once another tab holds it", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(`${init?.method ?? "GET"} ${String(input)}`);
+      return sent.length === 1
+        ? new Response("png", { status: 200, headers: { "Content-Type": "image/png" } })
+        : new Response(JSON.stringify(refusedBody), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "20" } });
+    });
+    draw(<AttachmentList rows={[imageRow]} />);
+    await screen.findByRole("img", { name: "photo.png" });
+    vi.resetModules();
+    const otherTab = await import("./client");
+    await expect(otherTab.apiFile(IMAGE)).rejects.toMatchObject({ status: 429 });
+    fireEvent.click(screen.getByRole("button", { name: /photo\.png/ }));
+    expect(screen.queryByRole("link", { name: "Open original" })).toBeNull();
+    expect(sent).toEqual([`GET ${IMAGE}`, `GET ${IMAGE}`]);
+  });
+
+  // r55 review F4: the wait is told once as it starts and once as it ends, however many places show the file.
+  it("tells a screen reader a held image's wait once as it starts and once as it ends", async () => {
+    draw(<AttachmentList rows={[imageRow]} />);
+    await screen.findByText("photo.png not loaded.");
+    fireEvent.click(screen.getByRole("button", { name: /photo\.png/ }));
+    await act(async () => void (await vi.advanceTimersByTimeAsync(200)));
+    const said = () => [...document.querySelectorAll('[data-testid="wait-announcer"] p')].map((p) => p.textContent);
+    expect(said()).toEqual(["The server asked for 20 seconds before photo.png is shown."]);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(20_000)));
+    expect(said()).toEqual(["photo.png is being loaded again."]);
+  });
+
   it("holds an HTML attachment's bytes without the query's own retry, offers no link meanwhile, and shows it once the wait ends", async () => {
     const first = draw(<HtmlAttachmentCard name="page.html" url={PAGE} size={20} />);
     const held = await screen.findByTestId("html-attachment-held");
@@ -111,5 +149,13 @@ describe("a core file the server refused with a wait (criterion 495, judge-170)"
     expect(await screen.findByText("pasted not loaded.")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "theirs" })).toHaveAttribute("src", "https://elsewhere.example/a.png");
     expect(sent).toEqual([`GET ${IMAGE}`]);
+  });
+
+  it("refuses by name an image drawn where the app handed the kit no way to read core files", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<CoreImage path={IMAGE} alt="pasted" />)).toThrow(
+      `CoreImage drew ${IMAGE} outside a CoreFilesProvider, so nothing can read it through the client`,
+    );
+    expect(sent).toEqual([]);
   });
 });
