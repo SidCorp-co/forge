@@ -396,8 +396,6 @@ function sentenceEnds(node: ts.Expression, constants: Map<string, ts.Node>): boo
   return ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken && sentenceEnds(node.right, constants);
 }
 
-/** Words drawn or named that only RetryButton may draw, failure parts handed onRetry without an error, and a
- *  failure sentence closed by a second stop. */
 function wordOffences(source: Source): string[] {
   const { file, constants } = source;
   const rel = relative(SRC, source.path);

@@ -158,7 +158,6 @@ async function errorOf(res: Response, method: string | undefined, read?: string)
   return new ApiError(res.status, message, code, details, body, retryAfterOf(res.headers.get('Retry-After')), isRead(method), read);
 }
 
-/** A read the server refused with a wait, kept until that wait ends. */
 interface HeldRead {
   status: number;
   message: string;
