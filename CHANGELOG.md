@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.350] - 2026-10-28
+
+Notes counting failures after a token label are no longer refused as secrets
+
+### Fixed
+
+- **A count after a credential label is no longer read as a secret.** "no token: 4 failures" or "secret: 12 rows" is written as it stands; four or more digits, or a value like `hunter2`, is still refused (ISS-572).
+
 ## [0.4.0-dev.349] - 2026-10-28
 
 Rocket.Chat support groups set up, checked and granted from project settings
