@@ -1,1 +1,0 @@
-**A header passed to `forge-runner api -H` replaces the runner's own.** A JSON call with `-H Content-Type` now sends one Content-Type, not two that core refused; `-H Authorization` and a form's `-H Content-Type` are refused by name.
