@@ -44,6 +44,10 @@ pub struct Handed<'a> {
     pub env: &'a [(String, String)],
     /// The servers its MCP config declares; `None` where they could not be read.
     pub servers: Option<&'a serde_json::Map<String, Value>>,
+    /// The servers whose relay ticket, as the pane holds it, is near the end of its life: a pane
+    /// cannot be handed a new one, so it is due a replacement. Empty at a placement, which hands
+    /// fresh ones.
+    pub lapsing: &'a [String],
 }
 
 /// What a pane was placed with that a rebuild can change, each input by name
@@ -75,7 +79,13 @@ impl Inputs {
         env.sort();
         map.insert("env".to_string(), digest(env.join("\0").as_bytes()));
         if let Some(servers) = handed.servers {
-            let doc = serde_json::json!({ "mcpServers": Value::Object(servers.clone()) });
+            // The servers, not the relay ticket core signs afresh on every answer (ISS-610). A
+            // project relaying none digests exactly as before.
+            let identity = runner_workspace::mcp::config::server_identity(servers);
+            let mut doc = serde_json::json!({ "mcpServers": Value::Object(identity) });
+            if !handed.lapsing.is_empty() {
+                doc["lapsing"] = serde_json::json!(handed.lapsing);
+            }
             map.insert("mcp".to_string(), digest(doc.to_string().as_bytes()));
         }
         let config = runner_workspace::mcp::config::session_path(handed.slug);
@@ -152,6 +162,7 @@ mod tests {
             repo: Path::new("/nonexistent"),
             env: &env,
             servers: Some(&servers),
+            lapsing: &[],
         };
         let a = Inputs::of(&handed);
         assert_eq!(a, Inputs::of(&handed));
@@ -170,6 +181,118 @@ mod tests {
                 .collect();
         assert_eq!(differing.len(), 1, "{differing:?}");
         assert_eq!(differing[0].0, "env");
+    }
+
+    /// A relay ticket as core's `integrations/mcp-relay.ts:signRelayTicket` mints one: an HS256
+    /// JWT under the `forge.mcp.relay` issuer naming one binding. The signature is not the
+    /// runner's to check, so any bytes stand in for it.
+    fn ticket(binding: &str, iat: i64, exp: i64) -> String {
+        use base64::Engine;
+        let b64 = |v: serde_json::Value| {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(v.to_string())
+        };
+        format!(
+            "{}.{}.c2lnbmF0dXJl",
+            b64(serde_json::json!({ "alg": "HS256" })),
+            b64(serde_json::json!({
+                "pid": "p", "iss": "forge.mcp.relay", "sub": binding, "iat": iat, "exp": exp
+            }))
+        )
+    }
+
+    fn relayed(entries: &[(&str, &str, &str)]) -> serde_json::Map<String, Value> {
+        entries
+            .iter()
+            .map(|(name, url, ticket)| {
+                (
+                    (*name).to_string(),
+                    serde_json::json!({
+                        "type": "http",
+                        "url": url,
+                        "headers": { "Authorization": format!("Bearer {ticket}") },
+                        "enabled": true,
+                    }),
+                )
+            })
+            .collect()
+    }
+
+    fn mcp_of(servers: &serde_json::Map<String, Value>) -> String {
+        mcp_lapsing(servers, &[])
+    }
+
+    fn mcp_lapsing(servers: &serde_json::Map<String, Value>, lapsing: &[String]) -> String {
+        let env = vec![("FORGE_PROJECT_ID".to_string(), "p".to_string())];
+        Inputs::of(&Handed {
+            slug: "p",
+            repo: Path::new("/nonexistent"),
+            env: &env,
+            servers: Some(servers),
+            lapsing,
+        })
+        .0["mcp"]
+            .clone()
+    }
+
+    const URL: &str = "https://forge.example/api/mcp-relay/b1";
+
+    #[test]
+    fn two_sweeps_answered_with_a_fresh_relay_ticket_each_read_one_mcp_input() {
+        let now = jiff::Timestamp::now().as_second();
+        let placed = relayed(&[("autoflow", URL, &ticket("b1", now, now + 86_400))]);
+        let swept = relayed(&[("autoflow", URL, &ticket("b1", now + 60, now + 60 + 86_400))]);
+        assert_ne!(placed, swept, "the plant needs two answers that differ");
+        assert_eq!(
+            mcp_of(&placed),
+            mcp_of(&swept),
+            "the relay ticket's rotation alone moved the mcp input"
+        );
+    }
+
+    #[test]
+    fn a_relayed_server_added_removed_or_changed_moves_the_mcp_input() {
+        let now = jiff::Timestamp::now().as_second();
+        let t = ticket("b1", now, now + 86_400);
+        let fresh = ticket("b1", now + 60, now + 60 + 86_400);
+        let placed = mcp_of(&relayed(&[("autoflow", URL, &t)]));
+        let shop = "https://forge.example/api/mcp-relay/b2";
+        let mut retyped = relayed(&[("autoflow", URL, &fresh)]);
+        retyped["autoflow"]["type"] = serde_json::json!("sse");
+        for (what, now) in [
+            (
+                "added",
+                relayed(&[("autoflow", URL, &fresh), ("shop", shop, &fresh)]),
+            ),
+            ("removed", serde_json::Map::new()),
+            (
+                "url changed",
+                relayed(&[("autoflow", "https://other.example/relay/b1", &fresh)]),
+            ),
+            ("type changed", retyped),
+        ] {
+            assert_ne!(placed, mcp_of(&now), "a server {what} read as no change");
+        }
+    }
+
+    #[test]
+    fn a_project_relaying_nothing_digests_as_before() {
+        let mut servers = serde_json::Map::new();
+        servers.insert("forge".into(), serde_json::json!({ "command": "x" }));
+        let doc = serde_json::json!({ "mcpServers": Value::Object(servers.clone()) });
+        assert_eq!(mcp_of(&servers), digest(doc.to_string().as_bytes()));
+    }
+
+    #[test]
+    fn a_pane_whose_carried_ticket_is_lapsing_reads_its_mcp_input_changed() {
+        let now = jiff::Timestamp::now().as_second();
+        let servers = relayed(&[("autoflow", URL, &ticket("b1", now, now + 86_400))]);
+        let placed = mcp_of(&servers);
+        assert_eq!(placed, mcp_lapsing(&servers, &[]));
+        assert_ne!(
+            placed,
+            mcp_lapsing(&servers, &["autoflow".to_string()]),
+            "a pane holding a lapsing ticket read as current"
+        );
     }
 
     #[test]

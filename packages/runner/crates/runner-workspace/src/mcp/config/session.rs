@@ -241,13 +241,15 @@ pub enum SessionConfigRead {
     Unreadable(String),
 }
 
-/// What [`write_session`] would write for these servers, compared with the
-/// bytes on disk.
+/// The servers the session file declares, compared with what core declares now,
+/// a relay ticket's rotation aside ([`same_servers`]).
 ///
 /// The comparison a sweep makes against a LIVE pane: a pane carries the MCP
 /// configuration it was started with and cannot be told a new one, so the only
-/// question worth asking is whether the file it was given still says what core
-/// says now.
+/// question worth asking is whether the file it was given still declares the
+/// servers core declares now. Core signs a fresh relay ticket on every answer,
+/// so comparing the bytes read every pane with a relayed server as stale
+/// (ISS-610).
 pub fn read_session_config(
     slug: &str,
     servers: &serde_json::Map<String, Value>,
@@ -274,7 +276,9 @@ pub(crate) fn read_session_config_in(
         (None, true) => true,
         (None, false) => false,
         (Some(_), true) => false,
-        (Some(text), false) => session_servers(&text).as_ref() == Some(servers),
+        (Some(text), false) => {
+            session_servers(&text).is_some_and(|on_disk| same_servers(&on_disk, servers))
+        }
     };
     if matches {
         SessionConfigRead::Matches
@@ -288,8 +292,8 @@ pub(crate) fn read_session_config_in(
 ///
 /// Takes the TEXT and not a path, so a caller that has already read the file
 /// judges the bytes it read. [`read_session_config`] reads by path, and the master
-/// sweep rewrites that file on every pass for a live pane, so two reads of one
-/// path can answer about two different files (ISS-1191). `None` and a map that
+/// sweep writes that file whenever it places a pane, so two reads of one path can
+/// answer about two different files (ISS-1191). `None` and a map that
 /// differs are also two answers here rather than one: a pane started from a
 /// document this cannot parse carries nothing, which is not the same as
 /// carrying something else.
@@ -417,6 +421,30 @@ mod read_tests {
         );
         assert_eq!(
             read_session_config_in(&dir, "p", &servers()),
+            SessionConfigRead::Differs
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_live_panes_file_matches_a_fresh_relay_ticket_and_differs_from_a_changed_server() {
+        use crate::mcp::config::identity::tests::{server, ticket};
+        let dir = std::env::temp_dir().join(format!("forge-sess-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let url = "https://forge.example/api/mcp-relay/b1";
+        let one = |url: &str, t: &str| {
+            let mut m = serde_json::Map::new();
+            m.insert("autoflow".into(), server(url, "http", t));
+            m
+        };
+        write_session_in(&dir, "p", &one(url, &ticket("b1", 0, 86_400))).unwrap();
+        let fresh = ticket("b1", 60, 86_460);
+        assert_eq!(
+            read_session_config_in(&dir, "p", &one(url, &fresh)),
+            SessionConfigRead::Matches
+        );
+        assert_eq!(
+            read_session_config_in(&dir, "p", &one("https://other.example/b1", &fresh)),
             SessionConfigRead::Differs
         );
         let _ = std::fs::remove_dir_all(dir);

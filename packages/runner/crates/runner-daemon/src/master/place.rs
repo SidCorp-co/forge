@@ -259,6 +259,7 @@ fn prepare_pane(
         repo: &resolved.repo_path,
         env: &env,
         servers: Some(&declared.mcp_servers),
+        lapsing: &[],
     });
     let mcp_config = write_pane_mcp(&resolved.slug, declared)?;
     if let Some(path) = mcp_config.as_deref() {

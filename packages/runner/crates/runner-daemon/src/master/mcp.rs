@@ -87,10 +87,10 @@ pub(crate) fn report_stale_pane_config(
         asked.map(|d| runner_workspace::mcp::config::read_session_config(slug, &d.mcp_servers));
     let declared = match pane_config(asked, on_disk) {
         PaneConfig::Unknown => return,
+        // The file is left as it is: it holds the relay ticket the pane was started with, which a
+        // pane cannot be handed again, and how long that ticket lasts is read from it
+        // (`facts.rs:inputs_now`, ISS-610).
         PaneConfig::Current => {
-            if let Some(d) = asked {
-                let _ = runner_workspace::mcp::config::write_session(slug, &d.mcp_servers);
-            }
             masters.clear_mcp_stale(project_id);
             return;
         }
