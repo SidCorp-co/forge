@@ -1,0 +1,87 @@
+// Whether a command a room's session asks to run on a host only reads (REQ-75 r5 BC-27). A command
+// that only reads runs at once; anything else changes the host and waits for a confirmer. The rule
+// is deliberately narrow: a command reads only when every stage of it is a program this list knows
+// to read, with arguments that keep it reading, and the line holds no shell construct that could
+// write, chain or substitute. Whatever this cannot tell reads, it treats as a change — a wrong
+// "change" costs a confirm, a wrong "read" would cost the host.
+
+/** Shell constructs that write, chain, substitute or background: none appears in a reading command. */
+const SHELL_WRITES = /[;&><`$(){}\\\n\r]|\|\|/;
+
+/** Programs that only read, each with the arguments that would make it write or never end. */
+const READERS: Record<string, { refuse?: RegExp }> = {
+  cat: {},
+  head: {},
+  tail: { refuse: /(^|\s)(-f|-F|--follow)\b/ },
+  less: {},
+  grep: {},
+  zgrep: {},
+  egrep: {},
+  wc: {},
+  ls: {},
+  stat: {},
+  file: {},
+  find: { refuse: /(^|\s)-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b/ },
+  du: {},
+  df: {},
+  free: {},
+  uptime: {},
+  uname: {},
+  hostname: { refuse: /(^|\s)[^-\s]/ },
+  date: { refuse: /(^|\s)(-s|--set)\b/ },
+  whoami: {},
+  id: {},
+  ps: {},
+  ss: { refuse: /(^|\s)(-K|--kill)\b/ },
+  netstat: {},
+  ip: { refuse: /\b(add|del|delete|change|replace|set|flush|append)\b/ },
+  dig: {},
+  host: {},
+  nslookup: {},
+  ping: { refuse: /^(?!.*(^|\s)-c\s*\d).*$/ },
+  journalctl: {
+    refuse: /(^|\s)(-f|--follow|--vacuum-\w+|--rotate|--flush|--sync|--relinquish-var)\b/,
+  },
+  systemctl: {
+    refuse:
+      /^(?!\s*(status|is-active|is-enabled|is-failed|show|list-units|list-unit-files|list-timers|cat)\b)/,
+  },
+  mailq: {},
+  postqueue: { refuse: /^(?!\s*-p\s*$)/ },
+  openssl: { refuse: /^(?!\s*(s_client|x509|version)\b)/ },
+  curl: { refuse: /(^|\s)(-X|--request|-d|--data\S*|-F|--form|-T|--upload-file|-o|--output|-O)\b/ },
+  sort: { refuse: /(^|\s)(-o|--output)\b/ },
+  uniq: {},
+  cut: {},
+  awk: { refuse: /system|print\s*>|>|getline/ },
+  sed: { refuse: /(^|\s)(-i|--in-place)\b|\bw\s/ },
+  jq: {},
+};
+
+export type CommandClass = { reads: true } | { reads: false; why: string };
+
+/** Whether `command` only reads, and when not, the first reason it may change the host. */
+export function classifyCommand(command: string): CommandClass {
+  if (SHELL_WRITES.test(command)) {
+    return {
+      reads: false,
+      why: 'it holds a shell construct that can write, chain or substitute (; & > < ` $ ( ) { } \\ || or a new line)',
+    };
+  }
+  for (const stage of command.split('|')) {
+    const words = stage.trim().split(/\s+/);
+    const program = (words[0] ?? '').replace(/^.*\//, '');
+    const rest = words.slice(1).join(' ');
+    if (program === 'sudo') return { reads: false, why: 'it runs as another user (sudo)' };
+    const reader = READERS[program];
+    if (!reader)
+      return {
+        reads: false,
+        why: `${program || 'an empty stage'} is not a program known only to read`,
+      };
+    if (reader.refuse?.test(rest)) {
+      return { reads: false, why: `${program} ${rest} can write or never end` };
+    }
+  }
+  return { reads: true };
+}

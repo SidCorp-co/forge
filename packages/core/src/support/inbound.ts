@@ -70,6 +70,12 @@ export async function handleSupportMessage(input: {
     return;
   }
 
+  // a room that answers only mentions keeps every other message as the thread's context (REQ-75 r5)
+  if (config.answers === 'mentions' && !m.mentions.includes(input.ac.botUserId)) {
+    await recordInbound(room, conversation.id, thread, m, author, { deliver: false });
+    return;
+  }
+
   const limits = limitsOf(config);
   const hourAgo = new Date(Date.now() - 60 * 60_000);
   if ((await memberMessagesSince(room.id, author.key, hourAgo)) >= limits.messagesPerUserPerHour) {

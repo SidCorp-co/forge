@@ -71,6 +71,8 @@ struct Session {
     /// session can serve the next turn as-is.
     model: Option<String>,
     head_sha: Option<String>,
+    /// How the session was spawned to see its checkout; a turn that asks for another view respawns.
+    checkout: crate::CheckoutView,
     permit: Option<tokio::sync::OwnedSemaphorePermit>,
     project_slug: Option<String>,
     /// Raised by the completion task once it has reaped the process and removed this entry: what
@@ -215,6 +217,8 @@ pub struct Resident {
     /// Spawned to read its bearer from a file the runner rewrites, so a turn carrying its own
     /// token can be written into it.
     pub refreshable: bool,
+    /// How it sees its checkout (`crate::CheckoutView`), fixed by its mounts at spawn.
+    pub checkout: crate::CheckoutView,
 }
 
 fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
@@ -284,6 +288,7 @@ impl ClaudeCodeRunner {
             model: s.model.clone(),
             head_sha: s.head_sha.clone(),
             refreshable: s.bearer_dir.is_some(),
+            checkout: s.checkout.clone(),
         })
     }
 
@@ -578,6 +583,7 @@ pub(crate) struct Spawned {
     pub(crate) keep_resident: bool,
     pub(crate) model: Option<String>,
     pub(crate) project_slug: Option<String>,
+    pub(crate) checkout: crate::CheckoutView,
 }
 
 impl ClaudeCodeRunner {
@@ -600,6 +606,7 @@ impl ClaudeCodeRunner {
             keep_resident,
             model,
             project_slug,
+            checkout,
         } = spawned;
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
@@ -640,6 +647,7 @@ impl ClaudeCodeRunner {
                 turn_done: turn_done.clone(),
                 model,
                 head_sha: None,
+                checkout,
                 permit,
                 project_slug,
                 ended,
@@ -747,6 +755,11 @@ impl Runner for ClaudeCodeRunner {
                 keep_resident: spec.keep_resident,
                 model: spec.model.clone(),
                 project_slug: spec.project_slug.clone(),
+                checkout: spec
+                    .confinement
+                    .as_ref()
+                    .map(|c| c.checkout.clone())
+                    .unwrap_or_default(),
             },
             tx,
         )
@@ -909,6 +922,7 @@ impl SessionCommand<'_> {
             mcp_config: mcp_path,
             bearer_dir,
             reads: &confinement.reads,
+            checkout: &confinement.checkout,
             project_slug: spec.project_slug.as_deref(),
             project_id: &spec.project_id,
             git_dirs,

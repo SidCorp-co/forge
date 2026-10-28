@@ -70,7 +70,7 @@ export {
   waitingIssueIds as draftReleaseIssueIds,
   warnedReleaseNotes,
 } from './queries.js';
-export { bindingReachesProduction } from './release-coolify.js';
+export { bindingReachesProduction, dispatchCoolifyDeployDirect } from './release-coolify.js';
 export { type CarriedVerdict, carriedVerdictsOf } from './release-facts.js';
 export { listReleases, readRelease } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';

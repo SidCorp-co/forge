@@ -14,6 +14,7 @@
 mod actors;
 mod ancestry_read;
 mod box_frames;
+mod build_push;
 mod checkout_frame;
 mod checkout_passes;
 pub mod control;
@@ -21,6 +22,7 @@ pub mod dispatch;
 pub mod drain;
 pub mod handover;
 mod head_read;
+mod host_command;
 pub mod inbox;
 pub mod master;
 pub mod master_build;

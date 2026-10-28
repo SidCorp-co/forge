@@ -48,6 +48,8 @@ export class StandInRocketChat implements ChatServer {
   readonly bob: Member = { userId: 'u-bob', username: 'bob' };
   readonly lines: (BotLine & { at: number })[] = [];
   readonly reactions: { messageId: string; emoji: string }[] = [];
+  /** Whether the bot is a member of the group (`subscriptions.getOne` answers its subscription). */
+  botIsMember = true;
   private server!: Server;
   private wss!: WebSocketServer;
   private subs = new Set<{ ws: WebSocket; id: string }>();
@@ -86,6 +88,14 @@ export class StandInRocketChat implements ChatServer {
         return json(200, {
           success: true,
           room: { _id: this.rid, t: 'p', name: 'catalog-support' },
+        });
+      case '/api/v1/subscriptions.getOne':
+        return json(200, {
+          success: true,
+          subscription:
+            this.botIsMember && url.searchParams.get('roomId') === this.rid
+              ? { rid: this.rid, name: 'catalog-support', fname: 'catalog-support' }
+              : null,
         });
       case '/api/v1/chat.react':
         this.reactions.push({ messageId: body.messageId, emoji: body.emoji });
@@ -172,11 +182,23 @@ export class StandInRocketChat implements ChatServer {
         rid: this.rid,
         msg: text,
         ...(tmid ? { tmid } : {}),
+        mentions: this.mentionsIn(text),
         u: { _id: who.userId, username: who.username },
       },
       ts,
     );
     return id;
+  }
+
+  /** The users a message names with `@`, as Rocket.Chat parses them onto the message. */
+  private mentionsIn(text: string): { _id: string; username: string }[] {
+    const known = [
+      { _id: this.bot.userId, username: 'supportbot' },
+      { _id: this.alice.userId, username: this.alice.username },
+      { _id: this.bob.userId, username: this.bob.username },
+    ];
+    const named = new Set([...text.matchAll(/@([A-Za-z0-9._-]+)/g)].map((m) => m[1]));
+    return known.filter((u) => named.has(u.username));
   }
 
   async botLines(): Promise<BotLine[]> {

@@ -1,3 +1,4 @@
+import type { SupportRoomView } from "@forge/contracts/support";
 import { apiClient } from "@/lib/api/client";
 import type {
   BindingListResponse,
@@ -124,12 +125,17 @@ export const integrationsApi = {
     projectId: string,
     body:
       | { integrationId: string }
+      | { connectionId: string }
       | { serverUrl: string; authToken: string; userId: string },
   ) =>
     apiClient<{ rooms: RocketchatRoom[] }>(
       `/projects/${projectId}/integrations/rocketchat/rooms`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+
+  /** `GET /api/projects/:projectId/support/rooms` — each bound room with its session and health (REQ-75 r5 BC-26). */
+  supportRooms: (projectId: string) =>
+    apiClient<{ rooms: SupportRoomView[] }>(`/projects/${projectId}/support/rooms`),
 };
 
 export const integrationConnectionsApi = {

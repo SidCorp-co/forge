@@ -7,9 +7,10 @@
 // crash left undelivered. A turn that ends without completing tells each thread it left unanswered
 // so, and those messages are not handed to a turn again.
 
-import type { SupportDeliveryPath, SupportTool } from '@forge/contracts/support';
+import type { SupportDeliveryPath, SupportRoomConfig, SupportTool } from '@forge/contracts/support';
 import type { ChatRole } from '@forge/contracts/support-operations';
 import {
+  type CheckoutView,
   dispatchChatTurn,
   mintFencedSessionCredential,
   sessionRowById,
@@ -20,6 +21,7 @@ import { findBindingWithConnectionById, forgeReads } from '../integrations/index
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { logger } from '../lib/logger.js';
+import { buildBaseOf } from './build.js';
 import {
   claimUndelivered,
   markDelivery,
@@ -29,6 +31,7 @@ import {
   unansweredOfLastTurn,
   unclaim,
 } from './delivery.js';
+import { grantsOf, supportConfigOf } from './grants.js';
 import { injectWaiting, settleInjects } from './inject.js';
 import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
@@ -64,13 +67,24 @@ export function noteTurn(roomId: string, at: Date): void {
  * next grant change tells it again.
  */
 const briefedTools = new Map<string, string>();
-export const toolsKey = (tools: readonly SupportTool[]) =>
-  JSON.stringify(tools.map((t) => [t.name, t.kind, t.summary]));
+/** What a support group's session was briefed with: its tools, and its room's persona, readers and grant. */
+export const toolsKey = (tools: readonly SupportTool[], config: SupportRoomConfig | null) =>
+  JSON.stringify([
+    tools.map((t) => [t.name, t.kind, t.summary]),
+    config?.persona ?? null,
+    config?.readers ?? null,
+    config?.answers ?? null,
+    config?.grants ?? null,
+  ]);
 export function toldTools(roomId: string): string | undefined {
   return briefedTools.get(roomId);
 }
-export function noteTools(roomId: string, tools: readonly SupportTool[]): void {
-  briefedTools.set(roomId, toolsKey(tools));
+export function noteTools(
+  roomId: string,
+  tools: readonly SupportTool[],
+  config: SupportRoomConfig | null,
+): void {
+  briefedTools.set(roomId, toolsKey(tools, config));
 }
 /** What an operations room's session was briefed with: its role, which a connection edit can change. */
 export const roleKey = (role: ChatRole) => JSON.stringify([role.name, role.persona, role.grants]);
@@ -109,14 +123,6 @@ export async function roomWithSession(roomId: string): Promise<RoomRow | null> {
   });
 }
 
-/** The room's binding config, for the brief's product line. */
-async function roomProduct(room: RoomRow): Promise<string | null> {
-  const pair = await findBindingWithConnectionById(room.bindingId);
-  return (
-    ((pair?.binding.config ?? null) as RocketChatBindingConfig | null)?.support?.product ?? null
-  );
-}
-
 /**
  * A cold session's brief: a support group's (the product, its granted tools), or an operations
  * room's (its role's persona and grants, its reach). An operations room whose bot has no role it can
@@ -134,8 +140,30 @@ async function briefOf(room: RoomRow, projectName: string): Promise<string> {
     });
   }
   const api = await activeSupportApi(room.projectId);
-  noteTools(room.id, api?.tools ?? []);
-  return supportBrief({ projectName, product: await roomProduct(room), tools: api?.tools ?? [] });
+  const config = await supportConfigOf(room);
+  noteTools(room.id, api?.tools ?? [], config);
+  return supportBrief({
+    projectName,
+    product: config?.product ?? null,
+    tools: api?.tools ?? [],
+    config,
+  });
+}
+
+/**
+ * How a support group's session sees the project's checkout (REQ-75 r5 BC-27): a writable copy of
+ * the development branch when granted build (and the project names one apart from production's),
+ * the checkout read-only when granted read_checkout, and an empty folder otherwise. An operations
+ * room keeps the checkout as it was before r5.
+ */
+export async function checkoutViewOf(room: RoomRow): Promise<CheckoutView | null> {
+  if (room.kind !== 'support') return null;
+  const grants = grantsOf(await supportConfigOf(room));
+  if (grants.abilities.includes('build')) {
+    const base = await buildBaseOf(room.projectId);
+    if (base.ok) return { mode: 'build', base: base.value.base, key: room.id };
+  }
+  return grants.abilities.includes('read_checkout') ? { mode: 'read' } : { mode: 'none' };
 }
 
 /** Whether a turn of this session starts Claude Code cold (no session of its own to resume). */
@@ -170,6 +198,7 @@ export async function handTurn(
     projectId: room.projectId,
     permissions: SUPPORT_SESSION_GRANT,
   });
+  const checkout = await checkoutViewOf(room);
   await dispatchChatTurn({
     session,
     project: { id: project.id, slug: project.slug },
@@ -178,6 +207,7 @@ export async function handTurn(
     preBuilt: true,
     credential,
     actor: { type: 'system' },
+    ...(checkout ? { checkout } : {}),
   });
 }
 

@@ -15,6 +15,7 @@ import { followAllItems, registerSupportProgress } from './progress.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
+export { forgetMemberships } from './health.js';
 export { supportRoutes } from './routes.js';
 export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';
 export { expireSupportFixes, followAllItems, warmColdRooms };

@@ -133,7 +133,9 @@ export async function reply(
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
   const text = await scrubbedForRoom(room, input.text);
-  const door = room.kind === 'operations' ? 'operations-reply' : 'support-reply';
+  // a team reads an operations room and a support group bound with `readers: team` (REQ-75 r5)
+  const team = room.kind === 'operations' || (await roomConfig(room))?.readers === 'team';
+  const door = team ? 'operations-reply' : 'support-reply';
   const verdict = await screenReplyAtDoor(door, {
     projectId: room.projectId,
     segments: [text],

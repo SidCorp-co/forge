@@ -392,7 +392,8 @@ export interface BindingTargetRefusal {
     | 'WIDGET_SITE_KEY_MINTED'
     | 'WIDGET_SITE_KEY_TAKEN'
     | 'SUPPORT_ROOM_NOT_ONE_GROUP'
-    | 'SUPPORT_ROOM_TWO_KINDS';
+    | 'SUPPORT_ROOM_TWO_KINDS'
+    | 'SUPPORT_GRANT_TARGET_UNKNOWN';
   path: string;
   detail: string;
 }

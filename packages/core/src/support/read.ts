@@ -13,6 +13,8 @@ import { externalItemPhases } from '../feedback/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { latencySamples } from './delivery.js';
+import { supportConfigOf } from './grants.js';
+import { roomHealth } from './health.js';
 import { roleOfRoom } from './ops-role.js';
 import { percentile } from './rules.js';
 import { type ActionRow, actionsOfRoom, recentThreads, roomById, roomsOfProject } from './store.js';
@@ -33,6 +35,8 @@ export async function supportRoomsOf(
   return Promise.all(
     rooms.map(async (r) => {
       const session = r.sessionId ? statusOf.get(r.sessionId) : undefined;
+      const config = await supportConfigOf(r);
+      const { health, name } = await roomHealth(r);
       return {
         id: r.id,
         projectId: r.projectId,
@@ -46,6 +50,11 @@ export async function supportRoomsOf(
         resident: session?.status === 'running' || session?.runtimeState === 'awaiting_input',
         principalUserId: r.principalUserId,
         toolCount: api?.tools.length ?? 0,
+        name,
+        readers: r.kind === 'operations' ? 'team' : (config?.readers ?? 'users'),
+        answers: config?.answers ?? 'every-message',
+        grants: config?.grants ?? null,
+        health,
         threads: (await recentThreads(r.id, 1000)).length,
         latency: latencyOf(await latencySamples(r.id, SUPPORT_LATENCY_WINDOW)),
         createdAt: r.createdAt.toISOString(),

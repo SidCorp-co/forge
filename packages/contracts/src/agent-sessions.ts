@@ -20,6 +20,8 @@ export const AGENT_SESSION_REFUSAL_CODES = [
 	"CHECKOUT_UNBOUND",
 	"RUNNER_OUTDATED",
 	"BOX_CANNOT_CONFINE_CHAT",
+	/** A turn that shows its checkout read-only, not at all, or as a build working copy, on a box that cannot (REQ-75 r5). */
+	"BOX_CANNOT_SCOPE_CHECKOUT",
 	"NO_LIVE_SESSION",
 	"SESSION_PARKED",
 	"NO_DEVICE",

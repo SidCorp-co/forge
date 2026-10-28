@@ -39,6 +39,17 @@ export interface RocketChatIncomingMessage {
    * else the thread parent, else undefined (ISS-1087).
    */
   replyToId?: string | undefined;
+  /** The account ids the message mentions, as the server parsed them (`mentions[]._id`). */
+  mentions: string[];
+}
+
+/** The ids of the accounts a message mentions; an `@all` or `@here` names no account. */
+function mentionsOf(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((m) => {
+    const id = (m as { _id?: unknown } | null)?._id;
+    return typeof id === 'string' && id !== 'all' && id !== 'here' ? [id] : [];
+  });
 }
 
 const QUOTE_LINK_RE = /\?msg=([A-Za-z0-9]+)/;
@@ -113,6 +124,7 @@ function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatIncomingMes
     tmid: typeof m.tmid === 'string' ? m.tmid : undefined,
     images: extractMessageImages(m as Parameters<typeof extractMessageImages>[0], serverUrl),
     replyToId: replyTargetOf(m),
+    mentions: mentionsOf((m as { mentions?: unknown }).mentions),
   };
 }
 

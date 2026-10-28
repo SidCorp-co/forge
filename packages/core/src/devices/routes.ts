@@ -10,6 +10,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import {
   ANCESTRY_PAIRS_MAX,
+  answerBoxAct,
   answerCheckoutAncestry,
   answerCheckoutHead,
   patchDeviceRunnerCheckout,
@@ -377,6 +378,46 @@ deviceAuthRoutes.post(
     );
   },
 );
+
+// Device → server: what a box did for a room's session (REQ-75 r5): a command it ran on a host
+// (`host.command`) or a working copy it committed and pushed (`build.push`). Settled only for the box
+// it was asked of; what the answer says is read in `runners/box-acts.ts`.
+const boxActAnswerSchema = z
+  .object({
+    projectId: z.uuid(),
+    host: z.string().max(253).optional(),
+    exitCode: z.number().int().nullable().optional(),
+    stdout: z.string().max(70_000).optional(),
+    stderr: z.string().max(70_000).optional(),
+    truncated: z.boolean().optional(),
+    timedOut: z.boolean().optional(),
+    durationMs: z.number().int().min(0).optional(),
+    branch: z.string().max(200).optional(),
+    base: z.string().max(200).optional(),
+    sha: z.string().max(80).optional(),
+    files: z.array(z.string().max(1000)).max(2000).optional(),
+    error: z.string().trim().min(1).max(4000).optional(),
+  })
+  .strict();
+
+for (const path of ['/me/host-commands/:requestId', '/me/support-builds/:requestId'] as const) {
+  deviceAuthRoutes.post(
+    path,
+    requireDevice(),
+    zValidator('param', z.object({ requestId: z.uuid() })),
+    zValidator('json', boxActAnswerSchema),
+    async (c) => {
+      const { requestId } = c.req.valid('param');
+      if (answerBoxAct(c.get('device').id, requestId, c.req.valid('json'))) {
+        return c.json({ settled: true });
+      }
+      throw refuseDevice(
+        'BOX_ANSWER_NOT_ASKED',
+        `nothing ${requestId} is waiting on this box: it was never asked, it was asked of another box or project, or the wait ended`,
+      );
+    },
+  );
+}
 
 // Device → server: whether commits are ancestors, read in a box's bound checkout, answering
 // `checkout.ancestry.read`. Settled only for the box it was asked of; checked in `runners/checkout-ancestry.ts`.

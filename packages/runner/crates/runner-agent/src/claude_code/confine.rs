@@ -102,6 +102,9 @@ pub(crate) struct Handed<'a> {
     /// A resident session's bearer file directory, bound read-only.
     pub bearer_dir: Option<&'a Path>,
     pub reads: &'a [PathBuf],
+    /// How the session sees `repo`: writable, read-only, or not at all. A `Build` view's `repo` is
+    /// already the room's working copy, which it writes.
+    pub checkout: &'a crate::CheckoutView,
     pub project_slug: Option<&'a str>,
     pub project_id: &'a str,
     /// The checkout's git directories, read outside the sandbox: `--absolute-git-dir` and
@@ -236,9 +239,41 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
     if view.var("CLAUDE_CONFIG_DIR").is_none() {
         writable.push(view.home.join(".claude.json"));
     }
-    writable.push(handed.repo.to_path_buf());
     for path in writable.into_iter().filter(|p| p.exists()) {
         mounts.push(Mount::Write(path));
+    }
+    mounts.extend(checkout_mounts(handed));
+
+    Ok(Sandbox {
+        mounts,
+        env: chat_env(view, handed),
+        cwd: handed.repo.to_path_buf(),
+        egress: Some(Egress {
+            socket: handed.egress_socket.clone(),
+            bridge,
+        }),
+    })
+}
+
+/// The checkout as the turn's view shows it. Written or read, its git directories are read-only
+/// and its `.mcp.json` hidden; shown as an empty folder, nothing of it or its git directory is in
+/// view at all.
+pub(crate) fn checkout_mounts(handed: &Handed<'_>) -> Vec<Mount> {
+    use crate::CheckoutView;
+    let repo = handed.repo.to_path_buf();
+    let mut mounts = Vec::new();
+    match handed.checkout {
+        CheckoutView::None => {
+            if repo.exists() {
+                mounts.push(Mount::Empty(repo));
+            }
+            return mounts;
+        }
+        CheckoutView::Read if repo.exists() => mounts.push(Mount::Read(repo)),
+        CheckoutView::Write | CheckoutView::Build { .. } if repo.exists() => {
+            mounts.push(Mount::Write(repo));
+        }
+        _ => {}
     }
     for dir in &handed.git_dirs {
         if dir.exists() {
@@ -253,16 +288,7 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
     if workspace_mcp.is_file() {
         mounts.push(Mount::Hide(workspace_mcp));
     }
-
-    Ok(Sandbox {
-        mounts,
-        env: chat_env(view, handed),
-        cwd: handed.repo.to_path_buf(),
-        egress: Some(Egress {
-            socket: handed.egress_socket.clone(),
-            bridge,
-        }),
-    })
+    mounts
 }
 
 /// The Anthropic hosts a session reaches by default: the API, and where a claude.ai login

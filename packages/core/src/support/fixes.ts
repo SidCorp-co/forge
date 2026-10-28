@@ -12,6 +12,8 @@ import {
   planCall,
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
+import { runConfirmed } from './ability-run.js';
+import { grantsOf, isConfirmer } from './grants.js';
 import { changeName, nothingDone } from './propose.js';
 import { fileRecord, type RecordRequest } from './record.js';
 import { confirmRefusal, fixResultLine, limitsOf } from './rules.js';
@@ -27,6 +29,26 @@ import {
   settleFixResult,
 } from './store.js';
 import { postInThread } from './thread.js';
+
+/** The changes that wait on a confirmer the room's grant names, not on the asker (REQ-75 r5 BC-27). */
+const CONFIRMER_KINDS = new Set<ProposalRow['kind']>(['build', 'deploy', 'command']);
+
+/**
+ * A confirmer-gated change is confirmed only by a confirmer the grant names, by the username the
+ * chat server signed the message with; the asker or a confirmer may cancel it.
+ */
+function confirmerRefusal(
+  grants: ReturnType<typeof grantsOf>,
+  fix: ProposalRow,
+  author: { key: string; label: string | null },
+  verb: 'confirm' | 'cancel',
+): string | null {
+  if (isConfirmer(grants, author.label)) return null;
+  if (verb === 'cancel' && author.key === fix.askerKey) return null;
+  const who =
+    (grants.confirmers ?? []).map((c) => `@${c}`).join(' or ') || 'a confirmer this room names';
+  return `Only ${who} can confirm this change. ${nothingDone(fix)}`;
+}
 
 /** Tell the session what became of a fix, as a message of its own in the next turn. */
 async function tellSession(
@@ -91,9 +113,16 @@ export async function answerConfirm(input: {
     });
     return 'unknown';
   }
-  const refusedFor = confirmRefusal(fix, author.key, nothingDone(fix));
+  const grants = grantsOf(input.config);
+  const refusedFor = CONFIRMER_KINDS.has(fix.kind)
+    ? confirmerRefusal(grants, fix, author, input.verb)
+    : confirmRefusal(fix, author.key, nothingDone(fix));
   if (refusedFor) {
-    await record('refused', fix, { reason: 'not the asker', asker: fix.askerKey });
+    await record('refused', fix, {
+      reason: CONFIRMER_KINDS.has(fix.kind) ? 'not a confirmer' : 'not the asker',
+      asker: fix.askerKey,
+      ...(CONFIRMER_KINDS.has(fix.kind) ? { confirmers: grants.confirmers ?? [] } : {}),
+    });
     await postInThread({ room, thread: fix.thread, text: refusedFor });
     return 'refused';
   }
@@ -144,6 +173,15 @@ export async function answerConfirm(input: {
   if (!claimed) return 'unknown';
   await record('fix_confirmed', fix, null);
   if (fix.kind === 'filing') return recordConfirmed(room, fix, input.conversationId);
+  if (CONFIRMER_KINDS.has(fix.kind)) {
+    return runConfirmed(
+      room,
+      fix,
+      input.conversationId,
+      (note) => tellSession(room, fix, input.conversationId, note),
+      author.label,
+    );
+  }
   return runFix(room, fix, limits.responseMaxBytes, input.conversationId);
 }
 

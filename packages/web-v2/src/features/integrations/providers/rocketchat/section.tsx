@@ -3,7 +3,7 @@
 // id) lives on the connection; the rooms this project listens on (`rids`, 1..20) are binding-tier.
 // Saving any of it hot-reloads the live bot socket server-side — no core restart.
 
-import { Badge, Field, Input } from "@/design";
+import { Badge, Button, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useMemo, useState } from "react";
@@ -14,17 +14,43 @@ import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, useBindingT
 import { AddRocketchatForm } from "./add-form";
 import type { RocketchatReadConfig } from "./config";
 import { RoomsField } from "./rooms-field";
+import { EditSupportRoomForm, NewSupportRoomForm } from "./support-room-form";
+import { SupportRoomsTable } from "./support-rooms-table";
 
 export function RocketchatSettings({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const binding = useMemo(() => (list.data?.items ?? []).find((i) => i.provider === "rocketchat"), [list.data]);
+  const [newBot, setNewBot] = useState(false);
   const t = useCopy();
 
   if (list.isLoading) return <p className="fg-body-sm text-muted">{t("integrations.provider.loading")}</p>;
-  if (!binding) return <AddRocketchatForm projectId={projectId} />;
+  if (!binding) {
+    return (
+      <div className="flex flex-col gap-6">
+        {newBot ? (
+          <div className="flex flex-col gap-2">
+            <AddRocketchatForm projectId={projectId} />
+            <div>
+              <Button variant="ghost" size="sm" onClick={() => setNewBot(false)}>
+                {t("integrations.support.useBot")}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <NewSupportRoomForm projectId={projectId} onNewBot={() => setNewBot(true)} />
+        )}
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6 divide-y divide-line">
       <RocketchatBinding projectId={projectId} binding={binding} />
+      <div className="pt-6">
+        <EditSupportRoomForm projectId={projectId} binding={binding} />
+      </div>
+      <div className="pt-6">
+        <SupportRoomsTable projectId={projectId} />
+      </div>
     </div>
   );
 }
@@ -36,6 +62,8 @@ function RocketchatBinding({ projectId, binding }: { projectId: string; binding:
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
   const cfg = binding.config as RocketchatReadConfig;
   const savedRids = useMemo(() => cfg.rids ?? [], [cfg.rids]);
+  // a support room's one group is edited with the rest of the room, in the support-room form
+  const isSupportRoom = Boolean((binding.bindingConfig as { support?: unknown }).support);
   const [authToken, setAuthToken] = useState("");
   const [botUserId, setBotUserId] = useState("");
   const [showRotate, setShowRotate] = useState(false);
@@ -70,13 +98,15 @@ function RocketchatBinding({ projectId, binding }: { projectId: string; binding:
         <Badge tone={badge.tone}>{badge.label}</Badge>
       </div>
       <TestOutcome error={test.error} result={test.result} okFallback={t("integrations.rocket.ok")} />
-      <RoomsField
-        projectId={projectId}
-        bindingId={binding.id}
-        savedRids={savedRids}
-        saving={update.isPending}
-        onSave={(rids) => write({ config: { rids } })}
-      />
+      {!isSupportRoom && (
+        <RoomsField
+          projectId={projectId}
+          bindingId={binding.id}
+          savedRids={savedRids}
+          saving={update.isPending}
+          onSave={(rids) => write({ config: { rids } })}
+        />
+      )}
       {showRotate && !orgLocked && (
         <RotateFields authToken={authToken} onAuthToken={setAuthToken} botUserId={botUserId} onBotUserId={setBotUserId} />
       )}

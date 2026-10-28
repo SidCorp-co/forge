@@ -88,7 +88,7 @@ export const DOORS: readonly DoorPolicy[] = [
     id: 'operations-reply',
     cell: 'role:chat',
     ending: 'refusal',
-    why: "a Rocket.Chat operations room's session posting into a thread whose readers are the team a project admin bound the room for — issue keys, statuses and release names are what they ask for, so `public:report`'s `no-developer-detail` would refuse the answer itself; the reader `web-chat-reply` argues for. A refusal for `support-reply`'s reason: the session is on the line when it calls `forge_support reply` (REQ-75 BC-20)",
+    why: "a Rocket.Chat operations room's session, or a support group bound with `readers: team` (REQ-75 r5), posting into a thread whose readers are the team a project admin bound the room for — issue keys, file paths, statuses and release names are what they ask for, so `public:report`'s `no-developer-detail` would refuse the answer itself; the reader `web-chat-reply` argues for. A refusal for `support-reply`'s reason: the session is on the line when it calls `forge_support reply` (REQ-75 BC-20)",
   },
 ];
 

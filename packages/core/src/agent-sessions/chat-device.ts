@@ -59,6 +59,38 @@ export async function requireConfiningBox(deviceId: string): Promise<void> {
   );
 }
 
+/** The capabilities of `need` a box's last heartbeat did not declare `true`, with its name; null for no such box. */
+export async function boxLacks(
+  deviceId: string,
+  need: readonly string[],
+): Promise<{ name: string; lacks: string[] } | null> {
+  const [box] = await db
+    .select({ name: devices.name, capabilities: devices.capabilities })
+    .from(devices)
+    .where(eq(devices.id, deviceId))
+    .limit(1);
+  if (!box) return null;
+  const declared = (box.capabilities ?? {}) as Record<string, unknown>;
+  return { name: box.name, lacks: need.filter((c) => declared[c] !== true) };
+}
+
+/**
+ * A turn that shows its checkout other than writable (REQ-75 r5 BC-27) is refused by name on a box
+ * that does not declare it can: an older runner ignores the field and would mount the checkout
+ * writable, which is exactly what the room was not granted.
+ */
+export async function requireCheckoutScoping(
+  deviceId: string,
+  need: readonly string[],
+): Promise<void> {
+  const box = await boxLacks(deviceId, need);
+  if (box && box.lacks.length === 0) return;
+  throw refuseSession(
+    'BOX_CANNOT_SCOPE_CHECKOUT',
+    `This turn shows its session the checkout as its room's grant says, and the runner box ${box?.name ?? deviceId} does not declare ${(box?.lacks ?? need).join(', ')}, so nothing was dispatched: its forge-runner predates it — update it on the box (\`forge-runner update\`).`,
+  );
+}
+
 /** A turn is refused by name when no socket reads its box's room: nobody would take the frame. */
 export function requireListeningBox(deviceId: string): void {
   if (!agentSessionsPorts().boxIsListening(deviceId)) throw noClaudeClient('session');

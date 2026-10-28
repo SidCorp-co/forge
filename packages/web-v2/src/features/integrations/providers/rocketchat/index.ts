@@ -8,7 +8,7 @@ export const rocketchat: ProviderModule = {
   secretPlaceholder: "bot personal-access token",
   drillable: true,
   agentPathKind: "none",
-  bindingKeys: ["rids"],
+  bindingKeys: ["rids", "support", "operations"],
   target: (config) => urlHost(config.serverUrl),
   section: () => import("./section").then((m) => ({ default: m.RocketchatSettings })),
   connectionSection: () =>

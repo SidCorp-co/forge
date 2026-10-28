@@ -39,6 +39,8 @@ export const DEVICE_REFUSAL_CODES = [
 	"CHECKOUT_ANCESTRY_NOT_ASKED",
 	"CHECKOUT_ANCESTRY_MALFORMED",
 	"CHECKOUT_ANCESTRY_OTHER_REPOSITORY",
+	/** A box answered a `host.command` or `build.push` (REQ-75 r5) that nobody asked of it, or after the wait ended. */
+	"BOX_ANSWER_NOT_ASKED",
 	/** A token core handed a chat (a turn, a session, an agreed proposal) on a route only a box may call. */
 	"TURN_CREDENTIAL_NOT_A_BOX",
 	...POOL_CLAIM_REFUSAL_CODES,
@@ -50,6 +52,7 @@ export const DEVICE_REFUSAL_STATUSES = {
 	MASTER_SESSION_NOT_HELD: 404,
 	CHECKOUT_HEAD_NOT_ASKED: 404,
 	CHECKOUT_ANCESTRY_NOT_ASKED: 404,
+	BOX_ANSWER_NOT_ASKED: 404,
 	TURN_CREDENTIAL_NOT_A_BOX: 403,
 	POOL_NOT_FOUND: 404,
 	POOL_ALREADY_HELD: 409,

@@ -2,6 +2,14 @@ export { clearRunnerLimit, stampRunnerLimit } from './apply-runner-limit.js';
 export { attributeFailureToRunner } from './attribute-failure.js';
 export { bootstrapRunnerAdapters } from './bootstrap.js';
 export {
+  answerBoxAct,
+  type BoxActOutcome,
+  type BuildPushed,
+  HOST_COMMAND_TIMEOUT_MS,
+  pushSupportBuild,
+  runHostCommand,
+} from './box-acts.js';
+export {
   ANCESTRY_PAIRS_MAX,
   type AncestryPair,
   answerCheckoutAncestry,

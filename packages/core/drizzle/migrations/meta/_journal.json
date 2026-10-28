@@ -3459,6 +3459,13 @@
       "when": 1829606400000,
       "tag": "0540_a_projects_own_agent_runs_its_release_deploy",
       "breakpoints": true
+    },
+    {
+      "idx": 542,
+      "version": "7",
+      "when": 1829779200000,
+      "tag": "0542_a_rooms_grant_waits_on_its_confirmers",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,8 @@ export { rocketchatIntegration } from './adapter.js';
 export { activeRocketChatBinding, rocketChatBindingOfProject } from './binding.js';
 export {
   type ActiveConnection,
+  type ConnectionListening,
+  connectionListening,
   rocketChatManager,
   startRocketChatManager,
   stopRocketChatManager,
@@ -18,8 +20,10 @@ export {
 } from './outbound.js';
 export { roomForProject } from './project-room.js';
 export {
+  type BotMembership,
   buildMessagePermalink,
   fetchAttachmentBytes,
+  fetchBotMembership,
   fetchBotRooms,
   fetchMessage,
   fetchMessagesBeside,
