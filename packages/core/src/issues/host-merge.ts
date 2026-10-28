@@ -14,7 +14,7 @@ import { issueGateOf } from './gates.js';
 import { resolveIssuesForChangeRequest } from './head-ref-link.js';
 import { type MergeIdentity, mergeIdentityOf, recordRefusedStamp } from './merge-identity.js';
 import { recordIssueMerge } from './merge-record.js';
-import { projectCreatorOf, readLandingBranches } from './ports.js';
+import { linkFiledIssueToChangeRequest, projectCreatorOf, readLandingBranches } from './ports.js';
 
 /**
  * Every issue the merged branch delivers: each one Forge's record of its change request links, and
@@ -242,10 +242,10 @@ async function fileFromMerge(
     { actor },
   );
   if (filing.pullRequestId) {
-    await tx
-      .insert(repoPullRequestIssues)
-      .values({ pullRequestId: filing.pullRequestId, issueId: issue.id, linkedBy: 'head-ref' })
-      .onConflictDoNothing();
+    await linkFiledIssueToChangeRequest(tx, {
+      pullRequestId: filing.pullRequestId,
+      issueId: issue.id,
+    });
   }
   await recordIssueMerge(tx, {
     issueId: issue.id,

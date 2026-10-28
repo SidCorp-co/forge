@@ -212,3 +212,27 @@ export async function relinkChangeRequestIssue(act: LinkAct): Promise<LinksOutco
     return { ok: true, links: await linksOf(tx, row.id, act.number, row.state) };
   });
 }
+
+/**
+ * Links an issue Forge filed from a change request's merge to that request (REQ-76 BC-8,
+ * `issues/host-merge.ts`), in the caller's transaction, as its head-ref link: the request's branch is
+ * what delivered it. A link already there is kept.
+ */
+export async function linkFiledIssueToChangeRequest(
+  tx: Tx,
+  link: { pullRequestId: string; issueId: string },
+): Promise<void> {
+  const [last] = await tx
+    .select({ at: max(repoPullRequestIssues.position) })
+    .from(repoPullRequestIssues)
+    .where(eq(repoPullRequestIssues.pullRequestId, link.pullRequestId));
+  await tx
+    .insert(repoPullRequestIssues)
+    .values({
+      pullRequestId: link.pullRequestId,
+      issueId: link.issueId,
+      linkedBy: 'head-ref',
+      position: last?.at === null || last?.at === undefined ? 0 : last.at + 1,
+    })
+    .onConflictDoNothing();
+}

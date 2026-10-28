@@ -227,8 +227,7 @@ interface IssuePorts {
   ) => Promise<{ id: string; body: string; parentId: string | null }>;
 
   readProjectDocument: (projectId: string) => Promise<{ document: IssueProjectDocument } | null>;
-  /** The project's judge (`qa` in its policy), which the verified rule reads; null where it declares none. */
-  /** Who criteria are judged by under the project's gate profile (REQ-76 BC-7). */
+  /** Who criteria are judged by under the project's gate profile (REQ-76 BC-7); null where it declares none. */
   readJudge: (projectId: string) => Promise<VerifiedJudge | null>;
   /** Whether a live master serves the project (`masters/read.ts:masterServingOf`), so a wait on it can read stuck. */
   masterServingOf: (projectId: string) => Promise<MasterServing>;
@@ -239,6 +238,11 @@ interface IssuePorts {
   readLandingBranches: (
     projectId: string,
   ) => Promise<{ defaultBranch: string | null; promoted: string | null; promotes: string[] }>;
+  /** Links an issue filed from a change request's merge to that request, in the caller's transaction (REQ-76 BC-8). */
+  linkFiledIssueToChangeRequest: (
+    tx: Tx,
+    link: { pullRequestId: string; issueId: string },
+  ) => Promise<void>;
   issueRefPattern: (prefixes: readonly string[]) => RegExp;
   declaredIssueSeqs: (message: string, pattern: RegExp, baseBranch: string) => number[];
   subjectOf: (message: string) => string;
@@ -447,6 +451,7 @@ export const readProjectDocument = port('readProjectDocument');
 export const readJudge = port('readJudge');
 export const changedTracedOf = port('changedTracedOf');
 export const readLandingBranches = port('readLandingBranches');
+export const linkFiledIssueToChangeRequest = port('linkFiledIssueToChangeRequest');
 export const issueRefPattern = port('issueRefPattern');
 export const declaredIssueSeqs = port('declaredIssueSeqs');
 export const subjectOf = port('subjectOf');

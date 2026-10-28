@@ -45,7 +45,11 @@ import { fastLaneMergeRefusal } from './fast-lane/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
-import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-host/index.js';
+import {
+  linkFiledIssueToChangeRequest,
+  resolveSourceHost,
+  SourceHostUnavailable,
+} from './integrations/source-host/index.js';
 import { provideIssuePorts } from './issues/index.js';
 import {
   broadcastSessionEvent,
@@ -248,6 +252,7 @@ export function provideWorkPorts(): void {
     masterServingOf,
     changedTracedOf,
     readLandingBranches,
+    linkFiledIssueToChangeRequest,
     issueRefPattern,
     declaredIssueSeqs,
     subjectOf,

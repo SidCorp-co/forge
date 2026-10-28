@@ -273,3 +273,14 @@ export async function plannedRevisionFor(
   }
   return { plannedRevision: r.currentRevision };
 }
+
+/**
+ * Whether an issue may link to a requirement at `status` on `projectId`: an agreed one always, a
+ * draft where the project's gate `link_requirement_agreed` is not enforced (REQ-76 BC-4).
+ */
+export async function linkRefusalOn(
+  projectId: string,
+  status: Parameters<typeof linkIssueRefusal>[0],
+): Promise<ReturnType<typeof linkIssueRefusal>> {
+  return linkIssueRefusal(status, await gateOf(projectId, 'link_requirement_agreed'));
+}
