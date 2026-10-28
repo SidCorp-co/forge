@@ -263,10 +263,13 @@ mod tests {
     }
 
     /// `/bin/sh -c` stands in for ssh: the remote end is the one that reads the command as shell.
+    /// Unix only: Windows has no `/bin/sh`, and the spawn itself is what these tests exercise.
+    #[cfg(unix)]
     fn sh(script: &str) -> Vec<String> {
         vec!["-c".into(), script.into()]
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn what_a_command_printed_and_how_it_ended_come_back() {
         let ran = run(
@@ -282,6 +285,7 @@ mod tests {
         assert!(!ran.truncated && !ran.timed_out);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_flood_of_output_is_cut_to_the_cap_and_says_so() {
         let ran = run(
@@ -296,6 +300,7 @@ mod tests {
         assert_eq!(ran.exit_code, Some(0));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_command_past_its_time_is_killed_and_said_timed_out() {
         let started = Instant::now();

@@ -75,7 +75,9 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
         if k.trim().is_empty() {
             return Err(format!("header name is empty in `{h}`"));
         }
-        headers.push((k.trim().to_string(), v.trim().to_string()));
+        let name = k.trim();
+        refuse_reserved_header(name, !form.is_empty())?;
+        headers.push((name.to_string(), v.trim().to_string()));
     }
 
     if spec.path.trim().is_empty() {
@@ -113,6 +115,24 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
         headers,
         include_headers: spec.include,
     })
+}
+
+/// A `-H` the runner must write itself. Any other caller header replaces the runner's own of the
+/// same name when the request is sent (ISS-593). These two cannot: a form's Content-Type carries
+/// the boundary the runner drew, and the credential is the one the runner resolved, never a
+/// caller's.
+fn refuse_reserved_header(name: &str, form: bool) -> Result<(), String> {
+    if name.eq_ignore_ascii_case("authorization") {
+        return Err(format!(
+            "-H `{name}`: forge-runner api sends the credential it resolved itself and no other — drop the header"
+        ));
+    }
+    if form && name.eq_ignore_ascii_case("content-type") {
+        return Err(format!(
+            "-H `{name}` beside -F: -F draws its own boundary and writes the multipart/form-data type that carries it — drop the header, and claim a part's type with `name=@path;type=<mime>`"
+        ));
+    }
+    Ok(())
 }
 
 /// The part of the path before an empty segment, where one sits between two `/`. The query is not
@@ -243,6 +263,42 @@ mod tests {
         }
         let why = build(&spec(Some("not json"), &[]), &NO_SLUG).unwrap_err();
         assert_eq!(why, "--data is not valid JSON");
+    }
+
+    fn with_headers<'a>(base: RequestSpec<'a>, headers: &'a [String]) -> RequestSpec<'a> {
+        RequestSpec { headers, ..base }
+    }
+
+    /// A form's Content-Type carries the boundary the runner draws, so a caller's would make the
+    /// body unreadable; and the api command sends only the credential it resolved (ISS-593).
+    #[test]
+    fn a_header_the_runner_must_write_itself_is_refused_by_name() {
+        let form = vec!["file=@shot.png".to_string()];
+        for name in ["Content-Type", "content-type", "CONTENT-TYPE"] {
+            let h = [format!("{name}: multipart/form-data")];
+            let why = build(&with_headers(spec(None, &form), &h), &NO_SLUG).unwrap_err();
+            assert!(why.contains("-F draws its own boundary"), "{why}");
+        }
+        for (data, form) in [(None, &[][..]), (Some("{}"), &[][..]), (None, &form[..])] {
+            for name in ["Authorization", "authorization"] {
+                let h = [format!("{name}: Bearer other")];
+                let why = build(&with_headers(spec(data, form), &h), &NO_SLUG).unwrap_err();
+                assert!(
+                    why.contains("sends the credential it resolved itself"),
+                    "{why}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_callers_content_type_beside_json_is_kept_for_the_send_to_apply() {
+        let h = ["Content-Type: application/json".to_string()];
+        let req = build(&with_headers(spec(Some("{}"), &[]), &h), &NO_SLUG).unwrap();
+        assert_eq!(
+            req.headers,
+            vec![("Content-Type".to_string(), "application/json".to_string())]
+        );
     }
 
     #[test]

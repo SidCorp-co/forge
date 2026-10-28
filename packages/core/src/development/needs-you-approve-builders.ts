@@ -52,6 +52,8 @@ export function revisionDecision(
           act: 'revision.accept',
           path: filled('revision.accept', params),
           body: {},
+          // a sign-off records why (REQ-4 BC-16): prefilledReason sends the recommendation's why
+          needsReason: true,
           effect: `Revision ${n} becomes the current revision of ${row.key}.`,
           recommended: true,
         }),

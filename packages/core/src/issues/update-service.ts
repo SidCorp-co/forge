@@ -12,6 +12,7 @@ import { refuseHeldTake } from './blocked-by.js';
 import { callerBoxOf } from './caller-box.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import { assertDesignPasses } from './design-record.js';
+import { issueGateOf } from './gates.js';
 import { refuseScopeHeldForBuild } from './issue-scope.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import { scrubIssueText } from './patch-fields.js';
@@ -20,6 +21,7 @@ import {
   assertPatternReviewsSettledForIssue,
   catalogOf,
 } from './patterns.js';
+import { refusePlanUnapprovedForBuild } from './plan-checkpoint.js';
 import { plannedRevisionFor } from './ports.js';
 import { ISSUE_READ_COLUMNS, type IssueRow, issueScopeOf } from './read-service.js';
 import { leaseOriginFor } from './run-holder.js';
@@ -35,7 +37,7 @@ import {
 
 const refuse = refuser<IssueUpdateRefusalCode>('ISSUE_UPDATE_REFUSED');
 
-/** The steps the design check, a new pattern awaiting its reviewer or an unanswered return holds the work out of. */
+/** The steps the design check, the plan checkpoint, a new pattern awaiting its reviewer or an unanswered return holds the work out of. */
 const BUILD_STEPS: readonly string[] = ['build', 'test', 'release'];
 
 type IssueUpdateInput = {
@@ -87,11 +89,11 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
     after: scrubIssueText(level, input.changes.after),
   };
 
-  // the design check reads the project's catalog off the project document: read before the row lock
-  const catalog =
-    scope && workState?.step && BUILD_STEPS.includes(workState.step)
-      ? await catalogOf(scope.projectId)
-      : undefined;
+  // the design check reads the project's catalog and the plan checkpoint its gate off the project
+  // document: read before the row lock
+  const intoBuild = scope && workState?.step && BUILD_STEPS.includes(workState.step) ? scope : null;
+  const catalog = intoBuild ? await catalogOf(intoBuild.projectId) : undefined;
+  const planGate = intoBuild ? await issueGateOf(intoBuild.projectId, 'plan_approval') : null;
 
   // the box a lease write comes from is stamped on the lease it takes (`run-holder.ts`)
   const writer =
@@ -140,6 +142,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       columns.sessionContext = read.rest;
       await writeSplitSessionContext(tx, issueId, read, origin);
     }
+    let planCheckpointAsked = false;
     if (workState) {
       // a new pattern awaiting its reviewer, a return the issue has not answered, or a design that
       // is missing or incomplete holds the work at design (Issue lifecycle r15 design-check)
@@ -150,6 +153,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
         // (a run at build recording its head is not a move into build)
         if ((await readWorkState(tx, issueId))?.step !== workState.step) {
           await assertDesignPasses(tx, { id: issueId, projectId: scope.projectId }, catalog);
+          planCheckpointAsked = true;
           // the design it now passes may meet a scope another run is building (REQ-36 BC-5)
           await refuseScopeHeldForBuild(tx, { id: issueId, projectId: scope.projectId });
         }
@@ -163,6 +167,9 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .where(eq(issues.id, issueId))
       .returning({ id: issues.id });
     if (!row) throw notFound('issue not found');
+    // where plan approval is enforced, build waits for approved since the plan's last write (REQ-2
+    // BC-4; issue-lifecycle design-check -> in_progress), asked once this write's own plan is in
+    if (planCheckpointAsked && planGate) await refusePlanUnapprovedForBuild(tx, issueId, planGate);
     if (updates.acceptanceCriteria !== undefined) {
       await syncCriteriaFromText(
         tx,

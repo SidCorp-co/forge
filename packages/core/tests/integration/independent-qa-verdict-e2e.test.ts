@@ -98,7 +98,11 @@ async function agreedRequirement(): Promise<string> {
   const key = String(created.key);
   await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   await ok(onProject('POST', `/requirements/${key}/revisions/1/propose`, {}));
-  await ok(onProject('POST', `/requirements/${key}/revisions/1/accept`, {}));
+  await ok(
+    onProject('POST', `/requirements/${key}/revisions/1/accept`, {
+      reason: 'Accepted for this test.',
+    }),
+  );
   await ok(
     onProject('POST', `/requirements/${key}/agree`, {
       revision: 1,

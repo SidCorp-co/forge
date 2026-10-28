@@ -598,9 +598,10 @@ fn write_obstruction(path: &std::path::Path) -> Option<String> {
 
 /// Classify the file at `path` — from the bytes THIS function read, never from a second read.
 ///
-/// The master sweep rewrites that file on every pass for a live pane, so reading it here and
-/// handing the path to `read_session_config` to read again lets the two reads answer about two
-/// different files (ISS-1191).
+/// The master sweep writes that file whenever it places a pane, so reading it here and handing
+/// the path to `read_session_config` to read again lets the two reads answer about two different
+/// files (ISS-1191). The comparison sets a relay ticket's rotation aside, as the sweep's does
+/// (`same_servers`): core signs a fresh one on every answer (ISS-610).
 fn session_file(
     path: &std::path::Path,
     servers: &serde_json::Map<String, serde_json::Value>,
@@ -625,7 +626,9 @@ fn session_file(
     }
     match runner_workspace::mcp::config::session_servers(text) {
         None => SessionFile::Unparseable,
-        Some(on_disk) if on_disk == *servers => SessionFile::Matches,
+        Some(on_disk) if runner_workspace::mcp::config::same_servers(&on_disk, servers) => {
+            SessionFile::Matches
+        }
         Some(_) => SessionFile::Differs,
     }
 }
@@ -637,9 +640,10 @@ fn session_file(
 /// the servers do not land in the checkout's `.mcp.json`, which is the row directly above this
 /// one, and it reports what the file holds rather than asserting a write it did not perform.
 ///
-/// `pane` is the precondition the comparison needs. `write_session` runs at exactly two points,
-/// both of them inside the master sweep and both with a pane in hand: immediately before a pane
-/// launches, and on the refresh for a pane already current. Nothing writes that file for a project
+/// `pane` is the precondition the comparison needs. `write_session` runs at exactly one point,
+/// inside the master sweep with a pane in hand: immediately before a pane launches. A live pane's
+/// file is never rewritten, so it keeps the relay ticket the pane was started with (ISS-610).
+/// Nothing writes that file for a project
 /// with no pane, so on a box just bound, a box with the daemon off, or a project with no claimable
 /// work, the file's state is not a fact about any pane — and reading it as one turned every such
 /// project into a `✖` and `exit(1)` on a box where nothing was wrong.

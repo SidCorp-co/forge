@@ -1,5 +1,7 @@
 //! Build a temp MCP config file for a job run.
 
+mod identity;
+pub use identity::*;
 mod session;
 pub use session::*;
 mod reach;

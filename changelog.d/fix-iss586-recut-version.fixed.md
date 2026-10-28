@@ -1,0 +1,1 @@
+**A release re-cut no longer goes backwards.** A re-cut of an unshipped roster whose version sits below one claimed since takes the next version above it, and its attempt names the version it went above.

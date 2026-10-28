@@ -89,7 +89,14 @@ function ruleOf(metadata: Record<string, unknown>): ReleaseVersionRule {
   const cut = obj(metadata.versionCut);
   const decided = cut?.decided;
   if (!cut || !(RELEASE_VERSION_DECISIONS as readonly unknown[]).includes(decided)) {
-    return { decided: 'unrecorded', from: null, carriers: [], line: null, taken: false };
+    return {
+      decided: 'unrecorded',
+      from: null,
+      carriers: [],
+      line: null,
+      taken: false,
+      overtaken: null,
+    };
   }
   return {
     decided: decided as ReleaseVersionRule['decided'],
@@ -97,6 +104,7 @@ function ruleOf(metadata: Record<string, unknown>): ReleaseVersionRule {
     carriers: carriersIn(cut.carriers),
     line: str(cut.line),
     taken: str(cut.takenBy) !== null,
+    overtaken: str(cut.overtakenBy),
   };
 }
 

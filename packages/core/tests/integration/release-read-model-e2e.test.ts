@@ -121,7 +121,7 @@ async function agreedRequirement(): Promise<{ id: string; bc: Record<string, str
   await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   for (const [path, body] of [
     [`/requirements/${key}/revisions/1/propose`, {}],
-    [`/requirements/${key}/revisions/1/accept`, {}],
+    [`/requirements/${key}/revisions/1/accept`, { reason: 'Accepted for this test.' }],
     [`/requirements/${key}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' }],
   ] as const) {
     const r = await call('owner', 'POST', path, body);

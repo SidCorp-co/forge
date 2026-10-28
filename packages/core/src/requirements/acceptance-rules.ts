@@ -62,18 +62,20 @@ export function acceptRefusals(input: {
 // workflow requirement-lifecycle edge → dropped: from any status the machine lets leave for it (not
 // accepted, not dropped), with a reason, and never while a live issue links to it
 /**
- * A sign-off that writes a baseline records why (REQ-4 BC-4, ADR 0007): an agree or a re-pin with
- * no reason is refused by name, never stored with an empty one.
+ * Every sign-off records who signed and why (REQ-4 BC-16, ADR 0007): an agree, a re-pin or the accept
+ * of a proposed revision with no reason is refused by name, never stored with an empty one.
  */
+const SIGNOFF_ACTS = { agree: 'an agree', repin: 'a re-pin', accept: 'an accept' } as const;
+
 export function signoffReasonRefusal(
-  act: 'agree' | 'repin',
+  act: keyof typeof SIGNOFF_ACTS,
   reason: string | null | undefined,
 ): RequirementRefusal | null {
   if (reason?.trim()) return null;
   return {
     code: 'REQUIREMENT_SIGNOFF_REASON_REQUIRED',
     path: '/reason',
-    detail: `${act === 'agree' ? 'an agree' : 'a re-pin'} records why it is signed and on whose authority: send { revision, reason } with reason a non-blank sentence.`,
+    detail: `${SIGNOFF_ACTS[act]} records why it is signed and on whose authority: send ${act === 'accept' ? '{ reason }' : '{ revision, reason }'} with reason a non-blank sentence.`,
   };
 }
 

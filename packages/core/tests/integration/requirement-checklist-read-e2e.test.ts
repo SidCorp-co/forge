@@ -69,7 +69,9 @@ describe("a requirement's checklists read", () => {
   it('reads a draft against its ready checklist: gaps in plain words, assumed answers with their source, no acceptance yet', async () => {
     const key = await draft();
     await ok(on('POST', `/requirements/${key}/revisions/1/propose`, {}));
-    await ok(on('POST', `/requirements/${key}/revisions/1/accept`, {}));
+    await ok(
+      on('POST', `/requirements/${key}/revisions/1/accept`, { reason: 'Accepted for this test.' }),
+    );
     const r = await read(key);
     expect(r.key).toBe(key);
     expect(r.revision).toBe(1);
@@ -100,7 +102,9 @@ describe("a requirement's checklists read", () => {
     const key = await draft();
     await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
     await ok(on('POST', `/requirements/${key}/revisions/1/propose`, {}));
-    await ok(on('POST', `/requirements/${key}/revisions/1/accept`, {}));
+    await ok(
+      on('POST', `/requirements/${key}/revisions/1/accept`, { reason: 'Accepted for this test.' }),
+    );
     await ok(
       on('POST', `/requirements/${key}/agree`, {
         revision: 1,
@@ -132,7 +136,9 @@ describe("a requirement's checklists read", () => {
       }),
     );
     await ok(on('POST', `/requirements/${key}/revisions/2/propose`, {}));
-    await ok(on('POST', `/requirements/${key}/revisions/2/accept`, {}));
+    await ok(
+      on('POST', `/requirements/${key}/revisions/2/accept`, { reason: 'Accepted for this test.' }),
+    );
 
     const corrected = await read(key);
     expect(corrected.revision).toBe(2);

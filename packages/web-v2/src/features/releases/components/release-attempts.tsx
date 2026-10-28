@@ -18,6 +18,7 @@ function ruleLine(c: ReleaseCutView, t: Copy): string {
   if (r.decided === "reused") return t("releases.rule.reused", { v: c.version });
   if (r.decided === "bumped") {
     if (r.taken && r.carriers.length === 0 && !r.line) return t("releases.rule.bumpedTaken", { v: c.version, from: r.from ?? "" });
+    if (r.overtaken && r.carriers.length === 0 && !r.line) return t("releases.rule.bumpedOvertaken", { v: c.version, from: r.from ?? "", above: r.overtaken });
     return r.carriers.length > 0
       ? t("releases.rule.bumpedCarried", { v: c.version, from: r.from ?? "", carriers: carriersOf(r.carriers, t) })
       : t("releases.rule.bumpedLine", { v: c.version, from: r.from ?? "", line: r.line ?? "" });

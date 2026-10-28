@@ -19,7 +19,7 @@ import {
 } from '../db/schema-issue-work-state.js';
 import type { CallerBox } from './caller-box.js';
 import { issueWorkInFlightSql } from './issue-lease.js';
-import { declaredRunOf } from './run-holder.js';
+import { declaredRunOf, holderSentence, runSessionHoldersOf } from './run-holder.js';
 
 export { type WorkStep, workSteps };
 
@@ -250,7 +250,9 @@ function workStateObjectSql(withSteps: boolean): SQL {
 export const workStateViewSql = sql<WorkStateView | null>`${workStateObjectSql(true)}`;
 export const workStateListSql = sql<WorkStateListView | null>`${workStateObjectSql(false)}`;
 /**
- * Who holds the issue: a live lease on its work state, or a job, run or fleet lease over it. A lease
+ * Who holds the issue: a live lease on its work state, a live run session over it (its fleet lease,
+ * or its declaration over the issue while it was over, ISS-589: `run-holder.ts:runSessionHoldersOf`,
+ * the reading the awaiting_release guard and runs/standing share), or a job or run over it. A lease
  * whose holder stopped beating is abandoned, not held — the wedge net's reading (`classifyLease`).
  */
 export async function issueHolder(
@@ -261,6 +263,8 @@ export async function issueHolder(
 ): Promise<string | null> {
   const declared = await declaredRunOf(executor, issue.id, now);
   if (declared) return `lease ${declared.holder}`;
+  const [session] = await runSessionHoldersOf(executor, issue.id, exceptRunId);
+  if (session) return holderSentence(session);
   const rows = (await executor.execute(sql`
     SELECT ${issueWorkInFlightSql({
       issueId: sql`i.id`,

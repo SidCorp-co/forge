@@ -5,8 +5,9 @@
 // A RELEASE is one roster carried through its attempts. Attempt N+1 re-cuts attempt N when its
 // roster is the same SET of issues and attempt N ended without shipping; anything added or dropped
 // makes it a new release, with a new version. A re-cut wears the version its predecessor wore unless
-// something outside Forge already carries that version, and an ended attempt that never said what
-// left its box makes the rule undecidable, which is refused by name rather than guessed.
+// something outside Forge already carries that version or an attempt has since claimed a higher one,
+// and an ended attempt that never said what left its box makes the rule undecidable, which is refused
+// by name rather than guessed.
 
 import type {
   ReleaseVersionCarrier,
@@ -184,6 +185,8 @@ export type VersionDecision =
       line: string | null;
       /** A run of another release that already wears `recutOf.version`, where one does. */
       takenBy: string | null;
+      /** The highest version any attempt claimed, where it is above `recutOf.version` (ISS-586). */
+      overtakenBy: string | null;
     }
   | { kind: 'undecided'; version: string; recutOf: LineageRun; silent: LineageRun; attempt: number }
   | { kind: 'exhausted'; next: ReleaseVersion }
@@ -228,11 +231,19 @@ function onLine(version: string, line: PrereleaseLine | null): boolean {
 
 const lineName = (line: PrereleaseLine) => `${formatReleaseVersion(line.of)}-${line.label}`;
 
+/** `highest`, spelled, where it is above `version`: a version an attempt claimed since it was cut. */
+function aboveOf(version: string, highest: ReleaseVersion | null): string | null {
+  const v = parseReleaseVersion(version);
+  if (!v || !highest || compareReleaseVersions(highest, v) <= 0) return null;
+  return formatReleaseVersion(highest);
+}
+
 /**
  * The version a cut of `roster` wears, decided against every run the project has (the new run
  * excluded). A roster no unshipped attempt carried is a new release on a new version; a re-cut keeps
- * its predecessor's version unless any attempt that wore it is carried outside Forge or the line
- * moved, and is undecided while any attempt that wore it never said.
+ * its predecessor's version unless any attempt that wore it is carried outside Forge, the line moved,
+ * another release wears it, or an attempt has since claimed a higher one (wearing it again would move
+ * the version backwards), and is undecided while any attempt that wore it never said.
  */
 export function decideVersion(
   runs: readonly LineageRun[],
@@ -260,7 +271,8 @@ export function decideVersion(
   // another release now, so wearing it again would make it name two deliveries.
   const inChain = new Set(chain.map((r) => r.id));
   const taken = runs.find((r) => r.version === pred.version && !inChain.has(r.id) && attempted(r));
-  if (carriers.length > 0 || moved || taken) {
+  const overtakenBy = aboveOf(pred.version, highestClaimed(runs));
+  if (carriers.length > 0 || moved || taken || overtakenBy) {
     const fresh = freshVersion(runs, line);
     if (!fresh.ok) return fresh.decision;
     return {
@@ -271,6 +283,7 @@ export function decideVersion(
       carriers,
       line: moved && line ? lineName(line) : null,
       takenBy: taken ? taken.id : null,
+      overtakenBy,
     };
   }
   if (silent) return { kind: 'undecided', version: pred.version, recutOf: pred, silent, attempt };
@@ -286,6 +299,8 @@ export interface VersionCutRecord {
   carriers: ReleaseVersionCarrier[];
   line: string | null;
   takenBy: string | null;
+  /** The higher version an attempt had claimed since `from`, which moved this cut above it. */
+  overtakenBy: string | null;
 }
 
 export function cutRecordOf(
@@ -300,6 +315,7 @@ export function cutRecordOf(
       carriers: [],
       line: null,
       takenBy: null,
+      overtakenBy: null,
     };
   }
   return {
@@ -310,5 +326,6 @@ export function cutRecordOf(
     carriers: d.kind === 'bumped' ? d.carriers : [],
     line: d.kind === 'bumped' ? d.line : null,
     takenBy: d.kind === 'bumped' ? d.takenBy : null,
+    overtakenBy: d.kind === 'bumped' ? d.overtakenBy : null,
   };
 }
