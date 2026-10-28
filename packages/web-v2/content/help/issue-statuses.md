@@ -122,7 +122,7 @@ in your hands, not an agent's. Move it on when you want the work to resume.
 
 Dropping an issue records that the work is not going to happen. *Dropped* is its
 own ending rather than a kind of close: closing is refused unless the work
-shipped, so *Closed* is no way to record something you decided against. There is
+went out, so *Closed* is no way to record something you decided against. There is
 no path back out of *Dropped* — if the work turns out to be wanted after all,
 file a new issue.
 Dropped issues are kept, and appear alongside closed ones under **Finished** on
@@ -160,7 +160,7 @@ discarded out from under you.
 |---|---|
 | An issue sits still and asks nothing | It is probably *On hold* — resume it. On-hold issues never restart on their own. |
 | You answered a question and nothing happened | Check the status moved off *Needs info*. If it did not, the answer did not land — answer it again from the issue page. |
-| An issue looks finished but never shipped | It is at *Awaiting release*, waiting to be released. The issue page says when. |
+| An issue looks finished but was never released | It is at *Awaiting release*, waiting to be released. The issue page says when. |
 | You cannot edit a field | An agent is running the issue and would overwrite what you set. Wait for it to pause or finish — or answer it, if it is at *Needs info*. |
 | A dropped issue needs doing after all | File a new issue. Dropped is terminal by design. |
 

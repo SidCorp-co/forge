@@ -161,6 +161,20 @@ describe('where an unfinished batch leaves its roster', () => {
     expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
   });
 
+  it('opens its comment with a capital and ends each sentence with one full stop (ISS-1421 r40)', async () => {
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+
+    await abort(runId, 'judge-164 scratch release, aborted after reading the gate.');
+
+    const rows = await harness.db.execute(sql`SELECT body FROM comments WHERE issue_id = ${a}`);
+    const [body] = rows.map((r) => String(r.body));
+    expect(body).toMatch(
+      /^The release was aborted: judge-164 scratch release, aborted after reading the gate\. The issue is at Awaiting release\./,
+    );
+    expect(body).not.toMatch(/\.\./);
+  });
+
   it('leaves a roster that promoted at `releasing`, still claimed', async () => {
     const a = await insertIssue();
     const { runId } = await claim([a]);

@@ -192,7 +192,9 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
     expect(body.message).toContain(
       'A release cannot close this issue yet. It is not marked merged.',
     );
-    expect(body.message).toContain(markMergedSteps(false));
+    // This project names no repository, so a mark naming no commit is accepted (393, ISS-1421 r40).
+    expect(body.message).toContain(markMergedSteps(false, true));
+    expect(body.message).not.toContain('name the commit');
     expect(body.message).toContain('Release now appears on its page once that is done.');
     expect(body.message).not.toContain('Start one with Release now');
     expect(body.message).not.toContain('release-batches');

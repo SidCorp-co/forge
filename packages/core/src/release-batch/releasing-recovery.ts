@@ -262,6 +262,13 @@ export function refusedCloseComment(args: {
 }
 
 /** The account a comment about this move is written as: a person's own, a device's owner's. */
+/** A hand-back's reason as the comment's opening sentence: a capital, and one full stop however the
+ *  caller ended it (ISS-1421 r40, judge-164 read "batch release aborted: …"). */
+export function reasonSentence(reason: string): string {
+  const said = reason.trim().replace(/[.\s]+$/, '');
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}.`;
+}
+
 function authorOf(actor: TransitionActor): string {
   return actor.type === 'user' ? actor.id : actor.ownerId;
 }
@@ -354,8 +361,8 @@ export async function recoverStrandedReleasing(
             issueId: issue.id,
             authorId: author,
             body: promoted
-              ? `${options.reason}. ${settledNote(destination)}`
-              : `${options.reason}. The issue is at ${statusLabel(destination)}. ${
+              ? `${reasonSentence(options.reason)} ${settledNote(destination)}`
+              : `${reasonSentence(options.reason)} The issue is at ${statusLabel(destination)}. ${
                   options.nextStep?.(destination) ??
                   'A person decides whether it goes back to work or into another release.'
                 }`,
@@ -507,7 +514,7 @@ async function noteOnRoster(
         await postSystemComment({
           issueId: issue.id,
           authorId: author,
-          body: `${options.reason}. ${note}`,
+          body: `${reasonSentence(options.reason)} ${note}`,
         });
       }
     } catch (err) {

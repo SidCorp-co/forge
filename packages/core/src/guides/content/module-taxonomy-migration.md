@@ -4,7 +4,7 @@ For a project that already names its modules somewhere ELSE — a knowledge entr
 a `**Module:** billing` line agents were told to write on every issue — and now wants them as first
 class `kind:"module"` labels with a primary per issue.
 
-This runs against a DEPLOYED Forge over MCP or REST. It is not a repo change, and Forge ships no
+This runs against a DEPLOYED Forge over MCP or REST. It is not a repo change, and Forge has no
 command that does it for you: the mapping from an old convention to a taxonomy is a judgement, and
 the pass below is the shape that keeps that judgement re-runnable.
 

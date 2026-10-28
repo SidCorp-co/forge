@@ -26,13 +26,13 @@ const ENTRY_RECORDS_REOPEN =
 const ENTRY_RECORDS_REOPEN_HERE =
   'This issue has no session, so use Reopen in the actions menu above to start an agent that writes them.';
 
-export function landingShortfallWords(outsideGit: boolean): ShortfallWords {
+export function landingShortfallWords(outsideGit: boolean, noRepository = false): ShortfallWords {
   return {
     code: 'CLOSE_REQUIRES_SHIPPED',
     reason: outsideGit ? 'no mark naming where its work landed' : 'not marked merged',
     // The control's own words, so the sentence names the field as the page labels it.
-    clears: markMergedSteps(outsideGit),
-    clearsHere: markMergedSteps(outsideGit),
+    clears: markMergedSteps(outsideGit, noRepository),
+    clearsHere: markMergedSteps(outsideGit, noRepository),
   };
 }
 

@@ -332,7 +332,7 @@ releaseBatchRoutes.post(
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId, 'abort its release batches');
 
-    const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId, {
+    const result = await abortReleaseBatch(runId, reason ?? 'no reason was given', userId, {
       promotedRoster,
     });
     return c.json(

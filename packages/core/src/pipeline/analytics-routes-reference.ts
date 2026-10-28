@@ -89,8 +89,8 @@ export const outliersSchema = z.object({
 });
 
 export const readThroughput = describeOperation({
-  summary: 'Issues shipped per project per UTC day over the last `days`',
-  description: `One row per project per calendar day, a day with nothing shipped included at 0. ${SCOPE}`,
+  summary: 'Issues released per project per UTC day over the last `days`',
+  description: `One row per project per calendar day, a day with nothing released included at 0. ${SCOPE}`,
   responses: { 200: json(throughputSchema) },
 });
 

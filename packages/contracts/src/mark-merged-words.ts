@@ -10,7 +10,12 @@ export const WORK_LANDS_ROW = 'Work lands';
 /** The act the issue's hold names for a landing in git, so the banner names the same one (ISS-1300 r5). */
 export const NAME_THE_LANDED_COMMIT = `name the commit that landed under ${COMMIT_FIELD}`;
 
-export function markMergedSteps(outsideGit: boolean): string {
+export const COMMIT_MAY_STAY_EMPTY = `with no repository named, ${COMMIT_FIELD} may stay empty`;
+
+export function markMergedSteps(outsideGit: boolean, noRepository = false): string {
+  if (!outsideGit && noRepository) {
+    return `Use ${MARK_MERGED_ACTION} in the issue's properties. In the panel it opens, fill in ${WHERE_IT_LANDED_FIELD}; ${COMMIT_MAY_STAY_EMPTY}.`;
+  }
   const fill = outsideGit
     ? `name the live URL, CMS entry or storefront resource in ${WHERE_IT_LANDED_FIELD}`
     : `fill in ${WHERE_IT_LANDED_FIELD} and ${NAME_THE_LANDED_COMMIT}`;

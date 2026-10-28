@@ -8,7 +8,7 @@ audience: user
 # Tell when an issue is done
 
 An issue is done when its status reads **Closed**. Forge refuses to close an issue
-unless the work shipped, so Closed means the change was released — not only written.
+unless the work went out, so Closed means the change was released — not only written.
 The side panel of a closed issue shows **Merged** with the date the change went in.
 An issue closed before that rule existed may have no **Merged** row: its comments
 are then the only record of what happened.
@@ -22,7 +22,7 @@ for yourself, and what to do if it is not what you meant.
 |---|---|
 | **Developed**, **Testing** | The change is built and is still being checked. |
 | **Tested** | Built and checked, and waiting for someone to review it for release. |
-| **Awaiting release** | Built and checked, and not yet released. The issue page says when it will be: *"The next release cut runs …"*, or *"No release is scheduled, so this ships when a person cuts one"*. People who can release see a **Release now** button there. |
+| **Awaiting release** | Built and checked, and not yet released. The issue page says when it will be: *"The next release cut runs …"*, *"Forge releases it on its own once its criteria pass and nothing holds it."* or *"No release is scheduled, so this goes out when a person cuts one."* People who can release see a **Release now** button there. |
 | **Releasing** | A release carrying it is running now. It is done only if that release goes out and the status reads **Closed**. |
 | **Reopened** | Someone said it was not right. It is back with a person. |
 | **Dropped** | Decided against. No further work is planned on this issue, and it shows no release note. |
@@ -35,9 +35,9 @@ Open the issue. Near the top of its page, a card says in a sentence or two what
 you will now see:
 
 - **What changed** — on a closed issue.
-- **What will change once it ships** — on one that is built and not yet released.
+- **What will change once it is released** — on one that is built and not yet released.
 - **Release note** — on an issue at any other status, such as one reopened after
-  it shipped.
+  it was released.
 
 If the card says nothing you would see changed, the work had no visible part — a
 fix to speed or reliability, say — and there is nothing new to look for.

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { Hono } from 'hono';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { patUngrantableFor } from '../../auth/pat-permissions.js';
+import { describedSaying, SHIP } from '../../lib/plain-words.fixture.js';
 import { buildReference, openApiPath, type Reference } from '../document/build.js';
 import { checkFlows, FLOWS } from '../surface/flows.js';
 import { checkReference, describeFinding } from './check.js';
@@ -51,6 +52,28 @@ describe('the API reference of the composed app', () => {
       'each finding is a route (or the document) falling short of what the reference promises: ' +
         'fix the route, never the check',
     ).toEqual([]);
+  });
+
+  it('says ship in no description, summary or title, outside a code mark', () => {
+    // People read the reference too: the master's ruling on judge-164 (ISS-1421 r40).
+    expect(describedSaying(reference.document, SHIP)).toEqual([]);
+  });
+
+  it('finds ship in a planted description, and not in its code mark or an enum value', () => {
+    const planted = {
+      paths: {
+        '/x': {
+          post: {
+            summary: 'Say that the work of an issue shipped',
+            description: '- `CLOSE_REQUIRES_SHIPPED`: the close needs the work released first',
+            requestBody: { schema: { enum: ['shipped', 'settled'] } },
+          },
+        },
+      },
+    };
+    expect(describedSaying(planted, SHIP)).toEqual([
+      '/paths//x/post/summary: Say that the work of an issue shipped',
+    ]);
   });
 
   it('asks for a bearer on exactly the routes whose gates read one, and on the MCP door', () => {

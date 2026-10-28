@@ -34,6 +34,21 @@ describe('the note on an issue an unverified release closes', () => {
     expect(note).not.toMatch(/\. Declare /);
     expect(note).toMatch(/if (your|the) live deployment can report/i);
   });
+
+  it('says where the verify probe is given in words, naming no stored key (ISS-1421 r40)', () => {
+    for (const unread of [[], ['coolify [eu] b-2']]) {
+      const note = unverifiedCloseNote(RUN, null, unread);
+      expect(note).toContain(
+        "give the live deploy target a verify probe on the project's Integrations tab",
+      );
+      expect(note.replace(unverifiedMarker(RUN), '')).not.toMatch(/`[^`]*\.[^`]*`|verify\.probes/);
+    }
+  });
+
+  it('says the issue was closed, since it is written only with the close (ISS-1421 r40)', () => {
+    expect(unverifiedCloseNote(RUN, null)).toContain('This issue was closed by a release');
+    expect(unverifiedCloseNote(RUN, null)).not.toMatch(/being closed/);
+  });
 });
 
 // ISS-1282 — a project with two live bindings may declare a probe on one and none on the other, so a

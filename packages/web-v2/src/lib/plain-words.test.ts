@@ -10,6 +10,8 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const SRC = resolve(__dirname, "..");
+/** The help pages a person reads at /guides and /docs, as content/help holds them. */
+const HELP = resolve(SRC, "..", "content", "help");
 const FEATURES = resolve(SRC, "features");
 const BINDING_SURFACES = [resolve(FEATURES, "integrations"), resolve(FEATURES, "project-settings")];
 const BINDING = /\b(bindings?|bound|bind|binds|unbind)\b/i;
@@ -160,4 +162,105 @@ describe("the web's words", () => {
       "10",
     ]);
   });
+
+  it("never say ship in a help page a person reads, outside a code mark", () => {
+    // The master's ruling on judge-164 (ISS-1421 r40): the help pages fall under the rule as written.
+    const pages = helpPages();
+    expect(pages.length).toBeGreaterThan(10);
+    const hits = pages.flatMap((file) =>
+      proseSaying(readFileSync(file, "utf8"), SHIP).map((hit) => `${relative(HELP, file)}:${hit}`),
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it("finds ship in a help sentence and a table cell, and not in a code mark, a fenced block or a link target", () => {
+    const planted = [
+      "---",
+      "title: What done means",
+      "---",
+      "",
+      "Forge refuses to close an issue unless the work",
+      "shipped, so Closed means it went out.",
+      "",
+      "| Status | Means |",
+      "| Awaiting release | No release is scheduled, so this ships when a person cuts one. |",
+      "",
+      "Choose `ship-unverified`, or read [the release](?path=shipped-work).",
+      "",
+      "```",
+      "it ships",
+      "```",
+      "",
+      "The fix <scr<i>ipt>shipped</i> on Monday.",
+    ].join("\n");
+    expect(proseSaying(planted, SHIP)).toEqual([
+      "5: Forge refuses to close an issue unless the work shipped, so Closed means it went out.",
+      "8: No release is scheduled, so this ships when a person cuts one.",
+      "17: The fix shipped on Monday.",
+    ]);
+  });
+
+  it("leaves no tag behind, however the tags nest", () => {
+    for (const markup of ["<scr<script>ipt>", "<<b>script>", "<b><i>x</i></b>", "a < b > c"]) {
+      expect(untagged(markup)).not.toMatch(/<[a-z]/i);
+    }
+    expect(untagged("a <b>bold</b> word")).toBe("a bold word");
+  });
 });
+
+/** Every page under content/help the help generator serves: all but the authors' README. */
+function helpPages(path = HELP): string[] {
+  return readdirSync(path).flatMap((entry) => {
+    const full = join(path, entry);
+    if (statSync(full).isDirectory()) return helpPages(full);
+    return /\.mdx?$/i.test(entry) && entry.toLowerCase() !== "readme.md" ? [full] : [];
+  });
+}
+
+/** Tags taken out until none is left, then any bracket a broken one leaves: one pass leaves the tag
+ *  a nested one wraps around (`<scr<i>ipt>`). */
+function untagged(text: string): string {
+  let said = text;
+  for (let was = ""; was !== said; ) {
+    was = said;
+    said = said.replace(/<[^<>]*>/g, "");
+  }
+  return said.replace(/[<>]/g, " ");
+}
+
+/** Every sentence of `markdown` saying `word` outside a code mark, a fenced block or a link target,
+ *  as `<line>: <sentence>`, the line being where its paragraph opens; a table cell is a sentence. */
+function proseSaying(markdown: string, word: RegExp): string[] {
+  const found: string[] = [];
+  let fenced = false;
+  let block: string[] = [];
+  let opens = 0;
+  const flush = () => {
+    const said = untagged(
+      block
+        .join(" ")
+        .replace(/`[^`]*`/g, "")
+        .replace(/\]\([^)]*\)/g, "]"),
+    );
+    for (const sentence of said.split(/(?<=[.!?])\s+|\s*\|\s*/)) {
+      if (word.test(sentence)) found.push(`${opens}: ${sentence.trim()}`);
+    }
+    block = [];
+  };
+  markdown.split("\n").forEach((line, at) => {
+    if (/^\s*(```|~~~)/.test(line)) {
+      flush();
+      fenced = !fenced;
+      return;
+    }
+    if (fenced) return;
+    if (line.trim() === "") {
+      flush();
+      return;
+    }
+    if (block.length === 0) opens = at + 1;
+    block.push(line.trim());
+  });
+  flush();
+  return found;
+}

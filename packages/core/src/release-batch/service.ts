@@ -65,7 +65,7 @@ import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
-import { noteUnverifiedCloses, stampRunVerification } from './unverified-close.js';
+import { noteUnverifiedClose, stampRunVerification } from './unverified-close.js';
 import { claimedCommit, liveCarriesRoster, notAWholeCommit } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
@@ -307,6 +307,8 @@ export async function finishReleaseBatch(
     return done;
   }
 
+  // Written inside each close's own transaction, so an issue whose close is refused carries none.
+  let noteUnverified: ((tx: Tx, issueId: string) => Promise<void>) | null = null;
   if (run) {
     const verification = await assertFinishable(runId, run);
     let evidence: string[] = [];
@@ -334,13 +336,13 @@ export async function finishReleaseBatch(
     await stampRunVerification(runId, verification.kind);
     const unread = verification.kind === 'probed' ? verification.unread.map(bindingName) : [];
     if (verification.kind === 'unverified' || unread.length > 0) {
-      await noteUnverifiedCloses({
-        runId,
-        issueIds: claimed.map((c) => c.id),
-        actor,
-        commit: options.commit ?? null,
-        unread,
-      });
+      const commit = options.commit ?? null;
+      noteUnverified = (tx, issueId) =>
+        noteUnverifiedClose(tx, { runId, issueId, actor, commit, unread }).then(() => undefined);
+      logger.warn(
+        { runId, roster: claimed.length },
+        'release-batch: closing a roster no probe verified; each issue it closes says so',
+      );
     }
   }
 
@@ -349,6 +351,15 @@ export async function finishReleaseBatch(
   const refusals = new Map<string, CloseRefusal>();
 
   const { fence } = options;
+  const beforeClose = (issueId: string) =>
+    fence || noteUnverified
+      ? {
+          beforeStatusWrite: async (tx: Tx) => {
+            await fence?.(tx);
+            await noteUnverified?.(tx, issueId);
+          },
+        }
+      : {};
   for (const issue of claimed) {
     try {
       await transitionIssueStatus(
@@ -360,7 +371,7 @@ export async function finishReleaseBatch(
         },
         'closed',
         actor,
-        { viaReleasePath: true, ...(fence ? { beforeStatusWrite: fence } : {}) },
+        { viaReleasePath: true, ...beforeClose(issue.id) },
       );
       closed.push(issue.id);
     } catch (err) {
@@ -453,7 +464,7 @@ export async function abortReleaseBatch(
   });
   if (stampId === null) throw new ReleaseBatchNotAbortableError(runId);
   const recovery = await recoverStrandedReleasing(runId, {
-    reason: `batch release aborted: ${reason}`,
+    reason: `The release was aborted: ${reason}`,
     ...(actorUserId === null ? {} : { actor: userActor(actorUserId) }),
     comment: true,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',

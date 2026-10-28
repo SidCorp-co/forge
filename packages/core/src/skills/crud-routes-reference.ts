@@ -15,7 +15,7 @@ const jsonColumns = {
   manifest: z.unknown().describe('Free-form JSON; an empty object unless a writer set it'),
   files: z
     .unknown()
-    .describe('The files shipped beside SKILL.md, each with `path`, `content` and `encoding`'),
+    .describe('The files that come with SKILL.md, each with `path`, `content` and `encoding`'),
   changelog: z.unknown().describe('Free-form JSON revision notes'),
 };
 

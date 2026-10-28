@@ -26,7 +26,7 @@ export const mergePullRequestAnswerSchema = z.object({
 const NOT_A_WRITER = fail('FORBIDDEN', 'the caller is not a project member with write access');
 
 const MARK_REFUSALS = {
-  NO_WORK_EVIDENCE: 'the issue holds no evidence of work to mark as shipped',
+  NO_WORK_EVIDENCE: 'the issue holds no evidence of work to mark as merged',
   UNMARK_REQUIRES_NOT_CLOSED: 'a closed issue cannot be unmarked',
   NOT_MARKED_MERGED: 'the issue holds no merge mark, so an unmark has nothing to remove',
   LANDING_REQUIRED:
@@ -62,12 +62,12 @@ const describeMark = (summary: string, description: string) =>
   });
 
 export const markMerged = describeMark(
-  'Say that the work of an issue shipped',
+  'Say that the work of an issue was merged',
   "A claim, not an operation: it records somebody's word, and a commit when one is named. Releases the issues this one blocks.",
 );
 
 export const unmarkMerged = describeMark(
-  'Take back the claim that the work of an issue shipped',
+  'Take back the claim that the work of an issue was merged',
   'Refused once the issue is closed.',
 );
 

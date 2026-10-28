@@ -14,9 +14,13 @@ function claimedAs(when: string, held?: string | null, unchecked?: string | null
 	return `Claimed as merged${when}, naming no commit`;
 }
 
+/** When a waiting issue goes out, where no cut is scheduled: the help quotes both (ISS-1421 r40). */
+export const RELEASES_ITSELF = "Forge releases it on its own once its criteria pass and nothing holds it.";
+export const NO_SCHEDULE = "No release is scheduled, so this goes out when a person cuts one.";
+
 /**
  * What "awaiting release" means, on the issue a person is actually reading:
- * it is merged, it is not shipped, and here is when that changes.
+ * it is merged, it is not released, and here is when that changes.
  */
 export function AwaitingReleaseBanner({
 	projectId,
@@ -104,8 +108,8 @@ export function AwaitingReleaseBanner({
 			{data.nextCutAt
 				? `The next release cut runs ${formatCountdown(data.nextCutAt)}.`
 				: data.automaticRelease
-					? "Forge releases it on its own once its criteria pass and nothing holds it."
-					: "No release is scheduled, so this goes out when a person cuts one."}
+					? RELEASES_ITSELF
+					: NO_SCHEDULE}
 			{askWhoReleases && ` ${askWho("it")}`}
 		</Banner>
 	);
