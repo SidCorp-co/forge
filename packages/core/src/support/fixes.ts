@@ -13,7 +13,7 @@ import {
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
 import { runConfirmed } from './ability-run.js';
-import { grantsOf, isConfirmer } from './grants.js';
+import { grantsOf, isConfirmer, supportConfigOf } from './grants.js';
 import { changeName, nothingDone } from './propose.js';
 import { fileRecord, type RecordRequest } from './record.js';
 import { confirmRefusal, fixResultLine, limitsOf } from './rules.js';
@@ -113,7 +113,11 @@ export async function answerConfirm(input: {
     });
     return 'unknown';
   }
-  const grants = grantsOf(input.config);
+  // the grant as the binding holds it now, never the routing's snapshot: a confirmer taken off the
+  // room since the message was routed confirms nothing
+  const grants = grantsOf(
+    CONFIRMER_KINDS.has(fix.kind) ? await supportConfigOf(room) : input.config,
+  );
   const refusedFor = CONFIRMER_KINDS.has(fix.kind)
     ? confirmerRefusal(grants, fix, author, input.verb)
     : confirmRefusal(fix, author.key, nothingDone(fix));

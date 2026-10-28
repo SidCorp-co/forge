@@ -158,7 +158,7 @@ describe('REQ-75 r5: a binding is the whole setup and refuses a grant that could
   });
 });
 
-describe('REQ-75 r5: what a granted room does (BC-27)', () => {
+describe('REQ-75 r5: a granted room runs commands on its hosts (BC-27)', () => {
   it('runs a reading command on a named host at once, through the box, and posts what ran', async () => {
     const { thread, out } = await sessionDoes({
       action: 'command',
@@ -220,7 +220,9 @@ describe('REQ-75 r5: what a granted room does (BC-27)', () => {
     });
     expect(await proposal(code)).toMatchObject({ kind: 'command', state: 'ran' });
   });
+});
 
+describe('REQ-75 r5: a granted room builds and deploys on a confirmer’s confirm (BC-27)', () => {
   it('builds on a confirmer’s confirm: the box pushes the branch and a change request opens into dev, never production', async () => {
     const { thread, out } = await sessionDoes({
       action: 'build',
@@ -311,6 +313,35 @@ describe('REQ-75 r5: what a granted room does (BC-27)', () => {
       ls.some((l) => l.tmid === live.thread && l.text.includes('waits for its approver in Forge')),
     );
     expect(await deploysQueued(liveTarget)).toBe(0);
+  });
+});
+
+describe('REQ-75 r5: a confirmed change runs on the grant as it stands at the confirm (BC-27)', () => {
+  it('counts a confirm only from a confirmer the grant names when it is confirmed, not when it was proposed', async () => {
+    const { thread, out } = await sessionDoes({
+      action: 'command',
+      host: 'mta1',
+      command: 'postfix reload',
+    });
+    expect(out).toMatchObject({ pending: true, waitsOn: ['alice'] });
+    const held = await w.regrant({
+      ...BASE,
+      readers: 'team',
+      grants: {
+        abilities: ['read_checkout', 'file_items', 'build', 'deploy', 'run_commands'],
+        deployTargets: [devTarget, liveTarget],
+        hosts: ['mta1', 'mail-01'],
+        confirmers: ['bob'],
+      },
+    });
+    expect(held.status, JSON.stringify(held.body)).toBe(200);
+    const before = w.box.acts.length;
+    await w.chat.say(w.chat.alice, `confirm ${String(out.code)}`, thread);
+    await w.untilLines((ls) =>
+      ls.some((l) => l.tmid === thread && l.text.startsWith('Only @bob can confirm this change.')),
+    );
+    expect(w.box.acts.length).toBe(before);
+    expect((await proposal(String(out.code)))?.state).toBe('pending');
   });
 
   it('runs nothing on a confirm once the ability was taken away after it was proposed', async () => {

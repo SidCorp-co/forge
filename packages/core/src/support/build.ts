@@ -14,8 +14,11 @@ export interface BuildBase {
   base: string;
 }
 
-/** The branch a room's build works from, or why it has none it may use. */
-export async function buildBaseOf(projectId: string): Promise<Outcome<BuildBase>> {
+/**
+ * The branch a room's build works from, or why it has none it may use; and, with `branch`, why that
+ * branch may not be pushed: one an environment deploys from or a promotion lands on.
+ */
+export async function buildBaseOf(projectId: string, branch?: string): Promise<Outcome<BuildBase>> {
   const held = await readProjectDocument(projectId);
   const git = (held?.document as { source?: { git?: { defaultBranch?: unknown } } } | undefined)
     ?.source?.git;
@@ -37,6 +40,24 @@ export async function buildBaseOf(projectId: string): Promise<Outcome<BuildBase>
       '/action',
       `this project's development branch ${base} is the branch production deploys from, and a build from chat never changes what production deploys: declare a development branch apart from it`,
     );
+  }
+  if (branch !== undefined) {
+    const deployed = new Set([
+      base,
+      ...environmentsOf(held.document)
+        .map((e) => e.declaration.deploysFrom)
+        .filter((b): b is string => typeof b === 'string'),
+      ...((held.document as { promotions?: { to?: unknown }[] }).promotions ?? [])
+        .map((p) => p.to)
+        .filter((b): b is string => typeof b === 'string'),
+    ]);
+    if (deployed.has(branch)) {
+      return no(
+        'SUPPORT_BUILD_REFUSED',
+        '/branch',
+        `${branch} is a branch this project deploys or promotes from, and a build from chat pushes only a branch of its own, reviewed through a change request into ${base}`,
+      );
+    }
   }
   return { ok: true, value: { base } };
 }

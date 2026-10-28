@@ -286,10 +286,14 @@ Further rules:
 - A grant naming a reach without its ability, an ability without its reach, or a waiting ability
   without confirmers is refused at the binding door. So is a deploy target the project does not bind
   (`SUPPORT_GRANT_TARGET_UNKNOWN`).
-- `build` never branches from or into a branch a production environment deploys from
-  (`support/build.ts:buildBaseOf`). The release goes through Forge.
+- `build` never branches from a branch a production environment deploys from, and never pushes a
+  branch any environment deploys from or a promotion lands on (`support/build.ts:buildBaseOf`). Both
+  are checked at the proposal and again at the confirm. The release goes through Forge.
 - A room with neither `read_checkout` nor `build` sees no checkout at all (`checkout: "none"`).
-- Each confirmed change re-reads the grant at the confirm (`support/ability-run.ts:runConfirmed`).
+- Each confirmed change re-reads the grant at the confirm (`support/ability-run.ts:runConfirmed`):
+  - its ability and reach;
+  - whether the one confirming is still a named confirmer.
+
   A change that throws on the way is settled `failed` and said in the thread.
 
 **Refused by name (BC-28).** An ungranted act is refused with `SUPPORT_ABILITY_NOT_GRANTED`, before
@@ -374,7 +378,9 @@ changes as each one moves.
 
 - **A command's class is a list, not a parse.** `run_commands` runs a command at once only when every
   stage of its pipeline is a program known only to read, with no shell construct. Anything else waits
-  for a confirmer, including a read the list does not know. A confirmer is the gate; the box's SSH
+  for a confirmer, including a read the list does not know. A program that can write through an
+  operand or a script of its own (`sed`, `awk`, `curl`, `less`) is not on the list, and a program
+  named by a path outside the system bin directories is not trusted under its name. A confirmer is the gate; the box's SSH
   key decides what any command can reach at all.
 - **A build's working copy lives on one box.** It is kept under `<base_dir>/support-builds/<room>`
   on the box that ran the turn. If the next turn lands on another box of the project, the session

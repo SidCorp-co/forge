@@ -175,6 +175,52 @@ describe('REQ-75 r5: a build never changes what production deploys (BC-27)', () 
     expect(JSON.stringify(out)).toContain('is the branch production deploys from');
     expect(w.box.acts.filter((a) => a.event === 'build.push').length).toBe(pushes);
   });
+
+  it('refuses a build onto a branch an environment deploys from, at the proposal and again at the confirm', async () => {
+    const declare = (live: string) =>
+      seedProjectDocument(w.projectId, w.ownerId, {
+        defaultBranch: 'dev',
+        environments: {
+          live: {
+            tier: 'production',
+            deploysFrom: live,
+            deployment: { binding: liveTarget, trigger: 'on-request' },
+          },
+        },
+      });
+    await declare('fix/live');
+    const pushes = () => w.box.acts.filter((a) => a.event === 'build.push').length;
+    const before = pushes();
+    const onto = await sessionDoes({
+      action: 'build',
+      branch: 'fix/live',
+      title: 'Straight onto live',
+      summary: 'A build onto the branch production deploys.',
+    });
+    expect(JSON.stringify(onto.out)).toContain('SUPPORT_BUILD_REFUSED');
+    expect(JSON.stringify(onto.out)).toContain(
+      'fix/live is a branch this project deploys or promotes from',
+    );
+
+    // proposed while allowed; production moves onto the branch before the confirm
+    const later = await sessionDoes({
+      action: 'build',
+      branch: 'fix/hotfix',
+      title: 'A hotfix',
+      summary: 'Proposed before production named this branch.',
+    });
+    expect(later.out).toMatchObject({ pending: true });
+    await declare('fix/hotfix');
+    await w.chat.say(w.chat.alice, `confirm ${String(later.out.code)}`, later.thread);
+    await w.untilLines((ls) =>
+      ls.some(
+        (l) =>
+          l.tmid === later.thread &&
+          l.text.startsWith('It did not go ahead: fix/hotfix is a branch this project deploys'),
+      ),
+    );
+    expect(pushes()).toBe(before);
+  });
 });
 
 describe('REQ-75 r5: a support room is set up in one save, its group picked from the bot (BC-25)', () => {

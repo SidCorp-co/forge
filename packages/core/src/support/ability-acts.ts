@@ -197,7 +197,7 @@ export async function proposeBuild(
   const refused = await abilityRefusal(room, grants, 'build');
   if (refused) return refused;
   if (!(await knownThread(room, input.thread))) return threadUnknown(input.thread);
-  const base = await buildBaseOf(room.projectId);
+  const base = await buildBaseOf(room.projectId, input.branch);
   if (!base.ok) return base;
   const asker = await askingMember(room, input.thread);
   if (!asker) return threadUnknown(input.thread);

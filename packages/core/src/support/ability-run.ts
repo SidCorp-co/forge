@@ -14,7 +14,7 @@ import { pushSupportBuild, runHostCommand } from '../runners/index.js';
 import { commandLine, scrubbedResult } from './ability-acts.js';
 import { boxOfRoom } from './box.js';
 import { buildBaseOf } from './build.js';
-import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
+import { abilityRefusal, grantsOf, isConfirmer, supportConfigOf } from './grants.js';
 import { threadLink } from './record.js';
 import {
   builtChangeRequest,
@@ -130,6 +130,15 @@ async function runClaimed(
       still.refusals[0]?.detail ?? 'no longer granted',
     );
   }
+  if (!isConfirmer(grants, confirmer)) {
+    return failed(
+      room,
+      fix,
+      conversationId,
+      tell,
+      `@${confirmer ?? 'the confirmer'} is no longer a confirmer this room names`,
+    );
+  }
 
   if (fix.kind === 'command') {
     const box = await boxOfRoom(room, 'commands');
@@ -206,7 +215,7 @@ async function runBuild(
   tell: Tell,
   confirmer: string | null,
 ): Promise<Ran> {
-  const base = await buildBaseOf(room.projectId);
+  const base = await buildBaseOf(room.projectId, args.branch ?? '');
   if (!base.ok) return failed(room, fix, conversationId, tell, base.refusals[0]?.detail ?? '');
   const box = await boxOfRoom(room, 'build');
   if (!box.ok) return failed(room, fix, conversationId, tell, box.refusals[0]?.detail ?? '');

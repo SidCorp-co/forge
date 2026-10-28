@@ -19,6 +19,9 @@ describe('a command on a host reads, or waits for a confirmer', () => {
     'tail -n 100 /var/log/mail.log',
     'ping -c 3 mta1',
     'hostname -f',
+    '/usr/bin/cat /etc/hostname',
+    'sort -u /etc/hosts | uniq -c',
+    'openssl x509 -in /etc/ssl/c.pem -noout -dates',
   ])('reads: %s', (command) => {
     expect(classifyCommand(command)).toEqual({ reads: true });
   });
@@ -34,11 +37,23 @@ describe('a command on a host reads, or waits for a confirmer', () => {
     ['postsuper -d ALL', 'not a program known only to read'],
     ['sudo systemctl status x', 'another user'],
     ['find /var -delete', 'can write'],
-    ["sed -i 's/a/b/' /etc/x", 'can write'],
+    ["sed -i 's/a/b/' /etc/x", 'not a program known only to read'],
+    ["sed -n '1e touch /tmp/support-write' /etc/hosts", 'not a program known only to read'],
+    ["awk 'BEGIN{print 1}' /etc/hosts", 'shell construct'],
+    ['uniq /etc/hosts /tmp/support-copy', 'can write'],
+    ['tail -fn 100 /var/log/mail.log', 'can write'],
+    ['journalctl -xef', 'can write'],
+    ['sort --compress-program=sh /etc/hosts', 'can write'],
+    ['ip netns exec blue id', 'can write'],
+    ['hostname -F /tmp/name', 'can write'],
+    ['openssl x509 -in /etc/ssl/c.pem -out /tmp/c.pem', 'can write'],
+    ['file -C -m /tmp/magic', 'can write'],
+    ['/tmp/planted/cat /etc/hosts', 'not a system program'],
+    ['less /var/log/mail.log', 'not a program known only to read'],
     ['ip route add 10.0.0.0/8 via 1.2.3.4', 'can write'],
     ['hostname newname', 'can write'],
     ['ping mta1', 'never end'],
-    ['curl -X POST https://x', 'can write'],
+    ['curl -X POST https://x', 'not a program known only to read'],
   ])('changes: %s', (command, why) => {
     const got = classifyCommand(command);
     expect(got.reads).toBe(false);

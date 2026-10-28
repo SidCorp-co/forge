@@ -8,39 +8,54 @@
 /** Shell constructs that write, chain, substitute or background: none appears in a reading command. */
 const SHELL_WRITES = /[;&><`$(){}\\\n\r]|\|\|/;
 
-/** Programs that only read, each with the arguments that would make it write or never end. */
+/** A short-flag cluster holding `f` or `F` (`-f`, `-xef`, `-Fn`): a follow that never ends. */
+const FOLLOW = /(^|\s)(-[A-Za-z0-9]*[fF][A-Za-z0-9]*|--follow\S*|--retry)\b/;
+/** Any operand that is not a flag: what a filter that would write its second operand must not take. */
+const AN_OPERAND = /(^|\s)[^-\s]/;
+
+/**
+ * Programs that only read, each with the arguments that would make it write, run another program or
+ * never end. A program that can write through an operand or a script of its own (sed, awk, curl,
+ * less, tee) is not here at all: it waits for a confirmer.
+ */
 const READERS: Record<string, { refuse?: RegExp }> = {
   cat: {},
   head: {},
-  tail: { refuse: /(^|\s)(-f|-F|--follow)\b/ },
-  less: {},
+  tail: { refuse: FOLLOW },
   grep: {},
   zgrep: {},
   egrep: {},
   wc: {},
   ls: {},
   stat: {},
-  file: {},
+  file: { refuse: /(^|\s)(-C|--compile)\b/ },
   find: { refuse: /(^|\s)-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b/ },
   du: {},
   df: {},
   free: {},
   uptime: {},
   uname: {},
-  hostname: { refuse: /(^|\s)[^-\s]/ },
+  hostname: {
+    refuse:
+      /^(?!\s*(-[fsiIdA]|--fqdn|--long|--short|--ip-address|--all-ip-addresses|--domain|--all-fqdns)?\s*$)/,
+  },
   date: { refuse: /(^|\s)(-s|--set)\b/ },
   whoami: {},
   id: {},
   ps: {},
   ss: { refuse: /(^|\s)(-K|--kill)\b/ },
   netstat: {},
-  ip: { refuse: /\b(add|del|delete|change|replace|set|flush|append)\b/ },
+  ip: {
+    refuse:
+      /\b(add|del|delete|change|replace|set|flush|append|exec|netns|restore|save|monitor)\b|(^|\s)(-b|-batch|-force)\b/,
+  },
   dig: {},
   host: {},
   nslookup: {},
   ping: { refuse: /^(?!.*(^|\s)-c\s*\d).*$/ },
   journalctl: {
-    refuse: /(^|\s)(-f|--follow|--vacuum-\w+|--rotate|--flush|--sync|--relinquish-var)\b/,
+    refuse:
+      /(^|\s)(-[A-Za-z]*f[A-Za-z]*|--follow|--vacuum-\w+|--rotate|--flush|--sync|--relinquish-var|--smart-relinquish-var|--setup-keys|--update-catalog)\b/,
   },
   systemctl: {
     refuse:
@@ -48,15 +63,18 @@ const READERS: Record<string, { refuse?: RegExp }> = {
   },
   mailq: {},
   postqueue: { refuse: /^(?!\s*-p\s*$)/ },
-  openssl: { refuse: /^(?!\s*(s_client|x509|version)\b)/ },
-  curl: { refuse: /(^|\s)(-X|--request|-d|--data\S*|-F|--form|-T|--upload-file|-o|--output|-O)\b/ },
-  sort: { refuse: /(^|\s)(-o|--output)\b/ },
-  uniq: {},
+  openssl: {
+    refuse:
+      /^(?!\s*(s_client|x509|version)\b)|(^|\s)-(out|sess_out|keylogfile|msgfile|writerand|engine)\b/,
+  },
+  sort: { refuse: /(^|\s)(-o|--output|--compress-program)\S*/ },
+  uniq: { refuse: AN_OPERAND },
   cut: {},
-  awk: { refuse: /system|print\s*>|>|getline/ },
-  sed: { refuse: /(^|\s)(-i|--in-place)\b|\bw\s/ },
   jq: {},
 };
+
+/** Where a program named by its path may live; anywhere else it may be a script planted under a known name. */
+const SYSTEM_BIN = /^\/(usr\/)?s?bin\/[^/]+$/;
 
 export type CommandClass = { reads: true } | { reads: false; why: string };
 
@@ -70,7 +88,11 @@ export function classifyCommand(command: string): CommandClass {
   }
   for (const stage of command.split('|')) {
     const words = stage.trim().split(/\s+/);
-    const program = (words[0] ?? '').replace(/^.*\//, '');
+    const named = words[0] ?? '';
+    if (named.includes('/') && !SYSTEM_BIN.test(named)) {
+      return { reads: false, why: `${named} is not a system program` };
+    }
+    const program = named.replace(/^.*\//, '');
     const rest = words.slice(1).join(' ');
     if (program === 'sudo') return { reads: false, why: 'it runs as another user (sudo)' };
     const reader = READERS[program];
