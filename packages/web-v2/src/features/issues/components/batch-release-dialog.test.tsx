@@ -256,6 +256,10 @@ describe("what the dialog promises before the press", () => {
     expect(failing).not.toHaveTextContent(/23514/);
     expect(within(drawer).getByText("the database refused the write (23514)").closest("details")).not.toBeNull();
     expect(within(drawer).queryByTestId("fails-the-same-way-ISS-1")).toBeNull();
+    // ISS-1421 r42 (judge-169): at 390 the lead broke ISS-5 as "ISS-" / "5"; each key is one token.
+    const lead = drawer.querySelector("p");
+    const keys = [...(lead?.querySelectorAll("span.whitespace-nowrap") ?? [])].map((k) => k.textContent);
+    expect(keys).toEqual(["ISS-2", "ISS-1"]);
   });
 
   it("promises no close and holds the press until the roster is read", async () => {

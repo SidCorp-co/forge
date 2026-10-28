@@ -3200,6 +3200,7 @@
 
 ### Fixed
 
+- **A release says an issue's code went out only where both halves hold.** A deploy must report going out and the issue must be marked merged; an abort's note is Forge's, naming who pressed; Mark merged asks for the commit before the close. (ISS-1421)
 - **A read the server asked to wait on is not asked again until the wait is over**, a reload included; a screen reader hears each wait once, wherever it shows, and a refused device approval is said. (ISS-1229)
 - **A release says what it did to an issue it could not close.** It says the code went out only after a recorded promotion or deploy; Mark merged says Commit may stay empty without a repository. (ISS-1421)
 - **The help says what the screen says, and a release says one thing per issue.** Help, guides and API reference drop "ship"; an issue a release could not close gets no unverified note; Shape & release matches the gate. (ISS-1421)

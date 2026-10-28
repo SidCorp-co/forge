@@ -5,11 +5,22 @@ import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import type { CloseRefusal } from './releasing-recovery.js';
 
+/** What a run's promotions and deploys reported: one that went out decides over failed or unsettled
+ *  ones, and one declared that never said it went out is no delivery (ISS-1421 r42). */
+export type RunDelivery = 'reported' | 'unreported' | 'none';
+
+/** How many open questions a refusal names; none named reads as more than one. */
+function openQuestions(refusal: Extract<CloseRefusal, { kind: 'refused' }>): number {
+  return refusal.blocking.filter((named) => named.startsWith('open question ')).length;
+}
+
 /** Why the close was refused, in words; the code stays in what a caller reads (ISS-1421 r39). */
 function personRefusedFor(refusal: Extract<CloseRefusal, { kind: 'refused' }>): string {
   switch (refusal.code) {
     case 'OPEN_QUESTIONS':
-      return 'The close was refused because the issue holds open questions.';
+      return openQuestions(refusal) === 1
+        ? 'The close was refused because the issue holds an open question.'
+        : 'The close was refused because the issue holds open questions.';
     case 'CLOSE_REQUIRES_SHIPPED':
       return 'The close was refused because the issue is not marked merged.';
     case 'STALE_TRANSITION':
@@ -27,7 +38,9 @@ function personClears(
 ): string {
   switch (refusal.code) {
     case 'OPEN_QUESTIONS':
-      return 'answer each open question in its "Decision waiting" card on this issue\'s page.';
+      return openQuestions(refusal) === 1
+        ? 'answer the open question in its "Decision waiting" card on this issue\'s page.'
+        : 'answer each open question in its "Decision waiting" card on this issue\'s page.';
     case 'CLOSE_REQUIRES_SHIPPED': {
       const steps = markMergedSteps(refusal.outsideGit, noRepository);
       return `${steps.charAt(0).toLowerCase()}${steps.slice(1)}`;
@@ -39,15 +52,43 @@ function personClears(
   }
 }
 
+/** Whether this issue's code went out with the release: only where a delivery reported going out
+ *  AND the issue's mark says where its work landed. A refusal for the mark says it does not, whatever
+ *  the column holds (ISS-1421 r42, judge-169 on 398). */
+function whatWentOut(
+  label: string,
+  refusal: CloseRefusal,
+  delivery: RunDelivery,
+  marked: boolean,
+): string {
+  if (delivery === 'none') {
+    return `The issue is back at ${label}. That release recorded no promotion and no deploy, so nothing says its code is live.`;
+  }
+  if (delivery === 'unreported') {
+    return `The issue is back at ${label}. No promotion or deploy of that release reported going out, so nothing says its code is live.`;
+  }
+  const unlanded = refusal.kind === 'refused' && refusal.code === 'CLOSE_REQUIRES_SHIPPED';
+  if (marked && !unlanded) {
+    return `The issue is back at ${label}, and its code went out with that release.`;
+  }
+  const missing = marked
+    ? 'Its mark does not say where its work landed'
+    : 'It is not marked merged';
+  return `The issue is back at ${label}. ${missing}, so nothing says its code went out with that release.`;
+}
+
 /** Where a returned issue stands and how it closes, in the words its page uses. */
-function howItCloses(destination: IssueStatus, refusal: CloseRefusal, delivered: boolean): string {
+function howItCloses(
+  destination: IssueStatus,
+  refusal: CloseRefusal,
+  delivery: RunDelivery,
+  marked: boolean,
+): string {
   const label = ISSUE_STATUS_LABELS[destination];
   if (destination !== RELEASE_GATE_STATUS) {
     return `The issue is at ${label}, and a person decides whether it goes back to work or into another release.`;
   }
-  const back = delivered
-    ? `The issue is back at ${label}, and its code went out with that release.`
-    : `The issue is back at ${label}. That release recorded no promotion and no deploy, so nothing says its code is live.`;
+  const back = whatWentOut(label, refusal, delivery, marked);
   // No reading here says a database fault cleared, so Release now stays on offer and says what it
   // meets until then (ISS-1381 r4).
   if (refusal.kind === 'failed') {
@@ -84,8 +125,10 @@ export function refusedCloseComment(args: {
   projectId: string;
   version: string | null;
   destination: IssueStatus;
-  /** The run recorded a promotion or a deploy (`runRecordedDelivery`). */
-  delivered: boolean;
+  /** What the run's promotions and deploys reported (`runDelivery`). */
+  delivery: RunDelivery;
+  /** The issue holds a merge mark. */
+  marked: boolean;
   /** The project names no repository, so a mark may name no commit (`markCommitCheck` `claim`). */
   noRepository?: boolean | undefined;
   /** How a roster its run promoted is settled; such an issue stays claimed rather than moving. */
@@ -93,11 +136,12 @@ export function refusedCloseComment(args: {
   /** Earlier releases whose finish failed this close for the same reason, oldest first. */
   repeats?: ReadonlyArray<string | null> | undefined;
 }): string {
-  const { refusal, version, destination, held, repeats = [], delivered } = args;
+  const { refusal, version, destination, held, repeats = [], delivery, marked } = args;
   const named = version ? `as version ${version}` : 'with this batch';
-  const finished = delivered
-    ? `The release finished and went out ${named}`
-    : `The release finished${version ? ` ${named}` : ''}`;
+  const finished =
+    delivery === 'reported'
+      ? `The release finished and went out ${named}`
+      : `The release finished${version ? ` ${named}` : ''}`;
   const blocking =
     refusal.kind === 'refused' && refusal.blocking.length > 0
       ? ` Blocking it: ${countedBlockers(refusal.blocking)}.`
@@ -116,13 +160,15 @@ export function refusedCloseComment(args: {
     const again = refusal.kind === 'refused' ? 'refused' : 'failed';
     return `${opening}${held} Clear the reason above first, or that close is ${again} again.${quote}`;
   }
-  return `${opening}${howItCloses(destination, refusal, delivered)}${quote}`;
+  return `${opening}${howItCloses(destination, refusal, delivery, marked)}${quote}`;
 }
 
 /** A hand-back's reason as the comment's opening sentence: a capital, and one closing mark however
- *  the caller ended it (ISS-1421 r40 read "batch release aborted: …", r41 read "Stop!."). */
+ *  the caller ended it (ISS-1421 r40 read "batch release aborted: …", r41 read "Stop!."); an
+ *  ellipsis is the writer's own mark and stays (r42 read "Hold on..." as "Hold on."). */
 export function reasonSentence(reason: string): string {
-  const said = reason.trim().replace(/[.\s]+$/, '');
-  const ended = /[!?…]$/.test(said) ? said : `${said}.`;
+  const trimmed = reason.trim();
+  const said = /(\.{3,}|…)$/.test(trimmed) ? trimmed : trimmed.replace(/[.\s]+$/, '');
+  const ended = /([!?…]|\.{3,})$/.test(said) ? said : `${said}.`;
   return `${ended.charAt(0).toUpperCase()}${ended.slice(1)}`;
 }

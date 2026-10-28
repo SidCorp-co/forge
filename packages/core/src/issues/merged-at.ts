@@ -1,6 +1,6 @@
 import {
-  COMMIT_MAY_STAY_EMPTY,
   MARK_MERGED_ACTION,
+  markMergedSteps,
   UNMARK_ACTION,
   WHERE_IT_LANDED_FIELD,
 } from '@forge/contracts/mark-merged-words';
@@ -45,19 +45,17 @@ function unshippedWords(lane: Lane, held: MergeMarkKind, noRepository = false): 
   if (lane.shape === 'git') {
     // A mark naming only a landing is no merge in git, and the first mark stands until it is taken back.
     const landed = held === 'landed';
-    // A project naming no repository takes a mark naming no commit (ISS-1421 r41, criterion 393).
-    const empty = noRepository
-      ? [`${COMMIT_MAY_STAY_EMPTY.charAt(0).toUpperCase()}${COMMIT_MAY_STAY_EMPTY.slice(1)}.`]
-      : [];
+    // Mark merged's own steps, by the project's shape, then the close (ISS-1421 r41, r42).
+    const steps = markMergedSteps(false, noRepository);
+    const mark = landed
+      ? `Use ${UNMARK_ACTION} in the issue's properties, then ${steps.charAt(0).toLowerCase()}${steps.slice(1)}`
+      : steps;
     return {
       detail: [
         landed
           ? "This issue can't close yet: its mark names a landing, not a merge in git."
           : "This issue can't close yet: it is not marked merged.",
-        landed
-          ? `Use ${UNMARK_ACTION}, then ${MARK_MERGED_ACTION} in the issue's properties.`
-          : `Use ${MARK_MERGED_ACTION} in the issue's properties, then close it.`,
-        ...empty,
+        `${mark} Then close it.`,
         CLOSE_INSTEAD,
       ].join(' '),
       details: {

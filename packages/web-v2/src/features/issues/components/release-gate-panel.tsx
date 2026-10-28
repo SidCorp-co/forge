@@ -16,6 +16,7 @@ import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { CloseFailureTechnical } from "@/features/releases/components/close-failure-technical";
 import { failedCloseLead, type GateRefusal } from "@/features/releases/roster";
 import { formatApiError } from "@/lib/api/error";
+import { unbrokenKeys } from "@/lib/unbroken-keys";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
 import Link from "next/link";
 import { useState } from "react";
@@ -331,7 +332,7 @@ function RosterRow({
       </div>
       {refused ? (
         <p className="fg-caption text-muted pl-6">
-          {[...issue.closeRefusals, ...issue.releaseRefusals].map((r) => r.said).join(" ")}
+          {unbrokenKeys([...issue.closeRefusals, ...issue.releaseRefusals].map((r) => r.said).join(" "))}
         </p>
       ) : null}
       {!claimed && !refused && issue.closeFailure ? (

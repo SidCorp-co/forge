@@ -66,8 +66,10 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
     expect(refusal).not.toBeNull();
     // ISS-1421 r16 — judge-69 read about 120 words naming `merged_at`; the same short sentences
     // now serve a person and an agent, and the agent's door is a step on a line of its own.
+    // ISS-1421 r42 (judge-169): Mark merged's own steps, asking for the commit on a project that
+    // names a repository, and before the close rather than after it.
     expect(refusal?.detail).toBe(
-      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties, then close it. If it turned out not to be work, move it to Dropped instead.",
+      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit. Then close it. If it turned out not to be work, move it to Dropped instead.",
     );
     expect(refusal?.detail).not.toMatch(/merged_at|`/);
     expect(refusal?.details).toMatchObject({ requires: 'mergedAt', useInstead: 'dropped' });
@@ -87,9 +89,20 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
       noRepository,
     });
     expect(refusal?.detail).toBe(
-      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties, then close it. With no repository named, Commit may stay empty. If it turned out not to be work, move it to Dropped instead.",
+      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed; with no repository named, Commit may stay empty. Then close it. If it turned out not to be work, move it to Dropped instead.",
     );
     expect(noRepository).toHaveBeenCalledTimes(1);
+  });
+
+  // ISS-1421 r42: a mark naming only a landing is taken back first, then made by the same steps.
+  it('gives Unmark, then the same steps, for a mark naming only a landing', async () => {
+    const { executor } = buildMockExecutor(
+      mark('standard', { mergedAt: AT, mergedLanding: 'https://shop.example/products/a' }),
+    );
+    const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
+    expect(refusal?.detail).toBe(
+      "This issue can't close yet: its mark names a landing, not a merge in git. Use Unmark in the issue's properties, then use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit. Then close it. If it turned out not to be work, move it to Dropped instead.",
+    );
   });
 
   it('asks nothing about the repository of a close it lets through', async () => {

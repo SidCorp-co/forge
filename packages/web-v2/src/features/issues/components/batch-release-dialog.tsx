@@ -7,6 +7,7 @@ import { CloseFailureTechnical } from "@/features/releases/components/close-fail
 import { type CloseFailure, failedCloseLead } from "@/features/releases/roster";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { unbrokenKeys } from "@/lib/unbroken-keys";
 import type { CarriedDecisionBody } from "../api";
 import { STATUS_LABELS } from "../derive";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
@@ -235,7 +236,7 @@ export function BatchReleaseDialog({
     >
       <div className="flex flex-col gap-4">
         {roster || listed.length === 0 ? (
-          <p className="fg-body-sm text-fg">{leadSentence(listed)}</p>
+          <p className="fg-body-sm text-fg">{unbrokenKeys(leadSentence(listed))}</p>
         ) : rosterRead.isError ? (
           <Banner
             tone="danger"

@@ -154,29 +154,6 @@ describe('a release finish that cannot close an issue', () => {
     expect(said).not.toMatch(/\/api\/|voidQuestions/);
   });
 
-  it('says the code went out with a release whose run recorded a deploy', async () => {
-    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
-    const { openAttempt } = await import('../../src/release-batch/ledger.js');
-    const held = await fx.insertIssue();
-    const { runId, version } = await fx.claim([held]);
-    await openAttempt({
-      runId,
-      stage: 'deploy',
-      idempotencyKey: 'deploy-1',
-      commit: 'b'.repeat(40),
-    });
-    await askOn(held);
-
-    await finishReleaseBatch(runId, { type: 'user', id: ownerId });
-
-    expect((await fx.stored(held)).status).toBe('awaiting_release');
-    const said = await lastComment(held);
-    expect(said).toContain(`The release finished and went out as version ${version}`);
-    expect(said).toContain(
-      'The issue is back at Awaiting release, and its code went out with that release.',
-    );
-  });
-
   // ISS-1421 r41 (judge-167, criterion 393): the hand-back on an issue unmarked while its release ran
   // asked for Mark merged on a project naming no repository without saying Commit may stay empty.
   it('clears a missing mark by Mark merged, saying Commit may stay empty where no repository is named', async () => {
@@ -254,12 +231,15 @@ describe('a release finish that cannot close an issue', () => {
     expect(result.closed).toEqual([free]);
     expect((await fx.stored(held)).status).toBe('releasing');
     const said = await lastComment(held);
-    expect(said).toContain('The close was refused because the issue holds open questions.');
+    // ISS-1421 r42 (judge-169): one question is one; a promotion that never reported back is not
+    // said to have gone out.
+    expect(said).toContain('The close was refused because the issue holds an open question.');
     expect(said).toContain('Blocking it: 1 open question.');
     expect(said).toContain(
-      'What clears it: answer each open question in its "Decision waiting" card',
+      'What clears it: answer the open question in its "Decision waiting" card',
     );
-    expect(said).toContain(`went out as version ${version}`);
+    expect(said).toContain(`The release finished as version ${version}, but`);
+    expect(said).not.toMatch(/went out/);
     expect(said).toContain('stay at Releasing and claimed while its run is live');
     expect(said).toContain("Forge's releasing sweep settles them within a minute");
     expect(said).toContain('View release on the issue shows where its run stands.');
@@ -276,7 +256,7 @@ describe('a release finish that cannot close an issue', () => {
     await finishReleaseBatch(runId, { type: 'device', id: randomUUID(), ownerId });
 
     const said = await lastComment(held);
-    expect(said).toContain('The close was refused because the issue holds open questions.');
+    expect(said).toContain('The close was refused because the issue holds an open question.');
     expect(said).toContain('Blocking it: 1 open question.');
     expect(said).not.toContain(question);
   });

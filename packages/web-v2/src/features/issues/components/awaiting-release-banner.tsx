@@ -2,6 +2,7 @@
 
 import { Banner, Button } from "@/design";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
+import { unbrokenKeys } from "@/lib/unbroken-keys";
 import { CloseFailureTechnical } from "@/features/releases/components/close-failure-technical";
 import { failedCloseLead } from "@/features/releases/roster";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
@@ -79,7 +80,7 @@ export function AwaitingReleaseBanner({
 				<p className="font-medium">Not ready to release.</p>
 				<ul className="mt-1 flex flex-col gap-1" aria-label="What is missing">
 					{missing.map((m) => (
-						<li key={m.key}>{m.said}</li>
+						<li key={m.key}>{unbrokenKeys(m.said)}</li>
 					))}
 				</ul>
 			</Banner>
