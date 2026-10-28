@@ -1,1 +1,0 @@
-**A master with a relayed MCP server no longer drains on every pass.** The runner reads core's per-call relay ticket as the binding it grants, so only a changed server, or a ticket nearing expiry, marks the pane outdated (ISS-610).

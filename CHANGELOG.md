@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.349] - 2026-10-28
+
+Rocket.Chat support groups set up, checked and granted from project settings
+
+### Added
+
+- **A Rocket.Chat support group is set up, checked and granted from its binding.** The room says why it is not answering, and holds named abilities that a confirmer approves; an ungranted one is refused, naming who grants it.
+
+### Fixed
+
+- **A header passed to `forge-runner api -H` replaces the runner's own.** A JSON call with `-H Content-Type` now sends one Content-Type, not two that core refused; `-H Authorization` and a form's `-H Content-Type` are refused by name.
+- **A master with a relayed MCP server no longer drains on every pass.** The runner reads core's per-call relay ticket as the binding it grants, so only a changed server, or a ticket nearing expiry, marks the pane outdated (ISS-610).
+- **A run no longer skips required plan approval by moving its work into build.** Where plan approval is enforced, build waits until the issue passed approved since its plan was last written (PLAN_APPROVAL_PENDING); a claim resumes at design until then.
+
 ## [0.4.0-dev.348] - 2026-10-28
 
 Projects choose how tightly Forge gates agents; promoting drafts follows the admit setting
