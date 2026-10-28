@@ -133,7 +133,7 @@ export async function refuseUnreadableReleaseAsk(
   const meta = (run?.metadata ?? {}) as Record<string, unknown>;
   const open = run?.status === 'running' || run?.status === 'paused';
   if (run?.kind !== 'system' || meta.source !== 'release-batch' || !open) return null;
-  const why = oneLine(asked.why, 500).replace(/[.\s]+$/, '');
+  const why = oneLine(asked.why, 500).replace(/[.!?\s]+$/, '');
   const pages = await projectPages(job.projectId);
   const auto = await projectAutoProdDeploy(job.projectId);
   await recoverStrandedReleasing(job.pipelineRunId, {

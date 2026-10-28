@@ -11,7 +11,7 @@ import type { RunnerHold } from '../runners/ineligible.js';
 import type { CarriedCheck, CarriedDecision, CarriedReading } from './carried.js';
 import { carriedSentence, carriedWaysOut } from './carried-sentences.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
-import { agree, counted } from './counted.js';
+import { agree, counted, namesInWords } from './counted.js';
 import type { ReleaseDeclaration } from './gate.js';
 import { criteriaUnearnedLead, unroutedRemedy } from './held-sentences.js';
 import type { ReleaseChannel } from './plan.js';
@@ -133,7 +133,7 @@ function namedSentence(code: NamedCode, details: Record<string, unknown> | null)
     case 'RELEASE_RECORD_MISSING':
       return `${who} ${w('has', 'have')} no release note, and closing ${w('it', 'them')} would tell users nothing about what changed. ${RELEASE_RECORD_REMEDY}`;
     case 'RELEASE_WORK_UNMERGED':
-      return `${who} ${w('is', 'are')} not marked merged, so nothing says ${w('its', 'their')} work is on the branch this release deploys. Mark ${w('it', 'each of them')} merged first — a release closes what it carries, and a close says the work went out.`;
+      return `${who} ${w('is', 'are')} not marked merged, so nothing says ${w('its', 'their')} work is on the branch this release deploys. Mark ${w('it', 'each of them')} merged first — a release closes what it carries, and a close says the work went out.${details?.noRepository === true ? ' This project names no repository, so the mark may name no commit.' : ''}`;
     case 'RELEASE_ISSUES_UNCLOSABLE':
       return `${who} would be refused ${w('its', 'their')} close when this release finishes, so it would release ${w('it', 'them')} and hand ${w('it', 'them')} back to the gate. Clear what ${w('it is', 'each one is')} refused for, or leave ${w('it', 'each')} off this release.`;
   }
@@ -407,7 +407,11 @@ export function unclosableSentence(refused: readonly UnclosableIssueRef[], codes
   const n = refused.length;
   const w = (one: string, many: string) => agree(n, one, many);
   const reasons = refused.reduce((sum, r) => sum + r.shortfalls.length, 0);
-  return `${counted(n, 'issue')} named here would be refused ${w('its', 'their')} close when this release finishes, so it would release ${w('it', 'them')} and hand ${w('it', 'them')} back to the gate. ${each} Clear ${agree(reasons, 'that', 'each')} reason, or leave ${w('it', 'each such issue')} off this release.`;
+  // A caller named the issues it sent; a reader picked them or found them waiting, so is told which.
+  const who = codes
+    ? `${counted(n, 'issue')} named here`
+    : namesInWords(refused.map((r) => r.displayId));
+  return `${who} would be refused ${w('its', 'their')} close when this release finishes, so it would release ${w('it', 'them')} and hand ${w('it', 'them')} back to the gate. ${each} Clear ${agree(reasons, 'that', 'each')} reason, or leave ${w('it', 'each such issue')} off this release.`;
 }
 
 export function namedHere(details: Record<string, unknown>): string {

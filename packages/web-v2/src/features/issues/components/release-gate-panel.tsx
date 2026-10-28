@@ -13,6 +13,7 @@ import {
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import { providerLabel } from "@/features/integrations/providers/registry";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
+import { CloseFailureTechnical } from "@/features/releases/components/close-failure-technical";
 import { failedCloseLead, type GateRefusal } from "@/features/releases/roster";
 import { formatApiError } from "@/lib/api/error";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
@@ -334,9 +335,12 @@ function RosterRow({
         </p>
       ) : null}
       {!claimed && !refused && issue.closeFailure ? (
-        <p className="fg-caption text-muted pl-6">
-          {`${failedCloseLead(issue.closeFailure, "this")} A release fails the same way until whoever operates Forge fixes it.`}
-        </p>
+        <div className="flex flex-col gap-0.5 pl-6">
+          <p className="fg-caption text-muted">
+            {`${failedCloseLead(issue.closeFailure, "this")} A release fails the same way until whoever operates Forge fixes it.`}
+          </p>
+          <CloseFailureTechnical failure={issue.closeFailure} />
+        </div>
       ) : null}
     </li>
   );

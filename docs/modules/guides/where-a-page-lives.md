@@ -46,7 +46,10 @@ drifted from its folder. Two guides compute their body from code and keep it the
 `packages/core/src/guides/assistant-method-guide.ts`. The web build's help pages use the same idea in
 `packages/web-v2/scripts/gen-help-content.mjs`, with front-matter, which a registry guide does not
 carry; the two cannot share a script, because each image's build context holds `packages/` and not the
-root `scripts/`.
+root `scripts/`. Its `--check` refuses a bundled module that no longer matches
+`packages/web-v2/content/help/`, and
+`packages/web-v2/src/features/docs/help-content-current.test.ts` runs it against the tree and a
+planted page, so a page edited without regenerating is red in the suite (ISS-1421 r41).
 
 ## The registry is not the whole corpus
 

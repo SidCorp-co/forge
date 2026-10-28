@@ -161,6 +161,11 @@ export async function markCommitCheck(
   }
 }
 
+/** A mark on this project may name no commit: it names no repository (criterion 360). */
+export async function namesNoRepository(projectId: string): Promise<boolean> {
+  return (await markCommitCheck(projectId)) === 'claim';
+}
+
 export interface ProjectDivergenceDeps {
   source: (projectId: string) => Promise<LiveSource>;
   github: typeof readLiveDivergence;

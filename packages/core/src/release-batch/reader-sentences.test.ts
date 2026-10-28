@@ -438,14 +438,14 @@ describe('an issue not marked merged, as a person reads it', () => {
       shape: 'git',
     });
     expect(one).toContain('is not marked merged');
-    expect(one).toContain("Use Mark merged in the issue's properties first");
+    expect(one).toContain("Use Mark merged in the issue's properties.");
     const two = releaseBlockerReaderSentence('RELEASE_WORK_UNMERGED', {
       issueIds: ['u-1', 'u-2'],
       displayIds: ['ISS-1', 'ISS-2'],
       shape: 'git',
     });
     expect(two).toContain('are not marked merged');
-    expect(two).toContain("Use Mark merged in each issue's properties first");
+    expect(two).toContain("Use Mark merged in each issue's properties.");
     for (const said of [
       one,
       two,

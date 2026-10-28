@@ -1,9 +1,11 @@
 import {
+  COMMIT_MAY_STAY_EMPTY,
   MARK_MERGED_ACTION,
   UNMARK_ACTION,
   WHERE_IT_LANDED_FIELD,
 } from '@forge/contracts/mark-merged-words';
 import type { IssueStatus } from '../db/schema.js';
+import { namesNoRepository } from '../projects/live-source.js';
 import {
   DECLARE_OUTSIDE_GIT,
   type Lane,
@@ -39,10 +41,14 @@ const MARK_WITH_LANDING =
  * work (ISS-1421 r16). An agent's door to the same act is a step in `details.steps`, which an MCP
  * caller reads on a line of its own.
  */
-function unshippedWords(lane: Lane, held: MergeMarkKind): ShippedRuleRefusal {
+function unshippedWords(lane: Lane, held: MergeMarkKind, noRepository = false): ShippedRuleRefusal {
   if (lane.shape === 'git') {
     // A mark naming only a landing is no merge in git, and the first mark stands until it is taken back.
     const landed = held === 'landed';
+    // A project naming no repository takes a mark naming no commit (ISS-1421 r41, criterion 393).
+    const empty = noRepository
+      ? [`${COMMIT_MAY_STAY_EMPTY.charAt(0).toUpperCase()}${COMMIT_MAY_STAY_EMPTY.slice(1)}.`]
+      : [];
     return {
       detail: [
         landed
@@ -51,6 +57,7 @@ function unshippedWords(lane: Lane, held: MergeMarkKind): ShippedRuleRefusal {
         landed
           ? `Use ${UNMARK_ACTION}, then ${MARK_MERGED_ACTION} in the issue's properties.`
           : `Use ${MARK_MERGED_ACTION} in the issue's properties, then close it.`,
+        ...empty,
         CLOSE_INSTEAD,
       ].join(' '),
       details: {
@@ -91,13 +98,24 @@ function unshippedWords(lane: Lane, held: MergeMarkKind): ShippedRuleRefusal {
 // cm:flow release/close after:stamp — the close reads the stamp and the issue's lane and refuses unless landing-evidence.ts accepts the mark; it no longer writes one, so an issue that never shipped cannot wear the status that says it did
 export async function refuseUnshippedClose(
   executor: MergeRecordExecutor,
-  args: { issueId: string; toStatus: IssueStatus },
+  args: {
+    issueId: string;
+    toStatus: IssueStatus;
+    /** Whether the project names no repository, asked only once a git close is refused; the
+     *  project's own answer where a caller has none to share. */
+    noRepository?: (() => Promise<boolean>) | undefined;
+  },
 ): Promise<ShippedRuleRefusal | null> {
   if (args.toStatus !== 'closed') return null;
   const evidence = await readLandingEvidence(executor, args.issueId);
   if (evidence && !landingShortfall(evidence.columns, evidence.lane)) return null;
-  if (!evidence) return unshippedWords({ shape: 'git', declared: false }, 'unmarked');
-  return unshippedWords(evidence.lane, mergeMarkKindOf(evidence.columns));
+  const lane: Lane = evidence?.lane ?? { shape: 'git', declared: false };
+  const held = evidence ? mergeMarkKindOf(evidence.columns) : 'unmarked';
+  const asked =
+    args.noRepository ??
+    (evidence?.projectId ? () => namesNoRepository(evidence.projectId) : undefined);
+  const claim = lane.shape === 'git' && (await asked?.()) === true;
+  return unshippedWords(lane, held, claim);
 }
 
 /** Why `unmark` is refused on a `closed` issue, or `null` where it may proceed. `clearIssueMerge`

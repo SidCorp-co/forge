@@ -250,8 +250,11 @@ describe("what the dialog promises before the press", () => {
       "The following 2 issues will be released together. This release fails to close ISS-2 the same way the last one did, until whoever operates Forge fixes it; only ISS-1 is closed. This cannot be undone.",
     );
     expect(failing).toHaveTextContent(
-      "The last release (version 0.6.0) could not close this: the database refused the write (23514).",
+      "The last release (version 0.6.0) could not close this: the close failed inside Forge before anything decided it.",
     );
+    // ISS-1421 r41 (judge-167): what Forge said is folded under Technical details, not run into ours.
+    expect(failing).not.toHaveTextContent(/23514/);
+    expect(within(drawer).getByText("the database refused the write (23514)").closest("details")).not.toBeNull();
     expect(within(drawer).queryByTestId("fails-the-same-way-ISS-1")).toBeNull();
   });
 

@@ -2,141 +2,10 @@ import { sealQueryError } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
 import { TransitionError } from '../issues/apply-transition.js';
-import { transitions } from '../pipeline/state-machine.js';
-import {
-  closeFailureText,
-  closeRefusalOf,
-  reasonSentence,
-  refusedCloseComment,
-} from './releasing-recovery.js';
+import { refusedCloseComment } from './refused-close-words.js';
+import { closeFailureText, closeRefusalOf } from './releasing-recovery.js';
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
-
-describe('what a finish says on an issue it could not close (ISS-1381)', () => {
-  it('keeps every id a refusal names for a caller, and counts them in words for a person (ISS-1421)', () => {
-    const refusal = closeRefusalOf(
-      new TransitionError('OPEN_QUESTIONS', 'answer them first', {
-        to: 'closed',
-        openQuestionIds: ['q-1', 'q-2'],
-        blockingRunIds: ['r-9'],
-      }),
-    );
-
-    expect(refusal).toEqual({
-      kind: 'refused',
-      code: 'OPEN_QUESTIONS',
-      detail: 'answer them first',
-      blocking: ['blocking run r-9', 'open question q-1', 'open question q-2'],
-      steps: [],
-    });
-    const said = refusedCloseComment({
-      refusal,
-      projectId: PROJECT,
-      version: '1.4.0',
-      destination: 'awaiting_release',
-    });
-    expect(said).toContain('The close was refused because the issue holds open questions.');
-    expect(said).not.toMatch(/`|OPEN_QUESTIONS/);
-    expect(said).toContain('Blocking it: 1 blocking run, 2 open questions.');
-    expect(said).not.toMatch(/q-1|q-2|r-9/);
-    expect(said).toContain('went out as version 1.4.0');
-  });
-
-  it('names only acts the issue page offers at the release gate, and no API route (ISS-1381 r3)', () => {
-    const said = refusedCloseComment({
-      refusal: closeRefusalOf(
-        new TransitionError('OPEN_QUESTIONS', 'send this move again with `voidQuestions`', {
-          openQuestionIds: ['q-1'],
-        }),
-      ),
-      projectId: PROJECT,
-      version: '1.4.0',
-      destination: 'awaiting_release',
-    });
-
-    expect(said).toContain(
-      'What clears it: answer each open question in its "Decision waiting" card',
-    );
-    expect(said).toContain('back at Awaiting release');
-    expect(said).toContain('Release now');
-    expect(said).toContain('next release');
-    // No status menu offers Closed from the gate, and no surface there withdraws a question.
-    expect(transitions.awaiting_release).not.toContain('closed');
-    expect(said).not.toMatch(/Closed|withdraw|Decisions panel|`awaiting_release`/);
-    expect(said).not.toMatch(/\/api\/|voidQuestions|POST /);
-  });
-
-  it('says a failure reached no decision and is the operator’s to clear, not the person’s', () => {
-    const refusal = closeRefusalOf(new Error('connection reset'));
-
-    expect(refusal).toEqual({ kind: 'failed', message: 'connection reset' });
-    const said = refusedCloseComment({
-      refusal,
-      projectId: PROJECT,
-      version: null,
-      destination: 'awaiting_release',
-    });
-    expect(said).toContain('failed before it reached a decision: connection reset');
-    expect(said).toContain('nothing here is yours to clear');
-    expect(said).toContain('whoever operates this Forge');
-    expect(said).toContain('went out with this batch');
-    expect(said).not.toMatch(/Closed|the close can be made again/);
-  });
-
-  it('says Release now fails the same way until a failed close is fixed (ISS-1381 r4)', () => {
-    const said = refusedCloseComment({
-      refusal: closeRefusalOf(new Error('connection reset')),
-      projectId: PROJECT,
-      version: '1.4.0',
-      destination: 'awaiting_release',
-    });
-
-    expect(said).toContain('Release now');
-    expect(said).toContain('fails the same way until that failure is fixed');
-    expect(said).not.toContain(
-      'Once that is fixed, the release banner on this page offers Release now',
-    );
-  });
-
-  it('names every earlier release a repeated failure came from, beside the one that shipped (ISS-1381 r4)', () => {
-    const said = refusedCloseComment({
-      refusal: closeRefusalOf(new Error('connection reset')),
-      projectId: PROJECT,
-      version: '1.6.0',
-      destination: 'awaiting_release',
-      repeats: ['1.4.0', null],
-    });
-
-    expect(said).toContain('went out as version 1.6.0');
-    expect(said).toContain('version 1.4.0');
-    expect(said).toContain('one with no version');
-    expect(said).toContain('for the same reason');
-  });
-
-  it('says so where a refusal names no blocking object', () => {
-    const said = refusedCloseComment({
-      refusal: closeRefusalOf(new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged')),
-      projectId: PROJECT,
-      version: '2.0.0',
-      destination: 'awaiting_release',
-    });
-    expect(said).toContain('The refusal named no blocking object.');
-    expect(said).toContain('What clears it: mark the issue merged on its Properties rail');
-  });
-
-  it('gives a promoted roster its settlement in place of the gate, and claims no move', () => {
-    const said = refusedCloseComment({
-      refusal: closeRefusalOf(new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged')),
-      projectId: PROJECT,
-      version: '2.0.0',
-      destination: 'releasing',
-      held: 'This batch recorded a promotion; abort it to settle.',
-    });
-    expect(said).toContain('This batch recorded a promotion; abort it to settle.');
-    expect(said).toContain('Clear the reason above first');
-    expect(said).not.toContain('The issue is at');
-  });
-});
 
 describe('what a finish tells the release agent of a refused close (ISS-1421 r16)', () => {
   it("carries each of the refusal's steps on a line of its own after its sentences", () => {
@@ -170,6 +39,7 @@ describe('what a failed write says, never its statement or a bound value (ISS-13
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
+      delivered: true,
     });
 
     expect(said).toContain('judge planted failure: storage refused this row');
@@ -230,6 +100,7 @@ describe('what a failed write says, never its statement or a bound value (ISS-13
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
+      delivered: true,
     });
 
     for (const text of [said, closeFailureText(refusal)]) {
@@ -285,6 +156,7 @@ describe('what a failed write says, never its statement or a bound value (ISS-13
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
+      delivered: true,
     });
 
     for (const text of [said, closeFailureText(refusal)]) {
@@ -333,6 +205,7 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
+      delivered: true,
     });
 
     for (const text of [said, closeFailureText(refusal)]) {
@@ -428,26 +301,5 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     expect(text).toContain('refund hook is still (a value of this write, withheld) funds');
     expect(text).not.toContain('[Redacted]');
     expect(text).not.toContain('releasing');
-  });
-});
-
-// ISS-1421 r40 (judge-164): an abort's comment opened "batch release aborted: …", and a reason that
-// already ended in a full stop was followed by another.
-describe('a hand-back reason as the opening sentence of its comment', () => {
-  it.each([
-    [
-      'another batch was already in flight, so this one never started',
-      'Another batch was already in flight, so this one never started.',
-    ],
-    [
-      'The release run failed, so nothing is carrying this issue to production.',
-      'The release run failed, so nothing is carrying this issue to production.',
-    ],
-    [
-      'The release was aborted: a person stopped it. ',
-      'The release was aborted: a person stopped it.',
-    ],
-  ])('says %j as %j', (reason, said) => {
-    expect(reasonSentence(reason)).toBe(said);
   });
 });

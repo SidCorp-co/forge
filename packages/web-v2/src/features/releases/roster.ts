@@ -230,10 +230,12 @@ function entryAt(raw: unknown, endpoint: string, where: string): ReleaseRosterEn
   };
 }
 
-/** "The last release (version 0.6.0) could not close this": who met the failure, in words. */
+/** "The last release (version 0.6.0) could not close this": who met the failure, in a sentence of
+ *  ours. What Forge said is the operator's, folded under Technical details beside it rather than
+ *  run into this sentence (ISS-1421 r41, judge-167). */
 export function failedCloseLead(failure: CloseFailure, what: string): string {
   const which = failure.version ? ` (version ${failure.version})` : "";
-  return `The last release${which} could not close ${what}: ${failure.reason.replace(/\.$/, "")}.`;
+  return `The last release${which} could not close ${what}: the close failed inside Forge before anything decided it.`;
 }
 
 /**

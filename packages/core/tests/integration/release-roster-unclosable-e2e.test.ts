@@ -247,6 +247,36 @@ describe('a release names, before the press, the rows its finish could not close
     expect(await runCount()).toBe(0);
   });
 
+  // ISS-1421 r41 (judge-167, criterion 393): the Batch release dialog and Shape & release read a
+  // project naming no repository "1 issue named here (ISS-3) … Use Mark merged … first", with nothing
+  // saying Commit may stay empty.
+  it('tells a reader of a project naming no repository to use Mark merged with Commit left empty', async () => {
+    // A project that lands in git, naming no repository: its unmarked row has no merge, not no landing.
+    await harness.db.execute(sql`UPDATE projects SET kind = 'standard' WHERE id = ${projectId}`);
+    const rows = await fourRows();
+    await harness.db.execute(sql`
+      UPDATE issues SET merged_landing = NULL,
+             merged_at = CASE WHEN id = ${rows.unmarked} THEN NULL ELSE now() END
+       WHERE project_id = ${projectId}
+    `);
+    const [unmarkedKey] = await fx.displayIds([rows.unmarked]);
+    const reader = `${unmarkedKey} is not marked merged, so nothing says its work is on the branch this release deploys, and a release closes what it carries. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed; with no repository named, Commit may stay empty.`;
+
+    const refused = await post(`/api/projects/${projectId}/release-batches`, {
+      issueIds: [rows.clean, rows.unmarked],
+    });
+    expect(refused.status).toBe(409);
+    const body = JSON.stringify(await refused.json());
+    expect(body).toContain(JSON.stringify(reader).slice(1, -1));
+    expect(body).toContain('This project names no repository, so the mark may name no commit.');
+
+    const res = await get(`/api/projects/${projectId}/release-readiness`);
+    const readiness = (await res.json()) as { blockers: Array<{ code: string; reader: string }> };
+    const unmerged = readiness.blockers.find((b) => b.code === 'RELEASE_WORK_UNMERGED');
+    expect(unmerged?.reader).toBe(reader);
+    for (const b of readiness.blockers) expect(b.reader).not.toContain('named here');
+  });
+
   it('lists the same refusal on release readiness before anyone presses', async () => {
     await fourRows();
 

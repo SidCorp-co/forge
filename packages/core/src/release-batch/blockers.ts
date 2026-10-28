@@ -264,14 +264,16 @@ async function rosterBlockers(
   const landing = ordered.flatMap((id) =>
     (shortfalls.get(id) ?? [])
       .filter((s) => s.code === 'CLOSE_REQUIRES_SHIPPED')
-      .map((s) => ({ id, shape: String(s.details.shape) })),
+      .map((s) => ({ id, shape: String(s.details.shape), claim: s.details.noRepository === true })),
   );
   // An issue may declare its own lane, so one roster can hold both shapes, and each is owed the
   // sentence naming its own route: one blocker per shape, in roster order.
   for (const shape of [...new Set(landing.map((r) => r.shape))]) {
-    const ids = landing.filter((r) => r.shape === shape).map((r) => r.id);
+    const rows = landing.filter((r) => r.shape === shape);
+    const ids = rows.map((r) => r.id);
     const displayIds = await namedAs(ids);
-    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, shape, displayIds }));
+    const claim = rows.some((r) => r.claim) ? { noRepository: true } : {};
+    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, shape, displayIds, ...claim }));
   }
   const rest = ordered.filter((id) =>
     (shortfalls.get(id) ?? []).some((s) => s.code !== 'CLOSE_REQUIRES_SHIPPED'),

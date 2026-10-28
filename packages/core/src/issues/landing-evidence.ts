@@ -306,7 +306,7 @@ type ShapeExecutor = Pick<Db, 'select'>;
 export async function readLandingEvidence(
   executor: ShapeExecutor,
   issueId: string,
-): Promise<{ columns: MergeMarkColumns; lane: Lane } | null> {
+): Promise<{ columns: MergeMarkColumns; lane: Lane; projectId: string } | null> {
   const [row] = await executor
     .select({
       mergedAt: issues.mergedAt,
@@ -323,7 +323,7 @@ export async function readLandingEvidence(
     .limit(1);
   if (!row) return null;
   const { kind, declared, projectId, ...columns } = row;
-  return { columns, lane: laneOf({ declared, kind, projectId }) };
+  return { columns, lane: laneOf({ declared, kind, projectId }), projectId };
 }
 
 /** The project's own shape, which an issue declaring none answers. */
