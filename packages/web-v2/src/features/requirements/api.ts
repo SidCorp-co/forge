@@ -32,7 +32,7 @@ function actionBody(a: RequirementAction): unknown {
   if (a.kind === "accept-delivery") return { revision: a.revision, ...given(a.reason), ...(a.byDecision ? { byDecision: true } : {}) };
   if (a.kind === "agree" || a.kind === "repin") return { revision: a.revision, ...given(a.reason) };
   if (a.kind === "start-delivery" || a.kind === "mark-delivered") return given(a.reason);
-  if (a.kind === "accept") return given(a.reason);
+  if (a.kind === "accept") return { reason: a.reason };
   if (a.kind === "drop") return { reason: a.reason };
   if (a.kind === "return") return { reason: a.reason };
   if (a.kind === "defer") return { reason: a.reason, ...(a.targetPhase ? { targetPhase: a.targetPhase } : {}) };

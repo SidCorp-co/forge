@@ -119,7 +119,7 @@ export async function acceptRevision(input: {
   ref: string;
   actor: RequirementActor;
   revision: number;
-  /** The signer's own words; on an agreed requirement it is the re-baseline's reason. */
+  /** The signer's own words, owed (REQ-4 BC-16); on an agreed requirement it is the re-baseline's reason. */
   reason?: string | null | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
@@ -127,6 +127,10 @@ export async function acceptRevision(input: {
   const gate = await personGateOf(projectId, 'revisions');
   const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
   if (signer) return { ok: false, refusals: [signer] };
+  // owed whoever accepts, whatever the gate lets through: the gate says who, never whether why
+  const unsaid = signoffReasonRefusal('accept', input.reason);
+  if (unsaid) return { ok: false, refusals: [unsaid] };
+  const acceptReason = (input.reason ?? '').trim();
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
@@ -171,7 +175,6 @@ export async function acceptRevision(input: {
         .set({ state: 'superseded' })
         .where(revisionWhere(row.id, current.currentRevision));
     }
-    const acceptReason = input.reason?.trim() || null;
     await tx
       .update(requirementRevisions)
       .set({ state: 'current', decidedBy: actor.userId, decidedAt: new Date(), acceptReason })

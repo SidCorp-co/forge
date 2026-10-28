@@ -26,6 +26,10 @@ let member: string;
 const on = (token: string, method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown) =>
   api(token, method, `/api/projects/${projectId}${path}`, body);
 
+/** An accept says why (REQ-4 BC-16); every other step of the walk takes an empty body. */
+const bodyFor = (path: string) =>
+  path.endsWith('/accept') ? { reason: 'Accepted for this test.' } : {};
+
 const rows = async <T>(q: ReturnType<typeof sql>) => (await db.execute(q)) as unknown as T[];
 
 beforeAll(async () => {
@@ -97,7 +101,7 @@ async function readyByMember(title: string): Promise<{ key: string; id: string }
     `/requirements/${key}/revisions/1/propose`,
     `/requirements/${key}/revisions/1/accept`,
   ]) {
-    const r = await on(member, 'POST', path, {});
+    const r = await on(member, 'POST', path, bodyFor(path));
     expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);
   }
   return { key, id: String(made.body.id) };
