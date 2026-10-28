@@ -11,6 +11,7 @@ import { db } from '../../src/db/client.js';
 import { closeRunIfOneShot } from '../../src/pipeline/index.js';
 import { stampReleaseShipped } from '../../src/pipeline/run-records.js';
 import { recordCarried } from '../../src/release-batch/carried.js';
+import { compareReleaseVersions, parseReleaseVersion } from '../../src/release-batch/version.js';
 import { api, userToken } from '../helpers/api.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
@@ -173,6 +174,7 @@ describe('a tag pushed on attempt 1', () => {
       carriers: [{ kind: 'tag', name: `v${first.version}` }],
       line: null,
       taken: false,
+      overtaken: null,
     });
 
     const listed = await list();
@@ -269,6 +271,61 @@ describe('the version lock', () => {
     expect(after.version).not.toBe(first.version);
     const shown = await page(after.version);
     expect(shown.cuts[1]?.rule.carriers).toEqual([{ kind: 'tag', name: 'v-late' }]);
+  });
+});
+
+// forge, ISS-586: 0.4.0-dev.211 aborted, later rosters shipped up to dev.226, and the re-cut of
+// dev.211's roster wore dev.211 again, so package.json and /api/version went backwards.
+/** Whether `a` is a higher release version than `b`; a version either side cannot parse is not. */
+function above(a: string, b: string): boolean {
+  const va = parseReleaseVersion(a);
+  const vb = parseReleaseVersion(b);
+  return va !== null && vb !== null && compareReleaseVersions(va, vb) > 0;
+}
+
+describe('a re-cut below a version claimed since', () => {
+  it('takes the next above the highest claimed, never moving the version backwards, and names why', async () => {
+    const roster = [await fx.insertIssue()];
+    const first = await cut(roster);
+    await boxTook(first.runId);
+    await abort(first.runId, { pushed: false });
+
+    const other = await cut([await fx.insertIssue()]);
+    await boxTook(other.runId);
+    await ship(other.runId);
+    expect(above(other.version, first.version), 'the other roster shipped above the first').toBe(
+      true,
+    );
+
+    const recut = await cut(roster);
+    expect(
+      recut.version,
+      `the re-cut wears ${first.version}, below ${other.version} that shipped since`,
+    ).not.toBe(first.version);
+    expect(above(recut.version, other.version), 'the re-cut never goes backwards').toBe(true);
+
+    const shown = await page(recut.version);
+    expect(shown.cuts.map((c) => c.version)).toEqual([first.version, recut.version]);
+    expect(shown.cuts[1]?.rule).toEqual({
+      decided: 'bumped',
+      from: first.version,
+      carriers: [],
+      line: null,
+      taken: false,
+      overtaken: other.version,
+    });
+  });
+
+  it('still wears its version where nothing was claimed above it', async () => {
+    const roster = [await fx.insertIssue()];
+    const first = await cut(roster);
+    await boxTook(first.runId);
+    await abort(first.runId, { pushed: false });
+
+    const recut = await cut(roster);
+    expect(recut.version).toBe(first.version);
+    const shown = await page(recut.version);
+    expect(shown.cuts[1]?.rule).toMatchObject({ decided: 'reused', overtaken: null });
   });
 });
 

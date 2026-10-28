@@ -31,6 +31,19 @@ describe('a verdict reason and the secret detector', () => {
     ).toBeNull();
   });
 
+  // ISS-572 (FB-153): a count after a credential label is prose, a real short secret is not
+  it('writes a reason counting after a credential label', () => {
+    expect(
+      verdictDraftFault(draft('no token: 4 failures, 3 tests failed, token: 2 left')),
+    ).toBeNull();
+  });
+
+  it('still refuses a short secret after a credential label', () => {
+    const fault = verdictDraftFault(draft('the seed logs password: hunter2 on boot'));
+    expect(fault).toMatchObject({ code: 'VERDICT_SECRET', path: '/reason' });
+    expect(fault?.detail).not.toContain('hunter2');
+  });
+
   it('still refuses a credential field holding a real key', () => {
     const fault = verdictDraftFault(draft(`sent api_key: ${KEY_BODY.slice(0, 20)}`));
     expect(fault).toMatchObject({ code: 'VERDICT_SECRET', path: '/reason' });

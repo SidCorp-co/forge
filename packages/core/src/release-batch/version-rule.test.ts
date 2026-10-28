@@ -6,11 +6,13 @@ import { describe, expect, it } from 'vitest';
 import { releaseLinesOf } from './release-cuts.js';
 import {
   carriersOf,
+  cutRecordOf,
   decideVersion,
   type LineageRun,
   lineageOf,
   rosterKey,
   UNNAMED_PUSH,
+  type VersionDecision,
 } from './version-rule.js';
 
 const ROSTER = ['c', 'a', 'b'];
@@ -123,6 +125,87 @@ describe('a re-cut of the same roster', () => {
       version: '0.5.0-dev.1',
       carriers: [],
       line: '0.5.0-dev',
+    });
+  });
+});
+
+// forge, ISS-586: 0.4.0-dev.211 aborted, other rosters shipped up to dev.226, and the re-cut of
+// dev.211's roster wore dev.211 again, moving package.json and /api/version backwards.
+describe('a re-cut below a version claimed since', () => {
+  const line = { of: { major: 0, minor: 4, patch: 0 }, label: 'dev' };
+  const later = (version: string) => shipped(version);
+
+  it('takes the next above the highest claimed, and names that version as why', () => {
+    const pred = run({ version: '0.4.0-dev.211', metadata: NOTHING_LEFT });
+    const others = [212, 220, 226].map((n) => ({ ...later(`0.4.0-dev.${n}`), roster: [`o${n}`] }));
+    const decided = decideVersion([pred, ...others], ROSTER, line);
+    expect(decided).toMatchObject({
+      kind: 'bumped',
+      version: '0.4.0-dev.227',
+      recutOf: { id: pred.id },
+      attempt: 2,
+      carriers: [],
+      line: null,
+      takenBy: null,
+      overtakenBy: '0.4.0-dev.226',
+    });
+    expect(cutRecordOf(decided as Extract<VersionDecision, { kind: 'bumped' }>)).toMatchObject({
+      decided: 'bumped',
+      from: '0.4.0-dev.211',
+      overtakenBy: '0.4.0-dev.226',
+    });
+  });
+
+  it('counts a claim that never shipped: an attempt still running above it is out of order too', () => {
+    const pred = run({ version: '0.3.0', metadata: NOTHING_LEFT });
+    const running = run({ version: '0.4.0', roster: ['q'], status: 'running' });
+    expect(decideVersion([pred, running], ROSTER, null)).toMatchObject({
+      kind: 'bumped',
+      version: '0.5.0',
+      overtakenBy: '0.4.0',
+    });
+  });
+
+  it('still reuses its version where it is the highest claimed (the boundary)', () => {
+    const below = { ...later('0.4.0-dev.210'), roster: ['o'] };
+    const pred = run({ version: '0.4.0-dev.211', metadata: NOTHING_LEFT });
+    const decided = decideVersion([below, pred], ROSTER, line);
+    expect(decided).toMatchObject({ kind: 'reused', version: '0.4.0-dev.211', attempt: 2 });
+    expect(cutRecordOf(decided as Extract<VersionDecision, { kind: 'reused' }>)).toMatchObject({
+      overtakenBy: null,
+    });
+  });
+
+  it('names the carrier and the version above it where both move it', () => {
+    const pred = run({
+      version: '0.4.0-dev.211',
+      metadata: said([{ kind: 'tag', name: 'v0.4.0-dev.211' }]),
+    });
+    const above = { ...later('0.4.0-dev.226'), roster: ['o'] };
+    expect(decideVersion([pred, above], ROSTER, line)).toMatchObject({
+      kind: 'bumped',
+      version: '0.4.0-dev.227',
+      carriers: [{ kind: 'tag', name: 'v0.4.0-dev.211' }],
+      overtakenBy: '0.4.0-dev.226',
+    });
+  });
+
+  it('carries no overtaking where a carrier alone moved it', () => {
+    const pred = run({ version: '0.3.0', metadata: said([{ kind: 'tag', name: 'v0.3.0' }]) });
+    expect(decideVersion([pred], ROSTER, null)).toMatchObject({
+      kind: 'bumped',
+      version: '0.4.0',
+      overtakenBy: null,
+    });
+  });
+
+  it('is not held undecided by a silent attempt: a version below the highest is never worn again', () => {
+    const pred = run({ version: '0.3.0', metadata: SILENT });
+    const above = { ...later('0.4.0'), roster: ['o'] };
+    expect(decideVersion([pred, above], ROSTER, null)).toMatchObject({
+      kind: 'bumped',
+      version: '0.5.0',
+      overtakenBy: '0.4.0',
     });
   });
 });
