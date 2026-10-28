@@ -52,6 +52,7 @@ vi.mock("../hooks", async () => {
 
 const { IssuesListView } = await import("./issues-list-view");
 const { ApiError } = await import("@/lib/api/client");
+const { forgetWaits } = await import("@/design/hooks/wait-announcer");
 
 function mount() {
   window.history.replaceState({}, "", "/projects/forge-dev/issues");
@@ -72,7 +73,10 @@ beforeEach(() => {
   reads.readMembers.mockClear();
   reads.readLabels.mockClear();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  forgetWaits();
+});
 
 describe("the issue list's filters whose choices could not be read", () => {
   it("say the people the Creator filter offers could not be loaded, and Retry reads them again", () => {
@@ -230,12 +234,8 @@ describe("a filter's failed read the server asked to wait on", () => {
       last = now;
       act(() => vi.advanceTimersByTime(500));
     }
-    expect(said).toEqual([
-      "The server asked for 20 seconds before Retry.",
-      "The server asked for 20 seconds before Retry.",
-      "You can retry now.",
-      "You can retry now.",
-    ]);
+    // r54, judge-168: both lines show one refused answer's wait, told once each way in the one region, not per line.
+    expect(said).toEqual(["The server asked for 20 seconds before Retry.", "You can retry now."]);
   });
 
   it("points the opened menu at the wait while it runs, and at Retry once it is over", () => {
@@ -245,9 +245,13 @@ describe("a filter's failed read the server asked to wait on", () => {
     const open = () => fireEvent.click(screen.getAllByRole("combobox", { name: "Label filter" })[0] as HTMLElement);
     open();
     const during = screen.getByRole("option", { name: /Couldn't load the labels to choose from/ });
-    expect(during).toHaveTextContent("Too many requests in a short time. Retry comes back beside the filters when the wait there ends.");
+    expect(during).toHaveTextContent("Too many requests in a short time. Retry comes back beside the filters when this wait ends.");
     expect(during).not.toHaveTextContent("Retry is beside the filters.");
-    act(() => vi.advanceTimersByTime(31_000));
+    // r54, judge-168: at 1280 the opened menu covers the count beside the filters, so it says how long itself.
+    expect(within(during).getByRole("timer")).toHaveTextContent("You can retry in 30 seconds.");
+    act(() => vi.advanceTimersByTime(12_000));
+    expect(within(screen.getByRole("option", { name: /Couldn't load the labels to choose from/ })).getByRole("timer")).toHaveTextContent("You can retry in 18 seconds.");
+    act(() => vi.advanceTimersByTime(19_000));
     const after = screen.getByRole("option", { name: /Couldn't load the labels to choose from/ });
     expect(after).toHaveTextContent("Too many requests in a short time. Retry is beside the filters.");
     expect(after).not.toHaveTextContent(/\d|when the wait/);

@@ -155,7 +155,7 @@ export function SlideOver({
         {fitBody ? (
           <div className="flex min-h-0 flex-1 flex-col">{layered}</div>
         ) : (
-          <div className="flex-1 overflow-y-auto px-5 py-4">{layered}</div>
+          <div className="flex-1 overflow-y-auto px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4">{layered}</div>
         )}
       </aside>
     </div>,

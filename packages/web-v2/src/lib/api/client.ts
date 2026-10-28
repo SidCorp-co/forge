@@ -20,7 +20,11 @@ export class ApiError extends Error {
    *  from here rather than starting over (ISS-1229 r51). Only a read's: the web counts a wait beside a failed
    *  read's Retry and nowhere else, so a write keeps the server's sentence and the time it names (r53). */
   readonly retryAt?: number;
+  /** Which read this answers, as the client holds it (`GET /projects`): one read's wait is told once, wherever shown (r54). */
+  readonly read?: string;
 
+  /** `counted` is true for a read's wait, which counts from now; false for a write's; a time for a held read's,
+   *  whose wait ends when the refusal it repeats said (r54). */
   constructor(
     status: number,
     message: string,
@@ -28,7 +32,8 @@ export class ApiError extends Error {
     details?: unknown,
     body?: unknown,
     retryAfterMs?: number,
-    counted = true,
+    counted: boolean | number = true,
+    read?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -36,9 +41,10 @@ export class ApiError extends Error {
     if (code !== undefined) this.code = code;
     if (details !== undefined) this.details = details;
     if (body !== undefined) this.body = body;
+    if (read !== undefined) this.read = read;
     if (retryAfterMs !== undefined) {
       this.retryAfterMs = retryAfterMs;
-      if (counted) this.retryAt = Date.now() + retryAfterMs;
+      if (counted !== false) this.retryAt = counted === true ? Date.now() + retryAfterMs : counted;
     }
   }
 }
@@ -147,9 +153,81 @@ function isRead(method: string | undefined): boolean {
 }
 
 /** A refused answer as the error every caller reads, carrying when the server asked to be asked again. */
-async function errorOf(res: Response, method: string | undefined): Promise<ApiError> {
+async function errorOf(res: Response, method: string | undefined, read?: string): Promise<ApiError> {
   const { message, code, details, body } = await parseErrorBody(res);
-  return new ApiError(res.status, message, code, details, body, retryAfterOf(res.headers.get('Retry-After')), isRead(method));
+  return new ApiError(res.status, message, code, details, body, retryAfterOf(res.headers.get('Retry-After')), isRead(method), read);
+}
+
+/** A read the server refused with a wait, kept until that wait ends. */
+interface HeldRead {
+  status: number;
+  message: string;
+  code?: string;
+  details?: unknown;
+  body?: unknown;
+  /** The wait the server asked for, as it said it: what was asked stays true while what is left shrinks. */
+  asked: number;
+  retryAt: number;
+}
+
+/** Where the held reads outlive a page load: a reload is one more way of asking again (judge-168, z4). */
+const HELD_KEY = 'forge.heldReads';
+let heldReads: Map<string, HeldRead> | null = null;
+
+function held(): Map<string, HeldRead> {
+  if (heldReads) return heldReads;
+  heldReads = new Map();
+  try {
+    const stored = JSON.parse(window.sessionStorage.getItem(HELD_KEY) ?? '{}') as Record<string, HeldRead>;
+    for (const [read, refusal] of Object.entries(stored)) {
+      if (typeof refusal?.retryAt === 'number' && refusal.retryAt > Date.now()) heldReads.set(read, refusal);
+    }
+  } catch {
+  }
+  return heldReads;
+}
+
+function storeHeld(reads: Map<string, HeldRead>): void {
+  try {
+    if (reads.size === 0) window.sessionStorage.removeItem(HELD_KEY);
+    else window.sessionStorage.setItem(HELD_KEY, JSON.stringify(Object.fromEntries(reads)));
+  } catch {
+  }
+}
+
+/**
+ * The refusal a read is held on, repeated while the server's wait runs, ending when it ends (ISS-1229 r54). A read
+ * the server refused with a wait is not asked again before that wait ends, whoever asks and however: a refetch, a
+ * changed key, an effect run again, a reload. The one Retry waits the wait out and then sends.
+ */
+function heldRefusal(read: string): ApiError | null {
+  const reads = held();
+  const refusal = reads.get(read);
+  if (!refusal) return null;
+  if (refusal.retryAt <= Date.now()) {
+    reads.delete(read);
+    storeHeld(reads);
+    return null;
+  }
+  const { status, message, code, details, body, asked, retryAt } = refusal;
+  return new ApiError(status, message, code, details, body, asked, retryAt, read);
+}
+
+function noteAnswer(read: string, refused: ApiError | null): void {
+  const reads = held();
+  if (refused?.retryAt !== undefined && refused.retryAfterMs !== undefined) {
+    const { status, message, code, details, body, retryAfterMs: asked, retryAt } = refused;
+    reads.set(read, { status, message, code, details, body, asked, retryAt });
+  } else if (!reads.delete(read)) {
+    return;
+  }
+  storeHeld(reads);
+}
+
+/** Forgets every held read: a test's fresh page. */
+export function forgetHeldReads(): void {
+  heldReads = new Map();
+  storeHeld(heldReads);
 }
 
 /**
@@ -173,15 +251,19 @@ async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Re
   if (hasBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
+  // Held in the browser only: a server render answers many people, and one person's wait is not another's.
+  const read = typeof window !== 'undefined' && isRead(options.method) ? `${(options.method ?? 'GET').toUpperCase()} ${endpoint}` : undefined;
+  const refusal = read === undefined ? null : heldRefusal(read);
+  if (refusal) throw refusal;
   const res = await sendRequest(endpoint, {
     ...options,
     credentials: 'include',
     headers,
   });
 
-  if (!res.ok) {
-    throw await errorOf(res, options.method);
-  }
+  const refused = res.ok ? null : await errorOf(res, options.method, read);
+  if (read !== undefined) noteAnswer(read, refused);
+  if (refused) throw refused;
 
   return res;
 }

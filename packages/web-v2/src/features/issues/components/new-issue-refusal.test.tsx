@@ -61,6 +61,9 @@ describe("New issue refused", () => {
       expect(scrolled).toHaveLength(1);
       expect(scrolled[0]?.contains(refusal)).toBe(true);
       expect(scrolled[0]?.contains(create)).toBe(true);
+      // r54, judge-168: scrolled flush, Create sat on the screen's bottom edge at 390x600; it keeps the sheet's room.
+      expect(scrolled[0]?.className).toContain("scroll-mb-[calc(1rem+env(safe-area-inset-bottom))]");
+      expect(scrolled[0]?.closest(".overflow-y-auto")?.className).toContain("pb-[calc(1rem+env(safe-area-inset-bottom))]");
     } finally {
       Reflect.deleteProperty(Element.prototype, "scrollIntoView");
     }

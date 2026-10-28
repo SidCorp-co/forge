@@ -927,14 +927,16 @@ export function IssuesListView({
 
 /** The opened menu's own line for a failed read, never a choice. It points at the Retry beside the filters only
  *  where the one rule offers one (ISS-1229 r51, judge-158: a 403 pointed at a Retry that was not there), and while
- *  the server's wait runs, at the wait counted there in its place (r52, judge-162). */
+ *  the server's wait runs it counts that wait itself, since the opened menu covers the count beside the filters
+ *  (r54, judge-168). */
 function unreadChoice(what: string, error: unknown, waiting: boolean): SelectOption {
   const why = asSentence(formatApiError(error));
-  const where = waiting ? "Retry comes back beside the filters when the wait there ends." : "Retry is beside the filters.";
+  const where = waiting ? "Retry comes back beside the filters when this wait ends." : "Retry is beside the filters.";
   return {
     value: `unread:${what}`,
     label: `Couldn't load ${what}`,
     detail: isRetryableApiError(error) ? `${why} ${where}` : why,
+    ...(waiting ? { waitOn: error } : {}),
     icon: "alert",
     disabled: true,
   };

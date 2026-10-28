@@ -476,8 +476,9 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         )}
 
         {/* The refusal stands beside Create, where the person pressed it: at the form's top it was off screen
-            once the form was scrolled to its end (ISS-1229 r53, judge-165). */}
-        <div ref={footerRef} className="mt-auto flex flex-col gap-2.5 pt-2">
+            once the form was scrolled to its end (ISS-1229 r53, judge-165). Brought on screen with the sheet's own
+            room under it, so Create never lands on the screen's bottom edge or under a home indicator (r54). */}
+        <div ref={footerRef} className="mt-auto flex scroll-mb-[calc(1rem+env(safe-area-inset-bottom))] flex-col gap-2.5 pt-2">
           {errors.form && (
             <div role="alert" data-testid="new-issue-refusal">
               <Banner tone="danger">{errors.form}</Banner>

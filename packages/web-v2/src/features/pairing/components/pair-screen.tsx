@@ -196,7 +196,12 @@ export function PairScreen() {
                   : "This box will act as you. Its credential reaches no project: it can run the daemon, not read or write a project's work."}
               </Banner>
 
-              {approve.isError && <Banner tone="danger">{formatApiError(approve.error)}</Banner>}
+              {/* Said as it appears, as every other refusal is: a screen reader heard nothing (ISS-1229 r54, judge-168). */}
+              {approve.isError && (
+                <div role="alert" data-testid="pair-refusal">
+                  <Banner tone="danger">{formatApiError(approve.error)}</Banner>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2">
                 <Button variant="ghost" icon="x" onClick={() => setDenied(true)}>

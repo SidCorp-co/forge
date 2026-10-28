@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { showWait } from "@/design/hooks/wait-announcer";
 import { askedWaitWords, retryAt, retryWaitWords } from "@/lib/utils/retry-rule";
 
 /** The wait before a failed read's Retry, counted down each second; null where there is none or once it is over. */
@@ -34,17 +35,15 @@ export function useRetryWaiting(error: unknown): boolean {
   return at !== null && Date.now() < at;
 }
 
-/** What a live region says of a wait: once as it starts, once as it ends, never each tick (ISS-1229 r52, judge-162).
- *  Empty until the first effect, so a region mounted with the wait running still announces it. */
-export function useWaitAnnouncement(error: unknown): string | null {
-  const waiting = useRetryWaiting(error);
-  const asked = askedWaitWords(error);
-  const [said, setSaid] = useState<string | null>(null);
+/** Tells a screen reader this failed read's wait, once as it starts and once as it ends, however many places show
+ *  it: the place registers and the read is what is told (ISS-1229 r54, judge-168). */
+export function useWaitAnnounced(error: unknown): void {
+  const at = retryAt(error);
+  const started = askedWaitWords(error);
+  const read = (error as { read?: unknown } | null)?.read;
+  const key = at === null ? null : `${typeof read === "string" ? read : ""}@${at}`;
   useEffect(() => {
-    if (waiting) setSaid(asked);
-    else setSaid((was) => (was === null ? null : WAIT_OVER));
-  }, [waiting, asked]);
-  return said;
+    if (key === null || at === null || started === null) return;
+    return showWait(key, at, started);
+  }, [key, at, started]);
 }
-
-export const WAIT_OVER = "You can retry now.";
