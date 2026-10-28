@@ -29,7 +29,7 @@ export function useCoreFile(path: string, enabled: boolean) {
     setSrc(url);
     return () => URL.revokeObjectURL(url);
   }, [q.data]);
-  useAskedAgainAfterTheWait(q.error, q.refetch);
+  useAskedAgainAfterTheWait(enabled ? q.error : null, q.refetch);
   return { src, error: q.isError ? q.error : null };
 }
 

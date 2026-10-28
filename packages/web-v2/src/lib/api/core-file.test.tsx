@@ -7,7 +7,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BodyImage, BodyLink } from "@/design/patterns/body-link";
@@ -48,6 +48,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -79,6 +80,34 @@ describe("a core file the server refused with a wait (criterion 495, judge-170)"
 
     await act(async () => void (await vi.advanceTimersByTimeAsync(21_000)));
     expect(await screen.findByRole("img", { name: "photo.png" })).toHaveAttribute("src", expect.stringMatching(/^blob:/));
+    expect(sent).toEqual([`GET ${IMAGE}`, `GET ${IMAGE}`]);
+  });
+
+  // r55 whole-set review F2: an image away from the screen is not asked again when the wait ends, only once near it.
+  it("asks again for a held image away from the screen only once it comes near", async () => {
+    const client = createQueryClient();
+    const shown = (key: string) => (
+      <QueryClientProvider client={client}>
+        <CoreFilesProvider value={coreFiles}>
+          <AttachmentList key={key} rows={[imageRow]} />
+        </CoreFilesProvider>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(shown("near"));
+    await screen.findByText("photo.png not loaded.");
+    const watched: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(seen: (entries: { isIntersecting: boolean }[]) => void) {
+        watched.push(seen);
+      }
+      observe() {}
+      disconnect() {}
+    });
+    rerender(shown("away"));
+    await act(async () => void (await vi.advanceTimersByTimeAsync(21_000)));
+    expect(sent).toEqual([`GET ${IMAGE}`]);
+    await act(async () => watched.at(-1)?.([{ isIntersecting: true }]));
+    await waitFor(() => expect(document.querySelector("img")).toHaveAttribute("src", expect.stringMatching(/^blob:/)));
     expect(sent).toEqual([`GET ${IMAGE}`, `GET ${IMAGE}`]);
   });
 

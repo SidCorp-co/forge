@@ -325,6 +325,21 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     expect(sent).toEqual(["GET /api/attachments/x/../a/download"]);
   });
 
+  // r55 whole-set review F1: ended holds are cleared before a new one is written, so a full storage still keeps it.
+  it("keeps a new hold across a reload where only ended holds filled the storage", async () => {
+    window.localStorage.setItem("forge.heldRead:GET /api/old@1", "{}");
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      if (this.getItem("forge.heldRead:GET /api/old@1") !== null) throw new DOMException("full", "QuotaExceededError");
+      setItem.call(this, key, value);
+    });
+    await readRuns().catch(() => {});
+    vi.resetModules();
+    const reloaded = await import("./client");
+    await expect(reloaded.apiClient(RUNS)).rejects.toMatchObject({ status: 429 });
+    expect(sent).toEqual(["GET /api/runs"]);
+  });
+
   it("refuses by name a file that is not on the core, and sends nothing", async () => {
     await expect(apiFile("https://elsewhere.example/a.png")).rejects.toThrow("not a file on the core, whose path starts with /api/");
     expect(sent).toEqual([]);

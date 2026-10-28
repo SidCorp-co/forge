@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, type ImgHTMLAttributes, useContext, useEffect, useRef, useState } from "react";
+import { createContext, type ImgHTMLAttributes, useContext, useEffect, useState } from "react";
 import { useRetryWait, useWaitAnnounced } from "@/design/hooks/use-retry-wait";
 import { RetryWait } from "@/design/primitives/retry-wait";
 import { cn } from "@/lib/utils/cn";
@@ -18,12 +18,12 @@ export const CoreFilesProvider = CoreFilesContext.Provider;
 /** How far outside the screen an image starts loading, so it is there by the time it is scrolled to. */
 const LOADS_WITHIN = "200px";
 
-/** Whether the element has come near the screen; at once where the browser cannot tell. */
-function useNearScreen<T extends Element>(): [React.RefObject<T | null>, boolean] {
-  const ref = useRef<T>(null);
+/** Whether the element has come near the screen; at once where the browser cannot tell. The element is followed as
+ *  it changes, so a failure shown from the cache is watched too and asked again once its wait ends. */
+function useNearScreen<T extends Element>(): [(el: T | null) => void, boolean] {
+  const [el, setEl] = useState<T | null>(null);
   const [near, setNear] = useState(false);
   useEffect(() => {
-    const el = ref.current;
     if (near || !el) return;
     if (typeof IntersectionObserver === "undefined") {
       setNear(true);
@@ -34,8 +34,8 @@ function useNearScreen<T extends Element>(): [React.RefObject<T | null>, boolean
     }, { rootMargin: LOADS_WITHIN });
     seen.observe(el);
     return () => seen.disconnect();
-  }, [near]);
-  return [ref, near];
+  }, [el, near]);
+  return [setEl, near];
 }
 
 /**
@@ -61,7 +61,7 @@ export function CoreImage({
   }
   if (file.error) {
     return (
-      <span data-testid="core-image-failed" className={cn("inline-flex flex-col items-center justify-center gap-1 bg-surface p-2 text-center", className)}>
+      <span ref={ref} data-testid="core-image-failed" className={cn("inline-flex flex-col items-center justify-center gap-1 bg-surface p-2 text-center", className)}>
         <span className="fg-caption break-all text-muted">{alt ? `${alt} not loaded.` : "Image not loaded."}</span>
         {wait && <RetryWait wait={wait} testId="core-image" />}
       </span>

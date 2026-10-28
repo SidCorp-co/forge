@@ -198,11 +198,11 @@ function storeHeld(read: string, refusal: HeldRead): void {
   for (const [held, standing] of ownReads) if (standing.retryAt <= Date.now()) ownReads.delete(held);
   ownReads.set(read, refusal);
   try {
-    window.localStorage.setItem(`${HELD_PREFIX}${read}@${refusal.retryAt}`, JSON.stringify(refusal));
     for (let i = window.localStorage.length - 1; i >= 0; i--) {
       const key = window.localStorage.key(i);
       if (key?.startsWith(HELD_PREFIX) && Number(key.slice(key.lastIndexOf('@') + 1)) <= Date.now()) window.localStorage.removeItem(key);
     }
+    window.localStorage.setItem(`${HELD_PREFIX}${read}@${refusal.retryAt}`, JSON.stringify(refusal));
   } catch {
   }
 }
