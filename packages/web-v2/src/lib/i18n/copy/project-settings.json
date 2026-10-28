@@ -423,7 +423,8 @@
     "settings.project.gates.raisedAfter": "Raised after {cause}",
     "settings.project.gates.raised": "Forge raised this project from {from} to {to} after {cause} ({ref}, {at}).",
     "settings.project.gates.raisedLower": "Only a person lowers it again.",
-    "settings.project.gates.saved": "Gates saved"
+    "settings.project.gates.saved": "Gates saved",
+    "settings.project.gates.defaultOf": "{profile} {mode}"
   },
   "vi": {
     "settings.project.advanced.archive": "Lưu trữ project",
