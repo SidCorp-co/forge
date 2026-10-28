@@ -139,6 +139,8 @@ describe("a wait before Retry, as a screen reader hears it (criteria 479, 511)",
       </>,
     );
     expect(waitWords(toldOver(20, ear))).toEqual(["The server asked for 20 seconds before Retry.", "You can retry now."]);
+    // r54 review: a screen reader confined to the open dialog hears the end there.
+    expect(screen.getByRole("dialog")).toHaveTextContent("You can retry now.");
   });
 
   it("tells each of two reads, refused apart, its own start and end", () => {

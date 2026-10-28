@@ -6,7 +6,7 @@
 
 export const WAIT_OVER = "You can retry now.";
 
-const REGION_ID = "fg-wait-announcer";
+const REGION = "wait-announcer";
 /** How long a sentence stays in the region once said: long enough to be read out, short enough to leave no trail. */
 const KEPT_FOR_MS = 7_000;
 /** A region stood up for this sentence is given a moment to be found before anything is said in it. */
@@ -19,29 +19,29 @@ interface Wait {
 }
 
 const waits = new Map<string, Wait>();
-let stoodAt = 0;
+const stoodAt = new WeakMap<HTMLElement, number>();
 
+/** The region a screen reader can hear now: inside the open modal dialog, which confines it, else on the page (r54 review). */
 function region(): HTMLElement | null {
   if (typeof document === "undefined") return null;
-  const standing = document.getElementById(REGION_ID);
+  const host = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')].at(-1) ?? document.body;
+  const standing = [...host.children].find((child): child is HTMLElement => child instanceof HTMLElement && child.dataset.testid === REGION);
   if (standing) return standing;
-  stoodAt = Date.now();
   const el = document.createElement("div");
-  el.id = REGION_ID;
   el.setAttribute("role", "log");
   el.setAttribute("aria-live", "polite");
   el.setAttribute("aria-relevant", "additions");
-  el.setAttribute("data-testid", "wait-announcer");
+  el.setAttribute("data-testid", REGION);
   Object.assign(el.style, {
     position: "absolute", width: "1px", height: "1px", margin: "-1px", padding: "0",
     overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: "0",
   });
-  document.body.appendChild(el);
+  host.appendChild(el);
+  stoodAt.set(el, Date.now());
   return el;
 }
 
 function say(text: string): void {
-  const now = Date.now();
   const el = region();
   if (!el) return;
   const put = () => {
@@ -50,7 +50,7 @@ function say(text: string): void {
     el.appendChild(line);
     setTimeout(() => line.remove(), KEPT_FOR_MS);
   };
-  const settling = stoodAt + FIRST_SAID_AFTER_MS - now;
+  const settling = (stoodAt.get(el) ?? 0) + FIRST_SAID_AFTER_MS - Date.now();
   if (settling > 0) setTimeout(put, settling);
   else put();
 }
@@ -87,5 +87,5 @@ export function showWait(read: string, at: number, started: string): () => void 
 /** Forgets every wait and the region: a test's fresh page. */
 export function forgetWaits(): void {
   waits.clear();
-  if (typeof document !== "undefined") document.getElementById(REGION_ID)?.remove();
+  if (typeof document !== "undefined") for (const el of document.querySelectorAll(`[data-testid="${REGION}"]`)) el.remove();
 }

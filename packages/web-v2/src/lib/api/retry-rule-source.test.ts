@@ -43,6 +43,9 @@ function sendsAround(path: string, text: string): string[] {
       const declaredHere = ts.isPropertyAssignment(node.parent) || ts.isMethodDeclaration(node.parent) || ts.isPropertySignature(node.parent);
       if (!declaredHere && (owner === null || /^(window|globalThis|self|navigator)$/.test(owner))) found.push(`${at(node)} ${node.text}`);
     }
+    if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression) && /^(fetch|XMLHttpRequest|EventSource|sendBeacon)$/.test(node.argumentExpression.text)) {
+      found.push(`${at(node)} ${node.argumentExpression.text}`);
+    }
     ts.forEachChild(node, visit);
   };
   visit(file);
@@ -175,6 +178,7 @@ describe("a failed read's Retry, across the web app (criteria 478, 479, 496)", (
     ["fetch under another name", `const get = globalThis.fetch;\nexport const A = () => <button onClick={() => get("/api/runs")}>Load them</button>;`],
     ["an XMLHttpRequest", `export function load() { const x = new XMLHttpRequest(); x.open("GET", "/api/runs"); x.send(); }`],
     ["a beacon", `export const ping = () => navigator.sendBeacon("/api/runs");`],
+    ["the window's fetch named by a string", `export const A = () => <button onClick={() => void window["fetch"]("/api/runs")}>Load them</button>;`],
   ])("is refused for %s sent around the client", (_, text) => {
     expect(sendsAround(join(SRC, "features/x/a.tsx"), text)).toHaveLength(1);
   });
