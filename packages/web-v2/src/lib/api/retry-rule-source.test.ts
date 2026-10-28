@@ -29,10 +29,31 @@ const AROUND_THE_CLIENT: Record<string, string> = {
   "features/guides/api.ts": "a server render's read of the public guides, cached by Next",
   "lib/changelog.ts": "a server render's read of the changelog, cached by Next",
   "features/settings/mcp.ts": "a write to the person's own MCP address, which is not core",
-  "features/issues/components/html-attachment-card.tsx": "an attachment's bytes, shown as a link where they fail, never offered Retry",
+  "design/patterns/core-image.tsx": "a core file's bytes already read through the client, shown from memory",
+  "design/patterns/body-link.tsx": "an image another host or the web app itself serves; a core file is drawn by CoreImage",
+  "lib/notifications/favicon.ts": "the page's own favicon, drawn again with a badge",
 };
 
-/** Every place a file sends a request by itself: a fetch, an XMLHttpRequest, an EventSource or a beacon. */
+/** Attributes by which an element loads an address by itself, as the browser and never the client. */
+const LOADING_ATTRIBUTES = /^(src|srcSet|poster|data)$/;
+
+/** An address an element may load by itself: one of the web app's own files, never the core's. */
+function ownFile(value: ts.Expression | undefined, file: ts.SourceFile): boolean {
+  if (!value) return false;
+  if (ts.isStringLiteralLike(value)) return !/^(\/api\b|https?:|\/\/)/.test(value.text);
+  if (ts.isCallExpression(value)) return value.expression.getText() === "assetPath";
+  if (!ts.isIdentifier(value)) return false;
+  const name = value.text;
+  const declared = file.statements.flatMap((statement) =>
+    ts.isVariableStatement(statement) && statement.declarationList.flags & ts.NodeFlags.Const ? [...statement.declarationList.declarations] : [],
+  ).find((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === name);
+  return ownFile(declared?.initializer, file);
+}
+
+/**
+ * Every place a file sends a request by itself: a fetch, an XMLHttpRequest, an EventSource or a beacon; and an element
+ * that loads an address by itself, an image's `src` among them (ISS-1229 r55, judge-170's plant a8).
+ */
 function sendsAround(path: string, text: string): string[] {
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const found: string[] = [];
@@ -46,6 +67,15 @@ function sendsAround(path: string, text: string): string[] {
     if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression) && /^(fetch|XMLHttpRequest|EventSource|sendBeacon)$/.test(node.argumentExpression.text)) {
       found.push(`${at(node)} ${node.argumentExpression.text}`);
     }
+    if (ts.isJsxAttribute(node) && LOADING_ATTRIBUTES.test(node.name.getText())) {
+      const tag = node.parent.parent.tagName.getText();
+      const value = node.initializer && ts.isJsxExpression(node.initializer) ? node.initializer.expression : node.initializer;
+      if (/^[a-z]/.test(tag) && !ownFile(value as ts.Expression | undefined, file)) found.push(`${at(node)} ${tag} ${node.name.getText()}`);
+    }
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Image") found.push(`${at(node)} new Image`);
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isPropertyAccessExpression(node.left) && node.left.name.text === "src") {
+      found.push(`${at(node)} .src`);
+    }
     ts.forEachChild(node, visit);
   };
   visit(file);
@@ -58,6 +88,28 @@ describe("a failed read's Retry, across the web app (criteria 478, 479, 496)", (
     const index = indexOf(sources);
     const all = sources.filter(([path]) => path.endsWith(".tsx")).flatMap(([path]) => offencesIn(index, path));
     expect(all).toEqual([]);
+  });
+
+  // ISS-1229 r55, criterion 478 (judge-170 a7): a re-read offered on a 403 or 404 under words the one Retry does not
+  // draw. What enforces 478 is these words: every re-read label is the one Retry's, which offers itself only for an
+  // error the rule retries. The client does not refuse a re-sent 403 or 404, because those answer again for good
+  // reasons (access granted, the row created), as ask-again-when-access-returns.ts relies on.
+  it.each([
+    ["Ask again", `<button onClick={() => setTries((n) => n + 1)}>Ask again</button>`],
+    ["Load again", `<button onClick={() => q.refetch()}>Load again</button>`],
+    ["Try again", `<button onClick={() => q.refetch()}>Try again</button>`],
+    ["Load them again", `<button onClick={() => q.refetch()}>Load them again</button>`],
+    ["Fetch it again", `<button onClick={() => q.refetch()}>Fetch it again</button>`],
+    ["Check now", `<button onClick={() => q.refetch()}>Check now</button>`],
+    ["Refresh", `<button onClick={() => q.refetch()}>Refresh</button>`],
+    ["an icon named Look again", `<button aria-label="Look again" onClick={() => q.refetch()} />`],
+  ])("refuses a re-read drawn as %s, whatever error it is offered for", (_, control) => {
+    const file = `export const A = ({ q, setTries }) => <p>Couldn't load the runs. ${control}</p>;`;
+    expect(offences(join(SRC, "features/x/a.tsx"), file)).toEqual([expect.stringMatching(/^features\/x\/a\.tsx:1 (draws|names a control) "/)]);
+  });
+
+  it.each([["Sign in again"], ["Load the rest"], ["Loading…"], ["Send"]])("passes %s, which reads nothing again", (words) => {
+    expect(offences(join(SRC, "features/x/a.tsx"), `export const A = () => <button onClick={() => {}}>${words}</button>;`)).toEqual([]);
   });
 
   it("is refused where a component draws its own Retry button", () => {
@@ -179,8 +231,20 @@ describe("a failed read's Retry, across the web app (criteria 478, 479, 496)", (
     ["an XMLHttpRequest", `export function load() { const x = new XMLHttpRequest(); x.open("GET", "/api/runs"); x.send(); }`],
     ["a beacon", `export const ping = () => navigator.sendBeacon("/api/runs");`],
     ["the window's fetch named by a string", `export const A = () => <button onClick={() => void window["fetch"]("/api/runs")}>Load them</button>;`],
+    ["an image on a core address (judge-170 a8)", `export const A = ({ id }) => <img src={\`/api/attachments/\${id}/download\`} alt="" />;`],
+    ["an image on a written core address", `export const A = () => <img src="/api/attachments/a/download" alt="" />;`],
+    ["an image on an address handed in", `export const A = ({ href }) => <img src={href} alt="" />;`],
+    ["a frame on an address handed in", `export const A = ({ u }) => <iframe src={u} title="x" />;`],
+    ["a video's poster", `export const A = ({ u }) => <video poster={u} />;`],
+    ["an image made by script", `export function load(u) { const i = new Image(); return i; }`],
+    ["an address given to an element by script", `export function load(el, u) { el.src = u; }`],
   ])("is refused for %s sent around the client", (_, text) => {
     expect(sendsAround(join(SRC, "features/x/a.tsx"), text)).toHaveLength(1);
+  });
+
+  it("passes an element loading one of the web app's own files", () => {
+    const text = `const MARK = assetPath("/forge-mark-32.png");\nexport const A = () => <><img src={assetPath("/a.png")} alt="" /><img src={MARK} alt="" /><img src="/forge-mark-32.png" alt="" /><iframe srcDoc="<p>x</p>" title="x" /></>;`;
+    expect(sendsAround(join(SRC, "features/x/a.tsx"), text)).toEqual([]);
   });
 
   it("passes a query's own fetch and a member that only shares the name", () => {

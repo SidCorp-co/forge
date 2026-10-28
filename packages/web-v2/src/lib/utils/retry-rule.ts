@@ -26,6 +26,20 @@ export function retryWaitWords(err: unknown, now: number): string | null {
   return `You can retry in ${durationWords(at - now)}.`;
 }
 
+/** A held file's wait at `now`: a file comes back by itself once the wait ends, so no Retry is named (ISS-1229 r55). */
+export function shownAgainWords(err: unknown, now: number): string | null {
+  const at = retryAt(err);
+  if (at === null || at - now <= 0) return null;
+  return `Shown again in ${durationWords(at - now)}.`;
+}
+
+/** A held file's wait as it starts, and its end: the file is read again by itself, so no Retry is named (r55). */
+export function fileWaitWords(err: unknown, name: string): { started: string | null; ended: string } {
+  const asked = (err as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+  const started = retryAt(err) === null || typeof asked !== "number" || asked <= 0 ? null : `The server asked for ${durationWords(asked)} before ${name} is shown.`;
+  return { started, ended: `${name} is being loaded again.` };
+}
+
 /** A wait in its largest whole unit, each rounded up, so no time is named sooner than the server allows. */
 function durationWords(ms: number): string {
   const seconds = Math.ceil(ms / 1000);

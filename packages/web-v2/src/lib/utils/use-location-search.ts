@@ -37,8 +37,8 @@ export function useLocationSearch(): string {
 }
 
 /** Replaces the current entry's query and tells every reader itself, since a later history patcher can drop the patch above. */
-export function replaceLocationSearch(url: string): void {
-  window.history.replaceState(window.history.state, '', url);
+export function replaceLocationSearch(url: string, state: unknown = window.history.state): void {
+  window.history.replaceState(state, '', url);
   window.dispatchEvent(new Event(EVENT));
 }
 

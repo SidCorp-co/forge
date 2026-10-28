@@ -14,7 +14,7 @@ import { type ReactNode, useEffect, useReducer, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RetryButton } from "@/design/primitives/retry-button";
 import { createQueryClient } from "@/providers/query-provider";
-import { ApiError, apiClient, forgetHeldReads } from "./client";
+import { ApiError, apiClient, apiFile, forgetHeldReads } from "./client";
 
 expect.extend(matchers);
 
@@ -203,7 +203,7 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     const again = await readRuns().then(() => null, refusal);
     expect(sent).toEqual(["GET /api/runs"]);
     expect(again).toBeInstanceOf(ApiError);
-    expect(again).toMatchObject({ status: 429, code: "RATE_LIMITED", message: first?.message, retryAt: first?.retryAt, read: "GET /runs" });
+    expect(again).toMatchObject({ status: 429, code: "RATE_LIMITED", message: first?.message, retryAt: first?.retryAt, read: `GET ${location.origin}/api/runs` });
     expect((again?.retryAt ?? 0) - Date.now()).toBe(15_000);
   });
 
@@ -235,6 +235,118 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     const reloaded = await import("./client");
     await expect(reloaded.apiClient(RUNS)).rejects.toMatchObject({ status: 429 });
     expect(sent).toEqual(["GET /api/runs"]);
+  });
+
+  // r55, judge-170: a tab the person opens, or one the app opens without an opener, began with no hold of its own.
+  it("is held in a tab opened after the refusal, which shares no session storage with the tab refused", async () => {
+    await readRuns().catch(() => {});
+    window.sessionStorage.clear();
+    vi.resetModules();
+    const secondTab = await import("./client");
+    await expect(secondTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429, read: `GET ${location.origin}/api/runs` });
+    expect(sent).toEqual(["GET /api/runs"]);
+  });
+
+  it("is held in a tab already open and reading before the refusal", async () => {
+    let answered = 0;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(`${init?.method ?? "GET"} ${String(input)}`);
+      answered += 1;
+      return answered === 2
+        ? new Response(JSON.stringify(refusedBody), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "20" } })
+        : new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.resetModules();
+    const openTab = await import("./client");
+    await openTab.apiClient("/labels");
+    await readRuns().catch(() => {});
+    await expect(openTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429 });
+    expect(sent).toEqual(["GET /api/labels", "GET /api/runs"]);
+  });
+
+  it("is held for a core file read through the client, such as an attachment's bytes", async () => {
+    const file = "/api/attachments/a1/download";
+    await expect(apiFile(file)).rejects.toMatchObject({ status: 429 });
+    vi.setSystemTime(Date.now() + 19_000);
+    await expect(apiFile(file)).rejects.toMatchObject({ status: 429, read: `GET ${location.origin}${file}` });
+    expect(sent).toEqual([`GET ${file}`]);
+    vi.setSystemTime(Date.now() + 1_500);
+    // What the client hands back is judged by its bytes and type: `instanceof Blob` asks which realm made it, and the
+    // fetch's Blob and the test environment's global one are not the same realm everywhere (CI 40665316325).
+    const bytes = await apiFile(file);
+    await expect(bytes.text()).resolves.toBe("[]");
+    expect(bytes.type).toBe("application/json");
+    expect(sent).toEqual([`GET ${file}`, `GET ${file}`]);
+  });
+
+  // r55 review F2: one address is one read, whichever caller names it.
+  it("is held for the same address asked by another caller or with a fragment", async () => {
+    await expect(apiFile("/api/runs")).rejects.toMatchObject({ status: 429 });
+    await expect(readRuns()).rejects.toMatchObject({ status: 429, read: `GET ${location.origin}/api/runs` });
+    await expect(apiFile("/api/runs#top")).rejects.toMatchObject({ status: 429 });
+    expect(sent).toEqual(["GET /api/runs"]);
+  });
+
+  // r55 review F1: each refusal is written as an entry of its own, so a tab recording another refusal at the same moment,
+  // of this read or another, replaces nothing of it and a fresh tab is held until the longest wait ends.
+  it("records each refusal under its own entry, so no tab's write replaces another's hold", async () => {
+    const answers: ((res: Response) => void)[] = [];
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(`${init?.method ?? "GET"} ${String(input)}`);
+      return new Promise<Response>((resolve) => answers.push(resolve));
+    });
+    const refusedAfter = (seconds: number) =>
+      new Response(JSON.stringify(refusedBody), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(seconds) } });
+    const written: string[] = [];
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      expect(this.getItem(key)).toBeNull();
+      written.push(key);
+      setItem.call(this, key, value);
+    });
+    vi.resetModules();
+    const otherTab = await import("./client");
+    const reads = [readRuns().catch(() => {}), otherTab.apiClient(RUNS).catch(() => {}), otherTab.apiClient("/labels").catch(() => {})];
+    answers[1]?.(refusedAfter(60));
+    await reads[1];
+    answers[0]?.(refusedAfter(20));
+    await reads[0];
+    answers[2]?.(refusedAfter(20));
+    await reads[2];
+    const now = Date.now();
+    expect(written).toEqual(expect.arrayContaining([`forge.heldRead:GET ${location.origin}/api/runs@${now + 60_000}`, `forge.heldRead:GET ${location.origin}/api/labels@${now + 20_000}`]));
+    vi.setSystemTime(now + 30_000);
+    vi.resetModules();
+    const thirdTab = await import("./client");
+    await expect(thirdTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429, retryAt: now + 60_000 });
+    expect(sent).toHaveLength(3);
+  });
+
+  // r55 whole-set review F1: one address however it is spelled, dot segments included.
+  it("is held for the same address spelled with dot segments", async () => {
+    await expect(apiFile("/api/attachments/x/../a/download")).rejects.toMatchObject({ status: 429 });
+    await expect(apiFile("/api/attachments/a/download")).rejects.toMatchObject({ status: 429 });
+    expect(sent).toEqual(["GET /api/attachments/x/../a/download"]);
+  });
+
+  // r55 whole-set review F1: ended holds are cleared before a new one is written, so a full storage still keeps it.
+  it("keeps a new hold across a reload where only ended holds filled the storage", async () => {
+    window.localStorage.setItem("forge.heldRead:GET /api/old@1", "{}");
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      if (this.getItem("forge.heldRead:GET /api/old@1") !== null) throw new DOMException("full", "QuotaExceededError");
+      setItem.call(this, key, value);
+    });
+    await readRuns().catch(() => {});
+    vi.resetModules();
+    const reloaded = await import("./client");
+    await expect(reloaded.apiClient(RUNS)).rejects.toMatchObject({ status: 429 });
+    expect(sent).toEqual(["GET /api/runs"]);
+  });
+
+  it("refuses by name a file that is not on the core, and sends nothing", async () => {
+    await expect(apiFile("https://elsewhere.example/a.png")).rejects.toThrow("not a file on the core, whose path starts with /api/");
+    expect(sent).toEqual([]);
   });
 
   it("holds only that read: another address, and a write to the same one, still go out", async () => {
