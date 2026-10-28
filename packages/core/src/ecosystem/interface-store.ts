@@ -40,9 +40,20 @@ export interface EdgeRow {
   builtAgainst: string;
 }
 
+/** Why an adopt crossed versions no differ measured additive, kept on the revision it writes (REQ-5 BC-15). */
+export interface AdoptedUnmeasured {
+  reason: string;
+  versions: readonly { version: string; measured: string }[];
+}
+
 export async function putInterface(
   tx: Tx,
-  input: { projectId: string; revision: number; userId: string },
+  input: {
+    projectId: string;
+    revision: number;
+    userId: string;
+    adoptedUnmeasured?: AdoptedUnmeasured | null;
+  },
   document: unknown,
   edges: readonly EdgeRow[],
 ): Promise<StoredDocument> {
@@ -54,9 +65,16 @@ export async function putInterface(
     .values(values)
     .onConflictDoUpdate({ target: projectInterfaces.projectId, set: values })
     .returning();
-  await tx
-    .insert(projectInterfaceRevisions)
-    .values({ projectId, revision, document, writtenBy: userId, writtenAt: now });
+  const adopted = input.adoptedUnmeasured ?? null;
+  await tx.insert(projectInterfaceRevisions).values({
+    projectId,
+    revision,
+    document,
+    writtenBy: userId,
+    writtenAt: now,
+    adoptReason: adopted?.reason ?? null,
+    adoptUnmeasured: adopted ? [...adopted.versions] : null,
+  });
   await tx
     .delete(ecosystemConsumptions)
     .where(eq(ecosystemConsumptions.consumerProjectId, projectId));
@@ -65,17 +83,28 @@ export async function putInterface(
   return row;
 }
 
-export async function listInterfaceRevisions(projectId: string): Promise<StoredRevision[]> {
-  return db
+export async function listInterfaceRevisions(
+  projectId: string,
+): Promise<(StoredRevision & { adoptedUnmeasured: AdoptedUnmeasured | null })[]> {
+  const rows = await db
     .select({
       revision: projectInterfaceRevisions.revision,
       document: projectInterfaceRevisions.document,
       writtenBy: projectInterfaceRevisions.writtenBy,
       writtenAt: projectInterfaceRevisions.writtenAt,
+      adoptReason: projectInterfaceRevisions.adoptReason,
+      adoptUnmeasured: projectInterfaceRevisions.adoptUnmeasured,
     })
     .from(projectInterfaceRevisions)
     .where(eq(projectInterfaceRevisions.projectId, projectId))
     .orderBy(desc(projectInterfaceRevisions.revision));
+  return rows.map(({ adoptReason, adoptUnmeasured, ...r }) => ({
+    ...r,
+    adoptedUnmeasured:
+      adoptReason === null
+        ? null
+        : { reason: adoptReason, versions: adoptUnmeasured as AdoptedUnmeasured['versions'] },
+  }));
 }
 
 /** Each revision of a project's interface, newest first, with the agency of the account that wrote it. */

@@ -139,7 +139,38 @@ describe('adopt refuses by name, and moves nothing', () => {
       { contract: 'forge/forge-api', version: '2026-10-20' },
       ['ADOPT_VERSION_UNMEASURED /version'],
     ],
+    [
+      'a breaking step, whatever reason is given (REQ-5 BC-16)',
+      {
+        contract: 'forge/forge-mcp',
+        version: '2026-10-05',
+        acceptUnmeasured: { reason: 'we read the diff and it looks fine' },
+      },
+      ['ADOPT_VERSION_BREAKING /version'],
+    ],
+    [
+      'a reason where every step is measured additive',
+      {
+        contract: 'forge/forge-api',
+        version: '2026-10-01',
+        acceptUnmeasured: { reason: 'nothing to cross' },
+      },
+      ['ADOPT_REASON_UNUSED /acceptUnmeasured'],
+    ],
   ];
+
+  it('refuses a blank reason at the door, before anything is read', async () => {
+    const res = await say('plugin', 'POST', adopt(), {
+      contract: 'forge/forge-api',
+      version: '2026-10-20',
+      acceptUnmeasured: { reason: '   ' },
+    });
+    expect([res.status, res.json.code ?? res.json.error?.code]).toEqual([
+      400,
+      'ECOSYSTEM_ARGUMENT_INVALID',
+    ]);
+    expect(await pins()).toEqual({ builtAgainst: '2026-09-20', link: '2026-09-20', revision: 1 });
+  });
 
   it.each(plants)('refuses %s', async (_name, body, want) => {
     expect(refusedAt(await say('plugin', 'POST', adopt(), body))).toEqual(want);
@@ -196,7 +227,44 @@ describe('adopt moves the consumption and every link in one act', () => {
     const res = ok(
       await say('plugin', 'POST', adopt(), { contract: 'forge/forge-api', version: '2026-10-01' }),
     );
-    expect(res.moved).toEqual({ consumptions: [], links: [] });
+    expect(res.moved).toEqual({ consumptions: [], links: [], unmeasured: [] });
     expect(await pins()).toEqual({ builtAgainst: '2026-10-01', link: '2026-10-01', revision: 2 });
+  });
+});
+
+describe('adopt crosses a step no differ measured on a stated reason, and keeps it (REQ-5 BC-15)', () => {
+  // catalog-fe on admin-rest-v1 3.20.0, 2026-10-28: measured unknown by one warning on a webhook
+  // header that never shipped; refused, the consumer pinned by hand and nothing kept why
+  const REASON = 'the one removed header is a webhook input this consumer never sends';
+
+  it('moves both pins across the unknown step and answers what it crossed', async () => {
+    const res = ok(
+      await say('plugin', 'POST', adopt(), {
+        contract: 'forge/forge-api',
+        version: '2026-10-20',
+        acceptUnmeasured: { reason: `  ${REASON} ` },
+      }),
+    );
+    expect(res.adopted).toEqual({
+      contract: 'forge/forge-api',
+      version: '2026-10-20',
+      unmeasured: [{ version: '2026-10-20', measured: 'measured unknown' }],
+      reason: REASON,
+    });
+    expect(res.moved.links).toEqual([{ id: link, module: 'cli/src', from: '2026-10-01' }]);
+    expect(await pins()).toEqual({ builtAgainst: '2026-10-20', link: '2026-10-20', revision: 3 });
+  });
+
+  it('keeps the reason on the interface revision it wrote, and on no other', async () => {
+    const read = ok(
+      await say('plugin', 'GET', `/api/projects/${w.project.plugin}/interface/revisions`),
+    );
+    const byRevision = new Map(read.revisions.map((r: Doc) => [r.revision, r.adoptedUnmeasured]));
+    expect(byRevision.get(3)).toEqual({
+      reason: REASON,
+      versions: [{ version: '2026-10-20', measured: 'measured unknown' }],
+    });
+    expect(byRevision.get(2)).toBeNull();
+    expect(byRevision.get(1)).toBeNull();
   });
 });

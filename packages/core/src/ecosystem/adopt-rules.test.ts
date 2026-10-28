@@ -57,6 +57,7 @@ const world = (over: Partial<AdoptWorld> = {}): AdoptWorld => ({
   consumed: [{ index: 0, builtAgainst: '3.0.0' }],
   versions: VERSIONS,
   links: [link('l1'), link('l2')],
+  acceptUnmeasured: null,
   ...over,
 });
 
@@ -76,6 +77,7 @@ describe('adopt: a consumer moves to an additive version in one act', () => {
           { id: 'l1', module: 'src/l1', from: '3.0.0' },
           { id: 'l2', module: 'src/l2', from: '3.0.0' },
         ],
+        unmeasured: [],
       },
     });
   });
@@ -90,11 +92,12 @@ describe('adopt: a consumer moves to an additive version in one act', () => {
     expect(out.ok && out.plan).toEqual({
       consumptions: [],
       links: [{ id: 'l2', module: 'src/l2', from: '3.1.0' }],
+      unmeasured: [],
     });
     const settled = checkAdopt(
       world({ consumed: [{ index: 0, builtAgainst: '3.1.1' }], links: [] }),
     );
-    expect(settled.ok && settled.plan).toEqual({ consumptions: [], links: [] });
+    expect(settled.ok && settled.plan).toEqual({ consumptions: [], links: [], unmeasured: [] });
   });
 
   it('refuses a contract the interface does not consume, by name', () => {
@@ -269,5 +272,106 @@ describe('adopt: the way out of a step no differ measured', () => {
       );
       expect(detail).toContain('a hand pin takes only the version approved');
     }
+  });
+});
+
+describe('adopt: an unmeasured step crossed on a stated reason (REQ-5 BC-15, BC-16)', () => {
+  // catalog-fe on admin-rest-v1 3.20.0, 2026-10-28: measured unknown against 3.19.0 by one
+  // request-parameter-removed warning on a webhook header that never shipped
+  const REASON = 'the removed x-shopify-hmac-sha256 header is a webhook input catalog-fe never sends';
+  const headerRemoved: ImpactChange = {
+    element: 'POST /api/v1/webhook/{source}/{site_id}',
+    kind: 'removed',
+    level: 'warning',
+    text: 'deleted the `header` request parameter `x-shopify-hmac-sha256`',
+    check: 'request-parameter-removed',
+  };
+  const unknownStep = new Map(VERSIONS).set('3.1.0', version('3.0.0', 'unknown', [headerRemoved]));
+
+  it('names the stated reason as a way out beside the hand pin', () => {
+    const out = checkAdopt(world({ versions: unknownStep }));
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    const detail = out.refusals[0]?.detail ?? '';
+    expect(detail).toContain('send `acceptUnmeasured: { reason }` with the adopt');
+    expect(detail).toContain('a hand pin takes only the version approved');
+  });
+
+  it('crosses an unknown, an unread and a cut-short step on a reason, naming each crossed', () => {
+    const unread = new Map(VERSIONS).set(
+      '3.1.0',
+      version('3.0.0', 'non-breaking', [
+        { element: 'document', kind: 'changed', level: 'info', text: 'opaque', check: 'opaque' },
+      ]),
+    );
+    const cutShort = new Map(VERSIONS).set(
+      '3.1.0',
+      version('3.0.0', 'non-breaking', [
+        { element: '…', kind: 'changed', level: 'info', text: 'more', check: 'changes-truncated' },
+      ]),
+    );
+    const said: Record<string, string> = {};
+    for (const [name, versions] of [
+      ['unknown', unknownStep],
+      ['unread', unread],
+      ['cut', cutShort],
+    ] as const) {
+      const out = checkAdopt(world({ versions, acceptUnmeasured: REASON }));
+      expect(out.ok, name).toBe(true);
+      if (!out.ok) continue;
+      expect(out.plan.unmeasured.map((s) => s.version)).toEqual(['3.1.0']);
+      said[name] = out.plan.unmeasured[0]?.measured ?? '';
+      expect(out.plan.links.map((l) => l.id)).toEqual(['l1', 'l2']);
+    }
+    expect(said).toEqual({
+      unknown: 'measured unknown',
+      unread: 'a check no differ read',
+      cut: 'more changes than its record lists',
+    });
+  });
+
+  it('never crosses a breaking step or a missing measured line on a reason', () => {
+    const breaking = new Map(VERSIONS).set('3.1.0', version('3.0.0', 'breaking'));
+    expect(codes(world({ versions: breaking, acceptUnmeasured: REASON }))).toEqual([
+      'ADOPT_VERSION_BREAKING',
+    ]);
+    const noLine = new Map(VERSIONS).set('3.1.0', version(null, 'non-breaking'));
+    const out = checkAdopt(world({ versions: noLine, acceptUnmeasured: REASON }));
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.refusals[0]).toMatchObject({ code: 'ADOPT_VERSION_UNMEASURED' });
+    expect(out.refusals[0]?.detail).not.toContain('acceptUnmeasured');
+  });
+
+  it('still refuses a link whose field the crossed step removed', () => {
+    const dropped = new Map(VERSIONS).set(
+      '3.1.0',
+      version('3.0.0', 'unknown', [
+        {
+          element: 'GET /products/properties/name',
+          kind: 'removed',
+          level: 'warning',
+          text: 'removed name',
+          check: 'response-property-removed',
+        },
+      ]),
+    );
+    expect(codes(world({ versions: dropped, acceptUnmeasured: REASON }))).toContain(
+      'ADOPT_FIELD_MISSING',
+    );
+  });
+
+  it('refuses a reason where every step is measured additive, so nothing is kept explaining nothing', () => {
+    const out = checkAdopt(world({ acceptUnmeasured: REASON }));
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.refusals.map((r) => [r.code, r.path])).toEqual([
+      ['ADOPT_REASON_UNUSED', '/acceptUnmeasured'],
+    ]);
+  });
+
+  it('moves nothing differently where every step is measured additive and no reason is sent', () => {
+    const out = checkAdopt(world());
+    expect(out.ok && out.plan.unmeasured).toEqual([]);
   });
 });
