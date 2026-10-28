@@ -285,7 +285,7 @@ export function BatchReleaseDialog({
                   data-testid={`carried-${issue.displayId}`}
                 >
                   <div className="flex min-w-0 items-baseline gap-2">
-                    <MonoTag className={UNBROKEN_KEY_CLASS}>{issue.displayId}</MonoTag>
+                    <MonoTag>{issue.displayId}</MonoTag>
                     <span className="fg-body-sm min-w-0 truncate text-fg">{issue.title}</span>
                     <span className="fg-caption ml-auto shrink-0 text-muted">{statusLabel(issue.status)}</span>
                   </div>

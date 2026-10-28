@@ -16,7 +16,7 @@ import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { CloseFailureTechnical } from "@/features/releases/components/close-failure-technical";
 import { failedCloseLead, type GateRefusal } from "@/features/releases/roster";
 import { formatApiError } from "@/lib/api/error";
-import { UNBROKEN_KEY_CLASS, unbrokenKeys } from "@/lib/unbroken-keys";
+import { unbrokenKeys } from "@/lib/unbroken-keys";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
 import Link from "next/link";
 import { useState } from "react";
@@ -308,7 +308,7 @@ function RosterRow({
           onChange={onToggle}
           ariaLabel={`Select ${issue.displayId} for release`}
         />
-        <MonoTag className={UNBROKEN_KEY_CLASS}>{issue.displayId}</MonoTag>
+        <MonoTag>{issue.displayId}</MonoTag>
         <span className="fg-body-sm text-fg min-w-0 flex-1 truncate" title={issue.title}>
           {issue.title}
         </span>
