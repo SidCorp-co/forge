@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.348] - 2026-10-28
+
+Projects choose how tightly Forge gates agents; promoting drafts follows the admit setting
+
+### Added
+
+- **Each project picks how tightly Forge gates its agents: strict, standard or yolo.** Any gate can be overridden; refusals name gate, profile and key; changes are recorded; a failed deploy raises yolo to standard; the kernel always holds.
+
+### Fixed
+
+- **An archived project gets no master.** Core withholds its master and retires a standing one once nothing it holds is running, naming the archive; its master opens no pass, refused `MASTER_PROJECT_ARCHIVED`.
+- **A release counts a pass on a build holding the landing; fenced tokens read consumed contracts.** A fenced token reads its providers' contract versions and its ecosystem's bus, read-only; `api_key: head` is prose, not a secret.
+- **Accepting a requirement no longer fails with an internal error where a builder's own pass stands.** It is refused naming the criteria and why, as before gate profiles.
+
 ## [0.4.0-dev.347] - 2026-10-28
 
 Dropped requirements refuse revisions; accept refusals name every checklist gap

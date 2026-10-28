@@ -1,1 +1,0 @@
-**An archived project gets no master.** Core withholds its master and retires a standing one once nothing it holds is running, naming the archive; its master opens no pass, refused `MASTER_PROJECT_ARCHIVED`.

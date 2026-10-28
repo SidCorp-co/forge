@@ -1,1 +1,0 @@
-**Each project picks how tightly Forge gates its agents: strict, standard or yolo.** Any gate can be overridden; refusals name gate, profile and key; changes are recorded; a failed deploy raises yolo to standard; the kernel always holds.
