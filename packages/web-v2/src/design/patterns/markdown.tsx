@@ -6,7 +6,7 @@ import type { ComponentProps, ReactNode } from "react";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/design/primitives/button";
-import { remarkUnbrokenKeys } from "@/lib/unbroken-keys";
+import { remarkUnbrokenKeys, unbrokenKeys } from "@/lib/unbroken-keys";
 import { cn } from "@/lib/utils/cn";
 import { BodyImage, BodyLink } from "./body-link";
 import {
@@ -84,7 +84,7 @@ function makeCodeRenderer(blockClass: string, inlineClass: string): Components["
       </code>
     ) : (
       <code className={inlineClass} {...props}>
-        {children}
+        {typeof children === "string" ? unbrokenKeys(children) : children}
       </code>
     );
   };

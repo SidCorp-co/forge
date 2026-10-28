@@ -34,12 +34,18 @@ describe("an issue key in a sentence is one unbroken token", () => {
     expect(container.querySelector("code")).toHaveTextContent("mark_merged");
   });
 
-  it("holds the keys in a comment's Markdown, in prose, lists and links, and leaves code as written", () => {
+  it("holds the keys in a comment's Markdown, in prose, lists, links and inline code", () => {
     const { container } = render(
       <Markdown>{"Blocked by ISS-5.\n\n- see [ISS-9](https://example.test/9)\n\n`ISS-3` stays code."}</Markdown>,
     );
-    expect(held(container)).toEqual(["ISS-5", "ISS-9"]);
-    expect(container.querySelector("code")?.querySelector("span")).toBeNull();
+    expect(held(container)).toEqual(["ISS-5", "ISS-9", "ISS-3"]);
+    expect(container.querySelector("code")).toHaveTextContent("ISS-3");
     expect(container).toHaveTextContent("Blocked by ISS-5.");
+  });
+
+  it("leaves a fenced block as it is written", () => {
+    const { container } = render(<Markdown>{"```\nISS-3 in a block\n```"}</Markdown>);
+    expect(held(container)).toEqual([]);
+    expect(container.querySelector("pre")).toHaveTextContent("ISS-3 in a block");
   });
 });
