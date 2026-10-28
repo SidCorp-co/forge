@@ -151,6 +151,13 @@ describe("a core file the server refused with a wait (criterion 495, judge-170)"
     expect(sent).toEqual([`GET ${IMAGE}`]);
   });
 
+  // r55 review, pre-existing: an absolute address on the core's origin was classified another host's.
+  it("reads a body image named by the core's absolute address through the client too", async () => {
+    draw(<BodyImage src={`${window.location.origin}${IMAGE}`} alt="pasted" />);
+    expect(await screen.findByText("pasted not loaded.")).toBeInTheDocument();
+    expect(sent).toEqual([`GET ${IMAGE}`]);
+  });
+
   it("refuses by name an image drawn where the app handed the kit no way to read core files", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<CoreImage path={IMAGE} alt="pasted" />)).toThrow(

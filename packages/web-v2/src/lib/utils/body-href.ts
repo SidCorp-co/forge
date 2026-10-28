@@ -1,5 +1,5 @@
 
-import { coreFileUrl } from "./core-url";
+import { CORE_URL, coreFileUrl } from "./core-url";
 
 /** The one segment that belongs to the core. */
 const CORE_SEGMENT = "api";
@@ -30,17 +30,30 @@ function parsedPath(href: string): { path: string; rest: string } | null {
   }
 }
 
+/** An absolute address on the core's own origin is the core's file, read like the path it names (ISS-1229 r55 review). */
+function onTheCore(href: string): BodyHref | null {
+  const base = /^https?:\/\//i.test(CORE_URL) ? CORE_URL : typeof window === "undefined" ? null : window.location.origin;
+  if (!base) return null;
+  try {
+    const url = new URL(href, base);
+    if (url.origin !== new URL(base).origin || url.pathname.split("/")[1] !== CORE_SEGMENT) return null;
+    const path = `${url.pathname}${url.search}`;
+    return { kind: "core-file", href: coreFileUrl(path), path };
+  } catch {
+    return null;
+  }
+}
+
 export function classifyBodyHref(href: string): BodyHref {
   if (!href) return { kind: "unresolvable", href, reason: "the link has no target" };
   if (href.startsWith("#") || href.startsWith("?")) return { kind: "anchor", href };
-  if (href.startsWith("//")) return { kind: "external", href, scheme: "" };
+  if (href.startsWith("//")) return onTheCore(href) ?? { kind: "external", href, scheme: "" };
 
   const scheme = SCHEME.exec(href)?.[0];
   if (scheme) {
     const lower = scheme.toLowerCase();
-    return SAFE_SCHEMES.has(lower)
-      ? { kind: "external", href, scheme: lower }
-      : { kind: "unresolvable", href, reason: `${scheme} links are not opened from a body` };
+    if (!SAFE_SCHEMES.has(lower)) return { kind: "unresolvable", href, reason: `${scheme} links are not opened from a body` };
+    return (FILE_SCHEMES.has(lower) ? onTheCore(href) : null) ?? { kind: "external", href, scheme: lower };
   }
 
   const parsed = parsedPath(href);
