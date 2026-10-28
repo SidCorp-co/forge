@@ -64,6 +64,7 @@ const MASTER_REFUSAL_CODES = [
 	"MASTER_PASS_ALREADY_OPEN",
 	"MASTER_PASS_NOT_OPEN",
 	"MASTER_SESSION_ENDED",
+	"MASTER_PROJECT_ARCHIVED",
 ] as const;
 export type MasterRefusalCode = (typeof MASTER_REFUSAL_CODES)[number];
 

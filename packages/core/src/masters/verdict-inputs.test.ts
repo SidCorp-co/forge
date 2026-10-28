@@ -43,7 +43,7 @@ function alive(over: Partial<MasterJudged> = {}): MasterJudged {
   };
 }
 
-const online = { runnerStatus: 'online', passOpen: false };
+const online = { runnerStatus: 'online', passOpen: false, archivedAt: null };
 const holds = (live: string[]): MasterJudged['holding'] => ({
   kind: 'these',
   runs: live.map((name) => ({ name, subagent: { kind: 'resumed' as const, silentMs: 0 } })),

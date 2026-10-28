@@ -16,7 +16,13 @@ import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { mergeSessionMetadata } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
-import { agentSessions, devices, runners, terminalAgentSessionStatuses } from '../db/schema.js';
+import {
+  agentSessions,
+  devices,
+  projects,
+  runners,
+  terminalAgentSessionStatuses,
+} from '../db/schema.js';
 import {
   assertDeviceBoundToProject,
   ensureMasterSession,
@@ -29,6 +35,7 @@ import { openPassOf, PASS_COLUMNS, readClosedPass, readOpenPass, storedOutdated 
 import {
   passAlreadyOpenRefusal,
   passNotOpenRefusal,
+  projectArchivedRefusal,
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
@@ -114,6 +121,13 @@ export async function openMasterPass(args: {
       (terminalAgentSessionStatuses as readonly string[]).includes(master.status),
     );
     if (ended) return { ok: false, refusals: [ended] };
+    const [project] = await tx
+      .select({ archivedAt: projects.archivedAt })
+      .from(projects)
+      .where(eq(projects.id, master.projectId))
+      .limit(1);
+    const archived = projectArchivedRefusal(project?.archivedAt ?? null);
+    if (archived) return { ok: false, refusals: [archived] };
     const open = passAlreadyOpenRefusal(await readOpenPass(tx, master.id));
     if (open) return { ok: false, refusals: [open] };
     const [row] = rowsOf<Parameters<typeof openPassOf>[0]>(
@@ -196,8 +210,9 @@ export async function recordMasterDialog(args: {
 
 /**
  * Core's verdict on one project's resident master on the box sweeping `runnerId`: the box's facts,
- * the work core reads the project owes its master, its runner row's status and whether its live
- * master has a pass open (ADR 0009, What core takes over: Placement and Retirement).
+ * the work core reads the project owes its master, its runner row's status, whether its live
+ * master has a pass open, and whether the project is archived (ADR 0009, What core takes over:
+ * Placement and Retirement).
  */
 export async function judgeMaster(args: {
   deviceId: string;
@@ -207,8 +222,9 @@ export async function judgeMaster(args: {
 }): Promise<MasterVerdictAnswer> {
   await assertDeviceBoundToProject(args.deviceId, args.projectId);
   const [runner] = await db
-    .select({ status: runners.status })
+    .select({ status: runners.status, archivedAt: projects.archivedAt })
     .from(runners)
+    .innerJoin(projects, eq(projects.id, runners.projectId))
     .where(
       and(
         eq(runners.id, args.runnerId),
@@ -241,7 +257,11 @@ export async function judgeMaster(args: {
   const passOpen = master ? (await readOpenPass(db, master.id)) !== null : false;
   const work = await readMasterWork(args.deviceId, args.projectId);
   const facts = judged(args.facts, work);
-  const verdict = masterVerdict(facts, { runnerStatus: runner.status, passOpen });
+  const verdict = masterVerdict(facts, {
+    runnerStatus: runner.status,
+    passOpen,
+    archivedAt: runner.archivedAt?.toISOString() ?? null,
+  });
   if (master && verdict.act === 'keep') {
     await recordOutdated(master.id, master.outdated, outdatedHold(facts));
   }
