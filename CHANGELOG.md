@@ -9,6 +9,17 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.350] - 2026-10-28
+
+Notes counting failures after a token label are no longer refused as secrets
+
+### Fixed
+
+- **A count after a credential label is no longer read as a secret.** "no token: 4 failures" or "secret: 12 rows" is written as it stands; four or more digits, or a value like `hunter2`, is still refused (ISS-572).
+- **A release re-cut no longer goes backwards.** A re-cut of an unshipped roster whose version sits below one claimed since takes the next version above it, and its attempt names the version it went above.
+- **A run declared over a closed issue holds it once it reopens.** Its move to `in_progress` no longer meets NO_HOLDER, the awaiting_release guard names the run session runs/standing shows, and an ended session still holds nothing (ISS-589).
+- **Accepting a requirement revision records why.** An accept with no reason, or a blank one, is refused `REQUIREMENT_SIGNOFF_REASON_REQUIRED` whoever accepts; the Approvals one-click accept sends its recommendation's why, and a re-baseline keeps the accept's reason.
+
 ## [0.4.0-dev.349] - 2026-10-28
 
 Rocket.Chat support groups set up, checked and granted from project settings

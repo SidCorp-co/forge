@@ -3482,6 +3482,13 @@
       "breakpoints": true
     },
     {
+      "idx": 545,
+      "version": "7",
+      "when": 1830038400000,
+      "tag": "0545_a_chat_account_links_by_a_code",
+      "breakpoints": true
+    },
+    {
       "idx": 546,
       "version": "7",
       "when": 1830124800000,

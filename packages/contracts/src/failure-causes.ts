@@ -56,6 +56,11 @@ export const FAILURE_CAUSES = [
 	"checkout_unbound",
 	/** the asker's turn credential could not be minted, so the turn was never handed over. */
 	"credential_mint_failed",
+	/** a job pane's own credential was refused by its own project (a token fenced to other
+	 *  projects, or one core no longer takes), so nothing it did could be recorded and a retry on the
+	 *  same box is refused the same way. Writer: the runner (`job_exit::CREDENTIAL_REFUSED`);
+	 *  23 sidcorp-mail release jobs on sid-xeon-1-dev, 2026-10-28, each retried as silence. */
+	"credential_refused",
 	/** a file the turn carries could not be copied onto its session, so it was not dispatched
 	 *  rather than answered without it. */
 	"attachment_unreadable",
@@ -144,6 +149,7 @@ export const FAILURE_CAUSE_PRESENTATION: Record<
 	no_client_ack: "swept",
 	checkout_unbound: "failure",
 	credential_mint_failed: "failure",
+	credential_refused: "failure",
 	attachment_unreadable: "failure",
 	box_cannot_confine_chat: "failure",
 	dispatch_failed: "failure",

@@ -72,6 +72,9 @@ export const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
 /** The runner's words for a job pane ended on a question (`job_exit::STOPPED_ON_A_QUESTION`). */
 export const STOPPED_ON_QUESTION_PATTERNS: ReadonlyArray<RegExp> = [/\bstopped on a question\b/i];
 
+/** What a job pane's own refused credential leads its ending with (the runner's `job_exit::CREDENTIAL_REFUSED`). */
+export const CREDENTIAL_REFUSED_TOKEN = '[CREDENTIAL_REFUSED]';
+
 export const CC_STARTUP_PATTERNS: ReadonlyArray<RegExp> = [
   /\bunknown command\b/i,
   /skill[ _-]?registration/i,
@@ -88,6 +91,7 @@ const re =
     pattern.test(text);
 
 export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
+  { cause: 'credential_refused', test: (t) => t.includes(CREDENTIAL_REFUSED_TOKEN) },
   {
     cause: 'agent_stopped_on_question',
     test: (t) => STOPPED_ON_QUESTION_PATTERNS.some((p) => p.test(t)),
