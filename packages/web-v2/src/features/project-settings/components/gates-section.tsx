@@ -11,6 +11,7 @@ import { useId, useState } from "react";
 import { Banner, Button, ErrorState, FormActions, Input, Radio, RadioGroup, SettingRow, SettingsGroup, Skeleton, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { canManageProject, isOrgAdmin, type ProjectListItem } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
+import { cn } from "@/lib/utils/cn";
 import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useGateCatalog, useProjectGates, useWriteGates } from "../hooks";
@@ -20,6 +21,21 @@ import { Picker } from "./setting-controls";
 
 type Copy = ReturnType<typeof useCopy>;
 type Overrides = Partial<Record<string, GateMode>>;
+
+/** Below 640px a table here is not drawn as columns: each row stacks as lines of a two-column grid
+ *  parted by hairlines, its header hidden, so nothing scrolls sideways and the select stays in view. */
+export const STACKED = {
+	table: "max-sm:block",
+	head: "max-sm:hidden",
+	body: "max-sm:block",
+	row: "max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-3 max-sm:gap-y-1.5 max-sm:py-3",
+	cell: "max-sm:min-w-0 max-sm:px-0 max-sm:py-0!",
+	wide: "max-sm:col-span-2",
+	/** a column the stacked row reads from its own line instead */
+	columnOnly: "max-sm:hidden",
+	/** the line that stands in for those columns */
+	stackOnly: "sm:hidden",
+} as const;
 
 /** The select's value for "no override": the profile decides. */
 const DEFAULT = "";
@@ -97,8 +113,8 @@ function GatesForm({ projectId, slug, canEdit, catalog, view }: { projectId: str
 				</RadioGroup>
 			</SettingsGroup>
 			<SettingsGroup id="gates" title={t("settings.project.gates.title")}>
-				<Table aria-label={t("settings.project.gates.title")}>
-					<THead>
+				<Table aria-label={t("settings.project.gates.title")} className={STACKED.table} data-testid="gates-table">
+					<THead className={STACKED.head}>
 						<TR>
 							<TH>{t("settings.project.gates.col.gate")}</TH>
 							{PROFILES.map((p) => (
@@ -108,7 +124,7 @@ function GatesForm({ projectId, slug, canEdit, catalog, view }: { projectId: str
 							<TH>{t("settings.project.gates.col.from")}</TH>
 						</TR>
 					</THead>
-					<TBody>
+					<TBody className={STACKED.body}>
 						{catalog.gates.map((g) => (
 							<GateModes key={g.id} gate={g} now={resolved.get(g.id as ResolvedGate["id"])} value={overrides[g.id] ?? DEFAULT} disabled={off} onChange={(v) => setMode(g.id, v)} />
 						))}
@@ -197,26 +213,29 @@ function GateModes({ gate, now, value, disabled, onChange }: { gate: GateEntry; 
 	const t = useCopy();
 	const options = [{ value: DEFAULT, label: t("settings.project.gates.profileDefault") }, ...gate.modes.map((m) => ({ value: m, label: modeLabel(t, m) }))];
 	return (
-		<TR data-testid={`gate-${gate.id}`}>
-			<TD className="min-w-60">
+		<TR data-testid={`gate-${gate.id}`} className={STACKED.row}>
+			<TD className={cn("min-w-60", STACKED.cell, STACKED.wide)}>
 				<p className="font-semibold">{gate.title}</p>
 				<p className="fg-caption text-muted">{gate.refuses}</p>
 			</TD>
 			{PROFILES.map((p) => (
-				<TD key={p} className="min-w-28 text-muted">
+				<TD key={p} className={cn("min-w-28 text-muted", STACKED.columnOnly)}>
 					{defaultLabel(t, gate.defaults[p])}
 				</TD>
 			))}
-			<TD className="min-w-40">
+			<TD className={cn("min-w-40", STACKED.cell)}>
 				<Picker aria-label={t("settings.project.gates.modeOf", { gate: gate.title })} value={value} disabled={disabled} options={options} width="min-w-36" onChange={(e) => onChange(e.target.value)} />
 			</TD>
-			<TD className="min-w-40">
+			<TD className={cn("min-w-40", STACKED.cell)}>
 				{now ? (
 					<>
 						<p>{modeLabel(t, now.mode)}</p>
 						<p className="fg-caption text-muted">{cameFrom(t, now)}</p>
 					</>
 				) : null}
+			</TD>
+			<TD className={cn("fg-caption text-muted", STACKED.cell, STACKED.wide, STACKED.stackOnly)} data-testid="stacked-defaults">
+				{PROFILES.map((p) => t("settings.project.gates.defaultOf", { profile: t(`settings.project.gates.profile.${p}`), mode: defaultLabel(t, gate.defaults[p]) })).join(" · ")}
 			</TD>
 		</TR>
 	);
@@ -234,8 +253,8 @@ function ChangesTable({ changes }: { changes: GateChange[] }) {
 	const time = useTimeFormat();
 	if (changes.length === 0) return <p className="fg-body-sm text-muted">{t("settings.project.gates.changesNone")}</p>;
 	return (
-		<Table aria-label={t("settings.project.gates.changes")} data-testid="gates-changes">
-			<THead>
+		<Table aria-label={t("settings.project.gates.changes")} data-testid="gates-changes" className={STACKED.table}>
+			<THead className={STACKED.head}>
 				<TR>
 					<TH>{t("settings.project.gates.col.when")}</TH>
 					<TH>{t("settings.project.gates.col.who")}</TH>
@@ -244,17 +263,17 @@ function ChangesTable({ changes }: { changes: GateChange[] }) {
 					<TH>{t("settings.project.gates.col.why")}</TH>
 				</TR>
 			</THead>
-			<TBody>
+			<TBody className={STACKED.body}>
 				{changes.map((c) => {
 					const moved = overridesMoved(t, c.overridesFrom ?? {}, c.overridesTo ?? {});
 					return (
-						<TR key={`${c.at}:${c.configRevision}`}>
-							<TD className="whitespace-nowrap">{time.dateTime(c.at)}</TD>
-							<TD>{c.actorName ?? (c.actorKind === "forge" ? t("settings.project.gates.forge") : (c.actorUserId ?? "—"))}</TD>
-							<TD className="whitespace-nowrap">
+						<TR key={`${c.at}:${c.configRevision}`} className={STACKED.row}>
+							<TD className={cn("whitespace-nowrap", STACKED.cell)}>{time.dateTime(c.at)}</TD>
+							<TD className={STACKED.cell}>{c.actorName ?? (c.actorKind === "forge" ? t("settings.project.gates.forge") : (c.actorUserId ?? "—"))}</TD>
+							<TD className={cn("whitespace-nowrap", STACKED.cell, STACKED.wide)}>
 								{c.profileFrom ? t(`settings.project.gates.profile.${c.profileFrom}`) : "—"} → {t(`settings.project.gates.profile.${c.profileTo}`)}
 							</TD>
-							<TD className="min-w-56">
+							<TD className={cn("min-w-56", STACKED.cell, STACKED.wide)}>
 								{moved.length === 0
 									? "—"
 									: moved.map((m) => (
@@ -263,7 +282,7 @@ function ChangesTable({ changes }: { changes: GateChange[] }) {
 											</p>
 										))}
 							</TD>
-							<TD className="min-w-56">
+							<TD className={cn("min-w-56", STACKED.cell, STACKED.wide)}>
 								{c.cause !== "set" && (
 									<p className="fg-caption text-muted">
 										{t("settings.project.gates.raisedAfter", { cause: t(`settings.project.gates.cause.${c.cause}`) })}

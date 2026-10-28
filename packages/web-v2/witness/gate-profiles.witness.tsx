@@ -101,6 +101,41 @@ function reads(): string[] {
 		...(document.documentElement.scrollWidth > window.innerWidth
 			? [`the page scrolls sideways: ${document.documentElement.scrollWidth} px in a ${window.innerWidth} px window`]
 			: []),
+		...(window.innerWidth < 640 ? stacked() : columns()),
+	];
+}
+
+/** A table whose scroller is wider inside than it shows scrolls sideways. */
+function sideways(testId: string): string[] {
+	const scroller = document.querySelector(`[data-testid=${testId}]`)?.parentElement;
+	if (!scroller) return [`the ${testId} table is not drawn`];
+	return scroller.scrollWidth > scroller.clientWidth ? [`the ${testId} table scrolls sideways: ${scroller.scrollWidth} px in ${scroller.clientWidth}`] : [];
+}
+
+/** Below 640px every gate's select is inside the window, and neither table scrolls sideways. */
+function stacked(): string[] {
+	const outside = [...document.querySelectorAll<HTMLSelectElement>("[data-testid=gates-table] select")].flatMap((sel) => {
+		const r = sel.getBoundingClientRect();
+		return r.width === 0 || r.left < 0 || r.right > window.innerWidth ? [`${sel.getAttribute("aria-label")} sits at ${Math.round(r.left)}–${Math.round(r.right)} px, outside the ${window.innerWidth} px window`] : [];
+	});
+	const head = document.querySelector<HTMLElement>("[data-testid=gates-table] thead");
+	return [
+		...outside.slice(0, 3),
+		...(outside.length > 3 ? [`and ${outside.length - 3} more selects outside the window`] : []),
+		...sideways("gates-table"),
+		...sideways("gates-changes"),
+		...(head && head.offsetHeight > 0 ? ["the gate table's column header is drawn on a phone"] : []),
+		...has("Strict Enforce · Standard its own switch: approvals.admit · Yolo Off"),
+	];
+}
+
+/** At 640px and up the gate table keeps its columns. */
+function columns(): string[] {
+	const head = document.querySelector<HTMLElement>("[data-testid=gates-table] thead");
+	const line = document.querySelector<HTMLElement>("[data-testid=stacked-defaults]");
+	return [
+		...(head && head.offsetHeight > 0 ? [] : ["the gate table's column header is not drawn"]),
+		...(line && line.offsetHeight > 0 ? ["the phone's defaults line is drawn beside the columns"] : []),
 	];
 }
 

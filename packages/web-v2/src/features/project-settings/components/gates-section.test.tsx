@@ -10,7 +10,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore } from "@/test/render";
 import type { ProjectGates } from "../types";
-import { GatesSettings } from "./gates-section";
+import { GatesSettings, STACKED } from "./gates-section";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
@@ -102,6 +102,23 @@ describe("the gates section", () => {
 		expect(within(change).getByText("Strict → Standard")).toBeInTheDocument();
 		expect(within(change).getByText("merge_check Profile default → Off")).toBeInTheDocument();
 		expect(within(change).getByText("merge checks run in CI")).toBeInTheDocument();
+	});
+
+	it("stacks each gate below 640px from the same row: the defaults read as one line, the columns they stand in for hidden", async () => {
+		core(view());
+		mount();
+		const admit = await row("approval_admit");
+		const line = within(admit).getByTestId("stacked-defaults");
+		expect(line).toHaveTextContent(/^Strict Enforce · Standard its own switch: approvals\.admit · Yolo Off$/);
+		// jsdom lays nothing out: the witness (witness/gate-profiles.witness.tsx) measures the stack at 390px
+		expect(line.className).toContain(STACKED.stackOnly);
+		expect(admit.className).toContain(STACKED.row);
+		const cells = within(admit).getAllByRole("cell");
+		for (const profileColumn of cells.slice(1, 4)) expect(profileColumn.className).toContain(STACKED.columnOnly);
+		expect(cells[4]?.className).not.toContain(STACKED.columnOnly);
+		expect(screen.getByTestId("gates-table").querySelector("thead")?.className).toContain(STACKED.head);
+		const change = within(screen.getByTestId("gates-changes")).getAllByRole("row")[1];
+		expect(change?.className).toContain(STACKED.row);
 	});
 
 	it("sends the profile, only the overrides set, the revision read and the reason", async () => {
