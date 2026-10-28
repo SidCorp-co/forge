@@ -44,7 +44,7 @@ const READERS: Record<string, { refuse?: RegExp }> = {
   find: { refuse: /(^|\s)-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b/ },
   du: {},
   df: {},
-  free: {},
+  free: { refuse: flags('sc', 'seconds', 'count') },
   uptime: {},
   uname: {},
   hostname: {
@@ -55,8 +55,8 @@ const READERS: Record<string, { refuse?: RegExp }> = {
   whoami: {},
   id: {},
   ps: {},
-  ss: { refuse: flags('K', 'kill') },
-  netstat: {},
+  ss: { refuse: flags('KE', 'kill', 'events') },
+  netstat: { refuse: flags('c', 'continuous') },
   // ip takes any prefix of a verb (`s` is `set` for a link), so only showing an object is a read
   ip: {
     refuse:
@@ -88,9 +88,10 @@ const READERS: Record<string, { refuse?: RegExp }> = {
   },
   mailq: {},
   postqueue: { refuse: /^(?!\s*-p\s*$)/ },
+  // s_client ends when its empty stdin does; x509 reads unless it signs (and writes a serial file)
   openssl: {
     refuse:
-      /^(?!\s*(s_client|x509|version)\b)|(^|\s)-(out|sess_out|keylogfile|msgfile|writerand|engine)\b/,
+      /^(?!\s*(s_client|x509|version)\b)|(^|\s)-(out|sess_out|keylogfile|msgfile|writerand|engine|req|CA\w*|signkey|set_serial|force_pubkey|new\w*)(?=\s|$)/,
   },
   sort: { refuse: flags('o', 'output', 'compress-program') },
   uniq: { refuse: AN_OPERAND },

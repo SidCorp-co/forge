@@ -380,7 +380,9 @@ changes as each one moves.
   stage of its pipeline is a program known only to read, with no shell construct. Anything else waits
   for a confirmer, including a read the list does not know. A program that can write through an
   operand or a script of its own (`sed`, `awk`, `curl`, `less`) is not on the list, and a program
-  named by a path outside the system bin directories is not trusted under its name. A confirmer is the gate; the box's SSH
+  named by a path outside the system bin directories is not trusted under its name. The box runs every
+  command with no terminal and an empty stdin, and kills it at 60 s. So no pager or interactive
+  mode opens, and an unbounded read is cut off there. A confirmer is the gate; the box's SSH
   key decides what any command can reach at all.
 - **A build's working copy lives on one box.** It is kept under `<base_dir>/support-builds/<room>`
   on the box that ran the turn. If the next turn lands on another box of the project, the session
