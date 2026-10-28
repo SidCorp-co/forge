@@ -1,0 +1,1 @@
+**A run no longer skips required plan approval by moving its work into build.** Where plan approval is enforced, build waits until the issue passed approved since its plan was last written (PLAN_APPROVAL_PENDING); a claim resumes at design until then.

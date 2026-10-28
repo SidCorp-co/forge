@@ -53,7 +53,8 @@ pub struct Args {
     #[arg(long)]
     pub project: Option<String>,
 
-    /// Extra header, `Name: value`. Repeatable.
+    /// Extra header, `Name: value`. Repeatable. Replaces the runner's own header of that name;
+    /// `Authorization`, and `Content-Type` beside `-F`, are refused.
     #[arg(short = 'H', long = "header")]
     pub headers: Vec<String>,
 

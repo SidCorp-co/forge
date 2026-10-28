@@ -1,6 +1,8 @@
 //! Build one REST call from CLI arguments, execute it, and report the result
 //! through stdout / stderr / exit code.
 
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
+use reqwest::RequestBuilder;
 use serde_json::Value;
 
 use crate::api::exit::{classify, transport_failure, usage_failure, Outcome};
@@ -83,6 +85,35 @@ fn failure_json(outcome: &Outcome, status: Option<u16>, message: &str) -> String
     Value::Object(obj).to_string()
 }
 
+/// The caller's `-H` headers as one map, a name given twice keeping both values. A name or value no
+/// HTTP header can carry is refused here, by name, rather than failing the send as a transport
+/// error; the value is never echoed, since a header may carry a secret.
+fn caller_headers(headers: &[(String, String)]) -> Result<HeaderMap, String> {
+    let mut map = HeaderMap::new();
+    for (k, v) in headers {
+        let name = HeaderName::from_bytes(k.as_bytes())
+            .map_err(|_| format!("-H `{k}` is not a valid header name"))?;
+        let value = HeaderValue::from_str(v)
+            .map_err(|_| format!("-H `{k}` carries a value no HTTP header can hold"))?;
+        map.append(name, value);
+    }
+    Ok(map)
+}
+
+/// The body, with the Content-Type the runner writes for it unless the caller names one.
+fn with_body(rb: RequestBuilder, body: Option<&Body>) -> Result<RequestBuilder, String> {
+    Ok(match body {
+        Some(Body::Json(json)) => rb
+            .header(CONTENT_TYPE, "application/json")
+            .body(json.clone()),
+        Some(Body::Form(fields)) => {
+            let (content_type, bytes) = encode(&read_parts(fields)?);
+            rb.header(CONTENT_TYPE, content_type).body(bytes)
+        }
+        None => rb,
+    })
+}
+
 /// Execute the request. Never panics on a malformed response — a body that is
 /// not JSON is still the caller's to see.
 pub async fn run(client: &CoreClient, req: &Request) -> Response {
@@ -106,28 +137,18 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
     if let Some(slug) = &req.project_slug {
         rb = rb.header("X-Forge-Project-Slug", slug.as_str());
     }
-    for (k, v) in &req.headers {
-        rb = rb.header(k.as_str(), v.as_str());
-    }
-    match &req.body {
-        Some(Body::Json(json)) => {
-            rb = rb
-                .header("Content-Type", "application/json")
-                .body(json.clone());
+    // The runner's own headers first, the caller's last and as one map: `headers` replaces each
+    // name it carries where `header` appends, so a caller's `-H Content-Type` beside `-d` went out
+    // twice and core refused the call 415 (ISS-593).
+    let applied = caller_headers(&req.headers)
+        .and_then(|caller| with_body(rb, req.body.as_ref()).map(|rb| rb.headers(caller)));
+    let rb = match applied {
+        Ok(rb) => rb,
+        Err(message) => {
+            let (outcome, stderr) = usage_failure(&message);
+            return Response::failed(stderr, outcome);
         }
-        Some(Body::Form(fields)) => {
-            let parts = match read_parts(fields) {
-                Ok(parts) => parts,
-                Err(message) => {
-                    let (outcome, stderr) = usage_failure(&message);
-                    return Response::failed(stderr, outcome);
-                }
-            };
-            let (content_type, bytes) = encode(&parts);
-            rb = rb.header("Content-Type", content_type).body(bytes);
-        }
-        None => {}
-    }
+    };
 
     let resp = match rb.timeout(crate::LONG_DEADLINE).send().await {
         Ok(r) => r,
@@ -198,6 +219,137 @@ mod tests {
         assert_eq!(ok(&bytes, false).printed(), bytes.to_vec());
         assert_eq!(ok(b"plain text", false).printed(), b"plain text".to_vec());
         assert!(ok(b"", false).printed().is_empty());
+    }
+
+    /// A core on a loopback port that answers `200 {}` and hands back the request head it read.
+    async fn recording_core() -> (CoreClient, tokio::sync::oneshot::Receiver<String>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut seen = Vec::new();
+            let mut buf = [0u8; 4096];
+            while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = sock.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                seen.extend_from_slice(&buf[..n]);
+            }
+            let reply = b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}";
+            let _ = sock.write_all(reply).await;
+            let head = String::from_utf8_lossy(&seen)
+                .split("\r\n\r\n")
+                .next()
+                .unwrap_or("")
+                .to_string();
+            let _ = tx.send(head);
+        });
+        (
+            CoreClient::new(format!("http://{addr}"), "device-token"),
+            rx,
+        )
+    }
+
+    /// Every value of header `name` in a request head, the name matched in any letter case.
+    fn values_of(head: &str, name: &str) -> Vec<String> {
+        head.lines()
+            .skip(1)
+            .filter_map(|l| l.split_once(':'))
+            .filter(|(k, _)| k.trim().eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.trim().to_string())
+            .collect()
+    }
+
+    fn call(body: Option<Body>, headers: &[(&str, &str)]) -> Request {
+        Request {
+            method: "POST".into(),
+            path: "issues/x/comments".into(),
+            body,
+            project_slug: Some("forge".into()),
+            headers: headers
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            include_headers: false,
+        }
+    }
+
+    async fn sent_head(req: Request) -> String {
+        let (client, head) = recording_core().await;
+        let resp = run(&client, &req).await;
+        assert_eq!(resp.outcome.exit_code, 0, "{}", resp.stderr);
+        head.await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_callers_content_type_replaces_the_default_in_any_letter_case() {
+        for name in ["Content-Type", "content-type", "CONTENT-TYPE"] {
+            let json = Some(Body::Json("{}".into()));
+            let head = sent_head(call(json, &[(name, "application/json")])).await;
+            assert_eq!(
+                values_of(&head, "content-type"),
+                vec!["application/json"],
+                "-H `{name}` with -d went out beside the default:\n{head}"
+            );
+        }
+        let json = Some(Body::Json("{}".into()));
+        let head = sent_head(call(
+            json,
+            &[("Content-Type", "application/merge-patch+json")],
+        ))
+        .await;
+        assert_eq!(
+            values_of(&head, "content-type"),
+            vec!["application/merge-patch+json"]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_callers_header_replaces_the_runners_own_of_that_name() {
+        let head = sent_head(call(None, &[("x-forge-project-slug", "hop")])).await;
+        assert_eq!(values_of(&head, "x-forge-project-slug"), vec!["hop"]);
+        let head = sent_head(call(None, &[("X-Trace", "a"), ("X-Trace", "b")])).await;
+        assert_eq!(values_of(&head, "x-trace"), vec!["a", "b"]);
+        assert_eq!(
+            values_of(&head, "authorization"),
+            vec!["Bearer device-token"]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_body_with_no_caller_content_type_carries_exactly_one_default() {
+        let head = sent_head(call(Some(Body::Json("{}".into())), &[])).await;
+        assert_eq!(values_of(&head, "content-type"), vec!["application/json"]);
+        let form = Body::Form(vec![FormField::Text {
+            name: "note".into(),
+            value: "x".into(),
+        }]);
+        let head = sent_head(call(Some(form), &[("X-Trace", "a")])).await;
+        let types = values_of(&head, "content-type");
+        assert_eq!(types.len(), 1, "{head}");
+        assert!(
+            types[0].starts_with("multipart/form-data; boundary="),
+            "{head}"
+        );
+        let head = sent_head(call(None, &[])).await;
+        assert!(values_of(&head, "content-type").is_empty(), "{head}");
+    }
+
+    #[tokio::test]
+    async fn a_header_no_http_request_can_carry_is_refused_by_name_without_its_value() {
+        let client = CoreClient::new("http://127.0.0.1:9", "device-token");
+        let resp = run(&client, &call(None, &[("Bad Name", "x")])).await;
+        assert_eq!(resp.outcome.exit_code, 2, "{}", resp.stderr);
+        assert!(resp
+            .stderr
+            .contains("-H `Bad Name` is not a valid header name"));
+        let resp = run(&client, &call(None, &[("X-Key", "s3cret\u{7f}")])).await;
+        assert_eq!(resp.outcome.exit_code, 2, "{}", resp.stderr);
+        assert!(resp.stderr.contains("-H `X-Key` carries a value"));
+        assert!(!resp.stderr.contains("s3cret"), "{}", resp.stderr);
     }
 
     #[test]

@@ -1488,6 +1488,7 @@ name = "runner-daemon"
 version = "0.18.0"
 dependencies = [
  "async-trait",
+ "base64 0.23.1",
  "dirs-next",
  "hex",
  "jiff",
