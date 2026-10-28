@@ -3,6 +3,7 @@
 // `confirm`/`cancel` naming a fix, which core answers itself, or the writer is past the hourly limit.
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
+import { linkCodeIn } from '../assistant/index.js';
 import { appendMessagesIn } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import {
@@ -15,6 +16,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { deliverWaiting } from './dispatch.js';
 import { answerConfirm } from './fixes.js';
+import { answerLinkCode } from './link-code.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, parseConfirm, threadOf } from './rules.js';
 import { insertAction, limitToldSince, memberMessagesSince, type RoomRow } from './store.js';
@@ -67,6 +69,17 @@ export async function handleSupportMessage(input: {
     });
     // what became of the fix waits for the session as a note: hand it on now, not at the next drain
     await deliverWaiting(room.id);
+    return;
+  }
+
+  // a member linking their chat account to the Forge user who minted the code: core answers it, and
+  // the code is never kept or shown to the session, since anyone in the room could read it there
+  const linkCode = linkCodeIn(m.text);
+  if (linkCode) {
+    await recordInbound(room, conversation.id, thread, { ...m, text: 'link ********' }, author, {
+      deliver: false,
+    });
+    await answerLinkCode(room, namespace, thread, author, linkCode);
     return;
   }
 

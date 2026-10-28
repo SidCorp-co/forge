@@ -117,7 +117,8 @@
         "assistantSpeakerLinks",
         "chatProposals",
         "conversationPins",
-        "rocketchatQuestionDeliveries"
+        "rocketchatQuestionDeliveries",
+        "speakerLinkCodes"
       ],
       "serves": [
         "REQ-8",

@@ -18,6 +18,7 @@ export {
   registerWebConversationAdapter,
 } from './conversation-drain.js';
 export { runTranscriptIndexSweepOnce } from './conversation-index-drain.js';
+export { linkCodeIn, redeemSpeakerLinkCode } from './identity/link-code.js';
 export { resolveSpeaker } from './identity/speaker-link.js';
 export { composeLayers } from './prompt/layer.js';
 export { METHOD_LAYERS } from './prompt/layers.js';
