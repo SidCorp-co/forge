@@ -229,21 +229,21 @@ without one (catalog-fe ISS-36, 2026-10-28). It lands on its adoption record ins
   what was read instead.
 - **What it never stands in for** (BC-18, `packages/core/src/issues/adoption-mark.ts:adoptionOf`). An
   issue carrying code evidence — an implementation handoff's commit or files, a recorded branch, a
-  merged commit (`work-evidence.ts:codeEvidenceOf`) — is refused `ADOPTION_BESIDE_CODE` naming it, and
+  merged commit (`packages/core/src/issues/work-evidence.ts:codeEvidenceOf`) — is refused `ADOPTION_BESIDE_CODE` naming it, and
   so is a mark sending `commit`, `changedPaths`, `landing`, `artifacts` or `target` beside
   `adoptions`, or one over a merge Forge observed for the issue. A code-carrying issue lands on its
   commit as before.
-- **What is written.** The stamp's own UPDATE (`merge-record.ts:recordIssueMerge`, evidence `adopted`)
+- **What is written.** The stamp's own UPDATE (`packages/core/src/issues/merge-record.ts:recordIssueMerge`, evidence `adopted`)
   sets `merged_at` and one `adoption` artifact per version, no commit; outside git it also names the
-  landing (`merge-mark-kind.ts:adoptionLandingOf`), so the shape reads it as landed. The mark kind
+  landing (`packages/core/src/issues/merge-mark-kind.ts:adoptionLandingOf`), so the shape reads it as landed. The mark kind
   read off the columns is `asserted` on git and `landed` outside it; the answer and the audit
   comment say instead that it is an adoption record and what was read
-  (`merge-mark-kind.ts:describeAdoptionMark`). The merge check and review judge a commit, so an
+  (`packages/core/src/issues/merge-mark-kind.ts:describeAdoptionMark`). The merge check and review judge a commit, so an
   adoption mark asks neither, and a change-request project's host merge is not asked for: an
   adoption has no change request.
-- **How it closes.** The `merged` guard (`merged-at.ts:mergeNotRecorded`) takes an adoption-only mark
-  (`merge-mark-kind.ts:adoptionOnlyStamp`) while its record still holds and refuses it naming the
-  record once it does not (`issues/adoption-delivery.ts:readAdoptionDelivery`), on every shape. The
+- **How it closes.** The `merged` guard (`packages/core/src/issues/merged-at.ts:mergeNotRecorded`) takes an adoption-only mark
+  (`packages/core/src/issues/merge-mark-kind.ts:adoptionOnlyStamp`) while its record still holds and refuses it naming the
+  record once it does not (`packages/core/src/issues/adoption-delivery.ts:readAdoptionDelivery`), on every shape. The
   `released` guard closes it from `awaiting_release` without a release, as it does a design-only
   issue: the record is what shipped. A mark whose links moved off the version closes only once the
   version is adopted again or the mark is cleared and the code that moved it lands.
