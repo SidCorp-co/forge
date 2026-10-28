@@ -3200,6 +3200,7 @@
 
 ### Fixed
 
+- **A read the server asked to wait on is not asked again until the wait is over**, a reload included; a screen reader hears each wait once, wherever it shows, and a refused device approval is said. (ISS-1229)
 - **A release says what it did to an issue it could not close.** It says the code went out only after a recorded promotion or deploy; Mark merged says Commit may stay empty without a repository. (ISS-1421)
 - **The help says what the screen says, and a release says one thing per issue.** Help, guides and API reference drop "ship"; an issue a release could not close gets no unverified note; Shape & release matches the gate. (ISS-1421)
 - **Every wait before Retry is said to a screen reader at its start and its end, never each second**, the issue list's filters and phone menu included. A write refused for too many requests says how long to wait. (ISS-1229)

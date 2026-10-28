@@ -31,11 +31,13 @@ const { NavRailCompact } = await import("./nav-rail-compact");
 const { projectsUnreadOf, ProjectsUnreadLine } = await import("@/features/projects/components/projects-unread");
 const { NavRail } = await import("@/design/patterns/nav-rail");
 const { ApiError } = await import("@/lib/api/client");
+const { forgetWaits } = await import("@/design/hooks/wait-announcer");
 const { MobileNavDrawer } = await import("./components/mobile-nav-drawer");
 const { ProjectFlyout } = await import("@/features/projects/components/project-flyout");
 
 afterEach(() => {
   cleanup();
+  forgetWaits();
   read.failed = true;
   read.refetched = 0;
 });
@@ -171,22 +173,25 @@ describe("the narrow rail's failed projects read (criteria 497, 498)", () => {
 
   // ISS-1229 r52, judge-162: the tile was a status whose name held the count, so a screen reader announced it every
   // second. The count is a timer, which is read when asked; a status says the wait as it starts and as it ends.
-  it("announces the wait as it starts and as it ends, and nothing while it counts", () => {
+  // r54, judge-168: the rail no longer holds a status of its own; one read's wait is told once, in the one region.
+  it("tells the wait as it starts and as it ends, and nothing while it counts", () => {
     vi.useFakeTimers();
     try {
       render(railWith(unread(() => {}, new ApiError(429, "", undefined, undefined, undefined, 30_000))));
-      const live = () => screen.getAllByRole("status").map((s) => s.textContent ?? "");
-      const started = live();
-      expect(started).toEqual(["The server asked for 30 seconds before Retry."]);
-      for (const step of [1_000, 4_000, 12_000, 12_000]) {
+      expect(screen.queryAllByRole("status")).toEqual([]);
+      const told = () => [...screen.getByTestId("wait-announcer").children].map((line) => line.textContent ?? "");
+      act(() => void vi.advanceTimersByTime(200));
+      expect(told()).toEqual(["The server asked for 30 seconds before Retry."]);
+      for (const [step, still] of [[1_000, 1], [4_000, 1], [12_000, 0], [12_000, 0]] as const) {
         act(() => void vi.advanceTimersByTime(step));
-        expect(live()).toEqual(started);
+        expect(told()).toEqual(still ? ["The server asked for 30 seconds before Retry."] : []);
         expect(screen.getByRole("timer")).toHaveTextContent(/You can retry in \d+ seconds?\./);
       }
       act(() => void vi.advanceTimersByTime(1_100));
-      expect(live()).toEqual(["You can retry now."]);
+      expect(told()).toEqual(["You can retry now."]);
       expect(screen.getByRole("button", { name: "Couldn't load your projects. Retry" })).toBeTruthy();
     } finally {
+      forgetWaits();
       vi.useRealTimers();
     }
   });

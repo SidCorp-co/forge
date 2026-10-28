@@ -1,11 +1,9 @@
 "use client";
 
-import { useRetryWait, useWaitAnnouncement } from "@/design/hooks/use-retry-wait";
+import { useRetryWait, useWaitAnnounced } from "@/design/hooks/use-retry-wait";
 import { cn } from "@/lib/utils/cn";
-import { retryAt } from "@/lib/utils/retry-rule";
 
-/** Where a Retry waits on the server's word: how long is left, in its place until the wait is over (ISS-1229 r51).
- *  A timer, which a screen reader reads when asked and never announces as it counts (r53, judge-165). */
+/** How long is left before Retry, as a timer a screen reader reads when asked, never as it counts (ISS-1229 r53). */
 export function RetryWait({ wait, testId, className }: { wait: string; testId?: string | undefined; className?: string | undefined }) {
   return (
     <span role="timer" data-testid={testId ? `${testId}-wait` : "retry-wait"} className={cn("fg-caption text-muted", className)}>
@@ -14,11 +12,7 @@ export function RetryWait({ wait, testId, className }: { wait: string; testId?: 
   );
 }
 
-/**
- * A Retry while the server's wait runs: the wait, counted down, in its place; the Retry itself once it is over.
- * A status beside it says the wait's start and its end, never a tick (r53, judge-165). A client part of its own,
- * so the one Retry stays a component any page can render (ISS-1229 r51).
- */
+/** The wait counted in Retry's place until it is over; its start and end are told once per read (ISS-1229 r54). */
 export function RetryWaitGate({
   error,
   testId,
@@ -31,15 +25,6 @@ export function RetryWaitGate({
   children: React.ReactNode;
 }) {
   const wait = useRetryWait(error);
-  const said = useWaitAnnouncement(error);
-  return (
-    <>
-      {wait ? <RetryWait wait={wait} testId={testId} className={className} /> : children}
-      {retryAt(error) !== null && (wait !== null || said !== null) && (
-        <span role="status" data-testid={testId ? `${testId}-announce` : "retry-announce"} className="sr-only">
-          {said}
-        </span>
-      )}
-    </>
-  );
+  useWaitAnnounced(error);
+  return wait ? <RetryWait wait={wait} testId={testId} className={className} /> : children;
 }

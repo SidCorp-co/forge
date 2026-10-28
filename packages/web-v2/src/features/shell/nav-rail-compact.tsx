@@ -21,7 +21,7 @@ import { ProjectMark } from '@/design/primitives/project-mark';
 import { assetPath } from '@/lib/asset';
 import { cn } from '@/lib/utils/cn';
 import { offersRetryFor, RetryButton } from '@/design/primitives/retry-button';
-import { useRetryWait, useWaitAnnouncement } from '@/design/hooks/use-retry-wait';
+import { useRetryWait, useWaitAnnounced } from '@/design/hooks/use-retry-wait';
 import { withStop } from '@/lib/api/error';
 
 export interface RailItem {
@@ -522,12 +522,12 @@ export function NavRailCompact({
 }
 
 /** The narrow rail's tile for a failed projects read: Retry where the one rule offers it, and the wait the server
- *  named in its place, counting down until Retry comes back (ISS-1229 r51). Its name says each thing once, and only a
- *  live region says the wait, once as it starts and once as it ends, so nothing is announced each second (r52). */
+ *  named in its place, counting down until Retry comes back (ISS-1229 r51). Its name says each thing once, and the
+ *  wait is told once for the read as it starts and once as it ends, wherever else it shows, never each second (r54). */
 function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
   const retry = offersRetryFor(unread.error);
   const wait = useRetryWait(unread.error);
-  const announced = useWaitAnnouncement(unread.error);
+  useWaitAnnounced(unread.error);
   const named = ["Couldn't load your projects.", retry ? (wait ? null : "Retry") : withStop(unread.message)]
     .filter((part) => part !== null)
     .join(" ");
@@ -547,19 +547,11 @@ function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
     </>
   );
   const tile = "flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle";
-  const said = retry && (
-    <span role="status" data-testid="rail-projects-announce" className="sr-only">
-      {announced}
-    </span>
-  );
   if (wait) {
     return (
-      <>
-        <div title={named} data-testid="rail-projects-unread" className={tile}>
-          {face}
-        </div>
-        {said}
-      </>
+      <div title={named} data-testid="rail-projects-unread" className={tile}>
+        {face}
+      </div>
     );
   }
   if (!retry) {
@@ -570,20 +562,17 @@ function RailProjectsUnread({ unread }: { unread: ProjectsUnread }) {
     );
   }
   return (
-    <>
-      <RetryButton
-        look="link"
-        error={unread.error}
-        onRetry={unread.onRetry}
-        label={named}
-        title={named}
-        testId="rail-projects-unread"
-        className={cn(tile, "no-underline transition-colors hover:bg-hover hover:no-underline")}
-      >
-        {face}
-        <span className="text-10 font-semibold tracking-[-0.01em] text-accent-text underline underline-offset-2">Retry</span>
-      </RetryButton>
-      {said}
-    </>
+    <RetryButton
+      look="link"
+      error={unread.error}
+      onRetry={unread.onRetry}
+      label={named}
+      title={named}
+      testId="rail-projects-unread"
+      className={cn(tile, "no-underline transition-colors hover:bg-hover hover:no-underline")}
+    >
+      {face}
+      <span className="text-10 font-semibold tracking-[-0.01em] text-accent-text underline underline-offset-2">Retry</span>
+    </RetryButton>
   );
 }

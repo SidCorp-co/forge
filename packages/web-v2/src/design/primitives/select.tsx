@@ -6,6 +6,8 @@ import {
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { Popover } from "@/design/primitives/popover";
+import { RetryWait } from "@/design/primitives/retry-wait";
+import { useRetryWait } from "@/design/hooks/use-retry-wait";
 
 export interface SelectOption {
   value: string;
@@ -14,6 +16,9 @@ export interface SelectOption {
   detail?: string;
   icon?: IconName;
   disabled?: boolean;
+  /** A failed read whose wait before Retry the option counts under its detail, so an opened menu covering the
+   *  count it points to still says how long (ISS-1229 r54, judge-168). */
+  waitOn?: unknown;
   /** The heading this option is listed under. Options of one group sit together, in the order
    *  given; a list whose options name no group shows no heading. */
   group?: string;
@@ -213,6 +218,7 @@ export function Select({
                   {/* A disabled option fades its label only: its detail is why it cannot be picked, and is read (ISS-1229 r37). */}
                   <span className={cn("[overflow-wrap:anywhere]", o.disabled && "text-subtle")} data-option-label>{o.label}</span>
                   {o.detail && <span className="fg-caption text-muted [overflow-wrap:anywhere]" data-option-detail>{o.detail}</span>}
+                  {o.waitOn !== undefined && <OptionWait error={o.waitOn} />}
                 </span>
                 {isSel && <Icon name="check" size={15} strokeWidth={2.5} style={{ color: "var(--accent)" }} />}
               </div>
@@ -233,6 +239,12 @@ export function Select({
       </Popover>
     </div>
   );
+}
+
+/** The wait an option counts, in a timer read only when asked, never announced as it ticks. */
+function OptionWait({ error }: { error: unknown }) {
+  const wait = useRetryWait(error);
+  return wait ? <RetryWait wait={wait} testId="option" /> : null;
 }
 
 export interface NativeSelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "children"> {
