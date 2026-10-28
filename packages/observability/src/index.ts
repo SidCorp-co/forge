@@ -249,9 +249,12 @@ const FIELD_VALUE = /^\s*\\?"?([^\s"\\,}&]+)/;
 /**
  * A credential field's value is a credential only in a credential's shape, as a bearer token is: a
  * digit, a capital after a small letter, a character outside a word, or 24 characters or more.
- * `api_key: head` names the header a key rides in; `password: required` is prose.
+ * `api_key: head` names the header a key rides in; `password: required` is prose. A count of one to
+ * three digits and nothing else is prose too (`no token: 4 failures`, ISS-572); four digits is a
+ * PIN's length and stays a credential.
  */
 function isOrdinaryWord(value: string): boolean {
+	if (/^\d{1,3}$/.test(value)) return true;
 	return (
 		value.length < 24 &&
 		/^[A-Za-z]+(?:-[A-Za-z]+)*$/.test(value) &&
