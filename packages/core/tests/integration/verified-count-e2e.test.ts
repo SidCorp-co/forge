@@ -9,6 +9,7 @@
  * against real Postgres.
  *
  * @direct-test-of packages/core/src/issues/built-by.ts
+ * @direct-test-of packages/contracts/src/verified-rule.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -32,7 +33,8 @@ import { plantLiveBuild } from '../helpers/live-build.js';
 const NEW = '2222222222222222222222222222222222222222';
 const LIVE = '9999999999999999999999999999999999999999';
 const BUILT = '2026-10-04T10:00:00Z';
-const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
+const BUILDER_WHY =
+  "passed by the run that built it, and a builder's own pass never counts where gate builder_verdict is enforced (gates.overrides.builder_verdict relaxes it)";
 
 let projectId: string;
 let ownerId: string;
@@ -280,7 +282,7 @@ describe("the builder's own pass is not verified", () => {
 
     const refused = await onProject('POST', `/requirements/${req}/accept`, { revision: 1 });
 
-    expect(refused.status).toBe(422);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
     const detail = JSON.stringify(refused.body);
     expect(detail).toContain('CHECKLIST_INCOMPLETE');
     expect(detail).toContain('BC-1 (not judged');

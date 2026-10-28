@@ -87,7 +87,7 @@ export function unverifiedWhy(
 	}
 	if (v.verdict !== "pass") return null;
 	if (barred(v, judge)) {
-		return "passed by the run that built it, and a builder's own pass never counts where gate `builder_verdict` is enforced (gates.overrides.builder_verdict relaxes it)";
+		return "passed by the run that built it, and a builder's own pass never counts where gate builder_verdict is enforced (gates.overrides.builder_verdict relaxes it)";
 	}
 	if (judge === "independent" && !v.authored) {
 		return "passed with no recorded author, so nothing shows it is the independent judge's";

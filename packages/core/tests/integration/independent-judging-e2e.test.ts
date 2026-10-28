@@ -10,6 +10,7 @@
  * by hand (ISS-598).
  *
  * @direct-test-of packages/core/src/issues/built-by.ts
+ * @direct-test-of packages/contracts/src/verified-rule.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -39,7 +40,8 @@ const BUILT = '2026-10-04T10:00:00Z';
 const JUDGED = '2026-10-05T10:00:00Z';
 /** A day after the builder-pass cutover (contracts `verified-rule.ts:BUILDER_PASS_CUTOVER`). */
 const AFTER = '2026-10-26T10:00:00Z';
-const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
+const BUILDER_WHY =
+  "passed by the run that built it, and a builder's own pass never counts where gate builder_verdict is enforced (gates.overrides.builder_verdict relaxes it)";
 
 let projectId: string;
 let ownerId: string;

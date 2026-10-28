@@ -10,6 +10,7 @@
  * planted from that history.
  *
  * @direct-test-of packages/core/src/release-batch/recorded-landing.ts
+ * @direct-test-of packages/contracts/src/verified-rule.ts
  * @direct-test-of packages/core/src/release-batch/landing-coverage.ts
  */
 
@@ -168,7 +169,7 @@ describe('a promotion that already merged is recorded as the fact it is (REQ-45 
     expect(res.body).toMatchObject({ commit: E2C9, branch: BRANCH, closed: [i23, i24, i25] });
     const readings = readingsOf(res.body);
     expect(readings).toContain(
-      `ISS-23: 3 live criteria, c1 pass at \`${short(E663)}\`, which \`${short(E2C9)}\` holds (the recorded commit adds 3 commits); c2 pass at \`${short(E2C9)}\`; c3 only a pass the verified rule does not count: passed by the run that built it, and a builder's own pass never counts`,
+      `ISS-23: 3 live criteria, c1 pass at \`${short(E663)}\`, which \`${short(E2C9)}\` holds (the recorded commit adds 3 commits); c2 pass at \`${short(E2C9)}\`; c3 only a pass the verified rule does not count: passed by the run that built it, and a builder's own pass never counts where gate builder_verdict is enforced (gates.overrides.builder_verdict relaxes it)`,
     );
     expect(readings).toContain(
       `ISS-24: 2 live criteria, c1-2 pass at \`${short(E663)}\`, which \`${short(E2C9)}\` holds (the recorded commit adds 3 commits)`,
@@ -196,7 +197,7 @@ describe('a promotion that already merged is recorded as the fact it is (REQ-45 
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(readingsOf(res.body)).toContain(
-      `ISS-23: 3 live criteria, c1 pass at \`${short(E663)}\`; c2 no pass: it was judged at \`${short(E2C9)}\`, which \`${short(E663)}\` does not hold; c3 only a pass the verified rule does not count: passed by the run that built it, and a builder's own pass never counts`,
+      `ISS-23: 3 live criteria, c1 pass at \`${short(E663)}\`; c2 no pass: it was judged at \`${short(E2C9)}\`, which \`${short(E663)}\` does not hold; c3 only a pass the verified rule does not count: passed by the run that built it, and a builder's own pass never counts where gate builder_verdict is enforced (gates.overrides.builder_verdict relaxes it)`,
     );
   });
 

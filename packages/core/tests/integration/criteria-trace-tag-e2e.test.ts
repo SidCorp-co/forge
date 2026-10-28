@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/issues/criteria/store.ts
  * @direct-test-of packages/core/src/issues/criteria/criteria-text.ts
  * @direct-test-of packages/core/src/issues/checklist-record.ts
+ * @direct-test-of packages/contracts/src/gate-profiles.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -219,7 +220,7 @@ describe('the issue-ready checklist', () => {
       code: 'CHECKLIST_INCOMPLETE',
       path: '/answers/criteria',
       detail:
-        'What are its criteria, each traced to a BC of that revision? Criterion 2 is not traced to a business criterion (BC) that stands at REQ-1 revision 1. Criterion 2 names its BC after the start of its line, which traces nothing. Start its line with the BC it proves, as "(REQ-1 BC-<m>) <statement>"; a BC tag anywhere else in the line traces nothing.',
+        'What are its criteria, each traced to a BC of that revision? Criterion 2 is not traced to a business criterion (BC) that stands at REQ-1 revision 1. Criterion 2 names its BC after the start of its line, which traces nothing. Start its line with the BC it proves, as "(REQ-1 BC-<m>) <statement>"; a BC tag anywhere else in the line traces nothing. Gate issue_ready is enforced by this project\'s gate profile standard (gates.profile); gates.overrides.issue_ready relaxes it.',
     });
   });
 });

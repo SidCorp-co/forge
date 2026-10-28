@@ -198,7 +198,7 @@ describe("REQ-76 BC-7: the builder's own verdict", () => {
     expect(await bc2(req)).toEqual({
       verdict: 'not_judged',
       notCounted:
-        "passed by the run that built it, and a builder's own pass never counts where gate `builder_verdict` is enforced (gates.overrides.builder_verdict relaxes it)",
+        "passed by the run that built it, and a builder's own pass never counts where gate builder_verdict is enforced (gates.overrides.builder_verdict relaxes it)",
     });
   });
 
