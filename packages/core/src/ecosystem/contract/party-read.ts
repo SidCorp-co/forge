@@ -1,3 +1,4 @@
+import { fencedProjectIds } from '../../credentials/pat-scope.js';
 import { db } from '../../db/client.js';
 import { effectiveProjectRole } from '../../lib/authz.js';
 import { holds } from '../../permissions/index.js';
@@ -85,12 +86,42 @@ export async function contractReader(
   ]);
   const publishedTo = new Set(iface?.document.publishes[contract]?.ecosystems ?? []);
   const offered = offeredSight(graph, reader, providerId, publishedTo);
-  if (offered.size === 0) {
+  // a token fenced to projects reads a provider's contract only as a project that consumes it there
+  // (FB-320): what a builder run maps against, never every contract its ecosystem offers
+  const fenced = fencedProjectIds() !== null;
+  const sight = fenced ? consumingSight(graph, offered, providerId, contract) : offered;
+  if (sight.size === 0) {
     throw forbidden(
-      `${contract} of project ${providerId} is read by the provider's members and by the active members of an ecosystem it is published to; no project this caller reads as is one.`,
+      fenced
+        ? `${contract} of project ${providerId} is read by a token fenced to projects only where one of them consumes it, and none of this token's projects does; declare the consumption in its interface first.`
+        : `${contract} of project ${providerId} is read by the provider's members and by the active members of an ecosystem it is published to; no project this caller reads as is one.`,
     );
   }
-  return { access: 'party', ecosystems: [...offered.keys()] };
+  return { access: 'party', ecosystems: [...sight.keys()] };
+}
+
+/** Of the ecosystems a provider's contract is offered in, those where a reader project consumes it. */
+function consumingSight(
+  graph: Awaited<ReturnType<typeof loadGraph>>,
+  offered: ReadonlyMap<string, string[]>,
+  providerId: string,
+  contract: string,
+): Map<string, string[]> {
+  const edges = liveEdges(graph);
+  const out = new Map<string, string[]>();
+  for (const [ecosystemId, via] of offered) {
+    const consuming = via.filter((p) =>
+      edges.some(
+        (e) =>
+          e.ecosystemId === ecosystemId &&
+          e.consumerProjectId === p &&
+          e.providerProjectId === providerId &&
+          e.contractSlug === contract,
+      ),
+    );
+    if (consuming.length > 0) out.set(ecosystemId, consuming);
+  }
+  return out;
 }
 
 /** The versions a reader is shown, newest first: every one to a member, the approved ones to a party. */

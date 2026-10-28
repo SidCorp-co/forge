@@ -244,6 +244,21 @@ const HEADER_RE = new RegExp(
 // the key may close a JSON string (`"apiKey":`) or an escaped one inside JSON text
 // (`\\"apiKey\\":`); the value stops at whitespace, a quote, a backslash, a comma, a brace or `&`,
 // so `access_token=...&id=7` keeps its `&id=7`.
+const FIELD_VALUE = /^\s*\\?"?([^\s"\\,}&]+)/;
+
+/**
+ * A credential field's value is a credential only in a credential's shape, as a bearer token is: a
+ * digit, a capital after a small letter, a character outside a word, or 24 characters or more.
+ * `api_key: head` names the header a key rides in; `password: required` is prose.
+ */
+function isOrdinaryWord(value: string): boolean {
+	return (
+		value.length < 24 &&
+		/^[A-Za-z]+(?:-[A-Za-z]+)*$/.test(value) &&
+		!/[a-z][A-Z]/.test(value)
+	);
+}
+
 const BODY_RES = Array.from(SCRUB_BODY_KEYS).map(
 	(k) =>
 		new RegExp(
@@ -265,7 +280,10 @@ export function scrubLogText(
 		.map((line) => {
 			let out = scrubPatInString(scrubUrl(line));
 			out = out.replace(headerRe, `$1$2${FILTERED}`);
-			for (const re of bodyRes) out = out.replace(re, `$1${FILTERED}`);
+			for (const re of bodyRes)
+				out = out.replace(re, (whole, field: string, value: string) =>
+					isOrdinaryWord(value) ? whole : `${field}${FILTERED}`,
+				);
 			out = scrubSecretValues(out, extraSecrets);
 			out = out.replace(ENV_SECRET_ASSIGNMENT_PATTERN, `$1=${FILTERED}`);
 			return out;
@@ -328,6 +346,8 @@ interface SpanRule {
 	/** Characters at its tail the scrubber keeps. */
 	readonly keptTail?: number;
 	readonly lead?: RegExp;
+	/** A match this reads as prose is no span: the scrubber leaves it as it stands. */
+	readonly prose?: (m: RegExpExecArray, text: string) => boolean;
 }
 
 const PEM_LEAD = /^-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/;
@@ -356,7 +376,14 @@ const LINE_RULES: readonly SpanRule[] = [
 		pattern: HEADER_RE,
 		kept: (m) => (m[1]?.length ?? 0) + (m[2]?.length ?? 0),
 	},
-	...BODY_RES.map((pattern): SpanRule => ({ shape: "credential field", pattern, kept: group1 })),
+	...BODY_RES.map(
+		(pattern): SpanRule => ({
+			shape: "credential field",
+			pattern,
+			kept: group1,
+			prose: (m) => isOrdinaryWord(m[2] ?? ""),
+		}),
+	),
 	{
 		shape: "secret assignment",
 		pattern: new RegExp(ENV_SECRET_ASSIGNMENT_PATTERN.source, "g"),
@@ -371,12 +398,18 @@ const LABEL_RULE: SpanRule = {
 	shape: "secret label",
 	pattern: SECRET_LABEL_PATTERN,
 	lead: /^(?:password\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY|postgres(?:ql)?:\/\/)/i,
+	// a label followed by a word has its value, and the value is prose
+	prose: (m, text) => {
+		const next = FIELD_VALUE.exec(text.slice(m.index + m[0].length))?.[1];
+		return next !== undefined && isOrdinaryWord(next);
+	},
 };
 
 function spansOf(text: string, offset: number, rules: readonly SpanRule[]): SecretSpan[] {
 	const out: SecretSpan[] = [];
 	for (const rule of rules) {
 		for (const m of text.matchAll(rule.pattern)) {
+			if (rule.prose?.(m, text)) continue;
 			const start = m.index + (rule.kept?.(m) ?? 0);
 			const end = m.index + m[0].length - (rule.keptTail ?? 0);
 			const value = text.slice(start, end);

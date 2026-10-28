@@ -109,7 +109,7 @@ export async function beginPatRequest(
     });
   }
   const effectiveProjectIds = patEffectiveProjectIds(principal);
-  assertReach(c.req.path, effectiveProjectIds);
+  assertReach(c.req.method, c.req.path, effectiveProjectIds);
   await refuseOutsideFence({
     tokenId: principal.tokenId,
     fence: effectiveProjectIds,
@@ -118,6 +118,8 @@ export async function beginPatRequest(
       new URL(c.req.url).searchParams.get('projectId') ?? undefined,
       c.req.header('x-forge-project-slug'),
     ),
+    method: c.req.method,
+    path: c.req.path,
   });
   assertEpoch(principal, c.req.path);
   assertGranted(principal, c.req.path, level, wanted);
@@ -138,13 +140,21 @@ export async function beginPatRequest(
   return { principal: resolution.principal, scope: resolution.scope };
 }
 
+// an ecosystem's bus, read-only, is what a fenced project builds against (FB-320); the route answers
+// it only to a member project of the fence, never with a steward's whole sight
+// (`ecosystem/membership-service.ts:readableEcosystem`)
+const ECOSYSTEM_BUS_READ = /^\/api\/ecosystems\/[0-9a-f-]{36}\/bus\/?$/i;
+const readsEcosystemBus = (method: string, path: string): boolean =>
+  (method === 'GET' || method === 'HEAD') && ECOSYSTEM_BUS_READ.test(path);
+
 /**
  * An account-reach route resolves no project, so a token fenced to projects
  * cannot be fenced on it: only a token carrying its owner's whole reach may.
  */
-function assertReach(path: string, fence: readonly string[] | null): void {
+function assertReach(method: string, path: string, fence: readonly string[] | null): void {
   const match = patPrefixForPath(path);
   if (match?.reach !== 'account' || fence === null) return;
+  if (readsEcosystemBus(method, path)) return;
   throw new HTTPException(403, {
     message:
       `${path} is an account route under '${match.resource}', which resolves no project, and ` +

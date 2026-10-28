@@ -81,7 +81,7 @@ export async function criteriaHold(
   if (basis.kind === 'landing') {
     const reports = await evaluate(
       'criteria',
-      async () => await landingCriteriaReports(waiting),
+      async () => await landingCriteriaReports(projectId, waiting),
       out,
     );
     if (reports) await heldOrWarned(waiting, reports, out, warnings, null);

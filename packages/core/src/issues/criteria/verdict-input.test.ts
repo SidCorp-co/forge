@@ -24,6 +24,19 @@ describe('a verdict reason and the secret detector', () => {
     expect(verdictDraftFault(draft(reason))).toBeNull();
   });
 
+  // adminhub-fe ISS-16: "api_key: head" names the header the key rides in, not a key
+  it('writes a reason naming a credential field followed by an ordinary word', () => {
+    expect(
+      verdictDraftFault(draft('the request carries api_key: head, as the spec says')),
+    ).toBeNull();
+  });
+
+  it('still refuses a credential field holding a real key', () => {
+    const fault = verdictDraftFault(draft(`sent api_key: ${KEY_BODY.slice(0, 20)}`));
+    expect(fault).toMatchObject({ code: 'VERDICT_SECRET', path: '/reason' });
+    expect(fault?.detail).toContain('a credential field');
+  });
+
   it('refuses a key in the reason, naming its offset and length, never the key', () => {
     const key = `sk-proj-${KEY_BODY}`;
     const fault = verdictDraftFault(draft(`the judge saw ${key} in the log`));

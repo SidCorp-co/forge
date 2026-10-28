@@ -6,7 +6,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { collectReleaseBlockers } from '../../src/release-batch/blockers.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
@@ -24,11 +24,43 @@ import {
   verdictComment,
 } from '../helpers/release-world.js';
 
+// `dev` as sidcorp-mail's ISS-5 saw it: its landing, a later dev head holding it (3c9aa69, after the
+// fix e52423c landed under ISS-6), and a commit on no line that holds it
+const H = vi.hoisted(() => {
+  const landed = 'dce6f354c0b7a1e2d3f4a5b6c7d8e9f0a1b2c3d4';
+  const later = '3c9aa6900000000000000000000000000000e523';
+  const aside = 'a51de00000000000000000000000000000000b2c';
+  const holds: Record<string, readonly string[]> = { [later]: [later, landed], [aside]: [aside] };
+  return { landed, later, aside, holds };
+});
+
+vi.mock('../../src/release-batch/shipped-earlier.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/release-batch/shipped-earlier.js')>()),
+  ancestrySourceFor: async () => ({
+    kind: 'box',
+    why: 'the planted box',
+    reader: {
+      async ask(pairs: readonly { commit: string; release: string }[]) {
+        const out = new Map<string, boolean | { unread: string }>();
+        for (const p of pairs) {
+          const held = H.holds[p.release];
+          out.set(
+            `${p.commit}@${p.release}`,
+            held ? held.includes(p.commit) : { unread: 'no history' },
+          );
+        }
+        return out;
+      },
+      witness: () => ({ via: 'source-host' }),
+    },
+  }),
+}));
+
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 /** A runtime that is not that one: the head a repair replaced, as ISS-1185 carried it. */
 const REPLACED = '34450f4420ae4a3b6de40b6d3cfb2b0e66aa2f51';
 /** The landing commit: a source, which no deployment answers. */
-const LANDED = 'dce6f354c0b7a1e2d3f4a5b6c7d8e9f0a1b2c3d4';
+const LANDED = H.landed;
 const APP = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
 
 function verdictBlock(criterion: number, verdict: string, at = `runtime: ${SERVING}`): string {
@@ -286,5 +318,42 @@ describe('a promotion stands between where work lands and what production deploy
     expect(hold?.reason).toContain(`landing commit \`${LANDED.slice(0, 12)}\``);
     expect(hold?.reason).toContain('`dev`');
     expect(hold?.reason).not.toContain('serving');
+  });
+
+  // sidcorp-mail ISS-5, 2026-10-28: held RELEASE_CRITERIA_UNEARNED on C6, which passes at dev
+  // 3c9aa69, a later dev head holding its landing 58ecb43; requirement coverage already counted it
+  it('cuts an issue whose criterion passed at a later commit that holds its landing', async () => {
+    await sidcorpMailShape();
+    const id = await landedRow([
+      verdictBlock(1, 'pass', `commit: ${LANDED}`),
+      verdictBlock(2, 'pass', `commit: ${H.later}`),
+    ]);
+
+    const result = await sweepAutomaticReleases();
+
+    expect(result).toMatchObject({ issuesCut: 1, issuesExcluded: 0 });
+    expect(await holdOf(id)).toBeNull();
+  });
+
+  it('counts a runtime pass on `delivery.judgedOn` at a later commit that holds the landing', async () => {
+    await sidcorpMailShape('dev');
+    const id = await landedRow([verdictBlock(1, 'pass', `runtime: ${H.later}`)]);
+
+    const result = await sweepAutomaticReleases();
+
+    expect(result).toMatchObject({ issuesCut: 1, issuesExcluded: 0 });
+    expect(await holdOf(id)).toBeNull();
+  });
+
+  it('still holds a pass at a commit that does not hold the landing, naming both', async () => {
+    await sidcorpMailShape();
+    const id = await landedRow([verdictBlock(1, 'pass', `commit: ${H.aside}`)]);
+
+    const result = await sweepAutomaticReleases();
+
+    expect(result).toMatchObject({ issuesCut: 0, issuesExcluded: 1 });
+    const hold = await holdOf(id);
+    expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(hold?.reason).toContain(`\`${H.aside.slice(0, 12)}\`, which does not hold`);
   });
 });

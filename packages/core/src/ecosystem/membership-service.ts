@@ -1,3 +1,4 @@
+import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { loadOrgRole } from '../lib/authz.js';
 import { jsonPointer as pointer } from '../lib/refusal.js';
@@ -176,7 +177,10 @@ export async function readableMembership(userId: string, membershipId: string) {
 
 export async function readableEcosystem(userId: string, ecosystemId: string) {
   const eco = await loadEcosystem(ecosystemId);
-  if (await loadOrgRole(eco.stewardOrgId, userId)) return { eco, steward: true };
+  // a steward's whole sight is the org's, never a token fenced to projects: that reads as its projects
+  if (fencedProjectIds() === null && (await loadOrgRole(eco.stewardOrgId, userId))) {
+    return { eco, steward: true };
+  }
   const mine = await readerProjects(userId);
   const open = await membershipsWhere({ ecosystemIds: [ecosystemId], projectIds: [...mine] });
   if (open.some((m) => m.state === 'invited' || m.state === 'active'))

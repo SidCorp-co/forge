@@ -233,7 +233,7 @@ async function weighWaiting(
     const landing = basis;
     let reports: Awaited<ReturnType<typeof landingCriteriaReports>>;
     try {
-      reports = await landingCriteriaReports(waiting);
+      reports = await landingCriteriaReports(projectId, waiting);
     } catch (err) {
       logger.error({ err, projectId }, 'release-sweep: the criteria could not be read');
       const why = err instanceof Error ? err.message : String(err);

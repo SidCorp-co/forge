@@ -48,6 +48,7 @@ import { changeRequestBuildsOf, otherHeadWhy } from './change-request-build.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { ancestryOf, type JudgedBuildDeps } from './judged-build.js';
+import type { JudgedAgainst } from './landed-build-holds.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
 
@@ -289,6 +290,27 @@ export async function readHolding(
   return ancestryOf(projectId, pairs, deps);
 }
 
+/** Per issue, what each of its live criteria's verdicts was judged against, as `laterHoldersOf` reads it. */
+function judgedAgainstOf(
+  standing: ReadonlyMap<string, { criteria: readonly StandingCriterion[] }>,
+): Map<string, JudgedAgainst[]> {
+  const out = new Map<string, JudgedAgainst[]>();
+  for (const [issueId, s] of standing) {
+    const against = s.criteria.flatMap(({ verdict }) =>
+      verdict?.at
+        ? [
+            {
+              kind: verdict.at.kind === 'source' ? 'commit' : verdict.at.kind,
+              value: verdict.at.value,
+            },
+          ]
+        : [],
+    );
+    if (against.length > 0) out.set(issueId.toLowerCase(), against);
+  }
+  return out;
+}
+
 /** One live criterion weighed on a landed build: it counts, or why it does not. */
 export type LandedCriterion =
   | { criterion: number; counts: true; at: string }
@@ -353,6 +375,8 @@ export function weighOnLanded(
   via: string | null = null,
   head: MergedHead | null = null,
   judgedOn: string | null = null,
+  /** Per later commit, whether it holds `build` (`landed-build-holds.ts:laterHoldersOf`); absent, none was asked. */
+  holders?: ReadonlyMap<string, Holding>,
 ): LandedCriterion {
   const no = (why: string): LandedCriterion => ({
     criterion,
@@ -368,6 +392,18 @@ export function weighOnLanded(
     const atHead = atMergedHead(judged.sha, build, head);
     if (atHead?.counts) return { criterion, counts: true, at: judged.sha };
     if (atHead) return no(atHead.why);
+    const held = via ? undefined : holders?.get(judged.sha);
+    if (held === true) return { criterion, counts: true, at: judged.sha };
+    if (held === false) {
+      return no(
+        `it was judged at \`${short(judged.sha)}\`, which does not hold the landing \`${short(build)}\`, so it judged another build`,
+      );
+    }
+    if (held !== undefined) {
+      return no(
+        `it was judged at \`${short(judged.sha)}\`, and whether that holds the landing \`${short(build)}\` could not be read: ${held.unread}`,
+      );
+    }
     return no(via ? otherHeadWhy(judged.sha, build, via) : otherBuildWhy(judged.sha, build));
   }
   return { criterion, counts: true, at: judged.sha };
@@ -429,14 +465,23 @@ export async function landedStandings(
   buildOf: (issueId: string) => string,
   viaOf: (issueId: string) => string | null = () => null,
   headOf: (issueId: string) => MergedHead | null = () => null,
+  /** Asks whether each later commit a verdict names holds its issue's landing; absent, nothing is asked. */
+  holdersOf?: (
+    judged: ReadonlyMap<string, readonly JudgedAgainst[]>,
+    judgedOnFor: (issueId: string) => string | null,
+  ) => Promise<ReadonlyMap<string, ReadonlyMap<string, Holding>>>,
 ): Promise<LandedStanding[]> {
   const standing = await standingCriteriaOf(issueIds);
+  const holders = holdersOf
+    ? await holdersOf(judgedAgainstOf(standing), (id) => standing.get(id)?.judgedOn ?? null)
+    : new Map<string, ReadonlyMap<string, Holding>>();
   return issueIds.flatMap((issueId) => {
     const s = standing.get(issueId);
     if (!s) return [];
     const build = buildOf(issueId);
+    const later = holders.get(issueId.toLowerCase());
     const weighed = s.criteria.map((c) =>
-      weighOnLanded(build, c, viaOf(issueId), headOf(issueId), s.judgedOn),
+      weighOnLanded(build, c, viaOf(issueId), headOf(issueId), s.judgedOn, later),
     );
     return [
       {

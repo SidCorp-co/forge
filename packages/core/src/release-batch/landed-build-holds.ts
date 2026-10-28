@@ -1,9 +1,11 @@
 /**
- * A requirement's coverage reading of the builds its issues landed as, on a project with no
- * production environment (`requirements/standing-coverage.ts`): each issue's delivered build
- * (`landed-build.ts:deliveredBuildsOf`) and, for the later commits its verdicts name, whether each
- * holds that build (REQ-36 BC-18), through the reader the record door weighs a landing with
- * (`landed-build.ts:readHolding`).
+ * A pass on a later build that holds an issue's landing is a pass on the delivered work (REQ-36
+ * BC-18): the testing environment serves such a build, and `judged-build.ts` sends the judge to it.
+ * `laterHoldersOf` is the one reading of that hold, through the reader the record door weighs a
+ * landing with (`landed-build.ts:readHolding`), and both a requirement's coverage
+ * (`landedBuildHolds`, `requirements/standing-coverage.ts`) and the automatic release's landing
+ * basis (`criteria-basis.ts:landingCriteriaReports`) read it. A release record keeps its own rule:
+ * the recorded commit must hold the verdict's (`landing-coverage.ts`).
  */
 
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
@@ -69,33 +71,15 @@ export async function landedBuildHolds(
     readProjectDocument(projectId),
   ]);
   const judgedOn = judgedOnOf(held?.document.delivery);
-  const later = laterCommitsOf(builds, judged, judgedOn);
-  const answers = await readHolding(
-    projectId,
-    [...later.values()].flatMap(({ landing, shas }) =>
-      shas.map((sha) => holdingPair(landing, sha)),
-    ),
-    deps,
-  );
+  const holders = await laterHoldersOf(projectId, builds, judged, () => judgedOn, deps);
   const landed = new Map<string, LandedHolds>();
   for (const [issueId, build] of builds) {
-    const asked = later.get(issueId);
+    const asked = holders.get(issueId);
     landed.set(issueId, {
       sha: build.sha,
       why: build.sha === null ? build.why : null,
       ...(build.sha !== null && build.head ? { head: build.head } : {}),
-      ...(asked
-        ? {
-            holders: new Map(
-              asked.shas.map((sha): [string, Holding] => [
-                sha,
-                answers.get(pairKey(holdingPair(asked.landing, sha))) ?? {
-                  unread: 'the ancestry reader gave no answer',
-                },
-              ]),
-            ),
-          }
-        : {}),
+      ...(asked ? { holders: asked } : {}),
     });
   }
   return {
@@ -115,7 +99,7 @@ export async function landedBuildHolds(
 function laterCommitsOf(
   builds: ReadonlyMap<string, LandedBuild>,
   judged: ReadonlyMap<string, readonly JudgedAgainst[]>,
-  judgedOn: string | null,
+  judgedOnFor: (issueId: string) => string | null,
 ): Map<string, { landing: string; shas: string[] }> {
   const out = new Map<string, { landing: string; shas: string[] }>();
   for (const [issueId, against] of judged) {
@@ -123,10 +107,47 @@ function laterCommitsOf(
     if (!build || build.sha === null || build.from === 'change-request') continue;
     const shas = new Set<string>();
     for (const at of against) {
-      const named = landedCommitOf(at.kind, at.value, judgedOn);
+      const named = landedCommitOf(at.kind, at.value, judgedOnFor(issueId));
       if ('sha' in named && named.sha !== build.sha) shas.add(named.sha);
     }
     if (shas.size > 0) out.set(issueId.toLowerCase(), { landing: build.sha, shas: [...shas] });
+  }
+  return out;
+}
+
+/**
+ * Per issue whose build is a landing, whether each later commit its verdicts name holds that landing,
+ * or why that was not read: the one reading of a pass on a later build, asked of the project's
+ * ancestry reader once for every pair.
+ */
+export async function laterHoldersOf(
+  projectId: string,
+  builds: ReadonlyMap<string, LandedBuild>,
+  judged: ReadonlyMap<string, readonly JudgedAgainst[]>,
+  judgedOnFor: (issueId: string) => string | null,
+  deps?: Pick<JudgedBuildDeps, 'ancestry'>,
+): Promise<Map<string, Map<string, Holding>>> {
+  const later = laterCommitsOf(builds, judged, judgedOnFor);
+  const answers = await readHolding(
+    projectId,
+    [...later.values()].flatMap(({ landing, shas }) =>
+      shas.map((sha) => holdingPair(landing, sha)),
+    ),
+    deps,
+  );
+  const out = new Map<string, Map<string, Holding>>();
+  for (const [issueId, { landing, shas }] of later) {
+    out.set(
+      issueId,
+      new Map(
+        shas.map((sha): [string, Holding] => [
+          sha,
+          answers.get(pairKey(holdingPair(landing, sha))) ?? {
+            unread: 'the ancestry reader gave no answer',
+          },
+        ]),
+      ),
+    );
   }
   return out;
 }

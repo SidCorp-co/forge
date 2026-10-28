@@ -51,14 +51,27 @@ export function projectNamedBy(
   return slug ? { by: 'header', ref: slug } : null;
 }
 
+// What a fenced project builds against, read-only (FB-320): a provider's contract versions, which the
+// route answers only where a project of the fence consumes that contract
+// (`ecosystem/contract/party-read.ts:contractReader`). Every other route of the provider stays fenced.
+const PROVIDER_CONTRACT_READ =
+  /^\/api\/projects\/[0-9a-f-]{36}\/contracts\/[^/]+\/versions(?:\/[^/]+)?\/?$/i;
+
+/** Whether a request on a fenced token reads a provider's contract versions. */
+export const readsProviderContract = (method: string, path: string): boolean =>
+  (method === 'GET' || method === 'HEAD') && PROVIDER_CONTRACT_READ.test(path);
+
 /** Refuse a request on a fenced token that names a project outside the fence; an unfenced token, or a request naming no project, passes. */
 export async function refuseOutsideFence(args: {
   tokenId: string;
   fence: TokenFence;
   named: NamedProject | null;
+  method: string;
+  path: string;
 }): Promise<void> {
   const { tokenId, fence, named } = args;
   if (fence === null || named === null) return;
+  if (named.by === 'path' && readsProviderContract(args.method, args.path)) return;
   const reach = new Set(fence.map((id) => id.toLowerCase()));
   const id = named.by === 'header' ? await projectNames().projectIdOfSlug(named.ref) : named.ref;
   if (id !== null && reach.has(id.toLowerCase())) return;

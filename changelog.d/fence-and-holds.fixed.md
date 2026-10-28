@@ -1,0 +1,1 @@
+**A release counts a pass on a build holding the landing; fenced tokens read consumed contracts.** A fenced token reads its providers' contract versions and its ecosystem's bus, read-only; `api_key: head` is prose, not a secret.

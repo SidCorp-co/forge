@@ -6,10 +6,13 @@
 // `master`), what production serves cannot hold the change before the release that promotes it, so
 // weighing there held every waiting issue for ever. There a criterion is earned at the issue's
 // landing commit, or on the testing environment `delivery.judgedOn` names (REQ-36 BC-18), as a
-// recorded landing weighs it (`landed-build.ts:landedStandings`).
+// recorded landing weighs it (`landed-build.ts:landedStandings`), or at a later build that holds the
+// landing, as a requirement's coverage counts it (`landed-build-holds.ts:laterHoldersOf`): sidcorp-mail
+// ISS-5 was held on a pass at a dev head holding its landing, which its requirement already counted.
 
 import { readReleasePath } from '../project-config/index.js';
 import { landedBuildsOf, landedStandings } from './landed-build.js';
+import { laterHoldersOf } from './landed-build-holds.js';
 
 export type CriteriaBasis =
   | { kind: 'serving' }
@@ -36,8 +39,9 @@ export interface LandingCriteriaReport {
   unearned: Array<{ criterion: number; why: string }>;
 }
 
-/** Each of `issueIds` weighed at its landing commit, in the order given. */
+/** Each of `issueIds` (of `projectId`) weighed at its landing commit, in the order given. */
 export async function landingCriteriaReports(
+  projectId: string,
   issueIds: readonly string[],
 ): Promise<LandingCriteriaReport[]> {
   if (issueIds.length === 0) return [];
@@ -54,6 +58,7 @@ export async function landingCriteriaReports(
       const b = buildOf(id);
       return b?.sha ? (b.head ?? null) : null;
     },
+    (judged, judgedOnFor) => laterHoldersOf(projectId, builds, judged, judgedOnFor),
   );
   const byId = new Map(standings.map((s) => [s.issueId, s]));
   return issueIds.map((issueId) => {
