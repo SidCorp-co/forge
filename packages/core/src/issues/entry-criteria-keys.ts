@@ -67,8 +67,7 @@ export interface MissingMarkShape {
 }
 
 /** Who writes the missing records: the page has no editor for them, so it names the agent's door.
- *  A missing mark is Mark merged's own steps by `mark`'s shape (ISS-1421 r42); where the lane could
- *  not be read, it says only what the mark records. */
+ *  A missing mark is Mark merged's own steps (ISS-1421 r42), or with `mark` null only what it records. */
 export function entryRecordsWrittenBy(
   keys: readonly string[],
   mark: MissingMarkShape | null = null,

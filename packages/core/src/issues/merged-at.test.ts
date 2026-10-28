@@ -65,9 +65,8 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
     expect(refusal).not.toBeNull();
     // ISS-1421 r16 — judge-69 read about 120 words naming `merged_at`; the same short sentences
-    // now serve a person and an agent, and the agent's door is a step on a line of its own.
-    // ISS-1421 r42 (judge-169): Mark merged's own steps, asking for the commit on a project that
-    // names a repository, and before the close rather than after it.
+    // now serve a person and an agent, and the agent's door is a step on a line of its own. r42:
+    // Mark merged's steps ask for the commit, before the close.
     expect(refusal?.detail).toBe(
       "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit. Then close it. If it turned out not to be work, move it to Dropped instead.",
     );

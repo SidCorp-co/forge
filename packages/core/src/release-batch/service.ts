@@ -465,7 +465,6 @@ export async function abortReleaseBatch(
   });
   if (stampId === null) throw new ReleaseBatchNotAbortableError(runId);
   const recovery = await recoverStrandedReleasing(runId, {
-    // Forge's words naming who pressed, as another member reads them (ISS-1421 r42, judge-169).
     reason: `${actorUserId === null ? 'The release was aborted' : `${await personLabel(actorUserId)} aborted the release`}: ${reason}`,
     ...(actorUserId === null ? {} : { actor: userActor(actorUserId) }),
     comment: true,

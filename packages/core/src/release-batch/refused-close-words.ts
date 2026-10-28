@@ -5,8 +5,7 @@ import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import type { CloseRefusal } from './releasing-recovery.js';
 
-/** What a run's promotions and deploys reported: one that went out decides over failed or unsettled
- *  ones, and one declared that never said it went out is no delivery (ISS-1421 r42). */
+/** What a run's promotions and deploys reported (`runDelivery`, ISS-1421 r42). */
 export type RunDelivery = 'reported' | 'unreported' | 'none';
 
 /** How many open questions a refusal names; none named reads as more than one. */
@@ -52,9 +51,8 @@ function personClears(
   }
 }
 
-/** Whether this issue's code went out with the release: only where a delivery reported going out
- *  AND the issue's mark says where its work landed. A refusal for the mark says it does not, whatever
- *  the column holds (ISS-1421 r42, judge-169 on 398). */
+/** The issue's code went out only on a delivery that reported it AND a mark saying where the work
+ *  landed; a refusal for the mark says it does not (ISS-1421 r42, judge-169 on 398). */
 function whatWentOut(
   label: string,
   refusal: CloseRefusal,
@@ -125,7 +123,6 @@ export function refusedCloseComment(args: {
   projectId: string;
   version: string | null;
   destination: IssueStatus;
-  /** What the run's promotions and deploys reported (`runDelivery`). */
   delivery: RunDelivery;
   /** The issue holds a merge mark. */
   marked: boolean;

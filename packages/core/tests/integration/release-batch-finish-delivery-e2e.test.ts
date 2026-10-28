@@ -108,8 +108,6 @@ describe('whether a finish says an issue’s code went out', () => {
     );
   });
 
-  // ISS-1421 r42 (judge-169, criterion 398): with a deploy that went out, an issue refused for its
-  // missing mark was told its code went out with that release.
   it('says an unmarked issue’s code is not known to have gone out, though its release went out', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const unmarked = await fx.insertIssue();
@@ -127,8 +125,6 @@ describe('whether a finish says an issue’s code went out', () => {
     expect(said).not.toContain('and its code went out with that release');
   });
 
-  // ISS-1421 r42: a deploy declared and never reported back, or reported failing, counted as one
-  // that went out.
   it.each([
     ['never reported back', null],
     ['reported failing', 'failed'],
