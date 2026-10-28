@@ -4,7 +4,11 @@
 //! `Runner` impl + a stream parser.
 
 pub mod chat;
+pub mod chat_checkout;
+#[cfg(test)]
+mod chat_checkout_test_repo;
 pub mod claude_code;
+pub mod support_build;
 
 use std::path::PathBuf;
 
@@ -52,10 +56,30 @@ pub struct JobSpec {
 }
 
 /// What a confined session is handed beyond its checkout, its MCP config and Claude Code's
-/// own install: files it reads, such as a turn's attachments.
+/// own install: files it reads, such as a turn's attachments, and how it sees the checkout.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Confinement {
     pub reads: Vec<PathBuf>,
+    pub checkout: CheckoutView,
+}
+
+/// How a confined session sees the working directory it is spawned in (`checkout` on the turn
+/// frame, REQ-75 r5 BC-27). A support room granted `read_checkout` reads the project's checkout and
+/// writes none of it; one granted nothing sees an empty folder; one granted `build` works in a
+/// working copy of the development branch this box keeps for the room, whose git directory it
+/// still cannot write, so it never commits or pushes on its own.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum CheckoutView {
+    /// The checkout, writable: every chat door before REQ-75 r5, and any turn that names no view.
+    #[default]
+    Write,
+    Read,
+    None,
+    /// The room's working copy (the session's working directory) of `base`, kept under `key`.
+    Build {
+        key: String,
+        base: String,
+    },
 }
 
 /// A per-session token handed over by core. Its `Debug` never prints the secret.

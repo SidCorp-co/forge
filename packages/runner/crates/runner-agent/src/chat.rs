@@ -30,7 +30,9 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::chat_checkout;
 use crate::claude_code::{ClaudeCodeRunner, Resident, TurnPlacing};
+use crate::CheckoutView;
 use crate::Confinement;
 use crate::JobSpec;
 use crate::Runner;
@@ -100,6 +102,9 @@ struct StartFrame {
     /// a support group's session (REQ-75 BC-11). See `JobSpec::keep_resident`.
     #[serde(default)]
     keep_resident: bool,
+    /// How a confined session sees its checkout (REQ-75 r5 BC-27); see `chat_checkout::ViewFields`.
+    #[serde(flatten)]
+    view: chat_checkout::ViewFields,
 }
 
 /// `agent:send` payload (a follow-up turn on an existing session).
@@ -136,6 +141,9 @@ struct SendFrame {
     /// See `StartFrame::keep_resident`.
     #[serde(default)]
     keep_resident: bool,
+    /// See `StartFrame::view`.
+    #[serde(flatten)]
+    view: chat_checkout::ViewFields,
 }
 
 /// Resolved per-turn parameters fed into one `claude` invocation.
@@ -162,6 +170,9 @@ struct Turn {
     ungated: bool,
     /// See `StartFrame::keep_resident`.
     keep_resident: bool,
+    /// See `StartFrame::checkout`: resolved, and for `build` already pointing `repo_path` at the
+    /// room's working copy.
+    checkout: CheckoutView,
 }
 
 /// Download a turn's attachments to a fresh temp dir, authenticated with the
@@ -277,6 +288,11 @@ pub async fn handle_start(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| Error::Other("agent:start has no prompt".into()))?;
     let repo_path = resolve_repo(f.repo_path.as_deref(), f.project_slug.as_deref())?;
+    let Some((checkout, repo_path)) =
+        chat_checkout::turn_view(client, &f.session_id, &f.view, f.confined, repo_path).await
+    else {
+        return Ok(());
+    };
     let staged = stage_attachments(
         client,
         &f.session_id,
@@ -305,6 +321,7 @@ pub async fn handle_start(
             confined: f.confined,
             ungated: f.ungated,
             keep_resident: f.keep_resident,
+            checkout,
         },
         placing,
     )
@@ -322,6 +339,11 @@ pub async fn handle_send(
     let f: SendFrame =
         serde_json::from_value(data).map_err(|e| Error::Other(format!("bad agent:send: {e}")))?;
     let repo_path = resolve_repo(f.repo_path.as_deref(), f.project_slug.as_deref())?;
+    let Some((checkout, repo_path)) =
+        chat_checkout::turn_view(client, &f.session_id, &f.view, f.confined, repo_path).await
+    else {
+        return Ok(());
+    };
     let staged = stage_attachments(
         client,
         &f.session_id,
@@ -351,6 +373,7 @@ pub async fn handle_send(
             confined: f.confined,
             ungated: f.ungated,
             keep_resident: f.keep_resident,
+            checkout,
         },
         placing,
     )
@@ -398,6 +421,7 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         credential: turn.credential.clone(),
         confinement: turn.confined.then(|| Confinement {
             reads: turn.attachment_dir.iter().cloned().collect(),
+            checkout: turn.checkout.clone(),
         }),
         hooks_off: turn.ungated,
         keep_resident: turn.keep_resident,
@@ -418,6 +442,8 @@ enum Disposition {
 fn resident_disposition(resident: Option<&Resident>, turn: &Turn) -> Disposition {
     match resident {
         None => Disposition::Spawn,
+        // its mounts were fixed at spawn: another view is another process
+        Some(r) if r.checkout != turn.checkout => Disposition::Close("checkout view changed"),
         Some(r) if turn.credential.is_some() && !(turn.keep_resident && r.refreshable) => {
             Disposition::Close("this turn carries its own token")
         }
@@ -713,7 +739,7 @@ fn is_partial_stream_event(line: &Value) -> bool {
     line.get("type").and_then(Value::as_str) == Some("stream_event")
 }
 
-async fn patch_failed(
+pub(crate) async fn patch_failed(
     client: &CoreClient,
     session_id: &str,
     claude_sid: Option<String>,
@@ -905,6 +931,7 @@ mod tests {
             confined: f.confined,
             ungated: f.ungated,
             keep_resident: f.keep_resident,
+            checkout: f.view.view(f.confined).unwrap(),
         }
     }
 
@@ -913,7 +940,43 @@ mod tests {
             model: None,
             head_sha: None,
             refreshable,
+            checkout: CheckoutView::Write,
         }
+    }
+
+    /// A support room's grant changed what its session may see (REQ-75 r5 BC-27): the resident
+    /// spawned with the old mounts is closed, and the next turn spawns with the new ones.
+    #[test]
+    fn a_turn_naming_another_checkout_view_closes_the_resident() {
+        let turn = |view: Option<&str>| {
+            let mut frame = serde_json::json!({
+                "sessionId": "s1", "message": "hi", "forgeToken": "t", "confined": true, "keepResident": true,
+            });
+            if let Some(v) = view {
+                frame["checkout"] = v.into();
+                frame["buildBase"] = "dev".into();
+                frame["buildKey"] = "room-1".into();
+            }
+            turn_of(frame, None)
+        };
+        let mut held = resident(true);
+        held.checkout = CheckoutView::Read;
+        assert_eq!(
+            resident_disposition(Some(&held), &turn(Some("read"))),
+            Disposition::Reuse
+        );
+        for other in [None, Some("none"), Some("build")] {
+            assert_eq!(
+                resident_disposition(Some(&held), &turn(other)),
+                Disposition::Close("checkout view changed"),
+                "{other:?}"
+            );
+        }
+        let spec = chat_spec("s1", "hi", &turn(Some("none")));
+        assert_eq!(
+            spec.confinement.map(|c| c.checkout),
+            Some(CheckoutView::None)
+        );
     }
 
     fn token_turn(keep_resident: bool) -> Turn {
@@ -999,7 +1062,8 @@ mod tests {
         assert_eq!(
             spec.confinement,
             Some(Confinement {
-                reads: vec![PathBuf::from("/tmp/forge-attach-s1")]
+                reads: vec![PathBuf::from("/tmp/forge-attach-s1")],
+                checkout: CheckoutView::Write,
             }),
             "a turn core marked confined spawned a session with the box's view"
         );

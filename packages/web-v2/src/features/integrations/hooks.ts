@@ -91,6 +91,27 @@ export function useRocketchatRooms(
   });
 }
 
+/** The rooms a bot connection this project is not bound to yet can answer in: the support-room form's group picker. */
+export function useConnectionRocketchatRooms(projectId: string | undefined, connectionId: string | undefined) {
+  return useQuery({
+    queryKey: ["integrations", "rc-rooms", projectId, "connection", connectionId],
+    queryFn: () => integrationsApi.rocketchatConnectionRooms(projectId as string, connectionId as string),
+    enabled: !!projectId && !!connectionId,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** A project's bound rooms with their session and health, read again every 30 s (REQ-75 r5 BC-26). */
+export function useSupportRooms(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["integrations", "support-rooms", projectId],
+    queryFn: () => integrationsApi.supportRooms(projectId as string),
+    enabled: !!projectId,
+    refetchInterval: 30_000,
+  });
+}
+
 /** Same probe with bare credentials — the connect form's "Load rooms" button
  *  (nothing persisted yet, so the caller supplies the credential). */
 export function useProbeRocketchatRooms(projectId: string | undefined) {

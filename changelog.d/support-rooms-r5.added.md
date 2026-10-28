@@ -1,0 +1,1 @@
+**A Rocket.Chat support group is set up, checked and granted from its binding.** The room says why it is not answering, and holds named abilities that a confirmer approves; an ungranted one is refused, naming who grants it.

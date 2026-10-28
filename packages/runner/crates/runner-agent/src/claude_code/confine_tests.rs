@@ -446,3 +446,126 @@ async fn a_resident_session_reads_each_turns_bearer_from_its_bound_file_and_hold
         "the token written after the spawn is not the one the session reads: {seen}"
     );
 }
+
+/// A support room's grant decides how its session sees the checkout (REQ-75 r5 BC-27): read-only
+/// for `read_checkout`, not at all for a room granted nothing, writable only as a `build` room's
+/// own working copy. Its git directories are never writable, and with no view never in sight.
+#[test]
+fn each_checkout_view_mounts_the_checkout_as_its_room_was_granted() {
+    use crate::CheckoutView;
+    use runner_platform::confine::Mount;
+    let p = plant();
+    let git_dirs = vec![p.repo.join(".git")];
+    let mounts = |checkout: &CheckoutView| {
+        let reads: Vec<PathBuf> = vec![];
+        super::confine::checkout_mounts(&super::confine::Handed {
+            repo: &p.repo,
+            credential: None,
+            mcp_config: &p.mcp,
+            bearer_dir: None,
+            reads: &reads,
+            checkout,
+            project_slug: None,
+            project_id: "",
+            git_dirs: git_dirs.clone(),
+            git_identity: None,
+            core_url: "https://core.example",
+            egress_socket: p.root.join("s"),
+        })
+    };
+    let repo = p.repo.clone();
+    let git = p.repo.join(".git");
+    let mcp = p.repo.join(".mcp.json");
+    assert_eq!(
+        mounts(&CheckoutView::Write),
+        vec![
+            Mount::Write(repo.clone()),
+            Mount::Read(git.clone()),
+            Mount::Hide(mcp.clone())
+        ]
+    );
+    assert_eq!(
+        mounts(&CheckoutView::Read),
+        vec![
+            Mount::Read(repo.clone()),
+            Mount::Read(git.clone()),
+            Mount::Hide(mcp.clone())
+        ]
+    );
+    assert_eq!(
+        mounts(&CheckoutView::None),
+        vec![Mount::Empty(repo.clone())]
+    );
+    let build = CheckoutView::Build {
+        key: "room-1".into(),
+        base: "dev".into(),
+    };
+    assert_eq!(
+        mounts(&build),
+        vec![Mount::Write(repo), Mount::Read(git), Mount::Hide(mcp)]
+    );
+}
+
+/// The views as a sandbox enforces them: a `read` session reads the checkout and writes none of
+/// it; a `none` session finds an empty folder where the checkout was.
+#[tokio::test]
+async fn a_read_view_writes_nothing_and_a_none_view_sees_nothing() {
+    use crate::CheckoutView;
+    if !bwrap_or_skip("a_read_view_writes_nothing_and_a_none_view_sees_nothing") {
+        return;
+    }
+    let p = plant();
+    let probe = |checkout: CheckoutView| {
+        let p = &p;
+        async move {
+            let mut s = spec(p, true);
+            s.confinement = Some(Confinement {
+                reads: vec![],
+                checkout,
+            });
+            let script = format!(
+                "cat '{repo}/README' 2>/dev/null && echo README-READ; \
+                 echo x > '{repo}/written-by-view' 2>/dev/null && echo CHECKOUT-WRITABLE; true",
+                repo = p.repo.display()
+            );
+            let args = vec!["-c".to_string(), script];
+            let (mut cmd, _egress) = SessionCommand {
+                spec: &s,
+                program: std::ffi::OsStr::new("/bin/sh"),
+                args: &args,
+                repo: &p.repo.to_string_lossy(),
+                credential: TURN,
+                mcp_path: &p.mcp,
+                bearer_dir: None,
+                core_url: "https://core.example",
+            }
+            .build(Some(view(p)))
+            .await
+            .expect("the session command is built");
+            let out = cmd
+                .stdin(std::process::Stdio::null())
+                .output()
+                .await
+                .expect("the session ran");
+            String::from_utf8_lossy(&out.stdout).into_owned()
+        }
+    };
+    let read = probe(CheckoutView::Read).await;
+    assert!(
+        read.contains("README-READ"),
+        "a read view cannot read the checkout: {read}"
+    );
+    assert!(
+        !read.contains("CHECKOUT-WRITABLE") && !p.repo.join("written-by-view").exists(),
+        "a read view wrote the checkout"
+    );
+    let none = probe(CheckoutView::None).await;
+    assert!(
+        !none.contains("README-READ"),
+        "a room granted no checkout read it: {none}"
+    );
+    assert!(
+        !p.repo.join("written-by-view").exists(),
+        "a none view's write reached the real checkout"
+    );
+}

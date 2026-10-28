@@ -1,4 +1,8 @@
 import {
+  supportBuildRequestSchema,
+  supportCommandRequestSchema,
+  supportDeployRequestSchema,
+  supportMoveIssueRequestSchema,
   supportProposeFixRequestSchema,
   supportRecordRequestSchema,
   supportReplyRequestSchema,
@@ -65,6 +69,10 @@ const SHAPES = {
   feedbackDraft:
     '{ thread, project, kind: defect | feature | request, title, summary, one of requirement | issue | screen }',
   research: '{ thread, url }',
+  moveIssue: '{ thread, issue, to, reason? }',
+  build: '{ thread, branch: feat/<slug> | fix/<slug>, title, summary }',
+  deploy: '{ thread, target }',
+  command: '{ thread, host, command }',
 } as const;
 
 supportRoutes.post(
@@ -105,6 +113,32 @@ supportRoutes.post(
   projectParam,
   strictBody(supportRecordRequestSchema, SHAPES.record),
   (c) => act(c, c.req.valid('param').id, { action: 'record', ...c.req.valid('json') }),
+);
+
+// what a room's grant opens (REQ-75 r5 BC-27): each refused by name where the room is not granted it
+supportRoutes.post(
+  '/:id/support/session/issue-moves',
+  projectParam,
+  strictBody(supportMoveIssueRequestSchema, SHAPES.moveIssue),
+  (c) => act(c, c.req.valid('param').id, { action: 'move_issue', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/builds',
+  projectParam,
+  strictBody(supportBuildRequestSchema, SHAPES.build),
+  (c) => act(c, c.req.valid('param').id, { action: 'build', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/deploys',
+  projectParam,
+  strictBody(supportDeployRequestSchema, SHAPES.deploy),
+  (c) => act(c, c.req.valid('param').id, { action: 'deploy', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/commands',
+  projectParam,
+  strictBody(supportCommandRequestSchema, SHAPES.command),
+  (c) => act(c, c.req.valid('param').id, { action: 'command', ...c.req.valid('json') }),
 );
 
 // an operations room's acts (REQ-75 BC-20..BC-24): read the scope, move delivery, draft direction, research

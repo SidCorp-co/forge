@@ -1,4 +1,5 @@
-import type { BindingTargetRefusal } from '../index.js';
+import type { BindingTargetRefusal, VerifyBindingTargetArgs } from '../index.js';
+import { listActiveDeployBindingsForProvider } from '../index.js';
 
 type Settled =
   | { ok: true; config: Record<string, unknown> }
@@ -45,4 +46,31 @@ export async function settleSupportRoom(args: {
     };
   }
   return { ok: true, config: args.config };
+}
+
+/**
+ * A support group's grant names deploy targets by the project's own deploy bindings (REQ-75 r5
+ * BC-27): one that is not an active Coolify binding of this project is refused by name at bind, so
+ * a grant never names what nobody can deploy.
+ */
+export async function verifySupportGrant(
+  args: VerifyBindingTargetArgs,
+): Promise<BindingTargetRefusal[]> {
+  const support = args.config.support as { grants?: { deployTargets?: string[] } } | undefined;
+  const named = support?.grants?.deployTargets ?? [];
+  if (named.length === 0) return [];
+  const bound = new Set(
+    (await listActiveDeployBindingsForProvider(args.projectId, 'coolify')).map((p) => p.binding.id),
+  );
+  return named.flatMap((id, i) =>
+    bound.has(id)
+      ? []
+      : [
+          {
+            code: 'SUPPORT_GRANT_TARGET_UNKNOWN' as const,
+            path: `/support/grants/deployTargets/${i}`,
+            detail: `${id} is not an active deploy binding of this project, so this room could never deploy it; name one of ${[...bound].join(', ') || 'none — bind a deploy target first'}`,
+          },
+        ],
+  );
 }

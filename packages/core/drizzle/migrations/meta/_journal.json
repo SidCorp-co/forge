@@ -3466,6 +3466,13 @@
       "when": 1829692800000,
       "tag": "0541_a_projects_gates_are_changed_on_the_record",
       "breakpoints": true
+    },
+    {
+      "idx": 542,
+      "version": "7",
+      "when": 1829779200000,
+      "tag": "0542_a_rooms_grant_waits_on_its_confirmers",
+      "breakpoints": true
     }
   ]
 }

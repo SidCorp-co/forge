@@ -12,7 +12,9 @@
  * and nothing here calls GitHub — the answer the creation call already returned is all it reads.
  */
 
-import type { ChangeRequestHost } from '../../db/schema-repo-projection.js';
+import { and, eq } from 'drizzle-orm';
+import { db } from '../../db/client.js';
+import { type ChangeRequestHost, repoPullRequests } from '../../db/schema-repo-projection.js';
 import { applyPullRequestEvent, type PullRequestPayload } from './projection.js';
 import { linkedIssuesOfNumber } from './repo-projection.js';
 import type { OpenedChangeRequest } from './types.js';
@@ -237,4 +239,20 @@ export async function projectOpenedPullRequest(args: {
       'that number is there, which is a state this path does not otherwise produce. The pull request EXISTS ' +
       'on GitHub; merging it through Forge needs a row, and none is here.',
   };
+}
+
+/**
+ * Whether change request `number` of the binding is still open, as its projection holds it: null
+ * when nothing is projected for it.
+ */
+export async function changeRequestOpen(
+  bindingId: string,
+  number: number,
+): Promise<boolean | null> {
+  const [row] = await db
+    .select({ state: repoPullRequests.state })
+    .from(repoPullRequests)
+    .where(and(eq(repoPullRequests.bindingId, bindingId), eq(repoPullRequests.number, number)))
+    .limit(1);
+  return row ? row.state === 'open' : null;
 }

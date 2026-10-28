@@ -15,7 +15,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
-import { tryLockSession, unlockSession } from '../../lib/advisory-lock.js';
+import { sessionLockHeld, tryLockSession, unlockSession } from '../../lib/advisory-lock.js';
 import { env } from '../../lib/env.js';
 import { reportFailure } from '../../lib/error-tracking.js';
 import { logger } from '../../lib/logger.js';
@@ -392,6 +392,20 @@ class RocketChatConnectionManager {
 }
 
 export const rocketChatManager = new RocketChatConnectionManager();
+
+/**
+ * Whether a core process listens for a connection's messages (REQ-75 r5 BC-26): this one, with its
+ * socket live or not, another one (it holds the connection's lock), or none at all.
+ */
+export type ConnectionListening = 'live' | 'reconnecting' | 'elsewhere' | 'nowhere';
+
+export async function connectionListening(connectionId: string): Promise<ConnectionListening> {
+  const here = rocketChatManager.connections().get(connectionId);
+  if (here) return here.client?.getState() === 'live' ? 'live' : 'reconnecting';
+  return (await sessionLockHeld(db, 'rocketchatConnection', connectionId))
+    ? 'elsewhere'
+    : 'nowhere';
+}
 export const startRocketChatManager = (): Promise<void> => rocketChatManager.start();
 export const stopRocketChatManager = (): Promise<void> => rocketChatManager.stop();
 

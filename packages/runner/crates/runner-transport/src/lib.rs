@@ -21,6 +21,7 @@ pub mod checkout_head;
 pub mod events;
 pub mod git_credential;
 pub mod heartbeat;
+pub mod host_command;
 pub mod inbox;
 pub mod lifecycle;
 pub mod master;
@@ -35,6 +36,7 @@ pub mod run_verdict;
 pub mod runners;
 pub mod skills;
 pub mod status;
+pub mod support_build;
 pub mod ws;
 
 /// How long one call to core may take before it is a failed call rather than a

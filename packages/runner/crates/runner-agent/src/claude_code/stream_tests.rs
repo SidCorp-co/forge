@@ -44,6 +44,7 @@ fn session(unreplayed: u32) -> Session {
         turn_done: Arc::new(tokio::sync::Notify::new()),
         model: None,
         head_sha: None,
+        checkout: crate::CheckoutView::Write,
         permit: None,
         project_slug: None,
         ended: tokio::sync::watch::channel(false).1,

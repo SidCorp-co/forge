@@ -26,7 +26,11 @@ export {
   mergeStoredChangeRequest,
 } from './merge.js';
 export { readMergedHead } from './merged-head.js';
-export { OpenedPullRequestIncomplete, projectOpenedPullRequest } from './opened-change-request.js';
+export {
+  changeRequestOpen,
+  OpenedPullRequestIncomplete,
+  projectOpenedPullRequest,
+} from './opened-change-request.js';
 export type {
   CheckRunPayload,
   ProjectionContext,

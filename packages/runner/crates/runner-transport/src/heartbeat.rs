@@ -173,18 +173,25 @@ pub(crate) fn heartbeat_body(
 /// core marks `confined` runs holding that token alone, `confinedChatNetwork` whether it also
 /// reaches only the hosts its egress proxy allows — a runner that predates it says nothing — and
 /// where it cannot, why not, which core names when it refuses a chat door's turn here.
+///
+/// REQ-75 r5: `chatCheckoutModes` is whether a confined session can be shown its checkout
+/// read-only or not at all (`checkout` on a turn frame), and `supportBuilds` whether it can work
+/// in a room's working copy that this box commits and pushes (`build.push`) — both sandbox mounts,
+/// so false where the box cannot confine. `hostCommands` is whether this box runs a command on a
+/// named host over its own SSH (`host.command`), which needs no sandbox.
 pub(crate) fn capabilities(confine: &runner_platform::confine::Availability) -> serde_json::Value {
-    let mut out = serde_json::json!({ "turnCredential": true, "followUpCredential": true });
-    match confine {
-        runner_platform::confine::Availability::Available => {
-            out["confinedChat"] = true.into();
-            out["confinedChatNetwork"] = true.into();
-        }
-        runner_platform::confine::Availability::Unavailable(why) => {
-            out["confinedChat"] = false.into();
-            out["confinedChatNetwork"] = false.into();
-            out["confinedChatUnavailable"] = why.clone().into();
-        }
+    let mut out = serde_json::json!({
+        "turnCredential": true,
+        "followUpCredential": true,
+        "hostCommands": true,
+    });
+    let confines = matches!(confine, runner_platform::confine::Availability::Available);
+    out["confinedChat"] = confines.into();
+    out["confinedChatNetwork"] = confines.into();
+    out["chatCheckoutModes"] = confines.into();
+    out["supportBuilds"] = confines.into();
+    if let runner_platform::confine::Availability::Unavailable(why) = confine {
+        out["confinedChatUnavailable"] = why.clone().into();
     }
     out
 }
@@ -213,6 +220,21 @@ mod tests {
         assert!(caps.get("confinedChatUnavailable").is_none(), "{caps}");
         assert_eq!(caps["turnCredential"], true, "{caps}");
         assert_eq!(caps["followUpCredential"], true, "{caps}");
+    }
+
+    /// REQ-75 r5: a box that confines says it shows a session its checkout by view and keeps a
+    /// room's working copy; one that cannot confine says neither; both run host commands.
+    #[test]
+    fn a_box_says_which_support_room_grants_it_can_serve() {
+        use runner_platform::confine::Availability;
+        let caps = capabilities(&Availability::Available);
+        assert_eq!(caps["chatCheckoutModes"], true, "{caps}");
+        assert_eq!(caps["supportBuilds"], true, "{caps}");
+        assert_eq!(caps["hostCommands"], true, "{caps}");
+        let caps = capabilities(&Availability::Unavailable("no bwrap".into()));
+        assert_eq!(caps["chatCheckoutModes"], false, "{caps}");
+        assert_eq!(caps["supportBuilds"], false, "{caps}");
+        assert_eq!(caps["hostCommands"], true, "{caps}");
     }
 
     #[test]
