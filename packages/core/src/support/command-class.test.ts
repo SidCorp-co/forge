@@ -20,6 +20,7 @@ describe('a command on a host reads, or waits for a confirmer', () => {
     'ping -c 3 mta1',
     'hostname -f',
     '/usr/bin/cat /etc/hostname',
+    "grep -i 'relay access denied' /var/log/mail.log",
     'sort -u /etc/hosts | uniq -c',
     'openssl x509 -in /etc/ssl/c.pem -noout -dates',
   ])('reads: %s', (command) => {
@@ -41,6 +42,9 @@ describe('a command on a host reads, or waits for a confirmer', () => {
     ["sed -n '1e touch /tmp/support-write' /etc/hosts", 'not a program known only to read'],
     ["awk 'BEGIN{print 1}' /etc/hosts", 'shell construct'],
     ['uniq /etc/hosts /tmp/support-copy', 'can write'],
+    ["sort '-o' /tmp/support-copy /etc/hosts", 'can write'],
+    ['"tail" "-f" /var/log/mail.log', 'can write'],
+    ["'sed' -n p /etc/hosts", 'not a program known only to read'],
     ['tail -fn 100 /var/log/mail.log', 'can write'],
     ['journalctl -xef', 'can write'],
     ['sort --compress-program=sh /etc/hosts', 'can write'],

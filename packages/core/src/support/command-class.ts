@@ -87,7 +87,9 @@ export function classifyCommand(command: string): CommandClass {
     };
   }
   for (const stage of command.split('|')) {
-    const words = stage.trim().split(/\s+/);
+    // the remote shell drops quotes before a program reads its words (`'-o'` is `-o`), and with no
+    // `$`, backtick or backslash left a quote can only group words: judge them as the program sees them
+    const words = stage.replace(/['"]/g, '').trim().split(/\s+/);
     const named = words[0] ?? '';
     if (named.includes('/') && !SYSTEM_BIN.test(named)) {
       return { reads: false, why: `${named} is not a system program` };
