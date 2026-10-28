@@ -176,3 +176,19 @@ describe('REQ-75 r5: a build never changes what production deploys (BC-27)', () 
     expect(w.box.acts.filter((a) => a.event === 'build.push').length).toBe(pushes);
   });
 });
+
+describe('REQ-75 r5: a support room is set up in one save, its group picked from the bot (BC-25)', () => {
+  it('lists the groups of a bot connection the admin may read, and refuses a connection that is not a bot', async () => {
+    const { api } = await import('../helpers/api.js');
+    const path = `/api/projects/${w.projectId}/integrations/rocketchat/connection-rooms`;
+    const listed = await api(w.owner, 'POST', path, { connectionId: w.rcConnectionId });
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    expect(listed.body.rooms).toEqual([
+      expect.objectContaining({ rid: w.chat.rid, name: 'catalog-support' }),
+    ]);
+    const notBot = await api(w.owner, 'POST', path, { connectionId: w.apiConnectionId });
+    expect(JSON.stringify(notBot.body)).toContain('not a Rocket.Chat bot');
+    const stranger = await api(w.stranger, 'POST', path, { connectionId: w.rcConnectionId });
+    expect(stranger.status).toBeGreaterThanOrEqual(403);
+  });
+});

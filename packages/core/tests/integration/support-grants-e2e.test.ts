@@ -39,8 +39,7 @@ vi.mock('../../src/integrations/source-host/index.js', async (importOriginal) =>
     },
   }),
   projectOpenedPullRequest: async () => {},
-  changeRequestOpen: async (_bindingId: string, number: number) =>
-    !merged.has(number),
+  changeRequestOpen: async (_bindingId: string, number: number) => !merged.has(number),
 }));
 
 import { BASE, GrantedRoom } from '../helpers/support-grants-world.js';

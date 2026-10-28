@@ -95,7 +95,7 @@ export function useRocketchatRooms(
 export function useConnectionRocketchatRooms(projectId: string | undefined, connectionId: string | undefined) {
   return useQuery({
     queryKey: ["integrations", "rc-rooms", projectId, "connection", connectionId],
-    queryFn: () => integrationsApi.rocketchatRooms(projectId as string, { connectionId: connectionId as string }),
+    queryFn: () => integrationsApi.rocketchatConnectionRooms(projectId as string, connectionId as string),
     enabled: !!projectId && !!connectionId,
     staleTime: 60_000,
     retry: false,

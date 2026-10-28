@@ -157,10 +157,7 @@ function SupportRoomFields(p: {
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <PageSectionTitle>{t("integrations.support.title")}</PageSectionTitle>
-        <p className="fg-body-sm text-muted">{t("integrations.support.intro")}</p>
-      </div>
+      <PageSectionTitle>{t("integrations.support.title")}</PageSectionTitle>
       {p.bot}
       <Field label={t("integrations.support.group")} required error={shown("rid")}>
         <RoomSelect
@@ -176,10 +173,10 @@ function SupportRoomFields(p: {
           }
         />
       </Field>
-      <Field label={t("integrations.support.product")} hint={t("integrations.support.productHint")} error={shown("product")}>
+      <Field label={t("integrations.support.product")} error={shown("product")}>
         <Input value={state.product} maxLength={600} onChange={(e) => set("product", e.target.value)} />
       </Field>
-      <Field label={t("integrations.support.persona")} hint={t("integrations.support.personaHint")} error={shown("persona")}>
+      <Field label={t("integrations.support.persona")} error={shown("persona")}>
         <Textarea rows={6} value={state.persona} maxLength={4000} onChange={(e) => set("persona", e.target.value)} />
       </Field>
       <Field label={t("integrations.support.readers")}>
@@ -196,7 +193,7 @@ function SupportRoomFields(p: {
           options={SUPPORT_ANSWERS.map((a) => ({ value: a, label: t(`integrations.support.answers.${a}`) }))}
         />
       </Field>
-      <Field label={t("integrations.support.abilities")} hint={t("integrations.support.abilitiesHint")} error={shown("abilities")}>
+      <Field label={t("integrations.support.abilities")} error={shown("abilities")}>
         <div className="flex flex-col divide-y divide-line border-y border-line">
           {SUPPORT_ABILITIES.map((a) => (
             <div key={a} className="py-2">
@@ -234,13 +231,13 @@ function SupportRoomFields(p: {
         </Field>
       )}
       {has("run_commands") && (
-        <Field label={t("integrations.support.hosts")} hint={t("integrations.support.hostsHint")} error={shown("hosts")}>
-          <Input value={state.hosts} placeholder="mail-01, mta1" onChange={(e) => set("hosts", e.target.value)} />
+        <Field label={t("integrations.support.hosts")} error={shown("hosts")}>
+          <Input value={state.hosts} placeholder={t("integrations.support.hostsPlaceholder")} onChange={(e) => set("hosts", e.target.value)} />
         </Field>
       )}
       {(has("build") || has("deploy") || has("run_commands")) && (
-        <Field label={t("integrations.support.confirmers")} hint={t("integrations.support.confirmersHint")} error={shown("confirmers")}>
-          <Input value={state.confirmers} placeholder="chuongld, thanhnh" onChange={(e) => set("confirmers", e.target.value)} />
+        <Field label={t("integrations.support.confirmers")} error={shown("confirmers")}>
+          <Input value={state.confirmers} placeholder={t("integrations.support.confirmersPlaceholder")} onChange={(e) => set("confirmers", e.target.value)} />
         </Field>
       )}
       <div>

@@ -89,6 +89,11 @@ export class StandInRocketChat implements ChatServer {
           success: true,
           room: { _id: this.rid, t: 'p', name: 'catalog-support' },
         });
+      case '/api/v1/rooms.get':
+        return json(200, {
+          success: true,
+          update: this.botIsMember ? [{ _id: this.rid, t: 'p', name: 'catalog-support' }] : [],
+        });
       case '/api/v1/subscriptions.getOne':
         return json(200, {
           success: true,

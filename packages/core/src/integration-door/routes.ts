@@ -33,7 +33,11 @@ import {
   updateSchema,
   withdrawNulls,
 } from '../integrations/index.js';
-import { fetchBotRooms, rocketChatBindingOfProject } from '../integrations/rocketchat/index.js';
+import {
+  fetchBotRooms,
+  isRocketChatConnection,
+  rocketChatBindingOfProject,
+} from '../integrations/rocketchat/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -199,14 +203,12 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {
 const rocketchatRoomsSchema = z
   .object({
     integrationId: z.string().uuid().optional(),
-    /** A bot connection the caller may read, not yet bound here: the one-act setup's group picker (REQ-75 r5 BC-25). */
-    connectionId: z.string().uuid().optional(),
     serverUrl: z.string().url().max(500).optional(),
     authToken: z.string().min(8).max(2000).optional(),
     userId: z.string().min(1).max(200).optional(),
   })
-  .refine((b) => b.integrationId || b.connectionId || (b.serverUrl && b.authToken && b.userId), {
-    message: 'pass integrationId, connectionId, or serverUrl + authToken + userId',
+  .refine((b) => b.integrationId || (b.serverUrl && b.authToken && b.userId), {
+    message: 'pass integrationId, or serverUrl + authToken + userId',
   });
 
 integrationsRoutes.post(
@@ -233,26 +235,6 @@ integrationsRoutes.post(
         );
       }
       auth = { serverUrl: cfg.serverUrl, authToken: secrets.authToken, userId: secrets.userId };
-    } else if (body.connectionId) {
-      // a connection the caller may read (theirs, or their organization's), never another's
-      const connection = await loadConnection(body.connectionId, userId, 'read');
-      if (connection.provider !== 'rocketchat') {
-        throw refuse(
-          'MISSING_CREDENTIALS',
-          `connection ${body.connectionId} is a ${connection.provider} connection, not a Rocket.Chat bot`,
-          '/connectionId',
-        );
-      }
-      const cfg = connection.config as { serverUrl?: string } | null;
-      const secrets = decryptConnectionSecrets<{ authToken?: string; userId?: string }>(connection);
-      if (!cfg?.serverUrl || !secrets.authToken || !secrets.userId) {
-        throw refuse(
-          'MISSING_CREDENTIALS',
-          'this rocketchat connection holds no serverUrl or no credentials; complete the connection first',
-          '/connectionId',
-        );
-      }
-      auth = { serverUrl: cfg.serverUrl, authToken: secrets.authToken, userId: secrets.userId };
     } else {
       auth = {
         serverUrl: (body.serverUrl as string).replace(/\/+$/, ''),
@@ -261,6 +243,42 @@ integrationsRoutes.post(
       };
     }
 
+    const rooms = (await fetchBotRooms(auth)).slice(0, 200);
+    return c.json({ rooms });
+  },
+);
+
+// The rooms of a bot connection the caller may read and has not bound to this project yet: the
+// group picker of a support room set up in one save (REQ-75 r5 BC-25). Theirs, or their
+// organization's, never another's.
+const rocketchatConnectionRoomsSchema = z.strictObject({ connectionId: z.string().uuid() });
+
+integrationsRoutes.post(
+  '/:projectId/integrations/rocketchat/connection-rooms',
+  zValidator('json', rocketchatConnectionRoomsSchema),
+  async (c) => {
+    const projectId = c.req.param('projectId');
+    const userId = c.get('userId');
+    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+    const { connectionId } = c.req.valid('json');
+    const connection = await loadConnection(connectionId, userId, 'read');
+    if (!isRocketChatConnection(connection)) {
+      throw refuse(
+        'MISSING_CREDENTIALS',
+        `connection ${connectionId} is a ${connection.provider} connection, not a Rocket.Chat bot`,
+        '/connectionId',
+      );
+    }
+    const cfg = connection.config as { serverUrl?: string } | null;
+    const secrets = decryptConnectionSecrets<{ authToken?: string; userId?: string }>(connection);
+    if (!cfg?.serverUrl || !secrets.authToken || !secrets.userId) {
+      throw refuse(
+        'MISSING_CREDENTIALS',
+        'this rocketchat connection holds no serverUrl or no credentials; complete the connection first',
+        '/connectionId',
+      );
+    }
+    const auth = { serverUrl: cfg.serverUrl, authToken: secrets.authToken, userId: secrets.userId };
     const rooms = (await fetchBotRooms(auth)).slice(0, 200);
     return c.json({ rooms });
   },
