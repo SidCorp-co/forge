@@ -211,6 +211,24 @@ export function deferredRefusal(
   };
 }
 
+/**
+ * A dropped requirement is terminal (`REQUIREMENT_MACHINE`): no act brings it back, so it takes no
+ * new revision, rewrite, proposal or accept. A draft it holds is withdrawn, never written on.
+ */
+export function droppedRefusal(
+  status: RequirementStatus,
+  key: string,
+  act: string,
+  path = '/revision',
+): RequirementRefusal | null {
+  if (status !== 'dropped') return null;
+  return {
+    code: 'REQUIREMENT_DROPPED',
+    path,
+    detail: `${key} is dropped, and dropped is terminal: no act brings a requirement back, so ${act} is refused. To carry the work again, write a new requirement (POST /api/projects/:id/requirements); a draft revision it still holds is withdrawn (POST …/requirements/${key}/revisions/<n>/withdraw { reason }). Nothing was written.`,
+  };
+}
+
 // Scenario form is optional per project (Q12); when chosen, the body must read as
 // Given … When … Then, each keyword starting a line, or it is refused rather than stored unparsed
 function scenarioParses(body: string): boolean {

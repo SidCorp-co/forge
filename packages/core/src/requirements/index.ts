@@ -43,7 +43,7 @@ export {
 export { roomSettleWriter } from './room-settle.js';
 export { revisionFields } from './route-kit.js';
 export { linkIssueRefusal } from './rules.js';
-export { proposeRevision, writeRevision } from './service.js';
+export { proposeRevision, withdrawRevision, writeRevision } from './service.js';
 export {
   criterionVerdictOf,
   deliveredAmong,

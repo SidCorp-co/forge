@@ -21,7 +21,7 @@ import {
   revisionFields,
   revisionParam,
 } from './route-kit.js';
-import { proposeRevision, returnRevision, writeRevision } from './service.js';
+import { proposeRevision, returnRevision, withdrawRevision, writeRevision } from './service.js';
 
 export const revisionRoutes = new Hono<RequirementEnv>();
 
@@ -112,6 +112,29 @@ revisionRoutes.post(
     return answer(
       c,
       await returnRevision({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        revision: n,
+        reason: c.req.valid('json').reason,
+      }),
+    );
+  },
+);
+
+// an open draft is withdrawn with why (REQ-41 BC-12): by its author, or by a holder of requirements.approve
+revisionRoutes.post(
+  '/:id/requirements/:req/revisions/:n/withdraw',
+  revisionParam,
+  strictBody(
+    z.strictObject({ reason: z.string().max(REASON_TEXT_MAX) }),
+    '{ reason } says why the draft is withdrawn',
+  ),
+  async (c) => {
+    const { id, req, n } = c.req.valid('param');
+    return answer(
+      c,
+      await withdrawRevision({
         projectId: id,
         ref: req,
         actor: actorOf(c),

@@ -34,6 +34,7 @@ import {
   agreeRefusals,
   baselineDedup,
   deferredRefusal,
+  droppedRefusal,
   type LinkedDesign,
   type RequirementRefusal,
   staleBaseRefusal,
@@ -126,6 +127,11 @@ export async function acceptRevision(input: {
     const current = await rowIn(tx, projectId, row.id);
     const target = await revisionIn(tx, current, input.revision);
     const refusal =
+      droppedRefusal(
+        current.status as RequirementStatus,
+        requirementKey(current.reqSeq),
+        `accepting revision ${target.revision}`,
+      ) ??
       deferredRefusal(current.status as RequirementStatus, 'accepting a revision', '/revision') ??
       stateRefusal(target.revision, target.state as RevisionState, 'proposed') ??
       staleBaseRefusal(target.baseRevision, current.currentRevision);

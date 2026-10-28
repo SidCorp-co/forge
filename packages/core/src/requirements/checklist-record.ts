@@ -46,8 +46,10 @@ function labelPatterns(lang: WrittenLang | null): [GoalLabel, RegExp][] {
 
 /**
  * The goal's labelled lines (`Problem:`, `Value:`, `Measured by:`, `Roadmap:`), read under the labels
- * of the language the requirement is written in and the English ones. A goal that labels none of
- * them states its problem as a whole, so its text answers the problem and nothing else.
+ * of the language the requirement is written in and the English ones. Where no `Problem:` line
+ * states it, the unlabelled lines before the first labelled one state the problem, so a goal that
+ * labels nothing answers the problem alone, and adding a `Value:` line below never takes that answer
+ * away (forge-dev REQ-5 r5, 2026-10-28). A line after a labelled one belongs to no label.
  */
 export function goalAnswers(
   goal: string | null | undefined,
@@ -57,16 +59,21 @@ export function goalAnswers(
   if (text === '') return {};
   const patterns = labelPatterns(lang ?? writtenLangOfText(text));
   const found: Partial<Record<GoalLabel, string>> = {};
+  const opening: string[] = [];
   let labelled = false;
   for (const line of text.split('\n').map((l) => l.trim())) {
-    for (const [label, pattern] of patterns) {
-      if (!pattern.test(line)) continue;
+    const hits = patterns.filter(([, pattern]) => pattern.test(line));
+    if (hits.length === 0 && !labelled && line !== '') opening.push(line);
+    for (const [label, pattern] of hits) {
       labelled = true;
       const said = line.replace(pattern, '').trim();
       if (found[label] === undefined && said !== '') found[label] = said;
     }
   }
-  return labelled ? found : { problem: text };
+  if (found.problem === undefined && opening.length > 0) {
+    found.problem = labelled ? opening.join('\n') : text;
+  }
+  return found;
 }
 
 /** How a gap names a label: the requirement's own word first, then the English one. */
