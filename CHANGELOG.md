@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.347] - 2026-10-28
+
+Dropped requirements refuse revisions; accept refusals name every checklist gap
+
+### Fixed
+
+- **A dropped requirement takes no revision, and a goal's gaps come at once.** Refused `REQUIREMENT_DROPPED`; an open draft is withdrawn by its own door or by the drop; an unlabelled opening stays the problem once `Value:` is added.
+
 ## [0.4.0-dev.346] - 2026-10-28
 
 Unmeasured adopts name the hand pin; workflow rows carry their id
