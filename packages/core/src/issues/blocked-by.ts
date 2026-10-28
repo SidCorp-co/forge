@@ -4,6 +4,7 @@ import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
+import { saidByGate, underGate } from '../lib/gated.js';
 import { canonicalIssueKey, formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal, RefusalError } from '../lib/refusal.js';
 import {
@@ -17,6 +18,7 @@ import {
   designHoldPhrase,
   designHoldsOf,
 } from './design-delivery.js';
+import { type IssueGates, issueGateOf, readIssueGates } from './gates.js';
 import { landedSql } from './host-landing.js';
 import { restingRefusal } from './issue-resting.js';
 import { refuseScopeHeldForKeys } from './issue-scope.js';
@@ -259,14 +261,24 @@ export async function refuseHeldTake(
   executor: Pick<Tx, 'execute' | 'select'>,
   issueId: string,
   door: string,
+  /** The project's gates, where the caller read them before a lock it holds (`issues/gates.ts`). */
+  known?: IssueGates,
 ): Promise<void> {
   const [issue] = await readTaken(executor, sql`i.id = ${issueId}`);
   if (!issue || !TAKEABLE_STATUSES.includes(issue.status)) return;
-  const held = await blockedOf(executor, issue);
-  if (held) throw issueBlocked([held], door);
-  await assertDesignApprovedForIssue(issue.projectId, issue.id, executor);
-  await assertContractWaitsSettledForIssue(issue.projectId, issue.id, executor);
-  await assertPatternReviewsSettledForIssue(issue.projectId, issue.id, executor);
+  const gates = known ?? (await readIssueGates(issue.projectId));
+  await underGate(gates.take_blocked, async () => {
+    const held = await blockedOf(executor, issue);
+    if (held) throw issueBlocked([held], door);
+  });
+  await assertDesignApprovedForIssue(
+    issue.projectId,
+    issue.id,
+    executor,
+    gates.design_approved_for_build,
+  );
+  await assertContractWaitsSettledForIssue(issue.projectId, issue.id, executor, gates);
+  await assertPatternReviewsSettledForIssue(issue.projectId, issue.id, executor, gates);
 }
 
 async function refuseBlockedTakeForSeqs(
@@ -298,12 +310,14 @@ async function refuseBlockedTakeForSeqs(
   }
   const resting = restingRefusal(issues, door);
   if (resting) throw resting;
+  const gate = await issueGateOf(projectId, 'take_blocked');
+  if (gate.mode !== 'enforce') return;
   const held: BlockedIssue[] = [];
   for (const issue of issues) {
     const blocked = await blockedOf(executor, issue);
     if (blocked) held.push(blocked);
   }
-  if (held.length > 0) throw issueBlocked(held, door);
+  if (held.length > 0) throw saidByGate(gate, issueBlocked(held, door));
 }
 
 // the run-session preflight and open: an issue at rest (issue-resting.ts), every gate above, then a live run holding a scope the issues'

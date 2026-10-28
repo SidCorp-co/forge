@@ -41,7 +41,8 @@ import { seedProjectDocument } from '../helpers/release-world.js';
 
 const NEW = '2222222222222222222222222222222222222222';
 const LIVE = '9999999999999999999999999999999999999999';
-const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
+const BUILDER_WHY =
+  "passed by the run that built it, and a builder's own pass never counts where gate `builder_verdict` is enforced (gates.overrides.builder_verdict relaxes it)";
 const PROBE = {
   kind: 'command',
   command: { argv: ['pnpm', 'test', 'reminders'] },

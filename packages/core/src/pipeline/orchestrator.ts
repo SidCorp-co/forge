@@ -13,6 +13,7 @@ import {
   type ProjectPolicy,
   policyRefusal,
   readEffectivePolicy,
+  readGates,
   wakeMastersForProject,
 } from './ports.js';
 import { refusePipeline } from './refuse.js';
@@ -62,7 +63,9 @@ export async function triggerPipelineStepManual(args: {
   reason: Record<string, unknown>;
 }): Promise<{ startedAt: string }> {
   const policy = await loadProjectPolicy(args.projectId);
-  if (!isEntryGateClosed(policy)) throw intakeNotManual(args.projectId);
+  if (!isEntryGateClosed(policy, await readGates(args.projectId))) {
+    throw intakeNotManual(args.projectId);
+  }
   if (!isAutonomousEntry(args.status)) throw notAtEntry(args.status);
   const startedAt = await stampRunStarted(args.issueId);
   if (!startedAt) throw new Error(`issue ${args.issueId} vanished while it was being started`);
@@ -116,7 +119,7 @@ export async function retryIssueDispatch(args: {
   }
 
   let startedAt: string | null = null;
-  if (isEntryGateClosed(policy)) {
+  if (isEntryGateClosed(policy, await readGates(args.projectId))) {
     startedAt = await stampRunStarted(args.issueId);
     if (!startedAt) throw new Error(`issue ${args.issueId} vanished while it was being retried`);
   }

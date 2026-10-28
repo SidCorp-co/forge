@@ -22,6 +22,7 @@ import {
 } from '../issues/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { gateOf } from '../project-config/index.js';
 import { planDriftOf } from './plan-drift.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { designWithdrawnRefusal, linkIssueRefusal, refuseRequirement } from './rules.js';
@@ -58,7 +59,10 @@ export async function linkIssue(input: {
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
-    const refusal = linkIssueRefusal(current.status as RequirementStatus);
+    const refusal = linkIssueRefusal(
+      current.status as RequirementStatus,
+      await gateOf(projectId, 'link_requirement_agreed'),
+    );
     if (refusal) return [refusal];
     const [held] = await tx
       .select({ requirementId: issues.requirementId, plan: issues.plan })

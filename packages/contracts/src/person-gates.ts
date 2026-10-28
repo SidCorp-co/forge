@@ -2,10 +2,14 @@
 // ready_check, rev_check, breakdown_check, acceptance_check; Issue lifecycle r15 ready-check): one switch per
 // step in the project document's `approvals`, every one off by default. Off, the step's checklist
 // decides and whoever may write the item takes the move; on, the move waits on a holder of the
-// step's approve permission. Who that is follows the permission vocabulary (ADR 0007): a person or
+// step's approve permission. Each switch is one gate of the project's gate profile (REQ-76,
+// `gate-profiles.ts`, gate `approval_<step>`): strict turns every one on, yolo every one off, and
+// standard reads the switch; `effectiveApprovals` is what every reader asks. Who that is follows the
+// permission vocabulary (ADR 0007): a person or
 // an agent holding it alike. Release approval keeps its own switch, `release.approval.required`.
 
 import { z } from "zod";
+import { type GateSwitches, gateSays, projectGate } from "./gate-profiles.js";
 import type { ProjectPermission } from "./permissions.js";
 
 export const PERSON_GATES = ["agree", "revisions", "breakdown", "admit", "accept", "designs"] as const;
@@ -38,6 +42,18 @@ export const approvalsSchema = z.strictObject(
 );
 export type Approvals = z.infer<typeof approvalsSchema>;
 
+/**
+ * The switches as the project's gate profile resolves them (REQ-76): every step named, true where its
+ * gate `approval_<step>` is enforced. Pass this, never the document's own `approvals`, to the readers below.
+ */
+export function effectiveApprovals(
+	doc: GateSwitches | null | undefined,
+): Readonly<Record<PersonGate, boolean>> {
+	return Object.fromEntries(
+		PERSON_GATES.map((g) => [g, projectGate(doc, null, `approval_${g}` as const).mode === "enforce"]),
+	) as Record<PersonGate, boolean>;
+}
+
 export const personGateOn = (
 	approvals: Approvals | null | undefined,
 	gate: PersonGate,
@@ -53,16 +69,18 @@ export function personGatePermission(
 }
 
 /**
- * The act a refusal names, saying why the approve permission is asked where the switch is on; `label`
- * names another act the same switch holds (a re-pin is held by `revisions`).
+ * The act a refusal names, saying why the approve permission is asked where the gate is enforced, by
+ * which profile or key, and what relaxes it (REQ-76 BC-11); `label` names another act the same switch
+ * holds (a re-pin is held by `revisions`).
  */
 export function personGateAct(
-	approvals: Approvals | null | undefined,
+	doc: GateSwitches | null | undefined,
 	gate: PersonGate,
 	label: string = PERSON_GATE_STEPS[gate].label,
 ): string {
 	const step = PERSON_GATE_STEPS[gate];
-	return personGateOn(approvals, gate)
-		? `${label}, which this project asks a holder of ${step.on} to do (its approvals.${gate} setting is on),`
+	const g = projectGate(doc, null, `approval_${gate}` as const);
+	return g.mode === "enforce"
+		? `${label}, which this project asks a holder of ${step.on} to do (${gateSays(g).replace(/\.$/, "")}),`
 		: label;
 }

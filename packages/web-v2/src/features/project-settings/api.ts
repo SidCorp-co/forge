@@ -2,9 +2,12 @@ import type { PluginPinConflict } from "@forge/contracts/plugins";
 import type { ProjectDetail } from "@/features/projects";
 import { apiClient } from "@/lib/api/client";
 import type {
+	GateCatalog,
+	GatesWrite,
 	LabelCreateInput,
 	LabelPatchInput,
 	ProjectLabel,
+	ProjectGates,
 	ProjectMemberRow,
 	PluginDesignation,
 	ProjectInvitationRow,
@@ -50,6 +53,16 @@ export const projectSettingsApi = {
 			method: "PUT",
 			body: JSON.stringify({ ...entry, kind: "guide", injection: "on_demand", confidence: "verified", authoredBy: "human" }),
 		}),
+
+	/** `GET /api/gates` — the gate catalog and the kernel; public, the same for every project. */
+	getGateCatalog: () => apiClient<GateCatalog>("/gates"),
+
+	/** `GET /api/projects/:id/gates` — the project's profile, overrides, each gate's mode and its changes. */
+	getGates: (id: string) => apiClient<ProjectGates>(`/projects/${id}/gates`),
+
+	/** `PUT /api/projects/:id/gates` — set the profile and overrides at the revision read (project.admin). */
+	putGates: (id: string, write: GatesWrite) =>
+		apiClient<ProjectGates>(`/projects/${id}/gates`, { method: "PUT", body: JSON.stringify(write) }),
 
 	/** `GET /api/projects/:id/members` — members with emails. */
 	listMembers: (id: string) =>

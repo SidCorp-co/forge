@@ -89,9 +89,18 @@ type Row = {
   question?: string | undefined;
   field?: string | undefined;
 };
+/** What every checklist gap ends with on a project with no gate profile set (REQ-76 BC-2, BC-11). */
+const GATE_SAYS =
+  " Gate issue_ready is enforced by this project's gate profile standard (gates.profile); gates.overrides.issue_ready relaxes it.";
+
+/** Each refusal in the checklist's own words: the gate sentence it ends with is asserted, then set aside. */
 const refusalsOf = (body: ApiResponse['body']): Row[] =>
   ((body.error as { refusals?: Row[] } | undefined)?.refusals ?? []).map(
-    ({ code, path, detail, question, field }) => ({ code, path, detail, question, field }),
+    ({ code, path, detail, question, field }) => {
+      if (code !== 'CHECKLIST_INCOMPLETE') return { code, path, detail, question, field };
+      expect(detail.endsWith(GATE_SAYS), detail).toBe(true);
+      return { code, path, detail: detail.slice(0, -GATE_SAYS.length), question, field };
+    },
   );
 
 async function statusOf(id: string): Promise<string> {

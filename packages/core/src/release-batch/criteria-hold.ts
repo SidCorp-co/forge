@@ -1,3 +1,4 @@
+import { gateSays, type ResolvedGate } from '@forge/contracts/gate-profiles';
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import {
   type IssueCriteriaReport,
@@ -6,6 +7,7 @@ import {
   unearnedCriteriaReports,
   type Weighing,
 } from '../issues/index.js';
+import { gateOf } from '../project-config/index.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type HeldIssueRef,
@@ -63,6 +65,13 @@ export async function criteriaHold(
   // The roster limit bounds the per-issue comment reads below; above it
   // `RELEASE_ROSTER_OVERSIZE` is already the reason standing.
   if (waiting.length === 0 || waiting.length > RELEASE_ROSTER_LIMIT) return;
+  // gate `release_criteria` (REQ-76): off owes nothing, advise warns where enforce holds (BC-7)
+  const gate = await evaluate(
+    'criteria-gate',
+    async () => await gateOf(projectId, 'release_criteria'),
+    out,
+  );
+  if (!gate || gate.mode === 'off') return;
   const auto = await evaluate(
     'auto-release',
     async () => await productionDeploysOnLand(projectId),
@@ -84,7 +93,7 @@ export async function criteriaHold(
       async () => await landingCriteriaReports(projectId, waiting),
       out,
     );
-    if (reports) await heldOrWarned(waiting, reports, out, warnings, null);
+    if (reports) await heldOrWarned(waiting, reports, out, warnings, null, gate);
     return;
   }
   // This enumerator reaches no network, so the ONE reading for the roster is the caller's.
@@ -105,7 +114,7 @@ export async function criteriaHold(
   );
   if (!reports) return;
   await uncorroboratedWarning(reports, serving, warnings);
-  await heldOrWarned(waiting, reports, out, warnings, serving);
+  await heldOrWarned(waiting, reports, out, warnings, serving, gate);
 }
 
 /**
@@ -118,6 +127,7 @@ async function heldOrWarned(
   out: ReleaseBlocker[],
   warnings: ReleaseWarning[],
   serving: ServingReading | null,
+  gate: ResolvedGate,
 ): Promise<void> {
   const owing = reports.filter((r) => r.unearned.length > 0);
   if (owing.length === 0) return;
@@ -131,6 +141,14 @@ async function heldOrWarned(
     displayId: shown.value?.get(r.issueId) ?? r.issueId,
     criteria: r.unearned.map((c) => c.criterion),
   }));
+  if (gate.mode === 'advise') {
+    warnings.push({
+      code: 'RELEASE_CRITERIA_HELD_BACK',
+      message: `${heldBackWarningSentence(held, serving)} It is shipped anyway: ${gateSays(gate)}`,
+      details: { held, advised: true, gate: gate.id, profile: gate.profile },
+    });
+    return;
+  }
   if (owing.length === waiting.length) {
     // One project-level reason, not one per row, where no run could clear any of them (ISS-1346).
     if (serving?.kind === 'undeclared') {

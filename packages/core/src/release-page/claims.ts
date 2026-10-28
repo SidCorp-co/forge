@@ -7,7 +7,6 @@
 // picture to a highlight (BC-3); every other one is a known issue as its verdict on the build reads
 // (BC-8). Pure: the loaders in facts.ts hand it rows.
 
-import type { PolicyQaMode } from '@forge/contracts/project-config';
 import {
   citesAttachment,
   judgedOnReleaseBuild,
@@ -23,6 +22,7 @@ import {
   releaseClaimOf,
   releaseMediaKindOf,
 } from '@forge/contracts/release-page';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { countedUnderCutover, verifiedOf } from '@forge/contracts/verified-rule';
 
 export interface CarriedVerdict extends ReleaseVerdictReading {
@@ -93,7 +93,7 @@ function readAt(
 export function readClaims(
   criteria: readonly CarriedCriterion[],
   build: string | null,
-  judge: PolicyQaMode | null,
+  judge: VerifiedJudge | null,
   judgedOn: string | null,
 ): ClaimReading[] {
   return criteria.map((criterion) => {

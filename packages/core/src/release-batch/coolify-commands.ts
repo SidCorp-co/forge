@@ -10,6 +10,7 @@
  * Nothing here checks membership.
  */
 
+import { gateSays } from '@forge/contracts/gate-profiles';
 import type { CoolifyRefusalCode } from '@forge/contracts/integrations';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -21,7 +22,7 @@ import {
   listActiveDeployBindingsForProvider,
 } from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
-import { approvalRequired, readDeployMap } from '../project-config/index.js';
+import { gateOf, readDeployMap } from '../project-config/index.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import { readRunMethod } from './method.js';
 import { isOpenReleaseBatchRun } from './queries.js';
@@ -180,10 +181,11 @@ export async function runCoolifyDeploy(input: {
       };
     }
     const allowLive = await isIssueAtReleaseStage(input.issueId);
-    if (allowLive && (await approvalRequired(projectId))) {
+    const gate = allowLive ? await gateOf(projectId, 'release_approval') : null;
+    if (gate?.mode === 'enforce') {
       throw refuseRelease(
         'RELEASE_APPROVAL_REQUIRED',
-        `project ${projectId} requires release approval (project document \`release.approval.required\`), so an issue at its release stage reaches production only through a release batch an admin approved — cut one with POST /api/projects/${projectId}/release-batches and deploy it by its pipelineRunId`,
+        `project ${projectId} requires release approval, so an issue at its release stage reaches production only through a release batch an admin approved — cut one with POST /api/projects/${projectId}/release-batches and deploy it by its pipelineRunId. ${gateSays(gate)}`,
       );
     }
     return shape(

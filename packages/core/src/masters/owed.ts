@@ -15,6 +15,7 @@ import {
   mastersPorts,
   type ReleaseMergeOwed,
   type StewardAsk,
+  type WaitingRequest,
 } from './ports.js';
 
 /** The edge kind that gates dispatch, the one whose blocker's state changes what a master can take. */
@@ -50,7 +51,18 @@ interface Owed {
   /** What the steward asked the master to act on, each standing until its item's standing moves. */
   stewardAsks: StewardAsk[];
   /** `in_progress` issues the wedge pass left because their work landed, owed their move to `awaiting_release` (ISS-564). */
-  landedWork: { issueId: string; key: string; commit: string | null; mergedAt: string }[];
+  landedWork: {
+    issueId: string;
+    key: string;
+    commit: string | null;
+    mergedAt: string;
+    status: 'in_progress' | 'open';
+  }[];
+  /**
+   * Requests a person left waiting — a draft issue they filed, a draft requirement proposed from a
+   * chat — owed to the master only where the project's gate `master_admitted_only` is off (REQ-76 BC-9).
+   */
+  requests: WaitingRequest[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -145,10 +157,41 @@ function answersLine(answers: Owed['answers']): string {
 }
 
 /** Landed work nothing holds: no status moves by itself, so the master makes the move its run did not. */
-function landedWorkLine(landed: Owed['landedWork']): string {
+function landedWorkLine(all: Owed['landedWork']): string {
+  const filed = all.filter((l) => l.status === 'open');
+  const landed = all.filter((l) => l.status === 'in_progress');
+  return wedgeLandedLine(landed) + mergeFiledLine(filed);
+}
+
+/** REQ-76 BC-8: an issue a merge filed under a profile that lets code come first, owed its claim and move. */
+function mergeFiledLine(filed: Owed['landedWork']): string {
+  if (filed.length === 0) return '';
+  const keys = filed.map((l) => `${l.key} ${l.issueId}${l.commit ? ` at ${l.commit}` : ''}`);
+  return ` ${filed.length} issue${plural(filed.length, '', 's')} Forge filed from a merge naming no issue ${plural(filed.length, 'sits', 'sit')} at \`open\` with ${plural(filed.length, 'its', 'their')} landing already recorded (${keys.join('; ')}): this project's gate profile lets code come first (gate issue_before_code off). Read what each merge changed and give the issue the title and release note it ships under, then claim it as you claim any issue and move it \`in_progress\` → \`awaiting_release\` (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"awaiting_release","reason":"<the commit it landed>"}'\`); a release ships and closes it.`;
+}
+
+function wedgeLandedLine(landed: Owed['landedWork']): string {
   if (landed.length === 0) return '';
   const keys = landed.map((l) => `${l.key} ${l.issueId}${l.commit ? ` at ${l.commit}` : ''}`);
   return ` ${landed.length} issue${plural(landed.length, ' sits', 's sit')} at \`in_progress\` with ${plural(landed.length, 'its', 'their')} work landed and nothing holding ${plural(landed.length, 'it', 'them')} (${keys.join('; ')}): the reconciler left each there rather than hand it back. Check that the mark is this work, then move it on (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"awaiting_release","reason":"<the commit it landed>"}'\`), as ${method('issue-flow')} (Land, mark, move) says; a mark that is not this work is cleared (\`forge-runner api issues/<id>/merge -X DELETE\`), and the next reconciler pass hands the issue back.`;
+}
+
+/**
+ * The requests a profile with `master_admitted_only` off hands the master (REQ-76 BC-9): it takes
+ * each on itself, the person's word being the agreement such a profile asks for.
+ */
+function requestsLine(requests: WaitingRequest[]): string {
+  if (requests.length === 0) return '';
+  const issues = requests.filter((r) => r.kind === 'issue').map((r) => r.key);
+  const reqs = requests.filter((r) => r.kind === 'requirement').map((r) => r.key);
+  let line = ` This project's gate profile places you for requests a person left waiting (gate master_admitted_only off).`;
+  if (issues.length > 0) {
+    line += ` ${issues.length} draft issue${plural(issues.length, '', 's')} a person filed ${plural(issues.length, 'waits', 'wait')} to be taken on (${issues.join(', ')}): admit each to open (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"open"}'\`) and work it, or drop it saying why.`;
+  }
+  if (reqs.length > 0) {
+    line += ` ${reqs.length} draft requirement${plural(reqs.length, '', 's')} ${plural(reqs.length, 'has', 'have')} a proposed revision waiting (${reqs.join(', ')}): read each (\`forge-runner api projects/<projectId>/requirements/<key>\`), agree it where it says what to build, and break it down; ${method('requirement-lifecycle')} is how.`;
+  }
+  return line;
 }
 
 /** The sentence a nudge or a first brief carries for what is owed besides issues; empty when nothing is. */
@@ -158,7 +201,8 @@ export function owedLine(owed: Owed): string {
     answersLine(owed.answers) +
     stewardAsksLine(owed.stewardAsks) +
     landedWorkLine(owed.landedWork) +
-    confirmsLine(owed.confirms);
+    confirmsLine(owed.confirms) +
+    requestsLine(owed.requests);
   const {
     breakdowns,
     triages,
@@ -251,6 +295,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.answers.map((a) => `answer:${a.questionId}|${a.outcome?.kind ?? ''}`),
     ...owed.stewardAsks.map((a) => `steward-ask:${a.actId}`),
     ...owed.landedWork.map((l) => `landed-work:${l.issueId}|${l.mergedAt}`),
+    ...owed.requests.map((r) => `request:${r.kind}:${r.key}`),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
@@ -337,6 +382,10 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.landedWorkOwed(projectId),
   ]);
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
+  const requests =
+    (await ports.masterGate(projectId)).mode === 'enforce'
+      ? []
+      : await ports.requestsWaiting(projectId);
   const breakdownsDue = breakdowns.filter((b) => !held.has(b.key));
   const warnedNotes = await ports.releaseNotesWarned(projectId, contentLanguage);
   const lastPass = await lastFinishedPassStart(projectId);
@@ -358,6 +407,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     answers,
     stewardAsks,
     landedWork,
+    requests,
     contentLanguage,
   });
 }

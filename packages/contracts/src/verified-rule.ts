@@ -6,13 +6,32 @@
 // `issues/criteria-verdicts.ts:unearnedCriteriaReports`). Only a pass from someone other than the
 // builder proves it, whatever the project's `qa` says: the builder's own pass is its evidence, kept
 // with its probe, and never its proof (core `issues/built-by.ts` names the builder), save the ones
-// recorded before `BUILDER_PASS_CUTOVER`, an amnesty with its end condition. A short is met
+// recorded before `BUILDER_PASS_CUTOVER`, an amnesty with its end condition, and save a project whose
+// gate profile turns gate `builder_verdict` off (REQ-76 BC-7, yolo), whose judge reads `builder`
+// (`verifiedJudgeOf`) and counts the builder's own pass. A short is met
 // short of its wording, not verified, so it never does. Where the project declares an independent
 // judge, a pass that names no author is not that judge's either, since nothing shows it came from
 // anyone else. A fail counts whoever records it: it is evidence the criterion does not hold, and
 // verification is only owed for a claim that it does. Pure: each reader hands it the verdicts it read.
 
+import { type GateSwitches, type PolicySwitches, projectGate } from "./gate-profiles.js";
 import type { PolicyQaMode } from "./project-config.js";
+
+/**
+ * Who a project's criteria are judged by, as its gate profile resolves it (REQ-76): `independent`
+ * and `self` as the policy's `qa` names them, and `builder` where gate `builder_verdict` is off (the
+ * yolo profile), so the building run's own pass counts too (BC-7).
+ */
+export type VerifiedJudge = PolicyQaMode | "builder";
+
+/** The judge `doc` and `policy` resolve to under the project's gate profile. */
+export function verifiedJudgeOf(
+	doc: GateSwitches | null | undefined,
+	policy: PolicySwitches | null | undefined,
+): VerifiedJudge {
+	if (projectGate(doc, policy, "builder_verdict").mode !== "enforce") return "builder";
+	return projectGate(doc, policy, "independent_qa").mode === "enforce" ? "independent" : "self";
+}
 
 /** What the verified rule reads of a verdict: what it said, who recorded it, and when. */
 export interface JudgedVerdict {
@@ -41,19 +60,19 @@ export const BUILDER_PASS_CUTOVER = "2026-10-25T17:00:00Z";
 const CUTOVER_MS = Date.parse(BUILDER_PASS_CUTOVER);
 
 /** A builder's verdict the amnesty still counts: recorded before the cutover, on a project with no independent judge. */
-function underCutover(v: JudgedVerdict, judge: PolicyQaMode | null): boolean {
+function underCutover(v: JudgedVerdict, judge: VerifiedJudge | null): boolean {
 	if (!v.byBuilder || judge === "independent" || v.recordedAt === null) return false;
 	return new Date(v.recordedAt).getTime() < CUTOVER_MS;
 }
 
 /** A builder's verdict the rule bars: every one but those the amnesty still counts. */
-const barred = (v: JudgedVerdict, judge: PolicyQaMode | null) =>
-	v.byBuilder && !underCutover(v, judge);
+const barred = (v: JudgedVerdict, judge: VerifiedJudge | null) =>
+	v.byBuilder && judge !== "builder" && !underCutover(v, judge);
 
 /** Whether a builder's pass counts only by the amnesty (`BUILDER_PASS_CUTOVER`), so a reader can say so. */
 export function countedUnderCutover(
 	v: JudgedVerdict,
-	judge: PolicyQaMode | null,
+	judge: VerifiedJudge | null,
 ): boolean {
 	return v.verdict === "pass" && underCutover(v, judge);
 }
@@ -61,14 +80,14 @@ export function countedUnderCutover(
 /** Why a verdict does not count as verified, or null where it does, or is a fail, a skip or none. */
 export function unverifiedWhy(
 	v: JudgedVerdict,
-	judge: PolicyQaMode | null,
+	judge: VerifiedJudge | null,
 ): string | null {
 	if (v.verdict === "short") {
 		return "judged short: met short of its wording, and only a pass counts as verified";
 	}
 	if (v.verdict !== "pass") return null;
 	if (barred(v, judge)) {
-		return "passed by the run that built it, and a builder's own pass never counts";
+		return "passed by the run that built it, and a builder's own pass never counts where gate `builder_verdict` is enforced (gates.overrides.builder_verdict relaxes it)";
 	}
 	if (judge === "independent" && !v.authored) {
 		return "passed with no recorded author, so nothing shows it is the independent judge's";
@@ -93,7 +112,7 @@ export interface NotCounted {
  */
 export function notCountedOf(
 	v: JudgedVerdict,
-	judge: PolicyQaMode | null,
+	judge: VerifiedJudge | null,
 	/** The status the recording run was declared over the issue at, where that, before any merge, is why it reads as the builder (core `built-by.ts:declaredBeforeLandingSql`). */
 	declaredAt: string | null = null,
 ): NotCounted | null {
@@ -102,18 +121,18 @@ export function notCountedOf(
 	if (declaredAt !== null) {
 		return {
 			code: VERDICT_BY_BUILDER,
-			detail: `recorded by a run declared while this issue stood at \`${declaredAt}\` with no merge recorded, and a run declared before the work landed is read as the run that built it: this verdict is kept as that run's evidence and never counts, whatever the project's \`qa\`. Once the work has landed, record its merge (\`POST /api/issues/:id/merge\`), move the issue to its landed status (\`awaiting_release\`) and declare a new judge run over it; that run's verdicts count`,
+			detail: `recorded by a run declared while this issue stood at \`${declaredAt}\` with no merge recorded, and a run declared before the work landed is read as the run that built it: this verdict is kept as that run's evidence and never counts, whatever the project's \`qa\`, while its gate profile enforces gate \`builder_verdict\` (gates.overrides.builder_verdict relaxes it). Once the work has landed, record its merge (\`POST /api/issues/:id/merge\`), move the issue to its landed status (\`awaiting_release\`) and declare a new judge run over it; that run's verdicts count`,
 		};
 	}
 	return {
 		code: VERDICT_BY_BUILDER,
 		detail:
-			"recorded by the run that built this issue, so it is kept as that run's evidence and never counts, whatever the project's `qa`: another run judges it on the release that carries the work. A judge on the building run's box names itself in `run`",
+			"recorded by the run that built this issue, so it is kept as that run's evidence and never counts, whatever the project's `qa`, while its gate profile enforces gate `builder_verdict` (gates.overrides.builder_verdict relaxes it): another run judges it on the release that carries the work. A judge on the building run's box names itself in `run`",
 	};
 }
 
 /** Whether a verdict is not a judge's: anything but a fail, from the builder (`barred`), or from nobody named where an independent judge is declared. */
-const notTheJudges = (v: JudgedVerdict, judge: PolicyQaMode | null) =>
+const notTheJudges = (v: JudgedVerdict, judge: VerifiedJudge | null) =>
 	v.verdict !== null &&
 	v.verdict !== "fail" &&
 	(barred(v, judge) || (judge === "independent" && !v.authored));
@@ -125,7 +144,7 @@ const notTheJudges = (v: JudgedVerdict, judge: PolicyQaMode | null) =>
  */
 export function judgesVerdict<V extends JudgedVerdict>(
 	newestFirst: readonly V[],
-	judge: PolicyQaMode | null,
+	judge: VerifiedJudge | null,
 ): V | undefined {
 	const [latest, ...earlier] = newestFirst;
 	if (!latest || !notTheJudges(latest, judge)) return latest;
@@ -145,7 +164,7 @@ export interface Verified<V> {
 /** Whether a criterion whose verdicts are `newestFirst` is proven, by the verified rule. */
 export function verifiedOf<V extends JudgedVerdict>(
 	newestFirst: readonly V[],
-	judge: PolicyQaMode | null,
+	judge: VerifiedJudge | null,
 ): Verified<V> {
 	const stands = judgesVerdict(newestFirst, judge) ?? null;
 	if (!stands) return { stands: null, proven: false, why: null };

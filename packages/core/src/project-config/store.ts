@@ -19,7 +19,8 @@ import type { ProjectDocument } from './schema.js';
 export interface StoredDocument {
   revision: number;
   document: unknown;
-  updatedBy: string;
+  /** Null only on a project document revision Forge wrote itself (REQ-76 BC-13). */
+  updatedBy: string | null;
   updatedAt: Date;
 }
 
@@ -58,6 +59,12 @@ interface CasInput {
   userId: string;
 }
 
+/** A project document write: null `userId` is Forge itself; `also` runs in the write's transaction once it changed the row. */
+interface ProjectCasInput extends Omit<CasInput, 'userId'> {
+  userId: string | null;
+  also?: (tx: Tx, stored: StoredDocument) => Promise<void>;
+}
+
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 const lockConfig = (tx: Tx, kind: string, projectId: string, extra = '') =>
@@ -88,7 +95,13 @@ export const drizzleConfigStore = {
   },
 
   // the document is the slug's and the name's one source; `projects.slug` and `projects.name` are its projection, written in the document's transaction so a lookup by slug, a listing by name and the document never disagree
-  async casProject({ projectId, baseRevision, document, userId }: CasInput): Promise<CasResult> {
+  async casProject({
+    projectId,
+    baseRevision,
+    document,
+    userId,
+    also,
+  }: ProjectCasInput): Promise<CasResult> {
     const { slug, name } = (document as ProjectDocument).project;
     try {
       return await db.transaction(async (tx) => {
@@ -119,6 +132,7 @@ export const drizzleConfigStore = {
             `project-config: project ${projectId} has a document and no projects row`,
           );
         }
+        await also?.(tx, row);
         return { ok: true as const, stored: row, created: true };
       });
     } catch (err) {

@@ -2,6 +2,7 @@
 // (ADR 0008: a kernel imports only kernel and platform modules, never an adapter or a domain). Read
 // only inside a call, never at import.
 
+import type { GateId, ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { Tx } from '../db/client.js';
 import { portSlot } from '../lib/port-slot.js';
@@ -28,6 +29,8 @@ interface DeviceNotice {
 interface DevicesPorts {
   /** The project's effective policy document, or null when it declares none. */
   readEffectivePolicy(projectId: string): Promise<{ document: unknown } | null>;
+  /** Every gate's mode on the project under its gate profile (REQ-76). */
+  readGateModes(projectId: string): Promise<Readonly<Record<GateId, ResolvedGate>>>;
   /** The refusal a dispatch against a project's policy is answered with. */
   policyRefusal(code: 'POLICY_UNDECLARED', projectId: string, status: string | null): RefusalError;
   policyRefusalOf(err: unknown): { code: PolicyRefusalCode; detail: string } | null;

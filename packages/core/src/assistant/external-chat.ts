@@ -22,7 +22,7 @@ import { type LessonAudience, lessonsBlockFor } from '../lessons/index.js';
 import { dataPolicyOf, EgressRefused, egressAt, egressText } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
-import { readContentLanguage } from '../project-config/index.js';
+import { gateOf, readContentLanguage } from '../project-config/index.js';
 import { detectStateConfab } from './confab.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
@@ -35,7 +35,7 @@ import {
   toProviderMessages,
 } from './conversation-turn.js';
 import { runTurnEvents } from './run-turn-core.js';
-import { buildSystemPrompt } from './system-prompt.js';
+import { buildSystemPrompt, chatGatesBlock } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import { memoryNoteGateFor } from './tools/memory-note-gate-deps.js';
 import { applyTurnContext } from './turn-context.js';
@@ -164,7 +164,7 @@ async function setUpTurn(
   args: ExternalChatTurnArgs,
 ): Promise<TurnSetup & { level: SensitiveDataLevel }> {
   // the reads a turn is set up from do not depend on one another, so they go out together
-  const [[project], progress, language, turn, level, lessons] = await Promise.all([
+  const [[project], progress, language, turn, level, lessons, chatGate] = await Promise.all([
     db
       .select({ name: projects.name })
       .from(projects)
@@ -182,6 +182,7 @@ async function setUpTurn(
       : null,
     dataPolicyOf(args.projectId),
     lessonsBlockFor(args.projectId, ASSISTANT_LESSONS, 2),
+    gateOf(args.projectId, 'chat_files_issue'),
   ]);
   if (!project) throw new Error(`project not found: ${args.projectId}`);
   const images = args.images ?? [];
@@ -206,6 +207,7 @@ async function setUpTurn(
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
     contentLanguage: contentLanguageBlock(language, 'chat'),
     lessons,
+    gates: chatGatesBlock(chatGate),
   });
   const history = turn ? [...turn.history, ...turn.pending].slice(-PROVIDER_HISTORY_WINDOW) : [];
   const [resolvedImages, resolvedDocuments] = await Promise.all([

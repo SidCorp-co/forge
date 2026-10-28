@@ -88,6 +88,7 @@ import {
   readEffectivePolicy,
   readLandingBranches,
   readProjectDocument,
+  readVerifiedJudge,
 } from './project-config/index.js';
 import {
   declaredIssueSeqs,
@@ -206,6 +207,7 @@ function provideWorkPipelinePorts(): void {
     recordAnswerResume,
     refreshModuleKnowledgeForIssue,
     readEffectivePolicy,
+    readGates: async (projectId) => (await readProjectDocument(projectId))?.document.gates ?? null,
     policyRefusal,
   });
 }
@@ -242,7 +244,7 @@ export function provideWorkPorts(): void {
     answeredSinceSql,
     postIssueNotice,
     readProjectDocument,
-    readJudge: async (projectId) => (await readEffectivePolicy(projectId))?.document.qa ?? null,
+    readJudge: (projectId) => readVerifiedJudge(projectId),
     masterServingOf,
     changedTracedOf,
     readLandingBranches,

@@ -361,7 +361,8 @@ describe('under an independent judge, only the judge proves a criterion on the p
       expect.objectContaining({
         bc: 'BC-1',
         standing: 'not_judged',
-        reason: "passed by the run that built it, and a builder's own pass never counts",
+        reason:
+          "passed by the run that built it, and a builder's own pass never counts where gate `builder_verdict` is enforced (gates.overrides.builder_verdict relaxes it)",
       }),
       expect.objectContaining({
         bc: 'BC-2',

@@ -17,6 +17,8 @@ vi.mock('../db/client.js', () => ({
 vi.mock('./ports.js', () => ({
   assertDesignApprovedForIssue: vi.fn(),
   assertDesignsApprovedForSeqs: vi.fn(),
+  // no project document: today's gates (REQ-76 BC-2), every take check enforced
+  readProjectDocument: vi.fn(async () => null),
 }));
 vi.mock('./contract-waits.js', () => ({
   assertContractWaitsSettledForIssue: vi.fn(),

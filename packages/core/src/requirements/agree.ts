@@ -15,9 +15,10 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
+import { gateRefusals } from '../lib/gated.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
-import { personGateOf } from '../project-config/index.js';
+import { gateOf, personGateOf } from '../project-config/index.js';
 import { signoffReasonRefusal } from './acceptance-rules.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
 import { readyAnswersOf, readyFactsAt, requirementReadyRecord } from './checklist-record.js';
@@ -54,7 +55,7 @@ import {
 /** The requirement-ready checklist read for `revision`, the head-to-be of an agreed requirement. */
 export async function readyRefusalsAt(
   tx: Tx,
-  row: { id: string; reqSeq: number },
+  row: { id: string; reqSeq: number; projectId: string },
   revision: number,
 ): Promise<RequirementRefusal[]> {
   const facts = await readyFactsAt(tx, row.id, requirementKey(row.reqSeq), revision);
@@ -62,7 +63,11 @@ export async function readyRefusalsAt(
     given: {},
     record: readyAnswersOf(facts),
   });
-  return ready.complete ? [] : checklistRefusals(ready);
+  if (ready.complete) return [];
+  // the ready checklist is gate `requirement_ready`: where the project's profile has it advise, its
+  // gaps let the accept through, as the kernel lets the agree through (REQ-76 BC-5)
+  const gate = await gateOf(row.projectId, 'requirement_ready');
+  return gate.mode === 'enforce' ? gateRefusals(gate, checklistRefusals(ready)) : [];
 }
 
 /** Writes the agree's baseline of `revision` and its pins; answers the baseline's seq. */

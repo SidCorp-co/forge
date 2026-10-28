@@ -28,7 +28,7 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
-import { personGateOf, readEffectivePolicy } from '../project-config/index.js';
+import { personGateOf, readVerifiedJudge } from '../project-config/index.js';
 import {
   acceptRefusals,
   type DeliveryProof,
@@ -110,7 +110,7 @@ export async function deliveryIn(
     .from(requirementCriteria)
     .where(eq(requirementCriteria.requirementId, row.id));
   const prefix = await activeIssuePrefix(projectId);
-  const policy = await readEffectivePolicy(projectId);
+  const judge = await readVerifiedJudge(projectId);
   const issueCriteria = await issueCriteriaOf(
     linked.map((i) => i.id),
     ex,
@@ -133,7 +133,7 @@ export async function deliveryIn(
       issueCriteria,
       requirementVerdicts: await requirementVerdictsOf([row.id], ex),
       liveBuild,
-      judge: policy?.document.qa ?? null,
+      judge,
     },
     row.currentRevision,
   );

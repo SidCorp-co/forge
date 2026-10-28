@@ -29,6 +29,7 @@ import { boss } from '../queue/boss.js';
 import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
 import { resolveReleaseChannels } from './channel.js';
 import { enqueueCoolifyHealthGate, healthGateFor } from './coolify-health-gate.js';
+import { raiseOnRunIncident } from './gate-raise.js';
 import { deploymentConfirms, readLiveState } from './verify.js';
 
 export interface CoolifyConfirmJob {
@@ -338,6 +339,11 @@ export async function applyDeploySettlement(
     logger.error(
       { runId: data.runId, deploymentUuid: data.deploymentUuid, detail: why },
       'coolify confirm: deploy failed — failing the run',
+    );
+    await raiseOnRunIncident(
+      data.runId,
+      'deploy_failed',
+      `deploy of target \`${data.targetLabel}\` (deployment ${data.deploymentUuid}) failed: ${why}`,
     );
     await closeRun(data.runId, 'failed', {
       code: 'deploy_failed',

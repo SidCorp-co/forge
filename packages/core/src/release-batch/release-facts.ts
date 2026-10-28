@@ -1,6 +1,5 @@
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
-import type { PolicyQaMode } from '@forge/contracts/project-config';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import {
   judgedOnReleaseBuild,
@@ -15,6 +14,7 @@ import {
   criterionStandingOf,
   identityPhraseOf,
 } from '@forge/contracts/verdict-identity';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { verifiedOf } from '@forge/contracts/verified-rule';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -31,7 +31,7 @@ import {
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { readEffectivePolicy, readProjectDocument } from '../project-config/index.js';
+import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { standingsOf } from '../requirements/index.js';
 import type { CompletionFacts } from './release-view.js';
 
@@ -66,7 +66,7 @@ export interface ReleaseFacts {
   requirements: Map<string, CompletionFacts>;
   cutters: Map<string, ReleasePerson>;
   /** The project's judge (`qa`), which the verified rule reads (contracts `verified-rule.ts:verifiedOf`). */
-  judge: PolicyQaMode | null;
+  judge: VerifiedJudge | null;
   /**
    * The testing environment the project's releases are proven on (`delivery.judgedOn`, REQ-36
    * BC-18), or null where a commit verdict at the release's build proves it (BC-20).
@@ -281,7 +281,7 @@ export async function loadReleaseFacts(
   runIds: readonly string[],
 ): Promise<ReleaseFacts> {
   const ids = [...new Set(issueIds)];
-  const [rows, prefix, cutters, policy, held] = await Promise.all([
+  const [rows, prefix, cutters, judge, held] = await Promise.all([
     ids.length === 0
       ? Promise.resolve([])
       : db
@@ -303,7 +303,7 @@ export async function loadReleaseFacts(
           .where(and(eq(issues.projectId, projectId), inArray(issues.id, ids))),
     activeIssuePrefix(projectId),
     cuttersOf(runIds),
-    readEffectivePolicy(projectId),
+    readVerifiedJudge(projectId),
     readProjectDocument(projectId),
   ]);
   const [criteria, reopened, closed, reqs] = await Promise.all([
@@ -365,7 +365,7 @@ export async function loadReleaseFacts(
     issues: byIssue,
     requirements: reqs,
     cutters,
-    judge: policy?.document.qa ?? null,
+    judge,
     judgedOn: judgedOnOf(held?.document.delivery),
   };
 }

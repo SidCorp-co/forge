@@ -36,7 +36,11 @@ import {
   projectsWithHostCredential,
   readPullRequestsForIssues,
 } from './integrations/source-host/index.js';
-import { recordRunSecretResolve, runSecretRefsOfSession } from './issues/index.js';
+import {
+  draftIssuesPeopleFiled,
+  recordRunSecretResolve,
+  runSecretRefsOfSession,
+} from './issues/index.js';
 import {
   countInFlightByRunner,
   insertInterventionEvent,
@@ -53,6 +57,7 @@ import { landedWorkOwed } from './pipeline/index.js';
 import { registerRoomBridge } from './previews/index.js';
 import {
   dispatchStateOf,
+  gateOf,
   parseRepository,
   policyGapOf,
   policyRefusal,
@@ -60,6 +65,7 @@ import {
   readContentLanguage,
   readDeclaredSource,
   readEffectivePolicy,
+  readGateModes,
   remoteOf,
   requirePolicy,
   withDeclaredSource,
@@ -90,7 +96,11 @@ import {
   unnamedReleases,
   warnedReleaseNotes,
 } from './release-batch/index.js';
-import { owedBreakdowns, owedRequirementRevisions } from './requirements/index.js';
+import {
+  owedBreakdowns,
+  owedRequirementRevisions,
+  proposedDraftRequirements,
+} from './requirements/index.js';
 import { provideRunnersPorts } from './runners/index.js';
 import {
   provideSchedulesPorts,
@@ -197,6 +207,7 @@ export function provideExecutionPorts(): void {
 
   provideDevicesPorts({
     readEffectivePolicy,
+    readGateModes,
     policyRefusal,
     policyRefusalOf,
     policyGapOf: (projectId, held, status) =>
@@ -265,6 +276,17 @@ export function provideExecutionPorts(): void {
     stewardAsks: openStewardAsks,
     breakdownsHeldBySteward,
     landedWorkOwed,
+    masterGate: (projectId) => gateOf(projectId, 'master_admitted_only'),
+    requestsWaiting: async (projectId) => [
+      ...(await draftIssuesPeopleFiled(projectId)).map((r) => ({
+        kind: 'issue' as const,
+        key: r.key,
+      })),
+      ...(await proposedDraftRequirements(projectId)).map((r) => ({
+        kind: 'requirement' as const,
+        key: r.key,
+      })),
+    ],
   });
 
   registerConversationAgentBridge();

@@ -205,6 +205,7 @@ export {
   issueFiltersSchema,
   issuePatchSchema,
 } from './request-schemas.js';
+export { draftIssuesPeopleFiled } from './requests-waiting.js';
 export {
   adoptIssuePlan,
   linkIssueToRequirement,

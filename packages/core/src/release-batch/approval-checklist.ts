@@ -23,7 +23,7 @@ import {
   type RecordAnswer,
   type RecordAnswers,
 } from '@forge/contracts/checklists';
-import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import { projectGate } from '@forge/contracts/gate-profiles';
 import { CRITERION_STANDING_LABELS } from '@forge/contracts/issue-vocabulary';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -166,7 +166,7 @@ export async function approvalFactsOf(
           standing: c.unverified ?? CRITERION_STANDING_LABELS[c.standing].toLowerCase(),
         }));
     }),
-    verdictsRequired: verdictsRequiredOf(doc?.document.delivery),
+    verdictsRequired: projectGate(doc?.document, null, 'release_criteria').mode === 'enforce',
     judgedOn: facts.judgedOn,
   };
 }

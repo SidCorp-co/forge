@@ -7,10 +7,11 @@
 
 import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { FastLaneRefusalCode } from '@forge/contracts/fast-lane';
+import type { GatesConfig, ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { MergeCheckReport } from '@forge/contracts/merge-check';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
 import type { Approvals } from '@forge/contracts/person-gates';
-import type { PolicyQaMode, PolicyRefusalCode } from '@forge/contracts/project-config';
+import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type {
   AnswerHold,
   AnswerResume,
@@ -20,6 +21,7 @@ import type {
 import type { ReleaseHoldView } from '@forge/contracts/releases';
 import type { MasterServing } from '@forge/contracts/steward';
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -46,7 +48,11 @@ export interface IssueProjectDocument {
   /** `mergeCheck: 'required'`: a mark asks for a passing merge check (`merge-check.ts`). */
   validation?: { mergeCheck?: 'required' | undefined } | undefined;
   /** `changeRequests: true`: a release is its change requests merged in order (REQ-63). */
-  release?: { changeRequests?: boolean | undefined } | undefined;
+  release?:
+    | { changeRequests?: boolean | undefined; approval?: { required: boolean } | undefined }
+    | undefined;
+  /** How tightly Forge gates the project's agents (REQ-76, `@forge/contracts/gate-profiles`). */
+  gates?: GatesConfig | undefined;
 }
 
 export type StorefrontDraftReading =
@@ -222,7 +228,8 @@ interface IssuePorts {
 
   readProjectDocument: (projectId: string) => Promise<{ document: IssueProjectDocument } | null>;
   /** The project's judge (`qa` in its policy), which the verified rule reads; null where it declares none. */
-  readJudge: (projectId: string) => Promise<PolicyQaMode | null>;
+  /** Who criteria are judged by under the project's gate profile (REQ-76 BC-7). */
+  readJudge: (projectId: string) => Promise<VerifiedJudge | null>;
   /** Whether a live master serves the project (`masters/read.ts:masterServingOf`), so a wait on it can read stuck. */
   masterServingOf: (projectId: string) => Promise<MasterServing>;
   changedTracedOf: (
@@ -287,6 +294,7 @@ interface IssuePorts {
     projectId: string,
     issueId: string,
     executor?: GateReader,
+    gate?: ResolvedGate,
   ) => Promise<void>;
   /** Why the design gate holds each of these issues, by issue id; an issue it does not hold is absent. */
   designHoldsOf: (projectId: string, issueIds: readonly string[]) => Promise<Map<string, string>>;

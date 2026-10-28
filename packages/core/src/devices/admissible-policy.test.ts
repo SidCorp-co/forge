@@ -1,3 +1,9 @@
+import {
+  GATE_IDS,
+  type GateId,
+  projectGates,
+  type ResolvedGate,
+} from '@forge/contracts/gate-profiles';
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { describe, expect, it, vi } from 'vitest';
 import { policyGapOf } from '../project-config/dispatch-policy.js';
@@ -11,6 +17,11 @@ vi.mock('./ports.js', () => ({
 
 const { admissionOf } = await import('./admissible.js');
 
+// today's gates: no profile declared reads as standard (REQ-76 BC-2)
+const standard = Object.fromEntries(
+  projectGates(null, null).map((g, at) => [GATE_IDS[at], g]),
+) as Record<GateId, ResolvedGate>;
+
 const held = (states: Record<string, unknown>) => ({
   revision: 1,
   document: { qa: 'self', intake: 'auto', states, permissions: { std: { deny: [] } } },
@@ -21,6 +32,7 @@ describe('admissible withholds a takeable status the policy declares no state fo
     const { admission, refused } = admissionOf(
       'p',
       held({ in_progress: { model: 'm', permissions: 'std' } }),
+      standard,
     );
     expect(admission.statuses).toEqual([]);
     expect(refused.map((r) => r.code)).toEqual([
@@ -35,6 +47,7 @@ describe('admissible withholds a takeable status the policy declares no state fo
     const { admission, refused } = admissionOf(
       'p',
       held({ open: { model: 'm', permissions: 'std' } }),
+      standard,
     );
     expect(admission.statuses).toEqual(TAKEABLE_STATUSES);
     expect(refused).toEqual([]);
