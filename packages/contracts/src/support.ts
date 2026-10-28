@@ -526,12 +526,14 @@ export const SUPPORT_LATENCY_WINDOW = 200;
 
 /**
  * Why a room is not answering (REQ-75 r5 BC-26), each a cause somebody can act on: the binding is
- * off; the chat server refuses the bot or does not answer; the bot is not a member of the group; no
- * core process holds the bot's live connection; no online box of the project can run the session,
- * or it lacks what the room's grants need; the session is not resident on its box.
+ * off, or no longer names the room's group; the chat server refuses the bot or does not answer; the
+ * bot is not a member of the group; no core process holds the bot's live connection; no online box
+ * of the project can run the session, or it lacks what the room's grants need; the session is not
+ * resident on its box.
  */
 export const SUPPORT_HEALTH_CAUSES = [
 	"BINDING_OFF",
+	"ROOM_LEFT_BINDING",
 	"BOT_REJECTED",
 	"CHAT_UNREACHABLE",
 	"BOT_NOT_IN_ROOM",

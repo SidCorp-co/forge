@@ -9,11 +9,30 @@ import type { OperationsScope } from '@forge/contracts/support-operations';
 import { createChatSessionRow } from '../agent-sessions/index.js';
 import { insertAgentAccount, setUserDisplayName } from '../auth/index.js';
 import { db } from '../db/client.js';
-import { listActiveBindingsForProjectProvider } from '../integrations/index.js';
+import {
+  findBindingWithConnectionById,
+  listActiveBindingsForProjectProvider,
+} from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { logger } from '../lib/logger.js';
 import { insertRoom, type RoomRow, roomOfBinding, setRoomSession } from './store.js';
+
+/**
+ * Whether the room is still one its binding answers: the binding and its connection are on, and the
+ * binding still names the room's group. A room whose group was taken out of its binding keeps its row
+ * and its record, and is neither warmed nor read as healthy.
+ */
+export async function roomIsBound(room: Pick<RoomRow, 'bindingId' | 'rid'>): Promise<boolean> {
+  const pair = await findBindingWithConnectionById(room.bindingId);
+  if (!pair?.binding.active || !pair.connection.active) return false;
+  return bindingNamesRoom(pair.binding.config, room.rid);
+}
+
+/** Whether a rocketchat binding's config names the group `rid`. */
+export function bindingNamesRoom(config: unknown, rid: string): boolean {
+  return ((config as RocketChatBindingConfig | null)?.rids ?? []).includes(rid);
+}
 
 /** The metadata key a support session carries; its end hands the room's waiting messages on. */
 export const SUPPORT_SESSION_MARKER = 'supportRoom';
