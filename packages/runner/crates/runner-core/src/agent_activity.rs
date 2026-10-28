@@ -211,8 +211,25 @@ fn began_unprompted(a: &Activity, r: Report<'_>) -> bool {
     }
 }
 
+/// A refusal a session's pane was answered on a call it cannot work past: its own credential
+/// refused by its own project, so nothing the pane does can be recorded and a rerun of the same
+/// prompt on the same box is refused the same way. Reported by the pane's `forge-runner api`,
+/// which is the one process that saw the answer (`control::Request::CredentialRefused`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refused {
+    /// The refusal's code as core sent it, e.g. `PAT_PROJECT_OUTSIDE_FENCE`.
+    pub code: String,
+    /// Core's own words for it, which name the credential and what it reaches.
+    pub detail: String,
+    /// When the pane reported it, in wall-clock ms.
+    pub at: i64,
+}
+
 #[derive(Default)]
-pub struct Activities(Mutex<HashMap<String, Activity>>);
+pub struct Activities(
+    Mutex<HashMap<String, Activity>>,
+    Mutex<HashMap<String, Refused>>,
+);
 
 impl Activities {
     pub fn new() -> Self {
@@ -307,6 +324,31 @@ impl Activities {
             }
         }
         a.clone()
+    }
+
+    /// Keep the first credential refusal a session's pane reported: the first is what stopped it,
+    /// and a later one is the same refusal met again.
+    pub fn refuse(&self, session_id: &str, refused: Refused) {
+        self.1
+            .lock()
+            .expect("refusals poisoned")
+            .entry(session_id.to_string())
+            .or_insert(refused);
+    }
+
+    /// The credential refusal this session's pane reported, or `None` if it reported none.
+    pub fn refused(&self, session_id: &str) -> Option<Refused> {
+        self.1
+            .lock()
+            .expect("refusals poisoned")
+            .get(session_id)
+            .cloned()
+    }
+
+    /// Let go of what a finished session reported, so a map that lives as long as the daemon
+    /// does not keep every refusal it was ever told.
+    pub fn forget_refusal(&self, session_id: &str) {
+        self.1.lock().expect("refusals poisoned").remove(session_id);
     }
 
     /// What this session last reported, or `None` if it never has.

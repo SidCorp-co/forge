@@ -2201,6 +2201,7 @@ export const SAID = {
 	"overview.hold.cause.failure.noClientAck": { en: "The runner never acknowledged the job" },
 	"overview.hold.cause.failure.checkoutUnbound": { en: "The runner has no checkout bound" },
 	"overview.hold.cause.failure.credentialMintFailed": { en: "A credential could not be issued" },
+	"overview.hold.cause.failure.credentialRefused": { en: "The runner's credential cannot reach this project" },
 	"overview.hold.cause.failure.attachmentUnreadable": { en: "An attachment could not be read" },
 	"overview.hold.cause.failure.boxCannotConfineChat": { en: "The runner cannot confine a chat session" },
 	"overview.hold.cause.failure.dispatchFailed": { en: "It could not be dispatched" },

@@ -13,6 +13,55 @@ pub trait Pool: Send + Sync {
     /// as a master pane is. A read that failed is an error and never an empty declaration: a pane
     /// started on that reading carries none of what the project declared (ISS-1235, ISS-1347).
     async fn mcp_servers(&self, project_id: &str) -> Result<ProjectMcpServers>;
+    /// What this box's stored personal access token is answered on the project: the credential a
+    /// pane started with no checkout credential goes out on. Asked only for such a pane.
+    async fn box_pat_reach(&self, project_id: &str) -> BoxPatReach;
+}
+
+/// What this box's stored personal access token is answered on one project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BoxPatReach {
+    /// Core answered it on the project.
+    Reaches,
+    /// Refused by name: fenced to other projects, revoked, or no token at all. A pane started on
+    /// it could record nothing, and neither could the same job started again.
+    Refused { code: String, detail: String },
+    /// Not answered either way, so nothing is concluded from it and the pane starts as before.
+    Unread(String),
+}
+
+/// The fence refusal a fenced token is answered with on a project outside it (core `pat-fence.ts`).
+pub const PAT_PROJECT_OUTSIDE_FENCE: &str = "PAT_PROJECT_OUTSIDE_FENCE";
+
+/// What a refusal body names: its `code`, and core's words for it.
+fn refusal_of(body: &str) -> (Option<String>, String) {
+    let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+    let code = v.get("code").and_then(|c| c.as_str()).map(str::to_string);
+    let said = ["message", "error", "detail"]
+        .iter()
+        .find_map(|k| v.get(*k).and_then(|m| m.as_str()).map(str::to_string))
+        .unwrap_or_else(|| body.chars().take(1000).collect());
+    (code, said)
+}
+
+/// What a pane's stored-PAT call to `GET /api/projects/:id` is read as: answered, refused by name
+/// (a fence that leaves the project out, or a token core does not take), or neither.
+pub fn reach_of(status: u16, body: &str) -> BoxPatReach {
+    if (200..300).contains(&status) {
+        return BoxPatReach::Reaches;
+    }
+    let (code, said) = refusal_of(body);
+    match (status, code.as_deref()) {
+        (403, Some(PAT_PROJECT_OUTSIDE_FENCE)) => BoxPatReach::Refused {
+            code: PAT_PROJECT_OUTSIDE_FENCE.to_string(),
+            detail: said,
+        },
+        (401, code) => BoxPatReach::Refused {
+            code: code.unwrap_or("UNAUTHORIZED").to_string(),
+            detail: said,
+        },
+        _ => BoxPatReach::Unread(format!("core answered {status}: {said}")),
+    }
 }
 
 /// What core answered a job's heartbeat with.
@@ -108,6 +157,29 @@ impl Pool for CorePool<'_> {
 
     async fn mcp_servers(&self, project_id: &str) -> Result<ProjectMcpServers> {
         mcp_servers::fetch_within(self.client, project_id, self.deadline).await
+    }
+
+    async fn box_pat_reach(&self, project_id: &str) -> BoxPatReach {
+        let pat = match runner_platform::cred_store::load_pat() {
+            Ok(Some(pat)) => pat,
+            Ok(None) => {
+                return BoxPatReach::Refused {
+                    code: "NO_CREDENTIAL".to_string(),
+                    detail: "this box holds no stored personal access token, so a pane with no checkout credential has nothing to call its project with".to_string(),
+                }
+            }
+            Err(e) => return BoxPatReach::Unread(format!("the stored token could not be read: {e}")),
+        };
+        let client = CoreClient::new(self.client.base(), pat);
+        let call = client.get(&format!("/api/projects/{project_id}")).send();
+        match tokio::time::timeout(self.deadline, call).await {
+            Ok(Ok(resp)) => {
+                let status = resp.status().as_u16();
+                reach_of(status, &resp.text().await.unwrap_or_default())
+            }
+            Ok(Err(e)) => BoxPatReach::Unread(e.to_string()),
+            Err(_) => BoxPatReach::Unread(format!("no answer within {}s", self.deadline.as_secs())),
+        }
     }
 }
 

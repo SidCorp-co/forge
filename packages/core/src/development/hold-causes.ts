@@ -32,6 +32,7 @@ const FAILURE: Readonly<Record<FailureCause, SaidPlainKey>> = {
   no_client_ack: 'overview.hold.cause.failure.noClientAck',
   checkout_unbound: 'overview.hold.cause.failure.checkoutUnbound',
   credential_mint_failed: 'overview.hold.cause.failure.credentialMintFailed',
+  credential_refused: 'overview.hold.cause.failure.credentialRefused',
   attachment_unreadable: 'overview.hold.cause.failure.attachmentUnreadable',
   box_cannot_confine_chat: 'overview.hold.cause.failure.boxCannotConfineChat',
   dispatch_failed: 'overview.hold.cause.failure.dispatchFailed',

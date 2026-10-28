@@ -1,5 +1,5 @@
 // Whether a bound room is answering, and if not, why (REQ-75 r5 BC-26). Each cause is one somebody
-// can act on, named with what to do: the binding is off; the chat server refuses the bot or does not
+// can act on, named with what to do: the binding is off, or no longer names the group; the chat server refuses the bot or does not
 // answer; the bot is not a member of the group; no core process listens for the bot's messages; no
 // online box of the project can run the session, or it lacks what the room's grant needs; the
 // session is not resident on its box. A room nobody can reach reads unhealthy, never silently fine.
@@ -17,6 +17,7 @@ import {
   fetchBotMembership,
 } from '../integrations/rocketchat/index.js';
 import { grantsOf, supportConfigOf } from './grants.js';
+import { bindingNamesRoom } from './rooms.js';
 import type { RoomRow } from './store.js';
 import { roomAuth } from './thread.js';
 
@@ -67,6 +68,11 @@ export async function roomHealth(
     add(
       'BINDING_OFF',
       "this room's Rocket.Chat binding or its bot connection is switched off, so nothing listens for it; switch it on in Project settings → Integrations → Rocket.Chat",
+    );
+  } else if (!bindingNamesRoom(pair.binding.config, room.rid)) {
+    add(
+      'ROOM_LEFT_BINDING',
+      `binding ${room.bindingId} no longer names group ${room.rid}, so nothing answers this room; its record stays here. Bind the group again to have it answered`,
     );
   }
 

@@ -46,7 +46,8 @@ Read these before judging anything, while whoever sent you can still equip you.
 - \`GET /api/projects/:id/issues?status=awaiting_release\` lists the issues whose work landed and waits
   on its release. Their criteria are judged on the build the release ships.
 - \`GET /api/issues/:id/criteria\` lists each live criterion: its statement, its \`class\`
-  (\`observable\` is judged on the running build, \`code_property\` by the review against the diff),
+  (\`observable\` is judged on the running build, \`server_side\` on it from inside the running server,
+  \`code_property\` by the review against the diff),
   the \`judge\` it routes to, its kept \`probe\`, and its \`latest\` verdict with the identity that
   verdict was taken at.
 - \`GET /api/issues/:id/design\` gives the proof the design names for each criterion.
@@ -92,7 +93,9 @@ steps, what you expected, what you observed. Captures go outside the checkout yo
 \`POST /api/issues/:id/verdicts\` per criterion, as ${guideRef('issue-flow')} (section 5) gives the
 body: the identity the build serves, written whole, the evidence uploaded first and cited by its name,
 its id or its download URL, the
-probe an observable criterion keeps, and its clip or \`withoutClip\`. A code-property criterion is the
+probe an observable criterion keeps, and its clip or \`withoutClip\`. A server-side criterion cites the
+capture of what you ran inside the running server instead, and keeps no probe and no clip
+(\`VERDICT_CAPTURE_REQUIRED\`, \`VERDICT_PROBE_SERVER_SIDE\`). A code-property criterion is the
 review's, and a verdict recorded on it as QA's is refused. On a project that declares no production
 environment nothing runs that Forge observes: the build is the commit \`judged-build\` names, its
 identity is \`{ kind: 'commit', sha }\` at that commit, and a \`runtime\` identity there is refused

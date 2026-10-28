@@ -1,1 +1,0 @@
-**A count after a credential label is no longer read as a secret.** "no token: 4 failures" or "secret: 12 rows" is written as it stands; four or more digits, or a value like `hunter2`, is still refused (ISS-572).

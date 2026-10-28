@@ -122,6 +122,17 @@ then names the credential it went out on whenever it is refused. A pane started
 before its checkout was provisioned holds neither: re-provision, then end the
 pane so the next sweep places it again.
 
+A job is never run on a credential its project refuses. Before a job pane opens
+with no checkout credential, the daemon asks core whether the stored PAT reaches
+the project, and a refusal by name (`PAT_PROJECT_OUTSIDE_FENCE`, or a token core
+no longer takes) fails the job at once, no pane opened. Inside a pane,
+`forge-runner api` tells the daemon over the control socket when the pane's own
+project refuses its credential, and the daemon ends the job on that refusal
+instead of on the silence after the agent stops. Both endings lead with
+`[CREDENTIAL_REFUSED]` (`crates/runner-core/src/job_exit.rs:credential_refused_reason`),
+which core reads as terminal, so the job is not retried
+(sidcorp-mail on sid-xeon-1-dev, 2026-10-28: 23 retries of one refusal).
+
 `forge-runner run declare --project` takes the project's id or its slug, and
 names the pane's own project when it refuses another.
 
