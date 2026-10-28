@@ -8,8 +8,20 @@
 /** Shell constructs that write, chain, substitute or background: none appears in a reading command. */
 const SHELL_WRITES = /[;&><`$(){}\\\n\r]|\|\|/;
 
-/** A short-flag cluster holding `f` or `F` (`-f`, `-xef`, `-Fn`): a follow that never ends. */
-const FOLLOW = /(^|\s)(-[A-Za-z0-9]*[fF][A-Za-z0-9]*|--follow\S*|--retry)\b/;
+/**
+ * The flags that would make a program write or never end, as its parser reads them: a short one
+ * anywhere in a cluster (`-uo`, `-xef`), with its value attached or not, and a long one by any prefix
+ * getopt_long takes for it (`--out` is `--output`, `--fol` is `--follow`).
+ */
+function flags(short: string, ...long: string[]): RegExp {
+  const prefix = (name: string) =>
+    `--${name[0]}${[...name.slice(1)].map((c) => `(?:${c}`).join('')}${')?'.repeat(name.length - 1)}`;
+  const longs = long.map(prefix).join('|');
+  const shorts = short ? `-[A-Za-z0-9]*[${short}]` : null;
+  const either = [shorts, longs ? `(?:${longs})(?=[=\\s]|$)` : null].filter(Boolean).join('|');
+  return new RegExp(`(^|\\s)(?:${either})`);
+}
+const FOLLOW = flags('fF', 'follow', 'retry');
 /** Any operand that is not a flag: what a filter that would write its second operand must not take. */
 const AN_OPERAND = /(^|\s)[^-\s]/;
 
@@ -28,7 +40,7 @@ const READERS: Record<string, { refuse?: RegExp }> = {
   wc: {},
   ls: {},
   stat: {},
-  file: { refuse: /(^|\s)(-C|--compile)\b/ },
+  file: { refuse: flags('C', 'compile') },
   find: { refuse: /(^|\s)-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b/ },
   du: {},
   df: {},
@@ -39,23 +51,35 @@ const READERS: Record<string, { refuse?: RegExp }> = {
     refuse:
       /^(?!\s*(-[fsiIdA]|--fqdn|--long|--short|--ip-address|--all-ip-addresses|--domain|--all-fqdns)?\s*$)/,
   },
-  date: { refuse: /(^|\s)(-s|--set)\b/ },
+  date: { refuse: flags('s', 'set') },
   whoami: {},
   id: {},
   ps: {},
-  ss: { refuse: /(^|\s)(-K|--kill)\b/ },
+  ss: { refuse: flags('K', 'kill') },
   netstat: {},
   ip: {
     refuse:
-      /\b(add|del|delete|change|replace|set|flush|append|exec|netns|restore|save|monitor)\b|(^|\s)(-b|-batch|-force)\b/,
+      /\b(add|del|delete|change|replace|set|flush|append|exec|netns|restore|save|monitor)\b|(^|\s)(-b|-ba\w*|-force)(?=\s|$)/,
   },
   dig: {},
   host: {},
   nslookup: {},
   ping: { refuse: /^(?!.*(^|\s)-c\s*\d).*$/ },
   journalctl: {
-    refuse:
-      /(^|\s)(-[A-Za-z]*f[A-Za-z]*|--follow|--vacuum-\w+|--rotate|--flush|--sync|--relinquish-var|--smart-relinquish-var|--setup-keys|--update-catalog)\b/,
+    refuse: flags(
+      'f',
+      'follow',
+      'vacuum-size',
+      'vacuum-time',
+      'vacuum-files',
+      'rotate',
+      'flush',
+      'sync',
+      'relinquish-var',
+      'smart-relinquish-var',
+      'setup-keys',
+      'update-catalog',
+    ),
   },
   systemctl: {
     refuse:
@@ -67,7 +91,7 @@ const READERS: Record<string, { refuse?: RegExp }> = {
     refuse:
       /^(?!\s*(s_client|x509|version)\b)|(^|\s)-(out|sess_out|keylogfile|msgfile|writerand|engine)\b/,
   },
-  sort: { refuse: /(^|\s)(-o|--output|--compress-program)\S*/ },
+  sort: { refuse: flags('o', 'output', 'compress-program') },
   uniq: { refuse: AN_OPERAND },
   cut: {},
   jq: {},
