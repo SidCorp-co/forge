@@ -53,15 +53,16 @@ function missingOf(read: ReadChangeRequest): string[] {
   return missing;
 }
 
-/** Store the host's checks on the request's head, reported rather than thrown: the row stands. */
+/** Store the host's checks for the request at its head, its own pipeline included (REQ-63 BC-7),
+ *  reported rather than thrown: the row stands. */
 async function projectChecks(
   host: SourceHost,
-  rowId: string,
+  row: { id: string; number: number },
   headSha: string,
 ): Promise<ChecksProjection> {
   try {
-    const checks = await host.readChecks(headSha);
-    await storeHostChecks(rowId, checks);
+    const checks = await host.readChangeRequestChecks({ number: row.number, headSha });
+    await storeHostChecks(row.id, checks);
     return { outcome: 'stored', headSha, checks: checks.length };
   } catch (err) {
     return {
@@ -111,7 +112,7 @@ export async function projectReadChangeRequest(args: {
   });
   const row = await linkedIssuesOfNumber(host.bindingId, read.number);
   const checks: ChecksProjection = row
-    ? await projectChecks(host, row.id, headSha)
+    ? await projectChecks(host, { id: row.id, number: read.number }, headSha)
     : { outcome: 'unread', headSha, reason: 'no projection row stands for it to carry them' };
   const projection: ReadProjection = {
     outcome: written > 0 ? 'recorded' : 'superseded',
@@ -143,7 +144,7 @@ export async function projectReadChangeRequest(args: {
 /** The checks on a stored row's head after Forge merged it, so a binding with no hook still holds them. */
 export async function projectChecksAfterMerge(
   host: SourceHost,
-  row: { id: string; headSha: string },
+  row: { id: string; number: number; headSha: string },
 ): Promise<ChecksProjection> {
-  return projectChecks(host, row.id, row.headSha);
+  return projectChecks(host, row, row.headSha);
 }

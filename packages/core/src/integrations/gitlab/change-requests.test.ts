@@ -180,3 +180,53 @@ describe('gitlab closeChangeRequest', () => {
     expect(calls.filter((c) => c.method === 'PUT')).toEqual([]);
   });
 });
+
+// adminhub-api → sidcorp-it/canawan-api, 2026-10-28: a merge through Forge stored no checks for
+// MR 5047, since its pipeline ran as a merge request pipeline at a merge ref the head's `sha`
+// filter never finds (REQ-63 BC-7)
+describe('gitlab readChangeRequestChecks: the merge request pipeline is read at the head it ran for', () => {
+  const ownPipeline = {
+    id: 3000879911,
+    sha: MERGE,
+    status: 'success',
+    web_url: 'https://gitlab.example/p/3000879911',
+    created_at: '2026-10-28T19:25:58Z',
+    updated_at: '2026-10-28T19:29:28Z',
+  };
+
+  it("adds the request's own head pipeline, recorded at the head, to the head's commit pipelines", async () => {
+    const { verbs, calls } = clientAnswering(() => mr({ head_pipeline: ownPipeline }), []);
+    const checks = await verbs.readChangeRequestChecks({ number: 12, headSha: HEAD });
+    expect(calls.map((c) => c.path)).toEqual([
+      `/projects/1/pipelines?sha=${HEAD}`,
+      '/projects/1/merge_requests/12',
+    ]);
+    expect(checks).toEqual([
+      {
+        id: '3000879911',
+        name: 'pipeline',
+        app: 'gitlab-ci',
+        headSha: HEAD,
+        status: 'completed',
+        conclusion: 'success',
+        detailsUrl: 'https://gitlab.example/p/3000879911',
+        startedAt: '2026-10-28T19:25:58Z',
+        completedAt: '2026-10-28T19:29:28Z',
+      },
+    ]);
+  });
+
+  it('counts a head pipeline the commit read already holds once', async () => {
+    const { verbs } = clientAnswering(
+      () => mr({ head_pipeline: { ...ownPipeline, sha: HEAD } }),
+      [{ ...ownPipeline, sha: HEAD }],
+    );
+    const checks = await verbs.readChangeRequestChecks({ number: 12, headSha: HEAD });
+    expect(checks.map((c) => c.id)).toEqual(['3000879911']);
+  });
+
+  it('answers the head commit pipelines alone where the request ran none of its own', async () => {
+    const { verbs } = clientAnswering(() => mr({ head_pipeline: null }), []);
+    expect(await verbs.readChangeRequestChecks({ number: 12, headSha: HEAD })).toEqual([]);
+  });
+});

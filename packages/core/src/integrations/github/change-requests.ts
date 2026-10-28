@@ -114,7 +114,11 @@ async function checkRunsOf(client: GitHubRepoClient, sha: string): Promise<HostC
 
 type ChangeRequestVerbs = Pick<
   SourceHost,
-  'readChecks' | 'readChangeRequest' | 'updateChangeRequest' | 'closeChangeRequest'
+  | 'readChecks'
+  | 'readChangeRequestChecks'
+  | 'readChangeRequest'
+  | 'updateChangeRequest'
+  | 'closeChangeRequest'
 >;
 
 /**
@@ -141,19 +145,23 @@ export function githubChangeRequestVerbs(
     );
   };
 
+  const readChecks = async (sha: string): Promise<HostCheck[]> => {
+    const [runs, combined] = await Promise.all([
+      checkRunsOf(client, sha),
+      client.get<CombinedStatus>(
+        `/repos/${client.fullName}/commits/${encodeURIComponent(sha)}/status?per_page=100`,
+      ),
+    ]);
+    const statuses = (combined.statuses ?? []).flatMap((s) =>
+      typeof s.id === 'number' ? [checkOfStatus(sha, { ...s, id: s.id })] : [],
+    );
+    return [...runs, ...statuses];
+  };
+
   return {
-    async readChecks(sha) {
-      const [runs, combined] = await Promise.all([
-        checkRunsOf(client, sha),
-        client.get<CombinedStatus>(
-          `/repos/${client.fullName}/commits/${encodeURIComponent(sha)}/status?per_page=100`,
-        ),
-      ]);
-      const statuses = (combined.statuses ?? []).flatMap((s) =>
-        typeof s.id === 'number' ? [checkOfStatus(sha, { ...s, id: s.id })] : [],
-      );
-      return [...runs, ...statuses];
-    },
+    readChecks,
+    // GitHub runs a pull request's checks on its head commit itself, so the head's checks are all of them
+    readChangeRequestChecks: ({ headSha }) => readChecks(headSha),
 
     readChangeRequest: read,
 

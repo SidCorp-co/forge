@@ -29,6 +29,8 @@ const LANDING = 'c'.repeat(40);
 const world = { projectId: '', ownerId: '', token: '', bindingId: '', otherSlug: '' };
 const requests = new Map<number, ReadChangeRequest>();
 const checks = new Map<string, HostCheck[]>();
+/** A merge request's own pipeline, run at a merge ref no head `sha` read finds (GitLab's merge request pipelines). */
+const ownPipelines = new Map<number, HostCheck>();
 let clock = Date.parse('2026-10-26T08:00:00Z');
 const tick = () => {
   clock += 1000;
@@ -45,6 +47,10 @@ const planted = {
   words: { changeRequest: 'merge request', sigil: '!', mergeMethods: ['merge', 'squash'] },
   sameTree: async () => true,
   readChecks: async (sha: string) => checks.get(sha) ?? [],
+  readChangeRequestChecks: async ({ number, headSha }: { number: number; headSha: string }) => {
+    const own = ownPipelines.get(number);
+    return [...(checks.get(headSha) ?? []), ...(own ? [{ ...own, headSha }] : [])];
+  },
   readChangeRequest: async (number: number) => {
     const mr = requests.get(number);
     if (!mr) throw new Error(`no merge request !${number} planted`);
@@ -157,6 +163,7 @@ beforeEach(async () => {
   await truncateAll();
   requests.clear();
   checks.clear();
+  ownPipelines.clear();
   world.ownerId = (await createTestUser({ verified: true })).id;
   world.projectId = (await createTestProject(world.ownerId)).id;
   world.otherSlug = (await createTestProject(world.ownerId)).slug;
@@ -273,5 +280,61 @@ describe('Forge’s own merge on a binding with no hook', () => {
       checks: { outcome: 'stored', headSha: HEAD_2, checks: 1 },
     });
     expect((await row(16))?.checks).toEqual({ '950': pipeline(950, HEAD_2, 'in_progress', null) });
+  });
+});
+
+// adminhub-api → sidcorp-it/canawan-api, 2026-10-28: MR 5047 merged through Forge stored `checks: 0`,
+// its pipeline having run as a merge request pipeline the head's commit read never finds (REQ-63 BC-7)
+describe('the merge request pipeline at the merged head (REQ-63 BC-7)', () => {
+  it('stores the request’s own pipeline at the head Forge merged, not none', async () => {
+    await issue(1);
+    mergeRequest(5047, { headSha: HEAD_2 });
+    await api(world.token, 'POST', door('5047/refresh'));
+    ownPipelines.set(5047, pipeline(3000879911, LANDING, 'completed', 'success'));
+
+    const stored = await row(5047);
+    const outcome = await mergeStoredChangeRequest(
+      { pullRequestId: stored?.id as string, requestedBy: `user:${world.ownerId}` },
+      async () => ({ wrote: false }),
+    );
+    expect(outcome).toMatchObject({
+      kind: 'merged',
+      checks: { outcome: 'stored', headSha: HEAD_2, checks: 1 },
+    });
+    expect((await row(5047))?.checks).toEqual({
+      '3000879911': pipeline(3000879911, HEAD_2, 'completed', 'success'),
+    });
+  });
+
+  it('refresh reads the same pipeline for a request it projects', async () => {
+    await issue(1);
+    mergeRequest(5048);
+    ownPipelines.set(5048, pipeline(3000869553, LANDING, 'completed', 'success'));
+    const res = await api(world.token, 'POST', door('5048/refresh'));
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ projection: { checks: { outcome: 'stored', checks: 1 } } });
+  });
+});
+
+describe('a change request read by its number (REQ-63 BC-8)', () => {
+  it('answers its title, description and state to a member, and writes nothing', async () => {
+    mergeRequest(21, { title: 'fix: login', body: 'Delivers ISS-1\n\nWhy: the session expired.' });
+    const res = await api(world.token, 'GET', door('21'));
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({
+      number: 21,
+      title: 'fix: login',
+      body: 'Delivers ISS-1\n\nWhy: the session expired.',
+      state: 'open',
+      headRef: 'feat/admin-login-iss-1',
+    });
+    expect(await row(21)).toBeUndefined();
+  });
+
+  it('refuses a caller who is not a member of the project', async () => {
+    mergeRequest(22);
+    const stranger = await userToken((await createTestUser({ verified: true })).id);
+    const res = await api(stranger, 'GET', door('22'));
+    expect([403, 404]).toContain(res.status);
   });
 });
