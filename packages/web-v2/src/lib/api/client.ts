@@ -164,7 +164,6 @@ interface HeldRead {
   code?: string;
   details?: unknown;
   body?: unknown;
-  /** The wait the server asked for, as it said it: what was asked stays true while what is left shrinks. */
   asked: number;
   retryAt: number;
 }
@@ -212,8 +211,11 @@ function heldRefusal(read: string): ApiError | null {
   return new ApiError(status, message, code, details, body, asked, retryAt, read);
 }
 
+/** A hold still running is cut short by no answer already in flight when it was set; a longer wait replaces it. */
 function noteAnswer(read: string, refused: ApiError | null): void {
   const reads = held();
+  const standing = reads.get(read);
+  if (standing && standing.retryAt > Date.now() && (refused?.retryAt ?? 0) <= standing.retryAt) return;
   if (refused?.retryAt !== undefined && refused.retryAfterMs !== undefined) {
     const { status, message, code, details, body, retryAfterMs: asked, retryAt } = refused;
     reads.set(read, { status, message, code, details, body, asked, retryAt });

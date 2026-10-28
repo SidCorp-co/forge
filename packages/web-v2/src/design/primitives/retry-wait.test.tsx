@@ -157,9 +157,32 @@ describe("a wait before Retry, as a screen reader hears it (criteria 479, 511)",
       </>,
     );
     expect(first).toBe(1);
-    expect(waitWords(toldOver(25, ear)).filter((text) => text.startsWith("The server"))).toEqual([
+    expect(waitWords(toldOver(25, ear))).toEqual([
       "The server asked for 20 seconds before Retry.",
       "The server asked for 10 seconds before Retry.",
+      "You can retry now.",
+      "You can retry now.",
+    ]);
+  });
+
+  // r54 review F2: two reads given the same wait a second apart are two waits, each told its start and its end.
+  it("tells two reads given the same wait a second apart each their own start and end", () => {
+    const ear = listen();
+    const people = limited(20, "GET /members");
+    const { rerender } = render(<ReadFailedLine what="the people" why="x" error={people} onRetry={() => {}} />);
+    act(() => void vi.advanceTimersByTime(1_000));
+    ear.take();
+    rerender(
+      <>
+        <ReadFailedLine what="the people" why="x" error={people} onRetry={() => {}} />
+        <ReadFailedLine what="the labels" why="x" error={limited(20, "GET /labels")} onRetry={() => {}} />
+      </>,
+    );
+    expect(waitWords(toldOver(22, ear))).toEqual([
+      "The server asked for 20 seconds before Retry.",
+      "The server asked for 20 seconds before Retry.",
+      "You can retry now.",
+      "You can retry now.",
     ]);
   });
 

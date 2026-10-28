@@ -9,8 +9,6 @@ export const WAIT_OVER = "You can retry now.";
 const REGION_ID = "fg-wait-announcer";
 /** How long a sentence stays in the region once said: long enough to be read out, short enough to leave no trail. */
 const KEPT_FOR_MS = 7_000;
-/** The same sentence again this soon is one telling: two reads refused together end together. */
-const SAME_WITHIN_MS = 1_500;
 /** A region stood up for this sentence is given a moment to be found before anything is said in it. */
 const FIRST_SAID_AFTER_MS = 100;
 
@@ -21,7 +19,6 @@ interface Wait {
 }
 
 const waits = new Map<string, Wait>();
-let lastSaid: { text: string; at: number } | null = null;
 let stoodAt = 0;
 
 function region(): HTMLElement | null {
@@ -45,8 +42,6 @@ function region(): HTMLElement | null {
 
 function say(text: string): void {
   const now = Date.now();
-  if (lastSaid && lastSaid.text === text && now - lastSaid.at < SAME_WITHIN_MS) return;
-  lastSaid = { text, at: now };
   const el = region();
   if (!el) return;
   const put = () => {
@@ -92,6 +87,5 @@ export function showWait(read: string, at: number, started: string): () => void 
 /** Forgets every wait and the region: a test's fresh page. */
 export function forgetWaits(): void {
   waits.clear();
-  lastSaid = null;
   if (typeof document !== "undefined") document.getElementById(REGION_ID)?.remove();
 }

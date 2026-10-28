@@ -207,6 +207,28 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     expect((again?.retryAt ?? 0) - Date.now()).toBe(15_000);
   });
 
+  // r54 review F1: answers to the same read already in flight when the hold was set do not lift or shorten it.
+  it("keeps the hold whatever another answer already in flight says", async () => {
+    const answers: ((res: Response) => void)[] = [];
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(`${init?.method ?? "GET"} ${String(input)}`);
+      if (answers.length === 3) return Promise.resolve(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
+      return new Promise<Response>((resolve) => answers.push(resolve));
+    });
+    const refusedAfter = (seconds: number) =>
+      new Response(JSON.stringify(refusedBody), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(seconds) } });
+    const reads = [readRuns().catch(() => {}), readRuns().catch(() => {}), readRuns().catch(() => {})];
+    answers[0]?.(refusedAfter(20));
+    await reads[0];
+    answers[1]?.(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
+    await reads[1];
+    answers[2]?.(refusedAfter(5));
+    await reads[2];
+    vi.setSystemTime(Date.now() + 10_000);
+    await expect(readRuns()).rejects.toMatchObject({ status: 429 });
+    expect(sent).toHaveLength(3);
+  });
+
   it("is held across a reload of the page (z4, p3, y10)", async () => {
     await readRuns().catch(() => {});
     vi.resetModules();
