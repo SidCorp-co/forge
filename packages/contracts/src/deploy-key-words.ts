@@ -1,5 +1,7 @@
 export const KEY_ACCESS = 'read access';
 
+export const GIT_ACCESS = "the project's Settings → Runners → Git access";
+
 const KEY_NEED = 'all Forge needs; devices that push with it need write access';
 
 export const WHY_KEY_ACCESS = `which is ${KEY_NEED}`;

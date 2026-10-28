@@ -7,6 +7,7 @@
 
 import {
   COMMIT_MAY_STAY_EMPTY,
+  LEAVE_COMMIT_EMPTY,
   MARK_MERGED_ACTION,
   NAME_THE_LANDED_COMMIT,
   WHERE_IT_LANDED_FIELD,
@@ -216,10 +217,18 @@ function shortfallStep(s: Shortfall): string {
     if (s.reason === landingShortfallWords(true).reason) {
       return `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}`;
     }
-    // A project naming no repository accepts a mark naming no commit (ISS-1421 r40).
-    return s.clears === landingShortfallWords(false, true).clears
-      ? `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}; ${COMMIT_MAY_STAY_EMPTY}`
-      : `use ${MARK_MERGED_ACTION} in its properties, fill in ${WHERE_IT_LANDED_FIELD} and ${NAME_THE_LANDED_COMMIT}`;
+    // A project naming no repository accepts a mark naming no commit (ISS-1421 r40), and one naming
+    // a repository Forge cannot read refuses a commit (r43).
+    if (s.clears === landingShortfallWords(false, 'claim').clears) {
+      return `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}; ${COMMIT_MAY_STAY_EMPTY}`;
+    }
+    if (s.clears === landingShortfallWords(false, 'refused').clears) {
+      return (
+        `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}. ` +
+        `${capitalised(LEAVE_COMMIT_EMPTY)}. Forge cannot read this project's repository, so it refuses a named commit`
+      );
+    }
+    return `use ${MARK_MERGED_ACTION} in its properties, fill in ${WHERE_IT_LANDED_FIELD} and ${NAME_THE_LANDED_COMMIT}`;
   }
   const act = s.clearsHere ?? s.clears;
   if (s.code === 'ENTRY_CRITERIA_UNMET') {

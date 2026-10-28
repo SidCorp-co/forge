@@ -477,7 +477,8 @@ describe('the route a held promoted roster is told to take, followed in its orde
     const { ids } = await heldBatch();
     const note = (await promotionNote(ids[0] as string)) ?? '';
     expect(note).not.toMatch(/finish/i);
-    expect(note).toContain("Forge's releasing sweep settles them within a minute");
+    expect(note).toContain('until its run has ended; within a minute of that');
+    expect(note).not.toContain('while its run is live'); // ISS-1421 r43: the abort ends the run
     expect(note).toContain('View release on the issue shows where its run stands.');
     expect(note).not.toMatch(/\/api\/|\/abort|\/release-records/);
   }, 30_000);

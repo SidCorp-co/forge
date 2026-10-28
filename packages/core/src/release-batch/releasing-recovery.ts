@@ -1,3 +1,4 @@
+import type { MarkCommitCheck } from '@forge/contracts/mark-merged-words';
 import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { forgeActor, forgeAuthorId } from '../comments/forge-author.js';
@@ -15,7 +16,7 @@ import {
   pgObjectNames,
 } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
-import { namesNoRepository } from '../projects/live-source.js';
+import { markCommitCheck } from '../projects/live-source.js';
 import { sayCloseFailure } from './close-failures.js';
 import { ReleaseFinishFenceLostError } from './errors.js';
 import { resolveReleaseGate } from './gate.js';
@@ -208,9 +209,9 @@ export interface RecoverStrandedReleasingOptions {
   refusals?: ReadonlyMap<string, CloseRefusal> | undefined;
   /** The version the finish shipped, named in a refused issue's comment. */
   version?: string | null | undefined;
-  /** Settle a roster whose run promoted instead of holding it — a person's word and never a
-   *  sweep's, buying a batch that promoted and cannot verify a status some door closes from
-   *  (ISS-1199). */
+  finishedBy?: string | undefined;
+  /** Settle a roster whose run promoted instead of holding it: a finish's, whose run ends with it
+   *  (ISS-1421 r43), or a person's word on an abort (ISS-1199); never a sweep's. */
   settlePromotedRoster?: boolean;
   /** Run inside each write's own transaction before it writes; throws to stop the recovery. */
   fence?: ((tx: Tx) => Promise<void>) | undefined;
@@ -244,7 +245,7 @@ export async function recoverStrandedReleasing(
       { runId, claimed: claimed.length, reason: options.reason },
       'release-batch: this run promoted, so its roster stays at Releasing until the releasing sweep settles it',
     );
-    await noteOnRoster(runId, claimed, options, PROMOTED_NOTE);
+    await noteOnRoster(claimed, options, PROMOTED_NOTE);
     return {
       claimsCleared: [],
       alreadyClosed,
@@ -277,6 +278,7 @@ export async function recoverStrandedReleasing(
               destination,
               repeats,
               marked: issue.mergedAt !== null,
+              finishedBy: options.finishedBy,
               ...said,
             }),
           );
@@ -386,23 +388,23 @@ function settledNote(destination: IssueStatus): string {
 }
 
 const PROMOTED_NOTE =
-  "This batch recorded a promotion, so the code it carried may be on production, and its issues stay at Releasing and claimed while its run is live. Once the run has ended, Forge's releasing sweep settles them within a minute: it reads what production serves, closes through a release record each issue whose landing commit production carries, and returns the rest to the release gate. View release on the issue shows where its run stands.";
+  "This batch recorded a promotion, so the code it carried may be on production. Its issues stay at Releasing, claimed, until its run has ended; within a minute of that, Forge's releasing sweep reads what production serves, closes through a release record each issue whose landing commit production carries, and returns the rest to the release gate. View release on the issue shows where its run stands.";
 
 /** What a refused issue's comment says beside its refusal, read once per roster: what the run's
- *  promotions and deploys reported, and whether a mark may name no commit. */
+ *  promotions and deploys reported, and what a mark's commit meets on the project. */
 async function refusalContext(
   runId: string,
   projectId: string | undefined,
   options: RecoverStrandedReleasingOptions,
-): Promise<{ delivery: RunDelivery; noRepository: boolean }> {
+): Promise<{ delivery: RunDelivery; commit: MarkCommitCheck | null }> {
   const refusals = [...(options.refusals?.values() ?? [])];
-  if (refusals.length === 0 || !projectId) return { delivery: 'none', noRepository: false };
+  if (refusals.length === 0 || !projectId) return { delivery: 'none', commit: null };
   const delivery = await runDelivery(runId);
   const unmarked = refusals.some(
     (r) => r.kind === 'refused' && r.code === 'CLOSE_REQUIRES_SHIPPED',
   );
-  const noRepository = unmarked && (await namesNoRepository(projectId));
-  return { delivery, noRepository };
+  const commit = unmarked ? await markCommitCheck(projectId) : null;
+  return { delivery, commit };
 }
 
 async function commentAuthor(
@@ -436,38 +438,20 @@ function sayRefusedClose(
  * Say on each issue what happened, without moving it.
  */
 async function noteOnRoster(
-  runId: string,
-  claimed: Array<{ id: string; status: string; projectId: string; mergedAt: Date | null }>,
+  claimed: Array<{ id: string; status: string }>,
   options: RecoverStrandedReleasingOptions,
   note: string,
 ): Promise<void> {
   if (!options.comment) return;
   const author = await commentAuthor(options.actor ?? (await forgeActor(db)), options);
-  const said = await refusalContext(runId, claimed[0]?.projectId, options);
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
-    const refusal = options.refusals?.get(issue.id);
     try {
-      if (refusal) {
-        await sayRefusedClose(runId, issue, author, refusal, options, (repeats) =>
-          refusedCloseComment({
-            refusal,
-            projectId: issue.projectId,
-            version: options.version ?? null,
-            destination: 'releasing',
-            held: note,
-            repeats,
-            marked: issue.mergedAt !== null,
-            ...said,
-          }),
-        );
-      } else {
-        await postSystemComment({
-          issueId: issue.id,
-          authorId: author,
-          body: `${reasonSentence(options.reason)} ${note}`,
-        });
-      }
+      await postSystemComment({
+        issueId: issue.id,
+        authorId: author,
+        body: `${reasonSentence(options.reason)} ${note}`,
+      });
     } catch (err) {
       logger.warn({ err, issueId: issue.id }, 'release-batch: promotion note failed');
     }

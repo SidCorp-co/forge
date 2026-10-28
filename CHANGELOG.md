@@ -3200,6 +3200,7 @@
 
 ### Fixed
 
+- **A finish tells an issue it could not close one story.** It returns to Awaiting release whatever was promoted, Forge's comment names who finished, Mark merged asks for no commit Forge cannot check, and issue keys never wrap. (ISS-1421)
 - **New issue opens even when your projects cannot be read**, saying why, with Retry. A filter menu counting a wait shows the whole countdown, and no re-read is offered for a page that is gone. (ISS-1229)
 - **A read the server asked to wait on is held in every open tab, attachments and images included.** An attachment says when it will show, and shows by itself once the wait ends. (ISS-1229)
 - **A release says an issue's code went out only where both hold.** A deploy reported going out, and the issue is marked merged; an abort's note is Forge's, naming who pressed. (ISS-1421)

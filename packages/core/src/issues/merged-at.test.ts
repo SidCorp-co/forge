@@ -81,16 +81,38 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
   // mark tells its reader to use Mark merged, and so says Commit may stay empty.
   it('says Commit may stay empty where the project names no repository', async () => {
     const { executor } = buildMockExecutor(UNSHIPPED);
-    const noRepository = vi.fn(async () => true);
+    const commitCheck = vi.fn(async () => 'claim' as const);
     const refusal = await refuseUnshippedClose(executor, {
       issueId: 'iss-1',
       toStatus: 'closed',
-      noRepository,
+      commitCheck,
     });
     expect(refusal?.detail).toBe(
       "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed; with no repository named, Commit may stay empty. Then close it. If it turned out not to be work, move it to Dropped instead.",
     );
-    expect(noRepository).toHaveBeenCalledTimes(1);
+    expect(commitCheck).toHaveBeenCalledTimes(1);
+  });
+
+  // ISS-1421 r43 (judge-171 on 407): a repository named that Forge cannot read refuses a commit
+  // named under Commit, so the steps say what Mark merged's panel there says: leave it empty.
+  it('says to leave Commit empty for a claim where Forge cannot read the named repository', async () => {
+    const { executor } = buildMockExecutor(UNSHIPPED);
+    const refusal = await refuseUnshippedClose(executor, {
+      issueId: 'iss-1',
+      toStatus: 'closed',
+      commitCheck: async () => 'refused' as const,
+    });
+    expect(refusal?.detail).toBe(
+      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed. Leave Commit empty to record a claim naming no commit. Forge cannot read this project's repository, so it refuses a named commit. A deploy key under the project's Settings → Runners → Git access lets it check one. Then close it. If it turned out not to be work, move it to Dropped instead.",
+    );
+    expect(refusal?.detail).not.toContain('name the commit that landed');
+    // Criterion 167: each sentence of a close refusal holds to twenty words (review F1).
+    for (const sentence of (refusal?.detail ?? '').split(/(?<=\.)\s+(?=[A-Z])/)) {
+      expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(20);
+    }
+    // An agent's mark naming a commit there is kept as a claim (ISS-1409), so its step still names one.
+    const steps = refusal?.details.steps as Record<string, string> | undefined;
+    expect(steps?.merged_mark).toContain('`data.commit`');
   });
 
   // ISS-1421 r42: a mark naming only a landing is taken back first, then made by the same steps.
@@ -106,11 +128,11 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
 
   it('asks nothing about the repository of a close it lets through', async () => {
     const { executor } = buildMockExecutor(SHIPPED);
-    const noRepository = vi.fn(async () => true);
+    const commitCheck = vi.fn(async () => 'claim' as const);
     expect(
-      await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed', noRepository }),
+      await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed', commitCheck }),
     ).toBeNull();
-    expect(noRepository).not.toHaveBeenCalled();
+    expect(commitCheck).not.toHaveBeenCalled();
   });
 
   it('refuses a close on an issue the read cannot find, rather than letting it through', async () => {

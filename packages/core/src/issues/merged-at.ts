@@ -1,11 +1,12 @@
 import {
   MARK_MERGED_ACTION,
+  type MarkCommitCheck,
   markMergedSteps,
   UNMARK_ACTION,
   WHERE_IT_LANDED_FIELD,
 } from '@forge/contracts/mark-merged-words';
 import type { IssueStatus } from '../db/schema.js';
-import { namesNoRepository } from '../projects/live-source.js';
+import { markCommitCheck } from '../projects/live-source.js';
 import {
   DECLARE_OUTSIDE_GIT,
   type Lane,
@@ -41,12 +42,16 @@ const MARK_WITH_LANDING =
  * work (ISS-1421 r16). An agent's door to the same act is a step in `details.steps`, which an MCP
  * caller reads on a line of its own.
  */
-function unshippedWords(lane: Lane, held: MergeMarkKind, noRepository = false): ShippedRuleRefusal {
+function unshippedWords(
+  lane: Lane,
+  held: MergeMarkKind,
+  commit: MarkCommitCheck | null = 'checked',
+): ShippedRuleRefusal {
   if (lane.shape === 'git') {
     // A mark naming only a landing is no merge in git, and the first mark stands until it is taken back.
     const landed = held === 'landed';
-    // Mark merged's own steps, by the project's shape, then the close (ISS-1421 r41, r42).
-    const steps = markMergedSteps(false, noRepository);
+    // Mark merged's own steps, by what its Commit takes here, then the close (ISS-1421 r41-r43).
+    const steps = markMergedSteps(false, commit);
     const mark = landed
       ? `Use ${UNMARK_ACTION} in the issue's properties, then ${steps.charAt(0).toLowerCase()}${steps.slice(1)}`
       : steps;
@@ -99,9 +104,9 @@ export async function refuseUnshippedClose(
   args: {
     issueId: string;
     toStatus: IssueStatus;
-    /** Whether the project names no repository, asked only once a git close is refused; the
+    /** What a mark's commit meets on the project, asked only once a git close is refused; the
      *  project's own answer where a caller has none to share. */
-    noRepository?: (() => Promise<boolean>) | undefined;
+    commitCheck?: (() => Promise<MarkCommitCheck | null>) | undefined;
   },
 ): Promise<ShippedRuleRefusal | null> {
   if (args.toStatus !== 'closed') return null;
@@ -110,10 +115,10 @@ export async function refuseUnshippedClose(
   const lane: Lane = evidence?.lane ?? { shape: 'git', declared: false };
   const held = evidence ? mergeMarkKindOf(evidence.columns) : 'unmarked';
   const asked =
-    args.noRepository ??
-    (evidence?.projectId ? () => namesNoRepository(evidence.projectId) : undefined);
-  const claim = lane.shape === 'git' && (await asked?.()) === true;
-  return unshippedWords(lane, held, claim);
+    args.commitCheck ??
+    (evidence?.projectId ? () => markCommitCheck(evidence.projectId) : undefined);
+  const commit = lane.shape === 'git' && asked ? await asked() : null;
+  return unshippedWords(lane, held, commit);
 }
 
 /** Why `unmark` is refused on a `closed` issue, or `null` where it may proceed. `clearIssueMerge`
