@@ -27,8 +27,8 @@ import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { grantsLine, toolsLine } from './prompt.js';
-import { declareSupportRooms } from './rooms.js';
-import type { RoomRow } from './store.js';
+import { declareSupportRooms, roomIsBound } from './rooms.js';
+import { type RoomRow, roomById } from './store.js';
 
 /** What the warm-up turn says: no member is waiting, so the session answers nothing. */
 export const WARM_UP_LINE =
@@ -47,6 +47,7 @@ export type WarmOutcome =
   | 'busy'
   | 'messages-waiting'
   | 'no-box'
+  | 'unbound'
   | 'none';
 
 /**
@@ -66,6 +67,10 @@ export async function warmSupportRoom(roomId: string, why: WarmReason): Promise<
 }
 
 async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
+  const found = await roomById(roomId);
+  if (!found) return 'none';
+  // a room whose binding is off or no longer names its group is not answered, so it is not warmed
+  if (!(await roomIsBound(found))) return 'unbound';
   const room = await roomWithSession(roomId);
   const session = room ? await sessionOf(room) : null;
   if (!room || !session) return 'none';
