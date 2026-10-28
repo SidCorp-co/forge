@@ -90,6 +90,28 @@ describe("a failed read's Retry, across the web app (criteria 478, 479, 496)", (
     expect(all).toEqual([]);
   });
 
+  // ISS-1229 r55, criterion 478 (judge-170 a7): a re-read offered on a 403 or 404 under words the one Retry does not
+  // draw. What enforces 478 is these words: every re-read label is the one Retry's, which offers itself only for an
+  // error the rule retries. The client does not refuse a re-sent 403 or 404, because those answer again for good
+  // reasons (access granted, the row created), as ask-again-when-access-returns.ts relies on.
+  it.each([
+    ["Ask again", `<button onClick={() => setTries((n) => n + 1)}>Ask again</button>`],
+    ["Load again", `<button onClick={() => q.refetch()}>Load again</button>`],
+    ["Try again", `<button onClick={() => q.refetch()}>Try again</button>`],
+    ["Load them again", `<button onClick={() => q.refetch()}>Load them again</button>`],
+    ["Fetch it again", `<button onClick={() => q.refetch()}>Fetch it again</button>`],
+    ["Check now", `<button onClick={() => q.refetch()}>Check now</button>`],
+    ["Refresh", `<button onClick={() => q.refetch()}>Refresh</button>`],
+    ["an icon named Look again", `<button aria-label="Look again" onClick={() => q.refetch()} />`],
+  ])("refuses a re-read drawn as %s, whatever error it is offered for", (_, control) => {
+    const file = `export const A = ({ q, setTries }) => <p>Couldn't load the runs. ${control}</p>;`;
+    expect(offences(join(SRC, "features/x/a.tsx"), file)).toEqual([expect.stringMatching(/^features\/x\/a\.tsx:1 (draws|names a control) "/)]);
+  });
+
+  it.each([["Sign in again"], ["Load the rest"], ["Loading…"], ["Send"]])("passes %s, which reads nothing again", (words) => {
+    expect(offences(join(SRC, "features/x/a.tsx"), `export const A = () => <button onClick={() => {}}>${words}</button>;`)).toEqual([]);
+  });
+
   it("is refused where a component draws its own Retry button", () => {
     const own = `export const A = ({ q }) => <p>Failed. <button onClick={() => q.refetch()}>Retry</button></p>;`;
     expect(offences(join(SRC, "features/x/a.tsx"), own)).toEqual([expect.stringContaining('draws "Retry" itself')]);

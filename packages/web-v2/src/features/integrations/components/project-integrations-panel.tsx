@@ -364,9 +364,11 @@ export function ProjectIntegrationsPanel({
           ) : null}
           <div className="flex items-center justify-between gap-2">
             <SectionTitle className="fg-h3">Status</SectionTitle>
-            <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
-              Refresh
-            </Button>
+            {!status.isError && (
+              <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
+                Refresh
+              </Button>
+            )}
           </div>
           <ul className="divide-y divide-line border-y border-line" data-testid="integration-rows">
             {groupCardsByProvider(cards).map((group) => {

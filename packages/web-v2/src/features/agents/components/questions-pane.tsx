@@ -186,14 +186,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
       )}
       {walkedOut && !onIssue && linked.gone && (
         <p className="fg-caption text-muted">
-          The decision that run named is no longer open.{" "}
-          <button
-            type="button"
-            className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-            onClick={() => router.refresh()}
-          >
-            Refresh
-          </button>
+          The decision that run named is no longer open.
         </p>
       )}
       {walkedOut && !onIssue && linked.unreachable && (
