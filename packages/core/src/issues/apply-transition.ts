@@ -27,9 +27,11 @@ import { issueChecklistRecord } from './checklist-record.js';
 import { designCheckOf } from './design-record.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
+import { issueGateOf } from './gates.js';
 import { supersedeMergeOnReopen } from './merge-record.js';
 import { type AwaitedDesignRef, mintParkQuestion, needsNotApplicable } from './park-question.js';
 import { repointPark, repointsPark } from './park-repoint.js';
+import { planCheckpointHolds } from './plan-checkpoint.js';
 import {
   readProjectDocument,
   settleOpenQuestions,
@@ -153,8 +155,10 @@ const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id :
 /**
  * The step a move leaves the run at. A claim from the backlog starts
  * at triage, from the plan checkpoint or a reopen at build where the issue's design passes the
- * design check, else at design (Issue lifecycle r15 design-check: nothing else reaches build); a
- * park keeps the step it paused, and its return finds it there; every other status holds no step.
+ * design check and, where gate plan_approval is enforced, the issue passed approved since its plan
+ * was last written (`plan-checkpoint.ts`), else at design (issue-lifecycle design-check: nothing
+ * else reaches build); a park keeps the step it paused, and its return finds it there; every other
+ * status holds no step.
  */
 async function stepAfter(
   issue: TransitionIssueRow,
@@ -166,7 +170,9 @@ async function stepAfter(
   if (to === 'in_progress') {
     if (PARK_STATUSES.includes(from)) return held;
     if (from === 'open') return 'triage';
-    return (await designCheckOf(db, issue)).passed ? 'build' : 'design';
+    if (!(await designCheckOf(db, issue)).passed) return 'design';
+    const gate = await issueGateOf(issue.projectId, 'plan_approval');
+    return (await planCheckpointHolds(db, issue.id, gate)) ? 'build' : 'design';
   }
   return null;
 }
