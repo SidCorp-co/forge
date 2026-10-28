@@ -77,7 +77,7 @@ export function BodyImage({ src, alt }: { src?: string; alt?: string }): ReactNo
     );
   }
   // A core file is read through the API client, so a refusal with a wait holds it (ISS-1229 r55, judge-170).
-  if (target.kind === "core-file") return <CoreImage path={target.path} alt={alt ?? ""} className={COMPACT_TAG_CLASS.img} />;
+  if (target.kind === "core-file") return <CoreImage path={target.path} fragment={target.fragment} alt={alt ?? ""} className={COMPACT_TAG_CLASS.img} />;
   return (
     // biome-ignore lint/performance/noImgElement: a body image is an arbitrary attachment or external URL with no known intrinsic size, and `next/image` needs both a configured remote host and dimensions — the reason `body-view.tsx` carried this same comment before both renderers came here
     <img src={target.href} alt={alt ?? ""} className={COMPACT_TAG_CLASS.img} />

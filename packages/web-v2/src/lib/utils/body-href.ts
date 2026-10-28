@@ -15,16 +15,17 @@ export type BodyHref =
   | { kind: "anchor"; href: string }
   /** A path the web app serves. Same tab, same origin as the page. */
   | { kind: "in-app"; href: string }
-  /** A file on the core. New tab, resolved against the core origin; `path` is the core's own, for the API client. */
-  | { kind: "core-file"; href: string; path: string }
+  /** A file on the core. New tab, resolved against the core origin; `path` is the core's own, for the API client,
+   *  and `fragment` what the address names inside the file, which no read carries. */
+  | { kind: "core-file"; href: string; path: string; fragment: string }
   | { kind: "external"; href: string; scheme: string }
   /** Neither origin can be derived. Refused, loudly, with this reason. */
   | { kind: "unresolvable"; href: string; reason: string };
 
-function parsedPath(href: string): { path: string; rest: string } | null {
+function parsedPath(href: string): { path: string; rest: string; search: string; hash: string } | null {
   try {
     const url = new URL(href, PARSE_BASE);
-    return { path: url.pathname, rest: `${url.search}${url.hash}` };
+    return { path: url.pathname, rest: `${url.search}${url.hash}`, search: url.search, hash: url.hash };
   } catch {
     return null;
   }
@@ -38,7 +39,7 @@ function onTheCore(href: string): BodyHref | null {
     const url = new URL(href, base);
     if (url.origin !== new URL(base).origin || url.pathname.split("/")[1] !== CORE_SEGMENT) return null;
     const path = `${url.pathname}${url.search}`;
-    return { kind: "core-file", href: coreFileUrl(`${path}${url.hash}`), path };
+    return { kind: "core-file", href: coreFileUrl(`${path}${url.hash}`), path, fragment: url.hash };
   } catch {
     return null;
   }
@@ -61,7 +62,9 @@ export function classifyBodyHref(href: string): BodyHref {
 
   const resolved = `${parsed.path}${parsed.rest}`;
   const first = parsed.path.split("/")[1] ?? "";
-  if (first === CORE_SEGMENT) return { kind: "core-file", href: coreFileUrl(resolved), path: resolved };
+  if (first === CORE_SEGMENT) {
+    return { kind: "core-file", href: coreFileUrl(resolved), path: `${parsed.path}${parsed.search}`, fragment: parsed.hash };
+  }
   if (href.startsWith("/")) return { kind: "in-app", href: resolved };
   return {
     kind: "unresolvable",

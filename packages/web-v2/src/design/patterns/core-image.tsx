@@ -45,10 +45,11 @@ function useNearScreen<T extends Element>(): [(el: T | null) => void, boolean] {
  */
 export function CoreImage({
   path,
+  fragment = "",
   alt,
   className,
   ...img
-}: { path: string; alt: string; className?: string } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "alt" | "className">) {
+}: { path: string; fragment?: string; alt: string; className?: string } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "alt" | "className">) {
   const files = useContext(CoreFilesContext);
   if (!files) throw new Error(`CoreImage drew ${path} outside a CoreFilesProvider, so nothing can read it through the client`);
   const [ref, near] = useNearScreen<HTMLSpanElement>();
@@ -57,7 +58,7 @@ export function CoreImage({
   useWaitAnnounced(file.error, fileWaitWords(file.error, alt || "the image"));
   if (file.src) {
     // biome-ignore lint/performance/noImgElement: the bytes are already in memory as an object URL, which `next/image` cannot take
-    return <img src={file.src} alt={alt} className={className} {...img} />;
+    return <img src={`${file.src}${fragment}`} alt={alt} className={className} {...img} />;
   }
   if (file.error) {
     return (

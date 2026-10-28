@@ -192,6 +192,28 @@ describe("a core file the server refused with a wait (criterion 495, judge-170)"
     expect(screen.getByRole("link", { name: "the results" })).toHaveAttribute("href", "/api/guides/a.md#results");
   });
 
+  // r55 whole-set review (b7336d1) F1: three places show one held image; its wait ends in one ask, not one each.
+  it("asks once when the wait ends, however many places show the held image", async () => {
+    draw(<AttachmentList rows={[imageRow]} />);
+    await screen.findByText("photo.png not loaded.");
+    fireEvent.click(screen.getByRole("button", { name: /photo\.png/ }));
+    await act(async () => void (await vi.advanceTimersByTimeAsync(500)));
+    for (let ms = 0; ms < 21_000; ms += 1) await act(async () => void (await vi.advanceTimersByTimeAsync(1)));
+    await waitFor(() => expect(document.querySelectorAll('img[src^="blob:"]').length).toBeGreaterThan(0));
+    expect(sent).toEqual([`GET ${IMAGE}`, `GET ${IMAGE}`]);
+  });
+
+  // r55 whole-set review (b7336d1) F2: the view an address names inside an image stays on the image drawn.
+  it("keeps the view a body image's address names inside the file, and reads the file without it", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(`${init?.method ?? "GET"} ${String(input)}`);
+      return new Response("<svg/>", { status: 200, headers: { "Content-Type": "image/svg+xml" } });
+    });
+    draw(<BodyImage src={`${IMAGE}#svgView(viewBox(0,0,10,10))`} alt="chart" />);
+    await waitFor(() => expect(document.querySelector("img")).toHaveAttribute("src", expect.stringMatching(/^blob:.*#svgView\(viewBox\(0,0,10,10\)\)$/)));
+    expect(sent).toEqual([`GET ${IMAGE}`]);
+  });
+
   it("refuses by name an image drawn where the app handed the kit no way to read core files", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<CoreImage path={IMAGE} alt="pasted" />)).toThrow(

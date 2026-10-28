@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import type { CoreFiles } from "@/design/patterns/core-image";
 import { retryAt } from "@/lib/utils/retry-rule";
 import { apiFile } from "./client";
@@ -18,7 +18,9 @@ function coreFileQuery(path: string) {
  * r55, judge-170: an `<img src>` on the core went out again on every return and every reload, inside the wait).
  */
 export function useCoreFile(path: string, enabled: boolean) {
-  const q = useQuery({ ...coreFileQuery(path), enabled });
+  const query = coreFileQuery(path);
+  const q = useQuery({ ...query, enabled });
+  const client = useQueryClient();
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     if (!q.data) {
@@ -29,19 +31,31 @@ export function useCoreFile(path: string, enabled: boolean) {
     setSrc(url);
     return () => URL.revokeObjectURL(url);
   }, [q.data]);
-  useAskedAgainAfterTheWait(enabled ? q.error : null, q.refetch);
+  useAskedAgainAfterTheWait(enabled ? q.error : null, q.refetch, () => client.getQueryState(query.queryKey)?.error);
   return { src, error: q.isError ? q.error : null };
 }
 
 /** The kit's reader of core files, which the app hands it. */
 export const coreFiles: CoreFiles = { useFile: useCoreFile };
 
-/** A failed file read asked again once, when the server's wait ends, and never before: every place showing it joins one ask. */
-export function useAskedAgainAfterTheWait(error: unknown, refetch: (options: { cancelRefetch: boolean }) => unknown): void {
+/**
+ * A failed file read asked again once, when the server's wait ends, and never before. Every place showing it joins one
+ * ask: one already sent is joined, and one already answered is not asked again (`failedNow` names the read's failure as
+ * it stands when the wait ends).
+ */
+export function useAskedAgainAfterTheWait(
+  error: unknown,
+  refetch: (options: { cancelRefetch: boolean }) => unknown,
+  failedNow: () => unknown = () => error,
+): void {
   const at = retryAt(error);
+  const failed = useRef(failedNow);
+  failed.current = failedNow;
   useEffect(() => {
     if (at === null) return;
-    const id = setTimeout(() => void refetch({ cancelRefetch: false }), Math.max(0, at - Date.now()) + 5);
+    const id = setTimeout(() => {
+      if (failed.current() === error) void refetch({ cancelRefetch: false });
+    }, Math.max(0, at - Date.now()) + 5);
     return () => clearTimeout(id);
-  }, [at, refetch]);
+  }, [at, error, refetch]);
 }
