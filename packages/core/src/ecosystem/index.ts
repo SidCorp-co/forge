@@ -1,3 +1,4 @@
+export { readAdoptionRecord } from './adoption-record.js';
 export { doorOf, tokenIdOf } from './channel-author.js';
 export { decideChannelGate } from './channel-gate.js';
 export { documentTypeWithArticle } from './channel-schema.js';

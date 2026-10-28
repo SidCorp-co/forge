@@ -55,6 +55,13 @@ const mergeMarkerBodySchema = z
       )
       .max(20)
       .optional(),
+    adoptions: z
+      .array(
+        z.string().regex(LANDED_CONTRACT, 'an adopted version is <project>/<contract>@<version>'),
+      )
+      .min(1, 'adoptions names at least one <project>/<contract>@<version> the issue adopted')
+      .max(20)
+      .optional(),
   })
   .strict();
 
@@ -81,6 +88,7 @@ async function runMergeMarker(
     ...(body.changedPaths ? { changedPaths: body.changedPaths } : {}),
     ...(body.mergedAt ? { mergedAt: new Date(body.mergedAt) } : {}),
     ...(body.contracts ? { contracts: body.contracts } : {}),
+    ...(body.adoptions ? { adoptions: body.adoptions } : {}),
     actor: {
       agency: actor.agency,
       commentAuthorId: userId,

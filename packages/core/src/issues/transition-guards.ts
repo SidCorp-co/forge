@@ -73,6 +73,7 @@ import {
   permissionRefusal,
   projectResource,
 } from '../permissions/index.js';
+import { readAdoptionDelivery } from './adoption-delivery.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { callerBoxOf } from './caller-box.js';
 import { designHeldSql, designHoldsOf, designOnlyMarkSql } from './design-delivery.js';
@@ -329,20 +330,29 @@ async function designGuard(ctx: GuardContext): Promise<GuardFault | null> {
 
 /**
  * closed from awaiting_release: a release closes what it claimed (`issues.release_batch_run_id`); a
- * design-only issue needs none, its approved revisions being what shipped (REQ-45 BC-4).
+ * design-only issue needs none, its approved revisions being what shipped (REQ-45 BC-4), and neither
+ * does an adoption-only one while its record holds (REQ-5 BC-17).
  */
 async function releaseGuard(ctx: GuardContext): Promise<GuardFault | null> {
   const rows = (await ctx.executor.execute(
     sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
   )) as unknown as Array<{ release_batch_run_id: string | null }>;
   if (rows[0]?.release_batch_run_id) return null;
+  // an adoption-only issue ships nothing either: the record it adopted is what landed (REQ-5 BC-17)
+  const adoption = await readAdoptionDelivery(ctx.executor, ctx.issue.id);
+  if (adoption.refs && !adoption.shortfall) return null;
   const design = await readDesignDelivery(ctx);
   if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0)
     return null;
   return {
     code: 'CLOSE_ONLY_BY_RELEASE',
-    detail: `an issue that ships code closes through a release, and no release has claimed this one${design.designOnly ? `; it is design-only, and ${designShortfall(design)}` : ''}. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`), which on a project with no production environment records its landing; either closes every issue it carries.`,
-    details: { from: ctx.from, to: ctx.to, designOnly: design.designOnly },
+    detail: `an issue that ships code closes through a release, and no release has claimed this one${design.designOnly ? `; it is design-only, and ${designShortfall(design)}` : ''}${adoption.shortfall ? `; its mark is an adoption record that no longer holds: ${adoption.shortfall}` : ''}. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`), which on a project with no production environment records its landing; either closes every issue it carries.`,
+    details: {
+      from: ctx.from,
+      to: ctx.to,
+      designOnly: design.designOnly,
+      adopted: adoption.refs,
+    },
   };
 }
 

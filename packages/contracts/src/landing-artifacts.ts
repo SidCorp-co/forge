@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-/** Where a landed change takes effect. `design` is a design revision: it deploys nothing. */
+/** Where a landed change takes effect. `design` is a design revision and `adoption` a contract
+ *  version a consumer adopted without changing code: neither deploys anything. */
 export const LANDING_SURFACES = [
 	"ui",
 	"api",
@@ -9,6 +10,7 @@ export const LANDING_SURFACES = [
 	"config",
 	"runner",
 	"design",
+	"adoption",
 ] as const;
 export type LandingSurface = (typeof LANDING_SURFACES)[number];
 
@@ -24,6 +26,7 @@ export const LANDING_SURFACE_LABELS: Readonly<Record<LandingSurface, string>> =
 		config: "Config",
 		runner: "Runner",
 		design: "Design",
+		adoption: "Adoption",
 	};
 
 export const ARTIFACT_CHANGE_LABELS: Readonly<Record<ArtifactChange, string>> =
@@ -34,7 +37,7 @@ export const ARTIFACT_CHANGE_LABELS: Readonly<Record<ArtifactChange, string>> =
 	};
 
 /** The surfaces whose artifacts ship nothing: a release carrying only these deploys no change. */
-export const SHIPS_NOTHING: readonly LandingSurface[] = ["design"];
+export const SHIPS_NOTHING: readonly LandingSurface[] = ["design", "adoption"];
 
 export interface LandingArtifact {
 	surface: LandingSurface;
@@ -171,6 +174,12 @@ export function designLandingRef(
 /** The artifact a design revision is: surface `design`, which ships nothing. */
 export function designArtifact(ref: string): LandingArtifact {
 	return { surface: "design", ref, change: "changed" };
+}
+
+/** The artifact an adopted contract version is, `<project>/<contract>@<version>`: surface
+ *  `adoption`, which ships nothing. Only the mark writer stamps it, after reading the record. */
+export function adoptionArtifact(ref: string): LandingArtifact {
+	return { surface: "adoption", ref, change: "changed" };
 }
 
 /**

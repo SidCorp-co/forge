@@ -129,6 +129,26 @@ function hasCodeEvidence(evidence: WorkEvidence): boolean {
   );
 }
 
+/**
+ * Each piece of code evidence the issue carries, named: what an adoption record may never stand in
+ * for (REQ-5 BC-18). Strict — a reader that refuses on this answer cannot take a raised query for
+ * "no code", so its failure is let out rather than read as none.
+ */
+export async function codeEvidenceOf(
+  issueId: string,
+  executor: EvidenceExecutor = db,
+): Promise<string[]> {
+  const e = await collectWorkEvidence(issueId, executor);
+  return [
+    e.handoffCommitSha ? `an implementation handoff naming commit ${e.handoffCommitSha}` : null,
+    e.handoffFilesModified > 0
+      ? `${e.handoffFilesModified} modified file(s) in its implementation handoffs`
+      : null,
+    e.branch ? `branch ${e.branch}` : null,
+    e.mergedCommitSha ? `merged commit ${e.mergedCommitSha}` : null,
+  ].filter((x): x is string => x !== null);
+}
+
 async function hasChildIssues(issueId: string, executor: EvidenceExecutor = db): Promise<boolean> {
   const [row] = await executor
     .select({ id: issueDependencies.id })
@@ -150,7 +170,10 @@ const NO_WORK_EVIDENCE_DETAIL =
   'there too), write the implementation step ' +
   'handoff with commitSha/filesModified, or, where the work landed on the base branch itself, ' +
   'mark it merged with `POST /api/issues/:id/merge` carrying `commit`, the whole sha it landed at, which ' +
-  "Forge checks against the project's repository, before advancing. A branch equal to the " +
+  "Forge checks against the project's repository, before advancing. Where the issue changed no " +
+  'code and its whole deliverable is adopting a contract version, mark it with `adoptions` naming ' +
+  "each `<project>/<contract>@<version>` it adopted, which Forge reads off the project's interface " +
+  'and links. A branch equal to the ' +
   'project base ' +
   'branch is not evidence, and neither is the last branch of a project whose release chain has ' +
   'two or more entries: both name where work lands, not that any happened. Where the chain is ' +

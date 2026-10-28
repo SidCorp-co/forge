@@ -4,6 +4,7 @@
  * `merge-record.ts`.
  */
 
+import type { AdoptionHeld } from '@forge/contracts/ecosystem';
 import type { LandingArtifact, MergedHead, ReadPaths } from '@forge/contracts/landing-artifacts';
 
 /** The one name for what the pair of columns means, and the ONLY reading of it:
@@ -36,6 +37,38 @@ export function designOnlyStamp(
   const artifacts = row.mergedArtifacts ?? [];
   if (artifacts.length === 0 || artifacts.some((a) => a.surface !== 'design')) return null;
   return artifacts.map((a) => a.ref);
+}
+
+/** The stamp an adoption record alone wrote (`merge-marker.ts`, REQ-5 BC-17): no commit, no box-read
+ *  paths, and every artifact an `adoption` one, `<project>/<contract>@<version>` each. */
+export function adoptionOnlyStamp(
+  row: MergeMarkColumns & {
+    mergedArtifacts: readonly LandingArtifact[] | null;
+    mergedPaths: ReadPaths | null;
+  },
+): string[] | null {
+  if (row.mergedAt == null || (row.mergedCommitSha ?? '').trim() !== '' || row.mergedPaths) {
+    return null;
+  }
+  const artifacts = row.mergedArtifacts ?? [];
+  if (artifacts.length === 0 || artifacts.some((a) => a.surface !== 'adoption')) return null;
+  return artifacts.map((a) => a.ref);
+}
+
+/** The landing an adoption record names outside git, where a mark is read by its landing. */
+export function adoptionLandingOf(refs: readonly string[]): string {
+  return `contract version${refs.length === 1 ? '' : 's'} ${refs.join(', ')} adopted, no code changed`;
+}
+
+/** The sentence an adoption mark's trail and answer carry: what Forge read, and that no code landed. */
+export function describeAdoptionMark(held: readonly AdoptionHeld[]): string {
+  const read = held
+    .map(
+      (h) =>
+        `${h.ref} (interface revision ${h.interfaceRevision} built against it, ${h.links} link${h.links === 1 ? '' : 's'} pinned there)`,
+    )
+    .join('; ');
+  return `this mark is an adoption record Forge read off the project's interface and links, not a merge of code: ${read}. No commit is recorded because the issue changed none, and it closes on this record without a release`;
 }
 
 /** The sentence saying which kind this is, written once: the audit comment and the caller's

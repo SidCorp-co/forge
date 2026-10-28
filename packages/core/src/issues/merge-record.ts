@@ -39,7 +39,10 @@ type MergeEvidence =
       artifacts?: LandingArtifact[] | null;
     }
   | { kind: 'landed'; landing: string; at?: Date | null; artifacts?: LandingArtifact[] | null }
-  | { kind: 'asserted'; at?: Date | null };
+  | { kind: 'asserted'; at?: Date | null }
+  /** An adoption record Forge read (REQ-5 BC-17): the `adoption` artifacts it names and, outside
+   *  git, the landing sentence naming them. No commit: the issue changed no code. */
+  | { kind: 'adopted'; artifacts: LandingArtifact[]; landing: string | null };
 
 export interface MergeRecord {
   /** Whether THIS call moved the row. Every caller has to pass this on. */
@@ -180,7 +183,7 @@ export async function recordIssueMerge(
   const stampExpr =
     evidence.kind === 'observed'
       ? sqlTimestamp(evidence.mergedAt)
-      : evidence.at
+      : evidence.kind !== 'adopted' && evidence.at
         ? sqlTimestamp(evidence.at)
         : sql`now()`;
 

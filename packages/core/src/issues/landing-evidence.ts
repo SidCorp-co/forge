@@ -183,7 +183,10 @@ export function landingMarkRefusal(args: {
   return null;
 }
 
-type ArtifactsRefusalCode = 'ARTIFACTS_NOT_THIS_SHAPE' | 'ARTIFACTS_NOT_DESIGN';
+type ArtifactsRefusalCode =
+  | 'ARTIFACTS_NOT_THIS_SHAPE'
+  | 'ARTIFACTS_NOT_DESIGN'
+  | 'ARTIFACTS_ADOPTION_BY_HAND';
 
 /**
  * The artifacts a mark records, or its refusal. On `git` they are read from the landing commit's
@@ -207,6 +210,18 @@ export function markArtifacts(args: {
         'this project lands its work in git (`source.type` is `git`), where what a landing changed is ' +
         "read from its commit's changed paths through the project document's `release.surfaces`, so " +
         'nothing was marked. Send the mark without `artifacts`.',
+    };
+  }
+  // an adoption is stamped only off the record Forge read (`adoptions`), never off a list sent by hand
+  const adopted = (sent ?? []).filter((a) => a.surface === 'adoption');
+  if (adopted.length > 0) {
+    return {
+      ok: false,
+      code: 'ARTIFACTS_ADOPTION_BY_HAND',
+      detail:
+        `the call names \`adoption\` ${adopted.map((a) => a.ref).join(', ')} as an artifact, and an adoption is ` +
+        "stamped only from the record Forge reads off the project's interface and links, so nothing was " +
+        'marked. Send `adoptions: ["<project>/<contract>@<version>"]` instead.',
     };
   }
   const design = designLandingRef(landing);

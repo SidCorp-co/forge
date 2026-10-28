@@ -16,9 +16,10 @@ const surfaceGlobSchema = z
     { message: `a surface path is ${SURFACE_GLOB_SHAPE}` },
   );
 
-/** `design` is what a design revision lands as; no changed path is one. */
+/** `design` is what a design revision lands as and `adoption` what an adopted contract version
+ *  lands as; no changed path is either. */
 const MAPPED_SURFACES = LANDING_SURFACES.filter(
-  (s): s is Exclude<LandingSurface, 'design'> => s !== 'design',
+  (s): s is Exclude<LandingSurface, 'design' | 'adoption'> => s !== 'design' && s !== 'adoption',
 );
 
 /**
@@ -34,7 +35,7 @@ export const surfacesSchema = z.strictObject({
       z.strictObject({
         surface: z.enum(MAPPED_SURFACES, {
           error: (issue) =>
-            `surface ${JSON.stringify(issue.input)} cannot be mapped from a path: it is one of ${MAPPED_SURFACES.map((s) => `\`${s}\``).join(', ')} (\`design\` is a design revision's, never a path's)`,
+            `surface ${JSON.stringify(issue.input)} cannot be mapped from a path: it is one of ${MAPPED_SURFACES.map((s) => `\`${s}\``).join(', ')} (\`design\` is a design revision's and \`adoption\` an adopted contract version's, never a path's)`,
         }),
         paths: z.array(surfaceGlobSchema).min(1).max(32),
       }),

@@ -83,6 +83,12 @@ change notice owes nothing and is not listed; read it in \`GET /api/projects/:id
    \`pinnedVersion\` on each link (\`PUT /api/projects/:id/links/<link>\`, step 4) and that consumption's
    \`builtAgainst\` on the interface (\`PUT /api/projects/:id/interface\`). A hand pin takes only the
    version approved, and on the interface the elements the consumption names held in that version.
+6. An issue whose whole deliverable was that adoption, with no code changed, lands on the record:
+   \`POST /api/issues/:id/merge { adoptions: ["<provider>/<contract>@<version>"] }\`, alone, then
+   \`awaiting_release\` and \`closed\`, with no release. Forge reads the record off the interface and
+   links, and refuses \`ADOPTION_NOT_RECORDED\` naming what it read instead; an issue that carries code,
+   or a mark naming a commit, target or landing beside it, is \`ADOPTION_BESIDE_CODE\` and lands on its
+   commit.
 
 ### Working a builder run
 Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to the
