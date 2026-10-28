@@ -262,3 +262,23 @@ describe('withdrawing a design that was never approved', () => {
     expect((await read(id)).status).toBe('proposed');
   });
 });
+
+// 2026-10-28: every write door under /workflows/:workflow takes the workflow's id, and a list row
+// named it only inside its document, so a caller read the id from the database to act on a row
+describe('a listed workflow names the id its write doors take', () => {
+  it('carries workflowId on every row, in both views, and a write door takes it', async () => {
+    const id = await proposed('qa-listed-id');
+
+    const full = (ok(await say('master', 'GET', at('/workflows'))).workflows as Doc[]).find(
+      (w) => w.document.flow === 'qa-listed-id',
+    );
+    expect(full?.workflowId).toBe(id);
+    const summary = (
+      ok(await say('master', 'GET', at('/workflows?view=summary'))).workflows as Doc[]
+    ).find((w) => w.flow === 'qa-listed-id');
+    expect(summary?.workflowId).toBe(id);
+
+    ok(await withdraw(full?.workflowId as string));
+    expect(await listed()).not.toContain('qa-listed-id');
+  });
+});

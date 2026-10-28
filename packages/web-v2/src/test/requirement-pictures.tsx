@@ -44,6 +44,7 @@ export function detail(rev: Partial<RequirementRevision>, over: Partial<Requirem
 
 /** The Checkout workflow a process requirement links, in its current design: cart, pay, done. */
 export const workflow = {
+  workflowId: "w1",
   revision: 3,
   writer: "u1",
   writerName: "Lan",

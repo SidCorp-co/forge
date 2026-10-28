@@ -233,3 +233,41 @@ describe('adopt: a consumer moves to an additive version in one act', () => {
     expect(out.refusals[0]?.detail).toContain('than its record lists');
   });
 });
+
+describe('adopt: the way out of a step no differ measured', () => {
+  // catalog-api adopting adminhub-api ctl-api-v1 2.1.0, measured unknown over two allOf→oneOf
+  // warnings: no door re-measures and `semantic` only raises a class, so the refusal named no way
+  // out. The way out is the hand pin, which takes only the version approved.
+  it('names the hand pin as the way out of every unmeasured step', () => {
+    const unknown = new Map(VERSIONS).set('3.1.0', version('3.0.0', 'unknown'));
+    const unread = new Map(VERSIONS).set(
+      '3.1.0',
+      version('3.0.0', 'non-breaking', [
+        { element: 'document', kind: 'changed', level: 'info', text: 'opaque', check: 'opaque' },
+      ]),
+    );
+    const noLine = new Map(VERSIONS).set('3.1.0', version(null, 'non-breaking'));
+    const cutShort = new Map(VERSIONS).set(
+      '3.1.0',
+      version('3.0.0', 'non-breaking', [
+        { element: '…', kind: 'changed', level: 'info', text: 'more', check: 'changes-truncated' },
+      ]),
+    );
+    for (const versions of [unknown, unread, noLine, cutShort]) {
+      const out = checkAdopt(world({ versions }));
+      expect(out.ok).toBe(false);
+      if (out.ok) continue;
+      const detail = out.refusals.find((r) => r.code === 'ADOPT_VERSION_UNMEASURED')?.detail ?? '';
+      expect(detail).toContain(
+        'and no door re-measures it, so move this consumer by hand once its code is checked against 3.1.1',
+      );
+      expect(detail).toContain(
+        '`PUT /api/projects/:id/links/<link>` setting `pinnedVersion: "3.1.1"` on each link to catalog-api/admin-rest-v1',
+      );
+      expect(detail).toContain(
+        '`PUT /api/projects/:id/interface` setting that consumption\'s `builtAgainst: "3.1.1"`',
+      );
+      expect(detail).toContain('a hand pin takes only the version approved');
+    }
+  });
+});

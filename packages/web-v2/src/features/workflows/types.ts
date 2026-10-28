@@ -130,6 +130,8 @@ interface WorkflowDocument extends WorkflowBody {
 }
 
 export interface WorkflowRecord {
+  /** The id every write door under `/workflows/:workflow` takes; the same as `document.id`. */
+  workflowId: string;
   revision: number;
   writer: string;
   writerName: string;

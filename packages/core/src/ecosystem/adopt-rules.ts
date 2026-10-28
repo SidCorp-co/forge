@@ -63,6 +63,12 @@ function chainFrom(w: AdoptWorld): string[] {
 }
 
 // a step is additive only where a differ measured it and found nothing above info: a breaking measurement, an unknown one, a declared semantic change or a change no differ read all stop the adopt
+// a version no differ measured additive stays unmeasured: no door re-measures it, and a `semantic`
+// declaration only raises a class, so the way out is the hand pin, which takes only the version
+// approved (`link-own-rules.ts:versionRefusals`, `interface-rules.ts:builtAgainstRefusals`)
+const handPin = (w: AdoptWorld): string =>
+  ` Adopt cannot take it, and no door re-measures it, so move this consumer by hand once its code is checked against ${w.version}: \`PUT /api/projects/:id/links/<link>\` setting \`pinnedVersion: "${w.version}"\` on each link to ${w.contract}, and \`PUT /api/projects/:id/interface\` setting that consumption's \`builtAgainst: "${w.version}"\`; a hand pin takes only the version approved, and on the interface the elements it names held in that version.`;
+
 function stepRefusal(w: AdoptWorld, step: string): EcosystemRefusal | null {
   const v = w.versions.get(step);
   if (!v) return null;
@@ -81,14 +87,14 @@ function stepRefusal(w: AdoptWorld, step: string): EcosystemRefusal | null {
     return {
       code: 'ADOPT_VERSION_UNMEASURED',
       path: '/version',
-      detail: `${w.contract} ${step} measured more changes against ${from} than its record lists, so a removed field a link reads may be among the ones not listed; adopt moves a consumer only where every change between its pin and ${w.version} can be read.`,
+      detail: `${w.contract} ${step} measured more changes against ${from} than its record lists, so a removed field a link reads may be among the ones not listed; adopt moves a consumer only where every change between its pin and ${w.version} can be read.${handPin(w)}`,
     };
   }
   if (v.diff.classification !== 'non-breaking' || unread) {
     return {
       code: 'ADOPT_VERSION_UNMEASURED',
       path: '/version',
-      detail: `${w.contract} ${step} is measured ${v.diff.classification} against ${from}, not non-breaking; adopt moves a consumer only where a differ measured every version between its pin and ${w.version} as additive.`,
+      detail: `${w.contract} ${step} is measured ${v.diff.classification} against ${from}, not non-breaking; adopt moves a consumer only where a differ measured every version between its pin and ${w.version} as additive.${handPin(w)}`,
     };
   }
   return null;
@@ -103,7 +109,7 @@ function versionRefusals(w: AdoptWorld, moving: readonly Pin[], chain: readonly 
       out.push({
         code: 'ADOPT_VERSION_UNMEASURED',
         path: pin.path,
-        detail: `no line of measured versions leads from ${pin.version}, which ${pin.holder} pins, to ${w.contract} ${w.version} (measured back to ${chain.at(-1) ?? w.version}); adopt moves a pin only across versions each measured against the one before it.`,
+        detail: `no line of measured versions leads from ${pin.version}, which ${pin.holder} pins, to ${w.contract} ${w.version} (measured back to ${chain.at(-1) ?? w.version}); adopt moves a pin only across versions each measured against the one before it.${handPin(w)}`,
       });
       continue;
     }

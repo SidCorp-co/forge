@@ -68,7 +68,7 @@ const proposed = (): WorkflowDesign =>
     requirements: [{ key: "REQ-9", title: "Checkout", status: "agreed", state: "in_delivery", pinnedRevision: 1 }],
   }) as unknown as WorkflowDesign;
 
-const record = { writerName: "Ana", document: { ...body, id: "w-1", createdAt: AT, updatedAt: AT }, revision: 1 } as unknown as WorkflowRecord;
+const record = { workflowId: "w-1", writerName: "Ana", document: { ...body, id: "w-1", createdAt: AT, updatedAt: AT }, revision: 1 } as unknown as WorkflowRecord;
 
 const atView = (view: "person" | "developer") => window.history.replaceState(null, "", view === "developer" ? "/?view=developer" : "/");
 const withQueries = (node: React.ReactNode) =>

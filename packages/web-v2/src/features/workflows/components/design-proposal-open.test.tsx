@@ -43,7 +43,7 @@ const design = (over: Partial<WorkflowDesign>): WorkflowDesign =>
     ...over,
   }) as unknown as WorkflowDesign;
 
-const record = { writerName: "Ana", document: { ...approvedDoc, id: "w-1", createdAt: AT, updatedAt: AT }, revision: 1 } as unknown as WorkflowRecord;
+const record = { workflowId: "w-1", writerName: "Ana", document: { ...approvedDoc, id: "w-1", createdAt: AT, updatedAt: AT }, revision: 1 } as unknown as WorkflowRecord;
 
 /** Core's health read for the design: no markers, and the proposed revision's diff against the approved one. */
 const health = {

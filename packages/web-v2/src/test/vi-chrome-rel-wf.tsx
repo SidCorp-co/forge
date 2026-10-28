@@ -191,6 +191,7 @@ const body = (flow: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 const record = (flow: string, status: string, pending: number | null, over: Record<string, unknown> = {}) => ({
+  workflowId: `w-${flow}`,
   revision: 2,
   writer: "u1",
   writerName: "Lan",

@@ -70,9 +70,15 @@ change notice owes nothing and is not listed; read it in \`GET /api/projects/:id
    \`requirements.approve\` act and adopt never does it. Adopt takes \`project.write\` on this project.
    Refused by name, nothing written: \`ADOPT_CONTRACT_NOT_CONSUMED\` (the interface consumes no such
    contract), \`VERSION_UNKNOWN\` / \`CONTRACT_VERSION_NOT_APPROVED\`, \`ADOPT_VERSION_BEHIND_PIN\` (a pin is
-   already past it), \`ADOPT_VERSION_BREAKING\` or \`ADOPT_VERSION_UNMEASURED\` (some version between a pin
-   and it is not measured non-breaking), and \`ADOPT_FIELD_MISSING\`, which names each link and field the
-   version no longer holds. That link is checked against the code and written by hand.
+   already past it), \`ADOPT_VERSION_BREAKING\` (some version between a pin and it is measured breaking:
+   worked through its change notice and the consumer's own issue), \`ADOPT_VERSION_UNMEASURED\` (some
+   version between a pin and it is measured \`unknown\`, or a check went unread, so not non-breaking),
+   and \`ADOPT_FIELD_MISSING\`, which names each link and field the version no longer holds.
+   No door re-measures an unmeasured version, and \`semantic\` only raises a classification, so both
+   that and a missing field are moved by hand once the code is checked against the version: set
+   \`pinnedVersion\` on each link (\`PUT /api/projects/:id/links/<link>\`, step 4) and that consumption's
+   \`builtAgainst\` on the interface (\`PUT /api/projects/:id/interface\`). A hand pin takes only the
+   version approved, and on the interface the elements the consumption names held in that version.
 
 ### Working a builder run
 Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to the

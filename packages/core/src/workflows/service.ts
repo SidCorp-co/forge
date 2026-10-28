@@ -319,6 +319,8 @@ export function workflowView(
   returnReason?: string | null,
 ) {
   return {
+    // the id every write door under `/workflows/:workflow` takes, named on the row as the summary view names it
+    workflowId: row.id,
     revision: row.revision,
     writer: row.writtenByUser,
     writerName: writerName ?? row.writtenByUser,

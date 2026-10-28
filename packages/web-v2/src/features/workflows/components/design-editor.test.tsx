@@ -36,7 +36,7 @@ const document = {
   createdAt: AT,
   updatedAt: AT,
 };
-const record = { revision: 3, writer: "u-1", writerName: "Ana", document } as unknown as WorkflowRecord;
+const record = { workflowId: document.id, revision: 3, writer: "u-1", writerName: "Ana", document } as unknown as WorkflowRecord;
 const design = (status: DesignStatus) =>
   ({ workflowId: "w-1", flow: "case", status, revision: 3, proposedRevision: null, approvedRevision: status === "approved" ? 3 : null, canDecide: false, waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }), revisions: [], builds: [] }) as unknown as WorkflowDesign;
 
