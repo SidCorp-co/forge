@@ -2358,6 +2358,26 @@ export const SAID = {
 		en: "idle: last hook `{event}` {m}m ago, nothing claimable {idle}m, and {declared}",
 		vars: { event: "code", m: "count", idle: "count", declared: "said" },
 	},
+	"masters.verdict.archived": {
+		en: "project archived at {at}; unarchive to drive it again",
+		vars: { at: "instant" },
+	},
+	"masters.verdict.archivedWithheld": {
+		en: "{archived}: no master is placed",
+		vars: { archived: "said" },
+	},
+	"masters.verdict.archivedRetire": {
+		en: "{archived}: its master is retired",
+		vars: { archived: "said" },
+	},
+	"masters.verdict.archivedHeld": {
+		en: "{archived}: its pane is left undriven and retired once nothing holds it: {held}",
+		vars: { archived: "said", held: "saidList" },
+	},
+	"masters.verdict.archivedJobPanes": {
+		en: "{n} job pane(s) still running",
+		vars: { n: "count" },
+	},
 	"masters.verdict.noConversation": {
 		en: "no conversation recorded: a successor would start cold",
 	},
@@ -2507,6 +2527,10 @@ export const SAID = {
 	"masters.refusal.noSuchPass": {
 		en: "this master has no pass {id}.{now}",
 		vars: { id: "code", now: "said" },
+	},
+	"masters.refusal.projectArchived": {
+		en: "this project was archived at {at}, so its master opens no pass: unarchive it (POST /api/projects/:id/unarchive) to drive it again",
+		vars: { at: "instant" },
 	},
 	"masters.refusal.sessionEnded": {
 		en: "this master session is {status}: register again (POST /api/devices/me/master-session) and open the pass there",
