@@ -223,7 +223,10 @@ function shortfallStep(s: Shortfall): string {
       return `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}; ${COMMIT_MAY_STAY_EMPTY}`;
     }
     if (s.clears === landingShortfallWords(false, 'refused').clears) {
-      return `use ${MARK_MERGED_ACTION} in its properties, fill in ${WHERE_IT_LANDED_FIELD} and ${LEAVE_COMMIT_EMPTY}, since Forge cannot read this project's repository`;
+      return (
+        `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}. ` +
+        `${capitalised(LEAVE_COMMIT_EMPTY)}. Forge cannot read this project's repository, so it refuses a named commit`
+      );
     }
     return `use ${MARK_MERGED_ACTION} in its properties, fill in ${WHERE_IT_LANDED_FIELD} and ${NAME_THE_LANDED_COMMIT}`;
   }
