@@ -43,7 +43,7 @@ function facts(over: Partial<MasterJudged> = {}): MasterJudged {
   };
 }
 
-const online = { runnerStatus: 'online', passOpen: false };
+const online = { runnerStatus: 'online', passOpen: false, archivedAt: null };
 const working = { kind: 'resumed' as const, silentMs: 0 };
 const ended = { kind: 'host_ended' as const, silentMs: 60_000 };
 /** A pane holding runs: the first names' subagents still working, the rest read over. */

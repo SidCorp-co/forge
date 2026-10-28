@@ -88,6 +88,16 @@ export function sessionEndedRefusal(status: string, terminal: boolean): MasterRe
   );
 }
 
+/** A pass opened for an archived project's master is refused: an archive drives no master (ISS-353). */
+export function projectArchivedRefusal(archivedAt: Date | null): MasterRefusal | null {
+  if (archivedAt === null) return null;
+  return refusal(
+    'MASTER_PROJECT_ARCHIVED',
+    '/sessionId',
+    say('masters.refusal.projectArchived', { at: archivedAt.toISOString() }),
+  );
+}
+
 function undeclaredSlots(deviceName: string): MasterRefusal {
   return refusal(
     'MASTER_SLOTS_UNDECLARED',
