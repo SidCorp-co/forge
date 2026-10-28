@@ -148,6 +148,6 @@ export function probeNote(
     : criterionClass === 'server_side'
       ? 'not owed: a server-side check is judged from its capture'
       : criterionClass === null
-      ? 'not owed: no design classes this criterion'
-      : null;
+        ? 'not owed: no design classes this criterion'
+        : null;
 }

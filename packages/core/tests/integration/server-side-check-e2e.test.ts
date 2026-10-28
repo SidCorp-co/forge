@@ -90,7 +90,8 @@ async function issueWithServerCheck(): Promise<string> {
           criterion: 2,
           class: 'server_side',
           pattern: 'api-route',
-          proof: 'capture from inside the pod: tree fingerprint, router read in-process, kernel 404s',
+          proof:
+            'capture from inside the pod: tree fingerprint, router read in-process, kernel 404s',
         },
       ],
       modules: ['issues'],
@@ -142,7 +143,9 @@ async function lastVerdictFields(issue: string): Promise<Record<string, string[]
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
     .at(-1);
   const out: Record<string, string[]> = {};
-  for (const f of (last?.fields ?? []) as Doc[]) (out[f.key] ??= []).push(String(f.value));
+  for (const f of (last?.fields ?? []) as Doc[]) {
+    out[f.key] = [...(out[f.key] ?? []), String(f.value)];
+  }
   return out;
 }
 
@@ -176,7 +179,12 @@ describe('a design classes a check seen only inside the running server (REQ-36 B
 describe('a judgement of a server-side check cites its capture, with no clip and no probe', () => {
   it('takes a pass citing a text capture attached to the issue, keeping no probe, and its record says why none is owed', async () => {
     const issue = await issueWithServerCheck();
-    await attach(issue, CAPTURE, 'text/plain', 'sha256 20e95071 2163 files\nroutes 931, 0 match\n404 50\n');
+    await attach(
+      issue,
+      CAPTURE,
+      'text/plain',
+      'sha256 20e95071 2163 files\nroutes 931, 0 match\n404 50\n',
+    );
     const res = await verdict(issue, { criterion: 2, verdict: 'pass', evidence: [CAPTURE] });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(await stored(issue)).toEqual({ probes: 0, verdicts: 1 });
@@ -214,7 +222,9 @@ describe('a judgement of a server-side check cites its capture, with no clip and
           ['VERDICT_CAPTURE_REQUIRED'],
         ]);
         expect(pathsOf(res)).toEqual(['/evidence']);
-        expect(res.body.error.refusals[0].detail).toContain(`a \`${word}\` on it cites the capture`);
+        expect(res.body.error.refusals[0].detail).toContain(
+          `a \`${word}\` on it cites the capture`,
+        );
       }
     }
     expect(await stored(issue)).toEqual({ probes: 0, verdicts: 0 });
@@ -247,7 +257,12 @@ describe('a judgement of a server-side check cites its capture, with no clip and
         expect: { status: 404 },
       },
     ]) {
-      const res = await verdict(issue, { criterion: 2, verdict: 'pass', evidence: [CAPTURE], probe });
+      const res = await verdict(issue, {
+        criterion: 2,
+        verdict: 'pass',
+        evidence: [CAPTURE],
+        probe,
+      });
       expect([res.status, refused(res)]).toEqual([422, ['VERDICT_PROBE_SERVER_SIDE']]);
       expect(pathsOf(res)).toEqual(['/probe']);
     }
