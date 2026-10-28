@@ -203,7 +203,7 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     const again = await readRuns().then(() => null, refusal);
     expect(sent).toEqual(["GET /api/runs"]);
     expect(again).toBeInstanceOf(ApiError);
-    expect(again).toMatchObject({ status: 429, code: "RATE_LIMITED", message: first?.message, retryAt: first?.retryAt, read: "GET /api/runs" });
+    expect(again).toMatchObject({ status: 429, code: "RATE_LIMITED", message: first?.message, retryAt: first?.retryAt, read: `GET ${location.origin}/api/runs` });
     expect((again?.retryAt ?? 0) - Date.now()).toBe(15_000);
   });
 
@@ -243,7 +243,7 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     window.sessionStorage.clear();
     vi.resetModules();
     const secondTab = await import("./client");
-    await expect(secondTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429, read: "GET /api/runs" });
+    await expect(secondTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429, read: `GET ${location.origin}/api/runs` });
     expect(sent).toEqual(["GET /api/runs"]);
   });
 
@@ -268,7 +268,7 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     const file = "/api/attachments/a1/download";
     await expect(apiFile(file)).rejects.toMatchObject({ status: 429 });
     vi.setSystemTime(Date.now() + 19_000);
-    await expect(apiFile(file)).rejects.toMatchObject({ status: 429, read: `GET ${file}` });
+    await expect(apiFile(file)).rejects.toMatchObject({ status: 429, read: `GET ${location.origin}${file}` });
     expect(sent).toEqual([`GET ${file}`]);
     vi.setSystemTime(Date.now() + 1_500);
     await expect(apiFile(file)).resolves.toBeInstanceOf(Blob);
@@ -278,7 +278,7 @@ describe("a read the server refused with a wait (criterion 495)", () => {
   // r55 review F2: one address is one read, whichever caller names it.
   it("is held for the same address asked by another caller or with a fragment", async () => {
     await expect(apiFile("/api/runs")).rejects.toMatchObject({ status: 429 });
-    await expect(readRuns()).rejects.toMatchObject({ status: 429, read: "GET /api/runs" });
+    await expect(readRuns()).rejects.toMatchObject({ status: 429, read: `GET ${location.origin}/api/runs` });
     await expect(apiFile("/api/runs#top")).rejects.toMatchObject({ status: 429 });
     expect(sent).toEqual(["GET /api/runs"]);
   });
@@ -310,12 +310,19 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     answers[2]?.(refusedAfter(20));
     await reads[2];
     const now = Date.now();
-    expect(written).toEqual(expect.arrayContaining([`forge.heldRead:GET /api/runs@${now + 60_000}`, `forge.heldRead:GET /api/labels@${now + 20_000}`]));
+    expect(written).toEqual(expect.arrayContaining([`forge.heldRead:GET ${location.origin}/api/runs@${now + 60_000}`, `forge.heldRead:GET ${location.origin}/api/labels@${now + 20_000}`]));
     vi.setSystemTime(now + 30_000);
     vi.resetModules();
     const thirdTab = await import("./client");
     await expect(thirdTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429, retryAt: now + 60_000 });
     expect(sent).toHaveLength(3);
+  });
+
+  // r55 whole-set review F1: one address however it is spelled, dot segments included.
+  it("is held for the same address spelled with dot segments", async () => {
+    await expect(apiFile("/api/attachments/x/../a/download")).rejects.toMatchObject({ status: 429 });
+    await expect(apiFile("/api/attachments/a/download")).rejects.toMatchObject({ status: 429 });
+    expect(sent).toEqual(["GET /api/attachments/x/../a/download"]);
   });
 
   it("refuses by name a file that is not on the core, and sends nothing", async () => {

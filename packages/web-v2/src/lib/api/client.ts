@@ -189,11 +189,13 @@ function storedHolds(read: string): HeldRead[] {
 
 function heldOn(read: string): HeldRead | undefined {
   const now = Date.now();
+  if ((ownReads.get(read)?.retryAt ?? now) < now) ownReads.delete(read);
   const holds = [ownReads.get(read), ...storedHolds(read)].filter((refusal): refusal is HeldRead => (refusal?.retryAt ?? 0) > now);
   return holds.sort((a, b) => b.retryAt - a.retryAt)[0];
 }
 
 function storeHeld(read: string, refusal: HeldRead): void {
+  for (const [held, standing] of ownReads) if (standing.retryAt <= Date.now()) ownReads.delete(held);
   ownReads.set(read, refusal);
   try {
     window.localStorage.setItem(`${HELD_PREFIX}${read}@${refusal.retryAt}`, JSON.stringify(refusal));
@@ -228,7 +230,9 @@ function noteAnswer(read: string, refused: ApiError | null): void {
 /** Which read a request is, as the client holds it: the address it goes to, whichever caller names it (r55 review F2). */
 function readOf(method: string | undefined, url: string): string | undefined {
   if (typeof window === 'undefined' || !isRead(method)) return undefined;
-  return `${(method ?? 'GET').toUpperCase()} ${url.split('#')[0]}`;
+  const address = new URL(url, window.location.href);
+  address.hash = '';
+  return `${(method ?? 'GET').toUpperCase()} ${address.href}`;
 }
 
 /** Forgets every held read: a test's fresh browser. */

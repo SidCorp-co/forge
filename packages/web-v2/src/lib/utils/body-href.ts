@@ -38,7 +38,7 @@ function onTheCore(href: string): BodyHref | null {
     const url = new URL(href, base);
     if (url.origin !== new URL(base).origin || url.pathname.split("/")[1] !== CORE_SEGMENT) return null;
     const path = `${url.pathname}${url.search}`;
-    return { kind: "core-file", href: coreFileUrl(path), path };
+    return { kind: "core-file", href: coreFileUrl(`${path}${url.hash}`), path };
   } catch {
     return null;
   }

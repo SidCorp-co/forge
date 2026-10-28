@@ -10,7 +10,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BodyImage } from "@/design/patterns/body-link";
+import { BodyImage, BodyLink } from "@/design/patterns/body-link";
 import { AttachmentList } from "@/features/issues/components/attachment-list";
 import { HtmlAttachmentCard } from "@/features/issues/components/html-attachment-card";
 import { createQueryClient } from "@/providers/query-provider";
@@ -156,6 +156,11 @@ describe("a core file the server refused with a wait (criterion 495, judge-170)"
     draw(<BodyImage src={`${window.location.origin}${IMAGE}`} alt="pasted" />);
     expect(await screen.findByText("pasted not loaded.")).toBeInTheDocument();
     expect(sent).toEqual([`GET ${IMAGE}`]);
+  });
+
+  it("keeps the section an absolute core link names", () => {
+    draw(<BodyLink href={`${window.location.origin}/api/guides/a.md#results`}>the results</BodyLink>);
+    expect(screen.getByRole("link", { name: "the results" })).toHaveAttribute("href", "/api/guides/a.md#results");
   });
 
   it("refuses by name an image drawn where the app handed the kit no way to read core files", () => {
