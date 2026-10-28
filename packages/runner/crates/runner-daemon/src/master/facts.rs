@@ -126,13 +126,15 @@ pub(crate) struct PlacementRead {
 
 /// What a pane started for this project now would be handed, read without a
 /// word to the log: the environment [`prepare_pane`] gives one, short of its
-/// capability token, and the servers core declares for it this sweep.
+/// capability token, the servers core declares for it this sweep, and which of
+/// the relay tickets the live pane holds are near the end of their life.
 pub(crate) fn inputs_now(
     project_id: &str,
     resolved: &crate::dispatch::Resolved,
     servers: Option<&ServersRead>,
 ) -> master_build::Inputs {
     let (env, _) = terminal::pane_env_read(project_id, &resolved.slug);
+    let lapsing = carried_lapsing(&resolved.slug, jiff::Timestamp::now().as_second());
     master_build::Inputs::of(&master_build::Handed {
         slug: &resolved.slug,
         repo: &resolved.repo_path,
@@ -140,7 +142,22 @@ pub(crate) fn inputs_now(
         servers: servers
             .and_then(|s| s.as_ref().ok())
             .map(|d| &d.mcp_servers),
+        lapsing: &lapsing,
     })
+}
+
+/// The servers whose relay ticket, in the session file the pane was started
+/// from, has under a quarter of its life left at `now`. The sweep never
+/// rewrites a live pane's file, so it holds the tickets the pane holds. A file
+/// that cannot be read names none: whether it is current is reported by
+/// `mcp.rs:report_stale_pane_config`, not guessed here.
+fn carried_lapsing(slug: &str, now: i64) -> Vec<String> {
+    use runner_workspace::mcp::config as mcp_config;
+    std::fs::read_to_string(mcp_config::session_path(slug))
+        .ok()
+        .and_then(|text| mcp_config::session_servers(&text))
+        .map(|carried| mcp_config::lapsing_tickets(&carried, now))
+        .unwrap_or_default()
 }
 
 /// What the pane's placement, its runs and its turn say, read off the ledger and

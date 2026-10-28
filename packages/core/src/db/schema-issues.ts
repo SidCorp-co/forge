@@ -145,6 +145,9 @@ export const issues = pgTable(
     source: text('source', { enum: issueSources }).notNull().default('manual'),
     externalId: text('external_id'),
     plan: text('plan'),
+    // when `plan` last changed, stamped by a trigger on every writer (0544); the plan checkpoint
+    // build waits for is a move to approved after it (`issues/plan-checkpoint.ts`, ISS-642)
+    planWrittenAt: timestamp('plan_written_at', { withTimezone: true }),
     acceptanceCriteria: text('acceptance_criteria'),
     sessionContext: jsonb('session_context'),
     // ISS-199 — user-facing release notes. Written by forge-clarify per

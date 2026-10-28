@@ -104,9 +104,9 @@ export const GATE_CATALOG = defineGates([
 	{
 		id: "plan_approval",
 		title: "Plan approval",
-		refuses: "moving an issue to approved without plans.approve; the plan checkpoint is asked at all only where this is enforced",
-		codes: ["PERMISSION_FORBIDDEN"],
-		at: "issue in_progress → approved",
+		refuses: "moving an issue to approved without plans.approve, or its work into build before it passed approved since its plan was last written; the plan checkpoint is asked at all only where this is enforced",
+		codes: ["PERMISSION_FORBIDDEN", "PLAN_APPROVAL_PENDING"],
+		at: "issue in_progress → approved, work step design → build",
 		modes: ENFORCE_OFF,
 		defaults: { strict: "enforce", standard: KEYED("plan.approval.required"), yolo: "off" },
 		relaxed: "off: the run's own plan checkpoint is enough",
