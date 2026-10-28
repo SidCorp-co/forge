@@ -124,7 +124,11 @@ async function agreedRequirement(workflowId: string): Promise<string> {
      WHERE project_id = ${projectId} AND req_seq = ${Number(key.slice(4))}`);
   await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   ok(await say('owner', 'POST', at(`/requirements/${key}/revisions/1/propose`), {}));
-  ok(await say('owner', 'POST', at(`/requirements/${key}/revisions/1/accept`), {}));
+  ok(
+    await say('owner', 'POST', at(`/requirements/${key}/revisions/1/accept`), {
+      reason: 'Accepted for this test.',
+    }),
+  );
   ok(
     await say('owner', 'POST', at(`/requirements/${key}/agree`), {
       revision: 1,

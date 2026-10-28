@@ -47,6 +47,10 @@ beforeEach(async () => {
 const on = (token: string, method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown) =>
   api(token, method, `/api/projects/${projectId}${path}`, body) as Promise<Res>;
 
+/** An accept says why (REQ-4 BC-16); every other step of the walk takes an empty body. */
+const bodyFor = (path: string) =>
+  path.endsWith('/accept') ? { reason: 'Accepted for this test.' } : {};
+
 const refusals = (r: Res) =>
   (
     (r.body.error as { refusals?: { code: string; path: string }[] } | undefined)?.refusals ?? []
@@ -81,7 +85,7 @@ async function currentRequirement(ready = false): Promise<string> {
     `/requirements/${key}/revisions/1/propose`,
     `/requirements/${key}/revisions/1/accept`,
   ]) {
-    const r = await on(owner, 'POST', path, {});
+    const r = await on(owner, 'POST', path, bodyFor(path));
     expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);
   }
   return key;

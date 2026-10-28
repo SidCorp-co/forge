@@ -1,0 +1,1 @@
+**A run declared over a closed issue holds it once it reopens.** Its move to `in_progress` no longer meets NO_HOLDER, the awaiting_release guard names the run session runs/standing shows, and an ended session still holds nothing (ISS-589).

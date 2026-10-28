@@ -1,6 +1,7 @@
 // Which runs hold one issue now, and the box each was declared from: the one reading behind every
-// move the issue machine gives "the run holding the issue". A run holds an issue two ways: the fleet
-// lease a run session takes (`issue_leases`, read live through `liveIssueLeasesSql`), and the lease
+// move the issue machine gives "the run holding the issue". A run holds an issue three ways: the fleet
+// lease a run session takes (`issue_leases`, read live through `liveIssueLeasesSql`), a live run
+// session declared over the issue while it was over, which took no lease (ISS-589), and the lease
 // on the issue's work state a master's claim writes for the run it declares (`issue_work_state.lease`).
 // Reading only the first refused a declared run its own moves (adminhub-api ISS-8, 2026-10-23).
 
@@ -9,6 +10,7 @@ import type { Tx } from '../db/client.js';
 import { liveIssueLeasesSql } from '../db/schema-issue-leases.js';
 import { issueWorkState } from '../db/schema-issue-work-state.js';
 import type { CallerBox } from './caller-box.js';
+import { runSessionsDeclaredOverSql } from './issue-lease.js';
 import { classifyLease, leaseHolderOf } from './session-claim.js';
 
 export type RunHolder =
@@ -31,24 +33,49 @@ export function leaseOriginFor(
   return keeps && prior.origin?.deviceId ? prior.origin : writer;
 }
 
-/** Every run holding the issue now: live run sessions' fleet leases, then a live declared lease. */
-export async function runHoldersOf(
-  executor: Pick<Tx, 'select' | 'execute'>,
-  issue: { id: string },
-  now: Date = new Date(),
-): Promise<RunHolder[]> {
+/**
+ * The run sessions holding the issue now: a live session's fleet lease, and a live session declared
+ * over the issue that took none because the issue was over when it opened (ISS-589), one row per
+ * session. `exceptRunId` leaves out the run handing the issue back.
+ */
+export async function runSessionHoldersOf(
+  executor: Pick<Tx, 'execute'>,
+  issueId: string,
+  exceptRunId: string | null = null,
+): Promise<Array<Extract<RunHolder, { kind: 'run-session' }>>> {
+  const notThatRun =
+    exceptRunId === null ? sql`` : sql` AND l.run_id IS DISTINCT FROM ${exceptRunId}`;
   const sessions = (await executor.execute(sql`
     SELECT l.device_id, l.session_id, l.run_id
       FROM ${liveIssueLeasesSql()} l
       JOIN issues i ON i.project_id = l.project_id AND l.issue_key = 'ISS-' || i.iss_seq
-     WHERE i.id = ${issue.id}
+     WHERE i.id = ${issueId}${notThatRun}
+    UNION
+    SELECT d.device_id, d.session_id, d.run_id
+      FROM issues i
+     CROSS JOIN LATERAL ${runSessionsDeclaredOverSql({
+       projectId: sql`i.project_id`,
+       issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+       exceptRunId,
+     })} d
+     WHERE i.id = ${issueId}
+     ORDER BY session_id
   `)) as unknown as Array<{ device_id: string; session_id: string; run_id: string }>;
-  const holders: RunHolder[] = sessions.map((s) => ({
+  return sessions.map((s) => ({
     kind: 'run-session',
     deviceId: s.device_id,
     sessionId: s.session_id,
     runId: s.run_id,
   }));
+}
+
+/** Every run holding the issue now: live run sessions, then a live declared lease. */
+export async function runHoldersOf(
+  executor: Pick<Tx, 'select' | 'execute'>,
+  issue: { id: string },
+  now: Date = new Date(),
+): Promise<RunHolder[]> {
+  const holders: RunHolder[] = await runSessionHoldersOf(executor, issue.id);
   const declared = await declaredRunOf(executor, issue.id, now);
   return declared ? [...holders, declared] : holders;
 }

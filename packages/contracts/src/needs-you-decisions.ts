@@ -74,7 +74,8 @@ export const DECISION_ACTS = {
 	},
 	"revision.accept": {
 		path: "/api/projects/:projectId/requirements/:key/revisions/:n/accept",
-		reason: false,
+		// every sign-off records who signed and why (REQ-4 BC-16, ADR 0007)
+		reason: true,
 	},
 	"revision.return": {
 		path: "/api/projects/:projectId/requirements/:key/revisions/:n/return",
