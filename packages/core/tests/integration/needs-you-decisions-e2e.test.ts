@@ -262,11 +262,7 @@ describe('each decision shows its question, a recommended answer and a button (R
     expect(d).toMatchObject({ group: 'approve', recommended: { answerId: 'accept', by: 'rule' } });
     expect(d?.answers[0]?.body).toEqual({ reason: d?.recommended?.why });
     expect(d?.answers.map((a) => [a.act, a.path, a.needsReason])).toEqual([
-      [
-        'revision.accept',
-        `/api/projects/${projectId}/requirements/REQ-1/revisions/2/accept`,
-        true,
-      ],
+      ['revision.accept', `/api/projects/${projectId}/requirements/REQ-1/revisions/2/accept`, true],
       ['revision.return', `/api/projects/${projectId}/requirements/REQ-1/revisions/2/return`, true],
     ]);
   });

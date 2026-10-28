@@ -68,7 +68,11 @@ async function agreed(title: string): Promise<string> {
   ).key as string;
   await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   ok(await as('POST', `/requirements/${key}/revisions/1/propose`, {}));
-  ok(await as('POST', `/requirements/${key}/revisions/1/accept`, { reason: 'Accepted for this test.' }));
+  ok(
+    await as('POST', `/requirements/${key}/revisions/1/accept`, {
+      reason: 'Accepted for this test.',
+    }),
+  );
   ok(
     await as('POST', `/requirements/${key}/agree`, {
       revision: 1,
@@ -225,7 +229,9 @@ describe('an accept refused for its goal names every gap at once', () => {
     ok(await as('POST', `/requirements/${key}/revisions`, { baseRevision: 1, ...body(opening) }));
     ok(await as('POST', `/requirements/${key}/revisions/2/propose`, {}));
 
-    const first = await as('POST', `/requirements/${key}/revisions/2/accept`, { reason: 'Accepted for this test.' });
+    const first = await as('POST', `/requirements/${key}/revisions/2/accept`, {
+      reason: 'Accepted for this test.',
+    });
     expect(first.status, JSON.stringify(first.json)).toBe(422);
     const paths = ((first.json as Doc).error.refusals as Doc[]).map((r) => r.path as string);
     expect(paths.filter((p) => /^\/answers\/(problem|value|measured)$/.test(p))).toEqual([
@@ -245,7 +251,9 @@ describe('an accept refused for its goal names every gap at once', () => {
     );
     ok(await as('POST', `/requirements/${key}/revisions/2/propose`, {}));
 
-    const second = await as('POST', `/requirements/${key}/revisions/2/accept`, { reason: 'Accepted for this test.' });
+    const second = await as('POST', `/requirements/${key}/revisions/2/accept`, {
+      reason: 'Accepted for this test.',
+    });
     expect(second.status, JSON.stringify(second.json)).toBe(200);
   });
 });

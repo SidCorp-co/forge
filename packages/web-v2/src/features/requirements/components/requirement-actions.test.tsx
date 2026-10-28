@@ -1,6 +1,7 @@
 // The one primary act a requirement offers where it stands. FB-73: "Agree r1" was pressable while
 // every press would be refused REQUIREMENT_DESIGN_UNAPPROVED; core now names the unapproved linked
 // designs in the standing, and the act is held, saying which, until they are approved.
+// @direct-test-of packages/web-v2/src/features/requirements/api.ts
 
 import { RULE, say, waitingOn } from "@/test/said";
 import { screen, waitFor, within } from "@testing-library/react";
