@@ -278,7 +278,8 @@ describe('adopt: the way out of a step no differ measured', () => {
 describe('adopt: an unmeasured step crossed on a stated reason (REQ-5 BC-15, BC-16)', () => {
   // catalog-fe on admin-rest-v1 3.20.0, 2026-10-28: measured unknown against 3.19.0 by one
   // request-parameter-removed warning on a webhook header that never shipped
-  const REASON = 'the removed x-shopify-hmac-sha256 header is a webhook input catalog-fe never sends';
+  const REASON =
+    'the removed x-shopify-hmac-sha256 header is a webhook input catalog-fe never sends';
   const headerRemoved: ImpactChange = {
     element: 'POST /api/v1/webhook/{source}/{site_id}',
     kind: 'removed',

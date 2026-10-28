@@ -1,0 +1,1 @@
+**A consumer can adopt a version measured unknown once it says why.** Send `acceptUnmeasured: { reason }` to adopt; the reason is kept on the interface revision. Breaking versions are still moved by hand.

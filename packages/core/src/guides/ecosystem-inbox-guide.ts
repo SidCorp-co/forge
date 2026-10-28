@@ -74,8 +74,12 @@ change notice owes nothing and is not listed; read it in \`GET /api/projects/:id
    worked through its change notice and the consumer's own issue), \`ADOPT_VERSION_UNMEASURED\` (some
    version between a pin and it is measured \`unknown\`, or a check went unread, so not non-breaking),
    and \`ADOPT_FIELD_MISSING\`, which names each link and field the version no longer holds.
-   No door re-measures an unmeasured version, and \`semantic\` only raises a classification, so both
-   that and a missing field are moved by hand once the code is checked against the version: set
+   An unmeasured step is adopted once the code is checked against it, by saying why it is safe:
+   \`acceptUnmeasured: { reason }\` beside \`contract\` and \`version\`. The reason is kept on the
+   interface revision the adopt writes (\`adoptedUnmeasured\` on its revisions), and the answer's
+   \`adopted\` names the versions it crossed; a reason sent where no step was unmeasured is
+   \`ADOPT_REASON_UNUSED\`. A breaking step is never adopted on a reason, and neither is a pin with no
+   measured line to the version: both, and a missing field, are moved by hand once the code is checked against the version: set
    \`pinnedVersion\` on each link (\`PUT /api/projects/:id/links/<link>\`, step 4) and that consumption's
    \`builtAgainst\` on the interface (\`PUT /api/projects/:id/interface\`). A hand pin takes only the
    version approved, and on the interface the elements the consumption names held in that version.

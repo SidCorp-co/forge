@@ -3480,6 +3480,13 @@
       "when": 1829952000000,
       "tag": "0544_a_plan_says_when_it_was_written",
       "breakpoints": true
+    },
+    {
+      "idx": 547,
+      "version": "7",
+      "when": 1830211200000,
+      "tag": "0547_an_adopt_across_an_unmeasured_version_keeps_its_reason",
+      "breakpoints": true
     }
   ]
 }
