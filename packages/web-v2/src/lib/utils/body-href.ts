@@ -15,8 +15,7 @@ export type BodyHref =
   | { kind: "anchor"; href: string }
   /** A path the web app serves. Same tab, same origin as the page. */
   | { kind: "in-app"; href: string }
-  /** A file on the core. New tab, resolved against the core origin; `path` is the core's own, for the API client,
-   *  and `fragment` what the address names inside the file, which no read carries. */
+  /** A core file, opened in a new tab: `path` is what the client reads, `fragment` what the address names inside it. */
   | { kind: "core-file"; href: string; path: string; fragment: string }
   | { kind: "external"; href: string; scheme: string }
   /** Neither origin can be derived. Refused, loudly, with this reason. */
@@ -31,7 +30,7 @@ function parsedPath(href: string): { path: string; rest: string; search: string;
   }
 }
 
-/** An absolute address on the core's own origin is the core's file, read like the path it names (ISS-1229 r55 review). */
+/** An absolute address on the core's own origin names a core file too (ISS-1229 r55 review). */
 function onTheCore(href: string): BodyHref | null {
   const base = /^https?:\/\//i.test(CORE_URL) ? CORE_URL : typeof window === "undefined" ? null : window.location.origin;
   if (!base) return null;

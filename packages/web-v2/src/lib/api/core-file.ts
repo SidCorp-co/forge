@@ -38,11 +38,8 @@ export function useCoreFile(path: string, enabled: boolean) {
 /** The kit's reader of core files, which the app hands it. */
 export const coreFiles: CoreFiles = { useFile: useCoreFile };
 
-/**
- * A failed file read asked again once, when the server's wait ends, and never before. Every place showing it joins one
- * ask: one already sent is joined, and one already answered is not asked again (`failedNow` names the read's failure as
- * it stands when the wait ends).
- */
+/** A failed file read asked again once its wait ends, never before. Every place showing it joins one ask, and one already
+ *  answered is not asked again: `failedNow` is the read's failure as it stands then. */
 export function useAskedAgainAfterTheWait(
   error: unknown,
   refetch: (options: { cancelRefetch: boolean }) => unknown,
