@@ -82,6 +82,7 @@
     "common.failureCause.box_session_saturated": "Box at its session limit",
     "common.failureCause.checkout_unbound": "Checkout unbound",
     "common.failureCause.credential_mint_failed": "Credential not minted",
+    "common.failureCause.credential_refused": "Credential refused by the project",
     "common.failureCause.dispatch_failed": "Not dispatched",
     "common.failureCause.duplex_channel_failed": "Duplex channel failed",
     "common.failureCause.forge_budget_exhausted": "Project budget exhausted",

@@ -104,6 +104,33 @@ pub async fn request_dispatch_gate(
 }
 
 #[cfg(not(unix))]
+pub async fn request_credential_refused(
+    _path: &std::path::Path,
+    _token: &str,
+    _code: &str,
+    _detail: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
+/// The frame a pane's `forge-runner api` puts on the socket when its own project refused its
+/// credential, built where a test can decode it into `Request` without a socket.
+pub fn credential_refused_frame(token: &str, code: &str, detail: &str) -> serde_json::Value {
+    serde_json::json!({ "op": "credential_refused", "token": token, "code": code, "detail": detail })
+}
+
+/// Tell a running daemon this pane's own project refused its credential.
+#[cfg(unix)]
+pub async fn request_credential_refused(
+    path: &std::path::Path,
+    token: &str,
+    code: &str,
+    detail: &str,
+) -> std::io::Result<ClaimReply> {
+    ask(path, credential_refused_frame(token, code, detail)).await
+}
+
+#[cfg(not(unix))]
 pub(crate) fn no_socket() -> std::io::Error {
     std::io::Error::other(
         "the control socket needs a unix socket; this platform cannot report a turn boundary",

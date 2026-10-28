@@ -3,6 +3,7 @@ import { isSpendLimitError, isUsageLimitError } from '@forge/contracts/runners';
 import {
   BOX_SATURATION_PATTERNS,
   CC_STARTUP_PATTERNS,
+  CREDENTIAL_REFUSED_TOKEN,
   causeForMetaErrorType,
   causeForText,
   DUPLEX_SESSION_PATTERNS,
@@ -17,7 +18,7 @@ import {
 } from './failure-patterns.js';
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
-export const CLASSIFIER_VERSION = 12;
+export const CLASSIFIER_VERSION = 13;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -83,7 +84,7 @@ interface ClassifyInput {
  * Match order: structured `meta.error.type` → runner token → the three
  * pre-spawn verdicts (TERMINAL_INFRA / PREFLIGHT / BOX_SATURATION /
  * REPO_CONTENTION, all above the cc-startup signal) → spend-cap →
- * usage/session limit → stopped on a question (terminal) → cc-startup signal → PERMISSION (infra) →
+ * usage/session limit → credential refused (terminal) → stopped on a question (terminal) → cc-startup signal → PERMISSION (infra) →
  * DUPLEX_SESSION (infra) → TIMEOUT → PERMANENT (code) → TRANSIENT (infra) →
  * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
  * the broader buckets because their patterns are more specific.
@@ -248,6 +249,19 @@ function classifyKind(
   // Before the startup signal: a pane job streams no events, so that signal reads every one of
   // them as a death before its first tool. A rerun of the same prompt asks the same question,
   // so this fails terminal with the runner's sentence instead of retrying blind.
+  // A job pane its own project refused can record nothing, and a rerun on the same box is refused
+  // the same way (the runner's `job_exit::CREDENTIAL_REFUSED`): terminal, the refusal's code kept,
+  // where it used to end on the silence after the agent stopped and was retried for ever.
+  if (text.includes(CREDENTIAL_REFUSED_TOKEN)) {
+    return {
+      kind: 'infra',
+      cause: 'credential_refused',
+      reason: `credential refused → no retry: ${truncate(text.replace(CREDENTIAL_REFUSED_TOKEN, '').trim(), 170)}`,
+      meta,
+      action: 'terminal',
+    };
+  }
+
   if (STOPPED_ON_QUESTION_PATTERNS.some((p) => p.test(text))) {
     return {
       kind: 'code',

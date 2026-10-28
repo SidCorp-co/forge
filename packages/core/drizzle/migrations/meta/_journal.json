@@ -3480,6 +3480,20 @@
       "when": 1829952000000,
       "tag": "0544_a_plan_says_when_it_was_written",
       "breakpoints": true
+    },
+    {
+      "idx": 545,
+      "version": "7",
+      "when": 1830038400000,
+      "tag": "0545_a_chat_account_links_by_a_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 546,
+      "version": "7",
+      "when": 1830124800000,
+      "tag": "0546_a_server_side_check_is_a_class_of_its_own",
+      "breakpoints": true
     }
   ]
 }

@@ -108,13 +108,16 @@ async fn prepare(
 }
 
 /// What a pane for a prepared job starts from: its checkout, its prompt and the project's declared
-/// MCP servers. A job missing any of them is given back, and the refusal is what `take_one` answers.
+/// MCP servers. A job missing any of them is given back, and the refusal is what `take_one` answers;
+/// one whose pane could reach nothing of its project is failed by name (`unreachable_project`).
 async fn launch_inputs(
-    pool_ports: &dyn Pool,
+    ports: &JobPorts<'_>,
     prepared: &PreparedJob,
+    pane: &str,
     session_id: &str,
     project: ServedProject<'_>,
 ) -> std::result::Result<(PathBuf, String, ProjectMcpServers), Took> {
+    let pool_ports = ports.pool;
     let project_id = project.id;
     let Some(cwd) = prepared.repo_path.as_deref().map(PathBuf::from) else {
         give_back(pool_ports, &prepared.job_id, session_id).await;
@@ -162,6 +165,9 @@ async fn launch_inputs(
             return Err(Took::GaveBack(prepared.job_id.clone()));
         }
     };
+    if let Some(refused) = unreachable_project(ports, prepared, pane, session_id, project).await {
+        return Err(refused);
+    }
     Ok((cwd, prompt, declared))
 }
 
@@ -296,7 +302,7 @@ pub async fn take_one(
 
     let pane = pane_name(&prepared.job_id);
     let (cwd, prompt, declared) =
-        match launch_inputs(pool_ports, &prepared, session_id, project).await {
+        match launch_inputs(ports, &prepared, &pane, session_id, project).await {
             Ok(inputs) => inputs,
             Err(gave_back) => return gave_back,
         };
@@ -367,6 +373,69 @@ pub async fn take_one(
         carrying(&declared)
     );
     Took::Started(prepared.job_id)
+}
+
+/// The job refused before any pane opens, where the pane would carry no checkout credential for
+/// its project and this box's stored token is refused there by name: such a pane reaches nothing it
+/// could record, and given back it is claimed again at the next tick, so it is started and failed
+/// at once on that refusal, which core reads as terminal (`job_exit::CREDENTIAL_REFUSED`).
+/// `None` where the pane carries the checkout's credential, or the stored token is answered, or
+/// its answer could not be read.
+async fn unreachable_project(
+    ports: &JobPorts<'_>,
+    prepared: &PreparedJob,
+    pane: &str,
+    session_id: &str,
+    project: ServedProject<'_>,
+) -> Option<Took> {
+    let (env, _) = terminal::pane_env_read(project.id, project.slug);
+    if env
+        .iter()
+        .any(|(k, _)| k == runner_workspace::mcp::config::CLI_BORROW_VAR)
+    {
+        return None;
+    }
+    let (code, detail) = match ports.pool.box_pat_reach(project.id).await {
+        BoxPatReach::Refused { code, detail } => (code, detail),
+        BoxPatReach::Reaches => return None,
+        BoxPatReach::Unread(why) => {
+            tracing::warn!(
+                "[pool] {}: job {} starts with no checkout credential for {}, and whether this box's stored token reaches the project could not be read ({why})",
+                project.id,
+                prepared.job_id,
+                project.slug
+            );
+            return None;
+        }
+    };
+    let detail = format!(
+        "{detail} (no checkout credential for {} is on this box, so the pane would go out on its stored personal access token)",
+        project.slug
+    );
+    let reason = job_exit::credential_refused_reason(pane, &code, &detail);
+    match ports.pool.start(&prepared.job_id, session_id).await {
+        Ok(Started::Ok) => {}
+        Ok(Started::Refused(r)) => return Some(Took::Refused(r.as_str().to_string())),
+        Err(e) => {
+            give_back(ports.pool, &prepared.job_id, session_id).await;
+            tracing::error!(
+                "[pool] {}: job {} not started ({e}) and given back; {reason}",
+                project.id,
+                prepared.job_id
+            );
+            return Some(Took::GaveBack(prepared.job_id.clone()));
+        }
+    }
+    if let Err(e) = ports.report.fail(&prepared.job_id, &reason).await {
+        tracing::error!(
+            "[pool] {}: job {} could not be failed on its refusal ({e}); core reaps it: {reason}",
+            project.id,
+            prepared.job_id
+        );
+    } else {
+        tracing::error!("[pool] {}: job {}: {reason}", project.id, prepared.job_id);
+    }
+    Some(Took::Refused(code))
 }
 
 /// Register this daemon's hooks for a job pane, saying what it did. `false`
@@ -483,6 +552,9 @@ pub async fn supervise(
             tracing::warn!("[pool] job {} lost its pane {}", live.job_id, live.pane);
             continue;
         }
+        if ended_on_refusal(panes, report, records, registry, activity, &live).await {
+            continue;
+        }
         let said = live.watch.session_id().and_then(|s| activity.get(s));
         let evidence = turn_evidence::read(
             &live.watch,
@@ -563,6 +635,31 @@ pub async fn supervise(
         }
     }
     registry.swept();
+}
+
+/// A pane its own project refused can record nothing, and the same job here would be refused the
+/// same way: it ends on that refusal by name, never on the silence after it. `true` once the slot
+/// is back.
+async fn ended_on_refusal(
+    panes: &dyn Panes,
+    report: &dyn Report,
+    records: &dyn Records,
+    registry: &JobPanes,
+    activity: &Activities,
+    live: &Live,
+) -> bool {
+    let Some(session) = live.watch.session_id() else {
+        return false;
+    };
+    let Some(refused) = activity.refused(session) else {
+        return false;
+    };
+    let reason = job_exit::credential_refused_reason(&live.pane, &refused.code, &refused.detail);
+    if !conclude(panes, report, records, registry, live, reason).await {
+        return false;
+    }
+    activity.forget_refusal(session);
+    true
 }
 
 /// End a job this box has decided is not work in flight: tell core by name,

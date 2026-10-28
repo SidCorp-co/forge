@@ -70,6 +70,14 @@ describe('probeRuleFault', () => {
     expect(probeRuleFault({ ...facts, criterionClass: 'code_property' })).toBeNull();
     expect(probeRuleFault({ ...facts, criterionClass: null })).toBeNull();
   });
+
+  it('refuses a probe on a server-side check and owes none on it (REQ-36 BC-21)', () => {
+    const server = { ...facts, criterionClass: 'server_side' } as const;
+    expect(probeRuleFault({ ...server, sent: true })?.code).toBe('VERDICT_PROBE_SERVER_SIDE');
+    for (const verdict of ['pass', 'short', 'fail', 'skipped']) {
+      expect(probeRuleFault({ ...server, verdict })).toBeNull();
+    }
+  });
 });
 
 describe('what a verdict rests on and records', () => {
@@ -87,6 +95,9 @@ describe('what a verdict rests on and records', () => {
     expect(probeNote('pass', null, null)).toBe('not owed: no design classes this criterion');
     expect(probeNote('short', 'code_property', null)).toBe(
       'not owed: a code property is judged against the diff',
+    );
+    expect(probeNote('pass', 'server_side', null)).toBe(
+      'not owed: a server-side check is judged from its capture',
     );
     expect(probeNote('fail', null, null)).toBeNull();
   });

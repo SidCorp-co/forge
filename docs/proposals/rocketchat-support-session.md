@@ -259,6 +259,7 @@ separately and names what to do about it. It is shown in the rooms table and on
 | Cause | Read from |
 |---|---|
 | `BINDING_OFF` | binding or connection inactive |
+| `ROOM_LEFT_BINDING` | the binding no longer names the room's group: the row and its record stay, and the room is not warmed (`support/rooms.ts:roomIsBound`) |
 | `BOT_REJECTED` / `CHAT_UNREACHABLE` | the chat server's answer to `subscriptions.getOne` |
 | `BOT_NOT_IN_ROOM` | `subscriptions.getOne` answers no subscription |
 | `NOT_LISTENING` | no core holds the connection's advisory lock, or its socket is reconnecting (`connection-manager.ts:connectionListening`) |
@@ -321,6 +322,21 @@ request's id (`runners/box-acts.ts`):
 A box declares `hostCommands`, `chatCheckoutModes` and `supportBuilds`, the last two only where it
 can confine a session. A support turn on a box that cannot scope its checkout is refused
 (`BOX_CANNOT_SCOPE_CHECKOUT`), never run with the whole checkout writable.
+
+**A member links their own chat account by a code.** A bot account cannot read a member's address
+unless the server grants it `view-full-other-user-info`, an admin grant. Without it the address
+match finds no one, so a member can link the account themselves:
+1. Signed in to Forge, the member asks for a code (`POST /api/projects/:projectId/speaker-links/codes`
+   with `{ source: 'rocketchat' }`, project write access).
+2. They write `link <CODE>` in any bound room of that project.
+
+Core redeems the code before the session sees the line, and records the line as `link ********`. It
+links the account Rocket.Chat signed to the member who made the code (`confirmed_via: chat_code`), and
+answers in the thread (`assistant/identity/link-code.ts`, `support/link-code.ts`). A code is eight
+characters, kept only as its hash, spent once, and lapses after 15 minutes. It holds for one project
+and one channel. A code that is spent, lapsed, from another project or unknown is answered the same
+way: no link code waits under it. An account already linked to another Forge user stays as it is. The
+proof is `packages/core/tests/integration/support-link-code-e2e.test.ts`.
 
 **Migration (BC-29).** Each hand-run watcher becomes a binding of its group, one room at a time:
 1. Its prompt file's standing instructions become `persona`.
@@ -472,7 +488,8 @@ The live bindings, made by the coordinator on chat.sidcorp.co:
 | AgentSocialTeams | Sy (`digital`) | `read`, `draft`, `research` | forge |
 
 Each person who acts in them is a Forge user by a verified address both sides share, or by a
-confirmed speaker link; the bots need `view-full-other-user-info` to read a member's address.
+confirmed speaker link. The address match needs `view-full-other-user-info` on the bot; without it a
+member links by writing a code in the room (see the r5 section above).
 
 ### What the owner gives
 

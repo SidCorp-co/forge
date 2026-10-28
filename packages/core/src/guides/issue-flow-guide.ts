@@ -127,9 +127,11 @@ move to \`awaiting_release\` read the change the merge mark names. Each refuses 
 
 Then record the design, before any code: \`PUT /api/issues/:id/design\`
 \`{ criteria: [{ criterion, class, pattern, proof }], modules, contracts }\`, one line per criterion.
-\`class\` is \`observable\` (QA judges it on the running build) or \`code_property\` (the review judges it
-against the diff); \`pattern\` is a catalog slug or a new pattern approved on the issue, and \`null\`
-only where \`catalog.declared\` is false; \`proof\` is the probe or the review line that will prove it;
+\`class\` is \`observable\` (QA judges it on the running build, where a person can see it),
+\`server_side\` (QA judges it on the running build from inside it — a pod, a process, a queue — where
+no screen and no outside request shows it) or \`code_property\` (the review judges it against the
+diff); \`pattern\` is a catalog slug or a new pattern approved on the issue, and \`null\`
+only where \`catalog.declared\` is false; \`proof\` is the probe, the capture or the review line that will prove it;
 \`modules\` are the project's module names the change touches, \`contracts\` the
 \`<project>/<contract>\` it touches (\`[]\` for none). A write is refused by name for each wrong part.
 Where the project declares no module label, \`modules\` is \`[]\` and the design holds the whole
@@ -277,8 +279,9 @@ own origin. A command probe is not replayed yet. It is kept on the criterion
 (\`GET /api/issues/:id/criteria\` answers it as \`probe\`), and a later verdict that sends none rests on
 it. A \`pass\` or \`short\` on an observable criterion with no probe sent and none kept is refused
 \`VERDICT_PROBE_REQUIRED\`; a malformed probe \`VERDICT_PROBE_SHAPE\` at its path, one holding a
-credential \`VERDICT_PROBE_SECRET\`, one on a code property \`VERDICT_PROBE_CODE_PROPERTY\`. A criterion
-no design classes owes none, and its verdict's record says so.
+credential \`VERDICT_PROBE_SECRET\`, one on a code property \`VERDICT_PROBE_CODE_PROPERTY\`, one on a
+server-side check \`VERDICT_PROBE_SERVER_SIDE\`. A server-side check, and a criterion no design classes,
+owes none, and its verdict's record says so.
 
 A judge records a short screen clip of each observable criterion it judges, the run that shows it
 met or not: WebM or MP4, at most ${RELEASE_CLIP_MAX_SECONDS} seconds and ${RELEASE_CLIP_MAX_BYTES / (1024 * 1024)} MiB.
@@ -290,6 +293,11 @@ issues/<id>/attachments -F file=@<dir>/<name>.webm\`) and cite both names in tha
 describes, opening on the still. A \`pass\`, \`short\` or \`fail\` on an observable criterion judged
 without a clip says why in \`withoutClip\` (a \`without-clip\` line in a record), never in
 \`reason\`, which says what was found; one with neither is refused \`VERDICT_CLIP_REQUIRED\`.
+
+A server-side check shows on no screen, so it owes no clip (REQ-36 BC-21): its \`pass\`, \`short\` or
+\`fail\` cites the capture of what was run inside the running server — the command, its output and
+the build it ran against, attached to the issue — in \`evidence\`, and one citing no attachment is
+refused \`VERDICT_CAPTURE_REQUIRED\`; neither \`withoutClip\` nor \`reason\` stands in for it.
 
 A test is evidence only where it can fail: plant the failure it guards against and watch it go red
 naming its own rule before the green counts.

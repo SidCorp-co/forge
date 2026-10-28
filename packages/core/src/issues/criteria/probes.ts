@@ -56,9 +56,10 @@ export async function keptProbeIdOf(tx: Tx, criterionId: string): Promise<string
 
 /**
  * The probe a verdict rests on, kept first where the verdict sends one; null where it rests on none.
- * Refuses, before anything is written, a probe holding a credential, a probe on a code property, a
- * request the production origin it would be replayed against does not answer, and a pass or short
- * on an observable criterion that neither sends a probe nor finds one kept.
+ * Refuses, before anything is written, a probe holding a credential, a probe on a code property or
+ * a server-side check, a request the production origin it would be replayed against does not
+ * answer, and a pass or short on an observable criterion that neither sends a probe nor finds one
+ * kept.
  */
 export async function probeOfVerdict(
   tx: Tx,
@@ -88,7 +89,9 @@ export async function probeOfVerdict(
   ];
   if (refusals.length > 0) throw new RefusalError(refusals, 'VERDICT_REFUSED');
   if (!probe) {
-    return kept && criterion.class !== 'code_property' && restsOnKept(verdict) ? kept : null;
+    // a code property and a server-side check rest on no probe, even one kept before a reclass
+    const owesNone = criterion.class === 'code_property' || criterion.class === 'server_side';
+    return kept && !owesNone && restsOnKept(verdict) ? kept : null;
   }
   const [row] = await tx
     .insert(criterionProbes)
