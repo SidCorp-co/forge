@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.346] - 2026-10-28
+
+Unmeasured adopts name the hand pin; workflow rows carry their id
+
+### Fixed
+
+- **A refusal names its way out, and a list row its id.** An unmeasured adopt now names the hand pin (link `pinnedVersion`, interface `builtAgainst`); each workflows list row carries the `workflowId` its write doors take.
+
 ## [0.4.0-dev.345] - 2026-10-27
 
 Requirement coverage counts a QA pass on a later build that holds the work

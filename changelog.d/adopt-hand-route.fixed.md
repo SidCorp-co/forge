@@ -1,1 +1,0 @@
-**A refusal names its way out, and a list row its id.** An unmeasured adopt now names the hand pin (link `pinnedVersion`, interface `builtAgainst`); each workflows list row carries the `workflowId` its write doors take.
