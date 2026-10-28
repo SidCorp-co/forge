@@ -121,6 +121,35 @@ describe('REQ-75 r5: a room that cannot answer says why (BC-26)', () => {
       sql`UPDATE integration_bindings SET active = true WHERE connection_id = ${w.rcConnectionId}::uuid`,
     );
   });
+
+  it('names a room whose group left its binding, and warms neither it nor a room switched off', async () => {
+    const { warmSupportRoom } = await import('../../src/support/warm.js');
+    await w.settleWarm();
+    const turns = () => w.box.turns.filter((t) => t.warmUp).length;
+    const before = turns();
+
+    await db.execute(
+      sql`UPDATE integration_bindings SET config = jsonb_set(config, '{rids}', '["another-group"]'::jsonb) WHERE connection_id = ${w.rcConnectionId}::uuid`,
+    );
+    const left = (await w.rooms()).find((r) => r.id === roomId);
+    expect(left?.health).toMatchObject({
+      healthy: false,
+      causes: expect.arrayContaining([expect.objectContaining({ code: 'ROOM_LEFT_BINDING' })]),
+    });
+    expect(JSON.stringify(left?.health)).toContain('no longer names group');
+    expect(await warmSupportRoom(roomId, 'online')).toBe('unbound');
+
+    await db.execute(
+      sql`UPDATE integration_bindings SET config = jsonb_set(config, '{rids}', ${JSON.stringify([w.chat.rid])}::jsonb), active = false WHERE connection_id = ${w.rcConnectionId}::uuid`,
+    );
+    expect(await warmSupportRoom(roomId, 'online')).toBe('unbound');
+    expect(turns()).toBe(before);
+
+    await db.execute(
+      sql`UPDATE integration_bindings SET active = true WHERE connection_id = ${w.rcConnectionId}::uuid`,
+    );
+    expect(await warmSupportRoom(roomId, 'online')).not.toBe('unbound');
+  });
 });
 
 describe('REQ-75 r5: a room answering only mentions hands the session only those', () => {

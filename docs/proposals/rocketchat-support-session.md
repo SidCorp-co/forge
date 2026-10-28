@@ -259,6 +259,7 @@ separately and names what to do about it. It is shown in the rooms table and on
 | Cause | Read from |
 |---|---|
 | `BINDING_OFF` | binding or connection inactive |
+| `ROOM_LEFT_BINDING` | the binding no longer names the room's group: the row and its record stay, and the room is not warmed (`support/rooms.ts:roomIsBound`) |
 | `BOT_REJECTED` / `CHAT_UNREACHABLE` | the chat server's answer to `subscriptions.getOne` |
 | `BOT_NOT_IN_ROOM` | `subscriptions.getOne` answers no subscription |
 | `NOT_LISTENING` | no core holds the connection's advisory lock, or its socket is reconnecting (`connection-manager.ts:connectionListening`) |
