@@ -308,7 +308,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
 
   return (
     <SlideOver open={open} onClose={onClose} title="New issue" width={480}>
-      <form onSubmit={onSubmit} onPaste={onPaste} className="flex h-full flex-col gap-4">
+      <form onSubmit={onSubmit} onPaste={onPaste} className="flex min-h-full flex-col gap-4">
         <Tabs
           tabs={MODE_TABS}
           value={mode}

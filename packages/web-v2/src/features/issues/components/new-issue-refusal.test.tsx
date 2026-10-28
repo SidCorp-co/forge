@@ -64,6 +64,8 @@ describe("New issue refused", () => {
       // r54, judge-168: scrolled flush, Create sat on the screen's bottom edge at 390x600; it keeps the sheet's room.
       expect(scrolled[0]?.className).toContain("scroll-mb-[calc(1rem+env(safe-area-inset-bottom))]");
       expect(scrolled[0]?.closest(".overflow-y-auto")?.className).toContain("pb-[calc(1rem+env(safe-area-inset-bottom))]");
+      // A form held to the sheet's height let its fields overflow past that room, so Create still met the edge.
+      expect(scrolled[0]?.closest("form")?.className).not.toMatch(/(^|\s)h-full(\s|$)/);
     } finally {
       Reflect.deleteProperty(Element.prototype, "scrollIntoView");
     }
