@@ -1,0 +1,1 @@
+**A job its own project refuses ends on that refusal, once.** The runner fails a job by name when its pane credential cannot reach its project, before or after the pane opens; core treats it as terminal, with no retry.
