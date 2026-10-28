@@ -24,7 +24,8 @@ export default function ProjectIssuesPage() {
     const sp = new URLSearchParams(window.location.search);
     sp.delete("new");
     const qs = sp.toString();
-    replaceLocationSearch(qs ? `?${qs}` : window.location.pathname);
+    // A `null` state, as IssuesScreen's own close: Next skips syncing `useSearchParams` for a state carrying its mark.
+    replaceLocationSearch(qs ? `?${qs}` : window.location.pathname, null);
   };
 
   if (isLoading) {

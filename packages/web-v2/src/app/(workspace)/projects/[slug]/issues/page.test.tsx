@@ -29,7 +29,7 @@ it("heads a failed project read with what failed, in the page and the tab", () =
 
 // ISS-1229 r55, judge-170: New issue pressed while the projects could not be read only added `?new=1`.
 it("opens New issue while the projects cannot be read, saying why, with Retry under the one rule", () => {
-  window.history.replaceState(null, "", "/projects/desk/issues?new=1&status=open");
+  window.history.replaceState({ __NA: true }, "", "/projects/desk/issues?new=1&status=open");
   render(<ProjectIssuesPage />);
 
   const sheet = screen.getByRole("dialog", { name: "New issue" });
@@ -40,5 +40,7 @@ it("opens New issue while the projects cannot be read, saying why, with Retry un
 
   fireEvent.click(within(sheet).getByRole("button", { name: /close/i }));
   expect(window.location.search).toBe("?status=open");
+  // r55 review: Next's own mark is not kept, or the screen mounted once the projects are read would still see `new=1`.
+  expect(window.history.state).toBeNull();
   expect(screen.queryByRole("dialog", { name: "New issue" })).toBeNull();
 });
