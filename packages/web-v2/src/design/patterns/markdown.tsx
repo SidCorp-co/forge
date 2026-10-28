@@ -6,6 +6,7 @@ import type { ComponentProps, ReactNode } from "react";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/design/primitives/button";
+import { remarkUnbrokenKeys, unbrokenKeys } from "@/lib/unbroken-keys";
 import { cn } from "@/lib/utils/cn";
 import { BodyImage, BodyLink } from "./body-link";
 import {
@@ -83,7 +84,7 @@ function makeCodeRenderer(blockClass: string, inlineClass: string): Components["
       </code>
     ) : (
       <code className={inlineClass} {...props}>
-        {children}
+        {typeof children === "string" ? unbrokenKeys(children) : children}
       </code>
     );
   };
@@ -241,7 +242,7 @@ export function Markdown({
   }, [variant, docBasePath, docRoute, codeBlocks]);
   return (
     <div className={cn("min-w-0 max-w-full break-words [overflow-wrap:anywhere]", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={sameUrl}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkUnbrokenKeys]} components={components} urlTransform={sameUrl}>
         {children}
       </ReactMarkdown>
     </div>

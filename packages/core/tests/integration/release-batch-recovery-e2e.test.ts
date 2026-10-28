@@ -170,9 +170,36 @@ describe('where an unfinished batch leaves its roster', () => {
     const rows = await harness.db.execute(sql`SELECT body FROM comments WHERE issue_id = ${a}`);
     const [body] = rows.map((r) => String(r.body));
     expect(body).toMatch(
-      /^The release was aborted: judge-164 scratch release, aborted after reading the gate\. The issue is at Awaiting release\./,
+      /^A member aborted the release: judge-164 scratch release, aborted after reading the gate\. The issue is at Awaiting release\./,
     );
     expect(body).not.toMatch(/\.\./);
+  });
+
+  // ISS-1421 r42 (judge-169): an abort's comment was the presser's own, read as "You" though the
+  // words are Forge's. Forge writes it and names who pressed; the move stays theirs.
+  it('writes its comment as Forge, naming the person who aborted, and leaves the move theirs', async () => {
+    const { FORGE_AUTHOR_ID } = await import('../../src/comments/forge-author.js');
+    await harness.db.execute(
+      sql`UPDATE users SET display_name = 'Ada Lovelace' WHERE id = ${ownerId}`,
+    );
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+
+    await abort(runId, 'Hold on...');
+
+    const rows = await harness.db.execute<{ author_id: string; body: string }>(
+      sql`SELECT author_id, body FROM comments WHERE issue_id = ${a}`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.author_id).toBe(FORGE_AUTHOR_ID);
+    expect(rows[0]?.body).toMatch(
+      /^Ada Lovelace aborted the release: Hold on\.\.\. The issue is at Awaiting release\./,
+    );
+    const moves = await harness.db.execute<{ actor_id: string }>(sql`
+      SELECT actor_id FROM kernel_transitions
+      WHERE entity = 'issue' AND entity_id = ${a} AND to_status = 'awaiting_release'
+    `);
+    expect(moves.map((m) => m.actor_id)).toEqual([ownerId]);
   });
 
   it('leaves a roster that promoted at `releasing`, still claimed', async () => {

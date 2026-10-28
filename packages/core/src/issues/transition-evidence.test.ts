@@ -466,17 +466,35 @@ describe('a missing merge mark on a project naming no repository', () => {
     laneMock.mockResolvedValue({ columns: {}, lane: { shape: 'git', declared: false } });
     commitCheckMock.mockResolvedValue('claim');
     expect(await missingMark()).toContain(
-      "Mark merged in the issue's properties records where the work landed. With no repository named, Commit may stay empty.",
+      "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed; with no repository named, Commit may stay empty.",
     );
   });
 
-  it.each([
-    ['a repository it reads', { shape: 'git', declared: false }, 'checked'],
-    ['work that lands outside git', { shape: 'outside_git', declared: true }, 'claim'],
-  ])('says nothing of Commit for %s', async (_what, lane, check) => {
-    laneMock.mockResolvedValue({ columns: {}, lane });
-    commitCheckMock.mockResolvedValue(check);
-    expect(await missingMark()).not.toContain('Commit');
+  // ISS-1421 r42 (judge-169): on a project naming a repository the record never asked for the commit
+  // the other places ask for.
+  it('asks for the commit under Commit where the project names a repository', async () => {
+    laneMock.mockResolvedValue({ columns: {}, lane: { shape: 'git', declared: false } });
+    commitCheckMock.mockResolvedValue('checked');
+    expect(await missingMark()).toContain(
+      "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
+    );
+  });
+
+  it('asks for where the work now is, and no commit, for work that lands outside git', async () => {
+    laneMock.mockResolvedValue({ columns: {}, lane: { shape: 'outside_git', declared: true } });
+    commitCheckMock.mockResolvedValue('claim');
+    const said = await missingMark();
+    expect(said).toContain(
+      "Use Mark merged in the issue's properties. In the panel it opens, name the live URL, CMS entry or storefront resource in Where it landed.",
+    );
+    expect(said).not.toContain('Commit');
+  });
+
+  it('says only what the mark records where its lane cannot be read', async () => {
+    laneMock.mockRejectedValue(new Error('read failed'));
+    expect(await missingMark()).toContain(
+      "Mark merged in the issue's properties records where the work landed.",
+    );
   });
 
   it('still refuses when the lane cannot be read', async () => {

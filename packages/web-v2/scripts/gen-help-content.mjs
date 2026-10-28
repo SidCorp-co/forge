@@ -37,6 +37,8 @@ async function walk(dir) {
 const files = await walk(CONTENT_DIR);
 const docs = [];
 const refused = [];
+// Each page's own file by its slug, so a stale bundle names the page that drifted (ISS-1421 r42).
+const fileOf = {};
 for (const abs of files.sort()) {
   const raw = await fs.readFile(abs, "utf8");
   const slug = path
@@ -52,6 +54,7 @@ for (const abs of files.sort()) {
     refused.push(err.message);
     continue;
   }
+  fileOf[slug] = path.relative(root, abs);
   docs.push({
     slug,
     title: parsed.meta.title ?? slug,
@@ -79,6 +82,29 @@ const out =
   // to any reader of this file instead of looking like a template literal nobody interpolated.
   `export const HELP_DOCS: HelpDoc[] = ${JSON.stringify(docs, null, 2).replaceAll("${", "\\u0024{")};\n`;
 
+/** The pages whose bundled copy differs from their file, added or removed, read off the committed
+ *  module: ": what-done-means.md changed". Empty where that module cannot be read as one. */
+async function driftedPages() {
+  const committed = await fs.readFile(OUT_FILE, "utf8").catch(() => "");
+  const start = committed.indexOf("export const HELP_DOCS: HelpDoc[] = ");
+  if (start < 0) return "";
+  let bundled;
+  try {
+    bundled = JSON.parse(committed.slice(start + "export const HELP_DOCS: HelpDoc[] = ".length).replace(/;\s*$/, ""));
+  } catch {
+    return "";
+  }
+  const was = new Map(bundled.map((d) => [d.slug, JSON.stringify(d)]));
+  const now = new Map(docs.map((d) => [d.slug, JSON.stringify(d)]));
+  const named = (slug) => path.relative(CONTENT_DIR, path.join(root, fileOf[slug] ?? `${slug}.md`)).replace(/\\/g, "/");
+  const said = [
+    ...docs.filter((d) => was.has(d.slug) && was.get(d.slug) !== now.get(d.slug)).map((d) => `${named(d.slug)} changed`),
+    ...docs.filter((d) => !was.has(d.slug)).map((d) => `${named(d.slug)} added`),
+    ...[...was.keys()].filter((slug) => !now.has(slug)).map((slug) => `${slug}.md removed`),
+  ];
+  return said.length > 0 ? `: ${said.join(", ")}` : "";
+}
+
 const slugs = `${banner}export const HELP_SLUGS: readonly string[] = ${JSON.stringify(docs.map((d) => d.slug), null, 2)};\n`;
 
 if (CHECK) {
@@ -88,8 +114,9 @@ if (CHECK) {
     if (committed !== text) stale.push(path.relative(root, file));
   }
   if (stale.length > 0) {
+    const pages = await driftedPages();
     console.error(
-      `gen-help-content: ${stale.join(" and ")} ${stale.length > 1 ? "do" : "does"} not match content/help/ — run \`pnpm gen:help\` and commit it`,
+      `gen-help-content: ${stale.join(" and ")} ${stale.length > 1 ? "do" : "does"} not match content/help/${pages} — run \`pnpm gen:help\` and commit it`,
     );
     process.exit(1);
   }

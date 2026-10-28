@@ -29,7 +29,8 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
     });
     expect(said).toContain('The close was refused because the issue holds open questions.');
     expect(said).not.toMatch(/`|OPEN_QUESTIONS/);
@@ -48,11 +49,12 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
     });
 
     expect(said).toContain(
-      'What clears it: answer each open question in its "Decision waiting" card',
+      'What clears it: answer the open question in its "Decision waiting" card',
     );
     expect(said).toContain('back at Awaiting release');
     expect(said).toContain('Release now');
@@ -72,7 +74,8 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       projectId: PROJECT,
       version: null,
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
     });
     const [ours, ...quote] = said.split('\n\n> ');
     expect(ours).toContain('failed inside Forge before it reached a decision.');
@@ -92,7 +95,8 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
     });
 
     expect(said).toContain('Release now');
@@ -108,7 +112,8 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       projectId: PROJECT,
       version: '1.6.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
       repeats: ['1.4.0', null],
     });
 
@@ -128,7 +133,8 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
       projectId: PROJECT,
       version: '2.0.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
     });
     expect(said).not.toMatch(/blocking|Blocking/);
     expect(said).toContain(
@@ -142,7 +148,8 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
       projectId: PROJECT,
       version: '2.0.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
       noRepository: true,
     });
     expect(said).toContain(
@@ -159,7 +166,8 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
       projectId: PROJECT,
       version: '2.0.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
       noRepository: true,
     });
     expect(said).toContain(
@@ -178,7 +186,7 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
       version: '0.1.0',
       destination: 'awaiting_release' as const,
     };
-    const quiet = refusedCloseComment({ ...args, delivered: false });
+    const quiet = refusedCloseComment({ ...args, delivery: 'none', marked: true });
     expect(quiet).toContain(
       'The release finished as version 0.1.0, but this issue could not be closed.',
     );
@@ -186,7 +194,7 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
       'The issue is back at Awaiting release. That release recorded no promotion and no deploy, so nothing says its code is live.',
     );
     expect(quiet).not.toMatch(/went out|is live with/);
-    const done = refusedCloseComment({ ...args, delivered: true });
+    const done = refusedCloseComment({ ...args, delivery: 'reported', marked: true });
     expect(done).toContain('The release finished and went out as version 0.1.0');
     expect(done).toContain(
       'The issue is back at Awaiting release, and its code went out with that release.',
@@ -199,12 +207,115 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
       projectId: PROJECT,
       version: '2.0.0',
       destination: 'releasing',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
       held: 'This batch recorded a promotion; abort it to settle.',
     });
     expect(said).toContain('This batch recorded a promotion; abort it to settle.');
     expect(said).toContain('Clear the reason above first');
     expect(said).not.toContain('The issue is at');
+  });
+});
+
+// ISS-1421 r42 (judge-169, criterion 398): an issue refused for its missing mark was told "its code
+// went out with that release" beside its own reason that nothing says its work was on that branch.
+// The claim needs both halves: a delivery that reported going out, and a mark saying where it landed.
+describe('whether a finish says the issue’s code went out', () => {
+  const unmarkedRefusal = closeRefusalOf(
+    new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged', { to: 'closed' }),
+  );
+  const questionRefusal = closeRefusalOf(
+    new TransitionError('OPEN_QUESTIONS', 'answer it', { openQuestionIds: ['q-1'] }),
+  );
+  const failedRefusal = closeRefusalOf(new Error('connection reset'));
+  const said = (
+    refusal: ReturnType<typeof closeRefusalOf>,
+    delivery: 'reported' | 'unreported' | 'none',
+    marked: boolean,
+  ) =>
+    refusedCloseComment({
+      refusal,
+      projectId: PROJECT,
+      version: '0.8.0',
+      destination: 'awaiting_release',
+      delivery,
+      marked,
+    });
+  const WENT_OUT = 'and its code went out with that release.';
+
+  it('says it only for a marked issue whose release reported going out', () => {
+    for (const refusal of [questionRefusal, failedRefusal]) {
+      const both = said(refusal, 'reported', true);
+      expect(both).toContain('The release finished and went out as version 0.8.0');
+      expect(both).toContain(`The issue is back at Awaiting release, ${WENT_OUT}`);
+    }
+  });
+
+  it('says an unmarked issue’s code is not known to have gone out, though the release did', () => {
+    for (const refusal of [unmarkedRefusal, questionRefusal, failedRefusal]) {
+      const text = said(refusal, 'reported', false);
+      expect(text).toContain('The release finished and went out as version 0.8.0');
+      expect(text).toContain(
+        'The issue is back at Awaiting release. It is not marked merged, so nothing says its code went out with that release.',
+      );
+      expect(text).not.toContain(WENT_OUT);
+    }
+  });
+
+  it('says a mark that names no landing is no proof the code went out', () => {
+    const text = said(unmarkedRefusal, 'reported', true);
+    expect(text).toContain(
+      'Its mark does not say where its work landed, so nothing says its code went out with that release.',
+    );
+    expect(text).not.toContain(WENT_OUT);
+  });
+
+  it('never says the release went out where no promotion or deploy reported going out', () => {
+    for (const marked of [true, false]) {
+      for (const refusal of [unmarkedRefusal, questionRefusal, failedRefusal]) {
+        const declared = said(refusal, 'unreported', marked);
+        expect(declared).toContain('The release finished as version 0.8.0, but');
+        expect(declared).toContain(
+          'No promotion or deploy of that release reported going out, so nothing says its code is live.',
+        );
+        expect(declared).not.toMatch(/went out (as|with)|code went out/);
+        const none = said(refusal, 'none', marked);
+        expect(none).toContain(
+          'That release recorded no promotion and no deploy, so nothing says its code is live.',
+        );
+        expect(none).not.toMatch(/went out (as|with)|code went out/);
+      }
+    }
+  });
+});
+
+// ISS-1421 r42 (judge-169): one question read "holds open questions" and "answer each open question".
+describe('a close refused for open questions, counted', () => {
+  const comment = (ids: string[]) =>
+    refusedCloseComment({
+      refusal: closeRefusalOf(
+        new TransitionError('OPEN_QUESTIONS', 'answer them', { openQuestionIds: ids }),
+      ),
+      projectId: PROJECT,
+      version: '0.9.0',
+      destination: 'awaiting_release',
+      delivery: 'reported',
+      marked: true,
+    });
+
+  it('speaks of one question as one', () => {
+    const one = comment(['q-1']);
+    expect(one).toContain('The close was refused because the issue holds an open question.');
+    expect(one).toContain(
+      'What clears it: answer the open question in its "Decision waiting" card',
+    );
+    expect(one).not.toMatch(/open questions|each open question/);
+  });
+
+  it('speaks of two as several', () => {
+    const two = comment(['q-1', 'q-2']);
+    expect(two).toContain('The close was refused because the issue holds open questions.');
+    expect(two).toContain('answer each open question');
   });
 });
 
@@ -228,6 +339,9 @@ describe('a hand-back reason as the opening sentence of its comment', () => {
     ['The release was aborted: Stop!', 'The release was aborted: Stop!'],
     ['did it deploy? ', 'Did it deploy?'],
     ['The release was aborted: Stop!.', 'The release was aborted: Stop!'],
+    // ISS-1421 r42 (judge-169): "Hold on..." read "Hold on.": an ellipsis is the writer's own mark.
+    ['Ada aborted the release: Hold on...', 'Ada aborted the release: Hold on...'],
+    ['wait for the hotfix… ', 'Wait for the hotfix…'],
   ])('says %j as %j', (reason, said) => {
     expect(reasonSentence(reason)).toBe(said);
   });

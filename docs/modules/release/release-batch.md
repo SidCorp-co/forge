@@ -147,7 +147,7 @@ started can therefore be told apart from one whose agent is working:
 | queued, nobody holds it | `waiting`, with when it was queued, when it is handed back, and a reason: `no-eligible-box` (each box and what holds it), `no-box`, or `eligible-not-taken` (the eligible boxes, named) |
 | queued, a box holds the claim | `claimed`, held but not started |
 | cancelled by the unstarted deadline | `handed-back`, with that deadline's own reason |
-| never dispatched, under a run a person aborted | `aborted`, with when, who (their display name, else their email) and the reason they gave, read off the run's abort stamp |
+| never dispatched, under a run a person aborted | `aborted`, with when, who (their display name, else "A member", never their address) and the reason they gave, read off the run's abort stamp |
 | any other end, never dispatched | `ended`, with the job's error |
 | no release job under the run | `none` |
 
@@ -241,10 +241,15 @@ One issue's refused close does not stop the others from closing. The refused iss
 `awaiting_release` through `packages/core/src/release-batch/releasing-recovery.ts:recoverStrandedReleasing`, and the comment it
 leaves (`packages/core/src/release-batch/refused-close-words.ts:refusedCloseComment`) says:
 
-- the release it was in, with its version, said to have gone out only where its run recorded a
-  promotion or a deploy (`packages/core/src/release-batch/releasing-recovery.ts:runRecordedDelivery`);
-  where it recorded neither, the comment says so and that nothing says the issue's code is live
-  (ISS-1421 r41);
+- the release it was in, with its version, said to have gone out only where a promotion or deploy
+  of its run reported going out: settled, with a verdict other than `failed`
+  (`packages/core/src/release-batch/releasing-recovery.ts:runDelivery`). One declared and never
+  reported back, or reported failing, is said as no promotion or deploy reporting that it went out;
+  none at all, as none recorded; either way nothing says the issue's code is live (ISS-1421 r41, r42);
+- that the issue's code went out with that release only where the release went out and the issue's
+  mark says where its work landed; an issue not marked merged, or whose mark names no landing, is
+  told that, and that nothing says its code went out with that release
+  (`packages/core/src/release-batch/refused-close-words.ts:refusedCloseComment`, ISS-1421 r42);
 - why the close was refused, in words (`packages/core/src/release-batch/refused-close-words.ts:personRefusedFor`), and the blocking objects the refusal
   reports, counted by their label (`2 open questions`); the ids under each `*Ids` key of its details
   stay on the refusal a caller reads, and never reach the comment (ISS-1421). A refusal reporting

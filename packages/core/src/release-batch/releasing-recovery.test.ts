@@ -39,7 +39,8 @@ describe('what a failed write says, never its statement or a bound value (ISS-13
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
     });
 
     expect(said).toContain('judge planted failure: storage refused this row');
@@ -100,7 +101,8 @@ describe('what a failed write says, never its statement or a bound value (ISS-13
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
     });
 
     for (const text of [said, closeFailureText(refusal)]) {
@@ -156,7 +158,8 @@ describe('what a failed write says, never its statement or a bound value (ISS-13
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
     });
 
     for (const text of [said, closeFailureText(refusal)]) {
@@ -205,7 +208,8 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
       projectId: PROJECT,
       version: '1.4.0',
       destination: 'awaiting_release',
-      delivered: true,
+      delivery: 'reported',
+      marked: true,
     });
 
     for (const text of [said, closeFailureText(refusal)]) {

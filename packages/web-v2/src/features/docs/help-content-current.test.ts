@@ -45,6 +45,22 @@ describe("the bundled help, against content/help", () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("src/features/docs/help-content.generated.ts does not match content/help/");
     expect(r.stderr).toContain("pnpm gen:help");
+    // ISS-1421 r42 (judge-169): the refusal named the bundle and not the page that drifted.
+    expect(r.stderr).toContain(": what-done-means.md changed —");
+  });
+
+  it("names a page added without regenerating, and one taken away", () => {
+    const dir = mkdtempSync(join(tmpdir(), "help-check-"));
+    made.push(dir);
+    cpSync(CONTENT, dir, { recursive: true });
+    writeFileSync(join(dir, "a-new-page.md"), "---\ntitle: A new page\naudience: user\n---\nBody\n");
+    rmSync(join(dir, "getting-started.md"));
+
+    const r = check(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("a-new-page.md added");
+    expect(r.stderr).toContain("getting-started.md removed");
+    expect(r.stderr).not.toContain("what-done-means.md");
   });
 
   it("writes nothing when it checks", () => {

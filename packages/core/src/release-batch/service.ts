@@ -54,7 +54,7 @@ import {
 } from './errors.js';
 import { assertFinishable, readReleaseRun } from './finish-precondition.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
-import { RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
+import { personLabel, RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { judgeRecordedReadings, readCommitsBefore } from './readings.js';
@@ -447,7 +447,8 @@ export interface AbortReleaseBatchOptions {
 
 /**
  * Cancel a release batch and put its roster back. `actorUserId` is the person who asked, or `null`
- * for a sweep, in which case the stamp names no person and Forge writes the roster's comments.
+ * for a sweep, in which case the stamp names no person. Forge writes the roster's comments either
+ * way, naming the person where there is one; the moves stay theirs.
  */
 export async function abortReleaseBatch(
   runId: string,
@@ -464,9 +465,10 @@ export async function abortReleaseBatch(
   });
   if (stampId === null) throw new ReleaseBatchNotAbortableError(runId);
   const recovery = await recoverStrandedReleasing(runId, {
-    reason: `The release was aborted: ${reason}`,
+    reason: `${actorUserId === null ? 'The release was aborted' : `${await personLabel(actorUserId)} aborted the release`}: ${reason}`,
     ...(actorUserId === null ? {} : { actor: userActor(actorUserId) }),
     comment: true,
+    commentsByForge: true,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });
   await options.afterRosterRecovered?.();

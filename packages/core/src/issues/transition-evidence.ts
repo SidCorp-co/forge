@@ -9,6 +9,7 @@ import {
   type EntryCriterionKey,
   entryRecordsMissingWords,
   entryRecordsWrittenBy,
+  type MissingMarkShape,
 } from './entry-criteria-keys.js';
 import { readLandingEvidence } from './landing-evidence.js';
 import { statusLabel } from './status-sets.js';
@@ -98,7 +99,7 @@ const entryCriteriaRule: EvidenceRule = {
       // A short sentence per record by its name; each record's whole step stays in `steps`.
       detail: [
         entryRecordsMissingWords(ctx.toStatus, statusLabel(ctx.toStatus), unmet),
-        ...entryRecordsWrittenBy(unmet, await markNamesNoCommit(ctx, unmet)),
+        ...entryRecordsWrittenBy(unmet, await missingMarkShape(ctx, unmet)),
         ...(ctx.toStatus === 'closed' ? [CLOSE_INSTEAD] : []),
       ].join(' '),
       details: {
@@ -112,24 +113,24 @@ const entryCriteriaRule: EvidenceRule = {
   },
 };
 
-/** Whether a missing mark is one in git on a project naming no repository, so its Commit may stay
- *  empty (ISS-1421 r41, criterion 393). Read only where a mark is what is missing; a read that fails
- *  leaves the sentence without it rather than the refusal unmade. */
-async function markNamesNoCommit(
+/** How a missing mark is made: its lane, and in git whether the project names no repository, so its
+ *  Commit may stay empty (ISS-1421 r41, r42). Read only where a mark is what is missing; a read that
+ *  fails leaves the sentence saying only what the mark records rather than the refusal unmade. */
+async function missingMarkShape(
   ctx: TransitionEvidenceContext,
   unmet: readonly string[],
-): Promise<boolean> {
-  if (!unmet.includes('merged_mark')) return false;
+): Promise<MissingMarkShape | null> {
+  if (!unmet.includes('merged_mark')) return null;
   try {
     const evidence = await readLandingEvidence(ctx.executor ?? db, ctx.issue.id);
-    if (evidence && evidence.lane.shape !== 'git') return false;
-    return await namesNoRepository(ctx.issue.projectId);
+    if (evidence && evidence.lane.shape !== 'git') return { outsideGit: true, noRepository: false };
+    return { outsideGit: false, noRepository: await namesNoRepository(ctx.issue.projectId) };
   } catch (err) {
     logger.warn(
       { err, issueId: ctx.issue.id },
       'transition-evidence: the landing lane could not be read',
     );
-    return false;
+    return null;
   }
 }
 

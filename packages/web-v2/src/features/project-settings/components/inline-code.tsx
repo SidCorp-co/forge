@@ -2,6 +2,7 @@
  *  `fg-code` is the design system's span; `bg-subtle` named a FOREGROUND token (ISS-1127). */
 
 import type { ReactNode } from "react";
+import { unbrokenKeys } from "@/lib/unbroken-keys";
 
 /** A key, a field or a value breaks at its hyphen or dot otherwise; a URL or a phrase still wraps. */
 const oneLine = (part: string) => part.length <= 32 && !/\s/.test(part);
@@ -18,7 +19,7 @@ export function inlineCode(text: string): ReactNode[] {
 					{part}
 				</code>
 			) : (
-				<span key={`t${i}`}>{i % 2 === 1 ? `\`${part}` : part}</span>
+				<span key={`t${i}`}>{unbrokenKeys(i % 2 === 1 ? `\`${part}` : part)}</span>
 			),
 		);
 	}

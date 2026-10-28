@@ -223,7 +223,7 @@ describe('formatApiError — the merge-mark refusals, in the web\'s words', () =
   // control names, so the web shows it as sent rather than keeping a second wording beside it.
   it('shows the unshipped close as core says it', () => {
     const said =
-      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties, then close it. If it turned out not to be work, move it to Dropped instead.";
+      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit. Then close it. If it turned out not to be work, move it to Dropped instead.";
     const msg = formatApiError(new ApiError(422, said, 'CLOSE_REQUIRES_SHIPPED', { requires: 'mergedAt' }));
     expect(msg).toBe(said);
     for (const sentence of msg.split(/(?<=\.) /)) expect(words(sentence)).toBeLessThanOrEqual(20);
