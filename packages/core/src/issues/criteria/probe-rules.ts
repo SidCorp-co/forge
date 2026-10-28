@@ -8,11 +8,13 @@
  *   rule                                                          code
  *   a probe carries no credential, and no header that holds one   VERDICT_PROBE_SECRET
  *   a code property keeps no probe of the running build           VERDICT_PROBE_CODE_PROPERTY
+ *   a server-side check keeps no probe: no replay reaches inside   VERDICT_PROBE_SERVER_SIDE
  *   a pass or short on an observable criterion rests on a probe   VERDICT_PROBE_REQUIRED
  *   a request names the origin that answers its path               VERDICT_PROBE_ROUTE
  *
- * A criterion no design classes owes no probe: the verdict's record says so (`probeNote`), so the
- * exemption is read on every verdict it covers rather than assumed.
+ * A criterion no design classes owes no probe, nor does a server-side one, which is judged from the
+ * capture its verdict cites (REQ-36 BC-21, `clip-citation.ts`): the verdict's record says so
+ * (`probeNote`), so the exemption is read on every verdict it covers rather than assumed.
  */
 
 import {
@@ -108,6 +110,13 @@ export function probeRuleFault(facts: ProbeFacts): ProbeRefusal | null {
       detail: `criterion ${criterion} is a code property in the issue's design: the review judges it against the diff, so it keeps no probe of the running build. Leave \`probe\` out, or reclass it (PUT /api/issues/:id/design)`,
     };
   }
+  if (sent && criterionClass === 'server_side') {
+    return {
+      code: 'VERDICT_PROBE_SERVER_SIDE',
+      path: '/probe',
+      detail: `criterion ${criterion} is a server-side check in the issue's design: QA judges it from the capture the verdict cites, and no deploy's replay reaches inside the running server, so it keeps no probe. Leave \`probe\` out and cite the capture in \`evidence\`, or reclass it observable where an outside request shows it (PUT /api/issues/:id/design)`,
+    };
+  }
   if (criterionClass === 'observable' && verdictEarns(verdict) && !sent && !kept) {
     return {
       code: 'VERDICT_PROBE_REQUIRED',
@@ -136,7 +145,9 @@ export function probeNote(
   if (!verdictEarns(verdict)) return null;
   return criterionClass === 'code_property'
     ? 'not owed: a code property is judged against the diff'
-    : criterionClass === null
+    : criterionClass === 'server_side'
+      ? 'not owed: a server-side check is judged from its capture'
+      : criterionClass === null
       ? 'not owed: no design classes this criterion'
       : null;
 }

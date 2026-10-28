@@ -3466,6 +3466,13 @@
       "when": 1829692800000,
       "tag": "0541_a_projects_gates_are_changed_on_the_record",
       "breakpoints": true
+    },
+    {
+      "idx": 543,
+      "version": "7",
+      "when": 1829865600000,
+      "tag": "0543_a_server_side_check_is_a_class_of_its_own",
+      "breakpoints": true
     }
   ]
 }

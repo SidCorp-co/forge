@@ -8,10 +8,16 @@ import { PATTERN_SLUG_PATTERN } from "./patterns.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 
 /**
- * `observable`: judged on the running build. `code_property`: a property of the code no running
- * build shows, judged by the review against the diff.
+ * `observable`: judged on the running build, where a person can see it. `server_side`: judged on the
+ * running build from inside it (a pod, a process, a queue), where no screen and no outside request
+ * shows it, so QA judges it from a capture attached to the issue (REQ-36 BC-21). `code_property`: a
+ * property of the code no running build shows, judged by the review against the diff.
  */
-export const CRITERION_CLASSES = ["observable", "code_property"] as const;
+export const CRITERION_CLASSES = [
+	"observable",
+	"server_side",
+	"code_property",
+] as const;
 export type CriterionClass = (typeof CRITERION_CLASSES)[number];
 
 /** Who judges a criterion: QA on the running build, or the review against the diff. */
@@ -21,6 +27,7 @@ export type CriterionJudge = (typeof CRITERION_JUDGES)[number];
 /** The judge each class is routed to (BC-13). */
 export const JUDGE_OF_CLASS: Record<CriterionClass, CriterionJudge> = {
 	observable: "qa",
+	server_side: "qa",
 	code_property: "review",
 };
 
@@ -79,7 +86,7 @@ const criterionDesignSchema = z.strictObject({
 	class: z.enum(CRITERION_CLASSES),
 	/** A catalog slug, or a new pattern approved on the issue; null only where the project reads no catalog. */
 	pattern: z.string().trim().regex(PATTERN_SLUG_PATTERN).nullable(),
-	/** How it will be proven: the probe for an observable criterion, the review line for a code property. */
+	/** How it will be proven: the probe for an observable criterion, the capture for a server-side one, the review line for a code property. */
 	proof: z
 		.string()
 		.trim()
@@ -105,7 +112,7 @@ export const recordDesignRequestSchema = z.strictObject({
 });
 export type RecordDesignRequest = z.infer<typeof recordDesignRequestSchema>;
 export const RECORD_DESIGN_SHAPE =
-	"{ criteria: [{ criterion: the criterion's number, class: 'observable' | 'code_property', pattern: a catalog slug or a new pattern approved on this issue (null only where the project reads no catalog), proof: the probe or the review line that will prove it }], one per live criterion; modules: the module names the change touches, at least one where the project declares module labels and [] where it declares none; contracts: the `<project>/<contract>` it touches, [] for none }";
+	"{ criteria: [{ criterion: the criterion's number, class: 'observable' | 'server_side' | 'code_property', pattern: a catalog slug or a new pattern approved on this issue (null only where the project reads no catalog), proof: the probe, the capture or the review line that will prove it }], one per live criterion; modules: the module names the change touches, at least one where the project declares module labels and [] where it declares none; contracts: the `<project>/<contract>` it touches, [] for none }";
 
 export interface CriterionDesignView {
 	criterion: number;

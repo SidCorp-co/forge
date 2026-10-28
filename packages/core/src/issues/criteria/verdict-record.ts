@@ -100,6 +100,7 @@ const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
   VERDICT_VALUE_UNKNOWN: '/verdict',
   VERDICT_SKIP_REASON_REQUIRED: '/reason',
   VERDICT_CLIP_REQUIRED: '/evidence',
+  VERDICT_CAPTURE_REQUIRED: '/evidence',
   VERDICT_CRITERION_UNKNOWN: '/criterion',
   VERDICT_RUN_UNKNOWN: '/run',
   VERDICT_SESSION_NOT_ADMITTED: '/run',

@@ -139,11 +139,12 @@ function standingFault(
  * names it a standing fail (`probesRan`); a fail the change claims sits at its head, and owes its
  * probe. A criterion whose latest verdict
  * is `skipped` owes none: only the live build can show it. Every other criterion not classed a code
- * property is the change's, and its kept probe must have run in this report and passed: one the
- * report did not run, ran with result `none`, or ran in an older version is MERGE_PROBE_MISSING, as
- * is a claimed observable criterion keeping no probe and a standing reading core does not hold; any
- * `probes` check that ended red is MERGE_PROBE_RED. A code property, or a criterion no design
- * classes, keeping none owes none. The fast lane runs no probes (REQ-39 BC-7), so it is not asked.
+ * property or a server-side check is the change's, and its kept probe must have run in this report
+ * and passed: one the report did not run, ran with result `none`, or ran in an older version is
+ * MERGE_PROBE_MISSING, as is a claimed observable criterion keeping no probe and a standing reading
+ * core does not hold; any `probes` check that ended red is MERGE_PROBE_RED. A code property and a
+ * server-side check (judged from its capture, REQ-36 BC-21) owe none, and a criterion no design
+ * classes keeping none owes none. The fast lane runs no probes (REQ-39 BC-7), so it is not asked.
  */
 export function probeRefusals(
   report: MergeCheckReport,
@@ -165,7 +166,7 @@ export function probeRefusals(
     else standing.add(s.criterion);
   }
   for (const c of criteria) {
-    if (c.class === 'code_property' || standing.has(c.n)) continue;
+    if (c.class === 'code_property' || c.class === 'server_side' || standing.has(c.n)) continue;
     if (c.latest?.verdict === 'skipped') continue;
     if (!c.probe) {
       if (c.class === 'observable')
