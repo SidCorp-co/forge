@@ -57,9 +57,10 @@ const READERS: Record<string, { refuse?: RegExp }> = {
   ps: {},
   ss: { refuse: flags('K', 'kill') },
   netstat: {},
+  // ip takes any prefix of a verb (`s` is `set` for a link), so only showing an object is a read
   ip: {
     refuse:
-      /\b(add|del|delete|change|replace|set|flush|append|exec|netns|restore|save|monitor)\b|(^|\s)(-b|-ba\w*|-force)(?=\s|$)/,
+      /^(?!\s*(-(br|brief|4|6|s|stats|d|details|c|color|j|json|p|pretty|o|oneline|h|human)\s+)*(a|addr|address|l|link|r|route|n|neigh|neighbour|ru|rule|maddr)(\s+(show|list|ls)(\s+(dev|table|scope|to|from|type|up)\b(\s+[A-Za-z0-9._:/-]+)?)*)?\s*$)/,
   },
   dig: {},
   host: {},
