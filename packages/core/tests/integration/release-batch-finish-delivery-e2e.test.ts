@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  createTestDevice,
   createTestProject,
   createTestProjectMember,
   createTestUser,
@@ -65,16 +66,21 @@ async function askOn(issueId: string): Promise<void> {
   `);
 }
 
-/** A deploy declared on the run through the ledger, settled with `verdict` unless it is `null`. */
-async function deploy(
+/** A promotion or deploy declared on the run through the ledger, settled with `verdict` unless it
+ *  is `null`. */
+async function deliver(
   runId: string,
+  stage: 'promote' | 'deploy',
   key: string,
   verdict: 'ok' | 'failed' | 'unverified' | null,
 ): Promise<void> {
   const { openAttempt, settleAttempt } = await import('../../src/release-batch/ledger.js');
-  await openAttempt({ runId, stage: 'deploy', idempotencyKey: key, commit: 'b'.repeat(40) });
+  await openAttempt({ runId, stage, idempotencyKey: key, commit: 'b'.repeat(40) });
   if (verdict) await settleAttempt({ runId, idempotencyKey: key, verdict });
 }
+
+const deploy = (runId: string, key: string, verdict: 'ok' | 'failed' | 'unverified' | null) =>
+  deliver(runId, 'deploy', key, verdict);
 
 async function unmark(issueId: string): Promise<void> {
   await harness.db.execute(sql`
@@ -158,5 +164,88 @@ describe('whether a finish says an issue’s code went out', () => {
     const said = await lastComment(held);
     expect(said).toContain(`The release finished and went out as version ${version}`);
     expect(said).toContain('and its code went out with that release.');
+  });
+});
+
+/** Every comment on the issue, oldest first, with who wrote it. */
+async function thread(issueId: string): Promise<Array<{ body: string; author: string }>> {
+  const rows = await harness.db.execute(sql`
+    SELECT body, author_id FROM comments WHERE issue_id = ${issueId} ORDER BY created_at, id
+  `);
+  return rows.map((r) => ({ body: String(r.body), author: String(r.author_id) }));
+}
+
+async function claimOf(issueId: string): Promise<unknown> {
+  const rows = await harness.db.execute(sql`
+    SELECT release_batch_run_id FROM issues WHERE id = ${issueId}
+  `);
+  return rows[0]?.release_batch_run_id ?? null;
+}
+
+// ISS-1421 r43 (judge-171 on 406): a finish whose run declared a promotion that never reported back
+// held the issue at Releasing, saying the code "may be on production" and that the issue stays at
+// Releasing "while its run is live", though the finish ended the run; forty seconds later the sweep
+// wrote "The release run completed without finishing its release" under "The release finished".
+// One account of one release: the finish settles its own issue, and the sweep finds nothing to say.
+describe('a finish whose run recorded a promotion', () => {
+  it.each([
+    ['reported going out', 'ok', true],
+    ['never reported back', null, false],
+    ['reported failing', 'failed', false],
+  ] as const)(
+    'returns the issue it could not close to Awaiting release when the promotion %s, and the sweep adds nothing',
+    async (_what, verdict, wentOut) => {
+      const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+      const { settleStrandedReleasing } = await import(
+        '../../src/release-batch/releasing-settle.js'
+      );
+      const { FORGE_AUTHOR_ID } = await import('../../src/comments/forge-author.js');
+      const held = await fx.insertIssue();
+      const { runId, version } = await fx.claim([held]);
+      await deliver(runId, 'promote', 'promote-1', verdict);
+      await askOn(held);
+
+      await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+
+      expect((await fx.stored(held)).status).toBe('awaiting_release');
+      expect(await claimOf(held)).toBeNull();
+      expect(await fx.runStatus(runId)).toBe('completed');
+      const before = await thread(held);
+      const said = before.at(-1)?.body ?? '';
+      expect(said).not.toMatch(/may be on production|stays? at Releasing|while its run is live/);
+      if (wentOut) {
+        expect(said).toContain(`The release finished and went out as version ${version}`);
+        expect(said).toContain('and its code went out with that release.');
+      } else {
+        expect(said).toContain(`The release finished as version ${version}, but`);
+        expect(said).toContain(
+          'No promotion or deploy of that release reported going out, so nothing says its code is live.',
+        );
+        expect(said).not.toMatch(/went out (as|with)|code went out/);
+      }
+      // Forge writes it, naming who reported the finish (criteria 419, 420).
+      expect(before.at(-1)?.author).toBe(FORGE_AUTHOR_ID);
+      expect(said).toMatch(/could not be closed\. The finish was reported by [^.]+\. The close was refused/);
+
+      expect(await settleStrandedReleasing()).toEqual({ settled: 0, closed: 0, failed: 0 });
+      const after = await thread(held);
+      expect(after).toEqual(before);
+      expect(after.map((c) => c.body).join('\n')).not.toMatch(/without finishing/);
+    },
+  );
+
+  it('names the box that reported the finish', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const { FORGE_AUTHOR_ID } = await import('../../src/comments/forge-author.js');
+    const box = await createTestDevice(harness.db, ownerId, { name: 'sid-desk' });
+    const held = await fx.insertIssue();
+    const { runId } = await fx.claim([held]);
+    await askOn(held);
+
+    await finishReleaseBatch(runId, { type: 'device', id: box.id, ownerId });
+
+    const [said] = (await thread(held)).slice(-1);
+    expect(said?.author).toBe(FORGE_AUTHOR_ID);
+    expect(said?.body).toContain('The finish was reported by the box sid-desk.');
   });
 });

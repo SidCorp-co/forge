@@ -4,6 +4,7 @@
  */
 
 import type { ReleaseBlockerCode } from '@forge/contracts';
+import type { MarkCommitCheck } from '@forge/contracts/mark-merged-words';
 import { LANDINGS_LEAD, type LandingHeld, splitLandings } from '../issues/landing-correction.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
@@ -17,9 +18,17 @@ import { criteriaUnearnedLead, unroutedRemedy } from './held-sentences.js';
 import type { ReleaseChannel } from './plan.js';
 import { RUNNERS_TAB, runnerHoldClause, runnersHeldSentence } from './runner-hold-sentences.js';
 import type { ServingReading } from './serving-reading.js';
+import { commitCheckOf } from './shortfall-words.js';
 import type { Weighing } from './weighing.js';
 
 export { runnerHoldClause };
+
+/** What the unmerged refusal adds about the mark's commit, by what Mark merged takes here. */
+const MARK_COMMIT_NOTE: Record<MarkCommitCheck, string> = {
+  checked: '',
+  claim: ' This project names no repository, so the mark may name no commit.',
+  refused: " Forge cannot read this project's repository, so a mark naming a commit is refused; mark it naming none.",
+};
 
 /** The most issues one release may carry; `resolveRoster` holds every door to it. */
 export const RELEASE_ROSTER_LIMIT = 50;
@@ -133,7 +142,7 @@ function namedSentence(code: NamedCode, details: Record<string, unknown> | null)
     case 'RELEASE_RECORD_MISSING':
       return `${who} ${w('has', 'have')} no release note, and closing ${w('it', 'them')} would tell users nothing about what changed. ${RELEASE_RECORD_REMEDY}`;
     case 'RELEASE_WORK_UNMERGED':
-      return `${who} ${w('is', 'are')} not marked merged, so nothing says ${w('its', 'their')} work is on the branch this release deploys. Mark ${w('it', 'each of them')} merged first — a release closes what it carries, and a close says the work went out.${details?.noRepository === true ? ' This project names no repository, so the mark may name no commit.' : ''}`;
+      return `${who} ${w('is', 'are')} not marked merged, so nothing says ${w('its', 'their')} work is on the branch this release deploys. Mark ${w('it', 'each of them')} merged first — a release closes what it carries, and a close says the work went out.${MARK_COMMIT_NOTE[commitCheckOf(details)]}`;
     case 'RELEASE_ISSUES_UNCLOSABLE':
       return `${who} would be refused ${w('its', 'their')} close when this release finishes, so it would release ${w('it', 'them')} and hand ${w('it', 'them')} back to the gate. Clear what ${w('it is', 'each one is')} refused for, or leave ${w('it', 'each')} off this release.`;
   }

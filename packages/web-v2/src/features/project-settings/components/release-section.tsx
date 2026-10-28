@@ -10,6 +10,7 @@ import Link from "next/link";
 import type { MouseEvent, ReactNode } from "react";
 import { ErrorState, RetryButton, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { UNBROKEN_KEY_CLASS } from "@/lib/unbroken-keys";
 import { pushLocationSearch } from "@/lib/utils/use-location-search";
 import { pickableRows } from "@/features/issues/components/release-gate-panel";
 import { useReleaseRoster } from "@/features/issues/hooks";
@@ -270,7 +271,10 @@ function BlockerLinkView({ link, slug }: { link: BlockerLink; slug?: string }) {
           {link.displayIds.map((id, i) => (
             <span key={id}>
               {i > 0 && ", "}
-              <Link href={`/projects/${slug}/issues/${encodeURIComponent(id)}`} className={cls}>
+              <Link
+                href={`/projects/${slug}/issues/${encodeURIComponent(id)}`}
+                className={`${cls} ${UNBROKEN_KEY_CLASS}`}
+              >
                 {id}
               </Link>
             </span>

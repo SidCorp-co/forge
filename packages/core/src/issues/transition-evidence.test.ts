@@ -46,7 +46,7 @@ vi.mock('./landing-evidence.js', () => ({
 
 const commitCheckMock = vi.fn(async (..._a: unknown[]) => 'checked' as string | null);
 vi.mock('../projects/live-source.js', () => ({
-  namesNoRepository: async (...a: unknown[]) => (await commitCheckMock(...a)) === 'claim',
+  markCommitCheck: (...a: unknown[]) => commitCheckMock(...a),
 }));
 
 const { checkTransitionEvidence, isBlankPlan } = await import('./transition-evidence.js');
@@ -478,6 +478,18 @@ describe('a missing merge mark on a project naming no repository', () => {
     expect(await missingMark()).toContain(
       "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
     );
+  });
+
+  // ISS-1421 r43 (judge-171 on 407): a commit named on a repository Forge cannot read is refused, so
+  // the record says what Mark merged's panel there says.
+  it('says to leave Commit empty for a claim where Forge cannot read the named repository', async () => {
+    laneMock.mockResolvedValue({ columns: {}, lane: { shape: 'git', declared: false } });
+    commitCheckMock.mockResolvedValue('refused');
+    const said = await missingMark();
+    expect(said).toContain(
+      "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and leave Commit empty to record a claim naming no commit.",
+    );
+    expect(said).not.toContain('name the commit that landed');
   });
 
   it('asks for where the work now is, and no commit, for work that lands outside git', async () => {

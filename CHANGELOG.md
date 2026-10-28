@@ -3200,6 +3200,7 @@
 
 ### Fixed
 
+- **A finish tells an issue it could not close one story.** It returns to Awaiting release whatever was promoted, Forge's comment names who finished, Mark merged asks for no commit Forge cannot check, and issue keys never wrap. (ISS-1421)
 - **A release says an issue's code went out only where both hold.** A deploy reported going out, and the issue is marked merged; an abort's note is Forge's, naming who pressed. (ISS-1421)
 - **A read the server asked to wait on is not asked again until the wait is over**, a reload included; a screen reader hears each wait once, wherever it shows, and a refused device approval is said. (ISS-1229)
 - **A release says what it did to an issue it could not close.** It says the code went out only after a recorded promotion or deploy; Mark merged says Commit may stay empty without a repository. (ISS-1421)

@@ -54,7 +54,7 @@ import {
 } from './errors.js';
 import { assertFinishable, readReleaseRun } from './finish-precondition.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
-import { personLabel, RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
+import { actorNamedInside, personLabel, RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { judgeRecordedReadings, readCommitsBefore } from './readings.js';
@@ -388,12 +388,17 @@ export async function finishReleaseBatch(
   }
 
   await options.onRosterClosed?.({ closed, failed });
+  // The finish ends its run below, so a promoted roster is settled here rather than held for the
+  // sweep, and Forge says so naming who reported the finish; the moves stay theirs (ISS-1421 r43).
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
     actor,
     comment: true,
+    commentsByForge: true,
+    settlePromotedRoster: true,
     refusals,
     version: run?.releaseVersion ?? null,
+    finishedBy: refusals.size > 0 ? await actorNamedInside(actor) : undefined,
     fence,
   });
 

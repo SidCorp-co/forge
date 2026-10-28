@@ -1,4 +1,4 @@
-import { markMergedSteps } from '@forge/contracts/mark-merged-words';
+import { type MarkCommitCheck, markMergedSteps } from '@forge/contracts/mark-merged-words';
 
 export const ENTRY_CRITERION_KEYS = [
   'plan',
@@ -59,11 +59,11 @@ export function entryRecordsMissingWords(
   return `This issue can't ${move} yet: ${COUNT_WORDS[keys.length] ?? keys.length} records are missing. They are ${listed}.`;
 }
 
-/** How a missing mark is made, where its lane was read: whether the work lands outside git, and
- *  whether the project names no repository, so a mark in git may name no commit. */
+/** How a missing mark is made, where its lane was read: whether the work lands outside git, and in
+ *  git what a mark's commit meets on the project (`markCommitCheck`). */
 export interface MissingMarkShape {
   outsideGit: boolean;
-  noRepository: boolean;
+  commit: MarkCommitCheck | null;
 }
 
 /** Who writes the missing records: the page has no editor for them, so it names the agent's door.
@@ -83,7 +83,7 @@ export function entryRecordsWrittenBy(
     ...(keys.includes('merged_mark')
       ? [
           mark
-            ? markMergedSteps(mark.outsideGit, mark.noRepository)
+            ? markMergedSteps(mark.outsideGit, mark.commit)
             : "Mark merged in the issue's properties records where the work landed.",
         ]
       : []),
