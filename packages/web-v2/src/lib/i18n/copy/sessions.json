@@ -194,7 +194,7 @@
     "sessions.reasonAction.box_session_saturated": "That runner had no free slot; the job moves on its own.",
     "sessions.reasonAction.checkout_unbound": "The device binding names no checkout; run forge-runner bind, then retry.",
     "sessions.reasonAction.credential_mint_failed": "Forge could not mint a credential for this turn — ask again.",
-    "sessions.reasonAction.credential_refused": "The runner's credential cannot reach this project; re-provision its checkout, then run the job again.",
+    "sessions.reasonAction.credential_refused": "Re-provision the runner checkout so its credential reaches this project.",
     "sessions.reasonAction.dispatch_failed": "The turn could not be handed to the device — ask again.",
     "sessions.reasonAction.duplex_channel_failed": "The session channel dropped — a fresh session is the next step.",
     "sessions.reasonAction.forge_budget_exhausted": "Monthly budget spent; raise it or wait for the cycle.",

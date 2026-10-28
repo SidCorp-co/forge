@@ -20,7 +20,14 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { classifyFailure } from '../../src/pipeline/index.js';
-import { closeWorld, ok, type Reply, requester, startQueue, testEnv } from '../helpers/ecosystem-world.js';
+import {
+  closeWorld,
+  ok,
+  type Reply,
+  requester,
+  startQueue,
+  testEnv,
+} from '../helpers/ecosystem-world.js';
 import {
   bindTestRunner,
   createTestDevice,
