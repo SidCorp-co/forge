@@ -179,6 +179,7 @@ describe("a failed read's Retry, across the web app (criteria 478, 495, 496)", (
     ["a refetch held as an object's member", `export function A({ q }) { const actions = { again: () => void q.refetch() }; return q.isError ? <p>${STATE} <button onClick={actions.again}>Load them</button></p> : null; }`],
     ["a press this reading cannot follow", `import { useThing } from "some-package";\nexport function A() { const thing = useThing(); return <p>${STATE} <button onClick={() => thing.go()}>Go on</button></p>; }`],
     ["a press handed down by a part no place draws", `export const A = ({ onAgain }) => <p>${STATE} <button onClick={onAgain}>Load them</button></p>;`],
+    ["a client's get on a receiver this reading cannot show is a collection", `export const A = ({ client }) => <p>${STATE} <button onClick={() => client.get("/runs")}>Load them</button></p>;`],
     ["an error state handed a null for the read's error", `export const A = ({ q }) => (q.isError ? <ErrorState title="Couldn't load the runs" error={null} onRetry={() => void q.refetch()} /> : null);`],
   ])("is refused for %s in a failed read's state", (_, file) => {
     expect(offences(join(SRC, "features/x/a.tsx"), file).length).toBeGreaterThan(0);
@@ -197,6 +198,7 @@ describe("a failed read's Retry, across the web app (criteria 478, 495, 496)", (
     ["a move to another page", `export const A = ({ router }) => <p>${STATE} <button onClick={() => router.push("/runs/all")}>All runs</button></p>;`],
     ["a change to what the page shows", `export function A() { const [open, setOpen] = useState(false); return <p>${STATE} <button onClick={() => setOpen(!open)}>Details</button></p>; }`],
     ["a write that reads its answer back", `export const A = ({ m, q }) => <p>${STATE} <button onClick={() => m.mutate(undefined, { onSuccess: () => q.refetch() })}>Queue them</button></p>;`],
+    ["a collection's own get and delete", `export function A() { const seen = useRef(new Map()); const kept = new Set(); return <p>${STATE} <button onClick={() => { seen.current.delete("a"); kept.has("b"); }}>Forget</button></p>; }`],
     ["the one Retry", `export const A = ({ q }) => <p>${STATE} <RetryButton error={q.error} onRetry={() => void q.refetch()} /></p>;`],
   ])("passes %s in a failed read's state", (_, file) => {
     expect(offences(join(SRC, "features/x/a.tsx"), file)).toEqual([]);

@@ -129,6 +129,17 @@ function readerSaid(err: ApiError): string | null {
   return [reader, ...standing].join(' ');
 }
 
+/** A wait written into a sentence: a number and its unit, as core's rate limit writes one. */
+const NAMES_A_WAIT = /\b\d+\s*(?:seconds?|minutes?|hours?|days?)\b/i;
+
+/** The server's sentence, with the wait its Retry-After asked for where nothing counts it and the sentence names none. */
+function withAskedWait(said: string, err: ApiError): string {
+  const askAgain = NAMES_A_WAIT.test(said) ? null : askAgainWords(err);
+  if (!askAgain) return said;
+  const sentence = said.trim();
+  return `${sentence}${/[.!?]$/.test(sentence) ? '' : '.'} ${askAgain}`;
+}
+
 /** What a failure says, in a person's words. A Retry-After's wait is counted beside the Retry it gates (ISS-1229
  *  r51), so where the web counts one, the server's sentence and the fixed time it carries give way (r52). Where
  *  nothing counts it, a write's, the time stays in the sentence: the server's own, or the web's (r53). */
@@ -141,8 +152,9 @@ export function formatApiError(err: unknown): string {
     const reader = readerSaid(err);
     if (reader) return reader;
     if (retryAt(err) !== null) return unsaidHappening(err.status);
-    // ISS-1228 r24: the server's sentence wins; the table speaks only for an answer that said nothing.
-    if (serverSaid(err)) return err.message;
+    // ISS-1228 r24: the server's sentence wins; the table speaks only for an answer that said nothing. A write's
+    // sentence naming no wait gets the one its Retry-After asked for (r53).
+    if (serverSaid(err)) return withAskedWait(err.message, err);
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
     const askAgain = askAgainWords(err);
     return askAgain ? `${unsaidHappening(err.status)} ${askAgain}` : unsaidFailure(err.status);

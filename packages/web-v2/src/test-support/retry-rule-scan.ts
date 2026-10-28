@@ -58,6 +58,10 @@ const CHAINS = new Set(["then", "catch", "finally"]);
 /** The language's own namespaces: a call on one computes a value and reads nothing. */
 const INERT_OWNERS = /^(Math|JSON|Object|Array|Number|String|Date|console|Promise|URLSearchParams)$/;
 const INERT_CALLS = new Set(["toast", "dismiss", "clearTimeout", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame", "String", "Number", "Boolean", "encodeURIComponent"]);
+/** Method names a server client answers to as well as a collection: inert only where the receiver is shown to be one. */
+const CLIENT_SHAPED = new Set(["get", "delete", "set", "add", "has", "clear"]);
+/** The language's and the page's own collections, whose `get` or `delete` reads no server. */
+const COLLECTIONS = /^new\s+(Map|Set|WeakMap|WeakSet|URLSearchParams|FormData|Headers)\b/;
 /** A move elsewhere: pressing it leaves for another page, which is not this one read again. */
 const NAVIGATION_METHODS = new Set(["push", "replace", "back", "forward", "open", "prefetch", "pushState", "replaceState"]);
 
@@ -618,6 +622,9 @@ function callVerdict(call: ts.CallExpression, source: Source, reading: Reading):
     if (/(^|\.)location$/.test(owner.getText())) return refused(`${owner.getText()}.${method}() loads the page again`);
     const ownerVerdict = ts.isCallExpression(owner) ? callVerdict(owner, source, reading) : OK;
     if (!ownerVerdict.ok) return ownerVerdict;
+    if (CLIENT_SHAPED.has(method) && !INERT_OWNERS.test(owner.getText()) && !isCollection(owner)) {
+      return refused(`${owner.getText().slice(0, 40)}.${method}() may be a server client's, and its receiver is not shown to be a collection`);
+    }
     const recognised =
       INERT_METHODS.has(method) || /^set[A-Z]/.test(method) || WRAPPERS.has(method) || CHAINS.has(method) || INERT_OWNERS.test(owner.getText()) ||
       (NAVIGATION_METHODS.has(method) && /router|window|history/i.test(owner.getText()));
@@ -627,6 +634,19 @@ function callVerdict(call: ts.CallExpression, source: Source, reading: Reading):
   if (ts.isCallExpression(callee)) return then(callVerdict(callee, source, reading));
   if (ts.isParenthesizedExpression(callee) || ts.isNonNullExpression(callee)) return then(pressVerdict(callee.expression, source, reading));
   return refused(`${callee.getText().slice(0, 60)}() is not one this reading can follow`);
+}
+
+/** Whether a receiver is a collection the page holds: declared as `new Map()` and its kin, a ref's current one, or
+ *  the address's search parameters. Anything else named `get` or `delete` may be a client's. */
+function isCollection(owner: ts.Expression): boolean {
+  if (/(^|\.)(searchParams|classList|dataset)$/.test(owner.getText())) return true;
+  const root = ts.isPropertyAccessExpression(owner) && owner.name.text === "current" ? owner.expression : owner;
+  if (!ts.isIdentifier(root)) return false;
+  const value = declared(root);
+  if (!value || value === PARAMETER) return false;
+  const text = value.getText();
+  if (root !== owner) return /^useRef\s*(<[^>]*>)?\s*\(\s*new\s+(Map|Set|WeakMap|WeakSet)\b/.test(text);
+  return COLLECTIONS.test(text) || /^useSearchParams\s*\(/.test(text);
 }
 
 /** A press calling one of its component's own props: that value is read where the component is drawn. */

@@ -70,6 +70,26 @@ describe("a wait before Retry, as a screen reader hears it (criterion 479)", () 
     expect(timer.closest(LIVE)).toBeNull();
   });
 
+  // A status mounted already holding its words is not announced by most screen readers: the start must arrive as a
+  // change inside a status that already stands, which is what this records.
+  it.each(parts)("puts the start into a status already standing, for %s", (_, draw) => {
+    const changed: string[] = [];
+    const take = (records: MutationRecord[]) => {
+      for (const record of records) {
+        const at = record.target instanceof Element ? record.target : record.target.parentElement;
+        const status = at?.closest('[role="status"]');
+        if (status?.textContent) changed.push(status.textContent);
+      }
+    };
+    const watch = new MutationObserver(take);
+    watch.observe(document.body, { subtree: true, childList: true, characterData: true });
+    render(draw(limited(20)));
+    act(() => void vi.advanceTimersByTime(500));
+    take(watch.takeRecords());
+    watch.disconnect();
+    expect(changed).toContain("The server asked for 20 seconds before Retry.");
+  });
+
   it("says nothing of a wait where the answer named none", () => {
     render(<ReadFailedLine what="the devices" why="The server is unavailable right now." error={new ApiError(503, "")} onRetry={() => {}} />);
     expect(announcedOver(5)).toEqual(["Couldn't load the devices. The server is unavailable right now."]);

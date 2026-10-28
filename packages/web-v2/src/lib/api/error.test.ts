@@ -575,4 +575,13 @@ describe('a 429 on a write, through the client', () => {
     const err = await refusedWith('PUT', null, '90');
     expect(formatApiError(err)).toBe('Too many requests in a short time. Try again in 2 minutes.');
   });
+
+  it("adds the wait to a write's own sentence that names none, and never a second time to one that does", async () => {
+    const untimed = await refusedWith('POST', { code: 'RATE_LIMITED', message: 'Too many approvals from this account.' }, '2400');
+    expect(formatApiError(untimed)).toBe('Too many approvals from this account. Try again in 40 minutes.');
+    const timed = await refusedWith('POST', { code: 'RATE_LIMITED', message: 'Too many approvals; wait 1 hour.' }, '2400');
+    expect(formatApiError(timed)).toBe('Too many approvals; wait 1 hour.');
+    const read = await refusedWith(undefined, { code: 'RATE_LIMITED', message: 'Too many approvals from this account.' }, '2400');
+    expect(formatApiError(read)).not.toMatch(/Try again in/);
+  });
 });
