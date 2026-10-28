@@ -687,7 +687,7 @@ function handedVerdict(element: ts.JsxOpeningLikeElement, prop: string, value: t
   return verdict.ok ? OK : refused(`${where(element)} hands <${tagName(element)}> ${prop}, and ${verdict.why}`);
 }
 
-/** Whether a value handed as `prop` is the one Retry's: RetryButton or RetryLink, or a failure part given a read's error. */
+/** Whether a value handed as `prop` lands in the one Retry. */
 function landsInRule(element: ts.JsxOpeningLikeElement, prop: string): boolean {
   const tag = tagName(element);
   if (insideRetryButton(element) || RETRY_PRIMITIVES.has(tag)) return true;

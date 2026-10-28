@@ -2,8 +2,7 @@ import { RetryButton } from "@/design/primitives/retry-button";
 import { cn } from "@/lib/utils/cn";
 
 /** A failed read where its list or choice would stand: what, why, and Retry where the one rule allows (ISS-1229 r48).
- *  The alert is the sentence alone: a wait counted beside Retry is never inside it, so it is not re-announced
- *  each second (r53, judge-165). */
+ *  The alert holds the sentence alone, never the wait counted beside Retry (r53). */
 export function ReadFailedLine({
   what,
   why,
@@ -15,7 +14,6 @@ export function ReadFailedLine({
   /** What could not be loaded, as the sentence names it: "the organization's members". */
   what: string;
   why: string;
-  /** The failed read, which decides whether Retry is offered (ISS-1229 r50). */
   error: unknown;
   onRetry: () => void;
   testId?: string;

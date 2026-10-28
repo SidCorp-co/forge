@@ -129,7 +129,6 @@ function readerSaid(err: ApiError): string | null {
   return [reader, ...standing].join(' ');
 }
 
-/** A wait written into a sentence: a number and its unit, as core's rate limit writes one. */
 const NAMES_A_WAIT = /\b\d+\s*(?:seconds?|minutes?|hours?|days?)\b/i;
 
 /** The server's sentence, with the wait its Retry-After asked for where nothing counts it and the sentence names none. */
@@ -152,8 +151,7 @@ export function formatApiError(err: unknown): string {
     const reader = readerSaid(err);
     if (reader) return reader;
     if (retryAt(err) !== null) return unsaidHappening(err.status);
-    // ISS-1228 r24: the server's sentence wins; the table speaks only for an answer that said nothing. A write's
-    // sentence naming no wait gets the one its Retry-After asked for (r53).
+    // ISS-1228 r24: the server's sentence wins; the table speaks only for an answer that said nothing.
     if (serverSaid(err)) return withAskedWait(err.message, err);
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
     const askAgain = askAgainWords(err);

@@ -535,7 +535,6 @@ describe("a refusal carrying a person's sentence", () => {
 describe('a 429 on a write, through the client', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  /** Core's own rate-limit body for a wait, read off its source as the earlier case does. */
   const coreSays = (wait: string) => {
     const source = readFileSync(new URL('../../../../core/src/middleware/rate-limit.ts', import.meta.url), 'utf8');
     const template = /export function rateLimitedMessage[\s\S]*?return `([^`]*)`/.exec(source)?.[1] ?? '';

@@ -16,9 +16,8 @@ export function RetryWait({ wait, testId, className }: { wait: string; testId?: 
 
 /**
  * A Retry while the server's wait runs: the wait, counted down, in its place; the Retry itself once it is over.
- * A status beside it says the wait once as it starts and once as it ends, the narrow rail's pattern (r52), so
- * every Retry tells a screen reader the start and the end and never a tick (r53, judge-165). A client part of
- * its own, so the one Retry stays a component any page can render (ISS-1229 r51).
+ * A status beside it says the wait's start and its end, never a tick (r53, judge-165). A client part of its own,
+ * so the one Retry stays a component any page can render (ISS-1229 r51).
  */
 export function RetryWaitGate({
   error,

@@ -5,11 +5,8 @@ import { asSentence, formatApiError } from "@/lib/api/error";
 import { useActiveOrg } from "../active-org";
 import { workspaceName } from "../workspace-name";
 
-/**
- * Where the organization a person last worked in could not be read, every workspace page says so, names the
- * organization shown in its place, and offers Retry where a second read can change the answer: the stand-in is
- * never a silent switch (ISS-1229 r50, judge-152 on criterion 451).
- */
+/** Where the organization last worked in could not be read, every workspace page says so and names the one shown
+ *  in its place: the stand-in is never a silent switch (ISS-1229 r50, judge-152 on criterion 451). */
 export function StoredOrgUnread() {
   const { storedUnread, activeOrg } = useActiveOrg();
   if (!storedUnread) return null;
