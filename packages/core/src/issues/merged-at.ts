@@ -32,11 +32,6 @@ const MARK_WITH_COMMIT =
   'Mark it merged with `forge_issues` `mark_merged`, naming the commit it landed at in ' +
   '`data.commit` where there is one.';
 
-/** A commit named on a project whose repository Forge cannot read is refused (ISS-1421 r43). */
-const MARK_WITHOUT_COMMIT =
-  'Mark it merged with `forge_issues` `mark_merged`, leaving `data.commit` out. Forge cannot read ' +
-  "this project's repository, so it refuses a named commit.";
-
 const MARK_WITH_LANDING =
   'Mark it merged with `forge_issues` `mark_merged` carrying `data.landing`, the live URL, CMS ' +
   'entry or storefront resource the work now is.';
@@ -73,7 +68,7 @@ function unshippedWords(
         useInstead: 'dropped',
         ...(landed ? { held } : {}),
         steps: {
-          merged_mark: `${landed ? UNMARK_FIRST : ''}${commit === 'refused' ? MARK_WITHOUT_COMMIT : MARK_WITH_COMMIT}`,
+          merged_mark: `${landed ? UNMARK_FIRST : ''}${MARK_WITH_COMMIT}`,
           landing_shape: DECLARE_OUTSIDE_GIT,
         },
       },

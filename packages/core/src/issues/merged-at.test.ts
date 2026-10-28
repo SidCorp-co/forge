@@ -110,8 +110,9 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
     for (const sentence of (refusal?.detail ?? '').split(/(?<=\.)\s+(?=[A-Z])/)) {
       expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(20);
     }
+    // An agent's mark naming a commit there is kept as a claim (ISS-1409), so its step still names one.
     const steps = refusal?.details.steps as Record<string, string> | undefined;
-    expect(steps?.merged_mark).toContain('leaving `data.commit` out');
+    expect(steps?.merged_mark).toContain('`data.commit`');
   });
 
   // ISS-1421 r42: a mark naming only a landing is taken back first, then made by the same steps.
