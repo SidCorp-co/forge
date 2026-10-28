@@ -15,7 +15,12 @@
  * naming -> packages/core/src/issues/session-claim.ts — which RUN may write a record.
  */
 
-import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import {
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_ISSUES_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { TERMINAL_JOB_STATUSES, UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
@@ -112,23 +117,52 @@ export function issueWorkMovingSql(args: {
   )`;
 }
 
+const overStatusList = sql.join(
+  ISSUE_TERMINAL_STATUSES.map((s) => sql`${s}`),
+  sql`, `,
+);
+
 /**
- * Whether a run session that has not ended was declared over the issue: the run ledger's own
- * record that a box has it in hand, which a rescue reads as no wake lost (eco round 4, #46).
+ * The run sessions that have not ended and were declared over the issue, as rows
+ * (`run_id`, `session_id`, `device_id`): a run carrying it (`runIssues`, a take not given back), or
+ * a run its open stamped the issue over (`runIssueStatuses` closed or dropped), which took nothing
+ * because its issue was over (`devices/run-session.ts:declaredOverClosedWork`) and holds it once it
+ * reopens (ISS-589). A take over an issue at rest is refused `ISSUE_AT_REST`, so only a run that took
+ * nothing carries that stamp; a queued declaration stamps no status and a given-back key leaves
+ * `runIssues`, so neither holds.
  */
-export function issueRunDeclaredSql(args: {
+export function runSessionsDeclaredOverSql(args: {
   projectId: SQL | string;
   issueKey: SQL | string;
+  /** A run not counted: the one handing the issue back. */
+  exceptRunId?: string | null;
 }): SQL {
-  return sql`EXISTS (
-    SELECT 1
+  const notThatRun =
+    args.exceptRunId == null ? sql`` : sql` AND dr.id IS DISTINCT FROM ${args.exceptRunId}`;
+  return sql`(
+    SELECT dr.id AS run_id, ds.id AS session_id, ds.device_id
       FROM pipeline_runs dr
       JOIN agent_sessions ds ON ds.pipeline_run_id = dr.id
      WHERE dr.project_id = ${args.projectId}
        AND ds.kind = ${RUN_SESSION_KIND}
        AND ds.status NOT IN (${terminalSessionList})
-       AND dr.metadata -> ${RUN_ISSUES_METADATA_KEY} ? (${args.issueKey})
+       AND (dr.metadata -> ${RUN_ISSUES_METADATA_KEY} ? (${args.issueKey})
+            OR dr.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY} ->> (${args.issueKey})
+               IN (${overStatusList}))${notThatRun}
   )`;
+}
+
+/**
+ * Whether a run session that has not ended was declared over the issue: the run ledger's own
+ * record that a box has it in hand, which a rescue reads as no wake lost (eco round 4, #46), and the
+ * holder guards read as a holder (`runSessionsDeclaredOverSql`).
+ */
+export function issueRunDeclaredSql(args: {
+  projectId: SQL | string;
+  issueKey: SQL | string;
+  exceptRunId?: string | null;
+}): SQL {
+  return sql`EXISTS (SELECT 1 FROM ${runSessionsDeclaredOverSql(args)} declared)`;
 }
 
 /** Whether a run session holds the issue now: the fleet lease of a run that has not ended. */
