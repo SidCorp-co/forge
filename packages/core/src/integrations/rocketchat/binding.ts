@@ -19,3 +19,8 @@ export async function rocketChatBindingOfProject(
   if (existing.binding.provider !== 'rocketchat') return null;
   return existing;
 }
+
+/** Whether a connection holds a Rocket.Chat bot: the only kind a group picker may read rooms through. */
+export function isRocketChatConnection(connection: { provider: string }): boolean {
+  return connection.provider === 'rocketchat';
+}

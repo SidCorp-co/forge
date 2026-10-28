@@ -3468,6 +3468,13 @@
       "breakpoints": true
     },
     {
+      "idx": 542,
+      "version": "7",
+      "when": 1829779200000,
+      "tag": "0542_a_rooms_grant_waits_on_its_confirmers",
+      "breakpoints": true
+    },
+    {
       "idx": 543,
       "version": "7",
       "when": 1829865600000,

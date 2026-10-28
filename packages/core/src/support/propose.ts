@@ -80,12 +80,17 @@ async function askerOf(
  * that write `confirm` and `cancel`, and the proposal recorded. Nothing happens until that account
  * confirms (`answerConfirm`); unconfirmed, it expires (`expireSupportFixes`).
  */
-async function offerChange(input: {
+export async function offerChange(input: {
   room: RoomRow;
   thread: string;
   asker: Member;
-  /** A fix names its granted tool; a filing names none. */
-  change: { kind: 'fix'; tool: string } | { kind: 'filing' };
+  /**
+   * A fix names its granted tool; a filing names none; a build, a deploy and a host change wait on
+   * the room's confirmers rather than on the asker (`waitsOn`).
+   */
+  change: { kind: 'fix'; tool: string } | { kind: 'filing' | 'build' | 'deploy' | 'command' };
+  /** Who confirms, as the session's note says it; the asker when absent. */
+  waitsOn?: string;
   args: Record<string, unknown>;
   prompt: (code: string) => string;
 }): Promise<ProposeOutcome> {
@@ -129,7 +134,7 @@ async function offerChange(input: {
   });
   await noteInThread(
     posted.conversationId,
-    `Proposed: ${changeName(fix)}, waiting on ${asker.label ?? asker.key} to confirm ${fix.code}.`,
+    `Proposed: ${changeName(fix)}, waiting on ${input.waitsOn ?? asker.label ?? asker.key} to confirm ${fix.code}.`,
   );
   return { ok: true, fixId: fix.id, code: fix.code, messageId: posted.messageId };
 }
@@ -229,10 +234,21 @@ export async function proposeRecord(
 
 /** What did not happen to a change nobody confirmed. */
 export const nothingDone = (fix: Pick<ProposalRow, 'kind'>) =>
-  fix.kind === 'filing' ? 'Nothing was recorded.' : 'Nothing was run.';
+  fix.kind === 'filing'
+    ? 'Nothing was recorded.'
+    : fix.kind === 'deploy'
+      ? 'Nothing was deployed.'
+      : fix.kind === 'build'
+        ? 'Nothing was pushed.'
+        : 'Nothing was run.';
 
 /** What a change is, in the words the thread and the session are told. */
 export function changeName(fix: Pick<ProposalRow, 'kind' | 'tool' | 'args'>): string {
   if (fix.kind === 'fix') return `the fix ${fix.tool}`;
+  const args = (fix.args ?? {}) as Record<string, unknown>;
+  if (fix.kind === 'command')
+    return `the command \`${String(args.command)}\` on ${String(args.host)}`;
+  if (fix.kind === 'deploy') return `the deploy of ${String(args.label ?? args.target)}`;
+  if (fix.kind === 'build') return `the build of ${String(args.branch)}`;
   return `the filing "${String((fix.args as { title?: unknown } | null)?.title ?? '')}"`;
 }

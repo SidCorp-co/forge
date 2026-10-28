@@ -374,3 +374,52 @@ export async function fetchAttachmentBytes(
     clearTimeout(timer);
   }
 }
+
+/** Whether the bot is a member of a room, as the chat server says it (REQ-75 r5 BC-26). */
+export type BotMembership =
+  | { state: 'member'; name: string | null }
+  | { state: 'not-member' }
+  | { state: 'rejected'; status: number }
+  | { state: 'unreachable'; why: string };
+
+/**
+ * The bot's subscription to `rid`: a member holds one, anyone else reads none. A refused credential
+ * and a server that does not answer are told apart from "not a member", never folded into it.
+ */
+export async function fetchBotMembership(
+  auth: RocketChatRestAuth,
+  rid: string,
+): Promise<BotMembership> {
+  const qs = new URLSearchParams({ roomId: rid }).toString();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${apiBase(auth)}/subscriptions.getOne?${qs}`, {
+      headers: {
+        'X-Auth-Token': auth.authToken,
+        'X-User-Id': auth.userId,
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+    if (res.status === 401 || res.status === 403) return { state: 'rejected', status: res.status };
+    if (!res.ok) return { state: 'unreachable', why: `the chat server answered ${res.status}` };
+    const body = (await res.json().catch(() => null)) as {
+      subscription?: { name?: unknown; fname?: unknown } | null;
+    } | null;
+    const sub = body?.subscription;
+    if (!sub) return { state: 'not-member' };
+    const name =
+      typeof sub.fname === 'string' ? sub.fname : typeof sub.name === 'string' ? sub.name : null;
+    return { state: 'member', name };
+  } catch (err) {
+    return {
+      state: 'unreachable',
+      why: controller.signal.aborted
+        ? `the chat server did not answer within ${FETCH_TIMEOUT_MS / 1000}s`
+        : `the chat server could not be reached (${err instanceof Error ? err.message : String(err)})`,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}

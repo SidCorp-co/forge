@@ -423,7 +423,7 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
     await expect.poll(async () => (await w.rooms())[0]?.sessionStatus).toBe('completed');
 
     // the box goes away and another serves the project: the next turn starts cold and re-reads
-    const { SessionBox } = await import('../helpers/support-world.js');
+    const { SessionBox, SUPPORT_BOX_CAPS } = await import('../helpers/support-world.js');
     const { boxToken } = await import('../helpers/preview-world.js');
     const { bindTestRunner, createTestDevice } = await import('../helpers/factories.js');
     const old = w.box;
@@ -440,7 +440,7 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
     await bindTestRunner(w.projectId, deviceId);
     await db.execute(sql`UPDATE runners SET last_seen_at = now() WHERE device_id = ${deviceId}`);
     await db.execute(
-      sql`UPDATE devices SET capabilities = '{"followUpCredential": true, "turnCredential": true, "confinedChatNetwork": true}'::jsonb WHERE id = ${deviceId}`,
+      sql`UPDATE devices SET capabilities = ${SUPPORT_BOX_CAPS}::jsonb WHERE id = ${deviceId}`,
     );
     w.box = new SessionBox(w.core.base, await boxToken(w.ownerId, deviceId), deviceId);
     await w.box.connect();

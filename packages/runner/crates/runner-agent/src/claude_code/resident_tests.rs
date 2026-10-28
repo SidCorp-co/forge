@@ -50,6 +50,7 @@ async fn try_stand_in(
                 keep_resident,
                 model: None,
                 project_slug: None,
+                checkout: crate::CheckoutView::Write,
             },
             tx,
         )

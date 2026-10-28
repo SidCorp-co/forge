@@ -1,5 +1,6 @@
 //! The frames core addresses to this box about one project: reading or setting up its checkout
-//! (`skill.sync`, `checkout.head.read`, `checkout.ancestry.read`, `provision.request`).
+//! (`skill.sync`, `checkout.head.read`, `checkout.ancestry.read`, `provision.request`), and a
+//! support room's acts the box carries out for it (`host.command`, `build.push`, REQ-75 r5).
 //! `actors::on_frame` routes them here; each is handled off the frame loop.
 
 use crate::*;
@@ -10,11 +11,13 @@ pub(crate) fn takes(event: &str) -> bool {
 }
 
 /// The frames [`on_frame`] takes.
-const BOX_FRAMES: [&str; 4] = [
+const BOX_FRAMES: [&str; 6] = [
     "skill.sync",
     "checkout.head.read",
     "checkout.ancestry.read",
     "provision.request",
+    "host.command",
+    "build.push",
 ];
 
 /// The frames that read or set up a project's checkout on this box.
@@ -35,6 +38,14 @@ pub(crate) fn on_frame(frame: Frame, client: &Arc<CoreClient>, cfg: &Arc<Config>
         "checkout.ancestry.read" => {
             let client = client.clone();
             tokio::spawn(async move { crate::ancestry_read::handle(&client, frame.data).await });
+        }
+        "host.command" => {
+            let client = client.clone();
+            tokio::spawn(async move { crate::host_command::handle(&client, frame.data).await });
+        }
+        "build.push" => {
+            let client = client.clone();
+            tokio::spawn(async move { crate::build_push::handle(&client, frame.data).await });
         }
         "provision.request" => {
             // Wake → run the pending-provision sweep (server returns

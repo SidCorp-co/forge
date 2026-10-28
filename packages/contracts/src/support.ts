@@ -10,11 +10,10 @@
 // its binding declares the tools. The refusals below are the kernel.
 
 import { z } from "zod";
+import { ISSUE_STATUSES } from "./issue-machine.js";
+import { REASON_PARAGRAPH_MAX } from "./reason-text.js";
 import type { RefusalStatuses } from "./refusal.js";
-import type {
-	OperationsScope,
-	SupportRoomKind,
-} from "./support-operations.js";
+import type { OperationsScope, SupportRoomKind } from "./support-operations.js";
 
 /** The limits a support group runs under unless its binding names its own. */
 export const SUPPORT_LIMIT_DEFAULTS = {
@@ -37,12 +36,122 @@ export const supportLimitsSchema = z.strictObject({
 export type SupportLimits = z.infer<typeof supportLimitsSchema>;
 
 /**
+ * What a room's binding may grant its session (REQ-75 r5 BC-27). `read_checkout` shows the session
+ * the project's checkout read-only (without it the box shows an empty folder); `file_items` records
+ * what needs code as Feedback; `deliver` moves an issue of the project as the member who asked;
+ * `build` gives the session a writable working copy of the project's development branch, and once a
+ * confirmer confirms, the box commits it on a feat/ or fix/ branch, pushes it (never forced) and core
+ * opens a change request into the development branch, never the production one; `deploy` deploys a bound target the grant names; `run_commands` runs a command on a host the grant
+ * names. Policy (VISION kernel-hard-policy-soft); the gate that refuses an ungranted one is core's.
+ */
+export const SUPPORT_ABILITIES = [
+	"read_checkout",
+	"file_items",
+	"deliver",
+	"build",
+	"deploy",
+	"run_commands",
+] as const;
+export type SupportAbility = (typeof SUPPORT_ABILITIES)[number];
+
+/** Each ability in the words a refusal, the brief and the settings screen use. */
+export const SUPPORT_ABILITY_MEANING: Record<SupportAbility, string> = {
+	read_checkout: "read the project's checkout, read-only",
+	file_items: "record what needs code as Feedback, once the asker confirms",
+	deliver: "move an issue of this project, as the member who asked",
+	build:
+		"change code in a working copy of the development branch, then commit, push and open a change request into it once a confirmer confirms",
+	deploy: "deploy a bound target this room names, once a confirmer confirms",
+	run_commands:
+		"run commands on the hosts this room names; a change waits for a confirmer",
+};
+
+/** Who reads a room: a product's users (no developer detail), or the team the room was bound for. */
+export const SUPPORT_READERS = ["users", "team"] as const;
+export type SupportReaders = (typeof SUPPORT_READERS)[number];
+
+/** Which messages reach the session: every one, or only those that mention the bot. */
+export const SUPPORT_ANSWERS = ["every-message", "mentions"] as const;
+export type SupportAnswers = (typeof SUPPORT_ANSWERS)[number];
+
+/** A host a room may run commands on: a name this box's SSH resolves, never an option. */
+export const supportCommandHostSchema = z
+	.string()
+	.regex(
+		/^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/,
+		"a host name as the box's SSH names it: letters, digits, . _ -",
+	);
+
+/** A Rocket.Chat username, as the server signs a message with it. */
+export const chatUsernameSchema = z
+	.string()
+	.regex(/^[A-Za-z0-9._-]{1,64}$/, "a Rocket.Chat username, without @");
+
+/**
+ * A room's grant (BC-27): the abilities, and what the targeted ones reach. `deploy` names the
+ * project's deploy bindings it may deploy, `run_commands` the hosts, and either names who may
+ * confirm a change. Absent, a room holds no ability.
+ */
+export const supportGrantsSchema = z
+	.strictObject({
+		abilities: z
+			.array(z.enum(SUPPORT_ABILITIES))
+			.max(SUPPORT_ABILITIES.length)
+			.refine((a) => new Set(a).size === a.length, "an ability is named once"),
+		/** The project's deploy bindings (their ids) this room may deploy. */
+		deployTargets: z.array(z.uuid()).max(20).optional(),
+		hosts: z.array(supportCommandHostSchema).max(20).optional(),
+		/** Whose `confirm <code>` lets a deploy or a host change run: Rocket.Chat usernames. */
+		confirmers: z.array(chatUsernameSchema).max(20).optional(),
+	})
+	.superRefine((g, ctx) => {
+		const has = (a: SupportAbility) => g.abilities.includes(a);
+		if (has("deploy") !== Boolean(g.deployTargets?.length)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["deployTargets"],
+				message: has("deploy")
+					? "deploy is granted and names no deploy target: name the bindings this room may deploy"
+					: "deployTargets are named and deploy is not granted: grant deploy or drop them",
+			});
+		}
+		if (has("run_commands") !== Boolean(g.hosts?.length)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["hosts"],
+				message: has("run_commands")
+					? "run_commands is granted and names no host: name the hosts this room may run commands on"
+					: "hosts are named and run_commands is not granted: grant run_commands or drop them",
+			});
+		}
+		if (
+			(has("deploy") || has("run_commands") || has("build")) &&
+			!g.confirmers?.length
+		) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["confirmers"],
+				message:
+					"build, deploy and run_commands change things outside Forge, so they wait for a confirmer: name at least one Rocket.Chat username",
+			});
+		}
+	});
+export type SupportGrants = z.infer<typeof supportGrantsSchema>;
+
+/**
  * The `support` block of a `rocketchat` binding: present, the binding's one room is a support group
  * answered by the session; absent, the room is the team assistant's, as before.
  */
 export const supportRoomConfigSchema = z.strictObject({
 	/** What the product is, in a sentence or two, for the session's brief. */
 	product: z.string().trim().min(3).max(600).optional(),
+	/** Who the assistant is in this room and the rules it keeps, in the owner's words: the brief's first lines. */
+	persona: z.string().trim().min(20).max(4000).optional(),
+	/** Who reads the room; `users` when absent. A team room's replies may carry developer detail. */
+	readers: z.enum(SUPPORT_READERS).optional(),
+	/** Which messages reach the session; `every-message` when absent. */
+	answers: z.enum(SUPPORT_ANSWERS).optional(),
+	grants: supportGrantsSchema.optional(),
 	limits: supportLimitsSchema.optional(),
 });
 export type SupportRoomConfig = z.infer<typeof supportRoomConfigSchema>;
@@ -226,10 +335,18 @@ export const SUPPORT_ACTOR_KINDS = ["member", "session", "core"] as const;
 export type SupportActorKind = (typeof SUPPORT_ACTOR_KINDS)[number];
 
 /**
- * What waits on its asker's confirm: a granted `fix`, or a `filing` of what needs code as Feedback.
- * Both share one code space per room, so one `confirm <code>` names one of them.
+ * What waits on a confirm: a granted `fix`, or a `filing` of what needs code as Feedback, each on
+ * its asker's; a `deploy` of a bound target, or a `command` that changes a host, each on a confirmer
+ * the room's grant names (REQ-75 r5 BC-27). All share one code space per room, so one
+ * `confirm <code>` names one of them.
  */
-export const SUPPORT_PROPOSAL_KINDS = ["fix", "filing"] as const;
+export const SUPPORT_PROPOSAL_KINDS = [
+	"fix",
+	"filing",
+	"deploy",
+	"command",
+	"build",
+] as const;
 export type SupportProposalKind = (typeof SUPPORT_PROPOSAL_KINDS)[number];
 
 /** pending: waits on the asker. ran / failed: confirmed and called. declined / expired: never called. */
@@ -272,6 +389,10 @@ export const SUPPORT_ACTIONS = [
 	"run",
 	"propose_fix",
 	"record",
+	"move_issue",
+	"build",
+	"deploy",
+	"command",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
@@ -309,6 +430,55 @@ export const supportRecordRequestSchema = z.strictObject({
 	/** The member who confirms the filing: their account id; the thread's first writer when omitted. */
 	asker: z.string().min(1).max(64).optional(),
 });
+
+export const supportMoveIssueRequestSchema = z.strictObject({
+	thread: threadId,
+	issue: z
+		.string()
+		.trim()
+		.regex(/^[A-Za-z][A-Za-z0-9]{0,15}-\d{1,9}$/, "an issue key, PREFIX-n")
+		.describe("an issue of this room's project, e.g. ISS-12"),
+	to: z.enum(ISSUE_STATUSES).describe("the status to move it to"),
+	reason: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX).optional(),
+});
+/** A branch a room's build pushes: feat/ or fix/, then a slug. */
+export const supportBuildBranchSchema = z
+	.string()
+	.regex(
+		/^(feat|fix)\/[a-z0-9][a-z0-9._-]{1,60}$/,
+		"a branch feat/<slug> or fix/<slug>, lower case",
+	);
+export const supportBuildRequestSchema = z.strictObject({
+	thread: threadId,
+	branch: supportBuildBranchSchema,
+	/** The commit message's first line, and the change request's title. */
+	title: z.string().trim().min(3).max(120),
+	/** What changed and why, for the commit body and the change request. */
+	summary: z.string().trim().min(3).max(4000),
+});
+export const supportDeployRequestSchema = z.strictObject({
+	thread: threadId,
+	/** A deploy binding this room's grant names, by its id as `tools` lists it. */
+	target: z.uuid(),
+});
+/** The longest command a room may run on a host. */
+export const SUPPORT_COMMAND_MAX_CHARS = 1000;
+export const supportCommandRequestSchema = z.strictObject({
+	thread: threadId,
+	host: supportCommandHostSchema,
+	command: z.string().trim().min(1).max(SUPPORT_COMMAND_MAX_CHARS),
+});
+
+/** What a box answers for one command it ran on a host, over its own SSH. */
+export interface SupportCommandResult {
+	host: string;
+	exitCode: number | null;
+	stdout: string;
+	stderr: string;
+	truncated: boolean;
+	timedOut: boolean;
+	durationMs: number;
+}
 
 /** One action as Forge shows it. Inputs and outputs are stored scrubbed. */
 export interface SupportActionView {
@@ -354,6 +524,41 @@ export interface SupportLatencyView {
 /** The answered messages a room's latency is read over. */
 export const SUPPORT_LATENCY_WINDOW = 200;
 
+/**
+ * Why a room is not answering (REQ-75 r5 BC-26), each a cause somebody can act on: the binding is
+ * off; the chat server refuses the bot or does not answer; the bot is not a member of the group; no
+ * core process holds the bot's live connection; no online box of the project can run the session,
+ * or it lacks what the room's grants need; the session is not resident on its box.
+ */
+export const SUPPORT_HEALTH_CAUSES = [
+	"BINDING_OFF",
+	"BOT_REJECTED",
+	"CHAT_UNREACHABLE",
+	"BOT_NOT_IN_ROOM",
+	"NOT_LISTENING",
+	"NO_BOX",
+	"BOX_TOO_OLD",
+	"SESSION_NOT_LISTENING",
+] as const;
+export type SupportHealthCause = (typeof SUPPORT_HEALTH_CAUSES)[number];
+
+export interface SupportRoomHealth {
+	/** True exactly when `causes` is empty. */
+	healthy: boolean;
+	causes: { code: SupportHealthCause; detail: string }[];
+	checkedAt: string;
+}
+
+/** The box capability a room's grant needs before its turn may run there. */
+export const SUPPORT_BOX_CAPABILITIES = {
+	/** The box shows a session its checkout read-only, or not at all (`checkout` on a turn frame). */
+	checkout: "chatCheckoutModes",
+	/** The box keeps a writable working copy of the development branch per room and pushes it (`build.push`). */
+	build: "supportBuilds",
+	/** The box runs a command on a named host over its own SSH (`host.command`). */
+	commands: "hostCommands",
+} as const;
+
 export interface SupportRoomView {
 	id: string;
 	/** The project whose binding attaches the room; an operations room's home, whose box serves it. */
@@ -371,6 +576,13 @@ export interface SupportRoomView {
 	resident: boolean;
 	principalUserId: string;
 	toolCount: number;
+	/** The group's name on the chat server, where the bot can read it. */
+	name: string | null;
+	readers: SupportReaders;
+	answers: SupportAnswers;
+	/** What the room's binding grants (BC-27); a support group without a grant holds no ability. */
+	grants: SupportGrants | null;
+	health: SupportRoomHealth;
 	threads: number;
 	latency: SupportLatencyView;
 	createdAt: string;
@@ -397,6 +609,10 @@ export const SUPPORT_REFUSAL_CODES = [
 	"OPS_ASKER_UNMAPPED",
 	"OPS_ISSUE_UNKNOWN",
 	"OPS_RESEARCH_REFUSED",
+	"SUPPORT_ABILITY_NOT_GRANTED",
+	"SUPPORT_NOT_A_CONFIRMER",
+	"SUPPORT_COMMAND_FAILED",
+	"SUPPORT_BUILD_REFUSED",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -432,4 +648,8 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	OPS_OUT_OF_SCOPE: 403,
 	OPS_ASKER_UNMAPPED: 403,
 	OPS_ISSUE_UNKNOWN: 404,
+	SUPPORT_ABILITY_NOT_GRANTED: 403,
+	SUPPORT_NOT_A_CONFIRMER: 403,
+	SUPPORT_COMMAND_FAILED: 503,
+	SUPPORT_BUILD_REFUSED: 409,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

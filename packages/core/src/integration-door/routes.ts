@@ -18,6 +18,7 @@ import {
   bindingWriteMoved,
   buildContextFromBinding,
   configSchemaForProvider,
+  decryptConnectionSecrets,
   findBindingWithConnectionById,
   getAdapter,
   listBindingDeliveries,
@@ -32,7 +33,11 @@ import {
   updateSchema,
   withdrawNulls,
 } from '../integrations/index.js';
-import { fetchBotRooms, rocketChatBindingOfProject } from '../integrations/rocketchat/index.js';
+import {
+  fetchBotRooms,
+  isRocketChatConnection,
+  rocketChatBindingOfProject,
+} from '../integrations/rocketchat/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -42,6 +47,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
 import { announceIntegrationChanged, setBindingInboundSecret } from '../project-config/index.js';
 import { summarizeBindings, summarizeOneBinding } from './binding-standing.js';
+import { loadConnection } from './connection-routes.js';
 import { registerCoolifyDeployRoutes } from './coolify-routes.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import { registerSentryRoutes } from './sentry-routes.js';
@@ -237,6 +243,42 @@ integrationsRoutes.post(
       };
     }
 
+    const rooms = (await fetchBotRooms(auth)).slice(0, 200);
+    return c.json({ rooms });
+  },
+);
+
+// The rooms of a bot connection the caller may read and has not bound to this project yet: the
+// group picker of a support room set up in one save (REQ-75 r5 BC-25). Theirs, or their
+// organization's, never another's.
+const rocketchatConnectionRoomsSchema = z.strictObject({ connectionId: z.string().uuid() });
+
+integrationsRoutes.post(
+  '/:projectId/integrations/rocketchat/connection-rooms',
+  zValidator('json', rocketchatConnectionRoomsSchema),
+  async (c) => {
+    const projectId = c.req.param('projectId');
+    const userId = c.get('userId');
+    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+    const { connectionId } = c.req.valid('json');
+    const connection = await loadConnection(connectionId, userId, 'read');
+    if (!isRocketChatConnection(connection)) {
+      throw refuse(
+        'MISSING_CREDENTIALS',
+        `connection ${connectionId} is a ${connection.provider} connection, not a Rocket.Chat bot`,
+        '/connectionId',
+      );
+    }
+    const cfg = connection.config as { serverUrl?: string } | null;
+    const secrets = decryptConnectionSecrets<{ authToken?: string; userId?: string }>(connection);
+    if (!cfg?.serverUrl || !secrets.authToken || !secrets.userId) {
+      throw refuse(
+        'MISSING_CREDENTIALS',
+        'this rocketchat connection holds no serverUrl or no credentials; complete the connection first',
+        '/connectionId',
+      );
+    }
+    const auth = { serverUrl: cfg.serverUrl, authToken: secrets.authToken, userId: secrets.userId };
     const rooms = (await fetchBotRooms(auth)).slice(0, 200);
     return c.json({ rooms });
   },

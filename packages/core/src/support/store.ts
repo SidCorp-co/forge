@@ -360,3 +360,35 @@ export async function offlineToldSince(roomId: string, since: Date): Promise<boo
     .limit(1);
   return Boolean(row);
 }
+
+/** The change request a room's earlier build of `branch` opened, if one did. */
+export async function builtChangeRequest(
+  roomId: string,
+  branch: string,
+): Promise<{ number: number; url: string | null; bindingId: string | null } | null> {
+  const [row] = await db
+    .select({ result: supportProposals.result })
+    .from(supportProposals)
+    .where(
+      and(
+        eq(supportProposals.roomId, roomId),
+        eq(supportProposals.kind, 'build'),
+        eq(supportProposals.state, 'ran'),
+        sql`${supportProposals.args}->>'branch' = ${branch}`,
+        sql`${supportProposals.result}->'changeRequest' IS NOT NULL`,
+      ),
+    )
+    .orderBy(desc(supportProposals.decidedAt))
+    .limit(1);
+  const cr = (
+    row?.result as {
+      changeRequest?: { number?: unknown; url?: unknown; bindingId?: unknown };
+    } | null
+  )?.changeRequest;
+  if (!cr || typeof cr.number !== 'number') return null;
+  return {
+    number: cr.number,
+    url: typeof cr.url === 'string' ? cr.url : null,
+    bindingId: typeof cr.bindingId === 'string' ? cr.bindingId : null,
+  };
+}

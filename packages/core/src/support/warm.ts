@@ -22,10 +22,11 @@ import {
   toldTools,
   toolsKey,
 } from './dispatch.js';
+import { grantsOf, supportConfigOf } from './grants.js';
 import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
-import { toolsLine } from './prompt.js';
+import { grantsLine, toolsLine } from './prompt.js';
 import { declareSupportRooms } from './rooms.js';
 import type { RoomRow } from './store.js';
 
@@ -112,9 +113,15 @@ async function retellOf(room: RoomRow): Promise<string | null> {
     })}`;
   }
   const tools = (await activeSupportApi(room.projectId))?.tools ?? [];
-  if (toldTools(room.id) === toolsKey(tools)) return null;
-  noteTools(room.id, tools);
-  return toolsLine(tools);
+  const config = await supportConfigOf(room);
+  if (toldTools(room.id) === toolsKey(tools, config)) return null;
+  noteTools(room.id, tools, config);
+  return [
+    'This room was changed; from now on:',
+    ...(config?.persona ? [config.persona] : []),
+    toolsLine(tools),
+    grantsLine(grantsOf(config)),
+  ].join('\n\n');
 }
 
 /** Warm every room of a project, as its binding is saved. */

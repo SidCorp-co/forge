@@ -1,6 +1,6 @@
 # A project's Rocket.Chat group answered by a Claude session Forge manages
 
-**Removed when:** REQ-75 r4's criteria (BC-2, BC-10..BC-24) each hold a counting verdict. After that,
+**Removed when:** REQ-75 r5's criteria (BC-2, BC-10..BC-29) each hold a counting verdict. After that,
 what holds is the code: `packages/contracts/src/support.ts`, `packages/contracts/src/support-operations.ts`,
 `packages/core/src/support/` and `packages/core/src/integrations/support-api/`.
 
@@ -231,10 +231,111 @@ The proof is `packages/core/tests/integration/support-operations-e2e.test.ts`, t
 one chat server (a stand-in, or a real Rocket.Chat with `OPS_E2E_RC=<file>`; the shape is in
 `tests/helpers/ops-chat-server.ts`).
 
+## Support groups set up, checked and granted from the binding (REQ-75 r5 BC-25..BC-29)
+
+The hand-run watchers this replaces were a Claude Code pane per group, started by a script on one
+box with a prompt file of its own (`forge-local-docs/babo/babo-setup.py`). r5 moves everything that
+pane carried onto the binding, so the binding is the whole setup.
+
+**The binding holds the room (BC-25).** Project settings → Integrations → Rocket.Chat → *Add a
+support group* saves, in one write through the binding door, everything the room needs:
+- the group;
+- `support.product` and `support.persona`, the standing instructions a watcher's prompt file held;
+- `readers`: `users` for a customer group, screened as `support-reply`; `team` for a group of the
+  team's own people whose members are not mapped, screened as `operations-reply`;
+- `answers`: `every-message`, or `mentions`, where every message is recorded as the thread's context
+  and only one naming the bot is handed to the session;
+- `grants`.
+
+The `support-rooms` consumer declares the room and warms its session from that write alone
+(`support/warm.ts`). Nothing is started on a box beyond the project's own runner. The same block is
+writable as a binding document (`PUT /api/projects/:projectId/bindings/:bindingId`), which is how
+the setup calls below and the tests drive it.
+
+**A room says why it is not answering (BC-26).** `support/health.ts:roomHealth` reads each cause
+separately and names what to do about it. It is shown in the rooms table and on
+`GET /api/projects/:projectId/support/rooms`.
+
+| Cause | Read from |
+|---|---|
+| `BINDING_OFF` | binding or connection inactive |
+| `BOT_REJECTED` / `CHAT_UNREACHABLE` | the chat server's answer to `subscriptions.getOne` |
+| `BOT_NOT_IN_ROOM` | `subscriptions.getOne` answers no subscription |
+| `NOT_LISTENING` | no core holds the connection's advisory lock, or its socket is reconnecting (`connection-manager.ts:connectionListening`) |
+| `NO_BOX` | no online box of the project can run the session |
+| `BOX_TOO_OLD` | the box does not declare a capability the grant needs (`SUPPORT_BOX_CAPABILITIES`) |
+| `SESSION_NOT_LISTENING` | no session yet, or not resident on its box |
+
+This is how Mattermost reports a plugin and a channel member separately
+(`server/public/model/plugin_status.go`; `server/channels/app/authorization.go:SessionHasPermissionToChannel`
+returns the permission and the membership apart).
+
+**Grants are named abilities (BC-27).** `support.grants` is `{ abilities, deployTargets?, hosts?,
+confirmers? }` (`contracts/support.ts:supportGrantsSchema`). The abilities are:
+
+| Ability | What the session may do | Waits for |
+|---|---|---|
+| `read_checkout` | read the project's checkout, mounted read-only (`checkout: "read"`) | — |
+| `file_items` | `record` Feedback | the asker's confirm |
+| `deliver` | `move_issue`, as the member who asked | — |
+| `build` | edit a working copy of the development branch the box keeps for the room (`checkout: "build"`), then commit on `feat/`/`fix/`, push without force, and open a change request into the development branch | a confirmer |
+| `deploy` | deploy a bound Coolify target the grant names | a confirmer, then a production target's own approver |
+| `run_commands` | run a command over the box's SSH on a host the grant names | a confirmer, unless it only reads (`support/command-class.ts`) |
+
+Further rules:
+- A grant naming a reach without its ability, an ability without its reach, or a waiting ability
+  without confirmers is refused at the binding door. So is a deploy target the project does not bind
+  (`SUPPORT_GRANT_TARGET_UNKNOWN`).
+- `build` never branches from a branch a production environment deploys from, and never pushes a
+  branch any environment deploys from or a promotion lands on (`support/build.ts:buildBaseOf`). Both
+  are checked at the proposal and again at the confirm. The release goes through Forge.
+- A room with neither `read_checkout` nor `build` sees no checkout at all (`checkout: "none"`).
+- Each confirmed change re-reads the grant at the confirm (`support/ability-run.ts:runConfirmed`):
+  - its ability and reach;
+  - whether the one confirming is still a named confirmer.
+
+  A change that throws on the way is settled `failed` and said in the thread.
+
+**Refused by name (BC-28).** An ungranted act is refused with `SUPPORT_ABILITY_NOT_GRANTED`, before
+anything runs (`support/grants.ts:abilityRefusal`). The refusal names:
+- the ability and what it does;
+- what the room holds;
+- who can grant it — the project's admins by name, in Project settings → Integrations → Rocket.Chat.
+
+Core posts it in the thread whether or not the session repeats it, and records it. A confirm from
+anyone but a named confirmer is refused the same way. Prior art for the shape of the refusal:
+- Slack's `missing_scope` answers `needed` and `provided`
+  (`slackapi/node-slack-sdk packages/web-api/src/types/response/ChatPostMessageResponse.ts`);
+- Rocket.Chat's Apps-Engine `PermissionDeniedError` names the permission the app lacks
+  (`packages/apps/src/server/errors/PermissionDeniedError.ts`);
+- GitHub answers `X-Accepted-GitHub-Permissions`.
+
+**The box does the acts core has decided.** The box answers each on the device route under the
+request's id (`runners/box-acts.ts`):
+- `host.command`: `ssh -o BatchMode=yes -T -- <host> <command>` with the box's own keys, outside the
+  session's sandbox, killed at 60 s, each stream capped at 32 KiB. It answers on
+  `/api/devices/me/host-commands/:requestId`.
+- `build.push`: commit and push the room's working copy. It answers on
+  `/api/devices/me/support-builds/:requestId`.
+
+A box declares `hostCommands`, `chatCheckoutModes` and `supportBuilds`, the last two only where it
+can confine a session. A support turn on a box that cannot scope its checkout is refused
+(`BOX_CANNOT_SCOPE_CHECKOUT`), never run with the whole checkout writable.
+
+**Migration (BC-29).** Each hand-run watcher becomes a binding of its group, one room at a time:
+1. Its prompt file's standing instructions become `persona`.
+2. What it did becomes `grants`.
+3. Its pane stops only after the bound room has answered a real mention.
+
+The sid-email watcher stays until the coordinator has seen the bound room do `build`, `deploy` and
+`run_commands` end to end in that group. The rooms' state is in the lane's report, not here: it
+changes as each one moves.
+
 ## Honest costs
 
 - **A box per project.** The session runs on a paired runner bound to the project with a checkout,
-  declaring `turnCredential` and `confinedChatNetwork`. No box, no answer: the group is told the
+  declaring `turnCredential`, `confinedChatNetwork` and, for a support group, `chatCheckoutModes`
+  (plus `supportBuilds` / `hostCommands` where the grant holds `build` / `run_commands`). No box, no answer: the group is told the
   assistant is offline and its messages wait.
 - **Knowledge has no audience flag.** `search` reads every knowledge entry of the project and the
   checkout's docs. What keeps internal text out of a customer group is only the `support-reply`
@@ -274,6 +375,20 @@ one chat server (a stand-in, or a real Rocket.Chat with `OPS_E2E_RC=<file>`; the
 - **Two scrub layers, one source of truth.** Every line core posts is scrubbed with the bot token
   and each word of every credential header (`integrations/support-api/call.ts:credentialValuesOf`);
   a credential the product API returns under another shape (encoded, split) is not recognised.
+
+- **A command's class is a list, not a parse.** `run_commands` runs a command at once only when every
+  stage of its pipeline is a program known only to read, with no shell construct. Anything else waits
+  for a confirmer, including a read the list does not know. A program that can write through an
+  operand or a script of its own (`sed`, `awk`, `curl`, `less`) is not on the list, and a program
+  named by a path outside the system bin directories is not trusted under its name. The box runs every
+  command with no terminal and an empty stdin, and kills it at 60 s. So no pager or interactive
+  mode opens, and an unbounded read is cut off there. A confirmer is the gate; the box's SSH
+  key decides what any command can reach at all.
+- **A build's working copy lives on one box.** It is kept under `<base_dir>/support-builds/<room>`
+  on the box that ran the turn. If the next turn lands on another box of the project, the session
+  starts from a fresh copy of the development branch.
+- **`readers: team` trusts the group's membership.** A team group's replies are screened as the
+  team's (`operations-reply`), and whoever Rocket.Chat admits to the group reads them.
 
 ## Setup (BC-19)
 

@@ -83,6 +83,26 @@ export async function tryLockSession(
   return res.rows[0]?.locked === true;
 }
 
+/**
+ * Whether any session of the database holds the session-scoped lock `key` (`tryLockSession`): how
+ * a process that does not own a thing asks whether another one does.
+ */
+export async function sessionLockHeld(
+  exec: LockExecutor,
+  namespace: LockNamespace,
+  key: string,
+): Promise<boolean> {
+  const rows = await exec.execute<{ held: boolean }>(
+    sql`SELECT EXISTS (
+      SELECT 1 FROM pg_locks
+      WHERE locktype = 'advisory' AND granted
+        AND classid = ${LOCK_NAMESPACES[namespace]}::int4::oid
+        AND objid = hashtext(${key})::oid AND objsubid = 2
+    ) AS held`,
+  );
+  return rows[0]?.held === true;
+}
+
 export async function unlockSession(
   client: pg.ClientBase,
   namespace: LockNamespace,

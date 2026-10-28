@@ -158,7 +158,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:resourceUuid field:json:run field:json:runId field:json:runIds field:json:runnerId
     field:json:sessionId field:json:slug field:json:sourceRef field:json:subjectId
     field:json:targetProjectSlug field:json:templateId field:json:turnId field:json:thread
-    field:json:asker field:json:tool
+    field:json:asker field:json:tool field:json:connectionId
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
     field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
     field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers
@@ -179,6 +179,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:displayName field:json:shortName field:json:request field:json:account
     field:json:lines field:json:sides field:json:withoutClip field:json:rationale field:json:said
     field:json:statement`,
+  'a command a support room runs on a host its grant names, and what the box answers it ran; core checks the grant before the box is asked, and the output is scrubbed before anyone reads it': words`
+    field:json:command field:json:stdout field:json:stderr`,
   'a structured part of a record core validates and stores; it admits nobody': words`
     field:json:other field:json:output field:json:answers field:json:artifact field:json:attachments
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
@@ -304,6 +306,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     credentials/mcp-oauth-shape.ts URL.toString in redirectWith
     integrations/inbound-door.ts URL.search in sameEndpoint
     integrations/llm/embeddings-client.ts URL handed to @types/node:fetchFn in timedFetch
+    integrations/rocketchat/rest-client.ts URLSearchParams.toString in fetchBotMembership
     integrations/rocketchat/rest-client.ts URLSearchParams.toString in rcGet
     integrations/sentry/endpoints.ts URLSearchParams.toString in sentryOrgIssuesUrl
     integrations/support-api/call.ts URL handed to @types/node:(input.fetchImpl ?? fetch) in callGranted

@@ -78,6 +78,7 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"WIDGET_SITE_KEY_TAKEN",
 	"SUPPORT_ROOM_NOT_ONE_GROUP",
 	"SUPPORT_ROOM_TWO_KINDS",
+	"SUPPORT_GRANT_TARGET_UNKNOWN",
 ] as const;
 
 /** Every code a project-config document write answers with. */

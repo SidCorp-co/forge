@@ -17,6 +17,7 @@ import { assertRunAcceptsWork, insertOneShotRun, openOneShotRun } from '../pipel
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
 import { applyAutoTitleAsync } from './auto-title.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
+import { type CheckoutView, checkoutFields, requireCheckoutView } from './chat-checkout.js';
 import {
   type ChatClient,
   noClaudeClient,
@@ -186,6 +187,11 @@ export interface DispatchChatTurnArgs {
   credential?: string | undefined;
   /** Who sent the turn, as the kernel records the session's move to `running`; absent, core. */
   actor?: KernelActor | undefined;
+  /**
+   * How the box shows a confined session its checkout (REQ-75 r5 BC-27); absent, writable as
+   * before. Only a confined turn carries one, and only to a box that declares it can.
+   */
+  checkout?: CheckoutView | undefined;
 }
 
 /** A remote turn runs in its device binding's checkout; a binding that names none is refused by name. */
@@ -282,6 +288,7 @@ interface TurnPlan {
    * a cold start.
    */
   keepResident: boolean;
+  checkout: CheckoutView | null;
 }
 
 /** The session's checkout, re-read from the device binding when the turn lands on another box. */
@@ -313,6 +320,10 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
   if (confined) await requireConfiningBox(deviceId);
   const ungated = Boolean((session.metadata as { pocRoom?: unknown } | null)?.pocRoom);
   const keepResident = Boolean((session.metadata as { supportRoom?: unknown } | null)?.supportRoom);
+  const checkout = args.checkout ?? null;
+  if (checkout) {
+    await requireCheckoutView(checkout, { sessionId: session.id, deviceId, confined });
+  }
 
   const attachments = args.attachmentIds?.length
     ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
@@ -359,6 +370,7 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
     confined,
     ungated,
     keepResident,
+    checkout,
   };
 }
 
@@ -469,6 +481,7 @@ async function boxFrame(
     ...(plan.confined ? { confined: true } : {}),
     ...(plan.ungated ? { ungated: true } : {}),
     ...(plan.keepResident ? { keepResident: true } : {}),
+    ...checkoutFields(plan.checkout),
   };
   // `--resume` keeps the original system prompt and history
   if (plan.resumable) {
