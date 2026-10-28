@@ -239,6 +239,21 @@ pub fn verdict(
     }
 }
 
+/// The token a job ended on its own credential's refusal opens with. Core classifies the ending
+/// by it (`packages/core/src/pipeline/failure-classifier.ts`) as terminal: the pane's credential
+/// cannot reach its project, so a retry on the same box is refused the same way (sidcorp-mail on
+/// sid-xeon-1-dev, 2026-10-28: 23 release jobs retried a `PAT_PROJECT_OUTSIDE_FENCE` each 15
+/// minutes as a pane that "reported nothing"). A contract, not prose.
+pub const CREDENTIAL_REFUSED: &str = "[CREDENTIAL_REFUSED]";
+
+/// What core is told where a job pane's own credential was refused: the code, core's words for
+/// it, and why the attempt ends there rather than at its silence.
+pub fn credential_refused_reason(pane: &str, code: &str, detail: &str) -> String {
+    format!(
+        "{CREDENTIAL_REFUSED} {code}: the job's pane `{pane}` was refused on its own project's credential — {detail} — so nothing it does can be recorded, and the same job on this box would be refused the same way; give the box a credential that reaches the project (re-provision its checkout) before running it again"
+    )
+}
+
 /// The words a job ended on a question opens with. Core classifies the ending
 /// by them (`packages/core/src/pipeline/failure-classifier.ts`), so they are a
 /// contract and not prose.

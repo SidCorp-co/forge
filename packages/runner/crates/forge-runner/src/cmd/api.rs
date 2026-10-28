@@ -199,7 +199,84 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     if let Some(note) = refused_on(resp.outcome.exit_code, &sent_as) {
         eprintln!("{note}");
     }
+    if let Some((code, detail)) = own_project_refusal(
+        &resp.outcome.code,
+        resp.outcome.exit_code,
+        &resp.stdout,
+        std::env::var("FORGE_PROJECT_ID").ok().as_deref(),
+        std::env::var("FORGE_PROJECT_SLUG").ok().as_deref(),
+    ) {
+        tell_daemon_refused(&code, &detail).await;
+    }
     std::process::exit(resp.outcome.exit_code);
+}
+
+/// The refusal of this pane's own credential by this pane's own project, as `(code, core's words)`,
+/// or `None`: a token core no longer takes at all (401), or a fence refusal naming the project the
+/// pane was started for (`PAT_PROJECT_OUTSIDE_FENCE … names project <id or slug>,`). A fence
+/// refusal naming another project is the call's, not the pane's: a job may read a project its
+/// checkout credential does not reach and carry on. Outside a project's pane there is none.
+pub(crate) fn own_project_refusal(
+    code: &str,
+    exit_code: i32,
+    body: &[u8],
+    project_id: Option<&str>,
+    project_slug: Option<&str>,
+) -> Option<(String, String)> {
+    let own: Vec<&str> = [project_id, project_slug]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if own.is_empty() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(body);
+    let said = serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|v| {
+            ["message", "detail", "error"]
+                .iter()
+                .find_map(|k| v.get(*k).and_then(Value::as_str).map(str::to_string))
+        })
+        .unwrap_or_else(|| text.chars().take(1000).collect());
+    let fenced_here = code == "PAT_PROJECT_OUTSIDE_FENCE"
+        && own.iter().any(|p| {
+            let p = p.to_ascii_lowercase();
+            said.to_ascii_lowercase()
+                .contains(&format!("names project {p},"))
+        });
+    (fenced_here || exit_code == 3).then(|| (code.to_string(), said))
+}
+
+/// Tell this box's daemon the pane's own project refused its credential, so the job ends on it by
+/// name (`control::Request::CredentialRefused`). Said on stderr either way: a pane with no
+/// capability, or a daemon that cannot be reached, leaves the job to end on its silence.
+async fn tell_daemon_refused(code: &str, detail: &str) {
+    let Ok(token) = runner_daemon::session_tokens::token_from_env() else {
+        return;
+    };
+    let Some(sock) = Config::path()
+        .ok()
+        .map(|p| p.with_file_name("control.sock"))
+        .filter(|s| s.exists())
+    else {
+        eprintln!("note: this pane's own project refused its credential ({code}), and this box's daemon has no control socket to be told on");
+        return;
+    };
+    match runner_daemon::control::request_credential_refused(&sock, &token, code, detail).await {
+        Ok(reply) if reply.ok => eprintln!(
+            "note: this pane's own project refused its credential ({code}); this box's daemon was told, and ends this job on that refusal rather than retrying it"
+        ),
+        Ok(reply) => eprintln!(
+            "note: this pane's own project refused its credential ({code}), and this box's daemon refused to be told: {}",
+            reply.reason.unwrap_or_default()
+        ),
+        Err(e) => eprintln!(
+            "note: this pane's own project refused its credential ({code}), and this box's daemon could not be told: {e}"
+        ),
+    }
 }
 
 /// Which credential a call goes out with, and to which core.
@@ -284,6 +361,93 @@ fn usage(message: &str) -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use runner_workspace::mcp::config::Borrowed;
+
+    const MAIL: &str = "a417a126-7b96-4b8f-8d83-faa1e7ccbd56";
+
+    fn fence_body(named: &str) -> Vec<u8> {
+        serde_json::json!({
+            "code": "PAT_PROJECT_OUTSIDE_FENCE",
+            "message": format!("PAT_PROJECT_OUTSIDE_FENCE: this request came on token \"dev-runner-box\" (fc4fe551), which reaches forge (d1bb4907); the path names project {named}, which it does not reach, so nothing on that project is answered to it.")
+        })
+        .to_string()
+        .into_bytes()
+    }
+
+    #[test]
+    fn a_fence_refusal_naming_the_panes_own_project_is_the_panes_own() {
+        let got = own_project_refusal(
+            "PAT_PROJECT_OUTSIDE_FENCE",
+            4,
+            &fence_body(MAIL),
+            Some(MAIL),
+            Some("sidcorp-mail"),
+        );
+        let (code, detail) = got.expect("the pane's own project refused it");
+        assert_eq!(code, "PAT_PROJECT_OUTSIDE_FENCE");
+        assert!(detail.contains("dev-runner-box"), "{detail}");
+        // named by the slug header, as a call with no project in its path names it
+        assert!(own_project_refusal(
+            "PAT_PROJECT_OUTSIDE_FENCE",
+            4,
+            &fence_body("sidcorp-mail"),
+            Some(MAIL),
+            Some("sidcorp-mail")
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn a_fence_refusal_naming_another_project_is_the_calls_and_not_the_panes() {
+        let other = "d180bdca-a927-4b11-b370-fa2ec923dba4";
+        assert!(own_project_refusal(
+            "PAT_PROJECT_OUTSIDE_FENCE",
+            4,
+            &fence_body(other),
+            Some(MAIL),
+            Some("sidcorp-mail")
+        )
+        .is_none());
+        // a slug that only begins another project's slug is not it
+        assert!(own_project_refusal(
+            "PAT_PROJECT_OUTSIDE_FENCE",
+            4,
+            &fence_body("sidcorp-mail-archive"),
+            Some(MAIL),
+            Some("sidcorp-mail")
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn a_token_core_no_longer_takes_is_the_panes_and_any_other_refusal_is_not() {
+        let body = br#"{"code":"UNAUTHORIZED","message":"token revoked"}"#;
+        assert_eq!(
+            own_project_refusal("UNAUTHORIZED", 3, body, Some(MAIL), None),
+            Some(("UNAUTHORIZED".to_string(), "token revoked".to_string()))
+        );
+        assert!(own_project_refusal(
+            "NOT_THE_HOLDER",
+            4,
+            br#"{"code":"NOT_THE_HOLDER"}"#,
+            Some(MAIL),
+            None
+        )
+        .is_none());
+        assert!(own_project_refusal("NOT_FOUND", 5, b"{}", Some(MAIL), None).is_none());
+    }
+
+    #[test]
+    fn outside_a_projects_pane_nothing_is_the_panes() {
+        assert!(own_project_refusal(
+            "PAT_PROJECT_OUTSIDE_FENCE",
+            4,
+            &fence_body(MAIL),
+            None,
+            None
+        )
+        .is_none());
+        assert!(own_project_refusal("UNAUTHORIZED", 3, b"{}", Some(" "), Some("")).is_none());
+    }
 
     fn borrow() -> Option<Borrowed> {
         Some(Borrowed {
