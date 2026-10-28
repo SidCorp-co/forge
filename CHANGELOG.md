@@ -3202,6 +3202,7 @@
 
 - **The help says what the screen says, and a release says one thing per issue.** Help, guides and API reference drop "ship"; an issue a release could not close gets no unverified note; Shape & release matches the gate. (ISS-1421)
 - **Every wait before Retry is said to a screen reader at its start and its end, never each second**, the issue list's filters and phone menu included. A write refused for too many requests says how long to wait. (ISS-1229)
+- **A route's own rate limit names itself in `X-RateLimit-Scope`.** A token's knowledge search read a limit of 300 beside the scope `write`, as if the token's writes were the 300. (ISS-1229)
 - **New issue shows why it was refused beside Create**, and a notice tapped on a phone leaves at its time instead of holding over Save. (ISS-1229)
 - **A rate-limited read says its wait once, counting down**, without the server's fixed "Try again in 30 seconds"; screen readers hear only its start and end. On a phone, the page scrolls clear of a kept notice. (ISS-1229)
 - **Release notes are asked for in plain words.** Several missing notes are asked for one per issue on its page; no sentence says ship; Save says what it waits for; comments inside one millisecond read in one order. (ISS-1421)

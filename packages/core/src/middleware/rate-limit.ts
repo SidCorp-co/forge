@@ -108,6 +108,8 @@ export function rateLimit(rule: RateLimitRule, opts: RateLimitOptions = {}): Mid
     c.header('X-RateLimit-Limit', String(rule.max));
     c.header('X-RateLimit-Remaining', String(remaining));
     c.header('X-RateLimit-Reset', String(resetSec));
+    // The four headers describe one bucket: a token's scope set before this limit would name another (ISS-1229 r53).
+    c.header('X-RateLimit-Scope', ruleName);
 
     if (bucket.count > rule.max) {
       const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
