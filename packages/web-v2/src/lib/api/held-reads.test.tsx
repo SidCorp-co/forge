@@ -271,7 +271,11 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     await expect(apiFile(file)).rejects.toMatchObject({ status: 429, read: `GET ${location.origin}${file}` });
     expect(sent).toEqual([`GET ${file}`]);
     vi.setSystemTime(Date.now() + 1_500);
-    await expect(apiFile(file)).resolves.toBeInstanceOf(Blob);
+    // What the client hands back is judged by its bytes and type: `instanceof Blob` asks which realm made it, and the
+    // fetch's Blob and the test environment's global one are not the same realm everywhere (CI 40665316325).
+    const bytes = await apiFile(file);
+    await expect(bytes.text()).resolves.toBe("[]");
+    expect(bytes.type).toBe("application/json");
     expect(sent).toEqual([`GET ${file}`, `GET ${file}`]);
   });
 
