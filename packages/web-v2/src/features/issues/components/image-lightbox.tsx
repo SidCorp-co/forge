@@ -356,6 +356,7 @@ export function ImageLightbox({
               <CoreImage
                 path={img.path}
                 alt={img.name}
+                wordless
                 className="size-11 object-cover sm:size-14"
               />
             </button>

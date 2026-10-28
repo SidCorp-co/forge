@@ -48,8 +48,16 @@ export function CoreImage({
   fragment = "",
   alt,
   className,
+  wordless = false,
   ...img
-}: { path: string; fragment?: string; alt: string; className?: string } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "alt" | "className">) {
+}: {
+  path: string;
+  fragment?: string;
+  alt: string;
+  className?: string;
+  /** Too small to say why it is missing in words, as a strip's thumbnail is: it says so to a screen reader only. */
+  wordless?: boolean;
+} & Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "alt" | "className">) {
   const files = useContext(CoreFilesContext);
   if (!files) throw new Error(`CoreImage drew ${path} outside a CoreFilesProvider, so nothing can read it through the client`);
   const [ref, near] = useNearScreen<HTMLSpanElement>();
@@ -60,10 +68,14 @@ export function CoreImage({
     // biome-ignore lint/performance/noImgElement: the bytes are already in memory as an object URL, which `next/image` cannot take
     return <img src={`${file.src}${fragment}`} alt={alt} className={className} {...img} />;
   }
+  const missing = alt ? `${alt} not loaded.` : "Image not loaded.";
+  if (file.error && wordless) {
+    return <span ref={ref} role="img" aria-label={missing} data-testid="core-image-failed" className={cn("inline-block bg-surface", className)} />;
+  }
   if (file.error) {
     return (
-      <span ref={ref} data-testid="core-image-failed" className={cn("inline-flex flex-col items-center justify-center gap-1 bg-surface p-2 text-center", className)}>
-        <span className="fg-caption break-all text-muted">{alt ? `${alt} not loaded.` : "Image not loaded."}</span>
+      <span ref={ref} data-testid="core-image-failed" className={cn("inline-flex flex-col items-center justify-center gap-1 overflow-hidden bg-surface p-2 text-center", className)}>
+        <span className="fg-caption text-muted [overflow-wrap:anywhere]">{missing}</span>
         {wait && <RetryWait wait={wait} testId="core-image" />}
       </span>
     );
