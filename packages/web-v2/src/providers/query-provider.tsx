@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { CoreFilesProvider } from "@/design/patterns/core-image";
 import { ApiError } from "@/lib/api/client";
+import { coreFiles } from "@/lib/api/core-file";
 import { keepFailedReadsFailed } from "@/lib/api/keep-failed-reads";
 import { refetchRefusedOnFocus } from "@/lib/api/read-failed";
 
@@ -35,5 +37,9 @@ export function createQueryClient(): QueryClient {
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
 	const [queryClient] = useState(createQueryClient);
-	return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+	return (
+		<QueryClientProvider client={queryClient}>
+			<CoreFilesProvider value={coreFiles}>{children}</CoreFilesProvider>
+		</QueryClientProvider>
+	);
 }

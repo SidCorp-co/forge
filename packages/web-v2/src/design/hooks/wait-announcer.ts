@@ -60,7 +60,7 @@ function say(text: string): void {
  * end is told once if any place still shows it then. Every other place, mounted before or mid-wait, tells nothing.
  * Answers how the place stops showing it.
  */
-export function showWait(read: string, at: number, started: string): () => void {
+export function showWait(read: string, at: number, started: string, ended = WAIT_OVER): () => void {
   region();
   let wait = waits.get(read);
   if (!wait) {
@@ -74,7 +74,7 @@ export function showWait(read: string, at: number, started: string): () => void 
     shown.told = true;
     say(started);
     setTimeout(() => {
-      if (shown.places > 0) say(WAIT_OVER);
+      if (shown.places > 0) say(ended);
       waits.delete(read);
     }, left);
   }

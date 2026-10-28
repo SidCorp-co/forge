@@ -184,7 +184,8 @@ export function Select({
         onDismiss={() => setOpen(false)}
         placement="bottom-start"
         matchAnchorWidth
-        maxHeight={256}
+        // A menu counting a wait grows to the screen's room, so the whole countdown shows without a scroll (judge-170).
+        maxHeight={options.some((o) => o.waitOn !== undefined) ? undefined : 256}
         lockScroll
         panelRef={setPanel}
         id={`${baseId}-list`}

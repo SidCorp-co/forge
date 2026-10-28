@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import {
   Banner,
   Button,
+  ErrorState,
   Field,
   Icon,
   IconButton,
@@ -494,6 +495,27 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
           </div>
         </div>
       </form>
+    </SlideOver>
+  );
+}
+
+/**
+ * New issue pressed while the projects a slug is resolved against could not be read: the sheet still opens, and says
+ * why it has no project to create the issue in, with Retry under the one rule (ISS-1229 r55, judge-170: the press
+ * only added `?new=1` and nothing opened).
+ */
+export function NewIssueProjectsUnread({ open, onClose, error, onRetry }: { open: boolean; onClose: () => void; error: unknown; onRetry: () => void }) {
+  return (
+    <SlideOver open={open} onClose={onClose} title="New issue" width={480}>
+      <div data-testid="new-issue-projects-unread">
+        <ErrorState
+          mascot={false}
+          title="No project to create it in"
+          message={`Your projects could not be read, so this project cannot be offered for the new issue. ${formatApiError(error)}`}
+          error={error}
+          onRetry={onRetry}
+        />
+      </div>
     </SlideOver>
   );
 }

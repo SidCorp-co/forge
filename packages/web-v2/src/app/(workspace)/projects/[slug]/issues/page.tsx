@@ -7,13 +7,26 @@
 import { useParams } from "next/navigation";
 import { ProjectLoader } from "@/design";
 import { IssuesScreen } from "@/features/issues/components/issues-screen";
-import { useProjects } from "@/features/projects/hooks";
+import { NewIssueProjectsUnread } from "@/features/issues/components/new-issue-dialog";
+import { useProjects, useRetryProjects } from "@/features/projects/hooks";
+import { replaceLocationSearch, useLocationSearch } from "@/lib/utils/use-location-search";
 import { ProjectMissing, ProjectsUnread } from "@/features/projects/components/project-missing";
 
 export default function ProjectIssuesPage() {
   const params = useParams<{ slug: string }>();
   const slug = params?.slug;
   const { data: projects, isLoading, isError, error } = useProjects();
+  const retry = useRetryProjects();
+  // New issue from the top bar or ⌘K lands here as `?new=1`; with no projects read it still opens, saying why.
+  const search = useLocationSearch();
+  const wantsNew = new URLSearchParams(search).get("new") === "1";
+  const dropNew = () => {
+    const sp = new URLSearchParams(window.location.search);
+    sp.delete("new");
+    const qs = sp.toString();
+    // A `null` state, as IssuesScreen's own close: Next skips syncing `useSearchParams` for a state carrying its mark.
+    replaceLocationSearch(qs ? `?${qs}` : window.location.pathname, null);
+  };
 
   if (isLoading) {
     return (
@@ -25,9 +38,12 @@ export default function ProjectIssuesPage() {
 
   if (isError) {
     return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ProjectsUnread error={error} />
-      </div>
+      <>
+        <div className="grid min-h-[60vh] place-items-center">
+          <ProjectsUnread error={error} />
+        </div>
+        <NewIssueProjectsUnread open={wantsNew} onClose={dropNew} error={error} onRetry={retry} />
+      </>
     );
   }
 

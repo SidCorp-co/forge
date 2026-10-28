@@ -1,6 +1,7 @@
 // The reading behind retry-rule-source.test.ts (criteria 478, 479, 496). It refuses, naming file and line: the words
-// only the one Retry draws ("Retry", "Try again", "Reload", "Read it again") drawn or named anywhere else; a failure
-// part handed onRetry without the failed read's error; a failure sentence closed by a second stop; and the one
+// only the one Retry draws ("Retry", "Reload", "Refresh", and any "… again" or "… now" a re-read is labelled with)
+// drawn or named anywhere else; a failure part handed onRetry without the failed read's error; a failure sentence
+// closed by a second stop; and the one
 // Retry's wait counted inside a live region, which would announce every second of it.
 //
 // It follows no press (ISS-1229 r54). Whether a read refused with a wait is asked again before that wait ends is
@@ -13,8 +14,10 @@ import ts from "typescript";
 
 export const SRC = join(__dirname, "..");
 
-/** The words a control that reads something again is drawn with, as its text, its accessible name or its title. */
-const RETRY_WORDS = /^(Retry\b.*|Retrying…|Try again\b.*|Reload\b.*|Read (it |them )?again\b.*)$/;
+/** The words a control that reads something again is drawn with, as its text, its accessible name or its title: every
+ *  re-read label, so one offered on a 403 or 404 under other words is refused as Retry is (criterion 478, judge-170 a7). */
+export const RETRY_WORDS =
+  /^(Retry\b.*|Retrying…|Reload\b.*|Refresh\b.*|Refetch\b.*|(Try|Ask|Load|Read|Fetch|Check|Get|Look|Request|Query)( (it|them|this|that|again|now|the \w+))*( again| now)\b.*)$/;
 
 const NAMING_ATTRIBUTES = new Set(["aria-label", "title", "label"]);
 
@@ -30,6 +33,12 @@ export const ACTS: Record<string, string> = {
   "features/conversations/components/conversation-thread.tsx": "sends a message that failed to send again",
   "features/project-dashboard/components/attention-queue.tsx#Retrying…": "runs a failed job again",
   "app/global-error.tsx": "loads the page again after it failed to draw, where no read's error is held",
+};
+
+/** Controls that re-read on a person's ask a read that stands answered, drawn only while it does, so never offered for a
+ *  failed one; each named with the read, as `file#words`. */
+export const STANDING_READS: Record<string, string> = {
+  "features/integrations/components/project-integrations-panel.tsx#Refresh": "the integration statuses, hidden while their last read failed",
 };
 
 const RETRY_PRIMITIVES = new Set(["RetryButton", "RetryLink"]);
@@ -401,7 +410,7 @@ function wordOffences(source: Source): string[] {
   const rel = relative(SRC, source.path);
   const found: string[] = [];
   const at = (node: ts.Node, what: string) => found.push(`${where(node)} ${what}`);
-  const excused = (words: string) => rel in ACTS || `${rel}#${words}` in ACTS;
+  const excused = (words: string) => rel in ACTS || `${rel}#${words}` in ACTS || `${rel}#${words}` in STANDING_READS;
   const visit = (node: ts.Node) => {
     const drawn = ts.isJsxText(node) || (ts.isJsxExpression(node) && !ts.isJsxAttribute(node.parent))
       ? wordsOf(node, constants)

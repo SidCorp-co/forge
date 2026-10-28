@@ -214,3 +214,29 @@ describe("a list whose options name their group", () => {
     expect(screen.queryByRole("group")).toBeNull();
   });
 });
+
+// ISS-1229 r55, judge-170 on 516: the Creator menu, capped at 256px, hid the countdown's last line below its edge until
+// scrolled. A menu counting a wait takes the screen's room instead, so the whole countdown shows.
+describe("a menu counting a wait", () => {
+  const waiting = { name: "ApiError", status: 429, retryAt: Date.now() + 20_000, retryAfterMs: 20_000 };
+  // jsdom lays nothing out: a 1280x900 screen, as the menu's room is measured against it.
+  for (const [side, px] of [["clientWidth", 1280], ["clientHeight", 900]] as const) {
+    Object.defineProperty(document.documentElement, side, { configurable: true, get: () => px });
+  }
+  const open = (options: SelectOption[]) => {
+    render(<Select aria-label="Creator filter" options={options} value="" onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("combobox", { name: "Creator filter" }));
+    return screen.getByRole("listbox");
+  };
+
+  it("is not held to the 256px a menu of choices is", async () => {
+    const list = open([...OPTIONS, { value: "unread", label: "Couldn't load the people", detail: "Too many requests.", waitOn: Object.assign(new Error("x"), waiting), disabled: true }]);
+    await vi.waitFor(() => expect(list.style.maxHeight).not.toBe(""));
+    expect(Number.parseFloat(list.style.maxHeight)).toBeGreaterThan(256);
+  });
+
+  it("leaves a menu with no wait at 256px", async () => {
+    const list = open(OPTIONS);
+    await vi.waitFor(() => expect(list.style.maxHeight).toBe("256px"));
+  });
+});
