@@ -35,6 +35,8 @@ export const VERDICT_REFUSAL_CODES = [
 	"VERDICT_VALUE_UNKNOWN",
 	"VERDICT_SKIP_REASON_REQUIRED",
 	"VERDICT_CLIP_REQUIRED",
+	/** A pass, short or fail on a server-side criterion citing no file attached to the issue (REQ-36 BC-21). */
+	"VERDICT_CAPTURE_REQUIRED",
 	"VERDICT_IDENTITY_REQUIRED",
 	"VERDICT_COMMIT_NOT_FULL",
 	"VERDICT_RUNTIME_NOT_FULL",

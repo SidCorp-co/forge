@@ -172,7 +172,9 @@ cites a screen clip of the run among its \`evidence:\` lines (a WebM or MP4 atta
 with its opening still beside it) by its name, its id or its download URL
 (\`/api/attachments/:id/download\`, relative or whole), or carries a \`without-clip:\` line saying why none could show it. The \`why:\` line
 says what was found and never stands in for it; a block with neither is refused
-\`VERDICT_CLIP_REQUIRED\` (REQ-40 BC-4).
+\`VERDICT_CLIP_REQUIRED\` (REQ-40 BC-4). One judging a server-side check cites, among its \`evidence:\`
+lines, the capture of what was run inside the running server, attached to this issue; it owes no
+clip, and a block citing no attachment is refused \`VERDICT_CAPTURE_REQUIRED\` (REQ-36 BC-21).
 
 A fence is read only where it opens at the left margin, and the body is stored exactly as it was
 written, so where you put the block is where it is read. Indent it at all — the four spaces of an

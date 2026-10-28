@@ -134,6 +134,8 @@ export const PROBE_REFUSAL_CODES = [
 	"VERDICT_PROBE_REQUIRED",
 	/** A probe sent on a code property, which the review judges against the diff. */
 	"VERDICT_PROBE_CODE_PROPERTY",
+	/** A probe sent on a server-side criterion, which no replay reaches inside the running server (REQ-36 BC-21). */
+	"VERDICT_PROBE_SERVER_SIDE",
 	/** A request the origin it would be replayed against does not answer, or one whose origin is unknown. */
 	"VERDICT_PROBE_ROUTE",
 ] as const;
