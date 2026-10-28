@@ -103,9 +103,13 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
       commitCheck: async () => 'refused' as const,
     });
     expect(refusal?.detail).toBe(
-      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and leave Commit empty to record a claim naming no commit. Forge cannot read this project's repository, so a commit named under Commit is refused; to have one checked, attach a deploy key under the project's Settings → Runners → Git access. Then close it. If it turned out not to be work, move it to Dropped instead.",
+      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed. Leave Commit empty to record a claim naming no commit. Forge cannot read this project's repository, so it refuses a named commit. A deploy key under the project's Settings → Runners → Git access lets it check one. Then close it. If it turned out not to be work, move it to Dropped instead.",
     );
     expect(refusal?.detail).not.toContain('name the commit that landed');
+    // Criterion 167: each sentence of a close refusal holds to twenty words (review F1).
+    for (const sentence of (refusal?.detail ?? '').split(/(?<=\.)\s+(?=[A-Z])/)) {
+      expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(20);
+    }
     const steps = refusal?.details.steps as Record<string, string> | undefined;
     expect(steps?.merged_mark).toContain('leaving `data.commit` out');
   });

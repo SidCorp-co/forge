@@ -205,17 +205,13 @@ export interface RecoverStrandedReleasingOptions {
   /** The one next step an unpromoted hand-back's comment ends on, in place of the general one, by
    *  where the issue now stands (ISS-1421 r6: one comment, one next step). */
   nextStep?: ((at: IssueStatus) => string) | undefined;
-  /** Why the finish could not close each issue, by id; such an issue's comment names it. A finish
-   *  settles its roster, so these are said only on issues it moves. */
+  /** Why the finish could not close each issue, by id; such an issue's comment names it. */
   refusals?: ReadonlyMap<string, CloseRefusal> | undefined;
   /** The version the finish shipped, named in a refused issue's comment. */
   version?: string | null | undefined;
-  /** Who reported the finish, named in a refused issue's comment (ISS-1421 r43). */
   finishedBy?: string | undefined;
-  /** Settle a roster whose run promoted instead of holding it: a finish's, which ends its run in the
-   *  same call and knows what its release reported (ISS-1421 r43), or a person's word on an abort,
-   *  buying a batch that promoted and cannot verify a status some door closes from (ISS-1199). A
-   *  sweep never settles one. */
+  /** Settle a roster whose run promoted instead of holding it: a finish's, whose run ends with it
+   *  (ISS-1421 r43), or a person's word on an abort (ISS-1199); never a sweep's. */
   settlePromotedRoster?: boolean;
   /** Run inside each write's own transaction before it writes; throws to stop the recovery. */
   fence?: ((tx: Tx) => Promise<void>) | undefined;
@@ -391,8 +387,6 @@ function settledNote(destination: IssueStatus): string {
   );
 }
 
-/** True whether it is read before the run ends or after: an abort cancels its run right after this
- *  note is written (ISS-1421 r43, judge-171). */
 const PROMOTED_NOTE =
   "This batch recorded a promotion, so the code it carried may be on production. Its issues stay at Releasing, claimed, until its run has ended; within a minute of that, Forge's releasing sweep reads what production serves, closes through a release record each issue whose landing commit production carries, and returns the rest to the release gate. View release on the issue shows where its run stands.";
 
@@ -441,8 +435,7 @@ function sayRefusedClose(
 }
 
 /**
- * Say on each issue what happened, without moving it. A finish settles its roster rather than
- * holding it, so no issue here carries a refusal of a finish's close (ISS-1421 r43).
+ * Say on each issue what happened, without moving it.
  */
 async function noteOnRoster(
   claimed: Array<{ id: string; status: string }>,

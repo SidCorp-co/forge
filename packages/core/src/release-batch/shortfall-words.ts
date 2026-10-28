@@ -39,19 +39,31 @@ export function landingShortfallWords(
   };
 }
 
-/** What a mark's commit meets, as a refusal's details carry it: `noRepository` for a claim (round
- *  41's key, kept for callers that read it) and `repositoryUnreadable` for a refusal (ISS-1421 r43). */
+/** The commit check as a refusal's details carry it; `noRepository` is round 41's key, kept. */
 export function commitCheckDetails(commit: MarkCommitCheck | null): Record<string, true> {
   if (commit === 'claim') return { noRepository: true };
   if (commit === 'refused') return { repositoryUnreadable: true };
   return {};
 }
 
-/** The check back off a refusal's details; neither key reads as a commit Forge checks. */
-export function commitCheckOf(details: Record<string, unknown> | null | undefined): MarkCommitCheck {
+export function commitCheckOf(
+  details: Record<string, unknown> | null | undefined,
+): MarkCommitCheck {
   if (details?.noRepository === true) return 'claim';
   if (details?.repositoryUnreadable === true) return 'refused';
   return 'checked';
+}
+
+const MARK_COMMIT_NOTE: Record<MarkCommitCheck, string> = {
+  checked: '',
+  claim: ' This project names no repository, so the mark may name no commit.',
+  refused:
+    " Forge cannot read this project's repository, so a mark naming a commit is refused; mark it naming none.",
+};
+
+/** What the unmerged refusal's caller sentence adds about the mark's commit. */
+export function markCommitNote(details: Record<string, unknown> | null | undefined): string {
+  return MARK_COMMIT_NOTE[commitCheckOf(details)];
 }
 
 export function openQuestionsShortfallWords(n: number): ShortfallWords {

@@ -14,8 +14,7 @@ describe('releaseRunStopped (ISS-1421)', () => {
     expect(releaseRunStopped(status)).toBe(said);
   });
 
-  // ISS-1421 r43 (judge-171): "The release run completed without finishing its release" stood
-  // under the finish's own "The release finished": a release run completes only by finishing.
+  // ISS-1421 r43 (judge-171): a release run completes only by finishing its release.
   it('says a run that completed finished its release, never that it ended without finishing', () => {
     expect(releaseRunStopped('completed')).toBe(
       'The release finished but left this issue at Releasing',

@@ -18,7 +18,7 @@ import { refusal, useCommitLandingWorld } from '../helpers/commit-landing-fixtur
 const { seed, mark, row, current } = useCommitLandingWorld();
 
 const UNREADABLE = 'git@git.example.invalid:qa/unreadable.git';
-const LEAVE_EMPTY = 'leave Commit empty to record a claim naming no commit';
+const LEAVE_EMPTY = 'Leave Commit empty to record a claim naming no commit';
 const ASK_COMMIT = 'name the commit that landed under Commit';
 
 /** The project names a repository Forge holds no GitHub connection and no deploy key for. */
@@ -66,7 +66,7 @@ describe('Mark merged on a project whose repository Forge cannot read (ISS-1421 
     const issue = await seed({ status: 'awaiting_release' });
     const refused = await refusal(() => moveTo(issue, 'closed'));
     expect(refused.code).toBe('CLOSE_REQUIRES_SHIPPED');
-    expect(refused.message).toContain(`fill in Where it landed and ${LEAVE_EMPTY}.`);
+    expect(refused.message).toContain(`fill in Where it landed. ${LEAVE_EMPTY}.`);
     expect(refused.message).not.toContain(ASK_COMMIT);
   });
 

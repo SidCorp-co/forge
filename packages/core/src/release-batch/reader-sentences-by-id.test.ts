@@ -37,7 +37,7 @@ describe('an issue not marked merged on a project that names no repository', () 
     };
     const said = releaseBlockerReaderSentence('RELEASE_WORK_UNMERGED', details);
     expect(said).toContain(
-      'fill in Where it landed and leave Commit empty to record a claim naming no commit.',
+      'fill in Where it landed. Leave Commit empty to record a claim naming no commit.',
     );
     expect(said).not.toContain('name the commit that landed');
     expect(releaseBlockerSentence('RELEASE_WORK_UNMERGED', details)).toContain(

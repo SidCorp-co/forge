@@ -34,8 +34,8 @@ const MARK_WITH_COMMIT =
 
 /** A commit named on a project whose repository Forge cannot read is refused (ISS-1421 r43). */
 const MARK_WITHOUT_COMMIT =
-  'Mark it merged with `forge_issues` `mark_merged`, leaving `data.commit` out: Forge cannot read ' +
-  "this project's repository, so a commit named there is refused.";
+  'Mark it merged with `forge_issues` `mark_merged`, leaving `data.commit` out. Forge cannot read ' +
+  "this project's repository, so it refuses a named commit.";
 
 const MARK_WITH_LANDING =
   'Mark it merged with `forge_issues` `mark_merged` carrying `data.landing`, the live URL, CMS ' +

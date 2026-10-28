@@ -388,8 +388,7 @@ export async function finishReleaseBatch(
   }
 
   await options.onRosterClosed?.({ closed, failed });
-  // The finish ends its run below, so a promoted roster is settled here rather than held for the
-  // sweep, and Forge says so naming who reported the finish; the moves stay theirs (ISS-1421 r43).
+  // Its run ends below, so even a promoted roster is settled here (ISS-1421 r43).
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
     actor,

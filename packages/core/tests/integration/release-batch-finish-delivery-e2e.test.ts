@@ -225,7 +225,9 @@ describe('a finish whose run recorded a promotion', () => {
       }
       // Forge writes it, naming who reported the finish (criteria 419, 420).
       expect(before.at(-1)?.author).toBe(FORGE_AUTHOR_ID);
-      expect(said).toMatch(/could not be closed\. The finish was reported by [^.]+\. The close was refused/);
+      expect(said).toMatch(
+        /could not be closed\. The finish was reported by [^.]+\. The close was refused/,
+      );
 
       expect(await settleStrandedReleasing()).toEqual({ settled: 0, closed: 0, failed: 0 });
       const after = await thread(held);

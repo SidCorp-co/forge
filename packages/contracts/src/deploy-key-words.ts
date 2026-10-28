@@ -1,6 +1,5 @@
 export const KEY_ACCESS = 'read access';
 
-/** Where a project's deploy key is attached, for an operator's fix and for Mark merged's steps. */
 export const GIT_ACCESS = "the project's Settings → Runners → Git access";
 
 const KEY_NEED = 'all Forge needs; devices that push with it need write access';

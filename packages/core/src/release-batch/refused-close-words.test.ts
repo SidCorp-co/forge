@@ -171,7 +171,7 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
       commit: 'refused',
     });
     expect(said).toContain(
-      "What clears it: use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and leave Commit empty to record a claim naming no commit. Forge cannot read this project's repository, so a commit named under Commit is refused;",
+      "What clears it: use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed. Leave Commit empty to record a claim naming no commit. Forge cannot read this project's repository, so it refuses a named commit.",
     );
     expect(said).not.toContain('name the commit that landed');
   });

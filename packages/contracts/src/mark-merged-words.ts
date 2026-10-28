@@ -14,20 +14,14 @@ export const NAME_THE_LANDED_COMMIT = `name the commit that landed under ${COMMI
 
 export const COMMIT_MAY_STAY_EMPTY = `with no repository named, ${COMMIT_FIELD} may stay empty`;
 
-/**
- * What a first mark's commit meets on a project, read off its declaration (core's
- * `markCommitCheck`): checked against a repository Forge reads, kept as a `claim` where none is
- * named, `refused` where one is named that Forge cannot read. Null where it could not be read.
- */
+/** What a first mark's commit meets on a project: core's `markCommitCheck`, null where unread. */
 export type MarkCommitCheck = 'checked' | 'claim' | 'refused';
 
-/** Mark merged's panel on a project whose repository Forge cannot read says the same (ISS-1421 r43). */
 export const LEAVE_COMMIT_EMPTY = `leave ${COMMIT_FIELD} empty to record a claim naming no commit`;
 
-export const COMMIT_UNREADABLE = `Forge cannot read this project's repository, so a commit named under ${COMMIT_FIELD} is refused; to have one checked, attach a deploy key under ${GIT_ACCESS}`;
+/** Each sentence within the twenty words a close refusal holds to (ISS-1421 criterion 167). */
+const COMMIT_UNREADABLE = `Forge cannot read this project's repository, so it refuses a named commit. A deploy key under ${GIT_ACCESS} lets it check one.`;
 
-/** Mark merged's own steps by what its Commit takes here; `whose` names the properties for several
- *  issues at once: "each issue's". An unread check asks for the commit, as a readable one does. */
 export function markMergedSteps(
   outsideGit: boolean,
   commit: MarkCommitCheck | null = 'checked',
@@ -41,7 +35,7 @@ export function markMergedSteps(
     return `${use} In the panel it opens, fill in ${WHERE_IT_LANDED_FIELD}; ${COMMIT_MAY_STAY_EMPTY}.`;
   }
   if (commit === 'refused') {
-    return `${use} In the panel it opens, fill in ${WHERE_IT_LANDED_FIELD} and ${LEAVE_COMMIT_EMPTY}. ${COMMIT_UNREADABLE}.`;
+    return `${use} In the panel it opens, fill in ${WHERE_IT_LANDED_FIELD}. Leave ${COMMIT_FIELD} empty to record a claim naming no commit. ${COMMIT_UNREADABLE}`;
   }
   return `${use} In the panel it opens, fill in ${WHERE_IT_LANDED_FIELD} and ${NAME_THE_LANDED_COMMIT}.`;
 }
