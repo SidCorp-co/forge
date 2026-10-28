@@ -373,6 +373,37 @@ describe("the reason a rule asks for", () => {
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
     await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/requirements/REQ-72/agree`, body: { revision: 1, reason: why } })]));
   });
+
+  // ISS-645, REQ-4 BC-16: a revision's accept is a sign-off and records why, so the one-click accept
+  // sends the recommendation's why that core put in its body
+  it("sends the recommended revision accept in one press, with the recommendation's why as its reason", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const base = READ.decisions.find((d) => d.key === "REQ-48");
+    if (!base?.proposal) throw new Error("no proposal row");
+    const path = `/api/projects/${P}/requirements/REQ-73/revisions/2/accept`;
+    const why = "Its author proposed revision 2 for sign-off.";
+    const accept = {
+      ...base,
+      id: "revision-accept:r73",
+      key: "REQ-73",
+      title: "Referrals keep their notes",
+      opens: null,
+      proposal: null,
+      recommended: { answerId: "accept", why, by: "rule" as const },
+      answers: [{ id: "accept", label: "Accept revision 2", act: "revision.accept" as const, path, body: { reason: why }, needsReason: true, declines: false, effect: null, recommended: true }],
+    };
+    const calls = fakeCore(({ path: at, method }) => {
+      if (method === "GET" && at === DECISIONS) return { body: { ...READ, total: 1, decisions: [accept] } };
+      if (method === "POST") return { body: { ok: true } };
+      return undefined;
+    });
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    fireEvent.click(within(rowOf("REQ-73")).getByTestId("approval-approve"));
+    expect(screen.queryByTestId("approval-words")).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
+    await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/requirements/REQ-73/revisions/2/accept`, body: { reason: why } })]));
+  });
 });
 
 describe("bulkSummary", () => {
@@ -387,9 +418,9 @@ describe("bulkSummary", () => {
       { kind: "approved", n: 1 },
     ]);
     expect(s.checkFirst).toBe(3);
-    // the sign-off's one plain answer and the question's recommended one are each an ✓; the release's
-    // approve takes words, so a bulk approve leaves it for its peek
-    expect(s.noApprove).toBe(1);
+    // the question's recommended answer is an ✓; the release's approve and REQ-41's revision accept,
+    // recommended by nobody, take words (REQ-4 BC-16), so a bulk approve leaves them for their peek
+    expect(s.noApprove).toBe(2);
     // a question with two plain answers and none recommended is answered in its peek, never guessed
     const open = READ.decisions.filter((d) => d.key === "ISS-41").map((d) => ({ ...d, answers: d.answers.map((a) => ({ ...a, recommended: false })) }));
     expect(bulkSummary(open)).toEqual({ yields: [], checkFirst: 0, noApprove: 1 });

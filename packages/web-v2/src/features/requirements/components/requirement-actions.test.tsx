@@ -1,6 +1,7 @@
 // The one primary act a requirement offers where it stands. FB-73: "Agree r1" was pressable while
 // every press would be refused REQUIREMENT_DESIGN_UNAPPROVED; core now names the unapproved linked
 // designs in the standing, and the act is held, saying which, until they are approved.
+// @direct-test-of packages/web-v2/src/features/requirements/api.ts
 
 import { RULE, say, waitingOn } from "@/test/said";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -102,6 +103,20 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
     await waitFor(() =>
       expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/agree", body: { revision: 1, reason: "BA review 6 Oct" } }]),
     );
+  });
+
+  // ISS-645, REQ-4 BC-16: every sign-off records why, so the accept sends nothing until one is typed
+  it("keeps a proposed revision's accept off until a reason is typed", async () => {
+    const calls = fakeCore(() => ({ body: detail([]) }));
+    const user = userEvent.setup();
+    renderWithQuery(<ProposalDecision projectId="p1" d={detail([])} revision={2} />);
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+    const confirm = within(step()).getByRole("button", { name: "Accept r2" });
+    expect(confirm).toBeDisabled();
+    await typeReason(user, "   ");
+    expect(confirm).toBeDisabled();
+    await user.click(confirm);
+    expect(calls).toEqual([]);
   });
 
   it("accepts a proposed revision with the typed reason, and Cancel sends nothing", async () => {

@@ -57,7 +57,7 @@ async function tracedClosedIssue(): Promise<{ issueId: string; req: string }> {
   await makeAgreeReady(projectId, Number(req.slice(4)), ownerId);
   for (const [path, body] of [
     [`/requirements/${req}/revisions/1/propose`, {}],
-    [`/requirements/${req}/revisions/1/accept`, {}],
+    [`/requirements/${req}/revisions/1/accept`, { reason: 'Accepted for this test.' }],
     [`/requirements/${req}/agree`, { revision: 1, reason: 'Agreed with the owner for this test.' }],
   ] as const) {
     const r = await onProject('POST', path, body);

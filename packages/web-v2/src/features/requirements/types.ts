@@ -33,7 +33,7 @@ export interface CreateRequirementBody {
  *  or drop owes, and the reason a signer may give an accept, agree or re-pin (ISS-84). */
 export type RequirementAction =
   | { kind: 'propose'; revision: number }
-  | { kind: 'accept'; revision: number; reason?: string }
+  | { kind: 'accept'; revision: number; reason: string }
   | { kind: 'return'; revision: number; reason: string }
   | { kind: 'agree'; revision: number; reason?: string }
   | { kind: 'repin'; revision: number; reason?: string }

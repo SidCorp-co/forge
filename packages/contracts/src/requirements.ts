@@ -614,11 +614,13 @@ export interface RequirementHistoryEntry {
 	move: { from: string | null; to: string } | null;
 }
 
+// a missing or blank reason passes the shape and is refused by name in core
+// (REQUIREMENT_SIGNOFF_REASON_REQUIRED, REQ-4 BC-16), as a re-pin's is
 export const acceptRevisionRequestSchema = z.strictObject({
 	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
 });
 export const ACCEPT_REVISION_SHAPE =
-	"{ reason? } — the signer's reason, kept on the revision and on the re-baseline it writes";
+	"{ reason } — why it is accepted and on whose authority, kept on the revision and on the re-baseline it writes";
 
 export const deferRequirementRequestSchema = z.strictObject({
 	reason: z.string().max(REASON_TEXT_MAX),

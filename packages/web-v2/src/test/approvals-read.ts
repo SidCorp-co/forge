@@ -285,7 +285,7 @@ const SIGN_OFF: NeedsYouDecision = {
   recommended: null,
   noRecommendation: "Nobody recommended an answer.",
   answers: [
-    { id: "accept", label: "Accept r3", act: "revision.accept", path: `/api/projects/${P}/requirements/REQ-41/revisions/3/accept`, body: {}, needsReason: false, declines: false, effect: "r3 becomes the agreed revision.", recommended: false },
+    { id: "accept", label: "Accept r3", act: "revision.accept", path: `/api/projects/${P}/requirements/REQ-41/revisions/3/accept`, body: {}, needsReason: true, declines: false, effect: "r3 becomes the agreed revision.", recommended: false },
     { id: "return", label: "Return", act: "revision.return", path: `/api/projects/${P}/requirements/REQ-41/revisions/3/return`, body: {}, needsReason: true, declines: true, effect: "Its author revises it.", recommended: false },
   ],
   touchedAt: ago(50),

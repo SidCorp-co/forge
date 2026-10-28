@@ -1,0 +1,1 @@
+**Accepting a requirement revision records why.** An accept with no reason, or a blank one, is refused `REQUIREMENT_SIGNOFF_REASON_REQUIRED` whoever accepts; the Approvals one-click accept sends its recommendation's why, and a re-baseline keeps the accept's reason.

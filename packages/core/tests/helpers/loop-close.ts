@@ -43,7 +43,7 @@ export async function agreedRequirement(
   );
   await makeAgreeReady(projectId, Number(key.slice(4)), userId);
   await okay(on(`/requirements/${key}/revisions/1/propose`, {}));
-  await okay(on(`/requirements/${key}/revisions/1/accept`, {}));
+  await okay(on(`/requirements/${key}/revisions/1/accept`, { reason: 'Accepted for this test.' }));
   await okay(
     on(`/requirements/${key}/agree`, {
       revision: 1,
