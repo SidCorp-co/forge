@@ -184,6 +184,20 @@ needs_info / on_hold: entered from open, reopen, in_progress, approved, awaiting
 | \`closed\` | nobody | from \`awaiting_release\` by a release that claimed the issue — a finished release batch, a recorded release, or on a project with no production environment its recorded landing, at a commit holding its merge where every live criterion passes at that commit (\`CLOSE_ONLY_BY_RELEASE\`) — with its merge recorded (\`CLOSE_REQUIRES_SHIPPED\`); or, from any live status but a park (\`needs_info\`, \`on_hold\` return first), an issue whose only deliverable is a design, once every design revision it delivers is approved (\`DESIGN_NOT_DELIVERED\`): its approved design is its landing, and no release carries it |
 | \`dropped\` | nobody | a reason (\`VOID_REASON_REQUIRED\`) |
 
+**Policy guards follow the project's gate profile** (REQ-76): every guard above that is not the kernel
+— the checklist, the person gates, the plan approval, design, pattern, contract and scope holds, the
+merge check and review — is a gate the project's profile sets to enforce, advise (the move passes,
+each gap recorded as advice on it) or off: strict enforces every one, standard is the table above
+with each keyed gate following its own setting, yolo lets agents act first. \`GET /api/gates\` lists
+each gate, what it refuses and its default per profile; \`GET /api/projects/:id/gates\` reads a
+project's, and \`PUT\` it with \`{ baseRevision, profile, overrides, reason }\` (project.admin) changes
+it, recorded with who and why. A refusal a gate makes names the gate, the profile and the key that
+relaxes it. The kernel holds under every profile: \`NO_HOLDER\`, \`NOT_THE_HOLDER\`,
+\`MERGE_NOT_RECORDED\`, \`CLOSE_ONLY_BY_RELEASE\` and \`CLOSE_REQUIRES_SHIPPED\` are never relaxed. A
+failed deploy or a rollback raises a yolo project to standard, and only a person lowers it again
+(\`GATE_PROFILE_RAISED\`). Under yolo a merge onto the base branch naming no issue files one at
+\`open\` with its landing recorded, which its master claims and moves to \`awaiting_release\`.
+
 **Leaving a park returns to the status it left**, which \`issue_work_state.left_status\` records on the way in — never a guess, and not always \`open\`. That return is the park's own edge: the guard of the status it returns to is not asked again, because it was met when that status was first entered. A park taken at \`awaiting_release\` goes back to \`awaiting_release\`; an answered \`needs_info\` question returns the issue there too (\`pipeline/answer-resume.ts\`). A park that predates the record (migration 0346 found no history to read it from) carries no left status, and a person names where it resumes.
 
 **A failed check goes to \`reopen\`, from \`awaiting_release\` or \`closed\`.** Inside \`in_progress\` a failed test is not a status at all: the run goes back to its build step.

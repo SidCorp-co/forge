@@ -29,10 +29,14 @@ export function judged(
   };
 }
 
-/** What core contributes beside the box's facts: its runner row's status and its master's pass record. */
+/**
+ * What core contributes beside the box's facts: its runner row's status, its master's pass record,
+ * and when the project was archived (null while it is not).
+ */
 export interface MasterRecord {
   runnerStatus: string;
   passOpen: boolean;
+  archivedAt: string | null;
 }
 
 const minutes = (seconds: number) => Math.floor(seconds / 60);
@@ -89,6 +93,7 @@ function withheld(facts: MasterJudged, record: MasterRecord): MasterVerdict | nu
       ...because(say('masters.verdict.restarting', { cause: facts.restarting })),
     };
   }
+  if (record.archivedAt !== null) return archivedVerdict(facts, record.archivedAt);
   if (!runnerAccepts(record.runnerStatus)) {
     return {
       act: 'withhold',
@@ -111,6 +116,43 @@ function withheld(facts: MasterJudged, record: MasterRecord): MasterVerdict | nu
     };
   }
   return null;
+}
+
+/**
+ * An archived project drives no master (ISS-353's soft archive): none is placed, and a standing pane
+ * is retired. A pane still holding runs or job panes is left undriven until they finish, so the
+ * archive ends no in-flight work; nothing here nudges, so no pass is opened for it.
+ */
+function archivedVerdict(facts: MasterJudged, archivedAt: string): MasterVerdict {
+  const archived = say('masters.verdict.archived', { at: archivedAt });
+  if (facts.pane === 'absent') {
+    return {
+      act: 'withhold',
+      reason: 'project_archived',
+      ...because(say('masters.verdict.archivedWithheld', { archived })),
+    };
+  }
+  const held: Said[] = [];
+  const { unfinished } = facts.idle.children;
+  if (unfinished.length > 0) {
+    held.push(say('masters.verdict.childrenUnfinished', { names: unfinished.join(', ') }));
+  }
+  const { working } = heldRuns(facts.holding);
+  if (working.length > 0) {
+    held.push(say('masters.verdict.heldRuns', { n: working.length, names: working.join('; ') }));
+  }
+  if (facts.holding.kind === 'unknown') held.push(verbatim(facts.holding.why));
+  if (facts.work.jobPanes > 0) {
+    held.push(say('masters.verdict.archivedJobPanes', { n: facts.work.jobPanes }));
+  }
+  if (held.length > 0) {
+    return {
+      act: 'withhold',
+      reason: 'project_archived',
+      ...because(say('masters.verdict.archivedHeld', { archived, held })),
+    };
+  }
+  return { act: 'retire', ...because(say('masters.verdict.archivedRetire', { archived })) };
 }
 
 /** Why a master that has had no work for the idle window still stays, or null where it may be retired. */

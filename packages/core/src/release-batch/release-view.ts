@@ -1,5 +1,4 @@
 import { isDecisionActOn } from '@forge/contracts/needs-you-decisions';
-import type { PolicyQaMode } from '@forge/contracts/project-config';
 import type {
   ReleaseAttemptStage,
   ReleaseAttentionGroup,
@@ -22,6 +21,7 @@ import {
   type WaitingSays,
   waitingOn,
 } from '@forge/contracts/standing';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { agrees } from '../lib/plural.js';
 
 export interface ViewerFacts {
@@ -63,7 +63,7 @@ interface TurnFacts {
    */
   testing: {
     environment: string;
-    judge: PolicyQaMode | null;
+    judge: VerifiedJudge | null;
     proven: number;
     total: number;
   } | null;

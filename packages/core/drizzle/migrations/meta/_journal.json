@@ -3461,6 +3461,13 @@
       "breakpoints": true
     },
     {
+      "idx": 541,
+      "version": "7",
+      "when": 1829692800000,
+      "tag": "0541_a_projects_gates_are_changed_on_the_record",
+      "breakpoints": true
+    },
+    {
       "idx": 542,
       "version": "7",
       "when": 1829779200000,

@@ -1,6 +1,6 @@
 
 // Per-project settings (ISS-316), grouped by what a person comes to change rather than by the
-// document each value is stored in: General, People, Work, Delivery (with the environments), Preview,
+// document each value is stored in: General, People, Work, Delivery (with the environments), Gates, Preview,
 // Testing (the accounts a run tests with), Connections, and Advanced for the raw documents. The section lives in `?tab=`; a link written against the old flat tabs is
 // moved to the section that now holds its content (`sections.ts:LEGACY_TABS`). The page is the detail
 // template: the section's groups in the main column, and a rail beside it listing them (the group in
@@ -18,6 +18,7 @@ import { useTabParam } from "@/lib/utils/use-tab-param";
 import { LEGACY_TABS, SETTINGS_SECTIONS, type SettingsSection } from "../sections";
 import { AdvancedSettings } from "./advanced-tab";
 import { DeliverySettings } from "./delivery-section";
+import { GatesSettings } from "./gates-section";
 import { GeneralSettings } from "./general-section";
 import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
@@ -32,6 +33,7 @@ const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	people: "settings.project.section.people",
 	work: "settings.project.section.work",
 	delivery: "settings.project.section.delivery",
+	gates: "settings.project.section.gates",
 	preview: "previews.settings.section",
 	testing: "settings.project.section.testing",
 	connections: "settings.project.section.connections",
@@ -135,6 +137,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						</>
 					)}
 					{tab === "delivery" && <DeliverySettings project={project} canEdit={canEdit} />}
+					{tab === "gates" && <GatesSettings projectId={project.id} slug={project.slug} access={listItem} />}
 					{tab === "preview" && <PreviewSettings projectId={project.id} slug={project.slug} canEdit={canEdit} />}
 					{tab === "testing" && <TestingSettings projectId={project.id} canEdit={canEdit} />}
 					{tab === "connections" && (

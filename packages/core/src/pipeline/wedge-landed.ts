@@ -62,6 +62,8 @@ export type LandedWorkOwed = {
   commit: string | null;
   /** ISO 8601: when the mark stood, so a new mark is new work for the master. */
   mergedAt: string;
+  /** `open` for an issue a merge filed (REQ-76 BC-8), which is claimed before it moves; else `in_progress`. */
+  status: 'in_progress' | 'open';
 };
 
 /**
@@ -69,14 +71,17 @@ export type LandedWorkOwed = {
  * has taken up since: each carries the pass's notice for the mark that stands now, and no job, run
  * or live lease holds it. Its master owes each the move to `awaiting_release` (ISS-564 round 2), and
  * one leaves this list by that move, by a run taking it, or by its mark being cleared or replaced.
+ * An `open` issue a merge filed under a profile with `issue_before_code` off (REQ-76 BC-8,
+ * `issues/host-merge.ts`) is listed beside them: its work landed before it was filed, so it is owed
+ * the same move, after the claim that makes the master its holder.
  */
 export async function landedWorkOwed(projectId: string): Promise<LandedWorkOwed[]> {
   const rows = (await db.execute(sql`
-    SELECT i.id, i.iss_seq,
+    SELECT i.id, i.iss_seq, i.status,
            (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease
       FROM issues i
      WHERE i.project_id = ${projectId}::uuid
-       AND i.status = 'in_progress'
+       AND (i.status = 'in_progress' OR (i.status = 'open' AND i.detector_key LIKE 'merged/%'))
        AND i.merged_at IS NOT NULL
        AND NOT ${issueWorkInFlightSql({
          issueId: sql`i.id`,
@@ -84,7 +89,12 @@ export async function landedWorkOwed(projectId: string): Promise<LandedWorkOwed[
          issueKey: sql`'ISS-' || i.iss_seq`,
        })}
      ORDER BY i.merged_at, i.id
-  `)) as unknown as Array<{ id: string; iss_seq: number; lease: unknown }>;
+  `)) as unknown as Array<{
+    id: string;
+    iss_seq: number;
+    status: 'in_progress' | 'open';
+    lease: unknown;
+  }>;
   if (rows.length === 0) return [];
   const now = new Date();
   const prefix = await activeIssuePrefix(projectId);
@@ -93,6 +103,16 @@ export async function landedWorkOwed(projectId: string): Promise<LandedWorkOwed[
     if (wedgeLeaseHoldsTheIssue(readWedgeLease(row.lease, now))) continue;
     const landed = await landedWorkStands(db, row.id);
     if (!landed) continue;
+    if (row.status === 'open') {
+      owed.push({
+        issueId: row.id,
+        key: formatIssueRef(prefix, row.iss_seq),
+        commit: landed.commit,
+        mergedAt: landed.mergedAt.toISOString(),
+        status: 'open',
+      });
+      continue;
+    }
     const [told] = (await db.execute(sql`
       SELECT 1 FROM comments c
        WHERE c.issue_id = ${row.id}::uuid
@@ -105,6 +125,7 @@ export async function landedWorkOwed(projectId: string): Promise<LandedWorkOwed[
       key: formatIssueRef(prefix, row.iss_seq),
       commit: landed.commit,
       mergedAt: landed.mergedAt.toISOString(),
+      status: 'in_progress',
     });
   }
   return owed;

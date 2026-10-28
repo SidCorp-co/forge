@@ -180,6 +180,7 @@ export const MASTER_WITHHOLD_REASONS = [
 	"nothing_owed",
 	"conversation_elsewhere",
 	"conversation_unaskable",
+	"project_archived",
 ] as const;
 export type MasterWithholdReason = (typeof MASTER_WITHHOLD_REASONS)[number];
 

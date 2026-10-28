@@ -20,6 +20,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
+import { gateOf } from '../project-config/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
 import { type CriteriaBasis, criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
@@ -218,6 +219,9 @@ async function weighWaiting(
   waiting: string[],
   base: Base,
 ): Promise<string[] | null> {
+  // gate `release_criteria` (REQ-76 BC-7): where the profile has it advise or off, an unearned
+  // criterion holds nothing back; the release names it as a warning (`criteria-hold.ts`)
+  if ((await gateOf(projectId, 'release_criteria')).mode !== 'enforce') return waiting;
   let basis: CriteriaBasis;
   try {
     basis = await criteriaBasisOf(projectId);

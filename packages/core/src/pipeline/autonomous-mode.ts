@@ -1,3 +1,4 @@
+import { type GatesConfig, projectGate } from '@forge/contracts/gate-profiles';
 import {
   AUTONOMOUS_DRIVER_STATUSES,
   AUTONOMOUS_ENTRY_STATUS,
@@ -18,7 +19,15 @@ export function isAutonomous(policy: ProjectPolicy | null): policy is ProjectPol
   return policy !== null;
 }
 
-/** Whether a human, not a master, decides when this project's work starts. */
-export function isEntryGateClosed(policy: ProjectPolicy | null): boolean {
-  return policy?.intake.mode === 'manual';
+/**
+ * Whether a human, not a master, decides when this project's work starts: gate `intake` (REQ-76),
+ * which reads the policy's `intake.mode` unless the project's gate profile or an override sets it.
+ */
+export function isEntryGateClosed(
+  policy: ProjectPolicy | null,
+  gates: GatesConfig | null | undefined,
+): boolean {
+  return (
+    projectGate({ gates }, policy ? { intake: policy.intake } : null, 'intake').mode === 'enforce'
+  );
 }

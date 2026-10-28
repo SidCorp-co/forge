@@ -9,7 +9,8 @@ import { proofTurn } from './standing-proof.js';
 
 const A = 'a'.repeat(40);
 const F = 'f'.repeat(40);
-const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
+const BUILDER_WHY =
+  "passed by the run that built it, and a builder's own pass never counts where gate `builder_verdict` is enforced (gates.overrides.builder_verdict relaxes it)";
 
 const issue = (n: number) => ({
   id: `i${n}`,

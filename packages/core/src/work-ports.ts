@@ -45,7 +45,11 @@ import { fastLaneMergeRefusal } from './fast-lane/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
-import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-host/index.js';
+import {
+  linkFiledIssueToChangeRequest,
+  resolveSourceHost,
+  SourceHostUnavailable,
+} from './integrations/source-host/index.js';
 import { provideIssuePorts } from './issues/index.js';
 import {
   broadcastSessionEvent,
@@ -88,6 +92,7 @@ import {
   readEffectivePolicy,
   readLandingBranches,
   readProjectDocument,
+  readVerifiedJudge,
 } from './project-config/index.js';
 import {
   declaredIssueSeqs,
@@ -206,6 +211,7 @@ function provideWorkPipelinePorts(): void {
     recordAnswerResume,
     refreshModuleKnowledgeForIssue,
     readEffectivePolicy,
+    readGates: async (projectId) => (await readProjectDocument(projectId))?.document.gates ?? null,
     policyRefusal,
   });
 }
@@ -242,10 +248,11 @@ export function provideWorkPorts(): void {
     answeredSinceSql,
     postIssueNotice,
     readProjectDocument,
-    readJudge: async (projectId) => (await readEffectivePolicy(projectId))?.document.qa ?? null,
+    readJudge: (projectId) => readVerifiedJudge(projectId),
     masterServingOf,
     changedTracedOf,
     readLandingBranches,
+    linkFiledIssueToChangeRequest,
     issueRefPattern,
     declaredIssueSeqs,
     subjectOf,

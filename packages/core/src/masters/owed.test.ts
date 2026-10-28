@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { masterWork, owedLine, workDigest } from './owed.js';
-import type { AgentConfirmOwed, ReleaseMergeOwed, StewardAsk } from './ports.js';
+import type { AgentConfirmOwed, ReleaseMergeOwed, StewardAsk, WaitingRequest } from './ports.js';
 
 // The owed-work read is core's: the seven kinds of work a master owes are counted and digested in
 // owed.ts, and the box only carries the line core composed. These are those rules.
@@ -21,7 +21,14 @@ const none = {
   releaseApprovals: [] as { runId: string; version: string | null }[],
   answers: [],
   stewardAsks: [] as StewardAsk[],
-  landedWork: [] as { issueId: string; key: string; commit: string | null; mergedAt: string }[],
+  landedWork: [] as {
+    issueId: string;
+    key: string;
+    commit: string | null;
+    mergedAt: string;
+    status: 'in_progress' | 'open';
+  }[],
+  requests: [] as WaitingRequest[],
   contentLanguage: 'en',
 };
 
@@ -145,6 +152,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
       key: 'ISS-564',
       commit: `${'a'.repeat(39)}1`,
       mergedAt: '2026-10-24T20:00:00.000Z',
+      status: 'in_progress' as const,
     };
     const line = owedLine({ ...none, landedWork: [left] });
     expect(line).toContain(

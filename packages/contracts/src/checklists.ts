@@ -440,8 +440,9 @@ export interface ChecklistAnswer {
 	readonly provenance: ChecklistProvenance;
 	/**
 	 * `mover`, `record:<field>`, `derived:<rule>` for an answer a rule gave from the mover's other
-	 * answers (the triage short form's route), `recommended` for an assumed answer, or `decision`
-	 * for a waived one.
+	 * answers (the triage short form's route), `recommended` for an assumed answer, or for a waived
+	 * one `decision`, or `gate:<id>:<profile>` where the project's gate profile has the checklist
+	 * advise rather than refuse (REQ-76 BC-4, BC-5).
 	 */
 	readonly source: string;
 	/** The owner question an assumed answer's reading still waits on. */
@@ -567,15 +568,19 @@ export function evaluateChecklist(
 }
 
 /**
- * An evaluation a decision moves over: each blocking gap becomes an answer of provenance `waived`
- * holding the gap's words, so the move records exactly what was waived and nothing reads as given.
+ * An evaluation a decision, or a gate the project's profile has advise, moves over: each blocking gap
+ * becomes an answer of provenance `waived` holding the gap's words, so the move records exactly what
+ * was waived and by what, and nothing reads as given.
  */
-export function waivedEvaluation(evaluation: ChecklistEvaluation): ChecklistEvaluation {
+export function waivedEvaluation(
+	evaluation: ChecklistEvaluation,
+	source = "decision",
+): ChecklistEvaluation {
 	const waived: ChecklistAnswer[] = evaluation.gaps.map((gap) => ({
 		question: gap.question,
 		value: gap.detail,
 		provenance: "waived",
-		source: "decision",
+		source,
 	}));
 	return { ...evaluation, complete: true, answers: [...evaluation.answers, ...waived], gaps: [] };
 }

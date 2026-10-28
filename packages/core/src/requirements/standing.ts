@@ -8,7 +8,6 @@
 import type { ReleaseLeg } from '@forge/contracts/forecast';
 import type { IssueStatusTone } from '@forge/contracts/issue-vocabulary';
 import type { Approvals } from '@forge/contracts/person-gates';
-import type { PolicyQaMode } from '@forge/contracts/project-config';
 import {
   BREAKDOWN_SLA_WORKING_DAYS,
   CHECK_SLA_WORKING_DAYS,
@@ -24,6 +23,7 @@ import {
 import { type Said, type SaidKey, say } from '@forge/contracts/said';
 import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { MasterServing } from '@forge/contracts/steward';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import type { RequirementStatus } from '../db/schema-requirements.js';
 import { withTimes } from '../lib/standing-times.js';
 import { stateSinceOf, touchedAt } from './standing-age.js';
@@ -91,7 +91,8 @@ export interface StandingInput {
   owner: RequirementStanding['owner'];
   /**
    * Null for a reader with no person behind it; nothing then reads as theirs. `canAdmit` is
-   * issues.admit, which the promote of a draft needs beside the sign-off.
+   * what the admit gate asks (issues.admit where enforced, project.write where not), which the
+   * promote of a draft needs (REQ-76 / ISS-640).
    */
   viewer: {
     userId: string;
@@ -134,7 +135,7 @@ export interface StandingInput {
   unapprovedDesigns: readonly { flow: string; title: string; designStatus: string | null }[];
   feedback: { open: number; untriaged: readonly string[] };
   /** Who judges an issue's criteria: its own runs (`self`) or a judge apart from them (`independent`), the policy's `qa`; null where no policy is declared. */
-  judge: PolicyQaMode | null;
+  judge: VerifiedJudge | null;
   /**
    * Whether a runner is bound to the project, so a master can act (FB-77). False reads a wait on
    * "Master" as the signer's, naming why; absent reads as bound.
@@ -405,7 +406,7 @@ function turnOf(
         : say('standing.act.promoteDrafts', { n: drafts.length });
     const rule = say('requirements.rule.onlyDrafts');
     const draftCarrier = drafts[0]?.displayId ?? null;
-    return viewer?.canSignOff && viewer.canAdmit
+    return viewer?.canAdmit
       ? { group: 'needs_you', waitingOn: wait('you', YOU, act, rule), draftCarrier }
       : { group: 'waiting', waitingOn: wait('person', ADMITTER, act, rule), draftCarrier };
   }

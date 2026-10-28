@@ -5,7 +5,7 @@
 // `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca): "Ship only proven work" holds a short,
 // and the builder's own pass, as the release record counts them unproven.
 
-import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import { projectGate } from '@forge/contracts/gate-profiles';
 import type { ServingReading } from '@forge/contracts/releases';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
 import { verifiedOf } from '@forge/contracts/verified-rule';
@@ -412,7 +412,13 @@ export async function unearnedCriteriaReports(
   const required = new Map<string, boolean>();
   const judges = new Map<string, Awaited<ReturnType<typeof readJudge>>>();
   for (const id of projectIds) {
-    required.set(id, verdictsRequiredOf((await readProjectDocument(id))?.document.delivery));
+    // gate `release_criteria` (REQ-76): off owes no verdict; advise and enforce weigh them, and the
+    // release hold decides whether an unearned one blocks or warns
+    required.set(
+      id,
+      projectGate((await readProjectDocument(id))?.document, null, 'release_criteria').mode !==
+        'off',
+    );
     judges.set(id, await readJudge(id));
   }
   const out: IssueCriteriaReport[] = [];

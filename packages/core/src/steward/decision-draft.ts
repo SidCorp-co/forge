@@ -15,7 +15,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import {
   createRequirementIn,
-  linkIssueRefusal,
+  linkRefusalOn,
   lockRequirements,
   proposePlacementLater,
   requirementIdIn,
@@ -36,7 +36,10 @@ export async function linkDraftIn(
   const requirementId = await requirementIdIn(tx, a.projectId, a.requirement);
   if (!requirementId) throw notFound(`no ${a.requirement} in this project`);
   const row = await rowIn(tx, a.projectId, requirementId);
-  const refusal = linkIssueRefusal(row.status as Parameters<typeof linkIssueRefusal>[0]);
+  const refusal = await linkRefusalOn(
+    a.projectId,
+    row.status as Parameters<typeof linkRefusalOn>[1],
+  );
   if (refusal) throw new RefusalError([refusal], refusal.code);
   if (a.issue.requirementId && a.issue.requirementId !== requirementId) {
     const holder = requirementKey((await rowIn(tx, a.projectId, a.issue.requirementId)).reqSeq);

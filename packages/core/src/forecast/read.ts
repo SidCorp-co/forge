@@ -11,7 +11,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
 import { holderNames } from '../permissions/index.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
-import { readEffectivePolicy } from '../project-config/index.js';
+import { readEffectivePolicy, readProjectDocument } from '../project-config/index.js';
 import {
   type Anchor,
   type IssueRow,
@@ -80,7 +80,10 @@ export async function simulate(
     holderNames('project.write', projectId),
   ]);
   const manualIntake = policy
-    ? isEntryGateClosed(policy.document as Parameters<typeof isEntryGateClosed>[0])
+    ? isEntryGateClosed(
+        policy.document as Parameters<typeof isEntryGateClosed>[0],
+        (await readProjectDocument(projectId))?.document.gates,
+      )
     : false;
   const rows = await readWork(
     projectId,

@@ -59,8 +59,8 @@ export function nextStepOf(
 
 /** An approval no project switch gates (a triage, a steward decision's answer, a suggested revision's
  *  accept): every holder of requirements.approve may do it, so each of them is asked. A draft
- *  issue's promote is asked of a signer who holds issues.admit whatever the switch, in `standing.ts`
- *  (`promote-drafts.ts`, question 3b8292dc). */
+ *  issue's promote is asked of whoever the admit gate names, in `standing.ts` (`promote-drafts.ts`,
+ *  REQ-76 / ISS-640). */
 export const signerWait = (viewer: StandingInput['viewer'], act: Said, rule: Said) =>
   viewer?.canSignOff
     ? { group: 'needs_you' as const, waitingOn: wait('you', YOU, act, rule) }

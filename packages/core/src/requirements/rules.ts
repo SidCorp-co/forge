@@ -5,6 +5,7 @@
  * nothing written.
  */
 
+import type { ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type {
   BaselineReadiness,
@@ -13,6 +14,7 @@ import type {
 } from '@forge/contracts/requirements';
 import { isAgreedStatus, isDeliveringStatus } from '@forge/contracts/requirements';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
+import { gateRefusal } from '../lib/gated.js';
 import { refuser } from '../lib/refusal.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
@@ -185,15 +187,24 @@ export function baselineDedup(dedup: RequirementDedupCheck): BaselineReadiness |
   return { gate: 'off', suggestionId: null, ready: false, failed: [], dedup };
 }
 
-/** Linking an issue reads an agreed requirement: a draft or dropped one has nothing to deliver. */
-export function linkIssueRefusal(status: RequirementStatus): RequirementRefusal | null {
+/**
+ * Linking an issue reads an agreed requirement: a draft or dropped one has nothing to deliver. Where
+ * gate `link_requirement_agreed` is off (REQ-76 BC-4: yolo) a draft links too; a dropped or deferred
+ * one never does, being out of the work under every profile.
+ */
+export function linkIssueRefusal(
+  status: RequirementStatus,
+  gate?: ResolvedGate,
+): RequirementRefusal | null {
   if (isAgreedStatus(status)) return null;
   if (status === 'deferred') return deferredRefusal(status, 'linking an issue', '/issue');
-  return {
+  if (status === 'draft' && gate !== undefined && gate.mode !== 'enforce') return null;
+  const refusal: RequirementRefusal = {
     code: 'REQUIREMENT_NOT_AGREED',
     path: '/issue',
     detail: `the requirement is ${status}; an issue links to a requirement once a person has agreed it.`,
   };
+  return gate && status === 'draft' ? gateRefusal(gate, refusal) : refusal;
 }
 
 // A deferred requirement is out of the current release: nothing is signed off, agreed,

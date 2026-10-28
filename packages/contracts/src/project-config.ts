@@ -2,6 +2,7 @@
 
 import { CONTENT_LANGUAGE_REFUSAL_CODES } from "./content-language.js";
 import { JUDGED_ON_REFUSAL_CODES } from "./delivery-policy.js";
+import { GATE_PROFILE_REFUSAL_CODES } from "./gate-profiles.js";
 import type { RefusalStatuses } from "./refusal.js";
 import { TEMPLATE_REFUSAL_CODES } from "./workflow-template-schema.js";
 
@@ -96,6 +97,7 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	"PROJECT_NOT_ADMINISTERED",
 	"TARGETS_NOT_LISTED",
 	...BINDING_TARGET_REFUSAL_CODES,
+	...GATE_PROFILE_REFUSAL_CODES,
 ] as const;
 
 export type ProjectConfigRefusalCode =
@@ -104,6 +106,8 @@ export const PROJECT_CONFIG_REFUSAL_STATUSES = {
 	STALE_BASE: 409,
 	AGENT_ACCESS_NEEDS_ORG_ADMIN: 403,
 	PROJECT_NOT_ADMINISTERED: 403,
+	GATE_PROFILE_RAISED: 403,
+	GATES_NO_PROJECT_DOCUMENT: 409,
 } as const satisfies RefusalStatuses<ProjectConfigRefusalCode>;
 
 /** Reading an environment's deployed state through its binding. */

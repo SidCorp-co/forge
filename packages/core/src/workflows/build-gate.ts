@@ -8,11 +8,14 @@
  */
 
 import type { DesignStatus } from '@forge/contracts/design-status';
+import type { ResolvedGate } from '@forge/contracts/gate-profiles';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { idList } from '../db/raw-sql.js';
 import { activeIssuePrefix } from '../issues/index.js';
+import { underGate } from '../lib/gated.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { gateOf } from '../project-config/index.js';
 import { designNotApproved, designNotApprovedDetail } from './design.js';
 
 export function designUnapprovedSql(issueId: SQL): SQL {
@@ -112,18 +115,24 @@ export async function assertDesignsApprovedForSeqs(
     seqs.map((n) => sql`${n}`),
     sql`, `,
   );
-  await refuseBlocked(projectId, await blockedWhere(projectId, sql`i.iss_seq IN (${list})`));
+  await underGate(await gateOf(projectId, 'design_approved_for_build'), async () =>
+    refuseBlocked(projectId, await blockedWhere(projectId, sql`i.iss_seq IN (${list})`)),
+  );
 }
 
 export async function assertDesignApprovedForIssue(
   projectId: string,
   issueId: string,
   executor: GateReader = db,
+  /** The gate as the caller read it before a lock it holds; read here where absent. */
+  gate?: ResolvedGate,
 ): Promise<void> {
-  await refuseBlocked(
-    projectId,
-    await blockedWhere(projectId, sql`i.id = ${issueId}`, executor),
-    executor,
+  await underGate(gate ?? (await gateOf(projectId, 'design_approved_for_build')), async () =>
+    refuseBlocked(
+      projectId,
+      await blockedWhere(projectId, sql`i.id = ${issueId}`, executor),
+      executor,
+    ),
   );
 }
 

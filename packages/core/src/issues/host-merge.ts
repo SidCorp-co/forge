@@ -1,6 +1,7 @@
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { issues } from '../db/schema.js';
 import {
   repoPullRequestIssues,
   repoPullRequestIssueUnlinks,
@@ -8,10 +9,12 @@ import {
 } from '../db/schema-repo-projection.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
+import { insertIssueRow } from './create-service.js';
+import { issueGateOf } from './gates.js';
 import { resolveIssuesForChangeRequest } from './head-ref-link.js';
 import { type MergeIdentity, mergeIdentityOf, recordRefusedStamp } from './merge-identity.js';
 import { recordIssueMerge } from './merge-record.js';
-import { projectCreatorOf, readLandingBranches } from './ports.js';
+import { linkFiledIssueToChangeRequest, projectCreatorOf, readLandingBranches } from './ports.js';
 
 /**
  * Every issue the merged branch delivers: each one Forge's record of its change request links, and
@@ -150,6 +153,115 @@ async function stampHostMerge(
   return stamped;
 }
 
+/** What a merge naming no issue files, read before the stamp's transaction opens. */
+interface MergeFiling {
+  title: string;
+  description: string;
+  pullRequestId: string | null;
+}
+
+/** The detector key a merge-born issue carries: one issue per landing commit, whatever redelivers it. */
+export const mergeBornKey = (commitSha: string) => `merged/${commitSha.toLowerCase()}`;
+
+/**
+ * Act first, record after (REQ-76 BC-8): where the project's gate `issue_before_code` is off (yolo),
+ * a merge onto its base branch that delivers no issue files one, titled from the change request,
+ * so Forge records the work an agent did straight away. Under strict and standard (the gate
+ * enforced) such a merge records nothing, as before. A promotion carries landed work and files nothing.
+ */
+async function mergeFilingOf(args: HostMergeReport): Promise<MergeFiling | null> {
+  const gate = await issueGateOf(args.projectId, 'issue_before_code');
+  if (gate.mode === 'enforce') return null;
+  const { defaultBranch, promotes } = await readLandingBranches(args.projectId);
+  if (!defaultBranch || args.baseRef !== defaultBranch || promotes.includes(args.headRef))
+    return null;
+  const [pr] = await db
+    .select({
+      id: repoPullRequests.id,
+      number: repoPullRequests.number,
+      title: repoPullRequests.title,
+      htmlUrl: repoPullRequests.htmlUrl,
+    })
+    .from(repoPullRequests)
+    .where(
+      and(
+        eq(repoPullRequests.projectId, args.projectId),
+        eq(repoPullRequests.headRef, args.headRef),
+        eq(repoPullRequests.baseRef, defaultBranch),
+      ),
+    )
+    .orderBy(desc(repoPullRequests.updatedAt))
+    .limit(1);
+  const change = pr
+    ? `change request #${pr.number}${pr.htmlUrl ? ` (${pr.htmlUrl})` : ''}`
+    : `the merge of \`${args.headRef}\``;
+  return {
+    title: (pr?.title.trim() || `Merge of ${args.headRef} into ${defaultBranch}`).slice(0, 200),
+    description: [
+      `Filed by Forge from ${change}, merged into \`${defaultBranch}\` at \`${args.commitSha}\` naming no issue.`,
+      `This project's gate profile lets an agent change code first (gate \`issue_before_code\` off), so the issue is recorded after the work: its landing is the merge itself. Claim it and move it to \`awaiting_release\`, and a release ships and closes it like any merged issue.`,
+    ].join('\n\n'),
+    pullRequestId: pr?.id ?? null,
+  };
+}
+
+/** The merge-born issue, its link to the change request and its landing, in the stamp's transaction. */
+async function fileFromMerge(
+  args: HostMergeReport,
+  filing: MergeFiling,
+  tx: Tx,
+): Promise<string[]> {
+  const target = assertReport(args);
+  const detectorKey = mergeBornKey(args.commitSha);
+  const [filed] = await tx
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(eq(issues.projectId, args.projectId), eq(issues.detectorKey, detectorKey)))
+    .limit(1);
+  if (filed) return [];
+  const creator = await projectCreatorOf(args.projectId);
+  if (!creator) {
+    throw new Error(
+      `source.merged for ${args.headRef} at ${args.commitSha}: project ${args.projectId} names no owner, and an issue filed from a merge is recorded on the owner's behalf — nothing is filed with no actor on its record`,
+    );
+  }
+  const actor = { type: 'user' as const, id: creator, agency: 'agent' as const };
+  const issue = await insertIssueRow(
+    tx,
+    {
+      projectId: args.projectId,
+      title: filing.title,
+      description: filing.description,
+      descriptionFormat: 'markdown',
+      status: 'open',
+      createdById: creator,
+      createdByDeviceId: null,
+      createdVia: 'system',
+      detectorKey,
+    },
+    { actor },
+  );
+  if (filing.pullRequestId) {
+    await linkFiledIssueToChangeRequest(tx, {
+      pullRequestId: filing.pullRequestId,
+      issueId: issue.id,
+    });
+  }
+  await recordIssueMerge(tx, {
+    issueId: issue.id,
+    via: 'event',
+    actor,
+    evidence: {
+      kind: 'observed',
+      commitSha: args.commitSha,
+      mergedAt: args.mergedAt,
+      target,
+      hostMerge: { head: args.head ?? null },
+    },
+  });
+  return [issue.id];
+}
+
 /** The issues kernel's reaction to a merge a source host reported. */
 export function registerHostMergeStamp(): void {
   consume('source.merged', {
@@ -158,7 +270,10 @@ export function registerHostMergeStamp(): void {
       const report = { ...p, mergedAt: new Date(p.mergedAt) };
       assertReport(report);
       const judged = await judgeHostMerge(report);
-      await d.inbox((tx) => stampHostMerge(report, judged, tx));
+      const filing = judged.length === 0 ? await mergeFilingOf(report) : null;
+      await d.inbox((tx) =>
+        filing ? fileFromMerge(report, filing, tx) : stampHostMerge(report, judged, tx),
+      );
     },
   });
 }

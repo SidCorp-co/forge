@@ -28,11 +28,13 @@ import { db, type Tx } from '../db/client.js';
 import { idList } from '../db/raw-sql.js';
 import { issuePatterns, patternReviewPendingSql } from '../db/schema-issue-patterns.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { underGate } from '../lib/gated.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { emitEvents } from '../outbox/index.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
 import { issueDisplayIds } from './display-ids.js';
+import { type IssueGates, issueGateOf } from './gates.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { approvalEntryRefusal } from './pattern-entry.js';
 import {
@@ -207,15 +209,20 @@ export async function assertPatternReviewsSettledForSeqs(
     seqs.map((n) => sql`${n}`),
     sql`, `,
   );
-  refuseHeld(await heldWhere(projectId, sql`i.iss_seq IN (${list})`));
+  await underGate(await issueGateOf(projectId, 'patterns'), async () =>
+    refuseHeld(await heldWhere(projectId, sql`i.iss_seq IN (${list})`)),
+  );
 }
 
 export async function assertPatternReviewsSettledForIssue(
   projectId: string,
   issueId: string,
   executor: GateReader = db,
+  gates?: IssueGates,
 ): Promise<void> {
-  refuseHeld(await heldWhere(projectId, sql`i.id = ${issueId}`, executor));
+  await underGate(await issueGateOf(projectId, 'patterns', gates), async () =>
+    refuseHeld(await heldWhere(projectId, sql`i.id = ${issueId}`, executor)),
+  );
 }
 
 export interface PatternActor {

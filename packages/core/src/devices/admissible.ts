@@ -12,9 +12,10 @@
  * with no policy admits nothing and is named in `refused`, never left out in silence.
  */
 
+import type { GateId, ResolvedGate } from '@forge/contracts/gate-profiles';
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import {
@@ -26,7 +27,7 @@ import {
   patternReviewPendingSql,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
+import { AUTONOMOUS_ENTRY_STATUS } from '../pipeline/index.js';
 import { type PoolRelation, relationsFor } from './pool.js';
 import { devicesPorts } from './ports.js';
 
@@ -61,6 +62,8 @@ export type Admission = {
   entryOnRelease: boolean;
   /** The takeable statuses the policy declares a state for; a row at any other is withheld. */
   statuses: readonly string[];
+  /** Every gate's mode on the project (REQ-76): a withholding asks only where its gate is enforced. */
+  gates: Readonly<Record<GateId, ResolvedGate>>;
 };
 
 /** A project this device serves that admits nothing, and the refusal that says why. */
@@ -74,6 +77,7 @@ type AdmissionRefusal = { projectId: string; code: PolicyRefusalCode; message: s
 export function admissionOf(
   projectId: string,
   held: { document: unknown },
+  gates: Readonly<Record<GateId, ResolvedGate>>,
 ): { admission: Admission; refused: AdmissionRefusal[] } {
   const refused: AdmissionRefusal[] = [];
   const statuses = TAKEABLE_STATUSES.filter((status) => {
@@ -85,8 +89,9 @@ export function admissionOf(
     admission: {
       projectId,
       limit: DEFAULT_ADMISSIBLE_LIMIT,
-      entryOnRelease: isEntryGateClosed(held.document as Parameters<typeof isEntryGateClosed>[0]),
+      entryOnRelease: gates.intake.mode === 'enforce',
       statuses,
+      gates,
     },
     refused,
   };
@@ -117,7 +122,11 @@ async function readAdmissions(args: {
     const projectId = String(row.id);
     const held = await devicesPorts().readEffectivePolicy(projectId);
     if (held) {
-      const { admission, refused: undeclared } = admissionOf(projectId, held);
+      const { admission, refused: undeclared } = admissionOf(
+        projectId,
+        held,
+        await devicesPorts().readGateModes(projectId),
+      );
       if (admission.statuses.length > 0) admissions.push(admission);
       refused.push(...undeclared);
       continue;
@@ -134,6 +143,10 @@ async function readAdmissions(args: {
  * `limit` is per project, so this is one query per admitting project rather than one windowed
  * query: a device serves a handful of projects, and a per-project SQL window buys nothing.
  */
+/** `filter` where the project's profile enforces `gate`, nothing where it turns it off. */
+const enforced = (a: Admission, gate: GateId, filter: SQL): SQL =>
+  a.gates[gate].mode === 'enforce' ? filter : sql``;
+
 export async function readAdmissibleIssues(args: {
   deviceId: string;
   projectId?: string | undefined;
@@ -157,16 +170,18 @@ export async function readAdmissibleIssues(args: {
       WHERE i.project_id = ${a.projectId}
         AND i.status IN (${takeableList})
         ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
-        AND NOT ${blockedByUnsettledSql({ issueId: sql`i.id`, projectId: a.projectId })}
+        -- each withholding below is a gate the project's profile may turn off (REQ-76): an issue a
+        -- door would take is never withheld from the list a master reads
+        ${enforced(a, 'take_blocked', sql`AND NOT ${blockedByUnsettledSql({ issueId: sql`i.id`, projectId: a.projectId })}`)}
         -- an issue that builds a workflow whose design is not approved, waits on a contract
         -- version no approved version settles, or names a new pattern no reviewer has decided, is withheld; Issues > Stuck names the refusal
         -- (issues/standing.ts:withheldTurn).
-        AND NOT ${designUnapprovedSql(sql`i.id`)}
-        AND NOT ${contractWaitUnsettledSql(sql`i.id`)}
-        AND NOT ${patternReviewPendingSql(sql`i.id`)}
+        ${enforced(a, 'design_approved_for_build', sql`AND NOT ${designUnapprovedSql(sql`i.id`)}`)}
+        ${enforced(a, 'contract_wait', sql`AND NOT ${contractWaitUnsettledSql(sql`i.id`)}`)}
+        ${enforced(a, 'patterns', sql`AND NOT ${patternReviewPendingSql(sql`i.id`)}`)}
         -- a live run holds a module or contract its design names (issues/issue-scope.ts): the
         -- run-session open would refuse it ISSUE_SCOPE_HELD, so no master is handed it
-        AND NOT ${scopeHeldSql(sql`i.id`)}
+        ${enforced(a, 'scope_hold', sql`AND NOT ${scopeHeldSql(sql`i.id`)}`)}
         -- one predicate for "is this issue being worked", shared with the orphan sweep that
         -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never
         -- the project's own prefix, or a run's issues silently stop being seen (ISS-992).

@@ -261,8 +261,10 @@ describe('an agreed requirement whose live issues are drafts', () => {
 
   it.each([
     ['a viewer who cannot sign', null],
-    ['a signer without issues.admit', { userId: 'u2', canSignOff: true, canAdmit: false }],
-    ['an admitter who cannot sign', { userId: 'u3', canSignOff: false, canAdmit: true }],
+    [
+      'a signer the admit gate does not let admit',
+      { userId: 'u2', canSignOff: true, canAdmit: false },
+    ],
   ])('names a BA or owner who can admit issues to %s, and does not ask them', (_, viewer) => {
     const s = deriveStanding({ ...input([issue(1, 'draft', false)]), viewer });
     // nothing takes a draft on by itself, so a requirement only drafts carry reads stuck (REQ-48 BC-5)
@@ -273,6 +275,15 @@ describe('an agreed requirement whose live issues are drafts', () => {
       who: 'a BA or owner who can admit issues',
       act: 'promote 1 draft issue',
     });
+  });
+
+  // ISS-640, REQ-76: the promote asks what the admit gate asks, never requirements.approve on its own
+  it('asks a viewer the admit gate lets admit, whether or not they can sign', () => {
+    const s = deriveStanding({
+      ...input([issue(1, 'draft', false)]),
+      viewer: { userId: 'u3', canSignOff: false, canAdmit: true },
+    });
+    expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'promote 1 draft issue' });
   });
 
   it('asks nothing once one of them is promoted, as the approved design draws it', () => {

@@ -19,6 +19,7 @@
  * rules held.
  */
 
+import { gateSays, type ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { MergeCheckRefusalCode, MergeCheckReport } from '@forge/contracts/merge-check';
 import { db } from '../db/client.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
@@ -26,6 +27,7 @@ import type { Actor } from './activity.js';
 import { checkRunSessionOf, writeCheckRuns } from './check-runs.js';
 import { readCriteriaWithDrafts } from './criteria/service.js';
 import { issueDisplayIds } from './display-ids.js';
+import { readIssueGates } from './gates.js';
 import {
   type CheckOwedBy,
   checkRefusal,
@@ -36,7 +38,7 @@ import {
   recordFields,
 } from './merge-check-rules.js';
 import { catalogPageFields, hasApprovedNewPattern, patternEntryRefusal } from './pattern-entry.js';
-import { fastLaneMergeRefusal, readProjectDocument } from './ports.js';
+import { fastLaneMergeRefusal } from './ports.js';
 import { listRecordEvents, type RecordEvent, writeCoreRecord } from './record-events/store.js';
 
 const refuse = refuser<MergeCheckRefusalCode>('MERGE_CHECK_REFUSED');
@@ -96,11 +98,19 @@ export async function recordMergeCheck(args: {
   });
 }
 
-/** What makes this mark owe a merge check, or null where nothing does. */
-async function checkOwedBy(issueId: string, projectId: string): Promise<CheckOwedBy | null> {
-  const document = (await readProjectDocument(projectId))?.document;
-  if (document?.validation?.mergeCheck === 'required') return 'project';
-  return (await hasApprovedNewPattern(issueId)) ? 'pattern' : null;
+/**
+ * What makes this mark owe a merge check, and the gate that asks it, or null where nothing does: gate
+ * `merge_check` where the project's profile enforces it, else gate `patterns` for an issue adding an
+ * approved new pattern (REQ-76).
+ */
+async function checkOwedBy(
+  issueId: string,
+  projectId: string,
+): Promise<{ by: CheckOwedBy; gate: ResolvedGate } | null> {
+  const gates = await readIssueGates(projectId);
+  if (gates.merge_check.mode === 'enforce') return { by: 'project', gate: gates.merge_check };
+  if (gates.patterns.mode !== 'enforce') return null;
+  return (await hasApprovedNewPattern(issueId)) ? { by: 'pattern', gate: gates.patterns } : null;
 }
 
 /**
@@ -114,8 +124,9 @@ export async function uncheckedMergeRefusal(args: {
   projectId: string;
   commit: string | null;
 }): Promise<string | null> {
-  const owedBy = await checkOwedBy(args.issueId, args.projectId);
-  if (!owedBy) return null;
+  const owed = await checkOwedBy(args.issueId, args.projectId);
+  if (!owed) return null;
+  const owedBy = owed.by;
   const records = await listRecordEvents(args.issueId, {
     kinds: ['verification'],
     kernelOnly: true,
@@ -123,5 +134,5 @@ export async function uncheckedMergeRefusal(args: {
   const heads = passingHeads(records);
   if (args.commit && headMatches(heads, args.commit)) return null;
   const issueRef = (await issueDisplayIds([args.issueId])).get(args.issueId) ?? args.issueId;
-  return missingCheckDetail({ issueRef, owedBy, commit: args.commit, heads });
+  return `${missingCheckDetail({ issueRef, owedBy, commit: args.commit, heads })} ${gateSays(owed.gate)}`;
 }

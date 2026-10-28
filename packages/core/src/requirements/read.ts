@@ -443,7 +443,7 @@ export async function detailOf(
     releases: releasesOf(delivered.shipped),
     canSignOff: viewerFacts?.canSignOff ?? false,
     canAccept: viewerFacts?.canAccept ?? false,
-    canPromote: (viewerFacts?.canSignOff && viewerFacts.canAdmit) ?? false,
+    canPromote: viewerFacts?.canAdmit ?? false,
     standing,
     history,
     readiness,

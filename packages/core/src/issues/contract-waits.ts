@@ -16,8 +16,10 @@ import { idList } from '../db/raw-sql.js';
 import { contractWaitUnsettledSql, issueContractWaits } from '../db/schema-contract-waits.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { contractLockKey } from '../lib/contract-versions.js';
+import { underGate } from '../lib/gated.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
+import { type IssueGates, issueGateOf } from './gates.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { type GateReader, settlingContractVersion } from './ports.js';
 
@@ -110,7 +112,9 @@ export async function assertContractWaitsSettledForSeqs(
     seqs.map((n) => sql`${n}`),
     sql`, `,
   );
-  refuseHeld(await heldWhere(projectId, sql`i.iss_seq IN (${list})`));
+  await underGate(await issueGateOf(projectId, 'contract_wait'), async () =>
+    refuseHeld(await heldWhere(projectId, sql`i.iss_seq IN (${list})`)),
+  );
 }
 
 /** The issue read's answer: whether a contract wait holds it, and the refusal a dispatch door would give. */
@@ -129,8 +133,11 @@ export async function assertContractWaitsSettledForIssue(
   projectId: string,
   issueId: string,
   executor: GateReader = db,
+  gates?: IssueGates,
 ): Promise<void> {
-  refuseHeld(await heldWhere(projectId, sql`i.id = ${issueId}`, executor));
+  await underGate(await issueGateOf(projectId, 'contract_wait', gates), async () =>
+    refuseHeld(await heldWhere(projectId, sql`i.id = ${issueId}`, executor)),
+  );
 }
 
 export interface NewContractWait {

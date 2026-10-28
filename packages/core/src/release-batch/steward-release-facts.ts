@@ -6,7 +6,8 @@
  * steward moves no issue back (`steward/door-writes.ts`): what an issue lacks goes in its note.
  */
 
-import { judgedOnOf, verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import { judgedOnOf } from '@forge/contracts/delivery-policy';
+import { gateSays, projectGate } from '@forge/contracts/gate-profiles';
 import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -39,9 +40,13 @@ export async function stewardReleaseFacts(
         : declared?.kind === 'no-release'
           ? `This project declares no production environment: its running build is each issue's landing${declared.defaultBranch ? ` on \`${declared.defaultBranch}\`` : ''}.`
           : `This project's release target is not declared${declared ? `: ${declared.reason}` : ''}.`;
-  const owes = verdictsRequiredOf(document?.document.delivery)
-    ? 'Its delivery policy owes a counting verdict on every criterion before release (delivery.verdictsRequired: true).'
-    : 'Its delivery policy owes no verdict at awaiting_release (delivery.verdictsRequired: false): criteria are judged on the build the release ships, by the judge that follows the release, so a missing verdict or proof at the gate is not a reason to send an issue back.';
+  const criteriaGate = projectGate(document?.document, null, 'release_criteria');
+  const owes =
+    criteriaGate.mode === 'enforce'
+      ? `It owes a counting verdict on every criterion before release. ${gateSays(criteriaGate)}`
+      : criteriaGate.mode === 'advise'
+        ? `It names every criterion with no counting verdict as a warning on the release, and holds nothing for it. ${gateSays(criteriaGate)}`
+        : 'Its delivery policy owes no verdict at awaiting_release (delivery.verdictsRequired: false): criteria are judged on the build the release ships, by the judge that follows the release, so a missing verdict or proof at the gate is not a reason to send an issue back.';
   const judgedOn = judgedOnOf(document?.document.delivery);
   const testing = judgedOn
     ? `Its releases are proven on its testing environment \`${judgedOn}\` (delivery.judgedOn): a release criterion counts only a pass judged on the build \`${judgedOn}\` serves, a runtime verdict at the release's commit; a commit verdict gates the merge and proves no release criterion.`

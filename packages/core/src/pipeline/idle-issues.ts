@@ -15,6 +15,7 @@
 import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { gateEnforcedSql } from '../db/gate-sql.js';
 import { issueStatuses } from '../db/schema.js';
 import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
@@ -308,12 +309,14 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
            i.updated_at::text AS cursor_ts,
            EXISTS (SELECT 1 FROM pipeline_runs pr WHERE pr.issue_id = i.id) AS ever_ran,
            -- the admissible list's own withholding predicates (devices/admissible.ts), so the
-           -- finding never says a dispatch is missing on a row no dispatch would be handed
-           ${holdingBlockerSeqsSql({ issueId: sql`i.id`, projectId: sql`i.project_id` })} AS held_by,
-           ${designUnapprovedSql(sql`i.id`)} AS design_unapproved,
-           ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
-           ${patternReviewPendingSql(sql`i.id`)} AS pattern_pending,
-           ${scopeHeldSql(sql`i.id`)} AS scope_held
+           -- finding never says a dispatch is missing on a row no dispatch would be handed; each
+           -- asked only where the project's gate profile enforces its gate (REQ-76)
+           CASE WHEN ${gateEnforcedSql(sql`i.project_id`, 'take_blocked')}
+             THEN ${holdingBlockerSeqsSql({ issueId: sql`i.id`, projectId: sql`i.project_id` })} END AS held_by,
+           (${gateEnforcedSql(sql`i.project_id`, 'design_approved_for_build')} AND ${designUnapprovedSql(sql`i.id`)}) AS design_unapproved,
+           (${gateEnforcedSql(sql`i.project_id`, 'contract_wait')} AND ${contractWaitUnsettledSql(sql`i.id`)}) AS contract_unsettled,
+           (${gateEnforcedSql(sql`i.project_id`, 'patterns')} AND ${patternReviewPendingSql(sql`i.id`)}) AS pattern_pending,
+           (${gateEnforcedSql(sql`i.project_id`, 'scope_hold')} AND ${scopeHeldSql(sql`i.id`)}) AS scope_held
       FROM issues i
       JOIN projects p ON p.id = i.project_id
      WHERE i.status NOT IN (${excluded})

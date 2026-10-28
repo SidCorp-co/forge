@@ -13,7 +13,8 @@ import { proofOf, totalsOf } from './release-view.js';
 
 const BUILD = 'a'.repeat(40);
 const EARLIER = 'b'.repeat(40);
-const BUILDER_WHY = "passed by the run that built it, and a builder's own pass never counts";
+const BUILDER_WHY =
+  "passed by the run that built it, and a builder's own pass never counts where gate `builder_verdict` is enforced (gates.overrides.builder_verdict relaxes it)";
 
 const verdict = (
   v: CarriedVerdict['verdict'],

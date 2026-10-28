@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   passAlreadyOpenRefusal,
   passNotOpenRefusal,
+  projectArchivedRefusal,
   sessionEndedRefusal,
   slotsOf,
   slotsUndeclaredRefusal,
@@ -54,6 +55,7 @@ describe('master refusals say their detail as a registry sentence', () => {
       passNotOpenRefusal({ passId: 'p9', named: closed, open }),
       passNotOpenRefusal({ passId: 'p9', named: null, open: null }),
       sessionEndedRefusal('ended', true),
+      projectArchivedRefusal(new Date('2026-10-28T10:15:15.000Z')),
       slotsOf({ name: 'box', maxJobPanes: null }, { jobPanes: 0, runs: 0 }).undeclared,
     ];
     expect(saidDisagreements(all)).toEqual([]);
@@ -61,5 +63,19 @@ describe('master refusals say their detail as a registry sentence', () => {
       'the drive pass started 2026-10-07T10:00:00.000Z on ISS-1 open, id p1;',
     );
     expect(all[0]?.detail).toContain('(runner version unknown)');
+  });
+});
+
+// dev Forge 2026-10-28: an archived project's master was placed and opened a pass 45s after the archive
+describe('an archived project opens no master pass', () => {
+  it('refuses by name, saying when it was archived and how to drive it again', () => {
+    const r = projectArchivedRefusal(new Date('2026-10-28T10:15:15.000Z'));
+    expect(r?.code).toBe('MASTER_PROJECT_ARCHIVED');
+    expect(r?.detail).toContain('archived at 2026-10-28T10:15:15.000Z');
+    expect(r?.detail).toContain('/unarchive');
+  });
+
+  it('refuses nothing for a project that is not archived', () => {
+    expect(projectArchivedRefusal(null)).toBeNull();
   });
 });

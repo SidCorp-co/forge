@@ -17,6 +17,13 @@ export {
 } from './dispatch-policy.js';
 export { type ApiRefusal, isRecord, parseVersionedDocument, staleBase } from './documents.js';
 export { readEnvironmentState } from './environment-state.js';
+export {
+  gateOf,
+  raiseAfterIncident,
+  readGateModes,
+  readProjectGates,
+  readVerifiedJudge,
+} from './gates.js';
 export { announceIntegrationChanged } from './integration-changed.js';
 export { emitJsonSchema } from './json-schema.js';
 export type { TestingProfile } from './policy-schema.js';

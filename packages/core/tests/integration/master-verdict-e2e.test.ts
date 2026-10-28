@@ -26,6 +26,8 @@ let runnerId = '';
 let otherRunnerId = '';
 let drainingProjectId = '';
 let drainingRunnerId = '';
+let archivedProjectId = '';
+let archivedRunnerId = '';
 
 beforeAll(async () => {
   testEnv();
@@ -38,6 +40,8 @@ beforeAll(async () => {
   runnerId = await bindTestRunner(projectId, deviceId);
   drainingProjectId = (await createTestProject(ownerId)).id;
   drainingRunnerId = await bindTestRunner(drainingProjectId, deviceId, { status: 'draining' });
+  archivedProjectId = (await createTestProject(ownerId)).id;
+  archivedRunnerId = await bindTestRunner(archivedProjectId, deviceId);
   const otherDevice = await createTestDevice(ownerId);
   otherRunnerId = await bindTestRunner(projectId, otherDevice);
   const { signUserToken } = await import('../../src/credentials/jwt.js');
@@ -49,7 +53,7 @@ beforeAll(async () => {
         userId: ownerId,
         name: 'box',
         deviceId,
-        projectIds: [projectId, drainingProjectId],
+        projectIds: [projectId, drainingProjectId, archivedProjectId],
       })
     ).plaintext,
     otherBox: (
@@ -249,5 +253,68 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     expect(JSON.stringify(res.json)).toContain('pane');
     const extra = await verdict({ projectId, runnerId, facts: facts({ placement: 'adopt' }) });
     expect(extra.status).toBe(400);
+  });
+});
+
+describe('POST /api/devices/me/master-session/verdict for an archived project', () => {
+  // dev Forge 2026-10-28: `hop` was archived at 10:15:15Z and 45s later the box placed its master
+  // again on core's `place`, and opened a pass for it.
+  it('an archived project places no master, retires a standing one and opens no pass; unarchived, it is placed again', async () => {
+    const at = { projectId: archivedProjectId, runnerId: archivedRunnerId };
+    const idle = facts({
+      pane: 'alive',
+      capability: 'current',
+      idle: {
+        noWorkForSeconds: 0,
+        pane: { doing: 'idle', lastEvent: 'stop', lastEventAgoSeconds: 0 },
+        children: { total: 0, unfinished: [], lastClosedAgoSeconds: null },
+      },
+    });
+    ok(
+      await say('owner', 'POST', `/api/projects/${archivedProjectId}/feedback`, {
+        kind: 'bug',
+        severity: 'low',
+        title: 'The release list scrolls to the top on refresh',
+        screen: 'releases',
+      }),
+      201,
+    );
+    expect(await judged({ ...at, facts: facts() })).toMatchObject({ act: 'place', nudge: true });
+    const sessionId = ok(
+      await say('box', 'POST', '/api/devices/me/master-session', {
+        projectId: archivedProjectId,
+        name: 'forge-master-archived',
+        maxJobPanes: 1,
+      }),
+    ).sessionId as string;
+
+    const archivedAt = ok(
+      await say('owner', 'POST', `/api/projects/${archivedProjectId}/archive`),
+    ).archivedAt;
+    const named = `project archived at ${new Date(archivedAt).toISOString()}; unarchive to drive it again`;
+    const withheld = await judged({ ...at, facts: facts() });
+    expect(withheld, 'an archived project with work owed and no pane').toMatchObject({
+      act: 'withhold',
+      reason: 'project_archived',
+    });
+    expect(withheld.because).toBe(`${named}: no master is placed`);
+    const retired = await judged({ ...at, facts: idle });
+    expect(retired, 'an archived project with a pane up').toMatchObject({ act: 'retire' });
+    expect(retired.because).toBe(`${named}: its master is retired`);
+    expect(saidDisagreements(retired)).toEqual([]);
+    const pass = () =>
+      say('box', 'POST', '/api/devices/me/master-session/pass', {
+        op: 'open',
+        sessionId,
+        verb: 'dispatch',
+      });
+    const refused = await pass();
+    expect(refused.status, JSON.stringify(refused.json)).toBe(422);
+    expect(JSON.stringify(refused.json)).toContain('MASTER_PROJECT_ARCHIVED');
+
+    ok(await say('owner', 'POST', `/api/projects/${archivedProjectId}/unarchive`));
+    expect(await judged({ ...at, facts: facts() })).toMatchObject({ act: 'place', nudge: true });
+    expect(await judged({ ...at, facts: idle })).toMatchObject({ act: 'keep', nudge: true });
+    ok(await pass(), 201);
   });
 });

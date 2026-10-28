@@ -4,6 +4,7 @@
 // the browser.
 
 import { CHECKLIST_REFUSAL_CODES } from "./checklists.js";
+import { type GateSwitches, projectGate } from "./gate-profiles.js";
 import type { CriterionStanding, IssueStatusTone } from "./issue-vocabulary.js";
 import type {
 	ArtifactChange,
@@ -893,14 +894,9 @@ export function servedCommits(serving: ServingReading): string[] {
 	return [...new Set(serving.served.map((s) => s.commit))];
 }
 
-/** `release.approval.required` of a project document; a project with no document, or no release rule, requires none. */
-export function releaseApprovalRequired(
-	document:
-		| { release?: { approval: { required: boolean } } | undefined }
-		| null
-		| undefined,
-): boolean {
-	return document?.release?.approval.required === true;
+/** Whether a release waits on a person's approval: gate `release_approval` as the project's profile resolves it (REQ-76); under standard, `release.approval.required`. */
+export function releaseApprovalRequired(document: GateSwitches | null | undefined): boolean {
+	return projectGate(document, null, "release_approval").mode === "enforce";
 }
 
 /**

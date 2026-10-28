@@ -162,7 +162,10 @@ projectRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
 // non-destructive — no project-owned data (issues, comments, runs, sessions)
 // is touched. Archived projects drop out of the default GET / list and stop
 // dispatching new auto-pipeline jobs (see orchestrator.loadProjectPolicy);
-// in-flight jobs are unaffected. The hard DELETE /:id route above is unchanged.
+// in-flight jobs are unaffected. Their resident master is not placed, a
+// standing one is retired once the runs and job panes it holds finish, and it
+// opens no pass (masters/verdict.ts:archivedVerdict, rules.ts:projectArchivedRefusal);
+// unarchiving places it again. The hard DELETE /:id route above is unchanged.
 
 projectRoutes.post(
   '/:id/archive',
