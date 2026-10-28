@@ -26,6 +26,13 @@ export function retryWaitWords(err: unknown, now: number): string | null {
   return `You can retry in ${durationWords(at - now)}.`;
 }
 
+/** A held file's wait at `now`: a file comes back by itself once the wait ends, so no Retry is named (ISS-1229 r55). */
+export function shownAgainWords(err: unknown, now: number): string | null {
+  const at = retryAt(err);
+  if (at === null || at - now <= 0) return null;
+  return `Shown again in ${durationWords(at - now)}.`;
+}
+
 /** A wait in its largest whole unit, each rounded up, so no time is named sooner than the server allows. */
 function durationWords(ms: number): string {
   const seconds = Math.ceil(ms / 1000);

@@ -14,7 +14,7 @@ import { type ReactNode, useEffect, useReducer, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RetryButton } from "@/design/primitives/retry-button";
 import { createQueryClient } from "@/providers/query-provider";
-import { ApiError, apiClient, forgetHeldReads } from "./client";
+import { ApiError, apiClient, apiFile, forgetHeldReads } from "./client";
 
 expect.extend(matchers);
 
@@ -235,6 +235,49 @@ describe("a read the server refused with a wait (criterion 495)", () => {
     const reloaded = await import("./client");
     await expect(reloaded.apiClient(RUNS)).rejects.toMatchObject({ status: 429 });
     expect(sent).toEqual(["GET /api/runs"]);
+  });
+
+  // r55, judge-170: a tab the person opens, or one the app opens without an opener, began with no hold of its own.
+  it("is held in a tab opened after the refusal, which shares no session storage with the tab refused", async () => {
+    await readRuns().catch(() => {});
+    window.sessionStorage.clear();
+    vi.resetModules();
+    const secondTab = await import("./client");
+    await expect(secondTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429, read: "GET /runs" });
+    expect(sent).toEqual(["GET /api/runs"]);
+  });
+
+  it("is held in a tab already open and reading before the refusal", async () => {
+    let answered = 0;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(`${init?.method ?? "GET"} ${String(input)}`);
+      answered += 1;
+      return answered === 2
+        ? new Response(JSON.stringify(refusedBody), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "20" } })
+        : new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.resetModules();
+    const openTab = await import("./client");
+    await openTab.apiClient("/labels");
+    await readRuns().catch(() => {});
+    await expect(openTab.apiClient(RUNS)).rejects.toMatchObject({ status: 429 });
+    expect(sent).toEqual(["GET /api/labels", "GET /api/runs"]);
+  });
+
+  it("is held for a core file read through the client, such as an attachment's bytes", async () => {
+    const file = "/api/attachments/a1/download";
+    await expect(apiFile(file)).rejects.toMatchObject({ status: 429 });
+    vi.setSystemTime(Date.now() + 19_000);
+    await expect(apiFile(file)).rejects.toMatchObject({ status: 429, read: `GET ${file}` });
+    expect(sent).toEqual([`GET ${file}`]);
+    vi.setSystemTime(Date.now() + 1_500);
+    await expect(apiFile(file)).resolves.toBeInstanceOf(Blob);
+    expect(sent).toEqual([`GET ${file}`, `GET ${file}`]);
+  });
+
+  it("refuses by name a file that is not on the core, and sends nothing", async () => {
+    await expect(apiFile("https://elsewhere.example/a.png")).rejects.toThrow("not a file on the core, whose path starts with /api/");
+    expect(sent).toEqual([]);
   });
 
   it("holds only that read: another address, and a write to the same one, still go out", async () => {

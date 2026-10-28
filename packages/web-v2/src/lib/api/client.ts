@@ -1,4 +1,4 @@
-import { CORE_URL } from '@/lib/utils/core-url';
+import { CORE_URL, coreFileUrl } from '@/lib/utils/core-url';
 import { markUnreachable, reportTransportFailure } from './transport-failure';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -168,27 +168,31 @@ interface HeldRead {
   retryAt: number;
 }
 
-/** Where the held reads outlive a page load: a reload is one more way of asking again (judge-168, z4). */
+/** Where the held reads outlive a page load and reach every tab of this browser: a reload and a second tab are each one
+ *  more way of asking again (judge-168 z4; judge-170, whose second tab began with no hold under sessionStorage). */
 const HELD_KEY = 'forge.heldReads';
-let heldReads: Map<string, HeldRead> | null = null;
+/** This page's own copy, which still holds where the browser keeps nothing for it. */
+let ownReads = new Map<string, HeldRead>();
 
+/** Every hold still running, this page's and any other tab's, read afresh each time so a hold another tab set is seen. */
 function held(): Map<string, HeldRead> {
-  if (heldReads) return heldReads;
-  heldReads = new Map();
+  const now = Date.now();
+  const reads = new Map([...ownReads].filter(([, refusal]) => refusal.retryAt > now));
   try {
-    const stored = JSON.parse(window.sessionStorage.getItem(HELD_KEY) ?? '{}') as Record<string, HeldRead>;
+    const stored = JSON.parse(window.localStorage.getItem(HELD_KEY) ?? '{}') as Record<string, HeldRead>;
     for (const [read, refusal] of Object.entries(stored)) {
-      if (typeof refusal?.retryAt === 'number' && refusal.retryAt > Date.now()) heldReads.set(read, refusal);
+      if (typeof refusal?.retryAt === 'number' && refusal.retryAt > Math.max(now, reads.get(read)?.retryAt ?? 0)) reads.set(read, refusal);
     }
   } catch {
   }
-  return heldReads;
+  return reads;
 }
 
 function storeHeld(reads: Map<string, HeldRead>): void {
+  ownReads = reads;
   try {
-    if (reads.size === 0) window.sessionStorage.removeItem(HELD_KEY);
-    else window.sessionStorage.setItem(HELD_KEY, JSON.stringify(Object.fromEntries(reads)));
+    if (reads.size === 0) window.localStorage.removeItem(HELD_KEY);
+    else window.localStorage.setItem(HELD_KEY, JSON.stringify(Object.fromEntries(reads)));
   } catch {
   }
 }
@@ -196,17 +200,11 @@ function storeHeld(reads: Map<string, HeldRead>): void {
 /**
  * The refusal a read is held on, repeated while the server's wait runs, ending when it ends (ISS-1229 r54). A read
  * the server refused with a wait is not asked again before that wait ends, whoever asks and however: a refetch, a
- * changed key, an effect run again, a reload. The one Retry waits the wait out and then sends.
+ * changed key, an effect run again, a reload, another tab. The one Retry waits the wait out and then sends.
  */
 function heldRefusal(read: string): ApiError | null {
-  const reads = held();
-  const refusal = reads.get(read);
+  const refusal = held().get(read);
   if (!refusal) return null;
-  if (refusal.retryAt <= Date.now()) {
-    reads.delete(read);
-    storeHeld(reads);
-    return null;
-  }
   const { status, message, code, details, body, asked, retryAt } = refusal;
   return new ApiError(status, message, code, details, body, asked, retryAt, read);
 }
@@ -225,18 +223,16 @@ function noteAnswer(read: string, refused: ApiError | null): void {
   storeHeld(reads);
 }
 
-/** Forgets every held read: a test's fresh page. */
+/** Forgets every held read: a test's fresh browser. */
 export function forgetHeldReads(): void {
-  heldReads = new Map();
-  storeHeld(heldReads);
+  storeHeld(new Map());
 }
 
 /**
  * Every request this module makes goes out through here, and it is the ONLY
  * place a rejected `fetch` is reported.
  */
-async function sendRequest(endpoint: string, init: RequestInit): Promise<Response> {
-  const url = `${API_URL}${endpoint}`;
+async function sendRequest(url: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(url, init);
   } catch (err) {
@@ -246,7 +242,7 @@ async function sendRequest(endpoint: string, init: RequestInit): Promise<Respons
   }
 }
 
-async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Response> {
+async function fetchRaw(endpoint: string, options: RequestInit = {}, url = `${API_URL}${endpoint}`): Promise<Response> {
   const hasBody = options.body !== undefined && options.body !== null;
   const headers = new Headers(options.headers as HeadersInit | undefined);
   if (hasBody && !headers.has('Content-Type')) {
@@ -256,7 +252,7 @@ async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Re
   const read = typeof window !== 'undefined' && isRead(options.method) ? `${(options.method ?? 'GET').toUpperCase()} ${endpoint}` : undefined;
   const refusal = read === undefined ? null : heldRefusal(read);
   if (refusal) throw refusal;
-  const res = await sendRequest(endpoint, {
+  const res = await sendRequest(url, {
     ...options,
     credentials: 'include',
     headers,
@@ -277,12 +273,23 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
 }
 
 /**
+ * A file on the core, such as an attachment's bytes, by its core path (`/api/attachments/<id>/download`). It is a read
+ * like any other, so a refusal with a wait holds it here too (ISS-1229 r55, judge-170: the attachment was read around
+ * the client and asked again eight times inside the wait).
+ */
+export async function apiFile(path: string): Promise<Blob> {
+  if (!path.startsWith('/api/')) throw new Error(`${path}: not a file on the core, whose path starts with /api/`);
+  const res = await fetchRaw(path, {}, coreFileUrl(path));
+  return await res.blob();
+}
+
+/**
  * Raw-bytes client, for the capability-authenticated upload endpoint: the
  * ticket in the path IS the authorization, so this sends no credentials and no
  * JSON envelope — the body is the file.
  */
 export async function apiPutBytes<T>(endpoint: string, file: Blob): Promise<T> {
-  const res = await sendRequest(endpoint, {
+  const res = await sendRequest(`${API_URL}${endpoint}`, {
     method: 'PUT',
     body: file,
     headers: file.type ? { 'Content-Type': file.type } : undefined,
@@ -295,7 +302,7 @@ export async function apiPutBytes<T>(endpoint: string, file: Blob): Promise<T> {
 
 /** Multipart-aware client. Sends FormData without the JSON Content-Type. */
 export async function apiMultipart<T>(endpoint: string, formData: FormData): Promise<T> {
-  const res = await sendRequest(endpoint, {
+  const res = await sendRequest(`${API_URL}${endpoint}`, {
     method: 'POST',
     credentials: 'include',
     body: formData,

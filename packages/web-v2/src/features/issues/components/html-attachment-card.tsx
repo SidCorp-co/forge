@@ -9,14 +9,18 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { HtmlArtifact, Icon, Spinner } from "@/design";
+import { useRetryWait } from "@/design/hooks/use-retry-wait";
+import { RetryWait } from "@/design/primitives/retry-wait";
+import { apiFile } from "@/lib/api/client";
+import { useAskedAgainAfterTheWait } from "@/lib/api/core-file";
 import { coreFileUrl } from "@/lib/utils/core-url";
+import { shownAgainWords } from "@/lib/utils/retry-rule";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
+/** Read through the client, so a refusal with a wait holds it like any read (ISS-1229 r55, judge-170). */
 async function fetchArtifact(url: string): Promise<string> {
-  const res = await fetch(coreFileUrl(url), { credentials: "include" });
-  if (!res.ok) throw new Error(`${res.status}`);
-  return await res.text();
+  return await (await apiFile(url)).text();
 }
 
 export function HtmlAttachmentCard({
@@ -35,6 +39,22 @@ export function HtmlAttachmentCard({
     enabled: !oversize,
     staleTime: 5 * 60 * 1000,
   });
+  useAskedAgainAfterTheWait(q.error, q.refetch);
+  const wait = useRetryWait(q.isError ? q.error : null, shownAgainWords);
+
+  // While the server's wait runs the file is not offered as a link either: opening it would ask around the hold.
+  if (wait) {
+    return (
+      <div data-testid="html-attachment-held" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-line bg-surface px-3 py-2">
+        <Icon name="folder" size={16} className="flex-none text-subtle" />
+        <span className="fg-body-sm max-w-[14rem] truncate text-fg" title={name}>
+          {name}
+        </span>
+        <span className="fg-caption flex-none">preview failed</span>
+        <RetryWait wait={wait} testId="html-attachment" />
+      </div>
+    );
+  }
 
   if (oversize || q.isError) {
     return (

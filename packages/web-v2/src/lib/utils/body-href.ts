@@ -15,8 +15,8 @@ export type BodyHref =
   | { kind: "anchor"; href: string }
   /** A path the web app serves. Same tab, same origin as the page. */
   | { kind: "in-app"; href: string }
-  /** A file on the core. New tab, resolved against the core origin. */
-  | { kind: "core-file"; href: string }
+  /** A file on the core. New tab, resolved against the core origin; `path` is the core's own, for the API client. */
+  | { kind: "core-file"; href: string; path: string }
   | { kind: "external"; href: string; scheme: string }
   /** Neither origin can be derived. Refused, loudly, with this reason. */
   | { kind: "unresolvable"; href: string; reason: string };
@@ -48,7 +48,7 @@ export function classifyBodyHref(href: string): BodyHref {
 
   const resolved = `${parsed.path}${parsed.rest}`;
   const first = parsed.path.split("/")[1] ?? "";
-  if (first === CORE_SEGMENT) return { kind: "core-file", href: coreFileUrl(resolved) };
+  if (first === CORE_SEGMENT) return { kind: "core-file", href: coreFileUrl(resolved), path: resolved };
   if (href.startsWith("/")) return { kind: "in-app", href: resolved };
   return {
     kind: "unresolvable",

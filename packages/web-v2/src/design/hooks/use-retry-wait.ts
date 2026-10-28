@@ -5,7 +5,7 @@ import { showWait } from "@/design/hooks/wait-announcer";
 import { askedWaitWords, retryAt, retryWaitWords } from "@/lib/utils/retry-rule";
 
 /** The wait before a failed read's Retry, counted down each second; null where there is none or once it is over. */
-export function useRetryWait(error: unknown): string | null {
+export function useRetryWait(error: unknown, words: (error: unknown, now: number) => string | null = retryWaitWords): string | null {
   const at = retryAt(error);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -18,7 +18,7 @@ export function useRetryWait(error: unknown): string | null {
     }, 1000);
     return () => clearInterval(id);
   }, [at]);
-  return retryWaitWords(error, now);
+  return words(error, now);
 }
 
 /** Whether a failed read's wait still runs, re-rendering once as it ends rather than each second (ISS-1229 r52). */

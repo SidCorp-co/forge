@@ -2,6 +2,7 @@
 
 
 import { Icon } from "@/design";
+import { CoreImage } from "@/design/patterns/core-image";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { useMemo, useState } from "react";
 import { HtmlAttachmentCard } from "./html-attachment-card";
@@ -29,7 +30,7 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
     () =>
       rows
         .filter((a) => a.mime.startsWith("image/"))
-        .map((a) => ({ id: a.id, name: a.name, href: coreFileUrl(a.url) })),
+        .map((a) => ({ id: a.id, name: a.name, path: a.url })),
     [rows],
   );
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -59,7 +60,7 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
                   title={`${a.name} · ${formatBytes(a.size)}`}
                   className="block overflow-hidden rounded-md border border-line transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                 >
-                  <img src={href} alt={a.name} className="h-28 w-28 object-cover" loading="lazy" />
+                  <CoreImage path={a.url} alt={a.name} className="h-28 w-28 object-cover" />
                 </button>
               ) : (
                 <a

@@ -10,12 +10,14 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { CoreImage, useCoreFileHeld } from "@/design/patterns/core-image";
+import { coreFileUrl } from "@/lib/utils/core-url";
 
 export interface LightboxImage {
   id: string;
   name: string;
-  /** Resolved, fetchable URL (already passed through `coreFileUrl`). */
-  href: string;
+  /** The file's core path (`/api/…`), read through the API client by `CoreImage`. */
+  path: string;
 }
 
 const MIN_SCALE = 1;
@@ -49,6 +51,8 @@ export function ImageLightbox({
 }) {
   const count = images.length;
   const current = images[index];
+  // Opening the original while the server's wait runs would ask around the hold, so it is not offered then.
+  const held = useCoreFileHeld(current?.path ?? "");
   const restoreRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -261,14 +265,16 @@ export function ImageLightbox({
           >
             +
           </button>
-          <a
-            href={current.href}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="ml-1 hidden rounded-md text-12 font-medium px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
-          >
-            Open original
-          </a>
+          {!held && (
+            <a
+              href={coreFileUrl(current.path)}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="ml-1 hidden rounded-md text-12 font-medium px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
+            >
+              Open original
+            </a>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -304,8 +310,8 @@ export function ImageLightbox({
           onWheel={onWheel}
           onDoubleClick={toggleZoom}
         >
-          <img
-            src={current.href}
+          <CoreImage
+            path={current.path}
             alt={current.name}
             draggable={false}
             className="max-h-full max-w-full object-contain will-change-transform"
@@ -347,8 +353,8 @@ export function ImageLightbox({
                   : "border-transparent opacity-60 hover:opacity-100"
               }`}
             >
-              <img
-                src={img.href}
+              <CoreImage
+                path={img.path}
                 alt={img.name}
                 className="size-11 object-cover sm:size-14"
               />
