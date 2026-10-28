@@ -17,6 +17,7 @@ import { actorFor, projectResource, requireCan } from '../../permissions/index.j
 import { confirmSpeakerLink } from '../service.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
+import { mintSpeakerLinkCode } from './link-code.js';
 import {
   isConversationAdapter,
   type SpeakerRefusal,
@@ -172,5 +173,42 @@ speakerLinkProjectRoutes.post(
       );
     }
     return c.json({ link: confirmed.link }, 201);
+  },
+);
+
+const linkCodeBody = zValidator(
+  'json',
+  z.strictObject({ source: z.string() }),
+  invalid(
+    'invalid body: { source } names the chat channel the account to link is on, e.g. "rocketchat"',
+  ),
+);
+
+/**
+ * A one-time code linking a chat account to the signed-in caller (REQ-75 r5): written as
+ * `link <code>` in a room bound to this project, from the account to link, within the time it is
+ * good for. The caller is the person being mapped, so no administrator links anyone on their behalf.
+ */
+speakerLinkProjectRoutes.post(
+  '/projects/:projectId/speaker-links/codes',
+  projectAccess,
+  linkCodeBody,
+  async (c) => {
+    const { source } = c.req.valid('json');
+    if (!isConversationAdapter(source)) throw refused(sourceUnknownRefusal(source), '/source');
+    const minted = await mintSpeakerLinkCode({
+      userId: c.get('userId'),
+      projectId: c.req.param('projectId'),
+      source,
+    });
+    return c.json(
+      {
+        code: minted.code,
+        expiresAt: minted.expiresAt.toISOString(),
+        write: `link ${minted.code}`,
+        where: `in a ${source} room bound to this project, from the account to link to you, before it expires; it is good once`,
+      },
+      201,
+    );
   },
 );
