@@ -225,7 +225,7 @@ async function holderGuard(ctx: GuardContext): Promise<GuardFault | null> {
   if (holder) return null;
   return {
     code: 'NO_HOLDER',
-    detail: `\`in_progress\` says a run is working this issue, and nothing holds it: no live lease on its work state, and no job, run or fleet lease over it. Claim it first (a lease, or a run session), then move it — an issue nobody holds stays at ${quote(ctx.from)} where a master can take it.`,
+    detail: `\`in_progress\` says a run is working this issue, and nothing holds it: no live lease on its work state, no live run session over it, and no job or run over it. Claim it first (a lease, or a run session), then move it — an issue nobody holds stays at ${quote(ctx.from)} where a master can take it.`,
     details: { from: ctx.from, to: ctx.to },
   };
 }

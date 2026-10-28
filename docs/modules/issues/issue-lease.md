@@ -133,6 +133,23 @@ Both count a held lease. A run the runner declared is held through the lease
 shows a row nothing holds as No check-in, with `lastCheckInAt` from the same
 hydrator, rather than claiming it stalled.
 
+## A run declared over an issue holds it, lease or none
+
+A run declared over issues that were every one closed or dropped takes no lease
+(`packages/core/src/devices/run-session.ts:declaredOverClosedWork`): it is a
+release judge, and nothing can be taken on work that is over. When its issue
+reopens under it, that run still holds it. `runSessionsDeclaredOverSql` is the
+one reading of the run sessions declared over an issue: a live session whose
+run carries the key in `runIssues`, or whose open stamped the key closed or
+dropped in `runIssueStatuses`. Only a run that took nothing carries that stamp,
+since a take over an issue at rest is refused `ISSUE_AT_REST`; a queued
+declaration stamps nothing and a given-back key leaves `runIssues`, so neither
+holds. `issueRunDeclaredSql` asks it for the rescue, and
+`packages/core/src/issues/run-holder.ts:runSessionHoldersOf` reads it beside the
+live fleet leases for the in_progress guard (`packages/core/src/issues/work-state.ts:issueHolder`) and
+the awaiting_release guard, so both name the session runs/standing names
+(ISS-589). An ended session holds nothing.
+
 ## What a refusal carries
 
 Holders, not a count: an operator told only that something is held has to open
