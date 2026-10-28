@@ -214,6 +214,16 @@ describe("a core file the server refused with a wait (criterion 495, judge-170)"
     expect(sent).toEqual([`GET ${IMAGE}`]);
   });
 
+  it("says a held thumbnail in the lightbox's strip is missing to a screen reader only, with no words to spill past it", async () => {
+    const second = { ...imageRow, id: "img2", name: "orders.png", url: "/api/attachments/img2/download" };
+    draw(<AttachmentList rows={[imageRow, second]} />);
+    await screen.findByText("photo.png not loaded.");
+    fireEvent.click(screen.getByRole("button", { name: /photo\.png/ }));
+    const strip = await screen.findByRole("button", { name: "View orders.png" });
+    expect(strip).toHaveTextContent("");
+    expect(strip.querySelector('[role="img"]')).toHaveAttribute("aria-label", "orders.png not loaded.");
+  });
+
   it("refuses by name an image drawn where the app handed the kit no way to read core files", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<CoreImage path={IMAGE} alt="pasted" />)).toThrow(
