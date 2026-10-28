@@ -153,7 +153,7 @@ pass through here: it has already happened, gated by the host's own required che
 
 `issues.merged_artifacts` (0433) holds what a landing changed, one `{surface, ref, change}` per
 artifact: `surface` is one of `LANDING_SURFACES` (`packages/contracts/src/landing-artifacts.ts`) —
-`ui`, `api`, `logic`, `data`, `config`, `runner`, `design` — and `change` one of `added`, `changed`,
+`ui`, `api`, `logic`, `data`, `config`, `runner`, `design`, `adoption` — and `change` one of `added`, `changed`,
 `removed`. A surface or change outside those is refused by name at the route. It is written in the
 stamp's own UPDATE and cleared with it by `unmark`; `issues_merged_artifacts_chk` refuses a list with
 no `merged_at`, or one that is empty or not an array. NULL is a landing naming nothing structured.
@@ -203,6 +203,10 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
   mark is refused `MARK_ALREADY_STANDS` naming the revision and the read's refusal, never answered
   `already_merged` (FB-105: ISS-350 in 0.4.0-dev.113 changed code and read as a design revision alone).
 
+- **An adoption record** writes one `adoption` artifact per adopted version, on either shape (below).
+  Only the mark writer stamps one: an `adoption` artifact sent in `artifacts` is refused
+  `ARTIFACTS_ADOPTION_BY_HAND`, so the surface always names a record Forge read.
+
 The release read (`packages/core/src/release-batch/landing-surfaces.ts`) groups them into the release's
 `changes`: per surface its artifacts and the issues touching each, `design` marked as shipping
 nothing, and a risk where the data says so — a `data` artifact removed or changed, an `api` artifact
@@ -210,6 +214,39 @@ removed. An issue whose landing leaves anything unnamed — all of it, a commit 
 rule claims — is listed under `unclassified` with why, so the summary never reads complete when it
 is not. Rows marked before 0433 are not backfilled: their prose landings read `unclassified` with
 why, an amnesty that ends as each of those issues releases.
+
+## What an adoption record writes
+
+A consumer issue whose whole deliverable is adopting a contract version — its links and interface
+moved to the version, no code changed — has no commit to mark, and was refused `NO_WORK_EVIDENCE`
+without one (catalog-fe ISS-36, 2026-10-28). It lands on its adoption record instead (REQ-5 BC-17):
+`POST /api/issues/:id/merge` carrying `adoptions`, each `<project>/<contract>@<version>`.
+
+- **What is read.** `packages/core/src/ecosystem/adoption-record.ts:readAdoptionRecord` reads each
+  named version off the rows, never the caller's word: the version recorded on the provider, the
+  project's interface consuming the contract built against it, and every link the project holds to
+  the contract pinned at it. The first that does not hold is refused `ADOPTION_NOT_RECORDED` naming
+  what was read instead.
+- **What it never stands in for** (BC-18, `packages/core/src/issues/adoption-mark.ts:adoptionOf`). An
+  issue carrying code evidence — an implementation handoff's commit or files, a recorded branch, a
+  merged commit (`packages/core/src/issues/work-evidence.ts:codeEvidenceOf`) — is refused `ADOPTION_BESIDE_CODE` naming it, and
+  so is a mark sending `commit`, `changedPaths`, `landing`, `artifacts` or `target` beside
+  `adoptions`, or one over a merge Forge observed for the issue. A code-carrying issue lands on its
+  commit as before.
+- **What is written.** The stamp's own UPDATE (`packages/core/src/issues/merge-record.ts:recordIssueMerge`, evidence `adopted`)
+  sets `merged_at` and one `adoption` artifact per version, no commit; outside git it also names the
+  landing (`packages/core/src/issues/merge-mark-kind.ts:adoptionLandingOf`), so the shape reads it as landed. The mark kind
+  read off the columns is `asserted` on git and `landed` outside it; the answer and the audit
+  comment say instead that it is an adoption record and what was read
+  (`packages/core/src/issues/merge-mark-kind.ts:describeAdoptionMark`). The merge check and review judge a commit, so an
+  adoption mark asks neither, and a change-request project's host merge is not asked for: an
+  adoption has no change request.
+- **How it closes.** The `merged` guard (`packages/core/src/issues/merged-at.ts:mergeNotRecorded`) takes an adoption-only mark
+  (`packages/core/src/issues/merge-mark-kind.ts:adoptionOnlyStamp`) while its record still holds and refuses it naming the
+  record once it does not (`packages/core/src/issues/adoption-delivery.ts:readAdoptionDelivery`), on every shape. The
+  `released` guard closes it from `awaiting_release` without a release, as it does a design-only
+  issue: the record is what shipped. A mark whose links moved off the version closes only once the
+  version is adopted again or the mark is cleared and the code that moved it lands.
 
 ## What a design approval writes
 

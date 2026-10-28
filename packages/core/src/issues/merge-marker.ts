@@ -1,3 +1,4 @@
+import type { AdoptionHeld } from '@forge/contracts/ecosystem';
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { FileChange, LandingArtifact } from '@forge/contracts/landing-artifacts';
 import type { ActorAgency } from '@forge/contracts/permissions';
@@ -7,7 +8,7 @@ import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvents } from '../outbox/index.js';
 import type { Actor } from './activity.js';
-import { resolveCarriage } from './carriage.js';
+import { adoptionOf, stampAdoption } from './adoption-mark.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import { type HostMerge, hostMergeOfMark } from './host-mark.js';
 import {
@@ -22,10 +23,11 @@ import {
   standingMarkRefusal,
   wholeCommitRefusal,
 } from './landing-evidence.js';
-import { lastUnmarkedAt, markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
-import { uncheckedMergeRefusal } from './merge-check.js';
+import { refuseUncheckedMerge, resolveRecordedCommit, withCarriers } from './mark-preconditions.js';
+import { markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
 import { identifiedMergeForIssue } from './merge-identity.js';
 import {
+  describeAdoptionMark,
   describeMergeMark,
   designOnlyStamp,
   type MergeMarkKind,
@@ -39,11 +41,9 @@ import {
   recordReadPaths,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
-import { markEntryRefusal } from './pattern-entry.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
-import { unreviewedMergeRefusal } from './review.js';
-import { findMissingWorkEvidence, latestHandoffCommit } from './work-evidence.js';
+import { findMissingWorkEvidence } from './work-evidence.js';
 
 type AuditComment = { id: string; body: string; parentId: string | null };
 
@@ -59,23 +59,6 @@ export const mergedCommitShaSchema = z
   .string()
   .trim()
   .regex(/^[0-9a-f]{7,64}$/i, 'commit must be a git sha: 7 to 64 hex characters, nothing else');
-
-/**
- * ISS-959 — the commit this mark records, when the caller named none.
- *
- * `forge guide contract earning-and-unearning` requires that anything the
- * repository knows is written onto the issue at the step that knew it, and
- * says of this one: *"the merged mark, which today takes no commit and carries
- * it in the prose of its note"*. Prose is not a field, so the note's form was
- * part of the contract. This is the field, and the fallback is what makes it
- * arrive without every client learning it first.
- *
- * Only the newest handoff written since the issue was last unmarked is this landing's: an unmark
- * withdrew the landing every earlier handoff named, so a mark after it never claims one (ISS-489).
- */
-async function resolveRecordedCommit(issueId: string): Promise<string | null> {
-  return latestHandoffCommit(issueId, await lastUnmarkedAt(issueId));
-}
 
 /** The mark's words on the thread; `screenedAt` is the caller's field a refusal points at. */
 async function writeAuditComment(
@@ -121,6 +104,9 @@ type MergeMarkArgs = {
   mergedAt?: Date | null;
   /** The contract versions the landed work implemented, `<project>/<contract>@<version>` each. */
   contracts?: readonly string[] | undefined;
+  /** The contract versions an issue that changed no code adopted, `<project>/<contract>@<version>`
+   *  each: its whole deliverable, read off the project's interface and links (REQ-5 BC-17). */
+  adoptions?: readonly string[] | undefined;
   actor: MergeMarkerActor;
 };
 
@@ -135,6 +121,15 @@ type Stamp = {
   readFrom: RepositoryLanding | null;
   /** The target this call named, which an observed row's own target outranks. */
   claimedTarget?: string | null;
+  /** The adoption record this mark was read from, where it is one. */
+  adopted?: AdoptionHeld[] | null;
+};
+
+type Preflight = {
+  shape: LandingShape;
+  fromRepository: RepositoryLanding | null;
+  /** The adoption record read before the stamp, where the mark names `adoptions`. */
+  adopted?: AdoptionHeld[] | null;
 };
 
 /** The refusals a mark meets before its transaction: the landing shape, the target, contract
@@ -144,10 +139,16 @@ async function preflightMark(
   args: MergeMarkArgs,
   prior: IssueRow,
   hostMerge: HostMerge | null,
-): Promise<{ shape: LandingShape; fromRepository: RepositoryLanding | null }> {
+): Promise<Preflight> {
   const issueId = args.issue.id;
   const shape = await readLandingShape(args.issue.projectId, db);
   if (shape === null) throw refuse('PROJECT_DOCUMENT_NOT_FOUND', SOURCE_UNDECLARED);
+  if (args.adoptions) {
+    const adopted = await adoptionOf(args);
+    const drifted = await contractDrift(prior, [...(args.contracts ?? []), ...args.adoptions]);
+    if (drifted) throw refuse(drifted.code, drifted.detail, '/adoptions');
+    return { shape, fromRepository: null, adopted };
+  }
   // A landing on a git project is refused below whatever the target, and that refusal names the
   // real fault, so the missing target is not reported ahead of it.
   if (markTargetRequired(shape) && !args.target && !args.landing) {
@@ -199,12 +200,22 @@ async function overDesign(
 async function stampMark(
   tx: Tx,
   args: MergeMarkArgs,
-  preflight: { shape: LandingShape; fromRepository: RepositoryLanding | null },
+  preflight: Preflight,
   /** The host merge, else a projected one, whose commit is this issue's landing (`merge-identity.ts`). */
   observed: HostMerge | null,
 ): Promise<Stamp> {
   const { shape, fromRepository } = preflight;
   const issueId = args.issue.id;
+  if (preflight.adopted) {
+    const result = await stampAdoption(tx, args, { shape, adopted: preflight.adopted, observed });
+    return {
+      result,
+      claimedCommit: null,
+      readFrom: null,
+      claimedTarget: null,
+      adopted: preflight.adopted,
+    };
+  }
   const landing = args.landing ?? null;
   const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
   if (refused) throw refuse(refused.code, refused.detail, '/landing');
@@ -361,15 +372,18 @@ async function writeMarkTrail(
         mergedLanding: result.landing,
       })
     : 'unmarked';
-  const markDetail = describeMergeMark({
-    kind: mark,
-    commitSha: result.commitSha,
-    claimedCommit,
-    landing: result.landing,
-    ...(readFrom && result.wrote ? { readFrom } : {}),
-    target: result.target,
-    claimedTarget: stamp.claimedTarget ?? null,
-  });
+  const markDetail =
+    stamp.adopted && result.wrote
+      ? describeAdoptionMark(stamp.adopted)
+      : describeMergeMark({
+          kind: mark,
+          commitSha: result.commitSha,
+          claimedCommit,
+          landing: result.landing,
+          ...(readFrom && result.wrote ? { readFrom } : {}),
+          target: result.target,
+          claimedTarget: stamp.claimedTarget ?? null,
+        });
   const audit = await writeAuditComment(
     issueId,
     args.actor.commentAuthorId,
@@ -427,57 +441,6 @@ async function writeMarkTrail(
   return { mark, markDetail };
 }
 
-/**
- * A merge a check is owed for is marked only at a commit a passing merge check is recorded at
- * (Issue to release r20 `rule-merge`; `merge-check.ts`). The commit is the one the mark names, else
- * the one the row or the issue's work evidence already records. Before that, each approved new
- * pattern's catalog page must be in the change at that commit (`pattern-entry.ts`): a check that ran
- * while the pattern waited on its reviewer did not ask for it. After it, a project that declares the
- * merge check asks a passing review at that commit by another than the building run (`review.ts`).
- */
-async function refuseUncheckedMerge(
-  args: MergeMarkArgs,
-  prior: IssueRow,
-  shape: LandingShape,
-): Promise<void> {
-  if (shape !== 'git') return;
-  const commit =
-    args.commit ?? prior.mergedCommitSha ?? (await resolveRecordedCommit(prior.id)) ?? null;
-  const entry = await markEntryRefusal({
-    issueId: prior.id,
-    projectId: prior.projectId,
-    commit,
-    changedPaths: args.changedPaths ?? null,
-  });
-  if (entry) throw refuse(entry.code, entry.detail, entry.path);
-  const detail = await uncheckedMergeRefusal({
-    issueId: prior.id,
-    projectId: prior.projectId,
-    commit,
-  });
-  if (detail) throw refuse('MERGE_CHECK_MISSING', detail, '/commit');
-  const review = await unreviewedMergeRefusal({
-    issueId: prior.id,
-    projectId: prior.projectId,
-    commit,
-  });
-  if (review) throw refuse('MERGE_REVIEW_MISSING', review, '/commit');
-}
-
-/** The mark's artifacts with each `carriedBy` resolved to its carrier's key, or the refusal naming it. */
-async function withCarriers(args: MergeMarkArgs, prior: IssueRow): Promise<MergeMarkArgs> {
-  if (args.op !== 'mark' || !args.artifacts?.some((a) => a.carriedBy !== undefined)) return args;
-  const carried = await resolveCarriage({
-    issueId: prior.id,
-    projectId: prior.projectId,
-    artifacts: args.artifacts,
-  });
-  if (!carried.ok) {
-    throw refuse(carried.code, carried.detail, `/artifacts/${carried.index}/carriedBy`);
-  }
-  return { ...args, artifacts: carried.artifacts };
-}
-
 export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   issue: IssueRow;
   action: 'merged' | 'already_merged' | 'unmarked';
@@ -497,14 +460,18 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   const prior = await findIssueById(input.issue.id);
   if (!prior) throw notFound('issue not found');
   const args = await withCarriers(input, prior);
+  // an adoption has no change request: the record Forge reads is its landing on every shape
   const hostMerge =
-    args.op === 'mark' ? await hostMergeOfMark(args, prior, args.actor.hookActor) : null;
+    args.op === 'mark' && !args.adoptions
+      ? await hostMergeOfMark(args, prior, args.actor.hookActor)
+      : null;
   const preflight = args.op === 'mark' ? await preflightMark(args, prior, hostMerge) : null;
   // A commit no host or repository resolved is recorded as the caller's claim, so it is whole.
   const unread = preflight && !hostMerge && !preflight.fromRepository;
   const partial = unread ? wholeCommitRefusal(args.commit) : null;
   if (partial) throw refuse(partial.code, partial.detail, '/commit');
-  if (preflight) await refuseUncheckedMerge(args, prior, preflight.shape);
+  // the merge check and its review judge a commit, and an adoption record lands none
+  if (preflight && !preflight.adopted) await refuseUncheckedMerge(args, prior, preflight.shape);
 
   const observed =
     hostMerge ??
