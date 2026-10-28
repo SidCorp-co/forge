@@ -241,6 +241,22 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     expect(ok(await standing()).outdated).toBeNull();
   });
 
+  it("refuses a runner row that is not this device's, naming it", async () => {
+    const res = await verdict({ projectId, runnerId: otherRunnerId, facts: facts() });
+    expect(res.status, JSON.stringify(res.json)).toBe(404);
+    expect(JSON.stringify(res.json)).toContain(otherRunnerId);
+  });
+
+  it('refuses a fact it does not know by name, rather than deciding without it', async () => {
+    const res = await verdict({ projectId, runnerId, facts: facts({ pane: 'maybe' }) });
+    expect(res.status, JSON.stringify(res.json)).toBe(400);
+    expect(JSON.stringify(res.json)).toContain('pane');
+    const extra = await verdict({ projectId, runnerId, facts: facts({ placement: 'adopt' }) });
+    expect(extra.status).toBe(400);
+  });
+});
+
+describe('POST /api/devices/me/master-session/verdict for an archived project', () => {
   // dev Forge 2026-10-28: `hop` was archived at 10:15:15Z and 45s later the box placed its master
   // again on core's `place`, and opened a pass for it.
   it('an archived project places no master, retires a standing one and opens no pass; unarchived, it is placed again', async () => {
@@ -300,19 +316,5 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     expect(await judged({ ...at, facts: facts() })).toMatchObject({ act: 'place', nudge: true });
     expect(await judged({ ...at, facts: idle })).toMatchObject({ act: 'keep', nudge: true });
     ok(await pass(), 201);
-  });
-
-  it("refuses a runner row that is not this device's, naming it", async () => {
-    const res = await verdict({ projectId, runnerId: otherRunnerId, facts: facts() });
-    expect(res.status, JSON.stringify(res.json)).toBe(404);
-    expect(JSON.stringify(res.json)).toContain(otherRunnerId);
-  });
-
-  it('refuses a fact it does not know by name, rather than deciding without it', async () => {
-    const res = await verdict({ projectId, runnerId, facts: facts({ pane: 'maybe' }) });
-    expect(res.status, JSON.stringify(res.json)).toBe(400);
-    expect(JSON.stringify(res.json)).toContain('pane');
-    const extra = await verdict({ projectId, runnerId, facts: facts({ placement: 'adopt' }) });
-    expect(extra.status).toBe(400);
   });
 });

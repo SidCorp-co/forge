@@ -2371,7 +2371,7 @@ export const SAID = {
 		vars: { archived: "said" },
 	},
 	"masters.verdict.archivedHeld": {
-		en: "{archived}: its pane is left undriven and retired once nothing holds it: {held}",
+		en: "{archived}: its pane idles undriven, retired once free of {held}",
 		vars: { archived: "said", held: "saidList" },
 	},
 	"masters.verdict.archivedJobPanes": {
