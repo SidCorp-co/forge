@@ -1,7 +1,11 @@
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueCreateRefusalCode } from '@forge/contracts/issues';
-import { personGateAct, personGatePermission } from '@forge/contracts/person-gates';
+import {
+  effectiveApprovals,
+  personGateAct,
+  personGatePermission,
+} from '@forge/contracts/person-gates';
 import type { WrittenLang } from '@forge/contracts/written-lang';
 import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
@@ -10,6 +14,7 @@ import { currentPatScope } from '../credentials/pat-scope.js';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
+import { saidByGate } from '../lib/gated.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { writtenLangFor } from '../lib/written-lang.js';
@@ -29,6 +34,7 @@ import { refuseHeldTake } from './blocked-by.js';
 import { callerBoxOf } from './caller-box.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import { claimDetectorKey, isValidDetectorKey } from './detector-key.js';
+import { issueGateOf } from './gates.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
   type LabelAttachInput,
@@ -131,7 +137,7 @@ export async function insertIssueRow(
   values: typeof issues.$inferInsert,
   by: { actor: Actor; labelIds?: readonly string[] },
 ): Promise<IssueCreateRow> {
-  await refuseChatDoorFiling();
+  await refuseChatDoorFiling(values.projectId);
   // the language its title and body were written in: the caller's where it copies them from a row
   // that holds one, else the writer's (`writtenLangFor`)
   const writtenLang =
@@ -179,16 +185,23 @@ const CHAT_DOOR_SAYS = {
  * No chat door files an issue (owner ruling 2026-10-08): a person's report or wish enters as
  * Feedback or a Requirement, and issues are produced from those by triage or breakdown. Read from
  * the credential this request arrived on, so the assistant's `forge` CLI, its in-process tools and
- * an Agent-mode shell's `forge-runner api` all meet it, whatever route reaches the insert.
+ * an Agent-mode shell's `forge-runner api` all meet it, whatever route reaches the insert. It is the
+ * gate `chat_files_issue`: a profile that turns it off (yolo, REQ-76 BC-9) lets a chat file the
+ * issue itself, and the issue then meets the same ready check as any other.
  */
-async function refuseChatDoorFiling(): Promise<void> {
+async function refuseChatDoorFiling(projectId: string): Promise<void> {
   const scope = currentPatScope();
   if (!scope) return;
   const chat = await chatDoorOfToken(scope.tokenId);
   if (!chat) return;
-  throw refuse(
-    'CHAT_FILES_FEEDBACK_NOT_ISSUES',
-    `this credential belongs to ${CHAT_DOOR_SAYS[chat.door]}, and a chat files no issue: issues come from requirement breakdown or feedback triage. Record a problem or a wish as Feedback (\`POST /api/projects/:id/feedback\`, kind bug | change_request | idea | question, linked to the requirement it touches) or draft a Requirement (\`POST /api/projects/:id/requirements\`) or a revision of one (\`POST /api/projects/:id/requirements/REQ-n/revisions\`), after the person confirms.`,
+  const gate = await issueGateOf(projectId, 'chat_files_issue');
+  if (gate.mode !== 'enforce') return;
+  throw saidByGate(
+    gate,
+    refuse(
+      'CHAT_FILES_FEEDBACK_NOT_ISSUES',
+      `this credential belongs to ${CHAT_DOOR_SAYS[chat.door]}, and a chat files no issue: issues come from requirement breakdown or feedback triage. Record a problem or a wish as Feedback (\`POST /api/projects/:id/feedback\`, kind bug | change_request | idea | question, linked to the requirement it touches) or draft a Requirement (\`POST /api/projects/:id/requirements\`) or a revision of one (\`POST /api/projects/:id/requirements/REQ-n/revisions\`), after the person confirms.`,
+    ),
   );
 }
 
@@ -203,10 +216,10 @@ async function asksAdmission(
   named: CreateEntryStatus | undefined,
 ): Promise<boolean> {
   if (named === 'draft') return false;
-  const approvals = (await readProjectDocument(projectId))?.document.approvals;
+  const document = (await readProjectDocument(projectId))?.document;
   const gate = {
-    permission: personGatePermission(approvals, 'admit'),
-    act: personGateAct(approvals, 'admit'),
+    permission: personGatePermission(effectiveApprovals(document), 'admit'),
+    act: personGateAct(document, 'admit'),
   };
   const denied = await permissionRefusalFor(
     actorFor(userId),
@@ -349,7 +362,7 @@ export async function createIssue(
   input: CreateIssueInput,
   writer: IssueCreateWriter,
 ): Promise<CreateIssueResult> {
-  await refuseChatDoorFiling();
+  await refuseChatDoorFiling(input.projectId);
   refuseBirthStatus(input.status);
   const admit = await asksAdmission(
     input.projectId,

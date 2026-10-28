@@ -17,12 +17,20 @@ import {
   type RecordAnswers,
   waivedEvaluation,
 } from '@forge/contracts/checklists';
+import {
+  gatesConfigSchema,
+  isGateId,
+  type ResolvedGate,
+  resolveGate,
+} from '@forge/contracts/gate-profiles';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import type { MachineEntity, MachineOf, StateOf } from '@forge/contracts/machines';
 import type { Gate } from '@forge/contracts/move-gates';
 import type { MachineEdge } from '@forge/contracts/state-machine';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { kernelRefusedMoves } from '../db/schema.js';
+import { gateRefusals } from '../lib/gated.js';
 import type { Refusal } from '../lib/refusal.js';
 import type { MoverColumns, PriorRow, Tx } from './transition.js';
 
@@ -110,12 +118,61 @@ export async function judgeChecklist<E extends MachineEntity>(
     record,
     ...(move.checklist.derived ? { derived: move.checklist.derived } : {}),
   });
-  if (!evaluation.complete && !move.checklist.waive) {
-    return { refusals: checklistRefusals(evaluation) };
+  if (evaluation.complete || move.checklist.waive) {
+    const recorded = evaluation.complete ? evaluation : waivedEvaluation(evaluation);
+    move.checklist.judged?.(recorded);
+    return { evaluation: recorded };
   }
-  const recorded = evaluation.complete ? evaluation : waivedEvaluation(evaluation);
+  const gate = await checklistGateOf(tx, machine.entity, row, id);
+  if (gate.mode === 'enforce') {
+    return { refusals: gateRefusals(gate, checklistRefusals(evaluation)) };
+  }
+  const recorded = waivedEvaluation(evaluation, `gate:${gate.id}:${gate.profile}`);
   move.checklist.judged?.(recorded);
   return { evaluation: recorded };
+}
+
+/** The table each entity whose machine names a checklist is stored in, read for the row's project. */
+const CHECKLIST_ENTITY_TABLES: Partial<Record<MachineEntity, string>> = {
+  issue: 'issues',
+  requirement: 'requirements',
+  feedback: 'feedback',
+  suggestion: 'suggestions',
+  workflow_design: 'project_workflows',
+};
+
+/**
+ * The checklist's gate on the row's project (REQ-76): a checklist gate is set by the profile or an
+ * override alone, never by another switch, so only the document's `gates` is read, through the move's
+ * own transaction. The row a move is judged on carries its id and status only, so its project is read
+ * from the entity's own table; an entity with no table here is refused by name, never gated as a guess.
+ */
+async function checklistGateOf(
+  tx: Tx,
+  entity: MachineEntity,
+  row: PriorRow<MachineEntity>,
+  id: ChecklistId,
+): Promise<ResolvedGate> {
+  if (!isGateId(id)) throw new Error(`transition: checklist \`${id}\` is in no gate catalog entry`);
+  const table = CHECKLIST_ENTITY_TABLES[entity];
+  if (!table) {
+    throw new Error(
+      `transition: ${entity} names checklist \`${id}\`, and no table is declared to read its project's gate profile from`,
+    );
+  }
+  const [held] = (await tx.execute(sql`
+    SELECT d.document -> 'gates' AS gates
+      FROM ${sql.raw(table)} t
+      JOIN project_config_documents d ON d.project_id = t.project_id
+     WHERE t.id = ${row.id}::uuid
+  `)) as unknown as { gates: unknown }[];
+  const parsed = held?.gates == null ? null : gatesConfigSchema.safeParse(held.gates);
+  if (parsed && !parsed.success) {
+    throw new Error(
+      `transition: ${entity} ${row.id}'s project gates no longer parse; nothing is guessed`,
+    );
+  }
+  return resolveGate(parsed?.data, id, 'enforce');
 }
 
 /**

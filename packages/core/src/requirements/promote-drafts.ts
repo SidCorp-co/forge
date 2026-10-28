@@ -1,14 +1,14 @@
 /**
- * The act that answers a requirement's "promote N draft issues": a holder of requirements.approve who
- * also holds issues.admit moves its draft issues `draft → open`, all of them or the ones named (FB-93).
- * Signing does not widen who may admit (question 3b8292dc, B): a signer without issues.admit is refused
- * by name before anything moves, and the standing never asks them. A breakdown accept
+ * The act that answers a requirement's "promote N draft issues": whoever the project's admit gate asks
+ * for (`approval_admit`: issues.admit where it is enforced, project.write where it is not, REQ-76 /
+ * ISS-640) moves its draft issues `draft → open`, all of them or the ones named (FB-93). Signing does
+ * not widen who may admit (question 3b8292dc, B): one the gate does not let admit is refused by name
+ * before anything moves, and the standing never asks them. A breakdown accept
  * files its issues at draft on purpose (`suggestions/breakdown.ts`); this is the separate, visible
  * take-on the owner kept. Each issue moves through its own status move (`issues/apply-transition.ts`),
  * so each keeps its guards, its record and its event; a refused one is named and the rest still move.
  */
 
-import { ISSUE_ADMIT_PERMISSION } from '@forge/contracts/issue-machine';
 import {
   draftIssuesToPromote,
   isAgreedStatus,
@@ -24,7 +24,7 @@ import type { RequirementStatus } from '../db/schema-requirements.js';
 import { activeIssuePrefix, transitionIssueStatus } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal } from '../lib/refusal.js';
-import { permissionFactsOf, permissionRefusal } from '../permissions/index.js';
+import { personGateOf } from '../project-config/index.js';
 import { detailOf, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
 
@@ -113,18 +113,12 @@ export async function promoteDraftIssues(input: {
 }): Promise<PromoteOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const signer = await signerRefusal(
-    actor,
+  const gate = await personGateOf(
     projectId,
-    "promoting a requirement's draft issues",
-    row,
-  );
-  if (signer) return { ok: false, refusals: [signer] };
-  const admit = permissionRefusal(
-    await permissionFactsOf(actor.userId, projectId),
-    ISSUE_ADMIT_PERMISSION,
+    'admit',
     "promoting a requirement's draft issues to open",
   );
+  const admit = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
   if (admit) return { ok: false, refusals: [admit] };
   const prefix = await activeIssuePrefix(projectId);
   const linked = await db

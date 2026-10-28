@@ -8,12 +8,13 @@ import type { ProjectDetail } from "@/features/projects";
 import { projectSettingsApi } from "./api";
 import { releaseReadinessKey, useToastedMutation } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { LabelCreateInput, LabelPatchInput, PluginDesignation, ProjectRole, ProjectUpdateInput } from "./types";
+import type { GatesWrite, LabelCreateInput, LabelPatchInput, PluginDesignation, ProjectRole, ProjectUpdateInput } from "./types";
 
 const project = (id: string | undefined) => ["project", id];
 const members = (id: string | undefined) => ["project", id, "members"];
 const invitations = (id: string | undefined) => ["project", id, "invitations"];
 const labels = (id: string | undefined) => ["project", id, "labels"];
+const gates = (id: string | undefined) => ["project", id, "gates"];
 
 function useProjectQuery<T>(keyOf: (id: string | undefined) => readonly unknown[], id: string | undefined, read: (id: string) => Promise<T>) {
 	return useQuery({ queryKey: keyOf(id), queryFn: id ? () => read(id) : skipToken });
@@ -175,5 +176,22 @@ export function useWriteKnowledge(id: string | undefined) {
 			projectSettingsApi.putKnowledgeEntry(id as string, entry.slug, { title: entry.title, body: entry.body }),
 		invalidates: [releaseReadinessKey(id)],
 		saved: (_row, entry) => t("settings.project.toast.knowledgeSaved", { name: entry.title }),
+	});
+}
+
+/** Every policy gate, its default per profile, and the kernel (`GET /api/gates`). */
+export const useGateCatalog = () => useQuery({ queryKey: ["gates", "catalog"], queryFn: projectSettingsApi.getGateCatalog, staleTime: 5 * 60_000 });
+
+/** The project's gates as they stand, with their recorded changes. */
+export const useProjectGates = (id: string | undefined) => useProjectQuery(gates, id, projectSettingsApi.getGates);
+
+/** Set the profile and overrides. The caller shows a refusal itself, verbatim; a written gate moves the
+ *  project document's revision, so the sections reading that document read it again. */
+export function useWriteGates(id: string | undefined) {
+	const t = useCopy();
+	return useToastedMutation({
+		mutationFn: (write: GatesWrite) => projectSettingsApi.putGates(id as string, write),
+		invalidates: [gates(id), ["project", id, "config"], ["project", id, "config-effective"]],
+		saved: t("settings.project.gates.saved"),
 	});
 }

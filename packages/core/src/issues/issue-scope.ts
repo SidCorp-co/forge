@@ -22,8 +22,10 @@ import { rowsOf } from '../db/raw-sql.js';
 import { type ScopeHoldersFilter, scopeHoldersSql } from '../db/schema-issue-designs.js';
 import { liveIssueLeasesSql } from '../db/schema-issue-leases.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { saidByGate } from '../lib/gated.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
+import { issueGateOf } from './gates.js';
 
 type Reader = Pick<Tx, 'execute'>;
 
@@ -113,6 +115,8 @@ export async function refuseScopeHeldForKeys(
   args: { projectId: string; keys: readonly string[]; door: string; filter?: ScopeHoldersFilter },
 ): Promise<void> {
   if (args.keys.length === 0) return;
+  const gate = await issueGateOf(args.projectId, 'scope_hold');
+  if (gate.mode !== 'enforce') return;
   const keys = sql.join(
     args.keys.map((k) => sql`${k}`),
     sql`, `,
@@ -122,7 +126,7 @@ export async function refuseScopeHeldForKeys(
     sql`mi.project_id = ${args.projectId} AND 'ISS-' || mi.iss_seq IN (${keys})`,
     { exceptKeys: args.keys, ...args.filter },
   );
-  if (holds.length > 0) throw scopeHeld(holds, args.door);
+  if (holds.length > 0) throw saidByGate(gate, scopeHeld(holds, args.door));
 }
 
 /**
@@ -135,6 +139,8 @@ export async function refuseScopeHeldForBuild(
   executor: Reader,
   issue: { id: string; projectId: string },
 ): Promise<void> {
+  const gate = await issueGateOf(issue.projectId, 'scope_hold');
+  if (gate.mode !== 'enforce') return;
   await lockProjectScope(executor, issue.projectId);
   const own = rowsOf<{ run_id: string }>(
     await executor.execute(sql`
@@ -147,5 +153,5 @@ export async function refuseScopeHeldForBuild(
     exceptRunId: own?.run_id ?? null,
     buildingOnly: true,
   });
-  if (holds.length > 0) throw scopeHeld(holds, 'the move of the work into build');
+  if (holds.length > 0) throw saidByGate(gate, scopeHeld(holds, 'the move of the work into build'));
 }

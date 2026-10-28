@@ -1,5 +1,6 @@
 import { secretRefOf } from '@forge/contracts/project-config';
 import type { z } from 'zod';
+import type { Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
 import {
   encryptSecret,
@@ -33,7 +34,8 @@ import {
 export interface Held<T> {
   revision: number;
   document: T;
-  updatedBy: string;
+  /** Null only on a project document revision Forge wrote itself (REQ-76 BC-13). */
+  updatedBy: string | null;
   updatedAt: Date;
 }
 
@@ -167,16 +169,37 @@ async function buildProjectConfigContext(projectId: string): Promise<ProjectConf
   };
 }
 
-export async function writeProjectConfig(input: {
+/** The project document's own door: every key but `gates`, which only its door changes. */
+export function writeProjectConfig(input: {
   projectId: string;
   userId: string;
   baseRevision: number | null;
   raw: unknown;
 }): Promise<WriteOutcome<ProjectDocument>> {
+  return writeProjectDocument(input);
+}
+
+const gatesJson = (doc: unknown): string =>
+  JSON.stringify(isRecord(doc) && doc.gates !== undefined ? doc.gates : null);
+
+/**
+ * A project document write. Only the gates door (`gates.ts:writeGates`) passes `gates`, whose `also`
+ * records the change in the write's transaction; any other write that changes `gates` is refused
+ * GATES_WRITTEN_THROUGH_THEIR_DOOR, so no change to a project's gates goes unrecorded (REQ-76 BC-12).
+ */
+export async function writeProjectDocument(input: {
+  projectId: string;
+  /** Null is Forge itself. */
+  userId: string | null;
+  baseRevision: number | null;
+  raw: unknown;
+  gates?: { also: (tx: Tx, stored: StoredDocument) => Promise<void> };
+}): Promise<WriteOutcome<ProjectDocument>> {
   const { projectId, userId, baseRevision, raw } = input;
   const claimedId = isRecord(raw) && isRecord(raw.project) ? raw.project.id : undefined;
+  const current = await drizzleConfigStore.readProject(projectId);
   return writeDocument({
-    current: await drizzleConfigStore.readProject(projectId),
+    current,
     baseRevision,
     raw,
     schema: projectDocumentSchema,
@@ -209,10 +232,24 @@ export async function writeProjectConfig(input: {
           detail: `slug "${document.project.slug}" is already project ${takenBy}'s; a slug is unique across the deployment.`,
         });
       }
+      if (!input.gates && gatesJson(document) !== gatesJson(current?.document)) {
+        refusals.push({
+          code: 'GATES_WRITTEN_THROUGH_THEIR_DOOR',
+          path: '/gates',
+          detail: `this write changes the project's gates, which only PUT /api/projects/${projectId}/gates changes, with a reason, so the change is recorded with who made it and why; send /gates as it stands (${gatesJson(current?.document)}) and change it there.`,
+        });
+      }
       refusals.push(...checkProjectConfig(document, await buildProjectConfigContext(projectId)));
       return refusals;
     },
-    cas: (document) => drizzleConfigStore.casProject({ projectId, baseRevision, document, userId }),
+    cas: (document) =>
+      drizzleConfigStore.casProject({
+        projectId,
+        baseRevision,
+        document,
+        userId,
+        ...(input.gates ? { also: input.gates.also } : {}),
+      }),
   });
 }
 

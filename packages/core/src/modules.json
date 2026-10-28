@@ -950,6 +950,7 @@
       "owns": [
         "integrationBindings",
         "projectConfigDocuments",
+        "projectGateChanges",
         "projectPolicies",
         "projectSecrets",
         "projectTestingProfiles"

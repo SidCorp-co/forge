@@ -1,8 +1,9 @@
 /**
  * A requirement whose live issues are all drafts asks a signer who can admit them to "promote N
  * draft issues"; the promote act answers that ask where it is shown (FB-93: six pages and eighteen clicks).
- * Only a holder of both requirements.approve and issues.admit is asked or may act (question 3b8292dc,
- * B): a signer without issues.admit reads the drafts as waiting on someone who can. Each draft moves
+ * Only whoever the project's admit gate names is asked or may act (question 3b8292dc, B; REQ-76 /
+ * ISS-640): issues.admit where approvals.admit is on, project.write where it is off, so a signer
+ * without issues.admit reads the drafts as waiting on someone who can only where the gate asks it. Each draft moves
  * `draft → open` through its own status move, a refused one is named while the rest still move, and
  * the waiting line and the act read the same drafts, so both go once they are promoted.
  */
@@ -11,6 +12,7 @@
 
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { db } from '../../src/db/client.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
@@ -19,6 +21,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 let owner = '';
 let ownerId = '';
@@ -232,45 +235,61 @@ describe('a mix where one draft cannot move', () => {
 });
 
 describe('who may promote, and what there is to promote', () => {
-  it('refuses a person who is not a signer by naming requirements.approve, and the draft stays', async () => {
+  // ISS-640, REQ-76: promote asks what admitting asks, the gate approval_admit, never
+  // requirements.approve on its own: with approvals.admit off (the default) whoever may write the
+  // project promotes
+  it('with approvals.admit off, a member who may write the project promotes, and the standing asks them', async () => {
     const { req, issues } = await agreedWithDrafts(1);
     const asMember = await ok(api(member, 'GET', at(`/requirements/${req}`)));
-    expect(asMember.canPromote).toBe(false);
+    expect(asMember.canPromote).toBe(true);
     expect((asMember.standing as Body).waitingOn).toMatchObject({
-      kind: 'person',
-      who: 'a BA or owner who can admit issues',
+      kind: 'you',
       act: 'promote 1 draft issue',
     });
-    const res = await api(member, 'POST', at(`/requirements/${req}/promote`), {});
-    expect(res.status).toBe(403);
-    const refusals = refusalsOf(res.body);
-    expect(refusals.map((r) => `${r.code} ${r.path}`)).toEqual(['PERMISSION_FORBIDDEN ']);
-    expect(refusals[0]?.detail).toContain('requirements.approve');
-    expect(await statusOf(issues[0]?.id)).toBe('draft');
+    const res = await ok(api(member, 'POST', at(`/requirements/${req}/promote`), {}));
+    expect((res.promoted as Body[]).map((p) => p.issueId)).toEqual([issues[0]?.id]);
+    expect(await statusOf(issues[0]?.id)).toBe('open');
   });
 
-  it('does not ask a signer without issues.admit, and refuses them by naming it', async () => {
-    const { req, issues } = await agreedWithDrafts(2);
-    const asBa = await ok(api(ba, 'GET', at(`/requirements/${req}`)));
-    expect(asBa.canSignOff).toBe(true);
-    expect(asBa.canPromote).toBe(false);
-    // only drafts carry it, and nothing opens a draft by itself: stuck at once (REQ-48 BC-9 draft_carrier)
-    expect((asBa.standing as Body).attentionGroup).toBe('stuck');
-    expect(((asBa.standing as Body).times as Body).stuck).toMatchObject({ code: 'draft_carrier' });
-    expect((asBa.standing as Body).waitingOn).toMatchObject({
-      kind: 'person',
-      who: 'a BA or owner who can admit issues',
-      act: 'promote 2 draft issues',
+  it('with approvals.admit on, does not ask a signer without issues.admit, and refuses them naming it and the gate', async () => {
+    await seedProjectDocument(projectId, ownerId, {
+      environments: {
+        beta: { tier: 'staging', deploysFrom: 'main', deployment: { mode: 'external' } },
+      } as never,
+      extra: { approvals: { admit: true } },
     });
-    const needsYou = await ok(api(ba, 'GET', at('/needs-you')));
-    expect((needsYou.items as Body[]).filter((i) => i.key === req)).toEqual([]);
+    try {
+      const { req, issues } = await agreedWithDrafts(2);
+      const asBa = await ok(api(ba, 'GET', at(`/requirements/${req}`)));
+      expect(asBa.canSignOff).toBe(true);
+      expect(asBa.canPromote).toBe(false);
+      // only drafts carry it, and nothing opens a draft by itself: stuck at once (REQ-48 BC-9 draft_carrier)
+      expect((asBa.standing as Body).attentionGroup).toBe('stuck');
+      expect(((asBa.standing as Body).times as Body).stuck).toMatchObject({
+        code: 'draft_carrier',
+      });
+      expect((asBa.standing as Body).waitingOn).toMatchObject({
+        kind: 'person',
+        who: 'a BA or owner who can admit issues',
+        act: 'promote 2 draft issues',
+      });
+      const needsYou = await ok(api(ba, 'GET', at('/needs-you')));
+      expect((needsYou.items as Body[]).filter((i) => i.key === req)).toEqual([]);
 
-    const res = await api(ba, 'POST', at(`/requirements/${req}/promote`), {});
-    expect(res.status).toBe(403);
-    const refusals = refusalsOf(res.body);
-    expect(refusals.map((r) => `${r.code} ${r.path}`)).toEqual(['PERMISSION_FORBIDDEN ']);
-    expect(refusals[0]?.detail).toContain('issues.admit');
-    for (const issue of issues) expect(await statusOf(issue.id)).toBe('draft');
+      for (const who of [ba, member]) {
+        const res = await api(who, 'POST', at(`/requirements/${req}/promote`), {});
+        expect(res.status).toBe(403);
+        const refusals = refusalsOf(res.body);
+        expect(refusals.map((r) => `${r.code} ${r.path}`)).toEqual(['PERMISSION_FORBIDDEN ']);
+        expect(refusals[0]?.detail).toContain('issues.admit');
+        expect(refusals[0]?.detail).toContain(
+          "Gate approval_admit is enforced by this project's approvals.admit setting",
+        );
+      }
+      for (const issue of issues) expect(await statusOf(issue.id)).toBe('draft');
+    } finally {
+      await db.execute(sql`DELETE FROM project_config_documents WHERE project_id = ${projectId}`);
+    }
   });
 
   it('asks a signer who holds issues.admit by grant, and lets them promote', async () => {

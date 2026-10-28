@@ -1,3 +1,4 @@
+import type { GateEntry, GateMode, GateProfile, RaiseCause, ResolvedGate } from "@forge/contracts/gate-profiles";
 import type { ReleaseGateView } from "@forge/contracts/releases";
 
 /** Patch body accepted by `PATCH /api/projects/:id`.
@@ -152,4 +153,47 @@ export interface ReleaseReadiness {
 
 export interface ProjectAgentConfig {
 	plugins?: PluginDesignation[];
+}
+
+/** `GET /api/gates`: every policy gate with its default per profile, and the kernel no profile relaxes (REQ-76 BC-1). */
+export interface GateCatalog {
+	profiles: GateProfile[];
+	modes: GateMode[];
+	gates: GateEntry[];
+	kernel: { id: string; holds: string; codes: string[] }[];
+}
+
+/** One recorded change of a project's gates, newest first (REQ-76 BC-12). */
+export interface GateChange {
+	at: string;
+	configRevision: number;
+	profileFrom: GateProfile | null;
+	profileTo: GateProfile;
+	overridesFrom: Partial<Record<string, GateMode>>;
+	overridesTo: Partial<Record<string, GateMode>>;
+	actorKind: "person" | "agent" | "forge";
+	actorUserId: string | null;
+	actorName: string | null;
+	cause: "set" | RaiseCause;
+	reason: string;
+	ref: string | null;
+}
+
+/** `GET /api/projects/:id/gates`: the project's profile, any raise, its overrides and every gate's mode. */
+export interface ProjectGates {
+	declared: boolean;
+	revision: number | null;
+	profile: GateProfile;
+	raised: { from: GateProfile; cause: RaiseCause; ref: string; at: string } | null;
+	overrides: Partial<Record<string, GateMode>>;
+	gates: ResolvedGate[];
+	changes: GateChange[];
+}
+
+/** `PUT /api/projects/:id/gates`: the whole profile and overrides, at the revision read, and why. */
+export interface GatesWrite {
+	baseRevision: number;
+	profile: GateProfile;
+	overrides: Partial<Record<string, GateMode>>;
+	reason: string;
 }

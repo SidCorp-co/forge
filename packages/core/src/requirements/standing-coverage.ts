@@ -5,7 +5,6 @@
  * every rule below is a unit test (`standing.test.ts`, `standing-shipped.test.ts`).
  */
 
-import type { PolicyQaMode } from '@forge/contracts/project-config';
 import type {
   BcVerdict,
   CoverageCount,
@@ -15,6 +14,7 @@ import type {
   RequirementCoverage,
 } from '@forge/contracts/requirements';
 import { landedCommitOf, verdictExercised } from '@forge/contracts/verdict-identity';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { judgesVerdict, unverifiedWhy } from '@forge/contracts/verified-rule';
 import { liveAt } from './rules.js';
 import {
@@ -97,7 +97,7 @@ interface CoverageInput {
   /** What the live build holds of the verdict commits; null or absent where it was not read. */
   liveBuild?: LiveBuildHolds | null | undefined;
   /** Who judges an issue's criteria, the policy's `qa` (`StandingInput.judge`); null where no policy is declared. */
-  judge: PolicyQaMode | null;
+  judge: VerifiedJudge | null;
 }
 
 // A business criterion is proven by the issue criteria that trace to it
@@ -295,7 +295,7 @@ function pickVerdict(v: StandingVerdict): StandingVerdict {
 // standing, whatever the project's `qa` (REQ-74 BC-2). With nothing of a judge's to read, it is the
 // latest. A fail is everyone's, so it is never read past, and a skip or short by a judge stands as
 // that judge's latest word.
-function judgesOf(ic: StandingIssueCriterion, judge: PolicyQaMode | null): StandingVerdict {
+function judgesOf(ic: StandingIssueCriterion, judge: VerifiedJudge | null): StandingVerdict {
   return judgesVerdict<StandingVerdict>([ic, ...(ic.earlier ?? [])], judge) ?? ic;
 }
 

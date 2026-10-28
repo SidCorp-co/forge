@@ -6,7 +6,7 @@
 import { type IssueStatus, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueStanding } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
-import type { Approvals } from '@forge/contracts/person-gates';
+import { effectiveApprovals, type PersonGate } from '@forge/contracts/person-gates';
 import { releaseApprovalRequired } from '@forge/contracts/releases';
 import type {
   BcVerdict,
@@ -32,7 +32,7 @@ import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { masterServingOf } from '../masters/index.js';
-import { readEffectivePolicy, readProjectDocument } from '../project-config/index.js';
+import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
 import { type CriterionClip, clipOf } from './criterion-clip.js';
 import { requirementDependents } from './dependents.js';
@@ -94,7 +94,7 @@ export interface StandingPreload {
 /** What the project document asks of a person: a release approval, and each step's switch (REQ-34 BC-25). */
 export interface DocumentGates {
   releaseApproval: boolean;
-  approvals: Approvals | null;
+  approvals: Readonly<Record<PersonGate, boolean>>;
 }
 
 const firstBaselineAt = (
@@ -123,7 +123,7 @@ export async function documentGatesIn(projectId: string): Promise<DocumentGates>
   const document = (await readProjectDocument(projectId))?.document;
   return {
     releaseApproval: releaseApprovalRequired(document),
-    approvals: document?.approvals ?? null,
+    approvals: effectiveApprovals(document),
   };
 }
 
@@ -313,7 +313,7 @@ export async function standingsOf(
     contracts,
     contractPins,
     unapproved,
-    policy,
+    judge,
     runnerBound,
     master,
   ] = await Promise.all([
@@ -377,7 +377,7 @@ export async function standingsOf(
     linkedContractsOf(db, ids),
     latestContractPinsOf(ids),
     unapprovedDesignsOf(ids),
-    readEffectivePolicy(projectId),
+    readVerifiedJudge(projectId),
     known.runnerBound ?? runnerBoundIn(projectId),
     masterServingOf(projectId),
   ]);
@@ -444,7 +444,7 @@ export async function standingsOf(
           designStatus,
         })),
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },
-        judge: policy?.document.qa ?? null,
+        judge,
         runnerBound,
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         release: awaitsReleaseOnly(mine.filter((i) => i.status !== 'dropped')) ? release : null,

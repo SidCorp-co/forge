@@ -1,3 +1,4 @@
+import { GATE_MODES, GATE_PROFILES } from '@forge/contracts/gate-profiles';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -10,6 +11,7 @@ import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
+import { readGateChanges, readProjectGates, writeGates } from './gates.js';
 import {
   deleteTestingProfile,
   type Held,
@@ -38,6 +40,8 @@ for (const path of [
   '/:id/secrets/*',
   '/:id/bindings',
   '/:id/bindings/*',
+  '/:id/gates',
+  '/:id/gates/*',
 ]) {
   projectConfigRoutes.use(path, requireAuth(), assertEmailVerified());
 }
@@ -106,6 +110,48 @@ projectConfigRoutes.put(
     );
   },
 );
+
+const gatesBody = z.strictObject({
+  baseRevision: z.number().int().min(1),
+  profile: z.enum(GATE_PROFILES),
+  overrides: z.record(z.string(), z.enum(GATE_MODES)).default({}),
+  reason: z.string(),
+});
+
+projectConfigRoutes.get('/:id/gates', paramOf(idParam), async (c) => {
+  const { id } = c.req.valid('param');
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
+  const [gates, changes] = await Promise.all([readProjectGates(id), readGateChanges(id, 20)]);
+  return c.json({ ...gates, changes });
+});
+
+projectConfigRoutes.put(
+  '/:id/gates',
+  paramOf(idParam),
+  zValidator(
+    'json',
+    gatesBody,
+    invalid(
+      'invalid gates write: { baseRevision: the project document revision you read, profile: strict | standard | yolo, overrides: { <gate>: enforce | advise | off }, reason: why }',
+    ),
+  ),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
+    const body = c.req.valid('json');
+    const outcome = await writeGates({ projectId: id, userId, ...body });
+    if (!outcome.ok) return refused(c, outcome.refusals, 'GATES_REFUSED');
+    return c.json({ ...(await readProjectGates(id)), changes: await readGateChanges(id, 20) });
+  },
+);
+
+projectConfigRoutes.get('/:id/gates/changes', paramOf(idParam), async (c) => {
+  const { id } = c.req.valid('param');
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
+  const changes = await readGateChanges(id, 200);
+  return c.json({ changes, returned: changes.length });
+});
 
 async function callingDevice(c: Context<{ Variables: AuthVars }>): Promise<string | null> {
   const presented = parseBearerHeader(c);

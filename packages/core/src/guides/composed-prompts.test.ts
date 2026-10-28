@@ -75,6 +75,7 @@ const none = {
   answers: [],
   stewardAsks: [] as Parameters<typeof owedLine>[0]['stewardAsks'],
   landedWork: [] as Parameters<typeof owedLine>[0]['landedWork'],
+  requests: [] as Parameters<typeof owedLine>[0]['requests'],
   contentLanguage: 'vi',
 };
 
@@ -100,9 +101,16 @@ const OWED_KINDS = {
     guide: 'issue-flow',
   },
   landedWork: {
-    item: { issueId: 'u8', key: 'ISS-8', commit: null, mergedAt: '2026-10-24T20:00:00.000Z' },
+    item: {
+      issueId: 'u8',
+      key: 'ISS-8',
+      commit: null,
+      mergedAt: '2026-10-24T20:00:00.000Z',
+      status: 'in_progress',
+    },
     guide: 'issue-flow',
   },
+  requests: { item: { kind: 'requirement', key: 'REQ-9' }, guide: 'requirement-lifecycle' },
 } as const satisfies Record<string, { item: object; guide: GuideSlug }>;
 
 const everyOwed = {

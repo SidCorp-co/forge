@@ -5,6 +5,7 @@
 // declares each need here and the composition root fills it at boot (`provideProjectOrg` is the
 // pattern).
 
+import type { GatesConfig } from '@forge/contracts/gate-profiles';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
@@ -156,6 +157,8 @@ interface PipelinePorts {
   }) => Promise<void>;
 
   readEffectivePolicy: (projectId: string) => Promise<{ document: ProjectPolicy } | null>;
+  /** The project document's `gates` (REQ-76), or null where it sets none. */
+  readGates: (projectId: string) => Promise<GatesConfig | null>;
   policyRefusal: (
     code: 'POLICY_UNDECLARED',
     projectId: string,
@@ -214,4 +217,5 @@ export const recordAnswerResume = port('recordAnswerResume');
 export const refreshModuleKnowledgeForIssue = port('refreshModuleKnowledgeForIssue');
 
 export const readEffectivePolicy = port('readEffectivePolicy');
+export const readGates = port('readGates');
 export const policyRefusal = port('policyRefusal');

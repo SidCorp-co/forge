@@ -1,4 +1,5 @@
 import { REASON_LINE_MAX } from '@forge/contracts/comments';
+import { gateSays } from '@forge/contracts/gate-profiles';
 import { type ReleaseApprovalView, releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -11,7 +12,12 @@ import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
-import { approvalRequired, environmentsOf, readReleasePath } from '../project-config/index.js';
+import {
+  approvalRequired,
+  environmentsOf,
+  gateOf,
+  readReleasePath,
+} from '../project-config/index.js';
 import { approvalChecklistRefusals } from './approval-checklist.js';
 import { runCutAs } from './naming.js';
 import { refuseRelease } from './refuse.js';
@@ -352,12 +358,12 @@ export async function assertApprovalAllowsAttempt(runId: string, projectId: stri
     .where(eq(releaseApprovals.runId, runId))
     .orderBy(desc(releaseApprovals.requestedAt), desc(releaseApprovals.id))
     .limit(1);
-  const required = await approvalRequired(projectId);
+  const gate = await gateOf(projectId, 'release_approval');
   if (!latest) {
-    if (!required) return;
+    if (gate.mode !== 'enforce') return;
     throw refuseRelease(
       'RELEASE_APPROVAL_REQUIRED',
-      `project ${projectId} requires release approval (project document \`release.approval.required\`), and release run ${runId} has none: ask with POST /api/projects/${projectId}/release-batches/${runId}/approvals and wait for an admin to approve it`,
+      `project ${projectId} requires release approval, and release run ${runId} has none: ask with POST /api/projects/${projectId}/release-batches/${runId}/approvals and wait for an admin to approve it. ${gateSays(gate)}`,
     );
   }
   if (latest.decision === 'approved') return;

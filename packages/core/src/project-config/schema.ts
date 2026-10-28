@@ -6,6 +6,7 @@ import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
 import { fastLaneSettingsSchema } from '@forge/contracts/fast-lane';
 import { FEEDBACK_VERIFY_WINDOW } from '@forge/contracts/feedback';
+import { gatesConfigSchema } from '@forge/contracts/gate-profiles';
 import { approvalsSchema } from '@forge/contracts/person-gates';
 import { previewSettingsSchema } from '@forge/contracts/preview';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
@@ -259,10 +260,10 @@ export const projectDocumentSchema = z.strictObject({
       readinessGate: z.enum(REQUIREMENT_READINESS_GATES).optional(),
     })
     .optional(),
-  // which steps wait on a person (REQ-34 r2 BC-25, `@forge/contracts/person-gates`): a step set
-  // true waits on a holder of its approve permission; absent or false, its checklist decides and
-  // whoever may write the item moves it.
+  // which steps wait on a person (REQ-34 r2 BC-25), as the gate profile resolves them (`person-gates`)
   approvals: approvalsSchema.optional(),
+  // REQ-76 gate profile, absent = standard; written only through PUT /api/projects/:id/gates
+  gates: gatesConfigSchema.optional(),
   // how long a resolved feedback item waits for anyone to confirm the fix before Forge verifies it
   // itself (owner, 2026-10-07): whole days, `FEEDBACK_VERIFY_WINDOW.defaultDays` where absent. A
   // value outside the bounds is refused naming the field, never clamped.

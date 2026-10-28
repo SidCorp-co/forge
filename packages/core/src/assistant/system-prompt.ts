@@ -22,6 +22,17 @@ export interface BuildSystemPromptInput {
   lessons?: string | null | undefined;
   /** The project's content language block (`@forge/contracts/content-language`); appended after an override too. */
   contentLanguage?: string | null | undefined;
+  /** What the project's gate profile changes for a chat (REQ-76 BC-9), already rendered; absent renders nothing. */
+  gates?: string | null | undefined;
+}
+
+/**
+ * The line a chat reads where its project's gate `chat_files_issue` is off (yolo): the base layer's
+ * "a chat never files an issue" is the strict and standard rule, and the kernel no longer refuses it.
+ */
+export function chatGatesBlock(chatFilesIssue: { mode: string; profile: string }): string | null {
+  if (chatFilesIssue.mode === 'enforce') return null;
+  return `## This project's gate profile\nThis project runs the \`${chatFilesIssue.profile}\` gate profile, which lets agents act first (gate \`chat_files_issue\` off). Here a chat may file the issue itself: where the person asks for development work and confirms it, file it (\`POST /api/projects/:id/issues\`) instead of offering Feedback or a Requirement draft; it meets the same ready check as any issue. The rule that a chat never files an issue holds on strict and standard projects, not this one.`;
 }
 
 function renderWho(self: SelfSummary): string | null {
@@ -59,6 +70,9 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 
   const contentLanguage = input.contentLanguage?.trim();
   if (contentLanguage) sections.push(contentLanguage);
+
+  const gates = input.gates?.trim();
+  if (gates) sections.push(gates);
 
   return sections.join('\n\n');
 }

@@ -22,6 +22,7 @@ export * from './schema-comments.js';
 export * from './schema-credentials.js';
 export * from './schema-devices.js';
 export * from './schema-forecast-moves.js';
+export * from './schema-gate-changes.js';
 export * from './schema-github-installations.js';
 export * from './schema-guides.js';
 export * from './schema-integration-types.js';

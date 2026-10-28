@@ -167,7 +167,10 @@ describe('admitting an issue (Issue lifecycle ready-check)', () => {
     await setApprovals({ admit: true });
     const r = await create(member);
     expect(r.status, JSON.stringify(r.body)).toBe(403);
-    expect(JSON.stringify(r.body)).toContain('its approvals.admit setting is on');
+    // REQ-76 BC-11: the refusal names the gate, the profile and the key that decided it
+    expect(JSON.stringify(r.body)).toContain(
+      "Gate approval_admit is enforced by this project's approvals.admit setting, which its gate profile standard defers to",
+    );
     const drafted = await on(member, 'POST', '/issues', {
       title: 'Show the reminder',
       priority: 'medium',

@@ -128,11 +128,12 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
   passes \`adoptPlan: true\`, attesting the plan already satisfies the current revision
   (\`REQUIREMENT_NO_PLAN_TO_ADOPT\` when the issue has no plan).
 - A breakdown accept files its issues at \`draft\`, and while every live issue is a draft the standing
-  asks a holder of both \`requirements.approve\` and \`issues.admit\` to "promote N draft issues"; anyone
+  asks whoever the project's admit gate names to "promote N draft issues"; anyone
   else reads it as waiting on "a BA or owner who can admit issues" (signing does not widen who may
   admit). **promote** \`{ issues? }\` moves them \`draft → open\`: the named ones (key or uuid), or every
-  linked draft when none is named. A caller without \`issues.admit\` is refused \`PERMISSION_FORBIDDEN\`
-  naming it before anything moves. Each moves through its own status move, so the move's own guards
+  linked draft when none is named. It asks what admitting an issue asks, the gate \`approval_admit\`:
+  \`issues.admit\` where it is enforced, \`project.write\` where it is not; a caller without it is
+  refused \`PERMISSION_FORBIDDEN\` naming it and the gate before anything moves. Each moves through its own status move, so the move's own guards
   hold (an archived issue, a gap in the issue-ready checklist). The answer is \`{ requirement, promoted, refused }\`:
   a draft whose move was refused is named in \`refused\` once per refusal, with that move's own code,
   \`path\` (\`/answers/<question>\` for a checklist gap) and words, while the rest still move; when none
@@ -216,7 +217,9 @@ return, agree, repin, defer, undefer, start-delivery, mark-delivered, accept, dr
 except where the project document's person gates say no person is needed: with \`approvals.agree\`,
 \`approvals.revisions\` or \`approvals.accept\` off (the default), agreeing, accepting a revision or
 re-pinning (both held by \`approvals.revisions\`), or moving or accepting the delivery takes \`project.write\` and its complete checklist decides; on, it takes
-\`requirements.approve\`. Promote takes \`issues.admit\` beside it. Each is held on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
+\`requirements.approve\`. Promote takes what the admit gate asks instead. Under a gate profile
+(\`GET /api/projects/:id/gates\`, REQ-76) each of these switches is the gate \`approval_<step>\`: strict
+asks the approve permission always, standard as the switch says, yolo never. Each is held on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
 included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
 proposes without writing the revision itself is a \`revision_diff\` suggestion (${guideRef('suggestions')}),

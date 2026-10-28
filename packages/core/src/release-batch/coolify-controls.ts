@@ -37,6 +37,7 @@ import {
   resolveIntegrationRow,
 } from './coolify-commands.js';
 import { enqueueCoolifyConfirm } from './coolify-confirm.js';
+import { raiseOnIncident } from './gate-raise.js';
 import { liveActionNeedsHumanConfirm } from './release-coolify.js';
 
 /** A bound target with the identity Coolify reports for it. */
@@ -240,7 +241,7 @@ export async function runCoolifyRollback(input: {
   assertRollbackTagListed(listed.images, input.commit, target.label);
 
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(row.pair);
-  return performControl({
+  const outcome = await performControl({
     row,
     eventName: 'deploy.rollback.requested',
     payload: {
@@ -263,6 +264,15 @@ export async function runCoolifyRollback(input: {
       return { deploymentUuid: res.deployment_uuid, detail: res.message };
     },
   });
+  if (outcome.performed) {
+    await raiseOnIncident({
+      projectId: input.projectId,
+      cause: 'release_reverted',
+      ref: `rollback of ${target.label} to ${input.commit}`,
+      why: `target \`${target.label}\` was rolled back to ${input.commit} (deployment ${outcome.deploymentUuid})`,
+    });
+  }
+  return outcome;
 }
 
 /**

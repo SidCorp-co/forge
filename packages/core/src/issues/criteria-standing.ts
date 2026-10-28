@@ -2,7 +2,8 @@
 // their own: a landed build (`release-batch/landed-build.ts`), and the runtime weighing of a release
 // (`release-batch/runtime-weighing.ts`). The verified rule picks it (`criteria-verdicts.ts:standingOn`).
 
-import { judgedOnOf, verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import { judgedOnOf } from '@forge/contracts/delivery-policy';
+import { projectGate } from '@forge/contracts/gate-profiles';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -51,9 +52,10 @@ export async function standingCriteriaOf(
   >();
   for (const { projectId } of rows) {
     if (projects.has(projectId)) continue;
-    const delivery = (await readProjectDocument(projectId))?.document.delivery;
+    const document = (await readProjectDocument(projectId))?.document;
+    const delivery = document?.delivery;
     projects.set(projectId, {
-      owes: verdictsRequiredOf(delivery),
+      owes: projectGate(document, null, 'release_criteria').mode !== 'off',
       judgedOn: judgedOnOf(delivery),
       judge: await readJudge(projectId),
     });

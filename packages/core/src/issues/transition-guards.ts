@@ -14,10 +14,17 @@
  *                      issue-ready checklist the kernel judges                  CHECKLIST_INCOMPLETE
  *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED,
  *                                                                               CONTRACT_WAIT_UNSETTLED
- *   approved           plan and criteria written; the actor holds `plans.approve`  PLAN_REQUIRED
- *                      where the project document sets `plan.approval.required`
+ *   approved           plan and criteria written (what the status says)          PLAN_REQUIRED
+ *                      the actor holds `plans.approve` where gate                PERMISSION_FORBIDDEN
+ *                      `plan_approval` is enforced (REQ-76: strict, or
+ *                      standard's `plan.approval.required`; never yolo)
  *                      the design passes the design check (`design-record.ts`)  DESIGN_RECORD_MISSING,
- *                                                                               DESIGN_RECORD_INCOMPLETE
+ *                      where gate `design_record` is enforced                  DESIGN_RECORD_INCOMPLETE
+ *
+ *   Each policy guard here asks its gate as the project's gate profile resolves it (REQ-76,
+ *   `@forge/contracts/gate-profiles`), read before the lock with the project document, and a
+ *   refusal ends naming the gate, the profile and the key that relaxes it. Holding, the recorded
+ *   merge, the release close and the edge itself are the kernel: no profile relaxes them (BC-10).
  *   awaiting_release   the run holding it makes the move, or a holder of          NOT_THE_HOLDER
  *                      `releases.approve` or `project.admin` does
  *                      the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
@@ -42,13 +49,19 @@
  */
 
 import { CHECKLIST_GUARD } from '@forge/contracts/checklists';
+import { gateSays, projectGates, type ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { IssueTransitionRefusalCode } from '@forge/contracts/issue-machine';
 import { ISSUE_MACHINE, type IssueGuard, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
-import { personGateAct, personGatePermission } from '@forge/contracts/person-gates';
+import {
+  effectiveApprovals,
+  personGateAct,
+  personGatePermission,
+} from '@forge/contracts/person-gates';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
+import { gateRefusal } from '../lib/gated.js';
 import type { Refusal } from '../lib/refusal.js';
 import { isRefusal } from '../lib/refusal.js';
 import type { Guard, GuardInput } from '../lifecycle/index.js';
@@ -64,6 +77,7 @@ import { refuseHeldTake } from './blocked-by.js';
 import { callerBoxOf } from './caller-box.js';
 import { designHeldSql, designHoldsOf, designOnlyMarkSql } from './design-delivery.js';
 import { designCheckOf } from './design-record.js';
+import type { IssueGates } from './gates.js';
 import { mergeNotRecorded } from './merged-at.js';
 import { type MoveEntryFacts, moveEntryRefusal, readMoveEntryFacts } from './pattern-entry.js';
 import type { CatalogReading } from './pattern-rules.js';
@@ -108,8 +122,8 @@ export interface GuardContext {
 
 /** What the guards read from outside the issue's rows, read before the move takes its lock. */
 interface IssueMoveFacts {
-  /** The project document sets `plan.approval.required`. */
-  planApprovalRequired: boolean;
+  /** Every gate's mode on the project, as its gate profile resolves them (REQ-76). */
+  gates: IssueGates;
   /** Who admits a draft to open: the permission the project's `approvals.admit` names, and the act its refusal says. */
   admit: { permission: ProjectPermission; act: string };
   /** The mover's role and grants on the project. */
@@ -156,10 +170,10 @@ export async function readIssueMoveFacts(args: {
       ? (await callerBoxOf(args.actorUserId, args.actorDeviceId ?? null)).deviceId
       : null,
     holdOverride: asksForHolder ? await holdOverrideOf(args.actorUserId, issue.projectId) : null,
-    planApprovalRequired: document?.plan?.approval.required === true,
+    gates: Object.fromEntries(projectGates(document, null).map((g) => [g.id, g])) as IssueGates,
     admit: {
-      permission: personGatePermission(document?.approvals, 'admit'),
-      act: personGateAct(document?.approvals, 'admit'),
+      permission: personGatePermission(effectiveApprovals(document), 'admit'),
+      act: personGateAct(document, 'admit'),
     },
     permissions: await permissionFactsOf(args.actorUserId, issue.projectId),
     patternEntry: args.to === 'awaiting_release' ? await readMoveEntryFacts(issue) : null,
@@ -183,7 +197,7 @@ async function patternEntryGuard(
 // a person's move is refused as an agent's: issue-lifecycle rev 3 puts the condition on the edge, not the actor (ISS-104 decision)
 async function heldTakeGuard(ctx: GuardContext): Promise<GuardFault | null> {
   try {
-    await refuseHeldTake(ctx.executor, ctx.issue.id, 'a move to `in_progress`');
+    await refuseHeldTake(ctx.executor, ctx.issue.id, 'a move to `in_progress`', ctx.facts.gates);
     return null;
   } catch (err) {
     if (isRefusal(err, 'ISSUE_BLOCKED')) {
@@ -254,6 +268,7 @@ async function runHolderGuard(ctx: GuardContext): Promise<GuardFault | null> {
 
 /** approved, the plan checkpoint: a plan and criteria, and plans.approve where the project says so. */
 async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  const gate = ctx.facts.gates.plan_approval;
   const rows = (await ctx.executor.execute(sqlPlanRow(ctx.issue.id))) as unknown as Array<{
     plan: string | null;
     acceptance_criteria: string | null;
@@ -270,22 +285,24 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
       details: { from: ctx.from, to: ctx.to, missing },
     };
   }
-  if (ctx.facts.planApprovalRequired) {
+  if (gate.mode === 'enforce') {
     const denied = permissionRefusal(
       ctx.facts.permissions,
       'plans.approve',
-      'moving an issue to `approved` (project document `plan.approval.required`)',
+      'moving an issue to `approved`',
     );
     if (denied) {
       return {
         code: denied.code,
-        detail: `${denied.detail} Ask for it: park at \`needs_info\` with \`waitingKind: "needs_decision"\` naming the plan, and a holder of ${denied.permission} moves it once it is back.`,
+        detail: `${denied.detail} Ask for it: park at \`needs_info\` with \`waitingKind: "needs_decision"\` naming the plan, and a holder of ${denied.permission} moves it once it is back. ${gateSays(gate)}`,
         details: {
           from: ctx.from,
           to: ctx.to,
           permission: denied.permission,
           scope: denied.scope,
-          rule: 'plan.approval.required',
+          rule: gate.key,
+          gate: gate.id,
+          profile: gate.profile,
         },
       };
     }
@@ -299,11 +316,13 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
  * approved does not name this guard: a run ending hands the issue back whatever it recorded.
  */
 async function designGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  const gate = ctx.facts.gates.design_record;
+  if (gate.mode !== 'enforce') return null;
   const check = await designCheckOf(ctx.executor, ctx.issue, ctx.facts.catalog ?? undefined);
   if (check.passed) return null;
   return {
     code: check.code,
-    detail: check.detail,
+    detail: `${check.detail} ${gateSays(gate)}`,
     details: { from: ctx.from, to: ctx.to, missing: check.missing, gaps: check.gaps },
   };
 }
@@ -456,8 +475,12 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
             detail: missing.detail,
             details: missing.details,
           } as Refusal)
-        : ((await patternReleaseRefusal(input.tx, input.row.id)) ??
-            (await patternEntryGuard(input.tx, input.row.id, base.facts.patternEntry)));
+        : await patternsUnderGate(
+            base.facts.gates.patterns,
+            async () =>
+              (await patternReleaseRefusal(input.tx, input.row.id)) ??
+              (await patternEntryGuard(input.tx, input.row.id, base.facts.patternEntry)),
+          );
     },
     released: async (input) => refusalOf(await releaseGuard(ctxOf(input))),
     design_delivered: async (input) => refusalOf(await designDeliveredGuard(ctxOf(input))),
@@ -503,6 +526,16 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
     },
   };
   return guards;
+}
+
+/** The pattern checks of the merged guard, asked only where gate `patterns` is enforced, said as it. */
+async function patternsUnderGate(
+  gate: ResolvedGate,
+  check: () => Promise<Refusal | null>,
+): Promise<Refusal | null> {
+  if (gate.mode !== 'enforce') return null;
+  const refused = await check();
+  return refused ? gateRefusal(gate, refused) : null;
 }
 
 function sqlPlanRow(issueId: string) {

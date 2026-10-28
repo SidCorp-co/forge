@@ -1,4 +1,3 @@
-import type { PolicyQaMode } from '@forge/contracts/project-config';
 import type {
   RequirementAttentionGroup,
   RequirementCoverage,
@@ -7,6 +6,7 @@ import type {
 import { type Said, say } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import { verdictExercised } from '@forge/contracts/verdict-identity';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 
 interface Turn {
   group: RequirementAttentionGroup;
@@ -16,10 +16,11 @@ interface Turn {
 const wait = (who: Said, act: Said, rule: Said): WaitingOn<RequirementWaitingKind> =>
   waitingOn('agent', { who, act, rule });
 
-/** Who judges a criterion on the running build, by the policy's `qa`. */
-export const JUDGE_WHO: Record<PolicyQaMode, Said> = {
+/** Who judges a criterion on the running build: by the policy's `qa`, or the building run itself where the gate profile counts its own pass (REQ-76 BC-7). */
+export const JUDGE_WHO: Record<VerifiedJudge, Said> = {
   self: say('standing.who.master'),
   independent: say('standing.who.independentJudge'),
+  builder: say('standing.who.master'),
 };
 
 const MASTER = say('standing.who.master');
@@ -57,7 +58,7 @@ const codesOf = (rows: readonly RequirementCoverage[]) => rows.map((c) => c.code
 // traces to on the master to trace it. The judge's acts go first, since they need no new work; the
 // rule names every unproven BC.
 export function proofTurn(
-  judge: PolicyQaMode | null,
+  judge: VerifiedJudge | null,
   live: readonly { status: string }[],
   coverage: readonly RequirementCoverage[],
 ): Turn | null {

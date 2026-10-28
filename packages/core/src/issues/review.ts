@@ -14,6 +14,7 @@
  */
 
 import { CHECK_RUN_LIMITS } from '@forge/contracts/check-runs';
+import { gateSays, type ResolvedGate } from '@forge/contracts/gate-profiles';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type {
   IssueReview,
@@ -38,10 +39,10 @@ import { writeCheckRuns } from './check-runs.js';
 import { recordVerdict } from './criteria/verdict-record.js';
 import { issueDesignOf } from './design-record.js';
 import { issueDisplayIds } from './display-ids.js';
+import { issueGateOf } from './gates.js';
 import { passingHeads } from './merge-check-rules.js';
 import { liveOnBox, runOfCall } from './pattern-runs.js';
 import { catalogOf } from './patterns.js';
-import { readProjectDocument } from './ports.js';
 import { listRecordEvents, type RecordEvent, writeCoreRecord } from './record-events/store.js';
 import {
   type Builders,
@@ -179,10 +180,9 @@ async function owedFor(issue: { id: string; projectId: string }) {
   return { ok: true as const, owed };
 }
 
-/** Whether the merge mark asks this project's issues for a review. */
-async function reviewRequired(projectId: string): Promise<boolean> {
-  const document = (await readProjectDocument(projectId))?.document;
-  return document?.validation?.mergeCheck === 'required';
+/** Gate `merge_review` on the project: the merge mark asks a review where it is enforced (REQ-76). */
+function reviewGate(projectId: string): Promise<ResolvedGate> {
+  return issueGateOf(projectId, 'merge_review');
 }
 
 async function reviewsOf(issueId: string): Promise<StoredReview[]> {
@@ -329,12 +329,12 @@ export async function issueReviewOf(issue: {
   const [ref, owed, required, reviews] = await Promise.all([
     issueRefOf(issue.id),
     owedFor(issue),
-    reviewRequired(issue.projectId),
+    reviewGate(issue.projectId),
     reviewsOf(issue.id),
   ]);
   return {
     issue: ref,
-    required,
+    required: required.mode === 'enforce',
     owed: owed.ok ? owed.owed : null,
     refusal: owed.ok ? null : { code: owed.code, detail: owed.detail },
     reviews: reviews.map((r) => ({
@@ -359,11 +359,13 @@ export async function unreviewedMergeRefusal(args: {
   projectId: string;
   commit: string | null;
 }): Promise<string | null> {
-  if (!(await reviewRequired(args.projectId))) return null;
+  const gate = await reviewGate(args.projectId);
+  if (gate.mode !== 'enforce') return null;
   const [issueRef, reviews, builders] = await Promise.all([
     issueRefOf(args.issueId),
     reviewsOf(args.issueId),
     buildersOf(args.issueId, null),
   ]);
-  return unreviewedDetail({ issueRef, commit: args.commit, reviews, builders });
+  const detail = unreviewedDetail({ issueRef, commit: args.commit, reviews, builders });
+  return detail === null ? null : `${detail} ${gateSays(gate)}`;
 }

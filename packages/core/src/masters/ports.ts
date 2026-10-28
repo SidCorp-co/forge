@@ -1,3 +1,4 @@
+import type { ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { AnswerResume } from '@forge/contracts/questions';
 import type { ReleaseNamer } from '@forge/contracts/release-naming';
 import type { StandingSubjectKind } from '@forge/contracts/steward';
@@ -19,6 +20,12 @@ export interface AgentConfirmOwed {
   reporter: string;
   itemProjectId: string;
   home: boolean;
+}
+
+/** A request a person left waiting: a draft issue they filed, or a draft requirement proposed from a chat. */
+export interface WaitingRequest {
+  kind: 'issue' | 'requirement';
+  key: string;
 }
 
 // What a master is owed from the modules above execution, handed in by the process entry at boot
@@ -85,11 +92,25 @@ interface MastersPorts {
    * `in_progress` issues the wedge pass left because their work landed and nothing has taken up
    * since, each owed its move to `awaiting_release` (ISS-564).
    */
-  landedWorkOwed(
-    projectId: string,
-  ): Promise<{ issueId: string; key: string; commit: string | null; mergedAt: string }[]>;
+  landedWorkOwed(projectId: string): Promise<
+    {
+      issueId: string;
+      key: string;
+      commit: string | null;
+      mergedAt: string;
+      /** `open` for an issue a merge filed under a profile with issue_before_code off (REQ-76 BC-8). */
+      status: 'in_progress' | 'open';
+    }[]
+  >;
   /** Agreed requirements whose steward intake question nobody has answered yet, held out of the breakdowns owed (REQ-48 BC-2). */
   breakdownsHeldBySteward(projectId: string): Promise<string[]>;
+  /** The project's gate `master_admitted_only` (REQ-76): off, a master is placed for a waiting request too. */
+  masterGate(projectId: string): Promise<ResolvedGate>;
+  /**
+   * The chat or direct requests waiting on a person (REQ-76 BC-9): draft issues a person filed, and
+   * draft requirements whose revision is proposed. Asked only where `masterGate` is off.
+   */
+  requestsWaiting(projectId: string): Promise<WaitingRequest[]>;
 }
 
 const slot = portSlot<MastersPorts>('masters', 'provideMastersPorts');

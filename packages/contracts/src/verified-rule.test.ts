@@ -47,7 +47,7 @@ describe("the verified rule every count of proof reads (REQ-35 decision 7b261fca
 	it("never counts the builder's own pass, whatever the project's qa says (REQ-74 BC-2)", () => {
 		for (const judge of [null, "self", "independent"] as const) {
 			expect(unverifiedWhy(v("pass", true), judge)).toBe(
-				"passed by the run that built it, and a builder's own pass never counts",
+				"passed by the run that built it, and a builder's own pass never counts where gate `builder_verdict` is enforced (gates.overrides.builder_verdict relaxes it)",
 			);
 			expect(verifiedOf([v("pass", true)], judge).proven).toBe(false);
 		}

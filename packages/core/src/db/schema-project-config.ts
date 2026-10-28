@@ -96,9 +96,8 @@ export const projectConfigDocuments = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     revision: integer('revision').notNull(),
     document: jsonb('document').notNull(),
-    updatedBy: uuid('updated_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
+    /** Null only on a revision Forge wrote itself: a yolo project's gates raised after an incident (REQ-76 BC-13). */
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'restrict' }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
