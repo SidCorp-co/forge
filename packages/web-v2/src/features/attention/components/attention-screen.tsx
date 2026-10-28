@@ -281,11 +281,13 @@ export function AttentionScreen() {
       </header>
 
       {devicesRead === "failed" && (
-        <p role="alert" className="fg-body-sm mb-4 text-muted" data-testid="attention-devices-unread">
-          Offline runners could not be read: {withStop(formatApiError(devicesError))}{" "}
-          {total === 0
-            ? "Nothing else is listed, and that does not say nothing needs you."
-            : "The list below may leave some out."}{" "}
+        <p className="fg-body-sm mb-4 text-muted" data-testid="attention-devices-unread">
+          <span role="alert">
+            Offline runners could not be read: {withStop(formatApiError(devicesError))}{" "}
+            {total === 0
+              ? "Nothing else is listed, and that does not say nothing needs you."
+              : "The list below may leave some out."}
+          </span>{" "}
           <RetryButton error={devicesError} onRetry={retryDevices}>
             Try again
           </RetryButton>

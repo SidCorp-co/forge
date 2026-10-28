@@ -73,8 +73,8 @@ export function HeaderReadFailure({
   retry?: (() => void) | undefined;
 }) {
   return (
-    <div role="status" className="fg-caption flex flex-wrap items-center gap-2 text-muted">
-      <span>{said}</span>
+    <div className="fg-caption flex flex-wrap items-center gap-2 text-muted">
+      <span role="status">{said}</span>
       <RetryButton error={error} onRetry={retry} />
     </div>
   );

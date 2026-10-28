@@ -170,8 +170,10 @@ export function NotificationsMenu({
                         <ul className="mt-1.5 border-l border-line-subtle pl-2.5">
                           {expandedLoading && <li className="fg-caption py-1">Loading…</li>}
                           {!expandedLoading && expandedUnread && (
-                            <li role="alert" data-testid="group-members-unread" className="fg-caption py-1 text-fg">
-                              Couldn&apos;t load this group&apos;s notifications. {expandedUnread.why}{" "}
+                            <li data-testid="group-members-unread" className="fg-caption py-1 text-fg">
+                              <span role="alert">
+                                Couldn&apos;t load this group&apos;s notifications. {expandedUnread.why}
+                              </span>{" "}
                               <RetryLink
                                 label="Retry this group"
                                 onKeyDown={keepKeys}

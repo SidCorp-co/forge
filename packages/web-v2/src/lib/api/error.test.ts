@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
-import { ApiError, retryAfterOf, unsaidFailure } from './client';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError, apiClient, retryAfterOf, unsaidFailure } from './client';
 import { retryWaitWords } from '@/lib/utils/retry-rule';
 import {
   describeSettings,
@@ -529,3 +529,50 @@ describe("a refusal carrying a person's sentence", () => {
   });
 });
 
+// ISS-1229 r53, the master's ruling on round 52: a write refused 429 said only "Too many requests in a short time."
+// — New issue's Create, and Approve a device, which core shuts for 40 minutes. No write screen counts a wait, so the
+// time the server names is the only place a person learns it: only a read's wait is counted beside a Retry.
+describe('a 429 on a write, through the client', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Core's own rate-limit body for a wait, read off its source as the earlier case does. */
+  const coreSays = (wait: string) => {
+    const source = readFileSync(new URL('../../../../core/src/middleware/rate-limit.ts', import.meta.url), 'utf8');
+    const template = /export function rateLimitedMessage[\s\S]*?return `([^`]*)`/.exec(source)?.[1] ?? '';
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: core's template, as its source spells it
+    return template.replace('${waitWords(retryAfterSeconds)}', wait);
+  };
+
+  const refusedWith = async (method: string | undefined, body: unknown, retryAfter: string) => {
+    vi.stubGlobal('fetch', async () =>
+      new Response(body === null ? '' : JSON.stringify(body), { status: 429, headers: { 'Retry-After': retryAfter } }),
+    );
+    return apiClient('/devices/pair/approve', method ? { method, body: '{}' } : {}).then(
+      () => {
+        throw new Error('the request was not refused');
+      },
+      (err: unknown) => err as ApiError,
+    );
+  };
+
+  it("keeps the server's time in a write's refusal, where nothing counts it", async () => {
+    const said = coreSays('40 minutes');
+    const err = await refusedWith('POST', { code: 'RATE_LIMITED', message: said, details: { retryAfterSeconds: 2400 } }, '2400');
+    expect(said).toBe('Too many requests in a short time. Try again in 40 minutes.');
+    expect(formatApiError(err)).toBe(said);
+    expect(err.retryAt).toBeUndefined();
+    expect(retryWaitWords(err, Date.now())).toBeNull();
+  });
+
+  it("drops the server's time from a read's refusal, whose wait the Retry beside it counts", async () => {
+    const said = coreSays('30 seconds');
+    const err = await refusedWith(undefined, { code: 'RATE_LIMITED', message: said, details: { retryAfterSeconds: 30 } }, '30');
+    expect(formatApiError(err)).toBe('Too many requests in a short time.');
+    expect(retryWaitWords(err, Date.now())).toMatch(/^You can retry in (29|30) seconds\.$/);
+  });
+
+  it('names the wait itself for a write refused with Retry-After and no sentence of the server\'s', async () => {
+    const err = await refusedWith('PUT', null, '90');
+    expect(formatApiError(err)).toBe('Too many requests in a short time. Try again in 2 minutes.');
+  });
+});

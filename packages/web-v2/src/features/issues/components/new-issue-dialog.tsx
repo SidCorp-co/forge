@@ -135,6 +135,11 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The refusal and the buttons under it, brought on screen together: the refusal alone left Create below the fold.
+  const footerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (errors.form) footerRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [errors.form]);
 
   useEffect(() => {
     if (open) {
@@ -313,8 +318,6 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
           }}
         />
 
-        {errors.form && <Banner tone="danger">{errors.form}</Banner>}
-
         <p className="fg-caption">
           An issue is <strong>work</strong> with a deliverable someone else can verify. A note,
           a question, or a record of something already done is not an issue —{" "}
@@ -472,13 +475,22 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
           </>
         )}
 
-        <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" icon="plus" loading={create.isPending}>
-            {mode === "quick" ? "Capture issue" : "Create issue"}
-          </Button>
+        {/* The refusal stands beside Create, where the person pressed it: at the form's top it was off screen
+            once the form was scrolled to its end (ISS-1229 r53, judge-165). */}
+        <div ref={footerRef} className="mt-auto flex flex-col gap-2.5 pt-2">
+          {errors.form && (
+            <div role="alert" data-testid="new-issue-refusal">
+              <Banner tone="danger">{errors.form}</Banner>
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2.5">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" icon="plus" loading={create.isPending}>
+              {mode === "quick" ? "Capture issue" : "Create issue"}
+            </Button>
+          </div>
         </div>
       </form>
     </SlideOver>

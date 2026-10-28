@@ -525,7 +525,7 @@ describe("a pinned pool while the project's runners cannot be read (ISS-1229 r48
 		toggle("Require human approval for new issues");
 		await waitFor(() => expect(saveButton()).toBeEnabled());
 		expect(screen.queryByText(/names a device this project has no runner for/i)).toBeNull();
-		const unread = screen.getByText(/Couldn't load this project's runners/).closest("[role=alert]") as HTMLElement;
+		const unread = screen.getByText(/Couldn't load this project's runners/).closest("[role=alert]")?.parentElement as HTMLElement;
 		fireEvent.click(within(unread).getByRole("button", { name: "Retry" }));
 		expect(runnersRefetch).toHaveBeenCalledTimes(1);
 	});

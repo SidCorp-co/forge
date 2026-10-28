@@ -16,11 +16,10 @@ export function StoredOrgUnread() {
   const shown = activeOrg ? workspaceName(activeOrg) : null;
   return (
     <div
-      role="alert"
       data-testid="stored-org-unread"
       className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-sunken px-4 py-2 sm:px-6"
     >
-      <p className="fg-body-sm min-w-0 text-fg">
+      <p role="alert" className="fg-body-sm min-w-0 text-fg">
         {storedOrgUnreadWords(shown)} <span className="text-muted">{asSentence(formatApiError(storedUnread.error))}</span>
       </p>
       <RetryButton error={storedUnread.error} onRetry={storedUnread.retry} />

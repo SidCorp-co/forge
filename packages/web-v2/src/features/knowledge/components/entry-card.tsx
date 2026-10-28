@@ -79,8 +79,8 @@ export function EntryCard({ projectId, row, canManage, defaultOpen = false }: En
             </div>
           )}
           {entryQ.isError && (
-            <p role="status" className="fg-caption flex flex-wrap items-center gap-2 text-red-600">
-              {couldNotRead("This entry's body", entryQ.error)}
+            <p className="fg-caption flex flex-wrap items-center gap-2 text-red-600">
+              <span role="status">{couldNotRead("This entry's body", entryQ.error)}</span>
               <RetryButton error={entryQ.error} onRetry={() => void entryQ.refetch()} />
             </p>
           )}

@@ -98,7 +98,7 @@ describe("the drawer's room rows, while the projects cannot be read", () => {
     render(<ConversationList {...props} />);
     const failure = screen.getByRole("alert");
     expect(failure.textContent).toContain("Couldn't load your projects");
-    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failure.parentElement as HTMLElement).getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalledTimes(1);
     projectsRead.failed = false;
   });

@@ -36,7 +36,7 @@ const FRIENDLY_CODES: Record<string, string> = {
   UNPARSABLE_MODULE_FLOW: 'A module stores a flow this generator cannot read.',
 };
 
-import { retryAt } from '@/lib/utils/retry-rule';
+import { askAgainWords, retryAt } from '@/lib/utils/retry-rule';
 
 export { isRetryableApiError } from '@/lib/utils/retry-rule';
 
@@ -130,7 +130,8 @@ function readerSaid(err: ApiError): string | null {
 }
 
 /** What a failure says, in a person's words. A Retry-After's wait is counted beside the Retry it gates (ISS-1229
- *  r51), so where the web counts one, the server's sentence and the fixed time it carries give way (r52). */
+ *  r51), so where the web counts one, the server's sentence and the fixed time it carries give way (r52). Where
+ *  nothing counts it, a write's, the time stays in the sentence: the server's own, or the web's (r53). */
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
     const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err) ?? landingShapeSentence(err);
@@ -143,7 +144,8 @@ export function formatApiError(err: unknown): string {
     // ISS-1228 r24: the server's sentence wins; the table speaks only for an answer that said nothing.
     if (serverSaid(err)) return err.message;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
-    return unsaidFailure(err.status);
+    const askAgain = askAgainWords(err);
+    return askAgain ? `${unsaidHappening(err.status)} ${askAgain}` : unsaidFailure(err.status);
   }
   if (isUnreachable(err)) return UNREACHABLE_SENTENCE;
   if (err instanceof Error) return err.message;

@@ -134,15 +134,9 @@ export function VirtualList<Row>({
         })}
       </div>
       {more && (more.loading || more.failed) ? (
-        <div role="status" className="fg-caption flex items-center justify-center gap-2 px-4 py-3 text-muted">
-          {more.failed ? (
-            <>
-              <span>{more.why ? `Couldn't load more. ${more.why}` : "Couldn't load more."}</span>
-              <RetryLink error={more.error} onRetry={more.onLoad} />
-            </>
-          ) : (
-            <span>Loading more…</span>
-          )}
+        <div className="fg-caption flex items-center justify-center gap-2 px-4 py-3 text-muted">
+          <span role="status">{more.failed ? (more.why ? `Couldn't load more. ${more.why}` : "Couldn't load more.") : "Loading more…"}</span>
+          {more.failed && <RetryLink error={more.error} onRetry={more.onLoad} />}
         </div>
       ) : null}
     </div>

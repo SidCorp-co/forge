@@ -17,7 +17,8 @@ export class ApiError extends Error {
   /** How long the server asked the caller to wait before asking again (`Retry-After`), where it said. */
   readonly retryAfterMs?: number;
   /** When that wait ends, as a time: the answer arrived as this was made, so a wait shown later counts down
-   *  from here rather than starting over (ISS-1229 r51). */
+   *  from here rather than starting over (ISS-1229 r51). Only a read's: the web counts a wait beside a failed
+   *  read's Retry and nowhere else, so a write keeps the server's sentence and the time it names (r53). */
   readonly retryAt?: number;
 
   constructor(
@@ -27,6 +28,7 @@ export class ApiError extends Error {
     details?: unknown,
     body?: unknown,
     retryAfterMs?: number,
+    counted = true,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -36,7 +38,7 @@ export class ApiError extends Error {
     if (body !== undefined) this.body = body;
     if (retryAfterMs !== undefined) {
       this.retryAfterMs = retryAfterMs;
-      this.retryAt = Date.now() + retryAfterMs;
+      if (counted) this.retryAt = Date.now() + retryAfterMs;
     }
   }
 }
@@ -138,10 +140,16 @@ async function parseErrorBody(res: Response): Promise<{
   return { message: said(null) };
 }
 
+/** Whether a request reads: only a read's failure is offered Retry, and only beside a Retry is a wait counted. */
+function isRead(method: string | undefined): boolean {
+  const verb = (method ?? 'GET').toUpperCase();
+  return verb === 'GET' || verb === 'HEAD';
+}
+
 /** A refused answer as the error every caller reads, carrying when the server asked to be asked again. */
-async function errorOf(res: Response): Promise<ApiError> {
+async function errorOf(res: Response, method: string | undefined): Promise<ApiError> {
   const { message, code, details, body } = await parseErrorBody(res);
-  return new ApiError(res.status, message, code, details, body, retryAfterOf(res.headers.get('Retry-After')));
+  return new ApiError(res.status, message, code, details, body, retryAfterOf(res.headers.get('Retry-After')), isRead(method));
 }
 
 /**
@@ -172,7 +180,7 @@ async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Re
   });
 
   if (!res.ok) {
-    throw await errorOf(res);
+    throw await errorOf(res, options.method);
   }
 
   return res;
@@ -197,7 +205,7 @@ export async function apiPutBytes<T>(endpoint: string, file: Blob): Promise<T> {
     headers: file.type ? { 'Content-Type': file.type } : undefined,
   });
   if (!res.ok) {
-    throw await errorOf(res);
+    throw await errorOf(res, 'PUT');
   }
   return (await res.json()) as T;
 }
@@ -210,7 +218,7 @@ export async function apiMultipart<T>(endpoint: string, formData: FormData): Pro
     body: formData,
   });
   if (!res.ok) {
-    throw await errorOf(res);
+    throw await errorOf(res, 'POST');
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

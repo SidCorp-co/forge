@@ -184,8 +184,8 @@ function unreadWords(what: string, read: UnreadRead): string {
 function UnreadRow({ label, what, read }: { label: string; what: string; read: UnreadRead }) {
   return (
     <Row label={label}>
-      <span role="status" className="fg-caption inline-flex flex-wrap items-center justify-end gap-2 text-muted">
-        {what}
+      <span className="fg-caption inline-flex flex-wrap items-center justify-end gap-2 text-muted">
+        <span role="status">{what}</span>
         <RetryButton error={read.error} onRetry={read.retry} />
       </span>
     </Row>
