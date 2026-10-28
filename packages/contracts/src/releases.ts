@@ -241,8 +241,9 @@ export interface ReleaseVersionCarrier {
 /**
  * How an attempt came to wear its version: `first` cut of a roster nothing cut before, `reused` from
  * the attempt before it on the same roster, `bumped` past it because something outside Forge
- * carries that one, another release already wears it, or the declared prerelease line moved off it; `unrecorded` on a run cut before the
- * rule was recorded on the run.
+ * carries that one, another release already wears it, the declared prerelease line moved off it, or
+ * an attempt has since claimed a higher one; `unrecorded` on a run cut before the rule was recorded
+ * on the run.
  */
 export const RELEASE_VERSION_DECISIONS = [
 	"first",
@@ -262,6 +263,8 @@ export interface ReleaseVersionRule {
 	line: string | null;
 	/** Where `bumped` because another release's attempt already wears `from` (one cut before ADR 0011 handed it on). */
 	taken: boolean;
+	/** Where `bumped` because an attempt had since claimed a version above `from`: that highest version (ISS-586). */
+	overtaken: string | null;
 }
 
 /** One attempt at a release: one cut of its roster, how it ended and who ended it. */

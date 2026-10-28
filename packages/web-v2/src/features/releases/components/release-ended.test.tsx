@@ -6,7 +6,7 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
-import { EndedAttempt } from "./release-attempts";
+import { EndedAttempt, ReleaseAttempts } from "./release-attempts";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
@@ -23,7 +23,7 @@ const cut = (n: number, version: string, outcome: string, over: object = {}) => 
   refusal: null,
   abortReason: null,
   decidedBy: null,
-  rule: { decided: "unrecorded", from: null, carriers: [], line: null, taken: false },
+  rule: { decided: "unrecorded", from: null, carriers: [], line: null, taken: false, overtaken: null },
   carried: null,
   roster: [
     { key: "ISS-54", title: "Referral intake" },
@@ -70,5 +70,36 @@ describe("a cancelled release's own page", () => {
   it("is not drawn on a release that shipped", () => {
     renderWithQuery(<EndedAttempt r={{ ...r040, state: "shipped" } as never} slug="hop" />);
     expect(screen.queryByTestId("release-ended")).toBeNull();
+  });
+});
+
+// forge, ISS-586: a re-cut of dev.211's roster after dev.226 shipped wore dev.211 again. It now takes
+// the next above, and its attempt says which version it had to go above.
+describe("a re-cut moved above a version claimed since", () => {
+  const recut = {
+    version: "0.4.0-dev.227",
+    runId: "run-2",
+    state: "in_progress",
+    cuts: [
+      cut(1, "0.4.0-dev.211", "aborted", { carried: [] }),
+      cut(2, "0.4.0-dev.227", "in_progress", {
+        rule: { decided: "bumped", from: "0.4.0-dev.211", carriers: [], line: null, taken: false, overtaken: "0.4.0-dev.226" },
+      }),
+    ],
+  };
+
+  it("names the version it went above", () => {
+    renderWithQuery(<ReleaseAttempts r={recut as never} slug="forge" />);
+    const rules = screen.getAllByTestId("cut-rule");
+    expect(rules[1]).toHaveTextContent("A new version, 0.4.0-dev.227: 0.4.0-dev.211 is below 0.4.0-dev.226, claimed since.");
+  });
+
+  it("names it in Vietnamese", () => {
+    renderWithQuery(
+      <InterfaceLanguageScope language="vi">
+        <ReleaseAttempts r={recut as never} slug="forge" />
+      </InterfaceLanguageScope>,
+    );
+    expect(screen.getAllByTestId("cut-rule")[1]).toHaveTextContent("0.4.0-dev.211 thấp hơn 0.4.0-dev.226"); // i18n-allow: Vietnamese text under test
   });
 });

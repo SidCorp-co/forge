@@ -57,17 +57,24 @@ artifact outside the system already carries it.
   claimed by its own roster and is never handed to a different one, so one version never names two
   deliveries. `packages/core/src/release-batch/version-rule.ts:predecessorOf` is the rule, and
   `rosterKey` spells the set.
-- **A re-cut wears its predecessor's version** unless something outside Forge already carries it.
+- **A re-cut wears its predecessor's version** unless something outside Forge already carries it,
+  or a higher version has been claimed since.
   The carriers are a pushed tag, a release commit (its changelog entry or version bump), a published
   artifact, or a notice sent to people. Then the next attempt takes a new version, and the cut
   records why on the run (`metadata.versionCut`), naming each carrier. The release page says so. A
   prerelease line that moved off the predecessor's version also takes a new one, and the page names
   the line. So does a version another release already wears, as when 0010 handed it on, so no
-  version comes to name a second delivery. `packages/core/src/release-batch/version-rule.ts:decideVersion` makes the decision, and
+  version comes to name a second delivery. So does a version below the highest any attempt has
+  claimed since: wearing it again would move the version backwards, as forge's `0.4.0-dev.211`
+  re-cut did after `dev.226` had shipped (ISS-586). That re-cut takes the next above the highest,
+  by the same rule as a new release below, and the page names the version it went above. A re-cut
+  whose version is still the highest keeps it. `packages/core/src/release-batch/version-rule.ts:decideVersion` makes the decision, and
   `packages/core/src/release-batch/version-store.ts:cutReleaseVersion` is still its only writer, on the same per-project lock.
 - **Silence is refused, not guessed.** An ended attempt that a box took, and that never said what
   left it, makes its re-cut undecidable. The re-cut is refused `RELEASE_VERSION_UNDECIDED`, naming
-  the version, the attempt and the run, and the draft shows the same gate. To decide it, somebody
+  the version, the attempt and the run, and the draft shows the same gate. A re-cut that takes a
+  new version whatever the answer (a carrier named, a moved line, a version taken or overtaken)
+  does not wait on it. To decide it, somebody
   states what carries the version: `"carried"` on the abort, or
   `POST /api/projects/:projectId/release-batches/:runId/carried` after the fact. `[]` means nothing
   does. A declaration only adds carriers, so a reported tag is never taken back. An abort whose
@@ -100,8 +107,9 @@ artifact outside the system already carries it.
 
 ## Consequences
 
-- A gap in the sequence now means a release that changed its roster, or a version an artifact
-  outside Forge carried. The page names which.
+- A gap in the sequence now means a release that changed its roster, a version an artifact
+  outside Forge carried, or a re-cut that a version claimed since had overtaken. The page names
+  which.
 - A release run that aborts must say what left its box. The release prompts ask for `carried`. A run
   that forgets blocks only the re-cut of that roster, by name, until somebody looks. Every other
   roster still cuts.
