@@ -6,10 +6,10 @@
  */
 
 import type { ReleaseBlockerCode } from '@forge/contracts';
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { lackingCheckClause, refusedCheckClause } from '../issues/landing-correction.js';
 import type { RunnerHold } from '../runners/ineligible.js';
 import {
-  namedHere,
   type RefusedDeclaration,
   type ReleaseBlocker,
   type ReleaseWarning,
@@ -21,7 +21,7 @@ import {
   unreadableSentence,
 } from './blocker-sentences.js';
 import { carriedUndecidedSentence } from './carried-sentences.js';
-import { agree, counted } from './counted.js';
+import { agree, counted, issuesByName, namesInWords } from './counted.js';
 import { runnerHoldReaderClause, runnersHeldSentence } from './runner-hold-sentences.js';
 
 /** Every check a release reason can stand in for, as a person names the work it does. */
@@ -88,7 +88,7 @@ const NOTE_HOLDS = 'the one line a user would read, or that nothing a user sees 
 function recordMissingForReader(details: Details): string {
   const n = Array.isArray(details?.issueIds) ? details.issueIds.length : 2;
   const who =
-    details && Array.isArray(details.issueIds) ? namedHere(details) : 'The issues named here';
+    details && Array.isArray(details.issueIds) ? issuesByName(details) : 'Some waiting issues';
   if (n === 1) {
     return `${who} has no release note, so a release would close it ${NOTHING_TOLD}. Write one first, under Release note on the issue's page: ${NOTE_HOLDS}.`;
   }
@@ -105,13 +105,6 @@ export function recordMissingForRow(here: boolean): string {
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
-}
-
-/** "ISS-1", "ISS-1 and ISS-2", "ISS-1, ISS-2 and ISS-3". */
-function namesInWords(ids: string[]): string {
-  return ids.length < 2
-    ? ids.join('')
-    : `${ids.slice(0, -1).join(', ')} and ${ids[ids.length - 1]}`;
 }
 
 /** A release running, as a person reads it: what it carries, what it waits on, and what the other
@@ -146,16 +139,22 @@ function runnersForReaderHeld(details: Details): string | null {
   return runnersHeldSentence(holds, runnerHoldReaderClause);
 }
 
-/** Not marked merged is the reason, whatever the mark would have named: an issue marked merged with
- *  no commit releases, so "no merge Forge watched land" was never why (ISS-1421 r39, judge-160). */
+/** Not marked merged is the reason, whatever the mark would have named: "no merge Forge watched
+ *  land" was never why (ISS-1421 r39). The act is Mark merged's own steps (r41). */
 function unmergedForReader(details: Details): string | null {
   if (!details || !Array.isArray(details.issueIds)) return null;
   const n = details.issueIds.length;
   const w = (one: string, many: string) => agree(n, one, many);
+  const who = issuesByName(details);
   if (details.shape !== 'outside_git') {
-    return `${namedHere(details)} ${w('is', 'are')} not marked merged, so nothing says ${w('its', 'their')} work is on the branch this release deploys. Use Mark merged in ${w("the issue's", "each issue's")} properties first: a release closes what it carries, and a close says the work went out.`;
+    const steps = markMergedSteps(
+      false,
+      details.noRepository === true,
+      w("the issue's", "each issue's"),
+    );
+    return `${who} ${w('is', 'are')} not marked merged, so nothing says ${w('its', 'their')} work is on the branch this release deploys, and a release closes what it carries. ${steps}`;
   }
-  return `${namedHere(details)} ${w('has', 'have')} no mark saying where ${w('its', 'their')} work landed. ${w('Its', 'Their')} work lands outside git, so mark ${w('it', 'each one')} merged naming where the work now is — the live URL, CMS entry or storefront resource — first: a release records what went out, and a mark naming nothing does not say that anything did.`;
+  return `${who} ${w('has', 'have')} no mark saying where ${w('its', 'their')} work landed. ${w('Its', 'Their')} work lands outside git, so mark ${w('it', 'each one')} merged naming where the work now is — the live URL, CMS entry or storefront resource — first: a release records what went out, and a mark naming nothing does not say that anything did.`;
 }
 
 const unreadableDeclarationForReader: RefusedDeclaration = (n) => {

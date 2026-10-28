@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Banner, Button, MonoTag, Radio, RadioGroup, RetryButton, SlideOver, Textarea } from "@/design";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
+import { CloseFailureTechnical } from "@/features/releases/components/close-failure-technical";
 import { type CloseFailure, failedCloseLead } from "@/features/releases/roster";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
@@ -258,9 +259,12 @@ export function BatchReleaseDialog({
                 <span className="min-w-0 truncate text-muted">{issue.title}</span>
               </span>
               {issue.closeFailure ? (
-                <span className="fg-caption text-amber" data-testid={`fails-the-same-way-${issue.displayId}`}>
-                  {failedCloseLead(issue.closeFailure, "this")}
-                </span>
+                <>
+                  <span className="fg-caption text-amber" data-testid={`fails-the-same-way-${issue.displayId}`}>
+                    {failedCloseLead(issue.closeFailure, "this")}
+                  </span>
+                  <CloseFailureTechnical failure={issue.closeFailure} />
+                </>
               ) : null}
             </li>
           ))}

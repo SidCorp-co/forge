@@ -319,9 +319,12 @@ describe("ReleaseGatePanel — a row whose last release failed its close", () =>
     expect(screen.getByRole("checkbox", { name: "Select ISS-7 for release" })).not.toBeDisabled();
     expect(
       screen.getByText(
-        "The last release (version 0.6.0) could not close this: the database refused the write (23514). A release fails the same way until whoever operates Forge fixes it.",
+        "The last release (version 0.6.0) could not close this: the close failed inside Forge before anything decided it. A release fails the same way until whoever operates Forge fixes it.",
       ),
     ).toBeInTheDocument();
+    // ISS-1421 r41 (judge-167): what Forge said is folded under Technical details, not run into ours.
+    const said = screen.getByText("the database refused the write (23514)");
+    expect(said.closest("details")?.querySelector("summary")).toHaveTextContent("Technical details");
   });
 
   // ISS-1381 r5: a row a release fails the same way is not ready, and the dialog is told why.

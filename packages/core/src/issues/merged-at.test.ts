@@ -76,6 +76,31 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
     expect(steps?.landing_shape).toContain('Set `landingShape` to `outside_git`');
   });
 
+  // ISS-1421 r41 (criterion 393): on a project that names no repository, a close refused for no
+  // mark tells its reader to use Mark merged, and so says Commit may stay empty.
+  it('says Commit may stay empty where the project names no repository', async () => {
+    const { executor } = buildMockExecutor(UNSHIPPED);
+    const noRepository = vi.fn(async () => true);
+    const refusal = await refuseUnshippedClose(executor, {
+      issueId: 'iss-1',
+      toStatus: 'closed',
+      noRepository,
+    });
+    expect(refusal?.detail).toBe(
+      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties, then close it. With no repository named, Commit may stay empty. If it turned out not to be work, move it to Dropped instead.",
+    );
+    expect(noRepository).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks nothing about the repository of a close it lets through', async () => {
+    const { executor } = buildMockExecutor(SHIPPED);
+    const noRepository = vi.fn(async () => true);
+    expect(
+      await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed', noRepository }),
+    ).toBeNull();
+    expect(noRepository).not.toHaveBeenCalled();
+  });
+
   it('refuses a close on an issue the read cannot find, rather than letting it through', async () => {
     const { executor } = buildMockExecutor(undefined);
     expect(

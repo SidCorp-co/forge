@@ -94,6 +94,8 @@ describe('rosterCloseShortfalls', () => {
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a', 'b'])).get('a') ?? [];
     expect(found?.clears).toBe(markMergedSteps(false, true));
     expect(found?.clears).not.toContain('name the commit');
+    // ISS-1421 r41: carried in its details, which the release refusal's sentences are written from.
+    expect(found?.details).toMatchObject({ shape: 'git', noRepository: true });
     expect(commitCheck).toHaveBeenCalledTimes(1);
     expect(commitCheck).toHaveBeenCalledWith(PROJECT);
   });
@@ -104,6 +106,7 @@ describe('rosterCloseShortfalls', () => {
       commitCheck.mockResolvedValue(check);
       const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
       expect(found?.clears).toBe(markMergedSteps(false));
+      expect(found?.details).not.toHaveProperty('noRepository');
     }
   });
 

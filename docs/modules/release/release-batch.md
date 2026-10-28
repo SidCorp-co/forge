@@ -239,16 +239,26 @@ binding.
 
 One issue's refused close does not stop the others from closing. The refused issue goes back to
 `awaiting_release` through `packages/core/src/release-batch/releasing-recovery.ts:recoverStrandedReleasing`, and the comment it
-leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComment`) says:
+leaves (`packages/core/src/release-batch/refused-close-words.ts:refusedCloseComment`) says:
 
-- that the release it was in has shipped, with its version;
-- the refusal by its code (`OPEN_QUESTIONS`, say), and the blocking objects the refusal reports,
-  counted by their label (`2 open questions`); the ids under each `*Ids` key of its details stay on
-  the refusal a caller reads, and never reach the comment (ISS-1421);
+- the release it was in, with its version, said to have gone out only where its run recorded a
+  promotion or a deploy (`packages/core/src/release-batch/releasing-recovery.ts:runRecordedDelivery`);
+  where it recorded neither, the comment says so and that nothing says the issue's code is live
+  (ISS-1421 r41);
+- why the close was refused, in words (`packages/core/src/release-batch/refused-close-words.ts:personRefusedFor`), and the blocking objects the refusal
+  reports, counted by their label (`2 open questions`); the ids under each `*Ids` key of its details
+  stay on the refusal a caller reads, and never reach the comment (ISS-1421). A refusal reporting
+  none is said with no sentence about blocking objects;
 - what clears it, as an act the issue's page offers at the release gate — for `OPEN_QUESTIONS`,
-  answer each in its "Decision waiting" card; for `CLOSE_REQUIRES_SHIPPED`, Mark merged on its
-  Properties rail; a code with no such act keeps the refusal's own detail
-  (`packages/core/src/release-batch/releasing-recovery.ts:personClears`);
+  answer each in its "Decision waiting" card; for `CLOSE_REQUIRES_SHIPPED`, Mark merged's own steps
+  (`packages/contracts/src/mark-merged-words.ts:markMergedSteps`), which on a project naming no
+  repository say Commit may stay empty; a code with no such act keeps the refusal's own detail
+  (`packages/core/src/release-batch/refused-close-words.ts:personClears`);
+- for a close that failed before any rule decided it, a sentence of Forge's saying so, with what
+  Forge said quoted beneath it (`packages/core/src/issues/merge-record.ts:quotedRefusal`). The gate
+  row, the issue's release banner and the Batch release dialog say the same in their own sentence
+  and fold that message under Technical details
+  (`packages/web-v2/src/features/releases/components/close-failure-technical.tsx`);
 - how it closes once cleared: the issue page's release banner offers Release now, which starts a
   release that closes it, or it waits at Awaiting release for the next release. Release now, the
   release gate's own button and the list's Batch release are offered only to a reader holding the

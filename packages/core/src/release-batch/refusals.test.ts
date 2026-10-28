@@ -182,7 +182,7 @@ describe('reportedRefusal — the entry readiness listed, not a rebuild of it', 
     const reader = String((refusal.cause as { details: { reader: unknown } }).details.reader);
 
     expect(refusal.message).toContain('releaseNotes');
-    expect(reader).toContain('`ISS-7`');
+    expect(reader).toContain('ISS-7 has no release note');
     expect(reader).toContain('no release note');
     expect(reader).not.toMatch(/releaseNotes|userFacing|section|[{}]/);
   });

@@ -1,5 +1,5 @@
 import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { forgeActor } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
@@ -7,7 +7,7 @@ import { type IssueStatus, issues } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { ISSUE_STATUS_LABELS, statusLabel } from '../issues/status-sets.js';
+import { statusLabel } from '../issues/status-sets.js';
 import {
   pgBoundValues,
   pgDriverError,
@@ -15,9 +15,11 @@ import {
   pgObjectNames,
 } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
+import { namesNoRepository } from '../projects/live-source.js';
 import { sayCloseFailure } from './close-failures.js';
 import { ReleaseFinishFenceLostError } from './errors.js';
-import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
+import { resolveReleaseGate } from './gate.js';
+import { reasonSentence, refusedCloseComment } from './refused-close-words.js';
 
 export interface RecoverStrandedReleasingResult {
   /** Issues whose claim was cleared, closed ones included: the claim is a lock, not a status. */
@@ -50,6 +52,19 @@ export async function runRecordedPromotion(runId: string): Promise<boolean> {
   return row !== undefined;
 }
 
+/** Did this run record a promotion or a deploy, each declared before it was made (`ledger.ts`)?
+ *  Only then does a finish say the code went out (ISS-1421 r41). */
+export async function runRecordedDelivery(runId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: releaseAttempts.id })
+    .from(releaseAttempts)
+    .where(
+      and(eq(releaseAttempts.runId, runId), inArray(releaseAttempts.stage, ['promote', 'deploy'])),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 /** The issues still claimed by `runId` that are `closed`: what its finish closed and nothing moved. */
 export async function closedOnRoster(runId: string, executor: Tx = db): Promise<string[]> {
   const rows = await executor
@@ -62,7 +77,15 @@ export async function closedOnRoster(runId: string, executor: Tx = db): Promise<
 /** Why a finish could not close one issue: a refusal the transition named, or a failure that never
  *  reached a decision (ISS-1381). */
 export type CloseRefusal =
-  | { kind: 'refused'; code: string; detail: string; blocking: string[]; steps: string[] }
+  | {
+      kind: 'refused';
+      code: string;
+      detail: string;
+      blocking: string[];
+      steps: string[];
+      /** The refusal named a lane outside git, whose mark names where the work is, not a commit. */
+      outsideGit: boolean;
+    }
   | { kind: 'failed'; message: string };
 
 /** `openQuestionIds` → `open question`: the label each id in that collection is named by. */
@@ -99,6 +122,7 @@ export function closeRefusalOf(err: unknown): CloseRefusal {
       detail: err.detail,
       blocking: blockingObjects(err.details),
       steps: stepsOf(err.details.steps),
+      outsideGit: err.details.shape === 'outside_git',
     };
   }
   return { kind: 'failed', message: failureMessage(err) };
@@ -160,115 +184,7 @@ export function closeFailureText(refusal: CloseRefusal): string {
   return [`${refusal.code}: ${refusal.detail}`, ...refusal.steps].join('\n');
 }
 
-/** Why the close was refused, in words; the code stays in what a caller reads (ISS-1421 r39). */
-function personRefusedFor(refusal: Extract<CloseRefusal, { kind: 'refused' }>): string {
-  switch (refusal.code) {
-    case 'OPEN_QUESTIONS':
-      return 'The close was refused because the issue holds open questions.';
-    case 'CLOSE_REQUIRES_SHIPPED':
-      return 'The close was refused because the issue is not marked merged.';
-    case 'STALE_TRANSITION':
-      return 'The close was refused because the issue changed while the release was closing it.';
-    default:
-      return 'The close was refused.';
-  }
-}
-
-/**
- * What clears a refusal, as an act the issue's page offers at the release gate; a code with none
- * keeps its own detail. No act there moves the issue to Closed or withdraws a question (ISS-1381 r3).
- */
-function personClears(refusal: Extract<CloseRefusal, { kind: 'refused' }>): string {
-  switch (refusal.code) {
-    case 'OPEN_QUESTIONS':
-      return 'answer each open question in its "Decision waiting" card on this issue\'s page.';
-    case 'CLOSE_REQUIRES_SHIPPED':
-      return 'mark the issue merged on its Properties rail, naming where its work landed.';
-    case 'STALE_TRANSITION':
-      return 'nothing; the issue changed while the release was closing it. Read where it stands now.';
-    default:
-      return refusal.detail;
-  }
-}
-
-/** Where a returned issue stands and how it closes, in the words its page uses. */
-function howItCloses(destination: IssueStatus, refusal: CloseRefusal): string {
-  const label = ISSUE_STATUS_LABELS[destination];
-  if (destination !== RELEASE_GATE_STATUS) {
-    return `The issue is at ${label}, and a person decides whether it goes back to work or into another release.`;
-  }
-  const back = `The issue is back at ${label} and its code is live with that release.`;
-  // No reading here says a database fault cleared, so Release now stays on offer and says what it
-  // meets until then (ISS-1381 r4).
-  if (refusal.kind === 'failed') {
-    return (
-      `${back} The release banner on this page offers Release now, and a release started there ` +
-      'fails the same way until that failure is fixed. Once it is, Release now starts a release ' +
-      'that closes it; or leave it there and the next release closes it.'
-    );
-  }
-  return (
-    `${back} Once the reason above is cleared, the release banner on this page offers Release now, ` +
-    'which starts a release that closes it; or leave it there and the next release closes it.'
-  );
-}
-
-/** "1 blocking run, 2 open questions": a person is told what blocks, never the ids a caller reads. */
-function countedBlockers(blocking: readonly string[]): string {
-  const counts = new Map<string, number>();
-  for (const named of blocking) {
-    const label = named.slice(0, named.lastIndexOf(' '));
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  return [...counts].map(([label, n]) => `${n} ${label}${n === 1 ? '' : 's'}`).join(', ');
-}
-
-/** "version 1.4.0, one with no version": the releases a repeated failure came from. */
-function releasesNamed(versions: ReadonlyArray<string | null>): string {
-  return versions.map((v) => (v ? `version ${v}` : 'one with no version')).join(', ');
-}
-
-/** What a finish that shipped tells an issue it could not close, and how that issue closes later. */
-export function refusedCloseComment(args: {
-  refusal: CloseRefusal;
-  projectId: string;
-  version: string | null;
-  destination: IssueStatus;
-  /** How a roster its run promoted is settled; such an issue stays claimed rather than moving. */
-  held?: string | undefined;
-  /** Earlier releases whose finish failed this close for the same reason, oldest first. */
-  repeats?: ReadonlyArray<string | null> | undefined;
-}): string {
-  const { refusal, version, destination, held, repeats = [] } = args;
-  const shipped = version ? `as version ${version}` : 'with this batch';
-  const why =
-    refusal.kind === 'refused'
-      ? `${personRefusedFor(refusal)} ${
-          refusal.blocking.length > 0
-            ? `Blocking it: ${countedBlockers(refusal.blocking)}.`
-            : 'The refusal named no blocking object.'
-        } What clears it: ${personClears(refusal)}`
-      : `The close failed before it reached a decision: ${refusal.message}. Nothing on this issue refused it, so nothing here is yours to clear: that reason is for whoever operates this Forge to fix.`;
-  const before =
-    repeats.length > 0
-      ? ` The release${repeats.length === 1 ? '' : 's'} before it (${releasesNamed(repeats)}) could not close it for the same reason either.`
-      : '';
-  const opening = `The release finished and went out ${shipped}, but this issue could not be closed.${before} ${why}\n\n`;
-  if (held) {
-    const again = refusal.kind === 'refused' ? 'refused' : 'failed';
-    return `${opening}${held} Clear the reason above first, or that close is ${again} again.`;
-  }
-  return opening + howItCloses(destination, refusal);
-}
-
 /** The account a comment about this move is written as: a person's own, a device's owner's. */
-/** A hand-back's reason as the comment's opening sentence: a capital, and one full stop however the
- *  caller ended it (ISS-1421 r40, judge-164 read "batch release aborted: …"). */
-export function reasonSentence(reason: string): string {
-  const said = reason.trim().replace(/[.\s]+$/, '');
-  return `${said.charAt(0).toUpperCase()}${said.slice(1)}.`;
-}
-
 function authorOf(actor: TransitionActor): string {
   return actor.type === 'user' ? actor.id : actor.ownerId;
 }
@@ -339,6 +255,7 @@ export async function recoverStrandedReleasing(
   const recovered: string[] = [];
   const actor = options.actor ?? (await forgeActor(db));
   const author = authorOf(actor);
+  const said = await refusalContext(runId, claimed[0]?.projectId, options, promoted);
 
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
@@ -354,6 +271,7 @@ export async function recoverStrandedReleasing(
               version: options.version ?? null,
               destination,
               repeats,
+              ...said,
             }),
           );
         } else {
@@ -464,6 +382,25 @@ function settledNote(destination: IssueStatus): string {
 const PROMOTED_NOTE =
   "This batch recorded a promotion, so the code it carried may be on production, and its issues stay at Releasing and claimed while its run is live. Once the run has ended, Forge's releasing sweep settles them within a minute: it reads what production serves, closes through a release record each issue whose landing commit production carries, and returns the rest to the release gate. View release on the issue shows where its run stands.";
 
+/** What a refused issue's comment says beside its refusal, read once per roster and only where a
+ *  refusal is there to say it: whether the run put code anywhere, and whether a mark may name no
+ *  commit. A promotion already read answers the first. */
+async function refusalContext(
+  runId: string,
+  projectId: string | undefined,
+  options: RecoverStrandedReleasingOptions,
+  promoted: boolean,
+): Promise<{ delivered: boolean; noRepository: boolean }> {
+  const refusals = [...(options.refusals?.values() ?? [])];
+  if (refusals.length === 0 || !projectId) return { delivered: promoted, noRepository: false };
+  const delivered = promoted || (await runRecordedDelivery(runId));
+  const unmarked = refusals.some(
+    (r) => r.kind === 'refused' && r.code === 'CLOSE_REQUIRES_SHIPPED',
+  );
+  const noRepository = unmarked && (await namesNoRepository(projectId));
+  return { delivered, noRepository };
+}
+
 function sayRefusedClose(
   runId: string,
   issue: { id: string; projectId: string },
@@ -495,6 +432,7 @@ async function noteOnRoster(
 ): Promise<void> {
   if (!options.comment) return;
   const author = authorOf(options.actor ?? (await forgeActor(db)));
+  const said = await refusalContext(runId, claimed[0]?.projectId, options, true);
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
     const refusal = options.refusals?.get(issue.id);
@@ -508,6 +446,7 @@ async function noteOnRoster(
             destination: 'releasing',
             held: note,
             repeats,
+            ...said,
           }),
         );
       } else {

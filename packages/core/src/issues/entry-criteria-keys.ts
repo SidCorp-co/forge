@@ -1,3 +1,5 @@
+import { COMMIT_MAY_STAY_EMPTY } from '@forge/contracts/mark-merged-words';
+
 export const ENTRY_CRITERION_KEYS = [
   'plan',
   'acceptance_criteria',
@@ -57,8 +59,9 @@ export function entryRecordsMissingWords(
   return `This issue can't ${move} yet: ${COUNT_WORDS[keys.length] ?? keys.length} records are missing. They are ${listed}.`;
 }
 
-/** Who writes the missing records: the page has no editor for them, so it names the agent's door. */
-export function entryRecordsWrittenBy(keys: readonly string[]): string[] {
+/** Who writes the missing records: the page has no editor for them, so it names the agent's door.
+ *  `noRepository`: a mark in git on a project naming no repository may name no commit. */
+export function entryRecordsWrittenBy(keys: readonly string[], noRepository = false): string[] {
   const byAgent = keys.filter((k) => k !== 'merged_mark').length;
   const them = byAgent === 1 ? 'it' : 'them';
   return [
@@ -69,6 +72,9 @@ export function entryRecordsWrittenBy(keys: readonly string[]): string[] {
       : []),
     ...(keys.includes('merged_mark')
       ? ["Mark merged in the issue's properties records where the work landed."]
+      : []),
+    ...(keys.includes('merged_mark') && noRepository
+      ? [`${COMMIT_MAY_STAY_EMPTY.charAt(0).toUpperCase()}${COMMIT_MAY_STAY_EMPTY.slice(1)}.`]
       : []),
   ];
 }

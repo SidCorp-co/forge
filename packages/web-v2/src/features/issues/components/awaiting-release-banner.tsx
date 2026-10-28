@@ -2,6 +2,7 @@
 
 import { Banner, Button } from "@/design";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
+import { CloseFailureTechnical } from "@/features/releases/components/close-failure-technical";
 import { failedCloseLead } from "@/features/releases/roster";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
 import { askWhoReleases as askWho } from "../release-who";
@@ -98,6 +99,7 @@ export function AwaitingReleaseBanner({
 				<span className="font-medium">{failedCloseLead(entry.closeFailure, "this issue")}</span>{" "}
 				Release now fails the same way until whoever operates Forge fixes it.
 				{askWhoReleases && ` ${askWho("it")}`}
+				<CloseFailureTechnical failure={entry.closeFailure} />
 			</Banner>
 		);
 	}

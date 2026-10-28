@@ -32,10 +32,12 @@ function landingShortfallOf(
   noRepository: boolean,
 ): CloseShortfall {
   const outside = refusal.details.shape === 'outside_git';
+  // Carried on, so a sentence written from the details alone names Commit as the panel does.
+  const claim = !outside && noRepository ? { noRepository: true } : {};
   return {
     ...landingShortfallWords(outside, noRepository),
     detail: refusal.detail,
-    details: { ...refusal.details, shape: outside ? 'outside_git' : 'git' },
+    details: { ...refusal.details, shape: outside ? 'outside_git' : 'git', ...claim },
   };
 }
 

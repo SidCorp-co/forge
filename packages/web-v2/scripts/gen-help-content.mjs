@@ -4,6 +4,9 @@
 // the Next build (no runtime fs, no API, no output-tracing needed under
 // `output: standalone`). Run by `dev`/`build` (see package.json). Skips README.md
 // (the authoring-rules doc) and refuses, by name, any other file without frontmatter.
+// `--check` writes nothing and refuses a bundled module that no longer matches content/help/, so a
+// page edited without regenerating is red in the suite rather than wrong in the next build;
+// `--from <dir>` reads another folder, for a test to plant one (ISS-1421 r41, judge-167).
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -12,7 +15,9 @@ import { readAudience, readPage } from "./help-frontmatter.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
-const CONTENT_DIR = path.join(root, "content", "help");
+const fromAt = process.argv.indexOf("--from");
+const CONTENT_DIR = fromAt > 0 ? path.resolve(process.argv[fromAt + 1]) : path.join(root, "content", "help");
+const CHECK = process.argv.includes("--check");
 const OUT_FILE = path.join(root, "src", "features", "docs", "help-content.generated.ts");
 // The slugs alone, for the middleware, which would otherwise bundle every page body to learn them.
 const SLUGS_FILE = path.join(root, "src", "features", "docs", "help-slugs.generated.ts");
@@ -74,11 +79,24 @@ const out =
   // to any reader of this file instead of looking like a template literal nobody interpolated.
   `export const HELP_DOCS: HelpDoc[] = ${JSON.stringify(docs, null, 2).replaceAll("${", "\\u0024{")};\n`;
 
-await fs.mkdir(path.dirname(OUT_FILE), { recursive: true });
-await fs.writeFile(OUT_FILE, out, "utf8");
-await fs.writeFile(
-  SLUGS_FILE,
-  `${banner}export const HELP_SLUGS: readonly string[] = ${JSON.stringify(docs.map((d) => d.slug), null, 2)};\n`,
-  "utf8",
-);
-console.log(`gen-help-content: wrote ${docs.length} docs → ${path.relative(root, OUT_FILE)}`);
+const slugs = `${banner}export const HELP_SLUGS: readonly string[] = ${JSON.stringify(docs.map((d) => d.slug), null, 2)};\n`;
+
+if (CHECK) {
+  const stale = [];
+  for (const [file, text] of [[OUT_FILE, out], [SLUGS_FILE, slugs]]) {
+    const committed = await fs.readFile(file, "utf8").catch(() => null);
+    if (committed !== text) stale.push(path.relative(root, file));
+  }
+  if (stale.length > 0) {
+    console.error(
+      `gen-help-content: ${stale.join(" and ")} ${stale.length > 1 ? "do" : "does"} not match content/help/ — run \`pnpm gen:help\` and commit it`,
+    );
+    process.exit(1);
+  }
+  console.log(`gen-help-content: ${docs.length} docs, ${path.relative(root, OUT_FILE)} is current`);
+} else {
+  await fs.mkdir(path.dirname(OUT_FILE), { recursive: true });
+  await fs.writeFile(OUT_FILE, out, "utf8");
+  await fs.writeFile(SLUGS_FILE, slugs, "utf8");
+  console.log(`gen-help-content: wrote ${docs.length} docs → ${path.relative(root, OUT_FILE)}`);
+}

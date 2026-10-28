@@ -1,6 +1,7 @@
 import { type Db, db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
+import { namesNoRepository } from '../projects/live-source.js';
 import type { ActorAgency } from './actor-agency.js';
 import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';
 import { findUnmetEntryCriteria } from './entry-criteria.js';
@@ -9,6 +10,7 @@ import {
   entryRecordsMissingWords,
   entryRecordsWrittenBy,
 } from './entry-criteria-keys.js';
+import { readLandingEvidence } from './landing-evidence.js';
 import { statusLabel } from './status-sets.js';
 
 export interface TransitionEvidenceViolation {
@@ -96,7 +98,7 @@ const entryCriteriaRule: EvidenceRule = {
       // A short sentence per record by its name; each record's whole step stays in `steps`.
       detail: [
         entryRecordsMissingWords(ctx.toStatus, statusLabel(ctx.toStatus), unmet),
-        ...entryRecordsWrittenBy(unmet),
+        ...entryRecordsWrittenBy(unmet, await markNamesNoCommit(ctx, unmet)),
         ...(ctx.toStatus === 'closed' ? [CLOSE_INSTEAD] : []),
       ].join(' '),
       details: {
@@ -109,6 +111,27 @@ const entryCriteriaRule: EvidenceRule = {
     };
   },
 };
+
+/** Whether a missing mark is one in git on a project naming no repository, so its Commit may stay
+ *  empty (ISS-1421 r41, criterion 393). Read only where a mark is what is missing; a read that fails
+ *  leaves the sentence without it rather than the refusal unmade. */
+async function markNamesNoCommit(
+  ctx: TransitionEvidenceContext,
+  unmet: readonly string[],
+): Promise<boolean> {
+  if (!unmet.includes('merged_mark')) return false;
+  try {
+    const evidence = await readLandingEvidence(ctx.executor ?? db, ctx.issue.id);
+    if (evidence && evidence.lane.shape !== 'git') return false;
+    return await namesNoRepository(ctx.issue.projectId);
+  } catch (err) {
+    logger.warn(
+      { err, issueId: ctx.issue.id },
+      'transition-evidence: the landing lane could not be read',
+    );
+    return false;
+  }
+}
 
 const RULES: readonly EvidenceRule[] = [noWorkEvidenceRule, entryCriteriaRule];
 

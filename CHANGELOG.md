@@ -3200,6 +3200,7 @@
 
 ### Fixed
 
+- **A release says what it did to an issue it could not close.** Code is called live only after a recorded deploy; Mark merged says Commit may stay empty without a repository. (ISS-1421)
 - **The help says what the screen says, and a release says one thing per issue.** Help, guides and API reference drop "ship"; an issue a release could not close gets no unverified note; Shape & release matches the gate. (ISS-1421)
 - **Every wait before Retry is said to a screen reader at its start and its end, never each second**, the issue list's filters and phone menu included. A write refused for too many requests says how long to wait. (ISS-1229)
 - **A route's own rate limit names itself in `X-RateLimit-Scope`.** A token's knowledge search read a limit of 300 beside the scope `write`, as if the token's writes were the 300. (ISS-1229)

@@ -141,9 +141,62 @@ describe('a release finish that cannot close an issue', () => {
     expect(said).not.toContain(first);
     expect(said).not.toContain(second);
     expect(said).toContain('"Decision waiting" card');
-    expect(said).toContain(`went out as version ${version}`);
+    // ISS-1421 r41 (judge-167): this run recorded no promotion and no deploy, so it is not said to
+    // have gone out, nor the issue's code to be live.
+    expect(said).toContain(
+      `The release finished as version ${version}, but this issue could not be closed.`,
+    );
+    expect(said).toContain(
+      'That release recorded no promotion and no deploy, so nothing says its code is live.',
+    );
+    expect(said).not.toMatch(/went out|is live with/);
     expect(said).toContain('Release now');
     expect(said).not.toMatch(/\/api\/|voidQuestions/);
+  });
+
+  it('says the code went out with a release whose run recorded a deploy', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const { openAttempt } = await import('../../src/release-batch/ledger.js');
+    const held = await fx.insertIssue();
+    const { runId, version } = await fx.claim([held]);
+    await openAttempt({
+      runId,
+      stage: 'deploy',
+      idempotencyKey: 'deploy-1',
+      commit: 'b'.repeat(40),
+    });
+    await askOn(held);
+
+    await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+
+    expect((await fx.stored(held)).status).toBe('awaiting_release');
+    const said = await lastComment(held);
+    expect(said).toContain(`The release finished and went out as version ${version}`);
+    expect(said).toContain(
+      'The issue is back at Awaiting release, and its code went out with that release.',
+    );
+  });
+
+  // ISS-1421 r41 (judge-167, criterion 393): the hand-back on an issue unmarked while its release ran
+  // asked for Mark merged on a project naming no repository without saying Commit may stay empty.
+  it('clears a missing mark by Mark merged, saying Commit may stay empty where no repository is named', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const unmarked = await fx.insertIssue();
+    const { runId } = await fx.claim([unmarked]);
+    await harness.db.execute(sql`
+      UPDATE issues SET merged_at = NULL, merged_commit_sha = NULL, merged_landing = NULL
+       WHERE id = ${unmarked}
+    `);
+
+    await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+
+    expect((await fx.stored(unmarked)).status).toBe('awaiting_release');
+    const said = await lastComment(unmarked);
+    expect(said).toContain('The close was refused because the issue is not marked merged.');
+    expect(said).toContain(
+      "What clears it: use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed; with no repository named, Commit may stay empty.",
+    );
+    expect(said).not.toMatch(/blocking object|Properties rail|under Commit/);
   });
 
   it('names the database’s reason for a close that failed, and never the statement or a bound value', async () => {
@@ -346,7 +399,7 @@ describe('a close that fails the same way in two releases (ISS-1381 r4)', () => 
 
       const said = await failureComments(broken);
       expect(said).toHaveLength(1);
-      expect(said[0]).toContain(`went out as version ${second.version}`);
+      expect(said[0]).toContain(`The release finished as version ${second.version}`);
       expect(said[0]).toContain(`version ${first.version}`);
       expect(said[0]).toContain('for the same reason');
       expect(said[0]?.match(/gj_closed_needs_ledger/g)).toHaveLength(1);

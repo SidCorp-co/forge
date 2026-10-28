@@ -237,8 +237,13 @@ describe("AwaitingReleaseBanner — an issue whose last release failed its close
   it("names the failure and says Release now fails the same way until whoever operates Forge fixes it", () => {
     state({}, null, [], FAILURE);
     renderBanner();
-    expect(screen.getByText(/The last release \(version 0\.6\.0\) could not close this issue/)).toBeInTheDocument();
-    expect(screen.getByText(/gj_closed_needs_ledger/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The last release (version 0.6.0) could not close this issue: the close failed inside Forge before anything decided it.",
+      ),
+    ).toBeInTheDocument();
+    // ISS-1421 r41 (judge-167): what Forge said is folded under Technical details, not run into ours.
+    expect(screen.getByText(/gj_closed_needs_ledger/).closest("details")).not.toBeNull();
     expect(
       screen.getByText(/Release now fails the same way until whoever operates Forge fixes it/),
     ).toBeInTheDocument();

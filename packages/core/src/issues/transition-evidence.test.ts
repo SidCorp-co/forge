@@ -39,6 +39,16 @@ vi.mock('./entry-criteria.js', () => ({
   findUnmetEntryCriteria: (...args: unknown[]) => findUnmetEntryCriteriaMock(...(args as [])),
 }));
 
+const laneMock = vi.fn(async (..._a: unknown[]) => null as unknown);
+vi.mock('./landing-evidence.js', () => ({
+  readLandingEvidence: (...a: unknown[]) => laneMock(...a),
+}));
+
+const commitCheckMock = vi.fn(async (..._a: unknown[]) => 'checked' as string | null);
+vi.mock('../projects/live-source.js', () => ({
+  namesNoRepository: async (...a: unknown[]) => (await commitCheckMock(...a)) === 'claim',
+}));
+
 const { checkTransitionEvidence, isBlankPlan } = await import('./transition-evidence.js');
 
 const ISSUE = { id: 'iss-1', projectId: 'proj-1' };
@@ -432,5 +442,45 @@ describe('an agent close, which owes a release note on every project', () => {
       releaseNoteOwed: false,
     });
     expect(violation).toBeNull();
+  });
+});
+
+// ISS-1421 r41 (criterion 393): a missing mark in git on a project naming no repository.
+describe('a missing merge mark on a project naming no repository', () => {
+  beforeEach(resetRecordReaders);
+
+  const missingMark = async () => {
+    findUnmetEntryCriteriaMock.mockResolvedValue(shortfall('merged_mark'));
+    return (
+      await checkTransitionEvidence({
+        issue: ISSUE,
+        toStatus: 'awaiting_release',
+        agency: 'human',
+        skip: false,
+        declaredCriteria: ['merged_mark'],
+      })
+    )?.detail;
+  };
+
+  it('says Commit may stay empty', async () => {
+    laneMock.mockResolvedValue({ columns: {}, lane: { shape: 'git', declared: false } });
+    commitCheckMock.mockResolvedValue('claim');
+    expect(await missingMark()).toContain(
+      "Mark merged in the issue's properties records where the work landed. With no repository named, Commit may stay empty.",
+    );
+  });
+
+  it.each([
+    ['a repository it reads', { shape: 'git', declared: false }, 'checked'],
+    ['work that lands outside git', { shape: 'outside_git', declared: true }, 'claim'],
+  ])('says nothing of Commit for %s', async (_what, lane, check) => {
+    laneMock.mockResolvedValue({ columns: {}, lane });
+    commitCheckMock.mockResolvedValue(check);
+    expect(await missingMark()).not.toContain('Commit');
+  });
+
+  it('still refuses when the lane cannot be read', async () => {
+    laneMock.mockRejectedValueOnce(new Error('read failed'));
+    expect(await missingMark()).toContain("Mark merged in the issue's properties");
   });
 });

@@ -12,14 +12,20 @@ export const NAME_THE_LANDED_COMMIT = `name the commit that landed under ${COMMI
 
 export const COMMIT_MAY_STAY_EMPTY = `with no repository named, ${COMMIT_FIELD} may stay empty`;
 
-export function markMergedSteps(outsideGit: boolean, noRepository = false): string {
+/** `whose` names the properties for several issues at once: "each issue's". */
+export function markMergedSteps(
+  outsideGit: boolean,
+  noRepository = false,
+  whose = "the issue's",
+): string {
+  const use = `Use ${MARK_MERGED_ACTION} in ${whose} properties.`;
   if (!outsideGit && noRepository) {
-    return `Use ${MARK_MERGED_ACTION} in the issue's properties. In the panel it opens, fill in ${WHERE_IT_LANDED_FIELD}; ${COMMIT_MAY_STAY_EMPTY}.`;
+    return `${use} In the panel it opens, fill in ${WHERE_IT_LANDED_FIELD}; ${COMMIT_MAY_STAY_EMPTY}.`;
   }
   const fill = outsideGit
     ? `name the live URL, CMS entry or storefront resource in ${WHERE_IT_LANDED_FIELD}`
     : `fill in ${WHERE_IT_LANDED_FIELD} and ${NAME_THE_LANDED_COMMIT}`;
-  return `Use ${MARK_MERGED_ACTION} in the issue's properties. In the panel it opens, ${fill}.`;
+  return `${use} In the panel it opens, ${fill}.`;
 }
 
 export const MARK_SEEN = 'Forge saw this merge land.';
