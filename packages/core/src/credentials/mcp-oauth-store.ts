@@ -49,6 +49,19 @@ export async function registerClient(input: {
   return row;
 }
 
+/** The registered client a live OAuth grant handed `tokenId` to, or null for a token minted by hand. */
+export async function clientOfToken(
+  tokenId: string,
+): Promise<Pick<McpOauthClientRow, 'clientName' | 'redirectUris'> | null> {
+  const [row] = await db
+    .select({ clientName: mcpOauthClients.clientName, redirectUris: mcpOauthClients.redirectUris })
+    .from(mcpOauthGrants)
+    .innerJoin(mcpOauthClients, eq(mcpOauthClients.id, mcpOauthGrants.clientId))
+    .where(eq(mcpOauthGrants.currentTokenId, tokenId))
+    .limit(1);
+  return row ?? null;
+}
+
 export async function findClient(id: string): Promise<McpOauthClientRow | null> {
   const [row] = await db.select().from(mcpOauthClients).where(eq(mcpOauthClients.id, id));
   return row ?? null;

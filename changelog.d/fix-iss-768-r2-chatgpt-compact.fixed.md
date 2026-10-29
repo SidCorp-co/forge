@@ -1,0 +1,1 @@
+**ChatGPT gets a compact tool catalog.** A ChatGPT client, known by its OAuth client or `openai-mcp` User-Agent, is listed the seven BA tools in 14 KB instead of 56 KB; calls still validate against the full schemas.

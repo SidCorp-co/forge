@@ -102,6 +102,11 @@ export type McpContext = {
   requestId?: string;
   ip?: string | null;
   userAgent?: string | null;
+  /**
+   * `compact` where the client is ChatGPT, whose connector fails discovery on the full catalog:
+   * `tools/list` answers the compact listing (`mcp/compact-listing.ts`). Absent, it lists in full.
+   */
+  listing?: 'compact';
 };
 
 export type ContextScopedMcpToolFactory = (ctx: McpContext) => McpTool;

@@ -5,6 +5,7 @@ import {
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 import type { Context } from 'hono';
+import { clientOfToken } from '../credentials/mcp-oauth-store.js';
 import { logger } from '../lib/logger.js';
 import type { McpContext } from '../lib/tool.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
@@ -119,6 +120,7 @@ function logExchange(c: Context, ctx: McpContext, asked: RpcMessage[], res: Resp
               m.error ? `error ${String(m.error.code ?? 'unknown')}` : 'result',
             ),
             tools: tools ? tools.length : null,
+            listing: ctx.listing ?? 'full',
             bytes: Buffer.byteLength(text),
             requestId: ctx.requestId,
             userAgent: ctx.userAgent,
@@ -160,9 +162,32 @@ const modern = createMcpHandler(
  * has always answered it; the SDK's own stateless fallback would stream every answer as SSE. One
  * server factory backs both, so the two eras list and call the same tools.
  */
+/**
+ * Whether the caller is ChatGPT, whose connector fails discovery on the full catalog (ISS-768 r2):
+ * the OAuth client its token was granted to names ChatGPT or redirects to chatgpt.com, or, for a
+ * token that came another way, its User-Agent is `openai-mcp`. Read only for a listing.
+ */
+async function isChatGpt(ctx: McpContext): Promise<boolean> {
+  if (/^openai-mcp\//i.test(ctx.userAgent ?? '')) return true;
+  const client = await clientOfToken(ctx.principal.tokenId);
+  if (!client) return false;
+  if (/chatgpt/i.test(client.clientName)) return true;
+  return client.redirectUris.some((uri) => {
+    try {
+      const host = new URL(uri).hostname;
+      return host === 'chatgpt.com' || host.endsWith('.chatgpt.com');
+    } catch {
+      return false;
+    }
+  });
+}
+
 export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Promise<Response> {
   const ctx = mcpContextOf(c);
   const asked = messagesIn(await c.req.raw.clone().text());
+  if (asked.some((m) => m.method === 'tools/list') && (await isChatGpt(ctx))) {
+    ctx.listing = 'compact';
+  }
   const res = await serve(c, ctx);
   logExchange(c, ctx, asked, res);
   return res;

@@ -19,6 +19,7 @@ import { toToolCallContent } from '../lib/tool-result.js';
 import { chatToolWriteRefusal } from '../middleware/chat-write-hold.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
 import { resolveManagedMetaPrompts } from '../skills/index.js';
+import { compactListing } from './compact-listing.js';
 import { actionRefusal, gatedTool } from './input-gate.js';
 import { listedSchema } from './listed-schema.js';
 import { MCP_TOOLS } from './registry.js';
@@ -147,7 +148,9 @@ export function createMcpServer(ctx: McpContext): Server {
     };
   });
 
-  server.setRequestHandler('tools/list', async () => ({ tools: toolListing(tools) }));
+  server.setRequestHandler('tools/list', async () => ({
+    tools: ctx.listing === 'compact' ? compactListing(toolListing(tools)) : toolListing(tools),
+  }));
 
   server.setRequestHandler('tools/call', async (request) => {
     const { name, arguments: rawArgs } = request.params;
