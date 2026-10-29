@@ -96,7 +96,8 @@ export async function openChangeRequestsOf(
     .sort((a, b) => a.number - b.number);
 }
 
-async function shown(ids: string[]): Promise<string[]> {
+/** The ids, in order, by the key a screen shows them under, for a refusal's `{named}` (ISS-1346). */
+export async function shown(ids: string[]): Promise<string[]> {
   const names = await issueDisplayIds(ids);
   return ids.map((id) => names.get(id) ?? id);
 }

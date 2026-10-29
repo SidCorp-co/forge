@@ -8,6 +8,7 @@ import { issues, pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { blocker } from './blocker-kit.js';
 import type { ReleaseBlocker } from './blocker-sentences.js';
+import { shown } from './change-request-roster.js';
 import type { ReleaseDeclaration } from './gate.js';
 
 export type PromotionDeclaration = Extract<ReleaseDeclaration, { kind: 'promotion' }>;
@@ -50,7 +51,13 @@ export async function promotionBlockers(
     .where(inArray(issues.id, [...roster]));
   const landed = newest?.at ? new Date(newest.at) : null;
   if (request?.mergedAt && landed && request.mergedAt >= landed) return;
-  out.push(blocker('RELEASE_PROMOTION_MISSING', { issueIds: [...roster], ...decl.promotion }));
+  out.push(
+    blocker('RELEASE_PROMOTION_MISSING', {
+      issueIds: [...roster],
+      displayIds: await shown([...roster]),
+      ...decl.promotion,
+    }),
+  );
 }
 
 /**
