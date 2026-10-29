@@ -11,6 +11,8 @@
  * @direct-test-of packages/core/src/feedback/told.ts
  * @direct-test-of packages/core/src/forge-door/reads.ts
  * @direct-test-of packages/core/src/forge-door/service.ts
+ * @direct-test-of packages/core/src/feedback/ship-notice.ts
+ * @direct-test-of packages/core/src/feedback/list-read.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -19,6 +21,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { mintPat } from '../../src/credentials/pat.js';
 import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
 import { db } from '../../src/db/client.js';
+import type { IssueStatus } from '../../src/db/schema.js';
+import { accountActor } from '../../src/issues/index.js';
+import { closeRoster } from '../../src/release-batch/finish.js';
+import { releaseClaims } from '../../src/release-batch/releasing-recovery.js';
 import { api, type Body } from '../helpers/api.js';
 import {
   addProjectMember,
@@ -43,7 +49,15 @@ const ASK = {
   needed: 'The command and its output',
   recommended: 'forge claim --next',
 };
-const keys = { answered: '', declined: '', clarified: '', shipped: '', silent: '' };
+const keys = {
+  answered: '',
+  declined: '',
+  clarified: '',
+  shipped: '',
+  closedByHand: '',
+  twoReleases: '',
+  silent: '',
+};
 
 const home = (path: string) => `/api/projects/${w.projectId}${path}`;
 
@@ -104,6 +118,61 @@ async function doorItem(key: string, pat = reporter.pat): Promise<Body> {
   return ok(await api(pat, 'GET', `/api/forge/feedback/${key}`));
 }
 
+/** An issue landed at a commit Forge observed, waiting for a release. */
+async function landed(): Promise<string> {
+  const { id } = await issue(w, { status: 'awaiting_release', createdAt: ago(30), mergedAt: ago(4) });
+  await db.execute(sql`UPDATE issues SET merged_commit_sha = ${'a'.repeat(40)} WHERE id = ${id}`);
+  return id;
+}
+
+/** The reporter's item, routed onto `carriers`. */
+async function reported(seq: number, carriers: string[]): Promise<string> {
+  const key = await createTestFeedback(w.projectId, reporter.id, seq, carriers);
+  await db.execute(sql`
+    UPDATE feedback SET reporter_agency = 'agent' WHERE project_id = ${w.projectId} AND fb_seq = ${seq}
+  `);
+  return key;
+}
+
+/**
+ * Release `version` shipped at `at`, cut as a live release leaves its roster: the run names the
+ * claimed issues, the finish closes them (`finish.ts:closeRoster`) and lets each claim go
+ * (`releasing-recovery.ts:releaseClaims`), so no issue keeps `release_batch_run_id`.
+ */
+async function cut(version: string, carriers: string[], at: Date): Promise<void> {
+  const runId = randomUUID();
+  const metadata = {
+    source: 'release-batch',
+    issueIds: carriers,
+    finish: { requestId: randomUUID(), state: 'finished', commit: 'c'.repeat(40), version: 1 },
+  };
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, release_version, release_released_at, metadata)
+    VALUES (${runId}, ${w.projectId}, 'system', 'completed', ${at.toISOString()}::timestamptz, ${version},
+            ${at.toISOString()}::timestamptz, ${JSON.stringify(metadata)}::jsonb)
+  `);
+  const claimed = await rows<{ id: string; status: IssueStatus; reopenCount: number }>(sql`
+    UPDATE issues SET release_batch_run_id = ${runId}
+     WHERE id IN (${sql.join(
+       carriers.map((id) => sql`${id}::uuid`),
+       sql`, `,
+     )})
+    RETURNING id, status, reopen_count AS "reopenCount"
+  `);
+  const outcome = await closeRoster(
+    claimed.map((c) => ({ ...c, projectId: w.projectId })),
+    runId,
+    await accountActor(w.userId),
+    undefined,
+  );
+  expect(outcome.failed).toEqual([]);
+  await db.transaction((tx) => releaseClaims(tx, runId));
+  const kept = await rows<{ n: number }>(sql`
+    SELECT count(*)::int AS n FROM issues WHERE release_batch_run_id = ${runId}
+  `);
+  expect(kept[0]?.n).toBe(0);
+}
+
 beforeAll(async () => {
   w = await world();
   const client = await createTestProject(w.userId);
@@ -161,18 +230,20 @@ beforeAll(async () => {
   keys.clarified = await filed('forge claim fails sometimes');
   await ok(await api(w.token, 'POST', home(`/feedback/${keys.clarified}/clarification`), ASK));
 
-  // shipped: the reporter's item, routed onto an issue that closed and was cut into release 0.9.46
-  const carrier = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
-  keys.shipped = await createTestFeedback(w.projectId, reporter.id, 900, [carrier.id]);
-  await db.execute(sql`
-    UPDATE feedback SET reporter_agency = 'agent' WHERE project_id = ${w.projectId} AND fb_seq = 900
-  `);
-  const runId = randomUUID();
-  await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, release_version, release_released_at, metadata)
-    VALUES (${runId}, ${w.projectId}, 'system', 'completed', now(), '0.9.46', now(), ${JSON.stringify({ issueIds: [carrier.id] })}::jsonb)
-  `);
-  await db.execute(sql`UPDATE issues SET release_batch_run_id = ${runId} WHERE id = ${carrier.id}`);
+  // shipped: the reporter's item, routed onto an issue the release 0.9.46 shipped
+  const carrier = await landed();
+  keys.shipped = await reported(900, [carrier]);
+  await cut('0.9.46', [carrier], ago(3));
+
+  // closed by hand: no release carried its carrier
+  const byHand = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
+  keys.closedByHand = await reported(901, [byHand.id]);
+
+  // carried by two issues, each shipped in its own release
+  const [early, late] = [await landed(), await landed()];
+  keys.twoReleases = await reported(902, [early, late]);
+  await cut('0.9.47', [early], ago(2));
+  await cut('0.9.48', [late], ago(1));
 
   keys.silent = await filed('Nothing told yet');
 }, 120_000);
@@ -236,6 +307,34 @@ describe('the reporter reads at the item what its triage told them (REQ-47 BC-10
     expect(told.shippedIn).toBe('0.9.46');
     const notice = (await projectDetail(keys.shipped)).shipNotice as Body;
     expect(told.shippedIn).toBe((notice.shipped as Body).release);
+  });
+
+  it('names that release on its carrier in the project read too', async () => {
+    const route = (await projectDetail(keys.shipped)).route as Body;
+    expect((route.carriers as Body[]).map((c) => c.release)).toEqual(['0.9.46']);
+  });
+
+  it('reads the release the issue it shipped on reads, the one its progress names', async () => {
+    const [carrier] = await rows<{ id: string }>(sql`
+      SELECT r.issue_id AS id FROM feedback_route_issues r JOIN feedback f ON f.id = r.feedback_id
+       WHERE f.project_id = ${w.projectId} AND 'FB-' || f.fb_seq = ${keys.shipped}
+    `);
+    const read = await ok(await api(w.token, 'GET', `/api/issues/${carrier?.id}`));
+    expect((read.shippedIn as Body).version).toBe('0.9.46');
+    expect(((await doorItem(keys.shipped)).told as Body).shippedIn).toBe(
+      (read.shippedIn as Body).version,
+    );
+  });
+
+  it('reads no release where its carrier closed without one', async () => {
+    const told = (await doorItem(keys.closedByHand)).told as Body;
+    expect(told.shippedIn).toBeNull();
+    const notice = (await projectDetail(keys.closedByHand)).shipNotice as Body;
+    expect((notice.shipped as Body).release).toBeNull();
+  });
+
+  it('reads the later release where its carriers shipped in two', async () => {
+    expect(((await doorItem(keys.twoReleases)).told as Body).shippedIn).toBe('0.9.48');
   });
 
   it('reads nothing told on an item triage has not answered', async () => {
