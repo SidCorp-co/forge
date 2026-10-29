@@ -62,6 +62,13 @@ interface FinishReleaseBatchOptions {
   /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
   alreadyVerified?: boolean | undefined;
   whileVerifying?: (() => Promise<void>) | undefined;
+  /**
+   * The pause between two probe readings, and how many agreeing readings count as arrived. Absent,
+   * the wait is verify.ts's own (5 s) and the count is the project's `stableReads` (default 2);
+   * a test hands a no-wait sleep and one read so a probed finish does not sit through real time.
+   */
+  probeSleep?: ((ms: number) => Promise<void>) | undefined;
+  stableReads?: number | undefined;
   /** Called once verification is green, by the probes or by the deployment record, before the
    *  first issue closes. */
   onVerified?: ((verification: ReleaseVerification) => Promise<void>) | undefined;
@@ -170,7 +177,11 @@ export async function verifyBeforeClose(
     if (verification.kind === 'probed') {
       const meta = (run.metadata ?? {}) as Record<string, unknown>;
       const outcome = await verifyDeployed({
-        cfg: verification.cfg,
+        cfg:
+          options.stableReads === undefined
+            ? verification.cfg
+            : { ...verification.cfg, stableReads: options.stableReads },
+        ...(options.probeSleep ? { sleep: options.probeSleep } : {}),
         commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
         expected: options.commit ?? null,
         checkpoint: options.whileVerifying,

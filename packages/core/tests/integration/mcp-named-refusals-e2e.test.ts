@@ -164,18 +164,34 @@ describe('every /mcp tool names what is wrong with a call it refuses (c2)', () =
   }, 120_000);
 
   it('names a reference of the wrong shape, empty, or with trailing text', async () => {
+    // The refusal of a malformed reference is made by the field's own pattern, whichever action
+    // carries it, so each (tool, field) is swept through ONE action: the first that reads the field
+    // (refuses its first bad value). An action that never reads it would pass every value
+    // unrefused and judge nothing, which is why the action is found, not taken as the first listed.
+    const values = ['ISS602', 'ISS-602x', '#602', ''];
     const faults: string[] = [];
     for (const t of tools) {
-      for (const action of actionsOf(t)) {
-        for (const field of referencesOf(t)) {
-          for (const value of ['ISS602', 'ISS-602x', '#602', '']) {
-            const c = await call(token, t.name, scoped(t, { action, [field]: value }));
-            const fault = unnamed(c);
-            if (fault) {
-              faults.push(
-                `${t.name} ${action} ${field}=${JSON.stringify(value)}: ${fault}: ${shown(c)}`,
-              );
-            }
+      for (const field of referencesOf(t)) {
+        const actions = actionsOf(t);
+        let action = actions[0] as string;
+        for (const candidate of actions) {
+          const probe = await call(
+            token,
+            t.name,
+            scoped(t, { action: candidate, [field]: values[0] }),
+          );
+          if (probe.isError) {
+            action = candidate;
+            break;
+          }
+        }
+        for (const value of values) {
+          const c = await call(token, t.name, scoped(t, { action, [field]: value }));
+          const fault = unnamed(c);
+          if (fault) {
+            faults.push(
+              `${t.name} ${action} ${field}=${JSON.stringify(value)}: ${fault}: ${shown(c)}`,
+            );
           }
         }
       }

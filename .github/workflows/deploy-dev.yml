@@ -1,0 +1,101 @@
+name: Deploy dev
+
+# Every push to `dev` deploys forge-dev (owner, 2026-10-29): no release cut, no wait on a whole
+# suite. The merge check gated the change before it landed (ci.yml `merge-check`); the whole suite
+# runs on dev once a day (`daily-suite` below) and its bisect names a merge that turned it red. A `-dev.N` release is a
+# snapshot of what was served (scripts/cut-release.sh), never the door a deploy goes through.
+# `main` and production are untouched: nothing here runs for them.
+#
+# Coolify builds the dev app ("Getforge Dev") from the head of `dev`, so a newer push supersedes an
+# older deploy; the group below cancels the older run rather than leave it waiting for a commit
+# that will never be served. The job is done only when forge-dev reports the pushed commit as the
+# one it serves (`sourceCommit` on /api/version), so a deploy that was asked for and never served
+# is red by name.
+#
+# One secret, which only a person can make: COOLIFY_DEV_DEPLOY_TOKEN, a Coolify API token with the
+# `deploy` permission alone (manage.musetools.com, Keys & Tokens), set with
+# `gh secret set COOLIFY_DEV_DEPLOY_TOKEN -R SidCorp-co/forge`. Without it every run is red,
+# naming it.
+on:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COOLIFY_URL: https://manage.musetools.com
+      COOLIFY_APP: e0o0c40kc8wwg084ckgcww00
+      VERSION_URL: https://forge-dev-api.sidcorp.co/api/version
+      # how long the build and the health check may take before the deploy is called unserved
+      SERVE_WAIT_MINUTES: '20'
+    steps:
+      - name: Ask Coolify to deploy forge-dev
+        env:
+          TOKEN: ${{ secrets.COOLIFY_DEV_DEPLOY_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::COOLIFY_DEV_DEPLOY_TOKEN is not set, so forge-dev was not deployed. A person makes a Coolify API token with the deploy permission alone (manage.musetools.com, Keys & Tokens) and sets it with: gh secret set COOLIFY_DEV_DEPLOY_TOKEN -R SidCorp-co/forge"
+            exit 1
+          fi
+          # Cloudflare in front of Coolify refuses a client signature it does not know (error 1010)
+          answer=$(curl -sS -A 'curl/8.5.0' -w '\n%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json' \
+            "$COOLIFY_URL/api/v1/deploy?uuid=$COOLIFY_APP&force=false")
+          code=${answer##*$'\n'}
+          body=${answer%$'\n'*}
+          echo "$body"
+          if [ "$code" != 200 ]; then
+            echo "::error::Coolify answered $code to the deploy of $COOLIFY_APP: $body"
+            exit 1
+          fi
+      - name: Wait until forge-dev serves this commit
+        shell: bash
+        run: |
+          deadline=$(( $(date +%s) + SERVE_WAIT_MINUTES * 60 ))
+          served=''
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            served=$(curl -fsS -A 'curl/8.5.0' "$VERSION_URL" | jq -r '.sourceCommit // empty' || true)
+            if [ "$served" = "$GITHUB_SHA" ]; then
+              echo "forge-dev serves $GITHUB_SHA ($(curl -fsS -A 'curl/8.5.0' "$VERSION_URL"))"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::forge-dev still serves ${served:-nothing readable} after $SERVE_WAIT_MINUTES minutes, not $GITHUB_SHA. Read the deployment in Coolify (app $COOLIFY_APP)."
+          exit 1
+
+  # The whole suite on dev, at most once a day. GitHub runs a schedule only on the default branch
+  # (`main`), whose CI has no `nightly-fanout` yet, so no scheduled run reaches dev. The first push
+  # to dev with no whole-suite run started on dev in the last 22 hours starts one on its head; a
+  # day with no push changed nothing to test. It gates nothing: a red run's `suite-bisect` names
+  # the merge that broke it, and the fix lands forward. Once main carries `nightly-fanout`, its
+  # nightly dispatch is a whole-suite run this reads, so the two never start two runs in one day.
+  daily-suite:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Start the whole suite on dev unless one started in the last 22 hours
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          since=$(date -u -d '22 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=dev&created=%3E%3D$since&per_page=100" \
+            --jq '[.workflow_runs[] | select(.display_title == "CI (whole suite)")] | length')
+          if [ "$started" -gt 0 ]; then
+            echo "$started whole-suite run(s) started on dev since $since; none started now"
+            exit 0
+          fi
+          gh workflow run ci.yml -R "$GITHUB_REPOSITORY" --ref dev -f base=dev -f suite=whole
+          echo "started the whole suite on dev's head ($GITHUB_SHA or newer)"

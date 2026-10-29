@@ -145,10 +145,13 @@ async function verdictsOf(issueId: string): Promise<VerdictRow[]> {
      WHERE issue_id = ${issueId} ORDER BY created_at, id`);
 }
 
+/** The deploy probe is read once and never slept on: verify.ts's real 5 s pause is not what this file judges. */
+const NO_WAIT = { probeSleep: async () => {}, stableReads: 1 };
+
 async function release(issueIds: string[]) {
   const { runId } = await fx.claim(issueIds);
   fx.serve(SERVED);
-  const result = await finishReleaseBatch(runId, actor(), { commit: SERVED });
+  const result = await finishReleaseBatch(runId, actor(), { commit: SERVED, ...NO_WAIT });
   return { runId, result };
 }
 
