@@ -51,7 +51,9 @@ describe('a verdict reason and the secret detector', () => {
     const fault = verdictDraftFault(draft('the seed logs (password: hunter2).'));
     expect(fault).toMatchObject({ code: 'VERDICT_SECRET', path: '/reason' });
     expect(fault?.detail).not.toContain('hunter2');
-    expect(fault?.detail).toMatch(/If it is not a secret, reword it\.$/);
+    expect(fault?.detail).toMatch(
+      /If it is a secret, say where it is kept, never its value; if not, reword it\.$/,
+    );
   });
 
   it('still refuses a short secret after a credential label', () => {

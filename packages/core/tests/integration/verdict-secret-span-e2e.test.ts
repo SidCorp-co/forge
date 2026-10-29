@@ -121,7 +121,9 @@ describe('a verdict reason over the verdict route', () => {
     expect(res.status).toBe(422);
     const refusal = refusalOf(res);
     expect(refusal).toMatchObject({ code: 'VERDICT_SECRET', path: '/reason' });
-    expect(refusal?.detail).toMatch(/If it is not a secret, reword it\.$/);
+    expect(refusal?.detail).toMatch(
+      /If it is a secret, say where it is kept, never its value; if not, reword it\.$/,
+    );
     expect(JSON.stringify(res.body)).not.toContain('hunter2');
     expect(await verdictsOn(id)).toBe(0);
   });

@@ -14,6 +14,7 @@
  * @direct-test-of packages/core/src/issues/merge-marker.ts
  * @direct-test-of packages/core/src/issues/criteria/verdict-input.ts
  * @direct-test-of packages/core/src/issues/criteria/verdict-record.ts
+ * @direct-test-of packages/core/src/messaging/text-rules.ts
  */
 
 import { randomUUID } from 'node:crypto';
