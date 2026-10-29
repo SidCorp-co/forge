@@ -12,6 +12,7 @@ import { z } from 'zod';
 import {
   GIT_RELAY_PREFIX,
   gitRelayRequestOf,
+  rateLimitHeadersOf,
   readGitRelayTicket,
   relayedGitUpstream,
 } from '../integrations/source-host/index.js';
@@ -109,6 +110,8 @@ gitRelayRoutes.on(
         service: asked.service,
         suffix: asked.suffix,
         status: answer.status,
+        // the host's own rate-limit answer, so a 429 on core's shared egress is attributed (GitLab's names)
+        ...rateLimitHeadersOf(answer.headers),
       },
       'git-relay: relayed a git request',
     );
