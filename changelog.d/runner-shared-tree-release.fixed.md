@@ -1,0 +1,1 @@
+**Ended runs sharing a checkout no longer refuse each other's release.** Only an open run holds the tree; a release finding one leaves it standing for that run, recorded `kept_for_open_run`, and touches nothing in it.
