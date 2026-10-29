@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.359] - 2026-10-29
+
+Promotion projects merge ordinary requests again and find pinned promotions
+
+### Fixed
+
+- **An issue that only adopted a contract version lands even after its provider approves a newer one.** The issue names the newer version for later, and adoption refusals name the unread check and the way out.
+- **ChatGPT and other 2026-07-28 MCP clients connect to /mcp.** It runs MCP SDK v2, stateless: it answers server/discover and every 2025 revision Claude Code uses, and GET or DELETE answers 405, no longer a stream clients reopened each second.
+- **A release with no change its users see now says so in its summary.** The suggested summary of such a release opens by saying nothing changed for the people using the product, and one that claims otherwise is refused.
+- **A fix merge request into the branch a promotion starts from merges again.** Only a request into the branch production deploys from waits on a release.
+- **A promotion merge request cut from its own branch now counts as the release.** adminhub-fe promotes from a branch pinned at a judged head, and its release now shows that request.
+- **A release shows the promotion merge request under review and cuts the issues it carries.** Work that landed after its head waits for the next promotion, named on the release.
+- **Recording the deploy of a promotion already merged on the host now releases it.** The issues its merge carries close as one release, and the rest wait for the next promotion.
+- **A promotion release no longer closes an issue its merged head dropped.** Recording the deploy is refused naming the issue production does not hold, and a promotion that waits names its issues.
+
 ## [0.4.0-dev.358] - 2026-10-29
 
 Test-filter refusals name their line; tests gathered by glob now run on change
