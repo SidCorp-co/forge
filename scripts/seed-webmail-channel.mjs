@@ -91,7 +91,8 @@ async function channelOf(base, token, path) {
   try {
     return (await call(base, token, 'GET', path)).channel;
   } catch (err) {
-    const unknown = /answered 404/.test(err?.message) && /SUPPORT_CHANNEL_UNKNOWN/.test(err.message);
+    const unknown =
+      /answered 404/.test(err?.message) && /SUPPORT_CHANNEL_UNKNOWN/.test(err.message);
     if (unknown) return null;
     throw err;
   }

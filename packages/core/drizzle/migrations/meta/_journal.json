@@ -3529,6 +3529,13 @@
       "when": 1830556800000,
       "tag": "0551_a_readiness_suggestion_is_retired",
       "breakpoints": true
+    },
+    {
+      "idx": 552,
+      "version": "7",
+      "when": 1830643200000,
+      "tag": "0552_a_channel_names_its_outside_agent",
+      "breakpoints": true
     }
   ]
 }

@@ -23,14 +23,10 @@ const TEAM = 'GROUP-TEAM';
 const BINDINGS = (projectId: string) => `/api/projects/${projectId}/bindings`;
 const channels = () => `/api/projects/${w.projectId}/support/channels`;
 
-type Seed = (args: Record<string, unknown>) => Promise<{
-  name: string | null;
-  memberRows: { username: string; roles: string[]; state: string; askFor: string | null }[];
-  ruleRows: { id: string; text: string; author: string | null }[];
-}>;
-let seed: Seed;
-let MEMBERS: { username: string; roles: string[]; askFor: string }[];
-let RULES: string[];
+type Script = typeof import('../../../../scripts/seed-webmail-channel.mjs');
+let seed: Script['seed'];
+let MEMBERS: Script['MEMBERS'];
+let RULES: Script['RULES'];
 let bindingId = '';
 
 /** A new binding's document on the world's Rocket.Chat connection, written whole as an admin does. */
@@ -132,10 +128,14 @@ describe('REQ-75 r6: a group an outside agent answers keeps its channel record (
       document: { ...document, target: { ...target, outsideRids: [w.chat.rid, w.chat.rid] } },
     });
     expect(twice.status, JSON.stringify(twice.body)).toBe(422);
-    expect(codeOf(twice.body)).toContain('SCHEMA_VIOLATION at /target/outsideRids: a group is named once');
+    expect(codeOf(twice.body)).toContain(
+      'SCHEMA_VIOLATION at /target/outsideRids: a group is named once',
+    );
     expect((await held()).revision).toBe(revision);
   });
+});
 
+describe('REQ-75 r6: #webmail’s seed binds its group answered outside (BC-35)', () => {
   it('a dry run says it would bind the group and writes nothing', async () => {
     const lines: string[] = [];
     const before = await held();
@@ -166,7 +166,9 @@ describe('REQ-75 r6: a group an outside agent answers keeps its channel record (
       rid: w.chat.rid,
       log: said(lines),
     });
-    expect(lines[0]).toBe(`bound #${w.chat.rid} in binding ${bindingId}, answered by an outside agent`);
+    expect(lines[0]).toBe(
+      `bound #${w.chat.rid} in binding ${bindingId}, answered by an outside agent`,
+    );
     // nothing else of the binding moved: still off, still naming its own group
     expect((await held()).document).toMatchObject({
       active: false,

@@ -17,6 +17,7 @@ const webmail: ChannelView = {
   members: 2,
   rules: 1,
   commonIssues: 1,
+  agent: null,
   memberRows: [
     { username: "thanhnh", roles: ["technical", "product"], state: "confirmed", askFor: "node changes, deploys", confirmedBy: "Owner", updatedAt: "2026-10-29T08:00:00Z" },
     { username: "tramnnh", roles: ["user"], state: "inferred", askFor: null, confirmedBy: null, updatedAt: "2026-10-29T08:00:00Z" },

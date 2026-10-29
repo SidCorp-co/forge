@@ -46,6 +46,30 @@ describe('REQ-75 r6: the channel record and who is in it', () => {
     expect((await api(w.stranger, 'GET', w.base())).status).toBe(403);
   });
 
+  it('names the session answering it: Forge’s own bot, its box and its live address (BC-42)', async () => {
+    const [placed] = await rows<{ session_id: string; box: string | null }>(sql`
+      SELECT r.session_id, d.name AS box FROM support_rooms r
+        JOIN agent_sessions s ON s.id = r.session_id LEFT JOIN devices d ON d.id = s.device_id
+       WHERE r.id = ${w.roomId}::uuid`);
+    expect(placed?.box).toBeTruthy();
+    expect((await w.channel()).agent).toMatchObject({
+      kind: 'channel',
+      role: 'support',
+      channel: w.rid,
+      answeredBy: 'forge',
+      box: placed?.box,
+      address: `forge-session:${placed?.session_id}`,
+    });
+    // Forge's bot is read off its session, never declared by hand
+    const declared = await api(w.owner, 'PUT', `${w.base()}/${w.rid}/agent`, {
+      role: 'catalog Babo',
+      box: 'elsewhere',
+      address: 'tmux:babo',
+    });
+    expect(declared.status).toBe(409);
+    expect(JSON.stringify(declared.body)).toContain('SUPPORT_CHANNEL_NOT_OUTSIDE');
+  });
+
   it('records the roles the bot inferred from a message, read as inferred (BC-32)', async () => {
     const { id, out } = await w.ask(
       w.chat.alice,

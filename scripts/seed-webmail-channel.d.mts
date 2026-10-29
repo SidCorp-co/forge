@@ -20,6 +20,8 @@ export function seed(input: {
   token: string;
   project?: string | undefined;
   rid?: string;
+  /** A Rocket.Chat connection to bind the group on, where the project has no binding yet. */
+  connection?: string;
   dry?: boolean;
   log?: (line: string) => void;
 }): Promise<SeededChannel>;

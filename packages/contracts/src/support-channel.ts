@@ -211,7 +211,47 @@ export interface ChannelSummaryView {
 	commonIssues: number;
 }
 
+/**
+ * Where a Forge-placed session is reached now: its session id, which a restart replaces. An agent
+ * outside Forge is reached at the address it declared itself (REQ-75 r7 BC-42..BC-44).
+ */
+export const FORGE_SESSION_ADDRESS_PREFIX = "forge-session:";
+export const forgeSessionAddress = (sessionId: string): string =>
+	`${FORGE_SESSION_ADDRESS_PREFIX}${sessionId}`;
+
+/** The two kinds of agent session a project lists by role (BC-43). */
+export const AGENT_ROLE_KINDS = ["master", "channel"] as const;
+export type AgentRoleKind = (typeof AGENT_ROLE_KINDS)[number];
+
+/** An agent session as a peer finds it (BC-43, BC-44): its role, its box, and where it is now. */
+export interface AgentRoleView {
+	kind: AgentRoleKind;
+	/** `master`; a Forge channel bot's room kind (`support`, `operations`); an outside agent's own. */
+	role: string;
+	/** The group a channel agent answers; null for a master. */
+	channel: string | null;
+	answeredBy: "forge" | "outside";
+	/** The box it runs on, by name. */
+	box: string | null;
+	/** Where it is reached now: `forge-session:<id>` for Forge's own, or what an outside agent declared. */
+	address: string;
+	/** The terminal it runs in on its box, where the box named one. */
+	terminal: string | null;
+	/** Since when this address is current. */
+	since: string;
+}
+
+/** An agent outside Forge declaring itself on the group it answers (BC-42), again on each restart. */
+export const channelAgentWriteSchema = z.strictObject({
+	role: z.string().trim().min(2).max(80),
+	box: z.string().trim().min(1).max(120),
+	address: z.string().trim().min(1).max(300),
+});
+export type ChannelAgentWrite = z.infer<typeof channelAgentWriteSchema>;
+
 export interface ChannelView extends ChannelSummaryView {
+	/** The agent session answering the group now (BC-42); null when none is live or declared. */
+	agent: AgentRoleView | null;
 	memberRows: ChannelMemberView[];
 	ruleRows: ChannelRuleView[];
 	commonIssueRows: ChannelCommonIssueView[];

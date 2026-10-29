@@ -17,6 +17,7 @@ import { externalItemPhases } from '../feedback/index.js';
 import { userNames } from '../lib/people.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { channelAgentOf } from './agent-roles.js';
 import {
   boundRidsOf,
   type ChannelRow,
@@ -84,6 +85,7 @@ export async function channelViewOf(
   return {
     rid,
     name: await nameOf(projectId, rid),
+    agent: await channelAgentOf(projectId, rid, channel),
     members: record.memberRows.length,
     rules: record.ruleRows.length,
     commonIssues: record.commonIssueRows.length,

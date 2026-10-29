@@ -217,6 +217,12 @@ export const supportChannels = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     rid: text('rid').notNull(),
+    // the agent outside Forge answering the group, as it last declared itself (REQ-75 r7 BC-42)
+    agentRole: text('agent_role'),
+    agentBox: text('agent_box'),
+    agentAddress: text('agent_address'),
+    agentDeclaredAt: timestamp('agent_declared_at', { withTimezone: true }),
+    agentDeclaredBy: uuid('agent_declared_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
