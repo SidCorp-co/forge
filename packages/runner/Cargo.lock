@@ -438,6 +438,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs-next",
+ "runner-agent",
  "runner-core",
  "runner-daemon",
  "runner-platform",

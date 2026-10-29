@@ -49,9 +49,11 @@ async function membershipOf(room: RoomRow): Promise<BotMembership> {
 async function capabilitiesNeeded(room: RoomRow): Promise<string[]> {
   if (room.kind === 'operations') return ['confinedChatNetwork'];
   const grants = grantsOf(await supportConfigOf(room));
-  // a channel agent in owner mode is a full session in the checkout, confined by nothing (REQ-77)
-  const full = room.kind === 'agent' && grants.abilities.includes('owner_mode');
-  const need = full ? [] : ['confinedChatNetwork', SUPPORT_BOX_CAPABILITIES.checkout];
+  // a channel agent in owner mode runs confined in its own clone of the repository (ISS-765)
+  const need = ['confinedChatNetwork', SUPPORT_BOX_CAPABILITIES.checkout];
+  if (room.kind === 'agent' && grants.abilities.includes('owner_mode')) {
+    need.push(SUPPORT_BOX_CAPABILITIES.owner);
+  }
   if (grants.abilities.includes('build')) need.push(SUPPORT_BOX_CAPABILITIES.build);
   if (grants.abilities.includes('run_commands')) need.push(SUPPORT_BOX_CAPABILITIES.commands);
   return need;

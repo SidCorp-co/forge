@@ -199,7 +199,8 @@ pub fn refresh_bearer(bearer_dir: &Path, credential: &str) -> Result<()> {
 }
 
 const BEARER_DIR_PREFIX: &str = "forge-bearer-";
-const BEARER_FILE: &str = "headers.json";
+/// The file in a resident session's bearer directory that holds its turn token as a header.
+pub const BEARER_FILE: &str = "headers.json";
 
 /// Where the `forge` server's bearer comes from.
 enum ForgeBearer<'a> {

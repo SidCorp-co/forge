@@ -244,10 +244,18 @@ function mintRefusal(status: number, installationId: number): string {
  */
 export async function mintInstallationToken(
   cred: AppCredential & { installationId: number },
+  /**
+   * The repositories (names under the installation's account) the token reaches; absent, every
+   * repository the installation was granted.
+   */
+  repositoryNames?: readonly string[],
 ): Promise<{ token: string; expiresAt: number }> {
   let auth: { token: string; expiresAt?: string };
   try {
-    auth = (await installationOctokit(cred).auth({ type: 'installation' })) as {
+    auth = (await installationOctokit(cred).auth({
+      type: 'installation',
+      ...(repositoryNames?.length ? { repositoryNames: [...repositoryNames] } : {}),
+    })) as {
       token: string;
       expiresAt?: string;
     };

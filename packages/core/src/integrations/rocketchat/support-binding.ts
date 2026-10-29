@@ -1,5 +1,6 @@
 import type { BindingTargetRefusal, VerifyBindingTargetArgs } from '../index.js';
 import { listActiveDeployBindingsForProvider } from '../index.js';
+import { agentSwitchGate } from './room-handlers.js';
 
 type Settled =
   | { ok: true; config: Record<string, unknown> }
@@ -68,6 +69,8 @@ export async function settleSupportRoom(args: {
       ],
     };
   }
+  const checksRefused = checkRefusals(args.config, { support, agent, answered });
+  if (checksRefused.length > 0) return { ok: false, refusals: checksRefused };
   // an operations binding attaches any number of rooms, each with a session of its own (BC-20)
   if (!support) return { ok: true, config: args.config };
   const rids = Array.isArray(args.config.rids) ? args.config.rids : [];
@@ -87,13 +90,74 @@ export async function settleSupportRoom(args: {
 }
 
 /**
+ * Scheduled checks are a channel agent's (REQ-77 BC-13): refused on a support group's block, and a
+ * check naming a group the binding does not answer is refused, since its finding would go nowhere.
+ */
+function checkRefusals(
+  config: Record<string, unknown>,
+  held: { support: boolean; agent: boolean; answered: readonly unknown[] },
+): BindingTargetRefusal[] {
+  const checksOf = (block: unknown) =>
+    ((block as { checks?: { name: string; rid: string }[] } | null)?.checks ?? []) as {
+      name: string;
+      rid: string;
+    }[];
+  if (held.support && checksOf(config.support).length > 0) {
+    return [
+      {
+        code: 'SUPPORT_CHECK_NOT_AGENT',
+        path: '/support/checks',
+        detail:
+          'scheduled checks are a channel agent\'s: move this binding\'s block from `support` to `agent`, or drop checks',
+      },
+    ];
+  }
+  if (!held.agent) return [];
+  return checksOf(config.agent).flatMap((c, i) =>
+    held.answered.includes(c.rid)
+      ? []
+      : [
+          {
+            code: 'SUPPORT_CHECK_ROOM_UNKNOWN' as const,
+            path: `/agent/checks/${i}/rid`,
+            detail: `check ${c.name} posts in group ${c.rid}, which this binding's agent does not answer; name one of ${held.answered.join(', ') || 'the groups in `rids`'}`,
+          },
+        ],
+  );
+}
+
+/**
+ * A group the binding held in `outsideRids`, answered by a bot outside Forge, joins the channel agent
+ * only through its switch (REQ-77 BC-16): the support domain names what still stands before it.
+ */
+async function switchRefusals(args: VerifyBindingTargetArgs): Promise<BindingTargetRefusal[]> {
+  if (!args.config.agent) return [];
+  const rids = Array.isArray(args.config.rids) ? (args.config.rids as string[]) : [];
+  const held = args.held ?? {};
+  const heldAnswered =
+    held.agent && Array.isArray(held.rids) ? new Set(held.rids as string[]) : new Set<string>();
+  const joining = rids.flatMap((rid, i) => (heldAnswered.has(rid) ? [] : [{ rid, i }]));
+  if (joining.length === 0) return [];
+  const heldOutside = Array.isArray(held.outsideRids) ? (held.outsideRids as string[]) : [];
+  const refused = await agentSwitchGate().refusals({
+    projectId: args.projectId,
+    joining,
+    heldOutside,
+  });
+  return refused.map((r) => ({ code: 'AGENT_SWITCH_NOT_READY' as const, ...r }));
+}
+
+/**
  * A support group's grant names deploy targets by the project's own deploy bindings (REQ-75 r5
  * BC-27): one that is not an active Coolify binding of this project is refused by name at bind, so
- * a grant never names what nobody can deploy.
+ * a grant never names what nobody can deploy. A group an outside bot answered joins a channel agent
+ * only through its switch (REQ-77 BC-16).
  */
 export async function verifySupportGrant(
   args: VerifyBindingTargetArgs,
 ): Promise<BindingTargetRefusal[]> {
+  const switching = await switchRefusals(args);
+  if (switching.length > 0) return switching;
   type Granting = { grants?: { deployTargets?: string[] } } | undefined;
   const block = args.config.agent ? 'agent' : 'support';
   const named = (args.config[block] as Granting)?.grants?.deployTargets ?? [];

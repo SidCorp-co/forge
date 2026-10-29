@@ -26,11 +26,13 @@ function isScheduleFire(metadata: unknown): boolean {
 }
 
 /**
- * A project's channel agent placed in owner mode (REQ-77 BC-20, BC-21): the binding granted it a full
- * session, as the owner's own terminal session is, so it is no chat door. The mode is fixed when the
- * session is made; a grant that changes it replaces the session (`support/rooms.ts`).
+ * A project's channel agent placed in owner mode (REQ-77 BC-20, BC-21): the binding granted it the
+ * owner's write work, so its token is no chat door's. It still runs confined (`runsConfined`): its own
+ * clone of the repository and a credential for that repository alone, never the box's (ISS-765). The
+ * mode is fixed when the session is made; a grant that changes it replaces the session
+ * (`support/rooms.ts`).
  */
-function isOwnerModeAgent(metadata: unknown): boolean {
+export function isOwnerModeAgent(metadata: unknown): boolean {
   const agent = ((metadata ?? {}) as Record<string, unknown>).channelAgent as
     | { ownerMode?: unknown }
     | undefined;
@@ -40,8 +42,8 @@ function isOwnerModeAgent(metadata: unknown): boolean {
 /**
  * Whether a session on a paired box is a chat door: a chat-kind session that is not a schedule
  * fire nor a channel agent in owner mode. Its turn token files no issue, and the box runs it
- * confined, holding that token and none of the box's own — one set, so a session the issue kernel
- * fences is never one whose shell can reach a credential it does not fence.
+ * confined (`runsConfined`), holding that token and none of the box's own, so a session the issue
+ * kernel fences is never one whose shell can reach a credential it does not fence.
  */
 export function isChatDoorSession(session: { kind: string; metadata: unknown }): boolean {
   return (
@@ -49,6 +51,15 @@ export function isChatDoorSession(session: { kind: string; metadata: unknown }):
     !isScheduleFire(session.metadata) &&
     !isOwnerModeAgent(session.metadata)
   );
+}
+
+/**
+ * Whether the box runs a session confined: every chat door, and a channel agent in owner mode too,
+ * which reads what strangers write in its groups (ISS-765, forge-core-61's switch gate). Only a
+ * schedule fire runs with the box's own view, as a run does.
+ */
+export function runsConfined(session: { kind: string; metadata: unknown }): boolean {
+  return isChatDoorSession(session) || (session.kind === 'chat' && isOwnerModeAgent(session.metadata));
 }
 
 /**

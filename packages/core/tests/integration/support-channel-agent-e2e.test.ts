@@ -18,8 +18,8 @@ import { ProductApi, SupportWorld, type Turn } from '../helpers/support-world.js
 // background subagents, and a message arriving mid-turn is written into that turn (BC-2). It is
 // confined to its granted tools without owner mode (BC-3), deploys only through Forge's door on a
 // confirmer's word (BC-4), is listed by role `channel agent` (BC-14), knows a writer by the id the
-// chat server signed (BC-15), and under owner mode obeys only the owner's id (BC-20) as a full
-// session whose owner confirms changes (BC-21). The world is support-room-e2e's, with the stand-in
+// chat server signed (BC-15), and under owner mode obeys only the owner's id (BC-20) as a session
+// doing write work in its own clone, confined still (ISS-765), whose owner confirms changes (BC-21). The world is support-room-e2e's, with the stand-in
 // chat server holding a second group.
 
 const w = new SupportWorld();
@@ -348,10 +348,10 @@ describe('REQ-77 BC-20: owner mode is a grant, obeying only the owner’s server
   });
 });
 
-describe('REQ-77 BC-21: under owner mode the agent is a full session, and the owner confirms', () => {
-  it('replaced its confined session with a full one: unconfined, in the checkout itself', async () => {
+describe('REQ-77 BC-21: under owner mode the agent does write work, and the owner confirms', () => {
+  it('replaced its session with one confined to its own clone of the repository (ISS-765)', async () => {
     const start = w.box.turns.filter((t) => t.event === 'agent:start').at(-1);
-    expect(start).toMatchObject({ confined: false, checkout: null });
+    expect(start).toMatchObject({ confined: true, checkout: 'own', buildBase: 'dev' });
     expect(start?.text).toContain('OWNER MODE');
     const agents = await listed('channel agent');
     const [room] = await agentRooms();

@@ -19,9 +19,9 @@ use crate::CheckoutView;
 /// The tag every refusal here carries, so core and an operator can find it in a failed turn.
 const TAG: &str = "[CHAT_CHECKOUT_MODE]";
 
-/// The fields a turn frame names its view with: `checkout` (`read`, `none` or `build`; absent,
-/// the writable checkout), and for `build` its development branch `buildBase` and the room's
-/// working copy `buildKey`.
+/// The fields a turn frame names its view with: `checkout` (`read`, `none`, `build` or `own`;
+/// absent, the writable checkout), for `build` and `own` the branch `buildBase` and the copy's key
+/// `buildKey`, and for `own` the hosts `ownHosts` its git and `gh` reach.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ViewFields {
@@ -31,16 +31,26 @@ pub(crate) struct ViewFields {
     pub build_base: Option<String>,
     #[serde(default)]
     pub build_key: Option<String>,
+    #[serde(default)]
+    pub own_hosts: Option<Vec<String>>,
 }
 
 impl ViewFields {
     pub(crate) fn view(&self, confined: bool) -> Result<CheckoutView, String> {
-        view_of(
+        let view = view_of(
             self.checkout.as_deref(),
             self.build_base.as_deref(),
             self.build_key.as_deref(),
             confined,
-        )
+        )?;
+        Ok(match view {
+            CheckoutView::Own { key, base, .. } => CheckoutView::Own {
+                key,
+                base,
+                hosts: self.own_hosts.clone().unwrap_or_default(),
+            },
+            other => other,
+        })
     }
 }
 
@@ -59,6 +69,16 @@ pub(crate) async fn resolve(
             let dir = ensure_working_copy(Path::new(&repo_path), &base_dir, &key, &base).await?;
             Ok((
                 CheckoutView::Build { key, base },
+                dir.to_string_lossy().into_owned(),
+            ))
+        }
+        CheckoutView::Own { key, base, hosts } => {
+            let base_dir = runner_platform::config::base_dir().map_err(|e| {
+                format!("{TAG} this box cannot name the folder its own clones live in: {e}")
+            })?;
+            let dir = ensure_own_clone(Path::new(&repo_path), &base_dir, &key, &base).await?;
+            Ok((
+                CheckoutView::Own { key, base, hosts },
                 dir.to_string_lossy().into_owned(),
             ))
         }
@@ -106,26 +126,32 @@ pub(crate) fn view_of(
     match mode {
         "read" => Ok(CheckoutView::Read),
         "none" => Ok(CheckoutView::None),
-        "build" => {
+        "build" | "own" => {
             let key = build_key.unwrap_or_default();
             if !valid_key(key) {
                 return Err(format!(
-                    "{TAG} a `build` view names its room's working copy by `buildKey`, letters, \
+                    "{TAG} a `{mode}` view names its working copy by `buildKey`, letters, \
                      digits and - (1 to 64); this turn sent {key:?}"
                 ));
             }
             let base = build_base.unwrap_or_default();
             if let Some(why) = branch_refusal(base) {
-                return Err(format!("{TAG} a `build` view's `buildBase`: {why}"));
+                return Err(format!("{TAG} a `{mode}` view's `buildBase`: {why}"));
             }
-            Ok(CheckoutView::Build {
-                key: key.to_string(),
-                base: base.to_string(),
+            let (key, base) = (key.to_string(), base.to_string());
+            Ok(if mode == "own" {
+                CheckoutView::Own {
+                    key,
+                    base,
+                    hosts: Vec::new(),
+                }
+            } else {
+                CheckoutView::Build { key, base }
             })
         }
         other => Err(format!(
-            "{TAG} `{other}` is not a checkout view this box knows; it shows `read`, `none` or \
-             `build`, or the writable checkout when none is named"
+            "{TAG} `{other}` is not a checkout view this box knows; it shows `read`, `none`, \
+             `build` or `own`, or the writable checkout when none is named"
         )),
     }
 }
@@ -187,6 +213,82 @@ pub(crate) async fn ensure_working_copy(
     git(repo, &["worktree", "add", "--detach", &at, &remote])
         .await
         .map_err(|e| format!("{TAG} the working copy {at} could not be made from {remote}: {e}"))?;
+    Ok(path)
+}
+
+/// Where an owner-mode agent's own clone kept under `key` lives on this box.
+pub fn own_clone(base_dir: &Path, key: &str) -> PathBuf {
+    base_dir.join("owner-copies").join(key)
+}
+
+/// An owner-mode agent's own clone of `repo`'s `origin/<base>`, made the first time a turn needs
+/// it (ISS-765): a standalone repository, its own git directory and objects, whose `origin` is
+/// the checkout's, so nothing the session writes in it reaches the checkout's git directory. This
+/// box runs git in it only here, before the session has written anything; one already there is
+/// left as it is, the session's branches and commits in it.
+pub(crate) async fn ensure_own_clone(
+    repo: &Path,
+    base_dir: &Path,
+    key: &str,
+    base: &str,
+) -> Result<PathBuf, String> {
+    let path = own_clone(base_dir, key);
+    if path.join(".git").exists() {
+        return Ok(path);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "{TAG} the own clones' folder {} could not be made: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    git(repo, &["fetch", "origin", base]).await.map_err(|e| {
+        format!(
+            "{TAG} origin/{base} could not be fetched into {}: {e}",
+            repo.display()
+        )
+    })?;
+    let origin = git(repo, &["remote", "get-url", "origin"])
+        .await
+        .map_err(|e| format!("{TAG} the checkout {} names no origin: {e}", repo.display()))?;
+    let at = path.to_string_lossy().into_owned();
+    let from = repo.to_string_lossy().into_owned();
+    git(
+        base_dir,
+        &["clone", "--no-hardlinks", "--no-checkout", "--", &from, &at],
+    )
+    .await
+    .map_err(|e| format!("{TAG} the own clone {at} could not be made: {e}"))?;
+    let tracking = format!("+refs/remotes/origin/{base}:refs/remotes/origin/{base}");
+    let made = async {
+        git(&path, &["remote", "set-url", "origin", &origin]).await?;
+        git(&path, &["fetch", "--no-tags", &from, &tracking]).await?;
+        git(
+            &path,
+            &[
+                "checkout",
+                "-B",
+                base,
+                &format!("refs/remotes/origin/{base}"),
+            ],
+        )
+        .await?;
+        git(
+            &path,
+            &["branch", &format!("--set-upstream-to=origin/{base}")],
+        )
+        .await
+    }
+    .await;
+    if let Err(e) = made {
+        // half a clone is never handed to a session: the next turn makes it again
+        let _ = std::fs::remove_dir_all(&path);
+        return Err(format!(
+            "{TAG} the own clone {at} could not be set to origin/{base}: {e}"
+        ));
+    }
     Ok(path)
 }
 
@@ -265,6 +367,85 @@ mod tests {
             let err = view_of(Some("build"), base, key, true).unwrap_err();
             assert!(err.starts_with(TAG), "{base:?} {key:?}: {err}");
         }
+    }
+
+    #[test]
+    fn an_own_view_needs_its_key_and_base_and_carries_the_hosts_core_named() {
+        let fields = ViewFields {
+            checkout: Some("own".into()),
+            build_base: Some("dev".into()),
+            build_key: Some("own-b1".into()),
+            own_hosts: Some(vec!["https://github.com".into()]),
+        };
+        assert_eq!(
+            fields.view(true),
+            Ok(CheckoutView::Own {
+                key: "own-b1".into(),
+                base: "dev".into(),
+                hosts: vec!["https://github.com".into()],
+            })
+        );
+        let err = fields.view(false).unwrap_err();
+        assert!(err.starts_with(TAG) && err.contains("`own`"), "{err}");
+        for (base, key) in [
+            (Some("dev"), None),
+            (None, Some("own-b1")),
+            (Some("a..b"), Some("own-b1")),
+        ] {
+            let err = view_of(Some("own"), base, key, true).unwrap_err();
+            assert!(
+                err.starts_with(TAG) && err.contains("`own`"),
+                "{base:?} {key:?}: {err}"
+            );
+        }
+    }
+
+    /// An owner-mode agent's own clone (ISS-765) is a repository of its own: its git directory is
+    /// not the checkout's, its `origin` is the checkout's origin, its branch tracks `origin/<base>`,
+    /// and a second turn keeps what the session wrote in it.
+    #[tokio::test]
+    async fn an_own_clone_is_a_standalone_repository_of_origin_made_once() {
+        let t = crate::chat_checkout_test_repo::Repos::new();
+        let base_dir = t.root.join("base");
+        let path = ensure_own_clone(&t.clone, &base_dir, "own-b1", "dev")
+            .await
+            .expect("the own clone was not made");
+        assert_eq!(path, own_clone(&base_dir, "own-b1"));
+        assert!(path.join("README").is_file(), "the own clone is empty");
+        assert!(
+            path.join(".git").is_dir(),
+            "the own clone's git directory is not its own"
+        );
+        let common = t.git(
+            &path,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        );
+        assert_eq!(PathBuf::from(common), path.join(".git"));
+        assert_eq!(
+            t.git(&path, &["remote", "get-url", "origin"]),
+            t.origin.to_string_lossy(),
+            "the own clone's origin is not the checkout's origin"
+        );
+        assert_eq!(
+            t.git(&path, &["rev-parse", "--abbrev-ref", "@{upstream}"]),
+            "origin/dev"
+        );
+        std::fs::write(path.join("edit.txt"), "kept").unwrap();
+        let again = ensure_own_clone(&t.clone, &base_dir, "own-b1", "dev")
+            .await
+            .unwrap();
+        assert!(
+            again.join("edit.txt").is_file(),
+            "a second turn remade the own clone"
+        );
+        let missing = ensure_own_clone(&t.clone, &base_dir, "own-b2", "no-such-branch")
+            .await
+            .unwrap_err();
+        assert!(missing.starts_with(TAG), "{missing}");
+        assert!(
+            !own_clone(&base_dir, "own-b2").exists(),
+            "a failed own clone was left half made"
+        );
     }
 
     #[test]

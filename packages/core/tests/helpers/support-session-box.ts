@@ -7,7 +7,8 @@ import WebSocket from 'ws';
 
 /**
  * What a box serving a support room declares: a confined chat turn, the checkout views a grant asks
- * for, and the box acts (`host.command`, `build.push`) of REQ-75 r5.
+ * for, the box acts (`host.command`, `build.push`) of REQ-75 r5, and an owner-mode agent's own clone
+ * (ISS-765).
  */
 export const SUPPORT_BOX_CAPS = JSON.stringify({
   followUpCredential: true,
@@ -16,6 +17,7 @@ export const SUPPORT_BOX_CAPS = JSON.stringify({
   chatCheckoutModes: true,
   supportBuilds: true,
   hostCommands: true,
+  ownerCheckouts: true,
 });
 
 /** One message of a turn as the session reads it: its thread, its writer, and the words. */
@@ -51,6 +53,8 @@ export interface Turn {
   /** How the frame told the box to show the session its checkout (REQ-75 r5), and a build's base. */
   checkout: string | null;
   buildBase: string | null;
+  /** The hosts an owner-mode agent's own clone reaches besides the model and core (ISS-765). */
+  ownHosts: string[] | null;
   /** When the box heard it. */
   at: number;
 }
@@ -233,6 +237,7 @@ export class SessionBox {
       confined: d.confined === true,
       checkout: (d.checkout as string | undefined) ?? null,
       buildBase: (d.buildBase as string | undefined) ?? null,
+      ownHosts: (d.ownHosts as string[] | undefined) ?? null,
       warmUp: messages.length === 0 && text.includes('reply with the single word: ready'),
       at: Date.now(),
     };

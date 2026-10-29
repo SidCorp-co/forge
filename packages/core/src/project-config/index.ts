@@ -6,6 +6,7 @@ export {
   slotFor,
   writeBindings,
 } from './bindings-many.js';
+export { planBinding, readBinding, writeBinding } from './bindings.js';
 export { readContentLanguage } from './content-language.js';
 export {
   dispatchStateOf,

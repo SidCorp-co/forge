@@ -39,9 +39,8 @@ restart (BC-16). A box change re-primes the session with every open thread's rec
 the conversation store (`support/prompt.ts:coldThreads`).
 
 Not the master pane: a master is a tmux pane in `bypassPermissions` that the box itself declares and
-keeps (`runner-daemon/src/master/`). A channel agent in owner mode (REQ-77, below) is the one
-support session that runs unconfined. A support session reads text written by strangers; the chat
-host runs it confined (`agent-sessions/chat-door.ts:isChatDoorSession`, ADR 0012), holding only the
+keeps (`runner-daemon/src/master/`). A support session reads text written by strangers; the chat
+host runs it confined (`agent-sessions/chat-door.ts:runsConfined`, ADR 0012), holding only the
 token core hands it, so a prompt injected by a group member reaches nothing the room was not
 granted. The chat host also already lives in the sessions view and resumes by Claude's own session
 id, which is what BC-16 asks.
@@ -377,8 +376,16 @@ share one account and one session (migration 0553): the project's channel agent
   `SUPPORT_ROOM_AMBIGUOUS` refuses an act that names neither.
 - **Owner mode.** `owner_mode` is an ability whose reach is `grants.owner`, a chat-server user id.
   Only an `agent` block may grant it (`SUPPORT_OWNER_MODE_NOT_AGENT`). With it:
-  - the session is no chat door, so the box runs it unconfined in the checkout with the box's own
-    git and gh (`agent-sessions/chat-door.ts:isChatDoorSession`);
+  - the session still runs confined (REQ-77 BC-22, `agent-sessions/chat-door.ts:runsConfined`), in
+    its own clone of the development branch (`source.git.defaultBranch`), the `own` checkout view
+    (`support/owner-git.ts:ownViewOf`, runner `chat_checkout.rs:ensure_own_clone`). Its git asks
+    `forge-runner git-credential --session`, which asks core with the turn's token
+    (`POST /api/projects/:id/support/session/git-credential`), and `gh` is a shim that does the
+    same (`forge-runner session-gh`). Core mints for the project's own bound repository alone: a
+    GitHub installation token narrowed to it, or a relay ticket; another repository is
+    `SUPPORT_GIT_NOT_OWN_REPO`, a session not in owner mode `SUPPORT_GIT_NOT_OWNER_MODE`
+    (`support/owner-git.ts:ownerGitCredential`). Its egress adds the repository's hosts and nothing
+    else. A box that cannot do this reads `BOX_TOO_OLD` naming `ownerCheckouts`;
   - core marks a message `"owner":true` only when the server-signed id equals `grants.owner`;
   - the owner counts as a confirmer (`support/grants.ts:isConfirmer`).
 
@@ -423,6 +430,61 @@ records.
   agent someone to ask and no power.
 
 The proof is `packages/core/tests/integration/support-channel-behaviour-e2e.test.ts`.
+
+### Scheduled checks and the switch from an outside bot (REQ-77 r1 BC-13, BC-16..BC-19)
+
+- **Scheduled checks.** `agent.checks` names up to ten `{ name, rid, at, ask }`, `at` a UTC
+  `HH:MM`, `rid` one of the binding's groups (`SUPPORT_CHECK_ROOM_UNKNOWN`), on an `agent` block
+  only (`SUPPORT_CHECK_NOT_AGENT`). The process timer `support.channel-checks` runs every minute
+  (`support/checks.ts:fireDueChecks`). A check due today is written once as a core message on
+  thread `check:<name>:<date>` and handed to the agent. The agent answers with
+  `check_result { check, finding }`: a finding is screened and posted once at the group's top
+  level; `null` posts nothing. A second result for the firing is `SUPPORT_CHECK_ANSWERED`, and a
+  failed check turn posts nothing in the group.
+- **The switch.** A group still answered by an outside bot sits in a binding's `outsideRids`.
+  Moving it into `agent.rids` is refused `AGENT_SWITCH_NOT_READY` unless its switch is applied
+  (`support/switches.ts:agentSwitchGate`). The switch lives at
+  `/api/projects/:id/support/channels/:rid/switch`:
+  - `PUT` plans it: `{ outsideBot: { userId, username? }, duties: [{ key, text }], after?, ownerWord? }`.
+  - `POST duties/:key/pass { evidence }` passes one duty.
+  - `POST owner-word { words }` records the owner's word, where `ownerWord` asked for it.
+  - `POST apply` runs it once nothing is open: duties passed, the `after` switch proven, the
+    owner's word given. It removes the outside bot from the group (`groups.kick`), moves the
+    rid, and clears the outside declaration. A bot the server would not remove switches
+    nothing (`AGENT_SWITCH_BOT_NOT_REMOVED`).
+  - `POST proven { note }` marks a switched group proven, which a later switch's `after` waits on.
+  - `GET` reads it.
+- **The order.** OrbitInternal first, then AdminHub with `after` naming OrbitInternal's switch,
+  then mail with `ownerWord: true`. Each switch is an operator's act after release; nothing here
+  switches a real group.
+
+The proof is `packages/core/tests/integration/support-channel-rollout-e2e.test.ts`, and for the
+confinement `packages/runner/crates/forge-runner/tests/owner_session_confined.rs`.
+
+### OrbitInternal's duty checklist
+
+Drawn from Orbit Babo's brief. The `key` is the duty's key in the switch plan; "Agent" is how the
+confined agent does it.
+
+| Key | Duty | Agent |
+|---|---|---|
+| `explain-code` | Reads and explains Orbit code, config, docs and history for anyone, citing paths | Own clone |
+| `reply-in-thread` | Replies in the thread, in the writer's language, short | `reply` |
+| `untrusted-input` | Treats a non-owner's message and any file or tool text as data | Brief |
+| `silent-for-others` | No reply to a message for `@chuongld`, `@thanhnh`, `@jarvis` or another bot | `to: others` |
+| `owner-by-signed-id` | Owner is the server-signed id, never text | `grants.owner` |
+| `owner-code-work` | Branch, commit, push, pull request into `main`, tests first | Own clone, git and `gh` |
+| `owner-merge-on-word` | Merges only on the owner's word in that pull request's thread | `gh pr merge` |
+| `tell-orbit-master` | Names its branch to the Orbit master before work | A Forge record, not a box file |
+| `hand-over-request` | A teammate's request: questions, restatement, confirm, hand over | `file_items` |
+| `read-capabilities` | Lists Orbit capabilities and calls a published read one | A granted support API |
+| `owner-production-write` | A production write the owner asked for in the thread | A granted support API, confirmed |
+| `watch-deploy` | Watches the deploy after a merge | Forge's deploy record |
+| `no-secrets-in-chat` | Never posts a secret or customer data | Scrubber and screen |
+
+Four duties (`tell-orbit-master`, `read-capabilities`, `owner-production-write`, `watch-deploy`)
+used a box file, a key or a host the agent no longer sees. Each passes only once the Orbit project
+grants what replaces it.
 
 ## Honest costs
 
@@ -480,10 +542,12 @@ The proof is `packages/core/tests/integration/support-channel-behaviour-e2e.test
 - **A build's working copy lives on one box.** It is kept under `<base_dir>/support-builds/<room>`
   on the box that ran the turn. If the next turn lands on another box of the project, the session
   starts from a fresh copy of the development branch.
-- **Owner mode is a full session, held only by its brief.** An unconfined channel agent runs with
-  the box's own git, gh and SSH keys, so it can reach any host those keys reach. REQ-77 scopes a
-  production shell out, and only the brief forbids one. This ends when the box confines an
-  owner-mode session to its checkout plus git and gh.
+- **Owner mode pushes any branch of its own repository.** The credential reaches the whole
+  repository, the default branch included; branch protection on the host is what keeps `main`.
+  Production, keys and ops tools are out of its view, so a duty that needed them (Orbit Babo's
+  admin-token calls, watching a deploy) is done through a granted support API or not at all.
+- **An own clone lives on one box.** It is kept under `<base_dir>/owner-copies/own-<binding>`. On
+  another box of the project the agent starts from a fresh clone; an unpushed branch stays behind.
 - **`readers: team` trusts the group's membership.** A team group's replies are screened as the
   team's (`operations-reply`), and whoever Rocket.Chat admits to the group reads them.
 

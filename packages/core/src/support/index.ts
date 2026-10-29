@@ -5,20 +5,25 @@ import {
   provideSendRefusedListener,
   provideTerminalSessionBridge,
 } from '../agent-sessions/index.js';
-import { provideSupportRoomHandler } from '../integrations/rocketchat/index.js';
+import {
+  provideAgentSwitchGate,
+  provideSupportRoomHandler,
+} from '../integrations/rocketchat/index.js';
 import { consume } from '../outbox/index.js';
+import { fireDueChecks } from './checks.js';
 import { deliverWaiting, drainSupportRooms, onSupportTurnEnded } from './dispatch.js';
 import { expireSupportFixes } from './fixes.js';
 import { handleSupportMessage } from './inbound.js';
 import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
 import { registerSupportResults, tellAllResults } from './result.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
+import { agentSwitchGate } from './switches.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
 export { forgetMemberships } from './health.js';
 export { supportRoutes } from './routes.js';
 export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';
-export { expireSupportFixes, tellAllResults, warmColdRooms };
+export { expireSupportFixes, fireDueChecks, tellAllResults, warmColdRooms };
 
 /**
  * The recovery sweep (a process timer): a message written into a turn the box did not take waits
@@ -31,11 +36,13 @@ export async function recoverSupportRooms(): Promise<void> {
 }
 
 /**
- * The group's messages to its handler, a turn's end to the next waiting messages, and a write the
- * box refused back to the room; once at boot.
+ * The group's messages to its handler, a turn's end to the next waiting messages, a write the box
+ * refused back to the room, and the binding door's switch question; once at boot.
  */
 export function registerSupportRooms(): void {
   provideSupportRoomHandler({ handle: handleSupportMessage });
+  // a group an outside bot answers joins the channel agent only through its switch (REQ-77 BC-16)
+  provideAgentSwitchGate(agentSwitchGate);
   provideTerminalSessionBridge(SUPPORT_SESSION_MARKER, onSupportTurnEnded);
   provideSendRefusedListener(INJECT_INTENT, onInjectRefused);
 }

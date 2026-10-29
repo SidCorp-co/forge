@@ -471,6 +471,7 @@ fn each_checkout_view_mounts_the_checkout_as_its_room_was_granted() {
             git_identity: None,
             core_url: "https://core.example",
             egress_socket: p.root.join("s"),
+            gh_shim_dir: None,
         })
     };
     let repo = p.repo.clone();
@@ -502,8 +503,20 @@ fn each_checkout_view_mounts_the_checkout_as_its_room_was_granted() {
     };
     assert_eq!(
         mounts(&build),
-        vec![Mount::Write(repo), Mount::Read(git), Mount::Hide(mcp)]
+        vec![
+            Mount::Write(repo.clone()),
+            Mount::Read(git),
+            Mount::Hide(mcp.clone())
+        ]
     );
+    // an owner-mode agent's own clone (ISS-765): its git directory is inside it and its own to
+    // write, so no read-only git directory is bound over it
+    let own = CheckoutView::Own {
+        key: "own-b1".into(),
+        base: "dev".into(),
+        hosts: vec!["https://github.com".into()],
+    };
+    assert_eq!(mounts(&own), vec![Mount::Write(repo), Mount::Hide(mcp)]);
 }
 
 /// The views as a sandbox enforces them: a `read` session reads the checkout and writes none of

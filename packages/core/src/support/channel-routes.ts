@@ -8,6 +8,10 @@ import {
   channelAgentWriteSchema,
   channelMemberWriteSchema,
   channelRuleWriteSchema,
+  channelSwitchOwnerWordSchema,
+  channelSwitchPassSchema,
+  channelSwitchPlanSchema,
+  channelSwitchProvenSchema,
 } from '@forge/contracts/support-channel';
 import type { Hono } from 'hono';
 import { z } from 'zod';
@@ -26,6 +30,14 @@ import {
   writeMember,
 } from './channel-store.js';
 import { no, type Outcome } from './outcome.js';
+import {
+  applySwitch,
+  giveOwnerWord,
+  markProven,
+  passDuty,
+  planSwitch,
+  readSwitch,
+} from './switches.js';
 
 const rid = z
   .string()
@@ -51,6 +63,11 @@ const projectParam = zValidator(
   'param',
   z.object({ id: z.uuid() }),
   invalid('invalid path: the project id is a uuid'),
+);
+const dutyParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), rid, key: z.string().regex(/^[a-z0-9][a-z0-9-]{1,39}$/) }),
+  invalid('invalid path: a project uuid, a Rocket.Chat room id and a duty key'),
 );
 
 const unknownChannel = <T>(rid: string): Outcome<T> =>
@@ -112,6 +129,72 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
       const out = await declareOutsideAgent(c.get('userId'), id, rid, c.req.valid('json'));
       if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
       return c.json({ agent: out.value });
+    },
+  );
+
+  // a group's switch from its outside bot to the channel agent (REQ-77 BC-16..BC-19)
+  routes.get('/:id/support/channels/:rid/switch', channelParam, async (c) => {
+    const { id, rid } = c.req.valid('param');
+    const out = await readSwitch(c.get('userId'), id, rid);
+    if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+    return c.json({ switch: out.value });
+  });
+
+  routes.put(
+    '/:id/support/channels/:rid/switch',
+    channelParam,
+    strictBody(
+      channelSwitchPlanSchema,
+      '{ outsideBot: { userId, username? }, duties: { key, text }[], after?: <switch uuid>, ownerWord?: boolean }',
+    ),
+    async (c) => {
+      const { id, rid } = c.req.valid('param');
+      const out = await planSwitch(c.get('userId'), id, rid, c.req.valid('json'));
+      if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+      return c.json({ switch: out.value });
+    },
+  );
+
+  routes.post(
+    '/:id/support/channels/:rid/switch/duties/:key/pass',
+    dutyParam,
+    strictBody(channelSwitchPassSchema, '{ evidence }'),
+    async (c) => {
+      const { id, rid, key } = c.req.valid('param');
+      const out = await passDuty(c.get('userId'), id, rid, key, c.req.valid('json').evidence);
+      if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+      return c.json({ switch: out.value });
+    },
+  );
+
+  routes.post(
+    '/:id/support/channels/:rid/switch/owner-word',
+    channelParam,
+    strictBody(channelSwitchOwnerWordSchema, '{ words }'),
+    async (c) => {
+      const { id, rid } = c.req.valid('param');
+      const out = await giveOwnerWord(c.get('userId'), id, rid, c.req.valid('json').words);
+      if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+      return c.json({ switch: out.value });
+    },
+  );
+
+  routes.post('/:id/support/channels/:rid/switch/apply', channelParam, async (c) => {
+    const { id, rid } = c.req.valid('param');
+    const out = await applySwitch(c.get('userId'), id, rid);
+    if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+    return c.json({ switch: out.value });
+  });
+
+  routes.post(
+    '/:id/support/channels/:rid/switch/proven',
+    channelParam,
+    strictBody(channelSwitchProvenSchema, '{ note }'),
+    async (c) => {
+      const { id, rid } = c.req.valid('param');
+      const out = await markProven(c.get('userId'), id, rid, c.req.valid('json').note);
+      if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+      return c.json({ switch: out.value });
     },
   );
 

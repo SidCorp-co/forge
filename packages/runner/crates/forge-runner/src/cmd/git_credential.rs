@@ -24,12 +24,30 @@ use runner_platform::clock::rfc3339_ms;
 pub struct Args {
     /// The git credential operation: `get`, `store` or `erase`.
     pub operation: String,
+    /// Ask as the owner-mode channel agent session this runs inside (ISS-765): under its own turn
+    /// token, for its own project's repository, never with this box's device token.
+    #[arg(long)]
+    pub session: bool,
 }
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let input = read_request()?;
     if args.operation != "get" {
         return Ok(());
+    }
+    if args.session {
+        let host = field(&input, "host");
+        let path = field(&input, "path");
+        let protocol = Some(field(&input, "protocol"))
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| "https".into());
+        return match session_grant(&ctx, &host, &path).await {
+            Ok(grant) => print_grant(&protocol, &host, &grant),
+            Err(e) => {
+                eprintln!("forge-runner git-credential --session: {e}");
+                Ok(())
+            }
+        };
     }
     let host = input
         .iter()
@@ -81,6 +99,81 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             Ok(())
         }
     }
+}
+
+fn field(input: &[(String, String)], key: &str) -> String {
+    input
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default()
+}
+
+/// The grant in git's helper shape, for the protocol and host git asked about.
+fn print_grant(
+    protocol: &str,
+    host: &str,
+    grant: &git_credential::GitCredentialGrant,
+) -> anyhow::Result<()> {
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "protocol={protocol}")?;
+    writeln!(out, "host={host}")?;
+    writeln!(out, "username={}", grant.username)?;
+    writeln!(out, "password={}", grant.password)?;
+    if let Some(unix) = grant.expires_at.as_deref().and_then(parse_rfc3339_unix) {
+        writeln!(out, "password_expiry_utc={unix}")?;
+    }
+    out.flush()?;
+    Ok(())
+}
+
+/// The session's turn token: `$FORGE_PAT`, or a resident session's bearer file, which holds it as
+/// the `Authorization` header its MCP server sends.
+fn session_token() -> anyhow::Result<String> {
+    if let Some(pat) = std::env::var("FORGE_PAT").ok().filter(|v| !v.is_empty()) {
+        return Ok(pat);
+    }
+    let file = std::env::var("FORGE_SESSION_BEARER_FILE")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "this session holds no turn token ($FORGE_PAT or $FORGE_SESSION_BEARER_FILE); --session runs only inside an owner-mode channel agent's session"
+            )
+        })?;
+    let body = std::fs::read_to_string(&file)
+        .map_err(|e| anyhow::anyhow!("the session's bearer file {file} cannot be read: {e}"))?;
+    let header: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| anyhow::anyhow!("the session's bearer file {file} is not JSON: {e}"))?;
+    header
+        .get("Authorization")
+        .and_then(|v| v.as_str())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::to_string)
+        .ok_or_else(|| anyhow::anyhow!("the session's bearer file {file} names no Bearer token"))
+}
+
+/// A credential for `host`/`path`, asked of core as this session (ISS-765).
+pub async fn session_grant(
+    ctx: &Ctx,
+    host: &str,
+    path: &str,
+) -> anyhow::Result<git_credential::GitCredentialGrant> {
+    if path.is_empty() {
+        anyhow::bail!(
+            "git sent no repository path for {host}; credential.useHttpPath=true is how this helper tells repositories apart"
+        );
+    }
+    let project = std::env::var("FORGE_PROJECT_ID")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("this session names no project ($FORGE_PROJECT_ID)"))?;
+    let cfg = Config::load()?;
+    let core_url = ctx
+        .resolve_core_url(&cfg)
+        .ok_or_else(|| anyhow::anyhow!("no core URL configured for this session"))?;
+    let client = CoreClient::new(core_url, session_token()?);
+    Ok(git_credential::ask_session(&client, &project, host, path).await?)
 }
 
 /// Read git's `key=value` request until the terminating blank line or EOF.

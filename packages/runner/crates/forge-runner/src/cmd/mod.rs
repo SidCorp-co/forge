@@ -16,6 +16,7 @@ pub mod release;
 pub mod run;
 pub mod runners;
 pub mod service;
+pub mod session_gh;
 pub mod setup;
 pub mod start;
 pub mod status;
