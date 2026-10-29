@@ -1,1 +1,0 @@
-**`forge-runner run declare` refuses a tree that is gone or is no worktree.** A path a close just gave back, or a worktree of another repository, is refused naming it and `git worktree add`; nothing is recorded.
