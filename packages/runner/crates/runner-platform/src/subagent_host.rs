@@ -61,6 +61,12 @@ pub trait Hosts: Send + Sync {
     /// Its identity and its parent come from one read, so a pid reused after
     /// that process exited is never walked as though it were the one recorded.
     fn beneath(&self, pid: u32, start: &str, ancestor: u32) -> HostRead;
+    /// The working directory of process `pid`, or `None` where it cannot be
+    /// read — off Linux, every time.
+    fn cwd(&self, pid: u32) -> Option<PathBuf> {
+        let _ = pid;
+        None
+    }
 }
 
 /// The process table under `root`, or none at all off Linux.
@@ -101,6 +107,10 @@ impl Hosts for ProcHosts {
             Some(root) => beneath_at(root, pid, start, ancestor),
             None => HostRead::Unreadable,
         }
+    }
+
+    fn cwd(&self, pid: u32) -> Option<PathBuf> {
+        std::fs::read_link(self.root.as_ref()?.join(pid.to_string()).join("cwd")).ok()
     }
 }
 

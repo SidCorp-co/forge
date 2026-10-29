@@ -1,0 +1,1 @@
+**A dispatch another hook refused no longer spends its declaration.** Once the refusal is in the master's transcript the next dispatch takes the run; a second subagent against one run is refused naming the run and the call (ISS-737).

@@ -89,7 +89,9 @@ run, declared over work that has landed, writes no code: it neither holds a scop
 
 ### 6. Declare, record, dispatch
 1. \`forge-runner run declare --project <slug> --issue <key> --worktree <tree>\` writes the box's row
-   and answers the run's id. A dispatch with nothing declared is refused by the box. Before it
+   and answers the run's id. A dispatch with nothing declared is refused by the box, and so is a
+   tree that does not exist or is no worktree, and one of another repository than the master's
+   checkout where the box can read that checkout. Before it
    writes the row the box asks core (\`POST /api/devices/me/run-sessions/preflight\`) the question
    the run's open would be asked, so an issue at rest — \`needs_info\` or \`on_hold\`, or a \`closed\` or
    \`dropped\` one beside an issue in work (\`ISSUE_AT_REST\`; return it from its park, or reopen it,
@@ -102,12 +104,17 @@ run, declared over work that has landed, writes no code: it neither holds a scop
    project, the base branch read from the project, its tree, branch and head, what every other
    tree holds against \`origin/<baseBranch>\`, and the method. A run the box never declared, one
    already ended, or a checkout with no \`origin/<baseBranch>\` ref is refused by name. The
-   project's standing rules are added below it.
+   project's standing rules are added below it. Where the forge plugin's brief gate also runs in
+   the pane, it refuses any prompt its own brief verb did not print, so the prompt is that verb's
+   output for the same issues and tree, whole and unchanged: the run is bound by the declaration
+   and the tool call, never by the prompt's words.
 3. A \`wave\` record on the headline: \`POST /api/issues/:id/events\` naming the members, the role and
    the tree. **Written once.** Where the call's answer is unclear (\`forge-runner api\` exit 10,
    \`DELIVERY_UNKNOWN\`), read \`?kind=wave\` back before writing again — a resend is a second
    record of one dispatch.
-4. Dispatch through a shipped role, the brief as the whole message.
+4. Dispatch through a shipped role, the brief as the whole message. A dispatch another hook refused
+   started nothing and leaves the declaration for the next one. A second subagent on one
+   declaration is refused naming the run and the call it is promised to.
 
 ### 7. Fold
 Every report is folded: what landed, what was filed, what a restart is owed for, what a run declined

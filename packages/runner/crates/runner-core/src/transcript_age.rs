@@ -187,6 +187,103 @@ fn read_back<T>(path: &Path, decide: fn(&str, bool) -> Option<T>, fallback: T) -
     }
 }
 
+/// What a conversation's own transcript says about one of its tool calls.
+///
+/// Claude Code writes each call as an `assistant` entry and its result as a
+/// `user` entry naming the call's id. A call a `PreToolUse` hook denied is
+/// given a result too, flagged `is_error` and reading `PreToolUse:<tool> hook
+/// error: <the reason>`, and it is written before the model's next message is
+/// asked for: measured with Claude Code 2.1.312 on this box 2026-10-29, the
+/// retry's own `PreToolUse` read the refused call's result already there
+/// (ISS-737). Two calls of one message are another matter: the second's
+/// `PreToolUse` ran before either call was written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolCall {
+    /// Its result is written and flagged an error: a hook refused it, a
+    /// permission was denied, or the tool failed.
+    Failed,
+    /// Its result is written and is no error.
+    Answered,
+    /// The call is written and no result naming it after it.
+    Unanswered,
+    /// Neither the call nor a result naming it is in the newest
+    /// [`CALL_REACH`] bytes: a call of the message being run, not written yet,
+    /// or one older than this reads back.
+    Unseen,
+}
+
+/// How far back from a transcript's end [`tool_call_at`] looks. A master's
+/// transcript is resident and grows past a gigabyte (1.2 GB on this box
+/// 2026-10-29), and the call asked about is one of its last few.
+pub const CALL_REACH: u64 = 16 * 1024 * 1024;
+
+/// What the transcript at `path` says about the call `tool_use_id`. `None`
+/// where the file cannot be opened or read, which says nothing about the call.
+pub fn tool_call_at(path: &Path, tool_use_id: &str) -> Option<ToolCall> {
+    use std::io::{Read, Seek, SeekFrom};
+    if tool_use_id.is_empty() {
+        return None;
+    }
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let mut window = TAIL_BYTES.min(CALL_REACH);
+    loop {
+        let start = len.saturating_sub(window);
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut tail = Vec::new();
+        file.read_to_end(&mut tail).ok()?;
+        let whole = start == 0;
+        if let Some(found) = call_in(&String::from_utf8_lossy(&tail), whole, tool_use_id) {
+            return Some(found);
+        }
+        if whole || window >= CALL_REACH {
+            return Some(ToolCall::Unseen);
+        }
+        window = (window * 4).min(CALL_REACH);
+    }
+}
+
+/// The newest entry in `tail` about `id`, read from the end: its result where
+/// one is written, otherwise the call itself. Unless `tail` is the whole file
+/// its first line may be cut where the read began, so it is never read.
+fn call_in(tail: &str, whole: bool, id: &str) -> Option<ToolCall> {
+    let mut lines = tail.lines();
+    if !whole {
+        lines.next();
+    }
+    for line in lines.rev().filter(|l| l.contains(id)) {
+        let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let Some(blocks) = entry["message"]["content"].as_array() else {
+            continue;
+        };
+        match entry["type"].as_str() {
+            Some("user") => {
+                if let Some(result) = blocks
+                    .iter()
+                    .find(|b| b["type"] == "tool_result" && b["tool_use_id"] == id)
+                {
+                    return Some(if result["is_error"].as_bool() == Some(true) {
+                        ToolCall::Failed
+                    } else {
+                        ToolCall::Answered
+                    });
+                }
+            }
+            Some("assistant")
+                if blocks
+                    .iter()
+                    .any(|b| b["type"] == "tool_use" && b["id"] == id) =>
+            {
+                return Some(ToolCall::Unanswered);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// The entry kinds a lead's conversation is made of. Claude Code also writes
 /// records about the session into the same file — `last-prompt`,
 /// `cost-state`, `queue-operation`, `permission-mode`, `mode`, `atis-latch`,
@@ -234,4 +331,78 @@ fn decide_lead(tail: &str, whole: bool) -> Option<bool> {
         );
     }
     whole.then_some(false)
+}
+
+#[cfg(test)]
+mod tool_call_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn written(entries: &[serde_json::Value], padding: usize) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "forge-tool-call-{}-{}.jsonl",
+            std::process::id(),
+            crate::agent_activity::now_ms() as u128 * 1000
+                + entries.len() as u128
+                + padding as u128
+        ));
+        let mut text: String = entries.iter().map(|e| format!("{e}\n")).collect();
+        // Entries written after the ones asked about, as a master's later tool calls are.
+        for n in 0..padding {
+            text.push_str(&format!(
+                "{}\n",
+                json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": format!("toolu_pad{n}"), "content": "x".repeat(4096)}]}})
+            ));
+        }
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    fn call(id: &str) -> serde_json::Value {
+        json!({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": id, "name": "Agent"}]}})
+    }
+
+    fn result(id: &str, error: bool) -> serde_json::Value {
+        let mut block = json!({"type": "tool_result", "tool_use_id": id, "content": "PreToolUse:Agent hook error: Hold"});
+        if error {
+            block["is_error"] = json!(true);
+        }
+        json!({"type": "user", "message": {"content": [block]}})
+    }
+
+    #[test]
+    fn a_call_reads_as_its_result_or_as_written_and_unanswered() {
+        let p = written(&[call("toolu_a"), result("toolu_a", true)], 0);
+        assert_eq!(tool_call_at(&p, "toolu_a"), Some(ToolCall::Failed));
+        let _ = std::fs::remove_file(&p);
+        let p = written(&[call("toolu_b"), result("toolu_b", false)], 1);
+        assert_eq!(tool_call_at(&p, "toolu_b"), Some(ToolCall::Answered));
+        let _ = std::fs::remove_file(&p);
+        let p = written(&[call("toolu_c")], 2);
+        assert_eq!(tool_call_at(&p, "toolu_c"), Some(ToolCall::Unanswered));
+        assert_eq!(
+            tool_call_at(&p, "toolu_never"),
+            Some(ToolCall::Unseen),
+            "a call this conversation never wrote is not one it answered"
+        );
+        let _ = std::fs::remove_file(&p);
+    }
+
+    /// The refused call sits behind more than the first window of later
+    /// entries, and is still found.
+    #[test]
+    fn a_result_behind_the_first_window_is_read() {
+        let p = written(&[call("toolu_d"), result("toolu_d", true)], 64);
+        assert!(std::fs::metadata(&p).unwrap().len() > TAIL_BYTES);
+        assert_eq!(tool_call_at(&p, "toolu_d"), Some(ToolCall::Failed));
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn a_transcript_that_cannot_be_read_says_nothing() {
+        assert_eq!(
+            tool_call_at(Path::new("/nonexistent/forge/transcript.jsonl"), "toolu_a"),
+            None
+        );
+    }
 }

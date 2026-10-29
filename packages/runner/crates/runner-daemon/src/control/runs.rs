@@ -44,6 +44,7 @@ pub(crate) fn run_choice(
                 agent_session_id: Some(session_id.to_string()),
                 issue_key: None,
                 reason: Some(choice.to_string()),
+                deny: false,
             }
         }
         Ok(false) => ClaimReply::refused(format!(
@@ -186,6 +187,16 @@ pub(crate) async fn run_declare_as(
             issue_keys.len()
         ));
     }
+    // The master's own checkout: the working directory of the Claude Code
+    // process above whatever made this declaration, which is where the box
+    // started the master pane. Unread off Linux, and then only the tree itself
+    // is checked.
+    let checkout = peer
+        .and_then(|p| ctl.hosts.above(p))
+        .and_then(|host| ctl.hosts.cwd(host.pid));
+    if let Some(refused) = tree_refusal(worktree_path, checkout.as_deref()).await {
+        return ClaimReply::refused(refused);
+    }
     if let Some(refused) = preflight_refusal(ctl.core.as_deref(), project_id, issue_keys).await {
         return ClaimReply::refused(refused);
     }
@@ -243,9 +254,81 @@ pub(crate) async fn run_declare_as(
                 agent_session_id: Some(recorded),
                 issue_key: issue_keys.first().cloned(),
                 reason: None,
+                deny: false,
             }
         }
         Err(e) => ClaimReply::refused(e.to_string()),
+    }
+}
+
+/// Why `worktree` is no tree a run can be declared over, or `None`.
+///
+/// A declaration names the tree its subagent works in, and the brief, the
+/// held-tree readings and the release all read that tree later. Accepted
+/// unread, a path a close had just given back was declared again and only the
+/// plugin's brief noticed it was gone (orbit-forge, 2026-10-29). Git is asked
+/// at the path itself: a linked worktree or a repository's main working tree
+/// is a tree; anything else is refused naming the path and how to cut one.
+/// Where `checkout`, the declaring master's own checkout, was read, the tree
+/// must be of the same repository. Where it was not — off Linux, or a peer
+/// whose process could not be read — the comparison is not made and that is
+/// logged, not refused: the box failing to read its own process table is no
+/// fault of the declaration.
+pub(crate) async fn tree_refusal(worktree: &str, checkout: Option<&Path>) -> Option<String> {
+    use runner_workspace::worktree::{kind_at, repository_of, Kind};
+    let cut = format!(
+        "`git worktree add {worktree} <branch>` cuts one there, from this project's checkout; \
+         then declare again. Nothing was recorded"
+    );
+    let path = Path::new(worktree);
+    if !path.is_absolute() {
+        return Some(format!(
+            "`{worktree}` is not an absolute path, and the tree a run works in is named by one: the \
+             brief and the release read it from any directory. Nothing was recorded"
+        ));
+    }
+    let what = match kind_at(path).await {
+        Kind::Linked | Kind::MainWorkingTree => None,
+        Kind::NotAWorktree if !path.exists() => Some(format!(
+            "{worktree} does not exist, so no subagent can work in it — a closed run's worktree is \
+             removed when the close gives it back"
+        )),
+        Kind::NotAWorktree => Some(format!("{worktree} is no git worktree")),
+        Kind::Enclosed(top) => Some(format!(
+            "{worktree} is a directory inside the checkout at {}, not a worktree's top level",
+            top.display()
+        )),
+        Kind::Unknown => Some(format!(
+            "git could not be asked what {worktree} is, so it cannot be taken for a worktree"
+        )),
+    };
+    if let Some(what) = what {
+        return Some(format!("{what}. {cut}"));
+    }
+    let Some(checkout) = checkout else {
+        tracing::warn!(
+            "[control] the declaring master's checkout could not be read, so the repository of {worktree} was not compared with it"
+        );
+        return None;
+    };
+    match (repository_of(path).await, repository_of(checkout).await) {
+        (Ok(tree), Ok(project)) if tree != project => Some(format!(
+            "{worktree} is a worktree of the repository at {}, and this project's master works in \
+             {}, a checkout of {}. A run works in a tree of its own project's repository: {cut}",
+            tree.display(),
+            checkout.display(),
+            project.display()
+        )),
+        (Ok(_), Ok(_)) => None,
+        (tree, project) => {
+            tracing::warn!(
+                "[control] the repository of {worktree} was not compared with the master's checkout {}: {:?} / {:?}",
+                checkout.display(),
+                tree.err(),
+                project.err()
+            );
+            None
+        }
     }
 }
 
@@ -301,6 +384,7 @@ pub(crate) fn run_close(
                 agent_session_id: Some(session_id.to_string()),
                 issue_key: None,
                 reason: None,
+                deny: false,
             }
         }
         Ok(Some(_)) => ClaimReply::refused(format!("run {run_id} belongs to another master")),
@@ -510,5 +594,186 @@ mod preflight_tests {
             );
         }
         assert!(preflight_refusal(None, "p", &keys()).await.is_none());
+    }
+}
+
+/// What `run declare` takes as the tree a subagent works in (ISS-737, seen on
+/// orbit-forge 2026-10-29: a close removed the run's worktree and the next
+/// declaration over that same path was accepted).
+#[cfg(test)]
+mod tree_tests {
+    use super::*;
+
+    const MASTER: &str = "sess-a";
+    const PROJECT: &str = "proj-1";
+
+    fn scratch() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("forge-declare-tree-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// A repository with one commit, and a linked worktree of it at `<repo>/.claude/worktrees/iss-1`.
+    fn repo_with_tree(at: &Path) -> (PathBuf, PathBuf) {
+        let repo = at.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        git(
+            &repo,
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "one",
+            ],
+        );
+        let tree = repo.join(".claude/worktrees/iss-1");
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "iss-1",
+                tree.to_str().unwrap(),
+            ],
+        );
+        (repo, tree)
+    }
+
+    fn ctl(dir: &Path) -> Arc<Control> {
+        let masters = Arc::new(crate::master::Masters::default());
+        masters.remember(
+            PROJECT,
+            crate::master::MasterState {
+                session_id: MASTER.into(),
+                name: "forge-master-proj".into(),
+                last_work: std::time::Instant::now(),
+                last_nudge: None,
+                mcp_stale_reported: false,
+            },
+        );
+        Arc::new(Control {
+            tokens: crate::session_tokens::SessionTokens::at(dir.join("tokens.json")),
+            activity: Arc::new(runner_core::agent_activity::Activities::new()),
+            masters,
+            ledger: Arc::new(std::sync::Mutex::new(Some(
+                runner_core::ledger::Ledger::open(&dir.join("ledger.db")).unwrap(),
+            ))),
+            boot_id: "boot-1".into(),
+            config_dir: Some(dir.to_path_buf()),
+            promises: std::sync::Mutex::new(GateMemory::default()),
+            drain: Arc::new(crate::drain::Drain::new(None)),
+            hosts: Arc::new(runner_platform::subagent_host::ProcHosts::system()),
+            core: None,
+        })
+    }
+
+    async fn declare(ctl: &Arc<Control>, tree: &Path) -> ClaimReply {
+        run_declare_as(
+            ctl,
+            &Holder::Legacy {
+                session: MASTER.into(),
+            },
+            PROJECT,
+            &["ISS-1".to_string()],
+            &tree.to_string_lossy(),
+            MASTER,
+            None,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn a_tree_that_is_gone_is_refused_naming_the_path_and_the_way_to_cut_it() {
+        let dir = scratch();
+        let (repo, tree) = repo_with_tree(&dir);
+        let ctl = ctl(&dir);
+        let first = declare(&ctl, &tree).await;
+        assert!(first.ok, "a live worktree was refused: {first:?}");
+        // The master closes the run, and the close gives its worktree back.
+        let run_id = first.job_id.unwrap();
+        assert!(run_close(&ctl, &run_id, Some("done"), MASTER).ok);
+        git(&repo, &["worktree", "remove", tree.to_str().unwrap()]);
+        let reply = declare(&ctl, &tree).await;
+        assert!(
+            !reply.ok,
+            "a declaration over a removed worktree was accepted: {reply:?}"
+        );
+        let why = reply.reason.unwrap_or_default();
+        assert!(why.contains(&*tree.to_string_lossy()), "{why}");
+        assert!(why.contains("git worktree add"), "{why}");
+        assert!(why.contains("Nothing was recorded"), "{why}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The master works in its project's checkout; a tree of another
+    /// repository is refused, and one of its own, main or linked, is taken.
+    #[tokio::test]
+    async fn a_tree_of_another_repository_is_refused_naming_both() {
+        let dir = scratch();
+        let (repo, tree) = repo_with_tree(&dir);
+        let other = dir.join("other");
+        std::fs::create_dir_all(&other).unwrap();
+        let (_, foreign) = repo_with_tree(&other);
+        assert_eq!(
+            tree_refusal(&tree.to_string_lossy(), Some(&repo)).await,
+            None
+        );
+        assert_eq!(
+            tree_refusal(&repo.to_string_lossy(), Some(&tree)).await,
+            None
+        );
+        let why = tree_refusal(&foreign.to_string_lossy(), Some(&repo))
+            .await
+            .expect("a worktree of another repository was taken for this project's");
+        assert!(why.contains(&*foreign.to_string_lossy()), "{why}");
+        assert!(why.contains(&*repo.to_string_lossy()), "{why}");
+        assert!(why.contains("git worktree add"), "{why}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_directory_that_is_no_worktree_is_refused() {
+        let dir = scratch();
+        let (_repo, tree) = repo_with_tree(&dir);
+        let ctl = ctl(&dir);
+        let plain = dir.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        let inside = tree.join("src");
+        std::fs::create_dir_all(&inside).unwrap();
+        for path in [plain, inside, PathBuf::from("relative/tree")] {
+            let reply = declare(&ctl, &path).await;
+            assert!(
+                !reply.ok,
+                "{} was declared as a worktree: {reply:?}",
+                path.display()
+            );
+            let why = reply.reason.unwrap_or_default();
+            assert!(why.contains(&*path.to_string_lossy()), "{why}");
+        }
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

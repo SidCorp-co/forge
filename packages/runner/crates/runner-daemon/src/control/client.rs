@@ -168,8 +168,25 @@ pub fn dispatch_gate_frame(
     serde_json::json!({
         "op": "dispatch_gate", "token": token,
         "agentId": d.agent_id, "subagentType": d.subagent_type,
-        "toolUseId": d.tool_use_id
+        "toolUseId": d.tool_use_id, "transcriptPath": d.transcript_path
     })
+}
+
+/// The refusal a pane's `PreToolUse` hook prints as a deny, or `None` for a
+/// refusal of the question itself — an unknown token, a frame the daemon could
+/// not decode — which the hook fails open on.
+///
+/// Until ISS-737 the hook denied only a reason equal to
+/// [`runner_core::dispatch_gate::REFUSAL`], so every other refusal the gate
+/// made — a draining box's (ISS-1223) among them — was let through as a
+/// question the daemon refused. The gate's own refusals now say so; the
+/// sentence match stays for a daemon from before the flag.
+pub fn gate_denial(reply: &ClaimReply) -> Option<&str> {
+    if reply.ok {
+        return None;
+    }
+    let reason = reply.reason.as_deref()?;
+    (reply.deny || reason == runner_core::dispatch_gate::REFUSAL).then_some(reason)
 }
 
 /// Ask whether the work about to be handed out has been declared.
