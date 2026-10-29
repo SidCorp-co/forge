@@ -1,1 +1,0 @@
-**Answering a value check question replaces its assumed answer.** The fact that took the recommended answer now shows the answer given and names it as the source, and an item with no check shows Not checked or Checking.

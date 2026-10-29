@@ -1,1 +1,0 @@
-**pnpm test:changed skips the two-minute credential-doors test for a core change that cannot alter it.** A test may narrow its directory declaration with @direct-test-when lines; only the developer run honours them, and merge-check still runs every declaration.

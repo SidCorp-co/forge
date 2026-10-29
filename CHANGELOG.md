@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.360] - 2026-10-29
+
+Your value check answer now shows as its source
+
+### Changed
+
+- **pnpm test:changed skips the two-minute credential-doors test for a core change that cannot alter it.** A test may narrow its directory declaration with @direct-test-when lines; only the developer run honours them, and merge-check still runs every declaration.
+
+### Fixed
+
+- **ChatGPT can import Forge's MCP tools.** Every tool's input is listed in the plain JSON Schema importers read, meaning unchanged; `server/discover` names every protocol version served, and each `/mcp` request logs one line naming what was asked and answered.
+- **Answering a value check question replaces its assumed answer.** The fact that took the recommended answer now shows the answer given and names it as the source, and an item with no check shows Not checked or Checking.
+
 ## [0.4.0-dev.359] - 2026-10-29
 
 Promotion projects merge ordinary requests again and find pinned promotions
