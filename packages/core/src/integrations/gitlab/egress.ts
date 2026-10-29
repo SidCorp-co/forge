@@ -28,7 +28,7 @@ export function gitlabCaller(): string {
     const at = frame.match(
       /at (?:async )?(?:(\S+) \()?(?:file:\/\/)?[^()]*\/(?:src|dist)\/([^():]+)\.[jt]s:\d+/,
     );
-    if (!at) continue;
+    if (!at || frame.includes('/node_modules/')) continue;
     const file = at[2] ?? '';
     if (file.startsWith('integrations/gitlab/') || file.startsWith('integrations/source-host/')) {
       continue;
