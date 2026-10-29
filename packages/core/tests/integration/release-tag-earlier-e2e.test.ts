@@ -91,7 +91,11 @@ async function seed(environments: Record<string, unknown>, promotions: unknown[]
     defaultBranch: STG,
     source: {
       type: 'git',
-      git: { repository: 'gitlab.com/acme/adminhub-api', defaultBranch: STG, branches: [STG, PROD] },
+      git: {
+        repository: 'gitlab.com/acme/adminhub-api',
+        defaultBranch: STG,
+        branches: [STG, PROD],
+      },
     },
     extra: { delivery: { verdictsRequired: false } } as never,
   });

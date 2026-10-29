@@ -22,7 +22,6 @@ import { closeRunIfOneShot } from '../pipeline/index.js';
 import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import { assertFinishable, finishReleaseBatch, readReleaseRun } from './finish.js';
-import { oweReleaseTag } from './release-tag.js';
 import {
   compareAndSet,
   type FinishRefusal,
@@ -40,6 +39,7 @@ import {
   reasonOf,
   refuseRelease,
 } from './refuse.js';
+import { oweReleaseTag } from './release-tag.js';
 import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
 
 /** How long a worker's claim on an attempt stands without a renewal. */

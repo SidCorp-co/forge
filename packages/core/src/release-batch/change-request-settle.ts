@@ -78,7 +78,8 @@ export async function settleChangeRequestRelease(
   }
   // the commit the release's version names is its last merge, known now and before any deploy:
   // its tag is owed there, once (REQ-63 BC-13); a roster that merged nothing names none
-  const lastMerge = states.find((s) => s.id === steps.at(-1)?.pullRequestId)?.mergeCommitSha ?? null;
+  const lastMerge =
+    states.find((s) => s.id === steps.at(-1)?.pullRequestId)?.mergeCommitSha ?? null;
   const promotion = (run.metadata as { promotion?: unknown } | null)?.promotion;
   // a promotion whose merge commit the host has not reported yet owes it on a later settle
   if (!promotion || lastMerge) {

@@ -313,7 +313,10 @@ describe('a release Forge tagged that ended without shipping', () => {
   });
 
   it('carries its version on the tag, so the re-cut takes a new version naming it, whatever the abort declared', () => {
-    const first = run({ version: '0.3.0', metadata: { ...NOTHING_LEFT, ...said([]), ...tagged('0.3.0') } });
+    const first = run({
+      version: '0.3.0',
+      metadata: { ...NOTHING_LEFT, ...said([]), ...tagged('0.3.0') },
+    });
     expect(decideVersion([first], ROSTER, null)).toMatchObject({
       kind: 'bumped',
       version: '0.4.0',
@@ -329,7 +332,10 @@ describe('a release Forge tagged that ended without shipping', () => {
       roster: ['x'],
       metadata: tagged('0.1.0'),
     });
-    expect(decideVersion([promotion], ['a'], null)).toMatchObject({ kind: 'first', version: '0.2.0' });
+    expect(decideVersion([promotion], ['a'], null)).toMatchObject({
+      kind: 'first',
+      version: '0.2.0',
+    });
     expect(decideVersion([promotion], ['x'], null)).toMatchObject({
       kind: 'bumped',
       version: '0.2.0',
@@ -345,13 +351,22 @@ describe('a release Forge tagged that ended without shipping', () => {
         tagOwed: { name: 'v0.3.0', commit: 'b'.repeat(40), from: 'range', at: 'now' },
       },
     });
-    expect(carriersOf(owed)).toEqual({ kind: 'carried', carriers: [{ kind: 'tag', name: 'v0.3.0' }] });
+    expect(carriersOf(owed)).toEqual({
+      kind: 'carried',
+      carriers: [{ kind: 'tag', name: 'v0.3.0' }],
+    });
   });
 
   it('carries nothing where the tag was refused or never put: the version is still free to wear', () => {
     for (const state of ['refused', 'untagged'] as const) {
-      const first = run({ version: '0.3.0', metadata: { ...NOTHING_LEFT, ...tagged('0.3.0', state) } });
-      expect(decideVersion([first], ROSTER, null)).toMatchObject({ kind: 'reused', version: '0.3.0' });
+      const first = run({
+        version: '0.3.0',
+        metadata: { ...NOTHING_LEFT, ...tagged('0.3.0', state) },
+      });
+      expect(decideVersion([first], ROSTER, null)).toMatchObject({
+        kind: 'reused',
+        version: '0.3.0',
+      });
     }
     const unstarted = run({
       version: '0.1.0',
@@ -360,6 +375,9 @@ describe('a release Forge tagged that ended without shipping', () => {
       roster: ['x'],
       metadata: tagged('0.1.0', 'refused'),
     });
-    expect(decideVersion([unstarted], ['a'], null)).toMatchObject({ kind: 'first', version: '0.1.0' });
+    expect(decideVersion([unstarted], ['a'], null)).toMatchObject({
+      kind: 'first',
+      version: '0.1.0',
+    });
   });
 });
