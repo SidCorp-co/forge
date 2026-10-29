@@ -13,7 +13,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { carriedSchema, declareCarried } from './carried.js';
-import { createReleaseBatch } from './create.js';
+import { createReleaseBatch, cutMergedPromotion } from './create.js';
 import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import { resolveReleaseDeclaration } from './gate.js';
@@ -378,7 +378,9 @@ releaseBatchRoutes.post(
       declared?.kind === 'no-release'
         ? await recordLanding(sent, declared.defaultBranch)
         : declared?.kind === 'promotion'
-          ? await recordPromotionRelease(sent, declared)
+          ? await recordPromotionRelease(sent, declared, (issueIds, merged) =>
+              cutMergedPromotion({ projectId, userId, issueIds }, declared, merged),
+            )
           : await recordPerformedRelease(sent);
     return c.json(result, 201);
   },

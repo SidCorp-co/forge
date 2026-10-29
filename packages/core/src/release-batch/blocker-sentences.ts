@@ -61,6 +61,11 @@ export interface CollectReleaseBlockersOptions {
   /** The issues this call names. Omitted, the project's whole roster is read. */
   issueIds?: string[] | undefined;
   door?: ReleaseDoor | undefined;
+  /**
+   * The cut is the record of a promotion already merged on the host: what it carries is read against
+   * that merge (`promotion-release.ts:recordPromotionRelease`), not against a request under review.
+   */
+  promotionMerged?: true | undefined;
   /** Read by the CALLER — this enumerator reaches no network; without one the criteria check
    *  reports itself unevaluated rather than guess (ISS-1286). */
   serving?: ServingReading | undefined;

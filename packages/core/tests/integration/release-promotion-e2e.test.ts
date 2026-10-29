@@ -400,3 +400,60 @@ describe('BC-9, BC-10: a draft pairs with the open promotion, and cuts what its 
     expect(waiting.map((w) => w.seq)).toEqual([8, 9]);
   });
 });
+
+// adminhub-fe 0.54.0, 2026-10-29: the owner approved !2055 on GitLab and it merged into
+// release/production at 637ddd1c, carrying 7 of the 9 waiting, with no release cut in Forge. The
+// operator's record of that deploy is the release: it cuts the seven and closes them, the rest wait.
+describe('BC-12: the record of a promotion merged on the host with no release running', () => {
+  it('cuts and closes the issues the merge carries, and leaves the rest named at the gate', async () => {
+    const shas = Array.from({ length: 9 }, (_, n) => (n + 0x31).toString(16).repeat(20));
+    const ids = await landedIssues(shas);
+    const head = '73b2be31'.repeat(5);
+    const merge = '637ddd1c'.repeat(5);
+    await promotionRequest(2055, head, 'promote/prod-2026-10-29');
+    for (const sha of shas.slice(0, 7)) planted.carried.add(`${sha}>${head}`);
+    planted.carried.add(`${head}>${merge}`);
+    await mergedOnHost(2055, merge);
+
+    const recorded = await record(ids.slice(0, 7), merge);
+    expect(recorded.status, JSON.stringify(recorded.body)).toBe(201);
+    expect(recorded.body).toMatchObject({ verification: 'deployment', failed: [] });
+    const statuses = await rows<{ status: string }>(
+      sql`SELECT status FROM issues WHERE project_id = ${world.projectId} ORDER BY iss_seq`,
+    );
+    expect(statuses.map((s) => s.status)).toEqual([
+      ...Array(7).fill('closed'),
+      'awaiting_release',
+      'awaiting_release',
+    ]);
+    const shown = await call('GET', `/releases/${String(recorded.body.version)}`);
+    expect((shown.body.release as { promotion: unknown }).promotion).toMatchObject({
+      number: 2055,
+      state: 'merged',
+      mergeCommitSha: merge,
+      notCarried: [],
+    });
+
+    // the two past its head are not carried by the merged promotion, and the draft says which
+    const rest = await call('GET', '/release-readiness');
+    expect(JSON.stringify(rest.body)).toContain('2 issues named here (`ISS-8`, `ISS-9`)');
+  });
+
+  it('refuses a record naming an issue the merge does not carry, cutting nothing', async () => {
+    const shas = Array.from({ length: 3 }, (_, n) => (n + 0x31).toString(16).repeat(20));
+    const ids = await landedIssues(shas);
+    const merge = '637ddd1c'.repeat(5);
+    await promotionRequest(2055, HEAD, 'promote/prod-2026-10-29');
+    for (const sha of shas.slice(0, 2)) planted.carried.add(`${sha}>${HEAD}`);
+    planted.carried.add(`${HEAD}>${merge}`);
+    await mergedOnHost(2055, merge);
+
+    const refused = await record(ids, merge);
+    expect(codeOf(refused.body), JSON.stringify(refused.body)).toBe('RELEASE_PROMOTION_MISSING');
+    expect(JSON.stringify(refused.body)).toContain('`ISS-3`');
+    const runs = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM pipeline_runs WHERE project_id = ${world.projectId}`,
+    );
+    expect(runs[0]?.n).toBe(0);
+  });
+});

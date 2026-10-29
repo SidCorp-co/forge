@@ -31,7 +31,8 @@ The release path is read from the project document and nowhere else
   request, approval is the go to merge it, and the operator's deploy record closes it — only when the
   commit it names holds every roster issue's landing, else `RELEASE_PROMOTION_DROPPED`. A draft pairs
   with the open request and cuts the roster issues its head carries (`RELEASE_PROMOTION_PARTIAL`), the
-  rest waiting for the next promotion. A path of more than one crossing is refused at the
+  rest waiting for the next promotion. A promotion merged on the host with no release cut is released
+  by the record of its deploy, which cuts and closes the roster issues its merge holds. A path of more than one crossing is refused at the
   config write as `PROMOTION_CHAIN_UNSUPPORTED` (`packages/core/src/project-config/rules.ts`), because a release
   performs one crossing and nothing carries the middle of a longer chain.
 - **No production environment means Forge ships nothing.**
