@@ -1,1 +1,0 @@
-**Closing a run gives back the issue claims its run took.** A master's `forge-runner run close` frees the claim held under the run's tree id, marked as a run close, so the next run takes the issue at once (ISS-737).
