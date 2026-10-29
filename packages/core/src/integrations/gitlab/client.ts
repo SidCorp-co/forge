@@ -7,6 +7,7 @@
 
 import { scrubLogText } from '@forge/observability';
 import { SourceHostCallError, SourceHostUnavailable } from '../source-host/index.js';
+import { gitlabCaller, logGitLabCall } from './egress.js';
 import {
   GITLAB_DEFAULT_BASE_URL,
   type GitLabConfig,
@@ -83,6 +84,8 @@ export function buildGitLabClient(args: {
   const fullName = projectPath ?? `project ${projectId}`;
 
   async function send(method: Method, path: string, body?: unknown): Promise<Response> {
+    const caller = gitlabCaller();
+    const started = Date.now();
     const res = await fetch(`${api}${path}`, {
       method,
       headers: {
@@ -92,6 +95,16 @@ export function buildGitLabClient(args: {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    logGitLabCall({
+      caller,
+      host: gitlabHostOf(args.config),
+      method,
+      path,
+      status: res.status,
+      ms: Date.now() - started,
+      headers: res.headers,
+      ...(res.status === 429 ? { body: await res.clone().text() } : {}),
     });
     if (!res.ok) {
       throw new SourceHostCallError(

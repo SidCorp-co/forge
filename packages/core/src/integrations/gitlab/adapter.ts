@@ -21,6 +21,7 @@ import {
   updateConnection,
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';
+import { gitlabCaller, logGitLabCall } from './egress.js';
 import { gitlabGitCredential } from './git-credential.js';
 import { GITLAB_BINDING_CONFIG_KEYS, gitlabConfigBase, gitlabSecretsSchema } from './schemas.js';
 import { gitlabSourceHost } from './source-host.js';
@@ -47,9 +48,21 @@ interface HookBody {
 type Probe = { ok: true; body: unknown } | { ok: false; status: number };
 
 async function probe(base: string, path: string, token: string): Promise<Probe> {
+  const caller = gitlabCaller();
+  const started = Date.now();
   const res = await fetch(`${base}/api/v4${path}`, {
     headers: { 'PRIVATE-TOKEN': token, Accept: 'application/json' },
     signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+  });
+  logGitLabCall({
+    caller: `health-probe (${caller})`,
+    host: new URL(base).host,
+    method: 'GET',
+    path,
+    status: res.status,
+    ms: Date.now() - started,
+    headers: res.headers,
+    ...(res.status === 429 ? { body: await res.clone().text() } : {}),
   });
   if (!res.ok) return { ok: false, status: res.status };
   return { ok: true, body: await res.json() };
