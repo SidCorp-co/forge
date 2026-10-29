@@ -422,7 +422,36 @@ interface IssuePorts {
     projectId: string;
     report: MergeCheckReport;
   }) => Promise<{ code: FastLaneRefusalCode; path: string; detail: string } | null>;
+  /**
+   * How the requirement-level fail `verdictId` routes `issueId` were it back at `status` now
+   * (`requirements/fail-return.ts`, ISS-760): the way back from that fail's reopen asks it.
+   */
+  requirementFailReturn: (args: {
+    projectId: string;
+    issueId: string;
+    verdictId: string;
+    status: IssueStatus;
+  }) => Promise<RequirementFailReturn>;
 }
+
+/**
+ * What the way back from a requirement-level fail's reopen reads of that fail (ISS-760): none where
+ * the verdict is not a fail at a requirement of the issue's project, else the BC it judged, the
+ * fail's own reason, what `routeFail` makes of the issue at the status it returns to, and each of its
+ * own criteria tracing the BC that does not count as a pass.
+ */
+export type RequirementFailReturn =
+  | { kind: 'none' }
+  | {
+      kind: 'read';
+      bc: string;
+      reason: string | null;
+      /** Every one of its own criteria tracing the BC counts as a pass, and it has one. */
+      delivers: boolean;
+      outcome: 'reopen' | 'building' | 'stays';
+      why: string;
+      notPassing: { criterion: number; verdict: string | null; why: string | null }[];
+    };
 
 const slot = portSlot<IssuePorts>('issues', 'provideIssuePorts');
 export const provideIssuePorts = slot.provide;
@@ -503,3 +532,4 @@ export const handoffContextsOf = port('handoffContextsOf');
 export const closeOpenRunForIssue = port('closeOpenRunForIssue');
 export const triggerPipelineStepManual = port('triggerPipelineStepManual');
 export const fastLaneMergeRefusal = port('fastLaneMergeRefusal');
+export const requirementFailReturn = port('requirementFailReturn');

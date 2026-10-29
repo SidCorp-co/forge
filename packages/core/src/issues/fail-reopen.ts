@@ -17,19 +17,13 @@ import { RefusalError } from '../lib/refusal.js';
 import { consume } from '../outbox/index.js';
 import type { TransitionActor } from './actor-agency.js';
 import { transitionIssueStatus } from './apply-transition.js';
+import { failedWhat, staysNote } from './fail-wording.js';
 import { postIssueNotice } from './ports.js';
 
 type Failed = VerdictFailed & { issueId: string; verdictId: string };
 
 /** The statuses past an issue's build, where a fail sends it back: its work is resolved. */
 const PAST_BUILD: ReadonlySet<string> = new Set(ISSUE_RESOLVED_STATUSES);
-
-function failedWhat(p: Failed): string {
-  const what = p.requirement
-    ? `${p.requirement}, which this issue traces, was judged fail at its requirement`
-    : `criterion ${p.criterion} was judged fail`;
-  return `${what} (verdict ${p.verdictId})${p.reason ? `: ${p.reason}` : ''}`;
-}
 
 /** Who recorded the fail moves the issue: its account, else its box, else the issue's author. */
 async function actorOf(p: Failed, fallback: string): Promise<TransitionActor> {
@@ -64,7 +58,7 @@ export async function reopenOnFail(p: Failed): Promise<void> {
     await postIssueNotice({
       issueId: p.issueId,
       authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-      body: `${failedWhat(p)}. It stays at \`${row.status}\`: ${p.stays}.`,
+      body: staysNote(failedWhat(p), row.status, p.stays),
     });
     return;
   }

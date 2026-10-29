@@ -1,0 +1,1 @@
+**A reopened issue goes back when the fail was not its own:** an issue a requirement-level fail reopened returns to awaiting release or closed once its own criteria pass and another issue owns what is missing.

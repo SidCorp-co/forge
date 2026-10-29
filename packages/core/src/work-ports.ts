@@ -139,6 +139,7 @@ import {
   changedTracedOf,
   contractAboutRefusal,
   plannedRevisionFor,
+  requirementFailReturn,
   requirementIdIn,
   requirementOfIssue,
   rowIn as requirementRowIn,
@@ -304,6 +305,7 @@ export function provideWorkPorts(): void {
     closeOpenRunForIssue,
     triggerPipelineStepManual,
     fastLaneMergeRefusal,
+    requirementFailReturn,
   });
 
   provideAutomationPorts({

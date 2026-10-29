@@ -217,6 +217,9 @@ A fail goes to the issues tracing the BC, and the answer's \`routed\` names each
 \`why\`: \`reopen\` for a landed one whose own criteria tracing it do not all pass, \`building\` for one still
 being built, which owns what is missing, and \`stays\` for a landed one that delivered its half, told so on
 it. With none building and every landed one passing, the newest landing is sent back.
+An issue such a fail reopened, its own criteria passing while another issue owns the rest — one
+reopened before the routing read them — goes back to where it was with a plain move
+(\`reopen\` → \`awaiting_release\` or \`closed\`); the issue-flow guide names its refusals.
 
 ### Who may act
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,

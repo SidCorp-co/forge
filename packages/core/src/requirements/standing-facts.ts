@@ -111,6 +111,8 @@ async function filesOf(issueIds: readonly string[]): Promise<Map<string, Coverag
 export async function issueCriteriaOf(
   issueIds: readonly string[],
   ex: Pick<Tx, 'execute'> = db,
+  /** Issues read as if back from their reopen now (`issues/release-evidence.ts:reopenedAtOf`). */
+  asReturned: readonly string[] = [],
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
   const rows = (await ex.execute(sql`
@@ -167,7 +169,7 @@ export async function issueCriteriaOf(
      ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[];
   // A verdict recorded at or before the issue's latest reopen is evidence about a build the
   // reopen rejected (`issues/release-evidence.ts:reopenedAtOf`), so coverage reads it as not judged
-  const reopened = await reopenedAtOf(ex, issueIds);
+  const reopened = await reopenedAtOf(ex, issueIds, asReturned);
   const files = await filesOf(
     rows.flatMap((r) => ((r.evidence ?? []).length > 0 ? [r.issue_id] : [])),
   );
