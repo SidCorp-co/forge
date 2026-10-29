@@ -35,6 +35,7 @@ import {
   heldIssuePrefixes,
   type IssueLeaseRelease,
   refuseHeldTakeForSeqs,
+  releaseClosedRunClaims,
   releaseIssueLeaseRow,
   restartStepsForNewRun,
   takeIssueLeases,
@@ -52,7 +53,6 @@ import {
   writeRunMetadata,
 } from '../pipeline/index.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
-import { releaseRunClaims } from './run-claim-release.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
 import {
@@ -508,7 +508,7 @@ export async function closeRunSession(input: {
   const releaseClaims = async (): Promise<string[]> =>
     args.outcome === 'ended' && row.projectId && args.claimHolders?.length
       ? db.transaction((tx) =>
-          releaseRunClaims(tx, {
+          releaseClosedRunClaims(tx, {
             projectId: row.projectId as string,
             deviceId: args.deviceId,
             runId: row.runId,

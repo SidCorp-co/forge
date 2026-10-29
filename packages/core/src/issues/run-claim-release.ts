@@ -23,7 +23,7 @@ export const RELEASED_BY_RUN_CLOSE = 'run-close';
  * or from none, and answer the issue keys whose claim was given back. A claim another box wrote is
  * never touched: a box releases only its own.
  */
-export async function releaseRunClaims(
+export async function releaseClosedRunClaims(
   tx: Tx,
   args: {
     projectId: string;
