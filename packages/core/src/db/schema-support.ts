@@ -347,6 +347,14 @@ export const supportChannelSwitches = pgTable(
     rid: text('rid').notNull(),
     outsideBotUserId: text('outside_bot_user_id').notNull(),
     outsideBotUsername: text('outside_bot_username'),
+    /** The outside bot answers as the binding's own chat account: the switch removes nobody. */
+    outsideIsSelf: boolean('outside_is_self').notNull().default(false),
+    /** An operator's record that the outside bot's process is stopped, which a self switch waits on. */
+    outsideStoppedAt: timestamp('outside_stopped_at', { withTimezone: true }),
+    outsideStoppedBy: uuid('outside_stopped_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    outsideStoppedNote: text('outside_stopped_note'),
     /** `[{ key, text, passedBy, passedAt, evidence }]`, in the order the plan named them. */
     duties: jsonb('duties').notNull(),
     afterSwitchId: uuid('after_switch_id'),

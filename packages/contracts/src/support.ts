@@ -62,7 +62,8 @@ export const SUPPORT_ABILITY_MEANING: Record<SupportAbility, string> = {
 	deliver: "move an issue of this project, as the member who asked",
 	build:
 		"change code in a working copy of the development branch, then commit, push and open a change request into it once a confirmer confirms",
-	deploy: "deploy a bound target this room names, once a confirmer confirms",
+	deploy:
+		"deploy a bound target this room names, once a confirmer confirms, and read its deployment record",
 	run_commands:
 		"run commands on the hosts this room names; a change waits for a confirmer",
 	owner_mode:
@@ -471,6 +472,8 @@ export const SUPPORT_ACTIONS = [
 	"move_issue",
 	"build",
 	"deploy",
+	"deployment",
+	"project",
 	"command",
 	"channel",
 	"member",
@@ -545,6 +548,11 @@ export const supportBuildRequestSchema = z.strictObject({
 });
 export const supportDeployRequestSchema = z.strictObject({
 	thread: threadId,
+	/** A deploy binding this room's grant names, by its id as `tools` lists it. */
+	target: z.uuid(),
+});
+/** The latest deployment record of a deploy binding the room's grant names (ISS-775). */
+export const supportDeploymentRequestSchema = z.strictObject({
 	/** A deploy binding this room's grant names, by its id as `tools` lists it. */
 	target: z.uuid(),
 });
@@ -749,6 +757,16 @@ export const SUPPORT_REFUSAL_CODES = [
 	"AGENT_SWITCH_BOT_NOT_REMOVED",
 	/** No binding of the project carries a channel agent to switch the group to. */
 	"AGENT_SWITCH_NO_AGENT",
+	/** A duty names a box path, key or host the confined agent never sees (ISS-775). */
+	"AGENT_SWITCH_DUTY_NAMES_BOX",
+	/** The outside bot is the binding's own account and its process is not recorded stopped (ISS-775). */
+	"AGENT_SWITCH_OUTSIDE_RUNNING",
+	/** A stop record for an outside bot on another account, which the switch removes itself (ISS-775). */
+	"AGENT_SWITCH_OUTSIDE_NOT_SELF",
+	/** The deploy binding's deployment record could not be read (ISS-775). */
+	"SUPPORT_DEPLOYMENT_UNREADABLE",
+	/** An act only a channel agent takes, asked by a support group's session (ISS-775). */
+	"SUPPORT_NOT_A_CHANNEL_AGENT",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -815,4 +833,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	AGENT_SWITCH_PLAN_REFUSED: 400,
 	AGENT_SWITCH_BOT_NOT_REMOVED: 503,
 	AGENT_SWITCH_NO_AGENT: 409,
+	AGENT_SWITCH_DUTY_NAMES_BOX: 400,
+	AGENT_SWITCH_OUTSIDE_RUNNING: 409,
+	AGENT_SWITCH_OUTSIDE_NOT_SELF: 409,
+	SUPPORT_DEPLOYMENT_UNREADABLE: 503,
+	SUPPORT_NOT_A_CHANNEL_AGENT: 409,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

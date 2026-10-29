@@ -1,6 +1,7 @@
 import {
   supportBuildRequestSchema,
   supportCommandRequestSchema,
+  supportDeploymentRequestSchema,
   supportDeployRequestSchema,
   supportMoveIssueRequestSchema,
   supportProposeFixRequestSchema,
@@ -102,6 +103,7 @@ const SHAPES = {
   moveIssue: '{ thread, issue, to, reason? }',
   build: '{ thread, branch: feat/<slug> | fix/<slug>, title, summary }',
   deploy: '{ thread, target }',
+  deployment: '{ target }',
   command: '{ thread, host, command }',
   member: '{ member, roles, askFor?, message }',
   rule: '{ thread, message, text }',
@@ -172,6 +174,20 @@ supportRoutes.post(
   strictBody(supportDeployRequestSchema, SHAPES.deploy),
   (c) => act(c, c.req.valid('param').id, { action: 'deploy', ...c.req.valid('json') }),
 );
+// the latest deployment record of a granted deploy target, read to watch a deploy (ISS-775)
+supportRoutes.post(
+  '/:id/support/session/deployments',
+  projectParam,
+  ridQuery,
+  strictBody(supportDeploymentRequestSchema, SHAPES.deployment),
+  (c) =>
+    act(
+      c,
+      c.req.valid('param').id,
+      { action: 'deployment', ...c.req.valid('json') },
+      c.req.valid('query').rid,
+    ),
+);
 supportRoutes.post(
   '/:id/support/session/commands',
   projectParam,
@@ -180,6 +196,10 @@ supportRoutes.post(
 );
 
 // an operations room's acts (REQ-75 BC-20..BC-24): read the scope, move delivery, draft direction, research
+// the project document, read by a channel agent (ISS-775)
+supportRoutes.get('/:id/support/session/project', projectParam, ridQuery, (c) =>
+  act(c, c.req.valid('param').id, { action: 'project' }, c.req.valid('query').rid),
+);
 supportRoutes.get('/:id/support/session/projects', projectParam, (c) =>
   act(c, c.req.valid('param').id, { action: 'projects' }),
 );

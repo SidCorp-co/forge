@@ -191,7 +191,16 @@ export class SessionBox {
   }
 
   /** One `forge_support` call on /mcp under the turn's token; the tool's answer, parsed. */
-  async tool(token: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  tool(token: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.call(token, 'forge_support', args);
+  }
+
+  /** One call of any tool on /mcp under the turn's token, as the session's Claude Code makes it. */
+  async call(
+    token: string,
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
     const res = await fetch(`${this.base}/mcp`, {
       method: 'POST',
       headers: {
@@ -203,7 +212,7 @@ export class SessionBox {
         jsonrpc: '2.0',
         id: 1,
         method: 'tools/call',
-        params: { name: 'forge_support', arguments: args },
+        params: { name, arguments: args },
       }),
     });
     const doc = (await res.json()) as {

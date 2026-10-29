@@ -392,6 +392,15 @@ export const channelSwitchProvenSchema = z.strictObject({
 	note: z.string().trim().min(3).max(REASON_NOTE_MAX),
 });
 
+/**
+ * An operator recording that the outside bot's own process is stopped (ISS-775): where the outside
+ * bot answers as the binding's own chat account, the switch removes nobody from the group, and this
+ * record is what stands for the stop.
+ */
+export const channelSwitchOutsideStoppedSchema = z.strictObject({
+	note: z.string().trim().min(3).max(REASON_NOTE_MAX),
+});
+
 export interface ChannelSwitchDutyView {
 	key: string;
 	text: string;
@@ -404,13 +413,18 @@ export interface ChannelSwitchDutyView {
 export type ChannelSwitchOpen =
 	| { kind: "duty"; key: string }
 	| { kind: "after"; switchId: string; rid: string }
-	| { kind: "owner_word" };
+	| { kind: "owner_word" }
+	| { kind: "outside_running" };
 
 export interface ChannelSwitchView {
 	id: string;
 	projectId: string;
 	rid: string;
 	outsideBot: { userId: string; username: string | null };
+	/** The outside bot answers as the binding's own chat account: the switch removes nobody. */
+	outsideIsSelf: boolean;
+	/** The operator's record that the outside bot's process is stopped. */
+	outsideStopped: { note: string; by: string; at: string } | null;
 	duties: ChannelSwitchDutyView[];
 	after: string | null;
 	ownerWordNeeded: boolean;

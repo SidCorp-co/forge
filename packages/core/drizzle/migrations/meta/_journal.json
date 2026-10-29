@@ -3550,6 +3550,13 @@
       "when": 1830816000000,
       "tag": "0554_a_channel_switches_by_its_checklist_and_checks_post_one_finding",
       "breakpoints": true
+    },
+    {
+      "idx": 555,
+      "version": "7",
+      "when": 1830902400000,
+      "tag": "0555_a_self_switch_waits_on_the_outside_stop",
+      "breakpoints": true
     }
   ]
 }

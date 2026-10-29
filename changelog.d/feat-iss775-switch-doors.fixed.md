@@ -1,0 +1,1 @@
+**A channel switch no longer removes the agent from its own group.** Where the outside bot shares the agent's chat account, the switch waits for the operator's stop record. Switch duties name Forge doors, never box files, keys or hosts.

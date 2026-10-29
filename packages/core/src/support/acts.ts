@@ -8,7 +8,13 @@ import type { SupportRecordKind } from '@forge/contracts/support';
 import type { ChannelRole, ChannelRoute } from '@forge/contracts/support-channel';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
-import { moveIssue, proposeBuild, proposeDeploy, runCommand } from './ability-acts.js';
+import {
+  moveIssue,
+  proposeBuild,
+  proposeDeploy,
+  readDeployment,
+  runCommand,
+} from './ability-acts.js';
 import { type RoomHint, sessionCaller } from './access.js';
 import { announce, inferMember, noteCommonIssue, routeNeed, ruleFromMessage } from './channel.js';
 import { sessionChannelView } from './channel-read.js';
@@ -18,6 +24,7 @@ import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { no } from './outcome.js';
 import { askOwner } from './owner-ask.js';
+import { readProjectFacts } from './project-read.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose } from './service.js';
@@ -58,6 +65,8 @@ export type SupportActInput =
     }
   | { action: 'build'; thread: string; branch: string; title: string; summary: string }
   | { action: 'deploy'; thread: string; target: string }
+  | { action: 'deployment'; target: string }
+  | { action: 'project' }
   | { action: 'command'; thread: string; host: string; command: string }
   | { action: 'channel' }
   | {
@@ -116,7 +125,7 @@ export async function supportAct(
 }
 
 /** The acts that read the same from any group of a channel agent: its grant and project are shared. */
-const ANY_ROOM = new Set<SupportActInput['action']>(['search', 'tools']);
+const ANY_ROOM = new Set<SupportActInput['action']>(['search', 'tools', 'deployment', 'project']);
 
 /** What an act names that places it in one group of a channel agent's (REQ-77). */
 function hintOf(input: SupportActInput, rid: string | undefined): RoomHint {
@@ -248,6 +257,10 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     }
     case 'deploy':
       return proposeDeploy(room, { thread: input.thread, target: input.target });
+    case 'deployment':
+      return readDeployment(room, { target: input.target });
+    case 'project':
+      return readProjectFacts(room);
     case 'command':
       return runCommand(room, { thread: input.thread, host: input.host, command: input.command });
     case 'channel':

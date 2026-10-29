@@ -8,6 +8,7 @@ export {
   writeBindings,
 } from './bindings-many.js';
 export { readContentLanguage } from './content-language.js';
+export { deployAdapterForBinding } from './deploy-adapters/index.js';
 export {
   dispatchStateOf,
   policyGapOf,

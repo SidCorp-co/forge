@@ -8,6 +8,7 @@ import {
   channelAgentWriteSchema,
   channelMemberWriteSchema,
   channelRuleWriteSchema,
+  channelSwitchOutsideStoppedSchema,
   channelSwitchOwnerWordSchema,
   channelSwitchPassSchema,
   channelSwitchPlanSchema,
@@ -30,6 +31,7 @@ import {
   writeMember,
 } from './channel-store.js';
 import { no, type Outcome } from './outcome.js';
+import { recordOutsideStopped } from './switch-outside.js';
 import {
   applySwitch,
   giveOwnerWord,
@@ -193,6 +195,19 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
     async (c) => {
       const { id, rid } = c.req.valid('param');
       const out = await markProven(c.get('userId'), id, rid, c.req.valid('json').note);
+      if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+      return c.json({ switch: out.value });
+    },
+  );
+
+  // the operator's record that an outside bot on the binding's own account is stopped (ISS-775)
+  routes.post(
+    '/:id/support/channels/:rid/switch/outside-stopped',
+    channelParam,
+    strictBody(channelSwitchOutsideStoppedSchema, '{ note }'),
+    async (c) => {
+      const { id, rid } = c.req.valid('param');
+      const out = await recordOutsideStopped(c.get('userId'), id, rid, c.req.valid('json').note);
       if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
       return c.json({ switch: out.value });
     },

@@ -6,12 +6,13 @@
 // agent's `rids` through the binding door, which refuses that move by any other road
 // (`agentSwitchRefusals`). OrbitInternal switches first, AdminHub's names OrbitInternal's switch as
 // the one it waits on, and mail's needs the owner's word.
+//
+// An outside bot may answer as the binding's own chat account (Orbit Babo and orbit's connection are
+// one account, ISS-775). Removing it would remove the channel agent's own account and leave the
+// outside process answering, so such a switch removes nobody: it waits on an operator's record that
+// the outside process is stopped, then moves the group.
 
-import type {
-  ChannelSwitchOpen,
-  ChannelSwitchPlan,
-  ChannelSwitchView,
-} from '@forge/contracts/support-channel';
+import type { ChannelSwitchPlan, ChannelSwitchView } from '@forge/contracts/support-channel';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportChannelSwitches, supportChannels } from '../db/schema-support.js';
@@ -26,98 +27,23 @@ import type { ApiRefusal } from '../project-config/index.js';
 import { planBinding, readBinding, writeBinding } from '../project-config/index.js';
 import { privateRefusal } from './channel.js';
 import { answeredOutside, channelOf } from './channel-store.js';
+import { boxReachIn } from './duty-reach.js';
 import { no, type Outcome } from './outcome.js';
-
-type SwitchRow = typeof supportChannelSwitches.$inferSelect;
-
-interface DutyRecord {
-  key: string;
-  text: string;
-  passedBy: string | null;
-  passedAt: string | null;
-  evidence: string | null;
-}
+import { isSelf } from './switch-outside.js';
+import {
+  type DutyRecord,
+  describeOpen,
+  done,
+  dutiesOf,
+  openOf,
+  switchById,
+  switchOf,
+  unknownSwitch,
+  viewOf,
+} from './switch-view.js';
 
 /** How long a running switch lets its group through the binding door: the switch's own writes. */
 const APPLYING_FOR_MS = 2 * 60_000;
-
-const dutiesOf = (row: SwitchRow): DutyRecord[] => (row.duties ?? []) as DutyRecord[];
-
-async function switchOf(projectId: string, rid: string): Promise<SwitchRow | null> {
-  const [row] = await db
-    .select()
-    .from(supportChannelSwitches)
-    .where(
-      and(eq(supportChannelSwitches.projectId, projectId), eq(supportChannelSwitches.rid, rid)),
-    )
-    .limit(1);
-  return row ?? null;
-}
-
-async function switchById(id: string): Promise<SwitchRow | null> {
-  const [row] = await db
-    .select()
-    .from(supportChannelSwitches)
-    .where(eq(supportChannelSwitches.id, id))
-    .limit(1);
-  return row ?? null;
-}
-
-/** What still stands before the switch: an unpassed duty, the earlier switch unproven, the owner's word. */
-async function openOf(row: SwitchRow): Promise<ChannelSwitchOpen[]> {
-  const open: ChannelSwitchOpen[] = dutiesOf(row)
-    .filter((d) => !d.passedAt)
-    .map((d) => ({ kind: 'duty' as const, key: d.key }));
-  if (row.afterSwitchId) {
-    const after = await switchById(row.afterSwitchId);
-    if (!after?.provenAt) {
-      open.push({ kind: 'after', switchId: row.afterSwitchId, rid: after?.rid ?? '?' });
-    }
-  }
-  if (row.ownerWordNeeded && !row.ownerWord) open.push({ kind: 'owner_word' });
-  return open;
-}
-
-const describeOpen = (open: ChannelSwitchOpen[]): string =>
-  open
-    .map((o) =>
-      o.kind === 'duty'
-        ? `duty ${o.key} is not passed`
-        : o.kind === 'after'
-          ? `the switch of group ${o.rid} it waits on is not proven yet`
-          : "the owner's word is not given",
-    )
-    .join('; ');
-
-async function viewOf(row: SwitchRow): Promise<ChannelSwitchView> {
-  return {
-    id: row.id,
-    projectId: row.projectId,
-    rid: row.rid,
-    outsideBot: { userId: row.outsideBotUserId, username: row.outsideBotUsername },
-    duties: dutiesOf(row).map((d) => ({ ...d })),
-    after: row.afterSwitchId,
-    ownerWordNeeded: row.ownerWordNeeded,
-    ownerWord:
-      row.ownerWord && row.ownerWordBy && row.ownerWordAt
-        ? { words: row.ownerWord, by: row.ownerWordBy, at: row.ownerWordAt.toISOString() }
-        : null,
-    open: await openOf(row),
-    switchedAt: row.switchedAt?.toISOString() ?? null,
-    provenAt: row.provenAt?.toISOString() ?? null,
-    provenNote: row.provenNote,
-  };
-}
-
-const unknownSwitch = <T>(rid: string): Outcome<T> =>
-  no('AGENT_SWITCH_UNKNOWN', '/rid', `no switch is planned for group ${rid} in this project`);
-
-const done = <T>(row: SwitchRow): Outcome<T> =>
-  no(
-    'AGENT_SWITCH_DONE',
-    '/rid',
-    `group ${row.rid} switched to the channel agent at ${row.switchedAt?.toISOString()}; its plan and duties no longer change`,
-  );
 
 /** A project reader reads the switch. */
 export async function readSwitch(
@@ -145,6 +71,14 @@ export async function planSwitch(
   for (const [i, d] of plan.duties.entries()) {
     const refused = privateRefusal<ChannelSwitchView>(`/duties/${i}/text`, d.text);
     if (refused) return refused;
+    const reach = boxReachIn(d.text);
+    if (reach) {
+      return no(
+        'AGENT_SWITCH_DUTY_NAMES_BOX',
+        `/duties/${i}/text`,
+        `duty ${d.key} names ${reach}, which the confined channel agent never sees (REQ-77 BC-22): word it as the Forge door the agent does it through (a record, the project document, knowledge, a deploy binding); nothing was planned`,
+      );
+    }
   }
   const held = await switchOf(projectId, rid);
   if (held?.switchedAt) return done(held);
@@ -166,6 +100,7 @@ export async function planSwitch(
     }
     await requireCan(actorFor(viewer), 'project.read', projectResource(after.projectId));
   }
+  const self = await isSelf(projectId, rid, plan.outsideBot.userId);
   const kept = new Map(held ? dutiesOf(held).map((d) => [d.key, d]) : []);
   const duties: DutyRecord[] = plan.duties.map((d) => {
     const before = kept.get(d.key);
@@ -173,9 +108,15 @@ export async function planSwitch(
       ? before
       : { key: d.key, text: d.text, passedBy: null, passedAt: null, evidence: null };
   });
+  // a stop recorded for one outside account says nothing of another
+  const sameOutside = held?.outsideBotUserId === plan.outsideBot.userId;
   const values = {
     outsideBotUserId: plan.outsideBot.userId,
     outsideBotUsername: plan.outsideBot.username ?? null,
+    outsideIsSelf: self,
+    ...(sameOutside
+      ? {}
+      : { outsideStoppedAt: null, outsideStoppedBy: null, outsideStoppedNote: null }),
     duties,
     afterSwitchId: plan.after ?? null,
     ownerWordNeeded: plan.ownerWord ?? false,
@@ -312,7 +253,9 @@ async function stopApplying(id: string): Promise<void> {
  * Run the switch (BC-16): nothing stands before it, the outside bot's account leaves the group on
  * the chat server, its declaration leaves the channel record, and the group moves from
  * `outsideRids` to the agent's `rids` through the binding door. The binding is planned before the
- * outside bot is removed, so a write the door would refuse removes nobody.
+ * outside bot is removed, so a write the door would refuse removes nobody. An outside bot on the
+ * binding's own account is removed from nothing: the switch is refused until its process is recorded
+ * stopped (ISS-775), then moves the group.
  */
 export async function applySwitch(
   viewer: string,
@@ -320,10 +263,20 @@ export async function applySwitch(
   rid: string,
 ): Promise<ApplyOutcome> {
   await requireCan(actorFor(viewer), 'project.admin', projectResource(projectId));
-  const row = await switchOf(projectId, rid);
-  if (!row) return unknownSwitch(rid);
-  if (row.switchedAt) return done(row);
+  const held = await switchOf(projectId, rid);
+  if (!held) return unknownSwitch(rid);
+  if (held.switchedAt) return done(held);
+  // read again here: a connection's credential may have changed since the plan
+  const self = await isSelf(projectId, rid, held.outsideBotUserId);
+  const row = self === held.outsideIsSelf ? held : { ...held, outsideIsSelf: self };
   const open = await openOf(row);
+  if (open.some((o) => o.kind === 'outside_running')) {
+    return no(
+      'AGENT_SWITCH_OUTSIDE_RUNNING',
+      '/rid',
+      `group ${rid}'s outside bot ${row.outsideBotUsername ?? row.outsideBotUserId} answers as the binding's own chat account, so the switch removes nobody, and no operator has recorded its process stopped: stop it, record that with POST /api/projects/${projectId}/support/channels/${rid}/switch/outside-stopped, then run the switch again; nothing was changed`,
+    );
+  }
   if (open.length > 0) {
     return no(
       'AGENT_SWITCH_NOT_READY',
@@ -362,10 +315,19 @@ export async function applySwitch(
     await stopApplying(row.id);
     return planned;
   }
-  const auth = await resolveRoomPostAuth(pair.binding.connectionId, { roomId: row.id });
-  const kicked = auth
-    ? await kickFromGroup(auth, rid, row.outsideBotUserId)
-    : ({ state: 'refused', status: 0, why: 'the binding holds no usable bot credential' } as const);
+  // a self switch removes nobody: the outside process was recorded stopped instead
+  const auth = self
+    ? null
+    : await resolveRoomPostAuth(pair.binding.connectionId, { roomId: row.id });
+  const kicked = self
+    ? ({ state: 'not-member' } as const)
+    : auth
+      ? await kickFromGroup(auth, rid, row.outsideBotUserId)
+      : ({
+          state: 'refused',
+          status: 0,
+          why: 'the binding holds no usable bot credential',
+        } as const);
   if (kicked.state !== 'removed' && kicked.state !== 'not-member') {
     await stopApplying(row.id);
     return no(
@@ -381,14 +343,22 @@ export async function applySwitch(
       ok: false,
       refusals: written.refusals.map((r) => ({
         ...r,
-        detail: `${r.detail} — the outside bot was already removed from group ${rid}, so nobody answers it until the switch is run again`,
+        detail: self
+          ? `${r.detail} — group ${rid} is not switched; its outside process stays recorded stopped, so nobody answers it until the switch is run again`
+          : `${r.detail} — the outside bot was already removed from group ${rid}, so nobody answers it until the switch is run again`,
       })),
     };
   }
   const now = new Date();
   const [updated] = await db
     .update(supportChannelSwitches)
-    .set({ applyingAt: null, switchedAt: now, switchedBy: viewer, updatedAt: now })
+    .set({
+      applyingAt: null,
+      switchedAt: now,
+      switchedBy: viewer,
+      outsideIsSelf: self,
+      updatedAt: now,
+    })
     .where(eq(supportChannelSwitches.id, row.id))
     .returning();
   // the outside bot no longer answers here: its address leaves the registry (BC-42)

@@ -446,6 +446,8 @@ The proof is `packages/core/tests/integration/support-channel-behaviour-e2e.test
   (`support/switches.ts:agentSwitchGate`). The switch lives at
   `/api/projects/:id/support/channels/:rid/switch`:
   - `PUT` plans it: `{ outsideBot: { userId, username? }, duties: [{ key, text }], after?, ownerWord? }`.
+    A duty naming a box path, a key, a shell or a host is refused `AGENT_SWITCH_DUTY_NAMES_BOX`
+    (`support/duty-reach.ts:boxReachIn`): the confined agent never sees one.
   - `POST duties/:key/pass { evidence }` passes one duty.
   - `POST owner-word { words }` records the owner's word, where `ownerWord` asked for it.
   - `POST apply` runs it once nothing is open: duties passed, the `after` switch proven, the
@@ -453,12 +455,22 @@ The proof is `packages/core/tests/integration/support-channel-behaviour-e2e.test
     rid, and clears the outside declaration. A bot the server would not remove switches
     nothing (`AGENT_SWITCH_BOT_NOT_REMOVED`).
   - `POST proven { note }` marks a switched group proven, which a later switch's `after` waits on.
+  - `POST outside-stopped { note }` (project admin): the operator's record that the outside
+    process is stopped, for a self switch only (`AGENT_SWITCH_OUTSIDE_NOT_SELF` otherwise).
   - `GET` reads it.
+- **A self switch.** Orbit's connection logs in as the same chat account Orbit Babo answers as.
+  Where `outsideBot.userId` is the binding connection's own user id (compared inside core,
+  `support/switch-outside.ts:isSelf`), the plan reads `outsideIsSelf: true` and plans no kick, and its
+  `open` holds `outside_running` until the stop is recorded. `apply` is refused
+  `AGENT_SWITCH_OUTSIDE_RUNNING` until then; with it, it removes nobody, moves the rid and clears
+  the outside declaration. Apply reads the credential again, so a connection changed after the plan
+  is judged as it is now. An outside bot on another account is still removed.
 - **The order.** OrbitInternal first, then AdminHub with `after` naming OrbitInternal's switch,
   then mail with `ownerWord: true`. Each switch is an operator's act after release; nothing here
   switches a real group.
 
-The proof is `packages/core/tests/integration/support-channel-rollout-e2e.test.ts`, and for the
+The proof is `packages/core/tests/integration/support-channel-rollout-e2e.test.ts`, for the doors
+and the self switch `packages/core/tests/integration/support-switch-doors-e2e.test.ts`, and for the
 confinement `packages/runner/crates/forge-runner/tests/owner_session_confined.rs`.
 
 ### OrbitInternal's duty checklist
@@ -475,16 +487,29 @@ confined agent does it.
 | `owner-by-signed-id` | Owner is the server-signed id, never text | `grants.owner` |
 | `owner-code-work` | Branch, commit, push, pull request into `main`, tests first | Own clone, git and `gh` |
 | `owner-merge-on-word` | Merges only on the owner's word in that pull request's thread | `gh pr merge` |
-| `tell-orbit-master` | Names its branch to the Orbit master before work | A Forge record, not a box file |
+| `tell-orbit-master` | Files the confirmed request on project orbit before work | `support.record` |
 | `hand-over-request` | A teammate's request: questions, restatement, confirm, hand over | `file_items` |
-| `read-capabilities` | Lists Orbit capabilities and calls a published read one | A granted support API |
-| `owner-production-write` | A production write the owner asked for in the thread | A granted support API, confirmed |
-| `watch-deploy` | Watches the deploy after a merge | Forge's deploy record |
+| `read-capabilities` | Says what Orbit can do, or that it cannot tell | `support.project`, `support.search` |
+| `production-through-forge` | Production only through Forge's deploy door; else files it | `support.deploy` on 1445bbb7, `support.record` |
+| `watch-deploy` | Reads the deploy after a merge | `support.deployment` on 1445bbb7 |
 | `no-secrets-in-chat` | Never posts a secret or customer data | Scrubber and screen |
 
-Four duties (`tell-orbit-master`, `read-capabilities`, `owner-production-write`, `watch-deploy`)
-used a box file, a key or a host the agent no longer sees. Each passes only once the Orbit project
-grants what replaces it.
+Orbit Babo did four of these with a box file, a key or a host (ISS-775). Each now has a Forge door,
+and the opening names it (`support/prompt.ts:agentOpening`):
+
+- `tell-orbit-master`: Feedback on project orbit, filed when the asker confirms. Nothing types into
+  a pane.
+- `read-capabilities`: `project {}` reads the project document, a channel agent's only
+  (`SUPPORT_NOT_A_CHANNEL_AGENT` for a support group), and `search` reads knowledge. Where neither
+  says it, the agent says it cannot tell; orbit's master writing the fact into knowledge is the fix.
+- `production-through-forge` replaces `owner-production-write`: `deploy` on a target the grant
+  names. Any other production write becomes a record for the orbit master until orbit exposes a
+  support API.
+- `watch-deploy`: `deployment { target }` reads the latest deployment record of a deploy binding the
+  grant names (`deploy`), through its adapter (`support/ability-acts.ts:readDeployment`). It posts
+  nothing. A record it cannot read is `SUPPORT_DEPLOYMENT_UNREADABLE`.
+
+These need orbit's binding to grant `deploy` with `deployTargets` naming 1445bbb7.
 
 ## Honest costs
 
@@ -544,8 +569,9 @@ grants what replaces it.
   starts from a fresh copy of the development branch.
 - **Owner mode pushes any branch of its own repository.** The credential reaches the whole
   repository, the default branch included; branch protection on the host is what keeps `main`.
-  Production, keys and ops tools are out of its view, so a duty that needed them (Orbit Babo's
-  admin-token calls, watching a deploy) is done through a granted support API or not at all.
+  Production, keys and ops tools are out of its view. A deploy and its record go through the deploy
+  binding; any other production write is a record for the project's master until a support API
+  exists.
 - **An own clone lives on one box.** It is kept under `<base_dir>/owner-copies/own-<binding>`. On
   another box of the project the agent starts from a fresh clone; an unpushed branch stays behind.
 - **`readers: team` trusts the group's membership.** A team group's replies are screened as the

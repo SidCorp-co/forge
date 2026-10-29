@@ -7,6 +7,8 @@
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { SupportCommandResult, SupportGrants } from '@forge/contracts/support';
 import { listActiveDeployBindingsForProvider } from '../integrations/index.js';
+import { isRefusal } from '../lib/refusal.js';
+import { deployAdapterForBinding } from '../project-config/index.js';
 import { runHostCommand } from '../runners/index.js';
 import { boxOfRoom } from './box.js';
 import { buildBaseOf } from './build.js';
@@ -185,6 +187,52 @@ export async function proposeDeploy(
       `I would deploy ${label} now. A production target still waits for its approver after this. ${confirmTail(room, grants, code)}`,
   });
   return out.ok ? { ok: true, value: { pending: true, code: out.code } } : out;
+}
+
+/** How long the platform has to answer a deployment read before the read says so. */
+const DEPLOYMENT_READ_MS = 10_000;
+
+/**
+ * The latest deployment record of a deploy binding the room's grant names (`deploy`): what the agent
+ * reads to watch a deploy after a merge, through Forge and never a shell on the host (ISS-775). It
+ * reads and posts nothing.
+ */
+export async function readDeployment(
+  room: RoomRow,
+  input: { target: string },
+): Promise<OpsOutcome<unknown>> {
+  const grants = await grantOf(room);
+  const refused = await abilityRefusal(room, grants, 'deploy', { target: input.target });
+  if (refused) return refused;
+  const unreadable = (why: string) =>
+    no(
+      'SUPPORT_DEPLOYMENT_UNREADABLE',
+      '/target',
+      `the deployment record of ${input.target} could not be read: ${why}`,
+    );
+  try {
+    const bound = await deployAdapterForBinding(room.projectId, input.target, DEPLOYMENT_READ_MS);
+    if (!bound) return unreadable('it is no active deploy binding of this project any more');
+    const record = await bound.adapter.latestDeployment(bound.target);
+    return {
+      ok: true,
+      value: {
+        target: input.target,
+        provider: bound.adapter.provider,
+        deployment: record
+          ? {
+              id: record.id,
+              status: record.status,
+              at: record.at,
+              sourceRevision: record.sourceRevision,
+            }
+          : null,
+      },
+    };
+  } catch (err) {
+    if (isRefusal(err)) return unreadable(err.refusals.map((r) => r.detail).join('; '));
+    return unreadable(err instanceof Error ? err.message : String(err));
+  }
 }
 
 /** Propose pushing the room's working copy as a build (`build`). */
