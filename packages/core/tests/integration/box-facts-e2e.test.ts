@@ -172,6 +172,11 @@ describe('a box reporting its facts', () => {
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body).toEqual({ held: false, heldByThisDevice: false, holder: null });
+    expect(res.body).toEqual({
+      held: false,
+      heldByThisDevice: false,
+      heldByThisSession: null,
+      holder: null,
+    });
   });
 });

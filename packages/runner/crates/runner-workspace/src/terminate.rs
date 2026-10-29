@@ -733,10 +733,10 @@ mod holder_tests {
     }
     #[async_trait::async_trait]
     impl LeaseKeeper for World {
-        async fn release(&self, _p: Option<&str>, _k: &str) -> Result<()> {
+        async fn release(&self, _p: Option<&str>, _s: Option<&str>, _k: &str) -> Result<()> {
             Ok(())
         }
-        async fn is_returned(&self, _p: Option<&str>, _k: &str) -> Result<bool> {
+        async fn is_returned(&self, _p: Option<&str>, _s: Option<&str>, _k: &str) -> Result<bool> {
             Ok(true)
         }
     }

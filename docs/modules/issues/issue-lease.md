@@ -61,6 +61,29 @@ reads the candidate rows `FOR UPDATE`, and answers `not_held` for none and
 `404` and a `422` refusal `ISSUE_LEASE_AMBIGUOUS`, because a delete that matched
 nothing acknowledged as `200` is read by the box as the issue handed back.
 
+## A give-back names the run giving back
+
+One box can run two sessions over one key: a release judge declared over the
+closed issue, which takes no lease, and the build the box opened once the issue
+reopened, which does. A give-back naming only the box and the key cannot tell
+them apart. The judge's close loop asked whether the box still held the key,
+read the build's lease, gave it back, and left the build refused `NO_HOLDER` on
+its own move (ISS-752).
+
+So both lease endpoints take `?sessionId=`, the run session asking. A give-back
+naming one reaches only that session's row, and a read answers
+`heldByThisSession` for it. A give-back naming none still returns a lease whose
+session has ended. Over a live session's lease it is refused
+`ISSUE_LEASE_RUN_UNNAMED` (`409`, naming the holding session) and removes
+nothing: that is the call a runner predating the parameter sends, and it now
+leaves that runner's older run owing the lease until the newer run ends, rather
+than taking it.
+
+`packages/core/src/devices/run-session.ts:releaseIssueLease` strips the key from
+the issue list of the run whose lease row went (`issue_leases.run_id`) and of no
+other run on the box. Stripping every run carrying the key is how the newer
+run lost its list entry along with its lease.
+
 The `ISSUE_LEASE_AMBIGUOUS` refusal is the one answer a box cannot settle from the key alone: core holds
 two rows and nothing in the request chooses between them, so the way out is
 `?projectId=`, which a runner sends off the ledger's `runs.project_id`. A box
@@ -114,11 +137,14 @@ its own permission to read that release back, and the close loop — which marks
 run closed only on a successful read — would never terminate. A refusal whose
 condition the successful operation creates is not a loud failure; it is a wedge.
 
-## The two booleans are two questions
+## The three answers are three questions
 
-`held` is the fleet-wide fact the pool turns on. `heldByThisDevice` is what a
-box's own close loop needs, because a box that never sees its own release land
-never marks the run closed. A caller has to say which it is asking.
+`held` is the fleet-wide fact the pool turns on. `heldByThisDevice` is this
+box's. `heldByThisSession`, answered when the read names a run session and
+`null` otherwise, is what a box's own close loop needs: a box that never sees its
+own release land never marks the run closed, and one reading the box's answer
+reads a newer run's lease as its own (ISS-752). A caller has to say which it is
+asking.
 
 ## Two questions about work on an issue
 

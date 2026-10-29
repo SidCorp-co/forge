@@ -121,19 +121,28 @@ impl RunCloser for CoreRunState<'_> {
 
 #[async_trait::async_trait]
 impl LeaseKeeper for CoreRunState<'_> {
-    async fn release(&self, project_id: Option<&str>, issue_key: &str) -> Result<()> {
-        run_sessions::release_lease(self.client, project_id, issue_key).await
+    async fn release(
+        &self,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+        issue_key: &str,
+    ) -> Result<()> {
+        run_sessions::release_lease(self.client, project_id, session_id, issue_key).await
     }
 
-    async fn is_returned(&self, project_id: Option<&str>, issue_key: &str) -> Result<bool> {
-        // THIS box's half, not the fleet's: the close loop is asking whether it
-        // gave the lease back, and an issue another box legitimately holds must
-        // not stop this one from ever marking its own run closed (ISS-1109).
-        Ok(
-            !run_sessions::lease_state(self.client, project_id, issue_key)
-                .await?
-                .held_by_this_device,
-        )
+    async fn is_returned(
+        &self,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+        issue_key: &str,
+    ) -> Result<bool> {
+        // THIS run's half, not the fleet's nor the box's: the close loop is
+        // asking whether its run gave the lease back. An issue another box
+        // holds must not stop this one from ever marking its own run closed
+        // (ISS-1109), nor one a newer run on this box took (ISS-752).
+        run_sessions::lease_state(self.client, project_id, session_id, issue_key)
+            .await?
+            .returned(session_id, issue_key)
     }
 }
 
