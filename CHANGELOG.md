@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.361] - 2026-10-29
+
+One channel agent answers all of a project's Rocket.Chat groups
+
+### Added
+
+- **A project's chat groups can share one channel agent.** One Forge-placed session answers every bound group, restarts on its own, and in owner mode works as a full session for the owner alone.
+
+### Fixed
+
+- **ChatGPT gets a compact tool catalog.** A ChatGPT client, known by its OAuth client or `openai-mcp` User-Agent, is listed the seven BA tools in 14 KB instead of 56 KB; calls still validate against the full schemas.
+
 ## [0.4.0-dev.360] - 2026-10-29
 
 Your value check answer now shows as its source
