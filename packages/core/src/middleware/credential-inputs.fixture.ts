@@ -112,7 +112,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     header:accept header:accept-encoding header:cf-ray header:content-encoding
     header:content-length header:content-type header:host header:if-none-match header:link
     header:location header:mcp-protocol-version header:origin header:range
-    header:referer header:sec-fetch-dest header:user-agent header:x-forwarded-for
+    header:ratelimit-name header:ratelimit-reset header:referer header:retry-after
+    header:sec-fetch-dest header:user-agent header:x-forwarded-for
     header:x-forwarded-host header:x-forwarded-proto header:x-next-page header:x-real-ip
     header:x-request-id`,
   'whether a sign-in page follows a sign-out (`session=ended`), so a demo core shows its form': words`
