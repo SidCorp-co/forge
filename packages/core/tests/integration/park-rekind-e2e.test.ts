@@ -216,19 +216,18 @@ describe('a needs_info park changes its waiting kind without leaving needs_info'
     expect((await standingOf(issue.key)).act).toBe('issues.standing.act.decide');
   });
 
-  it('re-kinds onto a merge mark, and the park waits on the mark rather than the answered decision', async () => {
+  it('re-kinds onto its own merge mark, and the park waits on the mark rather than the answered decision', async () => {
     const issue = await plantIssue();
-    const other = await plantIssue();
     ok(await parkOnDecision(issue.id));
     await answerDecision(issue.id);
 
     const res = await rekindToResource(issue.id, {
       needs: undefined,
-      awaitsMerge: { issueId: other.id },
+      awaitsMerge: { issueId: issue.id },
     });
     expect(res.status, JSON.stringify(res.json)).toBe(200);
     const open = await openOn(issue.id);
-    expect(open.map((q) => q.awaits_merge_issue_id)).toEqual([other.id]);
+    expect(open.map((q) => q.awaits_merge_issue_id)).toEqual([issue.id]);
     expect(await issueOf(issue.id)).toEqual({
       status: 'needs_info',
       waitingKind: 'needs_resource',
