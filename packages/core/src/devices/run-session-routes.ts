@@ -102,6 +102,9 @@ const closeBodySchema = z.object({
   outcome: z.enum(['ended', 'killed_idle', 'died']),
   detail: utf16String(500).optional(),
   checkpoint: runCheckpointSchema.optional(),
+  /** The ids the run's issue claims were taken under, read off its tree before the box gave it
+   *  back; an `ended` close gives back what they hold (ISS-737). */
+  claimHolders: z.array(utf16String(120).min(1)).max(16).optional(),
 });
 
 deviceRunSessionRoutes.post(
@@ -124,6 +127,7 @@ deviceRunSessionRoutes.post(
       sessionId,
       outcome: body.outcome,
       ...(body.detail === undefined ? {} : { detail: body.detail }),
+      ...(body.claimHolders === undefined ? {} : { claimHolders: body.claimHolders }),
     });
     if (closed === null) throw notFound('run session');
     return c.json(closed);

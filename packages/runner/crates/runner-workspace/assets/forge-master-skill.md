@@ -269,7 +269,8 @@ One declaration, one dispatch. A declaration you decide not to use is closed wit
 `forge-runner run close`.
 
 **Close a run once you will not resume its subagent**, when its report is in and you are sending it
-nothing more. That is what gives its tree and its issues back. Only your close, or this pane's end,
+nothing more. That is what gives its tree and its issues back, and the claims its run took on them,
+so the next run on an issue can take it at once. Only your close, or this pane's end,
 ends a run: a subagent quiet for an hour is named in the journal and nothing more.
 
 That row is why your work survives you. Without it, issues stay marked as being worked on with

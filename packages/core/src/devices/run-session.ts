@@ -52,6 +52,7 @@ import {
   writeRunMetadata,
 } from '../pipeline/index.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
+import { releaseRunClaims } from './run-claim-release.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
 import {
@@ -443,6 +444,8 @@ const FAILING_OUTCOMES: readonly RunSessionOutcome[] = ['died'];
 interface ClosedRunSession {
   alreadyTerminal: boolean;
   returned: string[];
+  /** The issues whose claim the close gave back, held by an id the box named (`claimHolders`). */
+  claimsReleased: string[];
 }
 
 /** A close over a session already terminal: its flip handed the issues back, and a one-shot run it
@@ -478,11 +481,17 @@ export async function closeRunSession(input: {
   sessionId: string;
   outcome: RunSessionOutcome;
   detail?: string;
+  /** The ids the run's issue claims were taken under, read off its tree by the box (ISS-737). */
+  claimHolders?: readonly string[];
 }): Promise<ClosedRunSession | null> {
   const args =
     input.detail === undefined ? input : { ...input, detail: scrubSecretsDeep(input.detail) };
   const [row] = await db
-    .select({ status: agentSessions.status, runId: agentSessions.pipelineRunId })
+    .select({
+      status: agentSessions.status,
+      runId: agentSessions.pipelineRunId,
+      projectId: agentSessions.projectId,
+    })
     .from(agentSessions)
     .where(
       and(
@@ -494,8 +503,23 @@ export async function closeRunSession(input: {
   if (!row) return null;
   const failing = FAILING_OUTCOMES.includes(args.outcome);
   const cause = runSessionCause(args);
+  // Only a close that ended the run gives its claims back: a run that died or was ended idle may
+  // be one whose work a person has to see, and the plugin's own `--stopped` is how that is said.
+  const releaseClaims = async (): Promise<string[]> =>
+    args.outcome === 'ended' && row.projectId && args.claimHolders?.length
+      ? db.transaction((tx) =>
+          releaseRunClaims(tx, {
+            projectId: row.projectId as string,
+            deviceId: args.deviceId,
+            runId: row.runId,
+            holders: args.claimHolders ?? [],
+            at: new Date(),
+          }),
+        )
+      : [];
   if ((terminalAgentSessionStatuses as readonly string[]).includes(row.status)) {
-    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing, cause) };
+    const returned = await finishFailedClose(row.runId, failing, cause);
+    return { alreadyTerminal: true, returned, claimsReleased: await releaseClaims() };
   }
 
   // The run is locked first and closed with the session's flip, in one transaction (ISS-219).
@@ -523,7 +547,8 @@ export async function closeRunSession(input: {
     return flip;
   });
   if (closed.rows.length === 0) {
-    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing, cause) };
+    const returned = await finishFailedClose(row.runId, failing, cause);
+    return { alreadyTerminal: true, returned, claimsReleased: await releaseClaims() };
   }
 
   // The close has committed, so the hand-back it owes is done now and its keys answered.
@@ -531,9 +556,10 @@ export async function closeRunSession(input: {
     closed.owedHandBacks,
     `its run session ended (run_session_${args.outcome})`,
   );
+  const claimsReleased = await releaseClaims();
   logger.info(
-    { runSessionId: args.sessionId, outcome: args.outcome },
+    { runSessionId: args.sessionId, outcome: args.outcome, claimsReleased },
     'run-session: closed by the box',
   );
-  return { alreadyTerminal: false, returned };
+  return { alreadyTerminal: false, returned, claimsReleased };
 }

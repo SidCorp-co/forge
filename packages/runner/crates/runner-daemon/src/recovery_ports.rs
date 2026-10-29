@@ -113,6 +113,7 @@ impl RunCloser for CoreRunState<'_> {
             outcome,
             Some(detail),
             checkpoint,
+            &[],
         )
         .await
     }
