@@ -169,6 +169,42 @@ describe('every other gap takes the recommended answer, shown as an assumption w
     });
   });
 
+  // judge K95's c5 fail on ISS-690: the answer was a 200 that left the recommended answer standing
+  it('replaces the recommended answer with the person’s answer, naming the answer, with no new draft', async () => {
+    const key = await create('Accept: Count referrals matched to the wrong clinic');
+    const before = (await draftOf(key))?.value;
+    const calls = seen.length;
+    const answer = (option: string) =>
+      api(owner, 'POST', `/api/projects/${projectId}/intake-drafts/${key}/answers`, {
+        question: 1,
+        option,
+      });
+
+    const res = await answer('monthly');
+    expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
+    const fromResponse = (res.body as unknown as IntakeDraftResponse).draft?.value?.measured;
+    await settleOutbox();
+    const after = (await draftOf(key))?.value;
+    const answered = { value: 'Complaints per month', source: { kind: 'answer', question: 1 } };
+    expect(fromResponse).toEqual(answered);
+    expect(after?.measured).toEqual(answered);
+    // only the fact the answer stood in for moves: the rest of the check and its outcome stand
+    expect([after?.who, after?.improves, after?.exists, after?.outcome]).toEqual([
+      before?.who,
+      before?.improves,
+      before?.exists,
+      before?.outcome,
+    ]);
+    expect(seen.length).toBe(calls);
+
+    // answered again, the fact follows the latest answer
+    expect((await answer('weekly')).status).toBe(200);
+    expect((await draftOf(key))?.value?.measured).toEqual({
+      value: RECOMMENDED.label,
+      source: { kind: 'answer', question: 1 },
+    });
+  });
+
   it('refuses a check that leaves how it is measured open, and keeps it as a named miss', async () => {
     const before = seen.length;
     const key = await create('Nomeasure: Count referrals booked late');

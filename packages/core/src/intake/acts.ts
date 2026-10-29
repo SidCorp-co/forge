@@ -2,7 +2,8 @@
  * What a person does with an item's value check (REQ-65 BC-3, BC-6): answers one of its draft's
  * questions with one of the options offered, and keeps a refused requirement with a one-line reason.
  * An answer to the last question holding the check has it drafted again with the answers
- * (`intake.answered`); an answer to any other question replaces the recommended answer taken for it.
+ * (`intake.answered`); an answer to any other question replaces, in the same act, every fact of the
+ * check that took that question's recommended answer, which then names the answer as its source.
  * A keep moves the requirement back to draft through the requirement machine and is kept on its draft.
  */
 
@@ -10,6 +11,8 @@ import type {
   IntakeAnswerRequest,
   IntakeDraftView,
   IntakeKeepRequest,
+  ValueCheckView,
+  ValueFactView,
 } from '@forge/contracts/intake-drafts';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { eq } from 'drizzle-orm';
@@ -33,6 +36,33 @@ const refusal = (code: string, path: string, detail: string): IntakeActOutcome =
   ok: false,
   refusals: [{ code, path, detail }],
 });
+
+type StoredValue = Omit<ValueCheckView, 'kept'>;
+const VALUE_FACTS = ['who', 'improves', 'measured'] as const;
+
+/**
+ * `value` with every fact that stood on question `question`, its recommended answer or an earlier
+ * answer, rewritten as `label` sourced to the answer; null where no fact stood on it (REQ-65 BC-5).
+ */
+export function answeredValue(
+  value: StoredValue | null,
+  question: number,
+  label: string,
+): StoredValue | null {
+  if (!value) return null;
+  const stood = (f: ValueFactView | null) =>
+    f !== null &&
+    (f.source.kind === 'recommended' || f.source.kind === 'answer') &&
+    f.source.question === question;
+  if (!VALUE_FACTS.some((name) => stood(value[name]))) return null;
+  const answered = { value: label, source: { kind: 'answer' as const, question } };
+  return {
+    ...value,
+    ...Object.fromEntries(
+      VALUE_FACTS.filter((name) => stood(value[name])).map((name) => [name, answered]),
+    ),
+  };
+}
 
 /** Answers question `question` of the item's standing draft with `option`. */
 export async function answerIntakeQuestion(input: {
@@ -93,6 +123,9 @@ export async function answerIntakeQuestion(input: {
         target: [intakeAnswers.draftId, intakeAnswers.askedAt, intakeAnswers.question],
         set: { optionId: option.id, label: option.label, answeredBy: actor.userId, answeredAt: at },
       });
+    // the answer replaces the recommended answer a fact of the check took from this question
+    const value = answeredValue(row.value as StoredValue | null, body.question, option.label);
+    if (value) await tx.update(intakeDrafts).set({ value }).where(eq(intakeDrafts.id, row.id));
     // the last question holding the check answered: the assistant drafts it again with the answers
     if (row.valueOutcome === 'held' && heldBy(questions, await answersOf(tx, row)).length === 0) {
       await emitEvent(tx, 'intake.answered', {

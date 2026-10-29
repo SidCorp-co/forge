@@ -14,7 +14,7 @@ import type { IntakeDraftView, ValueCheckView, ValueFactView } from "../types";
 import { IntakeRefLink } from "./intake-ref-link";
 import { ValueQuestions } from "./value-questions";
 
-type BadgeState = "accept" | "merge" | "alternative" | "refuse" | "held" | "kept";
+type BadgeState = "accept" | "merge" | "alternative" | "refuse" | "held" | "kept" | "checking" | "unchecked";
 const OUTCOME_TONE: Record<BadgeState, LegendTone> = {
   accept: "ready",
   merge: "run",
@@ -23,6 +23,9 @@ const OUTCOME_TONE: Record<BadgeState, LegendTone> = {
   held: "you",
   // refused, then kept by a person: it goes on as a draft
   kept: "run",
+  // no check stands: the assistant tries again, or it has not run or gave up
+  checking: "run",
+  unchecked: "neutral",
 };
 
 function Row({ label, children, testid }: { label: string; children: React.ReactNode; testid: string }) {
@@ -44,6 +47,8 @@ function Fact({ fact, slug }: { fact: ValueFactView | null; slug: string }) {
         {" · "}
         {fact.source.kind === "recommended" ? (
           t("intake.value.fromQuestion", { n: fact.source.question })
+        ) : fact.source.kind === "answer" ? (
+          t("intake.value.fromAnswer", { n: fact.source.question })
         ) : (
           <>
             {t("intake.from")} <IntakeRefLink slug={slug} target={fact.source} />
@@ -145,19 +150,36 @@ function ValueRows({ draft, value, projectId, slug }: { draft: IntakeDraftView; 
   );
 }
 
-/** The value check of `itemKey` (REQ-n or FB-n), with its questions; nothing while no draft was made. */
+function Heading({ badge }: { badge: BadgeState | null }) {
+  const t = useCopy();
+  return (
+    <ViewHeading right={badge ? <ToneBadge tone={OUTCOME_TONE[badge]} label={t(`intake.value.state.${badge}`)} title={t(`intake.value.state.${badge}`)} value={badge} /> : undefined}>
+      {t("intake.value.heading")}
+    </ViewHeading>
+  );
+}
+
+/** The value check of `itemKey` (REQ-n or FB-n), with its questions; a mark saying so while none stands. */
 export function ValueCheck({ projectId, slug, itemKey }: { projectId: string; slug: string; itemKey: string }) {
   const t = useCopy();
-  const draft = useIntakeDraft(projectId, itemKey).data?.draft;
-  if (!draft || draft.outcome !== "drafted") return null;
+  const read = useIntakeDraft(projectId, itemKey);
+  if (!read.data) return null;
+  const draft = read.data.draft;
+  if (!draft || draft.outcome !== "drafted") {
+    // no draft yet, or one that failed: the item reads as unchecked, never as if nothing were owed
+    const badge: BadgeState = draft?.retrying ? "checking" : "unchecked";
+    return (
+      <section className="grid gap-4" data-testid="value-check" data-outcome={badge}>
+        <Heading badge={badge} />
+      </section>
+    );
+  }
   const value = draft.value;
   const state = value ? (value.outcome?.kind ?? "held") : null;
   const badge: BadgeState | null = value?.kept ? "kept" : state;
   return (
     <section className="grid gap-4" data-testid="value-check" data-outcome={state ?? undefined}>
-      <ViewHeading right={badge ? <ToneBadge tone={OUTCOME_TONE[badge]} label={t(`intake.value.state.${badge}`)} title={t(`intake.value.state.${badge}`)} value={badge} /> : undefined}>
-        {t("intake.value.heading")}
-      </ViewHeading>
+      <Heading badge={badge} />
       {value ? <ValueRows draft={draft} value={value} projectId={projectId} slug={slug} /> : <p className="text-13 text-subtle">{t("intake.value.notChecked")}</p>}
       <ValueQuestions draft={draft} projectId={projectId} />
     </section>

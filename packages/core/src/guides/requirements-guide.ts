@@ -156,15 +156,16 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
 ### The value check
 Every new requirement, from every door (web, API, MCP, chat), gets one value check from the intake
 assistant before anyone works it: who it is for, what improves, how that is measured, and whether it
-already exists. Each answer names its source: the requirement itself, a record shown, or a
-question's recommended answer. The check ends one of four ways. **accept** keeps it as a draft. **merge**
+already exists. Each answer names its source: the requirement itself, a record shown, a
+question's recommended answer, or a person's answer to that question. The check ends one of four ways. **accept** keeps it as a draft. **merge**
 proposes a \`duplicate\` suggestion into what it repeats, which an approver decides. **alternative** says
 what would serve better. **refuse** moves it from \`draft\` to \`refused\` with a one-line reason.
 Only a missing problem or value, or a criterion a conflict link quotes, holds the check, as a question
 with \`blocks\` set. While it holds, agreeing is refused on the checklist's questions gap. Any other gap
 takes the recommended answer, named \`question:N\`. \`POST /api/projects/:id/intake-drafts/:ref/answers\` (\`:ref\` the REQ-n)
-\`{ question, option }\` answers one (the author or \`project.write\`). Answering the last blocking question
-drafts it again (\`intake.answered\`). \`POST …/keep\` \`{ reason }\` (one line, \`project.write\`) moves a
+\`{ question, option }\` answers one (the author or \`project.write\`). An answer replaces the recommended
+answer a fact took from that question, and the fact then names the answer. Answering the last blocking
+question drafts it again (\`intake.answered\`). \`POST …/keep\` \`{ reason }\` (one line, \`project.write\`) moves a
 refused requirement back to \`draft\`. Keeping one that is not refused is \`VALUE_CHECK_NOT_REFUSED\`.
 
 ### Deferring
