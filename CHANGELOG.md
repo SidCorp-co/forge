@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.362] - 2026-10-29
+
+Channel agents run scheduled checks and take over outside bots by checklist
+
+### Added
+
+- **A channel agent runs scheduled checks and takes over a group from its outside bot.** The switch waits on the group's duty checklist, and owner mode stays confined to the project's own repository.
+
+### Fixed
+
+- **Saving a chat binding no longer drops messages.** The live connection keeps its socket and answers each message under the binding as saved.
+- **A declared run read before core records it is told so.** A box credential naming a run its box's sweep has not opened yet is refused `TESTING_SECRETS_RUN_NOT_RECORDED` (409), naming the sweep and the same id to retry, not `NOT_A_JOB_CREDENTIAL`.
+
 ## [0.4.0-dev.361] - 2026-10-29
 
 One channel agent answers all of a project's Rocket.Chat groups
