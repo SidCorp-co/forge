@@ -120,7 +120,11 @@ async function doorItem(key: string, pat = reporter.pat): Promise<Body> {
 
 /** An issue landed at a commit Forge observed, waiting for a release. */
 async function landed(): Promise<string> {
-  const { id } = await issue(w, { status: 'awaiting_release', createdAt: ago(30), mergedAt: ago(4) });
+  const { id } = await issue(w, {
+    status: 'awaiting_release',
+    createdAt: ago(30),
+    mergedAt: ago(4),
+  });
   await db.execute(sql`UPDATE issues SET merged_commit_sha = ${'a'.repeat(40)} WHERE id = ${id}`);
   return id;
 }

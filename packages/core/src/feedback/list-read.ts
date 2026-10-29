@@ -9,7 +9,6 @@ import {
   type FeedbackSummary,
   feedbackKey,
 } from '@forge/contracts/feedback';
-import { RELEASE_ACT_PERMISSION } from '@forge/contracts/forecast';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
@@ -24,13 +23,12 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
-import { holderNames, holds } from '../permissions/index.js';
-import { shippedReleasesOf } from '../pipeline/index.js';
-import { readReleaseMode } from '../project-config/index.js';
+import { holds } from '../permissions/index.js';
 import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
 import { forgeOriginsOf } from './forge-reads.js';
+import { releaseGateOf, shippedCarriersOf } from './list-release.js';
 import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
 import { liveMasterOwedTriages } from './owed-triage.js';
 import type { FeedbackActor, Row } from './read.js';
@@ -231,24 +229,20 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   // an original read only as a root has its own standing read too: its duplicate reads it
   const carrying = new Set([...routeIssues.values()].flat());
   const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
-  const [owed, release, windowDays, origins, standing, shippedReleases] = await Promise.all([
+  const [owed, gate, windowDays, origins, standing, shippedReleases] = await Promise.all([
     allRows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
       : [],
-    atGate ? readReleaseMode(projectId) : null,
+    releaseGateOf(projectId, atGate),
     allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
     forgeOriginsOf(rows.map((r) => r.id)),
     standingFactsOf(projectId, allRows, issueRows, carrying),
-    // a finished release lets its claim go, so a carrier it shipped is read where the issue reads it
-    shippedReleasesOf(
+    shippedCarriersOf(
       projectId,
       issueRows.filter((i) => carrying.has(i.id) && !i.releaseVersion).map((i) => i.id),
     ),
   ]);
-  const releaseHolders =
-    release && release !== 'automatic'
-      ? await holderNames(RELEASE_ACT_PERMISSION[release], projectId)
-      : [];
+  const { release, releaseHolders } = gate;
   const linked: Linked = {
     untold: NONE_UNTOLD,
     origins,

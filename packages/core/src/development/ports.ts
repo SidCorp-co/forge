@@ -35,7 +35,7 @@ interface DevelopmentPorts {
   /** Every live run's standing and the recently finished ones (`runs/read.ts:listRunStanding`), and
    *  the version the next cut takes (`release-batch/draft-version.ts:nextDraftVersion`), as `viewer`. */
   deliveryRunsOf: (projectId: string, viewer: { userId: string } | null) => Promise<DeliveryRuns>;
-  /** The accounts the project's master acts as, each serving box's checkout holder (`steward-ports.ts`). */
+  /** The accounts the project's master acts as, each serving box's checkout holder (`master-accounts.ts`). */
   masterAccountsOf: (projectId: string) => Promise<string[]>;
   /** Tell people a decision has aged (`notifications/index.ts:emitNotification`). */
   emitNotification: (input: DecisionReminderInput) => Promise<{ id: string; delivered: number }>;

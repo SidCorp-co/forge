@@ -1,6 +1,6 @@
 // Which of a person's decisions the project's agent may take itself (REQ-68 BC-3): Needs you lists
 // only decisions the agent may not take. The agent is the project's master, as the accounts its
-// panes write under (`steward-ports.ts:masterAccountsOf`); it may take a decision where one of those
+// panes write under (`master-accounts.ts:masterAccountsOf`); it may take a decision where one of those
 // accounts holds what the decision's approving act asks, read as the act's own route reads it: a
 // fixed permission, or a person gate's on or off permission as the project's switch stands
 // (`@forge/contracts/person-gates`). A question asked of a person and a reporter's verdict on their

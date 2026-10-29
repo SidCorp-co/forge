@@ -5,6 +5,7 @@
 //
 // @direct-test-of packages/core/src/development/needs-you-list.ts
 // @direct-test-of packages/core/src/development/needs-you-decisions.ts
+// @direct-test-of packages/core/src/master-accounts.ts
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { closeWorld, type Doc, ok, requester, testEnv } from '../helpers/ecosystem-world.js';
@@ -18,8 +19,8 @@ import {
 /** The project's master: the agent account its panes write under, when the test pairs one. */
 const master = vi.hoisted(() => ({ id: null as string | null }));
 
-vi.mock('../../src/steward-ports.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/steward-ports.js')>()),
+vi.mock('../../src/master-accounts.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/master-accounts.js')>()),
   masterAccountsOf: async () => ({ accounts: master.id ? [master.id] : [], unread: [] }),
 }));
 

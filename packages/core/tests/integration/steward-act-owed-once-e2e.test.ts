@@ -93,7 +93,12 @@ async function agreedOnFlow(title: string): Promise<string> {
     201,
   ).key as string;
   ok(await as('POST', `/requirements/${key}/workflows`, { workflowId: flowId }));
-  ok(await as('PUT', `/requirements/${key}/criteria/BC-1/steps`, { workflow: flowId, steps: ['case'] }));
+  ok(
+    await as('PUT', `/requirements/${key}/criteria/BC-1/steps`, {
+      workflow: flowId,
+      steps: ['case'],
+    }),
+  );
   await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
   ok(await as('POST', `/requirements/${key}/revisions/1/propose`, {}));
   ok(await as('POST', `/requirements/${key}/revisions/1/accept`, { reason: 'ok' }));
@@ -202,7 +207,10 @@ beforeAll(async () => {
   say = requester(app, { owner: await signUserToken(ownerId), master: pat.plaintext });
 
   const design = JSON.parse(
-    readFileSync(new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url), 'utf8'),
+    readFileSync(
+      new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),
+      'utf8',
+    ),
   );
   design.project = projectId;
   design.flow = 'followed';
@@ -212,7 +220,9 @@ beforeAll(async () => {
   );
   flowId = made.document.id as string;
   ok(await say('master', 'POST', at(`/workflows/${flowId}/design/propose`), { revision: 1 }));
-  ok(await as('POST', `/workflows/${flowId}/design/decision`, { revision: 1, decision: 'approve' }));
+  ok(
+    await as('POST', `/workflows/${flowId}/design/decision`, { revision: 1, decision: 'approve' }),
+  );
   repinMasterTakes = await agreedOnFlow('The coordinator reaches the patient');
   repinPersonOwes = await agreedOnFlow('The coordinator writes the call down');
   // the design moves on to r2: both requirements now wait on a re-pin

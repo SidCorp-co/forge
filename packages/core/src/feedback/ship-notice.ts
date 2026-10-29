@@ -17,8 +17,8 @@ import { issues, notificationDeliveryMembers, notifications, pipelineRuns } from
 import { feedbackMessages, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { pipelineOutbox } from '../db/schema-outbox.js';
 import { userNames } from '../lib/people.js';
-import { type ShippedRelease, shippedReleasesOf } from '../pipeline/index.js';
 import { holderNames } from '../permissions/index.js';
+import { type ShippedRelease, shippedReleasesOf } from '../pipeline/index.js';
 
 const SHIPPED_PHASES: readonly FeedbackPhase[] = ['resolved', 'verified'];
 
@@ -55,7 +55,8 @@ async function shippedOf(feedbackIds: readonly string[]): Promise<Map<string, Sh
       and(inArray(feedbackRouteIssues.feedbackId, [...feedbackIds]), ne(issues.status, 'dropped')),
     );
   const byProject = new Map<string, string[]>();
-  for (const c of carriers) byProject.set(c.projectId, [...(byProject.get(c.projectId) ?? []), c.issueId]);
+  for (const c of carriers)
+    byProject.set(c.projectId, [...(byProject.get(c.projectId) ?? []), c.issueId]);
   const releases = new Map<string, ShippedRelease>();
   for (const [projectId, ids] of byProject) {
     for (const [id, r] of await shippedReleasesOf(projectId, ids)) releases.set(id, r);

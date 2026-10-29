@@ -62,6 +62,7 @@ import {
 } from './jobs/index.js';
 import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/index.js';
 import { recordCorrection } from './lessons/index.js';
+import { masterAccountsOf } from './master-accounts.js';
 import { masterServingOf } from './masters/index.js';
 import { deleteMemory } from './memory/index.js';
 import { retryRescuesSince } from './metrics/index.js';
@@ -148,7 +149,6 @@ import { runnerEventsRetention } from './runners/index.js';
 import { latestRunsOfIssues, listRunStanding, runWaitingOf } from './runs/index.js';
 import { lastFires, readScheduleStreaks, streakFails } from './schedules/index.js';
 import { carryStewardDecision } from './steward/index.js';
-import { masterAccountsOf } from './steward-ports.js';
 import { provideUploadPorts } from './uploads/index.js';
 import {
   assertDesignApprovedForIssue,
