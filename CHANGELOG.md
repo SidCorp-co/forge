@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.368] - 2026-10-29
+
+Requirement re-pins the master can take now reach the master
+
+### Fixed
+
+- **A requirement re-pin the master may take is now asked of the master.** The steward and Needs you read one rule for who owes an act, so no re-pin is left on nobody's list.
+
 ## [0.4.0-dev.367] - 2026-10-29
 
 Comments may name a credential header without its value being refused
