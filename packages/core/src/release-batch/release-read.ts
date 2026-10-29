@@ -45,6 +45,7 @@ import {
   type Shared,
   summaryOf,
 } from './release-read-views.js';
+import { releaseTagOf } from './release-tag.js';
 import type { ViewerFacts } from './release-view.js';
 import { parseReleaseVersion, RELEASE_VERSION_SHAPE } from './version.js';
 import type { LineageRun } from './version-rule.js';
@@ -92,6 +93,7 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       mergeSteps: null,
       landedOn: null,
       shippedFailing: null,
+      tag: null,
     },
   };
 }
@@ -164,6 +166,7 @@ function runPart(
     mergeSteps: mergeStepsOf(run.metadata),
     landedOn: run.releasedAt ? landedOffProduction(run.metadata, deploysFrom) : null,
     shippedFailing: shippedFailingOf(run.metadata),
+    tag: releaseTagOf(run.metadata),
   };
 }
 

@@ -15,6 +15,7 @@ import { gitlabChangeRequestVerbs } from './change-requests.js';
 import { buildGitLabClient, type GitLabClient } from './client.js';
 import { GITLAB_MERGE_METHODS, mergeGitLabMergeRequest } from './merge.js';
 import { gitlabBindingReports } from './report.js';
+import { tagGitLabCommit } from './tags.js';
 import { type GitLabConfig, type GitLabSecrets, gitlabHostOf } from './types.js';
 
 const REFS_MAX_PAGES = 20;
@@ -238,6 +239,7 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
     ...gitlabAgentVerbs(client, branchHead),
     ...gitlabChangeRequestVerbs(client),
     merge: (args) => mergeGitLabMergeRequest(client, args),
+    tagCommit: (args) => tagGitLabCommit(client, args),
   };
 }
 

@@ -44,6 +44,7 @@ import {
   reasonOf,
   refuseRelease,
 } from './refuse.js';
+import { tagShippedRelease } from './release-tag.js';
 import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
@@ -304,6 +305,8 @@ export async function finishReleaseBatch(
   } else {
     await stampReleaseShipped(runId);
   }
+  // after the stamp's transaction: the host is asked outside it, and its answer never fails the ship
+  await tagShippedRelease(runId);
 
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',

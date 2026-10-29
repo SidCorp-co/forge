@@ -96,6 +96,7 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
     mergeSteps: null,
     landedOn: null,
     shippedFailing: null,
+    tag: null,
   };
 }
 

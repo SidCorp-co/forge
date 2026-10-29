@@ -165,6 +165,16 @@ export type HostMergeResult =
   | ({ kind: 'already-merged' } & HostLanding)
   | { kind: 'refused'; reason: string; detail: string };
 
+/**
+ * A tag as the host answers the ask to put `name` on a commit (REQ-63 BC-13, BC-14): `created` it,
+ * found it `present` on that commit already, or found it on another commit, which is never moved.
+ * `sha` is the commit the tag names on the host, an annotated tag read through to its commit.
+ */
+export type HostTagResult =
+  | { kind: 'created'; name: string; sha: string }
+  | { kind: 'present'; name: string; sha: string }
+  | { kind: 'conflict'; name: string; sha: string };
+
 /** The host's own words, so a sentence about a change request says what a person sees there. */
 interface SourceHostWords {
   changeRequest: string;
@@ -219,6 +229,11 @@ export interface SourceHost {
     body: string;
   }): Promise<SubmittedReview>;
   merge(args: HostMergeArgs): Promise<HostMergeResult>;
+  /**
+   * Put the lightweight tag `name` on commit `sha`, as the binding's own credential. A tag of that
+   * name already there is read, never moved: on `sha` it is `present`, elsewhere a `conflict`.
+   */
+  tagCommit(args: { name: string; sha: string }): Promise<HostTagResult>;
 
   /** Every check the host holds on one commit, each re-run its own entry; empty where none ran. */
   readChecks(sha: string): Promise<HostCheck[]>;

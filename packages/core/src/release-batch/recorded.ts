@@ -37,6 +37,7 @@ import { RECORDED_VERIFICATIONS } from './plan.js';
 import { askProviderLiveGate, type GateOffRecord } from './provider-live.js';
 import { verifyByProviderRecord } from './provider-verify.js';
 import { notVerifiedRefusal, providerNotVerifiedRefusal, reasonOf } from './refuse.js';
+import { tagShippedRelease } from './release-tag.js';
 import { verifyServingNow } from './verify.js';
 import { cutReleaseVersion } from './version-store.js';
 
@@ -274,7 +275,10 @@ export async function recordPerformedRelease(
   });
   // production was read serving the commit before anything was claimed: a record that closed what it
   // claimed shipped, as a finished release does
-  if (failed.length === 0) await stampReleaseShipped(run.id);
+  if (failed.length === 0) {
+    await stampReleaseShipped(run.id);
+    await tagShippedRelease(run.id);
+  }
 
   return {
     runId: run.id,

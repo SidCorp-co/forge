@@ -72,7 +72,7 @@ const PUBLISH_TIMEOUT_MS = 8000;
  * installation does not exist, and a 404 on `create` means the App no longer
  * reaches the repository. Reporting either as the other invents a history.
  */
-export type GitHubPublishOp = 'mint' | 'lookup' | 'create' | 'update' | 'merge';
+export type GitHubPublishOp = 'mint' | 'lookup' | 'create' | 'update' | 'merge' | 'tag';
 
 /**
  * Why this project cannot be read as the App. The `reason` is what a caller

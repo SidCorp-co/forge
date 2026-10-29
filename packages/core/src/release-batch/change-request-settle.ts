@@ -13,6 +13,7 @@ import { closeRunIfOneShot, stampReleaseShipped, writeRunMetadata } from '../pip
 import { projectCreatorOf } from '../projects/index.js';
 import { mergeStepsOf } from './change-request-roster.js';
 import { closeRoster } from './finish.js';
+import { tagShippedRelease } from './release-tag.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 
 /**
@@ -88,6 +89,7 @@ export async function settleChangeRequestRelease(
   if (!(await takeSettleLease(runId))) return { settled: false, pending: 'settling' };
   const { failed } = await closeRoster(claimed, runId, actor, undefined);
   await stampReleaseShipped(runId);
+  await tagShippedRelease(runId);
   await recoverStrandedReleasing(runId, {
     reason: 'the release merged its change requests but this issue could not be closed',
     actorUserId: actor.type === 'user' ? actor.id : undefined,

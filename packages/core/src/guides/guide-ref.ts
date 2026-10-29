@@ -25,6 +25,7 @@ const GUIDE_SLUGS = [
   'dispatch',
   'qa',
   'mockups',
+  'release-tags',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];

@@ -19,6 +19,7 @@ import { RELEASE_GATE_STATUS } from './gate.js';
 import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
 import { admissibleIssues, closeRecorded, writeLedger } from './recorded.js';
 import { blockerRefusal, notVerifiedRefusal, refuseRelease } from './refuse.js';
+import { tagShippedRelease } from './release-tag.js';
 import { verifyServingNow } from './verify.js';
 
 /** The cut's own run opener (`create.ts:openClaimedRun`), handed in so neither module imports the other. */
@@ -280,7 +281,10 @@ export async function recordPromotionRelease(
     code: 'release_record_incomplete',
     detail: `${failed.length} of the recorded issues would not close: ${failed.map((f) => `${f.id} (${f.reason})`).join('; ')}`,
   });
-  if (failed.length === 0) await stampReleaseShipped(run.id);
+  if (failed.length === 0) {
+    await stampReleaseShipped(run.id);
+    await tagShippedRelease(run.id);
+  }
   return {
     runId: run.id,
     version: run.version,

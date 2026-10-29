@@ -22,6 +22,7 @@ import {
   type ReleaseSplit,
   type ReleaseState,
   type ReleaseSummary,
+  type ReleaseTag,
   releaseVerifiedLevel,
 } from '@forge/contracts/releases';
 import { say } from '@forge/contracts/said';
@@ -74,6 +75,8 @@ export interface Part {
   landedOn: string | null;
   /** What a recorded landing shipped failing (`metadata.shippedFailing`); null elsewhere. */
   shippedFailing: ReleaseShippedFailing | null;
+  /** Its tag on the source host (`release-tag.ts`); null on a draft and before it shipped. */
+  tag: ReleaseTag | null;
 }
 
 export interface Shared {
@@ -488,5 +491,6 @@ export function detailOf(
     promotion,
     verifiedBy,
     head: headOf(p),
+    tag: p.tag,
   };
 }

@@ -25,6 +25,7 @@ import { buildRepoClient, GitHubReadError, type GitHubRepoClient } from './clien
 import { type CompareFile, readCompareFiles } from './compare-pages.js';
 import { readCompareCommits, readLiveDivergence } from './live-divergence.js';
 import { MERGE_METHODS, mergeGitHubPullRequest } from './merge.js';
+import { tagGitHubCommit } from './tags.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 /** Whether two commits carry one tree: GitHub names each commit's tree by its git object id. */
@@ -232,6 +233,7 @@ function githubSourceHostOf(
     requestReview: (args) => requestReview(agent(), args),
     submitReview: (args) => submitReview(agent(), args),
     merge: (args) => mergeGitHubPullRequest(client, args),
+    tagCommit: (args) => tagGitHubCommit(client, args),
     ...githubChangeRequestVerbs(client, agent),
   };
 }

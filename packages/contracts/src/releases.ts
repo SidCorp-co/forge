@@ -702,6 +702,43 @@ export interface ReleaseFeedbackView {
 	toldAt: string | null;
 }
 
+/** Why a shipped release carries no tag of its own on the source host (REQ-63 BC-14). */
+export const RELEASE_TAG_CODES = [
+	/** The tag's name already stands on another commit; Forge never moves it. */
+	"RELEASE_TAG_CONFLICT",
+	/** The project has no source host binding Forge can tag through. */
+	"RELEASE_TAG_NO_SOURCE_HOST",
+	/** The release recorded no whole commit it shipped. */
+	"RELEASE_TAG_NO_COMMIT",
+	/** The host failed the read or the write. */
+	"RELEASE_TAG_HOST_FAILED",
+] as const;
+export type ReleaseTagCode = (typeof RELEASE_TAG_CODES)[number];
+
+/**
+ * The tag a shipped release put on its commit on the source host (REQ-63 BC-13..15), written when
+ * it shipped: `tagged` where the host holds `name` on `commit` (`created` says Forge made it now),
+ * `refused` where the name stands on another commit (`on`), `untagged` where it could not be asked.
+ */
+export interface ReleaseTag {
+	state: "tagged" | "refused" | "untagged";
+	/** `v<version>`. */
+	name: string;
+	/** The commit the release shipped, whole; null where it recorded none. */
+	commit: string | null;
+	created: boolean;
+	/** On a conflict, the commit the host's tag names. */
+	on: string | null;
+	code: ReleaseTagCode | null;
+	reason: string | null;
+	at: string;
+}
+
+/** The tag's name for a release version: `v<version>`, a version already written `v1.2` kept as it is. */
+export function releaseTagName(version: string): string {
+	return /^v\d/.test(version) ? version : `v${version}`;
+}
+
 export interface ReleaseDetail extends ReleaseSummary {
 	/** The feedback this release answers, by key: what the people who asked are waiting to hear. */
 	feedbackAnswered: ReleaseFeedbackView[];
@@ -747,6 +784,8 @@ export interface ReleaseDetail extends ReleaseSummary {
 	/** `null` where the run recorded no verification and the project declares no way to prove one. */
 	verifiedBy: ReleaseVerifiedBy | null;
 	head: string | null;
+	/** Its tag on the source host; null where it has not shipped, or shipped before releases were tagged. */
+	tag: ReleaseTag | null;
 }
 
 export interface ReleaseResponse {
