@@ -109,6 +109,8 @@ export const MERGE_REFUSAL_CODES = [
 	"RELEASE_MERGE_OUT_OF_ORDER",
 	/** A change request on a change-request project merged outside any release (REQ-63 BC-2). */
 	"RELEASE_MERGE_UNRELEASED",
+	/** A change request on a promotion project whose target branch Forge cannot read, so whether it is a release step is unknown (REQ-63 BC-11). */
+	"RELEASE_MERGE_TARGET_UNREAD",
 	/** A change request whose head moved since its release was cut and accepted at another (REQ-71 BC-7). */
 	"RELEASE_MERGE_HEAD_MOVED",
 	/** A mark on a change-request project that names no host merge: only the host's merge of a change request lands there (REQ-71). */
