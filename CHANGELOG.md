@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.354] - 2026-10-29
+
+Release names describe only the changes each release carries
+
+### Fixed
+
+- **A release's suggested name now describes only what it ships.** A release with no visible change says so instead of describing a whole requirement.
+
 ## [0.4.0-dev.353] - 2026-10-29
 
 A refused dispatch keeps its declared run; closing a run gives back its claims
