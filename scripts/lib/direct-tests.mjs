@@ -9,6 +9,11 @@
 // into the whole suite, and a touched file no test reaches is reported, never covered by running
 // more. The declaration is how a missed red widens the selection for its change kind
 // (`rule-suite`): the test that caught it declares the path it guards.
+//
+// A directory declaration may say what in a file can change the test's answer, in
+// `@direct-test-when <regex>` lines beside it. The developer's run (`test-changed.mjs`) reads the
+// touched file and lets the declaration select the test only when the file's text matches one; the
+// merge check reads no such line, so before a merge every declaration selects as written (ISS-769).
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
@@ -96,6 +101,27 @@ const SPECIFIERS = [
 
 /** A comment line of its own: `// @direct-test-of <path>` or ` * @direct-test-of <path>`. */
 const DECLARATION = /^[ \t]*(?:\/\/|\*)[ \t]*@direct-test-of[ \t]+(\S+)/gm;
+
+/** A comment line of its own: `// @direct-test-when <regex>`, the rest of the line the pattern. */
+const WHEN = /^[ \t]*(?:\/\/|\*)[ \t]*@direct-test-when[ \t]+(.*?)[ \t]*$/gm;
+
+/**
+ * Each `@direct-test-when` line of a test's text as `{ pattern, line }`, the pattern compiled with
+ * the `m` flag. A pattern that does not compile is refused naming its test and line, since a
+ * narrowing that cannot be read would otherwise select by a guess.
+ */
+export function whenPatternsOf(path, text) {
+  return [...text.matchAll(WHEN)].map((m) => {
+    const line = text.slice(0, m.index).split('\n').length;
+    try {
+      return { pattern: new RegExp(m[1], 'm'), line };
+    } catch (err) {
+      throw new Error(
+        `${path}:${line}: @direct-test-when ${m[1]} is not a regular expression (${err.message}); write one JavaScript regex source per line`,
+      );
+    }
+  });
+}
 
 /** The specifiers a source text names, in order, each once. */
 export function specifiersOf(text) {
@@ -275,29 +301,62 @@ export function indexTests(root, known) {
     for (const hit of globReaches(path, globPatternsOf(text), { known, aliasesOf })) {
       reaches.add(hit);
     }
-    tests.push({ path, collection, reaches, declares: declarationsOf(text) });
+    const declares = declarationsOf(text);
+    const when = whenPatternsOf(path, text);
+    if (when.length > 0 && declares.length === 0) {
+      throw new Error(
+        `${path}:${when[0].line}: @direct-test-when narrows the test's @direct-test-of declarations, and it makes none, so the line narrows nothing; declare the path it guards or remove the line`,
+      );
+    }
+    tests.push({ path, collection, reaches, declares, when: when.map((w) => w.pattern) });
   }
   return tests;
 }
 
 /**
  * The direct selection for `touched` (repo paths, removed files excluded by the caller): per
- * collection the test files and the touched paths that selected each, and the touched code files
- * no TypeScript test reaches. Runner files are selected by `runnerSelection`.
+ * collection the test files and the touched paths that selected each, the touched code files no
+ * TypeScript test reaches, and the tests a `@direct-test-when` narrowing left out.
+ *
+ * `textOf` (the developer's run passes one; the merge check does not) reads a touched file's text.
+ * Given it, a test's directory declarations select a file only when that text matches one of the
+ * test's `@direct-test-when` patterns, if it has any; a file it cannot read (null), and a file
+ * declared by its exact path, is selected. Without
+ * it, every declaration selects as written. Runner files are selected by `runnerSelection`.
  */
-export function selectDirect(touched, tests) {
+export function selectDirect(touched, tests, { textOf } = {}) {
   const byCollection = new Map();
   const reached = new Set();
+  const narrowed = [];
   const isTest = new Set(tests.map((t) => t.path));
+  const texts = new Map();
+  const textFor = (t) => {
+    if (!texts.has(t)) texts.set(t, textOf(t));
+    return texts.get(t);
+  };
+  const when = (test, t) => {
+    if (!textOf || !test.when?.length) return true;
+    const text = textFor(t);
+    return text === null || test.when.some((re) => re.test(text));
+  };
   for (const test of tests) {
-    // A touched test runs itself; a declaration names the code a test guards, never another test.
-    const because = touched.filter(
+    // A touched test runs itself; a directory declaration names the code a test guards, never
+    // another test under it. A test that reads another test's text names it by its exact path.
+    const declared = touched.filter(
       (t) =>
-        t === test.path ||
-        test.reaches.has(t) ||
-        (!isTest.has(t) && test.declares.some((d) => declarationCovers(d, t))),
+        t !== test.path &&
+        !test.reaches.has(t) &&
+        test.declares.some((d) => (isTest.has(t) ? d === t : declarationCovers(d, t))),
     );
-    if (because.length === 0) continue;
+    // a path declared exactly is selected as written; a directory is what the lines narrow
+    const matched = declared.filter((t) => test.declares.includes(t) || when(test, t));
+    const because = touched.filter(
+      (t) => t === test.path || test.reaches.has(t) || matched.includes(t),
+    );
+    if (because.length === 0) {
+      if (declared.length > 0) narrowed.push({ test: test.path, files: declared });
+      continue;
+    }
     for (const t of because) reached.add(t);
     const entry = byCollection.get(test.collection.name) ?? {
       collection: test.collection,
@@ -309,7 +368,7 @@ export function selectDirect(touched, tests) {
   const untested = touched.filter(
     (t) => CODE_FILE.test(t) && !t.startsWith(RUNNER_ROOT) && !reached.has(t),
   );
-  return { collections: [...byCollection.values()], untested };
+  return { collections: [...byCollection.values()], untested, narrowed };
 }
 
 /**

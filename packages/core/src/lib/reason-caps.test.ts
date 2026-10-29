@@ -5,6 +5,8 @@
 // `why` capped at a literal 600 reached dev unselected and went red only in the whole suite).
 // @direct-test-of packages/core/src/
 // @direct-test-of packages/contracts/src/
+// Only a file holding a reason, note or why string field can hold the cap this reads (ISS-769):
+// @direct-test-when \b(?:reason|note|why)\w*\s*[:=]\s*z\s*\.string\(
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';

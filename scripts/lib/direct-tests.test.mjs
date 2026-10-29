@@ -19,6 +19,7 @@ import {
   runnerSelection,
   selectDirect,
   specifiersOf,
+  whenPatternsOf,
 } from './direct-tests.mjs';
 
 const TSCONFIG = JSON.stringify({
@@ -165,6 +166,113 @@ describe('a test no import reaches is selected only by its own declaration', () 
     const out = selectDirect(['packages/core/src/untested.ts', 'docs/x.md'], tests);
     expect(out.collections).toEqual([]);
     expect(out.untested).toEqual(['packages/core/src/untested.ts']);
+  });
+});
+
+describe('a `@direct-test-when` line narrows a declaration in the developer run, never in the merge check (ISS-769)', () => {
+  const collection = { name: '@forge/core' };
+  const guard = {
+    path: 'packages/core/src/guard.test.ts',
+    collection,
+    reaches: new Set(['packages/core/src/guard.fixture.ts']),
+    declares: ['packages/core/src/', 'packages/core/src/other.test.ts'],
+    when: whenPatternsOf(
+      'packages/core/src/guard.test.ts',
+      '// @direct-test-of packages/core/src/\n// @direct-test-when \\.req\\b\n// @direct-test-when ^import\\s[^;]*\\bverify\\w*',
+    ).map((w) => w.pattern),
+  };
+  const other = {
+    path: 'packages/core/src/other.test.ts',
+    collection,
+    reaches: new Set(),
+    declares: [],
+  };
+  const TEXT = {
+    'packages/core/src/door.ts': 'export const who = (c: C) => c.req.header("x");\n',
+    'packages/core/src/seeded.ts': "import { verifyPat } from './pat.js';\nexport { verifyPat };\n",
+    'packages/core/src/pure.ts': 'export const sum = (a: number, b: number) => a + b;\n',
+    'packages/core/src/guard.fixture.ts': 'export const plain = 1;\n',
+    'packages/core/src/other.test.ts': "it('x', () => {});\n",
+  };
+  const textOf = (p) => TEXT[p] ?? null;
+  const pick = (touched, opts) => {
+    const out = selectDirect(touched, [guard, other], opts);
+    return {
+      run: out.collections.flatMap((c) =>
+        c.files.map((f) => `${f.test} <- ${f.because.join(',')}`),
+      ),
+      narrowed: out.narrowed,
+      untested: out.untested,
+    };
+  };
+
+  it('compiles each line with the m flag, and refuses one that is no regex by its test and line', () => {
+    expect(
+      whenPatternsOf('t.test.ts', '// @direct-test-when ^a\n * @direct-test-when b$  '),
+    ).toEqual([
+      { pattern: /^a/m, line: 1 },
+      { pattern: /b$/m, line: 2 },
+    ]);
+    expect(() => whenPatternsOf('t.test.ts', 'x\n// @direct-test-when (unclosed')).toThrow(
+      /t\.test\.ts:2: @direct-test-when \(unclosed is not a regular expression/,
+    );
+  });
+
+  it('selects a declared file whose text matches a line, and leaves out one that matches none', () => {
+    expect(pick(['packages/core/src/door.ts', 'packages/core/src/seeded.ts'], { textOf })).toEqual({
+      run: [
+        'packages/core/src/guard.test.ts <- packages/core/src/door.ts,packages/core/src/seeded.ts',
+      ],
+      narrowed: [],
+      untested: [],
+    });
+    expect(pick(['packages/core/src/pure.ts'], { textOf })).toEqual({
+      run: [],
+      narrowed: [{ test: 'packages/core/src/guard.test.ts', files: ['packages/core/src/pure.ts'] }],
+      untested: ['packages/core/src/pure.ts'],
+    });
+  });
+
+  it('selects as written without a reader, which is how the merge check calls it', () => {
+    expect(pick(['packages/core/src/pure.ts'])).toEqual({
+      run: ['packages/core/src/guard.test.ts <- packages/core/src/pure.ts'],
+      narrowed: [],
+      untested: [],
+    });
+  });
+
+  it('narrows no import and no unreadable file: those select whatever the text says', () => {
+    expect(pick(['packages/core/src/guard.fixture.ts'], { textOf }).run).toEqual([
+      'packages/core/src/guard.test.ts <- packages/core/src/guard.fixture.ts',
+    ]);
+    expect(pick(['packages/core/src/gone.ts'], { textOf }).run).toEqual([
+      'packages/core/src/guard.test.ts <- packages/core/src/gone.ts',
+    ]);
+  });
+
+  it('lets a test named by its exact path select its reader, never one under a declared directory', () => {
+    expect(pick(['packages/core/src/other.test.ts'], { textOf }).run).toEqual([
+      'packages/core/src/guard.test.ts <- packages/core/src/other.test.ts',
+      'packages/core/src/other.test.ts <- packages/core/src/other.test.ts',
+    ]);
+    const dirOnly = { ...guard, declares: ['packages/core/src/'] };
+    const out = selectDirect(['packages/core/src/other.test.ts'], [dirOnly, other], {});
+    expect(out.collections.flatMap((c) => c.files.map((f) => f.test))).toEqual([
+      'packages/core/src/other.test.ts',
+    ]);
+  });
+
+  it('refuses a test that narrows with no declaration to narrow', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'direct-when-'));
+    try {
+      mkdirSync(join(dir, 'packages/core/src'), { recursive: true });
+      writeFileSync(join(dir, 'packages/core/src/lone.test.ts'), '// @direct-test-when x\n');
+      expect(() => indexTests(dir, new Set(['packages/core/src/lone.test.ts']))).toThrow(
+        /lone\.test\.ts:1: @direct-test-when narrows the test's @direct-test-of declarations, and it makes none/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

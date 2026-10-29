@@ -6,6 +6,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   fileModulesOf,
@@ -318,17 +319,26 @@ export function runSelection(root, { unit, integ, crates, integration, known, ex
  * not reach is red by name (`notRun`). Before any test runs, each workspace package a selected
  * collection loads from its dist is rebuilt and held to its source (`package-builds.mjs`); where one
  * cannot be, the answer is its `refusal` (PACKAGE_BUILD_STALE) and no test has run (ISS-587).
- * `exec` runs one command and `runSelected` runs a selection, `run` and `runSelection` unless a
- * test stands in for them.
+ * `narrow` (the developer's run) reads each touched file so a test's `@direct-test-when` lines can
+ * leave it out where the file cannot change its answer; the merge check leaves it off, so every
+ * declaration selects as written before a merge (ISS-769). `exec` runs one command and
+ * `runSelected` runs a selection, `run` and `runSelection` unless a test stands in for them.
  */
 export function runDirectTests(
   root,
-  { touched, integration, exec = run, runSelected = runSelection },
+  { touched, integration, narrow = false, exec = run, runSelected = runSelection },
 ) {
   const live = touched.filter((t) => t.change !== 'removed').map((t) => t.path);
   const known = knownFiles(root);
   const tests = indexTests(root, known);
-  const { collections, untested } = selectDirect(live, tests);
+  const textOf = (path) => {
+    try {
+      return readFileSync(join(root, path), 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const { collections, untested, narrowed } = selectDirect(live, tests, narrow ? { textOf } : {});
   const unit = collections.filter((c) => !c.collection.integration);
   const integ = collections.filter((c) => c.collection.integration);
   const crates = runnerSelection(live);
@@ -340,6 +350,7 @@ export function runDirectTests(
       checks: [],
       untested: [],
       integrationSelected: [],
+      narrowed: [],
       built: builds.built,
       refusal: builds.refusal,
     };
@@ -364,6 +375,7 @@ export function runDirectTests(
     checks,
     untested: [...untested, ...crates.flatMap((c) => c.untested)],
     integrationSelected: integ.flatMap((c) => c.files.map((f) => f.test)),
+    narrowed,
     built: builds.built,
     refusal: null,
   };

@@ -26,7 +26,8 @@ running it — start the service (core on a throwaway Postgres through the integ
 web dev server) and exercise the criterion's happy, negative and boundary cases — and keep the probe.
 Then run `pnpm test:changed`: `pnpm tc:changed`'s typecheck and only the DIRECT tests of what you
 touched, in every package — a test you touched, a test importing a file you touched, and a test
-declaring `@direct-test-of <path>` over it; `--integration` adds the core integration tests chosen
+declaring `@direct-test-of <path>` over it, a directory declaration narrowed here by the test's
+`@direct-test-when` lines; `--integration` adds the core integration tests chosen
 the same way. It never follows the import graph further and never falls back to a whole suite. Not
 the whole suites. Before you land on `dev`, `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>`
 runs the same on the change rebased onto the latest `dev`, with those integration tests, the kept

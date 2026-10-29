@@ -201,7 +201,9 @@ console.log(
 );
 
 checks.push(...runTypecheck(ROOT, { baseRef: baseSha, touched: touched.map((t) => t.path) }));
-const direct = runDirectTests(ROOT, { touched, integration: lane === 'full' });
+// No `narrow`: a test's @direct-test-when lines shorten the developer's run only, so every
+// declaration selects here as written and a whole-tree test runs on every change under it (ISS-769).
+const direct = runDirectTests(ROOT, { touched, integration: lane === 'full', narrow: false });
 // A package the tests load from its dist that cannot be rebuilt to its source stops the check here,
 // before any test ran against the old build (ISS-587): exit 2, it could not run.
 if (direct.refusal) die(direct.refusal);

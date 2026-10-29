@@ -11,7 +11,8 @@
 // `POST /api/issues/:id/checks` records on the issue (REQ-36 BC-14, ISS-474).
 //
 // The merge gate is `pnpm merge-check`, which runs this on the change rebased onto the latest base
-// with the integration tests and `pnpm verify`, and writes the record the merge needs.
+// with the integration tests and `pnpm verify`, and writes the record the merge needs. Only this run
+// honours a test's `@direct-test-when` lines (ISS-769); the merge check selects every declaration.
 
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -61,7 +62,7 @@ if (touched.length === 0) {
 }
 
 const ran = runTypecheck(ROOT, { baseRef: target.ref, touched: touched.map((t) => t.path) });
-const direct = runDirectTests(ROOT, { touched, integration });
+const direct = runDirectTests(ROOT, { touched, integration, narrow: true });
 // A package the tests load from its dist that cannot be rebuilt to its source stops here, before
 // any test ran against the old build (ISS-587).
 if (direct.refusal) die(direct.refusal);
@@ -83,6 +84,11 @@ for (const line of describeChecks(checks)) console.log(line);
 if (!integration && direct.integrationSelected.length) {
   console.log(
     `\n  not run: ${direct.integrationSelected.length} direct core integration test(s) — pass --integration, or the merge check runs them`,
+  );
+}
+if (direct.narrowed.length) {
+  console.log(
+    `\n  left out by their @direct-test-when lines, which no touched file they declare matches — pnpm merge-check runs them:\n${direct.narrowed.map((n) => `    ${n.test} (${n.files.length} declared file(s))`).join('\n')}`,
   );
 }
 if (direct.untested.length) {
