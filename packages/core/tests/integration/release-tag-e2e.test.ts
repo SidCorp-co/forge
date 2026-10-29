@@ -2,17 +2,21 @@
  * REQ-63 BC-13..15 (forge-core-61, relaying orbit-forge, 2026-10-29): a shipped release tags the
  * commit it shipped `v<version>` on the project's source host, so a project deployed outside Forge
  * reads its release version at build time. Driven through the record door of a project with no
- * production environment (a recorded landing is a ship), against real Postgres, with the source host
- * planted at the resolver the way `release-promotion-e2e` plants it: it holds tags by name and counts
- * the writes it took, so a re-ship that wrote again or moved a tag goes red here.
+ * production environment (a recorded landing is a ship) and the outbox it tells (`release.shipped`,
+ * consumer `release-tag`), against real Postgres, with the source host planted at the resolver the
+ * way `release-promotion-e2e` plants it: it holds tags by name and counts the writes it took, so a
+ * re-ship that wrote again or moved a tag goes red here.
  *
  * @direct-test-of packages/core/src/release-batch/release-tag.ts
  * @direct-test-of packages/core/src/release-batch/recorded-landing.ts
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { db } from '../../src/db/client.js';
 import { tagShippedRelease } from '../../src/release-batch/release-tag.js';
 import { api } from '../helpers/api.js';
+import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   ASIDE,
   F4,
@@ -71,7 +75,17 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
   };
 });
 
+beforeAll(async () => {
+  testEnv();
+  await startQueue();
+}, 120_000);
+
+afterAll(async () => {
+  await closeWorld();
+});
+
 beforeEach(async () => {
+  await settleOutbox();
   await seedLandedWorld();
   planted.bound = true;
   planted.failing = false;
@@ -86,6 +100,7 @@ async function ship(seq: number): Promise<{ runId: string; version: string; issu
   await judgedAll(issue, F4);
   const res = await record([issue], F4);
   expect(res.status, JSON.stringify(res.body)).toBe(201);
+  await settleOutbox();
   return { runId: String(res.body.runId), version: String(res.body.version), issue };
 }
 
@@ -112,17 +127,18 @@ describe('a shipped release tags the commit it shipped (REQ-63 BC-13)', () => {
 });
 
 describe('tagging is idempotent, and a tag on another commit is refused by name (REQ-63 BC-14)', () => {
-  it('a second tagging of the same release writes nothing and still reads tagged', async () => {
+  it('a second tagging of the same release writes nothing and still reads tagged, as the tag Forge created', async () => {
     const { runId, version } = await ship(5);
 
     const again = await tagShippedRelease(runId);
 
+    // the host answered `present`: nothing written, and the record keeps that Forge made it
     expect(planted.writes).toHaveLength(1);
     expect(again).toMatchObject({
       state: 'tagged',
       name: `v${version}`,
       commit: F4,
-      created: false,
+      created: true,
     });
     expect(planted.tags.get(`v${version}`)).toBe(F4);
   });
@@ -161,13 +177,27 @@ describe('a ship that cannot tag says why on the release, and still ships', () =
     expect(await statusOf(issue)).toBe('closed');
   });
 
-  it('a host that fails the call records RELEASE_TAG_HOST_FAILED with its words', async () => {
+  it('a host that fails the call records RELEASE_TAG_HOST_FAILED with its words, and the outbox tries again until it tags', async () => {
     planted.failing = true;
-    const { version } = await ship(5);
+    const { version, runId } = await ship(5);
 
     const tag = await tagOnPage(version);
     expect(tag).toMatchObject({ state: 'untagged', code: 'RELEASE_TAG_HOST_FAILED' });
     expect(String(tag?.reason)).toContain('HTTP 502');
+    const waiting = (await db.execute(sql`
+      SELECT state FROM pgboss_v12.job
+       WHERE name = 'outbox.release-tag' AND data -> 'payload' ->> 'runId' = ${runId}
+    `)) as unknown as Array<{ state: string }>;
+    expect(waiting.map((j) => j.state)).toEqual(['retry']);
+
+    // the host answers again, and the retry comes due
+    planted.failing = false;
+    await db.execute(sql`
+      UPDATE pgboss_v12.job SET start_after = now() WHERE name = 'outbox.release-tag' AND state = 'retry'
+    `);
+    await settleOutbox();
+    expect(await tagOnPage(version)).toMatchObject({ state: 'tagged', created: true, code: null });
+    expect(planted.writes).toEqual([{ name: `v${version}`, sha: F4 }]);
   });
 });
 

@@ -4,11 +4,11 @@
  * time. Forge holds the credential: the tag goes through the project's source host binding
  * (`source-host/resolve.ts:resolveSourceHost`), never a token a caller sends.
  *
- * Every ship path calls `tagShippedRelease` once its ship is stamped (`stampReleaseShipped`), outside
- * any transaction, and the answer is written on the run (`metadata.tag`) whatever it is: a tag that
- * could not be put is said on the release by name, never left for a reader to infer, and never fails
- * the ship it follows. A tag already on the commit is answered as it stands; one of that name on
- * another commit is refused `RELEASE_TAG_CONFLICT`, naming that commit, and never moved.
+ * The ship's stamp (`pipeline/run-records.ts:stampReleaseShipped`) tells the outbox, and this module's
+ * consumer asks the host, so the ship never waits on it or fails for it. The answer is written on the
+ * run (`metadata.tag`) whatever it is: a tag that could not be put is said on the release by name,
+ * never left for a reader to infer. A tag already on the commit is answered as it stands; one of that
+ * name on another commit is refused `RELEASE_TAG_CONFLICT`, naming that commit, and never moved.
  */
 
 import { type ReleaseTag, type ReleaseTagCode, releaseTagName } from '@forge/contracts/releases';
@@ -23,6 +23,7 @@ import {
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
 import { logger } from '../lib/logger.js';
+import { consume } from '../outbox/index.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { mergeStepsOf } from './change-request-roster.js';
 import { readFinishRecord } from './finish-record.js';
@@ -146,38 +147,59 @@ async function askHost(
 
 /**
  * Tag the release this run shipped and record the answer on the run. Null, and nothing written,
- * where the run has not shipped a version. Never throws: a tag is told on the release, and the ship
- * it follows stands whatever the host answered.
+ * where the run has not shipped a version. A tag Forge created stays recorded as created when a
+ * later delivery finds it present.
  */
 export async function tagShippedRelease(runId: string): Promise<ReleaseTag | null> {
-  try {
-    const [run] = await db
-      .select({
-        projectId: pipelineRuns.projectId,
-        version: pipelineRuns.releaseVersion,
-        releasedAt: pipelineRuns.releaseReleasedAt,
-        metadata: pipelineRuns.metadata,
-      })
-      .from(pipelineRuns)
-      .where(eq(pipelineRuns.id, runId))
-      .limit(1);
-    if (!run?.version || !run.releasedAt) return null;
-    const name = releaseTagName(run.version);
-    const commit = await shippedCommitOf(runId, run.metadata);
-    const answer = commit
-      ? await askHost(run.projectId, name, commit)
-      : {
-          code: 'RELEASE_TAG_NO_COMMIT' as const,
-          reason: `release ${run.version} recorded no whole commit it shipped, so there is nothing to put ${name} on`,
-        };
-    const tag = recordOf(name, commit, answer);
-    await writeRunMetadata(runId, { merge: { tag }, touch: false });
-    if (tag.state !== 'tagged') {
-      logger.warn({ runId, tag }, 'release-tag: the shipped release carries no tag of its own');
-    }
-    return tag;
-  } catch (err) {
-    logger.error({ err, runId }, 'release-tag: tagging the shipped release failed unrecorded');
-    return null;
+  const [run] = await db
+    .select({
+      projectId: pipelineRuns.projectId,
+      version: pipelineRuns.releaseVersion,
+      releasedAt: pipelineRuns.releaseReleasedAt,
+      metadata: pipelineRuns.metadata,
+    })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  if (!run?.version || !run.releasedAt) return null;
+  const name = releaseTagName(run.version);
+  const commit = await shippedCommitOf(runId, run.metadata);
+  const answer = commit
+    ? await askHost(run.projectId, name, commit)
+    : {
+        code: 'RELEASE_TAG_NO_COMMIT' as const,
+        reason: `release ${run.version} recorded no whole commit it shipped, so there is nothing to put ${name} on`,
+      };
+  const tag = recordOf(name, commit, answer);
+  const before = releaseTagOf(run.metadata);
+  if (
+    tag.state === 'tagged' &&
+    before?.created &&
+    before.name === name &&
+    before.commit === commit
+  ) {
+    tag.created = true;
   }
+  await writeRunMetadata(runId, { merge: { tag }, touch: false });
+  if (tag.state !== 'tagged') {
+    logger.warn({ runId, tag }, 'release-tag: the shipped release carries no tag of its own');
+  }
+  return tag;
+}
+
+/**
+ * The release's tag, put when its ship is told (`release.shipped`, emitted by the stamp in the ship's
+ * own unit). A host that failed is recorded on the release and the delivery thrown, so the outbox
+ * tries again with backoff and, past its attempts, keeps it dead where a person can replay it.
+ */
+export function registerReleaseTag(): void {
+  consume('release.shipped', {
+    name: 'release-tag',
+    handle: async (p) => {
+      const tag = await tagShippedRelease(p.runId);
+      if (tag?.code === 'RELEASE_TAG_HOST_FAILED') {
+        throw new Error(`release ${p.version} is not tagged yet: ${tag.reason}`);
+      }
+    },
+  });
 }

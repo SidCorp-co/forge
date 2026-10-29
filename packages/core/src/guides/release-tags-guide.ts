@@ -22,7 +22,8 @@ it never stamps a version file or sets a tag by hand.
 ### Which commit, and when
 - The commit is the one the release recorded it shipped: what a verified deploy served, the commit a
   recorded landing or deploy names, or the last merge of a release that merges change requests.
-- The tag is written once the release is shipped, never at the cut. A build that must carry the
+- The tag is written once the release is shipped, never at the cut, and just after it: the ship
+  tells Forge's outbox, which asks the host. A build that must carry the
   version runs on the tag: GitHub Actions \`on: push: tags: ['v*']\` reads \`$GITHUB_REF_NAME\`;
   GitLab CI \`rules: - if: $CI_COMMIT_TAG\` reads \`$CI_COMMIT_TAG\`. Any other build reads it from git
   at the commit it builds: \`git fetch --tags && git describe --tags --exact-match HEAD\`, which
@@ -35,8 +36,9 @@ it never stamps a version file or sets a tag by hand.
 
 ### What the release says
 The release page shows the tag beside the release's status. Where there is none, it says why, by
-one of ${codes}, and the developer view gives the sentence. A tag the host failed is not retried by
-itself.
+one of ${codes}, and the developer view gives the sentence. A host that failed is asked again by
+itself, with backoff, for some hours; past that its delivery is kept dead, and a platform admin
+replays it (\`GET /api/admin/outbox/dead\`, \`POST /api/admin/outbox/deliveries/:did/replay\`).
 
 ### What the binding needs
 - GitHub: the App's \`contents: write\`, which merging already asks.

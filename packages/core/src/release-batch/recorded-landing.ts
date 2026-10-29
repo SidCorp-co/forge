@@ -39,7 +39,6 @@ import {
   writeLedger,
 } from './recorded.js';
 import { refuseRelease } from './refuse.js';
-import { tagShippedRelease } from './release-tag.js';
 import { ancestrySourceFor } from './shipped-earlier.js';
 import { cutReleaseVersion } from './version-store.js';
 
@@ -243,10 +242,7 @@ export async function recordLanding(
       .join('; ')}`,
   });
   // the landing is the delivery: a record that closed what it claimed shipped, as a finished release
-  if (failed.length === 0) {
-    await stampReleaseShipped(run.id);
-    await tagShippedRelease(run.id);
-  }
+  if (failed.length === 0) await stampReleaseShipped(run.id);
 
   return {
     runId: run.id,
