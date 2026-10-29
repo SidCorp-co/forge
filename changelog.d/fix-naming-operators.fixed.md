@@ -1,0 +1,1 @@
+**A release with no change its users see now says so in its summary.** The suggested summary of such a release opens by saying nothing changed for the people using the product, and one that claims otherwise is refused.

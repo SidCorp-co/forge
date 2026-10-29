@@ -106,7 +106,9 @@ verdict since its issue's last reopen (`release-facts.ts:criteriaAt`) and claims
   note, and its own criteria where it has none. A requirement those issues serve is never read for
   the name, so a release carrying one of its criteria is never named for the rest. A release whose
   notes are all `Skip` is named for what it changes for those who run the product, its summary
-  saying nothing changed for its users (`release-naming.ts:namingForOperatorsOnly`). Every cut emits
+  opening with the sentence that nothing changed for its users, in the release's language
+  (`release-naming.ts:usersUnchangedSentence`); the judge refuses one that does not
+  (`RELEASE_NAMING_USERS_UNCHANGED`, BC-16). Every cut emits
   `release.cut` in its own transaction, so the unattended cut as an issue enters the release gate
   owes its name as any cut does; a run's move and a page read that finds it unnamed ask too
   (`release-page/naming-refresh.ts:nameReleaseIfOwed`). A name a person wrote is never replaced.

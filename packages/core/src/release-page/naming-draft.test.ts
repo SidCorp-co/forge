@@ -22,6 +22,7 @@ const FACTS: ReleaseNamingFacts = {
   ],
   operatorChanges: [],
   unnoted: [],
+  usersUnchanged: null,
 };
 
 const answer = (over: Record<string, unknown> = {}) =>
@@ -91,8 +92,43 @@ const entry = (key: string, over: Record<string, unknown> = {}) => ({
 const detailOf = (notes: Record<string, unknown>) =>
   ({
     version: '0.4.0-dev.289',
-    notes: { sections: [], designs: [], withoutNotes: [], skipped: [], ...notes },
+    notes: { sections: [], designs: [], withoutNotes: [], skipped: [], language: 'en', ...notes },
   }) as unknown as ReleaseDetail;
+
+describe('a release of operator changes only, judged (REQ-40 BC-16)', () => {
+  const OPERATORS: ReleaseNamingFacts = {
+    version: '0.4.0-dev.354',
+    changes: [],
+    operatorChanges: [{ title: 'Logs name the build', line: null }],
+    unnoted: [],
+    usersUnchanged: 'Nothing changes for the people using the product.',
+  };
+
+  // dev.354 judge 733fe4bf: this answer was written to a Skip-only release's cut
+  it('refuses a summary that tells its users of a change they never see', () => {
+    const out = judgedNaming(
+      JSON.stringify({
+        name: 'Smarter logs',
+        summary: 'You can now find what you need faster. Every screen feels quicker.',
+      }),
+      OPERATORS,
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok)
+      expect(out.refusals.map((r) => r.code)).toEqual(['RELEASE_NAMING_USERS_UNCHANGED']);
+  });
+
+  it('keeps one that says first that nothing changed for them', () => {
+    const summary =
+      'Nothing changes for the people using the product. Logs now name the build that wrote them.';
+    expect(
+      judgedNaming(JSON.stringify({ name: 'Logs name their build', summary }), OPERATORS),
+    ).toEqual({
+      ok: true,
+      naming: { name: 'Logs name their build', summary },
+    });
+  });
+});
 
 describe('what the namer reads of a release', () => {
   it('reads each carried issue by its note, a Skip note as a change only operators see', () => {
@@ -120,6 +156,7 @@ describe('what the namer reads of a release', () => {
       changes: [{ title: 'Workflows fit a phone', line: 'It fits.' }],
       operatorChanges: [{ title: 'ISS-7 title', line: '/healthz names the commit it serves.' }],
       unnoted: [],
+      usersUnchanged: null,
     });
     expect(namingForOperatorsOnly(facts)).toBe(false);
   });
@@ -145,6 +182,7 @@ describe('what the namer reads of a release', () => {
   it('names a release of operator changes only as one, and has nothing to name a design-only one from', () => {
     const operators = namingFacts(detailOf({ skipped: [entry('ISS-16')] }), new Map());
     expect(namingForOperatorsOnly(operators)).toBe(true);
+    expect(operators.usersUnchanged).toBe('Nothing changes for the people using the product.');
     const designs = namingFacts(detailOf({ designs: [entry('ISS-9')] }), new Map());
     expect(namingHasFacts(designs)).toBe(false);
   });
