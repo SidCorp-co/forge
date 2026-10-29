@@ -13,8 +13,8 @@ import {
   forgeQuestionsTool,
   forgeReleasesProductTool,
 } from '../product-door/tool.js';
-import { forgeBindingsTool, forgeConfigTool } from '../project-config/tool.js';
-import { forgeProjectsTool } from '../projects/tool.js';
+import { forgeBindingsTool, forgeConfigTool } from '../project-config/index.js';
+import { forgeProjectsTool } from '../projects/index.js';
 import { forgeSupportTool } from '../support/tool.js';
 import { forgeUploadsTool } from '../uploads/tool.js';
 import { projectFeedbackMcpTool } from './feedback-tool.js';

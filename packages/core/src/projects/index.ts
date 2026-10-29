@@ -45,3 +45,4 @@ export { issueWorkRecordsAt } from './issue-work-records.js';
 export type { LiveReading } from './live-reach.js';
 export { evidenceFor, issueRefPattern } from './live-reach.js';
 export { liveReadingForRow, projectReleaseRows } from './live-reading.js';
+export { forgeProjectsTool, PROJECTS_TOOL_READS } from './tool.js';

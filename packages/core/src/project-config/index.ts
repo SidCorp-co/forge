@@ -75,3 +75,9 @@ export {
   withDeclaredSource,
 } from './source.js';
 export { seedProjectPolicy } from './store.js';
+export {
+  BINDINGS_TOOL_READS,
+  CONFIG_TOOL_READS,
+  forgeBindingsTool,
+  forgeConfigTool,
+} from './tool.js';
