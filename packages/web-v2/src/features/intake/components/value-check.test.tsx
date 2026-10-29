@@ -157,17 +157,30 @@ describe("a request's value check on its page", () => {
     expect(screen.getByTestId("intake-answered").textContent).toBe("Who reads it? → Managers · Ann");
   });
 
-  it("says a draft made before the check was not checked, and shows nothing before a draft or on a failed one", async () => {
+  it("names the person's answer as the source of the fact it replaced (BC-5)", async () => {
+    shown(draft({ value: value({ measured: { value: "Monthly", source: { kind: "answer", question: 1 } } }), questions: [question({ answer: { option: "monthly", label: "Monthly", by: { id: "u1", name: "Ann" }, at: "2026-10-25T09:00:00.000Z" } })] }));
+    expect((await screen.findByTestId("value-measured")).textContent).toBe("Measured byMonthly · Answer to question 1");
+  });
+
+  it("says a draft made before the check was not checked", async () => {
     shown(draft({ value: null, questions: [], nothingToAsk: "The record settles it." }));
     expect((await screen.findByTestId("value-check")).textContent).toContain("Drafted before the value check");
     expect(screen.getByTestId("intake-nothing-to-ask").textContent).toBe("Nothing · The record settles it.");
-    vi.unstubAllGlobals();
-    const none = shown(null);
-    await waitFor(() => expect(none.calls).toHaveLength(1));
-    expect(none.container.querySelector("[data-testid=value-check]")).toBeNull();
-    vi.unstubAllGlobals();
-    const failed = shown(draft({ outcome: "failed", code: "INTAKE_SHAPE", value: null }));
-    await waitFor(() => expect(failed.calls).toHaveLength(1));
-    expect(failed.container.querySelector("[data-testid=value-check]")).toBeNull();
+  });
+
+  // judge K95 on ISS-690: an item with no check read as one with nothing owed, its section gone
+  it("marks an item with no check standing as not checked, or checking while the assistant tries again", async () => {
+    for (const [view, state, word] of [
+      [null, "unchecked", "Not checked"],
+      [draft({ outcome: "failed", code: "INTAKE_SHAPE", value: null, questions: [] }), "unchecked", "Not checked"],
+      [draft({ outcome: "failed", code: "INTAKE_MODEL_FAILED", value: null, questions: [], retrying: true }), "checking", "Checking"],
+    ] as const) {
+      const out = shown(view);
+      const section = await within(out.container).findByTestId("value-check");
+      expect([section.dataset.outcome, section.textContent]).toEqual([state, `Value check${word}`]);
+      expect(within(section).queryByTestId("value-who")).toBeNull();
+      out.unmount();
+      vi.unstubAllGlobals();
+    }
   });
 });

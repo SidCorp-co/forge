@@ -9,6 +9,8 @@ type Settled =
  * A binding that carries `support` names exactly one room: one group, one session (REQ-75 BC-10).
  * One that carries `operations` names rooms each answered by a session of its own (BC-20), and never
  * `support` beside it. A binding with neither is the team assistant's and keeps any number of rooms.
+ * Whatever it carries, the groups it names in `outsideRids` are answered by an agent outside Forge,
+ * so a group named in `rids` too would be answered twice: refused (REQ-75 r6).
  */
 export async function settleSupportRoom(args: {
   bindingId: string;
@@ -17,6 +19,19 @@ export async function settleSupportRoom(args: {
 }): Promise<Settled> {
   const support = args.config.support !== undefined && args.config.support !== null;
   const operations = args.config.operations !== undefined && args.config.operations !== null;
+  const answered = Array.isArray(args.config.rids) ? args.config.rids : [];
+  const outside = Array.isArray(args.config.outsideRids) ? args.config.outsideRids : [];
+  const twice = outside.flatMap((rid, i) => (answered.includes(rid) ? [{ rid, i }] : []));
+  if (twice.length > 0) {
+    return {
+      ok: false,
+      refusals: twice.map(({ rid, i }) => ({
+        code: 'SUPPORT_ROOM_TWO_KINDS' as const,
+        path: `/outsideRids/${i}`,
+        detail: `group ${rid} is in \`rids\`, answered by Forge, and in \`outsideRids\`, answered by an agent outside Forge; name it in one of the two`,
+      })),
+    };
+  }
   if (support && operations) {
     return {
       ok: false,

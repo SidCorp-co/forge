@@ -176,7 +176,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:releaseNotes field:json:soul field:json:summary field:json:text
     field:json:textContent field:json:title field:json:tldr field:json:why field:json:whereSeen
     field:json:raw field:json:localGuide field:json:skillMd field:json:decision
-    field:json:suggestion field:json:evidence field:json:emoji field:json:name
+    field:json:suggestion field:json:evidence field:json:emoji field:json:name field:json:role
     field:json:displayName field:json:shortName field:json:request field:json:account
     field:json:lines field:json:sides field:json:withoutClip field:json:rationale field:json:said
     field:json:statement field:json:askFor field:json:question`,
@@ -226,12 +226,12 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:head field:json:repoPath field:json:sha`,
   'what a box says about itself: its name, its platform, a machine id core hashes': words`
     field:json:device_hostname field:json:device_label field:json:device_platform
-    field:json:machine_id`,
+    field:json:machine_id field:json:box`,
   'a third party’s token core stores or forwards to that service; it checks no caller': words`
     field:json:apiToken field:json:authToken field:json:clientSecret field:json:secrets`,
   'an address: a mailbox, a service URL, a git host, where to go after sign-in': words`
     param:host field:json:baseUrl field:json:serverUrl field:json:host field:json:protocol
-    field:json:email field:query:email field:query:redirect`,
+    field:json:email field:query:email field:query:redirect field:json:address`,
   'an MCP client’s OAuth request: who it is, where to send the answer, a PKCE challenge (a hash, never its verifier), the reach asked for and its own opaque state': words`
     field:form:client_id field:form:grant_type field:form:redirect_uri field:form:resource
     field:form:scope field:json:client_id field:json:client_name field:json:code_challenge
@@ -246,7 +246,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:module field:query:party field:query:q field:query:search field:query:status
     field:query:step field:query:steps field:query:verb field:query:view field:query:error
     field:query:errorCode field:query:method field:query:path field:query:query field:query:release
-    field:query:window`,
+    field:query:window field:query:role`,
   'a value core’s own middleware set once it admitted the caller, never the secret': words`
     var:agency var:agentUserId var:authUserResolution var:chatWriteAdmitted var:device
     var:deviceId var:onBehalfOf var:patDeviceId var:patRequestClass var:patRequestResolution

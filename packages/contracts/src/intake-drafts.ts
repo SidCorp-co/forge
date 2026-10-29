@@ -307,10 +307,15 @@ export type IntakeDraftApplied =
 	| { as: "suggestion"; suggestionId: string }
 	| { as: "none"; code: string; detail: string };
 
-/** Where a value fact came from: the item's own words, a record it read, or a question's recommended answer. */
+/**
+ * Where a value fact came from: the item's own words, a record it read, a question's recommended
+ * answer taken while it stands unanswered, or the answer a person gave that question, which replaces
+ * the recommended one it stood in for (REQ-65 BC-5).
+ */
 export type ValueFactSource =
 	| IntakeDraftRef
-	| { kind: "recommended"; question: number };
+	| { kind: "recommended"; question: number }
+	| { kind: "answer"; question: number };
 
 export interface ValueFactView {
 	value: string;

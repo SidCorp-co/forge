@@ -1,6 +1,6 @@
 // Reads and writes of a bound group's channel record (REQ-75 r6), which only the `support` domain
-// writes. A channel is one per project and group, and every room row of that project bound to the
-// group reads it (BC-41).
+// writes. A channel is one per project and group, whoever answers the group: every room row of that
+// project bound to it reads it (BC-41), and so does an outside agent a binding names as its answerer.
 
 import type { ChannelMemberState, ChannelRole } from '@forge/contracts/support-channel';
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
@@ -13,6 +13,8 @@ import {
   supportChannels,
   supportRooms,
 } from '../db/schema-support.js';
+import { listBindingsForProject } from '../integrations/index.js';
+import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 
 export type ChannelRow = typeof supportChannels.$inferSelect;
 export type MemberRow = typeof supportChannelMembers.$inferSelect;
@@ -37,7 +39,32 @@ export async function channelOf(projectId: string, rid: string): Promise<Channel
   return row ?? null;
 }
 
-/** The groups a project's bindings attach, each once, oldest first. */
+/**
+ * The groups the project's Rocket.Chat bindings name, switched on or off, oldest binding first: the
+ * ones Forge answers (`rids`) and the ones an agent outside Forge answers (`outsideRids`). A binding
+ * switched off keeps its groups' records, as a room taken out of its binding does.
+ */
+async function namedRids(projectId: string): Promise<{ forge: string[]; outside: string[] }> {
+  const configs = (await listBindingsForProject(projectId))
+    .map((p) => p.binding)
+    .filter((b) => b.provider === 'rocketchat')
+    .reverse()
+    .map((b) => (b.config ?? {}) as RocketChatBindingConfig);
+  return {
+    forge: configs.flatMap((c) => c.rids ?? []),
+    outside: configs.flatMap((c) => c.outsideRids ?? []),
+  };
+}
+
+/** Whether a binding of the project names the group as answered by an agent outside Forge. */
+export async function answeredOutside(projectId: string, rid: string): Promise<boolean> {
+  return (await namedRids(projectId)).outside.includes(rid);
+}
+
+/**
+ * The groups a project's bindings attach, each once: every group a room of the project was declared
+ * for, oldest first, then every other group a binding of the project names.
+ */
 export async function boundRidsOf(projectId: string): Promise<string[]> {
   const rows = await db
     .select({ rid: supportRooms.rid, first: sql<Date>`min(${supportRooms.createdAt})` })
@@ -45,7 +72,18 @@ export async function boundRidsOf(projectId: string): Promise<string[]> {
     .where(eq(supportRooms.projectId, projectId))
     .groupBy(supportRooms.rid)
     .orderBy(asc(sql`min(${supportRooms.createdAt})`));
-  return rows.map((r) => r.rid);
+  const named = await namedRids(projectId);
+  return [...new Set([...rows.map((r) => r.rid), ...named.forge, ...named.outside])];
+}
+
+/**
+ * Whether the group has a channel record in this project, whoever answers it: a room of the project
+ * was declared for it, or a binding of the project names it.
+ */
+export async function channelIsBound(projectId: string, rid: string): Promise<boolean> {
+  if ((await roomsOfChannel(projectId, rid)).length > 0) return true;
+  const named = await namedRids(projectId);
+  return named.forge.includes(rid) || named.outside.includes(rid);
 }
 
 /** The room rows of a project bound to one group: one per bot. */
@@ -55,6 +93,26 @@ export async function roomsOfChannel(projectId: string, rid: string) {
     .from(supportRooms)
     .where(and(eq(supportRooms.projectId, projectId), eq(supportRooms.rid, rid)))
     .orderBy(asc(supportRooms.createdAt));
+}
+
+/** An outside agent's declaration of itself on the channel (BC-42): replaces the one before. */
+export async function declareChannelAgent(
+  channelId: string,
+  agent: { role: string; box: string; address: string; by: string },
+): Promise<ChannelRow> {
+  const [row] = await db
+    .update(supportChannels)
+    .set({
+      agentRole: agent.role,
+      agentBox: agent.box,
+      agentAddress: agent.address,
+      agentDeclaredAt: new Date(),
+      agentDeclaredBy: agent.by,
+    })
+    .where(eq(supportChannels.id, channelId))
+    .returning();
+  if (!row) throw new Error(`support: the channel ${channelId} took no agent declaration`);
+  return row;
 }
 
 export async function membersOf(channelId: string): Promise<MemberRow[]> {

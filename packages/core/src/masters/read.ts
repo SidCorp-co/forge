@@ -225,6 +225,38 @@ async function liveMaster(projectId: string): Promise<MasterRow | null> {
   return row ?? null;
 }
 
+/**
+ * Every live master session of the project, the one whose box spoke last first: who it is, its box,
+ * its terminal and since when (REQ-75 r7 BC-43). A restart ends one session and places another, so
+ * this reads the session placed now and never one stored earlier.
+ */
+export async function liveMasterSessions(
+  projectId: string,
+): Promise<{ sessionId: string; box: string | null; terminal: string | null; since: string }[]> {
+  const found = rowsOf<{
+    id: string;
+    device_name: string | null;
+    terminal: string | null;
+    since: string | Date;
+  }>(
+    await db.execute(sql`
+      SELECT s.id, d.name AS device_name, s.metadata ->> 'terminalName' AS terminal,
+             COALESCE(s.started_at, s.created_at) AS since
+        FROM agent_sessions s
+        LEFT JOIN devices d ON d.id = s.device_id
+       WHERE s.project_id = ${projectId}
+         AND s.kind = ${MASTER_SESSION_KIND}
+         AND s.status NOT IN (${TERMINAL})
+       ORDER BY ${masterLastBeatSql('s')} DESC NULLS LAST, s.created_at DESC`),
+  );
+  return found.map((r) => ({
+    sessionId: r.id,
+    box: r.device_name,
+    terminal: r.terminal,
+    since: iso(r.since),
+  }));
+}
+
 // the project master is the live master session whose box spoke last; silent is the reaper's own
 // predicate (devices/master-silence.ts), so the board says silent exactly when the reaper will fail it
 /** Whether a master acts for the project (REQ-48 BC-5): none live, silent, or serving. */

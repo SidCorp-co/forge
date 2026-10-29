@@ -5,6 +5,7 @@
 import { chatUsernameSchema } from '@forge/contracts/support';
 import {
   type ChannelMemberWrite,
+  channelAgentWriteSchema,
   channelMemberWriteSchema,
   channelRuleWriteSchema,
 } from '@forge/contracts/support-channel';
@@ -14,13 +15,14 @@ import { refused } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { agentRolesOf, declareOutsideAgent } from './agent-roles.js';
 import { privateRefusal } from './channel.js';
 import { channelsOf, channelViewOf } from './channel-read.js';
 import {
   addRule,
+  channelIsBound,
   ensureChannel,
   removeRule,
-  roomsOfChannel,
   writeMember,
 } from './channel-store.js';
 import { no, type Outcome } from './outcome.js';
@@ -54,10 +56,10 @@ const projectParam = zValidator(
 const unknownChannel = <T>(rid: string): Outcome<T> =>
   no('SUPPORT_CHANNEL_UNKNOWN', '/rid', `no binding of this project attaches the group ${rid}`);
 
-/** The channel a person writes to: one a binding of the project attaches. */
+/** The channel a person writes to: one a binding of the project attaches, whoever answers it. */
 async function writableChannel(viewer: string, projectId: string, rid: string) {
   await requireCan(actorFor(viewer), 'project.write', projectResource(projectId));
-  if ((await roomsOfChannel(projectId, rid)).length === 0) return null;
+  if (!(await channelIsBound(projectId, rid))) return null;
   return ensureChannel(projectId, rid);
 }
 
@@ -86,7 +88,33 @@ export async function confirmMember(
   return { ok: true, value: { username: row.username } };
 }
 
+const rolesQuery = zValidator(
+  'query',
+  z.object({ role: z.string().trim().min(1).max(80).optional() }),
+  invalid('invalid query: role is a role name, at most 80 characters'),
+);
+
 export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void {
+  // the project's agent sessions by role, each with where it is reached now (REQ-75 r7 BC-43, BC-44)
+  routes.get('/:id/agent-roles', projectParam, rolesQuery, async (c) => {
+    const { id } = c.req.valid('param');
+    const sessions = await agentRolesOf(c.get('userId'), id, c.req.valid('query').role);
+    return c.json({ sessions });
+  });
+
+  // an agent outside Forge declares itself on the group it answers, again on each restart (BC-42)
+  routes.put(
+    '/:id/support/channels/:rid/agent',
+    channelParam,
+    strictBody(channelAgentWriteSchema, '{ role, box, address }'),
+    async (c) => {
+      const { id, rid } = c.req.valid('param');
+      const out = await declareOutsideAgent(c.get('userId'), id, rid, c.req.valid('json'));
+      if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+      return c.json({ agent: out.value });
+    },
+  );
+
   routes.get('/:id/support/channels', projectParam, async (c) => {
     const channels = await channelsOf(c.get('userId'), c.req.valid('param').id);
     return c.json({ channels });
