@@ -175,11 +175,18 @@ it is listed on that requirement and on Needs you, and its answer is recorded th
 On no issue, \`{ requirement: null }\` names nothing (\`QUESTION_ABOUT_NO_REQUIREMENT\`), and a
 missing \`about\` or \`projectId\` is \`QUESTION_SUBJECT_REQUIRED\` or \`QUESTION_PROJECT_REQUIRED\`.
 
-Waiting on another issue's landing is \`awaitsMerge: { issueId }\` on the park, never the condition
-written into \`needs\`: the stamp that writes that issue's merge mark answers the question and moves
-this one back. A mark that already stands is refused \`QUESTION_MERGE_ALREADY_MARKED\` — the
-condition holds, so carry on. A wait on a mark is never also \`about\` a requirement
-(\`QUESTION_ABOUT_ON_MERGE_WAIT\`), nor a wait on a design decision (\`QUESTION_ABOUT_ON_DESIGN_WAIT\`):
+Waiting on another issue's landing is not a park: ordering between issues is a \`blocks\` edge,
+\`POST /api/issues/:id/dependencies\` \`{ dependsOnId, kind: 'blocks' }\`, with this issue left
+where it is. \`needs_info\` reads on every board as a person owing an answer, so it is
+only for an act a person owes; a park naming another issue's mark is refused
+\`QUESTION_MERGE_IS_ORDERING\`.
+
+Waiting on this issue's own landing being recorded by a person is \`awaitsMerge: { issueId }\` on
+the park, naming this issue, never the condition written into \`needs\`: the stamp that writes
+its merge mark answers the question and moves it back. A mark that already stands is refused
+\`QUESTION_MERGE_ALREADY_MARKED\` — the condition holds, so carry on. A wait on a mark is never
+also \`about\` a requirement (\`QUESTION_ABOUT_ON_MERGE_WAIT\`), nor a wait on a design decision
+(\`QUESTION_ABOUT_ON_DESIGN_WAIT\`):
 the mark or the decision answers it, so the business question is asked on its own.
 
 ### 4. Build

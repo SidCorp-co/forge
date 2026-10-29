@@ -406,6 +406,29 @@ mod tests {
         }
     }
 
+    /// Ordering between issues parked at `needs_info` reads on every board as a person owing an
+    /// answer nobody owes (ISS-738), so the skill points ordering at a blocks edge and names the
+    /// refusal a park on another issue's mark meets.
+    #[test]
+    fn the_skill_tells_a_master_ordering_is_a_blocks_edge() {
+        for word in [
+            "**Ordering between issues is a blocks edge, never a park.**",
+            "`{dependsOnId, kind: \"blocks\"}`",
+            "only for an act a person owes",
+            "`QUESTION_MERGE_IS_ORDERING`",
+            "`awaitsMerge: {issueId}` naming itself",
+        ] {
+            assert!(
+                ASSET.contains(word),
+                "forge-master-skill.md no longer names {word}, so a master parks a row at needs_info for another issue's landing"
+            );
+        }
+        assert!(
+            !ASSET.contains("A row waiting on another issue's landing parks"),
+            "forge-master-skill.md again tells a master to park a row on another issue's landing"
+        );
+    }
+
     /// A park described in prose wakes nobody when the mark lands, a business question asked with
     /// no `about` never reaches its requirement, a carried artifact left unsaid is verified on the
     /// wrong release, a silent abort blocks the next cut, and a pin-only dependent proposed again is

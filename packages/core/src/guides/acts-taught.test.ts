@@ -44,11 +44,20 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
       ['takes the same `about` beside `needs`', 'QUESTION_ABOUT_ON_DESIGN_WAIT'],
     ],
     [
-      'a park on another landing waits on its merge mark',
+      'a park on its own landing waits on its merge mark',
       [
         '`awaitsMerge: { issueId }`',
         'QUESTION_MERGE_ALREADY_MARKED',
         'QUESTION_ABOUT_ON_MERGE_WAIT',
+      ],
+    ],
+    [
+      'ordering between issues is a blocks edge, never a park (ISS-738)',
+      [
+        "Waiting on another issue's landing is not a park: ordering between issues is a `blocks` edge",
+        "`{ dependsOnId, kind: 'blocks' }`",
+        'only for an act a person owes',
+        'QUESTION_MERGE_IS_ORDERING',
       ],
     ],
     [
@@ -104,6 +113,23 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
     );
     expect(memorySources).toContain('bookkeeping');
     expect(memoryWritableSources).not.toContain('bookkeeping');
+  });
+
+  it('the lifecycle guide points ordering at a blocks edge, and lets a park name only its own mark (ISS-738)', () => {
+    const lifecycle = body('pipeline-and-issue-lifecycle');
+    for (const word of [
+      '**Waiting on another issue is not `needs_info`.**',
+      "`{ dependsOnId, kind: 'blocks' }`",
+      'it is only for an act a person owes',
+      '`{ issueId }`: this issue, whose own merge mark settles it',
+      'Another issue is refused `QUESTION_MERGE_IS_ORDERING`',
+    ]) {
+      expect(lifecycle, `the lifecycle guide no longer names ${word}`).toContain(word);
+    }
+    for (const guide of [flow, lifecycle]) {
+      expect(guide).not.toContain('this one or another of its project');
+      expect(guide).not.toContain("Waiting on another issue's landing is `awaitsMerge");
+    }
   });
 
   it.each(['issue-flow', 'pipeline-and-issue-lifecycle'])(

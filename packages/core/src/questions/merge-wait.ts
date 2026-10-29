@@ -28,7 +28,7 @@ export interface StampedMark {
 
 /** Why an ask may not wait on the mark it names: the code it is refused with, and the sentence. */
 export interface AwaitedMergeFault {
-  code: 'QUESTION_MERGE_UNKNOWN' | 'QUESTION_MERGE_ALREADY_MARKED';
+  code: 'QUESTION_MERGE_IS_ORDERING' | 'QUESTION_MERGE_ALREADY_MARKED';
   detail: string;
 }
 
@@ -43,23 +43,31 @@ function markWords(mark: StampedMark): string {
 }
 
 /**
- * Why an ask naming this issue's mark is refused, or the issue's key where the mark is still owed.
+ * Why a park on `parkedIssueId` naming this mark is refused, or the issue's key where the mark is
+ * still owed. Only the parked issue's own mark may be named; any other is ordering.
  *
  * The issue row is read `for share`, so a stamp racing this ask either committed first and is seen
  * here, or waits for this transaction and then finds the question it wrote.
  */
 export async function awaitedMergeFault(
   executor: IssueDependencyExecutor,
-  projectId: string,
+  parkedIssueId: string,
   awaited: AwaitedMerge,
 ): Promise<{ fault: AwaitedMergeFault } | { key: string }> {
+  if (awaited.issueId !== parkedIssueId) {
+    return {
+      fault: {
+        code: 'QUESTION_MERGE_IS_ORDERING',
+        detail: `\`awaitsMerge\` names issue ${awaited.issueId}, which is not the issue being parked (${parkedIssueId}): waiting on another issue's landing is ordering between issues, which is a \`blocks\` edge with this issue left where it is — POST /api/issues/${parkedIssueId}/dependencies {"dependsOnId":"${awaited.issueId}","kind":"blocks"}. \`needs_info\` reads as a person owing an answer, and none is owed here; \`awaitsMerge\` names only this issue's own mark`,
+      },
+    };
+  }
   const rows = (await executor.execute(sql`
-    SELECT i.project_id, i.iss_seq, i.merged_at, i.merged_commit_sha, i.merged_landing, p.issue_prefix
+    SELECT i.iss_seq, i.merged_at, i.merged_commit_sha, i.merged_landing, p.issue_prefix
       FROM issues i JOIN projects p ON p.id = i.project_id
      WHERE i.id = ${awaited.issueId}
        FOR SHARE OF i
   `)) as unknown as Array<{
-    project_id: string;
     iss_seq: number | string;
     merged_at: Date | string | null;
     merged_commit_sha: string | null;
@@ -67,14 +75,7 @@ export async function awaitedMergeFault(
     issue_prefix: string | null;
   }>;
   const row = rows[0];
-  if (!row || String(row.project_id) !== projectId) {
-    return {
-      fault: {
-        code: 'QUESTION_MERGE_UNKNOWN',
-        detail: `\`awaitsMerge\` names issue ${awaited.issueId}, which is not an issue of this issue's project — name an issue of project ${projectId} whose merge mark settles this park`,
-      },
-    };
-  }
+  if (!row) throw new Error(`questions: the parked issue ${parkedIssueId} has no row`);
   const key = formatIssueRef(row.issue_prefix, Number(row.iss_seq));
   if (row.merged_at !== null) {
     const mark = markWords({

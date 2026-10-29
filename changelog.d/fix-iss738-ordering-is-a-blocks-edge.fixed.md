@@ -1,0 +1,1 @@
+**Waiting on another issue is a blocks edge, not a park.** A park naming another issue's merge mark is refused `QUESTION_MERGE_IS_ORDERING`, and the master skill and guides teach ordering as a `blocks` edge with the row left open.
