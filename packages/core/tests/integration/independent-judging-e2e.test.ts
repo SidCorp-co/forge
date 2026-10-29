@@ -409,7 +409,7 @@ describe('BC-3: a failing verdict reopens the issue that owns the work', () => {
     });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body.owner).toMatchObject({ key: 'ISS-1' });
+    expect(res.body.routed).toMatchObject([{ key: 'ISS-1', outcome: 'reopen' }]);
     expect(await statusOf(issue)).toBe('reopen');
   });
 

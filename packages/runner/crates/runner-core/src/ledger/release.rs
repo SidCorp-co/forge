@@ -1,5 +1,37 @@
 use super::*;
 
+/// The words every build before 8b3c69ff0 gave a release up on with when
+/// another row of the ledger named the same checkout, ended or not. No build
+/// since refuses on that rule; an open holder now keeps the checkout and lets
+/// the release through (`CheckoutReturn::KeptForOpenRun`).
+pub const RETIRED_HOLDER_REFUSAL: &str =
+    "in the ledger, so the checkout stays for it, as the sweep keeps it";
+
+/// The ending a decided refusal wrote, taken back with it: `run release` and a
+/// start's re-arm both write `{CLEAR_REFUSAL}, {ENDING_TAKEN_BACK}`, so the two
+/// cannot drift apart.
+const ENDING_TAKEN_BACK: &str =
+    "ended_by = CASE WHEN refusal_wrote_ending = 1 THEN NULL ELSE ended_by END,
+        ended_reason = CASE WHEN refusal_wrote_ending = 1 THEN NULL ELSE ended_reason END,
+        refusal_wrote_ending = NULL";
+
+/// A release a daemon start took back from given-up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rearmed {
+    pub run_id: String,
+    /// The run the refusal said held the checkout, where its words name one.
+    pub holder: Option<String>,
+    /// The refusal as it was written, kept for the line that names it.
+    pub refusal: String,
+}
+
+/// The run a retired holder refusal names: `…: run <id> still holds …`.
+fn named_holder(refusal: &str) -> Option<String> {
+    let (before, _) = refusal.split_once(" still holds ")?;
+    let (_, holder) = before.rsplit_once(": run ")?;
+    Some(holder.trim().to_string()).filter(|h| !h.is_empty())
+}
+
 impl Ledger {
     pub fn mark_session_terminal_observed(&self, run_id: &str) -> Result<()> {
         self.stamp("session_terminal_at", run_id)
@@ -192,6 +224,72 @@ impl Ledger {
         Ok(n == 1)
     }
 
+    /// Re-arm every release given up on over [`RETIRED_HOLDER_REFUSAL`], once
+    /// per run, and answer which.
+    ///
+    /// Builds before 8b3c69ff0 refused a release while any other row named the
+    /// same checkout, ended rows included, and decided the refusal final once
+    /// it had stood its window. That rule is gone, but a decided refusal is
+    /// one no sweep selects again (`unclosed_runs`), so every row decided under
+    /// it stayed given up on after the upgrade: 25 on one box, across five
+    /// projects, holding a master in its drain until each was re-armed by
+    /// hand. Taking such a decision back is what `run release` does
+    /// ([`Ledger::retract_release_refusal`]), so this is that verb applied to
+    /// the rows whose refusal no build can make any more. `release_rearmed_at`
+    /// is what makes it once: a row re-armed and given up on again, for
+    /// another reason, is the new refusal's to decide.
+    pub fn rearm_retired_holder_refusals(&mut self, at: i64) -> Result<Vec<Rearmed>> {
+        let tx = self.conn.transaction().map_err(sql_err)?;
+        let rows: Vec<(String, String)> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT run_id, release_refusal FROM runs
+                      WHERE release_terminal_at IS NOT NULL AND released_as IS NULL
+                        AND release_rearmed_at IS NULL
+                        AND instr(release_refusal, ?1) > 0
+                      ORDER BY created_at",
+                )
+                .map_err(sql_err)?;
+            let rows = stmt
+                .query_map(params![RETIRED_HOLDER_REFUSAL], |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                })
+                .map_err(sql_err)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(sql_err)?
+        };
+        for (run_id, _) in &rows {
+            tx.execute(
+                &format!(
+                    "UPDATE runs SET {CLEAR_REFUSAL}, {ENDING_TAKEN_BACK}, release_rearmed_at = ?2
+                      WHERE run_id = ?1"
+                ),
+                params![run_id, at],
+            )
+            .map_err(sql_err)?;
+        }
+        tx.commit().map_err(sql_err)?;
+        Ok(rows
+            .into_iter()
+            .map(|(run_id, refusal)| Rearmed {
+                holder: named_holder(&refusal),
+                run_id,
+                refusal,
+            })
+            .collect())
+    }
+
+    /// How many releases a daemon start has re-armed, for `status`.
+    pub fn rearmed_release_refusals(&self) -> Result<i64> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM runs WHERE release_rearmed_at IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(sql_err)
+    }
+
     /// Forget a refusal a release got past. The run's own ending, if it has
     /// one, is not this verb's business: a release that succeeded ended the run
     /// on purpose.
@@ -222,10 +320,7 @@ impl Ledger {
         let n = tx
             .execute(
                 &format!(
-                    "UPDATE runs SET {CLEAR_REFUSAL},
-                            ended_by = CASE WHEN refusal_wrote_ending = 1 THEN NULL ELSE ended_by END,
-                            ended_reason = CASE WHEN refusal_wrote_ending = 1 THEN NULL ELSE ended_reason END,
-                            refusal_wrote_ending = NULL
+                    "UPDATE runs SET {CLEAR_REFUSAL}, {ENDING_TAKEN_BACK}
                       WHERE run_id = ?1
                         AND (release_refused_at IS NOT NULL OR release_terminal_at IS NOT NULL)"
                 ),
@@ -234,5 +329,64 @@ impl Ledger {
             .map_err(sql_err)?;
         tx.commit().map_err(sql_err)?;
         Ok(n == 1)
+    }
+}
+
+#[cfg(test)]
+mod rearm_tests {
+    use super::*;
+
+    fn given_up(led: &mut Ledger, run_id: &str, why: &str) {
+        led.create_run_group(NewRun {
+            run_id: run_id.into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: "/w/iss-71".into(),
+            boot_id: "boot-1".into(),
+            issue_keys: vec![format!("ISS-{run_id}")],
+        })
+        .unwrap();
+        led.note_release_refusal(run_id, why, 100).unwrap();
+        led.conclude_release_refusal(run_id, 400, "recovery", why)
+            .unwrap();
+    }
+
+    /// Only a refusal in the retired rule's words is re-armed, its holder is
+    /// read off them, and its ending is taken back where the decision wrote
+    /// it. A release given up on for any other reason stays given up on: that
+    /// refusal is still one this build makes.
+    #[test]
+    fn a_start_re_arms_only_the_retired_holder_refusal_and_reads_its_holder() {
+        let mut led = Ledger::from_conn(Connection::open_in_memory().unwrap()).unwrap();
+        given_up(
+            &mut led,
+            "r1",
+            &format!(
+                "refusing to Abandon run r1: run r2-holder still holds /w/iss-71 {RETIRED_HOLDER_REFUSAL} — nothing was preserved, pushed or removed"
+            ),
+        );
+        given_up(
+            &mut led,
+            "r3",
+            "refusing to Abandon run r3: 2 commit(s) in /w/iss-71 are named by this checkout and by nothing else",
+        );
+
+        let rearmed = led.rearm_retired_holder_refusals(500).unwrap();
+        assert_eq!(rearmed.len(), 1, "{rearmed:?}");
+        assert_eq!(rearmed[0].run_id, "r1");
+        assert_eq!(rearmed[0].holder.as_deref(), Some("r2-holder"));
+        let r1 = led.run("r1").unwrap().unwrap();
+        assert_eq!(
+            (r1.release_terminal_at, r1.release_refusal, r1.ended_by),
+            (None, None, None),
+            "the decision and the ending it wrote are not taken back"
+        );
+        let r3 = led.run("r3").unwrap().unwrap();
+        assert!(
+            r3.release_terminal_at.is_some(),
+            "another refusal was re-armed"
+        );
+        assert_eq!(led.rearmed_release_refusals().unwrap(), 1);
+        assert!(led.rearm_retired_holder_refusals(600).unwrap().is_empty());
     }
 }

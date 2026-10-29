@@ -24,7 +24,6 @@ import {
   requirements,
   requirementWorkflows,
 } from '../db/schema-requirements.js';
-import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ReadDoor } from '../feedback/index.js';
 import { activeIssuePrefix } from '../issues/index.js';
@@ -200,45 +199,6 @@ export async function listRequirementsAs(
   });
 }
 
-type ReadinessPayload = { checks?: { check: string; passed: boolean }[] } | null;
-
-/** The newest accepted readiness suggestion at a revision: advisory, shown and never gating. */
-export interface ReadinessAtHead {
-  suggestionId: string;
-  failed: string[];
-}
-
-// Workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no
-// table, so the readiness result at a revision is the newest accepted readiness suggestion on it
-export async function readinessAt(
-  tx: Tx,
-  requirementId: string,
-  revision: number,
-): Promise<(ReadinessAtHead & { decidedAt: Date | null }) | null> {
-  const [s] = await tx
-    .select({
-      id: suggestions.id,
-      payload: suggestions.payload,
-      decidedAt: suggestions.decidedAt,
-    })
-    .from(suggestions)
-    .where(
-      and(
-        eq(suggestions.requirementId, requirementId),
-        eq(suggestions.kind, 'readiness'),
-        eq(suggestions.status, 'accepted'),
-        eq(suggestions.baseRevision, revision),
-      ),
-    )
-    .orderBy(desc(suggestions.decidedAt))
-    .limit(1);
-  if (!s) return null;
-  const failed = ((s.payload as ReadinessPayload)?.checks ?? [])
-    .filter((c) => !c.passed)
-    .map((c) => c.check);
-  return { suggestionId: s.id, failed, decidedAt: s.decidedAt };
-}
-
 const NO_PERSON: RequirementActor = { userId: '', agency: 'agent' };
 
 function detailRowsOf(requirementId: string) {
@@ -362,7 +322,6 @@ export async function detailOf(
     prefix,
     viewerFacts,
     history,
-    readiness,
     deferral,
     dedup,
     gates,
@@ -375,7 +334,6 @@ export async function detailOf(
     activeIssuePrefix(row.projectId),
     standingViewer(viewer, row.projectId),
     historyOf(row.id, row.projectId),
-    readinessOf(row),
     deferralOf(row.id, row.status),
     row.currentRevision === null ? null : dedupCheckOf(row.id),
     documentGatesIn(row.projectId),
@@ -446,7 +404,6 @@ export async function detailOf(
     canPromote: viewerFacts?.canAdmit ?? false,
     standing,
     history,
-    readiness,
     dedup,
     deferral,
     feedback,
@@ -454,19 +411,6 @@ export async function detailOf(
     bindings,
     questions,
     unclear: questions.filter((q) => q.status === 'open').length,
-  };
-}
-
-async function readinessOf(row: Row) {
-  if (row.currentRevision === null) return null;
-  const s = await readinessAt(db, row.id, row.currentRevision);
-  if (!s) return null;
-  return {
-    revision: row.currentRevision,
-    ready: s.failed.length === 0,
-    failed: s.failed,
-    suggestionId: s.suggestionId,
-    decidedAt: s.decidedAt?.toISOString() ?? null,
   };
 }
 

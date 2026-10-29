@@ -1,6 +1,7 @@
 import { withArticle } from '@forge/contracts/articles';
 import { type ElementIndexedContractType, isElementIndexed } from '@forge/contracts/ecosystem';
 import Ajv2020 from 'ajv/dist/2020.js';
+import { cliElements } from './cli-diff.js';
 import { type SdlSchema, sdlElements } from './graphql-sdl.js';
 import { toolsOf } from './mcp-tools-diff.js';
 import { openApiElements } from './openapi-diff.js';
@@ -31,6 +32,7 @@ export function elementsOf(type: IndexedType, document: unknown): string[] {
   if (type === 'openapi') return openApiElements(document);
   if (type === 'mcp-tools') return mcpToolElements(document);
   if (type === 'graphql') return sdlElements(document as SdlSchema);
+  if (type === 'cli') return cliElements(document);
   return jsonSchemaElements(document);
 }
 
@@ -80,6 +82,9 @@ function schemaFor(index: ContractIndex, ex: ContractExample): unknown | string 
     return 'a GraphQL contract is SDL, which holds no JSON schema an example payload can be checked against';
   }
   if (index.type === 'openapi') return openApiSchema(index.document, ex);
+  if (index.type === 'cli') {
+    return 'a cli contract names commands and their flags, and holds no JSON schema an example payload can be checked against';
+  }
   if (index.type === 'mcp-tools') {
     if (ex.direction !== 'tool-input') {
       return `the tools contract describes each tool's input, so ${withArticle(ex.direction)} example has nothing to be checked against`;

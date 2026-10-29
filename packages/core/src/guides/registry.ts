@@ -31,6 +31,7 @@ import {
 import { MOCKUPS_GUIDE } from './mockups-guide.js';
 import { QA_GUIDE } from './qa-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
+import { RELEASE_TAGS_GUIDE } from './release-tags-guide.js';
 import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
 import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';
 import { SUGGESTIONS_GUIDE } from './suggestions-guide.js';
@@ -316,6 +317,7 @@ section, which is why this migration is what turns the feature on.`,
   WORKFLOW_TEMPLATES_GUIDE,
   REQUIREMENT_LIFECYCLE_GUIDE,
   MOCKUPS_GUIDE,
+  RELEASE_TAGS_GUIDE,
   SUGGESTIONS_GUIDE,
   FEEDBACK_TRIAGE_GUIDE,
   RUNS_AND_MASTERS_GUIDE,

@@ -3,8 +3,8 @@
 // to its consumers by the outbox worker. A type is listed only while a consumer reads it.
 
 import type { FeedbackSeverity } from "./feedback.js";
-import type { LessonEventPayloads } from "./lessons.js";
 import type { MergedHead } from "./landing-artifacts.js";
+import type { LessonEventPayloads } from "./lessons.js";
 import type { MachineEntity, StateOf } from "./machines.js";
 import type { StewardEventPayloads } from "./steward.js";
 
@@ -228,6 +228,12 @@ export interface VerdictFailed {
 	authorUserId: string | null;
 	authorDeviceId: string | null;
 	agency: "human" | "agent";
+	/**
+	 * Why a fail recorded at the requirement leaves the issue it names where it is (ISS-756): its own
+	 * criteria tracing the BC pass at its landing, or it is still being built and owns what is
+	 * missing. Said on the issue, which is not moved. Null or absent: the fail sends it back.
+	 */
+	stays?: string | null;
 }
 
 export interface OutboxEventPayloads
@@ -566,9 +572,10 @@ export interface OutboxEventPayloads
 	/**
 	 * A verdict was recorded on an issue criterion against a commit or a running build: what a release page claims
 	 * changes for every release carrying the issue whose build is that commit (REQ-40 BC-13). Also
-	 * emitted for every fail, on any identity and at the requirement too, naming the issue that owns
-	 * the work in `issueId`: that issue goes back to `reopen` where it is past its build, never a new
-	 * issue (REQ-74 BC-3, REQ-45 BC-2).
+	 * emitted for every fail, on any identity, naming the issue that owns the work in `issueId`: that
+	 * issue goes back to `reopen` where it is past its build, never a new issue (REQ-74 BC-3, REQ-45
+	 * BC-2). A fail at the requirement is emitted once for each issue tracing the BC, `failed.stays`
+	 * saying why one is not sent back (ISS-756).
 	 */
 	"verdict.recorded": {
 		projectId: string;

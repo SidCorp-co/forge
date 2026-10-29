@@ -2,6 +2,8 @@
  * FB-273: the take a run session makes refuses an issue at rest by name, reading the one list the
  * verdict reads. A run over issues all over takes nothing and is never asked it (ISS-576,
  * run-declared-over-closed-e2e).
+ *
+ * @direct-test-of packages/runner/crates/runner-transport/src/status.rs
  */
 
 import { readFileSync } from 'node:fs';

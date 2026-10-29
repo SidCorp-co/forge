@@ -11,14 +11,14 @@ import { deliverWaiting, drainSupportRooms, onSupportTurnEnded } from './dispatc
 import { expireSupportFixes } from './fixes.js';
 import { handleSupportMessage } from './inbound.js';
 import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
-import { followAllItems, registerSupportProgress } from './progress.js';
+import { registerSupportResults, tellAllResults } from './result.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
 export { forgetMemberships } from './health.js';
 export { supportRoutes } from './routes.js';
 export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';
-export { expireSupportFixes, followAllItems, warmColdRooms };
+export { expireSupportFixes, tellAllResults, warmColdRooms };
 
 /**
  * The recovery sweep (a process timer): a message written into a turn the box did not take waits
@@ -41,11 +41,12 @@ export function registerSupportRooms(): void {
 }
 
 /**
- * Progress in the thread (BC-15); a room declared and warmed the moment its binding is saved
- * (BC-10, BC-11); and every room a box serves warmed when that box comes online (BC-11).
+ * A recorded item's result handed to the session once it is final, never progress (BC-15 r6); a room
+ * declared and warmed the moment its binding is saved (BC-10, BC-11); and every room a box serves
+ * warmed when that box comes online (BC-11).
  */
 export function registerSupportConsumers(): void {
-  registerSupportProgress();
+  registerSupportResults();
   consume('integration.changed', {
     name: 'support-rooms',
     handle: async (p: { projectId: string }) => {

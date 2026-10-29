@@ -1,6 +1,8 @@
 // ISS-279 / FB-91: About offered Requirement, Issue, Release, Workflow and Screen, so feedback about
 // Autoflow's MCP tool save_backend_workflow was filed as a Screen. About now offers "API route or
 // tool", suggests what the project serves, and sends the name as `endpoint` for core to check.
+// ISS-594 / FB-168: a CLI command is served too, and the option reads "Route, tool or command".
+// @direct-test-of packages/web-v2/src/features/feedback/components/target-picker.tsx
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -38,6 +40,7 @@ const SERVED = {
       type: "mcp-tools",
       element: "save_backend_workflow",
     },
+    { key: "forge-cli:forge feedback", contract: "forge-cli", version: "1.0.0", type: "cli", element: "forge feedback" },
   ],
 };
 
@@ -46,7 +49,7 @@ describe("the feedback About picker", () => {
     core(() => undefined);
     renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     const options = () => [...screen.getByLabelText<HTMLSelectElement>("Target type").options].map((o) => o.textContent);
-    await waitFor(() => expect(options()).toEqual(["Requirement", "Issue", "Release", "Workflow", "API route or tool", "Screen"]));
+    await waitFor(() => expect(options()).toEqual(["Requirement", "Issue", "Release", "Workflow", "Route, tool or command", "Screen"]));
   });
 
   it("holds the title to the length core keeps, so a pasted title never reaches the refusal (FB-118)", () => {
@@ -60,7 +63,7 @@ describe("the feedback About picker", () => {
     renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     await screen.findByTestId("feedback-choices");
     const options = [...screen.getByLabelText<HTMLSelectElement>("Target type").options].map((o) => o.textContent);
-    expect(options).toEqual(["Requirement", "Release", "Workflow", "API route or tool", "Screen"]);
+    expect(options).toEqual(["Requirement", "Release", "Workflow", "Route, tool or command", "Screen"]);
   });
 
   it("picks About by title from the project's own requirements, never a typed key, and refuses text naming none", async () => {
@@ -112,6 +115,7 @@ describe("the feedback About picker", () => {
     expect([...list.querySelectorAll("option")].map((o) => [o.getAttribute("value"), o.textContent])).toEqual([
       ["shop-api:GET /pets", "Route GET /pets · shop-api 3.0.0"],
       ["shop-tools:save_backend_workflow", "Tool save_backend_workflow · shop-tools 1.0.0"],
+      ["forge-cli:forge feedback", "Command forge feedback · forge-cli 1.0.0"],
     ]);
     expect(screen.getByLabelText("Target").getAttribute("list")).toBe(list.id);
   });

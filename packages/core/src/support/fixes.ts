@@ -228,7 +228,7 @@ async function recordConfirmed(
     room,
     fix,
     conversationId,
-    `${changeName(fix)} (${fix.code}) was recorded as ${filed.value.feedbackKey} after the asker confirmed it. Its progress is posted in the thread.`,
+    `${changeName(fix)} (${fix.code}) was recorded as ${filed.value.feedbackKey} after the asker confirmed it. You are told again once its result is final; post nothing before then.`,
   );
   return 'ran';
 }

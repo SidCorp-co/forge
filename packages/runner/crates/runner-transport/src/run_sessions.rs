@@ -315,10 +315,33 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
 /// fleet-wide fact — any box, not only this one. `held_by_this_device` is what
 /// a close loop asking "have I given this back" means, and reading the first
 /// under the second's name is what let two boxes hold one issue.
+///
+/// A third since ISS-752: `held_by_this_session`, answered when the request
+/// named a run session. Two runs on one box can name one key, and the box's
+/// half read the newer run's lease as the older run's.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LeaseState {
     pub held_by_this_device: bool,
+    #[serde(default)]
+    pub held_by_this_session: Option<bool>,
+}
+
+impl LeaseState {
+    /// Whether the lease the asker means is back: its own run session's where
+    /// it named one, the box's where it did not. A core that answers no
+    /// session half to a request naming one predates ISS-752, and reading the
+    /// box's half in its place is the defect, so that is an error and not a
+    /// guess.
+    pub fn returned(&self, session_id: Option<&str>, issue_key: &str) -> Result<bool> {
+        match (session_id, self.held_by_this_session) {
+            (None, _) => Ok(!self.held_by_this_device),
+            (Some(_), Some(held)) => Ok(!held),
+            (Some(s), None) => Err(Error::Other(format!(
+                "issue-lease read {issue_key}: core answered no heldByThisSession for run session {s}, so whether this run's lease is back is unknown; core predates ISS-752"
+            ))),
+        }
+    }
 }
 
 /// Where one lease lives, named by the project it was taken for.
@@ -327,10 +350,25 @@ pub struct LeaseState {
 /// project, so a box serving two of them holds two rows under one key. Core
 /// refuses a give-back it cannot narrow to one, and this is how the run says
 /// which it means (ISS-1139).
-pub(crate) fn lease_path(project_id: Option<&str>, issue_key: &str) -> String {
-    match project_id {
-        Some(p) => format!("/api/devices/me/issue-leases/{issue_key}?projectId={p}"),
-        None => format!("/api/devices/me/issue-leases/{issue_key}"),
+///
+/// And by the run session asking, so a give-back reaches only the lease that
+/// run took and a read answers for it (ISS-752).
+pub(crate) fn lease_path(
+    project_id: Option<&str>,
+    session_id: Option<&str>,
+    issue_key: &str,
+) -> String {
+    let query: Vec<String> = [("projectId", project_id), ("sessionId", session_id)]
+        .into_iter()
+        .filter_map(|(name, value)| value.map(|v| format!("{name}={v}")))
+        .collect();
+    if query.is_empty() {
+        format!("/api/devices/me/issue-leases/{issue_key}")
+    } else {
+        format!(
+            "/api/devices/me/issue-leases/{issue_key}?{}",
+            query.join("&")
+        )
     }
 }
 
@@ -369,9 +407,10 @@ fn no_lease_stands_under_key(body: &str) -> Option<&'static str> {
 pub async fn lease_state(
     client: &CoreClient,
     project_id: Option<&str>,
+    session_id: Option<&str>,
     issue_key: &str,
 ) -> Result<LeaseState> {
-    let req = client.get(&lease_path(project_id, issue_key));
+    let req = client.get(&lease_path(project_id, session_id, issue_key));
     let resp = status::sent(req, "issue-lease read").await?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
@@ -385,6 +424,7 @@ pub async fn lease_state(
             );
             return Ok(LeaseState {
                 held_by_this_device: false,
+                held_by_this_session: session_id.map(|_| false),
             });
         }
         return Err(Error::Other(status::refused(
@@ -399,9 +439,10 @@ pub async fn lease_state(
 pub async fn release_lease(
     client: &CoreClient,
     project_id: Option<&str>,
+    session_id: Option<&str>,
     issue_key: &str,
 ) -> Result<()> {
-    let req = client.delete(&lease_path(project_id, issue_key));
+    let req = client.delete(&lease_path(project_id, session_id, issue_key));
     let resp = status::sent(req, "issue-lease release").await?;
     // A 404 is core saying this box holds no such lease, which is the state the
     // release was asking for; `is_returned` reads it back either way. Anything
@@ -411,4 +452,58 @@ pub async fn release_lease(
         status::checked(resp, "issue-lease release").await?;
     }
     Ok(())
+}
+
+/// A lease call names the run session asking, and its read is answered for
+/// that session (ISS-752).
+#[cfg(test)]
+mod lease_tests {
+    use super::*;
+
+    #[test]
+    fn the_path_names_the_project_and_the_run_session() {
+        assert_eq!(
+            lease_path(Some("p"), Some("s"), "ISS-7"),
+            "/api/devices/me/issue-leases/ISS-7?projectId=p&sessionId=s"
+        );
+        assert_eq!(
+            lease_path(None, Some("s"), "ISS-7"),
+            "/api/devices/me/issue-leases/ISS-7?sessionId=s"
+        );
+        assert_eq!(
+            lease_path(Some("p"), None, "ISS-7"),
+            "/api/devices/me/issue-leases/ISS-7?projectId=p"
+        );
+        assert_eq!(
+            lease_path(None, None, "ISS-7"),
+            "/api/devices/me/issue-leases/ISS-7"
+        );
+    }
+
+    fn read(body: &str) -> LeaseState {
+        serde_json::from_str(body).unwrap()
+    }
+
+    #[test]
+    fn a_run_reads_its_own_lease_back_not_the_boxs() {
+        // A newer run on the box holds the key; the asking run took nothing.
+        let newer_holds =
+            read(r#"{"held":true,"heldByThisDevice":true,"heldByThisSession":false}"#);
+        assert!(newer_holds.returned(Some("older"), "ISS-7").unwrap());
+        assert!(!newer_holds.returned(None, "ISS-7").unwrap());
+
+        let own = read(r#"{"held":true,"heldByThisDevice":true,"heldByThisSession":true}"#);
+        assert!(!own.returned(Some("older"), "ISS-7").unwrap());
+    }
+
+    #[test]
+    fn a_core_answering_no_session_half_is_an_error_not_the_boxs_half() {
+        let old_core = read(r#"{"held":true,"heldByThisDevice":true}"#);
+        let err = old_core
+            .returned(Some("s-1"), "ISS-7")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("heldByThisSession"), "{err}");
+        assert!(err.contains("s-1"), "{err}");
+    }
 }

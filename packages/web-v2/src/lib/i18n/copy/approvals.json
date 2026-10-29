@@ -44,6 +44,7 @@
     "approvals.approveRow": "Approve {key}",
     "approvals.declineRow": "Decline {key}",
     "approvals.sendRow": "Send “{label}” for {key}",
+    "approvals.reason": "Reason",
     "approvals.otherAnswers": "{n} other answer",
     "approvals.otherAnswers.many": "{n} other answers",
     "approvals.answers": "{n} answers",

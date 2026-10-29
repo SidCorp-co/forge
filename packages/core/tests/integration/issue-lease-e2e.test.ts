@@ -1,8 +1,8 @@
 /**
  * ISS-1109 — who is working an issue is a row a constraint refuses (`issue_leases`), taken all or
  * none per group (`issues/issue-lease.ts:takeIssueLeases`) and given back for the one project it was
- * taken for (`releaseIssueLeaseRow`). Against Postgres: the primary key, the per-key order and the
- * transaction are the rule.
+ * taken for and the run session that took it (`releaseIssueLeaseRow`, ISS-752). Against Postgres:
+ * the primary key, the per-key order and the transaction are the rule.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -57,9 +57,15 @@ async function box(project = projectId): Promise<Box> {
 const take = (b: Box, issueKeys: string[], project = projectId) =>
   db.transaction((tx) => takeIssueLeases(tx, { projectId: project, ...b, issueKeys }));
 
-const give = (b: Box, issueKey: string, project?: string) =>
+/** A give-back as a box sends it: naming its run session, unless `session` is `null`. */
+const give = (b: Box, issueKey: string, project?: string, session: string | null = b.sessionId) =>
   db.transaction((tx) =>
-    releaseIssueLeaseRow(tx, { deviceId: b.deviceId, issueKey, projectId: project ?? null }),
+    releaseIssueLeaseRow(tx, {
+      deviceId: b.deviceId,
+      issueKey,
+      projectId: project ?? null,
+      sessionId: session,
+    }),
   );
 
 async function holders(
@@ -158,8 +164,46 @@ describe('giving one issue back', () => {
     const a = await box();
     await take(a, ['ISS-1', 'ISS-2']);
 
-    expect(await give(a, 'ISS-1')).toEqual({ released: true, projectId });
+    expect(await give(a, 'ISS-1')).toEqual({ released: true, projectId, runId: a.runId });
     expect((await holders()).map((h) => h.issue_key)).toEqual(['ISS-2']);
+  });
+
+  it("answers not_held for another run session's lease on the same box, and removes nothing", async () => {
+    const older = await box();
+    const newer = { ...(await box()), deviceId: older.deviceId };
+    await take(newer, ['ISS-1']);
+
+    expect(await give(older, 'ISS-1')).toEqual({
+      released: false,
+      reason: 'not_held',
+      projectIds: [],
+    });
+    expect(await holders()).toEqual([{ issue_key: 'ISS-1', session_id: newer.sessionId }]);
+  });
+
+  it('answers run_unnamed to a give-back naming no session over a live lease, and removes nothing', async () => {
+    const a = await box();
+    await take(a, ['ISS-1']);
+
+    expect(await give(a, 'ISS-1', undefined, null)).toEqual({
+      released: false,
+      reason: 'run_unnamed',
+      holder: { sessionId: a.sessionId, runId: a.runId },
+    });
+    expect(await holders()).toHaveLength(1);
+  });
+
+  it('gives back a lease whose session has ended to a give-back naming no session', async () => {
+    const a = await box();
+    await take(a, ['ISS-1']);
+    await endSession(a);
+
+    expect(await give(a, 'ISS-1', undefined, null)).toEqual({
+      released: true,
+      projectId,
+      runId: a.runId,
+    });
+    expect(await holders()).toHaveLength(0);
   });
 
   it('answers not_held for a key the box does not hold, and removes nothing', async () => {
@@ -178,12 +222,16 @@ describe('giving one issue back', () => {
     await take(a, ['ISS-1']);
     await take(inOther, ['ISS-1'], other);
 
-    const vague = await give(a, 'ISS-1');
+    const vague = await give(a, 'ISS-1', undefined, null);
     expect(vague).toMatchObject({ released: false, reason: 'ambiguous' });
     expect(await holders()).toHaveLength(1);
     expect(await holders(other)).toHaveLength(1);
 
-    expect(await give(a, 'ISS-1', other)).toEqual({ released: true, projectId: other });
+    expect(await give(inOther, 'ISS-1', other)).toEqual({
+      released: true,
+      projectId: other,
+      runId: inOther.runId,
+    });
     expect(await holders()).toHaveLength(1);
     expect(await holders(other)).toHaveLength(0);
   });

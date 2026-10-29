@@ -1,9 +1,10 @@
 
-import { FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
+import { FEEDBACK_TARGET_TYPES, type FeedbackEndpointContractType } from "@forge/contracts/feedback";
 import { useEffect, useId, useState } from "react";
 import { enumLabel, Input, NativeSelect } from "@/design";
 import { type IssuePick, IssuePicker } from "@/features/issue-picker";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useProjects } from "@/features/projects";
 import { canWriteProject } from "@/features/projects";
 import type { TargetChoice } from "../api";
@@ -19,6 +20,13 @@ const LISTED: ReadonlySet<PickableTarget> = new Set<PickableTarget>(["requiremen
 
 type Choice = TargetChoice;
 
+/** How the picker names one served element, by the kind of contract serving it. */
+const SERVED_COPY = {
+  openapi: "feedback.target.route",
+  "mcp-tools": "feedback.target.tool",
+  cli: "feedback.target.command",
+} as const satisfies Record<FeedbackEndpointContractType, ProductCopyKey>;
+
 /** The project's requirements, workflows or releases, by title; empty until the list has loaded. */
 function useChoices(projectId: string, type: PickableTarget): { choices: Choice[]; loaded: boolean } {
   const q = useFeedbackChoices(projectId, type === "requirement" || type === "workflow" || type === "release" ? type : null);
@@ -33,7 +41,7 @@ function choiceOf(choices: readonly Choice[], text: string): Choice | null {
 }
 
 /**
- * The About picker (ISS-279): the target's type and its reference. On "API route or tool" the input
+ * The About picker (ISS-279): the target's type and its reference. On "Route, tool or command" the input
  * suggests what the project serves, read from core; core still checks the name, so a typed one it
  * does not serve is refused by name. A project serving none says so before Send and points to a
  * Screen (ISS-278), rather than leaving it to that refusal.
@@ -106,7 +114,7 @@ export function TargetPicker({
           <datalist id={listId} data-testid="feedback-endpoints">
             {served.map((s) => (
               <option key={s.key} value={s.key}>
-                {t(s.type === "openapi" ? "feedback.target.route" : "feedback.target.tool", { element: s.element, contract: s.contract, version: s.version })}
+                {t(SERVED_COPY[s.type], { element: s.element, contract: s.contract, version: s.version })}
               </option>
             ))}
           </datalist>

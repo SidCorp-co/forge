@@ -6,7 +6,9 @@
 // holds a note: an issue is noted once its diagnosis writes one, never on every sweep for being open.
 // A requirement or feedback item stuck through a carrier issue that is itself stuck is not diagnosed:
 // the carrier is, and the item is noted, its note citing the carrier it waits on.
-// An ask of the master stands until its item's basis moves, or a reasoned decision on the item answers it. The sweep spends only its share of the
+// An ask of the master stands until its item's basis moves, its item waits on a person, or a reasoned
+// decision on the item, or on the item whose run asked, answers it; one answered since it was made
+// leaves the master's nudge at once, and the sweep settles it. The sweep spends only its share of the
 // day's budget (`policy.ts:sharesOf`): it raises no more runs than that share has room for, oldest
 // stuck first, and the rest wait for a later sweep, so a full backlog is paced across days and the
 // handoff share stays whole.
@@ -17,7 +19,16 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import { aboutKeyOf, aboutKindOf, asksToSettle, openMasterAsks, settleAsks } from './asks.js';
+import {
+  type AnsweredOn,
+  aboutKeyOf,
+  aboutKindOf,
+  answeredAsks,
+  answeredOnOf,
+  asksToSettle,
+  openMasterAsks,
+  settleAsks,
+} from './asks.js';
 import { sharesOf, stewardStanceOf, utcDayStart } from './policy.js';
 import { openStandings } from './ports.js';
 import { ranOnBasis, spentSince, sweepQueued } from './runs-store.js';
@@ -150,20 +161,31 @@ export async function sweepStandings(now = new Date()): Promise<SweepTally> {
   return tally;
 }
 
-/** An ask of the master still standing, and the item whose decision answers it. */
+/** An ask of the master still standing, the item it is about, and every item whose decision answers it. */
 interface StewardAsk {
   actId: string;
   ask: string;
   subject: { kind: StandingSubjectKind; key: string };
+  answeredOn: AnsweredOn[];
 }
 
 /**
  * The asks of the master still standing on a project, oldest first (`masters/owed.ts` stewardAsks),
- * each with the item whose decision answers it, so the nudge names that item's own door (ISS-654).
+ * each with the items whose decision answers it, so the nudge names those items' own doors (ISS-654,
+ * ISS-739). One a decision answered since it was made is left out now, before the sweep settles it.
  */
-export async function openStewardAsks(projectId: string): Promise<StewardAsk[]> {
-  return (await openMasterAsks(projectId)).map((r) => {
-    const key = aboutKeyOf(r);
-    return { actId: r.id, ask: r.masterAsk ?? '', subject: { kind: aboutKindOf(key), key } };
-  });
+export async function openStewardAsks(projectId: string, now = new Date()): Promise<StewardAsk[]> {
+  const open = await openMasterAsks(projectId);
+  const answered = await answeredAsks(projectId, open, now);
+  return open
+    .filter((r) => !answered.has(r.id))
+    .map((r) => {
+      const key = aboutKeyOf(r);
+      return {
+        actId: r.id,
+        ask: r.masterAsk ?? '',
+        subject: { kind: aboutKindOf(key), key },
+        answeredOn: answeredOnOf(r),
+      };
+    });
 }

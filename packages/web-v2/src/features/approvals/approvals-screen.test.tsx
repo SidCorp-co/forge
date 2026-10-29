@@ -351,7 +351,7 @@ describe("the reason a rule asks for", () => {
     const base = READ.decisions.find((d) => d.key === "REQ-48");
     if (!base?.proposal) throw new Error("no proposal row");
     const path = `/api/projects/${P}/requirements/REQ-72/agree`;
-    const why = "Its designs are approved and it waits only on an agree.";
+    const why = "Restores BC-3 — The ward lead asked for it";
     const agree = {
       ...base,
       id: "requirement-agree:r72",
@@ -375,13 +375,14 @@ describe("the reason a rule asks for", () => {
   });
 
   // ISS-645, REQ-4 BC-16: a revision's accept is a sign-off and records why, so the one-click accept
-  // sends the recommendation's why that core put in its body
+  // sends the recommendation's why that core put in its body: the revision's own words, which the row
+  // shows before the press, since they are recorded under the person's name (ISS-645 r2, judge K144)
   it("sends the recommended revision accept in one press, with the recommendation's why as its reason", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const base = READ.decisions.find((d) => d.key === "REQ-48");
     if (!base?.proposal) throw new Error("no proposal row");
     const path = `/api/projects/${P}/requirements/REQ-73/revisions/2/accept`;
-    const why = "Its author proposed revision 2 for sign-off.";
+    const why = "BC-2 keeps a referral's notes — The ward lead asked for it";
     const accept = {
       ...base,
       id: "revision-accept:r73",
@@ -399,10 +400,45 @@ describe("the reason a rule asks for", () => {
     });
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
+    // the reason the ✓ records, on the row before the press
+    const shown = within(rowOf("REQ-73")).getByTestId("approval-reason");
+    expect(shown).toHaveTextContent(`Reason ${why}`);
+    expect(shown).toHaveAttribute("title", why);
+    // said once: an open row's peek says it under Why, and the row no longer repeats it
+    fireEvent.click(within(rowOf("REQ-73")).getByTestId("approval-open"));
+    expect(within(await screen.findByTestId("approval-peek-why")).getByText(why)).toBeInTheDocument();
+    expect(within(rowOf("REQ-73")).queryByTestId("approval-reason")).toBeNull();
+    fireEvent.click(within(rowOf("REQ-73")).getByTestId("approval-open"));
     fireEvent.click(within(rowOf("REQ-73")).getByTestId("approval-approve"));
     expect(screen.queryByTestId("approval-words")).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
     await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/requirements/REQ-73/revisions/2/accept`, body: { reason: why } })]));
+  });
+
+  // a revision that gives no words of its own: core recommends nothing, so the row shows no reason
+  // and its ✓ asks the person for theirs rather than sending any
+  it("asks for the reason of a revision accept core gave no words to, and shows none on the row", async () => {
+    const base = READ.decisions.find((d) => d.key === "REQ-48");
+    if (!base?.proposal) throw new Error("no proposal row");
+    const path = `/api/projects/${P}/requirements/REQ-74/revisions/3/accept`;
+    const accept = {
+      ...base,
+      id: "revision-accept:r74",
+      key: "REQ-74",
+      title: "Referrals name their owner",
+      opens: null,
+      proposal: null,
+      recommended: null,
+      noRecommendation: "Revision 3 says neither what it changes nor why.",
+      answers: [{ id: "accept", label: "Accept revision 3", act: "revision.accept" as const, path, body: {}, needsReason: true, declines: false, effect: null, recommended: false }],
+    };
+    const calls = fakeCore(({ path: at, method }) => (method === "GET" && at === DECISIONS ? { body: { ...READ, total: 1, decisions: [accept] } } : undefined));
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    expect(within(rowOf("REQ-74")).queryByTestId("approval-reason")).toBeNull();
+    fireEvent.click(within(rowOf("REQ-74")).getByTestId("approval-approve"));
+    expect(await screen.findByTestId("approval-words")).toBeInTheDocument();
+    expect(posts(calls)).toEqual([]);
   });
 });
 

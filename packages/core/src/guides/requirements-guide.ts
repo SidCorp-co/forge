@@ -212,6 +212,10 @@ standing's \`coverage[].verdicts\`; \`GET …/verdicts\` lists them, newest firs
 such verdict the requirement rests on its shipped capability and owes no breakdown: every BC passing, it
 waits on its accept, which its checklist takes; a BC with no counted pass waits on the project's judge;
 a BC failing waits on the master to break that BC down, the one breakdown it then owes.
+A fail goes to the issues tracing the BC, and the answer's \`routed\` names each with its \`outcome\` and
+\`why\`: \`reopen\` for a landed one whose own criteria tracing it do not all pass, \`building\` for one still
+being built, which owns what is missing, and \`stays\` for a landed one that delivered its half, told so on
+it. With none building and every landed one passing, the newest landing is sent back.
 
 ### Who may act
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,

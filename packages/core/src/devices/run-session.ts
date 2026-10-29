@@ -375,7 +375,7 @@ export async function readRunSessionTerminal(args: {
   return (terminalAgentSessionStatuses as readonly string[]).includes(row.status);
 }
 /**
- * Give one issue's lease back, per ISSUE and per PROJECT, never per run.
+ * Give one issue's lease back, per ISSUE, per PROJECT and per RUN SESSION (ISS-752).
  *
  * Two writes, because there are two records: the lease row, which says who is
  * holding the issue, and the run's membership array, which says what this run
@@ -383,14 +383,19 @@ export async function readRunSessionTerminal(args: {
  * Dropping the key from membership without dropping the lease would leave the
  * issue held by a run that no longer claims it.
  *
- * Total on purpose: a release that matched nothing, and one that matched more
- * than it could identify, are answers rather than throws, and the route turns
- * each into the refusal a box reads.
+ * The membership write reaches only the run whose lease row went. Every run on
+ * the box carrying the key was stripped before, so an older run's close took the
+ * key out of a newer run's list along with its lease (ISS-752).
+ *
+ * Total on purpose: a release that matched nothing, one that matched more than
+ * it could identify, and one naming no run over a live run's lease are answers
+ * rather than throws, and the route turns each into the refusal a box reads.
  */
 export async function releaseIssueLease(args: {
   deviceId: string;
   issueKey: string;
   projectId?: string | null;
+  sessionId?: string | null;
 }): Promise<IssueLeaseRelease> {
   // One transaction, because they are two halves of one act. With the lease
   // dropped and committed on its own, a replacement open on this same device
@@ -401,38 +406,24 @@ export async function releaseIssueLease(args: {
   return await db.transaction(async (tx) => {
     const outcome = await releaseIssueLeaseRow(tx, args);
     if (!outcome.released) return outcome;
-    // Narrowed to the project whose row went: the same key names a different
-    // issue in every other project this box serves, and a run of one of those
-    // is still carrying it (ISS-1139).
-    const carrying = (await tx.execute(sql`
-      SELECT r.id
-        FROM pipeline_runs r
-        JOIN agent_sessions s ON s.pipeline_run_id = r.id
-       WHERE s.device_id = ${args.deviceId}
-         AND s.kind = ${RUN_SESSION_KIND}
-         AND r.project_id = ${outcome.projectId}
-         AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)
-    `)) as unknown as Array<{ id: string }>;
-    for (const run of new Set(carrying.map((r) => r.id))) {
-      await writeRunMetadata(
-        run,
-        {
-          value: sql`jsonb_set(
-            COALESCE(${pipelineRuns.metadata}, '{}'::jsonb),
-            ARRAY[${RUN_ISSUES_METADATA_KEY}],
-            COALESCE(
-              (SELECT jsonb_agg(k)
-                 FROM jsonb_array_elements_text(
-                   COALESCE(${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb)
-                 ) AS k
-                WHERE k <> ${args.issueKey}),
-              '[]'::jsonb))`,
-          when: sql`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)`,
-          touch: false,
-        },
-        tx,
-      );
-    }
+    await writeRunMetadata(
+      outcome.runId,
+      {
+        value: sql`jsonb_set(
+          COALESCE(${pipelineRuns.metadata}, '{}'::jsonb),
+          ARRAY[${RUN_ISSUES_METADATA_KEY}],
+          COALESCE(
+            (SELECT jsonb_agg(k)
+               FROM jsonb_array_elements_text(
+                 COALESCE(${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb)
+               ) AS k
+              WHERE k <> ${args.issueKey}),
+            '[]'::jsonb))`,
+        when: sql`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)`,
+        touch: false,
+      },
+      tx,
+    );
     return outcome;
   });
 }

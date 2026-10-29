@@ -1,4 +1,5 @@
 // @direct-test-of packages/web-v2/src/test/vi-chrome-issues.tsx
+// @direct-test-of packages/web-v2/src/test/vi-chrome-questions.tsx
 
 import { act, render } from "@testing-library/react";
 import type { ReactElement } from "react";

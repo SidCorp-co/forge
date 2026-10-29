@@ -22,28 +22,56 @@ type Shape = { hint?: string | undefined; code: string };
 
 const shapes = new WeakMap<object, Shape>();
 
-function unknownQueryKeys(schema: unknown, error: z.core.$ZodError): HTTPException | null {
+// a query key a route refuses because another route reads it: the refusal names that route
+const elsewhere = new WeakMap<object, Readonly<Record<string, string>>>();
+
+function unknownQueryKeys(
+  schema: unknown,
+  error: z.core.$ZodError,
+  readAt: Readonly<Record<string, string>> = {},
+): HTTPException | null {
   const unknown = [
     ...new Set(error.issues.flatMap((i) => (i.code === 'unrecognized_keys' ? i.keys : []))),
   ];
   if (unknown.length === 0) return null;
   const shape = (schema as { shape?: Record<string, unknown> }).shape;
-  const takes = shape ? ` This route takes: ${Object.keys(shape).sort().join(', ')}.` : '';
+  const keys = shape ? Object.keys(shape).sort() : null;
+  const takes =
+    keys === null
+      ? ''
+      : keys.length === 0
+        ? ' This route takes no query parameters.'
+        : ` This route takes: ${keys.join(', ')}.`;
   const rows: Refusal[] = [
     ...unknown.map((key) => ({
       code: 'UNKNOWN_QUERY_PARAMETER',
       path: jsonPointer([key]),
-      detail: `\`${key}\` is not a query parameter of this route.${takes}`,
+      detail: `\`${key}\` is not a query parameter of this route.${takes}${pointerTo(readAt, key)}`,
     })),
     ...error.issues
       .filter((i) => i.code !== 'unrecognized_keys')
       .map((i) => ({ code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message })),
   ];
   const named = unknown.map((key) => `\`${key}\``).join(', ');
+  const pointers = unknown.map((key) => pointerTo(readAt, key)).join('');
   return new HTTPException(400, {
-    message: `Unknown query parameter${unknown.length > 1 ? 's' : ''}: ${named}.${takes}`,
+    message: `Unknown query parameter${unknown.length > 1 ? 's' : ''}: ${named}.${takes}${pointers}`,
     cause: { code: 'UNKNOWN_QUERY_PARAMETER', details: rows },
   });
+}
+
+const pointerTo = (readAt: Readonly<Record<string, string>>, key: string) =>
+  Object.hasOwn(readAt, key) ? ` ${readAt[key]}` : '';
+
+/**
+ * The hook of a query that refuses a key another route reads: the refusal of each key `readAt`
+ * names says, in its sentence, where that key is read instead. Every other key is refused as any
+ * unknown key is.
+ */
+export function readElsewhere(readAt: Readonly<Record<string, string>>): Hook {
+  const hook = (() => undefined) as Hook;
+  elsewhere.set(hook, readAt);
+  return hook;
 }
 
 // a query key no route reads is refused by name rather than dropped, so a misspelt filter never
@@ -162,7 +190,10 @@ export const zValidator = ((...args: Args) => {
   const answer = (async (r: Failed, c: Context) => {
     const own = shape ? undefined : await (hook as (r: Failed, c: Context) => unknown)(r, c);
     if (own !== undefined || r.success) return own;
-    const unknown = target === 'query' && r.error ? unknownQueryKeys(schema, r.error) : null;
+    const unknown =
+      target === 'query' && r.error
+        ? unknownQueryKeys(schema, r.error, hook ? elsewhere.get(hook) : undefined)
+        : null;
     throw unknown ?? inputRefusal(r.error, shape ?? { code: 'BAD_REQUEST' });
   }) as Hook;
   const middleware = honoZodValidator(target, schema, answer, ...rest);

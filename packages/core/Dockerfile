@@ -16,23 +16,12 @@ COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile --filter @forge/core... --filter web-v2...
-# @forge/core and @forge/contracts declare each other, so turbo prints
-# `Circular package dependency detected` and there is NO topological order
-# between them: left to `--filter @forge/core...` alone, `packages/core build`
-# races `packages/contracts build` and reads a half-emitted dist — CI 2026-09-23
-# failed TS7016 naming dist/document-patch.js, the .js written and the .d.ts not
-# yet. Build the emit-only deps first, in their own layer, so the ordering is the
-# Dockerfile's rather than the scheduler's.
-RUN pnpm --filter @forge/observability build && pnpm --filter @forge/contracts build
-# No third dot HERE, deliberately: `@forge/core...` would pull @forge/contracts
-# back into this invocation and let it build a second time beside core's tsgo,
-# which is the same race again. The install above keeps its `...` — that is
-# where the workspace deps have to be present, and @forge/observability shipping
-# as raw .ts under node_modules is what the third dot prevents there.
 # What's new reads the CHANGELOG.md of the build it runs in: core's build parses it and refuses
 # a section it cannot read by file, version and line, and the runtime stage ships it beside dist/.
 COPY CHANGELOG.md ./CHANGELOG.md
-RUN pnpm --filter @forge/core build
+# Core and the workspace packages it declares, in the order the manifests declare: pnpm finishes
+# @forge/observability and @forge/contracts before it starts core (ISS-137).
+RUN pnpm --filter "@forge/core..." build
 # The contract differ (ISS-20): the oasdiff release core is pinned to, its sha256
 # checked against the pin in src/ecosystem/contract/oasdiff.ts. A land on a
 # deployed branch is refused by name, never measured by something else, when the

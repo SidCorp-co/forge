@@ -27,8 +27,14 @@ function reachableProjects(deviceId: string): SQL {
 interface DeviceIssueLease {
   /** Held by a live run session on ANY box, across the projects this one serves. */
   held: boolean;
-  /** Held by THIS box. What a close loop asking "have I given this back" means. */
+  /** Held by THIS box, under any of its run sessions. */
   heldByThisDevice: boolean;
+  /**
+   * Held by the run session the request named, on this box; `null` where it named none. What a close
+   * loop asking "has MY run given this back" means: a newer run on the same box may hold the key
+   * (ISS-752).
+   */
+  heldByThisSession: boolean | null;
   holder: IssueLeaseHolder | null;
 }
 
@@ -96,7 +102,11 @@ export async function readDeviceIssueLease(args: {
   deviceId: string;
   issueKey: string;
   projectId?: string | null;
+  sessionId?: string | null;
 }): Promise<DeviceIssueLease> {
+  const heldByThisSession = args.sessionId
+    ? await sessionHolds({ ...args, sessionId: args.sessionId })
+    : null;
   // Unnarrowed, the answer is tie-broken across every project this box reaches,
   // which can be a lease the caller did not mean (ISS-1139).
   const inProject = args.projectId ? sql`AND l.project_id = ${args.projectId}` : sql.empty();
@@ -110,7 +120,7 @@ export async function readDeviceIssueLease(args: {
      LIMIT 1
   `)) as unknown as Array<Record<string, unknown>>;
   const row = rows[0];
-  if (!row) return { held: false, heldByThisDevice: false, holder: null };
+  if (!row) return { held: false, heldByThisDevice: false, heldByThisSession, holder: null };
   const holder: IssueLeaseHolder = {
     issueKey: String(row.issue_key),
     deviceId: String(row.device_id),
@@ -121,8 +131,29 @@ export async function readDeviceIssueLease(args: {
   return {
     held: true,
     heldByThisDevice: holder.deviceId === args.deviceId,
+    heldByThisSession,
     holder,
   };
+}
+
+/** Whether that box's run session holds a live lease on the key. */
+async function sessionHolds(args: {
+  deviceId: string;
+  issueKey: string;
+  projectId?: string | null;
+  sessionId: string;
+}): Promise<boolean> {
+  const inProject = args.projectId ? sql`AND l.project_id = ${args.projectId}` : sql.empty();
+  const rows = (await db.execute(sql`
+    SELECT 1
+      FROM ${liveIssueLeasesSql()} l
+     WHERE l.issue_key = ${args.issueKey}
+       AND l.device_id = ${args.deviceId}
+       AND l.session_id = ${args.sessionId}
+       ${inProject}
+     LIMIT 1
+  `)) as unknown as unknown[];
+  return rows.length > 0;
 }
 
 /** A key that reaches no lease, with the status that says which way. */

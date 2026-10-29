@@ -162,13 +162,14 @@ export const ISSUE_WITHHELD_CODES = [
 	"WORKFLOW_DESIGN_NOT_APPROVED",
 	"CONTRACT_WAIT_UNSETTLED",
 	"PATTERN_REVIEW_PENDING",
+	"ISSUE_SCOPE_HELD",
 ] as const;
 export type IssueWithheldCode = (typeof ISSUE_WITHHELD_CODES)[number];
 
-export interface IssueWithheld {
-	code: IssueWithheldCode;
-	detail: string;
-}
+export type IssueWithheld =
+	| { code: Exclude<IssueWithheldCode, "ISSUE_SCOPE_HELD">; detail: string }
+	/** `holder`: the issue whose live run holds the scope, which the wait names. */
+	| { code: "ISSUE_SCOPE_HELD"; detail: string; holder: string };
 
 export interface IssueStanding
 	extends Standing<IssueAttentionGroup, IssueWaitingKind> {

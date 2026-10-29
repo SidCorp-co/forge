@@ -1,6 +1,7 @@
 // REQ-48: the steward's ask of the master rides the master wake under its own source, and the runner
 // reads every source core sends by name (`runner-daemon/src/wake_source.rs:WakeSource`), so a source
 // added here without its reader goes red here rather than as a refused wake on a box.
+// @direct-test-of packages/runner/crates/runner-daemon/src/wake_source.rs
 
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

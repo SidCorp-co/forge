@@ -2,11 +2,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { invalid, zValidator } from './zod-validator.js';
+import { invalid, readElsewhere, zValidator } from './zod-validator.js';
 
-function appWith(schema: z.ZodType) {
+function appWith(schema: z.ZodType, hook?: ReturnType<typeof readElsewhere>) {
   const app = new Hono();
-  app.get('/graph', zValidator('query', schema), (c) => c.json(c.req.valid('query' as never)));
+  app.get('/graph', zValidator('query', schema, hook), (c) =>
+    c.json(c.req.valid('query' as never)),
+  );
   app.onError((err, c) => {
     if (!(err instanceof HTTPException)) throw err;
     const cause = err.cause as { code: string; details: { code: string; path: string }[] };
@@ -30,6 +32,35 @@ describe('zValidator query', () => {
     expect(body.message).toContain('`issueId`');
     expect(body.message).toContain('This route takes: rootIssueId.');
     expect(body.details[0]?.path).toBe('/issueId');
+  });
+
+  it('says a route that takes no query takes none, never an empty list', async () => {
+    const res = await appWith(z.strictObject({})).request('/graph?bogus=1');
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('UNKNOWN_QUERY_PARAMETER');
+    expect(body.message).toBe(
+      'Unknown query parameter: `bogus`. This route takes no query parameters.',
+    );
+  });
+
+  it('names where a key read by another route is read, and refuses the rest as unknown', async () => {
+    const hook = readElsewhere({ revision: 'A past revision is read at /history?revision=<n>.' });
+    const res = await appWith(z.strictObject({}), hook).request('/graph?revision=2&bogus=1');
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details: { code: string; path: string; detail: string }[];
+    };
+    expect(body.code).toBe('UNKNOWN_QUERY_PARAMETER');
+    expect(body.message).toContain('/history?revision=<n>');
+    const byPath = new Map(body.details.map((d) => [d.path, d.detail]));
+    expect(byPath.get('/revision')).toContain('A past revision is read at /history?revision=<n>.');
+    expect(byPath.get('/bogus')).toBe(
+      '`bogus` is not a query parameter of this route. This route takes no query parameters.',
+    );
+    expect((await appWith(z.strictObject({}), hook).request('/graph')).status).toBe(200);
   });
 
   it('still answers the keys it declares', async () => {

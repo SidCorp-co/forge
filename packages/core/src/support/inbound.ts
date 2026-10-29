@@ -3,6 +3,7 @@
 // `confirm`/`cancel` naming a fix, which core answers itself, or the writer is past the hourly limit.
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
+import { containsSecret, scrubLogText } from '@forge/observability';
 import { linkCodeIn } from '../assistant/index.js';
 import { appendMessagesIn } from '../conversations/index.js';
 import { db } from '../db/client.js';
@@ -14,6 +15,7 @@ import {
   reactToMessage,
 } from '../integrations/rocketchat/index.js';
 import { logger } from '../lib/logger.js';
+import { flagSecret } from './channel.js';
 import { deliverWaiting } from './dispatch.js';
 import { answerConfirm } from './fixes.js';
 import { answerLinkCode } from './link-code.js';
@@ -31,7 +33,10 @@ export async function handleSupportMessage(input: {
   m: RocketChatIncomingMessage;
   shape: RoomShape;
 }): Promise<void> {
-  const { route, m } = input;
+  const { route } = input;
+  // a posted secret is never kept: the message is recorded and handed on without it (REQ-75 r6 BC-40)
+  const secret = containsSecret(input.m.text);
+  const m = secret ? { ...input.m, text: scrubLogText(input.m.text) } : input.m;
   // an operations room runs under the default limits and takes no confirm: it proposes nothing
   const config: SupportRoomConfig = route.support ?? {};
   if (input.shape !== 'group') {
@@ -55,10 +60,19 @@ export async function handleSupportMessage(input: {
   const thread = threadOf(m);
   const conversation = await threadConversationOf(room, namespace, thread);
   const author = { key: m.userId, label: m.username ?? null };
+  const recordAndFlag = async (
+    message: RocketChatIncomingMessage,
+    by: { key: string; label: string | null },
+    opts: { deliver: boolean; maxChars?: number },
+  ): Promise<boolean> => {
+    const fresh = await recordInbound(room, conversation.id, thread, message, by, opts);
+    if (fresh && secret) await flagSecret(room, conversation.id, thread, m.id, by);
+    return fresh;
+  };
 
-  const confirm = room.kind === 'support' ? parseConfirm(m.text) : null;
+  const confirm = room.kind === 'support' ? parseConfirm(input.m.text) : null;
   if (confirm) {
-    await recordInbound(room, conversation.id, thread, m, author, { deliver: false });
+    await recordAndFlag(m, author, { deliver: false });
     await answerConfirm({
       room,
       config,
@@ -74,9 +88,9 @@ export async function handleSupportMessage(input: {
 
   // a member linking their chat account to the Forge user who minted the code: core answers it, and
   // the code is never kept or shown to the session, since anyone in the room could read it there
-  const linkCode = linkCodeIn(m.text);
+  const linkCode = linkCodeIn(input.m.text);
   if (linkCode) {
-    await recordInbound(room, conversation.id, thread, { ...m, text: 'link ********' }, author, {
+    await recordAndFlag({ ...m, text: 'link ********' }, author, {
       deliver: false,
     });
     await answerLinkCode(room, namespace, thread, author, linkCode);
@@ -85,14 +99,14 @@ export async function handleSupportMessage(input: {
 
   // a room that answers only mentions keeps every other message as the thread's context (REQ-75 r5)
   if (config.answers === 'mentions' && !m.mentions.includes(input.ac.botUserId)) {
-    await recordInbound(room, conversation.id, thread, m, author, { deliver: false });
+    await recordAndFlag(m, author, { deliver: false });
     return;
   }
 
   const limits = limitsOf(config);
   const hourAgo = new Date(Date.now() - 60 * 60_000);
   if ((await memberMessagesSince(room.id, author.key, hourAgo)) >= limits.messagesPerUserPerHour) {
-    await recordInbound(room, conversation.id, thread, m, author, { deliver: false });
+    await recordAndFlag(m, author, { deliver: false });
     if (!(await limitToldSince(room.id, author.key, hourAgo))) {
       const posted = await postInThread({
         room,
@@ -116,7 +130,7 @@ export async function handleSupportMessage(input: {
     return;
   }
 
-  const fresh = await recordInbound(room, conversation.id, thread, m, author, {
+  const fresh = await recordAndFlag(m, author, {
     deliver: true,
     maxChars: limits.messageMaxChars,
   });

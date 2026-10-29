@@ -86,8 +86,9 @@ export const FEEDBACK_UNTRIAGED_PHASES = [
 
 /**
  * What one item is about: an exclusive arc of six foreign keys, or a screen named in words; core
- * alone files against a contract version (E3). An `endpoint` is a route or tool the project serves:
- * an element of the current version of an openapi or mcp-tools contract it provides (ISS-279).
+ * alone files against a contract version (E3). An `endpoint` is a route, tool or command the project
+ * serves: an element of the current version of an openapi, mcp-tools or cli contract it provides
+ * (ISS-279, ISS-594).
  */
 export const FEEDBACK_TARGET_TYPES = [
 	"requirement",
@@ -163,7 +164,7 @@ export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
 	release: "Release",
 	workflow: "Workflow",
 	contract: "Contract version",
-	endpoint: "API route or tool",
+	endpoint: "Route, tool or command",
 	mockup: "Mockup",
 	screen: "Screen",
 };
@@ -342,10 +343,11 @@ export interface FeedbackRefusal {
 const ref = z.string().trim().min(1).max(200);
 const reason = z.string().max(FEEDBACK_LIMITS.reason);
 
-/** The contract types whose elements are routes or tools a project serves, and so an `endpoint` target. */
+/** The contract types whose elements are routes, tools or commands a project serves, and so an `endpoint` target. */
 export const FEEDBACK_ENDPOINT_CONTRACT_TYPES = [
 	"openapi",
 	"mcp-tools",
+	"cli",
 ] as const;
 export type FeedbackEndpointContractType =
 	(typeof FEEDBACK_ENDPOINT_CONTRACT_TYPES)[number];
@@ -356,7 +358,7 @@ const feedbackTargetFields = {
 	issue: ref.optional(),
 	release: ref.optional(),
 	workflow: ref.optional(),
-	/** A route (`METHOD /path`) or tool the project serves, bare or as `<contract>:<element>`. */
+	/** A route (`METHOD /path`), tool or command (`<program> <command>`) the project serves, bare or as `<contract>:<element>`. */
 	endpoint: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen).optional(),
 	/** A mockup (MK-n) of this project the item is about (REQ-49 BC-4). */
 	mockup: ref.optional(),
@@ -644,7 +646,7 @@ export const listFeedbackQuerySchema = z.strictObject({
 export interface FeedbackTargetView {
 	type: FeedbackTargetType;
 	/** REQ-n, ISS-n, a release version, a workflow flow, `<provider>/<contract>@<version>`, a served
-	 *  route or tool as `<contract>:<element>`, a mockup's MK-n, or the screen as written. */
+	 *  route, tool or command as `<contract>:<element>`, a mockup's MK-n, or the screen as written. */
 	key: string;
 	title: string | null;
 	/** On a workflow target, the step or edge the item names; absent, it is about the whole workflow. */
@@ -654,7 +656,7 @@ export interface FeedbackTargetView {
 	stepNames?: Record<string, string>;
 }
 
-/** One route or tool a project serves, as `GET …/feedback/endpoints` lists it for the About picker. */
+/** One route, tool or command a project serves, as `GET …/feedback/endpoints` lists it for the About picker. */
 export interface FeedbackEndpointView {
 	/** `<contract>:<element>`, the name a create or retarget may send as `endpoint`. */
 	key: string;

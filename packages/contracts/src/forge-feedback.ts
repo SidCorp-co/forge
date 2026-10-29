@@ -80,10 +80,15 @@ export const FORGE_FEEDBACK_TARGET_KINDS = [
 	"skill",
 	"other",
 ] as const;
-export type ForgeFeedbackTargetKind = (typeof FORGE_FEEDBACK_TARGET_KINDS)[number];
+export type ForgeFeedbackTargetKind =
+	(typeof FORGE_FEEDBACK_TARGET_KINDS)[number];
 export const forgeFeedbackTargetSchema = z.strictObject({
 	kind: z.enum(FORGE_FEEDBACK_TARGET_KINDS),
-	ref: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen - 10),
+	ref: z
+		.string()
+		.trim()
+		.min(1)
+		.max(FEEDBACK_LIMITS.whereSeen - 10),
 });
 export type ForgeFeedbackTarget = z.infer<typeof forgeFeedbackTargetSchema>;
 
@@ -138,6 +143,25 @@ export interface ForgeFeedbackItem {
 	progress: ProductProgress;
 	/** Once its work shipped: the violated criterion's verdict and clip its reporter confirms or reopens from. */
 	shipEvidence: FeedbackShipEvidence | null;
+	/** What its triage told the reporter, in the words the project's own read gives (REQ-47 BC-10). */
+	told: FeedbackToldView;
+}
+
+/**
+ * What triage told an item's reporter, each null where it told nothing of it (REQ-47 BC-10): the
+ * answer of an answer route, the reason of a decline, the latest clarification asked of them, and the
+ * release the fix shipped in. Nothing else of the item's record: no note, no id, no other reporter.
+ */
+export interface FeedbackToldView {
+	answer: string | null;
+	declined: string | null;
+	clarification: {
+		prompt: string | null;
+		/** The answer the asker recommends, which the reporter can send as it stands. */
+		recommended: string | null;
+		status: string;
+	} | null;
+	shippedIn: string | null;
 }
 
 /**
@@ -167,6 +191,17 @@ export interface ForgeFeedbackList {
 	/** The project feedback about Forge is filed into. */
 	home: { id: string; slug: string; name: string };
 	asOf: string;
+}
+
+/**
+ * `POST /api/forge/feedback/answers/claim`: the answers on the caller's own items that none of its
+ * sessions has been told, oldest first, each recorded as told by this call and never handed out again
+ * (REQ-47 BC-11). The forge-runner hook asks it on a session's prompt and puts what it answers into
+ * that session's context.
+ */
+export interface ForgeFeedbackAnswersClaimed {
+	answers: { key: string; answer: string; answeredAt: string }[];
+	returned: number;
 }
 
 /** What a carry of the retired agent reports did, or would do on a dry run. */

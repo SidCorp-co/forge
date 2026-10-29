@@ -246,19 +246,58 @@ const HEADER_RE = new RegExp(
 // so `access_token=...&id=7` keeps its `&id=7`.
 const FIELD_VALUE = /^\s*\\?"?([^\s"\\,}&]+)/;
 
+/** The marks that close a sentence, a clause or a bracket, as a run at the end of a value. */
+const CLOSING_MARKS = /[.;:!?)\]]+$/;
+
+/** A value's body, and the run of closing marks after it. */
+function splitClosing(value: string): { body: string; marks: string } {
+	const marks = CLOSING_MARKS.exec(value)?.[0] ?? "";
+	return { body: value.slice(0, value.length - marks.length), marks };
+}
+
+/**
+ * What a credential value's scrubbing keeps after it: its closing marks from the first bracket that
+ * closes one opened before the value, so `(token: <value>)` keeps its bracket. A bracket closing
+ * one the value opened is the value's (`[Filtered]` is scrubbed whole, so scrubbing twice changes
+ * nothing), and a full stop or a bang before the kept bracket goes with the value, as it may be the
+ * credential's own last character.
+ */
+function closingKept(value: string): string {
+	const { body, marks } = splitClosing(value);
+	// a value of closing marks alone is scrubbed whole, as a label cut off before its value is read
+	if (body === "") return "";
+	let open = 0;
+	for (const c of body) {
+		if (c === "(" || c === "[") open++;
+		else if ((c === ")" || c === "]") && open > 0) open--;
+	}
+	for (let i = 0; i < marks.length; i++) {
+		if (marks[i] !== ")" && marks[i] !== "]") continue;
+		if (open === 0) return marks.slice(i);
+		open--;
+	}
+	return "";
+}
+
 /**
  * A credential field's value is a credential only in a credential's shape, as a bearer token is: a
  * digit, a capital after a small letter, a character outside a word, or 24 characters or more.
  * `api_key: head` names the header a key rides in; `password: required` is prose. A count of one to
  * three digits and nothing else is prose too (`no token: 4 failures`, ISS-572); four digits is a
  * PIN's length and stays a credential.
+ *
+ * The marks closing a sentence or a bracket after the value are prose, not part of it: a count may
+ * take any (`no token: 4.`, `(secret: 12)`), a word all but `!` and `?`, the symbols a password most
+ * often ends in (`password: required.` is prose, `password: Welcome!` is not).
  */
 function isOrdinaryWord(value: string): boolean {
-	if (/^\d{1,3}$/.test(value)) return true;
+	const { body, marks } = splitClosing(value);
+	if (/^\d{1,3}$/.test(body)) return true;
+	if (/[!?]/.test(marks)) return false;
 	return (
-		value.length < 24 &&
-		/^[A-Za-z]+(?:-[A-Za-z]+)*$/.test(value) &&
-		!/[a-z][A-Z]/.test(value)
+		body.length < 24 &&
+		/^[A-Za-z]+(?:-[A-Za-z]+)*$/.test(body) &&
+		!/[a-z][A-Z]/.test(body)
 	);
 }
 
@@ -285,7 +324,7 @@ export function scrubLogText(
 			out = out.replace(headerRe, `$1$2${FILTERED}`);
 			for (const re of bodyRes)
 				out = out.replace(re, (whole, field: string, value: string) =>
-					isOrdinaryWord(value) ? whole : `${field}${FILTERED}`,
+					isOrdinaryWord(value) ? whole : `${field}${FILTERED}${closingKept(value)}`,
 				);
 			out = scrubSecretValues(out, extraSecrets);
 			out = out.replace(ENV_SECRET_ASSIGNMENT_PATTERN, `$1=${FILTERED}`);
@@ -347,7 +386,7 @@ interface SpanRule {
 	/** Characters at the match's head the scrubber keeps (a label, a scheme): outside the span. */
 	readonly kept?: (m: RegExpExecArray) => number;
 	/** Characters at its tail the scrubber keeps. */
-	readonly keptTail?: number;
+	readonly keptTail?: (m: RegExpExecArray) => number;
 	readonly lead?: RegExp;
 	/** A match this reads as prose is no span: the scrubber leaves it as it stands. */
 	readonly prose?: (m: RegExpExecArray, text: string) => boolean;
@@ -373,7 +412,7 @@ const LINE_RULES: readonly SpanRule[] = [
 	{ shape: "access token", pattern: JWT_PATTERN, lead: /^eyJ/ },
 	{ shape: "provider key", pattern: PREFIXED_TOKEN_PATTERN, lead: PROVIDER_KEY_LEAD },
 	{ shape: "bearer token", pattern: BEARER_PATTERN, kept: group1 },
-	{ shape: "connection password", pattern: URL_PASSWORD_PATTERN, kept: group1, keptTail: 1 },
+	{ shape: "connection password", pattern: URL_PASSWORD_PATTERN, kept: group1, keptTail: () => 1 },
 	{
 		shape: "credential field",
 		pattern: HEADER_RE,
@@ -384,6 +423,7 @@ const LINE_RULES: readonly SpanRule[] = [
 			shape: "credential field",
 			pattern,
 			kept: group1,
+			keptTail: (m) => closingKept(m[2] ?? "").length,
 			prose: (m) => isOrdinaryWord(m[2] ?? ""),
 		}),
 	),
@@ -414,7 +454,7 @@ function spansOf(text: string, offset: number, rules: readonly SpanRule[]): Secr
 		for (const m of text.matchAll(rule.pattern)) {
 			if (rule.prose?.(m, text)) continue;
 			const start = m.index + (rule.kept?.(m) ?? 0);
-			const end = m.index + m[0].length - (rule.keptTail ?? 0);
+			const end = m.index + m[0].length - (rule.keptTail?.(m) ?? 0);
 			const value = text.slice(start, end);
 			// what the scrubber already redacted is not a secret it would redact again
 			if (value === "" || value === FILTERED) continue;

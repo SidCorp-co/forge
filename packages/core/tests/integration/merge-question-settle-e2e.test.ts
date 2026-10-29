@@ -1,8 +1,8 @@
 /**
  * A park that waits on a merge mark: the stamp writing the mark — a mark, a design approval recorded
  * as the landing — answers its question in the stamp's transaction, naming the mark, and the issue
- * moves on as an answer moves it; a mark that already stands, an issue elsewhere, and a park naming
- * two facts are refused by name, writing nothing.
+ * moves on as an answer moves it; a mark that already stands, another issue's mark (ordering, which is
+ * a `blocks` edge), and a park naming two facts are refused by name, writing nothing.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -128,24 +128,24 @@ describe('the stamp writing the mark a park waits on answers its question', () =
     expect(await statusOf(issue.id)).toBe('in_progress');
   });
 
-  it("answers a park on another issue's mark when that one is marked, and leaves it alone before", async () => {
-    const awaited = await plantIssue('in_progress');
+  it("is answered by its own mark alone: another issue's mark leaves it waiting", async () => {
     const parked = await plantIssue('in_progress');
-    ok(await park(parked.id, { awaitsMerge: { issueId: awaited.id } }));
+    ok(await park(parked.id, { awaitsMerge: { issueId: parked.id } }));
     const queue = ok(
       await say('owner', 'GET', `/api/questions?projectId=${projectId}&status=open`),
     );
     const listed = (queue.questions as Doc[]).find((q) => q.issueId === parked.id);
-    expect(listed?.awaitsMerge).toEqual({ issueId: awaited.id, key: awaited.key });
+    expect(listed?.awaitsMerge).toEqual({ issueId: parked.id, key: parked.key });
 
     const unrelated = await plantIssue('in_progress');
     ok(await mark(unrelated.id));
     expect((await questionsOn(parked.id)).map((q) => q.status)).toEqual(['open']);
+    expect(await statusOf(parked.id)).toBe('needs_info');
 
-    ok(await mark(awaited.id));
+    ok(await mark(parked.id));
     const [settled] = await questionsOn(parked.id);
     expect(settled?.status).toBe('answered');
-    expect(settled?.answer).toContain(`The merge mark of ${awaited.key} was recorded`);
+    expect(settled?.answer).toContain(`The merge mark of ${parked.key} was recorded`);
     await settleOutbox();
     expect(await statusOf(parked.id)).toBe('in_progress');
   });
@@ -192,7 +192,7 @@ describe('the stamp writing the mark a park waits on answers its question', () =
   });
 });
 
-describe('a park may wait only on a mark still owed, of its own project', () => {
+describe('a park may wait only on its own mark, still owed', () => {
   it('refuses a mark that already stands, naming it, writing nothing', async () => {
     const issue = await plantIssue('in_progress', {
       mergedAt: new Date('2026-10-06T23:44:00.000Z'),
@@ -208,17 +208,42 @@ describe('a park may wait only on a mark still owed, of its own project', () => 
     expect(await questionsOn(issue.id)).toEqual([]);
   });
 
-  it('refuses an issue that is not of this project, or no issue at all, writing nothing', async () => {
+  it("refuses another issue's mark as ordering, naming the blocks edge, writing nothing (ISS-738)", async () => {
     const issue = await plantIssue('in_progress');
+    const other = await plantIssue('in_progress');
+    const marked = await plantIssue('in_progress', {
+      mergedAt: new Date('2026-10-06T23:44:00.000Z'),
+    });
     const elsewhere = await plantIssue('in_progress', { project: otherProjectId });
-    for (const issueId of [elsewhere.id, randomUUID()]) {
+    for (const issueId of [other.id, marked.id, elsewhere.id, randomUUID()]) {
       const res = await park(issue.id, { awaitsMerge: { issueId } });
       expect(res.status, JSON.stringify(res.json)).toBe(422);
-      expect(codesOf(res)).toEqual(['QUESTION_MERGE_UNKNOWN']);
-      expect(JSON.stringify(res.json)).toContain(issueId);
+      expect(codesOf(res)).toEqual(['QUESTION_MERGE_IS_ORDERING']);
+      const said = String(res.json.error?.refusals?.[0]?.detail);
+      expect(said).toContain(issueId);
+      expect(said).toContain('`blocks` edge');
+      expect(said).toContain(
+        `POST /api/issues/${issue.id}/dependencies {"dependsOnId":"${issueId}","kind":"blocks"}`,
+      );
     }
     expect(await statusOf(issue.id)).toBe('in_progress');
     expect(await questionsOn(issue.id)).toEqual([]);
+  });
+
+  it("refuses re-pointing a park onto another issue's mark, leaving the park as it was (ISS-738)", async () => {
+    const issue = await plantIssue('in_progress');
+    const other = await plantIssue('in_progress');
+    ok(await park(issue.id, { needs: 'which of the two layouts ships' }));
+    const before = await questionsOn(issue.id);
+    expect(before.map((q) => q.status)).toEqual(['open']);
+    const res = await park(issue.id, {
+      reason: 'now waits on the other issue landing',
+      awaitsMerge: { issueId: other.id },
+    });
+    expect(res.status, JSON.stringify(res.json)).toBe(422);
+    expect(codesOf(res)).toEqual(['QUESTION_MERGE_IS_ORDERING']);
+    expect(await statusOf(issue.id)).toBe('needs_info');
+    expect(await questionsOn(issue.id)).toEqual(before);
   });
 
   it('refuses awaitsMerge with awaitsDesign, on a move that mints no question, and from a person', async () => {

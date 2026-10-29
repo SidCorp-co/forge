@@ -9,6 +9,7 @@ import {
   SUPPORT_FIX_STATES,
   SUPPORT_PROPOSAL_KINDS,
 } from '@forge/contracts/support';
+import { CHANNEL_MEMBER_STATES, CHANNEL_ROLES } from '@forge/contracts/support-channel';
 import { OPERATIONS_SCOPES, SUPPORT_ROOM_KINDS } from '@forge/contracts/support-operations';
 import { sql } from 'drizzle-orm';
 import {
@@ -16,6 +17,7 @@ import {
   index,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -171,7 +173,10 @@ export const supportProposals = pgTable(
   }),
 );
 
-/** A Feedback item the session recorded, and the thread its progress is posted in until it ships. */
+/**
+ * A Feedback item the session recorded, and the thread its result is told in once it is final
+ * (REQ-75 r6 BC-15). `last_phase` is the phase it was last read at; nothing is posted for one.
+ */
 export const supportFeedbackLinks = pgTable(
   'support_feedback_links',
   {
@@ -185,10 +190,10 @@ export const supportFeedbackLinks = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     thread: text('thread').notNull(),
-    /** The phase last posted in the thread. */
+    /** The phase the item was last read at. */
     lastPhase: text('last_phase', { enum: FEEDBACK_PHASES }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    /** Set when the item shipped or was declined: nothing more is posted. */
+    /** Set when its result was told (it shipped, was confirmed or was declined): nothing more is. */
     closedAt: timestamp('closed_at', { withTimezone: true }),
   },
   (t) => ({
@@ -196,6 +201,116 @@ export const supportFeedbackLinks = pgTable(
     phaseChk: check(
       'support_feedback_links_phase_chk',
       sql`${t.lastPhase} IN (${inList(FEEDBACK_PHASES)})`,
+    ),
+  }),
+);
+
+/**
+ * A bound group's channel record (REQ-75 r6 BC-41): one per project and group, read by every room
+ * row of that project bound to the group, whichever bot answers it.
+ */
+export const supportChannels = pgTable(
+  'support_channels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    rid: text('rid').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectRidUq: uniqueIndex('support_channels_project_rid_uq').on(t.projectId, t.rid),
+  }),
+);
+
+/**
+ * A member of a channel by Rocket.Chat username (BC-31..BC-34): the roles the bot inferred or a
+ * person confirmed, and what to ask them for. No email or other personal data (BC-40).
+ */
+export const supportChannelMembers = pgTable(
+  'support_channel_members',
+  {
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => supportChannels.id, { onDelete: 'cascade' }),
+    username: text('username').notNull(),
+    roles: text('roles').array().notNull(),
+    askFor: text('ask_for'),
+    state: text('state', { enum: CHANNEL_MEMBER_STATES }).notNull(),
+    confirmedBy: uuid('confirmed_by').references(() => users.id, { onDelete: 'set null' }),
+    /** The message the bot read its inference from. */
+    sourceMessage: text('source_message'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ name: 'support_channel_members_pk', columns: [t.channelId, t.username] }),
+    rolesChk: check(
+      'support_channel_members_roles_chk',
+      sql`cardinality(${t.roles}) >= 1 AND ${t.roles} <@ ARRAY[${inList(CHANNEL_ROLES)}]::text[]`,
+    ),
+    stateChk: check(
+      'support_channel_members_state_chk',
+      sql`${t.state} IN (${inList(CHANNEL_MEMBER_STATES)})`,
+    ),
+  }),
+);
+
+/**
+ * A channel rule (BC-35): an instruction a team member gave, linked to the message it came from, or a
+ * rule a person added in Forge (no message). A removed rule keeps its row.
+ */
+export const supportChannelRules = pgTable(
+  'support_channel_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => supportChannels.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    author: text('author'),
+    messageId: text('message_id'),
+    thread: text('thread'),
+    addedBy: uuid('added_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+  },
+  (t) => ({
+    messageUq: uniqueIndex('support_channel_rules_message_uq')
+      .on(t.channelId, t.messageId)
+      .where(sql`removed_at IS NULL AND message_id IS NOT NULL`),
+    sourceChk: check(
+      'support_channel_rules_source_chk',
+      sql`(${t.messageId} IS NULL) = (${t.author} IS NULL) AND (${t.messageId} IS NULL) = (${t.thread} IS NULL)`,
+    ),
+  }),
+);
+
+/** A question asked in several threads, with its one answer (BC-36); a defect links its Feedback. */
+export const supportChannelCommonIssues = pgTable(
+  'support_channel_common_issues',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => supportChannels.id, { onDelete: 'cascade' }),
+    question: text('question').notNull(),
+    /** The question folded to lower case and single spaces: one common issue per question. */
+    questionKey: text('question_key').notNull(),
+    answer: text('answer').notNull(),
+    threads: text('threads').array().notNull(),
+    feedbackId: uuid('feedback_id').references(() => feedback.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+  },
+  (t) => ({
+    questionUq: uniqueIndex('support_channel_common_issues_question_uq')
+      .on(t.channelId, t.questionKey)
+      .where(sql`removed_at IS NULL`),
+    threadsChk: check(
+      'support_channel_common_issues_threads_chk',
+      sql`cardinality(${t.threads}) >= 2`,
     ),
   }),
 );

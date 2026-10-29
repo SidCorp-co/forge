@@ -58,7 +58,7 @@ export interface TargetFields {
 }
 
 // an item is about exactly one target (FEEDBACK_TARGET_NOT_ONE): a requirement, an issue,
-// a release, a workflow, a route or tool the project serves, or a screen named in words; a screen
+// a release, a workflow, a route, tool or command the project serves, or a screen named in words; a screen
 // item stores its screen as where it was seen, so a whereSeen beside it is FEEDBACK_SCREEN_TWICE
 export function targetCountRefusal(
   fields: TargetFields,

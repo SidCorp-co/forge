@@ -12,6 +12,7 @@ import {
   sessionSendStanding,
 } from '../agent-sessions/index.js';
 import { logger } from '../lib/logger.js';
+import { writerRoles } from './channel-read.js';
 import {
   claimUndelivered,
   giveBackInjected,
@@ -43,7 +44,7 @@ export async function injectWaiting(room: RoomRow, session: SessionRow): Promise
       agentSessionId: session.id,
       kind: 'inject',
       intentId: `${INJECT_INTENT}${first.id}`,
-      body: `${INJECT_LEAD}\n\n${turnMessages(rows)}`,
+      body: `${INJECT_LEAD}\n\n${turnMessages(rows, await writerRoles(room.projectId, room.rid))}`,
     });
     if (!sent.published) {
       await unclaim(ids, at);

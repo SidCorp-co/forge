@@ -6,7 +6,7 @@
  */
 
 import type { FeedbackShipEvidence, FeedbackSummary } from '@forge/contracts/feedback';
-import type { ForgeFeedbackItem } from '@forge/contracts/forge-feedback';
+import type { FeedbackToldView, ForgeFeedbackItem } from '@forge/contracts/forge-feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { listFeedbackIn, type ReadDoor, withDuplicateRoots } from '../feedback/index.js';
 import {
@@ -86,6 +86,7 @@ export function forgeItemOf(
   s: FeedbackSummary,
   reads: FeedbackReads,
   shipEvidence: FeedbackShipEvidence | null,
+  told: FeedbackToldView,
 ): ForgeFeedbackItem {
   return {
     key: s.key,
@@ -99,5 +100,6 @@ export function forgeItemOf(
     updatedAt: s.updatedAt,
     progress: feedbackProgress(s, reads),
     shipEvidence,
+    told,
   };
 }

@@ -136,23 +136,32 @@ cancel or 15 minutes unconfirmed file nothing, and the session is told the key o
 Then core records a defect, a feature or an extra request as Feedback through the external
 filing door (`feedback/external.ts:fileExternalFeedback`, channel `rocketchat`), as the room's
 account, with the thread's permalink in the body and the thread told its key. A group member is
-handed no status link — in a group anyone could open it, and the thread's own progress lines are the
-status — so migration 0537 lets `feedback_external_reporters.status_token_hash` be null and checks
+handed no status link — in a group anyone could open it, and the result posted in the thread is
+what they are owed — so migration 0537 lets `feedback_external_reporters.status_token_hash` be null and checks
 it is held by exactly the widget rows (`feedback_external_reporters_status_link_chk`). Minting a token
 and discarding it would have stored a link nobody holds, and pulled the support module into the
 credential walk (`middleware/credential-doors.test.ts`) as if it checked a secret.
-Triage then routes it — to an issue, or promoted to a Requirement — as every item is; the session never files an issue (BC-14). The `support-progress` outbox consumer reads
+Triage then routes it — to an issue, or promoted to a Requirement — as every item is; the session never files an issue (BC-14). The `support-results` outbox consumer reads
 each linked item's phase on `issue.created`, `issue.transitioned`, `release.shipped`,
-`requirement.transitioned` and `feedback.verifySettled`, posts each change in the thread, and stops
-at resolved, verified or declined (BC-15). A triage or a decline emits no event, so the
-`support.progress-follow` timer reads every followed item again each minute
-(`support/progress.ts:followAllItems`).
+`requirement.transitioned` and `feedback.verifySettled`; an item that reached resolved, verified or
+declined closes its link and hands the session one note in its thread, and the session posts the
+result there, once. Nothing is posted for any earlier phase (r6 BC-15: output, never progress). A
+decline emits no event, so the `support.result-follow` timer reads every followed item again each
+minute (`support/result.ts:tellAllResults`).
+
+### The channel record (r6)
+
+Each bound group has one record per project (`support_channels`, migration 0549), read by every
+room row of that project bound to the group: members by Rocket.Chat username with their roles,
+inferred by the bot or confirmed by a person; rules a confirmed team member gave, linked to their
+message; common issues; and the three routes (`support/channel.ts`, `support/channel-read.ts`).
+The page is Product → Channels.
 
 ### The record
 
 Every inbound message and every line the bot posts is a row of the thread's conversation (venue
 `<server> <rid> <thread>`); every action — a check, a proposal, a confirm, a refusal, a filing, a
-progress post — is a `support_actions` row and a `system` line in that conversation, so the Forge
+routed need, a told result — is a `support_actions` row and a `system` line in that conversation, so the Forge
 conversation view shows it and `GET /api/projects/:id/support/rooms/:roomId/actions` lists it
 (BC-18).
 

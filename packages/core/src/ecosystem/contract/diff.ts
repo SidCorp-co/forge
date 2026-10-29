@@ -4,6 +4,7 @@ export const DIFF_TOOLS = [
   'json-schema-diff',
   'graphql-inspector',
   'graphql-sdl-diff',
+  'cli-diff',
   'none',
 ] as const;
 type DiffTool = (typeof DIFF_TOOLS)[number];

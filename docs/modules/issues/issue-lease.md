@@ -61,6 +61,29 @@ reads the candidate rows `FOR UPDATE`, and answers `not_held` for none and
 `404` and a `422` refusal `ISSUE_LEASE_AMBIGUOUS`, because a delete that matched
 nothing acknowledged as `200` is read by the box as the issue handed back.
 
+## A give-back names the run giving back
+
+One box can run two sessions over one key: a release judge declared over the
+closed issue, which takes no lease, and the build the box opened once the issue
+reopened, which does. A give-back naming only the box and the key cannot tell
+them apart. The judge's close loop asked whether the box still held the key,
+read the build's lease, gave it back, and left the build refused `NO_HOLDER` on
+its own move (ISS-752).
+
+So both lease endpoints take `?sessionId=`, the run session asking. A give-back
+naming one reaches only that session's row, and a read answers
+`heldByThisSession` for it. A give-back naming none still returns a lease whose
+session has ended. Over a live session's lease it is refused
+`ISSUE_LEASE_RUN_UNNAMED` (`409`, naming the holding session) and removes
+nothing: that is the call a runner predating the parameter sends, and it now
+leaves that runner's older run owing the lease until the newer run ends, rather
+than taking it.
+
+`packages/core/src/devices/run-session.ts:releaseIssueLease` strips the key from
+the issue list of the run whose lease row went (`issue_leases.run_id`) and of no
+other run on the box. Stripping every run carrying the key is how the newer
+run lost its list entry along with its lease.
+
 The `ISSUE_LEASE_AMBIGUOUS` refusal is the one answer a box cannot settle from the key alone: core holds
 two rows and nothing in the request chooses between them, so the way out is
 `?projectId=`, which a runner sends off the ledger's `runs.project_id`. A box
@@ -114,11 +137,14 @@ its own permission to read that release back, and the close loop — which marks
 run closed only on a successful read — would never terminate. A refusal whose
 condition the successful operation creates is not a loud failure; it is a wedge.
 
-## The two booleans are two questions
+## The three answers are three questions
 
-`held` is the fleet-wide fact the pool turns on. `heldByThisDevice` is what a
-box's own close loop needs, because a box that never sees its own release land
-never marks the run closed. A caller has to say which it is asking.
+`held` is the fleet-wide fact the pool turns on. `heldByThisDevice` is this
+box's. `heldByThisSession`, answered when the read names a run session and
+`null` otherwise, is what a box's own close loop needs: a box that never sees its
+own release land never marks the run closed, and one reading the box's answer
+reads a newer run's lease as its own (ISS-752). A caller has to say which it is
+asking.
 
 ## Two questions about work on an issue
 
@@ -146,9 +172,18 @@ since a take over an issue at rest is refused `ISSUE_AT_REST`; a queued
 declaration stamps nothing and a given-back key leaves `runIssues`, so neither
 holds. `issueRunDeclaredSql` asks it for the rescue, and
 `packages/core/src/issues/run-holder.ts:runSessionHoldersOf` reads it beside the
-live fleet leases for the in_progress guard (`packages/core/src/issues/work-state.ts:issueHolder`) and
-the awaiting_release guard, so both name the session runs/standing names
-(ISS-589). An ended session holds nothing.
+live fleet leases for the in_progress guard and the awaiting_release guard
+(`packages/core/src/issues/run-holder.ts:runHoldersOf`), so both name the session
+runs/standing names (ISS-589). An ended session holds nothing.
+
+Both moves are the holding run's, not anybody's while something holds
+(`packages/core/src/issues/run-holder.ts:callerHolds`): where a run holds the
+issue, the caller is the box of one holder, or the token that wrote a lease from
+no box, or holds `releases.approve` or `project.admin`; anyone else is refused
+`NOT_THE_HOLDER`, every holder named. A box whose own run has ended holds
+nothing, so it is refused like a stranger (ISS-589 r2). Where no run holds it, a
+job or pipeline run over it still lets the claim through
+(`packages/core/src/issues/work-state.ts:issueHolder`).
 
 ## What a refusal carries
 

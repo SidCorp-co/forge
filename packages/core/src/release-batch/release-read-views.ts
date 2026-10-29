@@ -22,6 +22,7 @@ import {
   type ReleaseSplit,
   type ReleaseState,
   type ReleaseSummary,
+  type ReleaseTag,
   releaseVerifiedLevel,
 } from '@forge/contracts/releases';
 import { say } from '@forge/contracts/said';
@@ -76,6 +77,8 @@ export interface Part {
   shippedFailing: ReleaseShippedFailing | null;
   /** On a draft, the roster issues the open promotion's head carries, and that request's label (REQ-63 BC-9). */
   promotionSplit?: { issueIds: string[]; request: string } | null;
+  /** Its tag on the source host (`release-tag.ts`); null on a draft and before it shipped. */
+  tag: ReleaseTag | null;
 }
 
 export interface Shared {
@@ -502,5 +505,6 @@ export function detailOf(
     promotion,
     verifiedBy,
     head: headOf(p),
+    tag: p.tag,
   };
 }

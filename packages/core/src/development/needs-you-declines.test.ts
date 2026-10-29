@@ -35,12 +35,12 @@ function declining(b: Built): string[] {
 
 describe('the answer that says no', () => {
   it('is the return, drop, defer or reopen, each asking why', () => {
-    expect(declining(revisionDecision(row('requirement', 'REQ-1'), 'requirements', P, 2))).toEqual([
-      'revision.return:return',
-    ]);
-    expect(declining(agreeDecision(row('requirement', 'REQ-1'), 'requirements', P, 2))).toEqual([
-      'requirement.drop:drop',
-    ]);
+    expect(
+      declining(revisionDecision(row('requirement', 'REQ-1'), 'requirements', P, 2, 'Adds BC-2')),
+    ).toEqual(['revision.return:return']);
+    expect(
+      declining(agreeDecision(row('requirement', 'REQ-1'), 'requirements', P, 2, 'Adds BC-2')),
+    ).toEqual(['requirement.drop:drop']);
     expect(
       declining(
         acceptDecision(row('requirement', 'REQ-1'), 'requirements', P, 2, { passing: 1, total: 2 }),

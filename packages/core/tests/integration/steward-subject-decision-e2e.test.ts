@@ -59,16 +59,19 @@ let clock = Date.now();
 /** A sentence the fake read carries, by its registry key; nothing here renders it. */
 const said = (key: string) => ({ key }) as unknown as Said;
 
-/** An item waiting, overdue, on a person who decides: a feedback item's triage, a requirement's agree. */
-function personWait(item: Item, basis: string): ItemStanding {
+/**
+ * An item waiting, overdue, on an act the master is asked about. A wait a person owes is never asked
+ * of the master (ISS-739, steward-ask-answered-e2e), so the door each kind names is read on this one.
+ */
+function masterWait(item: Item, basis: string): ItemStanding {
   return {
     subject: { kind: item.kind, id: item.id, key: item.key },
     title: item.key,
     group: 'stuck',
     waitingOn: {
-      kind: 'person',
-      who: 'Feedback triager',
-      act: 'triage it',
+      kind: 'master',
+      who: 'Master',
+      act: 'route it',
       rule: 'a person decides what happens to it',
       ref: null,
       dueAt: '2026-10-19T00:00:00.000Z',
@@ -188,12 +191,12 @@ afterAll(async () => {
   await closeWorld();
 });
 
-describe('a feedback item waiting on a person: the master records why it waits on the item (c1, c2, c3)', () => {
+describe('a feedback item waiting on the master: the master records why it waits on the item (c1, c2, c3)', () => {
   let fb: Item;
 
   it("the master's nudge names the feedback item's decision door, not the issue one (c2)", async () => {
     fb = await feedbackItem(36);
-    standings = [personWait(fb, 'fb-1')];
+    standings = [masterWait(fb, 'fb-1')];
     await askRun(fb);
     expect(await openAbout(fb.key)).toHaveLength(1);
     const text = await nudge();
@@ -246,7 +249,7 @@ describe('a feedback item waiting on a person: the master records why it waits o
   });
 
   it('a moved standing asks again', async () => {
-    standings = [personWait(fb, 'fb-2')];
+    standings = [masterWait(fb, 'fb-2')];
     await askRun(fb);
     expect(await openAbout(fb.key)).toHaveLength(1);
   });
@@ -266,7 +269,7 @@ describe('a feedback item waiting on a person: the master records why it waits o
   });
 
   it('a reversedWhen date already past answers nothing, and the write says it has passed', async () => {
-    standings = [personWait(fb, 'fb-3')];
+    standings = [masterWait(fb, 'fb-3')];
     await askRun(fb);
     expect(await openAbout(fb.key)).toHaveLength(1);
     const wrote = await decideOn(fb, {
@@ -288,7 +291,7 @@ describe('the same root on a requirement, and an issue as before (boundary)', ()
   it('a requirement ask names the requirement door and a decision there answers it', async () => {
     const created = await createTestRequirement(projectId, 23, 'A guide corpus');
     const req: Item = { kind: 'requirement', ...created };
-    standings = [personWait(req, 'req-1')];
+    standings = [masterWait(req, 'req-1')];
     await askRun(req);
     expect(await openAbout(req.key)).toHaveLength(1);
     const text = await nudge();
@@ -313,7 +316,7 @@ describe('the same root on a requirement, and an issue as before (boundary)', ()
       createdAt: new Date(),
     });
     const issue: Item = { kind: 'issue', id: created.id, key: created.key };
-    standings = [personWait(issue, 'iss-1')];
+    standings = [masterWait(issue, 'iss-1')];
     await askRun(issue);
     expect(await openAbout(issue.key)).toHaveLength(1);
     const text = await nudge();

@@ -91,6 +91,27 @@ export async function designHoldsOf(
   return out;
 }
 
+/**
+ * The approved design revisions an issue's mark stands on where it carries no code (ISS-570): per
+ * workflow, the newest approved revision the issue drew, `<flow>@rev<n>` — what each approval's own
+ * stamp names (`design-landing.ts:markApprovedDesign`). None for an issue linked as a workflow's
+ * build, whose deliverable is that build: an approval there is evidence, never its landing.
+ */
+export async function approvedDesignsDrawn(
+  executor: Pick<Tx, 'execute'>,
+  issueId: string,
+): Promise<string[]> {
+  const rows = (await executor.execute(sql`
+    SELECT w.flow || '@rev' || max(d.revision) AS ref
+      FROM project_workflow_designs d
+      JOIN project_workflows w ON w.id = d.workflow_id
+     WHERE d.design_issue_id = ${issueId} AND d.decision = 'approve'
+       AND NOT EXISTS (SELECT 1 FROM workflow_builds b WHERE b.issue_id = ${issueId})
+     GROUP BY w.flow
+     ORDER BY w.flow`)) as unknown as Array<{ ref: string }>;
+  return rows.map((r) => r.ref);
+}
+
 export function designHoldPhrase(holds: readonly DesignHold[]): string {
   return holds
     .map(

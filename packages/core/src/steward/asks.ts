@@ -6,7 +6,9 @@
 // still stands, or the holders of the act it waits on told (ISS-654), holds it. A moved standing (a
 // new wait, the wait gone stuck, a run reading the item on another basis) asks again.
 // The item is an issue, a feedback item or a requirement, its decision read where its own door
-// writes one (ISS-654).
+// writes one (ISS-654). An ask about another item than its run's own (a stuck issue asking about its
+// blocker) is answered on either, and a decision recorded since the ask leaves the master's nudge at
+// once, not at the next sweep (ISS-739). A wait a person owes is never the master's, so its ask settles.
 
 import type { ItemStanding, StandingSubjectKind, StewardCite } from '@forge/contracts/steward';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, like, ne, or, sql } from 'drizzle-orm';
@@ -16,6 +18,8 @@ import { stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { type ReasonedDecision, reasonedDecisionsOn } from '../issues/index.js';
 import { heldStewardOf } from './account.js';
+import { waitsOnPerson } from './ask-addressee.js';
+import { decisionSubjectOf } from './decision-subject-of.js';
 
 /** The act door a wake of the master is logged under. */
 export const WAKE_DOOR = 'WAKE master.wake steward';
@@ -73,6 +77,26 @@ export function aboutKeyOf(ask: Pick<AskRow, 'wrote' | 'masterAsk' | 'subjectKey
 /** The kind of item an ask is about, by its key: REQ-n, FB-n, or an issue. */
 export function aboutKindOf(key: string): StandingSubjectKind {
   return key.startsWith('REQ-') ? 'requirement' : key.startsWith('FB-') ? 'feedback' : 'issue';
+}
+
+/** An item a decision on answers an ask. */
+export interface AnsweredOn {
+  kind: StandingSubjectKind;
+  key: string;
+}
+
+/**
+ * The items a decision on answers an ask (ISS-739): the item it is about, then the item of the run
+ * that asked where that is another, so the stuck item answers an ask about its blocker too.
+ */
+export function answeredOnOf(
+  ask: Pick<AskRow, 'wrote' | 'masterAsk' | 'subjectKey' | 'subjectKind'>,
+): AnsweredOn[] {
+  const about = aboutKeyOf(ask);
+  const own = ask.subjectKey.toUpperCase();
+  const items: AnsweredOn[] = [{ kind: aboutKindOf(about), key: about }];
+  if (own !== about) items.push({ kind: ask.subjectKind, key: own });
+  return items;
 }
 
 /** The standing an ask is weighed against: the item's, read now. */
@@ -193,19 +217,26 @@ async function asksOnStanding(projectId: string, standing: AskedStanding, began:
 
 /**
  * Why an ask about the item on its standing now is not made again, said to the turn, or null where
- * it may be: a decision recorded on that standing answered it, an ask of the master on it still
- * stands, or the act's holders were told on it. Whichever run asks, the item asked about decides.
+ * it may be: a decision recorded on that standing answered it, or one on the standing of `asker`, the
+ * run's own item where it asks about another (ISS-739); an ask of the master on it still stands, or
+ * the act's holders were told on it. Whichever run asks, the item asked about decides.
  */
 export async function askedAlready(
   projectId: string,
   standing: AskedStanding,
   now: Date,
+  asker: AskedStanding | null = null,
 ): Promise<string | null> {
   const key = standing.subject.key;
   const began = await standingBeganAt(standing);
   const answer = await answerOf(projectId, standing, now, began);
   if (answer) {
     return `${key} has a decision recorded on this standing, so a decision answered it (${answer.at.toISOString()}: ${answer.decision ?? answer.why}). Ask nothing until its standing moves; write the note.`;
+  }
+  const own = asker && asker.subject.id !== standing.subject.id ? asker : null;
+  const ownAnswer = own ? await answerOf(projectId, own, now) : null;
+  if (own && ownAnswer) {
+    return `${own.subject.key}, whose run asks about ${key}, has a decision recorded on its standing, so a decision answered it (${ownAnswer.at.toISOString()}: ${ownAnswer.decision ?? ownAnswer.why}). Ask nothing until its standing moves; write the note.`;
   }
   for (const ask of await asksOnStanding(projectId, standing, began)) {
     if (toldHolders(ask.door)) {
@@ -218,10 +249,64 @@ export async function askedAlready(
   return null;
 }
 
+/** The id of the item a key names in the project, or null where it names none any more. */
+async function itemIdOf(projectId: string, key: string): Promise<string | null> {
+  try {
+    return (await decisionSubjectOf(projectId, key)).id;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The open asks a reasoned decision answered since they were made (ISS-739): one recorded at or after
+ * the ask, on an item `answeredOnOf` names, that still holds at `now`. The master's nudge leaves
+ * them out as soon as the decision is written, rather than listing them again until the sweep
+ * settles them. A decision made before the ask on its standing never let it be made (`askedAlready`).
+ */
+export async function answeredAsks(
+  projectId: string,
+  asks: readonly AskRow[],
+  now: Date,
+): Promise<Set<string>> {
+  if (asks.length === 0) return new Set();
+  const ids = new Map<string, string | null>();
+  const itemsOf = new Map<string, string[]>();
+  const byKind = new Map<StandingSubjectKind, Set<string>>();
+  for (const ask of asks) {
+    const items: string[] = [];
+    for (const on of answeredOnOf(ask)) {
+      if (!ids.has(on.key)) {
+        const own = on.key === ask.subjectKey.toUpperCase();
+        ids.set(on.key, own ? ask.subjectId : await itemIdOf(projectId, on.key));
+      }
+      const id = ids.get(on.key);
+      if (!id) continue;
+      items.push(id);
+      byKind.set(on.kind, (byKind.get(on.kind) ?? new Set()).add(id));
+    }
+    itemsOf.set(ask.id, items);
+  }
+  const steward = await heldStewardOf(projectId);
+  const decided = new Map<string, AskAnswer[]>();
+  for (const [kind, kindIds] of byKind) {
+    for (const d of await decisionsOn(kind, [...kindIds], steward ? [steward] : [])) {
+      decided.set(d.subjectId, [...(decided.get(d.subjectId) ?? []), d]);
+    }
+  }
+  const answered = (ask: AskRow) =>
+    (itemsOf.get(ask.id) ?? []).some((id) =>
+      (decided.get(id) ?? []).some((d) => holds(d, now) && d.at >= ask.at),
+    );
+  return new Set(asks.filter(answered).map((ask) => ask.id));
+}
+
 /**
  * Of the open asks of the master, those to settle: the ones whose item's standing moved off them
- * (its wait ended, a new one began, or a run read it on another basis), and the ones a decision
- * recorded on that standing answered, before the ask or after.
+ * (its wait ended, a new one began, or a run read it on another basis), the ones whose item now
+ * waits on a person, whose act the master does not take (ISS-739), the ones a decision recorded on
+ * that standing answered, before the ask or after, and the ones `answeredAsks` reads answered on
+ * the item it is about or on its run's own.
  */
 export async function asksToSettle(
   projectId: string,
@@ -230,11 +315,12 @@ export async function asksToSettle(
   now: Date,
 ): Promise<string[]> {
   const byKey = new Map(rows.map((r) => [r.subject.key.toUpperCase(), r]));
+  const since = await answeredAsks(projectId, open, now);
   const out: string[] = [];
   const answered = new Map<string, boolean>();
   for (const ask of open) {
     const standing = byKey.get(aboutKeyOf(ask));
-    if (!standing) {
+    if (!standing || since.has(ask.id) || waitsOnPerson(standing)) {
       out.push(ask.id);
       continue;
     }

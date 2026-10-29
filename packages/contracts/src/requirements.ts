@@ -1142,13 +1142,6 @@ export interface RequirementDetail extends RequirementSummary {
 	 */
 	canPromote: boolean;
 	history: RequirementHistoryEntry[];
-	readiness: {
-		revision: number;
-		ready: boolean;
-		failed: string[];
-		suggestionId: string;
-		decidedAt: string | null;
-	} | null;
 	/** Whether an agree at the head would compare it for near-duplicates; null with no head. */
 	dedup: RequirementDedupCheck | null;
 	deferral: RequirementDeferral | null;

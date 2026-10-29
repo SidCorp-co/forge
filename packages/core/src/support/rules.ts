@@ -1,6 +1,6 @@
 // The pure rules of a support group (REQ-75): what a confirm message is, the code a fix waits
 // under, the limits a room runs under, the visitor id a Rocket.Chat account files under, and what
-// each Feedback phase says in the thread.
+// the session is told when a recorded item's result is final.
 
 import { createHash, randomInt } from 'node:crypto';
 import type { FeedbackPhase } from '@forge/contracts/feedback';
@@ -88,25 +88,20 @@ export const FEEDBACK_KIND_OF: Record<SupportRecordKind, 'bug' | 'idea' | 'chang
   request: 'change_request',
 };
 
-/** A phase after which nothing more is posted: it shipped, was confirmed, or will not be done. */
-export const closesThread = (phase: FeedbackPhase): boolean =>
-  phase === 'resolved' || phase === 'verified' || phase === 'declined';
-
-/** What the thread is told when an item reaches a phase; null for a phase that says nothing new. */
-export function phaseLine(phase: FeedbackPhase, key: string): string | null {
+/**
+ * What the session is told when a recorded item reaches a final phase, to post its result in the
+ * item's thread (REQ-75 r6 BC-15); null for a phase that is progress, which is never posted.
+ */
+export function resultNote(phase: FeedbackPhase, key: string): string | null {
+  const post =
+    "Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.";
   switch (phase) {
-    case 'triaged':
-      return `Update on ${key}: the team has looked at it and accepted it.`;
-    case 'planned':
-      return `Update on ${key}: the work for it is planned and under way.`;
     case 'resolved':
-      return `Update on ${key}: the fix has shipped. Please try again and say here if it still happens.`;
+      return `${key}, recorded from this thread, is live now. ${post}`;
     case 'verified':
-      return `Update on ${key}: confirmed fixed.`;
+      return `${key}, recorded from this thread, is live and confirmed fixed. ${post}`;
     case 'declined':
-      return `Update on ${key}: the team decided not to do this one.`;
-    case 'reopened':
-      return `Update on ${key}: it was reopened and is back with the team.`;
+      return `${key}, recorded from this thread, will not be done: the team declined it. ${post}`;
     default:
       return null;
   }

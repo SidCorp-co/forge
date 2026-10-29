@@ -30,6 +30,7 @@ import { firstRequirementRefusalsIn } from './first-requirement.js';
 import { linkedDesignIds } from './first-requirement-rules.js';
 import { authorOf, issueTriageEffect } from './issue-triage-effect.js';
 import { type Row, type SuggestionActor, suggestionKernelActor, targetOfRow } from './read.js';
+import { retiredKindRefusal } from './rules.js';
 
 export type Effect = SuggestionEffect | FeedbackTriageEffect;
 export type AcceptChannel = 'web' | 'mcp';
@@ -37,24 +38,6 @@ export type AcceptChannel = 'web' | 'mcp';
 export interface EffectWritten {
   refusals: Refusal[] | null;
   effect?: Effect;
-}
-
-// Workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no table
-// of its own, so the accepted row at its base revision IS the readiness result an agree reads
-async function readinessEffect(tx: Tx, projectId: string, row: Row): Promise<EffectWritten> {
-  const req = await rowIn(tx, projectId, targetOfRow(row).id);
-  const { checks } = SUGGESTION_PAYLOADS.readiness.schema.parse(row.payload);
-  const failed = checks.filter((c) => !c.passed).map((c) => c.check);
-  return {
-    refusals: null,
-    effect: {
-      requirementId: req.id,
-      requirement: requirementKey(req.reqSeq),
-      revision: row.baseRevision,
-      ready: failed.length === 0,
-      failed,
-    },
-  };
 }
 
 export async function writeEffect(
@@ -65,6 +48,8 @@ export async function writeEffect(
   actor: SuggestionActor,
   channel: AcceptChannel,
 ): Promise<EffectWritten> {
+  const retired = retiredKindRefusal(row.kind);
+  if (retired) return { refusals: [retired] };
   const target = targetOfRow(row);
   if (row.kind === 'feedback_triage' && target.type === 'feedback') {
     // a payload proposed before the triage checklist asked its answers no longer parses: it is
@@ -177,9 +162,6 @@ export async function writeEffect(
   }
   if (row.kind === 'breakdown' && target.type === 'requirement') {
     return breakdownEffect(tx, projectId, row, head, actor, channel);
-  }
-  if (row.kind === 'readiness' && target.type === 'requirement') {
-    return readinessEffect(tx, projectId, row);
   }
   if (row.kind === 'triage' && target.type === 'issue') {
     return issueTriageEffect(tx, projectId, row, actor);

@@ -2,6 +2,7 @@
 // Each action calls what its REST twin under /api/projects/:id/support/session calls (`acts.ts`), and
 // only the room's own session, under the token its current turn was handed, is admitted.
 
+import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import {
   SUPPORT_ACTIONS,
   SUPPORT_RECORD_KINDS,
@@ -16,6 +17,16 @@ import {
   supportSearchRequestSchema,
   supportThreadRequestSchema,
 } from '@forge/contracts/support';
+import {
+  CHANNEL_ROLES,
+  CHANNEL_ROUTES,
+  supportAnnounceRequestSchema,
+  supportCommonIssueRequestSchema,
+  supportMemberRequestSchema,
+  supportRouteFieldsSchema,
+  supportRouteRequestSchema,
+  supportRuleRequestSchema,
+} from '@forge/contracts/support-channel';
 import {
   OPERATIONS_ACTIONS,
   operationsDraftFeedbackRequestSchema,
@@ -40,6 +51,7 @@ export const SUPPORT_TOOL_READS: readonly string[] = [
   'projects',
   'issues',
   'releases',
+  'channel',
 ];
 
 const ACTIONS = [...SUPPORT_ACTIONS, ...OPERATIONS_ACTIONS] as const;
@@ -64,12 +76,23 @@ const REQUESTS = {
   draft_requirement: operationsDraftRequirementRequestSchema,
   draft_feedback: operationsDraftFeedbackRequestSchema,
   research: operationsResearchRequestSchema,
+  channel: z.strictObject({}),
+  member: supportMemberRequestSchema,
+  rule: supportRuleRequestSchema,
+  common_issue: supportCommonIssueRequestSchema,
+  route: supportRouteRequestSchema,
+  announce: supportAnnounceRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 // one flat strict input, every field but `action` optional, as the model is shown it: the action's
 // own request then refuses a field it does not take, by name
 const inputSchema = z.strictObject({
   action: z.enum(ACTIONS),
+  // the channel acts' narrower `text` comes first, so the reply's wider one is the one shown
+  ...supportMemberRequestSchema.partial().shape,
+  ...supportRuleRequestSchema.partial().shape,
+  ...supportCommonIssueRequestSchema.partial().shape,
+  ...supportRouteFieldsSchema.partial().shape,
   // the build's narrower title comes first, so the wider one a record takes is the one shown
   ...supportBuildRequestSchema.partial().shape,
   ...supportSearchRequestSchema.partial().shape,
@@ -82,6 +105,9 @@ const inputSchema = z.strictObject({
   ...operationsResearchRequestSchema.partial().shape,
   ...supportDeployRequestSchema.partial().shape,
   ...supportCommandRequestSchema.partial().shape,
+  // an issue move's status, or a route's destination: each action's own request judges which
+  // one enum, so the published tool gains values rather than changing shape
+  to: z.enum([...ISSUE_STATUSES, ...CHANNEL_ROUTES]).optional(),
 });
 
 const SHAPE = [
@@ -103,6 +129,12 @@ const SHAPE = [
   'draft_requirement { thread, project, title, summary }',
   `draft_feedback { thread, project, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, one of requirement | issue | screen }`,
   'research { thread, url }',
+  'channel {}',
+  `member { member, roles: (${CHANNEL_ROLES.join(' | ')})[], askFor?, message }`,
+  'rule { thread, message, text }',
+  'common_issue { threads, question, answer, feedback? }',
+  `route { thread, to: ${CHANNEL_ROUTES.join(' | ')}, member? (technical, product), title? (forge), text }`,
+  'announce { text }',
 ].join('; ');
 
 const DESCRIPTION = [
@@ -112,7 +144,8 @@ const DESCRIPTION = [
   'reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite.',
   'run {thread, tool, args}: run a granted diagnose check; the thread is shown what was checked, and you get what came back.',
   'propose_fix {thread, tool, args, asker}: offer a granted fix to the person who asked (`from.id`). It runs only when that person confirms in the thread; you are told the result as a later message.',
-  `record {thread, kind, title, summary, asker?}: what needs code or a decision is offered as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}); the thread is shown the route, the title and its link, and it is filed only when the asker (the thread's first writer unless named) confirms. You are told the key when it is filed; the thread is told its progress until it ships. Never promise a date.`,
+  `record {thread, kind, title, summary, asker?}: what needs code or a decision is offered as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}); the thread is shown the route, the title and its link, and it is filed only when the asker (the thread's first writer unless named) confirms. You are told the key when it is filed, and told again once it is live, shipped or declined: then post its result in its thread. Never post progress, and never promise a date.`,
+  "The channel record (every bot of this group reads it): channel {} reads it. member {member, roles, askFor?, message} records the roles you inferred for a member from a message, and what to ask them for; a member a person confirmed is refused and stays as it is. rule {thread, message, text} keeps an instruction a confirmed team member gave as a channel rule linked to that message. common_issue {threads, question, answer, feedback?} keeps a question asked in two or more threads with its one answer, a defect's naming its Feedback key. route {thread, to, ...} sends a need where it belongs, never mixed: to forge {title, text} files a problem with Forge itself as Forge feedback and posts nothing; to technical or product {member, text} asks that one member, who holds the role, in the thread. announce {text} is the one top-level post, for news affecting everyone, at most one an hour. A reply mentions at most one person: the asker or a member listed with what to ask them for; never @all or @here. Nothing secret or personal (an email, a phone number) is kept in the record.",
   "What your room's grant opens (your brief lists what it holds): move_issue moves an issue of this project as the member who wrote last in the thread (deliver); build proposes committing your working copy of the development branch on a feat/ or fix/ branch, pushing it and opening a change request into it (build); deploy proposes deploying a bound target the grant names (deploy); command runs a command on a host the grant names (run_commands) — one that only reads runs at once and you get its output, anything else is proposed. A build, a deploy and a command that changes a host run only when a confirmer the room names confirms in the thread; you are told the result as a later message. An ability the room was not granted is refused SUPPORT_ABILITY_NOT_GRANTED, and core tells the thread who can grant it: do not repeat it.",
   "In an operations room (your brief says which room you answer) the acts are your role's: projects, issues and releases read the projects of the room's scope; move changes an issue's status, and draft_requirement and draft_feedback draft product direction for a person to decide, each as the member who wrote last in the thread and under their own Forge permissions; research reads one public https page. An act your role is not granted, a project outside the scope, or a member Forge cannot name is refused by name: tell the thread what the refusal says. The support group acts (search, tools, run, propose_fix, record) are refused there, as these are in a support group.",
   `A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: ${SHAPE}.`,

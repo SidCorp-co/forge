@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 // Typecheck the workspace packages this branch touched against its base, plus every package that
 // imports one of them, in parallel and incrementally. Workspace imports resolve to source through
-// each tsconfig's `paths`, so nothing has to be built first. Each package's tsconfig.json is its
-// source alone; its test files are tsconfig.test.json, checked by `pnpm typecheck:test` on main.
+// each tsconfig's `paths`, so nothing has to be built first. Each package is checked under its
+// tsconfig.json (the source) and its tsconfig.test.json where it has one (source and tests), so a
+// type error confined to a test file is red here, before a merge (ISS-754; `lib/tc-check.mjs`).
 //
 //   pnpm tc:changed                 against origin/dev
 //   pnpm tc:changed --base <ref>    against another ref
 //   pnpm tc:changed --all           every package
 //   pnpm tc:changed --tsc           TypeScript 5 tsc instead of tsgo
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { dieAs, ROOT } from './lib/gate.mjs';
+import { typecheckPackage } from './lib/tc-check.mjs';
 
 const die = dieAs('tc-changed');
 
@@ -107,33 +109,13 @@ if (!existsSync(bin)) die(`${bin} is missing; run pnpm install at ${ROOT}`);
 const cacheDir = resolve(ROOT, git('rev-parse', '--git-path', 'forge-tc'));
 mkdirSync(cacheDir, { recursive: true });
 
-const check = (p) =>
-  new Promise((done) => {
-    const started = Date.now();
-    const buildInfo = join(cacheDir, `${p.dir.split('/').pop()}.${engine}.tsbuildinfo`);
-    const child = spawn(
-      bin,
-      [
-        '--noEmit',
-        '-p',
-        join(p.dir, 'tsconfig.json'),
-        '--incremental',
-        '--tsBuildInfoFile',
-        buildInfo,
-      ],
-      { cwd: ROOT },
-    );
-    let out = '';
-    child.stdout.on('data', (b) => (out += b));
-    child.stderr.on('data', (b) => (out += b));
-    child.on('close', (code) =>
-      done({ p, code, out, seconds: ((Date.now() - started) / 1000).toFixed(1) }),
-    );
-  });
-
-const results = await Promise.all([...selected].map(check));
-for (const { p, code, out, seconds } of results) {
-  console.log(`tc-changed: ${p.name} ${code === 0 ? 'ok' : 'FAILED'} in ${seconds}s (${engine})`);
+const results = (
+  await Promise.all([...selected].map((p) => typecheckPackage(ROOT, p, { bin, engine, cacheDir })))
+).flat();
+for (const { p, config, code, out, seconds } of results) {
+  console.log(
+    `tc-changed: ${p.name} ${config} ${code === 0 ? 'ok' : 'FAILED'} in ${seconds}s (${engine})`,
+  );
   if (code !== 0) process.stdout.write(out);
 }
 process.exit(results.some((r) => r.code !== 0) ? 1 : 0);

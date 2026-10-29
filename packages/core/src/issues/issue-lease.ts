@@ -295,15 +295,20 @@ export async function takeIssueLeases(
 
 /** What a give-back did, or why it did nothing. */
 export type IssueLeaseRelease =
-  | { released: true; projectId: string }
+  | { released: true; projectId: string; runId: string }
   | { released: false; reason: 'not_held'; projectIds: [] }
-  | { released: false; reason: 'ambiguous'; projectIds: string[] };
+  | { released: false; reason: 'ambiguous'; projectIds: string[] }
+  | { released: false; reason: 'run_unnamed'; holder: { sessionId: string; runId: string } };
 
 /**
- * Give one issue's lease back, for the project it was taken for and no other.
- * The identity is settled before anything is removed, so `not_held` and
- * `ambiguous` are answers rather than deletes; `device_id` narrows and never
- * identifies. Why, and the executor: `docs/modules/issues/issue-lease.md`.
+ * Give one issue's lease back, for the project it was taken for and the run session that took it,
+ * and no other. The identity is settled before anything is removed, so `not_held`, `ambiguous` and
+ * `run_unnamed` are answers rather than deletes; `device_id` narrows and never identifies.
+ *
+ * A give-back naming its session reaches only that session's row. One naming none cannot tell this
+ * box's runs apart (ISS-752: an older run's close took a newer run's lease on the same key), so it
+ * removes only a lease whose session has ended and answers `run_unnamed` over a live one. Why, and
+ * the executor: `docs/modules/issues/issue-lease.md`.
  */
 export async function releaseIssueLeaseRow(
   executor: Tx,
@@ -311,22 +316,34 @@ export async function releaseIssueLeaseRow(
     deviceId: string;
     issueKey: string;
     projectId?: string | null;
+    sessionId?: string | null;
   },
 ): Promise<IssueLeaseRelease> {
-  const inProject = args.projectId ? sql`AND project_id = ${args.projectId}` : sql.empty();
+  const inProject = args.projectId ? sql`AND l.project_id = ${args.projectId}` : sql.empty();
+  const ofSession = args.sessionId ? sql`AND l.session_id = ${args.sessionId}` : sql.empty();
   const candidates = (await executor.execute(sql`
-    SELECT project_id
-      FROM issue_leases
-     WHERE device_id = ${args.deviceId}
-       AND issue_key = ${args.issueKey}
+    SELECT l.project_id, l.session_id, l.run_id,
+           (ls.status NOT IN (${terminalSessionList})) AS live
+      FROM issue_leases l
+      JOIN agent_sessions ls ON ls.id = l.session_id
+     WHERE l.device_id = ${args.deviceId}
+       AND l.issue_key = ${args.issueKey}
        ${inProject}
-     ORDER BY project_id
-       FOR UPDATE
+       ${ofSession}
+     ORDER BY l.project_id
+       FOR UPDATE OF l
   `)) as unknown as Array<Record<string, unknown>>;
   const projectIds = candidates.map((r) => String(r.project_id));
 
   if (projectIds.length === 0) return { released: false, reason: 'not_held', projectIds: [] };
   if (projectIds.length > 1) return { released: false, reason: 'ambiguous', projectIds };
+
+  const row = candidates[0] as Record<string, unknown>;
+  const sessionId = String(row.session_id);
+  const runId = String(row.run_id);
+  if (!args.sessionId && row.live === true) {
+    return { released: false, reason: 'run_unnamed', holder: { sessionId, runId } };
+  }
 
   const projectId = projectIds[0] as string;
   await executor.execute(sql`
@@ -334,6 +351,7 @@ export async function releaseIssueLeaseRow(
      WHERE project_id = ${projectId}
        AND issue_key = ${args.issueKey}
        AND device_id = ${args.deviceId}
+       AND session_id = ${sessionId}
   `);
-  return { released: true, projectId };
+  return { released: true, projectId, runId };
 }

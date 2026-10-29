@@ -31,11 +31,13 @@ export interface WaitingRequest {
 // What a master is owed from the modules above execution, handed in by the process entry at boot
 // (ADR 0008: a domain imports only its own context or one before it). Read only inside a call.
 
-/** An ask of the master the steward made, and the item a decision on answers it. */
+/** An ask of the master the steward made, the item it is about, and every item a decision on answers it. */
 export interface StewardAsk {
   actId: string;
   ask: string;
   subject: { kind: StandingSubjectKind; key: string };
+  /** The item it is about, then the item whose run asked where that is another (ISS-739). */
+  answeredOn: { kind: StandingSubjectKind; key: string }[];
 }
 
 interface MastersPorts {

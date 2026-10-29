@@ -26,6 +26,7 @@ import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
+import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -114,6 +115,7 @@ interface IssueRowRaw {
   design_unapproved: boolean;
   contract_unsettled: boolean;
   pattern_pending: boolean;
+  scope_held: boolean;
   status_since: string;
 }
 
@@ -163,6 +165,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              ${designReturnedUnderSql(sql`i.id`)} AS design_returned,
              ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
              ${patternReviewPendingSql(sql`i.id`)} AS pattern_pending,
+             ${scopeHeldSql(sql`i.id`)} AS scope_held,
              ${issueWorkMovingSql({
                issueId: sql`i.id`,
                projectId: sql`i.project_id`,

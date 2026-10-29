@@ -34,6 +34,7 @@ import {
   registerLandingDeploy,
   registerReleaseApprovalWake,
   registerReleaseBatchClaimSubscriber,
+  registerReleaseTag,
 } from './release-batch/index.js';
 import { registerReleaseHighlightsRefresh, registerReleaseNaming } from './release-page/index.js';
 import { registerReasonAnswers } from './requirements/index.js';
@@ -59,6 +60,7 @@ export function registerOutboxConsumers(): void {
   registerReleaseBatchClaimSubscriber();
   registerReleaseApprovalWake();
   registerChangeRequestSettle();
+  registerReleaseTag();
   registerReleaseHighlightsRefresh();
   registerReleaseNaming();
   registerMemoryIndexer();

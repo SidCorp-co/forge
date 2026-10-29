@@ -43,6 +43,11 @@ export function ReleaseRecord({ r, slug }: { r: ReleaseDetail; slug: string }) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-8 pt-8" data-testid="release-record">
       <NotesAttention r={r} slug={slug} />
+      {r.tag?.reason ? (
+        <p className="break-words text-13 text-muted" data-testid="release-tag-why">
+          {t("releases.tagWhy", { name: r.tag.name, reason: r.tag.reason })}
+        </p>
+      ) : null}
       <DemoNotesWarning r={r} />
       {r.gates.length > 0 ? (
         <section id={ANCHOR.way} aria-label={t("releases.whyNotCut")} className="scroll-mt-24" data-testid="release-way">

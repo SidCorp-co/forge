@@ -355,35 +355,35 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
     await w.untilWarm();
   });
 
-  it('posts the item’s progress in the same thread until it is done, then stops (BC-15)', async () => {
+  it('tells the session the item’s result once it is final, which it posts in the same thread, never progress (BC-15 r6)', async () => {
     const [fb] = await rows<{ fb_seq: number; thread: string }>(sql`
       SELECT f.fb_seq, l.thread FROM support_feedback_links l JOIN feedback f ON f.id = l.feedback_id
        WHERE l.project_id = ${w.projectId}::uuid`);
     const key = `FB-${fb?.fb_seq}`;
-    const declined = await api(
-      w.owner,
-      'POST',
-      `/api/projects/${w.projectId}/feedback/${key}/triage`,
-      {
-        route: 'decline',
-        note: 'Excel export is not planned this quarter.',
-      },
-    );
+    const said = 'The team will not add the Excel export.';
+    const notes = w.box.answerNotes(key, said);
+    const triage = `/api/projects/${w.projectId}/feedback/${key}/triage`;
+    const note = 'Excel export is not planned this quarter.';
+    const declined = await api(w.owner, 'POST', triage, { route: 'decline', note });
     expect(declined.status, JSON.stringify(declined.body)).toBeLessThan(300);
-    const { followAllItems } = await import('../../src/support/index.js');
-    await followAllItems();
-    const lines = await w.untilLines((ls) =>
-      ls.some((l) => l.text === `Update on ${key}: the team decided not to do this one.`),
-    );
-    expect(lines.find((l) => l.text.startsWith(`Update on ${key}`))?.tmid).toBe(fb?.thread);
-    const [link] = await rows<{ closed_at: Date | null }>(
-      sql`SELECT closed_at FROM support_feedback_links WHERE project_id = ${w.projectId}::uuid`,
-    );
+    const { tellAllResults } = await import('../../src/support/index.js');
+    await tellAllResults();
+    const lines = await w.untilLines((ls) => ls.some((l) => l.text === said));
+    expect(lines.find((l) => l.text === said)?.tmid).toBe(fb?.thread);
+    expect(notes.map((n) => n.thread)).toEqual([fb?.thread]);
+    expect(notes[0]?.text).toContain('will not be done');
+    // core posts no update line of its own
+    expect(lines.some((l) => l.text.startsWith('Update on'))).toBe(false);
+    const [link] = await rows<{ closed_at: Date | null }>(sql`
+      SELECT closed_at FROM support_feedback_links WHERE project_id = ${w.projectId}::uuid`);
     expect(link?.closed_at).not.toBeNull();
+    await w.settleWarm();
     const count = (await w.chat.botLines()).length;
-    await followAllItems();
+    await tellAllResults();
     await settleOutbox();
+    await w.settleWarm();
     expect((await w.chat.botLines()).length).toBe(count);
+    expect(notes).toHaveLength(1);
   });
 
   it('writes a message that arrives mid-turn into the running turn, resumes Claude’s own session, and re-reads its threads on a new box (BC-11, BC-16)', async () => {
@@ -472,7 +472,7 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
       'fix_ran',
       'refused',
       'feedback_recorded',
-      'progress_posted',
+      'result_told',
     ]) {
       expect(kinds, k).toContain(k);
     }

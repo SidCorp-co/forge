@@ -24,11 +24,14 @@ const CORE_LOADS_BUILT = ['@forge/observability', '@forge/contracts'];
  * config belongs to; core's unit config also collects observability's and the scripts' tests.
  * `builds` are the workspace packages the collection's tests load from their dist builds, which
  * `package-builds.mjs` rebuilds before any of them runs: web-v2's config aliases the workspace
- * packages to their sources, and contracts' tests import from core only types.
+ * packages to their sources, and contracts' tests import from core only types. `ciJob` is the ci.yml
+ * job that runs the collection on `main`, whose `changes` filter `outside-reads.mjs` holds a
+ * declaration against.
  */
 export const VITEST_COLLECTIONS = [
   {
     name: '@forge/core',
+    ciJob: 'core',
     cwd: 'packages/core',
     config: 'vitest.config.ts',
     builds: CORE_LOADS_BUILT,
@@ -36,6 +39,7 @@ export const VITEST_COLLECTIONS = [
   },
   {
     name: '@forge/core integration',
+    ciJob: 'core-integration',
     cwd: 'packages/core',
     config: 'vitest.integration.config.ts',
     builds: CORE_LOADS_BUILT,
@@ -44,6 +48,7 @@ export const VITEST_COLLECTIONS = [
   },
   {
     name: 'web-v2',
+    ciJob: 'web',
     cwd: 'packages/web-v2',
     config: 'vitest.config.ts',
     builds: [],
@@ -51,6 +56,7 @@ export const VITEST_COLLECTIONS = [
   },
   {
     name: '@forge/contracts',
+    ciJob: 'web',
     cwd: 'packages/contracts',
     config: 'vitest.config.ts',
     builds: [],
@@ -58,6 +64,7 @@ export const VITEST_COLLECTIONS = [
   },
   {
     name: '@forge/observability',
+    ciJob: 'core',
     cwd: 'packages/core',
     config: 'vitest.config.ts',
     builds: CORE_LOADS_BUILT,
@@ -65,6 +72,7 @@ export const VITEST_COLLECTIONS = [
   },
   {
     name: 'scripts',
+    ciJob: 'core',
     cwd: 'packages/core',
     config: 'vitest.config.ts',
     builds: CORE_LOADS_BUILT,
@@ -172,13 +180,18 @@ export function knownFiles(root) {
   return new Set(`${tracked}\n${untracked}`.split('\n').filter(Boolean));
 }
 
-/** For each test file of every collection: the repo paths it reaches in one hop, and declares. */
-export function indexTests(root, known) {
+/** The tsconfig `paths` aliases of a package directory, each package read once. */
+export function aliasReader(root) {
   const aliasCache = new Map();
-  const aliasesOf = (pkgDir) => {
+  return (pkgDir) => {
     if (!aliasCache.has(pkgDir)) aliasCache.set(pkgDir, tsPaths(root, pkgDir));
     return aliasCache.get(pkgDir);
   };
+}
+
+/** For each test file of every collection: the repo paths it reaches in one hop, and declares. */
+export function indexTests(root, known) {
+  const aliasesOf = aliasReader(root);
   const tests = [];
   for (const path of [...known].sort()) {
     const collection = VITEST_COLLECTIONS.find((c) => c.test.test(path));

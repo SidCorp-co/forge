@@ -42,7 +42,7 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named and where core may call out · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
-`behaviour` twice (reachability · signal) and `knowledge` six (honest
+`behaviour` three times (reachability · signal · outside reads) and `knowledge` six (honest
 costs · the PAT permission surface · whether one question
 in the source has more than one answer · whether a document's citations of this repo's own files
 are still true · whether the published API and MCP contracts are what the code serves · whether
@@ -67,8 +67,9 @@ passed, because the external record of what shipped belonged to none of them.
 | API contracts | `check-api-contracts` — `conformance` | whether `packages/core/contracts/forge-api.openapi.json` and `forge-mcp.tools.json` are byte for byte what the generator writes from the running app, naming each route (`METHOD /path`) or tool that was added, removed or changed and the JSON pointer where it differs; whether every mounted route and served tool is describable at all — one the generator cannot describe is its refusal, never an omission; and whether each artifact's semver version is the one its change since the base owes, which the generator derives with the differ an interface upload is measured by (oasdiff, and a JSON Schema differ for the tools) | whether a route's contract is GOOD — a response schema, a missing validator, a description; and whether the differ's breaking/additive classification is right, which is the differ's |
 | pattern catalog | `check-pattern-catalog` — `lang-check` | whether every page under `docs/patterns/` (REQ-36 BC-3, BC-4) names its change kind, the issue that introduced it, a `## Reference` of tracked files, a `## Test shape` naming a tracked reference test, and a numbered `## Review checklist`; whether the index links every page; whether every change kind `.forge/conformance.json` declares has a page; and whether `packages/contracts/src/pattern-catalog.ts`, the catalog core reads to tell a catalogued pattern from a new one, is what the pages say (`--write` regenerates it) | whether a reference is a GOOD one, or a checklist line the right one — that is the new-pattern reviewer's; module shape, which is `relations`' and which the core-module page points at rather than restates |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs; and whether every file directly under `docs/proposals/` opens with a `**Removed when:**` line naming at least one issue key, the issue whose landing change deletes the file (`docs/proposals/destination/` is exempt) | whether the price stated is honest, or whether the named issue really carries the condition — that is review's |
-| relations | `archmap check` + `check-module-boundaries` + `check-module-shape` — `archmap` | which requirement or workflow step every core module, web-v2 feature and runner crate serves (`check-module-shape`'s trace); which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json`; and which module may write which table, and where a database call, a refusal and the global `fetch` may be written (`check-module-shape`) | how a file is formatted; a status written outside the kernel, which the database refuses (`forge_kernel_status_guard`) |
+| relations | `archmap check` + `check-module-boundaries` + `check-module-shape` + `check-root-dependencies` — `archmap` | which requirement or workflow step every core module, web-v2 feature and runner crate serves (`check-module-shape`'s trace); which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json`; which module may write which table, and where a database call, a refusal and the global `fetch` may be written (`check-module-shape`); and which package a root consumer may reach — only one its own manifest declares (`check-root-dependencies`) | how a file is formatted; a status written outside the kernel, which the database refuses (`forge_kernel_status_guard`) |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
+| outside reads | `check-outside-reads` — `conformance` | whether a test reading a file outside its package by path declares it with `@direct-test-of`, so the direct selection runs it on a change to that file alone, and whether the `changes` filter of the ci.yml job running the test matches the declared path, so `main` does too | a read the source does not spell from values it can evaluate; reads inside the test's own package; Rust tests |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
 | language | `check-source-language` — `lang-check`; `check-copy-budget` — `conformance` | English-only source policy; length of web copy strings and of the sentences core writes for pages, empty states, no explaining copy, no copy written inline in source | everything else |
@@ -126,8 +127,14 @@ not listed (ISS-1314). `import.meta.glob` is the one text read, in every tracked
 expands it before the test runs and accepts only literals. The guard's own files select `core`,
 `core-integration` and `web`, the three jobs whose suites it runs in. A test reading one NAMED file
 outside its package is not this checker's, and neither is what no observer inside the test sees —
-native code, and a listing delegated to a process the test did not start. All three are recorded in
-`docs/proposals/a-test-reading-a-named-file-outside-its-package-is-not-selected-by-it.md`.
+native code, and a listing delegated to a process the test did not start. The named file is
+`check-outside-reads`' (below). The other two have no observer inside a test: closing native code
+needs every directory enumeration traced at the kernel (`getdents64`) and attributed to one test
+file, and a listing made by a process the test did not start is visible only to that process, so
+the declaration written by whoever knows what the service reads is the guard for both. A git call is
+judged by the config a fixture may set, `lib/whole-tree-shell.mjs:REPO_CONFIG_KEYS`, a hand-kept
+allowlist: a fixture key off it is refused even when it runs nothing, so each such key is one
+reviewed line there or a declaration on the test.
 
 ### Why size is its own row
 
@@ -342,10 +349,13 @@ Four contracts:
 
 **The typecheck is not a verify check** (since 2026-10-10). `merge-check` runs `tc-changed` and
 then `verify`, so verify's own `core typecheck` checked core twice on every dev merge. Types are
-`pnpm typecheck` (tsgo, each package's `tsconfig.json`, which is its source alone) and `tc-changed`
-inside `test:changed` and `merge-check`. Test files are `pnpm typecheck:test` (`tsconfig.test.json`),
-which runs in CI's `core` and `web` jobs — on main and nightly, never on a dev merge. The web's
-`vite build` checks no types and runs no lint.
+`tc-changed` inside `test:changed` and `merge-check`: each touched package and each package importing
+one, under its `tsconfig.json` (the source) and its `tsconfig.test.json` where it has one (source and
+tests), so a type error confined to a test file is red before the merge (ISS-754,
+`lib/tc-check.mjs`). Both configs and not the test one alone, because the test config takes in
+test-only global declarations a source file could lean on. `pnpm typecheck` and
+`pnpm typecheck:test` run each config over a whole package, and CI's `core` and `web` jobs run both.
+The web's `vite build` checks no types and runs no lint.
 
 ### One proposition per verdict
 
@@ -630,6 +640,50 @@ together report both, and still leave `https://user@host:8080/path/pkg.tgz` alon
 
 Both real lockfiles this was measured against agree: 948 resolutions on `main` clean, and the four
 offending lines on the Dependabot pull request that caused this named by package.
+
+## check-root-dependencies.mjs — a root consumer reaches only what its manifest declares
+
+`.npmrc` sets `node-linker=hoisted`, so every package any workspace manifest declares sits in the
+root `node_modules`, and a file under `scripts/` or `.forge/` can import one the root never names
+without anything failing. The census that found six such couplings (ISS-207 declared five; ISS-140
+built this) was a procedure in a document; this is the check `pnpm verify` runs instead.
+
+What it reads, from every tracked source file under `checkers.root-dependencies.scan` and every
+`paths` target of a file under `pathMaps` (`.arch-tsconfig.json`):
+
+- module specifiers — static and dynamic `import`, `export … from`, `require`, `require.resolve` —
+  parsed with TypeScript, so an import written inside a string a test writes as a fixture is a
+  string and not an import;
+- a path into `node_modules/<package>`, as one literal or as `join`/`resolve` pieces;
+- a bin: `node_modules/.bin/<bin>`, `pnpm exec <bin>`, `npx <bin>`, and a node loader flag's value.
+
+Each package is tested against the nearest `package.json`'s declared names, never with
+`require.resolve`: from a worktree under `.claude/worktrees/` node's upward walk reaches the parent
+checkout's hoisted `node_modules` and resolves what this checkout never declared. A bin is matched
+against the `bin` field of each package the manifest declares, read from that manifest's own
+`node_modules`, which is why it needs an install.
+
+**Allowances are priced.** `checkers.root-dependencies.allowed` names a consumer and a package or
+bin with `why`, `$costs` and `endsWhen`; one missing a field exits 2, and one that covers no use is
+refused as stale, so the list shrinks with its cause. Today it holds one: `.arch-tsconfig.json`
+mapping `hono/*` into the root `node_modules`, where only hoisting puts core's copy.
+
+**Bounds, printed rather than skipped:** a bin named through a variable
+(`join(ROOT, 'node_modules', '.bin', engine)`) is listed as `not read` on every run. Shell files
+(`.githooks/`, the archmap launcher) and `ci.yml` are not read; `ci.yml`'s root commands are held to
+`CHECKS` by `--ci-parity`. A file git does not track is not read until it is added.
+
+**Re-measuring hoisting itself** is a different question, and it has to be asked outside every
+checkout: in a clone with no forge-core checkout above it, install once with the defaults and once
+with `--config.node-linker=isolated --config.shamefully-hoist=false`, run `node scripts/verify.mjs`,
+`pnpm build --force` and `pnpm exec turbo run test --force` after each (`--force`, or turbo's cache
+replays the first linker's result), and compare which checks could not run. Measured 2026-09-27, the
+isolated layout costs about 13 MB and five thousand directory entries more per worktree, not
+gigabytes: a worktree's size is `packages/runner/target` and web-v2's build output.
+
+Exit `0` clean · `1` an undeclared use or a stale allowance, each named by file, line and package
+· `2` it could not run (no manifest block, a malformed allowance, an unreadable map, no install
+when a bin has to be matched).
 
 ## check-branch-name.sh
 
@@ -990,7 +1044,8 @@ and run `--exact`, and a touched integration test file under a crate's tests dir
 **The declaration is how a miss widens.** A test that reaches its subject by URL, by table name or by
 reading a file reaches it by no import, so the merge check cannot see it. When the whole suite goes
 red and the bisect names a merge whose merge check passed (`rule-suite`), the fix declares the path
-on the test that caught it; that change kind selects it from then on. The selection grows, the suite
+on the test that caught it; that change kind selects it from then on. A test that reads a file
+outside its package by a path it spells is refused undeclared before that, by `check-outside-reads`. The selection grows, the suite
 size at a merge does not.
 
 **What was selected is what ran.** `lib/direct-test-run.mjs:runDirectTests` runs each collection's
@@ -1067,8 +1122,8 @@ runner's `cargo test --workspace` left `check-runner-gates.mjs` with this change
 pre-push hook's `PREPUSH_TEST=1` runs `pnpm test:changed` where `PREPUSH_FULL` ran whole suites.
 The hook tells its exit 1 (a check red) from its exit 2 (it could not run, so nothing was checked),
 and `PREPUSH_BUILD=1` measures a new branch from its merge target (`lib/base-branch.mjs`), refusing by
-name where none resolves, and builds `observability` and then `contracts` before any consumer, since
-core's build imports `@forge/contracts/dist`; `lib/pre-push.test.mjs` runs the hook in a fixture repository. A landed
+name where none resolves, and builds `observability` and `contracts` before any consumer, since
+a consumer loads their `dist/` at runtime and in its tests; `lib/pre-push.test.mjs` runs the hook in a fixture repository. A landed
 push run (`--since`) says it checked what already landed, and asks for no record before a mark.
 
 ## whole-suite.mjs — the whole suite on one commit, the cut it gates, and the merge it names
@@ -1312,6 +1367,39 @@ not follow that call. Nothing in core does this today.
 `--all` is the only mode, and the checker refuses anything else by name. A run that can narrow its
 own scope reports clean on a tree that is not — which is also why the checker exports
 `importTimeReads`, to be called with fixture text, rather than taking a `--scan-root` flag.
+
+## check-outside-reads.mjs — a test reading a file by path declares it
+
+A test that reads a file outside its package by path — `readFileSync(new URL(…, import.meta.url))`
+on `packages/runner/crates/runner-transport/src/status.rs` — reaches it by no import, so the direct
+selection (`lib/direct-tests.mjs`) ran none of the tests that check it on a change to it alone, and on `main` the `core` job's
+`changes` filter did not match it either: a skip that read as a pass (ISS-134). The test declares the
+path with the declaration the selection already reads, `// @direct-test-of <path>`, and this refuses
+an outside read no declaration covers, naming the test, the line and the line to add. It also refuses
+a declaration outside the test's package that the `changes` filter of its job does not match: each
+collection in `VITEST_COLLECTIONS` names its job (`ciJob`), the job's `if:` names the filter outputs
+it runs on, and a declared directory matches only a pattern covering every file under it. A filter
+line names the one file rather than the other package's tree, so a runner change does not start the
+core job. A test declaring `@gate-input whole-tree` runs on every change and is left to
+`check-whole-tree-gates`.
+
+It reads source with core's TypeScript compiler, so it sees a path only where the test spells it from
+values it can evaluate: string literals, `__dirname`, `import.meta.url` / `dirname` / `filename`,
+`new URL`, `join`, `resolve`, `dirname`, `fileURLToPath`, a template or `+` onto one of those, and a
+`const` bound to them in the file or exported by a module it imports (up to three hops). A path
+handed to any call that does not build, compare or print one (`NOT_READS`) is a read, the test's own
+helpers included. What it does not see, and the price of each:
+
+| Not seen | Why, and what closing it costs |
+|---|---|
+| A path built from a parameter, a loop variable or a value computed at run time | Only a run sees it; `lib/whole-tree-guard.mjs` watches calls but only for listings of the root. Watching every read at run time and attributing it to a package is the guard's machinery applied to every file, every run. |
+| A glob pattern string (`globSync('docs/**', { cwd: ROOT })`) | The pattern is a string, not a path value. A listing below the root this way passes; the whole-tree guard refuses only one covering the root. |
+| A read inside the test's own package | Not this issue's: on `main` the job's filter covers the package. On dev the direct selection misses it the same way, and the declaration is the same fix. |
+| Rust tests | The runner is selected by module (`runnerSelection`), and an `include_str!` of an asset is no `.rs` file; a reader of its own is the cost. |
+
+```bash
+node scripts/check-outside-reads.mjs   # 0 every outside read declared and filtered · 1 a refusal · 2 could not run
+```
 
 ## check-test-signal.mjs — low-signal test guard
 

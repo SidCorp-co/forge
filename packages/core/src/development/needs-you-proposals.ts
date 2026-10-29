@@ -294,18 +294,6 @@ export function suggestionProposal(
         yields: yields('approved'),
       };
     }
-    case 'readiness': {
-      const p = parsePayload('readiness', payload);
-      const passed = p.checks.filter((c) => c.passed).length;
-      return {
-        ...base,
-        verb: 'Readiness check',
-        what: `${passed} of ${p.checks.length} checks pass`,
-        consequences: [`The checks are recorded on ${target}`],
-        why: p.checks.map((c) => ({ label: c.passed ? 'Passes' : 'Fails', value: c.check })),
-        yields: yields('approved'),
-      };
-    }
     case 'triage': {
       const p = parsePayload('triage', payload);
       return {
@@ -321,5 +309,8 @@ export function suggestionProposal(
       throw new Error(
         `needs-you: a ${kind} suggestion is read by its own proposal, with its record`,
       );
+    // retired (REQ-34 BC-3): core refuses its propose, so none waits on a person
+    case 'readiness':
+      throw new Error(`needs-you: a ${kind} suggestion is retired and never waits on a person`);
   }
 }

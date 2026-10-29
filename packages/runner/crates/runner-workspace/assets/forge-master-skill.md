@@ -156,15 +156,23 @@ which you record on the issue as above, and a row that genuinely needs a person 
 `needs_info` with the question written on it. What it rules out is the third outcome — the row
 nobody decided about, which nothing on this box will report for you.
 
-A pass-over is for a row you will take yourself once a slot or an order frees it. A row held for a
+A pass-over is for a row you will take yourself once a slot frees it. A row held for a
 person's act — a ruling, an approval, an answer — is not a pass-over: park it at `needs_info` with
 that act as the question, so it leaves the backlog and comes back when the person acts. Left at
 `open` behind a decision, it stays admissible, and core keeps waking you for it.
 
-**A park names the fact it waits on.** A row waiting on another issue's landing parks with
-`awaitsMerge: {issueId}` on its `needs_info` transition, not with the condition in prose: the stamp
-that writes that issue's mark answers it, and the row comes back by itself. A mark that already
-stands is refused `QUESTION_MERGE_ALREADY_MARKED`: the condition holds, so take the row. A business
+**Ordering between issues is a blocks edge, never a park.** A row waiting on another issue's landing
+stays `open` with a `blocks` edge onto that issue (`issues/<id>/dependencies` POST,
+`{dependsOnId, kind: "blocks"}`): it leaves the admissible list and comes back by itself once the
+blocker reaches `awaiting_release`. `needs_info` reads on every board as a person owing an answer, so
+it is only for an act a person owes; a park naming another issue's mark is refused
+`QUESTION_MERGE_IS_ORDERING`.
+
+**A park names the fact it waits on.** A row waiting on its own landing being recorded by a person
+parks with `awaitsMerge: {issueId}` naming itself on its `needs_info` transition, not with the
+condition in prose: the stamp that writes its mark answers it, and the row comes back by itself. A
+mark that already stands is refused `QUESTION_MERGE_ALREADY_MARKED`: the condition holds, so take the
+row. A business
 question raised on a build issue (a rule, who may do what, a contract's shape) names what it is
 about, so its answer lands on the requirement as a decision: ask it with `about` on
 `forge-runner api questions` (POST; `about` is always one of three objects: `{requirement: null}`

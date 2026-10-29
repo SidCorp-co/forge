@@ -19,6 +19,19 @@ type ReadBack =
     }
   | { ok: false; refusals: WorkflowRefusal[] };
 
+/**
+ * What a PUT answers under `ignored`: the fields its read-back dropped, then the `issue` it named
+ * where the write drew no revision under it (`service.ts:updateWorkflow`'s `issueUnused`).
+ */
+export function ignoredByWrite(
+  readBack: readonly IgnoredField[],
+  issueUnused: string | undefined,
+): IgnoredField[] {
+  return issueUnused === undefined
+    ? [...readBack]
+    : [...readBack, { path: '/issue', detail: issueUnused }];
+}
+
 // what GET /api/projects/:id/workflows/:workflow wraps around the document, and stamps inside it
 const BODY_FIELDS = ['revision', 'writer', 'writerName', 'design'] as const;
 const STAMP_FIELDS = ['id', 'createdAt', 'updatedAt'] as const;

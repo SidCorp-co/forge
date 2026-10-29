@@ -97,7 +97,7 @@ describe("changing what a feedback item is about", () => {
   it("names a route or tool target with the label's own casing", () => {
     renderWithQuery(<FeedbackActions projectId="p1" f={view({ target: { type: "endpoint", key: "shop-tools:save_backend_workflow", title: null } })} />);
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
-    expect(screen.getByText("Now API route or tool shop-tools:save_backend_workflow.")).toBeInTheDocument();
+    expect(screen.getByText("Now route, tool or command shop-tools:save_backend_workflow.")).toBeInTheDocument();
   });
 
   it("tells the mover before Move it that a project serving nothing has no route or tool to name", async () => {

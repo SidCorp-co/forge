@@ -119,11 +119,6 @@
       "count": 6
     }
   },
-  "src/features/requirements/components/readiness.test.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
   "src/features/requirements/components/requirement-inside.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1

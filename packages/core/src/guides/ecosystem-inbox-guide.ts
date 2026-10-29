@@ -174,7 +174,9 @@ publishes and the versions of its contracts, and a person is not handed that wor
    (\`PERMISSION_FORBIDDEN\` otherwise). The read answers \`commitmentsSetBy { agency, revision }\`.
 3. Upload each version: \`POST /api/projects/:id/contracts/:contract/versions { version, kind, artifact, sourceRef }\`.
    - \`kind\` is the publication's type: \`graphql\` takes the SDL text; \`mcp-tools\` takes
-     \`{ tools: [{ name, description, inputSchema }] }\`; \`openapi\` and \`json-schema\` their JSON.
+     \`{ tools: [{ name, description, inputSchema }] }\`; \`cli\` takes
+     \`{ program, commands: [{ name, description?, options?: ["--flag"] }] }\`, a command's \`name\` being
+     the words after the program (\`record verdict\`); \`openapi\` and \`json-schema\` their JSON.
    - \`sourceRef\` is where you read it, \`<repository path>@<commit sha>\`.
    - \`version\` is in the interface's scheme and after the latest; on semver a breaking measurement owes a
      MAJOR and an additive one a MINOR, and a change measured unknown is recorded, unknown, at the
@@ -189,7 +191,9 @@ publishes and the versions of its contracts, and a person is not handed that wor
    can get back what it never handled; and a breaking type change is also named under each operation reaching it
    (\`Query.products.variants.price\`), which is what a consumer's link names in \`fieldsUsed\`
    (\`products.variants.price\`). A tools contract's elements are each tool and its input properties
-   (\`<tool>/properties/<input>\`).
+   (\`<tool>/properties/<input>\`). A cli contract's elements are each command as typed
+   (\`forge record verdict\`) and its flags (\`forge record verdict/options/--criterion\`); a removed
+   command or flag is breaking, an added one additive.
    Refused by name, nothing recorded: \`CONTRACT_KIND_UNKNOWN\` (a kind core does not index),
    \`CONTRACT_KIND_MISMATCH\` (not the publication's type), \`ARTIFACT_UNREADABLE\` (the source does not
    parse, the detail naming the line and column; or an openapi artifact the pinned oasdiff cannot load,

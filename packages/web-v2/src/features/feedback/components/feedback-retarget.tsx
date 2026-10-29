@@ -7,7 +7,7 @@ import { useFeedbackAction } from "../hooks";
 import type { FeedbackView } from "../types";
 import { type PickableTarget, TargetPicker } from "./target-picker";
 
-/** A target label mid-sentence: a leading ordinary word lower-cased ("requirement"), an acronym kept ("API route or tool"). */
+/** A target label mid-sentence: a leading ordinary word lower-cased ("requirement"), an acronym kept ("API …"). */
 const inSentence = (label: string) => (/^\p{Lu}\p{Ll}/u.test(label) ? `${label.charAt(0).toLowerCase()}${label.slice(1)}` : label);
 const about = (t: FeedbackView["target"], language: string) => `${inSentence(enumLabel("feedbackTarget", t.type, language))} ${t.key}`;
 

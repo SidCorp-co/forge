@@ -4,6 +4,8 @@
  * and the box does not read as held is a declaration the box writes past at declare time (the
  * preflight's hold read as "core could not answer"), so the master is never told its dispatch
  * cannot start. That is how PATTERN_REVIEW_PENDING and ISSUE_SCOPE_HELD would have shipped.
+ *
+ * @direct-test-of packages/runner/crates/runner-transport/src/status.rs
  */
 
 import { readFileSync } from 'node:fs';

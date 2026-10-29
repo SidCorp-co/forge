@@ -160,7 +160,6 @@ export const reqDetail: RequirementDetail = {
     h("h14", "person", say("requirements.history.who.someone"), "Answer", verbatim("Tra loi"), { issue: "ISS-2" }),
     h("h15", "system", say("requirements.history.who.forge"), "Status", say("standing.empty"), { issue: "ISS-2", move: { from: "open", to: "in_progress" } }),
   ],
-  readiness: null,
   dedup: null,
   deferral: null,
   feedback: [
@@ -217,7 +216,6 @@ const suggestion = (id: string, kind: SuggestionView["kind"], payload: unknown):
 
 const reqSuggestions: SuggestionView[] = [
   suggestion("s1", "revision_diff", { changeSummary: "Doi ten", criteria: [{ code: "BC-1", body: "Moi" }] }),
-  suggestion("s2", "readiness", { checks: [{ check: "Ro rang", passed: true }, { check: "Do duoc", passed: false, detail: "Thieu so" }] }),
   {
     ...suggestion("s3", "breakdown", { issues: [{}] }),
     breakdown: {

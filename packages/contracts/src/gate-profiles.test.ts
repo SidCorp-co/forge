@@ -116,8 +116,8 @@ describe("REQ-76 BC-11: a refusal names the gate, the profile and the key", () =
 		expect(gateSays(projectGate({ gates: { profile: "strict" } }, null, "scope_hold"))).toBe(
 			"Gate scope_hold is enforced by this project's gate profile strict (gates.profile); gates.overrides.scope_hold relaxes it.",
 		);
-		expect(gateSays(projectGate({ approvals: { admit: true } }, null, "approval_admit"))).toContain(
-			"approvals.admit setting, which its gate profile standard defers to",
+		expect(gateSays(projectGate({ approvals: { admit: true } }, null, "approval_admit"))).toBe(
+			"Gate approval_admit is enforced by this project's approvals.admit setting, which its gate profile standard defers to; changing approvals.admit, or gates.overrides.approval_admit, relaxes it.",
 		);
 		expect(
 			gateSays(projectGate({ gates: { profile: "yolo", overrides: { scope_hold: "enforce" } } }, null, "scope_hold")),
