@@ -108,7 +108,7 @@ describe('a readiness suggestion written before the retirement', () => {
     await m.migrate();
     expect(await Promise.all([accepted, rejected, other].map(rowOf))).toEqual(before);
     for (const id of [accepted, rejected, other]) expect(await movesOf(id)).toEqual([]);
-    const [{ n }] = await m.sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM suggestions`;
-    expect(n).toBe(3);
+    const [count] = await m.sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM suggestions`;
+    expect(count?.n).toBe(3);
   });
 });
