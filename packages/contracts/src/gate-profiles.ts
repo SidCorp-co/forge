@@ -473,8 +473,10 @@ export function gateSays(g: ResolvedGate): string {
 			: g.from === "key"
 				? `this project's ${g.key} setting, which its gate profile ${g.profile} defers to`
 				: `this project's gate profile ${g.profile} (gates.profile)`;
-	// plain words: it ends refusals a person reads, a checklist gap's among them
-	return `Gate ${g.id} is ${g.mode === "enforce" ? "enforced" : g.mode} by ${by}; gates.overrides.${g.id} relaxes it.`;
+	// plain words: it ends refusals a person reads, a checklist gap's among them; a setting the profile
+	// defers to is the nearer way to relax it, so it is named before the override
+	const relaxes = g.from === "key" ? `changing ${g.key}, or gates.overrides.${g.id},` : `gates.overrides.${g.id}`;
+	return `Gate ${g.id} is ${g.mode === "enforce" ? "enforced" : g.mode} by ${by}; ${relaxes} relaxes it.`;
 }
 
 /** What of a project document a gate's own switch reads: the keys the profile defers to under standard. */

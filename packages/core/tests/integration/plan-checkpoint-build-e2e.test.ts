@@ -21,6 +21,7 @@ import {
   addProjectMember,
   createTestIssue,
   createTestUser,
+  recordStatusMove,
   rows,
   seedIssueStatus,
 } from '../helpers/factories.js';
@@ -227,7 +228,7 @@ describe('after approved, build may start (criterion 2)', () => {
       workState: { step: 'build' },
     });
     expect([res.status, codes(res)]).toEqual([422, ['PLAN_APPROVAL_PENDING']]);
-    expect(details(res)).toContain('rewritten after it last passed');
+    expect(details(res)).toContain('the plan changed after `approved`');
     expect(await stepOf(issue)).toBe('design');
     const plan = await rows<{ plan: string }>(sql`SELECT plan FROM issues WHERE id = ${issue}`);
     expect(plan[0]?.plan).toBe('Build it the way the plan says.');
@@ -273,5 +274,89 @@ describe('a claim resumes at design until the plan checkpoint is passed (criteri
     ok(await move(issue, 'approved'));
     await leased(issue);
     expect(ok(await move(issue, 'in_progress')).step).toBe('build');
+  });
+});
+
+const gateSentence = /\s*Gate plan_approval is .*$/;
+const words = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
+
+describe('an approval recorded before kernel_transitions held issue moves counts (K131 finding 1)', () => {
+  it('reads an approval the activity log alone recorded', async () => {
+    const issue = await issueAt(projects.strict, 'approved');
+    // the move to approved as the feed recorded it before issues were audited in kernel_transitions
+    await recordStatusMove(issue, adminId, 'in_progress', 'approved', new Date(Date.now() + 1_000));
+    await leased(issue);
+    expect(ok(await move(issue, 'in_progress')).step).toBe('build');
+  });
+
+  it('counts an issue standing at approved whose move there no record holds, its plan written at its create', async () => {
+    seq += 1;
+    const [row] = await rows<{ id: string }>(sql`
+      INSERT INTO issues (project_id, iss_seq, title, status, plan, created_by_id)
+      VALUES (${projects.strict}, ${seq}, 'legacy approved', 'open', 'Build it.', ${adminId})
+      RETURNING id`);
+    const issue = row?.id ?? '';
+    // criteria alone: the plan keeps the time its create stamped
+    ok(await call(owner, 'PATCH', `/api/issues/${issue}`, { acceptanceCriteria: '1. It holds.' }));
+    ok(
+      await call(author, 'PUT', `/api/issues/${issue}/design`, {
+        criteria: [{ criterion: 1, class: 'observable', pattern: null, proof: 'run it' }],
+        modules: [],
+        contracts: [],
+      }),
+    );
+    await seedIssueStatus(issue, 'approved');
+    await leased(issue);
+    expect(ok(await move(issue, 'in_progress')).step).toBe('build');
+  });
+
+  it('does not count an unrecorded approval its plan was written after', async () => {
+    // the plan is written after the create and after every recorded move; the move to approved is in no record
+    const issue = await issueAt(projects.strict, 'approved');
+    await leased(issue);
+    expect(ok(await move(issue, 'in_progress')).step).toBe('design');
+  });
+});
+
+describe('the refusal says which step waits, what relaxes it first, in few words (K131 finding 2)', () => {
+  it('names the step moved into, and keeps its own prose within 20 words', async () => {
+    const issue = await issueAt(projects.strict, 'in_progress');
+    ok(await step(issue, 'design'));
+    for (const to of ['build', 'test', 'release']) {
+      const said = details(await step(issue, to));
+      const own = said.replace(gateSentence, '');
+      expect(own).toContain(`\`${to}\``);
+      for (const other of ['build', 'test', 'release'].filter((s) => s !== to)) {
+        expect(own).not.toContain(`\`${other}\``);
+      }
+      expect(words(own)).toBeLessThanOrEqual(20);
+      expect(own).toContain('plans.approve');
+    }
+  });
+
+  it('names the setting standard defers to before the override that relaxes it', async () => {
+    const issue = await issueAt(projects.standardKeyed, 'in_progress');
+    ok(await step(issue, 'design'));
+    const said = details(await step(issue, 'build'));
+    const relaxes = said.slice(said.indexOf('Gate plan_approval'));
+    expect(relaxes).toMatch(/changing plan\.approval\.required, or gates\.overrides\.plan_approval, relaxes it\.$/);
+  });
+});
+
+describe('a plan cleared after approval owes a plan (K131 finding 3)', () => {
+  it('asks for a plan to be written, not for an approval of a rewrite', async () => {
+    const issue = await issueAt(projects.strict, 'in_progress');
+    ok(await move(issue, 'approved'));
+    await leased(issue);
+    ok(await move(issue, 'in_progress'));
+    ok(await step(issue, 'design'));
+    ok(await call(author, 'PATCH', `/api/issues/${issue}`, { plan: null }));
+    const res = await step(issue, 'build');
+    expect([res.status, codes(res)]).toEqual([422, ['PLAN_APPROVAL_PENDING']]);
+    const own = details(res).replace(gateSentence, '');
+    expect(own).toContain('no plan');
+    expect(own).not.toContain('rewritten');
+    expect(words(own)).toBeLessThanOrEqual(20);
+    expect(await stepOf(issue)).toBe('design');
   });
 });

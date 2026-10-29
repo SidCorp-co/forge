@@ -1,0 +1,1 @@
+**Required plan approval counts old approvals and says what it waits for.** An issue approved before status moves were audited resumes at build; the refusal names the waiting step, the setting that relaxes it, and a missing plan.
