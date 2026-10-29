@@ -5,12 +5,14 @@
 // fixed permission, or a person gate's on or off permission as the project's switch stands
 // (`@forge/contracts/person-gates`). A question asked of a person and a reporter's verdict on their
 // own report are a person's alone. A decision the agent may take is left out by that reason, never
-// dropped, and the master is asked about its item by the steward like any stuck item.
+// dropped, and the master is asked about its item by the steward like any stuck item: the steward
+// reads the same rule for a wait's act (`masterTakesWait`, ISS-758).
 
-import type {
-  DecisionAct,
-  NeedsYouDecision,
-  NotDecisionItem,
+import {
+  type DecisionAct,
+  decisionActsOf,
+  type NeedsYouDecision,
+  type NotDecisionItem,
 } from '@forge/contracts/needs-you-decisions';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import { type PersonGate, personGatePermission } from '@forge/contracts/person-gates';
@@ -63,15 +65,14 @@ const personsOnly = (d: Pick<NeedsYouDecision, 'answers'>) =>
   d.answers.some((a) => NEED[a.act] === 'person');
 
 /**
- * Whether the project's agent may take each decision, read once for the project: a breakdown's
- * accept follows its own gate, as `suggestions/accept-gate.ts` reads it. Where every decision is a
- * person's alone, nothing is read.
+ * The one reading of whether the project's master takes an act (ISS-758), read once for the project
+ * and shared by Needs you (`agentTakesOf`) and the steward (`masterTakesWait`), so a row cannot be
+ * left to the master by one and to a person by the other. A breakdown's accept follows its own gate,
+ * as `suggestions/accept-gate.ts` reads it.
  */
-export async function agentTakesOf(
+export async function masterTakesOf(
   projectId: string,
-  decisions: readonly Pick<NeedsYouDecision, 'answers'>[],
-): Promise<(d: Pick<NeedsYouDecision, 'answers' | 'topic'>) => boolean> {
-  if (decisions.every(personsOnly)) return () => false;
+): Promise<(act: DecisionAct, topic?: NeedsYouDecision['topic']) => boolean> {
   const accounts = await masterAccountsOf(projectId);
   if (accounts.length === 0) return () => false;
   const approvals = await readApprovals(projectId);
@@ -89,7 +90,7 @@ export async function agentTakesOf(
     }
     return held.get(permission) === true;
   };
-  const permissionOf = (act: DecisionAct, topic: NeedsYouDecision['topic']) => {
+  const permissionOf = (act: DecisionAct, topic: NeedsYouDecision['topic'] | undefined) => {
     const need =
       act === 'suggestion.accept' && topic === 'breakdown'
         ? { gate: 'breakdown' as const }
@@ -105,10 +106,40 @@ export async function agentTakesOf(
     }
   }
   for (const p of permissions) await holds(p);
+  return (act, topic) => {
+    const p = permissionOf(act, topic);
+    return p !== null && held.get(p) === true;
+  };
+}
+
+/**
+ * Whether the project's agent may take each decision, read once for the project. Where every
+ * decision is a person's alone, nothing is read.
+ */
+export async function agentTakesOf(
+  projectId: string,
+  decisions: readonly Pick<NeedsYouDecision, 'answers'>[],
+): Promise<(d: Pick<NeedsYouDecision, 'answers' | 'topic'>) => boolean> {
+  if (decisions.every(personsOnly)) return () => false;
+  const takes = await masterTakesOf(projectId);
   return (d) => {
     if (personsOnly(d)) return false;
     const act = takingAct(d);
-    const p = act ? permissionOf(act, d.topic) : null;
-    return p !== null && held.get(p) === true;
+    return act !== null && takes(act, d.topic);
   };
+}
+
+/**
+ * Whether the project's master takes the act a wait names (ISS-758): every decision act it asks for
+ * is one the master's account holds the permission of. An act no person decides, or a person's alone,
+ * is not the master's to take here.
+ */
+export async function masterTakesWait(
+  projectId: string,
+  act: Parameters<typeof decisionActsOf>[0],
+): Promise<boolean> {
+  const acts = decisionActsOf(act);
+  if (acts === null) return false;
+  const takes = await masterTakesOf(projectId);
+  return acts.every((a) => takes(a.act, a.topic));
 }

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
 	byDecisionOrder,
+	DECISION_ACT_KEYS,
+	DECISION_ACT_OF_SAID,
 	DECISION_ACTS,
 	type DecisionAnswer,
 	decisionActParams,
+	decisionActsOf,
 	decisionPath,
 	isDecisionAct,
 	isDecisionActOn,
@@ -396,5 +399,56 @@ describe("a release's cut (REQ-48 BC-11)", () => {
 		expect(isDecisionAct(cut)).toBe(false);
 		expect(isDecisionActOn("requirement", cut)).toBe(false);
 		expect(isDecisionActOn("feedback", cut)).toBe(false);
+	});
+});
+
+describe("the act a wait names is taken by a decision act (ISS-758)", () => {
+	const repin = {
+		key: "standing.acts",
+		vars: {
+			acts: [
+				{ key: "standing.act.updateToDesign", vars: { design: "d", r: 2 } },
+				{ key: "standing.act.updateToContract", vars: { contract: "c", v: 3 } },
+			],
+		},
+	};
+
+	it("names a requirement re-pin's act, read through its several acts", () => {
+		expect(decisionActsOf(repin)).toEqual([
+			{ act: "requirement.repin" },
+			{ act: "requirement.repin" },
+		]);
+	});
+
+	it("reads an issue's act through a requirement's wait on it", () => {
+		const onIssue = {
+			key: "standing.act.onIssue",
+			vars: { act: { key: "issues.standing.act.answer" } },
+		};
+		expect(decisionActsOf(onIssue)).toEqual([{ act: "question.answer" }]);
+	});
+
+	it("names no act where any of several is no person's decision", () => {
+		const mixed = {
+			key: "standing.acts",
+			vars: { acts: [repin.vars.acts[0], { key: "standing.act.cut" }] },
+		};
+		expect(decisionActsOf(mixed)).toBeNull();
+		expect(decisionActsOf({ key: "standing.acts", vars: { acts: [] } })).toBeNull();
+		expect(decisionActsOf({ key: "standing.act.nothingKnown" })).toBeNull();
+	});
+
+	it("keeps a breakdown's topic, which follows its own gate", () => {
+		expect(decisionActsOf({ key: "standing.act.reviewBreakdown" })).toEqual([
+			{ act: "suggestion.accept", topic: "breakdown" },
+		]);
+	});
+
+	it("derives the keys a person decides from the same table", () => {
+		expect([...DECISION_ACT_KEYS].sort()).toEqual(
+			Object.keys(DECISION_ACT_OF_SAID).sort(),
+		);
+		expect(isDecisionAct(repin)).toBe(true);
+		expect(isDecisionAct({ key: "standing.act.cut" })).toBe(false);
 	});
 });

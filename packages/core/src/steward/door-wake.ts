@@ -57,7 +57,7 @@ async function askOnce(
   if (to.to === 'person') {
     const owes = to.act ? `${to.who} to ${to.act}` : to.who;
     return {
-      correct: `${about} waits on ${owes}: a person's act, on their Needs you, which the master's account does not take for them. Ask nothing of the master; write the note saying so.`,
+      correct: `${about} waits on ${owes}: a person's act, on their Needs you, which the master's account holds no permission for. Ask nothing of the master; write the note saying so.`,
     };
   }
   if (to.to === 'nobody') {

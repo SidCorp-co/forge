@@ -4,6 +4,7 @@
 // `standing/` module serves. Read only inside a call, so an unprovided port fails the call that
 // needed it and names the provide it lacked.
 
+import type { Said } from '@forge/contracts/said';
 import type { OpenStandingsRead } from '@forge/contracts/steward';
 import { portSlot } from '../lib/port-slot.js';
 
@@ -37,6 +38,13 @@ interface StewardPorts {
    * what it writes as is not known, so it is never taken to hold anything.
    */
   masterAccounts(projectId: string): Promise<MasterAccounts>;
+  /**
+   * Whether the project's master takes the act a wait names: an account it acts as holds the
+   * permission of every decision act the wait asks for (the development module's
+   * `needs-you-agent-takes.ts:masterTakesWait`, the rule Needs you leaves a row to the master by,
+   * ISS-758).
+   */
+  masterTakes(projectId: string, act: Said): Promise<boolean>;
 }
 
 /** The accounts a project's master acts as, and the serving boxes whose account cannot be read. */

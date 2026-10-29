@@ -1,4 +1,5 @@
 export { type AttentionRow, type NeedsYouViewer, readAttention } from './needs-you.js';
+export { masterTakesWait } from './needs-you-agent-takes.js';
 export { sweepAgedDecisions } from './needs-you-aged.js';
 export { needsYouDecisionsOf, readNeedsYouDecisions } from './needs-you-decisions-read.js';
 export { forgeNeedsYouTool } from './needs-you-tool.js';

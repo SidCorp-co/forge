@@ -19,6 +19,7 @@ import {
 import {
 	decisionProposalSchema,
 	NEEDS_YOU_TOPICS,
+	type NeedsYouTopic,
 } from "./needs-you-proposal.js";
 import { questionSubjectSchema } from "./questions.js";
 import { CHANGE_REQUEST_STATES, RELEASE_ROSTER_LIMIT } from "./releases.js";
@@ -492,34 +493,51 @@ export function byDecisionOrder(
 	return (a.touchedAt ?? "").localeCompare(b.touchedAt ?? "");
 }
 
+/** The decision act a said act key is taken by, and the page group where its act reads it differently. */
+export interface DecisionActOfSaid {
+	act: DecisionAct;
+	/** `breakdown`: a suggestion accepted as a requirement's breakdown follows the breakdown gate. */
+	topic?: Extract<NeedsYouTopic, "breakdown">;
+}
+
 /**
- * The said act keys a person decides, each one a decision the needs-me read builds (BC-11): an
- * answer to a question, an approval, an acceptance, a verify. A row whose act is none of these is
- * work an agent takes, never Needs you, so every list and the needs-me read hold the same rows.
+ * The said act keys a person decides, each one naming the decision act that takes it (ISS-758): an
+ * answer to a question, an approval, an acceptance, a verify. Needs you builds a decision for each
+ * and the steward reads the same table to know who owes the act a wait names, so the two cannot
+ * disagree. A row whose act is none of these is work an agent takes, never Needs you, so every list
+ * and the needs-me read hold the same rows.
  */
-export const DECISION_ACT_KEYS: ReadonlySet<string> = new Set([
-	"issues.standing.act.answer",
-	"issues.standing.act.answerOther",
-	"issues.standing.act.decide",
-	"issues.standing.act.supply",
-	"standing.act.answerSteward",
-	"standing.act.answerQuestion",
-	"standing.act.acceptR",
-	"standing.act.agreeR",
-	"standing.act.check",
-	"standing.act.approveOrReturn",
-	"designs.act.approveOrReturn",
-	"standing.act.confirmAnswer",
-	"standing.act.verifyFix",
-	"standing.act.verifyFixIn",
-	"standing.act.promoteDraft",
-	"standing.act.promoteDrafts",
-	"standing.act.updateToDesign",
-	"standing.act.updateToContract",
-	"standing.act.reviewBreakdown",
-	"standing.act.reviewSuggestedRevision",
-	"designs.act.repinBatch",
-]);
+export const DECISION_ACT_OF_SAID: Readonly<Record<string, DecisionActOfSaid>> =
+	{
+		"issues.standing.act.answer": { act: "question.answer" },
+		"issues.standing.act.answerOther": { act: "question.answer" },
+		"issues.standing.act.decide": { act: "question.answer" },
+		"issues.standing.act.supply": { act: "question.answer" },
+		"standing.act.answerSteward": { act: "question.answer" },
+		"standing.act.answerQuestion": { act: "question.answer" },
+		"standing.act.acceptR": { act: "revision.accept" },
+		"standing.act.agreeR": { act: "requirement.agree" },
+		"standing.act.check": { act: "requirement.accept" },
+		"standing.act.approveOrReturn": { act: "release.decide" },
+		"designs.act.approveOrReturn": { act: "design.decide" },
+		"standing.act.confirmAnswer": { act: "feedback.verify" },
+		"standing.act.verifyFix": { act: "feedback.verify" },
+		"standing.act.verifyFixIn": { act: "feedback.verify" },
+		"standing.act.promoteDraft": { act: "issue.admit" },
+		"standing.act.promoteDrafts": { act: "issue.admit" },
+		"standing.act.updateToDesign": { act: "requirement.repin" },
+		"standing.act.updateToContract": { act: "requirement.repin" },
+		"standing.act.reviewBreakdown": {
+			act: "suggestion.accept",
+			topic: "breakdown",
+		},
+		"standing.act.reviewSuggestedRevision": { act: "suggestion.accept" },
+		"designs.act.repinBatch": { act: "design.repin" },
+	};
+
+export const DECISION_ACT_KEYS: ReadonlySet<string> = new Set(
+	Object.keys(DECISION_ACT_OF_SAID),
+);
 
 type SaidAct = {
 	key: string;
@@ -530,19 +548,30 @@ const isSaidAct = (v: unknown): v is SaidAct =>
 	typeof v === "object" && v !== null && "key" in v;
 
 /**
- * Whether a wait's act is a person's decision: a requirement's wait on one of its issues reads the
- * issue's act, and several acts said as one (`standing.acts`) are a decision when each of them is.
+ * The decision acts a wait's act is taken by: a requirement's wait on one of its issues reads the
+ * issue's act, and several acts said as one (`standing.acts`) are taken by each of theirs. Null
+ * where any of them is no person's decision.
  */
-export function isDecisionAct(act: SaidAct): boolean {
+export function decisionActsOf(act: SaidAct): DecisionActOfSaid[] | null {
 	const inner = act.key === "standing.act.onIssue" ? act.vars?.act : undefined;
-	if (isSaidAct(inner)) return isDecisionAct(inner);
+	if (isSaidAct(inner)) return decisionActsOf(inner);
 	const many = act.key === "standing.acts" ? act.vars?.acts : undefined;
-	if (Array.isArray(many))
-		return (
-			many.length > 0 && many.every((a) => isSaidAct(a) && isDecisionAct(a))
-		);
-	return DECISION_ACT_KEYS.has(act.key);
+	if (Array.isArray(many)) {
+		const acts: DecisionActOfSaid[] = [];
+		for (const a of many) {
+			const one = isSaidAct(a) ? decisionActsOf(a) : null;
+			if (one === null) return null;
+			acts.push(...one);
+		}
+		return acts.length > 0 ? acts : null;
+	}
+	const hit = DECISION_ACT_OF_SAID[act.key];
+	return hit ? [hit] : null;
 }
+
+/** Whether a wait's act is a person's decision (`decisionActsOf` reads one). */
+export const isDecisionAct = (act: SaidAct): boolean =>
+	decisionActsOf(act) !== null;
 
 /**
  * The said act keys a person decides only on the record that owes them: a release's cut is the

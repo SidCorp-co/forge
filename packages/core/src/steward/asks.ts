@@ -320,7 +320,7 @@ export async function asksToSettle(
   const answered = new Map<string, boolean>();
   for (const ask of open) {
     const standing = byKey.get(aboutKeyOf(ask));
-    if (!standing || since.has(ask.id) || waitsOnPerson(standing)) {
+    if (!standing || since.has(ask.id) || (await waitsOnPerson(projectId, standing))) {
       out.push(ask.id);
       continue;
     }

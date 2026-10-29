@@ -5,6 +5,7 @@
 // own view, never its table (REQ-50 BC-1); and a release's page reads who names it through the
 // steward's addressee (ISS-590).
 
+import { masterTakesWait } from './development/index.js';
 import { deviceHolderUserId, workspaceHolderUserId } from './devices/index.js';
 import { provideLessonsPorts } from './lessons/index.js';
 import { getMockupAs } from './mockups/index.js';
@@ -47,6 +48,7 @@ export function provideStewardDomainPorts(
     releaseFacts: stewardReleaseFacts,
     runningBuildObserved,
     masterAccounts: masterAccountsOf,
+    masterTakes: masterTakesWait,
   });
   provideSuggestionsPorts({ stewardOf: heldStewardOf });
   provideReleasePagePorts({ releaseNamer: releaseNamerOf });

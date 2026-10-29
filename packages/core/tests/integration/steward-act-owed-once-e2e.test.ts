@@ -101,7 +101,6 @@ async function agreedOnFlow(title: string): Promise<string> {
   return key;
 }
 
-/** One steward run on `key`'s stuck standing, its turn asking the master to take the act. */
 /** Ends every steward run already queued (the setup's own events start some), acting on nothing. */
 async function drain() {
   await settleOutbox();
@@ -110,6 +109,7 @@ async function drain() {
   await steward.dispatchStewardRuns(new Date(clock));
 }
 
+/** One steward run on `key`'s stuck standing, its turn asking the master to take the act. */
 async function askRun(key: string) {
   await drain();
   shown.add(key);
@@ -129,7 +129,6 @@ async function askRun(key: string) {
   ];
   clock += STEWARD_DEBOUNCE_MS + 30_000;
   await steward.dispatchStewardRuns(new Date(clock));
-  console.log('DEBUG', key, JSON.stringify(await rows(sql`SELECT subject_key, trigger, state FROM steward_runs WHERE project_id = ${projectId}`)), script.sent.length);
   stuckKeys.delete(key);
 }
 
