@@ -112,6 +112,8 @@ export const FEEDBACK_DECISIONS = [
 	"declined",
 	"verified",
 	"reopened",
+	/** The reporter's one reply to an answer, with its evidence: the item goes back to triage (REQ-47 BC-12). */
+	"replied",
 	"redacted",
 	"promoted",
 	"routed",
@@ -146,6 +148,7 @@ export const FEEDBACK_DECISION_LABELS: Record<FeedbackDecision, string> = {
 	declined: "Declined",
 	verified: "Verified",
 	reopened: "Reopened",
+	replied: "Replied",
 	redacted: "Reporter data deleted",
 	routed: "Route written",
 	promoted: "Promoted from an agent report",
@@ -279,6 +282,14 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_ANSWER_MISSING",
 	"FEEDBACK_DECLINE_REASON_REQUIRED",
 	"FEEDBACK_REOPEN_REASON_REQUIRED",
+	/** The item is already back with the triager since a reopen or reply: one reply per answer (REQ-47 BC-12). */
+	"FEEDBACK_REPLY_SPENT",
+	/** A reply answers an answer; the item's standing route is none (REQ-47 BC-12). */
+	"FEEDBACK_REPLY_NO_ANSWER",
+	/** An answer to a reopened item names the reopen or reply it answers in `inReplyTo` (REQ-47 BC-13). */
+	"FEEDBACK_ANSWER_UNADDRESSED",
+	/** `inReplyTo` names no reopen or reply standing on the item now (REQ-47 BC-13). */
+	"FEEDBACK_ANSWER_STALE",
 	/** An agent confirms or reopens a fix only with what it ran and saw (REQ-66 BC-8). */
 	"FEEDBACK_EVIDENCE_REQUIRED",
 	/** A triage's `reproduced` names no attempt: a recording of the item, or what was tried and seen (REQ-66 BC-5). */
@@ -437,6 +448,11 @@ const carrierFields = {
 	requirement: ref.optional(),
 	title: titleText(FEEDBACK_LIMITS.title).optional(),
 	answer: z.string().max(FEEDBACK_LIMITS.answer).optional(),
+	/**
+	 * Route answer, on a reopened item: the id of the reopen or reply it answers, the item's latest
+	 * decision (REQ-47 BC-13). A reopened item takes no answer without it.
+	 */
+	inReplyTo: z.uuid().optional(),
 	duplicateOf: ref.optional(),
 	note: z.string().max(FEEDBACK_LIMITS.reason).optional(),
 };
@@ -479,7 +495,7 @@ export const feedbackTriageSchema = z.strictObject({
 	diagnosis: recordingDiagnosisSchema.optional(),
 });
 export type FeedbackTriage = z.infer<typeof feedbackTriageSchema>;
-export const FEEDBACK_TRIAGE_SHAPE = `{ route?: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, answers?: { criterion: REQ-n BC-m | none, severity: ${FEEDBACK_SEVERITIES.join(" | ")}, reproduced }, issue?: ISS-n | [ISS-n, …] | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, note? (decline: the reason, and no answers), diagnosis?: { recording, cause, fix } (issue only) }`;
+export const FEEDBACK_TRIAGE_SHAPE = `{ route?: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, answers?: { criterion: REQ-n BC-m | none, severity: ${FEEDBACK_SEVERITIES.join(" | ")}, reproduced }, issue?: ISS-n | [ISS-n, …] | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer?, inReplyTo? (answer to a reopened item: the reopen or reply it answers) | duplicateOf?, kind?, note? (decline: the reason, and no answers), diagnosis?: { recording, cause, fix } (issue only) }`;
 
 /** Stamped by core on a `feedback_triage` suggestion: the nearest item, or why dedup did not run. */
 export const feedbackDedupSchema = z.strictObject({
@@ -668,6 +684,7 @@ export interface FeedbackRouteView {
 }
 
 export interface FeedbackDecisionView {
+	id: string;
 	decision: FeedbackDecision;
 	route: FeedbackRoute | null;
 	carrier: string | null;
@@ -681,6 +698,8 @@ export interface FeedbackDecisionView {
 	/** The person's reason on the accept of the suggestion that wrote this decision (ISS-281); null
 	 *  when it came from no suggestion, the accept gave none, or the item's text is withheld. */
 	acceptReason: string | null;
+	/** On an answer: the id of the reopen or reply it answers, a decision of this same history. */
+	inReplyTo: string | null;
 	/** `reason` as said: a person's words carried as written, Forge's own by its key. */
 	says: { reason: Said | null };
 }

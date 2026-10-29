@@ -107,7 +107,7 @@ export function FeedbackHistory({ f }: { f: FeedbackView }) {
   return (
     <ol className="border-t border-line-subtle" data-testid="feedback-history">
       {[...f.decisions].reverse().map((d) => (
-        <li key={`${d.decidedAt}-${d.decision}`} className="grid gap-0.5 border-b border-line-subtle py-2.5 text-13">
+        <li key={d.id} className="grid gap-0.5 border-b border-line-subtle py-2.5 text-13">
           <span>
             <span className="font-semibold">{enumLabel("feedbackDecision", d.decision, language)}</span>
             {d.route ? t("feedback.history.as", { route: enumLabel("feedbackRoute", d.route, language).toLowerCase() }) : ""}

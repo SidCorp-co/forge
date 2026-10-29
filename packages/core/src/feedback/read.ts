@@ -339,6 +339,7 @@ export async function detailAs(
       duplicates: pointing,
       decisions: decisions.map(
         (d): FeedbackDecisionView => ({
+          id: d.id,
           decision: d.decision,
           route: d.route,
           carrier: d.carrier,
@@ -352,6 +353,7 @@ export async function detailAs(
             withhold || !d.fromSuggestionId
               ? null
               : (acceptReasons.get(d.fromSuggestionId) ?? null),
+          inReplyTo: d.inReplyTo,
           says: { reason: withhold ? null : decisionReasonSaid(d.reason, d.decidedAgency) },
         }),
       ),

@@ -18,6 +18,7 @@ import {
   fencedProjectOfCredential,
   getForgeFeedback,
   listOwnForgeFeedback,
+  replyForgeFeedback,
   settleForgeFeedback,
   submitForgeFeedback,
 } from './service.js';
@@ -100,6 +101,23 @@ forgeFeedbackRoutes.post(
         callerOf(c),
         c.req.valid('param').key,
         'reopened',
+        c.req.valid('json').evidence,
+        REST_DOOR,
+      ),
+    ),
+);
+
+// the reporter replies once to the item's answer, which sends it back to triage (REQ-47 BC-12)
+forgeFeedbackRoutes.post(
+  '/:key/reply',
+  zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>/reply')),
+  strictBody(forgeFeedbackSettleRequestSchema, FORGE_FEEDBACK_SETTLE_SHAPE),
+  async (c) =>
+    answer(
+      c,
+      await replyForgeFeedback(
+        callerOf(c),
+        c.req.valid('param').key,
         c.req.valid('json').evidence,
         REST_DOOR,
       ),

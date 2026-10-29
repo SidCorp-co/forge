@@ -26,11 +26,12 @@ import {
   fencedProjectOfCredential,
   getForgeFeedback,
   listOwnForgeFeedback,
+  replyForgeFeedback,
   settleForgeFeedback,
   submitForgeFeedback,
 } from './service.js';
 
-const ACTIONS = ['submit', 'list', 'get', 'progress', 'verify', 'reopen'] as const;
+const ACTIONS = ['submit', 'list', 'get', 'progress', 'verify', 'reopen', 'reply'] as const;
 export const FORGE_FEEDBACK_READ_ACTIONS: readonly string[] = ['list', 'get', 'progress'];
 
 // where it was met is ONE field, `target`, never the REST body's `whereSeen` beside other optional
@@ -43,13 +44,13 @@ const inputSchema = z.strictObject({
     .string()
     .regex(/^FB-\d{1,9}$/, 'a feedback item is named by its key, FB-n')
     .optional()
-    .describe('get, progress, verify, reopen: the item, FB-n'),
+    .describe('get, progress, verify, reopen, reply: the item, FB-n'),
   evidence: z
     .string()
     .max(4_000)
     .optional()
     .describe(
-      'verify, reopen: what you ran against the shipped build and what you saw; an agent always sends it',
+      'verify, reopen: what you ran against the shipped build and what you saw; reply: what the answer leaves open, with what you ran and saw. An agent always sends it',
     ),
   ...request,
   kind: request.kind.optional(),
@@ -82,7 +83,7 @@ export function forgeSubmitRequestOf(
       code: 'BAD_REQUEST',
       path: '/evidence',
       detail:
-        'evidence confirms or reopens a shipped fix; submit files a new report, so leave it out',
+        'evidence confirms, reopens or replies to an item; submit files a new report, so leave it out',
     });
   }
   if (feedback !== undefined) {
@@ -121,6 +122,7 @@ const DESCRIPTION = [
   'list: the items you reported, each with phase, origin and `progress` (whether work runs, who it waits on, and the forecast or why there is none; repeat `progress.says`, never a date it does not hold).',
   'get {feedback}: one item you reported (a member of the home project reads any), with `shipEvidence` once its work shipped: the violated criterion’s verdict on the running build and its clip. progress {feedback}: its progress block alone.',
   'verify {feedback, evidence} and reopen {feedback, evidence}: once its work shipped (phase resolved) and its progress waits on you, confirm the fix or reopen the item, as its reporter. evidence is what you ran against the shipped build and what you saw; an agent is refused FEEDBACK_EVIDENCE_REQUIRED without it, and FORGE_FEEDBACK_NOT_YOURS on an item another account filed.',
+  'reply {feedback, evidence}: once the item stands on an answer, reply to it once, with what it leaves open; the item goes back to triage as a reopen does, and the next answer names your reply. A second reply to one answer is FEEDBACK_REPLY_SPENT, an item with no answer standing FEEDBACK_REPLY_NO_ANSWER.',
   'FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.',
 ].join(' ');
 
@@ -132,6 +134,7 @@ const GRANT = {
     progress: 'forge-feedback:read',
     verify: 'forge-feedback:write',
     reopen: 'forge-feedback:write',
+    reply: 'forge-feedback:write',
   },
 } as const;
 
@@ -227,6 +230,15 @@ const HANDLERS = {
         await callerOf(ctx),
         need(input, input.action, 'feedback').feedback,
         'reopened',
+        input.evidence,
+        MCP_DOOR,
+      ),
+    ),
+  reply: async (ctx: McpContext, input: Input) =>
+    out(
+      await replyForgeFeedback(
+        await callerOf(ctx),
+        need(input, input.action, 'feedback').feedback,
         input.evidence,
         MCP_DOOR,
       ),

@@ -32,7 +32,7 @@ use crate::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::salvage::{self, Outcome, Salvage};
 use crate::worktree::Residence;
 use runner_core::inflight::Reaped;
-use runner_core::ledger::{Incarnation, Ledger, Run};
+use runner_core::ledger::{CheckoutReturn, Incarnation, Ledger, Run};
 use runner_platform::error::{Error, Result};
 
 /// How a run's process group is stopped. A port so the verb is testable
@@ -76,7 +76,7 @@ pub struct Forced {
 }
 
 /// What the release did with the path the run was declared against.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorktreeOutcome {
     /// The run's own checkout was preserved and then removed.
     Released,
@@ -88,6 +88,10 @@ pub enum WorktreeOutcome {
     /// to wear `Released`, which said the release had done something it had
     /// not (ISS-1193).
     NothingRegistered,
+    /// Another run the ledger holds open is in the checkout, so it was left to
+    /// that run: nothing was preserved, committed or removed, and the run
+    /// being released owes it back no longer.
+    KeptForOpenRun { holder: String },
 }
 
 pub fn verb_for(run: &Run, this_boot: &str) -> Result<Verb> {
@@ -255,19 +259,32 @@ async fn take_the_directory(
     crate::worktree::remove_at(&repo_root.to_string_lossy(), worktree, &why).await
 }
 
-/// A run other than `run_id` that the ledger holds on `worktree`, by the rows
-/// the sweep keeps a checkout for (`Ledger::held_worktrees`), and by any
-/// spelling of the path that resolves alike.
-fn another_holder(ledger: &Ledger, run_id: &str, worktree: &Path) -> Result<Option<String>> {
+/// A run other than `run_id` that is still OPEN on `worktree` — not ended,
+/// its session not over, and owing the checkout back — by any spelling of the
+/// path that resolves alike.
+///
+/// Read off the rows the sweep keeps a checkout for (`Ledger::held_worktrees`)
+/// and narrowed to the open ones. That set also carries ENDED runs whose
+/// release was decided terminal, and an ended run is working in nothing:
+/// reading one as a holder made two ended runs on adminhub-api's iss-71,
+/// f9f1b4ce and ab6b6f8e, each refuse its release naming the other, for ever,
+/// with that project's master unable to declare a run until they cleared.
+fn open_holder(ledger: &Ledger, run_id: &str, worktree: &Path) -> Result<Option<String>> {
     let here = worktree.canonicalize().ok();
-    Ok(ledger
-        .held_worktrees()?
-        .into_iter()
-        .find(|(path, holder)| {
-            holder != run_id
-                && (path == worktree || here.is_some() && path.canonicalize().ok() == here)
-        })
-        .map(|(_, holder)| holder))
+    for (path, holder) in ledger.held_worktrees()? {
+        if holder == run_id
+            || !(path == worktree || here.is_some() && path.canonicalize().ok() == here)
+        {
+            continue;
+        }
+        let open = ledger.run(&holder)?.is_some_and(|r| {
+            r.ended_by.is_none() && r.session_terminal_at.is_none() && r.released_as.is_none()
+        });
+        if open {
+            return Ok(Some(holder));
+        }
+    }
+    Ok(None)
 }
 
 /// What this release may do about the path the run names.
@@ -347,6 +364,37 @@ fn held_checkout(residence: &Residence, verb: Verb, run_id: &str, path: &Path) -
     }
 }
 
+/// Leave the checkout to another run the ledger holds OPEN in it, and answer
+/// which run that is, or `None` where no open run is in it.
+///
+/// Before ISS-1378 the release of one run removed the tree a second, unended
+/// run held, between two of its agent's commands (runs b229ea3b and
+/// a8401d85). The checkout is that run's now: this release leaves it standing,
+/// salvages, commits and pushes nothing from it, and records the run as owing
+/// it back no longer, so the open run's own release is the one that preserves
+/// and removes it. Refusing instead held this run's release until the other
+/// ended, and an ENDED holder never does (`open_holder`).
+fn leave_to_an_open_holder(
+    ledger: &Ledger,
+    run_id: &str,
+    held: Held,
+    worktree: &Path,
+) -> Result<Option<String>> {
+    if held != Held::Ours {
+        return Ok(None);
+    }
+    let Some(holder) = open_holder(ledger, run_id, worktree)? else {
+        return Ok(None);
+    };
+    ledger.mark_checkout_returned_observed(run_id, CheckoutReturn::KeptForOpenRun)?;
+    tracing::info!(
+        "[release] run={run_id}: run {holder} is open in {}, so the checkout is left standing \
+         for it — nothing was preserved, committed or removed",
+        worktree.display()
+    );
+    Ok(Some(holder))
+}
+
 pub async fn force_terminal(
     ledger: &mut Ledger,
     run_id: &str,
@@ -381,25 +429,6 @@ pub async fn force_terminal(
         worktree,
     )?;
 
-    // Another run the ledger still holds on the same checkout is working in it,
-    // or owes it a release of its own. The sweep keeps such a checkout
-    // (`worktree_reap`, "still holds it in the ledger"), and the release reads
-    // the same rows: before it, the release of one run removed the tree a
-    // second, unended run held, between two of its agent's commands (ISS-1378,
-    // runs b229ea3b and a8401d85). Asked before anything is salvaged,
-    // committed or pushed from the tree, which would be that run's work moved
-    // under it.
-    if held == Held::Ours {
-        if let Some(other) = another_holder(ledger, run_id, worktree)? {
-            return Err(Error::Other(format!(
-                "refusing to {verb:?} run {run_id}: run {other} still holds {} in the ledger, so \
-                 the checkout stays for it, as the sweep keeps it — nothing was preserved, pushed \
-                 or removed",
-                worktree.display()
-            )));
-        }
-    }
-
     // A subagent at work in the checkout, which the reading of who lives in it
     // cannot see (FB-273). Asked before anything is salvaged or committed in
     // the tree, which would be its work moved under it, and refused as a live
@@ -414,12 +443,14 @@ pub async fn force_terminal(
         }
     }
 
+    let kept_for = leave_to_an_open_holder(ledger, run_id, held, worktree)?;
+
     // A checkout whose branch this box cannot name is a DETACHED one, not an
     // unreadable one, and it is no longer fatal here. The branch name is what
     // `salvage_wip` picks a target by; the question the release turns on is
     // asked by sha and needs none.
     let mut commits = None;
-    let salvage = if held != Held::Ours {
+    let salvage = if held != Held::Ours || kept_for.is_some() {
         None
     } else if crate::worktree_reap::holds_work(worktree).await {
         let branch = branch_of(worktree).await;
@@ -478,10 +509,11 @@ pub async fn force_terminal(
         verb,
         salvage,
         close,
-        worktree: match held {
-            Held::Ours => WorktreeOutcome::Released,
-            Held::MainWorkingTree => WorktreeOutcome::MainWorkingTreeKept,
-            Held::Nothing => WorktreeOutcome::NothingRegistered,
+        worktree: match (held, kept_for) {
+            (Held::Ours, Some(holder)) => WorktreeOutcome::KeptForOpenRun { holder },
+            (Held::Ours, None) => WorktreeOutcome::Released,
+            (Held::MainWorkingTree, _) => WorktreeOutcome::MainWorkingTreeKept,
+            (Held::Nothing, _) => WorktreeOutcome::NothingRegistered,
         },
         commits,
     })
@@ -677,8 +709,8 @@ mod decided_tests {
     }
 }
 
-/// A release over a checkout another open run holds (ISS-1378 b7a88622e,
-/// ported to the split crates), against a real repository.
+/// A release over a checkout other runs share — open or ended — against a
+/// real repository.
 #[cfg(test)]
 mod holder_tests {
     use super::*;
@@ -774,39 +806,117 @@ mod holder_tests {
         }
     }
 
-    /// Run b229ea3b's release took the tree run a8401d85 held. A second run
-    /// the ledger still holds on the same checkout keeps it through the first
-    /// run's release, as the sweep keeps it; once that run is over too, the
-    /// release goes through.
-    #[tokio::test]
-    async fn a_release_leaves_a_checkout_another_open_run_still_holds() {
-        let (root, wt, mut led) = a_repo("another-holder").await;
-        declare(&mut led, "run-1", "master-1", "ISS-964", &wt);
-        led.end_run("run-1", "master", "done").unwrap();
-        declare(&mut led, "run-2", "master-2", "ISS-965", &wt);
-        let hosts = runner_platform::subagent_host::ProcHosts::system();
-        let ports = Ports {
+    fn ports<'a>(hosts: &'a runner_platform::subagent_host::ProcHosts) -> Ports<'a> {
+        Ports {
             procs: &Procs,
             sessions: &World,
             leases: &World,
-            hosts: &hosts,
-        };
+            hosts,
+        }
+    }
 
-        let refused = force_terminal(&mut led, "run-1", forcing(&root), ports).await;
-        assert!(wt.exists(), "the checkout run-2 holds was removed under it");
-        let why = refused
-            .expect_err("another run holds the checkout")
-            .to_string();
-        assert!(
-            why.contains("run run-2 still holds") && why.contains("nothing was preserved"),
-            "{why}"
-        );
+    /// adminhub-api's iss-71, 2026-10-29: f9f1b4ce's release was decided
+    /// terminal over ab6b6f8e while that run was open, and once ab6b6f8e had
+    /// ended too each named the other, for ever, with judge 2e7c4d48 live in
+    /// the tree. An ended run holds nothing another release must wait for;
+    /// the open one does, and the release leaves the checkout to it with its
+    /// work untouched (ISS-1378: b229ea3b's release took the tree a8401d85
+    /// held). Once that run ends too, its own release takes the tree.
+    #[tokio::test]
+    async fn ended_runs_on_one_tree_never_wait_on_each_other_and_leave_it_to_the_open_one() {
+        let (root, wt, mut led) = a_repo("ended-pair-live-third").await;
+        declare(&mut led, "run-1", "master-1", "ISS-71", &wt);
+        led.end_run("run-1", "master", "declared before its tree")
+            .unwrap();
+        led.conclude_release_refusal("run-1", 1, "recovery", "another run held it")
+            .unwrap();
+        declare(&mut led, "run-2", "master-1", "ISS-71", &wt);
+        led.end_run("run-2", "master", "the master said so")
+            .unwrap();
+        declare(&mut led, "run-3", "master-1", "ISS-71", &wt);
+        std::fs::write(wt.join("judging.txt"), "run-3 at work").unwrap();
+        let hosts = runner_platform::subagent_host::ProcHosts::system();
 
-        led.end_run("run-2", "master", "done").unwrap();
-        force_terminal(&mut led, "run-1", forcing(&root), ports)
+        for ended in ["run-2", "run-1"] {
+            let forced = force_terminal(&mut led, ended, forcing(&root), ports(&hosts))
+                .await
+                .unwrap_or_else(|e| panic!("{ended} refused: {e}"));
+            assert!(
+                wt.exists(),
+                "{ended}'s release removed the tree run-3 is open in"
+            );
+            assert!(
+                forced.salvage.is_none() && forced.commits.is_none(),
+                "{forced:?}"
+            );
+            assert_eq!(
+                format!("{:?}", forced.worktree),
+                "KeptForOpenRun { holder: \"run-3\" }"
+            );
+            assert!(forced.close.is_closed(), "{ended}: {:?}", forced.close);
+            let row = led.run(ended).unwrap().unwrap();
+            assert_eq!(row.released_as.as_deref(), Some("kept_for_open_run"));
+            assert_eq!(row.worktree_gone_at, None, "the tree is standing");
+        }
+        let status = tokio::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&wt)
+            .output()
             .await
-            .expect("nobody else holds it now");
-        assert!(!wt.exists(), "released once no other run holds it");
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&status.stdout),
+            "?? judging.txt\n",
+            "run-3's work was salvaged or committed under it"
+        );
+        std::fs::remove_file(wt.join("judging.txt")).unwrap();
+
+        led.end_run("run-3", "master", "judged").unwrap();
+        let forced = force_terminal(&mut led, "run-3", forcing(&root), ports(&hosts))
+            .await
+            .expect("no open run holds it now");
+        assert_eq!(format!("{:?}", forced.worktree), "Released");
+        assert!(!wt.exists(), "the last holder's release takes the tree");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The same pair with nobody open in the tree: the first release takes it
+    /// by the ordinary rules — its commits named before it goes — and the
+    /// second finds nothing registered.
+    #[tokio::test]
+    async fn ended_runs_with_no_open_holder_release_by_the_ordinary_rules() {
+        let (root, wt, mut led) = a_repo("ended-pair-alone").await;
+        std::fs::write(wt.join("b.txt"), "b").unwrap();
+        git(&wt, &["add", "b.txt"]).await;
+        git(&wt, &["commit", "-q", "-m", "b"]).await;
+        git(&wt, &["checkout", "-q", "--detach"]).await;
+        git(&root, &["branch", "-q", "-D", "iss-964"]).await;
+        declare(&mut led, "run-1", "master-1", "ISS-71", &wt);
+        led.end_run("run-1", "master", "done").unwrap();
+        led.conclude_release_refusal("run-1", 1, "recovery", "another run held it")
+            .unwrap();
+        declare(&mut led, "run-2", "master-1", "ISS-71", &wt);
+        led.end_run("run-2", "master", "done").unwrap();
+        let hosts = runner_platform::subagent_host::ProcHosts::system();
+
+        let forced = force_terminal(&mut led, "run-2", forcing(&root), ports(&hosts))
+            .await
+            .expect("no open run holds it, so the ordinary release runs");
+        assert_eq!(format!("{:?}", forced.worktree), "Released");
+        assert!(!wt.exists(), "the ordinary release removes the tree");
+        let Some(Commits::NamedBy(kept)) = forced.commits else {
+            panic!("the commit only the checkout named was not given a ref: {forced:?}");
+        };
+        assert_eq!(
+            led.run("run-2").unwrap().unwrap().released_as.as_deref(),
+            Some("gone")
+        );
+        git(&root, &["rev-parse", "--verify", "-q", &kept]).await;
+
+        let forced = force_terminal(&mut led, "run-1", forcing(&root), ports(&hosts))
+            .await
+            .expect("the tree is gone, so there is nothing left to wait on");
+        assert_eq!(format!("{:?}", forced.worktree), "NothingRegistered");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

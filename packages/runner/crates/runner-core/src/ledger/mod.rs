@@ -647,6 +647,11 @@ pub enum CheckoutReturn {
     /// it from the pool and it has to outlive the run, so nothing was removed
     /// and `worktree_gone_at` is NOT stamped (ISS-1183).
     MainWorkingTreeKept,
+    /// Another run the ledger holds open is still in the checkout, so the
+    /// release left it standing for that run and owes it back no longer; that
+    /// run's own release is what preserves and removes it. `worktree_gone_at`
+    /// is NOT stamped: the directory is right there.
+    KeptForOpenRun,
 }
 
 impl CheckoutReturn {
@@ -654,6 +659,7 @@ impl CheckoutReturn {
         match self {
             Self::Gone => "gone",
             Self::MainWorkingTreeKept => "main_working_tree_kept",
+            Self::KeptForOpenRun => "kept_for_open_run",
         }
     }
 }

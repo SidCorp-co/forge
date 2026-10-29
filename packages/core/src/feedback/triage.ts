@@ -40,6 +40,8 @@ import {
   type TargetRequirement,
   targetRequirementOf,
 } from './read.js';
+import { standingReplyOf } from './reply.js';
+import { answerAddressRefusal } from './reply-rules.js';
 import { tellReporters } from './reporter-language.js';
 import { duplicateNotice } from './reporter-notices.js';
 import { reportersOf, tellStepToReporters, withBell } from './reporters.js';
@@ -300,6 +302,15 @@ export async function triageIn(
   const phase = await phaseOfRow(projectId, input.row);
   const early = await earlyRefusal(t, route, { ...input.row, kind }, actor, phase);
   if (early) return { refusals: [early] };
+  // an answer to a reopened item names the reopen or reply it answers, read under this lock (REQ-47 BC-13)
+  const standing = await standingReplyOf(tx, input.row);
+  const unaddressed = answerAddressRefusal(
+    feedbackKey(input.row.fbSeq),
+    route,
+    t.inReplyTo,
+    standing,
+  );
+  if (unaddressed) return { refusals: [unaddressed] };
   if (route === 'decline') return declineTriageIn(tx, { ...input.row, kind }, actor, t.note);
   const read = await criterionAndTarget(tx, { ...input.row, kind }, t.answers);
   if ('refusal' in read) return { refusals: [read.refusal] };
@@ -388,6 +399,7 @@ export async function triageIn(
     carrier: carriers.length ? carriers.join(', ') : null,
     reason: t.note ?? diagnosisNote(t),
     fromSuggestionId,
+    inReplyTo: route === 'answer' ? (standing?.id ?? null) : null,
   });
   await closeClarification(tx, row.id, `routed as ${route}`);
   return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route, carriers } };

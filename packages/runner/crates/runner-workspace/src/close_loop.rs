@@ -182,6 +182,9 @@ pub async fn close(
                      none to return",
                     run.worktree_path.display()
                 ),
+                // Never read off the world here: only the release decides a
+                // checkout is left to another open run, and it says so itself.
+                CheckoutReturn::KeptForOpenRun => {}
             }
             checkout_is_back = true;
         }

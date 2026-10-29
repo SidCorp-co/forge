@@ -9,9 +9,9 @@ impl Ledger {
     /// of the two ways that came about.
     ///
     /// The one writer of both columns, so the pair cannot drift: `Gone` stamps
-    /// `worktree_gone_at` as well, and `MainWorkingTreeKept` deliberately does
-    /// not — the checkout is standing right there and a row saying otherwise
-    /// is the state lying (ISS-1193).
+    /// `worktree_gone_at` as well, and `MainWorkingTreeKept` and
+    /// `KeptForOpenRun` deliberately do not — the checkout is standing right
+    /// there and a row saying otherwise is the state lying (ISS-1193).
     pub fn mark_checkout_returned_observed(&self, run_id: &str, how: CheckoutReturn) -> Result<()> {
         self.conn
             .execute(

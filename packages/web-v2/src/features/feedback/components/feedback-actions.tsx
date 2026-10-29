@@ -28,6 +28,36 @@ export function issueKeysOf(picked: readonly IssuePick[]): string | string[] {
   return keys.length === 1 ? (keys[0]) : keys;
 }
 
+/** The reopen or reply a reopened item stands on, which its answer names: its latest such decision. */
+export function standingReplyOf(f: FeedbackView): string | undefined {
+  if (f.status !== "reopened") return undefined;
+  return [...f.decisions].reverse().find((d) => d.decision === "reopened" || d.decision === "replied")?.id;
+}
+
+/** The triage a choice sends; an answer to a reopened item names the reopen or reply it answers. */
+function triageOf(
+  choice: Choice,
+  given: { text: string; linked: readonly IssuePick[]; original: FeedbackPick | null; inReplyTo: string | undefined },
+): FeedbackTriage {
+  const value = given.text.trim();
+  switch (choice) {
+    case "file_issue":
+      return { route: "issue", createIssue: value ? { title: value } : {} };
+    case "link_issue":
+      return { route: "issue", issue: issueKeysOf(given.linked) };
+    case "revision":
+      return { route: "revision", suggestion: value };
+    case "new_requirement":
+      return { route: "new_requirement", title: value };
+    case "answer":
+      return { route: "answer", answer: value, ...(given.inReplyTo ? { inReplyTo: given.inReplyTo } : {}) };
+    case "decline":
+      return { route: "decline", note: value };
+    case "duplicate":
+      return { route: "duplicate", duplicateOf: (given.original as FeedbackPick).key };
+  }
+}
+
 function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const t = useCopy();
   const act = useFeedbackAction(projectId, f.key);
@@ -39,21 +69,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const ready =
     choice === "duplicate" ? original !== null : choice === "link_issue" ? linked.length > 0 : OPTIONAL.includes(choice) || text.trim() !== "";
   const submit = () => {
-    const value = text.trim();
-    const triage: FeedbackTriage =
-      choice === "file_issue"
-        ? { route: "issue", createIssue: value ? { title: value } : {} }
-        : choice === "link_issue"
-          ? { route: "issue", issue: issueKeysOf(linked) }
-          : choice === "revision"
-            ? { route: "revision", suggestion: value }
-            : choice === "new_requirement"
-              ? { route: "new_requirement", title: value }
-              : choice === "answer"
-                ? { route: "answer", answer: value }
-                : choice === "decline"
-                  ? { route: "decline", note: value }
-                  : { route: "duplicate", duplicateOf: (original as FeedbackPick).key };
+    const triage = triageOf(choice, { text, linked, original, inReplyTo: standingReplyOf(f) });
     // a decline is an act, not a route: it carries its reason and no checklist answers
     act.mutate({ kind: "triage", triage: choice === "decline" ? triage : { ...triage, answers: answersOf(draft) } });
   };

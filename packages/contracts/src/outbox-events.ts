@@ -533,12 +533,12 @@ export interface OutboxEventPayloads
 		title: string;
 		body: string;
 	};
-	/** A resolved item was verified or reopened, which settles any ask to verify it. */
+	/** A resolved item was verified, reopened or replied to, which settles any ask to verify it. */
 	"feedback.verifySettled": {
 		projectId: string;
 		feedbackId: string;
 		key: string;
-		decision: "verified" | "reopened";
+		decision: "verified" | "reopened" | "replied";
 	};
 	/** A release was cut as `version` on its run: its name and summary are owed where nobody gave them (REQ-40 BC-14). */
 	"release.cut": {

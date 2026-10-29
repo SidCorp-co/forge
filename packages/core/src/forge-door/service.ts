@@ -1,7 +1,7 @@
 /**
  * The Forge door's acts, once for REST and MCP (REQ-47): file a report about Forge as the caller's own
- * account, list the caller's own reports, read one, and confirm or reopen one's shipped fix (REQ-66
- * BC-8). Every refusal is named and writes nothing.
+ * account, list the caller's own reports, read one, confirm or reopen one's shipped fix (REQ-66
+ * BC-8), and reply once to its answer (REQ-47 BC-12). Every refusal is named and writes nothing.
  */
 
 import type {
@@ -20,6 +20,7 @@ import {
   HOME_NOT_SET,
   ownForgeFeedbackIds,
   type ReadDoor,
+  replyOwnForgeFeedback,
   reportedForge,
   resolveForgeSource,
   settleOwnForgeFeedback,
@@ -163,6 +164,25 @@ export async function settleForgeFeedback(
     feedbackId: found.id,
     actor: { userId: viewer.userId, agency: viewer.agency },
     act,
+    evidence,
+  });
+  if (refusals) return { ok: false, refusals };
+  return { ok: true, value: await itemById(viewer, found.homeId, found.id, door) };
+}
+
+/** The caller replies to the answer on an item it reported, once, with what the answer leaves open. */
+export async function replyForgeFeedback(
+  viewer: ForgeViewer,
+  key: string,
+  evidence: string | undefined,
+  door: ReadDoor,
+): Promise<Answer<ForgeFeedbackItem>> {
+  const found = await readableItem(viewer, key);
+  if (!found.ok) return found;
+  const refusals = await replyOwnForgeFeedback({
+    homeId: found.homeId,
+    feedbackId: found.id,
+    actor: { userId: viewer.userId, agency: viewer.agency },
     evidence,
   });
   if (refusals) return { ok: false, refusals };
