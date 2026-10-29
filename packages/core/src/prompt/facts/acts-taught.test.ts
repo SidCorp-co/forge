@@ -43,17 +43,20 @@ describe("a run's tracker door teaches the acts that name what they wait on", ()
     }
   });
 
-  it.each(DOORS)('%s sends ordering between issues to a blocks edge, not a park (ISS-738)', (_who, text) => {
-    for (const word of [
-      'a park is only for an act a person owes',
-      "waiting on another issue's landing is no park but a `blocks` edge",
-      'QUESTION_MERGE_IS_ORDERING',
-      'naming this issue instead of describing it',
-    ]) {
-      expect(text).toContain(word);
-    }
-    expect(text).not.toContain("a park that waits on another issue's landing sends");
-  });
+  it.each(DOORS)(
+    '%s sends ordering between issues to a blocks edge, not a park (ISS-738)',
+    (_who, text) => {
+      for (const word of [
+        'a park is only for an act a person owes',
+        "waiting on another issue's landing is no park but a `blocks` edge",
+        'QUESTION_MERGE_IS_ORDERING',
+        'naming this issue instead of describing it',
+      ]) {
+        expect(text).toContain(word);
+      }
+      expect(text).not.toContain("a park that waits on another issue's landing sends");
+    },
+  );
 
   it.each(DOORS)('%s asks a business question about its requirement', (_who, text) => {
     for (const word of [

@@ -211,7 +211,9 @@ describe('a park may wait only on its own mark, still owed', () => {
   it("refuses another issue's mark as ordering, naming the blocks edge, writing nothing (ISS-738)", async () => {
     const issue = await plantIssue('in_progress');
     const other = await plantIssue('in_progress');
-    const marked = await plantIssue('in_progress', { mergedAt: new Date('2026-10-06T23:44:00.000Z') });
+    const marked = await plantIssue('in_progress', {
+      mergedAt: new Date('2026-10-06T23:44:00.000Z'),
+    });
     const elsewhere = await plantIssue('in_progress', { project: otherProjectId });
     for (const issueId of [other.id, marked.id, elsewhere.id, randomUUID()]) {
       const res = await park(issue.id, { awaitsMerge: { issueId } });
