@@ -224,10 +224,9 @@ describe('a wrong about on a park is refused by name and writes nothing', () => 
   it('refuses about on a park that waits on a merge mark or a design decision', async () => {
     const req = await requirement('Merge wait');
     const issue = await plantIssue(req.id);
-    const other = await plantIssue(null);
     await refusedPark(
       issue.id,
-      { about: { requirement: null }, awaitsMerge: { issueId: other.id }, needs: undefined },
+      { about: { requirement: null }, awaitsMerge: { issueId: issue.id }, needs: undefined },
       'QUESTION_ABOUT_ON_MERGE_WAIT',
     );
     await refusedPark(

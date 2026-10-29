@@ -338,8 +338,7 @@ describe('a person links an existing issue to a requirement', () => {
 describe('a question that waits on a merge mark', () => {
   it('never carries about: the ask is refused by name, and the table refuses the pair', async () => {
     const req = await agreed();
-    const parked = await issueUnder(req, 'parked on a landing');
-    const awaited = await issueUnder(null, 'the landing it waits on');
+    const parked = await issueUnder(req, 'parked on its own landing');
     const { db } = await import('../../src/db/client.js');
     const { insertAskedQuestion } = await import('../../src/questions/index.js');
     const ask = {
@@ -348,7 +347,7 @@ describe('a question that waits on a merge mark', () => {
       prompt: 'Resume when the landing mark appears',
       blockerKind: 'human' as const,
       answer: { shape: 'free_text' as const, needed: 'the merge mark' },
-      awaitsMerge: { issueId: awaited.id as string },
+      awaitsMerge: { issueId: parked.id as string },
     };
     const err = await db
       .transaction((tx) =>
@@ -367,7 +366,7 @@ describe('a question that waits on a merge mark', () => {
     const [waiting] = await rows<{ awaits: string | null; about: unknown }>(
       sql`SELECT awaits_merge_issue_id AS awaits, about FROM agent_questions WHERE id = ${id}`,
     );
-    expect(waiting).toEqual({ awaits: awaited.id, about: null });
+    expect(waiting).toEqual({ awaits: parked.id, about: null });
     const reqRow = await read(req);
     await expect(
       rows(
