@@ -1,6 +1,7 @@
 // @direct-test-of scripts/check-root-dependencies.mjs
 // @direct-test-of .forge/conformance.json
 // @direct-test-of .arch-tsconfig.json
+// @direct-test-of package.json
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
