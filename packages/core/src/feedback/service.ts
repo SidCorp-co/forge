@@ -98,6 +98,8 @@ export async function decide(
     carrier?: string | null;
     reason?: string | null;
     fromSuggestionId?: string | null;
+    /** An answer's: the reopen or reply of this item it answers (REQ-47 BC-13). */
+    inReplyTo?: string | null;
   },
 ) {
   const said = d.reason?.trim();
@@ -113,6 +115,7 @@ export async function decide(
     decidedBy: actor === 'system' ? null : actor.userId,
     decidedAgency: actor === 'system' ? 'system' : actor.agency,
     fromSuggestionId: d.fromSuggestionId ?? null,
+    inReplyTo: d.inReplyTo ?? null,
   });
 }
 
