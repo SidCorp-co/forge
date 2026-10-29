@@ -28,7 +28,8 @@ The release path is read from the project document and nowhere else
   or bound to an inactive binding, and an external one no promotion crosses into. An external
   production that one declared promotion reaches releases through that promotion's change request
   (REQ-63 BC-9..12, `packages/core/src/release-batch/promotion-release.ts`): the cut pins the
-  request, approval is the go to merge it, and the operator's deploy record closes it. A path of more than one crossing is refused at the
+  request, approval is the go to merge it, and the operator's deploy record closes it — only when the
+  commit it names holds every roster issue's landing, else `RELEASE_PROMOTION_DROPPED`. A path of more than one crossing is refused at the
   config write as `PROMOTION_CHAIN_UNSUPPORTED` (`packages/core/src/project-config/rules.ts`), because a release
   performs one crossing and nothing carries the middle of a longer chain.
 - **No production environment means Forge ships nothing.**

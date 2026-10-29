@@ -827,6 +827,8 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_PROMOTION_UNMERGED",
 	/** A promotion release's record naming issues other than the roster the release carries. */
 	"RELEASE_PROMOTION_ROSTER",
+	/** A promotion release's record of a deploy whose commit does not hold every roster issue's landing — the promotion head was rewritten after the cut (ISS-747). */
+	"RELEASE_PROMOTION_DROPPED",
 	"RELEASE_BATCH_ABORTED",
 	"RELEASE_FINISH_IN_FLIGHT",
 	"RELEASE_FINISHED_FOR_OTHER_COMMIT",

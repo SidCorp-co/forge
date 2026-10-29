@@ -13,7 +13,7 @@ import { resolveSourceHost } from '../integrations/source-host/index.js';
 import { releaseRunClaims } from '../issues/index.js';
 import { closeRunIfOneShot, stampReleaseShipped } from '../pipeline/index.js';
 import { requestApproval } from './approvals.js';
-import { label, type ReleaseMergeStep } from './change-request-roster.js';
+import { label, type ReleaseMergeStep, shown } from './change-request-roster.js';
 import { releaseProbesOf } from './channel.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
@@ -64,12 +64,17 @@ export async function cutPromotionRelease(
   const { projectId, issueIds, userId } = args;
   const [request] = await requestsAcross(projectId, decl.promotion);
   if (!request) {
-    throw blockerRefusal('RELEASE_PROMOTION_MISSING', { issueIds, ...decl.promotion });
+    throw blockerRefusal('RELEASE_PROMOTION_MISSING', {
+      issueIds,
+      displayIds: await shown(issueIds),
+      ...decl.promotion,
+    });
   }
   const { carries, notCarried } = await carriedBy(projectId, request.headSha, issueIds);
   if (notCarried.length > 0) {
     throw blockerRefusal('RELEASE_PROMOTION_MISSING', {
       issueIds: notCarried,
+      displayIds: await shown(notCarried),
       ...decl.promotion,
     });
   }
@@ -203,8 +208,8 @@ async function servesTheMerge(
 
 /**
  * The operator's record of the production deploy that closes a promotion release (REQ-63 BC-12):
- * refused before its request merged, for a roster other than the release's, and for a commit that
- * does not hold the merge; verified by production's probes where it declares them, else by this record.
+ * refused before its request merged, for a roster other than the release's, for a commit that
+ * does not hold the merge, and for one missing a roster issue's landing (a head rewritten after the cut); verified by production's probes where it declares them, else by this record.
  */
 export async function recordPromotionRelease(
   sent: {
@@ -254,6 +259,18 @@ export async function recordPromotionRelease(
     throw notVerifiedRefusal(`\`${commit}\` is not a whole commit sha`, null);
   const off = await servesTheMerge(projectId, request.mergeCommitSha, commit);
   if (off) throw notVerifiedRefusal(off, commit);
+  // the head may have been rewritten on the host after the cut, dropping an issue: close only what production holds (ISS-747)
+  const { notCarried: dropped } = await carriedBy(projectId, commit, roster);
+  if (dropped.length > 0) {
+    const named = (await shown(dropped)).map((id) => `\`${id}\``).join(', ');
+    const cutAt = (run.metadata as { changeRequests?: ReleaseMergeStep[] }).changeRequests?.[0]
+      ?.headSha;
+    throw refuseRelease(
+      'RELEASE_PROMOTION_DROPPED',
+      `Production serving ${commit} does not hold the landing of ${named}: release ${run.version} was cut with ${label(request)} at ${cutAt ?? 'its pinned head'}, and it merged at ${request.mergeCommitSha} without ${dropped.length === 1 ? 'that issue' : 'those issues'}, so recording this deploy would close ${dropped.length === 1 ? 'it' : 'them'} unshipped. Promote ${dropped.length === 1 ? 'it' : 'them'} into \`${p.to}\`, deploy, and record the commit production then serves.`,
+      '/commit',
+    );
+  }
   const { verify } = releaseProbesOf(decl.production);
   const read = verify
     ? await verifyServingNow({ cfg: verify, expected: commit })
