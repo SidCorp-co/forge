@@ -94,7 +94,7 @@ function standingOf(
       },
     },
     note: null,
-    actClass: 'master',
+    actClass: 'master_take',
     since: '2026-10-15T00:00:00.000Z',
     dueAt: '2026-10-19T00:00:00.000Z',
     stuck: stuck
@@ -108,7 +108,7 @@ function standingOf(
       : null,
     carriedBy: null,
     basis,
-  } as ItemStanding;
+  };
 }
 
 /** One steward run on `on`'s standing now, its turn asking the master about `about`. */
