@@ -196,6 +196,11 @@ route, declining included, closes the open question.
   (\`FEEDBACK_EVIDENCE_REQUIRED\` without it). It sends the item back to triage as a reopen does, kept as a
   \`replied\` decision. Replying again before the next answer is \`FEEDBACK_REPLY_SPENT\`; an item that
   stands on no answer is \`FEEDBACK_REPLY_NO_ANSWER\`.
+- An answer reaches its reporter's own session once, without anyone polling: the forge-runner hook asks
+  \`POST /api/forge/feedback/answers/claim\` on the session's prompt (and on a tool call 30 s after its last
+  ask), as the account its checkout files with, and tells the session \`FB-n answered: <text>\` with one
+  line not to post it in the project channel. The claim records each answer as told; a later answer on
+  the same item is told again. Answers given before migration 0549 are recorded \`predates\` and never told.
 - Every triage, decline, verify, reopen, reply, redaction, promotion and retarget is kept as its own decision
   record, so a re-triage keeps the history.
 

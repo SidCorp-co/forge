@@ -4,7 +4,9 @@
  * BC-8), and reply once to its answer (REQ-47 BC-12). Every refusal is named and writes nothing.
  */
 
+import { feedbackKey } from '@forge/contracts/feedback';
 import type {
+  ForgeFeedbackAnswersClaimed,
   ForgeFeedbackFiled,
   ForgeFeedbackItem,
   ForgeFeedbackList,
@@ -12,12 +14,14 @@ import type {
 } from '@forge/contracts/forge-feedback';
 import { fencedProjectIds } from '../credentials/pat-scope.js';
 import {
+  claimAnswersTold,
   type ForgeCaller,
   feedbackEgress,
   fileForgeFeedback,
   forgeFeedbackIdOfKey,
   forgeRefusal,
   HOME_NOT_SET,
+  listFeedbackIn,
   ownForgeFeedbackIds,
   type ReadDoor,
   replyOwnForgeFeedback,
@@ -26,6 +30,7 @@ import {
   settleOwnForgeFeedback,
   shipEvidenceOfShipped,
   toldOf,
+  untoldAnswersOf,
 } from '../feedback/index.js';
 import { forgeHomeProject } from '../instance-settings/index.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
@@ -125,6 +130,53 @@ export async function listOwnForgeFeedback(
     ok: true,
     value: { feedback, returned: feedback.length, home, asOf },
   };
+}
+
+/**
+ * The answers on the caller's own items none of its sessions has been told, each recorded as told in
+ * this call (REQ-47 BC-11). The text is what the item tells its reporter, read as every door reads it
+ * (`feedback/told.ts:toldOf`); an answer that no longer reads back is not claimed.
+ */
+export async function claimForgeAnswers(
+  viewer: ForgeViewer,
+  door: ReadDoor,
+): Promise<Answer<ForgeFeedbackAnswersClaimed>> {
+  const home = await forgeHomeProject();
+  if (!home) return refused(HOME_NOT_SET);
+  const untold = await untoldAnswersOf(
+    await ownForgeFeedbackIds(home.id, viewer.userId),
+    viewer.userId,
+  );
+  if (untold.length === 0) return { ok: true, value: { answers: [], returned: 0 } };
+  const listed = await listFeedbackIn(
+    viewer,
+    home.id,
+    { ids: untold.map((u) => u.feedbackId) },
+    door,
+  );
+  if (!listed.ok) {
+    throw new Error(
+      `forge feedback: the home project's list refused a read by id: ${listed.refusals[0]?.detail}`,
+    );
+  }
+  const { withhold } = feedbackEgress(await dataPolicyOf(home.id), viewer.agency, door);
+  const told = await toldOf(home.id, listed.list.feedback, withhold);
+  const said = untold.flatMap((u) => {
+    const answer = told.get(u.feedbackId)?.answer?.trim();
+    return answer ? [{ ...u, answer }] : [];
+  });
+  const claimed = await claimAnswersTold(
+    said.map((s) => s.decisionId),
+    viewer.userId,
+  );
+  const answers = said
+    .filter((s) => claimed.has(s.decisionId))
+    .map((s) => ({
+      key: feedbackKey(s.fbSeq),
+      answer: s.answer,
+      answeredAt: s.answeredAt.toISOString(),
+    }));
+  return { ok: true, value: { answers, returned: answers.length } };
 }
 
 /** The home project and the id of one item the viewer may read, or the refusal naming why not. */

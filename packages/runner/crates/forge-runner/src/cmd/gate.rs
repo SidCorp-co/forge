@@ -367,7 +367,9 @@ pub async fn run(args: Args) {
     let d = match dispatch_in(&payload) {
         Payload::Dispatch(d) => d,
         Payload::NotADispatch => {
-            println!("{ALLOW}");
+            // an ordinary tool call may carry an answer to the session's own feedback (REQ-47 BC-11)
+            let told = super::answers::told(&args.event, &payload).await;
+            println!("{}", told.as_deref().unwrap_or(ALLOW));
             return;
         }
         Payload::Malformed => {

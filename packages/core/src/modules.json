@@ -361,6 +361,7 @@
       "context": "design",
       "owns": [
         "feedback",
+        "feedbackAnswerDeliveries",
         "feedbackAttachments",
         "feedbackDecisions",
         "feedbackExternalReporters",

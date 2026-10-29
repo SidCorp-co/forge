@@ -1,3 +1,4 @@
+export { claimAnswersTold, type UntoldAnswer, untoldAnswersOf } from './answers-told.js';
 export { askClarification } from './attachments.js';
 export { feedbackTriageRecord } from './checklist-record.js';
 export { fileContractChangeIn } from './contract-change.js';

@@ -80,10 +80,15 @@ export const FORGE_FEEDBACK_TARGET_KINDS = [
 	"skill",
 	"other",
 ] as const;
-export type ForgeFeedbackTargetKind = (typeof FORGE_FEEDBACK_TARGET_KINDS)[number];
+export type ForgeFeedbackTargetKind =
+	(typeof FORGE_FEEDBACK_TARGET_KINDS)[number];
 export const forgeFeedbackTargetSchema = z.strictObject({
 	kind: z.enum(FORGE_FEEDBACK_TARGET_KINDS),
-	ref: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen - 10),
+	ref: z
+		.string()
+		.trim()
+		.min(1)
+		.max(FEEDBACK_LIMITS.whereSeen - 10),
 });
 export type ForgeFeedbackTarget = z.infer<typeof forgeFeedbackTargetSchema>;
 
@@ -186,6 +191,17 @@ export interface ForgeFeedbackList {
 	/** The project feedback about Forge is filed into. */
 	home: { id: string; slug: string; name: string };
 	asOf: string;
+}
+
+/**
+ * `POST /api/forge/feedback/answers/claim`: the answers on the caller's own items that none of its
+ * sessions has been told, oldest first, each recorded as told by this call and never handed out again
+ * (REQ-47 BC-11). The forge-runner hook asks it on a session's prompt and puts what it answers into
+ * that session's context.
+ */
+export interface ForgeFeedbackAnswersClaimed {
+	answers: { key: string; answer: string; answeredAt: string }[];
+	returned: number;
 }
 
 /** What a carry of the retired agent reports did, or would do on a dry run. */
