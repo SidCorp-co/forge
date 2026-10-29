@@ -112,7 +112,7 @@ import { knowledgeRoutes } from './knowledge/routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { lessonRoutes } from './lessons/index.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
-import { mcpHandler, mcpRequestClass } from './mcp/index.js';
+import { mcpHandler, mcpMethodNotAllowed, mcpRequestClass } from './mcp/index.js';
 import { meAttentionRoutes, mePulseRoutes } from './me/routes.js';
 import { memoryListRoutes, memorySearchRoutes, memoryWriteRoutes } from './memory/routes.js';
 import { projectMetricsRoutes } from './metrics/routes.js';
@@ -207,7 +207,7 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/', mcpOauthMetadataRoutes);
   app.use('/mcp', mcpRequestClass(), requirePat());
   app.post('/mcp', mcpMessageBody, mcpHandler);
-  app.on(['GET', 'DELETE'], '/mcp', mcpNoBody, mcpHandler);
+  app.on(['GET', 'DELETE'], '/mcp', mcpNoBody, mcpMethodNotAllowed);
 
   for (const at of ['/', '/api']) app.route(at, installRoutes);
   for (const at of ['/', '/api']) app.route(at, guideRoutes);

@@ -112,6 +112,15 @@ describe('a /mcp write from a token without the write scope', () => {
     expect((await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(200);
   });
 
+  it('lets a 2026-07-28 client discover the server and listen for changes on a read token (ISS-768)', async () => {
+    expect(
+      (await call({ jsonrpc: '2.0', id: 1, method: 'server/discover', params: {} })).status,
+    ).toBe(200);
+    expect(
+      (await call({ jsonrpc: '2.0', id: 2, method: 'subscriptions/listen', params: {} })).status,
+    ).toBe(200);
+  });
+
   it("lets every served tool's read through, the action-less upload fetch included", async () => {
     expect((await call(tool('forge_channel', { action: 'inbox' }))).status).toBe(200);
     expect((await call(tool('forge_ecosystem', { action: 'interface' }))).status).toBe(200);

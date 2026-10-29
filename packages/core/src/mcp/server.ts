@@ -1,11 +1,5 @@
 import { redactQueryParams, scrubLogText, scrubSecretsDeep } from '@forge/observability';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import {
-  CallToolRequestSchema,
-  GetPromptRequestSchema,
-  ListPromptsRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+import { type CallToolResult, Server, type Tool } from '@modelcontextprotocol/server';
 import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../credentials/mcp-audit.js';
@@ -39,7 +33,7 @@ function classifyError(err: unknown): { code: AuditResultCode; message: string }
 
 // a refused or failed call's answer echoes what the caller sent at most by name; whatever a refusal
 // quotes passes the secret scrubber, so a credential sent in the wrong place does not come back
-const errorAnswer = (text: string) => ({
+const errorAnswer = (text: string): CallToolResult => ({
   content: [{ type: 'text', text: scrubLogText(text) }],
   isError: true,
 });
@@ -77,6 +71,21 @@ export function takesProjectArgument(tool: Pick<McpTool, 'name' | 'inputSchema'>
   return false;
 }
 
+/**
+ * A tool's input as MCP lists it: a JSON Schema whose `type` is `object`. Every tool publishes its
+ * input through `zodToMcpSchema`, which yields one for an object schema; any other shape is refused
+ * by the tool's name when the registry is built, not handed to a client as a listing it rejects.
+ */
+function listedInput(tool: Pick<McpTool, 'name' | 'inputSchema'>): Tool['inputSchema'] {
+  const input = tool.inputSchema;
+  if (input.type !== 'object') {
+    throw new Error(
+      `mcp registry: ${tool.name}'s input publishes type ${JSON.stringify(input.type)}, and MCP lists a tool's input as a JSON Schema object (type "object"); make its input a zod object`,
+    );
+  }
+  return input as Tool['inputSchema'];
+}
+
 export function mcpTools(ctx: McpContext): McpTool[] {
   return Object.entries(MCP_TOOLS).map(([name, factory]) => {
     const tool = factory(ctx);
@@ -85,15 +94,16 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     }
     assertToolDeclaresAccess(tool);
     takesProjectArgument(tool);
+    listedInput(tool);
     return gatedTool(tool);
   });
 }
 
-export function toolListing(tools: McpTool[]) {
+export function toolListing(tools: McpTool[]): (Tool & { description: string })[] {
   return tools.map((t) => ({
     name: t.name,
     description: t.description,
-    inputSchema: t.inputSchema,
+    inputSchema: listedInput(t),
   }));
 }
 
@@ -119,12 +129,12 @@ export function createMcpServer(ctx: McpContext): Server {
     return ctx.boundProjectId ?? null;
   };
 
-  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+  server.setRequestHandler('prompts/list', async () => {
     const prompts = await resolveManagedMetaPrompts(await metaProjectId());
     return { prompts: prompts.map((p) => ({ name: p.name, description: p.description })) };
   });
 
-  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  server.setRequestHandler('prompts/get', async (request) => {
     const prompts = await resolveManagedMetaPrompts(await metaProjectId());
     const p = prompts.find((x) => x.name === request.params.name);
     if (!p) throw new Error(`unknown prompt: ${request.params.name}`);
@@ -134,9 +144,9 @@ export function createMcpServer(ctx: McpContext): Server {
     };
   });
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: toolListing(tools) }));
+  server.setRequestHandler('tools/list', async () => ({ tools: toolListing(tools) }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler('tools/call', async (request) => {
     const { name, arguments: rawArgs } = request.params;
     const args = (rawArgs ?? {}) as Record<string, unknown>;
     const tool = toolMap.get(name);

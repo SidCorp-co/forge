@@ -1,6 +1,6 @@
 import { STEWARD_DOOR_TOOLS } from '@forge/contracts/steward-runtime';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it } from 'vitest';
+import type { CallToolResult } from '../lib/tool-result.js';
 import { firstRequirementsVenue } from '../onboarding/first-requirements.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import {

@@ -8,8 +8,8 @@
 // @direct-test-of packages/core/src/lib/tool-args.ts
 
 import { randomBytes } from 'node:crypto';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client } from '@modelcontextprotocol/client';
+import { InMemoryTransport } from '@modelcontextprotocol/server';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';

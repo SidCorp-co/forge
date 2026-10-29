@@ -403,7 +403,9 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integration-door/webhook-inbound-routes.ts Headers handed to lib:fromEntries in module code
     integration-door/webhook-inbound-routes.ts Request.text in module code`,
   'the /mcp request requirePat admitted: the SDK verifies nothing, the class reads the tool': lines`
-    mcp/handler.ts Request handed to @modelcontextprotocol/sdk:handleRequest in mcpHandler
+    mcp/handler.ts Request handed to @modelcontextprotocol/server:fetch in mcpHandler
+    mcp/handler.ts Request handed to @modelcontextprotocol/server:handleRequest in mcpHandler
+    mcp/handler.ts Request handed to @modelcontextprotocol/server:isLegacyRequest in mcpHandler
     mcp/request-class.ts Request.json in mcpRequestClass`,
   'the preview’s answer, a viewer’s body streamed through unread, the recorder’s own path': lines`
     previews/relay.ts IncomingHttpHeaders handed to lib:entries in downstreamHeaders
