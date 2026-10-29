@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.358] - 2026-10-29
+
+Test-filter refusals name their line; tests gathered by glob now run on change
+
+### Fixed
+
+- **A test-filter refusal names its line, and glob-loaded fixtures select their test.** check-outside-reads names the declaration's line when a CI filter misses it, and a change to a fixture a test loads by import.meta.glob now runs that test.
+
 ## [0.4.0-dev.357] - 2026-10-29
 
 The dev merge check now typechecks test files, stopping test-only type errors
