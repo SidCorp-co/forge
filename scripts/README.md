@@ -1030,8 +1030,10 @@ the CLI reads git and exits.
 REQ-36 BC-7, BC-9, BC-15 and BC-17, as Issue to release r20 draws `rule-merge`. One selection,
 `lib/direct-tests.mjs`, serves both: a test is **direct** for a touched file when it is that file,
 when one of its own import specifiers resolves to it (relative, or through its package's tsconfig
-`paths`; `vi.mock` counts), or when it declares the file in a comment line of its own,
-`// @direct-test-of <path>` (a trailing `/` covers a directory). Nothing goes further: no import
+`paths`; `vi.mock` counts), when one of its own `import.meta.glob` patterns matches it (vite expands
+the glob into imports of the test; `*`, `**`, `{a,b}` and `!` are read, so a glob gathering fixtures
+belongs in the test, not in a module it imports), or when it declares the file in a comment line of
+its own, `// @direct-test-of <path>` (a trailing `/` covers a directory). Nothing goes further: no import
 graph, and no share of a suite that turns a selection into the suite: the selection of a set of
 touched files is the union of each file's own, at any count (`lib/direct-tests.test.mjs`). A touched
 code file no test reaches is printed, never covered by running more. Every package is in it: core's unit and
@@ -1376,7 +1378,8 @@ selection (`lib/direct-tests.mjs`) ran none of the tests that check it on a chan
 `changes` filter did not match it either: a skip that read as a pass (ISS-134). The test declares the
 path with the declaration the selection already reads, `// @direct-test-of <path>`, and this refuses
 an outside read no declaration covers, naming the test, the line and the line to add. It also refuses
-a declaration outside the test's package that the `changes` filter of its job does not match: each
+a declaration outside the test's package that the `changes` filter of its job does not match, naming
+the test, the declaration's line and the filter line to add: each
 collection in `VITEST_COLLECTIONS` names its job (`ciJob`), the job's `if:` names the filter outputs
 it runs on, and a declared directory matches only a pattern covering every file under it. A filter
 line names the one file rather than the other package's tree, so a runner change does not start the

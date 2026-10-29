@@ -3,7 +3,8 @@
 // `scripts/merge-check.mjs` before a merge.
 //
 // A test is direct for a touched file when it IS that file, when one of its own import specifiers
-// resolves to it (one hop, never the import graph), or when it declares the file with a
+// or `import.meta.glob` patterns resolves to it (one hop, never the import graph), or when it
+// declares the file with a
 // `@direct-test-of <path>` line. Nothing widens past that: no share of the suite turns a selection
 // into the whole suite, and a touched file no test reaches is reported, never covered by running
 // more. The declaration is how a missed red widens the selection for its change kind
@@ -11,7 +12,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
-import { gitOut, stripComments } from './gate.mjs';
+import { gitOut, globToRegExp, stripComments } from './gate.mjs';
 
 /**
  * The workspace packages a test run from core's directory loads from their dist builds: core's
@@ -106,9 +107,77 @@ export function specifiersOf(text) {
   return [...found];
 }
 
+/** Each `@direct-test-of` line of a source text as `{ path, line }`, line counted from 1. */
+export function declarationLinesOf(text) {
+  return [...text.matchAll(DECLARATION)].map((m) => ({
+    path: m[1].replace(/^\.\//, ''),
+    line: text.slice(0, m.index).split('\n').length,
+  }));
+}
+
 /** The repo paths a test declares itself direct for: a file, or a directory when it ends in `/`. */
 export function declarationsOf(text) {
-  return [...text.matchAll(DECLARATION)].map((m) => m[1].replace(/^\.\//, ''));
+  return declarationLinesOf(text).map((d) => d.path);
+}
+
+/** An `import.meta.glob(` call's first argument: one string literal, or an array of them. */
+const GLOB_CALL =
+  /\bimport\.meta\.glob\s*(?:<[^>()]*>)?\s*\(\s*(\[[^\]]*\]|'[^'\n]*'|"[^"\n]*"|`[^`$]*`)/g;
+const LITERAL = /'([^'\n]*)'|"([^"\n]*)"|`([^`$]*)`/g;
+
+/**
+ * The patterns of every `import.meta.glob` call a source text makes, comments aside. Vite expands
+ * each into static imports of the files it matches before the module runs, so a pattern names those
+ * files as a specifier does; vite refuses a pattern that is not a literal, so the literals are all.
+ */
+export function globPatternsOf(text) {
+  const found = [];
+  for (const call of stripComments(text).matchAll(GLOB_CALL)) {
+    for (const m of call[1].matchAll(LITERAL)) found.push(m[1] ?? m[2] ?? m[3]);
+  }
+  return found;
+}
+
+/** `a/{b,c}.ts` → `a/b.ts`, `a/c.ts`: vite's brace sets, expanded before `*` and `**` are matched. */
+function expandBraces(pattern) {
+  const m = /\{([^{}]*)\}/.exec(pattern);
+  if (!m) return [pattern];
+  const [head, tail] = [pattern.slice(0, m.index), pattern.slice(m.index + m[0].length)];
+  return m[1].split(',').flatMap((alt) => expandBraces(`${head}${alt}${tail}`));
+}
+
+/**
+ * The known files the glob patterns of `from` match: `./` and `../` from its directory, `/` from its
+ * package (vite's root), an alias through its package's tsconfig `paths`, a `!` pattern taken away.
+ * `*`, `**` and `{a,b}` are matched; a pattern naming another magic character matches nothing here,
+ * so the file it loads stays reported as reached by no test rather than selected by a guess.
+ */
+export function globReaches(from, patterns, { known, aliasesOf }) {
+  const anchor = (pattern) => {
+    if (pattern.startsWith('./') || pattern.startsWith('../')) {
+      return posix.normalize(posix.join(posix.dirname(from), pattern));
+    }
+    if (pattern.startsWith('/')) return posix.join(packageOf(from) ?? '', pattern.slice(1));
+    if (pattern.startsWith('**')) return posix.join(packageOf(from) ?? '', pattern);
+    for (const { alias, target } of aliasesOf(packageOf(from) ?? 'packages/core')) {
+      const prefix = alias.endsWith('/*') ? alias.slice(0, -1) : null;
+      if (prefix && pattern.startsWith(prefix)) {
+        return target.replace('*', pattern.slice(prefix.length));
+      }
+    }
+    return null;
+  };
+  const matchers = (list) =>
+    list.flatMap((p) => {
+      const anchored = anchor(p);
+      return anchored === null ? [] : expandBraces(anchored).map(globToRegExp);
+    });
+  const keep = matchers(patterns.filter((p) => !p.startsWith('!')));
+  const drop = matchers(patterns.filter((p) => p.startsWith('!')).map((p) => p.slice(1)));
+  if (keep.length === 0) return [];
+  return [...known].filter(
+    (path) => path !== from && keep.some((re) => re.test(path)) && !drop.some((re) => re.test(path)),
+  );
 }
 
 export function declarationCovers(declared, path) {
@@ -201,6 +270,9 @@ export function indexTests(root, known) {
     for (const spec of specifiersOf(text)) {
       const hit = resolveSpecifier(path, spec, { known, aliasesOf });
       if (hit) reaches.add(hit);
+    }
+    for (const hit of globReaches(path, globPatternsOf(text), { known, aliasesOf })) {
+      reaches.add(hit);
     }
     tests.push({ path, collection, reaches, declares: declarationsOf(text) });
   }

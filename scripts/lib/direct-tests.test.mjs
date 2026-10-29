@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  declarationLinesOf,
   declarationsOf,
   fileModulesOf,
   indexTests,
@@ -48,6 +49,19 @@ const FILES = {
   'packages/web-v2/src/lib/format.ts': "import { V } from '@forge/contracts/vocab';\nexport {};\n",
   'packages/web-v2/src/lib/format.test.ts': "import '@/lib/format';\n",
   'packages/web-v2/src/lib/page.test.tsx': "export { x } from '../lib/format';\n",
+  'packages/web-v2/src/test/screens-a.tsx': 'export const SCREENS = [];\n',
+  'packages/web-v2/src/test/screens-b.ts': 'export const SCREENS = [];\n',
+  'packages/web-v2/src/test/screens-skip.tsx': 'export const SCREENS = [];\n',
+  'packages/web-v2/src/test/aliased-x.tsx': 'export const SCREENS = [];\n',
+  'packages/web-v2/src/test/commented-1.tsx': 'export const SCREENS = [];\n',
+  'packages/web-v2/src/test/walk.test.tsx': [
+    "// import.meta.glob('./commented-*.tsx')",
+    "const all = import.meta.glob(['./screens-*.{ts,tsx}', '!./screens-skip.tsx'], { eager: true });",
+    'const aliased = import.meta.glob("@/test/aliased-*.tsx");',
+    '',
+  ].join('\n'),
+  'packages/web-v2/src/lib/loader.ts': "export const all = import.meta.glob('../test/screens-*.tsx');\n",
+  'packages/web-v2/src/lib/loader.test.ts': "import { all } from './loader';\n",
   'scripts/lib/thing.mjs': 'export const thing = 1;\n',
   'scripts/lib/thing.test.mjs': "import { thing } from './thing.mjs';\n",
   'scripts/lib/reads-ci.test.mjs': '// @direct-test-of .github/workflows/ci.yml\n',
@@ -137,6 +151,10 @@ describe('a test no import reaches is selected only by its own declaration', () 
       "const s = '// @direct-test-of not/a/declaration.ts';",
     ].join('\n');
     expect(declarationsOf(text)).toEqual(['.github/workflows/ci.yml', 'scripts/']);
+    expect(declarationLinesOf(text)).toEqual([
+      { path: '.github/workflows/ci.yml', line: 1 },
+      { path: 'scripts/', line: 2 },
+    ]);
     expect(selected(['.github/workflows/ci.yml'])).toEqual({
       scripts: ['scripts/lib/reads-ci.test.mjs'],
     });
@@ -146,6 +164,36 @@ describe('a test no import reaches is selected only by its own declaration', () 
     const out = selectDirect(['packages/core/src/untested.ts', 'docs/x.md'], tests);
     expect(out.collections).toEqual([]);
     expect(out.untested).toEqual(['packages/core/src/untested.ts']);
+  });
+});
+
+describe('a test reaches the files its own import.meta.glob patterns match, one hop like an import', () => {
+  it('selects the test holding the glob for each matched file, braces expanded and `!` taken away', () => {
+    expect(selected(['packages/web-v2/src/test/screens-a.tsx'])).toEqual({
+      'web-v2': ['packages/web-v2/src/test/walk.test.tsx'],
+    });
+    expect(selected(['packages/web-v2/src/test/screens-b.ts'])).toEqual({
+      'web-v2': ['packages/web-v2/src/test/walk.test.tsx'],
+    });
+    expect(selected(['packages/web-v2/src/test/aliased-x.tsx'])).toEqual({
+      'web-v2': ['packages/web-v2/src/test/walk.test.tsx'],
+    });
+  });
+
+  it('matches no file a negated pattern removes, nor one a commented-out glob names', () => {
+    for (const path of [
+      'packages/web-v2/src/test/screens-skip.tsx',
+      'packages/web-v2/src/test/commented-1.tsx',
+    ]) {
+      expect(selected([path])).toEqual({});
+      expect(selectDirect([path], tests).untested).toEqual([path]);
+    }
+  });
+
+  it('does not run a test whose import holds the glob: that is a second hop', () => {
+    expect(selected(['packages/web-v2/src/test/screens-a.tsx'])['web-v2']).not.toContain(
+      'packages/web-v2/src/lib/loader.test.ts',
+    );
   });
 });
 

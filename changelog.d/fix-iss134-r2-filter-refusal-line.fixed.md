@@ -1,0 +1,1 @@
+**A test-filter refusal names its line, and glob-loaded fixtures select their test.** check-outside-reads names the declaration's line when a CI filter misses it, and a change to a fixture a test loads by import.meta.glob now runs that test.

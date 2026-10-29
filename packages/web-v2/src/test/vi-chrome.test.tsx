@@ -1,11 +1,8 @@
-// @direct-test-of packages/web-v2/src/test/vi-chrome-issues.tsx
-// @direct-test-of packages/web-v2/src/test/vi-chrome-questions.tsx
-
 import { act, render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
-import { CHROME_SCREENS, type ChromeScreen } from "./vi-chrome-screens";
+import { type ChromeScreen, gatherScreens } from "./vi-chrome-screens";
 import { renderWithQuery } from "./render";
 import { unreadIn } from "./unread";
 
@@ -19,6 +16,12 @@ vi.mock("@/features/workflows/canvas/workflow-canvas", () => ({ WorkflowCanvas: 
 vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 // cmdk scrolls its selected item into view, which jsdom does not lay out
 Element.prototype.scrollIntoView = () => {};
+
+// The glob sits in this file, not in vi-chrome-screens.tsx: vite expands it into imports of this
+// test, so a change to one screen file selects this test (ISS-134).
+const CHROME_SCREENS = gatherScreens(
+  import.meta.glob(["./vi-chrome-*.tsx", "!./vi-chrome-screens.tsx"], { eager: true, import: "SCREENS" }),
+);
 
 const inVi = (s: ChromeScreen) => (
   <InterfaceLanguageScope language="vi">{s.render()}</InterfaceLanguageScope>

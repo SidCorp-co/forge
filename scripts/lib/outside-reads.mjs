@@ -12,7 +12,7 @@
 import { posix } from 'node:path';
 import {
   declarationCovers,
-  declarationsOf,
+  declarationLinesOf,
   resolveSpecifier,
   VITEST_COLLECTIONS,
 } from './direct-tests.mjs';
@@ -374,7 +374,8 @@ export function judgeOutsideReads({ ts, tests, known, load, ciText }) {
     // A whole-tree test runs on every change (`whole-tree-gates`), so no one path selects it.
     if (!collection || declaresWholeTree(source)) continue;
     const home = homeOf(path);
-    const declared = declarationsOf(source);
+    const declarations = declarationLinesOf(source);
+    const declared = declarations.map((d) => d.path);
     for (const read of readsOf({ ts, path, source, known, load })) {
       if (`${read.target}/`.startsWith(home)) continue;
       reads += 1;
@@ -385,13 +386,13 @@ export function judgeOutsideReads({ ts, tests, known, load, ciText }) {
         why: `line ${read.line} reads ${read.kind === 'dir' ? 'the directory ' : ''}\`${decl}\` outside ${home} (${read.via}), and no \`@direct-test-of\` covers it, so a change to it alone selects no test — add \`// @direct-test-of ${decl}\``,
       });
     }
-    for (const d of declared) {
+    for (const { path: d, line } of declarations) {
       if (d.startsWith(home)) continue;
       const patterns = jobPatterns.get(collection.name) ?? [];
       if (filterMatches(patterns, d)) continue;
       refused.push({
         path,
-        why: `declares \`@direct-test-of ${d}\`, and the \`changes\` filter of job \`${collection.ciJob}\`, which runs it, does not match it, so a change to it alone skips the test on main — add \`'${d.endsWith('/') ? `${d}**` : d}'\` under one of ${jobOutputsOf(ciText, collection.ciJob).join(', ')} in ci.yml`,
+        why: `line ${line} declares \`@direct-test-of ${d}\`, and the \`changes\` filter of job \`${collection.ciJob}\`, which runs it, does not match it, so a change to it alone skips the test on main — add \`'${d.endsWith('/') ? `${d}**` : d}'\` under one of ${jobOutputsOf(ciText, collection.ciJob).join(', ')} in ci.yml`,
       });
     }
   }

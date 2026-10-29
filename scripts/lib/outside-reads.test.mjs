@@ -86,11 +86,12 @@ describe('a read outside the package', () => {
     expect(judge(declared, { ci: ciYml({ core: [STATUS] }) })).toEqual({ refused: [], reads: 1 });
   });
 
-  it('refuses a declaration the filter of the job running the test does not match', () => {
-    const declared = `// @direct-test-of ${STATUS}\n${READ_STATUS}`;
+  it('refuses a declaration the filter of the job running the test does not match, naming its line', () => {
+    const declared = `/**\n * Reads the runner's status codes.\n * @direct-test-of ${STATUS}\n */\n${READ_STATUS}`;
     const { refused } = judge(declared);
     expect(refused).toHaveLength(1);
-    expect(refused[0].why).toContain(`declares \`@direct-test-of ${STATUS}\``);
+    expect(refused[0].path).toBe(CORE_TEST);
+    expect(refused[0].why).toContain(`line 3 declares \`@direct-test-of ${STATUS}\``);
     expect(refused[0].why).toContain('filter of job `core`');
     expect(refused[0].why).toContain(`add \`'${STATUS}'\` under one of core, scripts`);
   });
