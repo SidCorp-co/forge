@@ -12,6 +12,7 @@ import {
 } from '@forge/contracts/support';
 import {
   supportAnnounceRequestSchema,
+  supportAskOwnerRequestSchema,
   supportCommonIssueRequestSchema,
   supportMemberRequestSchema,
   supportRouteRequestSchema,
@@ -104,6 +105,7 @@ const SHAPES = {
   commonIssue: '{ threads, question, answer, feedback? }',
   route: '{ thread, to: forge | technical | product, member?, title?, text }',
   announce: '{ text }',
+  askOwner: '{ thread, question, record? }',
 } as const;
 
 supportRoutes.post(
@@ -256,6 +258,13 @@ supportRoutes.post(
       query.rid,
     );
   },
+);
+
+supportRoutes.post(
+  '/:id/support/session/owner-questions',
+  projectParam,
+  strictBody(supportAskOwnerRequestSchema, SHAPES.askOwner),
+  (c) => act(c, c.req.valid('param').id, { action: 'ask_owner', ...c.req.valid('json') }),
 );
 
 mountChannelRoutes(supportRoutes);

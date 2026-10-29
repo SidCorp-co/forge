@@ -19,12 +19,24 @@ import { flagSecret } from './channel.js';
 import { deliverWaiting } from './dispatch.js';
 import { answerConfirm } from './fixes.js';
 import { answerLinkCode } from './link-code.js';
+import { settleOwnerAnswer } from './owner-ask.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, parseConfirm, threadOf } from './rules.js';
 import { insertAction, limitToldSince, memberMessagesSince, type RoomRow } from './store.js';
 import { postInThread, roomAuth, threadConversationOf } from './thread.js';
 
 const RECEIVED_EMOJI = 'eyes';
+
+/**
+ * Whom a message is for, as the chat server parsed its mentions (REQ-77 BC-6): the bot, someone else
+ * (and not the bot), or nobody in particular. A fact for the session to read, never its text's claim.
+ */
+export type Addressed = 'you' | 'others' | 'nobody';
+
+export function addressedOf(mentions: readonly string[], botUserId: string): Addressed {
+  if (mentions.includes(botUserId)) return 'you';
+  return mentions.length > 0 ? 'others' : 'nobody';
+}
 
 export async function handleSupportMessage(input: {
   connectionId: string;
@@ -65,7 +77,7 @@ export async function handleSupportMessage(input: {
   const recordAndFlag = async (
     message: RocketChatIncomingMessage,
     by: { key: string; label: string | null },
-    opts: { deliver: boolean; maxChars?: number },
+    opts: { deliver: boolean; maxChars?: number; addressed?: Addressed },
   ): Promise<boolean> => {
     const fresh = await recordInbound(room, conversation.id, thread, message, by, opts);
     if (fresh && secret) await flagSecret(room, conversation.id, thread, m.id, by);
@@ -99,8 +111,17 @@ export async function handleSupportMessage(input: {
     return;
   }
 
+  // the owner's message in a thread that asked them something is the answer to it, and is handed to
+  // the asking session whatever the room's answering mode (REQ-77 BC-12)
+  const ownerAnswer = await settleOwnerAnswer({
+    room,
+    thread,
+    message: { id: m.id, text: m.text },
+    author,
+  });
+
   // a room that answers only mentions keeps every other message as the thread's context (REQ-75 r5)
-  if (config.answers === 'mentions' && !m.mentions.includes(input.ac.botUserId)) {
+  if (config.answers === 'mentions' && !m.mentions.includes(input.ac.botUserId) && !ownerAnswer) {
     await recordAndFlag(m, author, { deliver: false });
     return;
   }
@@ -135,6 +156,7 @@ export async function handleSupportMessage(input: {
   const fresh = await recordAndFlag(m, author, {
     deliver: true,
     maxChars: limits.messageMaxChars,
+    addressed: addressedOf(m.mentions, input.ac.botUserId),
   });
   if (!fresh) return;
   void reactToMessage(auth, m.id, RECEIVED_EMOJI, true).catch(() => {});
@@ -152,7 +174,7 @@ async function recordInbound(
   thread: string,
   m: RocketChatIncomingMessage,
   author: { key: string; label: string | null },
-  opts: { deliver: boolean; maxChars?: number },
+  opts: { deliver: boolean; maxChars?: number; addressed?: Addressed },
 ): Promise<boolean> {
   const text = opts.maxChars ? clipMessage(m.text, opts.maxChars) : m.text;
   return db.transaction(async (tx) => {
@@ -167,7 +189,11 @@ async function recordInbound(
         actorKey: author.key,
         actorLabel: author.label,
         // the server's own timestamp, which the room's latency is read from (BC-11)
-        input: m.ts ? { text, ts: m.ts } : { text },
+        input: {
+          text,
+          ...(m.ts ? { ts: m.ts } : {}),
+          ...(opts.addressed ? { addressed: opts.addressed } : {}),
+        },
         externalId: m.id,
         deliveredAt: opts.deliver ? null : new Date(),
       },

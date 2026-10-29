@@ -44,6 +44,17 @@ export const CHANNEL_DETAIL_ROLES: readonly ChannelRole[] = [
 	"bot",
 ];
 
+/**
+ * The roles that allow a change to a running system (REQ-77 BC-10): a channel agent's fix, build,
+ * deploy or command in a group is confirmed by a named confirmer, the owner under owner mode, or a
+ * member a person confirmed in the channel record as one of these. A User, a Product member, a Bot
+ * or a role the bot only inferred confirms nothing.
+ */
+export const CHANGE_CONFIRM_ROLES: readonly ChannelRole[] = [
+	"technical",
+	"maintenance",
+];
+
 /** inferred: the bot read it from messages (BC-32). confirmed: a person set it (BC-33). */
 export const CHANNEL_MEMBER_STATES = ["inferred", "confirmed"] as const;
 export type ChannelMemberState = (typeof CHANNEL_MEMBER_STATES)[number];
@@ -171,6 +182,24 @@ export const supportRouteRequestSchema = supportRouteFieldsSchema.superRefine(
 /** The one top-level post: news that changes something for everyone in the channel (BC-39). */
 export const supportAnnounceRequestSchema = z.strictObject({
 	text: z.string().trim().min(3).max(1000),
+});
+
+/**
+ * A question to the owner through the channel (REQ-77 BC-12). It is posted in the thread it names;
+ * the owner's next message there, by the id the chat server signed, is the answer: it reaches the
+ * asking session, and the issue `record` names, where one is named, as a note.
+ */
+export const supportAskOwnerRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema,
+	question: z.string().trim().min(3).max(1500),
+	/** An issue of this project the answer is also written on, such as `ISS-12`. */
+	record: z
+		.string()
+		.regex(
+			/^ISS-\d{1,9}$/,
+			"an issue key of this project, such as ISS-12: an answer is written on an issue only",
+		)
+		.optional(),
 });
 
 /** A person's correction of a member (BC-33): written confirmed. */

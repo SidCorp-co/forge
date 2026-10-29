@@ -127,12 +127,15 @@ export function confirmPrompt(input: {
   summary: string;
   args: Record<string, unknown>;
   code: string;
+  /** Who confirms where it is not the asker: a channel agent's change waits on a role (REQ-77 BC-10). */
+  confirmers?: string;
 }): string {
   const shown = Object.entries(input.args)
     .map(([k, v]) => `${k}: ${String(v)}`)
     .join(', ');
   const who = input.askerLabel ? `@${input.askerLabel} ` : '';
-  return `${who}I can make this change: ${input.summary}${shown ? ` (${shown})` : ''}. Reply \`confirm ${input.code}\` to run it, or \`cancel ${input.code}\`. Only you can confirm it; it expires in 15 minutes.`;
+  const only = input.confirmers ? `${input.confirmers} can confirm it` : 'Only you can confirm it';
+  return `${who}I can make this change: ${input.summary}${shown ? ` (${shown})` : ''}. Reply \`confirm ${input.code}\` to run it, or \`cancel ${input.code}\`. ${only}; it expires in 15 minutes.`;
 }
 
 /** What the thread is told before anything is filed: the route, the title, and the thread's link. */

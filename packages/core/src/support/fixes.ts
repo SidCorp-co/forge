@@ -13,7 +13,8 @@ import {
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
 import { runConfirmed } from './ability-run.js';
-import { grantsOf, isConfirmer, supportConfigOf } from './grants.js';
+import { changeWaitsOnRole, mayConfirmChange, whoConfirms } from './confirm-role.js';
+import { grantsOf, supportConfigOf } from './grants.js';
 import { changeName, nothingDone } from './propose.js';
 import { fileRecord, type RecordRequest } from './record.js';
 import { confirmRefusal, fixResultLine, limitsOf } from './rules.js';
@@ -34,20 +35,27 @@ import { postInThread } from './thread.js';
 const CONFIRMER_KINDS = new Set<ProposalRow['kind']>(['build', 'deploy', 'command']);
 
 /**
- * A confirmer-gated change is confirmed only by a confirmer the grant names, by the username the
- * chat server signed the message with; the asker or a confirmer may cancel it.
+ * Whether a change waits on a confirmer rather than on its asker: a build, a deploy or a host
+ * command anywhere, and in a channel agent's group a product-API fix too, since every change to a
+ * running system there waits on a member whose role allows it (REQ-77 BC-10).
  */
-function confirmerRefusal(
+const waitsOnConfirmer = (room: RoomRow, fix: ProposalRow): boolean =>
+  CONFIRMER_KINDS.has(fix.kind) || (changeWaitsOnRole(room) && fix.kind === 'fix');
+
+/**
+ * A confirmer-gated change is confirmed only by who the room allows, by the username and id the
+ * chat server signed the message with; the asker or such a confirmer may cancel it.
+ */
+async function confirmerRefusal(
+  room: RoomRow,
   grants: ReturnType<typeof grantsOf>,
   fix: ProposalRow,
   author: { key: string; label: string | null },
   verb: 'confirm' | 'cancel',
-): string | null {
-  if (isConfirmer(grants, author)) return null;
+): Promise<string | null> {
+  if (await mayConfirmChange(room, grants, author)) return null;
   if (verb === 'cancel' && author.key === fix.askerKey) return null;
-  const who =
-    (grants.confirmers ?? []).map((c) => `@${c}`).join(' or ') || 'a confirmer this room names';
-  return `Only ${who} can confirm this change. ${nothingDone(fix)}`;
+  return `Only ${whoConfirms(room, grants)} can confirm this change. ${nothingDone(fix)}`;
 }
 
 /** Tell the session what became of a fix, as a message of its own in the next turn. */
@@ -115,17 +123,16 @@ export async function answerConfirm(input: {
   }
   // the grant as the binding holds it now, never the routing's snapshot: a confirmer taken off the
   // room since the message was routed confirms nothing
-  const grants = grantsOf(
-    CONFIRMER_KINDS.has(fix.kind) ? await supportConfigOf(room) : input.config,
-  );
-  const refusedFor = CONFIRMER_KINDS.has(fix.kind)
-    ? confirmerRefusal(grants, fix, author, input.verb)
+  const gated = waitsOnConfirmer(room, fix);
+  const grants = grantsOf(gated ? await supportConfigOf(room) : input.config);
+  const refusedFor = gated
+    ? await confirmerRefusal(room, grants, fix, author, input.verb)
     : confirmRefusal(fix, author.key, nothingDone(fix));
   if (refusedFor) {
     await record('refused', fix, {
-      reason: CONFIRMER_KINDS.has(fix.kind) ? 'not a confirmer' : 'not the asker',
+      reason: gated ? 'not a confirmer' : 'not the asker',
       asker: fix.askerKey,
-      ...(CONFIRMER_KINDS.has(fix.kind) ? { confirmers: grants.confirmers ?? [] } : {}),
+      ...(gated ? { confirmers: grants.confirmers ?? [] } : {}),
     });
     await postInThread({ room, thread: fix.thread, text: refusedFor });
     return 'refused';

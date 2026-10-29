@@ -389,6 +389,41 @@ share one account and one session (migration 0553): the project's channel agent
 
 The proof is `packages/core/tests/integration/support-channel-agent-e2e.test.ts`.
 
+### How the channel agent answers (REQ-77 r1 BC-5..BC-12)
+
+The agent answers by each group's channel record and nothing of its own, and hands work to Forge as
+records.
+
+- **A record per group.** Its brief and each change to a record carry one block per group, headed by
+  the group (`support/channel-read.ts:channelBlock`), so a member or a rule belongs to one group. The
+  opening tells it to keep no members, roles, rules or routes of its own, in no file or memory
+  (`support/prompt.ts:agentOpening`).
+- **Facts for when to reply.** Each message it is handed says whom it is for (`to`: `you`, `others`,
+  `nobody`, from the mentions the chat server parsed, `support/inbound.ts:addressedOf`) and whether a
+  Technical member of the record had already written in its thread (`technicalAnswered`,
+  `support/prompt.ts:technicalAnsweredBefore`). What to do with them is policy in its opening: reply
+  when asked or told of a problem, stay silent on chatter, on messages for others and where Technical
+  answered, and find the cause in logs, code and data before saying anything.
+- **One result per request.** `reply` is refused `SUPPORT_ONE_RESULT_PER_REQUEST` when nothing has
+  arrived in the thread since the session's last reply (`support/store.ts:unansweredInThread`); a
+  member's message, a confirm, and a result core tells the session each count as a new request.
+  Top level stays `announce`, one an hour.
+- **Who confirms a change.** In an agent's group every change to a running system (fix, build,
+  deploy, command) is confirmed by a named confirmer, the owner under owner mode, or a member a
+  person confirmed in the channel record as Technical or Maintenance
+  (`support/confirm-role.ts:mayConfirmChange`, `CHANGE_CONFIRM_ROLES`). A role the bot only inferred
+  confirms nothing. A support group and an operations room confirm as before.
+- **Asking the owner.** `ask_owner { thread, question, record? }` posts the question in the thread,
+  naming the owner by the username Forge saw for the binding's `grants.owner` id
+  (`support/owner-ask.ts`). The owner's next message in that thread, signed with that id, answers
+  every question the thread still holds: the session reads it with `answersYourQuestion`, and the
+  issue `record` named (`ISS-n` of the project) gets a note carrying the owner's words and the
+  thread's link. Nobody else's message answers it. The question and its answer are `routed` actions
+  of the thread; no table holds them. `owner` can now be named without `owner_mode`, giving the
+  agent someone to ask and no power.
+
+The proof is `packages/core/tests/integration/support-channel-behaviour-e2e.test.ts`.
+
 ## Honest costs
 
 - **A box per project.** The session runs on a paired runner bound to the project with a checkout,

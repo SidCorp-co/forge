@@ -203,6 +203,48 @@ export async function threadMembers(
   return [...seen].map(([key, label]) => ({ key, label }));
 }
 
+/** Every member message of these threads: who wrote it, under what name, in which thread, and when. */
+export async function threadWritings(
+  roomId: string,
+  threads: readonly string[],
+): Promise<{ thread: string; key: string | null; label: string | null; at: Date }[]> {
+  if (threads.length === 0) return [];
+  const rows = await db
+    .select({
+      thread: supportActions.thread,
+      key: supportActions.actorKey,
+      label: supportActions.actorLabel,
+      at: supportActions.createdAt,
+    })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        inArray(supportActions.thread, [...threads]),
+        eq(supportActions.kind, 'message_in'),
+        eq(supportActions.actorKind, 'member'),
+      ),
+    );
+  return rows;
+}
+
+/**
+ * Whether a thread holds a message that arrived since the session's last reply in it, or no reply
+ * yet: what a request is, for the one result each gets (REQ-77 BC-8). A confirm, a result core
+ * tells the session and a member's message all count; the session's own checks and posts do not.
+ */
+export async function unansweredInThread(roomId: string, thread: string): Promise<boolean> {
+  const [row] = await db
+    .select({
+      lastReply: sql<Date | null>`max(${supportActions.createdAt}) filter (where ${supportActions.kind} = 'reply')`,
+      lastIn: sql<Date | null>`max(${supportActions.createdAt}) filter (where ${supportActions.kind} = 'message_in')`,
+    })
+    .from(supportActions)
+    .where(and(eq(supportActions.roomId, roomId), eq(supportActions.thread, thread)));
+  if (!row?.lastReply) return true;
+  return Boolean(row.lastIn && new Date(row.lastIn).getTime() > new Date(row.lastReply).getTime());
+}
+
 /** The member who wrote last in a thread: whom an operations room's act in it runs for. */
 export async function latestThreadWriter(
   roomId: string,

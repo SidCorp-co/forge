@@ -115,8 +115,10 @@ export const supportGrantsSchema = z
 		/** Whose `confirm <code>` lets a deploy or a host change run: Rocket.Chat usernames. */
 		confirmers: z.array(chatUsernameSchema).max(20).optional(),
 		/**
-		 * The owner `owner_mode` obeys (REQ-77 BC-20): the chat server's user id for their account,
-		 * never a name, so a message is the owner's only when the server signed it so.
+		 * The owner `owner_mode` obeys (REQ-77 BC-20) and a channel agent asks (BC-12): the chat
+		 * server's user id for their account, never a name, so a message is the owner's only when the
+		 * server signed it so. Named without `owner_mode`, it gives the agent someone to ask and no
+		 * power.
 		 */
 		owner: chatUserIdSchema.optional(),
 	})
@@ -140,13 +142,12 @@ export const supportGrantsSchema = z
 					: "hosts are named and run_commands is not granted: grant run_commands or drop them",
 			});
 		}
-		if (has("owner_mode") !== Boolean(g.owner)) {
+		if (has("owner_mode") && !g.owner) {
 			ctx.addIssue({
 				code: "custom",
 				path: ["owner"],
-				message: has("owner_mode")
-					? "owner_mode is granted and names no owner: name the owner's Rocket.Chat user id"
-					: "an owner is named and owner_mode is not granted: grant owner_mode or drop it",
+				message:
+					"owner_mode is granted and names no owner: name the owner's Rocket.Chat user id",
 			});
 		}
 		if (
@@ -435,6 +436,7 @@ export const SUPPORT_ACTIONS = [
 	"common_issue",
 	"route",
 	"announce",
+	"ask_owner",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
@@ -671,6 +673,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_CHANNEL_NOT_OUTSIDE",
 	/** A channel agent serves several groups, and the act named none it could be read from (REQ-77). */
 	"SUPPORT_ROOM_AMBIGUOUS",
+	/** A channel agent's second reply to one request: one result per request (REQ-77 BC-8). */
+	"SUPPORT_ONE_RESULT_PER_REQUEST",
+	/** The binding names no owner to ask (REQ-77 BC-12). */
+	"SUPPORT_OWNER_NOT_NAMED",
+	/** An owner question's `record` names no issue of this project (REQ-77 BC-12). */
+	"SUPPORT_OWNER_RECORD_UNKNOWN",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -723,4 +731,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_RULE_UNKNOWN: 404,
 	SUPPORT_CHANNEL_NOT_OUTSIDE: 409,
 	SUPPORT_ROOM_AMBIGUOUS: 400,
+	SUPPORT_ONE_RESULT_PER_REQUEST: 409,
+	SUPPORT_OWNER_NOT_NAMED: 409,
+	SUPPORT_OWNER_RECORD_UNKNOWN: 404,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

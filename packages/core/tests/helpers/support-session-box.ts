@@ -23,8 +23,15 @@ export interface TurnMessage {
   thread: string;
   /** The member message's own id, which a channel act names (REQ-75 r6); absent on a note. */
   message?: string;
-  from: { id: string; name: string | null; roles?: string[] | 'unknown' } | 'forge';
+  from:
+    | { id: string; name: string | null; roles?: string[] | 'unknown'; owner?: boolean }
+    | 'forge';
   text: string;
+  /** A channel agent's messages (REQ-77): the group, whom a message is for, what core read of it. */
+  channel?: string;
+  to?: 'you' | 'others' | 'nobody';
+  technicalAnswered?: boolean;
+  answersYourQuestion?: string;
 }
 
 export interface Turn {
@@ -60,15 +67,15 @@ export function messagesOf(text: string): TurnMessage[] {
   let current: TurnMessage | null = null;
   for (const line of text.split('\n')) {
     if (line.startsWith('{"thread":')) {
-      const head = JSON.parse(line) as {
-        thread: string;
-        message?: string;
-        from: TurnMessage['from'];
-      };
+      const head = JSON.parse(line) as Omit<TurnMessage, 'text'>;
       current = {
         thread: head.thread,
         ...(head.message ? { message: head.message } : {}),
         from: head.from,
+        ...(head.channel ? { channel: head.channel } : {}),
+        ...(head.to ? { to: head.to } : {}),
+        ...(head.technicalAnswered ? { technicalAnswered: true } : {}),
+        ...(head.answersYourQuestion ? { answersYourQuestion: head.answersYourQuestion } : {}),
         text: '',
       };
       out.push(current);

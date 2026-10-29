@@ -16,6 +16,7 @@ import { settleLatency } from './delivery.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { no } from './outcome.js';
+import { askOwner } from './owner-ask.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose } from './service.js';
@@ -81,7 +82,8 @@ export type SupportActInput =
       title?: string | undefined;
       text: string;
     }
-  | { action: 'announce'; text: string };
+  | { action: 'announce'; text: string }
+  | { action: 'ask_owner'; thread: string; question: string; record?: string | undefined };
 
 /**
  * One act of a room's session. `rid` names the group a channel agent acts in where the act names no
@@ -141,6 +143,7 @@ const POSTS = new Set<SupportActInput['action']>([
   'deploy',
   'build',
   'route',
+  'ask_owner',
 ]);
 
 /**
@@ -179,6 +182,7 @@ const SHARED = new Set<SupportActInput['action']>([
   'common_issue',
   'route',
   'announce',
+  'ask_owner',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -257,5 +261,9 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     }
     case 'announce':
       return announce(room, { text: input.text });
+    case 'ask_owner': {
+      const { action: _, ...request } = input;
+      return askOwner(room, request);
+    }
   }
 }
