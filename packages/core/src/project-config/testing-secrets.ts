@@ -13,7 +13,7 @@ import { credentialRefs, readProjectConfig, readTestingProfile } from './service
 import { drizzleConfigStore } from './store.js';
 
 interface TestingSecretsRefusal {
-  status: 403 | 404 | 422 | 503;
+  status: 403 | 404 | 409 | 422 | 503;
   code: TestingSecretsRefusalCode;
   message: string;
   details?: Record<string, unknown>;
@@ -203,7 +203,7 @@ export async function resolveTestingSecrets(args: {
     if (declared.kind === 'run') return resolveForDeclaredRun({ ...args, run: declared });
   }
   const own = await credentialJob(principal, args.jobId);
-  if (!own.ok) return own;
+  if (!own.ok) return principal.deviceId ? boxCallRefusal(own, args.jobId) : own;
   const { jobId } = own;
 
   const judging = await judgingJob(jobId);
@@ -249,6 +249,29 @@ export async function resolveTestingSecrets(args: {
     secrets.map((s) => s.value),
   );
   return { ok: true, resolved: { jobId, environment, profileId, secrets } };
+}
+
+/**
+ * What a box's credential that names no job is told. Its `self` is no job, and an id core holds no
+ * run of is most often a run declared seconds ago: the box records a declaration at core on its
+ * next sweep, not at `forge-runner run declare` (catalog-fe ISS-39, run ff22a502, 2026-10-30, read
+ * before that sweep and closed as never started).
+ */
+function boxCallRefusal(refused: Refused, asked: string): Refused {
+  if (refused.refusal.code !== 'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL') return refused;
+  if (asked === SELF_JOB) {
+    return refuse(
+      403,
+      'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL',
+      `${refused.refusal.message} Under a box's credential \`self\` names no job; call with the declared run's id in place of \`self\`.`,
+    );
+  }
+  return refuse(
+    409,
+    'TESTING_SECRETS_RUN_NOT_RECORDED',
+    `core holds no run this box declared under ${asked}, and this credential runs no job. A run declared moments ago is recorded at core by the box's next sweep, seconds after \`forge-runner run declare\` (the runner log then says \`[run-record] run ${asked} is now core session …\`): read again with the same id once it has, and dispatch the judge after that read. An id that stays unrecorded is no run of this box: a run declared on another box is read under that box's credential. Nothing was read.`,
+    { asked },
+  );
 }
 
 const DECLARED_RUN_REFUSAL = {

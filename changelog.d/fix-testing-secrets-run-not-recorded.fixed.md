@@ -1,0 +1,1 @@
+**A declared run read before core records it is told so.** A box credential naming a run its box's sweep has not opened yet is refused `TESTING_SECRETS_RUN_NOT_RECORDED` (409), naming the sweep and the same id to retry, not `NOT_A_JOB_CREDENTIAL`.

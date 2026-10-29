@@ -136,6 +136,8 @@ export const TESTING_SECRETS_REFUSAL_CODES = [
 	"TESTING_SECRETS_RUN_ENDED",
 	/** The run named is one this box declared, and core has not admitted it (its declaration is queued). */
 	"TESTING_SECRETS_RUN_NOT_ADMITTED",
+	/** A box credential names an id core holds no run of: a run declared moments ago that the box's sweep has not recorded at core yet, or no run of this box at all. */
+	"TESTING_SECRETS_RUN_NOT_RECORDED",
 	/** The run named works another project than the one the credential is bound to. */
 	"TESTING_SECRETS_FOREIGN_RUN",
 	"TESTING_SECRETS_JOB_AMBIGUOUS",
