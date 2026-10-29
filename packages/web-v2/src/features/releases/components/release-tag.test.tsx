@@ -53,7 +53,7 @@ describe("a shipped release's tag on its rail (REQ-63 BC-15)", () => {
   it("says why there is none where the project has no source host", () => {
     const tag = { ...conflict, state: "untagged", on: null, code: "RELEASE_TAG_NO_SOURCE_HOST", reason: "no binding" };
     render(<WhereReleaseStands r={{ ...shipped, tag } as never} />);
-    expect(screen.getByTestId("standing-tag")).toHaveTextContent("TagNo source host");
+    expect(screen.getByTestId("standing-tag")).toHaveTextContent("TagNo host");
   });
 
   it("says None for a release shipped before releases were tagged, and nothing before it ships", () => {
