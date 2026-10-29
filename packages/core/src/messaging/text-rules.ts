@@ -117,7 +117,7 @@ export const NO_OPTION_LINE: MessageRule = {
  */
 export const NO_REDACTED_SECRET: MessageRule = {
   id: 'no-redacted-secret',
-  shape: 'no token, key or connection string — name the credential entry instead',
+  shape: 'no token, key or connection string — say where one is kept, never its value',
   example: 'the deploy credential this project holds',
   needs: [],
   check: (text) =>

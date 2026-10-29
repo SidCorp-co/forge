@@ -89,18 +89,20 @@ describe('a value that closes a sentence or a bracket', () => {
   });
 
   it.each([
-    ['a word with a digit and a full stop', 'password: hunter2.', `password: ${FILTERED}`],
-    ['a PIN-length number and a full stop', 'token: 4821.', `token: ${FILTERED}`],
-    ['a dotted number and a full stop', 'token: 1.5.', `token: ${FILTERED}`],
-    ['a signed number and a semicolon', 'token: -5;', `token: ${FILTERED}`],
-    ['a mixed-case value and a full stop', 'api_key: zQ8kWx.', `api_key: ${FILTERED}`],
-    ['a symbol value and a full stop', 'secret: fake$val.', `secret: ${FILTERED}`],
+    ['a word with a digit and a full stop', 'password: hunter2.', `password: ${FILTERED}.`],
+    ['a PIN-length number and a full stop', 'token: 4821.', `token: ${FILTERED}.`],
+    ['a dotted number and a full stop', 'token: 1.5.', `token: ${FILTERED}.`],
+    ['a signed number and a semicolon', 'token: -5;', `token: ${FILTERED};`],
+    ['a mixed-case value and a full stop', 'api_key: zQ8kWx.', `api_key: ${FILTERED}.`],
+    ['a symbol value and a full stop', 'secret: fake$val.', `secret: ${FILTERED}.`],
+    ['a value, a semicolon and more prose', 'token: 4821; then retry', `token: ${FILTERED}; then retry`],
+    ['a value, a bang and a full stop', 'password: Welcome!.', `password: ${FILTERED}.`],
     ['a word ending in a bang', 'password: Welcome!', `password: ${FILTERED}`],
     ['a word ending in a question mark', 'secret: whatever?', `secret: ${FILTERED}`],
     ['a value in a bracket', '(token: hunter2)', `(token: ${FILTERED})`],
     ['a value in a bracket ending a sentence', 'sent (password: hunter2).', `sent (password: ${FILTERED}).`],
     ['a PIN-length number in a square bracket', '[token: 4821]', `[token: ${FILTERED}]`],
-  ])('still refuses %s, keeping a closing bracket', (_shape, text, scrubbed) => {
+  ])('still refuses %s, keeping the marks that close the sentence or a bracket', (_shape, text, scrubbed) => {
     expect(scrubLogText(text)).toBe(scrubbed);
     expect(containsSecret(text)).toBe(true);
     expect(secretSpans(text).map((s) => s.shape)).toContain('credential field');
@@ -117,10 +119,27 @@ describe('a value that closes a sentence or a bracket', () => {
     const [span] = secretSpans(text);
     expect(text.slice(span?.start, span?.end)).toBe('hunter2');
   });
+
+  // ISS-757 (judge K149 on ISS-572): the full stop or semicolon after a value is the sentence's.
+  it.each([
+    ['password: hunter2.', 'hunter2'],
+    ['token: 4821;', '4821'],
+    ['password: Welcome!.', 'Welcome!'],
+  ])('names the span of %s without the marks the scrubber keeps', (text, value) => {
+    const span = secretSpans(text).find((s) => s.shape === 'credential field');
+    expect(text.slice(span?.start, span?.end)).toBe(value);
+  });
 });
 
 describe('scrubbing a value that closes a bracket twice', () => {
-  it.each(['(token: hunter2)', 'sent (password: hunter2).', `token=${FILTERED}`, 'token: a[b]'])(
+  it.each([
+    '(token: hunter2)',
+    'sent (password: hunter2).',
+    `token=${FILTERED}`,
+    'token: a[b]',
+    'password: hunter2.',
+    'token: 4821;',
+  ])(
     'changes nothing the second time: %s',
     (text) => {
       const once = scrubLogText(text);
