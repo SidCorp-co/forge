@@ -18,9 +18,9 @@ import { privateRefusal } from './channel.js';
 import { channelsOf, channelViewOf } from './channel-read.js';
 import {
   addRule,
+  channelIsBound,
   ensureChannel,
   removeRule,
-  roomsOfChannel,
   writeMember,
 } from './channel-store.js';
 import { no, type Outcome } from './outcome.js';
@@ -54,10 +54,10 @@ const projectParam = zValidator(
 const unknownChannel = <T>(rid: string): Outcome<T> =>
   no('SUPPORT_CHANNEL_UNKNOWN', '/rid', `no binding of this project attaches the group ${rid}`);
 
-/** The channel a person writes to: one a binding of the project attaches. */
+/** The channel a person writes to: one a binding of the project attaches, whoever answers it. */
 async function writableChannel(viewer: string, projectId: string, rid: string) {
   await requireCan(actorFor(viewer), 'project.write', projectResource(projectId));
-  if ((await roomsOfChannel(projectId, rid)).length === 0) return null;
+  if (!(await channelIsBound(projectId, rid))) return null;
   return ensureChannel(projectId, rid);
 }
 

@@ -20,6 +20,7 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   boundRidsOf,
   type ChannelRow,
+  channelIsBound,
   channelOf,
   commonIssuesOf,
   type MemberRow,
@@ -67,14 +68,17 @@ export async function channelsOf(viewer: string, projectId: string): Promise<Cha
   return out;
 }
 
-/** One bound channel's record, or null when no binding of the project attaches the group. */
+/**
+ * One bound channel's record, or null when no binding of the project attaches the group. An outside
+ * agent answering the group reads it here with its own account's token holding `project.read`.
+ */
 export async function channelViewOf(
   viewer: string,
   projectId: string,
   rid: string,
 ): Promise<ChannelView | null> {
   await requireCan(actorFor(viewer), 'project.read', projectResource(projectId));
-  if ((await roomsOfChannel(projectId, rid)).length === 0) return null;
+  if (!(await channelIsBound(projectId, rid))) return null;
   const channel = await channelOf(projectId, rid);
   const record = channel ? await recordOf(projectId, channel) : EMPTY;
   return {

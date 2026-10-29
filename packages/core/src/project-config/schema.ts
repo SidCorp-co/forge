@@ -13,6 +13,7 @@ import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import { stewardPolicySchema } from '@forge/contracts/steward-runtime';
 import { supportApiBindingConfigSchema, supportRoomConfigSchema } from '@forge/contracts/support';
+import { outsideRidsSchema } from '@forge/contracts/support-channel';
 import { operationsRoomConfigSchema } from '@forge/contracts/support-operations';
 import { widgetBindingConfigSchema } from '@forge/contracts/widget';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
@@ -376,6 +377,8 @@ const BINDING_TARGETS = [
     // name otherwise (`integrations/rocketchat/support-binding.ts`)
     support: supportRoomConfigSchema.optional(),
     operations: operationsRoomConfigSchema.optional(), // operations rooms (REQ-75 BC-20)
+    // groups an agent outside Forge answers; Forge keeps their channel record only (REQ-75 r6)
+    outsideRids: outsideRidsSchema.optional(),
   }),
   targetOf('support-api', { ...supportApiBindingConfigSchema.shape }),
   targetOf('agent', {}),

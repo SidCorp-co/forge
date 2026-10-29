@@ -1,10 +1,12 @@
 // Reads and writes of a bound group's channel record (REQ-75 r6), which only the `support` domain
-// writes. A channel is one per project and group, and every room row of that project bound to the
-// group reads it (BC-41).
+// writes. A channel is one per project and group, whoever answers the group: every room row of that
+// project bound to it reads it (BC-41), and so does an outside agent a binding names as its answerer.
 
 import type { ChannelMemberState, ChannelRole } from '@forge/contracts/support-channel';
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { listBindingsForProject } from '../integrations/index.js';
+import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import {
   supportActions,
   supportChannelCommonIssues,
@@ -37,7 +39,26 @@ export async function channelOf(projectId: string, rid: string): Promise<Channel
   return row ?? null;
 }
 
-/** The groups a project's bindings attach, each once, oldest first. */
+/**
+ * The groups the project's Rocket.Chat bindings name, switched on or off, oldest binding first: the
+ * ones Forge answers (`rids`) and the ones an agent outside Forge answers (`outsideRids`). A binding
+ * switched off keeps its groups' records, as a room taken out of its binding does.
+ */
+async function namedRids(projectId: string): Promise<string[]> {
+  return (await listBindingsForProject(projectId))
+    .map((p) => p.binding)
+    .filter((b) => b.provider === 'rocketchat')
+    .reverse()
+    .flatMap((b) => {
+      const config = (b.config ?? {}) as RocketChatBindingConfig;
+      return [...(config.rids ?? []), ...(config.outsideRids ?? [])];
+    });
+}
+
+/**
+ * The groups a project's bindings attach, each once: every group a room of the project was declared
+ * for, oldest first, then every other group a binding of the project names.
+ */
 export async function boundRidsOf(projectId: string): Promise<string[]> {
   const rows = await db
     .select({ rid: supportRooms.rid, first: sql<Date>`min(${supportRooms.createdAt})` })
@@ -45,7 +66,16 @@ export async function boundRidsOf(projectId: string): Promise<string[]> {
     .where(eq(supportRooms.projectId, projectId))
     .groupBy(supportRooms.rid)
     .orderBy(asc(sql`min(${supportRooms.createdAt})`));
-  return rows.map((r) => r.rid);
+  return [...new Set([...rows.map((r) => r.rid), ...(await namedRids(projectId))])];
+}
+
+/**
+ * Whether the group has a channel record in this project, whoever answers it: a room of the project
+ * was declared for it, or a binding of the project names it.
+ */
+export async function channelIsBound(projectId: string, rid: string): Promise<boolean> {
+  if ((await roomsOfChannel(projectId, rid)).length > 0) return true;
+  return (await namedRids(projectId)).includes(rid);
 }
 
 /** The room rows of a project bound to one group: one per bot. */

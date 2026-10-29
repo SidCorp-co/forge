@@ -5,8 +5,15 @@
 // member it sets is confirmed and the bot never writes over it. Run it once the release carrying the
 // channel record is live; running it again changes nothing that already reads back the same.
 //
-//   FORGE_URL=https://forge-dev-api.sidcorp.co FORGE_TOKEN=<a PAT holding project.write on sidcorp-mail> \
-//     node scripts/seed-webmail-channel.mjs [--project <sidcorp-mail project uuid>] [--dry-run]
+// #webmail is answered by an outside agent, not by a Forge session, so no binding names it until this
+// script binds it: a group no binding of the project names is added to the `outsideRids` of the
+// project's one Rocket.Chat binding, switched on or off, and nothing else of that binding changes.
+// Forge keeps the group's record and answers nothing there. A project with no Rocket.Chat binding
+// takes one on `--connection`, naming only that group.
+//
+//   FORGE_URL=https://forge-dev-api.sidcorp.co FORGE_TOKEN=<a PAT holding project.admin on sidcorp-mail> \
+//     node scripts/seed-webmail-channel.mjs [--project <sidcorp-mail project uuid>] \
+//       [--connection <a Rocket.Chat connection uuid, where the project has no binding>] [--dry-run]
 //
 // Members are keyed by Rocket.Chat username: the record keeps no email (BC-40), so the owner's seed
 // by address is written as the username each address names.
@@ -51,6 +58,8 @@ function arg(name) {
   return i > 0 ? process.argv[i + 1] : undefined;
 }
 
+const BINDING_SCHEMA = 'https://forge.sidcorp.co/schemas/binding-v1.json';
+
 async function call(base, token, method, path, body) {
   const res = await fetch(`${base}/api${path}`, {
     method,
@@ -77,10 +86,85 @@ async function projectId(base, token, named) {
   return row.id;
 }
 
-/** Seed one channel's record; `rid` is #webmail's unless a test names another bound group. */
-export async function seed({ base, token, project, rid = RID, dry = false, log = console.log }) {
-  const path = `/projects/${await projectId(base, token, project)}/support/channels/${rid}`;
-  const { channel } = await call(base, token, 'GET', path);
+/** The channel's record, or null when no binding of the project names the group. */
+async function channelOf(base, token, path) {
+  try {
+    return (await call(base, token, 'GET', path)).channel;
+  } catch (err) {
+    const unknown = /answered 404/.test(err?.message) && /SUPPORT_CHANNEL_UNKNOWN/.test(err.message);
+    if (unknown) return null;
+    throw err;
+  }
+}
+
+/** The project's one Rocket.Chat binding, as its document reads, or null. */
+async function chatBinding(base, token, project) {
+  const { bindings } = await call(base, token, 'GET', `/projects/${project}/bindings`);
+  return bindings.find((b) => b.document?.target?.provider === 'rocketchat') ?? null;
+}
+
+/**
+ * Name the group in the project's Rocket.Chat binding as answered by an outside agent, or bind one
+ * on `connection` naming only it. Answers what was done, in words; writes nothing when `dry`.
+ */
+async function bindOutside({ base, token, project, rid, connection, dry }) {
+  const held = await chatBinding(base, token, project);
+  if (held) {
+    const { document } = held;
+    const outsideRids = [...(document.target.outsideRids ?? []), rid];
+    if (!dry) {
+      await call(base, token, 'PUT', `/projects/${project}/bindings/${document.id}`, {
+        baseRevision: held.revision,
+        document: { ...document, target: { ...document.target, outsideRids } },
+      });
+    }
+    return `${dry ? 'would bind' : 'bound'} #${rid} in binding ${document.id}, answered by an outside agent`;
+  }
+  if (!connection) {
+    throw new Error(
+      `project ${project} has no Rocket.Chat binding to name the group ${rid} in; pass --connection <the project's Rocket.Chat connection uuid> to bind it, answered by an outside agent`,
+    );
+  }
+  const id = crypto.randomUUID();
+  if (!dry) {
+    await call(base, token, 'PUT', `/projects/${project}/bindings/${id}`, {
+      baseRevision: null,
+      document: {
+        $schema: BINDING_SCHEMA,
+        version: 1,
+        id,
+        role: 'service',
+        connection,
+        active: true,
+        target: { provider: 'rocketchat', outsideRids: [rid] },
+      },
+    });
+  }
+  return `${dry ? 'would bind' : 'bound'} #${rid} on connection ${connection}, answered by an outside agent`;
+}
+
+const EMPTY = { name: null, memberRows: [], ruleRows: [] };
+
+/**
+ * Seed one channel's record; `rid` is #webmail's unless a test names another group. A group no
+ * binding names is bound first, answered by an outside agent.
+ */
+export async function seed({
+  base,
+  token,
+  project,
+  rid = RID,
+  connection,
+  dry = false,
+  log = console.log,
+}) {
+  const pid = await projectId(base, token, project);
+  const path = `/projects/${pid}/support/channels/${rid}`;
+  let channel = await channelOf(base, token, path);
+  if (!channel) {
+    log(await bindOutside({ base, token, project: pid, rid, connection, dry }));
+    channel = dry ? EMPTY : (await call(base, token, 'GET', path)).channel;
+  }
   for (const m of MEMBERS) {
     const now = channel.memberRows.find((r) => r.username === m.username);
     const same =
@@ -101,7 +185,7 @@ export async function seed({ base, token, project, rid = RID, dry = false, log =
     log(`${there ? 'kept' : dry ? 'would add' : 'added'} rule: ${text}`);
     if (!there && !dry) await call(base, token, 'POST', `${path}/rules`, { text });
   }
-  const after = (await call(base, token, 'GET', path)).channel;
+  const after = dry && channel === EMPTY ? EMPTY : (await call(base, token, 'GET', path)).channel;
   log(
     `#${after.name ?? rid}: ${after.memberRows.length} members (${after.memberRows.filter((m) => m.state === 'confirmed').length} confirmed), ${after.ruleRows.length} rules`,
   );
@@ -110,11 +194,12 @@ export async function seed({ base, token, project, rid = RID, dry = false, log =
 
 async function main() {
   const token = process.env.FORGE_TOKEN;
-  if (!token) throw new Error('FORGE_TOKEN is unset: a PAT holding project.write on sidcorp-mail');
+  if (!token) throw new Error('FORGE_TOKEN is unset: a PAT holding project.admin on sidcorp-mail');
   await seed({
     base: (process.env.FORGE_URL ?? 'https://forge-dev-api.sidcorp.co').replace(/\/$/, ''),
     token,
     project: arg('--project'),
+    connection: arg('--connection'),
     dry: process.argv.includes('--dry-run'),
   });
 }

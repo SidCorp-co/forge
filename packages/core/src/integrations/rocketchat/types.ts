@@ -19,4 +19,6 @@ export interface RocketChatBindingConfig extends Record<string, unknown> {
   support?: SupportRoomConfig;
   /** Present, each room is an operations room answered under the connection's role (REQ-75 BC-20). */
   operations?: OperationsRoomConfig;
+  /** Groups an agent outside Forge answers: Forge keeps each one's channel record only (REQ-75 r6). */
+  outsideRids?: string[];
 }

@@ -56,6 +56,19 @@ export const SUPPORT_COMMON_ISSUE_MIN_THREADS = 2;
 /** At most one top-level announcement per channel in this window (BC-39). */
 export const SUPPORT_ANNOUNCE_EVERY_MS = 60 * 60_000;
 
+/**
+ * A Rocket.Chat binding's `outsideRids`: the groups an agent outside Forge answers. Forge keeps each
+ * one's channel record, which that agent reads, and answers nothing there itself: no room, no
+ * session, no reply. A group is in `rids` (answered by Forge) or here, never both.
+ */
+export const outsideRidsSchema = z
+	.array(z.string().min(1).max(200))
+	.min(1)
+	.max(20)
+	.refine((rids) => new Set(rids).size === rids.length, {
+		message: "a group is named once",
+	});
+
 export const channelRolesSchema = z
 	.array(z.enum(CHANNEL_ROLES))
 	.min(1)
