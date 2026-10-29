@@ -279,7 +279,7 @@ function secretFault(draft: VerdictDraft): VerdictRefusal | null {
     const [first, ...more] = secretSpans(text);
     if (!first) continue;
     const others = more.length === 0 ? '' : ` (and ${more.length} more)`;
-    const detail = `criterion ${draft.criterion}'s ${name} carries ${spanNamed(text, first)}${others}. Name the credential entry instead. If it is not a secret, reword it.`;
+    const detail = `criterion ${draft.criterion}'s ${name} carries ${spanNamed(text, first)}${others}. If it is a secret, say where it is kept, never its value; if not, reword it.`;
     return { ...refuse('VERDICT_SECRET', draft.criterion, detail), path };
   }
   return null;

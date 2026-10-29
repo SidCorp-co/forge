@@ -163,3 +163,65 @@ describe('a message the screen refuses', () => {
     expect(pathOf(res)).toBe('/fields');
   });
 });
+
+// ISS-757: a header named in prose says where a credential travels, which is what a message should
+// say instead of the credential; only a credential-shaped value after the header or its scheme word
+// is refused.
+describe('a credential header in a message', () => {
+  const NAMED = 'The JWT goes in the Authorization: Bearer header, read at src/auth/guard.ts:42.';
+  const COOKIE = 'The Cookie: is set by the browser on sign-in, read at src/auth/session.ts:9.';
+  const JWT =
+    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+  const OPAQUE = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0';
+
+  it.each([NAMED, COOKIE, 'Set X-Api-Key: unset in this environment, see src/env.ts:3.'])(
+    'is written as a comment where it names the header only: %s',
+    async (body) => {
+      const id = await issueAt('in_progress');
+      const res = await api(token, 'POST', `/api/issues/${id}/comments`, { body, intent: 'note' });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+    },
+  );
+
+  it.each([
+    `Send Authorization: Bearer ${JWT} from src/auth/guard.ts:42.`,
+    `Send X-Api-Key: ${OPAQUE} from src/env.ts:3.`,
+    'Cookie: theme=dark; sid=abcdef123456',
+  ])('is refused as a comment where a value follows: %s', async (body) => {
+    const id = await issueAt('in_progress');
+    const res = await api(token, 'POST', `/api/issues/${id}/comments`, { body, intent: 'note' });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('MESSAGE_REFUSED');
+    expect(ruleOf(res)).toBe('no-redacted-secret');
+    expect(JSON.stringify(res.body)).not.toContain(OPAQUE);
+  });
+
+  it('is written as a verdict reason naming the header, and refused carrying its value', async () => {
+    const id = await issueAt('in_progress');
+    const criteria = await api(token, 'PATCH', `/api/issues/${id}`, {
+      acceptanceCriteria: '1. A reminder reaches the nurse.',
+    });
+    expect(criteria.status, JSON.stringify(criteria.body)).toBe(200);
+    const named = await api(token, 'POST', `/api/issues/${id}/verdicts`, {
+      criterion: 1,
+      verdict: 'skipped',
+      reason: NAMED,
+    });
+    expect(named.status, JSON.stringify(named.body)).toBe(201);
+
+    const carried = await api(token, 'POST', `/api/issues/${id}/verdicts`, {
+      criterion: 1,
+      verdict: 'skipped',
+      reason: `The probe sent X-Api-Key: ${OPAQUE} to the route.`,
+    });
+    expect(carried.status).toBe(422);
+    const error = carried.body.error as
+      | { refusals?: { code: string; detail: string }[] }
+      | undefined;
+    expect(error?.refusals?.map((r) => r.code)).toEqual(['VERDICT_SECRET']);
+    const detail = String(error?.refusals?.[0]?.detail);
+    expect(JSON.stringify(carried.body)).not.toContain(OPAQUE);
+    expect(detail).not.toContain('credential entry');
+    expect(detail).toContain('say where it is kept, never its value');
+  });
+});

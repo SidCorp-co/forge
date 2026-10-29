@@ -237,8 +237,12 @@ function scrubSecretValues(text: string, secrets: readonly string[]): string {
 	return out;
 }
 
+/**
+ * A credential header's name and separator, and the rest of its line, read ahead rather than taken,
+ * so a header named in prose leaves a later one on the same line to be read.
+ */
 const HEADER_RE = new RegExp(
-	`\\b(${Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join("|")})(\\s*[:=]\\s*).+`,
+	`\\b(${Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join("|")})(\\s*[:=]\\s*)(?=(.+))`,
 	"gi",
 );
 // the key may close a JSON string (`"apiKey":`) or an escaped one inside JSON text
@@ -256,11 +260,11 @@ function splitClosing(value: string): { body: string; marks: string } {
 }
 
 /**
- * What a credential value's scrubbing keeps after it: its closing marks from the first bracket that
- * closes one opened before the value, so `(token: <value>)` keeps its bracket. A bracket closing
- * one the value opened is the value's (`[Filtered]` is scrubbed whole, so scrubbing twice changes
- * nothing), and a full stop or a bang before the kept bracket goes with the value, as it may be the
- * credential's own last character.
+ * What a credential value's scrubbing keeps after it: the closing marks that end the sentence, the
+ * clause or a bracket around it, so `password: <value>.` keeps its full stop and `(token: <value>)`
+ * its bracket (ISS-757). A bang or a question mark goes with the value, with every mark before it, as
+ * they are the symbols a password most often ends in; a bracket closing one the value opened is the
+ * value's (`[Filtered]` is scrubbed whole, so scrubbing twice changes nothing).
  */
 function closingKept(value: string): string {
 	const { body, marks } = splitClosing(value);
@@ -271,12 +275,16 @@ function closingKept(value: string): string {
 		if (c === "(" || c === "[") open++;
 		else if ((c === ")" || c === "]") && open > 0) open--;
 	}
+	let kept = 0;
 	for (let i = 0; i < marks.length; i++) {
-		if (marks[i] !== ")" && marks[i] !== "]") continue;
-		if (open === 0) return marks.slice(i);
-		open--;
+		const c = marks[i];
+		if (c === "!" || c === "?") kept = i + 1;
+		else if ((c === ")" || c === "]") && open > 0) {
+			open--;
+			kept = i + 1;
+		}
 	}
-	return "";
+	return marks.slice(kept);
 }
 
 /**
@@ -301,6 +309,32 @@ function isOrdinaryWord(value: string): boolean {
 	);
 }
 
+/**
+ * Whether the rest of a credential header's line is prose rather than its value: the run after the
+ * separator is an ordinary word by the credential-field shape test (`isOrdinaryWord`), and so is the
+ * run after it where that first word may be an auth scheme (`Bearer`, `Basic`). "The Authorization:
+ * Bearer header, read at src/auth/guard.ts:42" names where a credential travels; "Authorization:
+ * Bearer eyJ…" or "Cookie: sid=…" carries one, and its whole line stays redacted, as a header's value
+ * may run on in parts (ISS-757).
+ */
+function headerValueIsProse(rest: string): boolean {
+	const first = FIELD_VALUE.exec(rest);
+	if (!first?.[1]) return true;
+	if (!isOrdinaryWord(first[1])) return false;
+	const after = rest.slice(first[0].length);
+	if (!/^\s/.test(after)) return true;
+	const second = FIELD_VALUE.exec(after)?.[1];
+	return second === undefined || isOrdinaryWord(second);
+}
+
+/** `line` with the rest of it from the first credential header carrying a value redacted. */
+function scrubHeaderValue(line: string, headerRe: RegExp): string {
+	for (const m of line.matchAll(headerRe)) {
+		if (!headerValueIsProse(m[3] ?? "")) return `${line.slice(0, m.index + m[0].length)}${FILTERED}`;
+	}
+	return line;
+}
+
 const BODY_RES = Array.from(SCRUB_BODY_KEYS).map(
 	(k) =>
 		new RegExp(
@@ -321,7 +355,7 @@ export function scrubLogText(
 		.split("\n")
 		.map((line) => {
 			let out = scrubPatInString(scrubUrl(line));
-			out = out.replace(headerRe, `$1$2${FILTERED}`);
+			out = scrubHeaderValue(out, headerRe);
 			for (const re of bodyRes)
 				out = out.replace(re, (whole, field: string, value: string) =>
 					isOrdinaryWord(value) ? whole : `${field}${FILTERED}${closingKept(value)}`,
@@ -387,6 +421,8 @@ interface SpanRule {
 	readonly kept?: (m: RegExpExecArray) => number;
 	/** Characters at its tail the scrubber keeps. */
 	readonly keptTail?: (m: RegExpExecArray) => number;
+	/** How far the match reaches where its pattern reads part of it ahead, as `m[0]` leaves it out. */
+	readonly length?: (m: RegExpExecArray) => number;
 	readonly lead?: RegExp;
 	/** A match this reads as prose is no span: the scrubber leaves it as it stands. */
 	readonly prose?: (m: RegExpExecArray, text: string) => boolean;
@@ -417,6 +453,8 @@ const LINE_RULES: readonly SpanRule[] = [
 		shape: "credential field",
 		pattern: HEADER_RE,
 		kept: (m) => (m[1]?.length ?? 0) + (m[2]?.length ?? 0),
+		length: (m) => m[0].length + (m[3]?.length ?? 0),
+		prose: (m) => headerValueIsProse(m[3] ?? ""),
 	},
 	...BODY_RES.map(
 		(pattern): SpanRule => ({
@@ -454,7 +492,7 @@ function spansOf(text: string, offset: number, rules: readonly SpanRule[]): Secr
 		for (const m of text.matchAll(rule.pattern)) {
 			if (rule.prose?.(m, text)) continue;
 			const start = m.index + (rule.kept?.(m) ?? 0);
-			const end = m.index + m[0].length - (rule.keptTail?.(m) ?? 0);
+			const end = m.index + (rule.length?.(m) ?? m[0].length) - (rule.keptTail?.(m) ?? 0);
 			const value = text.slice(start, end);
 			// what the scrubber already redacted is not a secret it would redact again
 			if (value === "" || value === FILTERED) continue;
