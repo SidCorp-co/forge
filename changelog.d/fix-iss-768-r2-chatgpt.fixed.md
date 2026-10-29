@@ -1,0 +1,1 @@
+**ChatGPT can import Forge's MCP tools.** Every tool's input is listed in the plain JSON Schema importers read, meaning unchanged; `server/discover` names every protocol version served, and each `/mcp` request logs one line naming what was asked and answered.

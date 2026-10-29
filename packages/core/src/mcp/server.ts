@@ -20,6 +20,7 @@ import { chatToolWriteRefusal } from '../middleware/chat-write-hold.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
 import { resolveManagedMetaPrompts } from '../skills/index.js';
 import { actionRefusal, gatedTool } from './input-gate.js';
+import { listedSchema } from './listed-schema.js';
 import { MCP_TOOLS } from './registry.js';
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
@@ -72,9 +73,11 @@ export function takesProjectArgument(tool: Pick<McpTool, 'name' | 'inputSchema'>
 }
 
 /**
- * A tool's input as MCP lists it: a JSON Schema whose `type` is `object`. Every tool publishes its
- * input through `zodToMcpSchema`, which yields one for an object schema; any other shape is refused
- * by the tool's name when the registry is built, not handed to a client as a listing it rejects.
+ * A tool's input as MCP lists it: a JSON Schema whose `type` is `object`, in the plain subset every
+ * client's importer reads (`listedSchema`). Every tool publishes its input through `zodToMcpSchema`,
+ * which yields one for an object schema; any other shape is refused by the tool's name when the
+ * registry is built, not handed to a client as a listing it rejects. A call is still judged by the
+ * schema the tool published, which the listing accepts exactly as (`listed-schema.test.ts`).
  */
 function listedInput(tool: Pick<McpTool, 'name' | 'inputSchema'>): Tool['inputSchema'] {
   const input = tool.inputSchema;
@@ -83,7 +86,7 @@ function listedInput(tool: Pick<McpTool, 'name' | 'inputSchema'>): Tool['inputSc
       `mcp registry: ${tool.name}'s input publishes type ${JSON.stringify(input.type)}, and MCP lists a tool's input as a JSON Schema object (type "object"); make its input a zod object`,
     );
   }
-  return input as Tool['inputSchema'];
+  return listedSchema(tool.name, input) as Tool['inputSchema'];
 }
 
 export function mcpTools(ctx: McpContext): McpTool[] {

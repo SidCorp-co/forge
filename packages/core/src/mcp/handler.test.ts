@@ -8,8 +8,9 @@
 
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
+import { logger } from '../lib/logger.js';
 import type { McpContext } from '../lib/tool.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 import { mcpMessageBody, mcpNoBody } from '../root-routes.js';
@@ -97,11 +98,13 @@ const modern = (id: number, method: string, params: Record<string, unknown> = {}
   );
 
 describe('/mcp at protocol 2026-07-28', () => {
-  it('answers server/discover with the revisions it serves, 2026-07-28 among them', async () => {
+  // ChatGPT's connector reported "action discovery failed" against a discover naming 2026-07-28
+  // alone (ISS-768 r2); the fix that worked for another server advertised every revision it serves.
+  it('answers server/discover with every revision it serves, 2026-07-28 first', async () => {
     const res = await modern(1, 'server/discover');
     expect(res.status, res.text).toBe(200);
     expect(res.json.error).toBeUndefined();
-    expect(res.json.result?.supportedVersions).toContain(MODERN);
+    expect(res.json.result?.supportedVersions?.slice(0, 4)).toEqual([MODERN, ...LEGACY]);
     expect(res.json.result?.capabilities).toMatchObject({ tools: {}, prompts: {} });
     expect(res.json.result?.instructions).toMatch(/Forge-managed project/);
   });
@@ -210,4 +213,57 @@ describe('/mcp holds no session', () => {
       expect(res.headers.get('content-type') ?? '').not.toMatch(/text\/event-stream/);
     },
   );
+});
+
+// ISS-768 r2: ChatGPT authenticated, posted to /mcp three times, and stopped with nothing in the
+// log to say which answer it refused. Each POST now logs one line naming what was asked and answered.
+describe('/mcp logs one line per request', () => {
+  const lines = async (send: () => Promise<unknown>) => {
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined);
+    try {
+      await send();
+      await vi.waitFor(() =>
+        expect(info.mock.calls.some(([, msg]) => msg === 'mcp request')).toBe(true),
+      );
+      return info.mock.calls
+        .filter(([, msg]) => msg === 'mcp request')
+        .map(([fields]) => (fields as { mcp: Record<string, unknown> }).mcp);
+    } finally {
+      info.mockRestore();
+    }
+  };
+
+  it('names the method, the version header, the answer, the tool count and the bytes', async () => {
+    let answered = 0;
+    const logged = await lines(async () => {
+      const res = await modern(7, 'tools/list');
+      answered = Buffer.byteLength(res.text);
+    });
+    expect(logged).toEqual([
+      expect.objectContaining({
+        methods: ['tools/list'],
+        protocolVersion: MODERN,
+        status: 200,
+        results: ['result'],
+        tools: Object.keys(MCP_TOOLS).length,
+        bytes: answered,
+      }),
+    ]);
+  });
+
+  it('names an error by its code, and carries no params, no token and no answer body', async () => {
+    const logged = await lines(() =>
+      post(
+        { jsonrpc: '2.0', id: 8, method: 'no/such', params: { secret: 'forge_pat_planted' } },
+        { 'mcp-protocol-version': '2025-06-18', authorization: 'Bearer forge_pat_planted' },
+      ),
+    );
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      methods: ['no/such'],
+      results: ['error -32601'],
+      tools: null,
+    });
+    expect(JSON.stringify(logged)).not.toMatch(/forge_pat_planted|secret/);
+  });
 });

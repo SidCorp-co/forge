@@ -31,6 +31,7 @@
           },
           "body": {
             "description": "The type-specific body.",
+            "properties": {},
             "type": "object"
           },
           "by": {
@@ -129,7 +130,6 @@
     {
       "description": "What the product is designed as, and the decisions on it: workflow designs, suggestions and mockups. Reading is open to anyone on the project; a decision (approve, return, accept, reject) is the act of whoever holds its permission — workflow-designs.approve, suggestions.approve, mockups — and the service refuses anyone else by name. Decide only what the person asked you to.\nWorkflow designs:\n- design_list { projectId, view? }: every workflow with its design status, revision, approved revision and health.\n- design_get { projectId, workflowId, view?: summary | steps | full, revision?, stepFrom?, stepTo? }: one design, whom it waits on, and `progress`: each issue building it, whether an agent works on it now, and when it is likely done.\n- design_create { projectId, body: { baseRevision: null, document } } and design_revise { projectId, workflowId, body: { baseRevision, document, issue? } }: write a workflow document (the revision you read is the base).\n- design_propose { projectId, workflowId, revision, issue? }: propose a revision for approval.\n- design_decide { projectId, workflowId, revision, decision: approve | return, reason? }: a return says why.\n- design_withdraw { projectId, workflowId, reason? }: take back a design no revision of which was approved; it leaves the list and Needs you. An approved design is refused DESIGN_WITHDRAW_APPROVED, one another live design names in basedOn DESIGN_WITHDRAW_PINNED.\nSuggestions (on a requirement, issue, feedback item or workflow):\n- suggestion_list { projectId, requirement? | issue? | feedback? | workflow?, status?: [proposed, accepted, rejected, stale, withdrawn], view? }: summaries; view full reads each payload, a breakdown's slices among them.\n- suggestion_create { projectId, body: { kind: requirement_draft | revision_diff | breakdown | triage | duplicate | feedback_triage | design_change, requirement | issue | feedback | workflow, baseRevision: number | null, payload, model?, rationale?, supersedes? } — baseRevision is the target's revision you read (a revision_diff on a requirement with an open revision takes that open one), or null where there is none: an issue, a feedback item, a requirement with no current revision; rationale (at most 4000 characters) and supersedes (an earlier suggestion's id in this project) stay on the suggestion and are never copied into what its accept writes }.\n- suggestion_accept { projectId, suggestionId, reason? }: accepting writes what it suggests. Accepting a breakdown files its issues at draft: that is how a requirement becomes delivery work, so read every slice before you accept.\n- suggestion_reject { projectId, suggestionId, reason }, suggestion_revise { projectId, suggestionId, payload, reason } (rejects the original, proposes yours), suggestion_withdraw { projectId, suggestionId } (its producer only).\nMockups (MK-n): a screen or call proposed on the requirement, feedback item or issue it shapes, for a person to try, comment on and accept or return; never a local file. Method: GET /api/guides/mockups.md.\n- mockup_list { projectId, requirement | feedback | issue }, mockup_get { projectId, mockup }, mockup_comments { projectId, mockup }: every comment on it and its earlier revisions, with where each points.\n- mockup_propose { projectId, body: { target: { requirement, revision? } | { feedback } | { issue } (optional with revises), kind: wireframe | sketch | image | html | api_example, caption?, exactly one of { name, mime?, contentBase64 }, { document } (a wireframe-v1 board) or { source: { from: issue | comment, attachmentId }, name? }, revises?: MK-n (a returned mockup this is the next revision of), answers?: [{ comment, note? }], resolves?: [{ comment, note }] } }. An HTML page is one self-contained file (inline CSS, scripts, data: images; only Google Fonts and cdnjs, jsdelivr or unpkg libraries load): it runs sandboxed and calls nothing. A returned one is answered by proposing it again with revises, settling each comment you addressed.\n- mockup_comment { projectId, mockup, body: { body, pin?: { x, y } (a point) | { x, y, w, h } (a region), each a fraction 0..1 of the frame } }.\n- mockup_accept { projectId, mockup, reason? } (an accepted requirement mockup is pinned by the next agree or re-pin), mockup_return { projectId, mockup, reason }, mockup_withdraw { projectId, mockup }.",
       "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
@@ -285,11 +285,15 @@
             "type": "string"
           },
           "baseRevision": {
-            "description": "A write: the revision this was read at, or null for a first write.",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A write: the revision this was read at, or null for a first write."
           },
           "contract": {
             "description": "contract_version_publish, contract_version_decide: the publication slug of a contract this project publishes.",
@@ -305,6 +309,7 @@
           },
           "document": {
             "description": "A write: the whole document.",
+            "properties": {},
             "type": "object"
           },
           "ecosystem": {
@@ -343,11 +348,16 @@
             "type": "string"
           },
           "source": {
-            "description": "contract_version_publish: the artifact, SDL text for graphql, the { tools } JSON for mcp-tools, the { program, commands } JSON for cli.",
-            "type": [
-              "string",
-              "object"
-            ]
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "properties": {},
+                "type": "object"
+              }
+            ],
+            "description": "contract_version_publish: the artifact, SDL text for graphql, the { tools } JSON for mcp-tools, the { program, commands } JSON for cli."
           },
           "sourceRef": {
             "description": "contract_version_publish: where the artifact was read, <repository path>@<commit sha>.",
@@ -368,7 +378,6 @@
     {
       "description": "Feedback about Forge itself — its CLI, routes, MCP tools, guides, web app or pipeline — from any project you work in. It is filed into Forge’s own home project as you (your own account, person or agent), whether or not you are a member there; it never writes into the project you work in. A project’s own feedback is project_feedback. submit { kind: bug | change_request | question | idea | contract_change, title, target: { kind: page | command | route | tool | guide | skill | other, ref }, body?, severity?: low | medium | high | critical, signalKey?, clientVersion?, from?: { project?, issue?, run? } (uuids), writtenLang?: en | vi }: file it. A box credential’s live session names the project, issue and run it came from (its job’s, or its declared run’s); from names them otherwise. A report whose signalKey (absent: its kind and title) an open item already holds is added to that item as an occurrence, never filed twice — the answer says created:false. list: the items you reported, each with phase, origin and `progress` (whether work runs, who it waits on, and the forecast or why there is none; repeat `progress.says`, never a date it does not hold). get {feedback}: one item you reported (a member of the home project reads any), with `told` — what its triage told you: the answer, the decline note, the clarification asked and the release its fix shipped in, each null until told — and `shipEvidence` once its work shipped: the violated criterion’s verdict on the running build and its clip. progress {feedback}: its progress block alone. verify {feedback, evidence} and reopen {feedback, evidence}: once its work shipped (phase resolved) and its progress waits on you, confirm the fix or reopen the item, as its reporter. evidence is what you ran against the shipped build and what you saw; an agent is refused FEEDBACK_EVIDENCE_REQUIRED without it, and FORGE_FEEDBACK_NOT_YOURS on an item another account filed. reply {feedback, evidence}: once the item stands on an answer, reply to it once, with what it leaves open; the item goes back to triage as a reopen does, and the next answer names your reply. A second reply to one answer is FEEDBACK_REPLY_SPENT, an item with no answer standing FEEDBACK_REPLY_NO_ANSWER. FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.",
       "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
@@ -500,7 +509,6 @@
     {
       "description": "Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none). It reads; it files nothing.\n- action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and `progress`. `pause` names a wait that holds the whole project, such as no runner online.\n- action=get { projectId, issue }: one issue with its description, the questions it waits on, and `progress`.\n- action=create: refused (MCP_FILES_FEEDBACK_NOT_ISSUES). An MCP client files no issue. Issues are the delivery side: Forge files one only when a requirement's breakdown is accepted, or when feedback is triaged as delivery work, so the product record always leads. Record what the person means instead, after they confirm it: (1) a problem, bug, change or idea someone reported is Feedback (project_feedback; kind bug | change_request | idea | question), linked to the requirement it touches, and its triage files the issue; (2) new or changed behaviour is a Requirement or a revision of one (forge_requirements), and accepting its breakdown (forge_design suggestion_accept) files the issues, so read every slice first; (3) a question about work already under way is forge_questions ask on that issue. When to step in: ask the person before recording anything, and never accept a breakdown or a triage on your own: each files delivery work, so the person decides it. Work so urgent it fits none of these is filed by the person in the Forge web app, not from here.",
       "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
@@ -587,7 +595,6 @@
     {
       "description": "Questions waiting on a person, the person's answer to one, and a person's own question on an issue.\n- action=list { projectId, status?: open | answered | void | expired | needs_info (open by default), issue?, limit?, cursor? }: what is owed an answer, newest first, each with its prompt, its options (locked where you may not choose one) and the recommended one. `issue` narrows to one issue's questions. Read `hasMore` and pass `nextCursor` back as `cursor` for the next page.\n- action=get { projectId, questionId }: one question with every round, and `progress`: the issue it parks, whether work on it is running, and when it is likely done once answered.\n- action=answer { projectId, questionId, round, optionId | text, note?, stillWaits? }: { round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer). Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, its recommendation or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers a question a person owes, within what they could answer signed in, and is refused PERMISSION_FORBIDDEN naming the permission an option takes that they do not hold. A question blocked on another agent is that agent's to answer: QUESTION_BLOCKED_ON_AGENT. QUESTION_NOT_OPEN: it is already answered. QUESTION_ROUND_STALE: get it again and show them the new round.\n- action=ask { projectId, issue, body, parentId? }: raise your own question on an issue, as a question comment the agent working it owes a reply. To question a requirement or report a problem, use Feedback or the requirement instead: an issue is delivery work, and a question there is about that work.",
       "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
@@ -674,7 +681,6 @@
     {
       "description": "A project's releases: what shipped, what is drafted, what waits on approval, and the acts a person takes on one. Every answer about a release still moving carries `progress`: whether work is running now, and when it is likely done (the forecast's dates), or plainly why there is no date.\n- action=list { projectId, state?, limit? }: releases newest first, each with version, state (draft | in_progress | awaiting_approval | returned | shipped | landed | failed | aborted), name, summary, releasedAt, issue count, requirements, what was verified, and whom it waits on. `draft` is the release now gathering issues: how many are still to land, which an agent is working on, and when it is likely in people's hands.\n- action=get { projectId, version }: one release in full: what users get (notes by section), the requirements it completes, its issues with their proof, what stands in the way, the approval, every attempt at it.\n- action=page { projectId, version, view? }: the release page a reader reads (user view, or developer for the technical notes).\n- action=name { projectId, version, name, summary }: name a drafted or cut release. Needs project admin, as cutting does.\n- action=decide { projectId, version, decision: approve | return, reason? }: decide the approval request the release run is waiting on. This is a person's act: it needs releases.approve on the project, and an approval is judged by the release approval checklist (refused CHECKLIST_INCOMPLETE naming the gap). A return must say why. Read the release (get) before you decide, and decide only when the person asked you to.",
       "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
@@ -753,7 +759,6 @@
     {
       "description": "A project's requirements (REQ-n), for a BA: read them, draft and revise them, and tell the person how delivery is going. Every list row and get answer carries `progress`: `running` (a run works on it right now), `runs` (unfinished runs on its issues: issue, state, step), `waitingOn` (who owes what before it goes on: an agree, a breakdown, a release act; `late` when overdue), `work` (its issues: total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence} read off the project’s own history, or {estimate:false, done, why} saying why no date can be given. `progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold. Actions. list {state?}: every requirement with its state, whom it waits on, criteria proven of total, and progress. get {requirement}: one in full — its latest revision (spec, criteria with codes), revisions, questions standing on it, issues, releases, linked feedback, progress. NOT_FOUND when the project holds no such key. progress {requirement}: the progress block alone. similar {text}: the requirements nearest a wish; call it before create, and revise the one that covers it instead. provider_not_configured or withheld_by_policy does not mean none is similar. create {title, criteria?, reason?, spec?, tldr?, kind?, picture?, designs?, writtenLang?}: a NEW draft requirement at revision 1, as POST /api/projects/:id/requirements writes it; with no reason its author is asked why. REQUIREMENT_DESIGN_UNKNOWN names a design the project lacks. revise {requirement, baseRevision, criteria, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement. Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a draft or proposed revision is open, so pass revision: n to rewrite that draft instead. REQUIREMENT_REVISION_STALE: the head moved, get it again. propose {requirement, revision}: put a draft revision before the people who agree it. withdraw {requirement, revision, reason}: withdraw an open draft revision for good, saying why, as POST …/revisions/:n/withdraw does: its author may, anyone else needs requirements.approve. It frees the one open revision (REQUIREMENT_REVISION_OPEN) and is the one act left on a dropped requirement (REQUIREMENT_DROPPED). answer {requirement, questionId, round, optionId | answer}: answer a question standing on the requirement (one get lists under questions), as POST /api/questions/:id/answer does — { round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer), the free answer passed here as answer. Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, the spec or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers a question a person owes, within what they could answer signed in; one blocked on another agent is refused QUESTION_BLOCKED_ON_AGENT. QUESTION_NOT_OPEN: it is already answered. Agreeing, accepting, returning, deferring and dropping are a person’s sign-off on the requirement page; this tool does none of them. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.",
       "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
@@ -934,7 +939,9 @@
                     "type": "object"
                   },
                   "kind": {
-                    "const": "flow",
+                    "enum": [
+                      "flow"
+                    ],
                     "type": "string"
                   }
                 },
@@ -983,7 +990,9 @@
                     "type": "object"
                   },
                   "kind": {
-                    "const": "example_table",
+                    "enum": [
+                      "example_table"
+                    ],
                     "type": "string"
                   }
                 },
@@ -1011,7 +1020,9 @@
                     "type": "object"
                   },
                   "kind": {
-                    "const": "wireframe",
+                    "enum": [
+                      "wireframe"
+                    ],
                     "type": "string"
                   }
                 },
@@ -1087,15 +1098,19 @@
                           "rows": {
                             "items": {
                               "additionalProperties": {
-                                "type": [
-                                  "string",
-                                  "number",
-                                  "null"
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
                                 ]
                               },
-                              "propertyNames": {
-                                "type": "string"
-                              },
+                              "properties": {},
                               "type": "object"
                             },
                             "maxItems": 5000,
@@ -1151,7 +1166,9 @@
                     "type": "object"
                   },
                   "kind": {
-                    "const": "chart",
+                    "enum": [
+                      "chart"
+                    ],
                     "type": "string"
                   }
                 },
@@ -1369,7 +1386,6 @@
     {
       "description": "Answer a Rocket.Chat support group, or an operations room, as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the room. search {query}: the project knowledge and its published OpenAPI contracts; each hit carries `cite`, which you put in brackets after what it supports. thread {thread}: the thread so far, oldest first. tools {}: the checks (diagnose) and changes (fix) this group grants you. reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite. run {thread, tool, args}: run a granted diagnose check; the thread is shown what was checked, and you get what came back. propose_fix {thread, tool, args, asker}: offer a granted fix to the person who asked (`from.id`). It runs only when that person confirms in the thread; you are told the result as a later message. record {thread, kind, title, summary, asker?}: what needs code or a decision is offered as Feedback for the team (kind defect | feature | request); the thread is shown the route, the title and its link, and it is filed only when the asker (the thread's first writer unless named) confirms. You are told the key when it is filed, and told again once it is live, shipped or declined: then post its result in its thread. Never post progress, and never promise a date. The channel record (every bot of this group reads it): channel {} reads it. member {member, roles, askFor?, message} records the roles you inferred for a member from a message, and what to ask them for; a member a person confirmed is refused and stays as it is. rule {thread, message, text} keeps an instruction a confirmed team member gave as a channel rule linked to that message. common_issue {threads, question, answer, feedback?} keeps a question asked in two or more threads with its one answer, a defect's naming its Feedback key. route {thread, to, ...} sends a need where it belongs, never mixed: to forge {title, text} files a problem with Forge itself as Forge feedback and posts nothing; to technical or product {member, text} asks that one member, who holds the role, in the thread. announce {text} is the one top-level post, for news affecting everyone, at most one an hour. A reply mentions at most one person: the asker or a member listed with what to ask them for; never @all or @here. Nothing secret or personal (an email, a phone number) is kept in the record. What your room's grant opens (your brief lists what it holds): move_issue moves an issue of this project as the member who wrote last in the thread (deliver); build proposes committing your working copy of the development branch on a feat/ or fix/ branch, pushing it and opening a change request into it (build); deploy proposes deploying a bound target the grant names (deploy); command runs a command on a host the grant names (run_commands) — one that only reads runs at once and you get its output, anything else is proposed. A build, a deploy and a command that changes a host run only when a confirmer the room names confirms in the thread; you are told the result as a later message. An ability the room was not granted is refused SUPPORT_ABILITY_NOT_GRANTED, and core tells the thread who can grant it: do not repeat it. In an operations room (your brief says which room you answer) the acts are your role's: projects, issues and releases read the projects of the room's scope; move changes an issue's status, and draft_requirement and draft_feedback draft product direction for a person to decide, each as the member who wrote last in the thread and under their own Forge permissions; research reads one public https page. An act your role is not granted, a project outside the scope, or a member Forge cannot name is refused by name: tell the thread what the refusal says. The support group acts (search, tools, run, propose_fix, record) are refused there, as these are in a support group. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: search { query }; thread { thread }; tools {}; reply { thread, text }; run { thread, tool, args? }; propose_fix { thread, tool, args?, asker }; record { thread, kind: defect | feature | request, title, summary, whereSeen?, asker? }; move_issue { thread, issue, to, reason? }; build { thread, branch, title, summary }; deploy { thread, target }; command { thread, host, command }; projects {}; issues { project, status?, key? }; releases { project }; move { thread, issue, to, reason?, project? }; draft_requirement { thread, project, title, summary }; draft_feedback { thread, project, kind: defect | feature | request, title, summary, one of requirement | issue | screen }; research { thread, url }; channel {}; member { member, roles: (user | product | technical | maintenance | bot)[], askFor?, message }; rule { thread, message, text }; common_issue { threads, question, answer, feedback? }; route { thread, to: forge | technical | product, member? (technical, product), title? (forge), text }; announce { text }.",
       "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
@@ -1408,15 +1424,19 @@
           },
           "args": {
             "additionalProperties": {
-              "type": [
-                "string",
-                "number",
-                "boolean"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
               ]
             },
-            "propertyNames": {
-              "type": "string"
-            },
+            "properties": {},
             "type": "object"
           },
           "askFor": {
@@ -1619,12 +1639,13 @@
     {
       "description": "READ an issue, comment or session attachment so you can analyze it: the one Forge read no shell command can do, because an image comes back as a viewable image block. Uploading is `POST /api/issues/:id/attachments` (multipart) or `forge attach`. data={target:\"issue\"|\"comment\"|\"session\", attachmentId:<uuid from any attachments[].id>}. Images (png/jpeg/gif/webp) return as a viewable image block; the structured answer carries no bytes, so it says `inlined: false` with `reason: image_block_in_content` and names the block as `image: { contentIndex, mimeType }`. Text/markdown return inline, framed as data, with `inlined: true`. PDFs/video and oversized files (> inline cap) return metadata only. EVERY fetch also returns `downloadUrl` (+ `downloadExpiresAt`): a short-lived, self-authenticating URL to `curl` the raw bytes onto disk or hand to a service that must fetch the file itself. Treat it as a secret: do not log it or paste it into a comment.",
       "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
-            "const": "fetch",
             "default": "fetch",
+            "enum": [
+              "fetch"
+            ],
             "type": "string"
           },
           "data": {
@@ -1662,7 +1683,6 @@
     {
       "description": "A project's own feedback (FB-n) — what people report or wish about that project's product — for a BA: read it, file it, ask its reporter, and tell them how the work it became is going. Feedback about Forge itself is forge_feedback. Every list row and get answer carries `progress` for the work the item was routed to (its issues, or the requirement it became; a duplicate reads its root’s): `running` (a run works on it right now), `runs` (unfinished runs: issue, state, step), `waitingOn` (who owes what: a triage, a release act, an answer), `work` (issues total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence}, or {estimate:false, done, why} saying why no date can be given (not triaged yet, declined, answered, routed to a revision, no issue yet). `progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold. Actions. list {phase?: [new|triaged|planned|resolved|reopened|verified|declined], q?, requirement? (REQ-n)}: the items with phase, route, whom each waits on, and progress. get {feedback}: one in full — body, where seen, route and carriers, decisions, the open clarification and its answer, progress. NOT_FOUND when the project holds no such key. progress {feedback}: the progress block alone. similar {feedback}: the items nearest it, to spot a duplicate; not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar. submit { kind: bug | change_request | question | idea | contract_change, title, body?, severity?: low | medium | high | critical, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | mockup | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), writtenLang?: en | vi }: file it as the person you speak for, at phase new. Name exactly one target; a requirement it touches is best (find it with forge_requirements). clarify {feedback, prompt, needed, recommended}: ask the reporter one question; `needed` says what would settle it, `recommended` is the answer you recommend, which they send by one click. Refused while one is open on the item or to the same reporter, or when the item is past triage. Triage, decline, verify and retarget are a person’s acts on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.",
       "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
@@ -1856,5 +1876,5 @@
       "name": "project_feedback"
     }
   ],
-  "version": "2.4.2"
+  "version": "3.0.0"
 }

@@ -5,6 +5,7 @@ import {
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 import type { Context } from 'hono';
+import { logger } from '../lib/logger.js';
 import type { McpContext } from '../lib/tool.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 import { createMcpServer } from './server.js';
@@ -25,10 +26,108 @@ const logError = (where: string) => (err: Error) => {
   console.error(`[@forge/core mcp] ${where} error:`, err);
 };
 
+/** The first revision negotiated by `server/discover` rather than `initialize`. */
+const FIRST_DISCOVERED = '2026-07-28';
+
+type DiscoverResult = { supportedVersions: string[] } & Record<string, unknown>;
+type DiscoverSeam = {
+  _ondiscover?: () => DiscoverResult;
+  _supportedProtocolVersions?: string[];
+};
+
+/**
+ * `server/discover` naming every revision /mcp serves, the 2026 ones first, where the SDK names only
+ * the 2026 ones (2025 clients negotiate by `initialize`). ChatGPT's connector reported "action
+ * discovery failed" against the shorter list (ISS-768 r2), and the fix that worked for another server
+ * advertised every revision. The SDK answers discover through `Server._ondiscover`, which it does
+ * not export; a release that moves it is refused here by name, never served the shorter list.
+ */
+function advertiseEveryRevision(server: ReturnType<typeof createMcpServer>): void {
+  const seam = server as unknown as DiscoverSeam;
+  const own = seam._ondiscover;
+  if (typeof own !== 'function') {
+    throw new Error(
+      'mcp: @modelcontextprotocol/server no longer answers server/discover through Server._ondiscover, so /mcp cannot advertise the 2025 revisions it serves beside 2026-07-28; find the hook this SDK release uses (handler.test.ts asserts the advertisement)',
+    );
+  }
+  seam._ondiscover = () => {
+    const answer = own.call(server);
+    const served = seam._supportedProtocolVersions ?? answer.supportedVersions;
+    const discovered = served
+      .filter((v) => v >= FIRST_DISCOVERED)
+      .sort()
+      .reverse();
+    const initialized = served.filter((v) => v < FIRST_DISCOVERED);
+    return { ...answer, supportedVersions: [...discovered, ...initialized] };
+  };
+}
+
 function buildServer(ctx: McpContext) {
   const server = createMcpServer(ctx);
   server.onerror = logError('server');
+  advertiseEveryRevision(server);
   return server;
+}
+
+type RpcMessage = { id?: unknown; method?: unknown; result?: unknown; error?: { code?: unknown } };
+
+/** The JSON-RPC messages in a body: a JSON message or batch, or the `data:` lines of an event stream. */
+function messagesIn(text: string): RpcMessage[] {
+  const parse = (one: string): RpcMessage[] => {
+    try {
+      const parsed = JSON.parse(one) as unknown;
+      return (Array.isArray(parsed) ? parsed : [parsed]).filter(
+        (m): m is RpcMessage => typeof m === 'object' && m !== null,
+      );
+    } catch {
+      return [];
+    }
+  };
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return parse(trimmed);
+  return text
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .flatMap((line) => parse(line.slice(5).trim()));
+}
+
+/**
+ * One line for one POST /mcp: the JSON-RPC method(s) asked, the protocol version header, what each
+ * answer was (`result`, or `error <code>`), how many tools a listing held, and the answer's size.
+ * No token, no params, no result body: the line shows where a client stops (ChatGPT authenticated,
+ * listed, and reported "action discovery failed" with nothing to say which answer it refused,
+ * ISS-768 r2). Read off a copy of the answer, so a stream reaches its client unheld and is logged
+ * when it ends.
+ */
+function logExchange(c: Context, ctx: McpContext, asked: RpcMessage[], res: Response): void {
+  const methods = asked.map((m) => (typeof m.method === 'string' ? m.method : null));
+  void res
+    .clone()
+    .text()
+    .then((text) => {
+      const answers = messagesIn(text).filter((m) => 'result' in m || 'error' in m);
+      const tools = answers
+        .map((m) => (m.result as { tools?: unknown } | undefined)?.tools)
+        .find(Array.isArray);
+      logger.info(
+        {
+          mcp: {
+            methods,
+            protocolVersion: c.req.header('mcp-protocol-version') ?? null,
+            status: res.status,
+            results: answers.map((m) =>
+              m.error ? `error ${String(m.error.code ?? 'unknown')}` : 'result',
+            ),
+            tools: tools ? tools.length : null,
+            bytes: Buffer.byteLength(text),
+            requestId: ctx.requestId,
+            userAgent: ctx.userAgent,
+          },
+        },
+        'mcp request',
+      );
+    })
+    .catch((err: unknown) => logger.warn({ err }, 'mcp request: the answer could not be read'));
 }
 
 /** The caller of the request the modern handler is serving; its factory builds a server for it. */
@@ -63,6 +162,13 @@ const modern = createMcpHandler(
  */
 export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Promise<Response> {
   const ctx = mcpContextOf(c);
+  const asked = messagesIn(await c.req.raw.clone().text());
+  const res = await serve(c, ctx);
+  logExchange(c, ctx, asked, res);
+  return res;
+}
+
+async function serve(c: Context<{ Variables: PrincipalVars }>, ctx: McpContext): Promise<Response> {
   if (!(await isLegacyRequest(c.req.raw))) {
     return servedCaller.run(ctx, () => modern.fetch(c.req.raw));
   }
