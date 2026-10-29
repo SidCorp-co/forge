@@ -49,6 +49,7 @@ import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { ancestryOf, type JudgedBuildDeps } from './judged-build.js';
 import type { JudgedAgainst } from './landed-build-holds.js';
+import { recordedHolding } from './recorded-holding.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
 
@@ -401,7 +402,7 @@ export function weighOnLanded(
     }
     if (held !== undefined) {
       return no(
-        `it was judged at \`${short(judged.sha)}\`, and whether that holds the landing \`${short(build)}\` could not be read: ${held.unread}`,
+        `it was judged at \`${short(judged.sha)}\`, and no record of Forge's says that holds the landing \`${short(build)}\`: ${held.unread}`,
       );
     }
     return no(via ? otherHeadWhy(judged.sha, build, via) : otherBuildWhy(judged.sha, build));
@@ -498,8 +499,8 @@ export async function landedStandings(
 /**
  * Before a record, the build each issue will be recorded at, as the steward and coverage read it.
  * Where every live criterion of an issue not yet recorded stands on a counting pass at one commit,
- * and that commit contains the landing its merge names (read through the same ancestry reader the
- * record uses), that commit is the build: the record a master makes there will count every one of
+ * and that commit is a landing Forge recorded after the one its merge names, on its branch
+ * (`recorded-holding.ts`, never the host), that commit is the build: the record a master makes there will count every one of
  * them. A pass split across commits, or at a commit not containing the landing, leaves the landing
  * as it was. A recorded landing is never moved.
  */
@@ -525,7 +526,7 @@ export async function aheadBuildsOf(
     ahead.set(issueId, { landing: build.sha, sha: one });
   }
   if (ahead.size === 0) return out;
-  const held = await readHolding(
+  const held = await recordedHolding(
     projectId,
     [...ahead.values()].map((a) => holdingPair(a.landing, a.sha)),
   );

@@ -3,10 +3,14 @@
  * The release list and readiness, the attention and needs-you reads, and a requirement's standing
  * read a project with a shipped release, issues at the gate and closed, and a requirement tracing an
  * issue with a commit verdict. Every one of them is answered from Forge's own rows: a planted host and
- * a planted box reader count each call they are asked, and are asked none.
+ * a planted box reader count each call they are asked, and are asked none. The same holds on a project
+ * with no production environment, whose coverage weighs a pass at a later commit on its landing and
+ * whose steward reads a build ahead of it (2026-10-30: `laterHoldersOf` and `aheadBuildsOf` asked
+ * GitLab's compare 242 times a minute from dev core, three in four answered 429).
  * Against real Postgres.
  *
  * @direct-test-of packages/core/src/release-batch/judged-build.ts
+ * @direct-test-of packages/core/src/release-batch/recorded-holding.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -16,15 +20,21 @@ import { db } from '../../src/db/client.js';
 import { api, userToken } from '../helpers/api.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
+  addProjectMember,
   createTestIssue,
   createTestProject,
   createTestUser,
   makeAgreeReady,
+  rows,
   seedIssueStatus,
   truncateAll,
 } from '../helpers/factories.js';
 import { A, markTrailWorld } from '../helpers/mark-trail-world.js';
-import { releaseWorld, seedProductionDeployTrigger } from '../helpers/release-world.js';
+import {
+  releaseWorld,
+  seedProductionDeployTrigger,
+  seedProjectDocument,
+} from '../helpers/release-world.js';
 
 const asked = vi.hoisted(() => ({ host: [] as string[], box: [] as string[] }));
 const SHIPPED = 'a'.repeat(40);
@@ -198,3 +208,71 @@ describe('the reads a person opens', () => {
 function onPath(path: string): string {
   return `/api/projects/${projectId}${path}`;
 }
+
+describe('the reads on a project with no production environment', () => {
+  it('weigh a pass at a later commit on its landing from the records, asking the host nothing', async () => {
+    const landedProject = (await createTestProject(ownerId)).id;
+    await addProjectMember(landedProject, ownerId, 'admin');
+    await seedProjectDocument(landedProject, ownerId, {
+      defaultBranch: 'dev',
+      environments: { dev: { tier: 'dev', deploysFrom: 'dev', deployment: { mode: 'external' } } },
+    });
+    const on = (method: 'GET' | 'POST', path: string, body?: unknown) =>
+      api(token, method, `/api/projects/${landedProject}${path}`, body);
+    // ISS-1 landed on dev at MERGED, its criterion passed at JUDGED, a later build no record names
+    const issue = await createTestIssue(landedProject, ownerId, 1, {
+      status: 'awaiting_release',
+      createdAt: new Date('2026-10-01T00:00:00Z'),
+      mergedAt: new Date(Date.now() - 7_200_000),
+    });
+    await db.execute(
+      sql`UPDATE issues SET merged_commit_sha = ${MERGED}, merged_target = 'dev' WHERE id = ${issue.id}`,
+    );
+    const created = await ok(
+      on('POST', '/requirements', {
+        title: 'Errors',
+        reason: 'planted',
+        criteria: [{ body: 'A failing call shows its error once' }],
+      }),
+    );
+    const req = String(created.key);
+    await makeAgreeReady(landedProject, Number(req.slice(4)), ownerId);
+    await ok(on('POST', `/requirements/${req}/revisions/1/propose`, {}));
+    await ok(
+      on('POST', `/requirements/${req}/revisions/1/accept`, { reason: 'Accepted for this test.' }),
+    );
+    await ok(
+      on('POST', `/requirements/${req}/agree`, { revision: 1, reason: 'Agreed for this test.' }),
+    );
+    await ok(on('POST', `/requirements/${req}/issues`, { issue: 'ISS-1' }));
+    const [bc] = await rows<{ id: string }>(sql`
+      SELECT rc.id FROM requirement_criteria rc JOIN requirements r ON r.id = rc.requirement_id
+       WHERE r.project_id = ${landedProject} AND rc.code = 'BC-1' LIMIT 1`);
+    const [c] = await rows<{ id: string }>(sql`
+      INSERT INTO issue_criteria (issue_id, n, statement, position, requirement_criterion_id)
+      VALUES (${issue.id}, 1, 'the error shows once', 0, ${bc?.id}) RETURNING id`);
+    await db.execute(sql`
+      INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha,
+                                      author_agency, author_user_id, evidence, created_at)
+      VALUES (${c?.id}, ${issue.id}, 'pass', 'commit', ${JUDGED}, 'agent', ${ownerId},
+              ARRAY['iss1.txt'], now())`);
+    asked.host.length = 0;
+    asked.box.length = 0;
+    const reached: string[] = [];
+    for (const [name, path] of [
+      ['requirement standing', `/api/projects/${landedProject}/requirements/${req}`],
+      ['requirements', `/api/projects/${landedProject}/requirements`],
+      ['needs-you', `/api/projects/${landedProject}/needs-you`],
+      ['attention', '/api/me/attention'],
+      ['issue criteria', `/api/issues/${issue.id}/criteria`],
+    ] as const) {
+      const before = asked.host.length + asked.box.length;
+      const res = await api(token, 'GET', path);
+      expect(res.status, `${name}: ${JSON.stringify(res.body)}`).toBeLessThan(300);
+      if (asked.host.length + asked.box.length > before) reached.push(name);
+    }
+    expect(reached, `GETs that reached the host (${asked.host}) or the box (${asked.box})`).toEqual(
+      [],
+    );
+  });
+});

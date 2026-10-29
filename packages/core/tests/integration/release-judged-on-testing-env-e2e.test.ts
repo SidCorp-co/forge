@@ -25,6 +25,7 @@ import {
   judgedAll,
   LATER,
   landedIssue,
+  laterLanding,
   ok,
   record,
   seedLandedWorld,
@@ -260,6 +261,8 @@ describe("a requirement's coverage of a pass on a later build that holds the lan
     const issue = await landedIssue(4, F4);
     await traced(req, issue, 4, ALL);
     expect((await record([issue], F4)).status).toBe(201);
+    // the landing Forge recorded at LATER (ISS-6's) is what says that build holds F4
+    await laterLanding(LATER);
     for (const n of [1, 2, 3]) await ok(judged(issue, n, { kind: 'runtime', ref: served }));
     return bcOf(req);
   }
@@ -276,12 +279,12 @@ describe("a requirement's coverage of a pass on a later build that holds the lan
     }
   });
 
-  it('never counts a pass on dev at a commit that does not hold the landing', async () => {
+  it('never counts a pass on dev at a commit no landing record places after it', async () => {
     const bc = await judgedOnDevAt(ASIDE);
 
-    expect(bc.verdict).toBe('not_live');
+    expect(bc.verdict).toBe('not_judged');
     expect(bc.issues[0]?.notCounted).toContain(
-      `judged at commit ${ASIDE.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)} nor at a build that holds it`,
+      `judged at commit ${ASIDE.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)}, and no record of Forge's says it holds that landing: no merge mark records a landing at ${ASIDE.slice(0, 12)}`,
     );
   });
 });

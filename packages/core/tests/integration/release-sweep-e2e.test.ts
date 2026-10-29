@@ -265,8 +265,20 @@ describe('a promotion stands between where work lands and what production deploy
   /** A waiting row merged on `dev` as `LANDED`, carrying `blocks` as its verdicts. */
   async function landedRow(blocks: string[]): Promise<string> {
     const id = await waitingRow(blocks.length, blocks);
-    await db.execute(sql`UPDATE issues SET merged_commit_sha = ${LANDED} WHERE id = ${id}`);
+    await db.execute(
+      sql`UPDATE issues SET merged_commit_sha = ${LANDED}, merged_target = 'dev' WHERE id = ${id}`,
+    );
     return id;
+  }
+
+  /** ISS-6's landing of the fix at `H.later` on `dev`, recorded after ISS-5's: what says it holds `LANDED`. */
+  async function laterLanding(): Promise<void> {
+    const id = await fx.insertIssue('closed', undefined, true, []);
+    await db.execute(sql`
+      UPDATE issues SET merged_commit_sha = ${H.later}, merged_target = 'dev',
+                        merged_at = now() + interval '1 minute'
+       WHERE id = ${id}
+    `);
   }
 
   it('cuts an issue whose criteria passed at its landing commit, where today it is held', async () => {
@@ -328,6 +340,7 @@ describe('a promotion stands between where work lands and what production deploy
       verdictBlock(1, 'pass', `commit: ${LANDED}`),
       verdictBlock(2, 'pass', `commit: ${H.later}`),
     ]);
+    await laterLanding();
 
     const result = await sweepAutomaticReleases();
 
@@ -338,6 +351,7 @@ describe('a promotion stands between where work lands and what production deploy
   it('counts a runtime pass on `delivery.judgedOn` at a later commit that holds the landing', async () => {
     await sidcorpMailShape('dev');
     const id = await landedRow([verdictBlock(1, 'pass', `runtime: ${H.later}`)]);
+    await laterLanding();
 
     const result = await sweepAutomaticReleases();
 
@@ -345,7 +359,7 @@ describe('a promotion stands between where work lands and what production deploy
     expect(await holdOf(id)).toBeNull();
   });
 
-  it('still holds a pass at a commit that does not hold the landing, naming both', async () => {
+  it('still holds a pass at a commit no landing record places after the landing, naming both', async () => {
     await sidcorpMailShape();
     const id = await landedRow([verdictBlock(1, 'pass', `commit: ${H.aside}`)]);
 
@@ -354,6 +368,8 @@ describe('a promotion stands between where work lands and what production deploy
     expect(result).toMatchObject({ issuesCut: 0, issuesExcluded: 1 });
     const hold = await holdOf(id);
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
-    expect(hold?.reason).toContain(`\`${H.aside.slice(0, 12)}\`, which does not hold`);
+    expect(hold?.reason).toContain(
+      `\`${H.aside.slice(0, 12)}\`, and no record of Forge's says that holds the landing \`${LANDED.slice(0, 12)}\`: no merge mark records a landing at ${H.aside.slice(0, 12)}`,
+    );
   });
 });

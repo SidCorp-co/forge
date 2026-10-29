@@ -1,8 +1,8 @@
 /**
  * A pass on a later build that holds an issue's landing is a pass on the delivered work (REQ-36
  * BC-18): the testing environment serves such a build, and `judged-build.ts` sends the judge to it.
- * `laterHoldersOf` is the one reading of that hold, through the reader the record door weighs a
- * landing with (`landed-build.ts:readHolding`), and both a requirement's coverage
+ * `laterHoldersOf` is the one reading of that hold, answered from the landings Forge recorded
+ * (`recorded-holding.ts:recordedHolding`) and never from the host, and both a requirement's coverage
  * (`landedBuildHolds`, `requirements/standing-coverage.ts`) and the automatic release's landing
  * basis (`criteria-basis.ts:landingCriteriaReports`) read it. A release record keeps its own rule:
  * the recorded commit must hold the verdict's (`landing-coverage.ts`).
@@ -13,15 +13,14 @@ import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { landedCommitOf } from '@forge/contracts/verdict-identity';
 import { readProjectDocument } from '../project-config/index.js';
 import { pairKey } from '../runners/index.js';
-import type { JudgedBuildDeps } from './judged-build.js';
 import {
   deliveredBuildsOf,
   deliveryOf,
   type Holding,
   holdingPair,
   type LandedBuild,
-  readHolding,
 } from './landed-build.js';
+import { recordedHolding } from './recorded-holding.js';
 
 /** One issue's landed build, or why it has none. */
 export interface LandedHolds {
@@ -45,16 +44,15 @@ export interface JudgedAgainst {
  * (`requirements/standing-coverage.ts`): each issue's landed build (on a change-request project,
  * its request's unchanged head or host merge commit), rather than a production probe that cannot
  * exist, and, per issue in `judged`, whether each later commit its verdicts name holds that build
- * (REQ-36 BC-18): the same commit reading (contracts `landedCommitOf`) and the same ancestry reader
- * (`readHolding`) the record door weighs a landing with. An open request's head is not a landing,
- * so nothing is asked of it. Null on a project with production, whose coverage reads the live build
+ * (REQ-36 BC-18): the same commit reading (contracts `landedCommitOf`) the record door uses, answered
+ * from the landings Forge recorded (`recorded-holding.ts`) and never from the host. An open request's
+ * head is not a landing, so nothing is read for it. Null on a project with production, whose coverage reads the live build
  * (`judged-build.ts:liveBuildHolds`).
  */
 export async function landedBuildHolds(
   projectId: string,
   issueIds: readonly string[],
   judged: ReadonlyMap<string, readonly JudgedAgainst[]> = new Map(),
-  deps?: Pick<JudgedBuildDeps, 'ancestry'>,
 ): Promise<{
   sha: null;
   holds: Map<string, boolean>;
@@ -71,7 +69,7 @@ export async function landedBuildHolds(
     readProjectDocument(projectId),
   ]);
   const judgedOn = judgedOnOf(held?.document.delivery);
-  const holders = await laterHoldersOf(projectId, builds, judged, () => judgedOn, deps);
+  const holders = await laterHoldersOf(projectId, builds, judged, () => judgedOn);
   const landed = new Map<string, LandedHolds>();
   for (const [issueId, build] of builds) {
     const asked = holders.get(issueId);
@@ -117,23 +115,21 @@ function laterCommitsOf(
 
 /**
  * Per issue whose build is a landing, whether each later commit its verdicts name holds that landing,
- * or why that was not read: the one reading of a pass on a later build, asked of the project's
- * ancestry reader once for every pair.
+ * or why that was not read: the one reading of a pass on a later build, answered from the landings
+ * Forge recorded (`recorded-holding.ts`), never from the host.
  */
 export async function laterHoldersOf(
   projectId: string,
   builds: ReadonlyMap<string, LandedBuild>,
   judged: ReadonlyMap<string, readonly JudgedAgainst[]>,
   judgedOnFor: (issueId: string) => string | null,
-  deps?: Pick<JudgedBuildDeps, 'ancestry'>,
 ): Promise<Map<string, Map<string, Holding>>> {
   const later = laterCommitsOf(builds, judged, judgedOnFor);
-  const answers = await readHolding(
+  const answers = await recordedHolding(
     projectId,
     [...later.values()].flatMap(({ landing, shas }) =>
       shas.map((sha) => holdingPair(landing, sha)),
     ),
-    deps,
   );
   const out = new Map<string, Map<string, Holding>>();
   for (const [issueId, { landing, shas }] of later) {

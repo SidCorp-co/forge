@@ -141,6 +141,7 @@ export { listIssues } from './list-service.js';
 export {
   currentMarkClaims,
   currentMarkTimes,
+  MARK_RECORD,
   type MarkedCommit,
   markedCommitsOf,
 } from './mark-trail.js';
