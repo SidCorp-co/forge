@@ -30,7 +30,7 @@ export const SAID = {
 	"standing.gate.title.changeRequestMissing": { en: "Request missing" },
 	"standing.gate.title.throughChangeRequests": { en: "Released by merge" },
 	"standing.gate.promotionMissing": {
-		en: "No open promotion change request carries this release.",
+		en: "This release waits on a promotion change request carrying it.",
 	},
 	"standing.gate.title.promotionMissing": { en: "Promotion missing" },
 	"standing.act.openPromotion": {
