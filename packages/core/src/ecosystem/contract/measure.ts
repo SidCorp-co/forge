@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { withArticle } from '@forge/contracts/articles';
 import { refuseEcosystem } from '../refusals.js';
+import { CLI_RULES_VERSION, CLI_SHAPE, diffCli, readCli } from './cli-diff.js';
 import { type MeasuredChange, type MeasuredDiff, measured } from './diff.js';
 import { elementsOf, isIndexed } from './elements.js';
 import { diffGraphql, GRAPHQL_RULES_VERSION } from './graphql-diff.js';
@@ -39,6 +40,10 @@ export function parseArtifact(type: string, text: string): unknown {
     throw unreadable(
       'an mcp-tools artifact is { tools: [{ name, description, inputSchema: { … } }] }, and this one is not',
     );
+  }
+  if (type === 'cli') {
+    const read = readCli(doc);
+    if (!read.ok) throw unreadable(`${CLI_SHAPE}, and in this one ${read.fault}`);
   }
   if (type === 'openapi' && (typeof doc !== 'object' || doc === null || !('openapi' in doc))) {
     throw unreadable('an openapi artifact names its openapi version, and this one names none');
@@ -90,6 +95,11 @@ export async function measureChange(
     const [o, n] = [toolsOf(JSON.parse(previous)), toolsOf(JSON.parse(next))];
     if (!o || !n) throw new Error('an mcp-tools artifact lost its tools list');
     return measured('json-schema-diff', SCHEMA_RULES_VERSION, diffMcpTools(o, n));
+  }
+  if (type === 'cli') {
+    const [o, n] = [readCli(JSON.parse(previous)), readCli(JSON.parse(next))];
+    if (!o.ok || !n.ok) throw new Error('a cli artifact no longer reads as one');
+    return measured('cli-diff', CLI_RULES_VERSION, diffCli(o.value, n.value));
   }
   if (type === 'graphql') {
     return measured(

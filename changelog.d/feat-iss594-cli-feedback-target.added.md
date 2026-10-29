@@ -1,0 +1,1 @@
+**Feedback can be about a command-line verb.** A project publishes a `cli` contract listing its commands, and a report names one (`forge feedback`) as its target; a command it does not serve is refused, naming those it does.

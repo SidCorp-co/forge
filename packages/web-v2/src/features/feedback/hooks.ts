@@ -39,7 +39,7 @@ export const useFeedbackList = (projectId: string | undefined) => useQuery(readO
 export const useFeedbackItem = (projectId: string | undefined, key: string | undefined) =>
   useQuery(readOf(feedbackKeys.item(projectId, key), () => feedbackApi.get(projectId as string, key as string)));
 
-/** The routes and tools the project serves, read only while a picker is on "API route or tool". */
+/** The routes, tools and commands the project serves, read only while a picker is on "Route, tool or command". */
 export const useFeedbackEndpoints = (projectId: string, enabled: boolean) =>
   useQuery({ ...readOf(["feedback-endpoints", projectId], () => feedbackApi.endpoints(projectId), 60_000), enabled: Boolean(projectId) && enabled });
 

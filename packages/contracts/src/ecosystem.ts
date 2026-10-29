@@ -227,7 +227,8 @@ export const PERSON_VIAS = ["assistant", "web", "cli"] as const;
 export type PersonVia = (typeof PERSON_VIAS)[number];
 
 /**
- * The contract types whose artifact is read as named elements (an operation, a field, a tool), so a
+ * The contract types whose artifact is read as named elements (an operation, a field, a tool, a
+ * command), so a
  * consumer link or a screen binding can name what it uses and an impact can name what a change
  * touched. Any other type (asyncapi, protobuf, opaque) is not element-indexed: binding to it is
  * refused by name, never read as "no impact".
@@ -237,6 +238,7 @@ export const ELEMENT_INDEXED_CONTRACT_TYPES = [
 	"mcp-tools",
 	"json-schema",
 	"graphql",
+	"cli",
 ] as const;
 export type ElementIndexedContractType =
 	(typeof ELEMENT_INDEXED_CONTRACT_TYPES)[number];

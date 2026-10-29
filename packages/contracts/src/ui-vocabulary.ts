@@ -297,6 +297,7 @@ export const ENUM_LABELS = {
 		"mcp-tools": "MCP tools",
 		"json-schema": "JSON Schema",
 		graphql: "GraphQL",
+		cli: "CLI",
 		protobuf: "Protobuf",
 		opaque: "Opaque",
 	},
