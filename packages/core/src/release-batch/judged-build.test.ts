@@ -5,22 +5,22 @@
 // Here the default is read from the build production serves and the releases Forge verified.
 
 import { describe, expect, it } from 'vitest';
+import type { AncestryReader, AncestrySource } from './ancestry-source.js';
 import { type JudgedBuildDeps, judgedBuildOf, liveBuildHolds } from './judged-build.js';
-import type { AncestrySource, ShippedReleaseRun } from './shipped-earlier.js';
-import type { AncestryReader } from './shipped-earlier-ancestry.js';
+import type { ShippedReleaseRun } from './shipped-releases.js';
 
 const sha = (c: string) => c.repeat(40);
 const ISSUE = { id: 'iss-432', projectId: 'p1', mergedAt: new Date(), mergedCommitSha: null };
 
-const release = (version: string, commit: string, issueIds: string[]): ShippedReleaseRun => ({
-  runId: `run-${version}`,
-  version,
-  commit,
-  issueIds,
-});
+const release = (
+  version: string,
+  commit: string,
+  issueIds: string[],
+  cutAt = new Date('2026-10-01T00:00:00Z'),
+): ShippedReleaseRun => ({ runId: `run-${version}`, version, commit, issueIds, cutAt });
 
 const DEV_192 = release('0.4.0-dev.192', sha('a'), ['iss-432']);
-const DEV_193 = release('0.4.0-dev.193', sha('b'), ['iss-443']);
+const DEV_193 = release('0.4.0-dev.193', sha('b'), ['iss-443'], new Date('2026-10-02T00:00:00Z'));
 
 /** A reader answering each pair from `ancestors` (`commit@release`), and counting what it was asked. */
 function reader(ancestors: Record<string, boolean | { unread: string }>) {
@@ -60,22 +60,23 @@ describe('the build a verdict defaults to', () => {
     expect(built).toMatchObject({ sha: DEV_192.commit, source: 'live', version: '0.4.0-dev.192' });
   });
 
-  it('is the live build where the shipping release is an ancestor of what production serves', async () => {
+  it('is the shipping build, never the live one, where only an earlier release carries the issue', async () => {
     const r = reader({ [`${DEV_192.commit}@${DEV_193.commit}`]: true });
     const built = await judgedBuildOf(ISSUE, deps(DEV_193.commit, [DEV_192, DEV_193], r.source));
-    expect(built).toMatchObject({ sha: DEV_193.commit, source: 'live', version: '0.4.0-dev.193' });
-    expect(built.basis).toContain(`release 0.4.0-dev.192's commit \`${DEV_192.commit}\``);
+    expect(built).toMatchObject({ sha: DEV_192.commit, source: 'shipped' });
+    expect(built.basis).toContain('no release Forge verified there holds this issue');
+    expect(r.asked).toEqual([]);
   });
 
-  it("is the live build where the issue's merge is an ancestor of the served commit no release names", async () => {
+  it("is the merge commit where the issue's merge is not a release Forge verified, never asking a reader", async () => {
     const merged = sha('c');
-    const served = sha('d');
-    const r = reader({ [`${merged}@${served}`]: true });
+    const r = reader({ [`${merged}@${sha('d')}`]: true });
     const built = await judgedBuildOf(
       { ...ISSUE, mergedCommitSha: merged.toUpperCase() },
-      deps(served, [], r.source),
+      deps(sha('d'), [], r.source),
     );
-    expect(built).toMatchObject({ sha: served, source: 'live', version: null });
+    expect(built).toMatchObject({ sha: merged, source: 'merged' });
+    expect(r.asked).toEqual([]);
   });
 
   it('names an abbreviated served commit by the one release it names', async () => {
@@ -83,24 +84,15 @@ describe('the build a verdict defaults to', () => {
     expect(built).toMatchObject({ sha: DEV_192.commit, source: 'live' });
   });
 
-  it('falls back to the shipping build, saying so, where production does not hold it', async () => {
+  it('falls back to the shipping build, saying so, where no release at the served commit holds it', async () => {
     const shipped = release('0.4.0-dev.180', sha('e'), ['iss-432']);
-    const served = sha('f');
-    const r = reader({ [`${shipped.commit}@${served}`]: false });
-    const built = await judgedBuildOf(ISSUE, deps(served, [shipped], r.source));
+    const built = await judgedBuildOf(ISSUE, deps(sha('f'), [shipped]));
     expect(built).toMatchObject({
       sha: shipped.commit,
       source: 'shipped',
       version: '0.4.0-dev.180',
     });
-    expect(built.basis).toContain('which does not hold it');
-  });
-
-  it('falls back to the shipping build where nobody can read the ancestry, naming why', async () => {
-    const shipped = release('0.4.0-dev.181', sha('1'), ['iss-432']);
-    const built = await judgedBuildOf(ISSUE, deps(sha('2'), [shipped]));
-    expect(built).toMatchObject({ sha: shipped.commit, source: 'shipped' });
-    expect(built.basis).toContain('no source host and no box');
+    expect(built.basis).toContain('no release Forge verified there holds this issue');
   });
 
   it('falls back to the shipping build where the live build cannot be read', async () => {
@@ -109,14 +101,9 @@ describe('the build a verdict defaults to', () => {
     expect(built.basis).toContain('the probe timed out');
   });
 
-  it('is the merge commit where no release shipped it and production does not hold it', async () => {
+  it('is the merge commit where no release shipped it and none at the served commit holds it', async () => {
     const merged = sha('3');
-    const served = sha('4');
-    const r = reader({ [`${merged}@${served}`]: false });
-    const built = await judgedBuildOf(
-      { ...ISSUE, mergedCommitSha: merged },
-      deps(served, [], r.source),
-    );
+    const built = await judgedBuildOf({ ...ISSUE, mergedCommitSha: merged }, deps(sha('4'), []));
     expect(built).toMatchObject({ sha: merged, source: 'merged', version: null });
   });
 
@@ -138,15 +125,6 @@ describe('the build a verdict defaults to', () => {
     );
     expect(unmerged).toMatchObject({ sha: null, source: null });
     expect(unmerged.basis).toContain('has not merged');
-  });
-
-  it('asks the same pair once: ancestry between two commits never changes', async () => {
-    const shipped = release('0.4.0-dev.182', sha('5'), ['iss-432']);
-    const served = sha('6');
-    const r = reader({ [`${shipped.commit}@${served}`]: true });
-    await judgedBuildOf(ISSUE, deps(served, [shipped], r.source));
-    await judgedBuildOf(ISSUE, deps(served, [shipped], r.source));
-    expect(r.asked).toEqual([`${shipped.commit}@${served}`]);
   });
 });
 
@@ -181,22 +159,28 @@ describe('on a project naming its testing environment (delivery.judgedOn)', () =
   }
   const ISS_11 = { ...ISSUE, id: 'iss-11', mergedCommitSha: F44 };
 
-  it('is the build dev serves where it holds the landing (ISS-11 at a36f27ef)', async () => {
+  it('is the build dev serves where the release verified there holds the issue', async () => {
+    const dev = release('0.4.0-dev.200', A36, ['iss-11']);
     const r = reader({ [`${F44}@${A36}`]: true });
-    const built = await judgedBuildOf(ISS_11, onDev(A36, r.source));
+    const built = await judgedBuildOf(ISS_11, {
+      ...onDev(A36, r.source),
+      releases: async () => [dev],
+    });
     expect(built).toMatchObject({ sha: A36, source: 'judged-on', version: null });
     expect(built.basis).toContain('`dev` serves');
     expect(built.basis).toContain('delivery.judgedOn');
     expect(built.basis).not.toContain('declares no production environment');
+    expect(r.asked).toEqual([]);
   });
 
-  it('stays the landing where dev serves a build that does not hold it, and says so', async () => {
-    // another served commit: an ancestry answer is kept for the process
+  it('stays the landing where dev serves a build no verified release shows holds it, and says so', async () => {
     const aside = 'b47c0de0'.padEnd(40, '3');
-    const r = reader({ [`${F44}@${aside}`]: false });
+    const r = reader({ [`${F44}@${aside}`]: true });
     const built = await judgedBuildOf(ISS_11, onDev(aside, r.source));
     expect(built).toMatchObject({ sha: F44, source: 'landed' });
-    expect(built.basis).toContain(`\`dev\` serves \`${aside}\`, which does not hold it`);
+    expect(built.basis).toContain(`\`dev\` serves \`${aside}\``);
+    expect(built.basis).toContain('no release Forge verified there holds this issue');
+    expect(r.asked).toEqual([]);
   });
 
   it('stays the landing where what dev serves cannot be read, naming why', async () => {
@@ -218,12 +202,15 @@ describe('on a project naming its testing environment (delivery.judgedOn)', () =
     }),
   });
 
-  it("is dev's build, not production's, where both hold the release that shipped the issue", async () => {
+  it("is dev's build, not production's, where the release verified on dev holds the issue", async () => {
     const onDevNow = 'c0ffee00'.padEnd(40, '4');
-    const r = reader({ [`${DEV_192.commit}@${onDevNow}`]: true });
-    const built = await judgedBuildOf(ISSUE, withProduction(onDevNow, r.source));
+    const onDevRelease = release('0.4.0-dev.201', onDevNow, ['iss-432']);
+    const built = await judgedBuildOf(ISSUE, {
+      ...withProduction(onDevNow, reader({}).source),
+      releases: async () => [DEV_192, onDevRelease],
+    });
     expect(built).toMatchObject({ sha: onDevNow, source: 'judged-on', version: null });
-    expect(built.basis).toContain(`holds this issue's work \`${DEV_192.commit}\``);
+    expect(built.basis).toContain(`holds this issue's work \`${onDevRelease.commit}\``);
   });
 
   it("is production's live build where dev cannot be read, naming why", async () => {
@@ -237,28 +224,29 @@ describe('on a project naming its testing environment (delivery.judgedOn)', () =
 });
 
 describe('what the live build holds of verdict commits', () => {
-  it('answers each commit: the served one itself, an ancestor, one it lacks; an unread one is left out', async () => {
-    const live = sha('9');
-    const r = reader({ [`${sha('1')}@${live}`]: true, [`${sha('2')}@${live}`]: false });
+  const EARLY = release('0.4.0-dev.10', sha('1'), [], new Date('2026-09-01T00:00:00Z'));
+  const LATE = release('0.4.0-dev.11', sha('9'), [], new Date('2026-09-02T00:00:00Z'));
+  const AFTER = release('0.4.0-dev.12', sha('2'), [], new Date('2026-09-03T00:00:00Z'));
+
+  it('holds the served commit and a release cut no later, not one cut after; any other commit is unanswered, and no reader is asked', async () => {
+    const r = reader({ [`${sha('3')}@${sha('9')}`]: true });
     const read = await liveBuildHolds(
       'p-holds',
-      { commits: [live, sha('1'), sha('2').toUpperCase(), sha('3')] },
-      deps(live, [], r.source),
+      { commits: [sha('9'), sha('1'), sha('2').toUpperCase(), sha('3')] },
+      deps(sha('9'), [EARLY, LATE, AFTER], r.source),
     );
-    expect(read?.sha).toBe(live);
+    expect(read?.sha).toBe(sha('9'));
     expect([...(read?.holds ?? [])]).toEqual([
-      [live, true],
+      [sha('9'), true],
       [sha('1'), true],
       [sha('2'), false],
     ]);
-    expect(r.asked).not.toContain(`${live}@${live}`);
-    expect([...(read?.unanswered ?? [])]).toEqual([
-      [sha('3'), 'the ancestry reader could not answer: not planted'],
-    ]);
+    expect([...(read?.unanswered ?? []).keys()]).toEqual([sha('3')]);
+    expect(r.asked).toEqual([]);
   });
 
   // ISS-489 r3: a hold nobody answered was dropped with its reason, so coverage counted the verdict
-  // silently; every asked commit is now answered either way or carries why it was not
+  // silently; every asked commit is now answered or carries why it was not
   it('reads nothing where nothing is asked, and names why for every commit where production cannot be read', async () => {
     expect(await liveBuildHolds('p-none', { commits: [] }, deps(sha('9'), []))).toBeNull();
     const down = await liveBuildHolds(
@@ -281,61 +269,23 @@ describe('what the live build holds of verdict commits', () => {
     ]);
   });
 
-  it('names why a commit went unanswered where no reader can be asked, one is silent, or one fails', async () => {
-    const live = sha('6');
-    const none = await liveBuildHolds('p-noreader', { commits: [sha('1')] }, deps(live, []));
-    expect([...(none?.unanswered ?? [])]).toEqual([
-      [sha('1'), 'no ancestry reader can be asked: no source host and no box'],
-    ]);
-    const silent: AncestryReader = {
-      ask: async () => ({ silent: 'the box holding the checkout is offline' }),
-      witness: () => ({ via: 'source-host' }),
-    };
-    const quiet = await liveBuildHolds(
-      'p-silent',
-      { commits: [sha('2')] },
-      deps(live, [], { kind: 'box', why: 'no host', reader: silent }),
-    );
-    expect([...(quiet?.unanswered ?? [])]).toEqual([
-      [sha('2'), 'the ancestry reader did not answer: the box holding the checkout is offline'],
-    ]);
-    const failing: AncestryReader = {
-      ask: async () => {
-        throw new Error('socket hang up');
-      },
-      witness: () => ({ via: 'source-host' }),
-    };
-    const failed = await liveBuildHolds(
-      'p-failing',
-      { commits: [sha('3')] },
-      deps(live, [], { kind: 'box', why: 'no host', reader: failing }),
-    );
-    expect(failed?.holds.size).toBe(0);
-    expect([...(failed?.unanswered ?? [])]).toEqual([
-      [sha('3'), 'the ancestry reader failed: socket hang up'],
-    ]);
-  });
-
   // ISS-489 r2: a runtime-identity verdict reached coverage with no commit, so it was never checked
   // against the live build and a pass counted; each runtime now resolves to the commit it served
-  it('resolves each runtime to the commit that build served and asks the live build about it', async () => {
+  it('resolves each runtime to the commit that build served and holds it against the live build', async () => {
     const live = sha('7');
-    const r = reader({ [`${sha('5')}@${live}`]: false });
     const digest = 'd'.repeat(64);
     const read = await liveBuildHolds(
       'p-runtime',
       { commits: [], runtimes: [live.toUpperCase(), sha('5'), digest] },
-      deps(live, [DEV_192], r.source),
+      deps(live, [DEV_192]),
     );
     expect([...(read?.runtimes ?? [])]).toEqual([
       [live, live],
       [sha('5'), sha('5')],
       [digest, null],
     ]);
-    expect([...(read?.holds ?? [])]).toEqual([
-      [live, true],
-      [sha('5'), false],
-    ]);
+    expect([...(read?.holds ?? [])]).toEqual([[live, true]]);
+    expect([...(read?.unanswered ?? []).keys()]).toEqual([sha('5')]);
   });
 
   it('resolves runtimes from the verified releases even where production cannot be read', async () => {
@@ -350,13 +300,5 @@ describe('what the live build holds of verdict commits', () => {
       runtimes: new Map([[DEV_192.commit, DEV_192.commit]]),
       unanswered: new Map([[DEV_192.commit, 'the live build could not be read: no probe']]),
     });
-  });
-
-  it('keeps an answer, so the same pair is not asked twice', async () => {
-    const live = sha('8');
-    const r = reader({ [`${sha('4')}@${live}`]: true });
-    await liveBuildHolds('p-kept', { commits: [sha('4')] }, deps(live, [], r.source));
-    await liveBuildHolds('p-kept', { commits: [sha('4')] }, deps(live, [], r.source));
-    expect(r.asked).toEqual([`${sha('4')}@${live}`]);
   });
 });

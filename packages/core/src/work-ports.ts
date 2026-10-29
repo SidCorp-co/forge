@@ -46,11 +46,7 @@ import { fastLaneMergeRefusal } from './fast-lane/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
-import {
-  linkFiledIssueToChangeRequest,
-  resolveSourceHost,
-  SourceHostUnavailable,
-} from './integrations/source-host/index.js';
+import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-host/index.js';
 import { provideIssuePorts } from './issues/index.js';
 import {
   broadcastSessionEvent,
@@ -133,6 +129,7 @@ import {
   nextDraftVersion,
   releaseEndsRun,
   releaseHoldsOf,
+  settleChangeRequestRelease,
   unobservedBuildOf,
 } from './release-batch/index.js';
 import {
@@ -253,7 +250,7 @@ export function provideWorkPorts(): void {
     masterServingOf,
     changedTracedOf,
     readLandingBranches,
-    linkFiledIssueToChangeRequest,
+    settleChangeRequestRelease,
     issueRefPattern,
     declaredIssueSeqs,
     subjectOf,

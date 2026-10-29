@@ -1,7 +1,6 @@
 export { sourceHostMismatch } from './bind.js';
 export {
   type ChangeRequestLinks,
-  linkFiledIssueToChangeRequest,
   readChangeRequestLinks,
   relinkChangeRequestIssue,
   unlinkChangeRequestIssue,

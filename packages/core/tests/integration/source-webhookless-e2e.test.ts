@@ -205,7 +205,7 @@ describe('refresh: a merge request opened outside Forge, projected by its number
     expect(read?.[0]?.checks).toEqual({ total: 1, success: 1, failure: 0, pending: 0 });
   });
 
-  it('records a merge made on the host, with its landing, and reports it for the issue stamp', async () => {
+  it('records a merge made on the host, with its landing, and reports it as information', async () => {
     await issue(1);
     mergeRequest(14, {
       state: 'merged',

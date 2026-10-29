@@ -1,11 +1,11 @@
 /**
  * adminhub-api's real `release/stg` history around ISS-5, and an ancestry reader answering from it,
  * for the landing tests (`landed-world.ts`). It imports nothing from `src` at runtime, because a test
- * file's mock of `shipped-earlier.js` loads it before the app is loaded; `pairKey` is spelled as
+ * file's mock of `ancestry-source.js` loads it before the app is loaded; `pairKey` is spelled as
  * `runners/checkout-ancestry.ts:pairKey` spells it.
  */
 
-import type { AncestryReader } from '../../src/release-batch/shipped-earlier-ancestry.js';
+import type { AncestryReader } from '../../src/release-batch/ancestry-source.js';
 
 const pairKey = (p: { commit: string; release: string }) => `${p.commit}@${p.release}`;
 

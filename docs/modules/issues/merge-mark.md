@@ -96,9 +96,8 @@ like any other repeat.
 ## A merge stamps only the issues it landed
 
 A link is what a change request says it delivers; the commit is what landed. Every stamp a change
-request's merge would write — Forge's own merge (`POST /api/issues/:id/merge-pull-request`), a merge
-the host reports (`source.merged`, from a hook or from `POST …/change-requests/:number/refresh`), and
-the projected merge a mark rests on — is taken only where the commit is the issue's landing
+request's merge would write — Forge's own merge (`POST /api/issues/:id/merge-pull-request`) and the
+projected merge a mark rests on — is taken only where the commit is the issue's landing
 (`packages/core/src/issues/merge-identity.ts:mergeIdentityOf`): its subject declares the issue by
 `declaredIssueSeqs`, the rule above, or it names the change request it merged (GitLab's `See merge
 request …!12`, GitHub's `Merge pull request #12` or `(#12)`) and that request links the issue, as one
@@ -115,9 +114,23 @@ supersedes the mark an issue holds from its own merge. Every stamp written carri
 
 A request whose head is the branch work lands on, or a declared promotion's source
 (`packages/core/src/project-config/promotion-path.ts:promotionSourcesOf`), promotes what already
-landed and is nobody's landing (REQ-45 BC-16): a host report of its merge stamps nothing, its links
+landed and is nobody's landing (REQ-45 BC-16): its links
 never make its commit an issue's, and a mark never rests on it. adminhub-api !5020 (`release/stg`
 into `release/production`, 2026-10-27) had overwritten ISS-23/24/25's own merges with its commit.
+
+## A merge the host reports writes nothing
+
+The host's report of a merge (`source.merged`, from a hook or from `POST
+…/change-requests/:number/refresh`) is information: no consumer stamps an issue, files one or settles
+a release from it (ISS-774, owner 2026-10-29: Forge tells the agent and the agent records). What it
+leaves is owed, read from the projection
+(`packages/core/src/issues/owed-merges.ts`): an issue a merged request delivers with no mark reads
+"mark merged !N at <sha>" in its standing, waiting on its run or the master, and is listed in the
+master's next pass (`owedMarks`); under a profile with `issue_before_code` off, a merge into the
+default branch delivering no issue is owed the master as "file the issue for merge !N at <sha>"
+(`owedFilings`, REQ-76 BC-8), answered by an issue whose mark names that commit. A change-request
+release closes on Forge's own merge or on the agent's mark (`POST /api/issues/:id/merge`), never on
+the report.
 
 ## A merge whose answer was lost
 
@@ -349,71 +362,27 @@ issue out, and a release batch naming only design-only issues is refused `RELEAS
 
 ## A mark written after the release that shipped it
 
-An issue can reach `awaiting_release` after a release whose range already holds its work. That release
-never claimed it, so every later cut finds nothing new in its own range and aborts naming a person.
-`closeShippedEarlier` (`packages/core/src/release-batch/shipped-earlier.ts`) settles it as a kernel
-fact. It runs in the automatic sweep before a row held `RELEASE_ABORT_BLOCKED` is set aside, and at the
-top of `createReleaseBatch`, and it places the issue in a shipped release (a run whose finish is
-`finished`, with `finish.commit` the commit the probes verified live) by one of two evidences:
+An issue can be marked merged after a release whose range already holds its work. That release never
+claimed it, so a later cut would find nothing of it new. Forge does not settle this itself (ISS-774,
+owner 2026-10-29: Forge tells the agent what is owed and the agent records it; no read, sweep or cut
+asks the repository). It reads the shape from its own rows
+(`packages/core/src/release-batch/shipped-in.ts:shippedInOwed`): the issue waits unclaimed at
+`awaiting_release`, its landing (`merged_at`) is no later than a shipped release's cut, and its current
+mark (`packages/core/src/issues/mark-trail.ts:currentMarkTimes`, the newest stamped mark with no unmark
+after it) was recorded after that cut.
 
-- an `observed` mark names a commit: the release is the earliest whose commit holds it.
-- an `asserted` mark whose claimed commit the marker recorded is placed like an observed one by that
-  commit, once the host confirms it; a claim in no shipped release is not placed by it. The marker
-  keeps the claim in its own transaction twice: as the audit comment's first line people read
-  (`mark_merged … commit=<sha>`) and as the record the claim is read from, an `activity_log` row
-  `issue.mergeMarked` or `issue.mergeUnmarked` (`packages/core/src/issues/mark-trail.ts:recordMarkTrail`).
-  Comment text is never read: a comment shaped like a trail line, typed by anybody, is neither a claim
-  nor an unmark. The claim read is the current mark's own
-  (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`): the newest stamped mark or unmark
-  record, and only where it is a mark naming a commit. An unmark withdraws every earlier claim, and a
-  mark after it naming no commit claims none, so a withdrawn round's commit never places the issue. A
-  mark that names no commit records as its claim only the newest implementation handoff written since
-  the issue was last unmarked. An unmark made before the record existed is read from the activity
-  feed's own row for it (`issue.updated` setting `mergedAt` to null, which only an unmark writes); a
-  claim made then has no record and places nothing until the issue is marked again.
-- an `asserted` mark with no claim the host confirms is placed by declaring commits: the
-  repository is asked which commits declare the issue, by `commitOwners`, in each of the last twelve
-  releases' own ranges. The release is the one whose range holds the last declaring commit, and only
-  where the range from the newest release to the branch head holds none: work still unreleased is not
-  shipped. A `landed` mark is outside git and is never placed this way.
-
-Where the project has no source host binding at all (or declares a local repository no host serves),
-the commit the first two evidences name is asked instead of the box holding the project's bound
-checkout: core sends `checkout.ancestry.read` to the first connected box whose runner binds a checkout
-of the project (oldest binding first; a box bound to no runner of the project is never asked), the
-box answers `git merge-base --is-ancestor` per pair, fetching origin only where a commit is missing,
-and posts it to `/api/devices/me/checkout-ancestry/:requestId`
-(`packages/core/src/runners/checkout-ancestry.ts:answerCheckoutAncestry` checks it against the
-pairs asked and the declared repository). The placement rule is the same, and the notice names the
-box-read evidence: the box, its checkout, origin, read time and both shas. The declaring-commits
-evidence stays host-only, since it reads ranges of commit messages no box serves. A binding that exists
-and cannot serve is not stood in for by a box. No box answering (none bound, none connected, or one
-that let a read lapse, which is not asked again for ten minutes) is `SHIPPED_EARLIER_HOST_UNAVAILABLE`
-naming both reasons; a box that answered it could not read a commit is `SHIPPED_EARLIER_UNREAD`.
-A row whose mark names no commit (no `merged_commit_sha`, no recorded claim) is never offered a box: only the declaring-commits evidence could place it, so a connected box is not a way out. That row is `SHIPPED_EARLIER_NO_COMMIT`, and its hold names the two ways out: a source host binding, or its mark naming the landing commit (unmarked, then marked again through `POST /api/issues/:id/merge` with `commit`).
-
-The issue is closed through the release's own close (`closeRoster`, after `claimIssuesForRelease` onto
-that run), so `CLOSE_ONLY_BY_RELEASE` still holds and the run's `rosterClosed` names it. It gets a
-notice naming the version, and its hold is cleared. It adds no changelog fragment: its notes belong to
-the release that shipped it. A repository that cannot be read, or a range it will not give whole, is
-`SHIPPED_EARLIER_HOST_UNAVAILABLE` or `SHIPPED_EARLIER_UNREAD`, and a close the release path refuses is
-`SHIPPED_EARLIER_NOT_CLOSED`: nothing moves and no version is inferred. The sweep says it on the row's
-hold, as a clause beside whatever holds it — an abort hold keeps its code and the act it names
-(`packages/core/src/release-batch/shipped-earlier-hold.ts:withShippedEarlier`) — and takes the clause
-back on the sweep that can settle it.
-A work older than twelve releases is not placed, and takes the normal path.
-
-A row still claimed by a release that ended without shipping is read the same way
-(`packages/core/src/issues/release-claim.ts:heldByEndedRelease`: the claiming run is not live and
-carries no ship stamp). A run that failed after it recorded a deploy keeps its roster claimed at the
-release step for a person, since its code may be live; a later shipped release whose commit holds the
-row's is that answer. The sweep (it also visits a project for such a row alone) and the top of every
-cut ask it, the close takes the claim over from the ended run (`claimIssuesForRelease`
-`fromEndedRelease`), and the notice names the release that held it. A row no shipped release holds,
-or one the close refuses, goes back to the ended run's claim at its release step
-(`returnTakenClaims`); a row a live run holds is never read. The ended release's page still lists the
-row, now `closed` and waiting on nobody; the shipped release's page lists it too, from its
-`rosterClosed` (`packages/core/src/release-batch/versions.ts:issueIdsOf`).
+Such an issue owes its agent a record. The sweep holds it `RELEASE_SHIPPED_IN_OWED` (owed by the agent,
+naming the releases it may have shipped in) and cuts nothing for it, and the release gate names it
+under the same code, so no cut carries it. The agent checks with its own git which release holds the
+landing and records it: `POST /api/projects/:id/shipped-in-records` with `issueId`, `version` and
+`evidence` (`packages/core/src/release-batch/shipped-in.ts:recordShippedIn`). A version closes the
+issue through the release's own close (`closeRoster`, after `claimIssuesForRelease` onto that run), so
+`CLOSE_ONLY_BY_RELEASE` still holds and the run's `rosterClosed` names it; it gets a notice naming the
+version and the agent's evidence, and `release.shipped` is told again naming it. `version: null` says no
+shipped release holds it, and the next release takes it. Forge refuses only what its rows contradict: a
+version no release of the project shipped (`RELEASE_SHIPPED_IN_UNKNOWN`), a release cut before the
+issue landed, which cannot hold it (`RELEASE_SHIPPED_IN_BEFORE_LANDING`, ISS-759), and an issue not
+waiting unclaimed with a mark (`RELEASE_SHIPPED_IN_NOT_WAITING`).
 
 ## What counts as landed depends on the project's shape
 

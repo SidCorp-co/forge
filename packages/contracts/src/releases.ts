@@ -215,8 +215,6 @@ export interface ReleaseSplit {
 	issueIds: string[];
 	/** How many stay at the release gate for the next release. */
 	rest: number;
-	/** The open promotion request whose head carries exactly these, where that is the split; absent on an oversize split. */
-	promotion?: string;
 }
 
 /**
@@ -823,10 +821,10 @@ export const RELEASE_BLOCKER_CODES = [
 	"RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED",
 	/** A change-request project's landing recorded by hand, which would skip its approval and merges. */
 	"RELEASE_THROUGH_CHANGE_REQUESTS",
-	/** A promotion release with no change request across its promotion whose head carries the roster (REQ-63 BC-9). */
+	/** A promotion release with no change request across its promotion that is open, or merged and not yet released (REQ-63 BC-9). */
 	"RELEASE_PROMOTION_MISSING",
-	/** The open promotion request's head carries only part of the roster: the release cuts what it carries (REQ-63 BC-9). */
-	"RELEASE_PROMOTION_PARTIAL",
+	/** A roster issue marked merged after a shipped release was cut that may hold it: its agent records which release shipped it (ISS-774). */
+	"RELEASE_SHIPPED_IN_OWED",
 ] as const;
 export type ReleaseBlockerCode = (typeof RELEASE_BLOCKER_CODES)[number];
 
@@ -866,12 +864,14 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_LANDING_NO_BRANCH",
 	/** A record naming a landing's `branch` on a project with production, whose record reads what it serves. */
 	"RELEASE_RECORD_BRANCH_UNUSED",
+	/** A promotion release cut without `promotion.request`, the change request the agent says carries its roster. */
+	"RELEASE_PROMOTION_REQUEST_UNNAMED",
+	/** A promotion release cut naming a request number the projection does not hold across the declared promotion. */
+	"RELEASE_PROMOTION_REQUEST_UNKNOWN",
 	/** A promotion release recorded deployed before its promotion change request merged (REQ-63 BC-12). */
 	"RELEASE_PROMOTION_UNMERGED",
 	/** A promotion release's record naming issues other than the roster the release carries. */
 	"RELEASE_PROMOTION_ROSTER",
-	/** A promotion release's record of a deploy whose commit does not hold every roster issue's landing — the promotion head was rewritten after the cut (ISS-747). */
-	"RELEASE_PROMOTION_DROPPED",
 	"RELEASE_BATCH_ABORTED",
 	"RELEASE_FINISH_IN_FLIGHT",
 	"RELEASE_FINISHED_FOR_OTHER_COMMIT",
@@ -884,7 +884,12 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_RUN_HOLDING",
 	"RELEASE_RUN_NOT_OPEN",
 	"RELEASE_NOTHING_RECORDED",
-	"RELEASE_ALL_SHIPPED_EARLIER",
+	/** A shipped-in record for an issue not waiting unclaimed at the release gate with a merged mark (ISS-774). */
+	"RELEASE_SHIPPED_IN_NOT_WAITING",
+	/** A shipped-in record naming a version no release of this project shipped. */
+	"RELEASE_SHIPPED_IN_UNKNOWN",
+	/** A shipped-in record naming a release cut before the issue landed, which cannot hold it (ISS-759). */
+	"RELEASE_SHIPPED_IN_BEFORE_LANDING",
 	"RELEASE_ALL_DESIGN_ONLY",
 	"RELEASE_CARRIED_CONTRADICTS",
 	"RELEASE_CARRIED_SHAPE",
@@ -991,7 +996,8 @@ export interface ReleaseChangeRequest {
 
 /**
  * The change request a promotion release is (REQ-63 BC-10): the one across the declared promotion,
- * where it stands, the head it was cut at, and which roster issues that head carries.
+ * where it stands, the head it was cut at, and the roster it stands for. The roster is what the agent
+ * stated at the cut (kept on the run), or on a draft the issues waiting; Forge reads no host ancestry.
  */
 export interface ReleasePromotion {
 	label: string;
@@ -1005,10 +1011,8 @@ export interface ReleasePromotion {
 	headSha: string;
 	/** The commit its merge made, once merged. */
 	mergeCommitSha: string | null;
-	/** Roster issues whose landed commit its head holds, by key. */
-	carries: string[];
-	/** Roster issues its head was not read holding, by key. */
-	notCarried: string[];
+	/** The roster the promotion stands for, by key: the agent's statement at the cut, or the waiting issues on a draft. */
+	roster: string[];
 }
 
 /** How many issues one release batch carries at most. */

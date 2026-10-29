@@ -75,6 +75,8 @@ const none = {
   answers: [],
   stewardAsks: [] as Parameters<typeof owedLine>[0]['stewardAsks'],
   landedWork: [] as Parameters<typeof owedLine>[0]['landedWork'],
+  marks: [] as Parameters<typeof owedLine>[0]['marks'],
+  filings: [] as Parameters<typeof owedLine>[0]['filings'],
   requests: [] as Parameters<typeof owedLine>[0]['requests'],
   contentLanguage: 'vi',
 };
@@ -98,6 +100,14 @@ const OWED_KINDS = {
   releaseNotes: { item: { issueId: 'u6', key: 'ISS-6' }, guide: 'issue-flow' },
   warnedNotes: {
     item: { issueId: 'u7', key: 'ISS-7', problems: ['not in Vietnamese'] },
+    guide: 'issue-flow',
+  },
+  marks: {
+    item: { issueId: 'u9', key: 'ISS-9', number: 12, commit: 'c'.repeat(40) },
+    guide: 'issue-flow',
+  },
+  filings: {
+    item: { number: 13, commit: 'd'.repeat(40), title: 'Fix the header', url: null },
     guide: 'issue-flow',
   },
   landedWork: {

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { masterWork, owedLine, workDigest } from './owed.js';
-import type { AgentConfirmOwed, ReleaseMergeOwed, StewardAsk, WaitingRequest } from './ports.js';
+import type {
+  AgentConfirmOwed,
+  FilingOwed,
+  MarkOwed,
+  ReleaseMergeOwed,
+  StewardAsk,
+  WaitingRequest,
+} from './ports.js';
 
 // The owed-work read is core's: the seven kinds of work a master owes are counted and digested in
 // owed.ts, and the box only carries the line core composed. These are those rules.
@@ -28,6 +35,8 @@ const none = {
     mergedAt: string;
     status: 'in_progress' | 'open';
   }[],
+  marks: [] as MarkOwed[],
+  filings: [] as FilingOwed[],
   requests: [] as WaitingRequest[],
   contentLanguage: 'en',
 };
@@ -163,6 +172,22 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     // a new mark on the same issue is new work: landed again after a reopen
     const again = { ...left, mergedAt: '2026-10-25T09:00:00.000Z' };
     expect(workDigest([], { ...none, landedWork: [again] })).not.toBe(once);
+  });
+
+  // ISS-774: Forge writes no mark and files no issue from a host's report of a merge; the master is
+  // told what is owed instead, or nothing records the merge at all
+  it('names a merged change request with no mark, and a merge naming no issue, as owed', () => {
+    const sha = `${'b'.repeat(39)}2`;
+    const mark = { issueId: 'u2', key: 'ISS-12', number: 41, commit: sha };
+    const filing = { number: 42, commit: sha, title: 'Header fix', url: null };
+    const line = owedLine({ ...none, marks: [mark], filings: [filing] });
+    expect(line).toContain(`ISS-12 u2: !41 at ${sha}`);
+    expect(line).toContain('Forge does not write a mark');
+    expect(line).toContain(`!42 at ${sha} "Header fix"`);
+    expect(line).toContain('file the issue for each merge');
+    expect(owedLine(none)).not.toContain('file the issue');
+    expect(masterWork([], { ...none, marks: [mark], filings: [filing] }).owed).toBe(2);
+    expect(workDigest([], { ...none, filings: [filing] })).not.toBe(workDigest([], none));
   });
 
   it('names an owed triage by its key, and its method', () => {

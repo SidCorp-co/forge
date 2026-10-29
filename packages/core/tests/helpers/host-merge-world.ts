@@ -1,5 +1,5 @@
 /**
- * The world the merge-stamp suites run in: a GitLab-bound project whose document lands on
+ * The world the merge suites run in: a GitLab-bound project whose document lands on
  * `release/stg`, its issues and stored merge requests, and the host's report of a merge as its hook
  * emits one. The planted host is `planted-gitlab-merges.ts`'s; each suite mocks the resolver onto it.
  */
@@ -137,9 +137,15 @@ export async function hostMerged(
     head: null,
   });
   await settleOutbox();
-  // the settle that ran before its stamp was written is retried later; bring that retry to now
+}
+
+/**
+ * The landing an observed merge leaves on an issue, written as Forge's own merge route writes it, for
+ * a suite whose subject is what comes after it: the host's report writes none (ISS-774).
+ */
+export async function stampObserved(id: string, commitSha: string, mergedAt: string) {
   await db.execute(sql`
-    UPDATE pgboss_v12.job SET start_after = now()
-     WHERE name = 'outbox.release-merge-settle' AND state = 'retry'`);
-  await settleOutbox();
+    UPDATE issues SET merged_at = ${mergedAt}::timestamptz, merged_commit_sha = ${commitSha},
+                      merged_target = ${BRANCH}
+     WHERE id = ${id}`);
 }

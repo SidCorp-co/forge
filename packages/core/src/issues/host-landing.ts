@@ -13,13 +13,13 @@ export const releasesThroughChangeRequestsSql = (i: SQL): SQL => sql`EXISTS (
      AND (cfg.document -> 'release' ->> 'changeRequests') = 'true')`;
 
 /** The branch the issue row `i`'s project lands work on: its document's `source.git.defaultBranch`. */
-const targetBranchSql = (i: SQL): SQL => sql`(
+export const targetBranchSql = (i: SQL): SQL => sql`(
   SELECT tc.document -> 'source' -> 'git' ->> 'defaultBranch' FROM project_config_documents tc
    WHERE tc.project_id = ${i}.project_id)`;
 
 /**
- * The host's record that the issue row `i` landed: the merge commit the host-merge stamp or the
- * merge route wrote (`host-merge.ts:stampHostMerge`, `merged_commit_sha`), or a linked change
+ * The host's record that the issue row `i` landed: the merge commit Forge's own merge route wrote
+ * (`merged_commit_sha`), or a linked change
  * request the host reports merged into the project's target branch no earlier than the issue's
  * stamp. A request merged before the stamp is an earlier delivery that a reopen superseded, and one
  * merged into any other branch landed nothing (ISS-672).

@@ -123,7 +123,7 @@ They come through the existing outbox: one consumer named `steward` (`contracts/
 | `standing.stuck` | **`standing.stuck`** (new) | the standing sweep | `stuck_diagnosis` |
 | `release.asked` | `issue.transitioned`, to `awaiting_release` (exists) | the issue machine | `output_check` |
 | `release.held` | **`release.held`** (new) | `release-batch/hold.ts:writeReleaseHolds`, when it writes a `RELEASE_CRITERIA_UNEARNED` hold (`criteria-hold.ts` only reads); `runId` is null for an automatic release | `output_check` |
-| `release.shipped` | `release.shipped` (exists) | `pipeline/run-records.ts`, `release-batch/shipped-earlier.ts` | `release_followthrough` |
+| `release.shipped` | `release.shipped` (exists) | `pipeline/run-records.ts`, `release-batch/shipped-in.ts` | `release_followthrough` |
 | `standing.changed` | **`standing.changed`** (new) | the standing sweep | `note` |
 
 The **standing sweep** is a cluster timer `standing-sweep` in `timer-registry.ts:coreTimers`, running

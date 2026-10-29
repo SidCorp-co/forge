@@ -22,6 +22,22 @@ export interface AgentConfirmOwed {
   home: boolean;
 }
 
+/** A merged change request delivering an issue that holds no merged mark (`issues/owed-merges.ts`). */
+export interface MarkOwed {
+  issueId: string;
+  key: string;
+  number: number;
+  commit: string;
+}
+
+/** A merge into the default branch delivering no issue, owed its filing (REQ-76 BC-8, ISS-774). */
+export interface FilingOwed {
+  number: number;
+  commit: string;
+  title: string;
+  url: string | null;
+}
+
 /** A request a person left waiting: a draft issue they filed, or a draft requirement proposed from a chat. */
 export interface WaitingRequest {
   kind: 'issue' | 'requirement';
@@ -104,6 +120,11 @@ interface MastersPorts {
       status: 'in_progress' | 'open';
     }[]
   >;
+  /**
+   * The merges the host reported that no Forge record carries (ISS-774): issues owing their mark, and,
+   * under a profile with `issue_before_code` off, merges owing an issue. Forge writes neither.
+   */
+  mergesOwed(projectId: string): Promise<{ marks: MarkOwed[]; filings: FilingOwed[] }>;
   /** Agreed requirements whose steward intake question nobody has answered yet, held out of the breakdowns owed (REQ-48 BC-2). */
   breakdownsHeldBySteward(projectId: string): Promise<string[]>;
   /** The project's gate `master_admitted_only` (REQ-76): off, a master is placed for a waiting request too. */

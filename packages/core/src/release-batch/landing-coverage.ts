@@ -13,9 +13,9 @@ import type { ReleaseShippedFailing } from '@forge/contracts/releases';
 import { landedCommitOf, verdictEarns } from '@forge/contracts/verdict-identity';
 import { type StandingCriterion, standingCriteriaOf } from '../issues/index.js';
 import { pairKey } from '../runners/index.js';
+import { ancestrySourceFor } from './ancestry-source.js';
 import type { JudgedBuildDeps } from './judged-build.js';
 import { holdingPair, readHolding, weighOnLanded } from './landed-build.js';
-import { ancestrySourceFor } from './shipped-earlier.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
 const short = (sha: string) => sha.slice(0, 12);

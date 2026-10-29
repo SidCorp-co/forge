@@ -18,7 +18,6 @@ import {
   readReleasePath,
 } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
-import type { ReleaseBlocker } from './blocker-sentences.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { mergeStepsOf, readChangeRequestLinks } from './change-request-roster.js';
 import {
@@ -65,17 +64,6 @@ interface DraftPart {
   recutOf: string | null;
 }
 
-/** The part an open promotion's head carries, where that is the draft's cut (RELEASE_PROMOTION_PARTIAL). */
-function promotionSplitOf(
-  blockers: readonly ReleaseBlocker[],
-): NonNullable<Part['promotionSplit']> | null {
-  const partial = blockers.find((b) => b.code === 'RELEASE_PROMOTION_PARTIAL')?.details;
-  const carried = partial?.carried;
-  return Array.isArray(carried) && typeof partial?.request === 'string'
-    ? { issueIds: carried as string[], request: partial.request }
-    : null;
-}
-
 async function draftPart(projectId: string): Promise<DraftPart | null> {
   const ids = await waitingIssueIds(projectId);
   if (ids.length === 0) return null;
@@ -97,7 +85,6 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       attempts: [],
       approvals: [],
       gates: gateViews(report.blockers, report.warnings, admins),
-      promotionSplit: promotionSplitOf(report.blockers),
       verification: null,
       commit: null,
       cuts: [],

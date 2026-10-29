@@ -7,10 +7,10 @@
  *
  * The live build is what the production probe answers (`provider-live.ts:servedProductionCommit`),
  * never a branch head. It carries the issue where the release verified at that commit holds the issue
- * on its roster, or where the issue's work commit (the release that shipped it, else its merge) is an
- * ancestor of it — asked of the source host, or of the box holding a bound checkout where no host is
- * bound (`shipped-earlier.ts:ancestrySourceFor`). Nothing is inferred: a pair nobody could read
- * falls back to the build the issue is known to be in, and `basis` says why.
+ * on its roster, or where the commit is the issue's own work commit. This is a read path, so it never
+ * asks a source host or a box (`ancestry-source.ts` is for the write paths through `ancestryOf`):
+ * what Forge's own rows cannot show falls back to the build the issue is known to be in, and `basis`
+ * says why.
  */
 
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
@@ -20,16 +20,12 @@ import { shipsWithdrawnOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index.js';
+import { type AncestrySource, ancestrySourceFor } from './ancestry-source.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { landedJudgedBuild } from './landed-build.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
 import { servedOnJudgedOn } from './serving-reading.js';
-import {
-  type AncestrySource,
-  ancestrySourceFor,
-  type ShippedReleaseRun,
-  shippedReleaseRuns,
-} from './shipped-earlier.js';
+import { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 import { deploymentConfirms } from './verify.js';
 
 const WHOLE = /^[0-9a-f]{40}$/i;
@@ -68,25 +64,6 @@ const LIVE_DEPS: JudgedBuildDeps = {
 // Ancestry between two commits never changes, so an answer is kept for the process, bounded.
 const ANSWERED = new Map<string, boolean>();
 const ANSWERED_LIMIT = 5_000;
-
-/** Whether `commit` is in `live`, or why that could not be read. */
-async function carried(
-  source: AncestrySource,
-  commit: string,
-  live: string,
-): Promise<boolean | { unread: string }> {
-  const pair = { commit, release: live };
-  const held = ANSWERED.get(pairKey(pair));
-  if (held !== undefined) return held;
-  if (source.kind === 'none') return { unread: source.why };
-  const answers = await source.reader.ask([pair]);
-  if (!(answers instanceof Map)) return { unread: answers.silent };
-  const answer = answers.get(pairKey(pair));
-  if (typeof answer !== 'boolean') return { unread: answer?.unread ?? 'the reader gave no answer' };
-  if (ANSWERED.size >= ANSWERED_LIMIT) ANSWERED.clear();
-  ANSWERED.set(pairKey(pair), answer);
-  return answer;
-}
 
 /** The commit production serves now, whole: as the probe answered it, or the release it names. */
 function liveCommitOf(served: string, releases: readonly ShippedReleaseRun[]): string | null {
@@ -137,6 +114,7 @@ function fallback(
 async function onTesting(
   issue: JudgedBuildIssue,
   work: string | null,
+  releases: readonly ShippedReleaseRun[],
   deps: JudgedBuildDeps,
 ): Promise<JudgedBuild | string | null> {
   const testing = await deps.testing?.(issue.projectId);
@@ -148,9 +126,9 @@ async function onTesting(
   const served = testing.served.value.toLowerCase();
   if (!work)
     return `${named}, which serves \`${served}\`, and nothing says where this issue's work is`;
-  const answer =
-    work === served ? true : await carried(await deps.ancestry(issue.projectId), work, served);
-  if (answer === true) {
+  const servedRelease = releases.find((r) => r.commit === liveCommitOf(served, releases));
+  const holds = work === served || (servedRelease?.issueIds.includes(issue.id) ?? false);
+  if (holds) {
     return {
       sha: served,
       source: 'judged-on',
@@ -158,9 +136,7 @@ async function onTesting(
       basis: `\`${name}\` serves \`${served}\`, which holds this issue's work \`${work}\`; ${named}, so that is the build a verdict counts on, judged there at that commit (a \`runtime\` verdict)`,
     };
   }
-  return answer === false
-    ? `${named}; \`${name}\` serves \`${served}\`, which does not hold it`
-    : `${named}; whether \`${name}\`'s \`${served}\` holds it could not be read: ${answer.unread}`;
+  return `${named}; \`${name}\` serves \`${served}\`, and no release Forge verified there holds this issue`;
 }
 
 const withWhy = (build: JudgedBuild, why: string | null): JudgedBuild =>
@@ -175,7 +151,8 @@ export async function judgedBuildOf(
   // project names the environment its releases are judged on, whose build is then the one.
   const landed = await deps.landed?.(issue);
   if (landed) {
-    const testing = await onTesting(issue, landed.sha?.toLowerCase() ?? null, deps);
+    const { releases } = await knownWorkOf(issue, deps);
+    const testing = await onTesting(issue, landed.sha?.toLowerCase() ?? null, releases, deps);
     if (testing !== null && typeof testing !== 'string') return testing;
     return withWhy(landed, testing);
   }
@@ -183,7 +160,7 @@ export async function judgedBuildOf(
   // (`judgedOnReleaseBuild`), so that build is the default wherever it holds the work, production's
   // answer only where it does not.
   const known = await knownWorkOf(issue, deps);
-  const testing = await onTesting(issue, known.work, deps);
+  const testing = await onTesting(issue, known.work, known.releases, deps);
   if (testing !== null && typeof testing !== 'string') return testing;
   return withWhy(await liveJudgedBuild(issue, known, deps), testing);
 }
@@ -239,17 +216,10 @@ async function liveJudgedBuild(
   }
   if (!work) return fallback(issue, null, `production serves \`${live}\``);
   if (work === live) return isLive('production serves the commit this issue shipped at');
-  const answer = await carried(await deps.ancestry(issue.projectId), work, live);
-  const whose = shippedIn ? `release ${shippedIn.version}'s commit` : "this issue's merge commit";
-  if (answer === true) {
-    return isLive(`production serves \`${live}\`, which holds ${whose} \`${work}\``);
-  }
   return fallback(
     issue,
     shippedIn,
-    answer === false
-      ? `production serves \`${live}\`, which does not hold it`
-      : `whether production's \`${live}\` holds it could not be read: ${answer.unread}`,
+    `production serves \`${live}\`, and no release Forge verified there holds this issue`,
   );
 }
 
@@ -286,9 +256,9 @@ export async function unobservedBuildOf(issue: {
  * at: each resolves to the commit that build served the way production's own answer does
  * (`liveCommitOf`: a whole commit as it reads, else the one release Forge verified whose commit it
  * names), or to null where neither holds, and the commits it resolves to are asked beside `commits`.
- * Per asked commit, lower case, either whether it is the commit production serves now or an ancestor
- * of it (`holds`), read by the same reader and kept in the same cache as `judgedBuildOf`'s, or why
- * nobody could answer (`unanswered`) — never neither, since coverage counts no verdict whose hold it
+ * Per asked commit, lower case, either that it is the commit production serves now or a verified
+ * release cut no later than the one serving it (`holds` true), or a verified release cut after it (`holds` false), from Forge's own rows (no host or box is asked),
+ * or why nobody could answer (`unanswered`) — never neither, since coverage counts no verdict whose hold it
  * cannot name. `sha` is null, `holds` empty and every commit unanswered where the live build itself
  * cannot be read; the whole answer is null where nothing was asked.
  */
@@ -324,19 +294,22 @@ export async function liveBuildHolds(
     for (const commit of commits) unanswered.set(commit, live.unread);
     return { sha: null, holds, runtimes, unanswered };
   }
-  const open: AncestryPair[] = [];
+  const releases = await deps.releases(projectId);
+  const liveRun = releases.find((r) => r.commit === live.sha) ?? null;
   for (const commit of commits) {
-    const same = commit.length >= 7 && live.sha.startsWith(commit);
-    const held = same ? true : ANSWERED.get(pairKey({ commit, release: live.sha }));
-    if (held !== undefined) holds.set(commit, held);
-    else open.push({ commit, release: live.sha });
-  }
-  const why = open.length > 0 ? await askAncestry(projectId, open, deps) : new Map();
-  for (const pair of open) {
-    const answer = ANSWERED.get(pairKey(pair));
-    if (answer !== undefined) holds.set(pair.commit, answer);
+    if (commit.length >= 7 && live.sha.startsWith(commit)) {
+      holds.set(commit, true);
+      continue;
+    }
+    // Releases are cut in sequence on one line, so one cut no later than the live release is in it.
+    const run = releases.find((r) => r.commit === commit);
+    // and one cut after it is not.
+    if (run && liveRun) holds.set(commit, run.cutAt.getTime() <= liveRun.cutAt.getTime());
     else
-      unanswered.set(pair.commit, why.get(pairKey(pair)) ?? 'the ancestry reader gave no answer');
+      unanswered.set(
+        commit,
+        `no release Forge verified shows whether the live build \`${live.sha}\` holds it`,
+      );
   }
   return { sha: live.sha, holds, runtimes, unanswered };
 }
@@ -414,7 +387,7 @@ async function askAncestry(
 
 /**
  * Per pair (`pairKey`), whether `commit` is `release` or an ancestor of it, or why nobody could say:
- * the same reader and cache as `liveBuildHolds`, for a reader with builds of its own to weigh
+ * the reader and cache the write paths share, for a reader with builds of its own to weigh
  * (`landed-build.ts`). Two spellings of one commit answer yes without a read.
  */
 export async function ancestryOf(

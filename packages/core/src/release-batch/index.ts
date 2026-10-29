@@ -7,10 +7,7 @@ export {
 } from './approvals.js';
 export { admitChangeRequestMerge } from './change-request-merge.js';
 export { releaseEndsRun } from './change-request-roster.js';
-export {
-  registerChangeRequestSettle,
-  settleChangeRequestRelease,
-} from './change-request-settle.js';
+export { settleChangeRequestRelease } from './change-request-settle.js';
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export {
   activeCoolifyIntegrations,
@@ -77,8 +74,8 @@ export { listReleases, readRelease } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export { registerReleaseTag } from './release-tag.js';
 export type { ViewerFacts } from './release-view.js';
-export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-earlier.js';
 export { type RangeChange, type RangeReading, readRange } from './shipped-range.js';
+export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 export { stewardReleaseFacts } from './steward-release-facts.js';
 export { releaseToolView } from './tool-view.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';

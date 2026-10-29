@@ -1197,9 +1197,8 @@ with no run, every time, on a branch that lands several commits an hour, so it n
     on the cut commit and says to cut again with `--at` it.
 
   Every one takes the same way out: a release run that aborts on it with `pushed: false`, `carried: []` and a person's blocker holds the roster, which stops an `on-land`
-  project re-cutting it every sweep tick; the first release that ships a later commit closes the held
-  rows against itself (`packages/core/src/release-batch/shipped-earlier.ts:closeShippedEarlier`), so no person has to
-  act once the fix ships.
+  project re-cutting it every sweep tick; a person then records which release shipped the held rows
+  (`packages/core/src/release-batch/shipped-in.ts:recordShippedIn`), since no sweep infers it (ISS-774).
 
 **The bisect reads, it reruns nothing.** It bisects only the jobs of the red run that failed on
 their own steps (`failure`, `timed_out`) and that the run judges: every job the `whole-suite` job

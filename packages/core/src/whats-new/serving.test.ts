@@ -20,6 +20,7 @@ const run = (version: string, commit: string): ShippedReleaseRun => ({
   version,
   commit,
   issueIds: [],
+  cutAt: new Date(0),
 });
 const shipped = [run('0.1.0', A), run('0.2.0', B), run('0.2.1', B)];
 const PROJECT = '6d1f5a52-3c0e-4a39-9b7e-0b7c2d1e9a10';

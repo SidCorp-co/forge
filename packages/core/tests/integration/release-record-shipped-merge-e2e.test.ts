@@ -53,7 +53,7 @@ const { S0, L23, L24, L25, E663, P0, PX, E2C9, ASIDE } = vi.hoisted(() => {
 });
 const PRODUCTION = 'release/production';
 
-vi.mock('../../src/release-batch/shipped-earlier.js', async (importOriginal) => {
+vi.mock('../../src/release-batch/ancestry-source.js', async (importOriginal) => {
   const holds: Record<string, string[]> = {
     [L23]: [L23, S0],
     [L24]: [L24, L23, S0],
@@ -92,7 +92,7 @@ vi.mock('../../src/release-batch/shipped-earlier.js', async (importOriginal) => 
     },
   };
   return {
-    ...(await importOriginal<typeof import('../../src/release-batch/shipped-earlier.js')>()),
+    ...(await importOriginal<typeof import('../../src/release-batch/ancestry-source.js')>()),
     ancestrySourceFor: async () => ({ kind: 'host', host, reader }),
   };
 });

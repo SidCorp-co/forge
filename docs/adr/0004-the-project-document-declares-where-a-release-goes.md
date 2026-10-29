@@ -27,12 +27,13 @@ The release path is read from the project document and nowhere else
   as `RELEASE_TARGET_UNDECLARED`, naming the gap. So is a production environment that is unbound
   or bound to an inactive binding, and an external one no promotion crosses into. An external
   production that one declared promotion reaches releases through that promotion's change request
-  (REQ-63 BC-9..12, `packages/core/src/release-batch/promotion-release.ts`): the cut pins the
-  request, approval is the go to merge it, and the operator's deploy record closes it — only when the
-  commit it names holds every roster issue's landing, else `RELEASE_PROMOTION_DROPPED`. A draft pairs
-  with the open request and cuts the roster issues its head carries (`RELEASE_PROMOTION_PARTIAL`), the
-  rest waiting for the next promotion. A promotion merged on the host with no release cut is released
-  by the record of its deploy, which cuts and closes the roster issues its merge holds. A path of more than one crossing is refused at the
+  (REQ-63 BC-9..12, `packages/core/src/release-batch/promotion-release.ts`): the agent's cut
+  names the change request (`promotion.request`) and states the roster, and Forge reads no host
+  ancestry to check it (owner ruling 2026-10-29). Approval is the go to merge an open request; one
+  already merged is cut as merged and asks no go. The operator's deploy record closes the roster. A
+  draft shows the open or merged-and-unreleased request beside the waiting issues; a cut naming no
+  request, or one the projection does not hold across the promotion, is refused by name
+  (`RELEASE_PROMOTION_REQUEST_UNNAMED`, `RELEASE_PROMOTION_REQUEST_UNKNOWN`). A path of more than one crossing is refused at the
   config write as `PROMOTION_CHAIN_UNSUPPORTED` (`packages/core/src/project-config/rules.ts`), because a release
   performs one crossing and nothing carries the middle of a longer chain.
 - **No production environment means Forge ships nothing.**

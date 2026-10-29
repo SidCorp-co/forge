@@ -61,11 +61,6 @@ export interface CollectReleaseBlockersOptions {
   /** The issues this call names. Omitted, the project's whole roster is read. */
   issueIds?: string[] | undefined;
   door?: ReleaseDoor | undefined;
-  /**
-   * The cut is the record of a promotion already merged on the host: what it carries is read against
-   * that merge (`promotion-release.ts:recordPromotionRelease`), not against a request under review.
-   */
-  promotionMerged?: true | undefined;
   /** Read by the CALLER — this enumerator reaches no network; without one the criteria check
    *  reports itself unevaluated rather than guess (ISS-1286). */
   serving?: ServingReading | undefined;
@@ -109,9 +104,9 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_THROUGH_CHANGE_REQUESTS:
     'This project releases through change requests (`release.changeRequests`): a release is its requests merged in order once the owner approves the cut, so a landing is not recorded by hand. Cut a release naming the issues (`POST /api/projects/:id/release-batches`), have it approved, then merge each request through `POST /api/issues/:id/merge-pull-request`; the last merge closes the release.',
   RELEASE_PROMOTION_MISSING:
-    'This project releases through its promotion: production is deployed outside Forge, and a release is the change request {promotion}. None is open whose head carries {named}, so nothing would ship {them}. Open it at a head judged on the branch work lands on, then cut again.',
-  RELEASE_PROMOTION_PARTIAL:
-    'This project releases through its promotion {promotion}: {request} at `{head}` carries {k} of the {n} issues waiting, and {named} {are} past its head. Cut this release with the {k} it carries, and {those} {wait} for the next promotion; or move its head to carry all {n}, then cut again.',
+    'This project releases through its promotion: production is deployed outside Forge, and a release is the change request {promotion}. None is open, or merged and not yet released, so nothing would ship {named}. Open it at a head judged on the branch work lands on, then cut again naming it as `promotion.request`.',
+  RELEASE_SHIPPED_IN_OWED:
+    '{named} {have} a merged mark written only after release {versions} was cut, which may already hold {their} landing, so a new release could find nothing of {them} new. The agent checks with git which release holds each landing and records it (`POST /api/projects/:id/shipped-in-records` with `issueId`, `version` and `evidence`, `version: null` where none does), then cut again.',
   RELEASE_CHECK_UNEVALUATED:
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
@@ -149,7 +144,7 @@ const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED: [],
   RELEASE_THROUGH_CHANGE_REQUESTS: [],
   RELEASE_PROMOTION_MISSING: [],
-  RELEASE_PROMOTION_PARTIAL: [],
+  RELEASE_SHIPPED_IN_OWED: [],
   RELEASE_CHECK_UNEVALUATED: [],
   RELEASE_RUNNER_PREFERENCE_UNMET: [],
   RELEASE_CRITERIA_HELD_BACK: [],
@@ -319,18 +314,15 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   ) {
     return carriesUnreleasedSentence(details.changeRequests);
   }
-  if (code === 'RELEASE_PROMOTION_MISSING' || code === 'RELEASE_PROMOTION_PARTIAL') {
+  if (code === 'RELEASE_PROMOTION_MISSING') {
     const across =
       typeof details?.from === 'string' && typeof details?.to === 'string'
         ? `from \`${details.from}\` into \`${details.to}\``
         : 'across its declared promotion';
-    const carried = Array.isArray(details?.carried) ? details.carried.length : 0;
-    return remedy
-      .replace('{promotion}', across)
-      .replace('{request}', String(details?.request ?? 'its open request'))
-      .replace('{head}', String(details?.head ?? '').slice(0, 12))
-      .replaceAll('{k}', String(carried))
-      .replaceAll('{n}', String(details?.roster ?? '?'));
+    return remedy.replace('{promotion}', across);
+  }
+  if (code === 'RELEASE_SHIPPED_IN_OWED' && Array.isArray(details?.versions)) {
+    return fillNamed(remedy.replace('{versions}', details.versions.join(', ')), details);
   }
   if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.reason === 'string') {
     return `Nowhere is declared for a release to land: ${details.reason}.`;

@@ -33,12 +33,14 @@ export const SAID = {
 		en: "This release waits on a promotion change request carrying it.",
 	},
 	"standing.gate.title.promotionMissing": { en: "Promotion missing" },
-	"standing.gate.promotionPartial": {
-		en: "Its open promotion carries only part of this release.",
+	"standing.gate.shippedInOwed": {
+		en: "{subject} {verb} a merge marked after a shipped release was cut; it may already be out.",
+		vars: { subject: "said", verb: "agreement" },
 	},
-	"standing.gate.title.promotionPartial": { en: "Promotion carries part" },
-	"standing.act.cutCarried": {
-		en: "cut the release with the issues its promotion carries",
+	"standing.gate.title.shippedInOwed": { en: "Shipped-in owed" },
+	"standing.act.recordShippedIn": {
+		en: "record which release shipped it{on}",
+		vars: { on: "said?" },
 	},
 	"standing.act.openPromotion": {
 		en: "open the promotion change request at a judged head",
@@ -409,6 +411,10 @@ export const SAID = {
 	},
 	"issues.rule.personPaused": { en: "a person paused it; a person resumes it" },
 	"issues.rule.queued": { en: "a job is queued; no run session holds it yet" },
+	"issues.rule.markOwed": {
+		en: "change request !{n} merged at {sha} and no merged mark records it; Forge does not write one from the host's report",
+		vars: { n: "count", sha: "code" },
+	},
 	"issues.rule.releaseHeld": {
 		en: "{code}: {reason}",
 		vars: { code: "code", reason: "text" },
@@ -430,6 +436,12 @@ export const SAID = {
 	"issues.releaseHold.cause.releaseProbesUnreadable": { en: "The live probes could not be read" },
 	"issues.releaseHold.act.releaseProbesUnreadable": { en: "fix the live probes" },
 	"issues.releaseHold.cause.releaseQueuedBehind": { en: "It is queued for a later automatic release" },
+	"issues.releaseHold.cause.releaseShippedInOwed": {
+		en: "It was marked merged after a release was cut that may already hold it",
+	},
+	"issues.releaseHold.act.releaseShippedInOwed": {
+		en: "check with git which release holds its landing, and record it",
+	},
 	"issues.releaseHold.act.releaseQueuedBehind": { en: "take it in a later release" },
 	"issues.releaseHold.cause.noReleaseGate": { en: "This project has no release gate set" },
 	"issues.releaseHold.act.noReleaseGate": { en: "record the landing" },
@@ -544,6 +556,10 @@ export const SAID = {
 	"issues.standing.who.queuedRun": { en: "Queued run" },
 	"issues.standing.who.release": { en: "Release" },
 	"issues.standing.who.run": { en: "Run" },
+	"issues.standing.act.markMerged": {
+		en: "mark merged !{n} at {sha}",
+		vars: { n: "count", sha: "code" },
+	},
 	"releases.effect.split": {
 		en: "Cuts the oldest {limit} merged issues; {left} wait for the next release.",
 		vars: { limit: "count", left: "said" },
@@ -1398,9 +1414,6 @@ export const SAID = {
 	},
 	"releases.refused.nothingRecorded": {
 		en: "Nothing in this release was recorded as shipped, so there was nothing to close.",
-	},
-	"releases.refused.allShippedEarlier": {
-		en: "Every issue in it had already shipped in an earlier release.",
 	},
 	"releases.refused.otherCommit": {
 		en: "Production serves another commit than the one this release finished on.",

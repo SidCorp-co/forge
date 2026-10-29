@@ -5,7 +5,8 @@
  * Forge read ISS-23 as "merged as e2c9c8274bc5, which Forge observed": the promotion's merge commit
  * overwrote its landing, and a mark made afterwards took the promotion again.
  *
- * @direct-test-of packages/core/src/issues/host-merge.ts
+ * ISS-774: the host's report of either merge writes nothing; the landing here is Forge's own record.
+ *
  * @direct-test-of packages/core/src/issues/merge-identity.ts
  */
 
@@ -13,6 +14,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
+import { owedMarks } from '../../src/issues/owed-merges.js';
 import { emitEvent } from '../../src/outbox/index.js';
 import { api } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
@@ -23,6 +25,7 @@ import {
   issueRow,
   mergeRequest,
   seedWorld,
+  stampObserved,
   world,
 } from '../helpers/host-merge-world.js';
 import { messages } from '../helpers/planted-gitlab-merges.js';
@@ -94,7 +97,7 @@ async function landedThroughItsOwnRequest(): Promise<string> {
   const id = await issue(23, 'awaiting_release');
   await mergeRequest(5017, 'fix/remove-dead-shipment-import-iss-23', 'a6'.repeat(20), null);
   await hostMerged(5017, 'fix/remove-dead-shipment-import-iss-23', OWN, '2026-10-27T06:45:31.222Z');
-  expect((await issueRow(id))?.merged_commit_sha).toBe(OWN);
+  await stampObserved(id, OWN, '2026-10-27T06:45:31.222Z');
   return id;
 }
 
@@ -124,7 +127,8 @@ describe('a promotion of landed work never replaces an issue’s landing (REQ-45
     expect(await issueRow(id)).toMatchObject({ merged_commit_sha: OWN, merged_target: BRANCH });
   });
 
-  it('still stamps an issue whose own request merges into the landing branch', async () => {
+  // ISS-774: the host's report of the issue's own merge writes no mark either; the issue owes it
+  it('owes, and is not given, the mark for its own request merged into the landing branch', async () => {
     await settleOutbox();
     await seedWorld({ approval: { required: true } });
     const id = await issue(25, 'awaiting_release');
@@ -132,9 +136,9 @@ describe('a promotion of landed work never replaces an issue’s landing (REQ-45
 
     await hostMerged(5019, 'fix/per-database-named-locks-iss-25', STG_HEAD);
 
-    expect(await issueRow(id)).toMatchObject({
-      merged_commit_sha: STG_HEAD,
-      merged_target: BRANCH,
-    });
+    expect(await issueRow(id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
+    expect(await owedMarks(world.projectId)).toEqual([
+      expect.objectContaining({ issueId: id, number: 5019, commit: STG_HEAD }),
+    ]);
   });
 });

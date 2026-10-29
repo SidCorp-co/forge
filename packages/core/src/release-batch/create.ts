@@ -9,7 +9,6 @@ import { type IssueStatus, issues } from '../db/schema.js';
 import {
   activeIssuePrefix,
   designOnlyMarkSql,
-  heldByEndedReleaseIds,
   recordIssueMerge,
   setWorkStep,
 } from '../issues/index.js';
@@ -29,13 +28,11 @@ import { RELEASE_GATE_STATUS } from './gate.js';
 import { landedOnTargetOf } from './landed-on-target.js';
 import { carryNaming } from './naming.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
-import { cutPromotionRelease, type MergedPromotion } from './promotion-release.js';
-import type { PromotionDeclaration } from './promotion-standing.js';
+import { cutPromotionRelease } from './promotion-release.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { askProviderLiveGate } from './provider-live.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
-import { closeShippedEarlier, type ShippedEarlierDeps } from './shipped-earlier.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { liveCarriesRoster, readLiveCommit } from './verify.js';
 import { cutReleaseVersion } from './version-store.js';
@@ -48,6 +45,8 @@ interface CreateReleaseBatchArgs {
   naming?: ReleaseNaming | null;
   /** The order a release that merges change requests merges them in, by number (REQ-63). */
   changeRequests?: number[] | undefined;
+  /** On a promotion project: the change request the agent says carries its roster. */
+  promotion?: { request: number } | undefined;
 }
 
 export interface CreateReleaseBatchResult {
@@ -193,38 +192,6 @@ function runnerPreferenceMet(
 }
 
 /**
- * The named ids less those an earlier release already shipped, which are closed against it here.
- * The project's rows a release that ended unshipped still claims are closed here too where a
- * shipped release holds their commit; they are never this cut's to carry. A call whose every
- * named id was already shipped has nothing to release: refused by name with the versions.
- */
-async function withoutShippedEarlier(
-  projectId: string,
-  named: string[],
-  userId: string,
-  deps: ShippedEarlierDeps,
-): Promise<string[]> {
-  const held = await heldByEndedReleaseIds(projectId, RELEASE_GATE_STATUS);
-  const earlier = await closeShippedEarlier(
-    { projectId, issueIds: [...named, ...held.filter((id) => !named.includes(id))], userId },
-    deps,
-  );
-  const shipped = new Set(earlier.closed.map((c) => c.issueId));
-  const ofNamed = earlier.closed.filter((c) => named.includes(c.issueId));
-  if (ofNamed.length === 0) return named;
-  const rest = named.filter((id) => !shipped.has(id));
-  if (rest.length === 0) {
-    const where = ofNamed.map((c) => `${c.issueId} in ${c.version}`).join(', ');
-    throw refuseRelease(
-      'RELEASE_ALL_SHIPPED_EARLIER',
-      `Every issue this call names was already shipped by an earlier release, so there is nothing to release: ${where}. Each is now closed against that release; no new release was cut.`,
-      '/issueIds',
-    );
-  }
-  return rest;
-}
-
-/**
  * The named ids less the design-only ones: a design ships nothing a release carries, so it rides no
  * roster and closes on its approved revisions instead (REQ-45 BC-4). A call naming only design-only
  * issues is refused by name, so a cut never opens with nothing to release (dev.210).
@@ -251,30 +218,13 @@ async function withoutDesignOnly(projectId: string, named: string[]): Promise<st
   );
 }
 
-/**
- * The cut a promotion's deploy record makes where the promotion merged on the host with no release
- * running (adminhub-fe !2055, 2026-10-29): the merge was the owner's go, so the release pins that
- * request and asks for no approval; every other reason a roster may not be cut still stands.
- */
-export async function cutMergedPromotion(
-  args: { projectId: string; issueIds: string[]; userId: string },
-  decl: PromotionDeclaration,
-  merged: MergedPromotion,
-) {
-  const code = await withoutDesignOnly(args.projectId, args.issueIds);
-  const { issueIds } = await admitRoster(args.projectId, code, 'batch', { promotionMerged: true });
-  return cutPromotionRelease({ ...args, issueIds }, decl, openClaimedRun, merged);
-}
-
 export async function createReleaseBatch(
   args: CreateReleaseBatchArgs,
-  deps: ShippedEarlierDeps = {},
 ): Promise<CreateReleaseBatchResult> {
   const { projectId, userId } = args;
 
   const code = await withoutDesignOnly(projectId, args.issueIds);
-  const named = await withoutShippedEarlier(projectId, code, userId, deps);
-  const { report, issueIds } = await admitBatch(projectId, named);
+  const { report, issueIds } = await admitBatch(projectId, code);
   if (report.declaration?.kind === 'change-requests') {
     return cutChangeRequestRelease({ ...args, issueIds }, report.declaration.defaultBranch);
   }

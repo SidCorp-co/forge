@@ -1,30 +1,24 @@
 // REQ-63 BC-9..12: a project whose production is deployed outside Forge, declaring one promotion into
-// the branch production deploys from, releases through that promotion's change request. The cut
-// pins the request and the roster issues its head carries; approval is the go to merge it, through
+// the branch production deploys from, releases through that promotion's change request. The cut pins
+// the request the agent names and the roster the agent states; approval is the go to merge it, through
 // Forge or on the host, either seen in the projection; the operator's record of the deploy closes it.
+// Nothing here asks the host which issues a request carries: the agent states it (owner ruling 2026-10-29).
 
 import type { ReleaseNaming } from '@forge/contracts/release-notes';
 import type { ReleasePromotion } from '@forge/contracts/releases';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
-import { resolveSourceHost } from '../integrations/source-host/index.js';
 import { releaseRunClaims } from '../issues/index.js';
 import { closeRunIfOneShot, stampReleaseShipped } from '../pipeline/index.js';
 import { requestApproval } from './approvals.js';
-import { label, type ReleaseMergeStep, shown } from './change-request-roster.js';
+import { label, type ReleaseMergeStep } from './change-request-roster.js';
 import { releaseProbesOf } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
-import {
-  type Across,
-  carriedBy,
-  openPromotionFor,
-  type PromotionDeclaration,
-  requestsAcross,
-} from './promotion-standing.js';
+import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
 import { admissibleIssues, closeRecorded, writeLedger } from './recorded.js';
-import { blockerRefusal, notVerifiedRefusal, refuseRelease } from './refuse.js';
+import { notVerifiedRefusal, refuseRelease } from './refuse.js';
 import { verifyServingNow } from './verify.js';
 
 /** The cut's own run opener (`create.ts:openClaimedRun`), handed in so neither module imports the other. */
@@ -39,54 +33,47 @@ type OpenRun = (args: {
 /** What a promotion release keeps on its run beside its one merge step. */
 interface PromotionMetadata extends Across {
   pullRequestId: string;
-  carries: string[];
-  notCarried: string[];
 }
 
 const WHOLE = /^[0-9a-f]{40}$/i;
 
-/** A promotion request the host merged, as the projection holds it. */
-export type MergedPromotion = typeof repoPullRequests.$inferSelect & { mergeCommitSha: string };
-
 /**
- * Cuts the release as its promotion request: the run pins it, and the owner is asked for the go.
- * Handed a request already `merged` on the host, the release is that merge, read against its merge
- * commit, and asks no go: the merge was it (`recordPromotionRelease`).
+ * Cuts the release as the promotion request the agent names (`promotion.request`) and the roster it
+ * states. The request must be one the projection holds across the declared promotion, open or merged
+ * and not yet released. Handed one already `merged`, the release is that merge and asks no go: the
+ * merge was it, and the record of the deploy closes it (ISS-762, catalog-api 0.3.0: !1023 was already on
+ * release/production). An open one asks the owner for the go to merge it.
  */
 export async function cutPromotionRelease(
-  args: { projectId: string; issueIds: string[]; userId: string; naming?: ReleaseNaming | null },
+  args: {
+    projectId: string;
+    issueIds: string[];
+    userId: string;
+    naming?: ReleaseNaming | null;
+    promotion?: { request: number } | undefined;
+  },
   decl: PromotionDeclaration,
   openClaimedRun: OpenRun,
-  merged?: MergedPromotion,
 ) {
   const { projectId, issueIds, userId } = args;
-  const [request] = merged ? [merged] : await requestsAcross(projectId, decl.promotion);
-  if (!request) {
-    throw blockerRefusal('RELEASE_PROMOTION_MISSING', {
-      issueIds,
-      displayIds: await shown(issueIds),
-      ...decl.promotion,
-    });
-  }
-  const { carries, notCarried } = await carriedBy(
-    projectId,
-    merged ? merged.mergeCommitSha : request.headSha,
-    issueIds,
-  );
-  if (merged && notCarried.length > 0) {
-    const named = (await shown(notCarried)).map((id) => `\`${id}\``).join(', ');
+  const across = `\`${decl.promotion.from}\` into \`${decl.promotion.to}\``;
+  const held = await requestsAcross(projectId, decl.promotion);
+  if (!args.promotion) {
+    const open = held.map((r) => label(r)).join(', ');
     throw refuseRelease(
-      'RELEASE_PROMOTION_MISSING',
-      `${label(merged)} merged into \`${decl.promotion.to}\` at ${merged.mergeCommitSha}, which does not hold the landing of ${named}: production does not carry ${notCarried.length === 1 ? 'it' : 'them'}, so this record cannot close ${notCarried.length === 1 ? 'it' : 'them'}. Record only the issues the merge carries; the rest wait for the next promotion.`,
-      '/issueIds',
+      'RELEASE_PROMOTION_REQUEST_UNNAMED',
+      `This project releases through its promotion ${across}: name the change request that carries the roster as \`promotion: { request: <number> }\`.${open ? ` Open or merged and unreleased now: ${open}.` : ''} You state which issues it carries; Forge does not read the host to decide.`,
+      '/promotion',
     );
   }
-  if (notCarried.length > 0) {
-    throw blockerRefusal('RELEASE_PROMOTION_MISSING', {
-      issueIds: notCarried,
-      displayIds: await shown(notCarried),
-      ...decl.promotion,
-    });
+  const request = held.find((r) => r.number === args.promotion?.request);
+  if (!request) {
+    const open = held.map((r) => label(r)).join(', ');
+    throw refuseRelease(
+      'RELEASE_PROMOTION_REQUEST_UNKNOWN',
+      `!${args.promotion.request} is not a change request this project holds across its promotion ${across}, open or merged and not yet released${open ? `; those are ${open}` : ''}. Name one of them, or wait for the host's hook to bring the request in.`,
+      '/promotion/request',
+    );
   }
   const step: ReleaseMergeStep = {
     pullRequestId: request.id,
@@ -95,12 +82,7 @@ export async function cutPromotionRelease(
     headSha: request.headSha,
     issueIds,
   };
-  const promotion: PromotionMetadata = {
-    ...decl.promotion,
-    pullRequestId: request.id,
-    carries,
-    notCarried,
-  };
+  const promotion: PromotionMetadata = { ...decl.promotion, pullRequestId: request.id };
   const probed = releaseProbesOf(decl.production).verify !== null;
   const { run, version } = await openClaimedRun({
     projectId,
@@ -119,12 +101,11 @@ export async function cutPromotionRelease(
     userId,
   });
   const me = label(request);
-  const across = `\`${decl.promotion.from}\` into \`${decl.promotion.to}\``;
   const reading =
     request.state === 'merged'
       ? `${me} (${across}) merged at ${request.mergeCommitSha ?? 'a commit the host has not reported'}; the operator deploys production and records it.`
       : `Merges ${me} (${across}) at ${request.headSha.slice(0, 12)} once approved; the operator then deploys production and records it.`;
-  if (!merged)
+  if (request.state !== 'merged')
     await requestApproval({
       projectId,
       runId: run.id,
@@ -168,12 +149,14 @@ export async function promotionViewOf(
     .where(eq(repoPullRequests.id, p.pullRequestId))
     .limit(1);
   if (!request) return null;
-  return viewOf(request, p.to, p.carries, p.notCarried, keyOf);
+  const stated = (run?.metadata as { issueIds?: string[] } | null)?.issueIds ?? [];
+  return viewOf(request, p.to, stated, keyOf);
 }
 
 /**
- * The open promotion request a draft pairs with, and which of its roster that head carries, read on
- * the host (adminhub-fe 0.54.0: !2055 carried 7 of 9). Null where the release is no promotion or none is open.
+ * The promotion request a draft pairs with, as the projection holds it (the open one, else a merged one
+ * no release has taken), shown beside the issues waiting. Null where the release is no promotion or
+ * none is held. Nothing asks the host which of the roster it carries: the agent states that at the cut.
  */
 export async function draftPromotionViewOf(
   projectId: string,
@@ -182,20 +165,16 @@ export async function draftPromotionViewOf(
 ): Promise<ReleasePromotion | null> {
   const decl = await resolveReleaseDeclaration(projectId);
   if (decl?.kind !== 'promotion') return null;
-  const open = await openPromotionFor(projectId, decl.promotion, roster);
-  return open
-    ? viewOf(open.request, decl.promotion.to, open.carries, open.notCarried, keyOf)
-    : null;
+  const [request] = await requestsAcross(projectId, decl.promotion);
+  return request ? viewOf(request, decl.promotion.to, roster, keyOf) : null;
 }
 
 function viewOf(
   request: typeof repoPullRequests.$inferSelect,
   to: string,
-  carries: string[],
-  notCarried: string[],
+  roster: readonly string[],
   keyOf: (issueId: string) => string,
 ): ReleasePromotion {
-  const keys = (ids: string[]) => ids.map(keyOf);
   return {
     label: label(request),
     number: request.number,
@@ -207,8 +186,7 @@ function viewOf(
     to,
     headSha: request.headSha,
     mergeCommitSha: request.mergeCommitSha,
-    carries: keys(carries),
-    notCarried: keys(notCarried),
+    roster: roster.map(keyOf),
   };
 }
 
@@ -232,47 +210,11 @@ async function runningPromotion(projectId: string) {
   return run ?? null;
 }
 
-/** The newest promotion request merged into `to` whose merge production serving `commit` holds. */
-async function mergedPromotionServed(
-  projectId: string,
-  across: Across,
-  commit: string,
-): Promise<MergedPromotion | null> {
-  const rows = await db
-    .select()
-    .from(repoPullRequests)
-    .where(
-      and(
-        eq(repoPullRequests.projectId, projectId),
-        eq(repoPullRequests.baseRef, across.to),
-        eq(repoPullRequests.state, 'merged'),
-      ),
-    )
-    .orderBy(desc(repoPullRequests.mergedAt))
-    .limit(5);
-  for (const r of rows) {
-    if (r.mergeCommitSha && !(await servesTheMerge(projectId, r.mergeCommitSha, commit)))
-      return { ...r, mergeCommitSha: r.mergeCommitSha };
-  }
-  return null;
-}
-
-/** Whether production serving `commit` holds the promotion's merge, read on the host; why not, else. */
-async function servesTheMerge(
-  projectId: string,
-  merge: string,
-  commit: string,
-): Promise<string | null> {
-  const where = await resolveSourceHost(projectId, 'agent').then((h) => h.compare(merge, commit));
-  return where === 'ahead' || where === 'identical'
-    ? null
-    : `${commit} does not hold the promotion's merge ${merge} (the host reads it ${where})`;
-}
-
 /**
  * The operator's record of the production deploy that closes a promotion release (REQ-63 BC-12):
- * refused before its request merged, for a roster other than the release's, for a commit that
- * does not hold the merge, and for one missing a roster issue's landing (a head rewritten after the cut); verified by production's probes where it declares them, else by this record.
+ * refused before its request merged and for a roster other than the release's; verified by
+ * production's probes where it declares them, else by the agent's statement. No host compare: which
+ * commit production serves is what the agent says, and the promotion's merge is read off the projection.
  */
 export async function recordPromotionRelease(
   sent: {
@@ -284,23 +226,14 @@ export async function recordPromotionRelease(
     providerRef?: string | undefined;
   },
   decl: PromotionDeclaration,
-  cutMerged?: (issueIds: string[], merged: MergedPromotion) => Promise<unknown>,
 ) {
   const { projectId, userId, commit, account } = sent;
-  let run = await runningPromotion(projectId);
-  if (!run && cutMerged && WHOLE.test(commit)) {
-    // merged on the host with no release cut: the record of its deploy is the release (adminhub-fe !2055)
-    const merged = await mergedPromotionServed(projectId, decl.promotion, commit);
-    if (merged) {
-      await cutMerged(sent.issueIds, merged);
-      run = await runningPromotion(projectId);
-    }
-  }
+  const run = await runningPromotion(projectId);
   const p = run ? promotionOf(run.metadata) : null;
   if (!run || !p) {
     throw refuseRelease(
       'RELEASE_PROMOTION_MISSING',
-      `No promotion release is running on this project, and no request merged into \`${decl.promotion.to}\` is held by \`${commit}\`; production is deployed outside Forge through the promotion from \`${decl.promotion.from}\` into \`${decl.promotion.to}\`. Cut the release first (\`POST /api/projects/${projectId}/release-batches\`) and record its deploy once its request merged, or record the commit production serves from a merged promotion.`,
+      `No promotion release is running on this project; production is deployed outside Forge through the promotion from \`${decl.promotion.from}\` into \`${decl.promotion.to}\`. Cut the release first (\`POST /api/projects/${projectId}/release-batches\` with the roster and \`promotion: { request: <number> }\`, a request already merged included) and record its deploy once its request merged.`,
       '/issueIds',
     );
   }
@@ -329,20 +262,6 @@ export async function recordPromotionRelease(
   }
   if (!WHOLE.test(commit))
     throw notVerifiedRefusal(`\`${commit}\` is not a whole commit sha`, null);
-  const off = await servesTheMerge(projectId, request.mergeCommitSha, commit);
-  if (off) throw notVerifiedRefusal(off, commit);
-  // the head may have been rewritten on the host after the cut, dropping an issue: close only what production holds (ISS-747)
-  const { notCarried: dropped } = await carriedBy(projectId, commit, roster);
-  if (dropped.length > 0) {
-    const named = (await shown(dropped)).map((id) => `\`${id}\``).join(', ');
-    const cutAt = (run.metadata as { changeRequests?: ReleaseMergeStep[] }).changeRequests?.[0]
-      ?.headSha;
-    throw refuseRelease(
-      'RELEASE_PROMOTION_DROPPED',
-      `Production serving ${commit} does not hold the landing of ${named}: release ${run.version} was cut with ${label(request)} at ${cutAt ?? 'its pinned head'}, and it merged at ${request.mergeCommitSha} without ${dropped.length === 1 ? 'that issue' : 'those issues'}, so recording this deploy would close ${dropped.length === 1 ? 'it' : 'them'} unshipped. Promote ${dropped.length === 1 ? 'it' : 'them'} into \`${p.to}\`, deploy, and record the commit production then serves.`,
-      '/commit',
-    );
-  }
   const { verify } = releaseProbesOf(decl.production);
   const read = verify
     ? await verifyServingNow({ cfg: verify, expected: commit })

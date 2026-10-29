@@ -2,7 +2,7 @@
  * A project of release mode `none` for the landing tests (`release-batch/landed-build.ts`): its
  * document declares `release/stg` and no production environment, and its ancestry is answered by a
  * planted reader from adminhub-api's real `release/stg` history, standing in for the box that reads
- * the bare repository. Each test file mocks `shipped-earlier.js:ancestrySourceFor` onto `reader`.
+ * the bare repository. Each test file mocks `ancestry-source.js:ancestrySourceFor` onto `reader`.
  */
 
 import { randomUUID } from 'node:crypto';

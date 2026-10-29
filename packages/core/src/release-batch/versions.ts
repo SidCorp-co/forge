@@ -36,8 +36,8 @@ const idsIn = (list: unknown): string[] =>
 
 /**
  * The issues a release carries: the roster it was cut with, then each it closed afterwards
- * (`metadata.rosterClosed`) — the row an earlier release's commit shipped, closed against it by
- * `shipped-earlier.ts`, is that release's, though it was never on its roster.
+ * (`metadata.rosterClosed`) — the row its agent recorded that release as shipping
+ * (`shipped-in.ts`) is that release's, though it was never on its roster.
  */
 export const issueIdsOf = (meta: Record<string, unknown>): string[] => [
   ...new Set([...idsIn(meta.issueIds), ...idsIn(meta.rosterClosed)]),

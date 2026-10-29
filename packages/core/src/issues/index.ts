@@ -1,5 +1,5 @@
 export { accountActor } from './account-actor.js';
-export { type Actor, resolveActor, safeRecordActivity } from './activity.js';
+export { type Actor, recordActivityTx, resolveActor, safeRecordActivity } from './activity.js';
 export { runActivityFieldChangesBackfillOnce } from './activity-backfill.js';
 export { registerActivitySubscribers } from './activity-subscribers.js';
 export {
@@ -102,7 +102,6 @@ export {
   resolveIssuesForChangeRequest,
 } from './head-ref-link.js';
 export { landedSql } from './host-landing.js';
-export { registerHostMergeStamp } from './host-merge.js';
 export {
   type IssueLeaseRelease,
   issueRunDeclaredSql,
@@ -133,7 +132,12 @@ export {
 export { landingShapeOf, landingShortfall, requireLandingShape } from './landing-evidence.js';
 export { holderFanout, readClaim } from './lease-fanout.js';
 export { listIssues } from './list-service.js';
-export { currentMarkClaims } from './mark-trail.js';
+export {
+  currentMarkClaims,
+  currentMarkTimes,
+  type MarkedCommit,
+  markedCommitsOf,
+} from './mark-trail.js';
 export {
   archivedIssueIdsSql,
   issueHead,
@@ -146,6 +150,13 @@ export { mergeMarkKindOf } from './merge-mark-kind.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';
 export { mergeNotRecorded } from './merged-at.js';
+export {
+  type OwedFiling,
+  type OwedMark,
+  type OwedMarkRow,
+  owedFilings,
+  owedMarks,
+} from './owed-merges.js';
 export { parkSinceSql } from './park-since.js';
 export {
   assertPatternReviewsSettledForIssue,
