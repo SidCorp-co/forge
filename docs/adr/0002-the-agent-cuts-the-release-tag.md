@@ -2,6 +2,10 @@
 
 **Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none · **Amended by:** [0005](0005-a-project-may-number-releases-as-prereleases.md), which answers its last consequence; [0011](0011-a-release-keeps-its-version-across-attempts.md) (which superseded [0010](0010-a-release-number-is-spent-when-it-leaves-forge.md)), which replaces the burn rule it relies on
 
+**Owner ruling, 2026-10-29:** for `dev` alone a push deploys forge-dev
+(`.github/workflows/deploy-dev.yml`), so on `dev` the deploy is no longer the dispatcher's act; `main`
+is unchanged. The tag stays the dispatcher's on both, cut once the served commit is read (step 4).
+
 ## Context
 
 This project already holds that a deploy is never a side effect of code: *"A run does not merge and

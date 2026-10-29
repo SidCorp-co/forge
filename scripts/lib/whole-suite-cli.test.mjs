@@ -73,7 +73,7 @@ if (args.includes('POST')) {
   const move = plan.moveOrigin;
   if (move && state.phase === 'dispatched') {
     const git = (...a) => spawnSync('git', a, { cwd: move.cwd, encoding: 'utf8' });
-    git('pull', '-q', 'origin', 'dev');
+    git('pull', '-q', 'origin', move.branch);
     const files = move.files ?? { [move.file]: move.content };
     for (const [rel, content] of Object.entries(files)) {
       const at = move.cwd + '/' + rel;
@@ -85,7 +85,7 @@ if (args.includes('POST')) {
     }
     git('add', '-A');
     git('commit', '-q', '-m', move.subject);
-    git('push', '-q', 'origin', 'dev');
+    git('push', '-q', 'origin', move.branch);
   }
   process.exit(0);
 }
@@ -117,35 +117,39 @@ function git(cwd, ...args) {
   return r.stdout.trim();
 }
 
-/** A clone on `dev` of a bare origin, holding the scripts as this tree has them. */
-function repository() {
+/** The two release lines: dev's snapshot and main's release candidate, each from its last number. */
+const DEV = { branch: 'dev', from: '0.4.0-dev.1', next: '0.4.0-dev.2', tag: 'dev-v0.4.0-dev.2' };
+const MAIN = { branch: 'main', from: '0.4.0-rc.1', next: '0.4.0-rc.2', tag: 'v0.4.0-rc.2' };
+
+/** A clone on the line's branch of a bare origin, holding the scripts as this tree has them. */
+function repository(line = DEV) {
   const top = mkdtempSync(join(tmpdir(), 'whole-suite-cli-'));
   made.push(top);
-  git(top, 'init', '-q', '--bare', '-b', 'dev', 'origin.git');
+  git(top, 'init', '-q', '--bare', '-b', line.branch, 'origin.git');
   git(top, 'clone', '-q', 'origin.git', 'work');
   const work = join(top, 'work');
   git(work, 'config', 'user.email', 't@example.invalid');
   git(work, 'config', 'user.name', 't');
-  git(work, 'checkout', '-q', '-b', 'dev');
+  git(work, 'checkout', '-q', '-b', line.branch);
   for (const rel of COPIED) {
     mkdirSync(dirname(join(work, rel)), { recursive: true });
     copyFileSync(join(ROOT, rel), join(work, rel));
   }
   for (const rel of VERSION_FILES) {
     mkdirSync(dirname(join(work, rel)), { recursive: true });
-    writeFileSync(join(work, rel), `${JSON.stringify({ name: rel, version: '0.4.0-dev.1' })}\n`);
+    writeFileSync(join(work, rel), `${JSON.stringify({ name: rel, version: line.from })}\n`);
   }
   writeFileSync(join(work, 'CHANGELOG.md'), '# Changelog\n');
   mkdirSync(join(work, 'changelog.d'));
   writeFileSync(join(work, 'changelog.d/a.fixed.md'), '**A thing works.** It did not.\n');
   git(work, 'add', '-A');
   git(work, 'commit', '-q', '-m', 'base');
-  git(work, 'push', '-q', 'origin', 'dev');
+  git(work, 'push', '-q', 'origin', line.branch);
   const bin = join(top, 'bin');
   mkdirSync(bin);
   writeFileSync(join(bin, 'gh'), STUB);
   chmodSync(join(bin, 'gh'), 0o755);
-  return { top, work, bin };
+  return { top, work, bin, line, branch: line.branch };
 }
 
 function withStub(repo, plan) {
@@ -183,7 +187,7 @@ function cut(repo, env, ...extra) {
   return sh(
     repo.work,
     'bash',
-    ['scripts/cut-release.sh', '0.4.0-dev.2', '--headline', 'H', ...extra],
+    ['scripts/cut-release.sh', repo.line.next, '--headline', 'H', ...extra],
     env,
   );
 }
@@ -194,7 +198,10 @@ const reruns = (calls) =>
   posts(calls).filter((a) => a.some((x) => x.endsWith('/rerun-failed-jobs')));
 const versionOf = (repo) =>
   JSON.parse(readFileSync(join(repo.work, 'package.json'), 'utf8')).version;
-const originHead = (repo) => git(repo.top, '--git-dir=origin.git', 'rev-parse', 'dev');
+const originHead = (repo) => git(repo.top, '--git-dir=origin.git', 'rev-parse', repo.branch);
+/** The commit the line's tag names on origin. */
+const tagOnOrigin = (repo) =>
+  git(repo.top, '--git-dir=origin.git', 'rev-parse', `${repo.line.tag}^{commit}`);
 const inFlight = (id) => ({
   id,
   event: 'workflow_dispatch',
@@ -234,34 +241,40 @@ function lander(repo, file = 'landed.txt') {
   const cwd = join(repo.top, 'other');
   git(cwd, 'config', 'user.email', 't@example.invalid');
   git(cwd, 'config', 'user.name', 't');
-  return { cwd, file, content: 'landed while the suite ran\n', subject: 'ISS-77: a landing' };
+  return {
+    cwd,
+    file,
+    branch: repo.branch,
+    content: 'landed while the suite ran\n',
+    subject: 'ISS-77: a landing',
+  };
 }
 
 describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEASE_SUITE_NOT_GREEN)', () => {
   it('no run on the commit: one whole-suite run is started, waited on, and the cut lands once it is green', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, { dispatched: runsThenGreen(head) });
     const r = cut(repo, env);
     expect(r.stderr).toBe('');
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain(`Started the whole suite on dev (its head is ${head.slice(0, 9)})`);
+    expect(r.stdout).toContain(`Started the whole suite on main (its head is ${head.slice(0, 9)})`);
     expect(r.stdout).toContain(`whole suite green on ${head.slice(0, 9)}`);
     const sent = dispatches(calls());
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual(
-      expect.arrayContaining(['ref=dev', 'inputs[base]=dev', 'inputs[suite]=whole']),
+      expect.arrayContaining(['ref=main', 'inputs[base]=main', 'inputs[suite]=whole']),
     );
-    expect(versionOf(repo)).toBe('0.4.0-dev.2');
+    expect(versionOf(repo)).toBe('0.4.0-rc.2');
     const release = git(repo.work, 'rev-parse', 'HEAD');
     expect(originHead(repo)).toBe(release);
     expect(git(repo.work, 'rev-parse', 'HEAD^')).toBe(head);
-    // Nothing landed during the wait, so the release commit is itself what was pushed and served.
-    expect(r.stdout).toContain(`git tag dev-v0.4.0-dev.2 ${release} && git push`);
+    // main tags the release commit and pushes the tag with it.
+    expect(tagOnOrigin(repo)).toBe(release);
   });
 
   it('only a skipped whole-suite check on the commit (a run that was not a whole-suite run): read as none, so one is started', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, {
       checkRuns: { [head]: [check('whole-suite', 'completed', 'skipped', 3, 870)] },
@@ -273,16 +286,16 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
     expect(r.status).toBe(0);
     expect(posts(calls())).toHaveLength(1);
     expect(dispatches(calls())).toHaveLength(1);
-    expect(versionOf(repo)).toBe('0.4.0-dev.2');
+    expect(versionOf(repo)).toBe('0.4.0-rc.2');
   });
 
   it('a green whole-suite run on the parent does not count for the commit: one is started on the commit', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const parent = git(repo.work, 'rev-parse', 'HEAD');
     writeFileSync(join(repo.work, 'f.txt'), 'x\n');
     git(repo.work, 'add', '-A');
     git(repo.work, 'commit', '-q', '-m', 'ISS-5: after the green run');
-    git(repo.work, 'push', '-q', 'origin', 'dev');
+    git(repo.work, 'push', '-q', 'origin', 'main');
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const green = { [parent]: [check('whole-suite', 'completed', 'success', 4, 880)] };
     const { env, calls } = withStub(repo, { checkRuns: green, dispatched: runsThenGreen(head) });
@@ -293,18 +306,18 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
   });
 
   it('a run already in flight on the commit: waited on until green, and no second run is started', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, { before: runsThenGreen(head, 5) });
     const r = cut(repo, env);
     expect(r.stderr).toBe('');
     expect(r.status).toBe(0);
     expect(posts(calls())).toHaveLength(0);
-    expect(versionOf(repo)).toBe('0.4.0-dev.2');
+    expect(versionOf(repo)).toBe('0.4.0-rc.2');
   });
 
   it('a run that does not finish within the wait: refused, naming --at so a later cut goes on waiting on it', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, runsThenGreen(head, 5)[0]);
     const r = cut(repo, { ...env, CUT_SUITE_WAIT_MINUTES: '0.002' });
@@ -313,11 +326,11 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
     expect(r.stderr).toContain('actions/runs/5');
     expect(r.stderr).toContain(`Cut again with --at ${head}`);
     expect(posts(calls())).toHaveLength(0);
-    expect(versionOf(repo)).toBe('0.4.0-dev.1');
+    expect(versionOf(repo)).toBe('0.4.0-rc.1');
   });
 
   it('the run it started comes back red on a test: refused naming the failing jobs, nothing cut', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, {
       dispatched: [{ runs: { [head]: [inFlight(901)] } }, redOnCore(head)],
@@ -331,12 +344,12 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
     expect(r.stderr).not.toContain('merge-check');
     expect(dispatches(calls())).toHaveLength(1);
     expect(reruns(calls())).toHaveLength(0);
-    expect(versionOf(repo)).toBe('0.4.0-dev.1');
+    expect(versionOf(repo)).toBe('0.4.0-rc.1');
     expect(originHead(repo)).toBe(head);
   });
 
   it('a red run on the commit where a test failed: refused at once, nothing started or rerun', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, redOnCore(head));
     const r = cut(repo, env);
@@ -346,7 +359,7 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
   });
 
   it('a red run where no job failed on its own steps (a cancelled leg): rerun once, not "land the fix", and the cut lands once green', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, {
       ...redCancelled(head),
@@ -358,11 +371,11 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
     expect(reruns(calls())).toHaveLength(1);
     expect(reruns(calls())[0]).toContain('repos/acme/forge/actions/runs/903/rerun-failed-jobs');
     expect(dispatches(calls())).toHaveLength(0);
-    expect(versionOf(repo)).toBe('0.4.0-dev.2');
+    expect(versionOf(repo)).toBe('0.4.0-rc.2');
   });
 
   it('a rerun that is red the same way again: refused, saying a rerun settles it, and not rerun twice', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const again = redCancelled(head);
     again.checkRuns[head][0].id = 70;
@@ -379,17 +392,17 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
   });
 
   it('GitHub cannot be read: refused, never read as no run and never as green', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const { env, calls } = withStub(repo, { unreadable: true });
     const r = cut(repo, env);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('Bad credentials');
     expect(posts(calls())).toHaveLength(0);
-    expect(versionOf(repo)).toBe('0.4.0-dev.1');
+    expect(versionOf(repo)).toBe('0.4.0-rc.1');
   });
 
   it('a green whole-suite run on the commit: the cut proceeds at once', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, {
       checkRuns: { [head]: [check('whole-suite', 'completed', 'success', 8, 902)] },
@@ -398,14 +411,14 @@ describe('cut-release.sh cuts only on a commit whose whole suite is green (RELEA
     expect(r.stderr).toBe('');
     expect(r.status).toBe(0);
     expect(r.stdout).toContain(`whole suite green on ${head.slice(0, 9)}`);
-    expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Release dev-v0.4.0-dev.2');
+    expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Release v0.4.0-rc.2');
     expect(posts(calls())).toHaveLength(0);
   });
 });
 
 describe('a rehearsal (--no-push) starts nothing', () => {
   it('no run on the commit: refused, naming what a cut would start, and no run is started', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, { dispatched: runsThenGreen(head) });
     const r = cut(repo, env, '--no-push');
@@ -414,14 +427,14 @@ describe('a rehearsal (--no-push) starts nothing', () => {
       `RELEASE_SUITE_NOT_GREEN: ${head.slice(0, 9)} has no whole-suite run`,
     );
     expect(r.stderr).toContain(
-      'A rehearsal starts nothing. Start it with: gh workflow run ci.yml --ref dev',
+      'A rehearsal starts nothing. Start it with: gh workflow run ci.yml --ref main',
     );
     expect(posts(calls())).toHaveLength(0);
-    expect(versionOf(repo)).toBe('0.4.0-dev.1');
+    expect(versionOf(repo)).toBe('0.4.0-rc.1');
   });
 
   it('a red run no job of which failed on its own steps: says rerun, and reruns nothing', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env, calls } = withStub(repo, redCancelled(head));
     const r = cut(repo, env, '--no-push');
@@ -431,21 +444,21 @@ describe('a rehearsal (--no-push) starts nothing', () => {
   });
 
   it('a green commit: the rehearsal cuts locally and pushes nothing', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env } = withStub(repo, {
       checkRuns: { [head]: [check('whole-suite', 'completed', 'success', 8, 902)] },
     });
     const r = cut(repo, env, '--no-push');
     expect(r.status).toBe(0);
-    expect(versionOf(repo)).toBe('0.4.0-dev.2');
+    expect(versionOf(repo)).toBe('0.4.0-rc.2');
     expect(originHead(repo)).toBe(head);
   });
 });
 
 describe('a cut finishes on a branch that moves while its whole suite runs', () => {
   it('the release commit stays on the commit the suite passed and is merged onto the moved head, head first', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env } = withStub(repo, { dispatched: runsThenGreen(head), moveOrigin: lander(repo) });
     const r = cut(repo, env);
@@ -456,28 +469,26 @@ describe('a cut finishes on a branch that moves while its whole suite runs', () 
       .split(' ')
       .slice(1);
     expect(git(repo.work, 'log', '-1', '--format=%s', first)).toBe('ISS-77: a landing');
-    expect(git(repo.work, 'log', '-1', '--format=%s', second)).toBe('Release dev-v0.4.0-dev.2');
+    expect(git(repo.work, 'log', '-1', '--format=%s', second)).toBe('Release v0.4.0-rc.2');
     expect(git(repo.work, 'rev-parse', `${second}^`)).toBe(head);
     expect(git(repo.work, 'log', '-1', '--format=%s', tip)).toBe(
-      'Merge release dev-v0.4.0-dev.2 into dev',
+      'Merge release v0.4.0-rc.2 into main',
     );
-    expect(r.stdout).toContain('dev landed 1 commit(s) past');
-    expect(r.stdout).toContain(`serves ${tip}`);
-    // The tag names the merge forge-dev serves, never the release commit under it (docs/adr/0002).
-    expect(r.stdout).toContain(`git tag dev-v0.4.0-dev.2 ${tip} && git push`);
-    expect(r.stdout).not.toContain(`git tag dev-v0.4.0-dev.2 ${second}`);
+    expect(r.stdout).toContain('main landed 1 commit(s) past');
+    // main's tag names the release commit, the one the suite passed, under the merge that ships.
+    expect(tagOnOrigin(repo)).toBe(second);
   });
 
   it('--at goes on waiting on the run an earlier attempt started, after the head moved, and starts none', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const first = git(repo.work, 'rev-parse', 'HEAD');
     const other = lander(repo);
-    git(other.cwd, 'pull', '-q', 'origin', 'dev');
+    git(other.cwd, 'pull', '-q', 'origin', 'main');
     writeFileSync(join(other.cwd, other.file), other.content);
     git(other.cwd, 'add', '-A');
     git(other.cwd, 'commit', '-q', '-m', other.subject);
-    git(other.cwd, 'push', '-q', 'origin', 'dev');
-    git(repo.work, 'pull', '-q', 'origin', 'dev');
+    git(other.cwd, 'push', '-q', 'origin', 'main');
+    git(repo.work, 'pull', '-q', 'origin', 'main');
     const { env, calls } = withStub(repo, { before: runsThenGreen(first, 6) });
     const r = cut(repo, env, '--at', first);
     expect(r.stderr).toBe('');
@@ -489,21 +500,21 @@ describe('a cut finishes on a branch that moves while its whole suite runs', () 
   });
 
   it('--at on a commit with no run that is no longer the head: refused, since a dispatch would test the head', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const first = git(repo.work, 'rev-parse', 'HEAD');
     writeFileSync(join(repo.work, 'g.txt'), 'g\n');
     git(repo.work, 'add', '-A');
     git(repo.work, 'commit', '-q', '-m', 'ISS-6: later');
-    git(repo.work, 'push', '-q', 'origin', 'dev');
+    git(repo.work, 'push', '-q', 'origin', 'main');
     const { env, calls } = withStub(repo, {});
     const r = cut(repo, env, '--at', first);
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain(`${first.slice(0, 9)} is no longer the head of dev`);
+    expect(r.stderr).toContain(`${first.slice(0, 9)} is no longer the head of main`);
     expect(posts(calls())).toHaveLength(0);
   });
 
   it('a landing between the merge and the push: refused by name, nothing pushed, and --at the cut commit then lands', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const other = lander(repo, 'late.txt');
     // The pre-push hook lands a commit on origin from another clone, as dev does at any moment, so
@@ -515,9 +526,9 @@ describe('a cut finishes on a branch that moves while its whole suite runs', () 
         '#!/usr/bin/env bash',
         'unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE',
         `cd '${other.cwd}'`,
-        'git pull -q origin dev',
+        'git pull -q origin main',
         "echo late > late.txt && git add -A && git commit -q -m 'ISS-78: a late landing'",
-        'git push -q origin dev',
+        'git push -q origin main',
         '',
       ].join('\n'),
     );
@@ -526,13 +537,13 @@ describe('a cut finishes on a branch that moves while its whole suite runs', () 
     const { env } = withStub(repo, green);
     const r = cut(repo, env);
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain('origin/dev did not take the release');
+    expect(r.stderr).toContain('origin/main did not take the release');
     expect(r.stderr).toContain('Nothing was pushed');
     expect(r.stderr).toContain(`Cut again with --at ${head}`);
-    expect(git(repo.top, '--git-dir=origin.git', 'log', '-1', '--format=%s', 'dev')).toBe(
+    expect(git(repo.top, '--git-dir=origin.git', 'log', '-1', '--format=%s', 'main')).toBe(
       'ISS-78: a late landing',
     );
-    expect(git(repo.work, 'rev-parse', 'dev')).toBe(head);
+    expect(git(repo.work, 'rev-parse', 'main')).toBe(head);
 
     rmSync(hook);
     const again = cut(repo, env, '--at', head);
@@ -541,12 +552,12 @@ describe('a cut finishes on a branch that moves while its whole suite runs', () 
     const tip = originHead(repo);
     expect(git(repo.work, 'log', '-1', '--format=%s', `${tip}^1`)).toBe('ISS-78: a late landing');
     expect(git(repo.work, 'rev-parse', `${tip}^2^`)).toBe(head);
-    expect(again.stdout).toContain(`git tag dev-v0.4.0-dev.2 ${tip} && git push`);
+    expect(tagOnOrigin(repo)).toBe(git(repo.work, 'rev-parse', `${tip}^2`));
   });
 });
 
 /** The `## [version]` section of the record at `rev` on origin, up to the next released one. */
-function sectionAt(repo, rev, version = '0.4.0-dev.2') {
+function sectionAt(repo, rev, version = repo.line.next) {
   const record = git(repo.top, '--git-dir=origin.git', 'show', `${rev}:CHANGELOG.md`);
   const at = record.indexOf(`## [${version}]`);
   if (at === -1) return null;
@@ -561,7 +572,7 @@ const fragmentsAt = (repo, rev) =>
 
 /** A cut whose suite runs while `files` land on dev from another clone (ISS-578). */
 function cutWhileLanding(files) {
-  const repo = repository();
+  const repo = repository(MAIN);
   const head = git(repo.work, 'rev-parse', 'HEAD');
   const move = { ...lander(repo), files };
   const { env } = withStub(repo, { dispatched: runsThenGreen(head), moveOrigin: move });
@@ -570,7 +581,7 @@ function cutWhileLanding(files) {
 
 describe('the commit a cut ships has every fragment it carries folded into its version (ISS-578, REQ-71 BC-5)', () => {
   it('no move: the release commit folds the fragments it carries and is what ships', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env } = withStub(repo, { dispatched: runsThenGreen(head) });
     const r = cut(repo, env);
@@ -580,7 +591,7 @@ describe('the commit a cut ships has every fragment it carries folded into its v
     expect(git(repo.work, 'rev-parse', `${tip}^`)).toBe(head);
     expect(sectionAt(repo, tip)).toContain('### Fixed\n\n- **A thing works.** It did not.');
     expect(fragmentsAt(repo, tip)).toEqual([]);
-    expect(r.stdout).toContain('1 fragment(s) written into [0.4.0-dev.2]');
+    expect(r.stdout).toContain('1 fragment(s) written into [0.4.0-rc.2]');
   });
 
   it('c1: a fragment landed while the suite ran is folded into this version by the merge that ships, not left for the next', () => {
@@ -591,13 +602,13 @@ describe('the commit a cut ships has every fragment it carries folded into its v
     expect(r.status).toBe(0);
     const tip = originHead(repo);
     expect(git(repo.work, 'log', '-1', '--format=%s', tip)).toBe(
-      'Merge release dev-v0.4.0-dev.2 into dev',
+      'Merge release v0.4.0-rc.2 into main',
     );
     const section = sectionAt(repo, tip);
     expect(section).toContain('### Added\n\n- **B is new.** Landed late.');
     expect(section).toContain('### Fixed\n\n- **A thing works.** It did not.');
     expect(fragmentsAt(repo, tip)).toEqual([]);
-    expect(r.stdout).toContain('2 fragment(s) written into [0.4.0-dev.2]');
+    expect(r.stdout).toContain('2 fragment(s) written into [0.4.0-rc.2]');
   });
 
   it('c1 boundary: two fragments landed in two sections are both folded under their own headings', () => {
@@ -665,7 +676,7 @@ describe('the commit a cut ships has every fragment it carries folded into its v
   });
 
   it('c2 with no move: a fragment the release commit did not fold refuses the cut by name, nothing pushed', () => {
-    const repo = repository();
+    const repo = repository(MAIN);
     mkdirSync(join(repo.work, 'changelog.d/iss-9'));
     writeFileSync(
       join(repo.work, 'changelog.d/iss-9/b.fixed.md'),
@@ -673,7 +684,7 @@ describe('the commit a cut ships has every fragment it carries folded into its v
     );
     git(repo.work, 'add', '-A');
     git(repo.work, 'commit', '-q', '-m', 'ISS-9: a fragment in a folder');
-    git(repo.work, 'push', '-q', 'origin', 'dev');
+    git(repo.work, 'push', '-q', 'origin', 'main');
     const head = git(repo.work, 'rev-parse', 'HEAD');
     const { env } = withStub(repo, { dispatched: runsThenGreen(head) });
     const r = cut(repo, env);
@@ -681,6 +692,59 @@ describe('the commit a cut ships has every fragment it carries folded into its v
     expect(r.stderr).toContain('RELEASE_FRAGMENT_UNFOLDED');
     expect(r.stderr).toContain('changelog.d/iss-9/b.fixed.md');
     expect(originHead(repo)).toBe(head);
+  });
+});
+
+describe('a dev cut is a snapshot of what was served, not a gate (owner, 2026-10-29)', () => {
+  it('no whole-suite run on the commit: the cut reads and starts none, folds, and lands at once', () => {
+    const repo = repository(DEV);
+    const head = git(repo.work, 'rev-parse', 'HEAD');
+    const { env, calls } = withStub(repo, { dispatched: runsThenGreen(head) });
+    const r = cut(repo, env);
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('dev snapshot: no whole-suite run is read or started');
+    expect(calls()).toEqual([]);
+    expect(versionOf(repo)).toBe('0.4.0-dev.2');
+    const release = originHead(repo);
+    expect(git(repo.work, 'log', '-1', '--format=%s', release)).toBe('Release dev-v0.4.0-dev.2');
+    expect(git(repo.work, 'rev-parse', `${release}^`)).toBe(head);
+    expect(sectionAt(repo, release)).toContain('### Fixed\n\n- **A thing works.** It did not.');
+    expect(fragmentsAt(repo, release)).toEqual([]);
+    // the tag stays the dispatcher's, cut once forge-dev serves the commit (docs/adr/0002)
+    expect(r.stdout).toContain('The push deploys forge-dev (.github/workflows/deploy-dev.yml)');
+    expect(r.stdout).toContain(`git tag dev-v0.4.0-dev.2 ${release} && git push`);
+    expect(git(repo.top, '--git-dir=origin.git', 'tag', '--list')).toBe('');
+  });
+
+  it('a red whole-suite run on the commit does not stop it: the nightly suite and its bisect own that red', () => {
+    const repo = repository(DEV);
+    const head = git(repo.work, 'rev-parse', 'HEAD');
+    const { env, calls } = withStub(repo, redOnCore(head));
+    const r = cut(repo, env);
+    expect(r.status).toBe(0);
+    expect(r.stderr).not.toContain('RELEASE_SUITE_NOT_GREEN');
+    expect(calls()).toEqual([]);
+    expect(versionOf(repo)).toBe('0.4.0-dev.2');
+  });
+
+  it('GitHub unreadable does not stop it either, since it reads nothing there', () => {
+    const repo = repository(DEV);
+    const { env } = withStub(repo, { unreadable: true });
+    const r = cut(repo, env, '--no-push');
+    expect(r.status).toBe(0);
+    expect(versionOf(repo)).toBe('0.4.0-dev.2');
+    expect(r.stdout).toContain('NOT pushed');
+  });
+
+  it('a main cut on the same red commit is still refused RELEASE_SUITE_NOT_GREEN', () => {
+    const repo = repository(MAIN);
+    const head = git(repo.work, 'rev-parse', 'HEAD');
+    const { env } = withStub(repo, redOnCore(head));
+    const r = cut(repo, env);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('RELEASE_SUITE_NOT_GREEN: the whole suite is red');
+    expect(versionOf(repo)).toBe('0.4.0-rc.1');
   });
 });
 
