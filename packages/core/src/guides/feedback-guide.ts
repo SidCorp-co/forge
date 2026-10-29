@@ -182,8 +182,8 @@ route, declining included, closes the open question.
   the running build and its clip, and stands on their bell until they verify or reopen. The item's
   \`shipEvidence\` is that verdict and clip. A reporter that is an agent has no bell: its own read of the
   item asks it (\`shipNotice.how\` \`asked\`, the item waiting on that agent), it owes nobody a relay, and it
-  answers through \`POST /api/forge/feedback/:key/verify|reopen\` \`{ evidence }\` or \`forge_feedback\`
-  \`verify\`/\`reopen\`, with what it ran and saw (\`FEEDBACK_EVIDENCE_REQUIRED\` without it on any door,
+  answers through \`POST /api/forge/feedback/:key/verify|reopen\` \`{ evidence }\` or the MCP actions
+  \`feedback.verify\`/\`feedback.reopen\`, with what it ran and saw (\`FEEDBACK_EVIDENCE_REQUIRED\` without it on any door,
   \`FORGE_FEEDBACK_NOT_YOURS\` on an item another account filed). The master of the project the agent
   reported from is owed that confirm: its pass names each such item with the door to settle it through,
   and the release that ships one wakes it.
@@ -193,7 +193,7 @@ route, declining included, closes the open question.
 - \`reopen\` \`{ reason }\` also follows \`resolved\`, says what the fix does not answer
   (\`FEEDBACK_REOPEN_REASON_REQUIRED\`), and sends the item back to triage.
 - The reporter of an item about Forge replies to its answer through \`POST /api/forge/feedback/:key/reply\`
-  \`{ evidence }\` or \`forge_feedback\` \`reply\`: once per answer, with what the answer leaves open
+  \`{ evidence }\` or the MCP action \`feedback.reply\`: once per answer, with what the answer leaves open
   (\`FEEDBACK_EVIDENCE_REQUIRED\` without it). It sends the item back to triage as a reopen does, kept as a
   \`replied\` decision. Replying again before the next answer is \`FEEDBACK_REPLY_SPENT\`; an item that
   stands on no answer is \`FEEDBACK_REPLY_NO_ANSWER\`.

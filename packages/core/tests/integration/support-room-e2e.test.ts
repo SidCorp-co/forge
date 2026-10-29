@@ -54,7 +54,7 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
     await w.untilWarm();
     const warm = w.box.turns[0] as Turn;
     expect(warm).toMatchObject({ event: 'agent:start', warmUp: true, keepResident: true });
-    expect(warm.text).toContain('You act ONLY through the forge_support tool');
+    expect(warm.text).toContain('You act ONLY through the support actions');
 
     const two = await api(w.owner, 'POST', '/api/integration-connections', {
       provider: 'rocketchat',
@@ -106,7 +106,7 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
     const first = w.box.asked()[0] as Turn;
     expect(first).toMatchObject({ event: 'agent:send', keepResident: true });
     expect(first.claudeSessionId).toBeTruthy();
-    expect(first.text).not.toContain('You act ONLY through the forge_support tool');
+    expect(first.text).not.toContain('You act ONLY through the support actions');
     expect(first.messages[0]).toMatchObject({
       thread: id,
       from: { id: w.chat.alice.userId, name: w.chat.alice.username },

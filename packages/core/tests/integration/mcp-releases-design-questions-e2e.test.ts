@@ -88,22 +88,28 @@ const codeOf = (a: Answer) => {
   return (a.json.error as { code?: string } | undefined)?.code ?? a.text;
 };
 
-describe('the product tools are listed for an MCP client', () => {
-  it('lists releases, design, questions and issues beside the uploads, and no delivery tool', async () => {
+describe('the product actions are found by an MCP client', () => {
+  const surface = async (name: string, args: Record<string, unknown>) => {
     const res = await api(
       tokens.owner,
       'POST',
       '/mcp',
-      { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
       { accept: 'application/json, text/event-stream' },
     );
-    const listed = (res.body.result as { tools: { name: string; description: string }[] }).tools;
-    expect(listed.map((t) => t.name).sort()).toEqual(
-      expect.arrayContaining(['forge_design', 'forge_issues', 'forge_questions', 'forge_releases']),
+    const text = (res.body.result as { content: { text: string }[] }).content[0]?.text ?? '{}';
+    return JSON.parse(text) as Record<string, unknown>;
+  };
+
+  it('finds releases, design, questions and issues beside the uploads, and no delivery action', async () => {
+    const doors = new Set(
+      ((await surface('forge_find', {})).actions as string[]).map((a) => a.split('.')[0]),
     );
-    expect(listed.map((t) => t.name)).not.toContain('forge_coolify_deploy');
-    const issues = listed.find((t) => t.name === 'forge_issues');
-    expect(issues?.description).toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
+    for (const door of ['design', 'issues', 'questions', 'releases', 'uploads'])
+      expect(doors.has(door), door).toBe(true);
+    expect(doors.has('coolify_deploy')).toBe(false);
+    const create = await surface('forge_describe', { action: 'issues.create' });
+    expect(create.guide).toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
   });
 });
 

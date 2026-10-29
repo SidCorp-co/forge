@@ -45,6 +45,13 @@ export interface McpTool {
   grant: ToolGrant;
   reach: ToolReach;
   route?: ToolRoute;
+  /**
+   * The input each action takes, as a JSON Schema object without `action`, for a tool that judges
+   * each action's arguments under its own strict input (`mcp/input-gate.ts:JUDGES_OWN_ARGUMENTS`).
+   * `forge_describe` answers it for one action; a tool without it has each action's arguments named
+   * in its description's `action { args }:` entry (`mcp/action-catalog.ts`).
+   */
+  actionInputs?: Readonly<Record<string, Record<string, unknown>>>;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -102,11 +109,6 @@ export type McpContext = {
   requestId?: string;
   ip?: string | null;
   userAgent?: string | null;
-  /**
-   * `compact` where the client is ChatGPT, whose connector fails discovery on the full catalog:
-   * `tools/list` answers the compact listing (`mcp/compact-listing.ts`). Absent, it lists in full.
-   */
-  listing?: 'compact';
 };
 
 export type ContextScopedMcpToolFactory = (ctx: McpContext) => McpTool;

@@ -126,7 +126,10 @@ describe('every /mcp tool names what is wrong with a call it refuses (c2)', () =
         rateLimitMax: 10_000,
       })
     ).plaintext;
-    tools = ((await rpc(token, 'tools/list', {})) as { tools: Listed[] }).tools;
+    // every door's tool and whole input, as the published contract names them: tools/list now
+    // lists the five tools that find, describe and run an action (ISS-773), and each door is still
+    // called by its own name on the same path forge_call runs it on
+    tools = ((await api(null, 'GET', '/api/mcp-tools.json')).body as { tools: Listed[] }).tools;
   }, 120_000);
 
   const scoped = (t: Listed, args: Body): Body =>

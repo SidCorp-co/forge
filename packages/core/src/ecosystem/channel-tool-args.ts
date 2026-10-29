@@ -57,6 +57,15 @@ const BY_ACTION = {
 
 export type ChannelArgs<A extends ChannelAction> = z.infer<(typeof BY_ACTION)[A]>;
 
+/** Each action's own input as a JSON Schema object, for `forge_describe` (`McpTool.actionInputs`). */
+export const CHANNEL_ACTION_INPUTS: Readonly<Record<string, Record<string, unknown>>> =
+  Object.fromEntries(
+    Object.entries(BY_ACTION).map(([action, schema]) => [
+      action,
+      z.toJSONSchema(schema, { io: 'input' }) as Record<string, unknown>,
+    ]),
+  );
+
 type ParsedCall =
   | { ok: true; action: ChannelAction; args: Record<string, unknown> }
   | { ok: false; refusals: EcosystemRefusal[] };

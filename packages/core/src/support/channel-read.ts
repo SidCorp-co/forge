@@ -132,7 +132,7 @@ async function recordOf(projectId: string, channel: ChannelRow): Promise<Record_
   return { memberRows, ruleRows, commonIssueRows, routes: routesOf(members) };
 }
 
-/** The record as the session reads it with `forge_support channel`. */
+/** The record as the session reads it with `support.channel`. */
 export async function sessionChannelView(projectId: string, rid: string): Promise<Record_> {
   const channel = await channelOf(projectId, rid);
   return channel ? recordOf(projectId, channel) : EMPTY;
@@ -154,7 +154,7 @@ export function channelBlock(record: Record_, group?: string): string {
             `- @${m.username}: ${roleWords(m.roles)} (${m.state})${m.askFor ? ` — ask for: ${m.askFor}` : ''}`,
         )
         .join('\n')
-    : '- none recorded yet: infer each writer with forge_support member';
+    : '- none recorded yet: infer each writer with support.member';
   const rules = record.ruleRows.length
     ? record.ruleRows
         .map((r) =>
@@ -174,8 +174,8 @@ export function channelBlock(record: Record_, group?: string): string {
     : '- none';
   const route = (r: ChannelRouteView) =>
     r.route === 'forge'
-      ? '- Forge: a problem with Forge itself (a door, tool, record or release refusing or misbehaving) — forge_support route to forge; never posted in the channel.'
-      : `- ${CHANNEL_ROLE_LABEL[r.route as ChannelRole]}: ${r.route === 'technical' ? 'what only a technical person can do or decide (a credential, a host change, access)' : 'business rules, what a user needs, what a request means'} — forge_support route to ${r.route}, member ${r.members.length ? r.members.map((u) => `@${u}`).join(' or ') : '(none recorded yet)'}, in the asker's thread.`;
+      ? '- Forge: a problem with Forge itself (a door, tool, record or release refusing or misbehaving) — support.route to forge; never posted in the channel.'
+      : `- ${CHANNEL_ROLE_LABEL[r.route as ChannelRole]}: ${r.route === 'technical' ? 'what only a technical person can do or decide (a credential, a host change, access)' : 'business rules, what a user needs, what a request means'} — support.route to ${r.route}, member ${r.members.length ? r.members.map((u) => `@${u}`).join(' or ') : '(none recorded yet)'}, in the asker's thread.`;
   return [
     group
       ? `The channel record of group ${group}, as Forge holds it (every bot of this group reads the same record; it is this group's alone, and the other groups you answer have theirs):`

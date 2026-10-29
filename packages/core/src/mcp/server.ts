@@ -19,10 +19,11 @@ import { toToolCallContent } from '../lib/tool-result.js';
 import { chatToolWriteRefusal } from '../middleware/chat-write-hold.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
 import { resolveManagedMetaPrompts } from '../skills/index.js';
-import { compactListing } from './compact-listing.js';
+import { actionCatalog } from './action-catalog.js';
 import { actionRefusal, gatedTool } from './input-gate.js';
 import { listedSchema } from './listed-schema.js';
 import { MCP_TOOLS } from './registry.js';
+import { callSurface, isSurfaceTool, type SurfaceDeps, surfaceListing } from './surface.js';
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
   const message = redactQueryParams(err instanceof Error ? err.message : String(err), err);
@@ -148,13 +149,11 @@ export function createMcpServer(ctx: McpContext): Server {
     };
   });
 
-  server.setRequestHandler('tools/list', async () => ({
-    tools: ctx.listing === 'compact' ? compactListing(toolListing(tools)) : toolListing(tools),
-  }));
+  // every client is listed the five tools that find, describe and run an action (ISS-773)
+  server.setRequestHandler('tools/list', async () => ({ tools: surfaceListing() }));
 
-  server.setRequestHandler('tools/call', async (request) => {
-    const { name, arguments: rawArgs } = request.params;
-    const args = (rawArgs ?? {}) as Record<string, unknown>;
+  /** A call to a door's tool: the path every tool call takes, judged against the door's full input. */
+  const callDoor = async (name: string, args: Record<string, unknown>): Promise<CallToolResult> => {
     const tool = toolMap.get(name);
     // a projectId sent to a tool that takes none names no project the call works in
     const target = tool && !projectTaking.has(name) ? null : projectIdFromArgs(args);
@@ -236,6 +235,21 @@ export function createMcpServer(ctx: McpContext): Server {
         );
       }
     });
+  };
+
+  const surface: SurfaceDeps = {
+    ctx,
+    catalog: actionCatalog(tools),
+    callDoor,
+    refusal: refusalAnswer,
+    answer: toToolCallContent,
+  };
+
+  server.setRequestHandler('tools/call', async (request) => {
+    const { name, arguments: rawArgs } = request.params;
+    const args = (rawArgs ?? {}) as Record<string, unknown>;
+    if (isSurfaceTool(name)) return callSurface(name, args, surface);
+    return callDoor(name, args);
   });
 
   return server;
@@ -248,28 +262,30 @@ function publicGuidesUrl(): string {
 
 /** Built per call so `env` is read lazily and this module stays side-effect free. */
 function forgeMcpInstructions(): string {
-  return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries the product layer a BA works in, so a person can work from an MCP client, and what neither covers:
+  return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries the product layer a BA works in, so a person can work from an MCP client, and what neither covers.
 
-- \`forge_requirements\` — list, read, draft and revise requirements (REQ-n), propose a draft revision, and answer a question standing on one with what the person said; agreeing and accepting stay a person's act on the requirement page.
+It lists five tools, so you load only what you use: \`forge_find { query }\` finds the actions that do what you want, \`forge_describe { action }\` gives one action's input and its own guide, and \`forge_call { action, args }\` runs it; \`search\` and \`fetch\` read the issues, requirements and knowledge of the projects you can read. An action is \`<door>.<action>\`, for example \`requirements.create\`. The doors:
+
+- \`requirements\` — list, read, draft and revise requirements (REQ-n), propose a draft revision, and answer a question standing on one with what the person said; agreeing and accepting stay a person's act on the requirement page.
 - \`project_feedback\` — a project's own feedback (FB-n): list, read and file it, find similar items, and ask a reporter a clarification; triage stays a person's act.
-- \`forge_feedback\` — feedback about Forge itself (its CLI, routes, tools, guides, web app), from any project: filed as you into Forge's own home project, never into the project you work in; list and read the items you reported and how they are going.
-- \`forge_releases\` — releases: what shipped, what is drafted, what waits on approval; name one, and decide its approval where you hold releases.approve.
-- \`forge_design\` — workflow designs, suggestions and mockups: read them, write and propose a design, and approve, return, accept, reject, revise or withdraw where you hold the permission.
-- \`forge_questions\` — questions waiting on a person, one read in full, the person's answer in their own words, and your own question on an issue.
-- \`forge_issues\` — delivery work read: each issue's status, whether an agent works on it now and when it is likely done. It files no issue: \`create\` is refused MCP_FILES_FEEDBACK_NOT_ISSUES and says where the record goes instead (Feedback, a Requirement, or a question).
-- \`forge_uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
+- \`feedback\` — feedback about Forge itself (its CLI, routes, tools, guides, web app), from any project: filed as you into Forge's own home project, never into the project you work in; list and read the items you reported and how they are going.
+- \`releases\` — releases: what shipped, what is drafted, what waits on approval; name one, and decide its approval where you hold releases.approve.
+- \`design\` — workflow designs, suggestions and mockups: read them, write and propose a design, and approve, return, accept, reject, revise or withdraw where you hold the permission.
+- \`questions\` — questions waiting on a person, one read in full, the person's answer in their own words, and your own question on an issue.
+- \`issues\` — delivery work read: each issue's status, whether an agent works on it now and when it is likely done. It files no issue: \`issues.create\` is refused MCP_FILES_FEEDBACK_NOT_ISSUES and says where the record goes instead (Feedback, a Requirement, or a question).
+- \`uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
 
 Every answer about work in motion carries \`progress\`: whether work is running now, what waits on whom, and the forecast date, or plainly why there is none. Tell the person \`progress.says\`; never give a date it does not hold.
 
 Everything else is REST or the CLI:
 - Delivery has no tool here, and \`forge_source\`, \`forge_coolify_deploy\`, \`forge_sentry\` and \`forge_storefront_target\` are refused MCP_DELIVERY_IS_REST naming their routes. A connected integration's credential stays in core and the call is made from core: Coolify deploys and logs under \`/api/projects/:id/integrations/coolify/…\`, the source host's change requests under \`/api/projects/:id/integrations/source/…\` (open one with \`POST /api/projects/:id/integrations/source/change-requests\` \`{ head, base, title, body?, draft? }\`; from a runner pane, \`forge-runner api\` on that path), Sentry under \`/api/projects/:id/integrations/sentry/issues\`, and the storefront target at \`GET /api/projects/:id/integrations/storefront/target\`. Never open a change request with a host token of your own: core's door records it, and is the only one attributable to you.
-- Friction with Forge itself, a skill gap or a learning mid-run: \`forge_feedback\` action \`submit\`, or \`POST /api/forge/feedback\` \`{ kind, title, whereSeen, body?, signalKey?, clientVersion? }\`, which reads your live job from the token and files it into Forge's home project as you.
-- A project's ecosystem channel, interface, links and builder runs: \`/api/projects/:id/channel/…\`, \`/api/projects/:id/interface\`, \`/api/projects/:id/links\`, \`/api/projects/:id/builder-runs\`; what the channel owes a reply to is \`GET /api/projects/:id/channel/unanswered\`, and the contracts a set of repository paths calls, recorded on a session, is \`POST /api/projects/:id/contract-context { paths, session? }\`. How a master works the inbox: \`GET <host>/api/guides/ecosystem-inbox.md\`. \`forge_channel\` and \`forge_ecosystem\` still answer the same actions here for forge-plugin clients; prefer the routes.
+- Friction with Forge itself, a skill gap or a learning mid-run: \`forge_call { action: "feedback.submit" }\`, or \`POST /api/forge/feedback\` \`{ kind, title, whereSeen, body?, signalKey?, clientVersion? }\`, which reads your live job from the token and files it into Forge's home project as you.
+- A project's ecosystem channel, interface, links and builder runs: \`/api/projects/:id/channel/…\`, \`/api/projects/:id/interface\`, \`/api/projects/:id/links\`, \`/api/projects/:id/builder-runs\`; what the channel owes a reply to is \`GET /api/projects/:id/channel/unanswered\`, and the contracts a set of repository paths calls, recorded on a session, is \`POST /api/projects/:id/contract-context { paths, session? }\`. How a master works the inbox: \`GET <host>/api/guides/ecosystem-inbox.md\`. the \`channel.*\` and \`ecosystem.*\` actions still answer the same here for forge-plugin clients; prefer the routes.
 - Project memory is NOT auto-loaded. At the start of any task needing project context, recall it first: \`POST /api/memory/search\` \`{ projectId, query, topK: 5 }\`. Hits are point-in-time — verify against live code/git before trusting, then report it at \`POST /api/memory/feedback\`.
 - Project prose (build commands, rules, guides): \`/api/projects/:id/knowledge\` or \`forge knowledge\`. Settings: \`GET /api/projects/:id/config\` → \`document\`, the project document (environments, their URLs, promotions and the testing profile each names; a testing profile holds \`secret://\` references, never a credential).
 - Issues, comments, status and dependencies: \`/api/projects/:id/issues\`, \`/api/issues/:id\`, \`/api/issues/:id/comments\`, or \`forge issue\` / \`forge new\` / \`forge comment\`. A chat session (the Forge assistant, Ask Agent) files no issue: it records Feedback or a Requirement draft or revision, and \`forge new\` is refused for it with CHAT_FILES_FEEDBACK_NOT_ISSUES unless the project's gate profile turns \`chat_files_issue\` off (yolo). A comment a person marks as a question on an issue (\`intent: question\`) is owed a reply, at any status but closed or dropped, until an agent replies in its thread; a comment sent with no intent is a note, owed nothing. An agent's question comment is a Question waiting on a person, with the comment's id: the answer is read at \`GET /api/questions/<comment id>\`.
 - Before writing, rewriting, or tuning this project's pipeline skills, read the \`forge-skills\` MCP prompt (the always-latest authoring guide).
-- The API contract is fetchable with no credential: \`<host>/api/openapi.json\` is OpenAPI 3.1 for every route core mounts, and \`<host>/api/mcp-tools.json\` lists these tools as tools/list answers them. Each carries a semver version that moves only when the contract does; pin it, and revalidate with the ETag.
+- The API contract is fetchable with no credential: \`<host>/api/openapi.json\` is OpenAPI 3.1 for every route core mounts, and \`<host>/api/mcp-tools.json\` lists each door's tool and its whole input, which \`forge_call\` runs as actions. Each carries a semver version that moves only when the contract does; pin it, and revalidate with the ETag.
 - Forge capability guides are fetchable, not preloaded: \`<host>/api/guides\` lists them and \`<host>/api/guides/<slug>.md\` reads one. Look one up before guessing how a Forge feature works. The corpus is public and needs no credential; readable pages for a person are at ${publicGuidesUrl()}.
 
 This project's projectId is in the repo's CLAUDE.md.`;

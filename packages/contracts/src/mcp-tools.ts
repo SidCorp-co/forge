@@ -17,9 +17,28 @@ export const MCP_TOOL_NAMES = [
 	"forge_questions",
 	"forge_issues",
 	"forge_support",
+	"forge_projects",
+	"forge_config",
+	"forge_bindings",
 ] as const;
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
+
+/**
+ * The tools `tools/list` hands every client (ISS-773): an action of any tool above is found,
+ * described and run through these, so a client loads only the action it uses. `search` and `fetch`
+ * are the names ChatGPT's connector and deep research look for. A tool above is still called by
+ * its own name on the same path, but is listed to no client, so an MCP client's model sees only these.
+ */
+export const MCP_LISTED_TOOLS = [
+	"forge_find",
+	"forge_describe",
+	"forge_call",
+	"search",
+	"fetch",
+] as const;
+
+export type McpListedTool = (typeof MCP_LISTED_TOOLS)[number];
 
 /**
  * The delivery tools the MCP door served until 2026-10-16, when the owner ruled delivery stays REST

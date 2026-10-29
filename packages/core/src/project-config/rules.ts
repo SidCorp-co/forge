@@ -2,7 +2,7 @@ import { withArticle } from '@forge/contracts/articles';
 import { contentLanguageProblem } from '@forge/contracts/content-language';
 import { judgedOnProblem } from '@forge/contracts/delivery-policy';
 import { hostOf } from '@forge/contracts/git-repository';
-import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
+import { MCP_LISTED_TOOLS, MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import { previewEnvironmentProblem } from '@forge/contracts/preview';
 import type { ConfigRefusalCode } from '@forge/contracts/project-config';
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
@@ -355,9 +355,14 @@ function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): Con
 const FORGE_TOOL_PREFIX = 'mcp__forge__';
 
 // The grammar (schema.ts:TOOL_PATTERN) cannot see a Forge tool that does not exist; this server
-// knows its own surface, and a deny entry naming no tool denies nothing, silently.
+// knows its own surface, and a deny entry naming no tool denies nothing, silently. A client's model
+// sees only the listed tools (ISS-773), so a door's own tool name denies nothing either: an action
+// of every door runs through forge_call.
 const FORGE_TOOLS: ReadonlySet<string> = new Set(
-  MCP_TOOL_NAMES.map((name) => `${FORGE_TOOL_PREFIX}${name.replaceAll('.', '_')}`),
+  MCP_LISTED_TOOLS.map((name) => `${FORGE_TOOL_PREFIX}${name}`),
+);
+const DOOR_TOOLS: ReadonlySet<string> = new Set(
+  MCP_TOOL_NAMES.map((name) => `${FORGE_TOOL_PREFIX}${name}`),
 );
 
 function checkDenyEntries(doc: PolicyDocument): ConfigRefusal[] {
@@ -366,10 +371,18 @@ function checkDenyEntries(doc: PolicyDocument): ConfigRefusal[] {
     deny.forEach((entry, i) => {
       if (!entry.startsWith(FORGE_TOOL_PREFIX) || entry === `${FORGE_TOOL_PREFIX}*`) return;
       if (FORGE_TOOLS.has(entry)) return;
+      if (DOOR_TOOLS.has(entry)) {
+        out.push({
+          code: 'TOOL_PATTERN_INVALID',
+          path: pointer('permissions', profile, 'deny', i),
+          detail: `"${entry}" is a door a client's model no longer sees: every door's actions run through ${FORGE_TOOL_PREFIX}forge_call, so denying the door denies nothing. Deny ${FORGE_TOOL_PREFIX}forge_call to deny every action, or ${FORGE_TOOL_PREFIX}* for the whole server.`,
+        });
+        return;
+      }
       out.push({
         code: 'TOOL_PATTERN_INVALID',
         path: pointer('permissions', profile, 'deny', i),
-        detail: `"${entry}" names no tool this Forge server registers, so denying it denies nothing; a Forge tool is ${FORGE_TOOL_PREFIX}<tool> with the tool's dots as underscores, e.g. ${FORGE_TOOL_PREFIX}forge_channel.`,
+        detail: `"${entry}" names no tool this Forge server registers, so denying it denies nothing; a Forge tool is ${FORGE_TOOL_PREFIX}<tool> with the tool's dots as underscores, one of ${[...FORGE_TOOLS].join(', ')}.`,
       });
     });
   }

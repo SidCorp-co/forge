@@ -78,6 +78,15 @@ const BY_ACTION = {
   }),
 } satisfies Record<Action, z.ZodType>;
 
+/** Each action's own input as a JSON Schema object, for `forge_describe` (`McpTool.actionInputs`). */
+export const ECOSYSTEM_ACTION_INPUTS: Readonly<Record<string, Record<string, unknown>>> =
+  Object.fromEntries(
+    Object.entries(BY_ACTION).map(([action, schema]) => [
+      action,
+      z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Record<string, unknown>,
+    ]),
+  );
+
 export const CONTEXT_SHAPE =
   '{ paths: the repository paths this run touches, session?: the agent session to record the load on }';
 

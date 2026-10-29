@@ -14,7 +14,12 @@ import { inbox, outbox, readAs, threadAs, unanswered } from './channel-read.js';
 import { readRegister } from './channel-register.js';
 import { UUID_PATTERN } from './channel-schema.js';
 import { createDraft, editDraft, submit } from './channel-service.js';
-import { CHANNEL_INPUT_SCHEMA, type ChannelArgs, parseChannelCall } from './channel-tool-args.js';
+import {
+  CHANNEL_ACTION_INPUTS,
+  CHANNEL_INPUT_SCHEMA,
+  type ChannelArgs,
+  parseChannelCall,
+} from './channel-tool-args.js';
 import { decideGateAs, type NamedRefusal } from './channel-tool-gate.js';
 import {
   holdView,
@@ -293,6 +298,7 @@ export const forgeChannelTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_channel',
   description: DESCRIPTION,
   inputSchema: CHANNEL_INPUT_SCHEMA,
+  actionInputs: CHANNEL_ACTION_INPUTS,
   route: '/api/projects',
   grant: {
     byAction: Object.fromEntries(CHANNEL_ACTIONS.map((a) => [a, grantOf(a)])) as Record<

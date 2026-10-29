@@ -340,19 +340,23 @@ describe('filing feedback about Forge (BC-1 to BC-5, BC-7)', () => {
     expect(none.text).toContain('/target');
   });
 
-  it('lists project_feedback and forge_feedback over MCP, and no agent-report tool', async () => {
+  it('finds project_feedback and forge_feedback actions over MCP, and no agent-report one', async () => {
     const res = await api(
       tokens.agentPat,
       'POST',
       '/mcp',
-      { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'forge_find', arguments: {} },
+      },
       { accept: 'application/json, text/event-stream' },
     );
-    const names = ((res.body.result as { tools: { name: string }[] }).tools ?? []).map(
-      (t) => t.name,
-    );
-    expect(names).toEqual(expect.arrayContaining(['project_feedback', 'forge_feedback']));
-    expect(names).not.toContain('forge_agent_report');
+    const text = (res.body.result as { content: { text: string }[] }).content[0]?.text ?? '{}';
+    const actions = (JSON.parse(text) as { actions: string[] }).actions.map((a) => a.split(' ')[0]);
+    expect(actions).toEqual(expect.arrayContaining(['project_feedback.submit', 'feedback.submit']));
+    expect(actions.filter((a) => a?.startsWith('agent_report'))).toEqual([]);
   });
 
   it("refuses a widget binding's own account (FORGE_FEEDBACK_CHANNEL_ACCOUNT)", async () => {

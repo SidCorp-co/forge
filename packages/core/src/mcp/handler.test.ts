@@ -9,19 +9,13 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
-import { clientOfToken } from '../credentials/mcp-oauth-store.js';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
 import { logger } from '../lib/logger.js';
-import type { McpContext } from '../lib/tool.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 import { mcpMessageBody, mcpNoBody } from '../root-routes.js';
-import { compactListing } from './compact-listing.js';
 import { mcpHandler, mcpMethodNotAllowed } from './handler.js';
-import { MCP_TOOLS } from './registry.js';
 import { mcpRequestClass } from './request-class.js';
-import { mcpTools, toolListing } from './server.js';
-
-vi.mock('../credentials/mcp-oauth-store.js', () => ({ clientOfToken: vi.fn(async () => null) }));
+import { surfaceListing } from './surface.js';
 
 const MODERN = '2026-07-28';
 const LEGACY = ['2025-11-25', '2025-06-18', '2025-03-26'] as const;
@@ -53,7 +47,8 @@ function app() {
   return a;
 }
 
-const listing = toolListing(mcpTools({ principal, projectSlug: null } as unknown as McpContext));
+const listing = surfaceListing();
+const LISTED = listing.map((t) => t.name).sort();
 const clientInfo = { name: 'iss-768', version: '0.0.0' };
 
 type RpcAnswer = {
@@ -113,11 +108,11 @@ describe('/mcp at protocol 2026-07-28', () => {
     expect(res.json.result?.instructions).toMatch(/Forge-managed project/);
   });
 
-  it('lists every registry tool under the 2026-07-28 header, with the inputs the contract publishes', async () => {
+  it('lists the five tools that find, describe and run an action under the 2026-07-28 header', async () => {
     const res = await modern(2, 'tools/list');
     expect(res.status, res.text).toBe(200);
     const tools = res.json.result?.tools ?? [];
-    expect(tools.map((t) => t.name).sort()).toEqual(Object.keys(MCP_TOOLS).sort());
+    expect(tools.map((t) => t.name).sort()).toEqual(LISTED);
     for (const t of tools) {
       expect(t.inputSchema).toEqual(listing.find((l) => l.name === t.name)?.inputSchema);
     }
@@ -133,7 +128,7 @@ describe('/mcp at protocol 2026-07-28', () => {
     try {
       expect(client.getNegotiatedProtocolVersion()).toBe(MODERN);
       const { tools } = await client.listTools();
-      expect(tools.map((t) => t.name).sort()).toEqual(Object.keys(MCP_TOOLS).sort());
+      expect(tools.map((t) => t.name).sort()).toEqual(LISTED);
     } finally {
       await client.close();
     }
@@ -198,9 +193,7 @@ describe.each(LEGACY)('/mcp at protocol %s, stateless', (version) => {
       { 'mcp-protocol-version': version },
     );
     expect(list.status, list.text).toBe(200);
-    expect((list.json.result?.tools ?? []).map((t) => t.name).sort()).toEqual(
-      Object.keys(MCP_TOOLS).sort(),
-    );
+    expect((list.json.result?.tools ?? []).map((t) => t.name).sort()).toEqual(LISTED);
   });
 });
 
@@ -249,7 +242,7 @@ describe('/mcp logs one line per request', () => {
         protocolVersion: MODERN,
         status: 200,
         results: ['result'],
-        tools: Object.keys(MCP_TOOLS).length,
+        tools: LISTED.length,
         bytes: answered,
       }),
     ]);
@@ -269,64 +262,5 @@ describe('/mcp logs one line per request', () => {
       tools: null,
     });
     expect(JSON.stringify(logged)).not.toMatch(/forge_pat_planted|secret/);
-  });
-});
-
-// ISS-768 r2: ChatGPT fails discovery on the full 56 KB catalog, so it alone is listed compactly.
-describe('/mcp lists compactly for ChatGPT alone', () => {
-  const tools = mcpTools({ principal, projectSlug: null } as unknown as McpContext);
-  const names = (res: { json: RpcAnswer }) => (res.json.result?.tools ?? []).map((t) => t.name);
-  const list = (headers: Record<string, string>) =>
-    post(
-      { jsonrpc: '2.0', id: 9, method: 'tools/list', params: {} },
-      {
-        'mcp-protocol-version': '2025-06-18',
-        ...headers,
-      },
-    );
-
-  it('lists in full for any other client', async () => {
-    const res = await list({ 'user-agent': 'claude-code/2.1' });
-    expect(res.json.result?.tools).toEqual(toolListing(tools));
-  });
-
-  it('lists compactly for the openai-mcp User-Agent, and logs it as compact', async () => {
-    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined);
-    try {
-      const res = await list({ 'user-agent': 'openai-mcp/1.0.0' });
-      expect(res.json.result?.tools).toEqual(compactListing(toolListing(tools)));
-      expect(Buffer.byteLength(res.text)).toBeLessThan(16 * 1024 + 200);
-      await vi.waitFor(() =>
-        expect(
-          info.mock.calls.map(([f]) => (f as { mcp?: { listing?: string } }).mcp?.listing),
-        ).toContain('compact'),
-      );
-    } finally {
-      info.mockRestore();
-    }
-  });
-
-  it.each([
-    ['named ChatGPT', { clientName: 'ChatGPT', redirectUris: ['https://example.test/cb'] }],
-    [
-      'redirecting to chatgpt.com',
-      {
-        clientName: 'Connector',
-        redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
-      },
-    ],
-  ])('lists compactly for a token granted to an OAuth client %s', async (_why, client) => {
-    vi.mocked(clientOfToken).mockResolvedValueOnce(client);
-    const res = await list({ 'user-agent': 'node' });
-    expect(names(res)).toEqual(compactListing(toolListing(tools)).map((t) => t.name));
-  });
-
-  it('lists in full for an OAuth client that is not ChatGPT', async () => {
-    vi.mocked(clientOfToken).mockResolvedValueOnce({
-      clientName: 'Claude',
-      redirectUris: ['https://claude.ai/api/mcp/auth_callback'],
-    });
-    const res = await list({ 'user-agent': 'node' });
-    expect(names(res).sort()).toEqual(Object.keys(MCP_TOOLS).sort());
   });
 });

@@ -20,7 +20,7 @@ export function operationsBrief(input: {
   const acts = OPERATIONS_ACTIONS.filter((a) => role.grants.includes(OPERATIONS_ACTION_GRANT[a]));
   return [
     role.persona,
-    `You answer this Rocket.Chat operations room as ${role.name}. You act ONLY through the forge_support tool; nothing you write reaches the room unless you call forge_support with action "reply". Every message you are handed names its \`thread\`; answer in that thread.`,
+    `You answer this Rocket.Chat operations room as ${role.name}. You act ONLY through the support actions, each run with forge_call (\`forge_call { action: "support.reply", args }\`); nothing you write reaches the room unless you call support.reply. Every message you are handed names its \`thread\`; answer in that thread.`,
     `What your role is granted:\n${role.grants.map((g) => `- ${g}: ${OPERATIONS_GRANT_MEANING[g]}`).join('\n')}`,
     `Your acts: ${[...acts, 'reply', 'thread'].join(', ')}. Anything else is refused by name; when it is, say in the thread what the refusal says and who can do it instead.`,
     `This room's scope is ${input.scope}: ${input.reach.map((p) => `${p.slug} (${p.name}, issues ${p.issuePrefix ?? 'ISS'}-n)`).join(', ')}. A project outside it is refused.`,

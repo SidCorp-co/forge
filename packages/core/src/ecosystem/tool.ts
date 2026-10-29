@@ -1,7 +1,15 @@
 import { HTTPException } from 'hono/http-exception';
 import type { ContextScopedMcpToolFactory, McpContext } from '../lib/tool.js';
 import { readBus } from './link-read.js';
-import { ACTIONS, type Action, isWrite, parse, READS, WRITES } from './tool-args.js';
+import {
+  ACTIONS,
+  type Action,
+  ECOSYSTEM_ACTION_INPUTS,
+  isWrite,
+  parse,
+  READS,
+  WRITES,
+} from './tool-args.js';
 import { type Answer, HANDLERS, one, refusedWith } from './tool-handlers.js';
 import { namedRefusals, type SideCodes, sideOf } from './tool-side.js';
 import { DESCRIPTION, INPUT_SCHEMA } from './tool-text.js';
@@ -76,6 +84,7 @@ export const forgeEcosystemTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_ecosystem',
   description: DESCRIPTION,
   inputSchema: INPUT_SCHEMA,
+  actionInputs: ECOSYSTEM_ACTION_INPUTS,
   route: ['/api/projects', '/api/ecosystems'],
   grant: {
     byAction: {
