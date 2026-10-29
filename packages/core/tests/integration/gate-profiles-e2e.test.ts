@@ -5,6 +5,8 @@
 // profile and the key (BC-11); a change is made through its own door with a reason and recorded with
 // who made it (BC-12); and a failed deploy raises a yolo project to standard, which only a person
 // lowers again (BC-13).
+//
+// @direct-test-of packages/core/src/requirements/agree.ts
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -250,7 +252,7 @@ describe('BC-5: yolo agrees a requirement over its checklist gaps', () => {
         owner,
         'POST',
         `/api/projects/${projectId}/requirements/${key}/revisions/1/${step}`,
-        {},
+        step === 'accept' ? { reason: 'The owner signs revision 1.' } : {},
       );
       expect(r.status, `${step} ${JSON.stringify(r.body)}`).toBe(200);
     }
