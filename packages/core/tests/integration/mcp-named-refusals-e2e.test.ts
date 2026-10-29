@@ -175,7 +175,11 @@ describe('every /mcp tool names what is wrong with a call it refuses (c2)', () =
         const actions = actionsOf(t);
         let action = actions[0] as string;
         for (const candidate of actions) {
-          const probe = await call(token, t.name, scoped(t, { action: candidate, [field]: values[0] }));
+          const probe = await call(
+            token,
+            t.name,
+            scoped(t, { action: candidate, [field]: values[0] }),
+          );
           if (probe.isError) {
             action = candidate;
             break;

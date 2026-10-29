@@ -98,7 +98,11 @@ export async function startOutboxWorker(options: { pollSeconds?: number } = {}):
   for (const consumer of CONSUMER_NAMES) {
     const id = await boss.work(
       queueOf(consumer),
-      { batchSize: 1, includeMetadata: true, pollingIntervalSeconds: options.pollSeconds ?? POLL_SECONDS },
+      {
+        batchSize: 1,
+        includeMetadata: true,
+        pollingIntervalSeconds: options.pollSeconds ?? POLL_SECONDS,
+      },
       async ([job]: JobWithMetadata<DeliveryJob>[]) => {
         if (!job) return;
         // an issue's deliveries are strict FIFO, so this one settling is what makes its successor
