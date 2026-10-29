@@ -55,14 +55,27 @@ const roomParam = zValidator(
 );
 
 /**
- * One act of the room's session. A channel agent answering several groups names the group of an act
- * that names no thread of it with `?rid=` (REQ-77).
+ * A channel agent answering several groups names the group of an act that names no thread of it
+ * (the channel record, an announcement) with `?rid=` (REQ-77).
  */
-async function act(c: Context<{ Variables: AuthVars }>, projectId: string, input: SupportActInput) {
+const ridQuery = zValidator(
+  'query',
+  // open, as these routes' query was before `rid`: a caller sending another key is not broken
+  z.looseObject({ rid: z.string().min(1).max(200).optional() }),
+  invalid('invalid query: rid is a Rocket.Chat group id'),
+);
+
+/** One act of the room's session; `rid` names the group where the act names no thread of it. */
+async function act(
+  c: Context<{ Variables: AuthVars }>,
+  projectId: string,
+  input: SupportActInput,
+  rid?: string,
+) {
   const out = await supportAct(
     { userId: c.get('userId'), tokenId: c.get('patTokenId'), projectId },
     input,
-    { rid: c.req.query('rid') },
+    { rid },
   );
   if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
   return c.json(out.value as Record<string, unknown>);
@@ -201,9 +214,10 @@ supportRoutes.post(
 );
 
 // a bound channel's record (REQ-75 r6 BC-30..BC-41), as the session writes it
-supportRoutes.get('/:id/support/session/channel', projectParam, (c) =>
-  act(c, c.req.valid('param').id, { action: 'channel' }),
-);
+supportRoutes.get('/:id/support/session/channel', projectParam, ridQuery, (c) => {
+  const query = c.req.valid('query');
+  return act(c, c.req.valid('param').id, { action: 'channel' }, query.rid);
+});
 supportRoutes.post(
   '/:id/support/session/members',
   projectParam,
@@ -231,8 +245,17 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/session/announcements',
   projectParam,
+  ridQuery,
   strictBody(supportAnnounceRequestSchema, SHAPES.announce),
-  (c) => act(c, c.req.valid('param').id, { action: 'announce', ...c.req.valid('json') }),
+  (c) => {
+    const query = c.req.valid('query');
+    return act(
+      c,
+      c.req.valid('param').id,
+      { action: 'announce', ...c.req.valid('json') },
+      query.rid,
+    );
+  },
 );
 
 mountChannelRoutes(supportRoutes);

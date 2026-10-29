@@ -122,10 +122,28 @@ describe('a room grant names what its targeted abilities reach (BC-27)', () => {
 
   it('counts a confirm only from a confirmer the grant names, by the signed username', () => {
     const g = { abilities: ['build' as const], confirmers: ['chuongld', 'thanhnh'] };
-    expect(isConfirmer(g, 'chuongld')).toBe(true);
-    expect(isConfirmer(g, 'ThanhNH')).toBe(true);
-    expect(isConfirmer(g, 'tands')).toBe(false);
-    expect(isConfirmer(g, null)).toBe(false);
-    expect(isConfirmer({ abilities: [] }, 'chuongld')).toBe(false);
+    const by = (label: string | null, key: string | null = 'u-any') => ({ key, label });
+    expect(isConfirmer(g, by('chuongld'))).toBe(true);
+    expect(isConfirmer(g, by('ThanhNH'))).toBe(true);
+    expect(isConfirmer(g, by('tands'))).toBe(false);
+    expect(isConfirmer(g, by(null))).toBe(false);
+    expect(isConfirmer({ abilities: [] }, by('chuongld'))).toBe(false);
+  });
+
+  it('counts the owner as a confirmer under owner mode, by the signed id and never the name (REQ-77 BC-21)', () => {
+    const g = {
+      abilities: ['build' as const, 'owner_mode' as const],
+      confirmers: ['thanhnh'],
+      owner: 'RDJAkAgNzqJNttd8b',
+    };
+    expect(isConfirmer(g, { key: 'RDJAkAgNzqJNttd8b', label: 'someone-else' })).toBe(true);
+    expect(isConfirmer(g, { key: 'u-other', label: 'chuongld' })).toBe(false);
+    // without owner_mode the owner field is refused at the door, and counts for nothing here
+    expect(
+      isConfirmer(
+        { abilities: ['build'], owner: 'RDJAkAgNzqJNttd8b' },
+        { key: 'RDJAkAgNzqJNttd8b', label: null },
+      ),
+    ).toBe(false);
   });
 });

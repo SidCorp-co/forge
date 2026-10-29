@@ -39,13 +39,7 @@ import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
 import { agentMarkerOf, ensureSupportRoom } from './rooms.js';
-import {
-  insertAction,
-  offlineToldSince,
-  type RoomRow,
-  roomById,
-  roomsOfSession,
-} from './store.js';
+import { insertAction, offlineToldSince, type RoomRow, roomById, roomsOfSession } from './store.js';
 import { postInThread } from './thread.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */

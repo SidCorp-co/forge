@@ -12,9 +12,8 @@ import { previewSettingsSchema } from '@forge/contracts/preview';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import { stewardPolicySchema } from '@forge/contracts/steward-runtime';
-import { supportApiBindingConfigSchema, supportRoomConfigSchema } from '@forge/contracts/support';
-import { outsideRidsSchema } from '@forge/contracts/support-channel';
-import { operationsRoomConfigSchema } from '@forge/contracts/support-operations';
+import { supportApiBindingConfigSchema } from '@forge/contracts/support';
+import { rocketchatBindingTargetShape } from '@forge/contracts/support-channel';
 import { widgetBindingConfigSchema } from '@forge/contracts/widget';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
 import {
@@ -371,14 +370,7 @@ const BINDING_TARGETS = [
     projectId: z.number().int().positive().optional(),
   }),
   targetOf('sentry', {}),
-  targetOf('rocketchat', {
-    rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
-    // one support group its session answers (REQ-75), else refused by name (support-binding.ts)
-    support: supportRoomConfigSchema.optional(),
-    operations: operationsRoomConfigSchema.optional(), // operations rooms (REQ-75 BC-20)
-    agent: supportRoomConfigSchema.optional(), // the channel agent's groups (REQ-77)
-    outsideRids: outsideRidsSchema.optional(), // outside agents' groups: record only (REQ-75 r6)
-  }),
+  targetOf('rocketchat', rocketchatBindingTargetShape),
   targetOf('support-api', { ...supportApiBindingConfigSchema.shape }),
   targetOf('agent', {}),
   // the site key is minted on bind (widget/site-key.ts): a document omits it or sends back its own

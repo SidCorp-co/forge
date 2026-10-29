@@ -1,20 +1,12 @@
-import { supportRoomConfigSchema } from '@forge/contracts/support';
-import { outsideRidsSchema } from '@forge/contracts/support-channel';
-import { chatRoleSchema, operationsRoomConfigSchema } from '@forge/contracts/support-operations';
+import { rocketchatBindingTargetShape } from '@forge/contracts/support-channel';
+import { chatRoleSchema } from '@forge/contracts/support-operations';
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../index.js';
 
 export const rocketchatConfigBase = z.object({
   serverUrl: z.string().url().max(500),
-  rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
-  /** Present, the binding's one room is a support group answered by its session (REQ-75). */
-  support: supportRoomConfigSchema.optional(),
-  /** Present, each room the binding names is an operations room answered under the bot's role (REQ-75 BC-20). */
-  operations: operationsRoomConfigSchema.optional(),
-  /** Present, every room the binding names is answered by the project's one channel agent (REQ-77). */
-  agent: supportRoomConfigSchema.optional(),
-  /** Groups an agent outside Forge answers: Forge keeps each one's channel record only (REQ-75 r6). */
-  outsideRids: outsideRidsSchema.optional(),
+  // the groups the binding names and who answers them (REQ-75, REQ-77)
+  ...rocketchatBindingTargetShape,
   /** The bot account's one role (BC-22): kept on the connection, which is the account. */
   role: chatRoleSchema.optional(),
   ...releaseChannelFields,

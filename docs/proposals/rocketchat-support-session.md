@@ -39,7 +39,8 @@ restart (BC-16). A box change re-primes the session with every open thread's rec
 the conversation store (`support/prompt.ts:coldThreads`).
 
 Not the master pane: a master is a tmux pane in `bypassPermissions` that the box itself declares and
-keeps (`runner-daemon/src/master/`). A support session reads text written by strangers; the chat
+keeps (`runner-daemon/src/master/`). A channel agent in owner mode (REQ-77, below) is the one
+support session that runs unconfined. A support session reads text written by strangers; the chat
 host runs it confined (`agent-sessions/chat-door.ts:isChatDoorSession`, ADR 0012), holding only the
 token core hands it, so a prompt injected by a group member reaches nothing the room was not
 granted. The chat host also already lives in the sessions view and resumes by Claude's own session
@@ -356,6 +357,38 @@ The sid-email watcher stays until the coordinator has seen the bound room do `bu
 `run_commands` end to end in that group. The rooms' state is in the lane's report, not here: it
 changes as each one moves.
 
+## Channel agent (REQ-77 r1 BC-1..BC-4, BC-14, BC-15, BC-20, BC-21)
+
+A project's one `rocketchat` binding may carry `agent` instead of `support` or `operations` (one of
+the three, `SUPPORT_ROOM_TWO_KINDS` otherwise). `agent` has the support block's shape and names any
+number of groups in `rids`. Each group is a `support_rooms` row of kind `agent`, and all of them
+share one account and one session (migration 0553): the project's channel agent
+(`support/rooms.ts:ensureSupportRoom`).
+
+- **Placement and restart.** The session is the resident support session above: core picks a box
+  of the project, the box keeps Claude Code resident, and the `support.room-warm` sweep warms a
+  session that is not resident. The sweep also declares a new session for a room whose session is
+  gone (`support/warm.ts:warmColdRooms`). A turn's end hands on every group's waiting messages
+  (`support/dispatch.ts:onSupportTurnEnded`).
+- **One brief for every group.** It names each group, the checkout (read-only, or a build copy
+  under `build`), and the rule that work longer than a minute goes to a background subagent
+  (`support/prompt.ts:agentOpening`). Each message names its `channel`. An act finds its group by
+  the thread or message it names, or by `rid` (`support/access.ts:sessionCaller`).
+  `SUPPORT_ROOM_AMBIGUOUS` refuses an act that names neither.
+- **Owner mode.** `owner_mode` is an ability whose reach is `grants.owner`, a chat-server user id.
+  Only an `agent` block may grant it (`SUPPORT_OWNER_MODE_NOT_AGENT`). With it:
+  - the session is no chat door, so the box runs it unconfined in the checkout with the box's own
+    git and gh (`agent-sessions/chat-door.ts:isChatDoorSession`);
+  - core marks a message `"owner":true` only when the server-signed id equals `grants.owner`;
+  - the owner counts as a confirmer (`support/grants.ts:isConfirmer`).
+
+  Without it the session is confined, as a support group's is. A grant that changes owner mode
+  replaces the session (`support/rooms.ts:replaceStaleAgentSession`).
+- **Registry.** `GET /api/projects/:id/agent-roles?role=channel agent` lists each group's agent at
+  its session's address (`support/agent-roles.ts`).
+
+The proof is `packages/core/tests/integration/support-channel-agent-e2e.test.ts`.
+
 ## Honest costs
 
 - **A box per project.** The session runs on a paired runner bound to the project with a checkout,
@@ -412,6 +445,10 @@ changes as each one moves.
 - **A build's working copy lives on one box.** It is kept under `<base_dir>/support-builds/<room>`
   on the box that ran the turn. If the next turn lands on another box of the project, the session
   starts from a fresh copy of the development branch.
+- **Owner mode is a full session, held only by its brief.** An unconfined channel agent runs with
+  the box's own git, gh and SSH keys, so it can reach any host those keys reach. REQ-77 scopes a
+  production shell out, and only the brief forbids one. This ends when the box confines an
+  owner-mode session to its checkout plus git and gh.
 - **`readers: team` trusts the group's membership.** A team group's replies are screened as the
   team's (`operations-reply`), and whoever Rocket.Chat admits to the group reads them.
 

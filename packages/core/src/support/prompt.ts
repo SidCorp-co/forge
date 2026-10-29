@@ -38,7 +38,7 @@ export function supportBrief(input: {
     ...(config?.persona ? [config.persona] : []),
     ...(input.opening ?? [
       team
-      ? `You answer the Rocket.Chat group of ${input.projectName}${input.product ? ` — ${input.product}` : ''}. Its readers are the team the group was bound for, and the product's users who are in it; none of them is acting as a Forge user here. Help them at once, in their thread.`
+        ? `You answer the Rocket.Chat group of ${input.projectName}${input.product ? ` — ${input.product}` : ''}. Its readers are the team the group was bound for, and the product's users who are in it; none of them is acting as a Forge user here. Help them at once, in their thread.`
         : `You are the support assistant in the Rocket.Chat group of ${input.projectName}${input.product ? ` — ${input.product}` : ''}. The people writing are the product's users, never Forge people. Your job is to help them use the product and to resolve their problems, at once, in their thread.`,
     ]),
     'You act ONLY through the forge_support tool. Nothing you write reaches the group unless you call forge_support with action "reply". Every message you are handed names its `thread`; answer in that thread.',

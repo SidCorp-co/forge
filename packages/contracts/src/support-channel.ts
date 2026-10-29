@@ -5,7 +5,12 @@
 // correction confirms it, and the bot never writes over that (BC-33).
 
 import { z } from "zod";
-import { chatUsernameSchema, supportThreadIdSchema } from "./support.js";
+import {
+	chatUsernameSchema,
+	supportRoomConfigSchema,
+	supportThreadIdSchema,
+} from "./support.js";
+import { operationsRoomConfigSchema } from "./support-operations.js";
 
 /** What a member does in the channel (BC-31); a member carries one or more. */
 export const CHANNEL_ROLES = [
@@ -68,6 +73,21 @@ export const outsideRidsSchema = z
 	.refine((rids) => new Set(rids).size === rids.length, {
 		message: "a group is named once",
 	});
+
+/**
+ * The groups a `rocketchat` binding names and who answers them: a support group (one room, REQ-75),
+ * operations rooms (BC-20), or the project's channel agent (REQ-77), at most one of the three and
+ * each refused by name otherwise (core's `integrations/rocketchat/support-binding.ts`); and the
+ * groups an agent outside Forge answers, whose channel record only Forge keeps (REQ-75 r6). The
+ * project document and the connection's binding both validate it.
+ */
+export const rocketchatBindingTargetShape = {
+	rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
+	support: supportRoomConfigSchema.optional(),
+	operations: operationsRoomConfigSchema.optional(),
+	agent: supportRoomConfigSchema.optional(),
+	outsideRids: outsideRidsSchema.optional(),
+};
 
 export const channelRolesSchema = z
 	.array(z.enum(CHANNEL_ROLES))

@@ -121,7 +121,8 @@ async function retellOf(room: RoomRow): Promise<string | null> {
   const config = await supportConfigOf(room);
   if (toldTools(room.id) === toolsKey(tools, config)) return null;
   // a channel agent's rooms share one session: it is told once for all of them (REQ-77)
-  const told = room.kind === 'agent' && room.sessionId ? await roomsOfSession(room.sessionId) : [room];
+  const told =
+    room.kind === 'agent' && room.sessionId ? await roomsOfSession(room.sessionId) : [room];
   for (const r of told) noteTools(r.id, tools, config);
   return [
     'This room was changed; from now on:',

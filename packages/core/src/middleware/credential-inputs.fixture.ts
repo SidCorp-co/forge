@@ -141,7 +141,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:param:workflow field:param:workflowId field:param:roomId
     field:query:assignee field:query:assigneeId field:query:connectionId field:query:createdBy
     field:query:deviceId field:query:installation_id field:query:integrationId field:query:issue
-    field:query:issueId field:query:memoryId field:query:orgId
+    field:query:issueId field:query:memoryId field:query:orgId field:query:rid
     field:query:pipelineRunId field:query:projectId field:query:requirement
     field:query:resourceUuid field:query:rootIssueId field:query:runId field:query:sessionId
     field:query:sourceRef field:query:feedback field:query:workflow field:query:ref
@@ -329,6 +329,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     credentials/cookie.ts Context handed to hono:deleteCookie in clearSessionCookie
     credentials/cookie.ts Context handed to hono:deleteCookie in writeSessionCookie
     credentials/cookie.ts Context handed to hono:setCookie in writeSessionCookie`,
+  'a channel agent’s group id; the query stays open, as it was before `rid` (REQ-77), and nothing else in it is read': lines`
+    support/routes.ts HonoRequest.valid(query) in module code`,
   'frames on a socket core opened to Rocket.Chat': lines`
     integrations/rocketchat/ddp-client.ts WebSocket.on cast to WsLike in RocketChatDdpClient`,
   'a file’s bytes, stored as an attachment or upload': lines`

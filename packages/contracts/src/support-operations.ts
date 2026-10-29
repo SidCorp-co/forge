@@ -51,10 +51,7 @@ export const chatRoleSchema = z.strictObject({
 		.array(z.enum(OPERATIONS_GRANTS))
 		.min(1)
 		.max(OPERATIONS_GRANTS.length)
-		.refine(
-			(g) => new Set(g).size === g.length,
-			"a grant is named once",
-		),
+		.refine((g) => new Set(g).size === g.length, "a grant is named once"),
 });
 export type ChatRole = z.infer<typeof chatRoleSchema>;
 
@@ -90,16 +87,18 @@ export const OPERATIONS_ACTIONS = [
 export type OperationsAction = (typeof OPERATIONS_ACTIONS)[number];
 
 /** The grant each action needs. */
-export const OPERATIONS_ACTION_GRANT: Record<OperationsAction, OperationsGrant> =
-	{
-		projects: "read",
-		issues: "read",
-		releases: "read",
-		move: "deliver",
-		draft_requirement: "draft",
-		draft_feedback: "draft",
-		research: "research",
-	};
+export const OPERATIONS_ACTION_GRANT: Record<
+	OperationsAction,
+	OperationsGrant
+> = {
+	projects: "read",
+	issues: "read",
+	releases: "read",
+	move: "deliver",
+	draft_requirement: "draft",
+	draft_feedback: "draft",
+	research: "research",
+};
 
 const threadId = z
 	.string()

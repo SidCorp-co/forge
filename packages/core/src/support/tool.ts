@@ -47,6 +47,7 @@ const channelRidSchema = z
   .describe(
     'a channel agent only: the group (`channel` in what you were handed) an act naming no thread is for',
   );
+
 import type { Refusal } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
 import { type SupportActInput, supportAct } from './acts.js';

@@ -88,7 +88,10 @@ export const supportCommandHostSchema = z
 /** A Rocket.Chat user id, as the server signs a message with it (`u._id`): never a name a message carries. */
 export const chatUserIdSchema = z
 	.string()
-	.regex(/^[A-Za-z0-9._-]{1,64}$/, "a Rocket.Chat user id, as the server names the account");
+	.regex(
+		/^[A-Za-z0-9._-]{1,64}$/,
+		"a Rocket.Chat user id, as the server names the account",
+	);
 
 /** A Rocket.Chat username, as the server signs a message with it. */
 export const chatUsernameSchema = z
