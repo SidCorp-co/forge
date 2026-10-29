@@ -51,10 +51,11 @@ const PROBES = {
     ],
   },
   behaviour: {
-    gate: 'check-test-signal + check-test-reachability',
+    gate: 'check-test-signal + check-test-reachability + check-outside-reads',
     probe: ['node', 'scripts/check-test-signal.mjs', '--all'],
     also: [
       { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-test-reachability.mjs'] },
+      { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-outside-reads.mjs'] },
     ],
   },
   language: {

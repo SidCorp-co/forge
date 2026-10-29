@@ -1323,9 +1323,9 @@ own scope reports clean on a tree that is not — which is also why the checker 
 
 ## check-outside-reads.mjs — a test reading a file by path declares it
 
-A test that reads a file outside its package by path — `readFileSync(new URL('../../../runner/…/status.rs',
-import.meta.url))` — reaches it by no import, so the direct selection (`lib/direct-tests.mjs`) ran
-none of the tests that check `status.rs` on a change to it alone, and on `main` the `core` job's
+A test that reads a file outside its package by path — `readFileSync(new URL(…, import.meta.url))`
+on `packages/runner/crates/runner-transport/src/status.rs` — reaches it by no import, so the direct
+selection (`lib/direct-tests.mjs`) ran none of the tests that check it on a change to it alone, and on `main` the `core` job's
 `changes` filter did not match it either: a skip that read as a pass (ISS-134). The test declares the
 path with the declaration the selection already reads, `// @direct-test-of <path>`, and this refuses
 an outside read no declaration covers, naming the test, the line and the line to add. It also refuses
