@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.366] - 2026-10-29
+
+Releases are tagged with their version before they are deployed
+
+### Changed
+
+- **A release is tagged before it is deployed.** Forge now tags `v<version>` on the promotion merge or the cut commit, so the deployed build reads its version with no redeploy; an unshipped release keeps its tag.
+
 ## [0.4.0-dev.365] - 2026-10-29
 
 Group switches keep Forge's agent; switch duties name Forge doors, not box files
