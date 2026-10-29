@@ -19,6 +19,7 @@ import { judgesVerdict, unverifiedWhy } from '@forge/contracts/verified-rule';
 import { liveAt } from './rules.js';
 import {
   atLiveCommit,
+  atRecordedLanding,
   type CoverageIdentity,
   identityWords,
   type LandedHolds,
@@ -194,6 +195,17 @@ function requirementVerdictsOn(
     input.judge,
   );
   const live = input.liveBuild ?? null;
+  // the issues whose criteria trace this business criterion, at any wording; a dropped one proves nothing
+  const dropped = new Set(input.issues.filter((i) => i.status === 'dropped').map((i) => i.id));
+  const traced = [
+    ...new Set(
+      input.issueCriteria
+        .filter(
+          (t) => byId.get(t.requirementCriterionId)?.code === bc.code && !dropped.has(t.issueId),
+        )
+        .map((t) => t.issueId),
+    ),
+  ];
   return mine.map((v) => {
     const stale = v.requirementCriterionId !== bc.id;
     const judged = verdictExercised(v.verdict);
@@ -201,11 +213,7 @@ function requirementVerdictsOn(
       !judged || v.commit === null
         ? null
         : live?.landed
-          ? {
-              commit: v.commit,
-              inLiveBuild: null,
-              notCounted: `judged at commit ${short(v.commit)}, and with no production environment no running build is read to hold it`,
-            }
+          ? atRecordedLanding(v.commit, traced, live.recordedLandings)
           : atLiveCommit(v.commit, `commit ${short(v.commit)}`, live);
     const replaced =
       !stale && stands !== undefined && stands.id !== v.id

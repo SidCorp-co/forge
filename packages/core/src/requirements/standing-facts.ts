@@ -14,6 +14,7 @@ import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.
 import { reopenedAtOf, verdictByBuilderSql } from '../issues/index.js';
 import { waivedOf } from './acceptance-waived.js';
 import { requirementDependents } from './dependents.js';
+import { recordedLandingsOf } from './recorded-landings.js';
 import type { LiveBuildHolds, StandingIssueCriterion, StandingVerdict } from './standing.js';
 import type { CoverageIdentity, StandingRequirementVerdict } from './standing-coverage.js';
 
@@ -232,7 +233,15 @@ export async function liveBuildOf(
     [...new Set(rows.map((r) => r.issueId))],
     judgedAgainstOf(rows),
   );
-  if (landed) return landed;
+  if (landed) {
+    // a verdict at the requirement itself is weighed on a landing Forge recorded (`standing-identity.ts:atRecordedLanding`)
+    const asked = own.flatMap((v) => (v.commit ? [v.commit] : []));
+    if (asked.length === 0) return landed;
+    const recordedLandings = await recordedLandingsOf(projectId, asked, [
+      ...new Set(rows.map((r) => r.issueId)),
+    ]);
+    return { ...landed, recordedLandings };
+  }
   if (commits.length === 0 && runtimes.length === 0) return null;
   return requirementDependents().liveBuildHolds(projectId, { commits, runtimes });
 }
