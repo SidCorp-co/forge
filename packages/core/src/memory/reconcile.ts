@@ -387,6 +387,15 @@ export function registerMemoryReconcileTrigger(): void {
 
 type ReconcileJob = { projectId?: string; issueId?: string };
 
+/**
+ * The queue `registerMemoryReconcileTrigger` sends to, declared apart from its worker: a process
+ * that runs the outbox consumers without the worker (the integration harness) still holds it, so
+ * the trigger's send lands instead of failing `PGBOSS_QUEUE_NOT_FOUND` behind the outbox's backoff.
+ */
+export async function declareMemoryReconcileQueue(): Promise<void> {
+  await boss.createQueue(MEMORY_RECONCILE_QUEUE);
+}
+
 let reconcileWorkerRegistered = false;
 
 /** Event-driven worker for `MEMORY_RECONCILE_QUEUE` — no schedule, unlike the
@@ -394,7 +403,7 @@ let reconcileWorkerRegistered = false;
  *  transition (enqueued by `registerMemoryReconcileTrigger`). */
 export async function registerMemoryReconcileWorker(): Promise<void> {
   if (reconcileWorkerRegistered) return;
-  await boss.createQueue(MEMORY_RECONCILE_QUEUE);
+  await declareMemoryReconcileQueue();
   await boss.work<ReconcileJob>(MEMORY_RECONCILE_QUEUE, { batchSize: 1 }, async (jobs) => {
     for (const entry of jobs) {
       const data = entry.data;

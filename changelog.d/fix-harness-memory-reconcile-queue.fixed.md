@@ -1,0 +1,1 @@
+**The integration harness declares the memory-reconcile queue.** A test closing an issue no longer waits 45 s per case on a delivery failing `PGBOSS_QUEUE_NOT_FOUND`; the queue is declared apart from its worker, as boot does.

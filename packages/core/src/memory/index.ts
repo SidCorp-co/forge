@@ -4,7 +4,11 @@ export { runEmbeddingBackfill } from './embedding-backfill.js';
 export { registerMemoryExtraction } from './extraction.js';
 export { deleteMemory, registerMemoryIndexer } from './indexer.js';
 export { provideMemoryIssueReads } from './ports.js';
-export { registerMemoryReconcileTrigger, registerMemoryReconcileWorker } from './reconcile.js';
+export {
+  declareMemoryReconcileQueue,
+  registerMemoryReconcileTrigger,
+  registerMemoryReconcileWorker,
+} from './reconcile.js';
 export { foreignScriptChars } from './script-guard.js';
 export { runMemorySearch } from './search-service.js';
 export { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
