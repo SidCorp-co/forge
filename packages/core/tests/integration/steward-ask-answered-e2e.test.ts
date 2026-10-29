@@ -73,7 +73,7 @@ async function issue(): Promise<Item> {
 function standingOf(
   item: Item,
   basis: string,
-  wait: { kind: WaitingKind; who: string; act: string; ref?: string },
+  wait: { kind: WaitingKind; who: string; act: string; ref?: string; actKey?: string },
   stuck = true,
 ): ItemStanding {
   return {
@@ -87,7 +87,11 @@ function standingOf(
       rule: 'the rule the read names',
       ref: wait.ref ?? null,
       dueAt: null,
-      says: { who: said('standing.who.named'), act: said('standing.act'), rule: said('rule') },
+      says: {
+        who: said('standing.who.named'),
+        act: said(wait.actKey ?? 'standing.act'),
+        rule: said('rule'),
+      },
     },
     note: null,
     actClass: 'master',
@@ -327,6 +331,35 @@ describe('a wait a person owes is not asked of the master (c3)', () => {
     standings = [standingOf(item, 'c3-2', PERSON_WAIT)];
     expect((await sweep()).settledAsks).toBe(1);
     expect(await openAbout(item.key)).toEqual([]);
+    standings = [];
+  });
+});
+
+describe('a held act on a person wait is not read as their own act (c3 boundary)', () => {
+  const RELEASE_APPROVAL = {
+    kind: 'person' as const,
+    who: 'release approvers',
+    act: 'approve the release',
+    actKey: 'issues.standing.act.approveOnReleases',
+  };
+
+  it('the door routes it as the held act it is, to its holders, never as a person act', async () => {
+    const held = await issue();
+    standings = [standingOf(held, 'c3-3', RELEASE_APPROVAL)];
+    await askRun(held, held);
+    expect(lastTurn()).toContain('"askedOf\\":\\"releases.approve');
+    expect(lastTurn()).not.toContain("a person's act");
+  });
+
+  it('an ask of the master about it is kept by the sweep while its standing holds', async () => {
+    const held = await issue();
+    standings = [standingOf(held, 'c3-4', MASTER_WAIT)];
+    await askRun(held, held);
+    expect(await openAbout(held.key)).toHaveLength(1);
+    // the same basis read as a release approval a person kind names: the master may hold it
+    standings = [standingOf(held, 'c3-4', RELEASE_APPROVAL)];
+    expect((await sweep()).settledAsks).toBe(0);
+    expect(await openAbout(held.key)).toHaveLength(1);
     standings = [];
   });
 });

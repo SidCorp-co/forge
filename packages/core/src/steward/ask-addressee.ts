@@ -2,7 +2,7 @@
 // act the item waits on. A release approval is taken by a holder of `releases.approve`, a feedback
 // item's triage by a holder of `feedback.approve`; where no account the project's master acts as
 // holds that permission, the master is not asked, and the holders are, by name, the steward's own
-// account never among them. Every other wait asks the master, as before. A release's naming is such
+// account never among them. Every other wait but a person's asks the master, as before. A release's naming is such
 // an act too (ISS-590): it takes project.admin (`release-batch/naming.ts:nameReleaseAs`), so the
 // release names its namer the same way, `releaseNamerOf`.
 // A wait a person owes (a park's answer, a design re-pin) is that person's, read on their Needs you:
@@ -77,9 +77,12 @@ export function heldActOf(standing: Pick<ItemStanding, 'waitingOn'> | null): Hel
 /** The waits a person owes: the master's agent account does not take their act for them. */
 const PERSON_WAITS: ReadonlySet<WaitingKind> = new Set(['you', 'person', 'admins', 'writers']);
 
-/** Whether the item waits on a person's act rather than one the master, a run or Forge takes. */
+/**
+ * Whether the item waits on a person's own act: a wait on a person that is no held act, which the
+ * master may still take where it holds the permission (a release approval, a triage).
+ */
 export function waitsOnPerson(standing: Pick<ItemStanding, 'waitingOn'>): boolean {
-  return PERSON_WAITS.has(standing.waitingOn.kind);
+  return PERSON_WAITS.has(standing.waitingOn.kind) && heldActOf(standing) === null;
 }
 
 /** Whether the item waits on a release approval. */
