@@ -37,8 +37,10 @@ import { injectWaiting, settleInjects } from './inject.js';
 import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
+import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
 import { agentMarkerOf, ensureSupportRoom } from './rooms.js';
+import { isCheckThread } from './rules.js';
 import { insertAction, offlineToldSince, type RoomRow, roomById, roomsOfSession } from './store.js';
 import { postInThread } from './thread.js';
 
@@ -194,13 +196,13 @@ async function agentBriefOf(
  * the development branch when granted build (and the project names one apart from production's),
  * the checkout read-only when granted read_checkout, and an empty folder otherwise. An operations
  * room keeps the checkout as it was before r5. A channel agent always reads the checkout (REQ-77
- * BC-2), or builds in a copy when granted build; in owner mode it is a full session in the checkout
- * itself, as a master is (BC-21), so no view narrows it.
+ * BC-2), or builds in a copy when granted build; in owner mode it works in its own clone of the
+ * repository, confined like every other session (ISS-765, `owner-git.ts`).
  */
 export async function checkoutViewOf(room: RoomRow): Promise<CheckoutView | null> {
   if (room.kind === 'operations') return null;
   const grants = grantsOf(await supportConfigOf(room));
-  if (room.kind === 'agent' && (await ownerModeSession(room))) return null;
+  if (room.kind === 'agent' && (await ownerModeSession(room))) return ownViewOf(room);
   if (grants.abilities.includes('build')) {
     const base = await buildBaseOf(room.projectId);
     if (base.ok) return { mode: 'build', base: base.value.base, key: buildKeyOf(room) };
@@ -412,10 +414,16 @@ async function tellTurnFailed(roomId: string, status: string): Promise<void> {
   const left = taken.filter((m) => !told.has(m.id));
   const threads = new Map(left.map((m) => [m.thread, m] as const));
   for (const [thread, first] of threads) {
-    const posted = await postInThread({ room, thread, text: TURN_FAILED_LINE }).catch((err) => {
-      logger.error({ err, roomId, thread }, 'support: the failed-turn notice could not be posted');
-      return null;
-    });
+    // a scheduled check is no member's thread: its failure is recorded, and nothing is posted (BC-13)
+    const posted = isCheckThread(thread)
+      ? null
+      : await postInThread({ room, thread, text: TURN_FAILED_LINE }).catch((err) => {
+          logger.error(
+            { err, roomId, thread },
+            'support: the failed-turn notice could not be posted',
+          );
+          return null;
+        });
     await insertAction({
       roomId: room.id,
       projectId: room.projectId,

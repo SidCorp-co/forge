@@ -24,7 +24,7 @@ import {
   requireConfiningBox,
   requireListeningBox,
 } from './chat-device.js';
-import { isChatDoorSession } from './chat-door.js';
+import { runsConfined } from './chat-door.js';
 import { stripSystemNoise } from './content-filter.js';
 import { agentSessionsPorts } from './ports.js';
 import { refuseSession } from './refusals.js';
@@ -275,7 +275,10 @@ interface TurnPlan {
   resumable: boolean;
   model: ReturnType<typeof readSessionModel>;
   language: ContentLanguageView | null;
-  /** A chat door's turn: the box runs it holding its turn token and none of the box's own. */
+  /**
+   * A chat door's turn, or an owner-mode channel agent's: the box runs it holding its turn token and
+   * none of the box's own (`chat-door.ts:runsConfined`).
+   */
   confined: boolean;
   /**
    * A POC room's agent (REQ-44 BC-3): the box runs it with every hook off, so no check the checkout
@@ -316,7 +319,7 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
   const repoPath = await turnCheckout(session, args.project.id, deviceId, migrated);
   // a turn no socket of the box would receive is refused before anything is written
   requireListeningBox(deviceId);
-  const confined = isChatDoorSession(session);
+  const confined = runsConfined(session);
   if (confined) await requireConfiningBox(deviceId);
   const ungated = Boolean((session.metadata as { pocRoom?: unknown } | null)?.pocRoom);
   const keepResident = Boolean((session.metadata as { supportRoom?: unknown } | null)?.supportRoom);

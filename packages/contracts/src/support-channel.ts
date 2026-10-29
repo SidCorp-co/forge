@@ -5,6 +5,7 @@
 // correction confirms it, and the bot never writes over that (BC-33).
 
 import { z } from "zod";
+import { REASON_NOTE_MAX } from "./reason-text.js";
 import {
 	chatUsernameSchema,
 	supportRoomConfigSchema,
@@ -311,4 +312,111 @@ export interface ChannelView extends ChannelSummaryView {
 	ruleRows: ChannelRuleView[];
 	commonIssueRows: ChannelCommonIssueView[];
 	routes: ChannelRouteView[];
+}
+
+/**
+ * A channel agent's one result for one firing of a scheduled check (REQ-77 BC-13): `check` is the
+ * firing's thread as it was handed (`check:<name>:<date>`); a finding is posted in the group, none
+ * posts nothing.
+ */
+export const supportCheckResultRequestSchema = z.strictObject({
+	check: z
+		.string()
+		.regex(
+			/^check:[a-z0-9][a-z0-9-]{1,39}:\d{4}-\d{2}-\d{2}$/,
+			"the check as it was handed: check:<name>:<YYYY-MM-DD>",
+		),
+	finding: z.string().trim().min(3).max(1500).nullable(),
+});
+
+/**
+ * A git credential an owner-mode channel agent's git or `gh` asks for (ISS-765): the host and the
+ * repository path git names, as its credential helper is sent them.
+ */
+export const supportGitCredentialRequestSchema = z.strictObject({
+	host: z.string().trim().min(1).max(255),
+	path: z.string().trim().min(1).max(500),
+});
+
+/** One duty an outside bot does in a group, which the Forge agent passes before the switch (BC-16). */
+export const channelSwitchDutySchema = z.strictObject({
+	/** A short key, `owner-mode`, by which a person marks it passed. */
+	key: z
+		.string()
+		.regex(
+			/^[a-z0-9][a-z0-9-]{1,39}$/,
+			"a duty's key is 2 to 40 lowercase letters, digits and dashes",
+		),
+	text: z.string().trim().min(3).max(600),
+});
+
+/**
+ * A group's switch from its outside bot to the project's channel agent (REQ-77 BC-16..BC-19): the
+ * outside bot's chat account, which the switch removes from the group; the duties the agent passes
+ * first; the switch it waits on (AdminHub after OrbitInternal, BC-18); and whether the owner's word
+ * is needed (mail, BC-19).
+ */
+export const channelSwitchPlanSchema = z.strictObject({
+	outsideBot: z.strictObject({
+		/** The outside bot's account id on the chat server, as the server signs its messages. */
+		userId: z.string().trim().min(1).max(200),
+		username: z.string().trim().min(1).max(120).optional(),
+	}),
+	duties: z
+		.array(channelSwitchDutySchema)
+		.min(1)
+		.max(40)
+		.refine(
+			(d) => new Set(d.map((x) => x.key)).size === d.length,
+			"a duty's key is named once",
+		),
+	/** Another channel's switch this one waits on until a person marks it proven. */
+	after: z.uuid().optional(),
+	/** The owner's word is needed before this group switches. */
+	ownerWord: z.boolean().optional(),
+});
+export type ChannelSwitchPlan = z.infer<typeof channelSwitchPlanSchema>;
+
+/** A person passing one duty, naming what they saw the agent do. */
+export const channelSwitchPassSchema = z.strictObject({
+	evidence: z.string().trim().min(3).max(1000),
+});
+
+/** The owner's word, as they gave it. */
+export const channelSwitchOwnerWordSchema = z.strictObject({
+	words: z.string().trim().min(2).max(600),
+});
+
+/** A person marking a switched group as answered as well as its outside bot answered it. */
+export const channelSwitchProvenSchema = z.strictObject({
+	note: z.string().trim().min(3).max(REASON_NOTE_MAX),
+});
+
+export interface ChannelSwitchDutyView {
+	key: string;
+	text: string;
+	passedBy: string | null;
+	passedAt: string | null;
+	evidence: string | null;
+}
+
+/** What still stands between a group and its switch; empty once it may switch. */
+export type ChannelSwitchOpen =
+	| { kind: "duty"; key: string }
+	| { kind: "after"; switchId: string; rid: string }
+	| { kind: "owner_word" };
+
+export interface ChannelSwitchView {
+	id: string;
+	projectId: string;
+	rid: string;
+	outsideBot: { userId: string; username: string | null };
+	duties: ChannelSwitchDutyView[];
+	after: string | null;
+	ownerWordNeeded: boolean;
+	ownerWord: { words: string; by: string; at: string } | null;
+	open: ChannelSwitchOpen[];
+	switchedAt: string | null;
+	provenAt: string | null;
+	provenNote: string | null;
 }

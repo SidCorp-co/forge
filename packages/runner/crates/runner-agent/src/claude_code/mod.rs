@@ -7,6 +7,8 @@
 
 pub(crate) mod confine;
 mod outcome;
+#[doc(hidden)]
+pub mod own_testkit;
 use outcome::*;
 mod permits;
 mod stream;
@@ -915,7 +917,18 @@ impl SessionCommand<'_> {
             None => confine::BoxView::current()?,
         };
         let repo = std::path::Path::new(repo);
-        let (git_dirs, git_identity) = confine::read_git(repo).await;
+        let own = matches!(confinement.checkout, crate::CheckoutView::Own { .. });
+        // an own clone's git directory is the session's to write: this box runs no git in it
+        let (git_dirs, git_identity) = if own {
+            (Vec::new(), confine::read_identity().await)
+        } else {
+            confine::read_git(repo).await
+        };
+        let gh_shim = if own {
+            confine::write_gh_shim(&view)?
+        } else {
+            None
+        };
         let handed = confine::Handed {
             repo,
             credential: env_credential,
@@ -929,6 +942,7 @@ impl SessionCommand<'_> {
             git_identity,
             core_url,
             egress_socket: view.egress_dir.join(egress_dir_name()).join("s"),
+            gh_shim_dir: gh_shim.as_deref(),
         };
         let allow = confine::egress_allow(&view, &handed)?;
         let upstream = confine::upstream(&view)?;

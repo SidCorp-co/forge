@@ -3543,6 +3543,13 @@
       "when": 1830729600000,
       "tag": "0553_a_channel_agent_answers_every_group_of_its_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 554,
+      "version": "7",
+      "when": 1830816000000,
+      "tag": "0554_a_channel_switches_by_its_checklist_and_checks_post_one_finding",
+      "breakpoints": true
     }
   ]
 }

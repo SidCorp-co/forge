@@ -177,7 +177,9 @@ pub(crate) fn heartbeat_body(
 /// REQ-75 r5: `chatCheckoutModes` is whether a confined session can be shown its checkout
 /// read-only or not at all (`checkout` on a turn frame), and `supportBuilds` whether it can work
 /// in a room's working copy that this box commits and pushes (`build.push`) — both sandbox mounts,
-/// so false where the box cannot confine. `hostCommands` is whether this box runs a command on a
+/// so false where the box cannot confine. `ownerCheckouts` (ISS-765) is whether it runs an
+/// owner-mode channel agent confined in its own clone, its git and `gh` asking core for a
+/// credential to that repository alone. `hostCommands` is whether this box runs a command on a
 /// named host over its own SSH (`host.command`), which needs no sandbox.
 pub(crate) fn capabilities(confine: &runner_platform::confine::Availability) -> serde_json::Value {
     let mut out = serde_json::json!({
@@ -190,6 +192,7 @@ pub(crate) fn capabilities(confine: &runner_platform::confine::Availability) -> 
     out["confinedChatNetwork"] = confines.into();
     out["chatCheckoutModes"] = confines.into();
     out["supportBuilds"] = confines.into();
+    out["ownerCheckouts"] = confines.into();
     if let runner_platform::confine::Availability::Unavailable(why) = confine {
         out["confinedChatUnavailable"] = why.clone().into();
     }
@@ -229,10 +232,12 @@ mod tests {
         use runner_platform::confine::Availability;
         let caps = capabilities(&Availability::Available);
         assert_eq!(caps["chatCheckoutModes"], true, "{caps}");
+        assert_eq!(caps["ownerCheckouts"], true, "{caps}");
         assert_eq!(caps["supportBuilds"], true, "{caps}");
         assert_eq!(caps["hostCommands"], true, "{caps}");
         let caps = capabilities(&Availability::Unavailable("no bwrap".into()));
         assert_eq!(caps["chatCheckoutModes"], false, "{caps}");
+        assert_eq!(caps["ownerCheckouts"], false, "{caps}");
         assert_eq!(caps["supportBuilds"], false, "{caps}");
         assert_eq!(caps["hostCommands"], true, "{caps}");
     }

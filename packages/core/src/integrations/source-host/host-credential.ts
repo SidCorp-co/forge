@@ -104,20 +104,28 @@ async function activeHostPairs(byProvider: Map<string, GitCredentialMint>, proje
 
 type HostPair = Awaited<ReturnType<typeof activeHostPairs>>[number];
 
-/** The active binding of a project this device runs that reaches `host`/`path`, or a refusal naming what is missing. */
+/**
+ * The active binding of a project this device runs that reaches `host`/`path`, or a refusal naming
+ * what is missing. `onlyProject` narrows the projects to that one of them (an owner-mode channel
+ * agent reaches its own project's repository and no other, ISS-765).
+ */
 async function pairReaching(
   byProvider: Map<string, GitCredentialMint>,
   deviceId: string,
   host: string,
   path: string,
+  onlyProject?: string,
 ): Promise<{ pair: HostPair; cred: GitCredentialMint; config: Record<string, unknown> }> {
-  const rows = await activeHostPairs(byProvider, await forgeReads().deviceProjects(deviceId));
+  const runs = await forgeReads().deviceProjects(deviceId);
+  const projects = onlyProject ? runs.filter((p) => p === onlyProject) : runs;
+  const rows = await activeHostPairs(byProvider, projects);
   const pair = rows.find((r) =>
     byProvider.get(r.binding.provider)?.reaches(effectiveConfig(r), host, path),
   );
   if (!pair) {
+    const where = onlyProject ? `project ${onlyProject}` : 'any project this device runs';
     throw new HTTPException(404, {
-      message: `no active source host binding reaching ${host}/${path.replace(/\.git$/i, '')} on any project this device runs — bind the repository on the project's Integrations page, and assign this device a runner there`,
+      message: `no active source host binding reaching ${host}/${path.replace(/\.git$/i, '')} on ${where} — bind the repository on the project's Integrations page, and assign this device a runner there`,
       cause: { code: 'NOT_FOUND' },
     });
   }
@@ -145,6 +153,8 @@ export async function mintGitCredentialForDevice(args: {
   agentVersion: string | null;
   host: string;
   path: string;
+  /** Reach only this project's repository, whatever else the device runs (ISS-765). */
+  onlyProject?: string;
 }): Promise<GitCredentialGrant & { preRelay?: true }> {
   const path = repoPathOf(args.path);
   if (!path.includes('/')) {
@@ -155,12 +165,20 @@ export async function mintGitCredentialForDevice(args: {
   }
   const byProvider = mints();
   const relayed = relayedAskOf(args.host, path);
-  if (relayed) return relayTicketFor(byProvider, args.deviceId, relayed);
+  if (relayed) return relayTicketFor(byProvider, args.deviceId, relayed, args.onlyProject);
 
-  const { pair, cred, config } = await pairReaching(byProvider, args.deviceId, args.host, path);
+  const { pair, cred, config } = await pairReaching(
+    byProvider,
+    args.deviceId,
+    args.host,
+    path,
+    args.onlyProject,
+  );
   const repository = cred.repositoryOf(config);
   if (cred.kind === 'relayed') {
-    if (!relayCapableRunner(args.agentVersion)) {
+    // a session's own ask (an owner-mode channel agent) is never under the amnesty: its clone's
+    // origin is the relay, and the connection's token never reaches a session
+    if (!args.onlyProject && !relayCapableRunner(args.agentVersion)) {
       const served = cred.preRelayCredential({
         config,
         secrets: decryptConnectionSecrets(pair.connection),
@@ -198,8 +216,15 @@ async function relayTicketFor(
   byProvider: Map<string, GitCredentialMint>,
   deviceId: string,
   asked: { host: string; path: string },
+  onlyProject?: string,
 ): Promise<GitCredentialGrant> {
-  const { pair, cred, config } = await pairReaching(byProvider, deviceId, asked.host, asked.path);
+  const { pair, cred, config } = await pairReaching(
+    byProvider,
+    deviceId,
+    asked.host,
+    asked.path,
+    onlyProject,
+  );
   const repository = cred.repositoryOf(config);
   if (cred.kind !== 'relayed') {
     throw new HTTPException(404, {
@@ -294,4 +319,19 @@ export async function projectsWithHostCredential(projectIds: string[]): Promise<
 /** Whether a repo URL is one this credential path can authenticate at all. */
 export function isHttpsGitUrl(url: string | null | undefined): boolean {
   return typeof url === 'string' && /^https:\/\//i.test(url.trim());
+}
+
+/**
+ * The hosts a holder of this project's git credential reaches its repository on, beyond core: a
+ * minted binding's git and API hosts; none for a relayed one, which git reaches through core. What an
+ * owner-mode channel agent's sandbox may connect to (ISS-765).
+ */
+export async function gitHostsOfProject(projectId: string): Promise<string[]> {
+  const byProvider = mints();
+  const hosts = new Set<string>();
+  for (const pair of await activeHostPairs(byProvider, [projectId])) {
+    const cred = byProvider.get(pair.binding.provider);
+    if (cred?.kind === 'minted') for (const h of cred.hostsOf(effectiveConfig(pair))) hosts.add(h);
+  }
+  return [...hosts].sort();
 }

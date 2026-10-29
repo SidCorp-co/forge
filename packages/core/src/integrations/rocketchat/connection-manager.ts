@@ -258,6 +258,9 @@ class RocketChatConnectionManager {
     const ac = this.conns.get(connectionId);
     if (!ac) return;
     if (decideSkip(m, ac.botUserId)) return;
+    // the bindings as they are now: a message is answered under the config saved before it arrived,
+    // never under a copy taken when the socket was dialled (REQ-75 r5)
+    ac.routes = await buildRoutes(connectionId);
     const route = ac.routes.get(m.rid);
     if (!route) {
       logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
@@ -337,10 +340,38 @@ class RocketChatConnectionManager {
    */
   async reload(connectionId: string): Promise<void> {
     this.started = true;
+    // a binding saved on a connection this process holds changes no socket: the routes are read
+    // again, and a message arriving meanwhile is not dropped by a socket torn down and redialled
+    if (await this.keepsSocket(connectionId)) return;
     await this.teardown(connectionId);
     await this.acquire(connectionId).catch((err) =>
       logger.error({ err, connectionId }, 'rocketchat: reload failed'),
     );
+  }
+
+  /**
+   * Whether the connection this process holds is still the one its row names (on, same server, same
+   * bot credentials), its routes read again if so. A change to any of those redials.
+   */
+  private async keepsSocket(connectionId: string): Promise<boolean> {
+    const ac = this.conns.get(connectionId);
+    if (!ac || ac.closing) return false;
+    const [conn] = await db
+      .select()
+      .from(integrationConnections)
+      .where(eq(integrationConnections.id, connectionId))
+      .limit(1);
+    if (!conn?.active) return false;
+    const secrets = decryptConnectionSecrets<RocketChatSecrets>(conn);
+    const config = (conn.config ?? {}) as RocketChatConfig;
+    const same =
+      config.serverUrl === ac.serverUrl &&
+      secrets.authToken === ac.authToken &&
+      secrets.userId === ac.botUserId;
+    if (!same || this.conns.get(connectionId) !== ac || ac.closing) return false;
+    ac.routes = await buildRoutes(connectionId);
+    logger.info({ connectionId, rooms: [...ac.routes.keys()] }, 'rocketchat: bindings reread');
+    return true;
   }
 
   /** Dedicated LISTEN connection for {@link RELOAD_CHANNEL}; self-heals with a

@@ -191,7 +191,7 @@ describe('REQ-77 BC-11: confirmed work and what the agent lacks reach Forge as r
     expect(text).toContain(
       'anything you lack (a tool, a read, a fact, an ability) is a record too',
     );
-    expect(text).toContain('forge_support route to forge');
+    expect(text).toContain('support.route to forge');
   });
 });
 

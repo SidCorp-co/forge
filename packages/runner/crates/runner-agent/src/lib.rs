@@ -67,7 +67,8 @@ pub struct Confinement {
 /// frame, REQ-75 r5 BC-27). A support room granted `read_checkout` reads the project's checkout and
 /// writes none of it; one granted nothing sees an empty folder; one granted `build` works in a
 /// working copy of the development branch this box keeps for the room, whose git directory it
-/// still cannot write, so it never commits or pushes on its own.
+/// still cannot write, so it never commits or pushes on its own; a channel agent in owner mode
+/// works in its own clone, git directory included (ISS-765).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum CheckoutView {
     /// The checkout, writable: every chat door before REQ-75 r5, and any turn that names no view.
@@ -79,6 +80,15 @@ pub enum CheckoutView {
     Build {
         key: String,
         base: String,
+    },
+    /// An owner-mode channel agent's own clone of `base` (ISS-765), kept under `key`: writable with
+    /// its git directory, so it commits and pushes itself, holding a credential core mints for its
+    /// own repository alone; it reaches `hosts` (the repository's git and API hosts) besides the
+    /// model and core, and nothing else this box keeps.
+    Own {
+        key: String,
+        base: String,
+        hosts: Vec<String>,
     },
 }
 

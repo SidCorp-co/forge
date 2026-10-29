@@ -118,6 +118,8 @@ pub(crate) struct Handed<'a> {
     pub core_url: &'a str,
     /// Where this session's egress proxy listens.
     pub egress_socket: PathBuf,
+    /// An owner-mode agent's `gh` shim directory, put first on its `PATH` (ISS-765).
+    pub gh_shim_dir: Option<&'a Path>,
 }
 
 /// Variables a session inherits by name: locale, terminal, proxies and trust roots, and Claude
@@ -242,6 +244,9 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
     for path in writable.into_iter().filter(|p| p.exists()) {
         mounts.push(Mount::Write(path));
     }
+    if let Some(shim) = handed.gh_shim_dir.filter(|d| d.is_dir()) {
+        mounts.push(Mount::Read(shim.to_path_buf()));
+    }
     mounts.extend(checkout_mounts(handed));
 
     Ok(Sandbox {
@@ -273,9 +278,12 @@ pub(crate) fn checkout_mounts(handed: &Handed<'_>) -> Vec<Mount> {
         CheckoutView::Write | CheckoutView::Build { .. } if repo.exists() => {
             mounts.push(Mount::Write(repo));
         }
+        // an owner-mode agent's own clone: its git directory is its own, inside it and writable
+        CheckoutView::Own { .. } if repo.exists() => mounts.push(Mount::Write(repo)),
         _ => {}
     }
-    for dir in &handed.git_dirs {
+    let own = matches!(handed.checkout, CheckoutView::Own { .. });
+    for dir in handed.git_dirs.iter().filter(|_| !own) {
         if dir.exists() {
             mounts.push(Mount::Read(dir.clone()));
         }
@@ -334,6 +342,11 @@ pub(crate) fn egress_allow(view: &BoxView, handed: &Handed<'_>) -> Result<Vec<Ho
     for entry in &view.egress_allow {
         out.push(Host::parse(entry).map_err(|e| refuse("`[runner] chat_egress_allow`", e))?);
     }
+    if let crate::CheckoutView::Own { hosts, .. } = handed.checkout {
+        for host in hosts {
+            out.push(Host::parse(host).map_err(|e| refuse("the repository's host", e))?);
+        }
+    }
     out.sort();
     out.dedup();
     Ok(out)
@@ -360,6 +373,11 @@ fn chat_env(view: &BoxView, handed: &Handed<'_>) -> Vec<(OsString, OsString)> {
     set("TMPDIR", OsStr::new("/tmp"));
     if let Some(credential) = handed.credential {
         set("FORGE_PAT", OsStr::new(credential));
+    }
+    if let crate::CheckoutView::Own { .. } = handed.checkout {
+        for (k, v) in own_git_env(view, handed) {
+            set(&k, &v);
+        }
     }
     if let Some(slug) = handed.project_slug {
         set("FORGE_PROJECT_SLUG", OsStr::new(slug));
@@ -391,6 +409,51 @@ fn chat_env(view: &BoxView, handed: &Handed<'_>) -> Vec<(OsString, OsString)> {
     env
 }
 
+/// The environment an owner-mode agent's git and `gh` run under (ISS-765): git asks this runner's
+/// `git-credential --session` for every repository it reaches, which asks core with the session's
+/// own turn token, and core mints for the project's own repository alone; no other helper this box
+/// configures is in view. Where the turn's token sits in a file (a resident session), its path.
+fn own_git_env(view: &BoxView, handed: &Handed<'_>) -> Vec<(String, OsString)> {
+    let mut env: Vec<(String, OsString)> = Vec::new();
+    let Some(exe) = view.runner_exe.as_deref() else {
+        return env;
+    };
+    let helper = format!(
+        "!'{}' git-credential --session",
+        exe.to_string_lossy().replace('\'', "'\\''")
+    );
+    let config: [(&str, &str); 3] = [
+        // an empty value first drops every helper configured before it
+        ("credential.helper", ""),
+        ("credential.helper", &helper),
+        ("credential.useHttpPath", "true"),
+    ];
+    env.push(("GIT_CONFIG_COUNT".into(), config.len().to_string().into()));
+    for (i, (key, value)) in config.iter().enumerate() {
+        env.push((format!("GIT_CONFIG_KEY_{i}"), (*key).into()));
+        env.push((format!("GIT_CONFIG_VALUE_{i}"), (*value).into()));
+    }
+    if let Some(dir) = handed.bearer_dir {
+        env.push((
+            "FORGE_SESSION_BEARER_FILE".into(),
+            dir.join(runner_workspace::mcp::config::BEARER_FILE)
+                .into_os_string(),
+        ));
+    }
+    if let Some(shim) = handed.gh_shim_dir {
+        let path = view
+            .var("PATH")
+            .map(OsStr::to_os_string)
+            .unwrap_or_default();
+        let mut dirs = vec![shim.to_path_buf()];
+        dirs.extend(std::env::split_paths(&path));
+        if let Ok(joined) = std::env::join_paths(dirs) {
+            env.push(("PATH".into(), joined));
+        }
+    }
+    env
+}
+
 /// The checkout's git directories and identity, read with the runner's own view.
 pub(crate) async fn read_git(repo: &Path) -> (Vec<PathBuf>, Option<(String, String)>) {
     use runner_platform::git::git_line;
@@ -407,3 +470,59 @@ pub(crate) async fn read_git(repo: &Path) -> (Vec<PathBuf>, Option<(String, Stri
     let email = git_line(repo, &["config", "user.email"]).await;
     (dirs, name.zip(email))
 }
+
+/// `user.name` and `user.email` as this box's own git config holds them, read outside any
+/// repository: an owner-mode agent's clone is the session's, and this box runs no git in it.
+pub(crate) async fn read_identity() -> Option<(String, String)> {
+    use runner_platform::git::git_line;
+    let root = std::path::Path::new("/");
+    let name = git_line(root, &["config", "--global", "user.name"]).await;
+    let email = git_line(root, &["config", "--global", "user.email"]).await;
+    name.zip(email)
+}
+
+/// The `gh` an owner-mode agent runs (ISS-765): a shim that has this runner mint a token for the
+/// session's own repository and run the real `gh` with it, in a folder of this box's own put first
+/// on the session's `PATH`. Written at each spawn, so it names this runner's binary as it is now.
+pub(crate) fn write_gh_shim(view: &BoxView) -> Result<Option<PathBuf>> {
+    let Some(exe) = view.runner_exe.as_deref() else {
+        return Ok(None);
+    };
+    let dir = view.egress_dir.with_file_name("owner-bin");
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        Error::Other(format!(
+            "[CHAT_CONFINEMENT_UNAVAILABLE] the owner-mode gh shim's folder {} cannot be made: {e}",
+            dir.display()
+        ))
+    })?;
+    let body = format!(
+        "#!/bin/sh\n# {GH_SHIM_MARK}: gh holding a token for this session's own repository alone\nexec '{}' session-gh -- \"$@\"\n",
+        exe.to_string_lossy().replace('\'', "'\\''")
+    );
+    let shim = dir.join("gh");
+    let tmp = dir.join(format!("gh.tmp.{}", std::process::id()));
+    std::fs::write(&tmp, body)
+        .and_then(|()| executable(&tmp))
+        .and_then(|()| std::fs::rename(&tmp, &shim))
+        .map_err(|e| {
+            Error::Other(format!(
+                "[CHAT_CONFINEMENT_UNAVAILABLE] the owner-mode gh shim {} cannot be written: {e}",
+                shim.display()
+            ))
+        })?;
+    Ok(Some(dir))
+}
+
+#[cfg(unix)]
+fn executable(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+}
+
+/// No box but a Linux one confines a session, and none other runs the shim.
+#[cfg(not(unix))]
+fn executable(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+use runner_platform::confine::GH_SHIM_MARK;

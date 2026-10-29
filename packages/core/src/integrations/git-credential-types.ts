@@ -14,6 +14,11 @@ interface GitCredentialReach {
 /** A provider whose own short-lived, repository-scoped credential is minted per ask (a GitHub App installation token). */
 export interface MintedGitCredential extends GitCredentialReach {
   readonly kind: 'minted';
+  /**
+   * The hosts a holder of the minted credential reaches the repository on: git's, and the host's API
+   * (`gh`). What an owner-mode channel agent's sandbox may connect to besides core (ISS-765).
+   */
+  hostsOf(config: Record<string, unknown>): string[];
   mint(args: {
     config: Record<string, unknown>;
     secrets: Record<string, unknown>;

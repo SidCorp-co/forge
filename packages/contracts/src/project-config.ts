@@ -81,6 +81,12 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"SUPPORT_GRANT_TARGET_UNKNOWN",
 	/** `owner_mode` granted on a block other than a channel agent's (REQ-77 BC-20). */
 	"SUPPORT_OWNER_MODE_NOT_AGENT",
+	/** Scheduled checks on a block other than a channel agent's (REQ-77 BC-13). */
+	"SUPPORT_CHECK_NOT_AGENT",
+	/** A scheduled check names a group the binding does not answer (REQ-77 BC-13). */
+	"SUPPORT_CHECK_ROOM_UNKNOWN",
+	/** A group an outside bot answers joins the channel agent before its switch may run (REQ-77 BC-16). */
+	"AGENT_SWITCH_NOT_READY",
 ] as const;
 
 /** Every code a project-config document write answers with. */

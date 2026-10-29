@@ -157,3 +157,8 @@ export function percentile(values: readonly number[], p: number): number | null 
   const rank = Math.ceil((p / 100) * sorted.length);
   return sorted[Math.min(sorted.length, Math.max(1, rank)) - 1] ?? null;
 }
+
+/** The thread a scheduled check's firing is recorded under: one per check and UTC day (REQ-77 BC-13). */
+const CHECK_THREAD_PREFIX = 'check:';
+export const checkThreadOf = (name: string, day: string) => `${CHECK_THREAD_PREFIX}${name}:${day}`;
+export const isCheckThread = (thread: string) => thread.startsWith(CHECK_THREAD_PREFIX);

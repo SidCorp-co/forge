@@ -13,7 +13,9 @@ import {
 import {
   supportAnnounceRequestSchema,
   supportAskOwnerRequestSchema,
+  supportCheckResultRequestSchema,
   supportCommonIssueRequestSchema,
+  supportGitCredentialRequestSchema,
   supportMemberRequestSchema,
   supportRouteRequestSchema,
   supportRuleRequestSchema,
@@ -33,6 +35,7 @@ import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import { mountChannelRoutes } from './channel-routes.js';
+import { ownerGitCredential } from './owner-git.js';
 import { supportActionsOf, supportRoomsOf } from './read.js';
 
 /**
@@ -106,6 +109,8 @@ const SHAPES = {
   route: '{ thread, to: forge | technical | product, member?, title?, text }',
   announce: '{ text }',
   askOwner: '{ thread, question, record? }',
+  checkResult: '{ check, finding: string | null }',
+  gitCredential: '{ host, path }',
 } as const;
 
 supportRoutes.post(
@@ -265,6 +270,29 @@ supportRoutes.post(
   projectParam,
   strictBody(supportAskOwnerRequestSchema, SHAPES.askOwner),
   (c) => act(c, c.req.valid('param').id, { action: 'ask_owner', ...c.req.valid('json') }),
+);
+
+supportRoutes.post(
+  '/:id/support/session/check-results',
+  projectParam,
+  strictBody(supportCheckResultRequestSchema, SHAPES.checkResult),
+  (c) => act(c, c.req.valid('param').id, { action: 'check_result', ...c.req.valid('json') }),
+);
+
+// an owner-mode channel agent's git and gh ask here for a credential to its own repository (ISS-765)
+supportRoutes.post(
+  '/:id/support/session/git-credential',
+  projectParam,
+  strictBody(supportGitCredentialRequestSchema, SHAPES.gitCredential),
+  async (c) => {
+    const projectId = c.req.valid('param').id;
+    const out = await ownerGitCredential(
+      { userId: c.get('userId'), tokenId: c.get('patTokenId'), projectId },
+      c.req.valid('json'),
+    );
+    if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+    return c.json(out.value);
+  },
 );
 
 mountChannelRoutes(supportRoutes);

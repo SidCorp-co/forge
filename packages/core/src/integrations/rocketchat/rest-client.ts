@@ -423,3 +423,56 @@ export async function fetchBotMembership(
     clearTimeout(timer);
   }
 }
+
+/** What the chat server said to removing an account from a group. */
+export type GroupKick =
+  | { state: 'removed' }
+  | { state: 'not-member' }
+  | { state: 'refused'; status: number; why: string }
+  | { state: 'unreachable'; why: string };
+
+/**
+ * Remove an account from a private group (`groups.kick`), as a switch from an outside bot does
+ * (REQ-77 BC-16). An account already out of the group reads `not-member`, which is what was wanted;
+ * a refusal (the bot holds no right to remove members) and a server that does not answer are told
+ * apart and never read as done.
+ */
+export async function kickFromGroup(
+  auth: RocketChatRestAuth,
+  rid: string,
+  userId: string,
+): Promise<GroupKick> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${apiBase(auth)}/groups.kick`, {
+      method: 'POST',
+      headers: {
+        'X-Auth-Token': auth.authToken,
+        'X-User-Id': auth.userId,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ roomId: rid, userId }),
+      signal: controller.signal,
+    });
+    const body = (await res.json().catch(() => null)) as {
+      success?: unknown;
+      error?: unknown;
+      errorType?: unknown;
+    } | null;
+    if (res.ok && body?.success === true) return { state: 'removed' };
+    const said = [body?.errorType, body?.error].filter((v) => typeof v === 'string').join(': ');
+    if (/not[-_ ]in[-_ ]room|user-not-in-room/i.test(said)) return { state: 'not-member' };
+    return { state: 'refused', status: res.status, why: said || `HTTP ${res.status}` };
+  } catch (err) {
+    return {
+      state: 'unreachable',
+      why: controller.signal.aborted
+        ? `the chat server did not answer within ${FETCH_TIMEOUT_MS / 1000}s`
+        : `the chat server could not be reached (${err instanceof Error ? err.message : String(err)})`,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}

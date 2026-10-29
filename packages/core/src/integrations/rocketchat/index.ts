@@ -34,6 +34,8 @@ export {
   fetchRoomHistory,
   fetchThreadMessages,
   fetchUserProfile,
+  type GroupKick,
+  kickFromGroup,
   type RocketChatButtonAttachment,
   type RocketChatImageRef,
   type RocketChatRestAuth,
@@ -41,7 +43,12 @@ export {
   reactToMessage,
 } from './rest-client.js';
 export { resolveRoomPostAuth, roomStillBoundTo } from './room-auth.js';
-export { provideRoomHandlers, provideSupportRoomHandler } from './room-handlers.js';
+export {
+  type AgentSwitchGate,
+  provideAgentSwitchGate,
+  provideRoomHandlers,
+  provideSupportRoomHandler,
+} from './room-handlers.js';
 export type { Route } from './room-routing.js';
 export { type RoomShape, resolveRoomShape } from './room-shape.js';
 export { questionThread, registerThread, releaseQuestionThread } from './thread-registry.js';
