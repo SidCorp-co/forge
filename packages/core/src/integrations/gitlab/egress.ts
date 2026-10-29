@@ -65,3 +65,25 @@ export function logGitLabCall(call: {
     'gitlab: call',
   );
 }
+
+/** Log one call held back unsent because the host's named wait after a 429 has not passed. */
+export function logGitLabHeld(call: {
+  caller: string;
+  host: string;
+  method: string;
+  path: string;
+  until: Date;
+}): void {
+  logger.info(
+    {
+      gitlab: {
+        caller: call.caller,
+        host: call.host,
+        method: call.method,
+        kind: gitlabPathKind(call.path),
+        held: call.until.toISOString(),
+      },
+    },
+    'gitlab: held',
+  );
+}

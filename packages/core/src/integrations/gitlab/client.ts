@@ -2,12 +2,15 @@
  * Calling GitLab's REST v4 API for one binding's project, as the connection's access token.
  *
  * Every request carries the token in `PRIVATE-TOKEN` and nothing else; a failure is raised as
- * `SourceHostCallError` with GitLab's own `message` beside the status, never the request.
+ * `SourceHostCallError` with GitLab's own `message` beside the status, never the request. A 429
+ * holds the token (or the host) until the wait GitLab named (`cooldown.ts`): until then a call is
+ * refused here with that `retryAt` and never sent.
  */
 
 import { scrubLogText } from '@forge/observability';
 import { SourceHostCallError, SourceHostUnavailable } from '../source-host/index.js';
-import { gitlabCaller, logGitLabCall } from './egress.js';
+import { heldUntil, holdAfter429 } from './cooldown.js';
+import { gitlabCaller, logGitLabCall, logGitLabHeld } from './egress.js';
 import {
   GITLAB_DEFAULT_BASE_URL,
   type GitLabConfig,
@@ -85,6 +88,18 @@ export function buildGitLabClient(args: {
 
   async function send(method: Method, path: string, body?: unknown): Promise<Response> {
     const caller = gitlabCaller();
+    const host = gitlabHostOf(args.config);
+    const held = heldUntil(host, token as string);
+    if (held) {
+      logGitLabHeld({ caller, host, method, path, until: held });
+      const err = new SourceHostCallError(
+        429,
+        `${method} ${path} on ${fullName} was not sent: ${host} answered 429 and named ${held.toISOString()} as the earliest retry`,
+        null,
+      );
+      err.retryAt = held;
+      throw err;
+    }
     const started = Date.now();
     const res = await fetch(`${api}${path}`, {
       method,
@@ -98,7 +113,7 @@ export function buildGitLabClient(args: {
     });
     logGitLabCall({
       caller,
-      host: gitlabHostOf(args.config),
+      host,
       method,
       path,
       status: res.status,
@@ -107,11 +122,13 @@ export function buildGitLabClient(args: {
       ...(res.status === 429 ? { body: await res.clone().text() } : {}),
     });
     if (!res.ok) {
-      throw new SourceHostCallError(
+      const err = new SourceHostCallError(
         res.status,
         `${method} ${path} on ${fullName} returned HTTP ${res.status}`,
         await gitlabMessage(res),
       );
+      if (res.status === 429) err.retryAt = holdAfter429(host, token as string, res.headers);
+      throw err;
     }
     return res;
   }

@@ -1,0 +1,1 @@
+**A pass at a later build is weighed from Forge's own landing records, never GitLab's compare.** Requirement coverage, the automatic release sweep and the steward's build-ahead read no host; a commit no recorded landing places after the issue's reads not judged, naming the missing record.

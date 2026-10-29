@@ -21,7 +21,8 @@ import {
   updateConnection,
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';
-import { gitlabCaller, logGitLabCall } from './egress.js';
+import { heldUntil, holdAfter429 } from './cooldown.js';
+import { gitlabCaller, logGitLabCall, logGitLabHeld } from './egress.js';
 import { gitlabGitCredential } from './git-credential.js';
 import { GITLAB_BINDING_CONFIG_KEYS, gitlabConfigBase, gitlabSecretsSchema } from './schemas.js';
 import { gitlabSourceHost } from './source-host.js';
@@ -49,6 +50,13 @@ type Probe = { ok: true; body: unknown } | { ok: false; status: number };
 
 async function probe(base: string, path: string, token: string): Promise<Probe> {
   const caller = gitlabCaller();
+  const host = new URL(base).host;
+  // the wait GitLab named on a 429 holds this probe too (`cooldown.ts`): it answers 429 unsent
+  const held = heldUntil(host, token);
+  if (held) {
+    logGitLabHeld({ caller: `health-probe (${caller})`, host, method: 'GET', path, until: held });
+    return { ok: false, status: 429 };
+  }
   const started = Date.now();
   const res = await fetch(`${base}/api/v4${path}`, {
     headers: { 'PRIVATE-TOKEN': token, Accept: 'application/json' },
@@ -56,7 +64,7 @@ async function probe(base: string, path: string, token: string): Promise<Probe> 
   });
   logGitLabCall({
     caller: `health-probe (${caller})`,
-    host: new URL(base).host,
+    host,
     method: 'GET',
     path,
     status: res.status,
@@ -64,6 +72,7 @@ async function probe(base: string, path: string, token: string): Promise<Probe> 
     headers: res.headers,
     ...(res.status === 429 ? { body: await res.clone().text() } : {}),
   });
+  if (res.status === 429) holdAfter429(host, token, res.headers);
   if (!res.ok) return { ok: false, status: res.status };
   return { ok: true, body: await res.json() };
 }
