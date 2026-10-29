@@ -176,7 +176,8 @@ export function globReaches(from, patterns, { known, aliasesOf }) {
   const drop = matchers(patterns.filter((p) => p.startsWith('!')).map((p) => p.slice(1)));
   if (keep.length === 0) return [];
   return [...known].filter(
-    (path) => path !== from && keep.some((re) => re.test(path)) && !drop.some((re) => re.test(path)),
+    (path) =>
+      path !== from && keep.some((re) => re.test(path)) && !drop.some((re) => re.test(path)),
   );
 }
 

@@ -60,7 +60,8 @@ const FILES = {
     'const aliased = import.meta.glob("@/test/aliased-*.tsx");',
     '',
   ].join('\n'),
-  'packages/web-v2/src/lib/loader.ts': "export const all = import.meta.glob('../test/screens-*.tsx');\n",
+  'packages/web-v2/src/lib/loader.ts':
+    "export const all = import.meta.glob('../test/screens-*.tsx');\n",
   'packages/web-v2/src/lib/loader.test.ts': "import { all } from './loader';\n",
   'scripts/lib/thing.mjs': 'export const thing = 1;\n',
   'scripts/lib/thing.test.mjs': "import { thing } from './thing.mjs';\n",
