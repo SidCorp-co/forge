@@ -373,17 +373,14 @@ const BINDING_TARGETS = [
   targetOf('sentry', {}),
   targetOf('rocketchat', {
     rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
-    // the room is a support group answered by its session (REQ-75); exactly one room, refused by
-    // name otherwise (`integrations/rocketchat/support-binding.ts`)
+    // one support group its session answers (REQ-75), else refused by name (support-binding.ts)
     support: supportRoomConfigSchema.optional(),
     operations: operationsRoomConfigSchema.optional(), // operations rooms (REQ-75 BC-20)
-    // groups an agent outside Forge answers; Forge keeps their channel record only (REQ-75 r6)
-    outsideRids: outsideRidsSchema.optional(),
+    outsideRids: outsideRidsSchema.optional(), // outside agents' groups: record only (REQ-75 r6)
   }),
   targetOf('support-api', { ...supportApiBindingConfigSchema.shape }),
   targetOf('agent', {}),
-  // the site key is minted on bind (`integrations/widget/site-key.ts`): a document leaves it out or
-  // sends back the one it read
+  // the site key is minted on bind (widget/site-key.ts): a document omits it or sends back its own
   targetOf('widget', {
     ...widgetBindingConfigSchema.shape,
     siteKey: widgetBindingConfigSchema.shape.siteKey.optional(),
