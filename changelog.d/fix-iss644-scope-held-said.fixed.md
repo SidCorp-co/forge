@@ -1,0 +1,1 @@
+**An issue waiting on another run's overlapping work now says so.** Its page and the issue list name the holding issue and run until that run ends. A gate the project turns off no longer marks issues withheld.

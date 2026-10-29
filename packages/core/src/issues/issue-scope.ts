@@ -17,8 +17,8 @@
 
 import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { type SQL, sql } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
-import { rowsOf } from '../db/raw-sql.js';
+import { db, type Tx } from '../db/client.js';
+import { idList, rowsOf } from '../db/raw-sql.js';
 import { type ScopeHoldersFilter, scopeHoldersSql } from '../db/schema-issue-designs.js';
 import { liveIssueLeasesSql } from '../db/schema-issue-leases.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -33,6 +33,7 @@ const SCOPE_HELD = 'ISSUE_SCOPE_HELD' satisfies IssueTakeRefusalCode;
 
 /** One asked issue whose scope a live run holds, as the refusal names it. */
 export interface ScopeHold {
+  issueId: string;
   issueKey: string;
   holderKey: string;
   /** The box's own run id where the run carries one, else core's. */
@@ -44,6 +45,7 @@ export interface ScopeHold {
 }
 
 interface HoldRow {
+  issue_id: string;
   iss_seq: number;
   issue_prefix: string | null;
   holder_seq: number;
@@ -61,7 +63,7 @@ async function holdsWhere(
 ): Promise<ScopeHold[]> {
   const rows = rowsOf<HoldRow>(
     await executor.execute(sql`
-      SELECT mi.iss_seq, p.issue_prefix, h.holder_seq, h.run_id,
+      SELECT mi.id AS issue_id, mi.iss_seq, p.issue_prefix, h.holder_seq, h.run_id,
              r.metadata ->> 'boxRunId' AS box_run_id,
              ARRAY(SELECT lb.name FROM labels lb WHERE lb.id = ANY(h.modules) ORDER BY lb.name)
                AS module_names,
@@ -75,6 +77,7 @@ async function holdsWhere(
     `),
   );
   return rows.map((r) => ({
+    issueId: String(r.issue_id),
     issueKey: formatIssueRef(r.issue_prefix, Number(r.iss_seq)),
     holderKey: formatIssueRef(r.issue_prefix, Number(r.holder_seq)),
     run: r.box_run_id ?? String(r.run_id),
@@ -93,15 +96,46 @@ function shared(h: ScopeHold): string {
   return parts.join(' and ');
 }
 
+/** What one hold says, at a door that refuses it and on a list that withholds it alike. */
+const holdSaid = (h: ScopeHold): string =>
+  `${h.issueKey} shares ${shared(h)} with ${h.holderKey}, held by live run ${h.run} (the Runs page finds it by that id). It waits until that run ends.`;
+
 function scopeHeld(holds: readonly ScopeHold[], door: string): RefusalError {
   return new RefusalError(
     holds.map((h) => ({
       code: SCOPE_HELD,
       path: '',
-      detail: `${door} is refused. ${h.issueKey} shares ${shared(h)} with ${h.holderKey}, held by live run ${h.run} (the Runs page finds it by that id). It waits until that run ends.`,
+      detail: `${door} is refused. ${holdSaid(h)}`,
     })),
     SCOPE_HELD,
   );
+}
+
+/**
+ * Why the admissible list withholds each of `issueIds` under the scope hold (ISS-644): the first
+ * holding issue, and every hold said as the take refusal says it. Asked with the list's own
+ * predicate, unfiltered, so the rows read here are the rows it leaves out; whether the gate is
+ * enforced is the caller's, which asks this only where it is.
+ */
+export async function scopeHoldsOf(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, { holder: string; detail: string }>> {
+  const out = new Map<string, { holder: string; detail: string }>();
+  if (issueIds.length === 0) return out;
+  const holds = await holdsWhere(
+    db,
+    sql`mi.project_id = ${projectId} AND mi.id IN (${idList(issueIds)})`,
+    {},
+  );
+  for (const h of holds) {
+    const said = out.get(h.issueId);
+    out.set(h.issueId, {
+      holder: said?.holder ?? h.holderKey,
+      detail: said ? `${said.detail} ${holdSaid(h)}` : holdSaid(h),
+    });
+  }
+  return out;
 }
 
 /** Waits for the project's scope lock: a take and a build move read the holders one at a time. */
