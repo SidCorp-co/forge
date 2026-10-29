@@ -1,1 +1,0 @@
-**A run's close gives back only its own leases.** Two runs on one box over one issue no longer collide: closing the older run leaves the newer run's hold, so its next status move is not refused NO_HOLDER.

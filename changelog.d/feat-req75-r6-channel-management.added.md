@@ -1,1 +1,0 @@
-**Each bound chat channel has a page under Product.** Members with their roles, channel rules, common questions and routes live in Forge; the bot answers each person by role, in their thread, and posts results, never progress.

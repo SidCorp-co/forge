@@ -1,1 +1,0 @@
-**Only the run holding an issue claims it.** Moving an issue into in_progress while another run holds it is now refused naming that run, as the move to awaiting_release already was; an ended run no longer slips through.

@@ -1,1 +1,0 @@
-**A count or word that ends a sentence after a credential label is no longer refused as a secret.** "no token: 4." and "(password: required)" are prose; a credential-shaped value is still refused, and scrubbing keeps its closing bracket.

@@ -1,1 +1,0 @@
-**The steward stops re-asking the master about answered items.** A dated decision on the item asked about, or on the stuck item whose run asked, clears the ask at once, and a person's act is never asked of the master.
