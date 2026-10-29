@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.365] - 2026-10-29
+
+Group switches keep Forge's agent; switch duties name Forge doors, not box files
+
+### Added
+
+- **Every call core makes to GitLab is logged once.** The line names the caller, the path kind, the status and GitLab's `RateLimit-*` and `Retry-After` answer; a 429 keeps its body, and the git relay line carries the same headers.
+
+### Fixed
+
+- **A channel switch no longer removes the agent from its own group.** Where the outside bot shares the agent's chat account, the switch waits for the operator's stop record. Switch duties name Forge doors, never box files, keys or hosts.
+
 ## [0.4.0-dev.364] - 2026-10-29
 
 Forge asks agents to record merges and releases instead of inferring them

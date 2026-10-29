@@ -1,1 +1,0 @@
-**Every call core makes to GitLab is logged once.** The line names the caller, the path kind, the status and GitLab's `RateLimit-*` and `Retry-After` answer; a 429 keeps its body, and the git relay line carries the same headers.
