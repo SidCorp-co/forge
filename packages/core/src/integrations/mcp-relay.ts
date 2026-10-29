@@ -117,14 +117,23 @@ export async function relayedBinding(grant: RelayGrant): Promise<BindingWithConn
   return granted.some((g) => g.binding.id === pair.binding.id) ? pair : null;
 }
 
-/** Request headers the MCP transport reads, passed upstream as sent. */
+/**
+ * Request headers the MCP transport reads, passed upstream as sent: a 2025-era client's session
+ * and revision, and the method and name a 2026-07-28 request repeats in `Mcp-Method` / `Mcp-Name`,
+ * which a 2026-07-28 provider refuses a request without (ISS-768).
+ */
 const FORWARDED = [
   'content-type',
   'accept',
   'mcp-session-id',
   'mcp-protocol-version',
+  'mcp-method',
+  'mcp-name',
   'last-event-id',
 ];
+
+/** A tool's own argument headers under 2026-07-28 (`Mcp-Param-<Name>`), forwarded by this prefix. */
+const PARAM_HEADER = 'mcp-param-';
 /** Response headers the client reads, passed back as the provider sent them. */
 const RETURNED = ['content-type', 'mcp-session-id', 'cache-control', 'www-authenticate'];
 
@@ -132,6 +141,8 @@ const RETURNED = ['content-type', 'mcp-session-id', 'cache-control', 'www-authen
 export interface RelayedRequest {
   method: string;
   header: (name: string) => string | undefined;
+  /** The `Mcp-Param-*` headers the request carries, by lower-case name. */
+  paramHeaders: [name: string, value: string][];
   body?: ArrayBuffer;
   signal: AbortSignal;
 }
@@ -148,6 +159,9 @@ export async function relayToUpstream(
   for (const name of FORWARDED) {
     const v = request.header(name);
     if (v) headers.set(name, v);
+  }
+  for (const [name, v] of request.paramHeaders) {
+    if (name.startsWith(PARAM_HEADER)) headers.set(name, v);
   }
   const answer = await fetch(upstream.url, {
     method: request.method,

@@ -10,7 +10,7 @@ export const mcpMessageBody = rawBody(
 
 export const mcpNoBody = rawBody(
   'application/json',
-  'No body is expected: the MCP streamable-HTTP transport takes the request whole, for its headers and session.',
+  'No body is expected: /mcp is stateless and serves POST only, so GET and DELETE, which open or end a session, are answered 405 with Allow: POST.',
   { required: false },
 );
 

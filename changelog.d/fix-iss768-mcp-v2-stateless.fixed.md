@@ -1,0 +1,1 @@
+**ChatGPT and other 2026-07-28 MCP clients connect to /mcp.** It runs MCP SDK v2, stateless: it answers server/discover and every 2025 revision Claude Code uses, and GET or DELETE answers 405, no longer a stream clients reopened each second.

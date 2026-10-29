@@ -20,6 +20,9 @@ import { REQUIREMENT_READ_ACTIONS } from './requirements-tool.js';
  * one method whose class depends on its arguments.
  */
 const READ_METHODS: ReadonlySet<string> = new Set([
+  // 2026-07-28: what the server speaks, and a stream of what changes in it (ISS-768)
+  'server/discover',
+  'subscriptions/listen',
   'initialize',
   'notifications/initialized',
   'ping',
