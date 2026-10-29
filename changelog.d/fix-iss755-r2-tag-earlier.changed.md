@@ -1,0 +1,1 @@
+**A release is tagged before it is deployed.** Forge now tags `v<version>` on the promotion merge or the cut commit, so the deployed build reads its version with no redeploy; an unshipped release keeps its tag.

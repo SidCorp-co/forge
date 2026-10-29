@@ -10,6 +10,7 @@ import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { approvalRequired } from '../project-config/index.js';
 import { label, mergeStepsOf } from './change-request-roster.js';
+import { tagOwedOf } from './release-tag-record.js';
 
 /** The next merge an accepted change-request release waits on. */
 export interface ReleaseMergeOwed {
@@ -64,7 +65,9 @@ async function latestDecisions(runIds: readonly string[]) {
  * request in its declared order. A release is accepted when its latest approval is approved, or where
  * the project requires none and none was asked: the same rule the merge door admits by
  * (`approvals.ts:assertApprovalAllowsAttempt`). One whose every request merged is its settle's, not
- * the master's, and is not owed.
+ * the master's, and is not owed, except a promotion merged on the host that Forge has not recorded:
+ * the host's report writes nothing (ISS-774), so its last step stays owed until the master records
+ * it through the same merge route, whose settle owes the release's tag on that merge (REQ-63 BC-13).
  */
 export async function releaseMergesOwed(projectId: string): Promise<ReleaseMergeOwed[]> {
   const runs = (await runningReleases(projectId)).filter((r) => mergeStepsOf(r.metadata));
@@ -94,7 +97,11 @@ export async function releaseMergesOwed(projectId: string): Promise<ReleaseMerge
   const stateOf = new Map(states.map((s) => [s.id, s.state]));
   return accepted.flatMap((r) => {
     const order = mergeStepsOf(r.metadata) ?? [];
-    const next = order.find((s) => stateOf.get(s.pullRequestId) !== 'merged');
+    const unrecorded =
+      (r.metadata as { promotion?: unknown } | null)?.promotion && !tagOwedOf(r.metadata)
+        ? order.at(-1)
+        : undefined;
+    const next = order.find((s) => stateOf.get(s.pullRequestId) !== 'merged') ?? unrecorded;
     const issueId = next?.issueIds[0];
     if (!next || !issueId) return [];
     return [

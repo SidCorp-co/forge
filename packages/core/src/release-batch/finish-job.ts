@@ -22,6 +22,7 @@ import { closeRunIfOneShot } from '../pipeline/index.js';
 import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import { assertFinishable, finishReleaseBatch, readReleaseRun } from './finish.js';
+import { oweReleaseTag } from './release-tag.js';
 import {
   compareAndSet,
   type FinishRefusal,
@@ -148,6 +149,8 @@ export async function acceptReleaseBatchFinish(
     };
     // Conditioned on the run too: an abort landing after the read above refuses on the next round.
     if (await compareAndSet(runId, current?.version ?? null, record, { runOpen: true })) {
+      // a run that never reported the commit it cut owes its tag on the one its finish names
+      if (commit !== null) await oweReleaseTag(runId, commit, 'finish');
       await enqueue(runId);
       return { runId, finish: record, started: true };
     }

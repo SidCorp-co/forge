@@ -1,6 +1,6 @@
 // The version rule (ADR 0011), on the shapes that made it: HOP's one roster cut three times on
 // 2026-10-07, the same with a tag pushed on attempt 1, a roster that grew, and an attempt that never
-// said what left its box.
+// said what left its box; and a release Forge tagged before it ended unshipped (REQ-63 BC-14).
 
 import { describe, expect, it } from 'vitest';
 import { releaseLinesOf } from './release-cuts.js';
@@ -301,5 +301,65 @@ describe('a release that shipped with no job', () => {
       kind: 'first',
       version: '0.1.0',
     });
+  });
+});
+
+// REQ-63 r7 BC-14: Forge tags the commit a release names before the deploy, so a release that ends
+// without shipping keeps a tag of its version on the host; its next attempt cannot wear that version.
+describe('a release Forge tagged that ended without shipping', () => {
+  const tagged = (version: string, state: 'tagged' | 'refused' | 'untagged' = 'tagged') => ({
+    tagOwed: { name: `v${version}`, commit: 'a'.repeat(40), from: 'promotion', at: 'now' },
+    tag: { state, name: `v${version}`, commit: 'a'.repeat(40), at: 'now' },
+  });
+
+  it('carries its version on the tag, so the re-cut takes a new version naming it, whatever the abort declared', () => {
+    const first = run({ version: '0.3.0', metadata: { ...NOTHING_LEFT, ...said([]), ...tagged('0.3.0') } });
+    expect(decideVersion([first], ROSTER, null)).toMatchObject({
+      kind: 'bumped',
+      version: '0.4.0',
+      carriers: [{ kind: 'tag', name: 'v0.3.0' }],
+    });
+  });
+
+  it('claims its version with no release job, as a promotion release has none: the next cut takes its successor', () => {
+    const promotion = run({
+      version: '0.1.0',
+      hasJob: false,
+      reachedBox: false,
+      roster: ['x'],
+      metadata: tagged('0.1.0'),
+    });
+    expect(decideVersion([promotion], ['a'], null)).toMatchObject({ kind: 'first', version: '0.2.0' });
+    expect(decideVersion([promotion], ['x'], null)).toMatchObject({
+      kind: 'bumped',
+      version: '0.2.0',
+      carriers: [{ kind: 'tag', name: 'v0.1.0' }],
+    });
+  });
+
+  it('counts a tag still owed, which the outbox is putting, and names a declared tag once', () => {
+    const owed = run({
+      version: '0.3.0',
+      metadata: {
+        ...said([{ kind: 'tag', name: 'v0.3.0' }]),
+        tagOwed: { name: 'v0.3.0', commit: 'b'.repeat(40), from: 'range', at: 'now' },
+      },
+    });
+    expect(carriersOf(owed)).toEqual({ kind: 'carried', carriers: [{ kind: 'tag', name: 'v0.3.0' }] });
+  });
+
+  it('carries nothing where the tag was refused or never put: the version is still free to wear', () => {
+    for (const state of ['refused', 'untagged'] as const) {
+      const first = run({ version: '0.3.0', metadata: { ...NOTHING_LEFT, ...tagged('0.3.0', state) } });
+      expect(decideVersion([first], ROSTER, null)).toMatchObject({ kind: 'reused', version: '0.3.0' });
+    }
+    const unstarted = run({
+      version: '0.1.0',
+      hasJob: false,
+      reachedBox: false,
+      roster: ['x'],
+      metadata: tagged('0.1.0', 'refused'),
+    });
+    expect(decideVersion([unstarted], ['a'], null)).toMatchObject({ kind: 'first', version: '0.1.0' });
   });
 });

@@ -242,6 +242,7 @@
     "releases.standing.status.shipped": "Released",
     "releases.standing.status.shippedAt": "Released {at}",
     "releases.standing.tag.none": "None",
+    "releases.standing.tag.owed": "Pending",
     "releases.standing.tag.RELEASE_TAG_CONFLICT": "Refused",
     "releases.standing.tag.RELEASE_TAG_HOST_FAILED": "Failed",
     "releases.standing.tag.RELEASE_TAG_NO_COMMIT": "No commit",

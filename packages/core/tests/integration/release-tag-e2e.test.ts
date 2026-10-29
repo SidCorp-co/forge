@@ -1,9 +1,9 @@
 /**
- * REQ-63 BC-13..15 (forge-core-61, relaying orbit-forge, 2026-10-29): a shipped release tags the
- * commit it shipped `v<version>` on the project's source host, so a project deployed outside Forge
- * reads its release version at build time. Driven through the record door of a project with no
- * production environment (a recorded landing is a ship) and the outbox it tells (`release.shipped`,
- * consumer `release-tag`), against real Postgres, with the source host planted at the resolver the
+ * REQ-63 r7 BC-13..15 (forge-core-61, relaying orbit-forge, 2026-10-29): a release tags the commit its
+ * cut names `v<version>` on the project's source host, so a project deployed outside Forge reads its
+ * release version at build time. Driven through the record door of a project with no production
+ * environment (a recorded landing names its commit at the cut) and the outbox it tells
+ * (`release.committed`, consumer `release-tag`), against real Postgres, with the source host planted at the resolver the
  * way `release-promotion-e2e` plants it: it holds tags by name and counts the writes it took, so a
  * re-ship that wrote again or moved a tag goes red here.
  *
@@ -14,7 +14,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { tagShippedRelease } from '../../src/release-batch/release-tag.js';
+import { tagRelease } from '../../src/release-batch/release-tag.js';
 import { api } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -111,8 +111,8 @@ async function tagOnPage(version: string): Promise<Record<string, unknown> | nul
   return (body.release as { tag: Record<string, unknown> | null }).tag;
 }
 
-describe('a shipped release tags the commit it shipped (REQ-63 BC-13)', () => {
-  it('puts v<version> on the shipped commit through the bound host, and the release page shows it (BC-15)', async () => {
+describe('a recorded release tags the commit its cut names (REQ-63 BC-13)', () => {
+  it('puts v<version> on the recorded commit through the bound host, and the release page shows it (BC-15)', async () => {
     const { version } = await ship(5);
 
     expect(planted.writes).toEqual([{ name: `v${version}`, sha: F4 }]);
@@ -130,7 +130,7 @@ describe('tagging is idempotent, and a tag on another commit is refused by name 
   it('a second tagging of the same release writes nothing and still reads tagged, as the tag Forge created', async () => {
     const { runId, version } = await ship(5);
 
-    const again = await tagShippedRelease(runId);
+    const again = await tagRelease(runId);
 
     // the host answered `present`: nothing written, and the record keeps that Forge made it
     expect(planted.writes).toHaveLength(1);
@@ -207,6 +207,8 @@ describe('the release-tags guide says how a build reads its version (REQ-63 BC-1
     expect(guide.status).toBe(200);
     const text = String(guide.body.text ?? '').replace(/\s+/gu, ' ');
     expect(text).toContain('Forge puts the lightweight tag `v<version>`');
+    expect(text).toContain('before anything is deployed from it');
+    expect(text).toContain('at build time, with no redeploy');
     expect(text).toContain('git fetch --tags && git describe --tags --exact-match HEAD');
     expect(text).toContain('`$CI_COMMIT_TAG`');
     expect(text).toContain('`$GITHUB_REF_NAME`');

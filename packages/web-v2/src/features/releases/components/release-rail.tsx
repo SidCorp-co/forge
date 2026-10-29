@@ -36,19 +36,20 @@ function RequirementCount({ r }: { r: ReleasePageRequirement }) {
 }
 
 /**
- * Its tag on the source host (REQ-63 BC-15), once it shipped: the tag's own name where the host holds
- * it on the shipped commit, else one word for why not. The sentence why is the developer view's.
+ * Its tag on the source host (REQ-63 r7 BC-15), beside its status from the moment the commit its
+ * version names is known, before any deploy: one word while the host is asked, the tag's own name
+ * where the host holds it, else one word for why not. The sentence why is the developer view's.
  */
 function TagFact({ r }: { r: Pick<ReleaseDetail, "releasedAt" | "tag"> }) {
   const t = useCopy();
-  if (!r.releasedAt) return null;
   const tag = r.tag ?? null;
+  if (!tag && !r.releasedAt) return null;
   return (
     <Fact label={t("releases.standing.label.tag")} testId="standing-tag">
       {tag?.state === "tagged" ? (
         <span className="font-mono text-fg">{tag.name}</span>
       ) : (
-        <span className="text-muted">{t(`releases.standing.tag.${tag?.code ?? "none"}`)}</span>
+        <span className="text-muted">{t(`releases.standing.tag.${tag?.state === "owed" ? "owed" : (tag?.code ?? "none")}`)}</span>
       )}
     </Fact>
   );
@@ -63,6 +64,7 @@ export function WhereReleaseStands({ r }: { r: ReleaseDetail }) {
       <Fact label={t("releases.standing.label.status")} testId="standing-status">
         {s.status}
       </Fact>
+      <TagFact r={r} />
       <Fact label={t("releases.standing.label.approver")} testId="standing-approver">
         {s.approver}
       </Fact>
@@ -72,7 +74,6 @@ export function WhereReleaseStands({ r }: { r: ReleaseDetail }) {
       <Fact label={t("releases.standing.label.verified")} testId="standing-verified">
         {s.verified}
       </Fact>
-      <TagFact r={r} />
       {s.next ? (
         <p className="pt-1 text-13 font-medium text-warn-11" data-testid="standing-next">
           {t("releases.peek.next", { step: s.next })}

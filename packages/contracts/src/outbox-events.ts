@@ -54,6 +54,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"feedback.reporterTold",
 	"release.cut",
 	"release.shipped",
+	"release.committed",
 	"release.approvalDecided",
 	"verdict.recorded",
 	"credential.tokenChanged",
@@ -551,6 +552,17 @@ export interface OutboxEventPayloads
 		projectId: string;
 		runId: string;
 		version: string;
+	};
+	/**
+	 * The commit a release's version names is known, before anything is deployed from it: a promotion
+	 * observed merged, or the commit its cut names (REQ-63 BC-13). Told once per run; null where the
+	 * release names no whole commit. The tag `v<version>` is put on it.
+	 */
+	"release.committed": {
+		projectId: string;
+		runId: string;
+		version: string;
+		commit: string | null;
 	};
 	/** A release run's ship was stamped: the version is live, carrying `issueIds`; whoever reported feedback they close is told. */
 	"release.shipped": {

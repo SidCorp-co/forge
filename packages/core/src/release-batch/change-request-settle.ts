@@ -2,7 +2,9 @@
 // and every issue it carries holds its merge stamp, the roster closes, the ship is stamped and the run
 // completes — on the merge route's own call, or on the approval wake. A host's report of a merge
 // settles nothing (ISS-774, owner 2026-10-29: Forge tells the agent what is owed and writes nothing
-// from a webhook).
+// from a webhook). The first settle that finds every request merged owes the release's tag on its
+// last merge (REQ-63 BC-13); a promotion merged on the host is recorded through the merge route,
+// which the master is owed (`merges-owed.ts`).
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -13,6 +15,7 @@ import { logger } from '../lib/logger.js';
 import { closeRunIfOneShot, stampReleaseShipped, writeRunMetadata } from '../pipeline/index.js';
 import { mergeStepsOf } from './change-request-roster.js';
 import { closeRoster } from './finish.js';
+import { oweReleaseTag } from './release-tag.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 
 /**
@@ -58,7 +61,11 @@ export async function settleChangeRequestRelease(
     steps.length === 0
       ? []
       : await db
-          .select({ state: repoPullRequests.state })
+          .select({
+            id: repoPullRequests.id,
+            state: repoPullRequests.state,
+            mergeCommitSha: repoPullRequests.mergeCommitSha,
+          })
           .from(repoPullRequests)
           .where(
             inArray(
@@ -69,10 +76,16 @@ export async function settleChangeRequestRelease(
   if (states.length < steps.length || states.some((s) => s.state !== 'merged')) {
     return { settled: false, pending: 'merges' };
   }
-  // a promotion release is closed by the record of its deploy, never by its merge
-  if ((run.metadata as { promotion?: unknown } | null)?.promotion) {
-    return { settled: false, pending: 'record' };
+  // the commit the release's version names is its last merge, known now and before any deploy:
+  // its tag is owed there, once (REQ-63 BC-13); a roster that merged nothing names none
+  const lastMerge = states.find((s) => s.id === steps.at(-1)?.pullRequestId)?.mergeCommitSha ?? null;
+  const promotion = (run.metadata as { promotion?: unknown } | null)?.promotion;
+  // a promotion whose merge commit the host has not reported yet owes it on a later settle
+  if (!promotion || lastMerge) {
+    await oweReleaseTag(runId, lastMerge, promotion ? 'promotion' : 'merge');
   }
+  // a promotion release is closed by the record of its deploy, never by its merge
+  if (promotion) return { settled: false, pending: 'record' };
   const claimed = await db
     .select({
       id: issues.id,

@@ -702,13 +702,13 @@ export interface ReleaseFeedbackView {
 	toldAt: string | null;
 }
 
-/** Why a shipped release carries no tag of its own on the source host (REQ-63 BC-14). */
+/** Why a release carries no tag of its own on the source host (REQ-63 BC-14). */
 export const RELEASE_TAG_CODES = [
 	/** The tag's name already stands on another commit; Forge never moves it. */
 	"RELEASE_TAG_CONFLICT",
 	/** The project has no source host binding Forge can tag through. */
 	"RELEASE_TAG_NO_SOURCE_HOST",
-	/** The release recorded no whole commit it shipped. */
+	/** The release names no whole commit to tag. */
 	"RELEASE_TAG_NO_COMMIT",
 	/** The host failed the read or the write. */
 	"RELEASE_TAG_HOST_FAILED",
@@ -716,15 +716,17 @@ export const RELEASE_TAG_CODES = [
 export type ReleaseTagCode = (typeof RELEASE_TAG_CODES)[number];
 
 /**
- * The tag a shipped release put on its commit on the source host (REQ-63 BC-13..15), written when
- * it shipped: `tagged` where the host holds `name` on `commit` (`created` says Forge made it now),
+ * The tag a release puts on the commit its version names, on the source host (REQ-63 BC-13..15),
+ * before anything is deployed from it: `owed` from the moment that commit is known until the host
+ * answers, then `tagged` where the host holds `name` on `commit` (`created` says Forge made it),
  * `refused` where the name stands on another commit (`on`), `untagged` where it could not be asked.
+ * A release that ends without shipping keeps its tag.
  */
 export interface ReleaseTag {
-	state: "tagged" | "refused" | "untagged";
+	state: "owed" | "tagged" | "refused" | "untagged";
 	/** `v<version>`. */
 	name: string;
-	/** The commit the release shipped, whole; null where it recorded none. */
+	/** The commit the tag is owed on, whole; null where the release names none. */
 	commit: string | null;
 	created: boolean;
 	/** On a conflict, the commit the host's tag names. */
@@ -784,7 +786,7 @@ export interface ReleaseDetail extends ReleaseSummary {
 	/** `null` where the run recorded no verification and the project declares no way to prove one. */
 	verifiedBy: ReleaseVerifiedBy | null;
 	head: string | null;
-	/** Its tag on the source host; null where it has not shipped, or shipped before releases were tagged. */
+	/** Its tag on the source host; null until the commit its version names is known, and on a release before releases were tagged. */
 	tag: ReleaseTag | null;
 }
 

@@ -19,6 +19,7 @@ import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
 import { admissibleIssues, closeRecorded, writeLedger } from './recorded.js';
 import { notVerifiedRefusal, refuseRelease } from './refuse.js';
+import { oweReleaseTag } from './release-tag.js';
 import { verifyServingNow } from './verify.js';
 
 /** The cut's own run opener (`create.ts:openClaimedRun`), handed in so neither module imports the other. */
@@ -100,6 +101,11 @@ export async function cutPromotionRelease(
     naming: args.naming ?? null,
     userId,
   });
+  // a promotion already merged when the release is cut is seen merged now: its tag is owed on the
+  // merge before anything is deployed from it (REQ-63 BC-13); one still open owes it when it merges
+  if (request.state === 'merged' && request.mergeCommitSha) {
+    await oweReleaseTag(run.id, request.mergeCommitSha, 'promotion');
+  }
   const me = label(request);
   const reading =
     request.state === 'merged'
@@ -262,6 +268,8 @@ export async function recordPromotionRelease(
   }
   if (!WHOLE.test(commit))
     throw notVerifiedRefusal(`\`${commit}\` is not a whole commit sha`, null);
+  // owed when the merge was seen; a merge Forge never heard of before this record owes it here
+  await oweReleaseTag(run.id, request.mergeCommitSha, 'promotion');
   const { verify } = releaseProbesOf(decl.production);
   const read = verify
     ? await verifyServingNow({ cfg: verify, expected: commit })

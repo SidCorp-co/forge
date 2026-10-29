@@ -37,6 +37,7 @@ import { RECORDED_VERIFICATIONS } from './plan.js';
 import { askProviderLiveGate, type GateOffRecord } from './provider-live.js';
 import { verifyByProviderRecord } from './provider-verify.js';
 import { notVerifiedRefusal, providerNotVerifiedRefusal, reasonOf } from './refuse.js';
+import { oweReleaseTag } from './release-tag.js';
 import { verifyServingNow } from './verify.js';
 import { cutReleaseVersion } from './version-store.js';
 
@@ -243,6 +244,8 @@ export async function recordPerformedRelease(
       roster: issueIds,
     });
     await emitEvent(tx, 'release.cut', { projectId, runId: row.id, version: cut });
+    // the commit this record names is the cut's (REQ-63 BC-13): its tag is owed in the same unit
+    await oweReleaseTag(row.id, commit, 'record', tx);
     return { run: row, version: cut };
   });
 

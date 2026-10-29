@@ -45,7 +45,7 @@ import {
   type Shared,
   summaryOf,
 } from './release-read-views.js';
-import { releaseTagOf } from './release-tag.js';
+import { releaseTagOf } from './release-tag-record.js';
 import type { ViewerFacts } from './release-view.js';
 import { parseReleaseVersion, RELEASE_VERSION_SHAPE } from './version.js';
 import type { LineageRun } from './version-rule.js';

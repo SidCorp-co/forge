@@ -30,6 +30,7 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { refuseRelease } from './refuse.js';
+import { oweReleaseTag } from './release-tag.js';
 import { shippedReleaseRuns } from './shipped-releases.js';
 
 /** One file a range changed; a rename is its old path removed and its new one added. */
@@ -374,6 +375,8 @@ export async function recordRange(args: {
     merge: { [KEY]: { ...read, ...changed, reportedAt: new Date().toISOString() } },
     touch: true,
   });
+  // the head the run reports is the commit it cut: its tag is owed there, before the deploy (REQ-63 BC-13)
+  await oweReleaseTag(args.runId, report.head, 'range');
   return read;
 }
 

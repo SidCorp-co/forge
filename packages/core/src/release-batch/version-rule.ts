@@ -16,6 +16,7 @@ import type {
 } from '@forge/contracts/releases';
 import { RELEASE_VERSION_CARRIER_KINDS } from '@forge/contracts/releases';
 import { readAbortStamp } from './abort-stamp.js';
+import { forgeTagCarrier } from './release-tag-record.js';
 import {
   compareReleaseVersions,
   formatReleaseVersion,
@@ -69,10 +70,16 @@ const endedUnshipped = (r: LineageRun) => !shipped(r) && isEnded(r);
  * the master merged by hand and a recorded landing have none (catalog-api 0.1.0, run 6c91e938,
  * 2026-10-26, shipped and read as never attempted, so the next draft read 0.1.0 again). A recorded
  * release is never refused at the door: it is opened only once its evidence was read, and one that
- * ended `failed` closed some issues under its number before one would not close.
+ * ended `failed` closed some issues under its number before one would not close. A run whose
+ * version Forge tagged on the source host claims it too, shipped or not (REQ-63 BC-14): a promotion
+ * release runs no job, and one aborted after its merge was tagged keeps that tag.
  */
 const attempted = (r: LineageRun) =>
-  r.hasJob || shipped(r) || !ENDED.has(r.status) || r.metadata.source === RELEASE_RECORD_SOURCE;
+  r.hasJob ||
+  shipped(r) ||
+  !ENDED.has(r.status) ||
+  r.metadata.source === RELEASE_RECORD_SOURCE ||
+  forgeTagCarrier(r.metadata) !== null;
 
 /** The roster as a set, spelled once: order and duplicates never make two rosters differ. */
 export const rosterKey = (ids: readonly string[]): string => [...new Set(ids)].sort().join(',');
@@ -105,15 +112,19 @@ export const UNNAMED_PUSH: ReleaseVersionCarrier = {
 };
 
 /**
- * What outside Forge carries the version an ended attempt wore. Named carriers win; `pushed:false`
- * or a declaration naming none says nothing does; an attempt no box ever took did nothing outside
- * Forge; any other silence is `unknown` — a pushed tag is invisible from here.
+ * What outside Forge carries the version an ended attempt wore. Named carriers win, and the tag Forge
+ * itself put or is putting is one, whatever was declared (REQ-63 BC-14: an unshipped release keeps
+ * its tag); `pushed:false` or a declaration naming none says nothing else does; an attempt no box
+ * ever took did nothing outside Forge; any other silence is `unknown` — a pushed tag is invisible
+ * from here.
  */
 export function carriersOf(run: Pick<LineageRun, 'metadata' | 'reachedBox'>): CarrierReading {
   const abort = readAbortStamp(run.metadata);
   const declared = run.metadata.carried as { carriers?: unknown } | undefined;
   const named = carriersIn(declared?.carriers);
   if (abort?.pushed === true && named.length === 0) named.push(UNNAMED_PUSH);
+  const tagged = forgeTagCarrier(run.metadata);
+  if (tagged && !named.some((c) => c.kind === 'tag' && c.name === tagged.name)) named.push(tagged);
   if (named.length > 0) return { kind: 'carried', carriers: named };
   if (declared !== undefined || abort?.pushed === false) return { kind: 'none' };
   return run.reachedBox ? { kind: 'unknown' } : { kind: 'none' };

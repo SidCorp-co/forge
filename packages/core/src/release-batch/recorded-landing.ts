@@ -40,6 +40,7 @@ import {
   writeLedger,
 } from './recorded.js';
 import { refuseRelease } from './refuse.js';
+import { oweReleaseTag } from './release-tag.js';
 import { cutReleaseVersion } from './version-store.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
@@ -214,6 +215,8 @@ export async function recordLanding(
       roster: issueIds,
     });
     await emitEvent(tx, 'release.cut', { projectId, runId: row.id, version: cut });
+    // the landing this record names is the cut's commit (REQ-63 BC-13): its tag is owed in the same unit
+    await oweReleaseTag(row.id, commit, 'record', tx);
     return { run: row, version: cut };
   });
   await claimRoster(projectId, issueIds, run.id);

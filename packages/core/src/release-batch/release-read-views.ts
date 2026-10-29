@@ -75,7 +75,7 @@ export interface Part {
   landedOn: string | null;
   /** What a recorded landing shipped failing (`metadata.shippedFailing`); null elsewhere. */
   shippedFailing: ReleaseShippedFailing | null;
-  /** Its tag on the source host (`release-tag.ts`); null on a draft and before it shipped. */
+  /** Its tag on the source host (`release-tag-record.ts`); null on a draft and until its commit is known. */
   tag: ReleaseTag | null;
 }
 

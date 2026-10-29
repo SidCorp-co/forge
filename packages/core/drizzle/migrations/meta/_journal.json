@@ -3557,6 +3557,13 @@
       "when": 1830902400000,
       "tag": "0555_a_self_switch_waits_on_the_outside_stop",
       "breakpoints": true
+    },
+    {
+      "idx": 556,
+      "version": "7",
+      "when": 1830988800000,
+      "tag": "0556_a_release_tags_its_commit_before_it_ships",
+      "breakpoints": true
     }
   ]
 }

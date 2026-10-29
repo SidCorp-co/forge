@@ -6,6 +6,11 @@
 (`.github/workflows/deploy-dev.yml`), so on `dev` the deploy is no longer the dispatcher's act; `main`
 is unchanged. The tag stays the dispatcher's on both, cut once the served commit is read (step 4).
 
+**Amended by REQ-63 r7 BC-13..15 (ISS-755), for a project's own releases:** where a project has a
+source host binding, Forge tags `v<version>` on the commit the release names (its promotion merge,
+or its cut commit) before the deploy, through that binding (`packages/core/src/release-batch/release-tag.ts`).
+This ADR still governs the tag of Forge's own release cut (`scripts/cut-release.sh`).
+
 ## Context
 
 This project already holds that a deploy is never a side effect of code: *"A run does not merge and

@@ -1,5 +1,7 @@
-// REQ-63 BC-15: a shipped release's rail shows its tag on the source host, the tag's own name where
-// the host holds it, else one word for why not; the sentence why is the developer view's record only.
+// REQ-63 r7 BC-15: a release's rail shows its tag on the source host beside its status, from the moment
+// the commit its version names is known and before any deploy: Pending while the host is asked, the
+// tag's own name where the host holds it, else one word for why not; the sentence why is the developer
+// view's record only.
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -33,11 +35,30 @@ const conflict = {
   created: false,
   on: ASIDE,
   code: "RELEASE_TAG_CONFLICT",
-  reason: `v0.5.0 already stands on ${ASIDE}, not on ${SHIP}, the commit this release shipped; Forge never moves a tag`,
+  reason: `v0.5.0 already stands on ${ASIDE}, not on ${SHIP}, the commit this release names; Forge never moves a tag`,
   at,
 };
 
-describe("a shipped release's tag on its rail (REQ-63 BC-15)", () => {
+const order = () =>
+  Array.from(screen.getByTestId("release-standing").querySelectorAll("[data-testid^='standing-']")).map((e) =>
+    e.getAttribute("data-testid"),
+  );
+
+describe("a release's tag on its rail (REQ-63 BC-15)", () => {
+  it("shows Pending beside the status of a release not yet shipped whose commit is known", () => {
+    const tag = { state: "owed", name: "v0.5.0", commit: SHIP, created: false, on: null, code: null, reason: null, at };
+    render(<WhereReleaseStands r={{ ...shipped, state: "running", releasedAt: null, tag } as never} />);
+    expect(screen.getByTestId("standing-tag")).toHaveTextContent("TagPending");
+    const facts = order();
+    expect(facts.indexOf("standing-tag")).toBe(facts.indexOf("standing-status") + 1);
+  });
+
+  it("shows the tag's name before the release ships, once the host holds it", () => {
+    const tag = { state: "tagged", name: "v0.5.0", commit: SHIP, created: true, on: null, code: null, reason: null, at };
+    render(<WhereReleaseStands r={{ ...shipped, state: "running", releasedAt: null, tag } as never} />);
+    expect(screen.getByTestId("standing-tag")).toHaveTextContent("Tagv0.5.0");
+  });
+
   it("shows the tag's own name where the host holds it", () => {
     const tag = { state: "tagged", name: "v0.5.0", commit: SHIP, created: true, on: null, code: null, reason: null, at };
     render(<WhereReleaseStands r={{ ...shipped, tag } as never} />);
@@ -56,7 +77,7 @@ describe("a shipped release's tag on its rail (REQ-63 BC-15)", () => {
     expect(screen.getByTestId("standing-tag")).toHaveTextContent("TagNo host");
   });
 
-  it("says None for a release shipped before releases were tagged, and nothing before it ships", () => {
+  it("says None for a release shipped before releases were tagged, and nothing before its commit is known", () => {
     const { unmount } = render(<WhereReleaseStands r={{ ...shipped, tag: null } as never} />);
     expect(screen.getByTestId("standing-tag")).toHaveTextContent("TagNone");
     unmount();
