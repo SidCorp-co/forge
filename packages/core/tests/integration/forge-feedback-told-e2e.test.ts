@@ -213,7 +213,7 @@ describe('the reporter reads at the item what its triage told them (REQ-47 BC-10
     const told = (await doorItem(keys.declined)).told as Body;
     expect(told).toMatchObject({ answer: null, declined: DECLINE });
     const decisions = (await projectDetail(keys.declined)).decisions as Body[];
-    expect(told.declined).toBe(decisions.findLast((d) => d.decision === 'declined')?.reason);
+    expect(told.declined).toBe(decisions.filter((d) => d.decision === 'declined').at(-1)?.reason);
   });
 
   it('reads the clarification asked, with the answer recommended, as the project read gives it', async () => {
