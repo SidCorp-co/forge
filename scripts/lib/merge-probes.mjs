@@ -166,7 +166,8 @@ export function probesOwed(criteria, { carried = () => false } = {}) {
   const missing = [];
   const standing = [];
   for (const c of criteria) {
-    if (c.class === 'code_property') continue;
+    // a server-side check is judged from its capture and keeps no probe (REQ-36 BC-21)
+    if (c.class === 'code_property' || c.class === 'server_side') continue;
     const claimed = claimedBecause(c.latest ?? null, carried);
     if (claimed === null) {
       standing.push({

@@ -20,9 +20,10 @@ describe('feedback-triage breaking: the bell for a version that is not breaking'
     expect(body).not.toContain('nothing this project does is owed');
   });
 
-  it('owes nothing for a version adopt would refuse as unmeasured', () => {
-    expect(versionNoticeBody(approved('unknown'), 'consumer-1')).toContain(
-      'nothing this project does is owed',
-    );
+  it('names the reasoned adopt for a version measured unknown, never "nothing owed" (REQ-5 BC-15)', () => {
+    const body = versionNoticeBody(approved('unknown'), 'consumer-1');
+    expect(body).toContain('POST /api/projects/consumer-1/interface/adopt');
+    expect(body).toContain('acceptUnmeasured: { reason }');
+    expect(body).not.toContain('nothing this project does is owed');
   });
 });

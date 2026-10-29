@@ -35,6 +35,8 @@ export const VERDICT_REFUSAL_CODES = [
 	"VERDICT_VALUE_UNKNOWN",
 	"VERDICT_SKIP_REASON_REQUIRED",
 	"VERDICT_CLIP_REQUIRED",
+	/** A pass, short or fail on a server-side criterion citing no file attached to the issue (REQ-36 BC-21). */
+	"VERDICT_CAPTURE_REQUIRED",
 	"VERDICT_IDENTITY_REQUIRED",
 	"VERDICT_COMMIT_NOT_FULL",
 	"VERDICT_RUNTIME_NOT_FULL",
@@ -115,6 +117,12 @@ export const MERGE_REFUSAL_CODES = [
 	"MARK_HOST_UNREACHABLE",
 	/** A mark's `commit` that is not the whole 40-character sha, which is the only claim a release can place (REQ-71). */
 	"COMMIT_NOT_WHOLE",
+	/** A named adoption the project's interface or links are not built against (REQ-5 BC-18). */
+	"ADOPTION_NOT_RECORDED",
+	/** An adoption mark on an issue that carries code, or names a commit, paths or a landing beside it (REQ-5 BC-18). */
+	"ADOPTION_BESIDE_CODE",
+	/** An `adoption` artifact sent by hand: only `adoptions`, which Forge reads, stamps one (REQ-5 BC-17). */
+	"ARTIFACTS_ADOPTION_BY_HAND",
 	...COMMIT_LANDING_REFUSAL_CODES,
 ] as const;
 export type MergeRefusalCode = (typeof MERGE_REFUSAL_CODES)[number];

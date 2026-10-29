@@ -380,6 +380,7 @@ export const ENUM_LABELS = {
 		no_client_ack: "No acknowledgement",
 		checkout_unbound: "Checkout unbound",
 		credential_mint_failed: "Credential not minted",
+		credential_refused: "Credential refused by the project",
 		attachment_unreadable: "Attachment unreadable",
 		box_cannot_confine_chat: "Box cannot confine a chat",
 		dispatch_failed: "Not dispatched",

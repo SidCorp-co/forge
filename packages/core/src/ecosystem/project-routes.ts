@@ -1,3 +1,4 @@
+import { REASON_TEXT_MAX } from '@forge/contracts/reason-text';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -66,6 +67,10 @@ ecosystemProjectRoutes.put(
 const ADOPT_BODY = z.strictObject({
   contract: z.string().regex(CONTRACT_REF),
   version: z.string().min(1).max(40),
+  /** Why the consumer crosses a version no differ measured additive (REQ-5 BC-15). */
+  acceptUnmeasured: z
+    .strictObject({ reason: z.string().trim().min(1).max(REASON_TEXT_MAX) })
+    .optional(),
 });
 
 // the consumer moves its consumption of an additive version and every link to it in one act; the requirements left stale are named for a person's re-pin, never re-pinned here
@@ -76,24 +81,30 @@ ecosystemProjectRoutes.post(
     'json',
     ADOPT_BODY,
     invalid(
-      'the body is { contract: <provider slug>/<contract slug>, version: the approved version to adopt }',
+      'the body is { contract: <provider slug>/<contract slug>, version: the approved version to adopt, acceptUnmeasured?: { reason: why a version no differ measured additive does not reach this consumer } }',
       'ECOSYSTEM_ARGUMENT_INVALID',
     ),
   ),
   async (c) => {
     const { id } = c.req.valid('param');
     const actor = restActor(c);
-    const { contract, version } = c.req.valid('json');
+    const { contract, version, acceptUnmeasured } = c.req.valid('json');
     const outcome = await adoptVersion({
       projectId: id,
       writer: { userId: actor.id, agency: actor.agency },
       contract,
       version,
+      acceptUnmeasured: acceptUnmeasured?.reason ?? null,
     });
     if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
     return c.json({
       ...(await interfaceView(id, outcome.held)),
-      adopted: { contract, version },
+      adopted: {
+        contract,
+        version,
+        unmeasured: outcome.moved.unmeasured,
+        reason: outcome.moved.unmeasured.length > 0 ? (acceptUnmeasured?.reason ?? null) : null,
+      },
       moved: outcome.moved,
       staleRequirements: outcome.staleRequirements,
     });
@@ -103,7 +114,16 @@ ecosystemProjectRoutes.post(
 ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  return c.json(serialiseRevisions(await listInterfaceRevisions(id)));
+  const revisions = await listInterfaceRevisions(id);
+  const serialised = serialiseRevisions(revisions);
+  // an adopt across an unmeasured version says why on the revision it wrote (REQ-5 BC-15)
+  return c.json({
+    ...serialised,
+    revisions: serialised.revisions.map((r, i) => ({
+      ...r,
+      adoptedUnmeasured: revisions[i]?.adoptedUnmeasured ?? null,
+    })),
+  });
 });
 
 // The REST twin of `forge_ecosystem action=context`: the contracts a run touching `paths` reaches.

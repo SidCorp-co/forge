@@ -124,6 +124,15 @@ enum Request {
         #[serde(default)]
         reason: Option<String>,
     },
+    /// "My own project refused this pane's credential": sent by the pane's `forge-runner api`,
+    /// the one process that read the answer, so the job ends on the refusal by name instead of on
+    /// the silence after its agent stops (`runner_core::job_exit::CREDENTIAL_REFUSED`).
+    #[serde(rename_all = "camelCase")]
+    CredentialRefused {
+        token: String,
+        code: String,
+        detail: String,
+    },
 }
 
 #[cfg(unix)]
@@ -134,7 +143,8 @@ impl Request {
             | Request::RunDeclare { token, .. }
             | Request::RunChoice { token, .. }
             | Request::DispatchGate { token, .. }
-            | Request::RunClose { token, .. } => token,
+            | Request::RunClose { token, .. }
+            | Request::CredentialRefused { token, .. } => token,
         }
     }
 }
@@ -507,5 +517,90 @@ async fn serve_request(
         Request::RunClose { run_id, reason, .. } => {
             run_close(ctl, &run_id, reason.as_deref(), session_id)
         }
+        Request::CredentialRefused { code, detail, .. } => {
+            credential_refused(ctl, &code, &detail, session_id)
+        }
+    }
+}
+
+/// Keep what the pane's own project refused it, for the job supervisor to end the job on
+/// (`pool_jobs::supervise`). A blank code is refused: it would end a job naming nothing.
+#[cfg(unix)]
+fn credential_refused(ctl: &Control, code: &str, detail: &str, session_id: &str) -> ClaimReply {
+    let code = code.trim();
+    if code.is_empty() {
+        return ClaimReply::refused(
+            "a credential refusal names the code core answered with, and this one names none",
+        );
+    }
+    tracing::warn!("[control] session {session_id}: its pane's own project refused its credential ({code}): {detail}");
+    ctl.activity.refuse(
+        session_id,
+        runner_core::agent_activity::Refused {
+            code: code.to_string(),
+            detail: detail.trim().to_string(),
+            at: runner_core::agent_activity::now_ms(),
+        },
+    );
+    ClaimReply {
+        ok: true,
+        job_id: None,
+        agent_session_id: None,
+        issue_key: None,
+        reason: None,
+    }
+}
+
+#[cfg(all(test, unix))]
+mod credential_refused_tests {
+    use super::*;
+
+    fn ctl() -> Arc<Control> {
+        Arc::new(Control {
+            tokens: SessionTokens::at(
+                std::env::temp_dir().join("forge-credential-refused-tokens.json"),
+            ),
+            activity: Arc::new(runner_core::agent_activity::Activities::new()),
+            masters: Arc::new(crate::master::Masters::default()),
+            ledger: Arc::new(std::sync::Mutex::new(None)),
+            boot_id: "boot".into(),
+            config_dir: None,
+            promises: std::sync::Mutex::new(GateMemory::default()),
+            drain: Arc::new(crate::drain::Drain::new(None)),
+            hosts: Arc::new(runner_platform::subagent_host::ProcHosts::system()),
+            core: None,
+        })
+    }
+
+    #[test]
+    fn the_frame_the_pane_sends_is_the_request_the_daemon_reads() {
+        let frame = credential_refused_frame("tok", "PAT_PROJECT_OUTSIDE_FENCE", "reaches forge");
+        let req: Request = serde_json::from_value(frame).unwrap();
+        assert!(matches!(
+            req,
+            Request::CredentialRefused { ref token, ref code, ref detail }
+                if token == "tok" && code == "PAT_PROJECT_OUTSIDE_FENCE" && detail == "reaches forge"
+        ));
+    }
+
+    #[test]
+    fn a_refusal_is_kept_under_the_session_and_the_first_one_stands() {
+        let ctl = ctl();
+        assert!(credential_refused(&ctl, "PAT_PROJECT_OUTSIDE_FENCE", " reaches forge ", "s-1").ok);
+        assert!(credential_refused(&ctl, "UNAUTHORIZED", "later", "s-1").ok);
+        let kept = ctl.activity.refused("s-1").unwrap();
+        assert_eq!(
+            (kept.code.as_str(), kept.detail.as_str()),
+            ("PAT_PROJECT_OUTSIDE_FENCE", "reaches forge")
+        );
+        assert!(ctl.activity.refused("s-2").is_none());
+    }
+
+    #[test]
+    fn a_refusal_naming_no_code_is_refused_and_keeps_nothing() {
+        let ctl = ctl();
+        let reply = credential_refused(&ctl, "  ", "x", "s-1");
+        assert!(!reply.ok);
+        assert!(ctl.activity.refused("s-1").is_none());
     }
 }

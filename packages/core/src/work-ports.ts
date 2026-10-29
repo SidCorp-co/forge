@@ -38,6 +38,7 @@ import {
   doorOf,
   landingDriftRefusal,
   landingWorld,
+  readAdoptionRecord,
   settlingContractVersion,
   tokenIdOf,
 } from './ecosystem/index.js';
@@ -289,6 +290,7 @@ export function provideWorkPorts(): void {
     contractDrift: async (issue, landed) =>
       landingDriftRefusal(landed, await landingWorld(issue, landed)),
     contractAboutRefusal,
+    adoptionRecord: (projectId, refs) => readAdoptionRecord(projectId, refs),
     guideRef,
     deleteMemory,
     getStorage,
