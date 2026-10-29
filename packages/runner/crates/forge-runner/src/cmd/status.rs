@@ -602,6 +602,8 @@ mod orientation_tests {
         let line = rearmed_line(&path).unwrap();
         assert!(line.starts_with("releases   1 given up on"), "{line}");
         assert!(rearmed_line(&dir.join("absent.sqlite")).is_none());
+        // Windows refuses to delete a file a handle still holds open.
+        drop(led);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
