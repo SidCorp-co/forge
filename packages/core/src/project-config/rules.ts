@@ -371,18 +371,13 @@ function checkDenyEntries(doc: PolicyDocument): ConfigRefusal[] {
     deny.forEach((entry, i) => {
       if (!entry.startsWith(FORGE_TOOL_PREFIX) || entry === `${FORGE_TOOL_PREFIX}*`) return;
       if (FORGE_TOOLS.has(entry)) return;
-      if (DOOR_TOOLS.has(entry)) {
-        out.push({
-          code: 'TOOL_PATTERN_INVALID',
-          path: pointer('permissions', profile, 'deny', i),
-          detail: `"${entry}" is a door a client's model no longer sees: every door's actions run through ${FORGE_TOOL_PREFIX}forge_call, so denying the door denies nothing. Deny ${FORGE_TOOL_PREFIX}forge_call to deny every action, or ${FORGE_TOOL_PREFIX}* for the whole server.`,
-        });
-        return;
-      }
+      const door = DOOR_TOOLS.has(entry);
       out.push({
         code: 'TOOL_PATTERN_INVALID',
         path: pointer('permissions', profile, 'deny', i),
-        detail: `"${entry}" names no tool this Forge server registers, so denying it denies nothing; a Forge tool is ${FORGE_TOOL_PREFIX}<tool> with the tool's dots as underscores, one of ${[...FORGE_TOOLS].join(', ')}.`,
+        detail: door
+          ? `"${entry}" is a door a client's model no longer sees: every door's actions run through ${FORGE_TOOL_PREFIX}forge_call, so denying the door denies nothing. Deny ${FORGE_TOOL_PREFIX}forge_call to deny every action, or ${FORGE_TOOL_PREFIX}* for the whole server.`
+          : `"${entry}" names no tool this Forge server registers, so denying it denies nothing; a Forge tool is ${FORGE_TOOL_PREFIX}<tool> with the tool's dots as underscores, one of ${[...FORGE_TOOLS].join(', ')}.`,
       });
     });
   }

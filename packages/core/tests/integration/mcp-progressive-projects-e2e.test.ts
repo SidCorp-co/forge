@@ -93,7 +93,14 @@ async function oauthToken(scope: 'read' | 'read write'): Promise<string> {
 }
 
 const pat = async (projectIds: string[] | null) =>
-  (await mintPat({ permissions: ['*'], userId: ownerId, name: `mcp-773-${randomBytes(4).toString('hex')}`, projectIds })).plaintext;
+  (
+    await mintPat({
+      permissions: ['*'],
+      userId: ownerId,
+      name: `mcp-773-${randomBytes(4).toString('hex')}`,
+      projectIds,
+    })
+  ).plaintext;
 
 async function rpc(token: string, method: string, params: Body) {
   const res = await api(
@@ -282,7 +289,9 @@ describe('a planted secret never leaves', () => {
       sql`SELECT instructions FROM integration_bindings WHERE id = ${bindingId}`,
     );
     expect(JSON.stringify(stored)).toContain(PLANTED);
-    expect((reads[4]?.body.results as Body[]).map((r) => r.id)).toEqual([`issue:${issue.id}`]);
+    expect(((reads[4]?.body.results ?? []) as Body[]).map((r) => r.id)).toEqual([
+      `issue:${issue.id}`,
+    ]);
     expect(reads[5]?.body).toMatchObject({ id: `issue:${issue.id}`, metadata: { key: 'ISS-1' } });
   });
 });
