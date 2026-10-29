@@ -29,6 +29,13 @@ export const SAID = {
 	"standing.gate.title.changeRequestCarries": { en: "Request carries other work" },
 	"standing.gate.title.changeRequestMissing": { en: "Request missing" },
 	"standing.gate.title.throughChangeRequests": { en: "Released by merge" },
+	"standing.gate.promotionMissing": {
+		en: "This release waits on a promotion change request carrying it.",
+	},
+	"standing.gate.title.promotionMissing": { en: "Promotion missing" },
+	"standing.act.openPromotion": {
+		en: "open the promotion change request at a judged head",
+	},
 	"standing.text": { en: "{text}", vars: { text: "text" } },
 	"standing.who.named": { en: "{name}", vars: { name: "name" } },
 	"standing.who.namesMore": {

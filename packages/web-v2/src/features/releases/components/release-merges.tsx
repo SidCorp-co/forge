@@ -1,7 +1,7 @@
 // The change requests a release merges (REQ-63 BC-5): each in its place in the declared order, its
 // host link, where it stands, and the issues it delivers. Flat: one hairline-divided list, no boxes.
 
-import type { ChangeRequestState } from "@forge/contracts/releases";
+import type { ChangeRequestState, ReleasePromotion } from "@forge/contracts/releases";
 import { Link } from "@/lib/navigation/router";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
@@ -84,6 +84,54 @@ export function ReleaseMerges({ issues, slug }: { issues: readonly Pick<ReleaseI
         {t(ordered ? "releases.merges.title" : "releases.merges.linked")}
       </h2>
       <ChangeRequestList items={items} slug={slug} />
+    </section>
+  );
+}
+
+/**
+ * The change request a promotion release is (REQ-63 BC-10): its link and state, the branches it
+ * crosses, the head it was cut at and, once merged, its merge, and the roster issues that head
+ * carries. Flat, as the merge list is.
+ */
+export function ReleasePromotionBlock({ promotion, slug }: { promotion: ReleasePromotion | null; slug: string }) {
+  const t = useCopy();
+  if (!promotion) return null;
+  const keys = (list: readonly string[], label: "releases.promotion.carries" | "releases.promotion.notCarried") =>
+    list.length === 0 ? null : (
+      <span className="flex flex-wrap items-baseline gap-x-2 font-mono text-12">
+        <span className="font-sans text-subtle">{t(label)}</span>
+        {list.map((key) => (
+          <Link key={key} href={issueHref(slug, key)} className="text-link hover:underline">
+            {key}
+          </Link>
+        ))}
+      </span>
+    );
+  return (
+    <section className="border-b border-line-subtle px-8 py-3 max-md:px-4" data-testid="release-promotion" data-state={promotion.state}>
+      <h2 className="mb-1.5 text-11-5 font-semibold uppercase tracking-wide text-subtle">{t("releases.promotion.title")}</h2>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-13">
+        {promotion.url ? (
+          <a href={promotion.url} target="_blank" rel="noreferrer" className="font-mono font-medium text-link hover:underline" title={promotion.title}>
+            {promotion.label}
+          </a>
+        ) : (
+          <span className="font-mono font-medium text-fg">{promotion.label}</span>
+        )}
+        <span className={cn("text-12", STATE_TONE[promotion.state])}>{t(`releases.merges.state.${promotion.state}`)}</span>
+        <span className="font-mono text-12 text-muted">
+          {promotion.from} → {promotion.to}
+        </span>
+        <span className="font-mono text-12 text-subtle">{t("releases.promotion.head", { sha: promotion.headSha.slice(0, 12) })}</span>
+        {promotion.mergeCommitSha ? (
+          <span className="font-mono text-12 text-subtle">{t("releases.promotion.merge", { sha: promotion.mergeCommitSha.slice(0, 12) })}</span>
+        ) : null}
+        <span className="min-w-0 flex-1 truncate text-muted max-md:basis-full">{promotion.title}</span>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+        {keys(promotion.carries, "releases.promotion.carries")}
+        {keys(promotion.notCarried, "releases.promotion.notCarried")}
+      </div>
     </section>
   );
 }

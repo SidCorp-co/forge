@@ -440,6 +440,7 @@ export function detailOf(
   landings: ReadonlyMap<string, IssueLandingReading>,
   feedbackAnswered: ReleaseFeedbackView[],
   verifiedBy: ReleaseDetail['verifiedBy'],
+  promotion: ReleaseDetail['promotion'] = null,
 ): ReleaseDetail {
   const summary = summaryOf(p, s);
   const issues = issueViews(p, s, summary.waitingOn, landings);
@@ -484,6 +485,7 @@ export function detailOf(
     cuts: p.cuts,
     production,
     ownerDeploys: s.ownerDeploys,
+    promotion,
     verifiedBy,
     head: headOf(p),
   };

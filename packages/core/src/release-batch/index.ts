@@ -58,6 +58,7 @@ export {
   nameUnnamedRelease,
   unnamedReleases,
 } from './naming.js';
+export { promotionPinnedFor } from './promotion-standing.js';
 export {
   provideReleaseBatchPorts,
   servedCarries,

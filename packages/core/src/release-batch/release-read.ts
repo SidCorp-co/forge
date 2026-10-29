@@ -32,6 +32,7 @@ import { landingRecordsOf } from './landing-records.js';
 import { readLandingReadings } from './landing-surfaces.js';
 import { draftNaming, readReleaseNaming } from './naming.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
+import { promotionViewOf } from './promotion-release.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { continuationOf, fillCuts, type ReleaseLines, releaseLinesOf } from './release-cuts.js';
@@ -375,6 +376,10 @@ export async function readRelease(
     { runId: part.runId, shipped: part.state === 'shipped' || part.state === 'landed' },
     viewer?.agency ?? 'human',
   );
+  const promotion = await promotionViewOf(
+    part.runId,
+    (id) => shared.facts.issues.get(id)?.key ?? id,
+  );
   return detailOf(
     part,
     shared,
@@ -382,5 +387,6 @@ export async function readRelease(
     landings,
     feedbackAnswered,
     verifiedBy,
+    promotion,
   );
 }

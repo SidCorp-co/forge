@@ -742,6 +742,8 @@ export interface ReleaseDetail extends ReleaseSummary {
 	 * the release ends at its last merge, and names no production of its own (REQ-71 BC-6).
 	 */
 	ownerDeploys: boolean;
+	/** The promotion change request this release is, on a project releasing through one (REQ-63 BC-10); null elsewhere. */
+	promotion: ReleasePromotion | null;
 	/** `null` where the run recorded no verification and the project declares no way to prove one. */
 	verifiedBy: ReleaseVerifiedBy | null;
 	head: string | null;
@@ -780,6 +782,8 @@ export const RELEASE_BLOCKER_CODES = [
 	"RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED",
 	/** A change-request project's landing recorded by hand, which would skip its approval and merges. */
 	"RELEASE_THROUGH_CHANGE_REQUESTS",
+	/** A promotion release with no change request across its promotion whose head carries the roster (REQ-63 BC-9). */
+	"RELEASE_PROMOTION_MISSING",
 ] as const;
 export type ReleaseBlockerCode = (typeof RELEASE_BLOCKER_CODES)[number];
 
@@ -819,6 +823,10 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_LANDING_NO_BRANCH",
 	/** A record naming a landing's `branch` on a project with production, whose record reads what it serves. */
 	"RELEASE_RECORD_BRANCH_UNUSED",
+	/** A promotion release recorded deployed before its promotion change request merged (REQ-63 BC-12). */
+	"RELEASE_PROMOTION_UNMERGED",
+	/** A promotion release's record naming issues other than the roster the release carries. */
+	"RELEASE_PROMOTION_ROSTER",
 	"RELEASE_BATCH_ABORTED",
 	"RELEASE_FINISH_IN_FLIGHT",
 	"RELEASE_FINISHED_FOR_OTHER_COMMIT",
@@ -934,6 +942,28 @@ export interface ReleaseChangeRequest {
 	state: ChangeRequestState;
 	/** Its place in the release's declared merge order, 1-based; null outside a change-request release. */
 	order: number | null;
+}
+
+/**
+ * The change request a promotion release is (REQ-63 BC-10): the one across the declared promotion,
+ * where it stands, the head it was cut at, and which roster issues that head carries.
+ */
+export interface ReleasePromotion {
+	label: string;
+	number: number;
+	title: string;
+	url: string | null;
+	state: ChangeRequestState;
+	/** The branch it merges from and the one production deploys from. */
+	from: string;
+	to: string;
+	headSha: string;
+	/** The commit its merge made, once merged. */
+	mergeCommitSha: string | null;
+	/** Roster issues whose landed commit its head holds, by key. */
+	carries: string[];
+	/** Roster issues its head was not read holding, by key. */
+	notCarried: string[];
 }
 
 /** How many issues one release batch carries at most. */

@@ -24,8 +24,11 @@ The release path is read from the project document and nowhere else
 - **Where a release starts.** It starts from `source.git.defaultBranch`.
 - **Where it goes.** It goes to the production environment. The branch production deploys from
   must be reachable from the default branch by `promotions`. A path that cannot reach it is refused
-  as `RELEASE_TARGET_UNDECLARED`, naming the gap. So is a production environment that is external,
-  unbound or bound to an inactive binding. A path of more than one crossing is refused at the
+  as `RELEASE_TARGET_UNDECLARED`, naming the gap. So is a production environment that is unbound
+  or bound to an inactive binding, and an external one no promotion crosses into. An external
+  production that one declared promotion reaches releases through that promotion's change request
+  (REQ-63 BC-9..12, `packages/core/src/release-batch/promotion-release.ts`): the cut pins the
+  request, approval is the go to merge it, and the operator's deploy record closes it. A path of more than one crossing is refused at the
   config write as `PROMOTION_CHAIN_UNSUPPORTED` (`packages/core/src/project-config/rules.ts`), because a release
   performs one crossing and nothing carries the middle of a longer chain.
 - **No production environment means Forge ships nothing.**

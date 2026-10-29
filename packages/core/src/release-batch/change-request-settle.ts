@@ -15,8 +15,11 @@ import { mergeStepsOf } from './change-request-roster.js';
 import { closeRoster } from './finish.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 
-/** Why a settle closed nothing yet: a request still open, a stamp not written, another settling. */
-type SettlePending = 'merges' | 'stamps' | 'settling';
+/**
+ * Why a settle closed nothing yet: a request still open, a stamp not written, another settling, or
+ * a promotion merged whose deploy the operator has still to record (REQ-63 BC-12).
+ */
+type SettlePending = 'merges' | 'stamps' | 'settling' | 'record';
 
 /** How long one settle holds its release before another may take it over. */
 const SETTLE_LEASE = sql`interval '5 minutes'`;
@@ -65,6 +68,10 @@ export async function settleChangeRequestRelease(
           );
   if (states.length < steps.length || states.some((s) => s.state !== 'merged')) {
     return { settled: false, pending: 'merges' };
+  }
+  // a promotion release is closed by the record of its deploy, never by its merge
+  if ((run.metadata as { promotion?: unknown } | null)?.promotion) {
+    return { settled: false, pending: 'record' };
   }
   const claimed = await db
     .select({

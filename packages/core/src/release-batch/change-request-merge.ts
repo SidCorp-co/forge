@@ -4,7 +4,7 @@
 
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
-import { and, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
@@ -13,6 +13,7 @@ import { readProjectDocument } from '../project-config/index.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import { changeRequestHeadWhy } from './change-request-build.js';
 import { label, linksOf, mergeStepsOf } from './change-request-roster.js';
+import { resolveReleaseDeclaration } from './gate.js';
 
 /** A merge refused by the release it belongs to answers on the merge route, under its codes. */
 const refuseMerge = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
@@ -32,6 +33,25 @@ async function runHolding(issueIds: string[]) {
   return rows.find((r) => r.status === 'running') ?? null;
 }
 
+/** The running release whose merge steps pin this request (a promotion release, REQ-63 BC-11). */
+async function runPinning(pullRequestId: string) {
+  const [row] = await db
+    .select({
+      runId: pipelineRuns.id,
+      status: pipelineRuns.status,
+      metadata: pipelineRuns.metadata,
+    })
+    .from(pipelineRuns)
+    .where(
+      and(
+        eq(pipelineRuns.status, 'running'),
+        sql`${pipelineRuns.metadata} -> 'changeRequests' @> ${JSON.stringify([{ pullRequestId }])}::jsonb`,
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 type MergeAdmission =
   | { kind: 'free' }
   /** A step of an approved release: merged at the head the release was cut and approved at. */
@@ -47,7 +67,11 @@ export async function admitChangeRequestMerge(args: {
   pullRequestId: string;
 }): Promise<MergeAdmission> {
   const doc = await readProjectDocument(args.projectId);
-  if (!releaseThroughChangeRequests(doc?.document)) return { kind: 'free' };
+  if (
+    !releaseThroughChangeRequests(doc?.document) &&
+    (await resolveReleaseDeclaration(args.projectId))?.kind !== 'promotion'
+  )
+    return { kind: 'free' };
   const [pr] = await db
     .select({
       host: repoPullRequests.host,
@@ -61,7 +85,8 @@ export async function admitChangeRequestMerge(args: {
   if (!pr) return { kind: 'free' };
   const me = label(pr);
   const linked = (await linksOf([args.pullRequestId])).get(args.pullRequestId) ?? [];
-  const run = await runHolding(linked);
+  // a promotion request delivers no issue by its branch: the release that pinned it holds it
+  const run = (await runHolding(linked)) ?? (await runPinning(args.pullRequestId));
   const steps = run ? mergeStepsOf(run.metadata) : null;
   const at = steps?.findIndex((s) => s.pullRequestId === args.pullRequestId) ?? -1;
   if (!run || !steps || at < 0) {
