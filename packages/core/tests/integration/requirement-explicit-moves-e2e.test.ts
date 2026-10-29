@@ -16,6 +16,7 @@ import {
   F4,
   LATER,
   landedIssue,
+  laterLanding,
   seedLandedWorld,
   verdict,
   world,
@@ -69,6 +70,8 @@ describe('a requirement whose every criterion passes', () => {
     const req = await agreedRequirement(['A site lists its catalog']);
     const issue = await withIssue(req, 1, ['BC-1', 'BC-1', 'BC-1']);
     for (const n of [1, 2, 3]) await verdict(issue, n, 'pass', LATER);
+    // a landing recorded at LATER is what says it holds the issue's landing
+    await laterLanding(LATER);
 
     const before = await requirementRead(req);
     expect(before.standing.coverage.map((c) => c.verdict)).toEqual(['passing']);

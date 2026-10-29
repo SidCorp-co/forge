@@ -27,7 +27,8 @@ const perUser = () =>
     },
   });
 /** The 429 naming no limit: plain "Too many requests", Retry-After 60. */
-const bare = () => new Response('Too many requests', { status: 429, headers: { 'retry-after': '60' } });
+const bare = () =>
+  new Response('Too many requests', { status: 429, headers: { 'retry-after': '60' } });
 const ok = () => new Response('{}', { status: 200 });
 
 async function refusalOf(p: Promise<unknown>): Promise<SourceHostCallError> {
@@ -95,7 +96,9 @@ describe('retryAtOf', () => {
   const h = (o: Record<string, string>) => new Headers(o);
   it('reads Retry-After seconds, then an HTTP date, then RateLimit-Reset, then a minute', () => {
     expect(retryAtOf(h({ 'retry-after': '12' }), NOW)).toBe(NOW + 12_000);
-    expect(retryAtOf(h({ 'retry-after': 'Fri, 30 Oct 2026 10:00:45 GMT' }), NOW)).toBe(NOW + 45_000);
+    expect(retryAtOf(h({ 'retry-after': 'Fri, 30 Oct 2026 10:00:45 GMT' }), NOW)).toBe(
+      NOW + 45_000,
+    );
     expect(retryAtOf(h({ 'ratelimit-reset': String(NOW / 1000 + 20) }), NOW)).toBe(NOW + 20_000);
     expect(retryAtOf(h({}), NOW)).toBe(NOW + 60_000);
   });

@@ -35,7 +35,12 @@ export function retryAtOf(headers: Headers, now = Date.now()): number {
 }
 
 /** Record a 429 from `host` answered to `token`: until when calls on it are held. */
-export function holdAfter429(host: string, token: string, headers: Headers, now = Date.now()): Date {
+export function holdAfter429(
+  host: string,
+  token: string,
+  headers: Headers,
+  now = Date.now(),
+): Date {
   const at = retryAtOf(headers, now);
   const scoped = headers.get('ratelimit-name') !== null;
   const key = scoped ? tokenKey(host, token) : host;

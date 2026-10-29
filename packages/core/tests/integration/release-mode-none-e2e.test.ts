@@ -407,7 +407,7 @@ describe("a requirement's coverage counts a verdict on its issue's landing", () 
     expect(await bc1(req)).toMatchObject({ verdict: 'passing' });
   });
 
-  it('does not count a pass at the pre-merge head, and says why', async () => {
+  it('does not count a pass at the pre-merge head, and names the record it lacks', async () => {
     const req = await agreedRequirement();
     const issue = await landedIssue(5, F4);
     await tracing(req, issue, 5);
@@ -415,10 +415,11 @@ describe("a requirement's coverage counts a verdict on its issue's landing", () 
 
     const read = await bc1(req);
 
-    expect(read.verdict).toBe('not_live');
-    expect(read.why).toContain("judged only at commits other than their issue's landing");
+    // no landing Forge recorded is at D9, so nothing on record places it after F4; the host is not asked
+    expect(read.verdict).toBe('not_judged');
+    expect(read.why).toContain('no verdict counts yet');
     expect(read.issues[0]?.notCounted).toContain(
-      `judged at commit ${D9.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)}`,
+      `judged at commit ${D9.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)}, and no record of Forge's says it holds that landing: no merge mark records a landing at ${D9.slice(0, 12)}`,
     );
   });
 

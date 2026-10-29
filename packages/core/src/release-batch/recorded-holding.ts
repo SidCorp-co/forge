@@ -58,7 +58,10 @@ export async function recordedHolding(
 }
 
 /** The newest merged issue's mark at each of `shas` on the project: its time and branch. */
-async function landingMarks(projectId: string, shas: readonly string[]): Promise<Map<string, Mark>> {
+async function landingMarks(
+  projectId: string,
+  shas: readonly string[],
+): Promise<Map<string, Mark>> {
   const among = sql.join(
     shas.map((s) => sql`${s}`),
     sql`, `,
