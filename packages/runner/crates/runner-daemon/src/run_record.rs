@@ -279,7 +279,8 @@ pub async fn close_ended_runs(
             run_sessions::MAX_DETAIL_CODE_UNITS,
         );
         let checkpoint = Some(checkpoint::reconstruct_within_budget(&run).await.to_json());
-        match closer.close(&session_id, &detail, checkpoint).await {
+        let holders = claim_holders(&run).await;
+        match closer.close(&session_id, &detail, checkpoint, &holders).await {
             Ok(()) => match led.mark_session_terminal_observed(&run.run_id) {
                 Ok(()) => {
                     tracing::info!("[run-record] run {} is closed at core", run.run_id);
@@ -316,6 +317,59 @@ pub async fn close_ended_runs(
     closed
 }
 
+/// The file beside a tree's git directory naming the id a run standing in it holds its issue
+/// claims under, minted by the plugin's `forge brief`.
+///
+/// contract -> github.com/SidCorp-co/forge-plugin:plugin/src/resolve/session/run-id.mjs (`RUN_ID`).
+pub const RUN_ID_FILE: &str = "forge-run-id";
+
+/// The ids a run its master closed held its issue claims under, read off its tree before the box
+/// gives the tree back, so the close gives those claims back with it (ISS-737). Before, the claim
+/// outlived the run for its whole duration: the run's subagent ran inside the master's process, so
+/// the pid the claim records stayed alive, and the next run on the issue was refused every write.
+///
+/// Only a master's close: a run the box ended (its pane gone, its master lost) may be one whose
+/// work a person has to see. A tree that is gone, or names no id, gives nothing back, and says so.
+pub async fn claim_holders(run: &runner_core::ledger::Run) -> Vec<String> {
+    if run.ended_by.as_deref() != Some("master") {
+        return Vec::new();
+    }
+    let tree = &run.worktree_path;
+    let asked = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(tree)
+        .args(["rev-parse", "--absolute-git-dir"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+    let git_dir = match tokio::time::timeout(std::time::Duration::from_secs(5), asked).await {
+        Ok(Ok(out)) if out.status.success() => {
+            std::path::PathBuf::from(String::from_utf8_lossy(&out.stdout).trim())
+        }
+        _ => {
+            tracing::info!(
+                "[run-record] run {}: its tree {} could not be read for the id its claims were taken under, so its close gives no claim back",
+                run.run_id,
+                tree.display()
+            );
+            return Vec::new();
+        }
+    };
+    let Ok(text) = std::fs::read_to_string(git_dir.join(RUN_ID_FILE)) else {
+        return Vec::new();
+    };
+    let id = text.trim();
+    if id.is_empty() || id.chars().count() > 120 || id.chars().any(char::is_whitespace) {
+        tracing::warn!(
+            "[run-record] run {}: {} holds no id a claim is taken under, so its close gives no claim back",
+            run.run_id,
+            git_dir.join(RUN_ID_FILE).display()
+        );
+        return Vec::new();
+    }
+    vec![id.to_string()]
+}
+
 /// What closing a run needs of core.
 #[expect(
     async_fn_in_trait,
@@ -327,6 +381,7 @@ pub trait SessionCloser {
         session_id: &str,
         detail: &str,
         checkpoint: Option<serde_json::Value>,
+        claim_holders: &[String],
     ) -> runner_platform::error::Result<()>;
 }
 
@@ -336,6 +391,7 @@ impl SessionCloser for CoreSessions<'_> {
         session_id: &str,
         detail: &str,
         checkpoint: Option<serde_json::Value>,
+        claim_holders: &[String],
     ) -> runner_platform::error::Result<()> {
         run_sessions::close(
             self.0,
@@ -343,6 +399,7 @@ impl SessionCloser for CoreSessions<'_> {
             run_sessions::Outcome::Ended,
             Some(detail),
             checkpoint,
+            claim_holders,
         )
         .await
     }
@@ -358,6 +415,7 @@ mod close_refusal_tests {
     struct Closer {
         sent: AtomicUsize,
         answer: fn() -> runner_platform::error::Result<()>,
+        holders: std::sync::Mutex<Vec<Vec<String>>>,
     }
 
     impl SessionCloser for Closer {
@@ -366,10 +424,112 @@ mod close_refusal_tests {
             _session_id: &str,
             _detail: &str,
             _checkpoint: Option<serde_json::Value>,
+            claim_holders: &[String],
         ) -> runner_platform::error::Result<()> {
             self.sent.fetch_add(1, Ordering::SeqCst);
+            self.holders.lock().unwrap().push(claim_holders.to_vec());
             (self.answer)()
         }
+    }
+
+    fn closer(answer: fn() -> runner_platform::error::Result<()>) -> Closer {
+        Closer {
+            sent: AtomicUsize::new(0),
+            answer,
+            holders: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// A run over ISS-1 in a linked worktree whose git directory names `id`, ended by `by`.
+    fn ended_in_a_tree(by: &str, id: &str) -> (Option<Ledger>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("forge-close-{}", uuid::Uuid::new_v4()));
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        git(
+            &repo,
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "one",
+            ],
+        );
+        let tree = repo.join(".claude/worktrees/iss-1");
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "iss-1",
+                tree.to_str().unwrap(),
+            ],
+        );
+        std::fs::write(
+            repo.join(".git/worktrees/iss-1").join(RUN_ID_FILE),
+            format!("{id}\n"),
+        )
+        .unwrap();
+        let mut led = Ledger::open(&dir.join("ledger.db")).unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: tree,
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "session-1").unwrap();
+        led.end_run("run-1", by, "done").unwrap();
+        (Some(led), dir)
+    }
+
+    /// ISS-737: a run its master closed names on its close the id its tree held, so core gives
+    /// back the issue claims taken under it; a run the box ended names none.
+    #[tokio::test]
+    async fn a_master_close_names_the_id_its_claims_were_taken_under() {
+        let (mut led, dir) = ended_in_a_tree("master", "iss-1-5c7c8139");
+        let c = closer(|| Ok(()));
+        assert_eq!(close_ended_runs(&c, &mut led, "boot-1").await, 1);
+        assert_eq!(
+            *c.holders.lock().unwrap(),
+            vec![vec!["iss-1-5c7c8139".to_string()]]
+        );
+        let _ = std::fs::remove_dir_all(dir);
+
+        let (mut led, dir) = ended_in_a_tree("box", "iss-1-5c7c8139");
+        let c = closer(|| Ok(()));
+        close_ended_runs(&c, &mut led, "boot-1").await;
+        assert_eq!(
+            *c.holders.lock().unwrap(),
+            vec![Vec::<String>::new()],
+            "a run the box ended gave its claims back as though its master had closed it"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     fn ended_run() -> (Option<Ledger>, std::path::PathBuf) {
@@ -400,10 +560,7 @@ mod close_refusal_tests {
     #[tokio::test]
     async fn a_close_core_refuses_as_malformed_is_sent_once_and_the_refusal_is_on_the_row() {
         let (mut led, dir) = ended_run();
-        let closer = Closer {
-            sent: AtomicUsize::new(0),
-            answer: malformed,
-        };
+        let closer = closer(malformed);
         for _ in 0..3 {
             close_ended_runs(&closer, &mut led, "boot-1").await;
         }
@@ -425,10 +582,7 @@ mod close_refusal_tests {
     #[tokio::test]
     async fn a_close_that_fails_for_the_moment_is_sent_again() {
         let (mut led, dir) = ended_run();
-        let closer = Closer {
-            sent: AtomicUsize::new(0),
-            answer: || Err(Error::Other("run-session close 503".into())),
-        };
+        let closer = closer(|| Err(Error::Other("run-session close 503".into())));
         for _ in 0..3 {
             close_ended_runs(&closer, &mut led, "boot-1").await;
         }

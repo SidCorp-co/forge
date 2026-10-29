@@ -1,1 +1,0 @@
-**An issue that only adopted a contract version can close.** Mark it with `adoptions`; Forge reads the interface and links, and it closes without a release. An issue carrying code still lands on its commit.

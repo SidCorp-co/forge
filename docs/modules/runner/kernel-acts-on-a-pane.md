@@ -19,7 +19,7 @@ it cites. Where the two disagree, the code is right.
 | The method a run or a wave follows | core's guides, read with `forge-runner api guides/issue-flow.md` and `forge-runner api guides/dispatch.md` | served |
 | Declaring a run | `forge-runner run declare` to the daemon's control socket (`packages/runner/crates/forge-runner/src/cmd/run.rs:run`) | served |
 | The run brief | `forge-runner run brief <run id>` (`packages/runner/crates/forge-runner/src/cmd/run/brief.rs:brief`): base branch from the project, held trees read with git against `origin/<baseBranch>` | served |
-| Dispatch gate: a shipped role dispatched with nothing declared is refused | the runner's `PreToolUse` hook, `forge-runner gate` (`packages/runner/crates/forge-runner/src/cmd/gate.rs:answer`, deciding in `packages/runner/crates/runner-core/src/dispatch_gate.rs:decide`) | served |
+| Dispatch gate: a shipped role dispatched with nothing declared is refused, and so is a second subagent on one declaration; a dispatch another hook refused leaves the declaration for the next one, read from the refused call's error result in the master's transcript | the runner's `PreToolUse` hook, `forge-runner gate` (`packages/runner/crates/forge-runner/src/cmd/gate.rs:answer`, deciding in `packages/runner/crates/runner-core/src/dispatch_gate.rs:decide`, the call read by `packages/runner/crates/runner-core/src/transcript_age.rs:tool_call_at`) | served |
 | Holding the issue | the run session the box opens for a declared run (`packages/runner/crates/runner-transport/src/run_sessions.rs:beat`); core refuses `in_progress` with no holder (`NO_HOLDER`) | served |
 | Heartbeat | `packages/runner/crates/runner-transport/src/heartbeat.rs` | served |
 | Turn, subagent and transcript reports | the runner's `UserPromptSubmit`, `Stop`, `SubagentStart`, `SubagentStop`, `StopFailure`, `TeammateIdle` and `PostCompact` hooks, `forge-runner hook` (`packages/runner/crates/forge-runner/src/cmd/hook.rs:run`). They report; `SubagentStop` also answers the stop gate below, and a stop it refuses is not reported. | served |
@@ -34,7 +34,8 @@ code quality, the owner-precedent answers, and unread-comment delivery before an
 A dev pane keeps them only while the plugin is installed. Its `brief` dispatch check also
 requires a brief printed by the plugin's own `forge brief` in the last ten minutes. That check
 is not a kernel act: on dev the brief comes from `forge-runner run brief`, and the declaration
-gate above is what refuses a dispatch.
+gate above is what refuses a dispatch. Where both run, the prompt is the one the plugin's check
+accepts: the declaration gate binds by declaration and tool call, never by the prompt's words.
 
 No kernel act on a pane is now served by the plugin alone. Nothing yet shows the whole set
 holding with the plugin absent: no run has gone from `open` to `awaiting_release` on dev with the

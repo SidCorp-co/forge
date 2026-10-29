@@ -56,6 +56,7 @@ pub(crate) fn agent_event(
         agent_session_id: Some(session_id.to_string()),
         issue_key: None,
         reason: Some(format!("{:?}", after.doing())),
+        deny: false,
     }
 }
 
@@ -104,70 +105,121 @@ pub(crate) fn dispatch_gate_reply(
     let promised = pending
         .as_deref()
         .and_then(|run| memory.promised.get(run).map(|p| p.tool_use.clone()));
+    // Read only where the run is promised to another call: whether that call
+    // ended, and how, is what decides whether it still holds the run.
+    let promised_call = match (promised.as_deref(), d.tool_use_id.as_deref()) {
+        (Some(to), Some(this)) if to != this => Some(promised_call(&d, to)),
+        _ => None,
+    };
     let verdict = decide(
         &d,
         &Facts {
             roles: roles.as_ref(),
             pending_run: pending.as_deref(),
             promised_to: promised.as_deref(),
+            promised_call: promised_call.clone(),
         },
     );
     match verdict {
         Verdict::NotOurs => gate_allows(None),
         Verdict::Replay { .. } => gate_allows(None),
-        Verdict::Covered { run_id } => {
-            if let Some(tool_use) = d.tool_use_id.clone() {
-                memory
-                    .promised
-                    .insert(run_id.clone(), Promise::to(&d, tool_use.clone()));
-                memory.allowed.insert(tool_use);
-            }
-            tracing::info!("[control] run {run_id} is promised to this dispatch");
-            let mut reply = gate_allows(None);
-            reply.job_id = Some(run_id);
-            reply
+        Verdict::Covered { run_id } => promised_here(&mut memory, &d, run_id, None),
+        Verdict::Moved { run_id, from } => promised_here(&mut memory, &d, run_id, Some(&from)),
+        Verdict::PromisedElsewhere { run_id, to, why } => {
+            tracing::warn!(
+                "[control] refusing a hand-off from master session {session_id}: run {run_id} is \
+                 promised to tool call {to} ({why:?})"
+            );
+            ClaimReply::denied(runner_core::dispatch_gate::promised_elsewhere(
+                &run_id, &to, &why,
+            ))
         }
         Verdict::Undeclared => {
             tracing::warn!(
                 "[control] refusing an undeclared hand-off from master session {session_id}"
             );
-            ClaimReply::refused(REFUSAL)
+            ClaimReply::denied(REFUSAL)
         }
         Verdict::Unknown(why) => {
             if let Some(refused) = refused_while_draining(ctl, why, Some(pending.as_deref())) {
                 return refused;
             }
-            if let Some(refused) = promise_while_draining(ctl, &mut memory, &d, pending.as_deref())
-            {
+            if let Some(refused) = promise_while_draining(
+                ctl,
+                &mut memory,
+                &d,
+                pending.as_deref(),
+                promised_call.as_ref(),
+            ) {
                 return refused;
             }
             if roles.is_none() {
-                promise_unread(&mut memory, &d, pending.as_deref());
+                promise_unread(&mut memory, &d, pending.as_deref(), promised_call.as_ref());
             }
             if let Some(dir) = dir.as_deref() {
-                // The registry answered here, so the run this dispatch belonged
-                // to is known even though the verdict is not.
-                let run = match pending.as_deref() {
-                    Some(run) => runner_core::degraded::Run::Declared(run),
-                    None => runner_core::degraded::Run::Unknown(
-                        "this master had declared no run for the gate to bind",
-                    ),
-                };
-                runner_core::degraded::mark(
-                    dir,
-                    &runner_core::degraded::Mark::new(
-                        runner_core::degraded::Kind::Degraded,
-                        runner_core::degraded::Source::Daemon,
-                        why,
-                        run,
-                    )
-                    .about(&d),
-                );
+                mark_undecided(dir, why, pending.as_deref(), &d);
             }
             tracing::error!("[control] the dispatch gate could not decide: {why}");
             gate_allows(Some(why))
         }
     }
+}
+
+/// Mark the box degraded for a dispatch the gate let through undecided. The
+/// registry answered, so the run this dispatch belonged to is known even
+/// though the verdict is not.
+fn mark_undecided(
+    dir: &Path,
+    why: &str,
+    pending: Option<&str>,
+    d: &runner_core::dispatch_gate::Dispatch,
+) {
+    let run = match pending {
+        Some(run) => runner_core::degraded::Run::Declared(run),
+        None => runner_core::degraded::Run::Unknown(
+            "this master had declared no run for the gate to bind",
+        ),
+    };
+    runner_core::degraded::mark(
+        dir,
+        &runner_core::degraded::Mark::new(
+            runner_core::degraded::Kind::Degraded,
+            runner_core::degraded::Source::Daemon,
+            why,
+            run,
+        )
+        .about(d),
+    );
+}
+
+/// Promise `run_id` to this dispatch, `from` the call that held it where one
+/// did and ended in an error, and let the dispatch through naming the run.
+fn promised_here(
+    memory: &mut GateMemory,
+    d: &runner_core::dispatch_gate::Dispatch,
+    run_id: String,
+    from: Option<&str>,
+) -> ClaimReply {
+    if let Some(tool_use) = d.tool_use_id.clone() {
+        memory
+            .promised
+            .insert(run_id.clone(), Promise::to(d, tool_use.clone()));
+        if let Some(from) = from {
+            memory.allowed.remove(from);
+        }
+        memory.allowed.insert(tool_use);
+    }
+    match from {
+        None => tracing::info!("[control] run {run_id} is promised to this dispatch"),
+        Some(from) => tracing::info!(
+            "[control] run {run_id} was promised to tool call {from}, whose result in its \
+             master's transcript is an error, so it started nothing; the run is promised to this \
+             dispatch instead"
+        ),
+    }
+    let mut reply = gate_allows(None);
+    reply.job_id = Some(run_id);
+    reply
 }
 
 /// Failing open for a run declared before the drain admits nothing new only
@@ -179,10 +231,17 @@ fn promise_while_draining(
     memory: &mut GateMemory,
     d: &runner_core::dispatch_gate::Dispatch,
     pending: Option<&str>,
+    promised_call: Option<&Result<runner_core::dispatch_gate::ToolCall, String>>,
 ) -> Option<ClaimReply> {
     let (Some(run), Some(cause)) = (pending, ctl.drain.draining_for()) else {
         return None;
     };
+    // A call another hook refused started nothing, so it spent nothing: the
+    // run passes to this dispatch here as it does through `decide` (ISS-737).
+    let given_up = matches!(
+        promised_call,
+        Some(Ok(runner_core::dispatch_gate::ToolCall::Failed))
+    );
     // a dispatch carrying no tool call id cannot be limited here: nothing
     // names it to promise the run to or to tell a second hand-off from a replay, so
     // that case still fails open once per call, and the drain counts only the one row.
@@ -191,12 +250,12 @@ fn promise_while_draining(
         .promised
         .get(run)
         .map(|p| p.tool_use.as_str())
-        .filter(|t| *t != tool_use)
+        .filter(|t| *t != tool_use && !given_up)
     {
         tracing::warn!(
             "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
         );
-        return Some(ClaimReply::refused(format!(
+        return Some(ClaimReply::denied(format!(
             "this box is handing over to a new build ({cause}) and run {run}, declared before the handover's closing window, was already handed off to tool call {spent}; a second subagent against it would be work nothing accounted for. Declare it again in a moment, and the new build will take it"
         )));
     }
@@ -217,6 +276,7 @@ fn promise_unread(
     memory: &mut GateMemory,
     d: &runner_core::dispatch_gate::Dispatch,
     pending: Option<&str>,
+    promised_call: Option<&Result<runner_core::dispatch_gate::ToolCall, String>>,
 ) {
     let eligible =
         d.subagent_type
@@ -230,13 +290,39 @@ fn promise_unread(
     let (Some(run), Some(tool_use), true) = (pending, d.tool_use_id.clone(), eligible) else {
         return;
     };
-    if memory.promised.contains_key(run) {
+    // A run promised to a call that ended in an error passes on here as it
+    // does through `decide`, so the role the run is bound by is this call's.
+    let given_up = matches!(
+        promised_call,
+        Some(Ok(runner_core::dispatch_gate::ToolCall::Failed))
+    );
+    if memory.promised.contains_key(run) && !given_up {
         return;
     }
     memory
         .promised
         .insert(run.to_string(), Promise::to(d, tool_use.clone()));
     memory.allowed.insert(tool_use);
+}
+
+/// What the master's own transcript, as this dispatch's hook named it, says
+/// about the call `to` its run is promised to.
+fn promised_call(
+    d: &runner_core::dispatch_gate::Dispatch,
+    to: &str,
+) -> Result<runner_core::dispatch_gate::ToolCall, String> {
+    let Some(path) = d.transcript_path.as_deref().filter(|p| !p.is_empty()) else {
+        return Err("this dispatch's hook named no transcript".to_string());
+    };
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return Err(format!(
+            "this dispatch's hook named the transcript `{}`, which is not an absolute path",
+            path.display()
+        ));
+    }
+    runner_core::transcript_age::tool_call_at(path, to)
+        .ok_or_else(|| format!("the transcript {} could not be read", path.display()))
 }
 
 /// The gate's answer when this box's registry of declared runs cannot say
@@ -294,7 +380,7 @@ pub(crate) fn refused_while_draining(
         Some(_) => "and this master has declared no run for it",
         None => "and whether a run was declared for it cannot be read",
     };
-    Some(ClaimReply::refused(format!(
+    Some(ClaimReply::denied(format!(
         "this box is handing over to a new build ({cause}) and admits no hand-off it cannot account for in the seconds that takes: the dispatch gate could not check this one against a declaration ({why}), {known}. Hand it off again in a moment, and the new build will take it"
     )))
 }
@@ -307,6 +393,7 @@ pub(crate) fn gate_allows(why: Option<&str>) -> ClaimReply {
         agent_session_id: None,
         issue_key: None,
         reason: why.map(str::to_string),
+        deny: false,
     }
 }
 
@@ -581,6 +668,7 @@ mod role_tests {
             agent_id: None,
             subagent_type: Some(role.into()),
             tool_use_id: Some(tool_use.into()),
+            transcript_path: None,
         }
     }
 
@@ -647,6 +735,216 @@ mod role_tests {
         assert_eq!(bound(&ctl, "run-1"), None, "a helper took the promise");
         started(&ctl, "agent-1", "forge:runner");
         assert_eq!(bound(&ctl, "run-1").as_deref(), Some("agent-1"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A conversation transcript holding `entries`, one JSON line each, as
+    /// Claude Code writes a master's.
+    fn conversation(dir: &Path, entries: &[serde_json::Value]) -> std::path::PathBuf {
+        let path = dir.join(format!("{}.jsonl", uuid::Uuid::new_v4()));
+        let text: String = entries.iter().map(|e| format!("{e}\n")).collect();
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    fn append(path: &Path, entry: serde_json::Value) {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(path).unwrap();
+        writeln!(f, "{entry}").unwrap();
+    }
+
+    /// The assistant entry carrying the call `id`.
+    fn called(id: &str) -> serde_json::Value {
+        serde_json::json!({"type": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": id, "name": "Agent", "input": {"subagent_type": "forge:runner"}}
+        ]}})
+    }
+
+    /// The result Claude Code 2.1.312 writes for a call a `PreToolUse` hook
+    /// denied, as read back from a master's transcript on this box.
+    fn refused(id: &str) -> serde_json::Value {
+        serde_json::json!({"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": id, "is_error": true,
+             "content": "PreToolUse:Agent hook error: Hold \u{2014} send what the brief verb prints, unchanged."}
+        ]}})
+    }
+
+    /// The result of a call that started its subagent in the background.
+    fn launched(id: &str) -> serde_json::Value {
+        serde_json::json!({"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": id,
+             "content": [{"type": "text", "text": "Async agent launched successfully."}]}
+        ]}})
+    }
+
+    /// A dispatch whose hook named `transcript` as its conversation's.
+    fn dispatch_from(
+        role: &str,
+        tool_use: &str,
+        transcript: &Path,
+    ) -> runner_core::dispatch_gate::Dispatch {
+        runner_core::dispatch_gate::Dispatch {
+            transcript_path: Some(transcript.to_string_lossy().into_owned()),
+            ..dispatch(role, tool_use)
+        }
+    }
+
+    /// Whether the pane's hook prints a deny for `reply`.
+    fn hook_denies(reply: &ClaimReply) -> bool {
+        gate_denial(reply).is_some()
+    }
+
+    /// ISS-737: a sibling `PreToolUse` hook refused the dispatch the run was
+    /// promised to, so no subagent started; the next dispatch takes the run.
+    #[test]
+    fn a_dispatch_refused_by_another_hook_leaves_the_declaration_to_the_next_one() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-1");
+        let t = conversation(&dir, &[called("toolu_1")]);
+        let first = dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_1", &t), MASTER);
+        assert!(first.ok, "{first:?}");
+        append(&t, refused("toolu_1"));
+        append(&t, called("toolu_2"));
+        let again = dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_2", &t), MASTER);
+        assert!(
+            again.ok,
+            "the dispatch after a refused one was refused, though the run it was promised to started nothing: {again:?}"
+        );
+        assert_eq!(again.job_id.as_deref(), Some("run-1"));
+        started(&ctl, "agent-1", "forge:runner");
+        assert_eq!(bound(&ctl, "run-1").as_deref(), Some("agent-1"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Two dispatches in one message: the first holds the run until its
+    /// result is written, and the second is refused naming the run, the call
+    /// and that it is in flight, never as work nobody declared.
+    #[test]
+    fn a_sibling_dispatch_still_in_flight_is_refused_naming_the_run_and_the_call() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-1");
+        let t = conversation(&dir, &[]);
+        assert!(dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_1", &t), MASTER).ok);
+        let second =
+            dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_2", &t), MASTER);
+        assert!(!second.ok, "one declaration covered two subagents");
+        assert!(
+            hook_denies(&second),
+            "the hook lets this refusal through: {second:?}"
+        );
+        let why = second.reason.unwrap_or_default();
+        assert!(
+            !why.contains("nothing on this box has been told"),
+            "a declared run was refused as undeclared: {why}"
+        );
+        for named in ["run-1", "toolu_1", "in flight", "forge-runner run declare"] {
+            assert!(
+                why.contains(named),
+                "the refusal does not name {named}: {why}"
+            );
+        }
+        // The first call answered without an error: it started a subagent,
+        // which takes the run, so a second hand-off still needs its own.
+        append(&t, called("toolu_1"));
+        append(&t, launched("toolu_1"));
+        let third = dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_3", &t), MASTER);
+        assert!(
+            !third.ok,
+            "a launched call's run was handed to a second subagent"
+        );
+        let why = third.reason.unwrap_or_default();
+        assert!(
+            why.contains("toolu_1") && why.contains("started a subagent"),
+            "{why}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The call a run is promised to, asked again, keeps its answer, and so
+    /// does the call it moved to.
+    #[test]
+    fn the_same_call_asked_again_keeps_its_answer_before_and_after_the_promise_moves() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-1");
+        let t = conversation(&dir, &[called("toolu_1")]);
+        for _ in 0..2 {
+            let r = dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_1", &t), MASTER);
+            assert!(r.ok, "{r:?}");
+        }
+        append(&t, refused("toolu_1"));
+        for _ in 0..2 {
+            let r = dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_2", &t), MASTER);
+            assert!(
+                r.ok,
+                "the call the run moved to lost it when asked again: {r:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// With nothing declared, the refusal is the one it always was, whatever
+    /// the conversation holds, and the hook denies it.
+    #[test]
+    fn an_undeclared_dispatch_is_refused_in_the_words_it_always_was() {
+        let (ctl, dir) = a_box(&["runner"]);
+        let t = conversation(&dir, &[called("toolu_1"), refused("toolu_1")]);
+        let r = dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_2", &t), MASTER);
+        assert!(!r.ok);
+        assert_eq!(
+            r.reason.as_deref(),
+            Some(runner_core::dispatch_gate::REFUSAL)
+        );
+        assert!(hook_denies(&r));
+        declare(&ctl, "run-1");
+        end(&ctl, "run-1");
+        let r = dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_3", &t), MASTER);
+        assert_eq!(
+            r.reason.as_deref(),
+            Some(runner_core::dispatch_gate::REFUSAL)
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// While draining with the inventory unread, a run declared before the
+    /// drain whose dispatch another hook refused passes to the retry, and a
+    /// second subagent on it is still refused (ISS-737 review F1).
+    #[test]
+    fn while_draining_a_refused_dispatch_passes_its_run_to_the_retry() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-1");
+        let t = conversation(&dir, &[called("toolu_1")]);
+        assert!(dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_1", &t), MASTER).ok);
+        append(&t, refused("toolu_1"));
+        std::fs::remove_dir_all(dir.join("marketplaces")).unwrap();
+        let attempt = ctl.drain.begin("an update").unwrap();
+        ctl.drain.close_window_for_test(&attempt);
+        let retry = dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_2", &t), MASTER);
+        assert!(
+            retry.ok,
+            "the retry of a refused dispatch was refused while draining: {retry:?}"
+        );
+        let second =
+            dispatch_gate_reply(&ctl, dispatch_from("forge:runner", "toolu_3", &t), MASTER);
+        assert!(!second.ok && hook_denies(&second), "{second:?}");
+        started(&ctl, "agent-1", "forge:runner");
+        assert_eq!(bound(&ctl, "run-1").as_deref(), Some("agent-1"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A draining box refuses a hand-off it cannot account for (ISS-1223),
+    /// and that refusal is one the pane's hook prints as a deny.
+    #[test]
+    fn a_hand_off_refused_while_draining_is_denied_by_the_hook() {
+        let (ctl, dir) = a_box(&["runner"]);
+        std::fs::remove_dir_all(dir.join("marketplaces")).unwrap();
+        let attempt = ctl.drain.begin("an update").unwrap();
+        ctl.drain.close_window_for_test(&attempt);
+        let r = dispatch_gate_reply(&ctl, dispatch("forge:runner", "toolu_1"), MASTER);
+        assert!(!r.ok, "{r:?}");
+        assert!(
+            hook_denies(&r),
+            "the hook lets a draining box's refusal through: {r:?}"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

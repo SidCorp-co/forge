@@ -259,6 +259,22 @@ pub(crate) fn resolved_for_compare(path: &Path) -> PathBuf {
 
 /// `<common>/worktrees`, where every linked worktree's entry lives.
 async fn admin_root(repo: &Path) -> std::result::Result<PathBuf, String> {
+    common_dir(repo)
+        .await
+        .map(|common| common.join("worktrees"))
+}
+
+/// The repository `path` is a checkout of, named by its common git directory
+/// and spelled as [`resolved_for_compare`] spells it, so a main working tree
+/// and every worktree linked to it answer the same path and a checkout of
+/// another repository does not.
+pub async fn repository_of(path: &Path) -> std::result::Result<PathBuf, String> {
+    common_dir(path).await.map(|c| resolved_for_compare(&c))
+}
+
+/// `git rev-parse --git-common-dir` at `repo`, joined to `repo` where git
+/// answers relatively.
+async fn common_dir(repo: &Path) -> std::result::Result<PathBuf, String> {
     let out = Command::new("git")
         .args(["rev-parse", "--git-common-dir"])
         .current_dir(repo)
@@ -281,12 +297,11 @@ async fn admin_root(repo: &Path) -> std::result::Result<PathBuf, String> {
         ));
     }
     let common = Path::new(&said);
-    let common = if common.is_absolute() {
+    Ok(if common.is_absolute() {
         common.to_path_buf()
     } else {
         repo.join(common)
-    };
-    Ok(common.join("worktrees"))
+    })
 }
 
 /// Put the absent path's question to git: registered here, moved, or gone.

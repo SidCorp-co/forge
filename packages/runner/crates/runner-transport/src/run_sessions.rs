@@ -203,15 +203,21 @@ impl Outcome {
     }
 }
 
+/// Close a run session. `claim_holders` are the ids the run's issue claims were taken under, read
+/// off its tree; on an `ended` close core gives back what they hold (ISS-737).
 pub async fn close(
     client: &CoreClient,
     session_id: &str,
     outcome: Outcome,
     detail: Option<&str>,
     checkpoint: Option<serde_json::Value>,
+    claim_holders: &[String],
 ) -> Result<()> {
     let path = format!("/api/devices/me/run-sessions/{session_id}/close");
     let mut body = serde_json::json!({ "outcome": outcome.wire() });
+    if !claim_holders.is_empty() {
+        body["claimHolders"] = serde_json::json!(claim_holders);
+    }
     if let Some(d) = detail {
         body["detail"] = serde_json::Value::String(d.to_string());
     }

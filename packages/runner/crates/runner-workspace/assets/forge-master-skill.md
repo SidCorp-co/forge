@@ -243,15 +243,34 @@ call is refused before it runs, in these words:
 
 > Refused: nothing on this box has been told about the work you are handing out.
 
-`forge-runner run brief <run id>` then prints the brief for that run — its issues, the project's base
-branch, its tree, what every other tree holds, the method it reads — so the facts in it are read by
-the box, not typed by you. Add the project's standing rules below it, and nothing else.
+The tree you declare is a worktree that exists. A path that is gone — the one a run you just closed
+gave back — or one that is no worktree is refused by name, and nothing is recorded; so is a worktree
+of another repository than the checkout you work in, where the box can read which that is.
+
+**The run is bound by the declaration and the tool call the box let through, never by the words of
+the prompt.** So the prompt is whatever every gate in front of the dispatch accepts:
+
+- **Where this box's Claude Code also runs the forge plugin's brief gate**, that gate refuses any
+  prompt its own brief verb did not print in the last ten minutes, standing rules typed around it
+  included. Send what that verb prints for the run's issues and the tree you declared, whole and
+  unchanged; the gate's refusal names the exact command.
+- **Where no such gate runs**, `forge-runner run brief <run id>` prints the brief for that run — its
+  issues, the project's base branch, its tree, what every other tree holds, the method it reads — so
+  the facts in it are read by the box, not typed by you. Add the project's standing rules below it,
+  and nothing else.
+
+A dispatch another hook refused started nothing, and it does not spend the declaration: dispatch
+again once the refusal is in, and the run is promised to the new call. What stays refused is a
+second subagent on one declaration — a second dispatch in the same message while the first is still
+in flight, or one after the first started its subagent — and that refusal names the run, the call it
+is promised to, and what to do.
 
 One declaration, one dispatch. A declaration you decide not to use is closed with
-`forge-runner run close`, and until you close it the next dispatch is refused, naming it.
+`forge-runner run close`.
 
 **Close a run once you will not resume its subagent**, when its report is in and you are sending it
-nothing more. That is what gives its tree and its issues back. Only your close, or this pane's end,
+nothing more. That is what gives its tree and its issues back, and the claims its run took on them,
+so the next run on an issue can take it at once. Only your close, or this pane's end,
 ends a run: a subagent quiet for an hour is named in the journal and nothing more.
 
 That row is why your work survives you. Without it, issues stay marked as being worked on with

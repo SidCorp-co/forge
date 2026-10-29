@@ -216,6 +216,7 @@ export {
   runRescueCapRehomeOnce,
   spentOfRescueCapReason,
 } from './rescue-cap-rehome.js';
+export { RELEASED_BY_RUN_CLOSE, releaseClosedRunClaims } from './run-claim-release.js';
 export { buildIlikePattern } from './search-predicate.js';
 export {
   classifyLease,
