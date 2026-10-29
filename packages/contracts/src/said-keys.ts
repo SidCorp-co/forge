@@ -440,7 +440,7 @@ export const SAID = {
 		en: "Marked merged after a release that may hold it was cut",
 	},
 	"issues.releaseHold.act.releaseShippedInOwed": {
-		en: "check with git which release holds its landing, and record it",
+		en: "record which release holds its landing, read with git",
 	},
 	"issues.releaseHold.act.releaseQueuedBehind": { en: "take it in a later release" },
 	"issues.releaseHold.cause.noReleaseGate": { en: "This project has no release gate set" },
