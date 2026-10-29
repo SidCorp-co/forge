@@ -1,0 +1,1 @@
+**A pane whose own project fences its credential now tells its daemon.** `forge-runner api` keeps a refused call's body for that check, so the job ends on the 403 by name instead of re-queuing on silence (ISS-740).

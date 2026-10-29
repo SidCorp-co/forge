@@ -38,6 +38,11 @@ pub struct Response {
     pub json: bool,
     pub stderr: String,
     pub outcome: Outcome,
+    /// The body core answered a refused call with, byte for byte, kept off `stdout`, which a
+    /// refused call leaves empty. A caller reads core's own words here: `own_project_refusal`
+    /// reads the fence refusal that ends a job, and was handed nothing while only `stdout` held
+    /// bodies (ISS-740). Empty where the call never reached core.
+    pub refused_body: Vec<u8>,
 }
 
 impl Response {
@@ -47,6 +52,7 @@ impl Response {
             json: false,
             stderr,
             outcome,
+            refused_body: Vec::new(),
         }
     }
 
@@ -181,6 +187,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
             json,
             stderr: header_dump,
             outcome,
+            refused_body: Vec::new(),
         };
     }
 
@@ -193,7 +200,10 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         text.trim(),
         failure_json(&outcome, Some(status), &message)
     );
-    Response::failed(stderr, outcome)
+    Response {
+        refused_body: body,
+        ..Response::failed(stderr, outcome)
+    }
 }
 
 #[cfg(test)]
@@ -210,6 +220,7 @@ mod tests {
                 retryable: false,
                 code: "OK".into(),
             },
+            refused_body: Vec::new(),
         }
     }
 
