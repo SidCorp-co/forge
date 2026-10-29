@@ -12,6 +12,7 @@ import {
   judgeNaming,
   namingForOperatorsOnly,
   type ReleaseNamingFacts,
+  usersUnchangedSentence,
 } from '@forge/contracts/release-naming';
 import {
   RELEASE_NAME_WORDS_MAX,
@@ -46,7 +47,7 @@ export function namingFacts(
   detail: ReleaseDetail,
   unnotedCriteria: ReadonlyMap<string, readonly string[]>,
 ): ReleaseNamingFacts {
-  return {
+  const facts: ReleaseNamingFacts = {
     version: detail.version,
     changes: detail.notes.sections
       .filter((s) => s.section !== 'Skip')
@@ -59,6 +60,13 @@ export function namingFacts(
       title: i.title,
       criteria: [...(unnotedCriteria.get(i.key) ?? [])],
     })),
+    usersUnchanged: null,
+  };
+  return {
+    ...facts,
+    usersUnchanged: namingForOperatorsOnly(facts)
+      ? usersUnchangedSentence(detail.notes.language)
+      : null,
   };
 }
 
@@ -75,7 +83,7 @@ function systemPrompt(
       ? [
           'Nothing in this release changes what people using the product see: every change is one only those who run the product notice.',
           '- "name" says what it changes for those who run the product.',
-          '- "summary" says first that nothing changed for the people using the product, then what changed for those who run it.',
+          `- "summary" opens with exactly this sentence, as written: "${facts.usersUnchanged}" Then it says what changed for those who run the product.`,
         ]
       : []),
     '',

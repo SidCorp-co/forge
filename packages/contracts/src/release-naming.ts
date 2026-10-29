@@ -63,6 +63,26 @@ export interface ReleaseNamingFacts {
 	operatorChanges: { title: string; line: string | null }[];
 	/** Each carried issue with no note, by its title and its own criteria. */
 	unnoted: { title: string; criteria: string[] }[];
+	/**
+	 * Where every change is one nobody using the product sees: the sentence its summary opens with, in
+	 * the release's language (`usersUnchangedSentence`); null on any other release.
+	 */
+	usersUnchanged: string | null;
+}
+
+/**
+ * What a release of operator changes only tells the people using the product (REQ-40 BC-16: changes
+ * nobody using the product sees stay out of the overview): that nothing changed for them. In the
+ * release's content language, English where it has no sentence of its own.
+ */
+const USERS_UNCHANGED: Record<string, string> = {
+	en: "Nothing changes for the people using the product.",
+	vi: "Không có thay đổi nào với người dùng sản phẩm.",
+};
+
+export function usersUnchangedSentence(language: string): string {
+	const base = language.toLowerCase().split("-")[0] ?? "en";
+	return USERS_UNCHANGED[base] ?? (USERS_UNCHANGED.en as string);
 }
 
 /** Whether the release carries anything to name it from. */
@@ -88,7 +108,8 @@ const NUMERAL = /\d+(?:[.,:]\d+)*/g;
 /**
  * Every reason a drafted name may not be written, by the code a refusal names it with; an empty list
  * means it may. The shape and sentence rules are `ReleaseNamingSchema`'s; on top, a reader of the
- * overview meets no engineer's reference (BC-15), and no figure the release's record does not state.
+ * overview meets no engineer's reference (BC-15), no figure the release's record does not state, and
+ * on a release of operator changes only, no summary that does not open by saying its users see none (BC-16).
  */
 export function judgeNaming(raw: unknown, facts: ReleaseNamingFacts): Refusal[] {
 	const parsed = ReleaseNamingSchema.safeParse(raw);
@@ -109,8 +130,18 @@ export function judgeNaming(raw: unknown, facts: ReleaseNamingFacts): Refusal[] 
 				detail: `${field} carries ${found.join(", ")}: a person using the product cannot follow these`,
 			});
 	}
+	if (
+		facts.usersUnchanged !== null &&
+		!naming.summary.trim().startsWith(facts.usersUnchanged)
+	)
+		out.push({
+			code: "RELEASE_NAMING_USERS_UNCHANGED",
+			path: "summary",
+			detail: `every change in this release is one only those who run the product see, so its summary opens with "${facts.usersUnchanged}" and then says what changed for them`,
+		});
 	const record = [
 		facts.version,
+		facts.usersUnchanged ?? "",
 		...facts.changes.flatMap((c) => [c.title ?? "", c.line]),
 		...facts.operatorChanges.flatMap((c) => [c.title, c.line ?? ""]),
 		...facts.unnoted.flatMap((u) => [u.title, ...u.criteria]),
