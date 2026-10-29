@@ -124,6 +124,7 @@ pub async fn open(
     issue_keys: &[String],
     name: &str,
     gate: Option<&runner_proto::gate::Condition>,
+    role: Option<&str>,
 ) -> Result<(String, String)> {
     let mut body = serde_json::json!({
         "projectId": project_id,
@@ -136,6 +137,9 @@ pub async fn open(
     // this ran" for a run that ended weeks ago (ISS-1192).
     if let Some(gate) = gate {
         body["gate"] = serde_json::to_value(gate).unwrap_or(serde_json::Value::Null);
+    }
+    if let Some(role) = role {
+        body["role"] = serde_json::json!(role);
     }
     let req = client.post("/api/devices/me/run-sessions").json(&body);
     let resp = status::sent(req, "run-session open").await?;
@@ -157,8 +161,16 @@ pub async fn open(
 /// Ask core whether a run over these issues would be opened, writing nothing: the
 /// refusal a master is owed at declare time, from the function the open itself calls.
 /// `Ok` is "would open as far as core can tell now"; a hold core names is `Error::Held`.
-pub async fn preflight(client: &CoreClient, project_id: &str, issue_keys: &[String]) -> Result<()> {
-    let body = serde_json::json!({ "projectId": project_id, "issueKeys": issue_keys });
+pub async fn preflight(
+    client: &CoreClient,
+    project_id: &str,
+    issue_keys: &[String],
+    role: Option<&str>,
+) -> Result<()> {
+    let mut body = serde_json::json!({ "projectId": project_id, "issueKeys": issue_keys });
+    if let Some(role) = role {
+        body["role"] = serde_json::json!(role);
+    }
     let req = client
         .post("/api/devices/me/run-sessions/preflight")
         .json(&body);

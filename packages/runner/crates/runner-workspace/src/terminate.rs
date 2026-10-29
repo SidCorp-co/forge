@@ -825,6 +825,7 @@ mod holder_tests {
             worktree_path: wt.to_path_buf(),
             boot_id: "boot-1".into(),
             issue_keys: vec![key.into()],
+            role: None,
         })
         .unwrap();
     }

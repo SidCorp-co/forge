@@ -59,6 +59,9 @@ pub struct DeclareArgs {
     /// The worktree the subagent will work in.
     #[arg(long)]
     pub worktree: String,
+    /// The role the subagent for this run is dispatched as (e.g. qa). A qa run may be declared over closed issues to judge them; any other role is refused a closed issue.
+    #[arg(long)]
+    pub role: Option<String>,
 }
 
 #[derive(ClapArgs)]
@@ -241,7 +244,15 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
     })?;
     let reply = match &args.cmd {
         Command::Declare(o) => {
-            control::request_run_declare(&sock, &token, &o.project, &o.issue, &o.worktree).await?
+            control::request_run_declare(
+                &sock,
+                &token,
+                &o.project,
+                &o.issue,
+                &o.worktree,
+                o.role.as_deref(),
+            )
+            .await?
         }
         Command::Choice(c) => {
             let run_id = named_on_this_box(&c.run_id)?;
@@ -308,6 +319,7 @@ mod tests {
                 worktree_path: format!("/r/w{n}").into(),
                 boot_id: "b".into(),
                 issue_keys: vec![format!("ISS-{n}")],
+                role: None,
             })
             .unwrap();
         }

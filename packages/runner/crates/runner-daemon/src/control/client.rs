@@ -8,15 +8,16 @@ pub async fn request_run_declare(
     project_id: &str,
     issue_keys: &[String],
     worktree_path: &str,
+    role: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
-    ask(
-        path,
-        serde_json::json!({
-            "op": "run_declare", "token": token, "projectId": project_id,
-            "issueKeys": issue_keys, "worktreePath": worktree_path
-        }),
-    )
-    .await
+    let mut request = serde_json::json!({
+        "op": "run_declare", "token": token, "projectId": project_id,
+        "issueKeys": issue_keys, "worktreePath": worktree_path
+    });
+    if let Some(role) = role {
+        request["role"] = serde_json::json!(role);
+    }
+    ask(path, request).await
 }
 
 #[cfg(unix)]
@@ -59,6 +60,7 @@ pub async fn request_run_declare(
     _project_id: &str,
     _issue_keys: &[String],
     _worktree_path: &str,
+    _role: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }

@@ -30,6 +30,7 @@ pub trait SessionOpener {
         issue_keys: &[String],
         name: &str,
         gate: Option<&runner_proto::gate::Condition>,
+        role: Option<&str>,
     ) -> runner_platform::error::Result<(String, String)>;
 }
 
@@ -43,8 +44,9 @@ impl SessionOpener for CoreSessions<'_> {
         issue_keys: &[String],
         name: &str,
         gate: Option<&runner_proto::gate::Condition>,
+        role: Option<&str>,
     ) -> runner_platform::error::Result<(String, String)> {
-        run_sessions::open(self.0, project_id, run_id, issue_keys, name, gate).await
+        run_sessions::open(self.0, project_id, run_id, issue_keys, name, gate, role).await
     }
 }
 
@@ -141,7 +143,7 @@ pub async fn open_declared_runs_at(
         }
         let name = run_sessions::session_name(&keys);
         match opener
-            .open(&project_id, &run.run_id, &keys, &name, gate)
+            .open(&project_id, &run.run_id, &keys, &name, gate, run.role.as_deref())
             .await
         {
             Ok((session_id, _)) => match led.attach_session(&run.run_id, &session_id) {
@@ -501,6 +503,7 @@ mod close_refusal_tests {
             worktree_path: tree,
             boot_id: "boot-1".into(),
             issue_keys: vec!["ISS-1".into()],
+            role: None,
         })
         .unwrap();
         led.attach_session("run-1", "session-1").unwrap();
@@ -543,6 +546,7 @@ mod close_refusal_tests {
             worktree_path: dir.join("tree"),
             boot_id: "boot-1".into(),
             issue_keys: vec!["ISS-1".into()],
+            role: None,
         })
         .unwrap();
         led.attach_session("run-1", "session-1").unwrap();
@@ -620,6 +624,7 @@ mod session_hold_tests {
             _issue_keys: &[String],
             _name: &str,
             _gate: Option<&runner_proto::gate::Condition>,
+            _role: Option<&str>,
         ) -> runner_platform::error::Result<(String, String)> {
             self.sent.fetch_add(1, Ordering::SeqCst);
             if self.held.load(Ordering::SeqCst) {
@@ -644,6 +649,7 @@ mod session_hold_tests {
             worktree_path: dir.join("tree"),
             boot_id: "boot-1".into(),
             issue_keys: vec!["ISS-46".into()],
+            role: None,
         })
         .unwrap();
         (Some(led), dir)
@@ -720,6 +726,7 @@ mod session_hold_tests {
                 _: &[String],
                 _: &str,
                 _: Option<&runner_proto::gate::Condition>,
+                _: Option<&str>,
             ) -> runner_platform::error::Result<(String, String)> {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 Err(Error::Other("run-session open 503".into()))
@@ -747,6 +754,7 @@ mod session_hold_tests {
                 _: &[String],
                 _: &str,
                 _: Option<&runner_proto::gate::Condition>,
+                _: Option<&str>,
             ) -> runner_platform::error::Result<(String, String)> {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 Err(Error::AtRest {

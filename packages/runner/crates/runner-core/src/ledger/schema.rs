@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS runs (
   session_refused_at  INTEGER,
   session_refusal     TEXT,
   session_retry_at    INTEGER,
-  release_rearmed_at  INTEGER
+  release_rearmed_at  INTEGER,
+  role                TEXT
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -125,6 +126,7 @@ pub(crate) const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "host_start", "TEXT"),
     ("runs", "refusal_wrote_ending", "INTEGER"),
     ("runs", "release_rearmed_at", "INTEGER"),
+    ("runs", "role", "TEXT"),
     ("masters", "session_id", "TEXT"),
     ("masters", "placed_at", "INTEGER"),
     ("masters", "unattributed", "TEXT"),

@@ -117,6 +117,7 @@ fn ledger_with_one_run() -> (Ledger, PathBuf) {
             worktree_path: dir.join("tree"),
             boot_id: BOOT.into(),
             issue_keys: vec!["ISS-1".into()],
+            role: None,
         })
         .unwrap();
     ledger.attach_session("run-1", "session-1").unwrap();

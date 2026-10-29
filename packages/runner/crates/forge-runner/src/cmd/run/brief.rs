@@ -620,6 +620,7 @@ mod tests {
                 worktree_path: "/r/one".into(),
                 boot_id: "b".into(),
                 issue_keys: vec!["ISS-9".into()],
+                role: None,
             })
             .unwrap();
         let (path, project, keys) = declared(&led, &run.run_id).unwrap();
