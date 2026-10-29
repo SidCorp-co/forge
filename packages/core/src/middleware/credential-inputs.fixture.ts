@@ -432,6 +432,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integrations/mcp-relay.ts Headers.get(name) in relayToUpstream
     integration-door/mcp-relay-routes.ts HonoRequest.arrayBuffer in module code
     integration-door/mcp-relay-routes.ts HonoRequest.header(name) in module code`,
+  'a source host’s answer to a call core made: the rate-limit headers it logs, read by name': lines`
+    integrations/source-host/rate-headers.ts Headers.get(name) in rateLimitHeadersOf`,
   'the git relay, once its relay ticket verified: the smart-HTTP headers it passes by name and git’s pack relayed as sent, with only the headers core builds': lines`
     integration-door/git-relay-routes.ts Headers handed to hono:proxy in module code
     integration-door/git-relay-routes.ts HonoRequest.header(name) in module code
