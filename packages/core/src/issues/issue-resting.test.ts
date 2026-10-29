@@ -68,7 +68,9 @@ describe('a run over an issue at rest', () => {
       const detail = isRefusal(err) ? (err.refusals[0]?.detail ?? '') : '';
       expect(detail).toContain('ISS-23');
       expect(detail).toContain(`\`${status}\``);
-      expect(detail).toMatch(status === 'closed' || status === 'dropped' ? /Reopen it/ : /park/);
+      // never "reopen it to judge it": an issue that is over is judged by a `qa` run (forge-core-61, 2026-10-29)
+      expect(detail).toMatch(status === 'closed' || status === 'dropped' ? /--role qa/ : /park/);
+      expect(detail).not.toMatch(/Reopen it first/);
     },
   );
 

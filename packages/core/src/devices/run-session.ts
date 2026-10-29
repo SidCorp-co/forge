@@ -19,7 +19,6 @@ import {
   RUN_ISSUES_METADATA_KEY,
   RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import {
@@ -62,6 +61,7 @@ import {
   queueableRefusal,
   recordRefusedDeclaration,
 } from './run-session-queued.js';
+import { takenBy } from './run-take.js';
 
 /** The box's own run id for this dispatch, so the two records can be joined. */
 export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';
@@ -90,30 +90,6 @@ async function readIssueStatuses(
     .from(issues)
     .where(and(eq(issues.projectId, projectId), inArray(issues.issSeq, seqs)));
   return Object.fromEntries(rows.map((r) => [canonicalIssueKey(r.issSeq), r.status]));
-}
-
-/**
- * A run declared over issues that are every one over (closed or dropped) is no take: a release
- * judge over the issues its release closed (ISS-576). Nothing can be taken on an issue that is over,
- * so it opens taking no lease, restarting no step and carrying nothing, and its standing reads it
- * held over those issues with its master acting next (`runs/standing-live.ts:heldOverIssues`).
- * Refused, it had no session, so no standing at all, and the box re-sent it every sweep. A group
- * mixing an over issue with one in work, or holding a parked one, is a take and is refused by the
- * take's own gates (`ISSUE_AT_REST`, `issues/issue-resting.ts`).
- */
-function declaredOverClosedWork(
-  keys: readonly string[],
-  statuses: Record<string, string>,
-): boolean {
-  return (
-    keys.length > 0 &&
-    keys.every((k) => {
-      const status = statuses[k];
-      return (
-        status !== undefined && (ISSUE_TERMINAL_STATUSES as readonly string[]).includes(status)
-      );
-    })
-  );
 }
 
 /** Every key this run will be recorded under, in the ONE form the metadata holds. */
@@ -174,11 +150,12 @@ async function openSessionForBoxRun(
 export async function preflightRunSession(args: {
   projectId: string;
   issueKeys: string[];
+  role?: string;
 }): Promise<void> {
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
   const statuses = await readIssueStatuses(args.projectId, canonical.seqs);
-  if (declaredOverClosedWork(canonical.keys, statuses)) return;
-  await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
+  const taken = takenBy(canonical, statuses, args.role);
+  await refuseHeldTakeForSeqs(args.projectId, taken.seqs, args.role);
 }
 
 export async function openRunSession(args: {
@@ -188,6 +165,8 @@ export async function openRunSession(args: {
   name: string;
   boxRunId?: string;
   gate?: GateCondition;
+  /** The role the run is dispatched as, where its box said: `qa` judges, any other builds. */
+  role?: string;
 }): Promise<RunSession> {
   if (args.issueKeys.length === 0) {
     throw new Error('openRunSession: a run session must carry at least one issue');
@@ -257,10 +236,11 @@ export async function openRunSession(args: {
     );
   };
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
-  const takes = !declaredOverClosedWork(canonical.keys, openingStatuses);
+  const taken = takenBy(canonical, openingStatuses, args.role);
+  const takes = taken.keys.length > 0;
   if (takes) {
     try {
-      await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
+      await refuseHeldTakeForSeqs(args.projectId, taken.seqs, args.role);
     } catch (err) {
       await queueIfRefused(err);
       throw err;
@@ -271,11 +251,12 @@ export async function openRunSession(args: {
   const metadata = {
     ...identity,
     // a run that takes nothing carries nothing, so a box lost under it hands nothing back
-    [RUN_ISSUES_METADATA_KEY]: takes ? canonical.keys : [],
+    [RUN_ISSUES_METADATA_KEY]: taken.keys,
     [RUN_GROUP_METADATA_KEY]: canonical.keys,
     [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
     [RUN_GIVEN_METADATA_KEY]: given,
     ...(args.gate ? { [RUN_GATE_METADATA_KEY]: args.gate } : {}),
+    ...(args.role ? { role: args.role } : {}),
   };
   const spec: OneShotRunSpec = { projectId: args.projectId, kind: 'system', metadata };
   const claimed = await db
@@ -295,9 +276,9 @@ export async function openRunSession(args: {
             deviceId: args.deviceId,
             sessionId: queued.sessionId,
             runId: queued.runId,
-            issueKeys: canonical.keys,
+            issueKeys: taken.keys,
           });
-          await restartStepsForNewRun(tx, args.projectId, canonical.seqs);
+          await restartStepsForNewRun(tx, args.projectId, taken.seqs);
         }
         return { opened: { sessionId: queued.sessionId, runId: queued.runId } };
       }
@@ -323,9 +304,9 @@ export async function openRunSession(args: {
           deviceId: args.deviceId,
           sessionId: row.id,
           runId: run.id,
-          issueKeys: canonical.keys,
+          issueKeys: taken.keys,
         });
-        await restartStepsForNewRun(tx, args.projectId, canonical.seqs);
+        await restartStepsForNewRun(tx, args.projectId, taken.seqs);
       }
       return { opened: { sessionId: row.id, runId: run.id } };
     })

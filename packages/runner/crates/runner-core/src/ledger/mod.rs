@@ -191,6 +191,8 @@ pub struct Run {
     pub session_refusal: Option<String>,
     /// When the open was last sent while refused, the start of the interval the next try waits out.
     pub session_retry_at: Option<i64>,
+    /// The shipped role this run was declared for (`--role`), if the master said.
+    pub role: Option<String>,
 }
 
 /// A run's host ended because this box started a new master pane for its
@@ -484,6 +486,8 @@ pub struct NewRun {
     pub worktree_path: PathBuf,
     pub boot_id: String,
     pub issue_keys: Vec<String>,
+    /// The shipped role the master declared this run for, if it said.
+    pub role: Option<String>,
 }
 
 /// The ledger, open on one box.
@@ -513,7 +517,7 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         release_refused_at, release_refusal, release_terminal_at, release_attempts,
         turn_ended_at_ms, agent_transcript, kept_notice, created_at, host_ended_at_ms,
         host_ended_by, host_pid, host_start, close_refused_at, close_refusal,
-        session_refused_at, session_refusal, session_retry_at
+        session_refused_at, session_refusal, session_retry_at, role
  FROM runs";
 
 /// Every read of an episode selects these columns in this order, so one mapper
@@ -631,6 +635,7 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         session_refused_at: row.get(35)?,
         session_refusal: row.get(36)?,
         session_retry_at: row.get(37)?,
+        role: row.get(38)?,
     })
 }
 

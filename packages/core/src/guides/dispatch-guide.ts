@@ -88,14 +88,17 @@ run, declared over work that has landed, writes no code: it neither holds a scop
   every fact but the standing rules (§6), so none of them is typed by hand.
 
 ### 6. Declare, record, dispatch
-1. \`forge-runner run declare --project <slug> --issue <key> --worktree <tree>\` writes the box's row
-   and answers the run's id. A dispatch with nothing declared is refused by the box, and so is a
+1. \`forge-runner run declare --project <slug> --issue <key> --worktree <tree> --role <role>\` writes
+   the box's row and answers the run's id. \`--role\` is the role you will dispatch it as, and the
+   box refuses a dispatch of another role onto it. A \`qa\` run judges: it may name \`closed\` or
+   \`dropped\` issues, beside work or alone, takes nothing on them, writes verdicts and moves no
+   status; a fail reopens the issue through the finding path. Never reopen an issue to judge it. A dispatch with nothing declared is refused by the box, and so is a
    tree that does not exist or is no worktree, and one of another repository than the master's
    checkout where the box can read that checkout. Before it
    writes the row the box asks core (\`POST /api/devices/me/run-sessions/preflight\`) the question
    the run's open would be asked, so an issue at rest — \`needs_info\` or \`on_hold\`, or a \`closed\` or
-   \`dropped\` one beside an issue in work (\`ISSUE_AT_REST\`; return it from its park, or reopen it,
-   first) — an issue a live
+   \`dropped\` one in a run of any role but \`qa\` (\`ISSUE_AT_REST\`; return it from its park, or
+   judge it with \`--role qa\`) — an issue a live
    \`blocks\` edge holds, a build without its approved design, a contract wait unsettled and a
    design whose module or contract a live run holds (\`ISSUE_SCOPE_HELD\`) are refused to the pane
    by name, with what it waits on, and nothing is recorded. Declare it again once that run ends. A core the box cannot reach leaves the row

@@ -344,6 +344,7 @@ mod rearm_tests {
             worktree_path: "/w/iss-71".into(),
             boot_id: "boot-1".into(),
             issue_keys: vec![format!("ISS-{run_id}")],
+            role: None,
         })
         .unwrap();
         led.note_release_refusal(run_id, why, 100).unwrap();

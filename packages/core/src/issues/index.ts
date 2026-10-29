@@ -121,6 +121,7 @@ export {
   heldIssuePrefixes,
 } from './issue-prefix-read.js';
 export { claimIssuePrefix } from './issue-prefix-service.js';
+export { JUDGING_RUN_ROLES, judgesOnly } from './issue-resting.js';
 export {
   issueIdOfKey,
   issueRouteIdParamSchema,

@@ -589,6 +589,7 @@ mod orientation_tests {
             worktree_path: "/w/iss-71".into(),
             boot_id: "b".into(),
             issue_keys: vec!["ISS-71".into()],
+            role: None,
         })
         .unwrap();
         let why = format!(

@@ -108,9 +108,10 @@ pub(crate) async fn preflight_refusal(
     core: Option<&runner_transport::CoreClient>,
     project_id: &str,
     issue_keys: &[String],
+    role: Option<&str>,
 ) -> Option<String> {
     let client = core?;
-    match runner_transport::run_sessions::preflight(client, project_id, issue_keys).await {
+    match runner_transport::run_sessions::preflight(client, project_id, issue_keys, role).await {
         Ok(()) => None,
         Err(runner_platform::error::Error::Held { said, .. }) => Some(format!(
             "core would not open a run over these issues, so nothing was declared: {said}. A dispatch on them would be accepted by this box and refused at every sweep. Declare it once the hold named above has lifted. Nothing was recorded"
@@ -129,15 +130,48 @@ pub(crate) async fn preflight_refusal(
     }
 }
 
+/// What a master declares: the project, the issues, the tree, and the role it will dispatch.
+pub(crate) struct Declaration<'a> {
+    pub project_id: &'a str,
+    pub issue_keys: &'a [String],
+    pub worktree_path: &'a str,
+    pub role: Option<&'a str>,
+}
+
+/// Why these issue references cannot be declared as one run, or `None`.
+fn keys_refusal(issue_keys: &[String]) -> Option<String> {
+    if let Some(bad) = issue_keys.iter().find(|k| !is_issue_key(k)) {
+        return Some(format!(
+            "`{bad}` is not an issue reference — a declaration takes one per issue the subagent is being given, each a display id such as `ISS-42` or your project's own prefix, or the bare number. Nothing was recorded"
+        ));
+    }
+    // Refused here rather than trimmed to fit: the keys are what the caller
+    // declared and dropping the seventeenth would be this box deciding which
+    // issue the run is not about. Refused here rather than downstream because
+    // core's refusal arrives at a sweep and not at this pane — one declaration
+    // of 27 keys was answered `400` every twenty seconds for an hour and
+    // forty-seven minutes, and the master that built it never saw one of them
+    // (ISS-1284).
+    let cap = runner_transport::run_sessions::MAX_ISSUE_KEYS;
+    (issue_keys.len() > cap).then(|| format!(
+        "a run carries at most {cap} issues and this declaration names {}. Core refuses more by name and the refusal reaches this box's sweep rather than this pane, so the run would be opened nowhere and retried for ever. Declare the work in groups of {cap} or fewer. Nothing was recorded",
+        issue_keys.len()
+    ))
+}
+
 pub(crate) async fn run_declare_as(
     ctl: &Arc<Control>,
     holder: &Holder,
-    project_id: &str,
-    issue_keys: &[String],
-    worktree_path: &str,
+    declared: Declaration<'_>,
     session_id: &str,
     peer: Option<u32>,
 ) -> ClaimReply {
+    let Declaration {
+        project_id,
+        issue_keys,
+        worktree_path,
+        role,
+    } = declared;
     // First, before anything is read or written: a drain that admits a run is
     // waiting on a queue it keeps refilling (ISS-1223). The permit is held to
     // the end of this function, past the ledger write, so a drain that begins
@@ -168,24 +202,8 @@ pub(crate) async fn run_declare_as(
             ));
         }
     }
-    if let Some(bad) = issue_keys.iter().find(|k| !is_issue_key(k)) {
-        return ClaimReply::refused(format!(
-            "`{bad}` is not an issue reference — a declaration takes one per issue the subagent is being given, each a display id such as `ISS-42` or your project's own prefix, or the bare number. Nothing was recorded"
-        ));
-    }
-    // Refused here rather than trimmed to fit: the keys are what the caller
-    // declared and dropping the seventeenth would be this box deciding which
-    // issue the run is not about. Refused here rather than downstream because
-    // core's refusal arrives at a sweep and not at this pane — one declaration
-    // of 27 keys was answered `400` every twenty seconds for an hour and
-    // forty-seven minutes, and the master that built it never saw one of them
-    // (ISS-1284).
-    let cap = runner_transport::run_sessions::MAX_ISSUE_KEYS;
-    if issue_keys.len() > cap {
-        return ClaimReply::refused(format!(
-            "a run carries at most {cap} issues and this declaration names {}. Core refuses more by name and the refusal reaches this box's sweep rather than this pane, so the run would be opened nowhere and retried for ever. Declare the work in groups of {cap} or fewer. Nothing was recorded",
-            issue_keys.len()
-        ));
+    if let Some(refused) = keys_refusal(issue_keys) {
+        return ClaimReply::refused(refused);
     }
     // The master's own checkout: the working directory of the Claude Code
     // process above whatever made this declaration, which is where the box
@@ -197,7 +215,9 @@ pub(crate) async fn run_declare_as(
     if let Some(refused) = tree_refusal(worktree_path, checkout.as_deref()).await {
         return ClaimReply::refused(refused);
     }
-    if let Some(refused) = preflight_refusal(ctl.core.as_deref(), project_id, issue_keys).await {
+    if let Some(refused) =
+        preflight_refusal(ctl.core.as_deref(), project_id, issue_keys, role).await
+    {
         return ClaimReply::refused(refused);
     }
     let run_id = uuid::Uuid::new_v4().to_string();
@@ -215,6 +235,7 @@ pub(crate) async fn run_declare_as(
         worktree_path: std::path::PathBuf::from(worktree_path),
         boot_id: ctl.boot_id.clone(),
         issue_keys: issue_keys.to_vec(),
+        role: role.map(str::to_string),
     };
     // A record's run is written while the registry is held, under the session
     // it names for the pane at that moment: an adoption between the bound
@@ -519,7 +540,7 @@ mod preflight_tests {
             )
         })
         .await;
-        let why = preflight_refusal(Some(&client), "proj-1", &keys())
+        let why = preflight_refusal(Some(&client), "proj-1", &keys(), None)
             .await
             .expect("a blocked issue is refused at declare");
         assert!(why.contains("ISS-46") && why.contains("ISS-44"), "{why}");
@@ -540,7 +561,7 @@ mod preflight_tests {
             )
         })
         .await;
-        let why = preflight_refusal(Some(&client), "proj-1", &keys())
+        let why = preflight_refusal(Some(&client), "proj-1", &keys(), None)
             .await
             .expect("a declaration over a parked issue was accepted; an issue at rest is refused at declare");
         assert!(
@@ -559,7 +580,7 @@ mod preflight_tests {
         let (client, seen) = crate::test_core::fake_core(|_| (200, r#"{"ok":true}"#)).await;
         let judged = vec!["ISS-575".to_string(), "ISS-576".to_string()];
         assert_eq!(
-            preflight_refusal(Some(&client), "proj-1", &judged).await,
+            preflight_refusal(Some(&client), "proj-1", &judged, None).await,
             None,
             "a judge over closed issues core admits was refused at declare"
         );
@@ -570,9 +591,48 @@ mod preflight_tests {
     }
 
     #[tokio::test]
+    async fn the_role_rides_the_preflight_body_only_when_given() {
+        let (client, seen) = crate::test_core::fake_core(|_| (200, r#"{"ok":true}"#)).await;
+        assert_eq!(
+            preflight_refusal(Some(&client), "proj-1", &keys(), Some("qa")).await,
+            None
+        );
+        assert_eq!(
+            preflight_refusal(Some(&client), "proj-1", &keys(), None).await,
+            None
+        );
+        let seen = seen.lock().unwrap();
+        let with: serde_json::Value = serde_json::from_str(&seen[0].1).unwrap();
+        let without: serde_json::Value = serde_json::from_str(&seen[1].1).unwrap();
+        assert_eq!(with["role"], "qa");
+        assert!(
+            without.get("role").is_none(),
+            "an absent role was sent: {without}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_role_rides_the_open_body_only_when_given() {
+        let (client, seen) =
+            crate::test_core::fake_core(|_| (200, r#"{"sessionId":"s","runId":"r"}"#)).await;
+        let keys = keys();
+        runner_transport::run_sessions::open(&client, "p", "r", &keys, "n", None, Some("qa"))
+            .await
+            .unwrap();
+        runner_transport::run_sessions::open(&client, "p", "r", &keys, "n", None, None)
+            .await
+            .unwrap();
+        let seen = seen.lock().unwrap();
+        let with: serde_json::Value = serde_json::from_str(&seen[0].1).unwrap();
+        let without: serde_json::Value = serde_json::from_str(&seen[1].1).unwrap();
+        assert_eq!(with["role"], "qa");
+        assert!(without.get("role").is_none(), "{without}");
+    }
+
+    #[tokio::test]
     async fn an_unblocked_issue_is_declared_as_before() {
         let (client, _) = crate::test_core::fake_core(|_| (200, r#"{"ok":true}"#)).await;
-        assert!(preflight_refusal(Some(&client), "p", &keys())
+        assert!(preflight_refusal(Some(&client), "p", &keys(), None)
             .await
             .is_none());
     }
@@ -587,13 +647,13 @@ mod preflight_tests {
                 _ => crate::test_core::fake_core(|_| (503, "{}")).await,
             };
             assert!(
-                preflight_refusal(Some(&client), "p", &keys())
+                preflight_refusal(Some(&client), "p", &keys(), None)
                     .await
                     .is_none(),
                 "status {status} refused a declaration core had not held"
             );
         }
-        assert!(preflight_refusal(None, "p", &keys()).await.is_none());
+        assert!(preflight_refusal(None, "p", &keys(), None).await.is_none());
     }
 }
 
@@ -697,9 +757,12 @@ mod tree_tests {
             &Holder::Legacy {
                 session: MASTER.into(),
             },
-            PROJECT,
-            &["ISS-1".to_string()],
-            &tree.to_string_lossy(),
+            Declaration {
+                project_id: PROJECT,
+                issue_keys: &["ISS-1".to_string()],
+                worktree_path: &tree.to_string_lossy(),
+                role: None,
+            },
             MASTER,
             None,
         )

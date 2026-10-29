@@ -161,13 +161,15 @@ hydrator, rather than claiming it stalled.
 
 ## A run declared over an issue holds it, lease or none
 
-A run declared over issues that were every one closed or dropped takes no lease
-(`packages/core/src/devices/run-session.ts:declaredOverClosedWork`): it is a
-release judge, and nothing can be taken on work that is over. When its issue
+A run takes no lease on an issue that is closed or dropped
+(`packages/core/src/devices/run-take.ts:takenBy`): a run declared `--role qa` judges
+and carries such issues untaken beside the work it takes, a run of any other role
+is refused them, and one declared with no role takes nothing only where every issue
+it names is over (a release judge, ISS-576). Nothing can be taken on work that is over. When its issue
 reopens under it, that run still holds it. `runSessionsDeclaredOverSql` is the
 one reading of the run sessions declared over an issue: a live session whose
 run carries the key in `runIssues`, or whose open stamped the key closed or
-dropped in `runIssueStatuses`. Only a run that took nothing carries that stamp,
+dropped in `runIssueStatuses`. Only a run that took nothing on that issue carries that stamp,
 since a take over an issue at rest is refused `ISSUE_AT_REST`; a queued
 declaration stamps nothing and a given-back key leaves `runIssues`, so neither
 holds. `issueRunDeclaredSql` asks it for the rescue, and
