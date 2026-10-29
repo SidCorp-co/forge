@@ -5,9 +5,13 @@
 // account never among them. Every other wait asks the master, as before. A release's naming is such
 // an act too (ISS-590): it takes project.admin (`release-batch/naming.ts:nameReleaseAs`), so the
 // release names its namer the same way, `releaseNamerOf`.
+// A wait a person owes (a park's answer, a design re-pin) is that person's, read on their Needs you:
+// the master's agent account does not take a person's act for them (`permissions/holders-named.ts`),
+// so the master is not asked it (ISS-739).
 
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { ReleaseNamer } from '@forge/contracts/release-naming';
+import type { WaitingKind } from '@forge/contracts/standing';
 import type { ItemStanding } from '@forge/contracts/steward';
 import { FEEDBACK_TRIAGE_ACTS } from '@forge/contracts/steward';
 import { innerActKey } from '../lib/standing-act-class.js';
@@ -70,6 +74,14 @@ export function heldActOf(standing: Pick<ItemStanding, 'waitingOn'> | null): Hel
   return hit ? { permission: hit.permission, what: hit.what, door: hit.door } : null;
 }
 
+/** The waits a person owes: the master's agent account does not take their act for them. */
+const PERSON_WAITS: ReadonlySet<WaitingKind> = new Set(['you', 'person', 'admins', 'writers']);
+
+/** Whether the item waits on a person's act rather than one the master, a run or Forge takes. */
+export function waitsOnPerson(standing: Pick<ItemStanding, 'waitingOn'>): boolean {
+  return PERSON_WAITS.has(standing.waitingOn.kind);
+}
+
 /** Whether the item waits on a release approval. */
 export function waitsOnReleaseApproval(standing: Pick<ItemStanding, 'waitingOn'>): boolean {
   return heldActOf(standing)?.permission === APPROVE_RELEASE;
@@ -82,6 +94,7 @@ export function waitsOnReleaseApproval(standing: Pick<ItemStanding, 'waitingOn'>
  */
 export type AskAddressee =
   | { to: 'master' }
+  | { to: 'person'; who: string; act: string }
   | { to: 'holders'; act: HeldAct; holders: NamedHolder[]; unread: string[] }
   | { to: 'nobody'; act: HeldAct; why: string; unread: string[] };
 
@@ -112,7 +125,7 @@ export function unreadLine(unread: readonly string[]): string {
 /**
  * Whom an ask about an item with this standing goes to. A held act the master may take is the
  * master's; one it may not is its holders', the steward's own account never among them; one nobody
- * holds is nobody's, said by name.
+ * holds is nobody's, said by name. Any other act a person owes is that person's, never the master's.
  */
 export async function askAddresseeOf(
   projectId: string,
@@ -120,7 +133,11 @@ export async function askAddresseeOf(
   stewardId: string | null,
 ): Promise<AskAddressee> {
   const act = heldActOf(standing);
-  return act ? addresseeOfAct(projectId, act, stewardId) : { to: 'master' };
+  if (act) return addresseeOfAct(projectId, act, stewardId);
+  if (standing && waitsOnPerson(standing)) {
+    return { to: 'person', who: standing.waitingOn.who, act: standing.waitingOn.act };
+  }
+  return { to: 'master' };
 }
 
 /** Whom an act only `act.permission`'s holders take goes to: the master, its holders by name, or nobody. */

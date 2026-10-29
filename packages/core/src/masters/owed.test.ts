@@ -101,6 +101,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
       actId: 'a1',
       ask: 'ISS-498: no master has taken it since 10-14',
       subject: { kind: 'issue', key: 'ISS-498' },
+      answeredOn: [{ kind: 'issue', key: 'ISS-498' }],
     };
     const line = owedLine({ ...none, stewardAsks: [ask] });
     expect(line).toContain("The project's steward asks you to act on 1 item");
@@ -118,11 +119,13 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
       actId: 'a2',
       ask: 'FB-36: triage it',
       subject: { kind: 'feedback', key: 'FB-36' },
+      answeredOn: [{ kind: 'feedback', key: 'FB-36' }],
     };
     const req: StewardAsk = {
       actId: 'a3',
       ask: 'REQ-23: obtain the decision',
       subject: { kind: 'requirement', key: 'REQ-23' },
+      answeredOn: [{ kind: 'requirement', key: 'REQ-23' }],
     };
     const line = owedLine({ ...none, stewardAsks: [fb, req] });
     expect(line).toContain(
@@ -137,11 +140,32 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
       actId: 'a4',
       ask: 'ISS-9: take it',
       subject: { kind: 'issue', key: 'ISS-9' },
+      answeredOn: [{ kind: 'issue', key: 'ISS-9' }],
     };
     const mixed = owedLine({ ...none, stewardAsks: [issue, fb] });
     expect(mixed).toContain('on an issue (ISS-9), `forge-runner api issues/<id>/events -X POST`');
     expect(mixed).toContain('on a feedback item (FB-36)');
     expect(mixed).not.toContain('on a requirement');
+  });
+
+  // ISS-739: an ask a stuck item's run made about its blocker is answered on either item, and the
+  // line names both, each at its own door, and says a dated decision answers it until its date
+  it('names each item a decision answers an ask on, the blocker and the stuck item, at their doors', () => {
+    const blocked: StewardAsk = {
+      actId: 'a5',
+      ask: 'ISS-746: complete the work blocking ISS-748',
+      subject: { kind: 'issue', key: 'ISS-746' },
+      answeredOn: [
+        { kind: 'issue', key: 'ISS-746' },
+        { kind: 'issue', key: 'ISS-748' },
+      ],
+    };
+    const line = owedLine({ ...none, stewardAsks: [blocked] });
+    expect(line).toContain(
+      'ISS-746: complete the work blocking ISS-748 [a decision on ISS-746 or ISS-748 answers it]',
+    );
+    expect(line).toContain('on an issue (ISS-746, ISS-748), `forge-runner api issues/<id>/events');
+    expect(line).toContain('or such a decision answers it, one with a date until that date');
   });
 
   // ISS-564 round 2: landed work the wedge pass leaves moves no status, so the master is told the
