@@ -207,6 +207,7 @@
     "releases.shippedFailing.many": "Shipped with {n} failing criteria",
     "releases.shippedFailingFact": "{n} failing at ship",
     "releases.split": "Cut the oldest {n} as {version}",
+    "releases.splitCarried": "Cut the {n} {request} carries as {version}",
     "releases.stage.deploy": "Deploy",
     "releases.stage.verify": "Verify",
     "releases.standing.approver.admin": "A project admin",

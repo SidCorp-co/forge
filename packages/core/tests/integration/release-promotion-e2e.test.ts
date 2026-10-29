@@ -102,10 +102,10 @@ const EXTERNAL = {
   url: 'https://adminhub-api.example.test',
 };
 
-/** Two issues whose merge requests already merged into release/stg, waiting at the release gate. */
-async function landedIssues(): Promise<string[]> {
+/** Issues whose merge requests already merged into release/stg, waiting at the release gate. */
+async function landedIssues(shas: readonly string[] = LANDED): Promise<string[]> {
   const ids: string[] = [];
-  for (const [n, sha] of LANDED.entries()) {
+  for (const [n, sha] of shas.entries()) {
     const id = randomUUID();
     await db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes,
@@ -210,11 +210,11 @@ describe('BC-9: an external production with one declared promotion is a release 
     await promotionRequest(5053, HEAD);
     planted.carried.add(`${LANDED[0]}>${HEAD}`);
     const short = await call('POST', '/release-batches', { issueIds: ids });
-    expect(codeOf(short.body)).toBe('RELEASE_PROMOTION_MISSING');
+    expect(codeOf(short.body)).toBe('RELEASE_PROMOTION_PARTIAL');
     expect(JSON.stringify(short.body)).toContain('`release/stg` into `release/production`');
     // ISS-747 c1: the cut names the issue the head does not carry
     expect(JSON.stringify(short.body)).toContain(
-      'None is open whose head carries 1 issue named here (`ISS-2`), so nothing would ship it.',
+      'carries 1 of the 2 issues waiting, and 1 issue named here (`ISS-2`) is past its head.',
     );
   });
 });
@@ -349,5 +349,54 @@ describe('a promotion gates only the requests into the branch production deploys
     await expect(
       admitChangeRequestMerge({ projectId: world.projectId, pullRequestId: randomUUID() }),
     ).rejects.toMatchObject({ refusals: [{ code: 'RELEASE_MERGE_TARGET_UNREAD' }] });
+  });
+});
+
+// adminhub-fe 0.54.0, 2026-10-29: nine issues wait, and the open promotion !2055 was pinned at a head
+// carrying seven; ISS-8 and ISS-9 reached the gate after it. Work keeps landing while a promotion is
+// in review, so the draft pairs the open request with the roster and cuts what its head carries.
+describe('BC-9, BC-10: a draft pairs with the open promotion, and cuts what its head carries', () => {
+  it('shows !2055 on the draft, names the issues past its head, and cuts the carried seven', async () => {
+    const shas = Array.from({ length: 9 }, (_, n) => (n + 0x31).toString(16).repeat(20));
+    const ids = await landedIssues(shas);
+    const head = '73b2be31'.repeat(5);
+    await promotionRequest(2055, head, 'promote/prod-2026-10-29');
+    for (const sha of shas.slice(0, 7)) planted.carried.add(`${sha}>${head}`);
+
+    const draft = await call('GET', '/releases/0.1.0');
+    expect(draft.status, JSON.stringify(draft.body)).toBe(200);
+    const release = draft.body.release as {
+      state: string;
+      promotion: unknown;
+      can: { cut: boolean; split: boolean };
+      split: unknown;
+      gates: Array<{ code: string; detail: string }>;
+    };
+    expect(release.state).toBe('draft');
+    expect(release.promotion).toMatchObject({
+      label: '!2055',
+      number: 2055,
+      state: 'open',
+      from: 'promote/prod-2026-10-29',
+      to: PROD,
+      headSha: head,
+      carries: ['ISS-1', 'ISS-2', 'ISS-3', 'ISS-4', 'ISS-5', 'ISS-6', 'ISS-7'],
+      notCarried: ['ISS-8', 'ISS-9'],
+    });
+    expect(release.gates.map((g) => g.code)).toEqual(['RELEASE_PROMOTION_PARTIAL']);
+    expect(release.gates[0]?.detail).toContain(
+      '!2055 at `73b2be3173b2` carries 7 of the 9 issues waiting, and 2 issues named here (`ISS-8`, `ISS-9`) are past its head.',
+    );
+    expect(release.can).toMatchObject({ cut: false, split: true });
+    expect(release.split).toEqual({ issueIds: ids.slice(0, 7), rest: 2, promotion: '!2055' });
+
+    const cut = await call('POST', '/release-batches', { issueIds: ids.slice(0, 7) });
+    expect(cut.status, JSON.stringify(cut.body)).toBe(201);
+    expect(cut.body).toMatchObject({ changeRequests: [{ number: 2055, headSha: head }] });
+    const waiting = await rows<{ seq: number }>(
+      sql`SELECT iss_seq AS seq FROM issues WHERE project_id = ${world.projectId}
+           AND release_batch_run_id IS NULL ORDER BY iss_seq`,
+    );
+    expect(waiting.map((w) => w.seq)).toEqual([8, 9]);
   });
 });

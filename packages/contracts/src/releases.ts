@@ -215,6 +215,8 @@ export interface ReleaseSplit {
 	issueIds: string[];
 	/** How many stay at the release gate for the next release. */
 	rest: number;
+	/** The open promotion request whose head carries exactly these, where that is the split; absent on an oversize split. */
+	promotion?: string;
 }
 
 /**
@@ -784,6 +786,8 @@ export const RELEASE_BLOCKER_CODES = [
 	"RELEASE_THROUGH_CHANGE_REQUESTS",
 	/** A promotion release with no change request across its promotion whose head carries the roster (REQ-63 BC-9). */
 	"RELEASE_PROMOTION_MISSING",
+	/** The open promotion request's head carries only part of the roster: the release cuts what it carries (REQ-63 BC-9). */
+	"RELEASE_PROMOTION_PARTIAL",
 ] as const;
 export type ReleaseBlockerCode = (typeof RELEASE_BLOCKER_CODES)[number];
 

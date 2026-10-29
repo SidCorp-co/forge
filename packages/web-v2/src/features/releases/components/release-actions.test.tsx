@@ -34,6 +34,21 @@ describe("splitting an oversize draft", () => {
     );
   });
 
+  // adminhub-fe 0.54.0: the open promotion !2055 carries 7 of 9; the split cuts exactly those
+  it("names the promotion a carried split cuts, and posts the ids its head carries", async () => {
+    const carried = OLDEST.slice(0, 7);
+    const calls = fakeCore((c) => (c.method === "POST" ? { status: 201, body: { runId: "r1", version: "0.54.0" } } : undefined));
+    renderWithQuery(
+      <ReleaseActions projectId="p1" r={draft({ version: "0.54.0", split: { issueIds: carried, rest: 2, promotion: "!2055" } })} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cut the 7 !2055 carries as 0.54.0" }));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === "POST")).toEqual([
+        { method: "POST", path: "/projects/p1/release-batches", body: { issueIds: carried } },
+      ]),
+    );
+  });
+
   it("offers neither split nor cut where core allows neither", () => {
     fakeCore(() => undefined);
     renderWithQuery(<ReleaseActions projectId="p1" r={draft({ can: { cut: false, decide: false, split: false }, split: null })} />);
