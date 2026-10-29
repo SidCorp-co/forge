@@ -51,10 +51,10 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
       question: "Accept revision 2 of REQ-1, or return it to its author?",
       changes: "What happens next on it",
       impact: "It waits on this until it is decided.",
-      recommended: { answerId: "accept", why: "Its author proposed revision 2 for sign-off.", by: "rule" },
+      recommended: { answerId: "accept", why: "BC-2 keeps a referral's notes — The ward lead asked for it", by: "rule" },
       noRecommendation: null,
       answers: [
-        { id: "accept", label: "Accept revision 2", act: "revision.accept", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/accept`, body: { reason: "Its author proposed revision 2 for sign-off." }, needsReason: true, declines: false, effect: null, recommended: true },
+        { id: "accept", label: "Accept revision 2", act: "revision.accept", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/accept`, body: { reason: "BC-2 keeps a referral's notes — The ward lead asked for it" }, needsReason: true, declines: false, effect: null, recommended: true },
         { id: "return", label: "Return with a reason", act: "revision.return", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/return`, body: {}, needsReason: true, declines: true, effect: null, recommended: false },
       ],
       touchedAt: "2026-10-08T11:00:00.000Z",

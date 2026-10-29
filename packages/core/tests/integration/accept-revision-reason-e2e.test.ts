@@ -5,6 +5,10 @@
  * profile lets accept. On an agreed requirement the accept's reason is the re-baseline's. Through
  * the app's own routes against real Postgres.
  *
+ * A reason no reader can see is no reason (ISS-645 r2, judge K144): one made only of zero-width,
+ * format or space characters, which `trim()` leaves standing, is refused as a blank one is, by the
+ * accept, the agree, the re-pin, the drop and the accept by decision alike.
+ *
  * @direct-test-of packages/core/src/requirements/agree.ts
  * @direct-test-of packages/core/src/requirements/acceptance-rules.ts
  */
@@ -189,5 +193,86 @@ describe('the re-baseline an accept writes records its reason (REQ-4 BC-16)', ()
       { revision: 2, reason: 'Ward lead signed the opt-out rule' },
     ]);
     expect((await ok(on(owner, 'GET', `/requirements/${key}`))).status).toBe('agreed');
+  });
+});
+
+/** Text `trim()` leaves standing and no reader can see: zero-width space, word joiner, BOM, filler. */
+const INVISIBLE = ['\u200b', '\u200b\u2060\ufeff', ' \u3164 ', '\u00ad\u200e'];
+
+const statusOf = async (key: string) =>
+  String((await ok(on(owner, 'GET', `/requirements/${key}`))).status);
+
+/** `REQ-n` agreed at revision 1, its one baseline written. */
+async function agreed(): Promise<string> {
+  const key = await proposed();
+  await ok(on(owner, 'POST', `/requirements/${key}/revisions/1/accept`, { reason: 'BA review' }));
+  await ok(
+    on(owner, 'POST', `/requirements/${key}/agree`, { revision: 1, reason: 'owner signed r1' }),
+  );
+  return key;
+}
+
+describe('a reason no reader can see is refused as a blank one (REQ-4 BC-16, ISS-645 r2)', () => {
+  it.each(INVISIBLE.map((r) => [JSON.stringify(r), r]))(
+    'an accept with %s is refused and the revision stays proposed',
+    async (_label, reason) => {
+      const key = await proposed();
+      const r = await on(owner, 'POST', `/requirements/${key}/revisions/1/accept`, { reason });
+      expect(r.status, JSON.stringify(r.body)).toBe(422);
+      expect(refusals(r)).toEqual(['REQUIREMENT_SIGNOFF_REASON_REQUIRED /reason']);
+      expect(await revisionOf(key, 1)).toEqual({ state: 'proposed', accept_reason: null });
+    },
+  );
+
+  it('an agree with a zero-width reason is refused and writes no baseline', async () => {
+    const key = await proposed();
+    await ok(on(owner, 'POST', `/requirements/${key}/revisions/1/accept`, { reason: 'BA review' }));
+    const r = await on(owner, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: '\u200b',
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(refusals(r)).toEqual(['REQUIREMENT_SIGNOFF_REASON_REQUIRED /reason']);
+    expect(await baselinesOf(key)).toEqual([]);
+    expect(await statusOf(key)).toBe('draft');
+  });
+
+  it('a re-pin with a zero-width reason is refused and writes no baseline', async () => {
+    const key = await agreed();
+    const r = await on(owner, 'POST', `/requirements/${key}/repin`, {
+      revision: 1,
+      reason: '\u200b\u2060',
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(refusals(r)).toEqual(['REQUIREMENT_SIGNOFF_REASON_REQUIRED /reason']);
+    expect(await baselinesOf(key)).toEqual([{ revision: 1, reason: 'owner signed r1' }]);
+  });
+
+  it('a drop with a zero-width reason is refused and the requirement stays', async () => {
+    const key = await proposed();
+    const r = await on(owner, 'POST', `/requirements/${key}/drop`, { reason: '\u200b' });
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(refusals(r)).toEqual(['REQUIREMENT_DROP_REASON_REQUIRED /reason']);
+    expect(await statusOf(key)).toBe('draft');
+  });
+
+  it('an accept by decision with a zero-width reason is refused and the requirement stays agreed', async () => {
+    const key = await agreed();
+    const r = await on(owner, 'POST', `/requirements/${key}/accept`, {
+      revision: 1,
+      reason: '\u200b',
+      byDecision: true,
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(refusals(r)).toEqual(['REQUIREMENT_DECISION_REASON_REQUIRED /reason']);
+    expect(await statusOf(key)).toBe('agreed');
+  });
+
+  it('a reason with words among the invisible characters still signs', async () => {
+    const key = await proposed();
+    await ok(
+      on(owner, 'POST', `/requirements/${key}/revisions/1/accept`, { reason: '\u200bBA review' }),
+    );
+    expect(await revisionOf(key, 1)).toMatchObject({ state: 'current' });
   });
 });

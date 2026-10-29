@@ -1,0 +1,1 @@
+**A one-press accept records the revision's own words, shown first.** Approvals sends what the revision changes and why, never a stock sentence, and shows it on the row; a reason of only invisible characters is refused.

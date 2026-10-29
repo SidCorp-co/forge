@@ -2,6 +2,7 @@
 // accepted (by its checklist, or by decision over it), and → dropped, as pure functions over what
 // `acceptance.ts` read.
 
+import { hasVisibleText } from '@forge/contracts/reason-text';
 import { isDeliveringStatus } from '@forge/contracts/requirements';
 import type { RequirementStatus } from '../db/schema-requirements.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
@@ -63,7 +64,8 @@ export function acceptRefusals(input: {
 // accepted, not dropped), with a reason, and never while a live issue links to it
 /**
  * Every sign-off records who signed and why (REQ-4 BC-16, ADR 0007): an agree, a re-pin or the accept
- * of a proposed revision with no reason is refused by name, never stored with an empty one.
+ * of a proposed revision with no reason is refused by name, never stored with an empty one. A reason
+ * no reader can see (zero-width or format characters only, which `trim()` keeps) is no reason.
  */
 const SIGNOFF_ACTS = { agree: 'an agree', repin: 'a re-pin', accept: 'an accept' } as const;
 
@@ -71,7 +73,7 @@ export function signoffReasonRefusal(
   act: keyof typeof SIGNOFF_ACTS,
   reason: string | null | undefined,
 ): RequirementRefusal | null {
-  if (reason?.trim()) return null;
+  if (hasVisibleText(reason)) return null;
   return {
     code: 'REQUIREMENT_SIGNOFF_REASON_REQUIRED',
     path: '/reason',
@@ -93,7 +95,7 @@ export function dropRefusals(input: {
       detail: `the requirement is ${input.status}; only a ${input.droppable.join(', ')} requirement is dropped.`,
     });
   }
-  if (!input.reason?.trim()) {
+  if (!hasVisibleText(input.reason)) {
     out.push({
       code: 'REQUIREMENT_DROP_REASON_REQUIRED',
       path: '/reason',
@@ -151,7 +153,7 @@ export function decisionRefusals(input: {
   unfinished: readonly string[];
 }): RequirementRefusal[] {
   const out: RequirementRefusal[] = [];
-  if (!input.reason?.trim()) {
+  if (!hasVisibleText(input.reason)) {
     out.push({
       code: 'REQUIREMENT_DECISION_REASON_REQUIRED',
       path: '/reason',

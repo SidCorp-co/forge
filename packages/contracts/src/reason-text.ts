@@ -21,3 +21,17 @@ export const REASON_SENTENCE_MAX = 600;
 /** A one-line reason a refusal, a hold or an approval carries (a pool hold, a job act, a release
  *  approval note, a channel decision, a policy limit, a feedback reply's why), shown inline on a row. */
 export const REASON_LINE_MAX = 500;
+
+// A letter, digit, punctuation mark or symbol that draws ink: never a space, a control or format
+// character, a default-ignorable one (a zero-width space or joiner, a Hangul filler), or the blank
+// Braille pattern, each of which renders as nothing.
+// biome-ignore lint/complexity/useRegexLiterals: a literal would have the formatter write the blank Braille pattern as itself, one more invisible character in the source; the escaped string keeps it legible.
+const VISIBLE = new RegExp(
+	"(?![\\p{Default_Ignorable_Code_Point}\\u2800])[\\p{L}\\p{N}\\p{P}\\p{S}]",
+	"u",
+);
+
+/** Whether a reason says anything a reader can see: `trim()` keeps a zero-width space, this does not. */
+export function hasVisibleText(text: string | null | undefined): boolean {
+	return typeof text === "string" && VISIBLE.test(text);
+}
