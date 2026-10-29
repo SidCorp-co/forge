@@ -55,7 +55,10 @@ async function declinesOf(ids: readonly string[]): Promise<Map<string, string | 
     .select({ feedbackId: feedbackDecisions.feedbackId, reason: feedbackDecisions.reason })
     .from(feedbackDecisions)
     .where(
-      and(inArray(feedbackDecisions.feedbackId, [...ids]), eq(feedbackDecisions.decision, 'declined')),
+      and(
+        inArray(feedbackDecisions.feedbackId, [...ids]),
+        eq(feedbackDecisions.decision, 'declined'),
+      ),
     )
     .orderBy(asc(feedbackDecisions.decidedAt));
   return new Map(rows.map((r) => [r.feedbackId, r.reason]));

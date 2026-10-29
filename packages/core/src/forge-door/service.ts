@@ -67,7 +67,8 @@ async function itemsById(
   for (const s of shown) {
     const evidence = withhold ? null : await shipEvidenceOfShipped(homeId, s.id, s.phase);
     const said = told.get(s.id);
-    if (!said) throw new Error(`forge feedback: what item ${s.id} told its reporter does not read back`);
+    if (!said)
+      throw new Error(`forge feedback: what item ${s.id} told its reporter does not read back`);
     items.push(forgeItemOf(s, reads, evidence, said));
   }
   return { items, asOf: reads.asOf };

@@ -79,8 +79,11 @@ async function fileRest(pat: string, title: string, signalKey?: string) {
 }
 
 const storedKey = async (title: string) =>
-  (await rows<{ key: string }>(sql`SELECT 'FB-' || fb_seq AS key FROM feedback WHERE title = ${title}`))[0]
-    ?.key;
+  (
+    await rows<{ key: string }>(
+      sql`SELECT 'FB-' || fb_seq AS key FROM feedback WHERE title = ${title}`,
+    )
+  )[0]?.key;
 
 async function filed(title: string): Promise<string> {
   const res = await fileRest(reporter.pat, title);
