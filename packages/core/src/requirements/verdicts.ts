@@ -50,7 +50,7 @@ interface Tracing {
 }
 
 /**
- * Every live issue whose criteria trace `code` of the requirement, on any of its wordings, the newest
+ * Every issue but a dropped one whose criteria trace `code` of the requirement, on any wording, newest
  * landing first: landed (`awaiting_release`, `closed`) before not, then by merge, then by number.
  */
 async function tracingIssuesOf(tx: Tx, requirementId: string, code: string): Promise<Tracing[]> {
