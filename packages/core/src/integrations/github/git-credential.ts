@@ -55,6 +55,11 @@ export const githubGitCredential: MintedGitCredential = {
     if (!s.appId || !s.privateKey) {
       throw new Error(`the connection behind ${c.owner}/${c.repo} holds no GitHub App credential`);
     }
+    if (!c.owner || !c.repo) {
+      throw new Error(
+        `this GitHub binding names no repository (owner ${c.owner ?? 'none'}, repo ${c.repo ?? 'none'}), and a git credential is minted for one repository only, never installation-wide — pick the repository on the project's Integrations page`,
+      );
+    }
     // narrowed to the binding's one repository: the installation may reach others, and a box holds
     // this token while git runs (ISS-765)
     const { token, expiresAt } = await mintInstallationToken(
@@ -64,7 +69,7 @@ export const githubGitCredential: MintedGitCredential = {
         installationId: c.installationId,
         ...(c.apiBaseUrl ? { apiBaseUrl: c.apiBaseUrl } : {}),
       },
-      c.repo ? [c.repo] : [],
+      [c.repo],
     );
     return {
       username: 'x-access-token',
