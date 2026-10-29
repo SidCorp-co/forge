@@ -280,7 +280,7 @@ describe('a claim resumes at design until the plan checkpoint is passed (criteri
 const gateSentence = /\s*Gate plan_approval is .*$/;
 const words = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
 
-describe('an approval recorded before kernel_transitions held issue moves counts (K131 finding 1)', () => {
+describe('an approval recorded before kernel_transitions held issue moves counts (criterion 2, K131 finding 1)', () => {
   it('reads an approval the activity log alone recorded', async () => {
     const issue = await issueAt(projects.strict, 'approved');
     // the move to approved as the feed recorded it before issues were audited in kernel_transitions
@@ -318,7 +318,7 @@ describe('an approval recorded before kernel_transitions held issue moves counts
   });
 });
 
-describe('the refusal says which step waits, what relaxes it first, in few words (K131 finding 2)', () => {
+describe('the refusal says which step waits, what relaxes it first, in few words (criterion 1, K131 finding 2)', () => {
   it('names the step moved into, and keeps its own prose within 20 words', async () => {
     const issue = await issueAt(projects.strict, 'in_progress');
     ok(await step(issue, 'design'));
@@ -345,7 +345,7 @@ describe('the refusal says which step waits, what relaxes it first, in few words
   });
 });
 
-describe('a plan cleared after approval owes a plan (K131 finding 3)', () => {
+describe('a plan cleared after approval owes a plan (criterion 1, K131 finding 3)', () => {
   it('asks for a plan to be written, not for an approval of a rewrite', async () => {
     const issue = await issueAt(projects.strict, 'in_progress');
     ok(await move(issue, 'approved'));
