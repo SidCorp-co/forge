@@ -1,1 +1,0 @@
-**A GitHub git credential is never installation-wide.** A binding naming no repository is refused by name before anything is minted, and an empty repository list is refused at the mint, which GitHub read as every repository.

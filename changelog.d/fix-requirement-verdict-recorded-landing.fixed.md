@@ -1,1 +1,0 @@
-**A requirement verdict counts at a landing Forge recorded.** With no production environment, a verdict at a commit an issue's merge mark names, on the traced work's branch and after its landings, counts; otherwise it names the missing record.

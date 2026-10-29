@@ -1,1 +1,0 @@
-**A judge is declared over closed issues; a build never is.** `run declare --role qa` carries closed issues untaken beside work, reads secrets and writes verdicts, moving no status; any other role is refused a closed issue by name.

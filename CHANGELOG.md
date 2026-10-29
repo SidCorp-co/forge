@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.363] - 2026-10-29
+
+Reopened issues return once their own criteria pass
+
+### Added
+
+- **A reopened issue goes back when the fail was not its own:** an issue a requirement-level fail reopened returns to awaiting release or closed once its own criteria pass and another issue owns what is missing.
+
+### Fixed
+
+- **A GitHub git credential is never installation-wide.** A binding naming no repository is refused by name before anything is minted, and an empty repository list is refused at the mint, which GitHub read as every repository.
+- **A judge is declared over closed issues; a build never is.** `run declare --role qa` carries closed issues untaken beside work, reads secrets and writes verdicts, moving no status; any other role is refused a closed issue by name.
+- **A requirement verdict counts at a landing Forge recorded.** With no production environment, a verdict at a commit an issue's merge mark names, on the traced work's branch and after its landings, counts; otherwise it names the missing record.
+
 ## [0.4.0-dev.362] - 2026-10-29
 
 Channel agents run scheduled checks and take over outside bots by checklist
