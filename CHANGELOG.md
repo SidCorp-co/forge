@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.367] - 2026-10-29
+
+Comments may name a credential header without its value being refused
+
+### Fixed
+
+- **A message may name a credential header without being refused as a secret.** Text naming the Authorization or Cookie header, its scheme word and a file is written; a header carrying a token is still refused and redacted in logs.
+
 ## [0.4.0-dev.366] - 2026-10-29
 
 Releases are tagged with their version before they are deployed

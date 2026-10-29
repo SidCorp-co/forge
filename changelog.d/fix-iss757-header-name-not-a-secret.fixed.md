@@ -1,1 +1,0 @@
-**A message may name a credential header without being refused as a secret.** Text naming the Authorization or Cookie header, its scheme word and a file is written; a header carrying a token is still refused and redacted in logs.
