@@ -21,7 +21,9 @@ export const SUPPORT_BOX_CAPS = JSON.stringify({
 /** One message of a turn as the session reads it: its thread, its writer, and the words. */
 export interface TurnMessage {
   thread: string;
-  from: { id: string; name: string | null } | 'forge';
+  /** The member message's own id, which a channel act names (REQ-75 r6); absent on a note. */
+  message?: string;
+  from: { id: string; name: string | null; roles?: string[] | 'unknown' } | 'forge';
   text: string;
 }
 
@@ -56,8 +58,17 @@ export function messagesOf(text: string): TurnMessage[] {
   let current: TurnMessage | null = null;
   for (const line of text.split('\n')) {
     if (line.startsWith('{"thread":')) {
-      const head = JSON.parse(line) as { thread: string; from: TurnMessage['from'] };
-      current = { thread: head.thread, from: head.from, text: '' };
+      const head = JSON.parse(line) as {
+        thread: string;
+        message?: string;
+        from: TurnMessage['from'];
+      };
+      current = {
+        thread: head.thread,
+        ...(head.message ? { message: head.message } : {}),
+        from: head.from,
+        text: '',
+      };
       out.push(current);
       continue;
     }
@@ -89,6 +100,22 @@ export class SessionBox {
   ) => Promise<void> = async () => {};
   /** Set false to keep a turn running (a message then waits for the next turn). */
   finishTurns = true;
+
+  /**
+   * Play a session that answers each core note naming `key` with `text` in the note's thread
+   * (REQ-75 r6 BC-15); answers the notes it was handed, in order.
+   */
+  answerNotes(key: string, text: string): { thread: string; text: string }[] {
+    const notes: { thread: string; text: string }[] = [];
+    this.model = async (turn, act) => {
+      for (const m of turn.messages) {
+        if (m.from !== 'forge' || !m.text.includes(key)) continue;
+        notes.push({ thread: m.thread, text: m.text });
+        await act({ action: 'reply', thread: m.thread, text });
+      }
+    };
+    return notes;
+  }
   /** How the box reports a turn's end: completed, or failed as a crashed process is. */
   turnEnd: 'completed' | 'failed' = 'completed';
   /** What core asked the box to do outside a session (REQ-75 r5): commands on hosts, builds pushed. */

@@ -11,6 +11,13 @@ import {
   supportThreadRequestSchema,
 } from '@forge/contracts/support';
 import {
+  supportAnnounceRequestSchema,
+  supportCommonIssueRequestSchema,
+  supportMemberRequestSchema,
+  supportRouteRequestSchema,
+  supportRuleRequestSchema,
+} from '@forge/contracts/support-channel';
+import {
   operationsDraftFeedbackRequestSchema,
   operationsDraftRequirementRequestSchema,
   operationsIssuesRequestSchema,
@@ -24,6 +31,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { type SupportActInput, supportAct } from './acts.js';
+import { mountChannelRoutes } from './channel-routes.js';
 import { supportActionsOf, supportRoomsOf } from './read.js';
 
 /**
@@ -73,6 +81,11 @@ const SHAPES = {
   build: '{ thread, branch: feat/<slug> | fix/<slug>, title, summary }',
   deploy: '{ thread, target }',
   command: '{ thread, host, command }',
+  member: '{ member, roles, askFor?, message }',
+  rule: '{ thread, message, text }',
+  commonIssue: '{ threads, question, answer, feedback? }',
+  route: '{ thread, to: forge | technical | product, member?, title?, text }',
+  announce: '{ text }',
 } as const;
 
 supportRoutes.post(
@@ -181,6 +194,43 @@ supportRoutes.post(
   strictBody(operationsResearchRequestSchema, SHAPES.research),
   (c) => act(c, c.req.valid('param').id, { action: 'research', ...c.req.valid('json') }),
 );
+
+// a bound channel's record (REQ-75 r6 BC-30..BC-41), as the session writes it
+supportRoutes.get('/:id/support/session/channel', projectParam, (c) =>
+  act(c, c.req.valid('param').id, { action: 'channel' }),
+);
+supportRoutes.post(
+  '/:id/support/session/members',
+  projectParam,
+  strictBody(supportMemberRequestSchema, SHAPES.member),
+  (c) => act(c, c.req.valid('param').id, { action: 'member', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/rules',
+  projectParam,
+  strictBody(supportRuleRequestSchema, SHAPES.rule),
+  (c) => act(c, c.req.valid('param').id, { action: 'rule', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/common-issues',
+  projectParam,
+  strictBody(supportCommonIssueRequestSchema, SHAPES.commonIssue),
+  (c) => act(c, c.req.valid('param').id, { action: 'common_issue', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/routes',
+  projectParam,
+  strictBody(supportRouteRequestSchema, SHAPES.route),
+  (c) => act(c, c.req.valid('param').id, { action: 'route', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/announcements',
+  projectParam,
+  strictBody(supportAnnounceRequestSchema, SHAPES.announce),
+  (c) => act(c, c.req.valid('param').id, { action: 'announce', ...c.req.valid('json') }),
+);
+
+mountChannelRoutes(supportRoutes);
 
 supportRoutes.get('/:id/support/rooms', projectParam, async (c) => {
   const rooms = await supportRoomsOf(c.get('userId'), c.req.valid('param').id);

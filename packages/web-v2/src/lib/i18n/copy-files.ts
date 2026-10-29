@@ -9,6 +9,7 @@ import attachmentsCopy from "./copy/attachments.json";
 import attentionCopy from "./copy/attention.json";
 import authCopy from "./copy/auth.json";
 import automationCopy from "./copy/automation.json";
+import channelsCopy from "./copy/channels.json";
 import chatCopy from "./copy/chat.json";
 import checklistsCopy from "./copy/checklists.json";
 import commentsCopy from "./copy/comments.json";
@@ -69,6 +70,7 @@ export const COPY_FILES = {
   "lib/i18n/copy/attention.json": attentionCopy,
   "lib/i18n/copy/auth.json": authCopy,
   "lib/i18n/copy/automation.json": automationCopy,
+  "lib/i18n/copy/channels.json": channelsCopy,
   "lib/i18n/copy/chat.json": chatCopy,
   "lib/i18n/copy/checklists.json": checklistsCopy,
   "lib/i18n/copy/comments.json": commentsCopy,

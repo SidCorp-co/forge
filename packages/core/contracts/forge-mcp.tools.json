@@ -1367,7 +1367,7 @@
       "name": "forge_requirements"
     },
     {
-      "description": "Answer a Rocket.Chat support group, or an operations room, as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the room. search {query}: the project knowledge and its published OpenAPI contracts; each hit carries `cite`, which you put in brackets after what it supports. thread {thread}: the thread so far, oldest first. tools {}: the checks (diagnose) and changes (fix) this group grants you. reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite. run {thread, tool, args}: run a granted diagnose check; the thread is shown what was checked, and you get what came back. propose_fix {thread, tool, args, asker}: offer a granted fix to the person who asked (`from.id`). It runs only when that person confirms in the thread; you are told the result as a later message. record {thread, kind, title, summary, asker?}: what needs code or a decision is offered as Feedback for the team (kind defect | feature | request); the thread is shown the route, the title and its link, and it is filed only when the asker (the thread's first writer unless named) confirms. You are told the key when it is filed; the thread is told its progress until it ships. Never promise a date. What your room's grant opens (your brief lists what it holds): move_issue moves an issue of this project as the member who wrote last in the thread (deliver); build proposes committing your working copy of the development branch on a feat/ or fix/ branch, pushing it and opening a change request into it (build); deploy proposes deploying a bound target the grant names (deploy); command runs a command on a host the grant names (run_commands) — one that only reads runs at once and you get its output, anything else is proposed. A build, a deploy and a command that changes a host run only when a confirmer the room names confirms in the thread; you are told the result as a later message. An ability the room was not granted is refused SUPPORT_ABILITY_NOT_GRANTED, and core tells the thread who can grant it: do not repeat it. In an operations room (your brief says which room you answer) the acts are your role's: projects, issues and releases read the projects of the room's scope; move changes an issue's status, and draft_requirement and draft_feedback draft product direction for a person to decide, each as the member who wrote last in the thread and under their own Forge permissions; research reads one public https page. An act your role is not granted, a project outside the scope, or a member Forge cannot name is refused by name: tell the thread what the refusal says. The support group acts (search, tools, run, propose_fix, record) are refused there, as these are in a support group. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: search { query }; thread { thread }; tools {}; reply { thread, text }; run { thread, tool, args? }; propose_fix { thread, tool, args?, asker }; record { thread, kind: defect | feature | request, title, summary, whereSeen?, asker? }; move_issue { thread, issue, to, reason? }; build { thread, branch, title, summary }; deploy { thread, target }; command { thread, host, command }; projects {}; issues { project, status?, key? }; releases { project }; move { thread, issue, to, reason?, project? }; draft_requirement { thread, project, title, summary }; draft_feedback { thread, project, kind: defect | feature | request, title, summary, one of requirement | issue | screen }; research { thread, url }.",
+      "description": "Answer a Rocket.Chat support group, or an operations room, as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the room. search {query}: the project knowledge and its published OpenAPI contracts; each hit carries `cite`, which you put in brackets after what it supports. thread {thread}: the thread so far, oldest first. tools {}: the checks (diagnose) and changes (fix) this group grants you. reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite. run {thread, tool, args}: run a granted diagnose check; the thread is shown what was checked, and you get what came back. propose_fix {thread, tool, args, asker}: offer a granted fix to the person who asked (`from.id`). It runs only when that person confirms in the thread; you are told the result as a later message. record {thread, kind, title, summary, asker?}: what needs code or a decision is offered as Feedback for the team (kind defect | feature | request); the thread is shown the route, the title and its link, and it is filed only when the asker (the thread's first writer unless named) confirms. You are told the key when it is filed, and told again once it is live, shipped or declined: then post its result in its thread. Never post progress, and never promise a date. The channel record (every bot of this group reads it): channel {} reads it. member {member, roles, askFor?, message} records the roles you inferred for a member from a message, and what to ask them for; a member a person confirmed is refused and stays as it is. rule {thread, message, text} keeps an instruction a confirmed team member gave as a channel rule linked to that message. common_issue {threads, question, answer, feedback?} keeps a question asked in two or more threads with its one answer, a defect's naming its Feedback key. route {thread, to, ...} sends a need where it belongs, never mixed: to forge {title, text} files a problem with Forge itself as Forge feedback and posts nothing; to technical or product {member, text} asks that one member, who holds the role, in the thread. announce {text} is the one top-level post, for news affecting everyone, at most one an hour. A reply mentions at most one person: the asker or a member listed with what to ask them for; never @all or @here. Nothing secret or personal (an email, a phone number) is kept in the record. What your room's grant opens (your brief lists what it holds): move_issue moves an issue of this project as the member who wrote last in the thread (deliver); build proposes committing your working copy of the development branch on a feat/ or fix/ branch, pushing it and opening a change request into it (build); deploy proposes deploying a bound target the grant names (deploy); command runs a command on a host the grant names (run_commands) — one that only reads runs at once and you get its output, anything else is proposed. A build, a deploy and a command that changes a host run only when a confirmer the room names confirms in the thread; you are told the result as a later message. An ability the room was not granted is refused SUPPORT_ABILITY_NOT_GRANTED, and core tells the thread who can grant it: do not repeat it. In an operations room (your brief says which room you answer) the acts are your role's: projects, issues and releases read the projects of the room's scope; move changes an issue's status, and draft_requirement and draft_feedback draft product direction for a person to decide, each as the member who wrote last in the thread and under their own Forge permissions; research reads one public https page. An act your role is not granted, a project outside the scope, or a member Forge cannot name is refused by name: tell the thread what the refusal says. The support group acts (search, tools, run, propose_fix, record) are refused there, as these are in a support group. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: search { query }; thread { thread }; tools {}; reply { thread, text }; run { thread, tool, args? }; propose_fix { thread, tool, args?, asker }; record { thread, kind: defect | feature | request, title, summary, whereSeen?, asker? }; move_issue { thread, issue, to, reason? }; build { thread, branch, title, summary }; deploy { thread, target }; command { thread, host, command }; projects {}; issues { project, status?, key? }; releases { project }; move { thread, issue, to, reason?, project? }; draft_requirement { thread, project, title, summary }; draft_feedback { thread, project, kind: defect | feature | request, title, summary, one of requirement | issue | screen }; research { thread, url }; channel {}; member { member, roles: (user | product | technical | maintenance | bot)[], askFor?, message }; rule { thread, message, text }; common_issue { threads, question, answer, feedback? }; route { thread, to: forge | technical | product, member? (technical, product), title? (forge), text }; announce { text }.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -1385,6 +1385,12 @@
               "build",
               "deploy",
               "command",
+              "channel",
+              "member",
+              "rule",
+              "common_issue",
+              "route",
+              "announce",
               "projects",
               "issues",
               "releases",
@@ -1393,6 +1399,11 @@
               "draft_feedback",
               "research"
             ],
+            "type": "string"
+          },
+          "answer": {
+            "maxLength": 2000,
+            "minLength": 3,
             "type": "string"
           },
           "args": {
@@ -1408,6 +1419,11 @@
             },
             "type": "object"
           },
+          "askFor": {
+            "maxLength": 300,
+            "minLength": 2,
+            "type": "string"
+          },
           "asker": {
             "maxLength": 64,
             "minLength": 1,
@@ -1420,6 +1436,10 @@
           "command": {
             "maxLength": 1000,
             "minLength": 1,
+            "type": "string"
+          },
+          "feedback": {
+            "pattern": "^FB-\\d{1,9}$",
             "type": "string"
           },
           "host": {
@@ -1444,6 +1464,17 @@
             ],
             "type": "string"
           },
+          "member": {
+            "pattern": "^[A-Za-z0-9._-]{1,64}$",
+            "type": "string"
+          },
+          "message": {
+            "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
           "project": {
             "description": "a project of this room's scope, by slug",
             "maxLength": 100,
@@ -1455,6 +1486,11 @@
             "minLength": 2,
             "type": "string"
           },
+          "question": {
+            "maxLength": 300,
+            "minLength": 3,
+            "type": "string"
+          },
           "reason": {
             "maxLength": 2000,
             "minLength": 1,
@@ -1464,6 +1500,21 @@
             "maxLength": 40,
             "minLength": 1,
             "type": "string"
+          },
+          "roles": {
+            "items": {
+              "enum": [
+                "user",
+                "product",
+                "technical",
+                "maintenance",
+                "bot"
+              ],
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "type": "array"
           },
           "screen": {
             "maxLength": 300,
@@ -1507,6 +1558,18 @@
             "pattern": "^[A-Za-z0-9_-]+$",
             "type": "string"
           },
+          "threads": {
+            "items": {
+              "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          },
           "title": {
             "maxLength": 200,
             "minLength": 3,
@@ -1523,7 +1586,10 @@
               "on_hold",
               "awaiting_release",
               "closed",
-              "dropped"
+              "dropped",
+              "forge",
+              "technical",
+              "product"
             ],
             "type": "string"
           },
@@ -1790,5 +1856,5 @@
       "name": "project_feedback"
     }
   ],
-  "version": "2.3.2"
+  "version": "2.4.0"
 }

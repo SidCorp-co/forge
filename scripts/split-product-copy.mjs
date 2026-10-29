@@ -45,6 +45,7 @@ export const PREFIX_HOMES = {
   attention: 'lib/i18n/copy/attention.json',
   auth: 'lib/i18n/copy/auth.json',
   automation: 'lib/i18n/copy/automation.json',
+  channels: 'lib/i18n/copy/channels.json',
   chat: 'lib/i18n/copy/chat.json',
   checklist: 'lib/i18n/copy/checklists.json',
   common: 'lib/i18n/copy/common.json',

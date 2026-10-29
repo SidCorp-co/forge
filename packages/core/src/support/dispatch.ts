@@ -22,6 +22,7 @@ import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.j
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { logger } from '../lib/logger.js';
 import { buildBaseOf } from './build.js';
+import { briefChannel, channelNews, writerRoles } from './channel-read.js';
 import {
   claimUndelivered,
   markDelivery,
@@ -133,11 +134,14 @@ async function briefOf(room: RoomRow, projectName: string): Promise<string> {
     const role = await roleOfRoom(room);
     if (!role.ok) throw new Error(`support: ${role.refusals[0]?.detail ?? 'no role'}`);
     noteRole(room.id, role.value);
-    return operationsBrief({
-      role: role.value,
-      scope: room.scope ?? 'project',
-      reach: await projectsInScope(room),
-    });
+    return [
+      operationsBrief({
+        role: role.value,
+        scope: room.scope ?? 'project',
+        reach: await projectsInScope(room),
+      }),
+      await briefChannel(room),
+    ].join('\n\n');
   }
   const api = await activeSupportApi(room.projectId);
   const config = await supportConfigOf(room);
@@ -147,6 +151,7 @@ async function briefOf(room: RoomRow, projectName: string): Promise<string> {
     product: config?.product ?? null,
     tools: api?.tools ?? [],
     config,
+    channel: await briefChannel(room),
   });
 }
 
@@ -189,6 +194,10 @@ export async function handTurn(
     const history = await coldThreads(room);
     if (history) parts.push(history);
     if ('messages' in body) parts.push('New messages:');
+  } else if ('messages' in body) {
+    // a warm session reads the channel record again when it changed since it was told (BC-41)
+    const news = await channelNews(room);
+    if (news) parts.push(news, 'New messages:');
   }
   parts.push('messages' in body ? body.messages : body.warmUp);
   const credential = await mintFencedSessionCredential({
@@ -252,7 +261,7 @@ export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
       session,
       { ...client, deviceId: client.deviceId },
       {
-        messages: turnMessages(rows),
+        messages: turnMessages(rows, await writerRoles(room.projectId, room.rid)),
       },
     );
     await markDelivery(

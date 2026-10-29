@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { settleSupportRoom } from '../integrations/rocketchat/support-binding.js';
 import {
   clipMessage,
-  closesThread,
   confirmRefusal,
   limitsOf,
   mintConfirmCode,
   parseConfirm,
+  resultNote,
   threadOf,
   visitorIdOf,
 } from './rules.js';
@@ -65,9 +65,14 @@ describe('a group runs under limits and threads (BC-11, BC-16)', () => {
     expect(visitorIdOf('chat.other.test', 'u1')).not.toBe(a);
   });
 
-  it('stops following an item once it shipped, was confirmed or declined (BC-15)', () => {
-    expect(['resolved', 'verified', 'declined'].every((p) => closesThread(p as never))).toBe(true);
-    expect(closesThread('triaged')).toBe(false);
+  it('tells the session a result once an item is final, and nothing for progress (r6 BC-15)', () => {
+    for (const p of ['resolved', 'verified', 'declined'] as const) {
+      expect(resultNote(p, 'FB-3')).toContain('Post its result in this thread, once');
+    }
+    expect(resultNote('resolved', 'FB-3')).toContain('is live now');
+    for (const p of ['new', 'triaged', 'planned', 'reopened'] as const) {
+      expect(resultNote(p as never, 'FB-3')).toBeNull();
+    }
   });
 });
 

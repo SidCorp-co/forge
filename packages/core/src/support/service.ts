@@ -3,7 +3,7 @@
 // posted. Searching is `search.ts`, proposing a fix `fixes.ts`, recording Feedback `record.ts`.
 
 import type { SupportTool } from '@forge/contracts/support';
-import { readMessages, screened } from '../conversations/index.js';
+import { readMessages } from '../conversations/index.js';
 import { findBindingWithConnectionById } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import {
@@ -13,11 +13,11 @@ import {
   type SupportCallArgs,
   type SupportCallResult,
 } from '../integrations/support-api/index.js';
-import { refusalsOf } from '../messaging/contract.js';
-import { screenReplyAtDoor } from '../messaging/reply-screen.js';
+import { askerOf, mentionRefusal, readerOf } from './channel.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { Refusal } from './refusals.js';
 import { checkLine, limitsOf } from './rules.js';
+import { type SessionDoor, screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
 import { noteInThread, postInThread, scrubbedForRoom } from './thread.js';
 
@@ -123,8 +123,11 @@ async function roomConfig(room: RoomRow) {
 }
 
 /**
- * Post the session's reply in a thread: scrubbed, then screened as a reply to people who hold no role
- * in a support group, and to the team an operations room was bound for.
+ * Post the session's reply in a thread: scrubbed, its mentions held to one person the channel lists
+ * (REQ-75 r6 BC-34), then screened for whom it answers (BC-37): plain words for an asker holding only
+ * User or Product roles, detail for a Technical or Maintenance one, and for an asker the channel does
+ * not hold yet, the room's readers (a support group's users, unless bound `readers: team`; an
+ * operations room's team).
  */
 export async function reply(
   room: RoomRow,
@@ -133,20 +136,9 @@ export async function reply(
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
   const text = await scrubbedForRoom(room, input.text);
-  // a team reads an operations room and a support group bound with `readers: team` (REQ-75 r5)
-  const team = room.kind === 'operations' || (await roomConfig(room))?.readers === 'team';
-  const door = team ? 'operations-reply' : 'support-reply';
-  const verdict = await screenReplyAtDoor(door, {
-    projectId: room.projectId,
-    segments: [text],
-    toolCalls: [],
-    progress: null,
-  });
-  const admitted = screened(text, door, verdict);
-  if (!admitted?.proof) {
-    const why = refusalsOf(verdict).map(
-      (r) => `${r.rule}: ${r.why}${r.quote ? ` ("${r.quote}")` : ''} — ${r.shape}`,
-    );
+  const asker = await askerOf(room, input.thread);
+  const mentions = await mentionRefusal<{ messageId: string | null }>(room, text, asker.username);
+  if (mentions) {
     await insertAction({
       roomId: room.id,
       projectId: room.projectId,
@@ -156,15 +148,25 @@ export async function reply(
       actorKind: 'session',
       tool: 'reply',
       input: { text },
-      output: { screen: why },
+      output: { refusals: mentions.ok ? [] : mentions.refusals },
     });
-    return no(
-      'SUPPORT_REPLY_REFUSED',
-      '/text',
-      `nothing was posted: ${why.join('; ') || 'the screen refused the reply'}. Rewrite it and reply again.`,
-    );
+    return mentions;
   }
-  const posted = await postInThread({ room, thread: input.thread, text, proof: admitted.proof });
+  const admitted = await screenForThread(
+    room,
+    conversationId,
+    input.thread,
+    text,
+    await doorOf(room, asker.member),
+    'reply',
+  );
+  if (!admitted.ok) return admitted;
+  const posted = await postInThread({
+    room,
+    thread: input.thread,
+    text,
+    proof: admitted.value.proof,
+  });
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
@@ -176,4 +178,14 @@ export async function reply(
     externalId: posted.messageId,
   });
   return { ok: true, value: { messageId: posted.messageId } };
+}
+
+/** The door a reply to this asker passes (BC-37). */
+async function doorOf(room: RoomRow, member: Parameters<typeof readerOf>[0]): Promise<SessionDoor> {
+  if (room.kind === 'support') {
+    const reader = readerOf(member);
+    if (reader) return reader === 'detail' ? 'operations-reply' : 'support-reply';
+  }
+  const team = room.kind === 'operations' || (await roomConfig(room))?.readers === 'team';
+  return team ? 'operations-reply' : 'support-reply';
 }

@@ -1205,7 +1205,16 @@
     "support": {
       "kind": "domain",
       "context": "conversations",
-      "owns": ["supportRooms", "supportActions", "supportProposals", "supportFeedbackLinks"],
+      "owns": [
+        "supportRooms",
+        "supportActions",
+        "supportProposals",
+        "supportFeedbackLinks",
+        "supportChannels",
+        "supportChannelMembers",
+        "supportChannelRules",
+        "supportChannelCommonIssues"
+      ],
       "serves": ["REQ-75"]
     },
     "uploads": {
@@ -1320,6 +1329,9 @@
     },
     "board": {
       "serves": ["via:conversations", "via:mockups"]
+    },
+    "channels": {
+      "serves": ["REQ-75"]
     },
     "chat": {
       "serves": ["REQ-30"]
