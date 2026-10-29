@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.370] - 2026-10-29
+
+Reads refuse unknown query keys by name instead of ignoring them
+
+### Fixed
+
+- **Every read refuses a query key it does not take.** A misspelt or misplaced filter on any Forge read is now refused by name, listing the keys the read takes, instead of being ignored.
+- **The shipped-in hold says what to do with a verb first.** Its act now reads "record which release holds its landing, read with git".
+
 ## [0.4.0-dev.369] - 2026-10-29
 
 Feedback shows the release that shipped its fix
