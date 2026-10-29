@@ -4,7 +4,6 @@ import type {
   HostCompare,
   HostFileChange,
   HostFileCompare,
-  LiveDivergence,
   SourceHost,
   SourceHostFactory,
   WaitingCommit,
@@ -185,21 +184,6 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
           c.id ? [{ sha: c.id, message: c.message ?? '', parents: c.parent_ids ?? [] }] : [],
         );
         return { ok: true, commits, complete: true };
-      } catch (err) {
-        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
-      }
-    },
-
-    async readDivergence(refs): Promise<LiveDivergence> {
-      try {
-        const [baseSha, liveSha] = await Promise.all([
-          branchHead(refs.baseRef),
-          branchHead(refs.liveRef),
-        ]);
-        const commits: WaitingCommit[] = (await commitsBetween(liveSha, baseSha)).flatMap((c) =>
-          c.id ? [{ sha: c.id, message: c.message ?? '', parents: c.parent_ids ?? [] }] : [],
-        );
-        return { ok: true, baseSha, liveSha, aheadBy: commits.length, commits, complete: true };
       } catch (err) {
         return { ok: false, reason: err instanceof Error ? err.message : String(err) };
       }

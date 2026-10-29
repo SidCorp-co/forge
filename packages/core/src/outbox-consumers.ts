@@ -26,7 +26,6 @@ import {
   registerPausedRunWedgeResolve,
   registerPhaseJournalClose,
 } from './pipeline/index.js';
-import { registerLiveReadingInvalidation } from './projects/index.js';
 import { registerQuestionSuggest } from './questions/index.js';
 import {
   registerLandingDeploy,
@@ -68,7 +67,6 @@ export function registerOutboxConsumers(): void {
   registerDependencyHealth();
   registerReviewNotes();
   registerSourcePushReactions();
-  registerLiveReadingInvalidation();
   registerLandingDeploy();
   registerRequirementNotifications();
   registerFirstRequirementsCase();

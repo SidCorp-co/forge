@@ -30,21 +30,10 @@ const issueRecord = (i: PulseIssueIdentity): PulseActionRecord => ({
   ageSeconds: i.ageSeconds,
 });
 
-const notOnLiveRecord = (i: PulseNotOnLiveIdentity): PulseActionRecord => {
-  const first = i.evidence[0];
-  return {
-    ...issueRecord(i),
-    ...detailOf(
-      first
-        ? say('overview.record.notOnLive', {
-            title: i.title,
-            sha: first.sha.slice(0, 8),
-            branch: i.deploysFrom,
-          })
-        : verbatim(i.title),
-    ),
-  };
-};
+const notOnLiveRecord = (i: PulseNotOnLiveIdentity): PulseActionRecord => ({
+  ...issueRecord(i),
+  ...detailOf(say('overview.record.notOnLive', { title: i.title, why: i.why })),
+});
 
 const projectRecord = (p: PulseProjectIdentity, now: Date): PulseActionRecord => ({
   key: p.id,

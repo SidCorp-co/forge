@@ -95,7 +95,6 @@ import {
 import {
   declaredIssueSeqs,
   issueRefPattern,
-  liveReachForIssue,
   projectCreatorOf,
   subjectOf,
 } from './projects/index.js';
@@ -127,6 +126,7 @@ import {
   deliveryHeadsOf,
   judgedBuildOf,
   landedRecordOf,
+  liveReachForIssue,
   nextDraftVersion,
   releaseEndsRun,
   releaseHoldsOf,

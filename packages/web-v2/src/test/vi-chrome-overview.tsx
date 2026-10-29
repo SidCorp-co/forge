@@ -189,7 +189,7 @@ const PULSE: PulseResponse = {
   actions: [
     { key: "stuckRuns", label: "Runs claimed but empty", hint: "", owner: "machine", count: 2, oldestSeconds: 7200, records: [{ key: "r2", label: "Run", ...detail(verbatim("hop")), href: "/ops?run=r2", ageSeconds: 7200 }] },
     { key: "neverRanProjects", label: "Projects holding a backlog with no pipeline", hint: "", owner: "person", count: 3, oldestSeconds: Number.MAX_SAFE_INTEGER, records: [{ key: "p2", label: "Kho", ...detail(say("overview.record.waiting", { n: 1, issues: "issue" })), href: "/projects/kho", ageSeconds: Number.MAX_SAFE_INTEGER }] },
-    { key: "notOnLive", label: "Closed, not on production", hint: "", owner: "person", count: 1, oldestSeconds: null, records: [{ key: "i5", label: "ISS-5", ...detail(say("overview.record.notOnLive", { title: "Muc nam", sha: "abcdef12", branch: "prod" })), href: "/projects/hop/issues/i5", ageSeconds: 60 }] },
+    { key: "notOnLive", label: "Closed, not on production", hint: "", owner: "person", count: 1, oldestSeconds: null, records: [{ key: "i5", label: "ISS-5", ...detail(say("overview.record.notOnLive", { title: "Muc nam", why: "no release names it" })), href: "/projects/hop/issues/i5", ageSeconds: 60 }] },
   ],
 };
 

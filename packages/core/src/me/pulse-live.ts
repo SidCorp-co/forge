@@ -1,20 +1,9 @@
-import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
-import { and, count, eq, gt, inArray, isNotNull, notInArray, or } from 'drizzle-orm';
+import { say, sayEn } from '@forge/contracts/said';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
-import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import {
-  evidenceFor,
-  issueRefPattern,
-  issueWorkRecordsAt,
-  type LiveReading,
-  liveReadingForRow,
-  projectReleaseRows,
-  type ReadingOwnership,
-  readingOwnership,
-  unclaimedShas,
-} from '../projects/index.js';
+import { deploysFromOf, liveReachOfIssues } from '../release-batch/index.js';
 import { ageSeconds } from './pulse-folds.js';
 import type {
   PulseCapped,
@@ -28,32 +17,22 @@ interface PulseLive {
   liveUnmeasured: PulseCapped<PulseLiveGap>;
 }
 
-type MeasuredReading = Extract<LiveReading, { kind: 'measured' }>;
-
-/** Every waiting commit's issues, with the project's work records the reading needs read once. */
-async function ownershipOf(projectId: string, reading: MeasuredReading): Promise<ReadingOwnership> {
-  const pattern = issueRefPattern(await heldIssuePrefixes(projectId));
-  const unclaimed = unclaimedShas(reading.commits, pattern, reading.baseBranch);
-  const records = await issueWorkRecordsAt(projectId, unclaimed);
-  return readingOwnership(reading.commits, pattern, reading, records);
+interface PromoteProject {
+  id: string;
+  slug: string;
+  name: string;
+  issuePrefix: string | null;
+  deploysFrom: string;
 }
 
-async function closedNotOnLive(
-  project: { id: string; slug: string; issuePrefix: string | null },
-  reading: MeasuredReading,
-  ownership: ReadingOwnership,
+/**
+ * One project's closed issues that a record places off production, and how many no record places:
+ * read from the releases Forge recorded shipping (`release-batch/live-reach.ts`), never the branches.
+ */
+async function projectLive(
+  project: PromoteProject,
   now: Date,
-): Promise<PulseNotOnLiveIdentity[]> {
-  if (reading.commits.length === 0) return [];
-  const seqs = new Set<number>();
-  for (const owned of ownership.owners.values()) {
-    for (const s of owned.keys()) seqs.add(s);
-  }
-  const shas = reading.commits.map((c) => c.sha);
-  const match =
-    seqs.size > 0
-      ? or(inArray(issues.mergedCommitSha, shas), inArray(issues.issSeq, [...seqs]))
-      : inArray(issues.mergedCommitSha, shas);
+): Promise<{ notOnLive: PulseNotOnLiveIdentity[]; gap: PulseLiveGap | null }> {
   const rows = await db
     .select({
       id: issues.id,
@@ -69,91 +48,62 @@ async function closedNotOnLive(
         eq(issues.projectId, project.id),
         eq(issues.status, 'closed'),
         isNotNull(issues.mergedAt),
-        match,
       ),
     );
-  const out: PulseNotOnLiveIdentity[] = [];
+  const reach = await liveReachOfIssues(project.id, rows, project.deploysFrom);
+  const notOnLive: PulseNotOnLiveIdentity[] = [];
+  let unrecorded = 0;
+  let noRelease = false;
   for (const r of rows) {
-    const evidence = evidenceFor(r, reading, ownership);
-    if (evidence.length === 0) continue;
-    out.push({
+    const at = reach.get(r.id);
+    if (at?.state === 'unrecorded') {
+      unrecorded += 1;
+      noRelease ||= at.cause === 'no_release';
+    }
+    if (at?.state !== 'not_on_live') continue;
+    notOnLive.push({
       documentId: r.id,
       issueRef: formatIssueRef(project.issuePrefix, r.issSeq),
       title: r.title,
       status: r.status,
       projectSlug: project.slug,
       ageSeconds: ageSeconds(r.mergedAt, now) ?? 0,
-      deploysFrom: reading.deploysFrom,
-      evidence,
+      deploysFrom: project.deploysFrom,
+      commit: at.commit,
+      why: at.why,
     });
   }
-  return out;
+  if (unrecorded === 0) return { notOnLive, gap: null };
+  const live = project.deploysFrom;
+  const reason = noRelease
+    ? say('pulse.gap.noRelease', { n: unrecorded, live })
+    : unrecorded === 1
+      ? say('pulse.gap.unrecordedOne', { live })
+      : say('pulse.gap.unrecordedMany', { n: unrecorded, live });
+  return {
+    notOnLive,
+    gap: {
+      id: project.id,
+      slug: project.slug,
+      name: project.name,
+      deploysFrom: live,
+      reason: sayEn(reason),
+      says: { reason },
+    },
+  };
 }
 
 /**
- * Why a measured reading still leaves closed issues of this project unplaced, or null where it
- * places every one: a list cut short, issues that merged after the reading started, or waiting
- * commits no source gives to any issue.
- */
-async function measuredGap(
-  projectId: string,
-  reading: MeasuredReading,
-  placed: readonly string[],
-  ownerless: number,
-): Promise<Said | null> {
-  const reasons: Said[] = [];
-  if (!reading.complete) {
-    reasons.push(
-      say('pulse.gap.cut', {
-        base: reading.baseBranch,
-        ahead: reading.aheadBy,
-        live: reading.deploysFrom,
-        listed: reading.commits.length,
-      }),
-    );
-  }
-  const [late] = await db
-    .select({ n: count() })
-    .from(issues)
-    .where(
-      and(
-        eq(issues.projectId, projectId),
-        eq(issues.status, 'closed'),
-        gt(issues.mergedAt, reading.startedAt),
-        ...(placed.length > 0 ? [notInArray(issues.id, [...placed])] : []),
-      ),
-    );
-  const n = Number(late?.n ?? 0);
-  if (n > 0) {
-    const at = reading.startedAt.toISOString();
-    reasons.push(n === 1 ? say('pulse.gap.lateOne', { at }) : say('pulse.gap.lateMany', { n, at }));
-  }
-  if (ownerless > 0) {
-    const base = reading.baseBranch;
-    reasons.push(
-      ownerless === 1
-        ? say('pulse.gap.ownerlessOne', { base })
-        : say('pulse.gap.ownerlessMany', { n: ownerless, base }),
-    );
-  }
-  const [first, ...more] = reasons;
-  if (!first) return null;
-  return more.length === 0 ? first : say('pulse.gap.all', { parts: reasons });
-}
-
-/**
- * Closed issues whose work a reading places off the live branch, and the `promote` projects whose
- * reading could not place every closed issue — the second list keeps the first from reading as a zero.
+ * Closed issues a release record places off production, and the `promote` projects holding closed
+ * issues no record places either way: the second list keeps the first from reading as a zero.
  */
 export async function readPulseLive(
   projectIds: string[],
   thresholds: PulseThresholds,
   now: Date,
 ): Promise<PulseLive> {
-  const releaseRows = (await projectReleaseRows(projectIds)).filter((r) => r.deploysFrom !== null);
-  if (releaseRows.length === 0) {
-    return { notOnLive: { total: 0, shown: [] }, liveUnmeasured: { total: 0, shown: [] } };
-  }
+  const empty = { notOnLive: { total: 0, shown: [] }, liveUnmeasured: { total: 0, shown: [] } };
+  if (projectIds.length === 0) return empty;
   const named = await db
     .select({
       id: projects.id,
@@ -162,45 +112,17 @@ export async function readPulseLive(
       issuePrefix: projects.issuePrefix,
     })
     .from(projects)
-    .where(
-      inArray(
-        projects.id,
-        releaseRows.map((r) => r.id),
-      ),
-    );
-  const byId = new Map(named.map((p) => [p.id, p]));
+    .where(inArray(projects.id, projectIds));
+  const promote = (
+    await Promise.all(named.map(async (p) => ({ ...p, deploysFrom: await deploysFromOf(p.id) })))
+  ).filter((p): p is PromoteProject => p.deploysFrom !== null);
+  if (promote.length === 0) return empty;
 
-  const readings = await Promise.all(
-    releaseRows.map(async (row) => ({ row, reading: await liveReadingForRow(row) })),
-  );
   const notOnLive: PulseNotOnLiveIdentity[] = [];
   const gaps: PulseLiveGap[] = [];
-  for (const { row, reading } of readings) {
-    const project = byId.get(row.id);
-    if (!reading || !project) continue;
-    // a reading that could not compare says why as the reading wrote it (`projects/live-reading.ts`)
-    let reason: Said | null = reading.kind === 'measured' ? null : verbatim(reading.reason);
-    if (reading.kind === 'measured') {
-      const ownership = await ownershipOf(project.id, reading);
-      const placed = await closedNotOnLive(project, reading, ownership, now);
-      notOnLive.push(...placed);
-      reason = await measuredGap(
-        project.id,
-        reading,
-        placed.map((i) => i.documentId),
-        ownership.ownerless.length,
-      );
-    }
-    if (reason === null) continue;
-    gaps.push({
-      id: project.id,
-      slug: project.slug,
-      name: project.name,
-      baseBranch: reading.baseBranch,
-      deploysFrom: reading.deploysFrom,
-      reason: sayEn(reason),
-      says: { reason },
-    });
+  for (const read of await Promise.all(promote.map((p) => projectLive(p, now)))) {
+    notOnLive.push(...read.notOnLive);
+    if (read.gap) gaps.push(read.gap);
   }
   notOnLive.sort((a, b) => b.ageSeconds - a.ageSeconds);
   gaps.sort((a, b) => a.slug.localeCompare(b.slug));

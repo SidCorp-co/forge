@@ -439,30 +439,23 @@ export type CommentKind =
 
 export type { StageKey, StatusKey };
 
-export interface LiveReachCommit {
-  sha: string;
-  subject: string;
-}
-
-interface LiveReachEvidence extends LiveReachCommit {
-  via: "merged_commit" | "declares_issue" | "merged_in" | "recorded_head";
-}
-
-interface LiveReachMeasured {
-  baseBranch: string;
+interface LiveReachPlaced {
+  /** The branch production deploys from, which a promotion crosses into. */
   deploysFrom: string;
-  measuredAt: string;
-  baseSha: string;
-  liveSha: string;
+  landedAt: string;
+  commit: string | null;
 }
 
+/** Whether a merged issue's work is on production, from the releases Forge recorded shipping. */
 export type LiveReach =
-  | (LiveReachMeasured & { state: "not_on_live"; evidence: LiveReachEvidence[] })
-  | (LiveReachMeasured & { state: "none_waiting"; unowned: LiveReachCommit[] })
-  | {
-      state: "unmeasured";
-      baseBranch: string | null;
-      deploysFrom: string;
-      measuredAt: string | null;
-      reason: string;
-    };
+  | (LiveReachPlaced & {
+      state: "on_live";
+      release: { version: string; commit: string; runId: string; cutAt: string };
+    })
+  | (LiveReachPlaced & { state: "not_on_live"; why: string; owes: string })
+  | (LiveReachPlaced & {
+      state: "unrecorded";
+      cause: "no_release" | "not_named";
+      missing: string;
+      owes: string;
+    });

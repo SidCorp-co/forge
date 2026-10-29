@@ -1,7 +1,7 @@
 {
   "en": {
     "overview.action.abandonedIssues": "In-flight issues nobody is working",
-    "overview.action.liveUnmeasured": "Promote projects Forge could not fully compare",
+    "overview.action.liveUnmeasured": "Promote projects with closed work no release record places",
     "overview.action.neverRanProjects": "Projects holding a backlog with no pipeline",
     "overview.action.notOnLive": "Closed, not on production",
     "overview.action.releaseWaiting": "Waiting to be released",
@@ -205,7 +205,6 @@
   },
   "vi": {
     "overview.action.abandonedIssues": "Issue đang làm mà không ai làm",
-    "overview.action.liveUnmeasured": "Project đưa lên mà Forge chưa so sánh hết",
     "overview.action.neverRanProjects": "Project có tồn đọng mà chưa có pipeline",
     "overview.action.notOnLive": "Đã đóng, chưa lên Production",
     "overview.action.releaseWaiting": "Chờ được release",
@@ -320,7 +319,7 @@
     "overview.quality.unclassified": ", {pct}% chưa phân loại",
     "overview.quality.unmerged": "Đóng không merge",
     "overview.quality.whyFailed": "Vì sao phiên agent lỗi — {n} trong 90 ngày",
-    "overview.record.notOnLive": "{title} · {sha} chưa có trên {branch}",
+    "overview.record.notOnLive": "{title} · {why}",
     "overview.record.showing": "{title} — hiện {shown}/{total}",
     "overview.record.waiting": "{n} issue đang chờ",
     "overview.runKind.interactive": "Phiên tương tác",
@@ -370,7 +369,6 @@
     "overview.spend.title": "Chi phí 7 ngày",
     "overview.spend.trendSoon": "Biểu đồ chi phí theo thời gian sắp có (ISS-380)",
     "overview.title": "Tổng quan",
-    "overview.welcome": "Chào mừng đến với Forge",
-    "pulse.gap.all": "{parts}"
+    "overview.welcome": "Chào mừng đến với Forge"
   }
 }

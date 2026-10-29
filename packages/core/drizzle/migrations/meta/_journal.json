@@ -3564,6 +3564,13 @@
       "when": 1830988800000,
       "tag": "0556_a_release_tags_its_commit_before_it_ships",
       "breakpoints": true
+    },
+    {
+      "idx": 557,
+      "version": "7",
+      "when": 1831075200000,
+      "tag": "0557_the_live_reading_consumer_is_retired",
+      "breakpoints": true
     }
   ]
 }

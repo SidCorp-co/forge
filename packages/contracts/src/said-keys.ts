@@ -2284,8 +2284,8 @@ export const SAID = {
 		vars: { n: "count", issues: "agreement" },
 	},
 	"overview.record.notOnLive": {
-		en: "{title} · {sha} not on {branch}",
-		vars: { title: "text", sha: "code", branch: "name" },
+		en: "{title} · {why}",
+		vars: { title: "text", why: "text" },
 	},
 	"designs.gate.open": {
 		en: "issues that build it may be dispatched: revision {r} is approved",
@@ -2964,27 +2964,18 @@ export const SAID = {
 		en: "{flow}, which is no workflow of this project",
 		vars: { flow: "name" },
 	},
-	"pulse.gap.cut": {
-		en: "{base} is {ahead} commits ahead of {live}; the reading listed {listed}",
-		vars: { base: "name", ahead: "count", live: "name", listed: "count" },
+	"pulse.gap.noRelease": {
+		en: "No release has shipped through Forge here, so no record places its {n} closed issues on {live}",
+		vars: { n: "count", live: "name" },
 	},
-	"pulse.gap.lateOne": {
-		en: "1 closed issue merged after the {at} reading",
-		vars: { at: "instant" },
+	"pulse.gap.unrecordedOne": {
+		en: "1 closed issue landed before a shipped release that does not name it, so no record says whether it reached {live}",
+		vars: { live: "name" },
 	},
-	"pulse.gap.lateMany": {
-		en: "{n} closed issues merged after the {at} reading",
-		vars: { n: "count", at: "instant" },
+	"pulse.gap.unrecordedMany": {
+		en: "{n} closed issues landed before a shipped release that does not name them, so no record says whether they reached {live}",
+		vars: { n: "count", live: "name" },
 	},
-	"pulse.gap.ownerlessOne": {
-		en: "1 commit waiting on {base} belongs to no issue",
-		vars: { base: "name" },
-	},
-	"pulse.gap.ownerlessMany": {
-		en: "{n} commits waiting on {base} belong to no issue",
-		vars: { n: "count", base: "name" },
-	},
-	"pulse.gap.all": { en: "{parts}", vars: { parts: "saidList" } },
 	"designs.reason.repinOnly": {
 		en: 'Re-pin in act {act} ("{actWords}" on {flow}): {pins}; fingerprint {fp} matches r{r}.',
 		vars: {

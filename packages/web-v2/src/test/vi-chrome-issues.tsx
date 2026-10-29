@@ -183,7 +183,7 @@ const ISSUE: IssueDetail = {
   mergedAt: AT,
   mergeMark: "asserted",
   landingShape: "git",
-  liveReach: { state: "none_waiting", baseBranch: "main", baseSha: "abcdef12345", deploysFrom: "prod", liveSha: "1234567abcd", measuredAt: AT, unowned: [{ sha: "9999999aaaa", subject: "sua" }] },
+  liveReach: { state: "on_live", deploysFrom: "prod", landedAt: AT, commit: "abcdef12345", release: { version: "1.4.0", commit: "1234567abcd", runId: "r1", cutAt: AT } },
   releaseNotes: { userFacing: "", section: "Skip" },
   shippedIn: { version: "0.0.9", at: AT },
   sessionContext: null,

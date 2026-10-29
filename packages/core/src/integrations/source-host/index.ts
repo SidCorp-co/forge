@@ -66,7 +66,6 @@ export { changeRequestLabelOf, hostOfRepository, resolveSourceHost } from './res
 export type * from './types.js';
 export type {
   HostRange,
-  LiveDivergence,
   ReviewEvent,
   SourceHost,
   WaitingCommit,

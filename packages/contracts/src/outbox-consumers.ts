@@ -47,7 +47,7 @@ export const OUTBOX_CONSUMERS = {
 	"skill.syncRequested": ["ws-broadcast"],
 	"runner.provisionRequested": ["ws-broadcast"],
 	"runner.provisionStatus": ["ws-broadcast"],
-	"source.pushed": ["ecosystem-builder", "live-reading", "on-land-deploy"],
+	"source.pushed": ["ecosystem-builder", "on-land-deploy"],
 	// information only: a host's report of a merge writes no issue, release or roster state (ISS-774)
 	"source.merged": [],
 	"source.reviewed": ["review-note"],

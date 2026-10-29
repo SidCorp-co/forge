@@ -140,12 +140,12 @@ export const PULSE_ACTION_LABELS: Record<
 	notOnLive: {
 		label: "Closed, not on production",
 		owner: "person",
-		hint: "Closed on a promotion that has not happened: a commit of each is on the base branch and not the live one.",
+		hint: "Closed, and no release Forge recorded shipping names them: each landed after the newest shipped release was cut.",
 	},
 	liveUnmeasured: {
-		label: "Promote projects Forge could not fully compare",
+		label: "Promote projects with closed work no release record places",
 		owner: "person",
-		hint: "Forge cannot tell whether closed issues here reached the live branch: the comparison failed, was cut short, or was taken before they merged.",
+		hint: "Forge has no record of whether these closed issues reached production: no shipped release names them, and only a release recorded through Forge places work there.",
 	},
 	neverRanProjects: {
 		label: "Projects holding a backlog with no pipeline",

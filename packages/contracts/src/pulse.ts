@@ -39,25 +39,23 @@ export interface PulseIssueIdentity {
 	ageSeconds: number;
 }
 
-/** A closed issue whose work a reading of its project"s branches places off the live branch. */
+/** A closed issue Forge's release records place off production: no shipped release names it. */
 export interface PulseNotOnLiveIdentity extends PulseIssueIdentity {
 	deploysFrom: string;
-	evidence: Array<{
-		sha: string;
-		subject: string;
-		via: "merged_commit" | "declares_issue" | "merged_in" | "recorded_head";
-	}>;
+	/** The commit its merge mark names, or null where the mark named none. */
+	commit: string | null;
+	/** Which record places it off production, in a sentence. */
+	why: string;
 }
 
-/** A `promote` project whose base and live branches could not be compared, and why. */
+/** A `promote` project holding closed issues no release record places on or off production, and why. */
 export interface PulseLiveGap {
 	id: string;
 	slug: string;
 	name: string;
-	baseBranch: string | null;
 	deploysFrom: string;
 	reason: string;
-	/** `reason` as said: core's own gaps by key, a reading's refusal verbatim. */
+	/** `reason` as said, by key. */
 	says: { reason: Said };
 }
 

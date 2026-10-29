@@ -26,6 +26,7 @@ and `(release_model = 'promote') = (release_strategy IS NOT NULL)`, and the proj
 answers `LIVE_BRANCH_REQUIRED` for the same reason. A rule whose whole job is to keep two fields agreeing is a rule about a fact stored
 twice.
 
+<!-- doc-citation: unchecked `packages/core/src/projects/live-reading.ts:takeLiveReading` — this ADR is superseded by 0004, and the live reading was replaced by release records on 2026-10-30; the citation records the tree this decision was taken against -->
 **`release_strategy` is not what it appears to be.** One site in core branches on its value —
 `packages/core/src/projects/live-reading.ts:takeLiveReading` — and it branches only to *refuse*: a
 `cherry-pick` project cannot be asked whether its commits reached the live branch, because the shas

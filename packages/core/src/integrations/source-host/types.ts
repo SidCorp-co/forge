@@ -16,18 +16,6 @@ export interface WaitingCommit {
   parents: string[];
 }
 
-export type LiveDivergence =
-  | {
-      ok: true;
-      baseSha: string;
-      liveSha: string;
-      aheadBy: number;
-      commits: WaitingCommit[];
-      /** False where `commits` holds fewer than `aheadBy`: an issue it does not name is unplaced. */
-      complete: boolean;
-    }
-  | { ok: false; reason: string };
-
 /** The commits `head` holds that `base` does not, oldest first as the host lists them. */
 export type HostRange =
   | { ok: true; commits: WaitingCommit[]; complete: boolean }
@@ -202,7 +190,6 @@ export interface SourceHost {
   branchContains(branch: string, sha: string): Promise<boolean>;
   /** Whether two commits carry the same tree: the same files with the same bytes, whatever their history. */
   sameTree(a: string, b: string): Promise<boolean>;
-  readDivergence(refs: BranchRefs): Promise<LiveDivergence>;
   /** The commits between two commits (any refs the host resolves), never named by branch. */
   readRange(base: string, head: string): Promise<HostRange>;
   /** A file's text at `ref`, held to the blob id the host names, or why there is none. */
@@ -273,10 +260,4 @@ export interface SourceHostFactory {
   }): SourceHost;
   /** What `GET /api/projects/:id/integrations/source` reports for this provider's bindings on a project. Contacts no host. */
   listBindings?(projectId: string): Promise<Array<{ provider: string } & Record<string, unknown>>>;
-}
-
-/** The two branches a divergence read compares: what base holds that live lacks. */
-export interface BranchRefs {
-  baseRef: string;
-  liveRef: string;
 }

@@ -243,15 +243,14 @@ interface IssuePorts {
   issueRefPattern: (prefixes: readonly string[]) => RegExp;
   declaredIssueSeqs: (message: string, pattern: RegExp, baseBranch: string) => number[];
   subjectOf: (message: string) => string;
-  liveReachForIssue: (
-    issue: {
-      projectId: string;
-      issSeq: number;
-      mergedAt: Date | string | null;
-      mergedCommitSha: string | null;
-    },
-    prefixes: readonly string[],
-  ) => Promise<object | null>;
+  /** Whether a merged issue's work is on production, from Forge's release records (`release-batch/live-reach.ts`). */
+  liveReachForIssue: (issue: {
+    id: string;
+    projectId: string;
+    status: string;
+    mergedAt: Date | string | null;
+    mergedCommitSha: string | null;
+  }) => Promise<object | null>;
   /** The build a verdict on the issue defaults to (`release-batch/judged-build.ts`). */
   judgedBuildOf: (issue: {
     id: string;

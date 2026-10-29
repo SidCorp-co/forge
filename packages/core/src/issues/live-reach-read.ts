@@ -1,13 +1,13 @@
-import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { liveReachOfIssue } from './ports.js';
 
-/** One merged issue's place against the branch production deploys from; `null` where there is none to give. */
+/** Whether one merged issue's work is on production, from the releases Forge recorded; `null` where there is none to give. */
 export async function liveReachForIssue(issue: {
+  id: string;
   projectId: string;
-  issSeq: number;
+  status: string;
   mergedAt: Date | string | null;
   mergedCommitSha: string | null;
 }): Promise<object | null> {
   if (issue.mergedAt == null) return null;
-  return liveReachOfIssue(issue, await heldIssuePrefixes(issue.projectId));
+  return liveReachOfIssue(issue);
 }

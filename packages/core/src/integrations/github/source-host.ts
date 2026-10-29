@@ -22,8 +22,8 @@ import {
 } from './agent-ops.js';
 import { githubChangeRequestVerbs } from './change-requests.js';
 import { buildRepoClient, GitHubReadError, type GitHubRepoClient } from './client.js';
+import { readCompareCommits } from './compare-commits.js';
 import { type CompareFile, readCompareFiles } from './compare-pages.js';
-import { readCompareCommits, readLiveDivergence } from './live-divergence.js';
 import { MERGE_METHODS, mergeGitHubPullRequest } from './merge.js';
 import { tagGitHubCommit } from './tags.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
@@ -215,7 +215,6 @@ function githubSourceHostOf(
       const status = await compare(sha, branch);
       return status === 'ahead' || status === 'identical';
     },
-    readDivergence: (refs) => readLiveDivergence(client, refs),
     async readRange(base, head) {
       try {
         const { commits, aheadBy } = await readCompareCommits(client, base, head);
