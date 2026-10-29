@@ -6,6 +6,8 @@
  * leaves no row; only the person's press on the card writes exactly the held call, once, as them,
  * linked to what it named. A typed reply, yes or no, writes nothing (ISS-439 round 2: the judge's
  * probe A had a typed "No" bound as agreement, and core wrote it).
+ *
+ * @direct-test-of packages/core/src/requirements/agree.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -352,7 +354,12 @@ describe("an Agent-mode session's REST write is held the same way", () => {
     expect(await notes()).toBe(0);
     // a revision opens on an accepted requirement: revision 1 is proposed and signed first
     for (const step of ['propose', 'accept']) {
-      const r = await say('owner', 'POST', at(`/requirements/${reqKey}/revisions/1/${step}`), {});
+      const r = await say(
+        'owner',
+        'POST',
+        at(`/requirements/${reqKey}/revisions/1/${step}`),
+        step === 'accept' ? { reason: 'The owner signs revision 1.' } : {},
+      );
       expect(r.status, JSON.stringify(r.json)).toBe(200);
     }
     const revise = await say('agent', 'POST', at(`/requirements/${reqKey}/revisions`), {
