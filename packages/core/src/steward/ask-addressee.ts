@@ -92,11 +92,13 @@ export function waitsOnReleaseApproval(standing: Pick<ItemStanding, 'waitingOn'>
  * cannot be read (its checkout carries no credential), so the master there is not taken to hold the
  * act; `unreadLine` says so in the words an act or the item's line carries.
  */
-export type AskAddressee =
+export type ActAddressee =
   | { to: 'master' }
-  | { to: 'person'; who: string; act: string }
   | { to: 'holders'; act: HeldAct; holders: NamedHolder[]; unread: string[] }
   | { to: 'nobody'; act: HeldAct; why: string; unread: string[] };
+
+/** Whom an ask goes to: whoever takes the act, or the person a wait names, whose act it is (ISS-739). */
+export type AskAddressee = ActAddressee | { to: 'person'; who: string; act: string };
 
 /**
  * Whether an account the project's master acts as holds `permission` on the project, and the serving
@@ -145,7 +147,7 @@ export async function addresseeOfAct(
   projectId: string,
   act: HeldAct,
   stewardId: string | null,
-): Promise<AskAddressee> {
+): Promise<ActAddressee> {
   const master = await masterStanding(projectId, act.permission);
   if (master.holds) return { to: 'master' };
   const { unread } = master;

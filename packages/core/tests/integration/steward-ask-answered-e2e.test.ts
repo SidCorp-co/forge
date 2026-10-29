@@ -246,7 +246,12 @@ describe('a decision on the stuck item or on the blocker it asks about clears th
   let blocker: Item;
   let stuck: Item;
 
-  const blockedWait = (b: Item) => ({ kind: 'issue' as const, who: b.key, act: 'running', ref: b.key });
+  const blockedWait = (b: Item) => ({
+    kind: 'issue' as const,
+    who: b.key,
+    act: 'running',
+    ref: b.key,
+  });
 
   it("names both items' doors in the nudge, the blocker asked about and the stuck item whose run asked", async () => {
     blocker = await issue();
