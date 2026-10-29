@@ -57,7 +57,10 @@ describe('reading a cli artifact', () => {
 
 describe('measuring a cli change', () => {
   it('a removed command and a removed flag are breaking', () => {
-    const next = { program: 'forge', commands: [{ name: 'feedback', description: 'File feedback.' }] };
+    const next = {
+      program: 'forge',
+      commands: [{ name: 'feedback', description: 'File feedback.' }],
+    };
     const changes = diffCli(doc(V1), doc(next));
     expect(changes.map((c) => [c.element, c.level, c.check])).toEqual([
       ['forge feedback/options/--kind', 'breaking', 'option-removed'],

@@ -76,7 +76,10 @@ afterAll(async () => {
 
 describe('c1: a cli contract version is recorded with its commands indexed', () => {
   it('refuses an artifact that is not a cli document, naming what is wrong and where', async () => {
-    const bad = await upload({ program: 'forge', commands: [{ name: 'record  verdict' }] }, '1.0.0');
+    const bad = await upload(
+      { program: 'forge', commands: [{ name: 'record  verdict' }] },
+      '1.0.0',
+    );
     expect(refusal(bad)).toEqual(['ARTIFACT_UNREADABLE /artifact']);
     expect(bad.json.error.refusals[0].detail).toContain('commands[0].name');
     const twice = await upload(
@@ -114,9 +117,7 @@ describe('c2: an endpoint naming a served command targets it', () => {
     // until a holder of contracts.approve approves it
     const first = ok(await say('platform', 'GET', `${versions()}/1.0.0`));
     if (first.approval.state === 'proposed') {
-      ok(
-        await say('platform', 'POST', `${versions()}/1.0.0/decision`, { decision: 'approve' }),
-      );
+      ok(await say('platform', 'POST', `${versions()}/1.0.0/decision`, { decision: 'approve' }));
     }
     expect(ok(await say('platform', 'GET', versions())).current).toBe('1.0.0');
     const served = ok(await say('platform', 'GET', project('/feedback/endpoints'))).endpoints;
