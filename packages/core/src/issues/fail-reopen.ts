@@ -1,10 +1,11 @@
 // A failing verdict reopens the issue that owns the work, never a new one (REQ-74 BC-3, REQ-45 BC-2,
 // ISS-598). Every door that writes a fail carries it on `verdict.recorded` in its own transaction
-// (`criteria/verdict-record.ts:recordVerdict`, and the requirement verdict for the issue that
-// delivered the criterion), and this consumer moves that issue to `reopen` where it is past its
-// build: at `awaiting_release` or `closed`. One still being built or parked is already somebody's
-// work and is left where it is. A move the machine refuses (a running release claims the issue, or it
-// is archived) is said on the issue by name, never dropped.
+// (`criteria/verdict-record.ts:recordVerdict`, and the requirement verdict once for each issue tracing
+// the criterion, `requirements/verdicts.ts:routeFail`), and this consumer moves that issue to `reopen`
+// where it is past its build: at `awaiting_release` or `closed`. One still being built or parked is
+// already somebody's work and is left where it is. A fail the requirement routed past the issue
+// (`failed.stays`, ISS-756) is said on it and moves nothing. A move the machine refuses (a running
+// release claims the issue, or it is archived) is said on the issue by name, never dropped.
 
 import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import type { VerdictFailed } from '@forge/contracts/outbox-events';
@@ -25,7 +26,7 @@ const PAST_BUILD: ReadonlySet<string> = new Set(ISSUE_RESOLVED_STATUSES);
 
 function failedWhat(p: Failed): string {
   const what = p.requirement
-    ? `${p.requirement}, which this issue delivered, was judged fail at its requirement`
+    ? `${p.requirement}, which this issue traces, was judged fail at its requirement`
     : `criterion ${p.criterion} was judged fail`;
   return `${what} (verdict ${p.verdictId})${p.reason ? `: ${p.reason}` : ''}`;
 }
@@ -57,7 +58,17 @@ export async function reopenOnFail(p: Failed): Promise<void> {
     .from(issues)
     .where(eq(issues.id, p.issueId))
     .limit(1);
-  if (!row || !PAST_BUILD.has(row.status)) return;
+  if (!row) return;
+  if (p.stays) {
+    const actor = await actorOf(p, row.createdById);
+    await postIssueNotice({
+      issueId: p.issueId,
+      authorId: actor.type === 'user' ? actor.id : actor.ownerId,
+      body: `${failedWhat(p)}. It stays at \`${row.status}\`: ${p.stays}.`,
+    });
+    return;
+  }
+  if (!PAST_BUILD.has(row.status)) return;
   const actor = await actorOf(p, row.createdById);
   try {
     await transitionIssueStatus(row, 'reopen', actor, {

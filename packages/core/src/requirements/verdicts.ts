@@ -6,6 +6,7 @@
  * it reads with the requirement's standing, and listed on its own.
  */
 
+import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import {
   type RecordRequirementVerdictRequest,
   type RequirementCoverage,
@@ -18,7 +19,7 @@ import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.
 import { requirementCriteria } from '../db/schema-requirements.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
-import { emitEvent } from '../outbox/index.js';
+import { emitEvents } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type RequirementActor, rowIn } from './read.js';
 import { liveAt, type RequirementRefusal } from './rules.js';
@@ -26,28 +27,34 @@ import { requirementVerdictsOf } from './standing-facts.js';
 import { standingsOf } from './standing-read.js';
 import { requirementVerdictRefusals } from './verdict-rules.js';
 
-/** The issue that delivered a failing criterion: its fail goes there (REQ-74 BC-3). */
-export interface FailOwner {
+/**
+ * What a fail recorded at the requirement did to one issue tracing its criterion (ISS-756): sent back
+ * to `reopen`, left building as the owner of what is missing, or left standing because its own half
+ * is delivered. `why` is said on the issue too, where it is not sent back.
+ */
+export interface FailRouted {
   issueId: string;
   key: string;
   status: string;
+  outcome: 'reopen' | 'building' | 'stays';
+  why: string;
 }
 
 export type RecordedVerdict =
-  | { ok: true; verdictId: string; coverage: RequirementCoverage; owner: FailOwner | null }
+  | { ok: true; verdictId: string; coverage: RequirementCoverage; routed: FailRouted[] }
   | { ok: false; refusals: RequirementRefusal[] };
 
+interface Tracing {
+  id: string;
+  status: string;
+}
+
 /**
- * The issue that delivered `code` of the requirement: of the issues whose live criteria trace it,
- * the one landed last, else the one still being built. Null where none traces it, which leaves the
- * fail at the requirement for a delivery to take up.
+ * Every live issue whose criteria trace `code` of the requirement, on any of its wordings, the newest
+ * landing first: landed (`awaiting_release`, `closed`) before not, then by merge, then by number.
  */
-async function deliveringIssueOf(
-  tx: Tx,
-  requirementId: string,
-  code: string,
-): Promise<{ id: string; status: string } | null> {
-  const [row] = (await tx.execute(sql`
+async function tracingIssuesOf(tx: Tx, requirementId: string, code: string): Promise<Tracing[]> {
+  return (await tx.execute(sql`
     SELECT i.id, i.status
       FROM issues i
      WHERE i.status <> 'dropped'
@@ -57,9 +64,65 @@ async function deliveringIssueOf(
           WHERE ic.issue_id = i.id AND ic.retired_at IS NULL
             AND rc.requirement_id = ${requirementId} AND rc.code = ${code})
      ORDER BY (i.status IN ('awaiting_release', 'closed')) DESC, i.merged_at DESC NULLS LAST,
-              i.iss_seq DESC
-     LIMIT 1`)) as unknown as { id: string; status: string }[];
-  return row ?? null;
+              i.iss_seq DESC`)) as unknown as Tracing[];
+}
+
+/** Whether every criterion of `issueId` tracing the BC counts as a pass in its coverage: at its landing, on the current wording. */
+function deliversItsHalf(issueId: string, coverage: RequirementCoverage | undefined): boolean {
+  const links = coverage?.issues.filter((l) => l.issueId === issueId) ?? [];
+  return (
+    links.length > 0 &&
+    links.every((l) => !l.stale && l.verdict === 'pass' && l.notCounted === null)
+  );
+}
+
+const LANDED: ReadonlySet<string> = new Set(ISSUE_RESOLVED_STATUSES);
+
+const listed = (keys: readonly string[]) =>
+  keys.length === 1 ? `${keys[0]} owns` : `${keys.join(', ')} own`;
+
+/**
+ * Where a fail on `bc` goes (REQ-45 BC-2, BC-10, BC-12; ISS-756). A landed issue whose own criteria
+ * tracing it do not all pass is sent back to `reopen`: what failed is its. One still being built owns
+ * what is missing and is left where it is. Where neither is there, the newest landing is sent back,
+ * being the only one left to own it. Every other landed issue delivered its half and stays, told why:
+ * reopening it would leave a correction it cannot make on an issue with no legal way back.
+ */
+export function routeFail(
+  bc: string,
+  tracing: readonly Tracing[],
+  keys: ReadonlyMap<string, string>,
+  coverage: RequirementCoverage | undefined,
+): FailRouted[] {
+  const keyOf = (id: string) => keys.get(id) ?? id;
+  const landed = tracing.filter((i) => LANDED.has(i.status));
+  const building = tracing.filter((i) => !LANDED.has(i.status));
+  const failing = landed.filter((i) => !deliversItsHalf(i.id, coverage));
+  const newest = landed[0];
+  const reopened = failing.length > 0 || building.length > 0 || !newest ? failing : [newest];
+  const sentBack = new Set(reopened.map((i) => i.id));
+  const owners = [...reopened, ...building].map((i) => keyOf(i.id));
+  return tracing.map((i) => {
+    const route = { issueId: i.id, key: keyOf(i.id), status: i.status };
+    if (sentBack.has(i.id)) {
+      const why = failing.includes(i)
+        ? `its criteria tracing ${bc} do not all pass at its landing`
+        : `it is the newest landing tracing ${bc}, and no issue still being built does`;
+      return { ...route, outcome: 'reopen', why };
+    }
+    if (!LANDED.has(i.status)) {
+      return {
+        ...route,
+        outcome: 'building',
+        why: `it is still being built and owns what ${bc} lacks`,
+      };
+    }
+    return {
+      ...route,
+      outcome: 'stays',
+      why: `its criteria tracing ${bc} all pass at its landing, and ${listed(owners)} what is missing`,
+    };
+  });
 }
 
 /**
@@ -89,7 +152,16 @@ export async function recordRequirementVerdict(input: {
   });
   if ('refusals' in judged) return { ok: false, refusals: judged.refusals };
   const key = requirementKey(row.reqSeq);
-  const { written, owner } = await db.transaction(async (tx) => {
+  const bc = `${key} ${judged.criterion.code}`;
+  // whether each tracing issue delivered its half is read before the fail is, off the coverage the
+  // standing and the accept read (BC-12, BC-13: a pass at its landing counts as it does there)
+  const before =
+    body.verdict === 'fail'
+      ? (await standingsOf(projectId, [row], null))
+          .get(row.id)
+          ?.coverage.find((c) => c.code === judged.criterion.code)
+      : undefined;
+  const { written, routed } = await db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(requirementCriterionVerdicts)
       .values({
@@ -105,26 +177,37 @@ export async function recordRequirementVerdict(input: {
       })
       .returning({ id: requirementCriterionVerdicts.id });
     if (!inserted) throw new Error(`requirements: the verdict on ${row.id} was not written`);
-    const delivering =
-      body.verdict === 'fail' ? await deliveringIssueOf(tx, row.id, judged.criterion.code) : null;
-    // the fail is the delivering issue's to correct, never a new issue's (REQ-74 BC-3)
-    if (delivering) {
-      await emitEvent(tx, 'verdict.recorded', {
-        projectId,
-        issueId: delivering.id,
-        verdictId: inserted.id,
-        commitSha: body.identity?.sha.toLowerCase() ?? null,
-        failed: {
-          criterion: null,
-          requirement: `${key} ${judged.criterion.code}`,
-          reason: body.reason?.trim() || null,
-          authorUserId: actor.userId,
-          authorDeviceId: input.deviceId,
-          agency: actor.agency,
+    if (body.verdict !== 'fail') return { written: inserted, routed: [] };
+    const tracing = await tracingIssuesOf(tx, row.id, judged.criterion.code);
+    const keys = await issueDisplayIds(
+      tracing.map((i) => i.id),
+      tx,
+    );
+    const routes = routeFail(bc, tracing, keys, before);
+    // the fail is corrected in the issue that owns what failed, never in a new one (REQ-74 BC-3,
+    // REQ-45 BC-10); every other issue tracing it is told why it was not sent back
+    await emitEvents(
+      tx,
+      routes.map((r) => ({
+        type: 'verdict.recorded' as const,
+        payload: {
+          projectId,
+          issueId: r.issueId,
+          verdictId: inserted.id,
+          commitSha: body.identity?.sha.toLowerCase() ?? null,
+          failed: {
+            criterion: null,
+            requirement: bc,
+            reason: body.reason?.trim() || null,
+            authorUserId: actor.userId,
+            authorDeviceId: input.deviceId,
+            agency: actor.agency,
+            stays: r.outcome === 'reopen' ? null : r.why,
+          },
         },
-      });
-    }
-    return { written: inserted, owner: delivering };
+      })),
+    );
+    return { written: inserted, routed: routes };
   });
   const standing = (await standingsOf(projectId, [row], null)).get(row.id);
   const coverage = standing?.coverage.find((c) => c.code === judged.criterion.code);
@@ -133,15 +216,7 @@ export async function recordRequirementVerdict(input: {
       `requirements: ${judged.criterion.code} of ${row.id} has no coverage after its verdict`,
     );
   }
-  const shown = owner ? await issueDisplayIds([owner.id]) : null;
-  return {
-    ok: true,
-    verdictId: written.id,
-    coverage,
-    owner: owner
-      ? { issueId: owner.id, key: shown?.get(owner.id) ?? owner.id, status: owner.status }
-      : null,
-  };
+  return { ok: true, verdictId: written.id, coverage, routed };
 }
 
 /** Every verdict recorded at the requirement, newest first, each naming the criterion it judged. */
