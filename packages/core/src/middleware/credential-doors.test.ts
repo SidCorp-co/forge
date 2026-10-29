@@ -31,6 +31,18 @@
 // read in github-connect-routes.ts reached dev unselected and went red only in the whole suite).
 // The walk reads every route in core's tree, so any file there can add an input it must classify.
 // @direct-test-of packages/core/src/
+//
+// What in a file can change this test's answer, so `pnpm test:changed` runs it only for a touched
+// file that has one (ISS-769; the merge check runs it for every file under src). A carrier is
+// named by its type or reached through a member only a carrier has; a check primitive is imported;
+// a binding that mints, digests or verifies a secret is imported or re-exported, which is how the
+// walk reaches a module holding no carrier (orgs/service.ts through invitationDigest). Whatever the
+// walk reaches by a name none of these spell is caught by the merge check, which reads no line here.
+// @direct-test-when ['"](?:hono|hono/[^'"]*|@hono/[^'"]*|jose|argon2|(?:node:)?crypto|ws|undici)['"]
+// @direct-test-when \b(?:Context|HonoRequest|Request|Headers|URL|URLSearchParams|IncomingMessage|IncomingHttpHeaders|WebSocket|fetch)\b
+// @direct-test-when \.(?:req|raw|headers|searchParams|href|search|hash|username|password|rawHeaders)\b
+// @direct-test-when \b(?:timingSafeEqual|digestToken|hashShareToken)\b
+// @direct-test-when ^(?:import|export)\s(?!type\b)[^;]*\b\w*(?:Token|token|Digest|digest|Hash|hash|Verify|verify|Pat(?![a-z])|Credential|credential|Secret|secret)\w*\b[^;]*\bfrom\b
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

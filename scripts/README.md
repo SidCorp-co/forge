@@ -1050,6 +1050,20 @@ on the test that caught it; that change kind selects it from then on. A test tha
 outside its package by a path it spells is refused undeclared before that, by `check-outside-reads`. The selection grows, the suite
 size at a merge does not.
 
+**A directory declaration may be narrowed for the developer's run, never for the merge.** A test that
+reads a whole tree by path declares the tree, and every change under it then selects the test. Where
+only some files can change its answer, `// @direct-test-when <regex>` lines beside the declaration
+say which: `pnpm test:changed` (`runDirectTests` with `narrow`) reads each touched file under a
+directory the test declares and selects the test only when the file's text matches one line (each
+compiled with `m`; a line that is no regex, or one on a test declaring nothing, is refused naming its
+test and line). A file declared by its exact path, a file the test imports, and a file that cannot be
+read select as before, and the run prints each test it left out. `pnpm merge-check` passes no
+reader, so before a merge every declaration selects as written; core's `core` job runs the whole unit
+collection on `main`, and the whole suite runs nightly and on a release cut.
+`packages/core/src/middleware/credential-doors.test.ts` (a TypeScript program over all of core's src,
+two minutes) and `packages/core/src/lib/reason-caps.test.ts` carry the lines (ISS-769);
+`lib/direct-test-when.test.mjs` runs their own lines over planted files.
+
 **What was selected is what ran.** `lib/direct-test-run.mjs:runDirectTests` runs each collection's
 selected files and each crate's selected tests, and then holds the selection against the checks it
 made: a selected test file, runner module or test target no check reached is a red check of its
