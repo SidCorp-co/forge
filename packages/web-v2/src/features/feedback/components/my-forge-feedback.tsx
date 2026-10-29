@@ -1,9 +1,20 @@
 // "Your feedback to Forge" (REQ-47 BC-3, BC-9): every item the signed-in person reported about Forge,
-// from any project, with where it stands. The person need not be a member of Forge's home project;
-// core answers only their own items.
+// from any project, with where it stands and what its triage told them (BC-10). The person need not be
+// a member of Forge's home project; core answers only their own items.
 
 import { useState } from "react";
-import { EmptyState, enumLabel, ErrorState, ListPage, LoadingState, RowItem, RowList, StatusBadge } from "@/design";
+import {
+  EmptyState,
+  enumLabel,
+  ErrorState,
+  ListPage,
+  LoadingState,
+  Property,
+  PropertyList,
+  RowItem,
+  RowList,
+  StatusBadge,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useMyForgeFeedback } from "../hooks";
@@ -24,6 +35,27 @@ function standingOf(item: ForgeFeedbackItem, t: Copy, language: string, time: Ti
     ...(eta.estimate ? [t("feedback.forge.likelyBy", { date: time.date(eta.likelyBy) })] : []),
     t("feedback.forge.sent", { age: time.age(item.createdAt) }),
   ];
+}
+
+/** What triage told the person about one item, as labelled rows; none where it told nothing yet. */
+function Told({ item, t }: { item: ForgeFeedbackItem; t: Copy }) {
+  const { answer, declined, clarification, shippedIn } = item.told;
+  const rows = [
+    { key: "answer", label: t("feedback.forge.told.answer"), value: answer },
+    { key: "declined", label: t("feedback.forge.told.declined"), value: declined },
+    { key: "asked", label: t("feedback.forge.told.asked"), value: clarification?.prompt ?? null },
+    { key: "shippedIn", label: t("feedback.forge.told.shippedIn"), value: shippedIn },
+  ].filter((r) => r.value);
+  if (rows.length === 0) return null;
+  return (
+    <PropertyList testId="my-forge-feedback-told">
+      {rows.map((r) => (
+        <Property key={r.key} label={r.label} testId={`my-forge-feedback-told-${r.key}`}>
+          <span className="whitespace-pre-wrap">{r.value}</span>
+        </Property>
+      ))}
+    </PropertyList>
+  );
 }
 
 export function MyForgeFeedback() {
@@ -55,7 +87,12 @@ export function MyForgeFeedback() {
               expanded={open === item.key}
               testId="my-forge-feedback-item"
             >
-              {open === item.key ? <p className="text-13 text-muted">{item.progress.says}</p> : null}
+              {open === item.key ? (
+                <>
+                  <p className="text-13 text-muted">{item.progress.says}</p>
+                  <Told item={item} t={t} />
+                </>
+              ) : null}
             </RowItem>
           ))}
         </RowList>

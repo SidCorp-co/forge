@@ -138,6 +138,25 @@ export interface ForgeFeedbackItem {
 	progress: ProductProgress;
 	/** Once its work shipped: the violated criterion's verdict and clip its reporter confirms or reopens from. */
 	shipEvidence: FeedbackShipEvidence | null;
+	/** What its triage told the reporter, in the words the project's own read gives (REQ-47 BC-10). */
+	told: FeedbackToldView;
+}
+
+/**
+ * What triage told an item's reporter, each null where it told nothing of it (REQ-47 BC-10): the
+ * answer of an answer route, the reason of a decline, the latest clarification asked of them, and the
+ * release the fix shipped in. Nothing else of the item's record: no note, no id, no other reporter.
+ */
+export interface FeedbackToldView {
+	answer: string | null;
+	declined: string | null;
+	clarification: {
+		prompt: string | null;
+		/** The answer the asker recommends, which the reporter can send as it stands. */
+		recommended: string | null;
+		status: string;
+	} | null;
+	shippedIn: string | null;
 }
 
 /**

@@ -296,7 +296,11 @@
     "feedback.forge.unreadable": "Your feedback to Forge could not be read",
     "feedback.forge.running": "Work running",
     "feedback.forge.likelyBy": "likely by {date}",
-    "feedback.forge.sent": "sent {age} ago"
+    "feedback.forge.sent": "sent {age} ago",
+    "feedback.forge.told.answer": "Answer",
+    "feedback.forge.told.declined": "Declined",
+    "feedback.forge.told.asked": "Asked",
+    "feedback.forge.told.shippedIn": "Shipped in"
   },
   "vi": {
     "feedback.act.confirmFix": "Xác nhận bản sửa",
