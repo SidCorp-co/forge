@@ -186,7 +186,10 @@ const suggestFields = {
 };
 // the model is shown the kinds it may propose; a retired one it names anyway is parsed and reaches
 // core, which refuses it SUGGESTION_KIND_RETIRED by name rather than as an unknown enum value
-const suggestShown = z.strictObject({ kind: z.enum(PROPOSABLE_SUGGESTION_KINDS), ...suggestFields });
+const suggestShown = z.strictObject({
+  kind: z.enum(PROPOSABLE_SUGGESTION_KINDS),
+  ...suggestFields,
+});
 const suggestInput = z.strictObject({ kind: z.enum(SUGGESTION_KINDS), ...suggestFields });
 
 async function latestMessageId(conversationId: string | null | undefined): Promise<string | null> {

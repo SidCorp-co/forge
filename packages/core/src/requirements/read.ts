@@ -414,7 +414,6 @@ export async function detailOf(
   };
 }
 
-
 export async function readRequirementAs(
   viewer: RequirementActor,
   projectId: string,
