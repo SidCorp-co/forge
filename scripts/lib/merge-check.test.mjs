@@ -222,7 +222,11 @@ describe('the fast lane (REQ-39 BC-7)', () => {
   });
 
   it('the CLI runs no integration test and no verify on the fast lane', () => {
-    expect(CLI).toContain("runDirectTests(ROOT, { touched, integration: lane === 'full' })");
+    // the merge check runs every declared direct test whole: `@direct-test-when` narrows only
+    // test:changed (ISS-769)
+    expect(CLI).toContain(
+      "runDirectTests(ROOT, { touched, integration: lane === 'full', narrow: false })",
+    );
     expect(CLI.indexOf("if (lane === 'full') {")).toBeLessThan(CLI.indexOf("['pnpm', 'verify']"));
     expect(CLI).toContain("['patch-id', '--stable']");
     expect(CLI, 'the patch id is read on every lane, not behind the fast one').not.toMatch(
