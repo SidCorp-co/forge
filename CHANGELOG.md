@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.355] - 2026-10-29
+
+Production deployed outside Forge releases through its promotion merge request
+
+### Added
+
+- **A production deployed outside Forge can release through its promotion merge request.** The release shows that request with the issues it carries, and recording the deploy closes it.
+
+### Fixed
+
+- **Ended runs sharing a checkout no longer refuse each other's release.** Only an open run holds the tree; a release finding one leaves it standing for that run, recorded `kept_for_open_run`, and touches nothing in it.
+
 ## [0.4.0-dev.354] - 2026-10-29
 
 Release names describe only the changes each release carries

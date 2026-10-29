@@ -107,6 +107,12 @@ reporter's confirm in the fix's preview does as theirs (below).
   a draft, or \`title\` to start one) and \`answer\` (the text the reporter reads, \`FEEDBACK_ANSWER_MISSING\`
   without it). A carrier of another route is \`FEEDBACK_ROUTE_TARGET_MISMATCH\`; two alternatives at once,
   or a route that needs a carrier and names none, \`FEEDBACK_ROUTE_INCOMPLETE\`.
+- **An answer to a reopened item names what it answers**: \`inReplyTo\`, the id of the reopen or reply the
+  item stands on (its latest; each decision in \`decisions\` carries its \`id\`). Without it the answer is
+  \`FEEDBACK_ANSWER_UNADDRESSED\`, which quotes what that reopen or reply said and names its id; naming any
+  other, or naming one on an item no reopen or reply stands on, is \`FEEDBACK_ANSWER_STALE\`: read the item
+  again and answer what it says now. \`inReplyTo\` on another route is \`FEEDBACK_ROUTE_TARGET_MISMATCH\`.
+  The answer's decision keeps it as \`inReplyTo\`.
 - **duplicate** names its root in the triage (\`duplicateOf\`): a root that is not itself a duplicate, and
   an item others point at stays a root (\`FEEDBACK_DUPLICATE_CHAIN\` names the root to use instead); an
   item is never its own duplicate (\`FEEDBACK_DUPLICATE_SELF\`).
@@ -185,7 +191,12 @@ route, declining included, closes the open question.
   and is refused to the reporter themselves (\`FEEDBACK_VERIFY_ASK_SELF\`): they verify instead.
 - \`reopen\` \`{ reason }\` also follows \`resolved\`, says what the fix does not answer
   (\`FEEDBACK_REOPEN_REASON_REQUIRED\`), and sends the item back to triage.
-- Every triage, decline, verify, reopen, redaction, promotion and retarget is kept as its own decision
+- The reporter of an item about Forge replies to its answer through \`POST /api/forge/feedback/:key/reply\`
+  \`{ evidence }\` or \`forge_feedback\` \`reply\`: once per answer, with what the answer leaves open
+  (\`FEEDBACK_EVIDENCE_REQUIRED\` without it). It sends the item back to triage as a reopen does, kept as a
+  \`replied\` decision. Replying again before the next answer is \`FEEDBACK_REPLY_SPENT\`; an item that
+  stands on no answer is \`FEEDBACK_REPLY_NO_ANSWER\`.
+- Every triage, decline, verify, reopen, reply, redaction, promotion and retarget is kept as its own decision
   record, so a re-triage keeps the history.
 
 ### Sensitive projects

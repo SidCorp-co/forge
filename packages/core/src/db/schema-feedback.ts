@@ -296,6 +296,10 @@ export const feedbackDecisions = pgTable(
     fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
       onDelete: 'no action',
     }),
+    /** On an answer: the reopen or reply of this item it answers (REQ-47 BC-13). */
+    inReplyTo: uuid('in_reply_to').references((): AnyPgColumn => feedbackDecisions.id, {
+      onDelete: 'no action',
+    }),
   },
   (t) => ({
     decisionChk: check(
@@ -308,7 +312,11 @@ export const feedbackDecisions = pgTable(
     ),
     reasonChk: check(
       'feedback_decisions_reason_chk',
-      sql`${t.decision} NOT IN ('declined', 'reopened', 'snoozed') OR ${t.reason} ~ '[^[:space:]]'`,
+      sql`${t.decision} NOT IN ('declined', 'reopened', 'replied', 'snoozed') OR ${t.reason} ~ '[^[:space:]]'`,
+    ),
+    inReplyToChk: check(
+      'feedback_decisions_in_reply_to_chk',
+      sql`${t.inReplyTo} IS NULL OR (${t.decision} = 'triaged' AND ${t.route} = 'answer')`,
     ),
     agencyChk: check(
       'feedback_decisions_agency_chk',

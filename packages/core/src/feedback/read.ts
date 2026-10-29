@@ -18,7 +18,6 @@ import {
   feedbackDecisions,
   feedbackMessages,
 } from '../db/schema-feedback.js';
-import { type agentQuestions, isChoiceStep } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { findIssueById, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
@@ -35,6 +34,7 @@ import { questionsOnFeedback, questionViewsOf } from './questions-read.js';
 import { reportersOf } from './reporters.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { shipNoticeOf } from './ship-notice.js';
+import { clarificationViewOf } from './told.js';
 import { recordCheckOf, verifyHeldOf } from './verify-window.js';
 
 export interface FeedbackActor {
@@ -223,22 +223,6 @@ function verifiedViewOf(
   };
 }
 
-/** The item's latest clarification: its status, and its prompt and answer where the viewer may read them. */
-function clarificationViewOf(
-  q: Pick<typeof agentQuestions.$inferSelect, 'id' | 'status' | 'steps'> | undefined,
-  withhold: boolean,
-): FeedbackView['clarification'] {
-  if (!q) return null;
-  const step = q.steps.at(-1);
-  return {
-    id: q.id,
-    status: q.status,
-    prompt: withhold ? null : (step?.prompt ?? null),
-    recommended: withhold || !step || isChoiceStep(step) ? null : step.recommended?.trim() || null,
-    answer: withhold ? null : step && 'answerText' in step ? (step.answerText ?? null) : null,
-  };
-}
-
 export async function detailAs(
   viewer: FeedbackActor,
   projectId: string,
@@ -339,6 +323,7 @@ export async function detailAs(
       duplicates: pointing,
       decisions: decisions.map(
         (d): FeedbackDecisionView => ({
+          id: d.id,
           decision: d.decision,
           route: d.route,
           carrier: d.carrier,
@@ -352,6 +337,7 @@ export async function detailAs(
             withhold || !d.fromSuggestionId
               ? null
               : (acceptReasons.get(d.fromSuggestionId) ?? null),
+          inReplyTo: d.inReplyTo,
           says: { reason: withhold ? null : decisionReasonSaid(d.reason, d.decidedAgency) },
         }),
       ),

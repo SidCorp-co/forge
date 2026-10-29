@@ -1,7 +1,7 @@
 /**
  * The Forge door's acts, once for REST and MCP (REQ-47): file a report about Forge as the caller's own
- * account, list the caller's own reports, read one, and confirm or reopen one's shipped fix (REQ-66
- * BC-8). Every refusal is named and writes nothing.
+ * account, list the caller's own reports, read one, confirm or reopen one's shipped fix (REQ-66
+ * BC-8), and reply once to its answer (REQ-47 BC-12). Every refusal is named and writes nothing.
  */
 
 import type {
@@ -20,10 +20,12 @@ import {
   HOME_NOT_SET,
   ownForgeFeedbackIds,
   type ReadDoor,
+  replyOwnForgeFeedback,
   reportedForge,
   resolveForgeSource,
   settleOwnForgeFeedback,
   shipEvidenceOfShipped,
+  toldOf,
 } from '../feedback/index.js';
 import { forgeHomeProject } from '../instance-settings/index.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
@@ -54,12 +56,20 @@ async function itemsById(
   const byId = new Map(all.map((s) => [s.id, s]));
   // the evidence is the item's content as much as its words are: a policy that withholds one withholds both
   const { withhold } = feedbackEgress(await dataPolicyOf(homeId), viewer.agency, door);
-  const items: ForgeFeedbackItem[] = [];
-  for (const id of ids) {
+  const shown = ids.map((id) => {
     const s = byId.get(id);
     if (!s) throw new Error(`forge feedback: item ${id} of the home project does not read back`);
+    return s;
+  });
+  // what triage told the reporter is theirs to read at the item, through this door too (BC-10)
+  const told = await toldOf(homeId, shown, withhold);
+  const items: ForgeFeedbackItem[] = [];
+  for (const s of shown) {
     const evidence = withhold ? null : await shipEvidenceOfShipped(homeId, s.id, s.phase);
-    items.push(forgeItemOf(s, reads, evidence));
+    const said = told.get(s.id);
+    if (!said)
+      throw new Error(`forge feedback: what item ${s.id} told its reporter does not read back`);
+    items.push(forgeItemOf(s, reads, evidence, said));
   }
   return { items, asOf: reads.asOf };
 }
@@ -163,6 +173,25 @@ export async function settleForgeFeedback(
     feedbackId: found.id,
     actor: { userId: viewer.userId, agency: viewer.agency },
     act,
+    evidence,
+  });
+  if (refusals) return { ok: false, refusals };
+  return { ok: true, value: await itemById(viewer, found.homeId, found.id, door) };
+}
+
+/** The caller replies to the answer on an item it reported, once, with what the answer leaves open. */
+export async function replyForgeFeedback(
+  viewer: ForgeViewer,
+  key: string,
+  evidence: string | undefined,
+  door: ReadDoor,
+): Promise<Answer<ForgeFeedbackItem>> {
+  const found = await readableItem(viewer, key);
+  if (!found.ok) return found;
+  const refusals = await replyOwnForgeFeedback({
+    homeId: found.homeId,
+    feedbackId: found.id,
+    actor: { userId: viewer.userId, agency: viewer.agency },
     evidence,
   });
   if (refusals) return { ok: false, refusals };

@@ -42,6 +42,7 @@ export { detailAs, rowIn } from './read.js';
 export { forgeRecordingTool } from './recording-tool.js';
 export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';
 export { feedbackAnsweredBy } from './release-feedback.js';
+export { replyOwnForgeFeedback } from './reply.js';
 export { noticeCopy, reporterLanguageOf, reporterLanguagesOf } from './reporter-language.js';
 export { shippedNotice } from './reporter-notices.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
@@ -52,4 +53,5 @@ export {
   type StewardFeedbackAct,
   stewardSettleFeedbackIn,
 } from './steward-settle.js';
+export { toldOf } from './told.js';
 export { triageIn } from './triage.js';

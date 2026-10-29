@@ -96,7 +96,7 @@ export async function redactReporterData(input: {
           sql`${feedbackDecisions.reason} IS NOT NULL`,
           or(
             eq(feedbackDecisions.decidedBy, row.reportedBy),
-            inArray(feedbackDecisions.decision, ['verified', 'reopened']),
+            inArray(feedbackDecisions.decision, ['verified', 'reopened', 'replied']),
           ),
         ),
       );

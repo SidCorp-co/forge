@@ -6,7 +6,7 @@ use clap::Args as ClapArgs;
 use runner_platform::config::Config;
 use runner_platform::cred_store;
 use runner_transport::api::{
-    build, reads_stdin, run as run_api, usage_failure, Body, RequestSpec, SlugSources,
+    build, reads_stdin, run as run_api, usage_failure, Body, RequestSpec, Response, SlugSources,
     EXIT_TAXONOMY,
 };
 use runner_transport::CoreClient;
@@ -199,16 +199,29 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     if let Some(note) = refused_on(resp.outcome.exit_code, &sent_as) {
         eprintln!("{note}");
     }
-    if let Some((code, detail)) = own_project_refusal(
-        &resp.outcome.code,
-        resp.outcome.exit_code,
-        &resp.stdout,
+    if let Some((code, detail)) = refused_own_project(
+        &resp,
         std::env::var("FORGE_PROJECT_ID").ok().as_deref(),
         std::env::var("FORGE_PROJECT_SLUG").ok().as_deref(),
     ) {
         tell_daemon_refused(&code, &detail).await;
     }
     std::process::exit(resp.outcome.exit_code);
+}
+
+/// [`own_project_refusal`] of what core answered `run` with.
+fn refused_own_project(
+    resp: &Response,
+    project_id: Option<&str>,
+    project_slug: Option<&str>,
+) -> Option<(String, String)> {
+    own_project_refusal(
+        &resp.outcome.code,
+        resp.outcome.exit_code,
+        &resp.refused_body,
+        project_id,
+        project_slug,
+    )
 }
 
 /// The refusal of this pane's own credential by this pane's own project, as `(code, core's words)`,
@@ -434,6 +447,75 @@ mod tests {
         )
         .is_none());
         assert!(own_project_refusal("NOT_FOUND", 5, b"{}", Some(MAIL), None).is_none());
+    }
+
+    /// A core on a loopback port that answers every call `status` with `body` as JSON.
+    async fn answering_core(status: &str, body: Vec<u8>) -> CoreClient {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let head = format!(
+            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+            body.len()
+        );
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut seen = Vec::new();
+            let mut buf = [0u8; 4096];
+            while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = sock.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                seen.extend_from_slice(&buf[..n]);
+            }
+            let _ = sock.write_all(head.as_bytes()).await;
+            let _ = sock.write_all(&body).await;
+        });
+        CoreClient::new(format!("http://{addr}"), "pane-token")
+    }
+
+    fn get(path: &str) -> runner_transport::api::Request {
+        runner_transport::api::Request {
+            method: "GET".into(),
+            path: path.into(),
+            body: None,
+            project_slug: None,
+            headers: Vec::new(),
+            include_headers: false,
+        }
+    }
+
+    /// ISS-740 c1, judged failed on dev.354 (verdict 0c441dc5): core's 403 fence refusal of the
+    /// pane's own project reached `own_project_refusal` with no body, so the daemon was never told
+    /// and the job re-queued on its silence. Through the real request path, the words core sent
+    /// are what it reads, and stdout still carries nothing for a refused call.
+    #[tokio::test]
+    async fn a_fence_refusal_core_answers_reaches_the_panes_own_refusal_with_its_words() {
+        let core = answering_core("403 Forbidden", fence_body(MAIL)).await;
+        let resp = run_api(&core, &get(&format!("projects/{MAIL}/issues"))).await;
+        assert_eq!(resp.outcome.code, "PAT_PROJECT_OUTSIDE_FENCE");
+        assert!(resp.printed().is_empty(), "a refused call printed a body");
+        let (code, detail) = refused_own_project(&resp, Some(MAIL), Some("sidcorp-mail"))
+            .expect("the pane's own project refused it, and nothing said so");
+        assert_eq!(code, "PAT_PROJECT_OUTSIDE_FENCE");
+        assert!(detail.contains("dev-runner-box"), "{detail}");
+
+        let other = "d180bdca-a927-4b11-b370-fa2ec923dba4";
+        let core = answering_core("403 Forbidden", fence_body(other)).await;
+        let resp = run_api(&core, &get(&format!("projects/{other}/issues"))).await;
+        assert!(refused_own_project(&resp, Some(MAIL), Some("sidcorp-mail")).is_none());
+
+        let core = answering_core(
+            "401 Unauthorized",
+            br#"{"code":"UNAUTHORIZED","message":"token revoked"}"#.to_vec(),
+        )
+        .await;
+        let resp = run_api(&core, &get("issues")).await;
+        assert_eq!(
+            refused_own_project(&resp, Some(MAIL), None),
+            Some(("UNAUTHORIZED".to_string(), "token revoked".to_string()))
+        );
     }
 
     #[test]

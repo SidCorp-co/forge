@@ -1,6 +1,7 @@
 // "Your feedback to Forge" (REQ-47 BC-3, BC-9), witnessed as drawn: the person's own reports about
 // Forge from any project, flush rows with where each came from, how many times it was reported, and
-// where it stands; a row opens on what its progress says. Read as laid out at desktop and phone width.
+// where it stands; a row opens on what its progress says and what its triage told them (BC-10). Read
+// as laid out at desktop and phone width.
 //
 //   pnpm --filter web-v2 witness witness/my-forge-feedback.witness.tsx --out <dir>
 
@@ -33,7 +34,8 @@ const progress = (says: string, running = false) => ({
   waitingOn: [],
   eta: { estimate: false },
 });
-const item = (key: string, title: string, phase: string, from: string, n: number, says: string, running = false) => ({
+const NONE = { answer: null, declined: null, clarification: null, shippedIn: null };
+const item = (key: string, title: string, phase: string, from: string, n: number, says: string, running = false, told = NONE) => ({
   key,
   title,
   kind: "bug",
@@ -44,12 +46,17 @@ const item = (key: string, title: string, phase: string, from: string, n: number
   createdAt: AT,
   updatedAt: AT,
   progress: progress(says, running),
+  shipEvidence: null,
+  told,
 });
 const LIST = {
   feedback: [
     item("FB-212", "The board drops a card dragged to Done", "new", "HOP", 1, "Waiting to be triaged by Forge's team."),
     item("FB-198", "forge claim refuses a lease that has expired", "planned", "Autoflow", 4, "ISS-1433 carries it and a run is working on it now.", true),
-    item("FB-160", "The release page cuts the version at phone width", "verified", "Catalog", 2, "Shipped in 0.4.0-dev.244 and verified."),
+    item("FB-160", "The release page cuts the version at phone width", "verified", "Catalog", 2, "Shipped in 0.4.0-dev.244 and verified.", false, {
+      ...NONE,
+      shippedIn: "0.4.0-dev.244",
+    }),
   ],
   returned: 3,
   home: { id: "p-forge", slug: "forge-dev", name: "Forge" },
