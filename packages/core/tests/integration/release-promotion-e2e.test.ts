@@ -14,8 +14,8 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { admitChangeRequestMerge } from '../../src/release-batch/change-request-merge.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
+import { admitChangeRequestMerge } from '../../src/release-batch/change-request-merge.js';
 import { api, userToken } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
