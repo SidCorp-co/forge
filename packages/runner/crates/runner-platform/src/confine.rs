@@ -20,6 +20,10 @@
 
 pub mod egress;
 
+/// What marks the `gh` shim an owner-mode channel agent runs (ISS-765), so `forge-runner
+/// session-gh` never runs the shim itself as the real `gh`.
+pub const GH_SHIM_MARK: &str = "forge-runner owner-mode gh shim";
+
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]

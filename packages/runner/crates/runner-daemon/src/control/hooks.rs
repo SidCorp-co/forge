@@ -71,9 +71,13 @@ pub(crate) fn dispatch_gate_reply(
     let roles = dir.as_deref().and_then(dispatch_gate_roles);
 
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
+    let mut pending_role: Option<String> = None;
     let pending = match held.as_mut() {
         Some(led) => match led.unbound_run_for_master(session_id, &ctl.boot_id) {
-            Ok(run) => run.map(|r| r.run_id),
+            Ok(run) => run.map(|r| {
+                pending_role = r.role;
+                r.run_id
+            }),
             Err(e) => {
                 let why = "this box's own registry of declared runs could not be read";
                 tracing::error!("[control] the dispatch gate could not decide: {why}: {e}");
@@ -120,6 +124,9 @@ pub(crate) fn dispatch_gate_reply(
             promised_call: promised_call.clone(),
         },
     );
+    if let Some(refused) = role_refusal(&verdict, pending_role.as_deref(), &d) {
+        return ClaimReply::denied(refused);
+    }
     match verdict {
         Verdict::NotOurs => gate_allows(None),
         Verdict::Replay { .. } => gate_allows(None),
@@ -163,6 +170,40 @@ pub(crate) fn dispatch_gate_reply(
             gate_allows(Some(why))
         }
     }
+}
+
+/// A role without its `<plugin>:` prefix, so `forge:qa` and `qa` are one role.
+fn bare_role(role: &str) -> &str {
+    role.rsplit_once(':').map_or(role, |(_, name)| name)
+}
+
+/// A run declared with `--role` is dispatched as that role. Only a dispatch the gate would
+/// have handed the run to is held to it: a helper the gate does not own passes untouched.
+fn role_refusal(
+    verdict: &runner_core::dispatch_gate::Verdict,
+    declared: Option<&str>,
+    d: &runner_core::dispatch_gate::Dispatch,
+) -> Option<String> {
+    use runner_core::dispatch_gate::Verdict;
+    let (Verdict::Covered { run_id } | Verdict::Moved { run_id, .. }, Some(declared)) =
+        (verdict, declared)
+    else {
+        return None;
+    };
+    let refused = role_mismatch(run_id, declared, d.subagent_type.as_deref())?;
+    tracing::warn!("[control] {refused}");
+    Some(refused)
+}
+
+/// The refusal for a dispatch whose subagent type is not the role its run was declared for.
+fn role_mismatch(run_id: &str, declared: &str, dispatched: Option<&str>) -> Option<String> {
+    let dispatched = dispatched?;
+    if bare_role(declared) == bare_role(dispatched) {
+        return None;
+    }
+    Some(format!(
+        "run {run_id} was declared with --role {declared}, and this dispatch is a {dispatched}: a run is dispatched as the role it was declared for. Declare a new run for this role. Nothing was dispatched"
+    ))
 }
 
 /// Mark the box degraded for a dispatch the gate let through undecided. The
@@ -637,6 +678,7 @@ mod role_tests {
                 worktree_path: format!("/w/{run_id}").into(),
                 boot_id: BOOT.into(),
                 issue_keys: vec![format!("ISS-{}", run_id.trim_start_matches("run-"))],
+                role: None,
             })
             .unwrap();
     }
@@ -958,5 +1000,24 @@ mod role_tests {
         started(&ctl, "agent-1", "forge:runner");
         assert_eq!(bound(&ctl, "run-2"), None);
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod role_gate_tests {
+    use super::role_mismatch;
+
+    #[test]
+    fn a_dispatch_as_another_role_is_refused_by_name_and_a_namespaced_one_is_the_same_role() {
+        assert_eq!(role_mismatch("run-1", "qa", Some("forge:qa")), None);
+        assert_eq!(role_mismatch("run-1", "forge:qa", Some("qa")), None);
+        assert_eq!(role_mismatch("run-1", "qa", None), None);
+        let why = role_mismatch("run-1", "qa", Some("forge:runner")).expect("a different role");
+        assert!(
+            why.contains("run run-1 was declared with --role qa")
+                && why.contains("this dispatch is a forge:runner")
+                && why.ends_with("Nothing was dispatched"),
+            "{why}"
+        );
     }
 }

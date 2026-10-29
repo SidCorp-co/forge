@@ -286,6 +286,7 @@ async function refuseBlockedTakeForSeqs(
   projectId: string,
   seqs: readonly number[],
   door: string,
+  role?: string,
 ): Promise<void> {
   if (seqs.length === 0) return;
   const list = sql.join(
@@ -308,7 +309,7 @@ async function refuseBlockedTakeForSeqs(
       'ISSUE_NOT_FOUND',
     );
   }
-  const resting = restingRefusal(issues, door);
+  const resting = restingRefusal(issues, door, role);
   if (resting) throw resting;
   const gate = await issueGateOf(projectId, 'take_blocked');
   if (gate.mode !== 'enforce') return;
@@ -325,9 +326,10 @@ async function refuseBlockedTakeForSeqs(
 export async function refuseHeldTakeForSeqs(
   projectId: string,
   seqs: readonly number[],
+  role?: string,
 ): Promise<void> {
   const door = 'a run session over these issues';
-  await refuseBlockedTakeForSeqs(db, projectId, seqs, door);
+  await refuseBlockedTakeForSeqs(db, projectId, seqs, door, role);
   await assertDesignsApprovedForSeqs(projectId, seqs);
   await assertContractWaitsSettledForSeqs(projectId, seqs);
   await assertPatternReviewsSettledForSeqs(projectId, seqs);

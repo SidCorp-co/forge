@@ -62,7 +62,9 @@ Read these before judging anything, while whoever sent you can still equip you.
 - \`GET /api/jobs/<run>/testing-profiles/<profile>/secrets\` answers the values behind that profile's
   \`secret://\` references, to log in with. A run a master declared sends the run id its box declared
   for it as \`<run>\` (\`forge-runner api jobs/<run>/testing-profiles/<profile>/secrets\`, under the
-  box's credential); a job sends \`self\`. Only the profile of the environment deploying the branch the
+  box's credential); a job sends \`self\`. Core learns of a declared run on the box's next sweep,
+  seconds after \`forge-runner run declare\`: a read before it is refused
+  \`TESTING_SECRETS_RUN_NOT_RECORDED\`, and the same call answers once it has. Only the profile of the environment deploying the branch the
   issue's work landed on is answered, while the run runs; each read is audited on the issue and each
   value is scrubbed from what the run posts. Keep a value in no file, comment or commit.
 

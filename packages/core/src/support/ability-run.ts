@@ -14,7 +14,8 @@ import { pushSupportBuild, runHostCommand } from '../runners/index.js';
 import { commandLine, scrubbedResult } from './ability-acts.js';
 import { boxOfRoom } from './box.js';
 import { buildBaseOf, buildKeyOf } from './build.js';
-import { abilityRefusal, grantsOf, isConfirmer, supportConfigOf } from './grants.js';
+import { mayConfirmChange } from './confirm-role.js';
+import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { threadLink } from './record.js';
 import {
   builtChangeRequest,
@@ -133,13 +134,13 @@ async function runClaimed(
       still.refusals[0]?.detail ?? 'no longer granted',
     );
   }
-  if (!isConfirmer(grants, confirmer)) {
+  if (!(await mayConfirmChange(room, grants, confirmer))) {
     return failed(
       room,
       fix,
       conversationId,
       tell,
-      `@${confirmer.label ?? 'the confirmer'} is no longer a confirmer this room names`,
+      `@${confirmer.label ?? 'the confirmer'} may no longer confirm a change in this room`,
     );
   }
 

@@ -307,8 +307,8 @@ gets it is the next one this box starts.\n";
 /// the two apart reasoned from `gh`, the only GitHub-shaped thing it could
 /// still see, and reported pull requests unreachable as established fact for
 /// six passes (ISS-1114).
-pub(crate) const ABSENT_FORGE: &str = "\nThe `forge` MCP server is in NEITHER half, so every `forge_*` tool \
-is ABSENT from this pane — `forge_uploads`, `forge_feedback` and the rest. A pull or merge \
+pub(crate) const ABSENT_FORGE: &str = "\nThe `forge` MCP server is in NEITHER half, so every Forge tool \
+is ABSENT from this pane — `forge_find`, `forge_call` and the rest. A pull or merge \
 request is not one of them: it is REST, under `/api/projects/:id/integrations/source/`.\n\nAbsent is not refused. A tool you cannot see has \
 told you nothing about whether its route is open, so do not report a route as shut on the strength \
 of not seeing it, and do not reach for `gh` or `glab` instead: it runs as whoever configured this box, which \

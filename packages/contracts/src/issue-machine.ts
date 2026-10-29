@@ -1,10 +1,11 @@
-// The issue machine: workflow `issue-lifecycle`, approved revision 12. A status answers only "who is
+// The issue machine: workflow `issue-lifecycle`, revision 23. A status answers only "who is
 // it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`. A
 // landing moves no status: it records the merge, and the agent holding the issue moves it on. Work
 // that landed moves to `awaiting_release` without verdicts, which are judged on the release that
 // carries it (REQ-45 BC-1, BC-2). An issue closes through a release, or, where its only deliverable
 // is a design, once its design revisions are approved (REQ-45 BC-4). A draft opens through the
-// issue-ready checklist (`checklist-registry.ts:ISSUE_READY_CHECKLIST`).
+// issue-ready checklist (`checklist-registry.ts:ISSUE_READY_CHECKLIST`). A reopen a requirement-level
+// fail made goes back to the status it came from once that fail is routed past the issue (ISS-760).
 
 import { ISSUE_READY_CHECKLIST } from "./checklist-registry.js";
 import { CHECKLIST_GUARD } from "./checklists.js";
@@ -69,10 +70,17 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"CHECKLIST_INCOMPLETE",
 	"CHECKLIST_ANSWER_INVALID",
 	"ISSUE_REOPEN_RELEASING",
+	/** The move back from `reopen` (ISS-760): its reopen was not a requirement-level fail's. */
+	"REOPEN_NOT_BY_REQUIREMENT_FAIL",
+	/** The move back from `reopen`: one of its own criteria tracing the failed BC does not pass. */
+	"REOPEN_CRITERIA_NOT_PASSING",
+	/** The move back from `reopen`: no other issue owns what the failed BC lacks. */
+	"REOPEN_FAIL_UNOWNED",
 	/** A body key the move does not take, `note` among them: named, with the keys it does (ISS-566). */
 	"TRANSITION_FIELD_UNKNOWN",
 ] as const;
-export type IssueTransitionRefusalCode = (typeof ISSUE_TRANSITION_REFUSAL_CODES)[number];
+export type IssueTransitionRefusalCode =
+	(typeof ISSUE_TRANSITION_REFUSAL_CODES)[number];
 export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
 	NO_HOLDER: 409,
 	NOT_THE_HOLDER: 403,
@@ -106,10 +114,18 @@ export function issueStatusLegacyRefusal(
 }
 
 /** The statuses an issue is born at: `open` for an actor holding `issues.admit`, else `draft`. */
-export const ISSUE_INITIAL_STATUSES = ["draft", "open"] as const satisfies readonly IssueStatus[];
+export const ISSUE_INITIAL_STATUSES = [
+	"draft",
+	"open",
+] as const satisfies readonly IssueStatus[];
 
 /** Entering one of these carries the actor's reason. */
-export const REASON_REQUIRED_STATUSES = ["reopen", "needs_info", "on_hold", "dropped"] as const;
+export const REASON_REQUIRED_STATUSES = [
+	"reopen",
+	"needs_info",
+	"on_hold",
+	"dropped",
+] as const;
 
 /** The two parks: each stores the status it left (`issue_work_state.left_status`) and returns to it. */
 export const PARK_STATUSES: readonly IssueStatus[] = ["needs_info", "on_hold"];
@@ -124,7 +140,10 @@ const PARKABLE_STATUSES: readonly IssueStatus[] = [
 ];
 
 /** The issue is over, whichever exit it took. */
-export const ISSUE_TERMINAL_STATUSES: readonly IssueStatus[] = ["closed", "dropped"];
+export const ISSUE_TERMINAL_STATUSES: readonly IssueStatus[] = [
+	"closed",
+	"dropped",
+];
 
 /**
  * An issue AT REST: over, or parked on a person. No run takes one, so a run declared to take one is
@@ -157,7 +176,11 @@ export const AUTONOMOUS_DRIVER_STATUSES: readonly IssueStatus[] = [
 ] as const;
 
 /** What a master may start work from: the backlog, the plan checkpoint, a reopen. */
-export const TAKEABLE_STATUSES: readonly IssueStatus[] = ["open", "approved", "reopen"];
+export const TAKEABLE_STATUSES: readonly IssueStatus[] = [
+	"open",
+	"approved",
+	"reopen",
+];
 
 /** Stopped until a person answers: what Needs you and the park view both count. */
 export const AWAITING_INPUT_STATUSES: readonly IssueStatus[] = ["needs_info"];
@@ -167,7 +190,10 @@ export const ASSERTS_WORK_IN_PROGRESS: readonly IssueStatus[] = ["in_progress"];
 
 /** Nothing is left to do on it: a job that failed against it no longer matters, and a `blocks`
  *  edge onto it is settled. */
-export const ISSUE_RESOLVED_STATUSES: readonly IssueStatus[] = ["awaiting_release", "closed"];
+export const ISSUE_RESOLVED_STATUSES: readonly IssueStatus[] = [
+	"awaiting_release",
+	"closed",
+];
 
 /** Not counted as open work in a project's totals. */
 export const NON_OPEN_STATUSES: readonly IssueStatus[] = [
@@ -197,6 +223,7 @@ export const ISSUE_GUARDS = [
 	"run_holder",
 	"design_delivered",
 	"not_releasing",
+	"fail_routed",
 ] as const;
 export type IssueGuard = (typeof ISSUE_GUARDS)[number];
 
@@ -208,11 +235,11 @@ const MOVE = "project.write";
 
 /** Where a design-only issue may close from once its design revisions are approved: every live
  *  status but the two parks, which return only to the status they left, cross or drop (REQ-2 BC-9),
- *  and `awaiting_release`, whose own edge to `closed` takes that delivery too. */
+ *  `awaiting_release`, whose own edge to `closed` takes that delivery too, and `reopen`, whose
+ *  edge to `closed` is the way back (`fail_routed`), which takes it too. */
 const DESIGN_CLOSABLE_STATUSES: readonly IssueStatus[] = [
 	"draft",
 	"open",
-	"reopen",
 	"in_progress",
 	"approved",
 ];
@@ -222,16 +249,31 @@ type IssueEdge = MachineEdge<IssueStatus> & {
 };
 
 const sideExits = (from: IssueStatus): IssueEdge[] => [
-	{ from, to: "needs_info", act: "question.asked", permission: MOVE, guards: [] },
+	{
+		from,
+		to: "needs_info",
+		act: "question.asked",
+		permission: MOVE,
+		guards: [],
+	},
 	{ from, to: "on_hold", act: "paused", permission: MOVE, guards: [] },
 	{ from, to: "dropped", act: "not.work", permission: MOVE, guards: [] },
 ];
 
 /** A park returns to the status it left; `left_status` refuses any other of these. */
 const parkReturns = (from: IssueStatus, act: string): IssueEdge[] =>
-	PARKABLE_STATUSES.map((to) => ({ from, to, act, permission: MOVE, guards: ["left_status"] }));
+	PARKABLE_STATUSES.map((to) => ({
+		from,
+		to,
+		act,
+		permission: MOVE,
+		guards: ["left_status"],
+	}));
 
-const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => ({
+const recovery = (
+	to: IssueStatus,
+	guards: readonly IssueGuard[],
+): IssueEdge => ({
 	from: "in_progress",
 	to,
 	act: "handed.back",
@@ -242,46 +284,160 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
-	shapes: ["853ac6ba", "23991d04", "5a3cd8b3", "07fda5db", "89cf83a7", "9ee504ee", "d0460eb0"],
-	design: { flow: "issue-lifecycle", revision: 12 },
+	shapes: [
+		"853ac6ba",
+		"23991d04",
+		"5a3cd8b3",
+		"07fda5db",
+		"89cf83a7",
+		"9ee504ee",
+		"d0460eb0",
+		"011aa9bf",
+	],
+	design: { flow: "issue-lifecycle", revision: 23 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
 	terminal: ISSUE_TERMINAL_STATUSES,
 	reasonRequired: REASON_REQUIRED_STATUSES,
 	edges: [
-		{ from: "draft", to: "open", act: "admitted", permission: ISSUE_ADMIT_PERMISSION, guards: ["admit", CHECKLIST_GUARD], checklist: ISSUE_READY_CHECKLIST.id },
-		{ from: "draft", to: "dropped", act: "not.work", permission: MOVE, guards: [] },
+		{
+			from: "draft",
+			to: "open",
+			act: "admitted",
+			permission: ISSUE_ADMIT_PERMISSION,
+			guards: ["admit", CHECKLIST_GUARD],
+			checklist: ISSUE_READY_CHECKLIST.id,
+		},
+		{
+			from: "draft",
+			to: "dropped",
+			act: "not.work",
+			permission: MOVE,
+			guards: [],
+		},
 
-		{ from: "open", to: "in_progress", act: "run.claimed", permission: MOVE, guards: ["holder"] },
+		{
+			from: "open",
+			to: "in_progress",
+			act: "run.claimed",
+			permission: MOVE,
+			guards: ["holder"],
+		},
 		...sideExits("open"),
 
-		{ from: "reopen", to: "in_progress", act: "run.claimed", permission: MOVE, guards: ["holder"] },
+		{
+			from: "reopen",
+			to: "in_progress",
+			act: "run.claimed",
+			permission: MOVE,
+			guards: ["holder"],
+		},
 		...sideExits("reopen"),
+		// back the way it came: a requirement-level fail routed past the issue since it reopened it
+		// (ISS-760); to `closed`, a design-only issue's delivered design closes it here too
+		{
+			from: "reopen",
+			to: "awaiting_release",
+			act: "fail.routed",
+			permission: MOVE,
+			guards: ["fail_routed", "merged"],
+		},
+		{
+			from: "reopen",
+			to: "closed",
+			act: "fail.routed",
+			permission: MOVE,
+			guards: ["fail_routed", "merged"],
+		},
 
-		{ from: "in_progress", to: "approved", act: "plan.recorded", permission: MOVE, guards: ["plan_checkpoint", "design"] },
-		{ from: "in_progress", to: "awaiting_release", act: "merged", permission: MOVE, guards: ["run_holder", "merged"] },
+		{
+			from: "in_progress",
+			to: "approved",
+			act: "plan.recorded",
+			permission: MOVE,
+			guards: ["plan_checkpoint", "design"],
+		},
+		{
+			from: "in_progress",
+			to: "awaiting_release",
+			act: "merged",
+			permission: MOVE,
+			guards: ["run_holder", "merged"],
+		},
 		...sideExits("in_progress"),
 
-		{ from: "approved", to: "in_progress", act: "run.claimed", permission: MOVE, guards: ["holder"] },
+		{
+			from: "approved",
+			to: "in_progress",
+			act: "run.claimed",
+			permission: MOVE,
+			guards: ["holder"],
+		},
 		...sideExits("approved"),
 
-		{ from: "awaiting_release", to: "closed", act: "release.recorded", permission: MOVE, guards: ["released", "merged"] },
-		{ from: "awaiting_release", to: "reopen", act: "release.failed", permission: MOVE, guards: ["not_releasing"] },
+		{
+			from: "awaiting_release",
+			to: "closed",
+			act: "release.recorded",
+			permission: MOVE,
+			guards: ["released", "merged"],
+		},
+		{
+			from: "awaiting_release",
+			to: "reopen",
+			act: "release.failed",
+			permission: MOVE,
+			guards: ["not_releasing"],
+		},
 		...sideExits("awaiting_release"),
 
 		...parkReturns("needs_info", "answered"),
-		{ from: "needs_info", to: "on_hold", act: "paused", permission: MOVE, guards: [] },
-		{ from: "needs_info", to: "dropped", act: "not.work", permission: MOVE, guards: [] },
+		{
+			from: "needs_info",
+			to: "on_hold",
+			act: "paused",
+			permission: MOVE,
+			guards: [],
+		},
+		{
+			from: "needs_info",
+			to: "dropped",
+			act: "not.work",
+			permission: MOVE,
+			guards: [],
+		},
 
 		...parkReturns("on_hold", "lifted"),
-		{ from: "on_hold", to: "needs_info", act: "question.asked", permission: MOVE, guards: [] },
-		{ from: "on_hold", to: "dropped", act: "not.work", permission: MOVE, guards: [] },
+		{
+			from: "on_hold",
+			to: "needs_info",
+			act: "question.asked",
+			permission: MOVE,
+			guards: [],
+		},
+		{
+			from: "on_hold",
+			to: "dropped",
+			act: "not.work",
+			permission: MOVE,
+			guards: [],
+		},
 
-		{ from: "closed", to: "reopen", act: "returned", permission: MOVE, guards: [] },
+		{
+			from: "closed",
+			to: "reopen",
+			act: "returned",
+			permission: MOVE,
+			guards: [],
+		},
 
 		// a design-only issue's deliverable is its approved design revisions: it closes on them, and
 		// from awaiting_release the `released` guard takes the same delivery as its release
-		...fromEach(DESIGN_CLOSABLE_STATUSES, "closed", { act: "design.delivered", permission: MOVE, guards: ["design_delivered", "merged"] }),
+		...fromEach(DESIGN_CLOSABLE_STATUSES, "closed", {
+			act: "design.delivered",
+			permission: MOVE,
+			guards: ["design_delivered", "merged"],
+		}),
 
 		recovery("open", []),
 		recovery("approved", ["plan_checkpoint"]),
@@ -302,7 +458,11 @@ export interface IssueMove {
 	needsReason: boolean;
 }
 
-const BOUNCE_TARGETS: readonly IssueStatus[] = ["needs_info", "on_hold", "reopen"];
+const BOUNCE_TARGETS: readonly IssueStatus[] = [
+	"needs_info",
+	"on_hold",
+	"reopen",
+];
 const DISCARD_TARGETS = ISSUE_TERMINAL_STATUSES;
 
 /**
@@ -311,6 +471,8 @@ const DISCARD_TARGETS = ISSUE_TERMINAL_STATUSES;
  * the status's own exits. The first move is the forward one, then the bounces, then the discards.
  * The design-only close is offered only where the issue's merge mark is design-only (`designOnly`);
  * its guard still asks that the revisions are approved.
+ * The way back from a requirement-level fail's reopen (`fail_routed`) is not offered: the menu
+ * cannot read the fail, and the move is made through the transition door.
  */
 export function issueMovesFrom(
 	from: IssueStatus,
@@ -322,8 +484,17 @@ export function issueMovesFrom(
 		.map((e) => e.to);
 	const back = leftStatus ? returns.filter((to) => to === leftStatus) : returns;
 	const rest = ISSUE_MACHINE.edges
-		.filter((e) => e.from === from && !e.recovery && !e.guards.includes("left_status"))
+		.filter(
+			(e) =>
+				e.from === from && !e.recovery && !e.guards.includes("left_status"),
+		)
 		.filter((e) => designOnly || !e.guards.includes("design_delivered"))
+		// the way back from a reopen reads a requirement fail no menu holds: only the design-only
+		// close it also carries is offered, to a design-only issue (ISS-760)
+		.filter(
+			(e) =>
+				!e.guards.includes("fail_routed") || (designOnly && e.to === "closed"),
+		)
 		.map((e) => e.to);
 	const targets = [...new Set([...back, ...rest])];
 	const kindOf = (to: IssueStatus, i: number): IssueMoveKind => {
@@ -339,7 +510,11 @@ export function issueMovesFrom(
 		let first = true;
 		for (const t of typed) {
 			if (t.kind !== kind) continue;
-			out.push({ ...t, startsGroup: first && out.length > 0, needsReason: reason.includes(t.to) });
+			out.push({
+				...t,
+				startsGroup: first && out.length > 0,
+				needsReason: reason.includes(t.to),
+			});
 			first = false;
 		}
 	}

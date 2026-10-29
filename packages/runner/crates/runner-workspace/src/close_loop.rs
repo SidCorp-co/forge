@@ -328,6 +328,7 @@ mod tests {
             worktree_path: PathBuf::from(format!("/nonexistent/{run_id}")),
             boot_id: "boot-1".into(),
             issue_keys: vec![key.into()],
+            role: None,
         })
         .unwrap();
     }

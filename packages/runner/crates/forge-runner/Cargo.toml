@@ -27,5 +27,9 @@ which = { workspace = true }
 dirs-next = { workspace = true }
 webbrowser = { workspace = true }
 
+[dev-dependencies]
+# the owner-mode session as the runner spawns it, for the end-to-end test of its confinement
+runner-agent = { path = "../runner-agent" }
+
 [lints]
 workspace = true

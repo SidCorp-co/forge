@@ -70,6 +70,29 @@ const PROBES = {
   },
 };
 
+/**
+ * The exit status of each probe `pnpm verify` already ran in this checkout, by its command line,
+ * from the file verify names in FORGE_VERIFY_RESULTS: verify runs every one of these probes in its
+ * own pool, and running them again here, one after another, was the slowest part of verify (400
+ * s when run alone, measured 2026-10-29). A probe verify did not run, or ran with other arguments, is spawned
+ * here as before. Unset, as when this runs alone, every probe is spawned.
+ */
+function verifyResults() {
+  const path = process.env.FORGE_VERIFY_RESULTS;
+  if (!path) return new Map();
+  let read;
+  try {
+    read = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (err) {
+    console.error(
+      `conformance-status: FORGE_VERIFY_RESULTS names ${path}, which is not verify's results (${err.message}); unset it to measure every probe here`,
+    );
+    process.exit(2);
+  }
+  return new Map(Object.entries(read).filter(([, status]) => Number.isInteger(status)));
+}
+const VERIFY_RESULTS = verifyResults();
+
 const IMPROVES = ['down', 'shrink', 'tighten'];
 const { rev: BASE_REV, refusal: BASE_REFUSAL } = baseRevision(ROOT);
 
@@ -93,11 +116,15 @@ function measureOne(spec, baselinePath) {
   const missing = absentPrerequisites(ROOT, spec.needs);
   if (missing.length > 0) return { level: null, blocked: missing, note: remedyLines(missing)[0] };
 
-  const r = spawnSync(spec.probe[0], spec.probe.slice(1), {
-    cwd: ROOT,
-    encoding: 'utf8',
-    maxBuffer: 32 * 1024 * 1024,
-  });
+  const recorded = VERIFY_RESULTS.get(spec.probe.join(' '));
+  const r =
+    recorded !== undefined
+      ? { status: recorded }
+      : spawnSync(spec.probe[0], spec.probe.slice(1), {
+          cwd: ROOT,
+          encoding: 'utf8',
+          maxBuffer: 32 * 1024 * 1024,
+        });
   if (couldNotStart(r)) {
     return { level: null, blocked: [], note: `${spec.probe[0]} is not executable here` };
   }

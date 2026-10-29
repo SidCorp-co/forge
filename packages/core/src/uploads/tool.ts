@@ -47,6 +47,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
   route: '/api/issues',
   grant: 'issues:read',
   description:
+    'fetch { data: { target: issue | comment | session, attachmentId } }: ' +
     'READ an issue, comment or session attachment so you can analyze it: the one Forge read no shell ' +
     'command can do, because an image comes back as a viewable image block. Uploading is ' +
     '`POST /api/issues/:id/attachments` (multipart) or `forge attach`. ' +

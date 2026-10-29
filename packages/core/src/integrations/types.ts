@@ -394,7 +394,10 @@ export interface BindingTargetRefusal {
     | 'SUPPORT_ROOM_NOT_ONE_GROUP'
     | 'SUPPORT_ROOM_TWO_KINDS'
     | 'SUPPORT_GRANT_TARGET_UNKNOWN'
-    | 'SUPPORT_OWNER_MODE_NOT_AGENT';
+    | 'SUPPORT_OWNER_MODE_NOT_AGENT'
+    | 'SUPPORT_CHECK_NOT_AGENT'
+    | 'SUPPORT_CHECK_ROOM_UNKNOWN'
+    | 'AGENT_SWITCH_NOT_READY';
   path: string;
   detail: string;
 }

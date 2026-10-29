@@ -35,6 +35,14 @@ import { runVerdict } from './run-verdict.js';
 
 export const deviceRunSessionRoutes = new Hono<{ Variables: DeviceVars }>();
 
+const runRoleSchema = z
+  .string()
+  .regex(
+    /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)?$/,
+    'a role is a shipped role name such as `qa` or `forge:qa`',
+  )
+  .max(60);
+
 const runSessionBodySchema = z.object({
   projectId: z.string().uuid(),
   runId: z.string().uuid(),
@@ -45,6 +53,8 @@ const runSessionBodySchema = z.object({
   // rather than a field quietly dropped. The heartbeat is the other way round,
   // and for its own stated reason (ISS-1192).
   gate: gateConditionSchema.optional(),
+  /** The role the run is dispatched as (`run declare --role`): `qa` judges, any other builds. */
+  role: runRoleSchema.optional(),
 });
 
 deviceRunSessionRoutes.post(
@@ -61,6 +71,7 @@ deviceRunSessionRoutes.post(
         name: body.name,
         boxRunId: body.runId,
         ...(body.gate ? { gate: body.gate } : {}),
+        ...(body.role ? { role: body.role } : {}),
       });
       return c.json(session);
     } catch (err) {
@@ -80,6 +91,7 @@ deviceRunSessionRoutes.post(
 const preflightBodySchema = z.object({
   projectId: z.string().uuid(),
   issueKeys: z.array(z.string().min(1)).min(1).max(16),
+  role: runRoleSchema.optional(),
 });
 
 /**
@@ -93,7 +105,11 @@ deviceRunSessionRoutes.post(
   zValidator('json', preflightBodySchema),
   async (c) => {
     const body = c.req.valid('json');
-    await preflightRunSession({ projectId: body.projectId, issueKeys: body.issueKeys });
+    await preflightRunSession({
+      projectId: body.projectId,
+      issueKeys: body.issueKeys,
+      ...(body.role ? { role: body.role } : {}),
+    });
     return c.json({ ok: true as const });
   },
 );

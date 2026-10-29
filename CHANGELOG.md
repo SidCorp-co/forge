@@ -9,6 +9,53 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.363] - 2026-10-29
+
+Reopened issues return once their own criteria pass
+
+### Added
+
+- **A reopened issue goes back when the fail was not its own:** an issue a requirement-level fail reopened returns to awaiting release or closed once its own criteria pass and another issue owns what is missing.
+
+### Fixed
+
+- **A GitHub git credential is never installation-wide.** A binding naming no repository is refused by name before anything is minted, and an empty repository list is refused at the mint, which GitHub read as every repository.
+- **A judge is declared over closed issues; a build never is.** `run declare --role qa` carries closed issues untaken beside work, reads secrets and writes verdicts, moving no status; any other role is refused a closed issue by name.
+- **A requirement verdict counts at a landing Forge recorded.** With no production environment, a verdict at a commit an issue's merge mark names, on the traced work's branch and after its landings, counts; otherwise it names the missing record.
+
+## [0.4.0-dev.362] - 2026-10-29
+
+Channel agents run scheduled checks and take over outside bots by checklist
+
+### Added
+
+- **A channel agent runs scheduled checks and takes over a group from its outside bot.** The switch waits on the group's duty checklist, and owner mode stays confined to the project's own repository.
+
+### Fixed
+
+- **Saving a chat binding no longer drops messages.** The live connection keeps its socket and answers each message under the binding as saved.
+- **A declared run read before core records it is told so.** A box credential naming a run its box's sweep has not opened yet is refused `TESTING_SECRETS_RUN_NOT_RECORDED` (409), naming the sweep and the same id to retry, not `NOT_A_JOB_CREDENTIAL`.
+
+## [0.4.0-dev.361] - 2026-10-29
+
+One channel agent answers all of a project's Rocket.Chat groups
+
+### Added
+
+- **An MCP client can find, read and create projects, and write their document and bindings.** projects.*, config.* and bindings.* run through forge_call; a read token is refused writes, and no answer carries a secret.
+- **A project's chat groups can share one channel agent.** One Forge-placed session answers every bound group, restarts on its own, and in owner mode works as a full session for the owner alone.
+- **A channel agent answers by each group's own record, and asks the owner there.** It replies once per request, in the asker's thread, and stays silent on chatter. A change to a running system waits for a Technical or Maintenance member the record confirms. It can ask the owner a question in the thread, and the owner's answer reaches it and the issue it names.
+
+### Changed
+
+- **Every push to dev deploys forge-dev, and a dev release no longer waits on the whole suite.** The whole suite runs on dev once a day and gates nothing; core-integration runs four test files at once.
+- **Every MCP client is listed five tools in 2 KB instead of 56 KB.** forge_find, forge_describe and forge_call reach every action, one guide at a time; search and fetch read issues, requirements and knowledge.
+- **The verify gate and three integration files stop waiting on real time.** Conformance reads the probe results verify already has, the refusal sweep makes one call per reference field, and the release-finish and outbox tests inject their waits.
+
+### Fixed
+
+- **ChatGPT gets a compact tool catalog.** A ChatGPT client, known by its OAuth client or `openai-mcp` User-Agent, is listed the seven BA tools in 14 KB instead of 56 KB; calls still validate against the full schemas.
+
 ## [0.4.0-dev.360] - 2026-10-29
 
 Your value check answer now shows as its source

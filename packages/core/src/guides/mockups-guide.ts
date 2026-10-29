@@ -18,8 +18,8 @@ export const MOCKUPS_GUIDE: CoreGuide = {
 A mockup (MK-n) is a screen or a call proposed for a person to try before anything is built: a
 wireframe board, a sketch, an image, a self-contained HTML page, or an API example. It lives on the
 item it shapes, waits for a person like any other proposal, and is never edited: a change is its
-next revision. The door is \`/api/projects/:id/mockups\`, the \`forge_design\` MCP tool's
-\`mockup_*\` actions, and on a requirement's BA chat \`ba_propose_mockup\`.
+next revision. The door is \`/api/projects/:id/mockups\`, the MCP actions
+\`design.mockup_*\`, and on a requirement's BA chat \`ba_propose_mockup\`.
 
 ### When to make one
 - A requirement, a feedback item or an issue is about a screen, and words or the revision's picture

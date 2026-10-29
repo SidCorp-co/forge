@@ -51,8 +51,8 @@ impl Ledger {
             )));
         }
         tx.execute(
-            "INSERT INTO runs (run_id, project_id, master_session_id, worktree_path, pid, boot_id, incarnation, work, created_at)
-             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8)",
+            "INSERT INTO runs (run_id, project_id, master_session_id, worktree_path, pid, boot_id, incarnation, work, created_at, role)
+             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8, ?9)",
             params![
                 new.run_id,
                 new.project_id,
@@ -61,7 +61,8 @@ impl Ledger {
                 new.boot_id,
                 Incarnation::Live.wire(),
                 Work::Runnable.wire(),
-                now()
+                now(),
+                new.role
             ],
         )
         .map_err(sql_err)?;
@@ -750,5 +751,36 @@ impl Ledger {
             .map_err(sql_err)?;
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(sql_err)
+    }
+}
+
+#[cfg(test)]
+mod role_tests {
+    use super::*;
+
+    fn declare(led: &mut Ledger, id: &str, role: Option<&str>) {
+        led.create_run_group(NewRun {
+            run_id: id.into(),
+            project_id: "proj-1".into(),
+            master_session_id: format!("master-{id}"),
+            worktree_path: format!("/w/{id}").into(),
+            boot_id: "boot-1".into(),
+            issue_keys: vec![format!("ISS-{id}")],
+            role: role.map(str::to_string),
+        })
+        .unwrap();
+    }
+
+    /// The role a master declared is what the sweep reads back to send on the open, and a run
+    /// declared without one reads back as none rather than as an empty role.
+    #[test]
+    fn the_declared_role_round_trips_through_the_row_the_sweep_reads() {
+        let mut led = Ledger::from_conn(Connection::open_in_memory().unwrap()).unwrap();
+        declare(&mut led, "1", Some("qa"));
+        declare(&mut led, "2", None);
+        let rows = led.declared_without_session("boot-1").unwrap();
+        let role_of = |id: &str| rows.iter().find(|r| r.run_id == id).unwrap().role.clone();
+        assert_eq!(role_of("1").as_deref(), Some("qa"));
+        assert_eq!(role_of("2"), None);
     }
 }

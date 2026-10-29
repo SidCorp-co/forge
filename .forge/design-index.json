@@ -23,7 +23,7 @@
   },
   "REQ-5": {
    "title": "A project can agree an interface with itself before building both sides",
-   "status": "accepted"
+   "status": "agreed"
   },
   "REQ-6": {
    "title": "Verdicts are typed records, not comment prose",
@@ -71,7 +71,7 @@
   },
   "REQ-17": {
    "title": "A workflow design shows which steps and lines are outdated, need an update, have a problem or are proposed for removal, each derived from its evidence",
-   "status": "accepted"
+   "status": "agreed"
   },
   "REQ-18": {
    "title": "Design is the root; code is reconciled to it, by observation, marking, decision and rewrite",
@@ -147,7 +147,7 @@
   },
   "REQ-36": {
    "title": "Delivery: each role designs and tests only its own scope",
-   "status": "accepted"
+   "status": "agreed"
   },
   "REQ-37": {
    "title": "Scripts read Forge with GET only, under a short-lived token of their owner",
@@ -167,7 +167,7 @@
   },
   "REQ-41": {
    "title": "Chat is the way in: it answers what needs you and drives the page beside it",
-   "status": "accepted"
+   "status": "agreed"
   },
   "REQ-42": {
    "title": "Throwaway for the ISS-460 judge: dropped at the end of its run",
@@ -183,7 +183,7 @@
   },
   "REQ-45": {
    "title": "An issue moves on when its work lands",
-   "status": "accepted"
+   "status": "agreed"
   },
   "REQ-46": {
    "title": "Connect an outside system",
@@ -191,7 +191,7 @@
   },
   "REQ-47": {
    "title": "Feedback to Forge is filed by whoever reports it, from any project",
-   "status": "accepted"
+   "status": "agreed"
   },
   "REQ-48": {
    "title": "An agent stands at every Product and Delivery handoff",
@@ -255,7 +255,7 @@
   },
   "REQ-63": {
    "title": "A release can be the owner's go to merge a project's merge requests, in order",
-   "status": "accepted"
+   "status": "agreed"
   },
   "REQ-64": {
    "title": "A run is refused at rest and a reclaim never publishes or destroys live work",
@@ -303,7 +303,15 @@
   },
   "REQ-75": {
    "title": "A project's Rocket.Chat group has an assistant that supports users and resolves their problems",
-   "status": "draft"
+   "status": "agreed"
+  },
+  "REQ-76": {
+   "title": "Each project chooses how tightly Forge gates its agents: strict, standard or yolo",
+   "status": "agreed"
+  },
+  "REQ-77": {
+   "title": "A Forge channel agent answers each bound channel with full session power, replacing the outside bots one channel at a time",
+   "status": "agreed"
   }
  },
  "workflows": {
@@ -813,6 +821,49 @@
     "stale",
     "start",
     "withdrawn"
+   ]
+  },
+  "support-group": {
+   "title": "Support group: a Rocket.Chat group answered by a session",
+   "steps": [
+    "ability",
+    "ability-refused",
+    "answer",
+    "ask",
+    "await-confirm",
+    "bind",
+    "bind-refused",
+    "build",
+    "check-confirm",
+    "command",
+    "confirm",
+    "deploy",
+    "diagnose",
+    "dispatch",
+    "expired",
+    "gate",
+    "health",
+    "host-refused",
+    "inbox",
+    "limit",
+    "migrate",
+    "move-issue",
+    "not-asker",
+    "offline",
+    "progress",
+    "propose",
+    "read-in-forge",
+    "record",
+    "redirect",
+    "reply",
+    "reply-refused",
+    "route",
+    "run-fix",
+    "triage",
+    "turn",
+    "turn-failed",
+    "unhealthy",
+    "wait"
    ]
   },
   "system-context": {

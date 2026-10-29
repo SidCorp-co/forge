@@ -11,7 +11,7 @@ import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { canonicalIssueKeySql } from '../lib/issue-run-group.js';
 
 export type DeclaredRunRead =
-  /** No run this box declared answers to the id: the caller is not a declared run. */
+  /** No run this box declared answers to the id: not a declared run, or one the box has not recorded at core yet. */
   | { kind: 'none' }
   | { kind: 'refused'; reason: 'ended' | 'queued' | 'foreign'; detail: string }
   | {

@@ -33,6 +33,7 @@ import { type AwaitedDesignRef, mintParkQuestion, needsNotApplicable } from './p
 import { repointPark, repointsPark } from './park-repoint.js';
 import { planCheckpointHolds } from './plan-checkpoint.js';
 import {
+  postIssueNotice,
   readProjectDocument,
   settleOpenQuestions,
   voidStewardDecisionsOnMove,
@@ -349,8 +350,11 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
     issue,
     actorUserId: by,
     actorDeviceId: actor.type === 'device' ? actor.id : null,
+    from: fromStatus,
     to: toStatus,
   });
+  // the note the way back from a requirement-level fail's reopen posts, left by its guard (ISS-760)
+  const failReturned: { note: string | null } = { note: null };
   const write = (exec: KernelExecutor) =>
     transition(exec, ISSUE_MACHINE, {
       to: toStatus,
@@ -380,6 +384,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         waitingKind: options.waitingKind,
         recoveringRunId: options.recoveringRunId,
         releaseReplayRunId: (options as InternalOptions).releaseReplayRunId ?? null,
+        failReturned,
       }),
       beforeWrite: async (tx) => {
         const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
@@ -440,6 +445,9 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         await recordMove(tx, moveOf(input, row.reopenCount));
         await writeWorkStateOfMove(tx, input);
         if (toStatus === 'reopen') await supersedeOnReopen(tx, issue.projectId, issue.id, actor);
+        if (failReturned.note) {
+          await postIssueNotice({ issueId: issue.id, authorId: by, body: failReturned.note }, tx);
+        }
         if (toStatus === 'dropped') {
           unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);
           await postDropUnblockNotices(tx, issue, unblockedDependents, actor);

@@ -1213,9 +1213,10 @@
         "supportChannels",
         "supportChannelMembers",
         "supportChannelRules",
-        "supportChannelCommonIssues"
+        "supportChannelCommonIssues",
+        "supportChannelSwitches"
       ],
-      "serves": ["REQ-75"]
+      "serves": ["REQ-75", "REQ-77"]
     },
     "uploads": {
       "kind": "domain",

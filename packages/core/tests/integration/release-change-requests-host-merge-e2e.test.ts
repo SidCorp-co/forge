@@ -90,7 +90,7 @@ async function approve(runId: string) {
 
 beforeAll(async () => {
   testEnv();
-  await startQueue();
+  await startQueue({ pollSeconds: 0.5 });
 }, 120_000);
 
 afterAll(async () => {

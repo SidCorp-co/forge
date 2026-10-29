@@ -47,6 +47,10 @@
  *   on_hold, reopen    a reason                                                  TRANSITION_REASON_REQUIRED
  *   reopen, from       no running release batch claims it, but the claiming      ISSUE_REOPEN_RELEASING
  *   awaiting_release   release's own probe replay (`release-claim-guard.ts`)
+ *   awaiting_release,  back the way it came: a requirement-level fail reopened  REOPEN_NOT_BY_REQUIREMENT_FAIL,
+ *   closed, from       it from this status and is routed past it now            ILLEGAL_TRANSITION,
+ *   reopen             (`fail-return.ts`, ISS-760); to closed, a design-only     REOPEN_CRITERIA_NOT_PASSING,
+ *                      issue's delivered design closes it too                   REOPEN_FAIL_UNOWNED
  *   dropped            a reason                                                  VOID_REASON_REQUIRED
  */
 
@@ -61,7 +65,7 @@ import {
   personGatePermission,
 } from '@forge/contracts/person-gates';
 import { sql } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { gateRefusal } from '../lib/gated.js';
 import type { Refusal } from '../lib/refusal.js';
@@ -78,8 +82,19 @@ import {
 import { readAdoptionDelivery } from './adoption-delivery.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { type CallerBox, callerBoxOf } from './caller-box.js';
-import { designHeldSql, designHoldsOf, designOnlyMarkSql } from './design-delivery.js';
+import {
+  designDeliveredGuard,
+  designShortfall,
+  readDesignDelivery,
+} from './design-delivered-guard.js';
 import { designCheckOf } from './design-record.js';
+import {
+  asksFailReturn,
+  type FailReturnFacts,
+  failReturnFault,
+  failReturnNote,
+  readFailReturn,
+} from './fail-return.js';
 import type { IssueGates } from './gates.js';
 import { mergeNotRecorded } from './merged-at.js';
 import { type MoveEntryFacts, moveEntryRefusal, readMoveEntryFacts } from './pattern-entry.js';
@@ -145,6 +160,8 @@ interface IssueMoveFacts {
   patternEntry: MoveEntryFacts | null;
   /** The move to approved: the pattern catalog the project reads, which the design check asks. */
   catalog: CatalogReading | null;
+  /** The way back from `reopen` to a landed status: the reopen it would undo (ISS-760). */
+  failReturn: FailReturnFacts | null;
 }
 
 const HOLD_OVERRIDES = ['releases.approve', 'project.admin'] as const;
@@ -169,6 +186,7 @@ export async function readIssueMoveFacts(args: {
   actorUserId: string;
   /** The box making the move, where the actor is the device itself. */
   actorDeviceId?: string | null;
+  from: IssueStatus;
   to: IssueStatus;
 }): Promise<IssueMoveFacts> {
   const { issue } = args;
@@ -185,6 +203,7 @@ export async function readIssueMoveFacts(args: {
     permissions: await permissionFactsOf(args.actorUserId, issue.projectId),
     patternEntry: args.to === 'awaiting_release' ? await readMoveEntryFacts(issue) : null,
     catalog: args.to === 'approved' ? await catalogOf(issue.projectId) : null,
+    failReturn: asksFailReturn(args.from, args.to) ? await readFailReturn(db, issue) : null,
   };
 }
 
@@ -376,75 +395,6 @@ async function releaseGuard(ctx: GuardContext): Promise<GuardFault | null> {
   };
 }
 
-interface DesignDelivery {
-  /** The merge mark names design artifacts and nothing else: no commit, no paths. */
-  designOnly: boolean;
-  /** The design revisions the mark names. */
-  marked: string[];
-  /** `<flow> rev <n>` of every revision this issue drew that was approved. */
-  approved: string[];
-  /** `<flow> rev <n>` of every revision it delivers that is not approved yet. */
-  unapproved: string[];
-}
-
-async function readDesignDelivery(ctx: GuardContext): Promise<DesignDelivery> {
-  const rows = (await ctx.executor.execute(sql`
-    SELECT ${designOnlyMarkSql(sql`i`)} AS design_only,
-           coalesce((SELECT array_agg(a->>'ref') FROM jsonb_array_elements(
-                       CASE WHEN jsonb_typeof(i.merged_artifacts) = 'array' THEN i.merged_artifacts ELSE '[]'::jsonb END) a),
-                    '{}') AS marked,
-           coalesce((SELECT array_agg(DISTINCT w.flow || ' rev ' || d.revision)
-                       FROM project_workflow_designs d JOIN project_workflows w ON w.id = d.workflow_id
-                      WHERE d.design_issue_id = i.id AND d.decision = 'approve'), '{}') AS approved,
-           ${designHeldSql(sql`i.id`)} AS held
-      FROM issues i WHERE i.id = ${ctx.issue.id}
-  `)) as unknown as Array<{
-    design_only: boolean;
-    marked: string[];
-    approved: string[];
-    held: boolean;
-  }>;
-  const row = rows[0];
-  if (!row) return { designOnly: false, marked: [], approved: [], unapproved: [] };
-  const unapproved = row.held
-    ? ((await designHoldsOf(ctx.executor, [ctx.issue.id])).get(ctx.issue.id) ?? []).map(
-        (h) => `${h.flow} rev ${h.revision}`,
-      )
-    : [];
-  return {
-    designOnly: row.design_only === true,
-    marked: row.marked,
-    approved: row.approved,
-    unapproved,
-  };
-}
-
-function designShortfall(d: DesignDelivery): string {
-  if (d.unapproved.length > 0) return `design ${d.unapproved.join(', ')} is not approved yet`;
-  return 'no design revision it drew is approved';
-}
-
-/** closed from a live status: the issue is design-only and every revision it delivers is approved. */
-async function designDeliveredGuard(ctx: GuardContext): Promise<GuardFault | null> {
-  const d = await readDesignDelivery(ctx);
-  if (d.designOnly && d.unapproved.length === 0 && d.approved.length > 0) return null;
-  const why = d.designOnly
-    ? designShortfall(d)
-    : 'its merge mark does not name design revisions alone (a commit, read paths, or a non-design artifact is on it, or there is no mark), so its work ships through a release';
-  return {
-    code: 'DESIGN_NOT_DELIVERED',
-    detail: `${quote(ctx.from)} → \`closed\` is the close of an issue whose only deliverable is a design, once its design revisions are approved, and ${why}. An issue that ships code moves to \`awaiting_release\` and closes through its release.`,
-    details: {
-      from: ctx.from,
-      to: ctx.to,
-      designOnly: d.designOnly,
-      marked: d.marked,
-      approved: d.approved,
-      unapproved: d.unapproved,
-    },
-  };
-}
-
 /** A guard's fault as the kernel transition carries it: the refusal, with its details beside it. */
 function refusalOf(fault: GuardFault | null): Refusal | null {
   if (!fault) return null;
@@ -470,6 +420,8 @@ type IssueGuardContext = Omit<GuardContext, 'from' | 'to' | 'executor'> & {
   recoveringRunId?: string | null | undefined;
   /** The release whose own probe replay sends a member back (`apply-transition.ts:reopenAsItsRelease`). */
   releaseReplayRunId?: string | null | undefined;
+  /** Where the `fail_routed` guard leaves the note its move posts, once it lets the move go back. */
+  failReturned?: { note: string | null } | undefined;
 };
 
 /** Each guard the issue machine names, bound to the move being made. */
@@ -516,6 +468,26 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
     design_delivered: async (input) => refusalOf(await designDeliveredGuard(ctxOf(input))),
     not_releasing: (input) =>
       releaseClaimRefusal(input.tx, input.row.id, base.releaseReplayRunId ?? null),
+    // back the way a requirement-level fail's reopen came (ISS-760); the edge to `closed` is also a
+    // design-only issue's close from `reopen`, answered as from any other live status
+    fail_routed: async (input) => {
+      const ctx = ctxOf(input);
+      if (input.to === 'closed' && (await readDesignDelivery(ctx)).designOnly) {
+        return refusalOf(await designDeliveredGuard(ctx));
+      }
+      const facts = base.facts.failReturn;
+      const fault = facts
+        ? failReturnFault(facts, { from: input.row.status, to: input.to })
+        : {
+            code: 'REOPEN_NOT_BY_REQUIREMENT_FAIL' as const,
+            detail: `the move back from \`reopen\` was not read for this move to ${quote(input.to)}`,
+            details: { from: input.row.status, to: input.to },
+          };
+      if (!fault && facts && base.failReturned) {
+        base.failReturned.note = failReturnNote(facts, input.to);
+      }
+      return refusalOf(fault);
+    },
     // A park returning to the status it left is the park's own edge, not an entry: the status was
     // earned when it was first entered. A park with no recorded left status going anywhere is an
     // entry like any other, and owes that entry's guards.

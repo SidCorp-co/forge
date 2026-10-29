@@ -115,8 +115,10 @@ export const supportGrantsSchema = z
 		/** Whose `confirm <code>` lets a deploy or a host change run: Rocket.Chat usernames. */
 		confirmers: z.array(chatUsernameSchema).max(20).optional(),
 		/**
-		 * The owner `owner_mode` obeys (REQ-77 BC-20): the chat server's user id for their account,
-		 * never a name, so a message is the owner's only when the server signed it so.
+		 * The owner `owner_mode` obeys (REQ-77 BC-20) and a channel agent asks (BC-12): the chat
+		 * server's user id for their account, never a name, so a message is the owner's only when the
+		 * server signed it so. Named without `owner_mode`, it gives the agent someone to ask and no
+		 * power.
 		 */
 		owner: chatUserIdSchema.optional(),
 	})
@@ -140,13 +142,12 @@ export const supportGrantsSchema = z
 					: "hosts are named and run_commands is not granted: grant run_commands or drop them",
 			});
 		}
-		if (has("owner_mode") !== Boolean(g.owner)) {
+		if (has("owner_mode") && !g.owner) {
 			ctx.addIssue({
 				code: "custom",
 				path: ["owner"],
-				message: has("owner_mode")
-					? "owner_mode is granted and names no owner: name the owner's Rocket.Chat user id"
-					: "an owner is named and owner_mode is not granted: grant owner_mode or drop it",
+				message:
+					"owner_mode is granted and names no owner: name the owner's Rocket.Chat user id",
 			});
 		}
 		if (
@@ -164,6 +165,35 @@ export const supportGrantsSchema = z
 	});
 export type SupportGrants = z.infer<typeof supportGrantsSchema>;
 
+/** A scheduled check's name: lowercase letters, digits and dashes, as it is named in a group. */
+export const supportCheckNameSchema = z
+	.string()
+	.regex(
+		/^[a-z0-9][a-z0-9-]{1,39}$/,
+		"a check's name is 2 to 40 lowercase letters, digits and dashes, such as morning-check",
+	);
+
+/**
+ * A check a channel agent runs on a schedule (REQ-77 BC-13): every day at `at` (UTC), in the group
+ * `rid`, it is handed `ask` and answers with one finding, which core posts there, or none, and
+ * nothing is posted. The AdminHub morning check is one.
+ */
+export const supportCheckSchema = z.strictObject({
+	name: supportCheckNameSchema,
+	/** The group the finding is posted in: one of the binding's `rids`. */
+	rid: z.string().min(1).max(200),
+	/** When it runs each day, `HH:MM` in UTC. */
+	at: z
+		.string()
+		.regex(
+			/^([01]\d|2[0-3]):[0-5]\d$/,
+			"a check's time is HH:MM in UTC, such as 01:30",
+		),
+	/** What the agent checks, and what counts as a finding, in the owner's words. */
+	ask: z.string().trim().min(10).max(2000),
+});
+export type SupportCheck = z.infer<typeof supportCheckSchema>;
+
 /**
  * The `support` block of a `rocketchat` binding: present, the binding's one room is a support group
  * answered by the session; absent, the room is the team assistant's, as before.
@@ -179,6 +209,15 @@ export const supportRoomConfigSchema = z.strictObject({
 	answers: z.enum(SUPPORT_ANSWERS).optional(),
 	grants: supportGrantsSchema.optional(),
 	limits: supportLimitsSchema.optional(),
+	/** Scheduled checks: a channel agent's (`agent` block) only (REQ-77 BC-13). */
+	checks: z
+		.array(supportCheckSchema)
+		.max(10)
+		.refine(
+			(checks) => new Set(checks.map((c) => c.name)).size === checks.length,
+			"a check is named once",
+		)
+		.optional(),
 });
 export type SupportRoomConfig = z.infer<typeof supportRoomConfigSchema>;
 
@@ -362,6 +401,10 @@ export const SUPPORT_ACTION_KINDS = [
 	"announced",
 	"secret_flagged",
 	"result_told",
+	/** A channel agent's one result for one firing of a scheduled check (REQ-77 BC-13). */
+	"check_result",
+	/** The finding core posted in the group for a check result (REQ-77 BC-13). */
+	"check_posted",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
@@ -435,6 +478,8 @@ export const SUPPORT_ACTIONS = [
 	"common_issue",
 	"route",
 	"announce",
+	"ask_owner",
+	"check_result",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
@@ -601,6 +646,11 @@ export const SUPPORT_BOX_CAPABILITIES = {
 	build: "supportBuilds",
 	/** The box runs a command on a named host over its own SSH (`host.command`). */
 	commands: "hostCommands",
+	/**
+	 * The box runs an owner-mode channel agent confined in its own clone of the repository, pushing
+	 * with a credential for that repository alone (ISS-765).
+	 */
+	owner: "ownerCheckouts",
 } as const;
 
 export interface SupportRoomView {
@@ -671,6 +721,34 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_CHANNEL_NOT_OUTSIDE",
 	/** A channel agent serves several groups, and the act named none it could be read from (REQ-77). */
 	"SUPPORT_ROOM_AMBIGUOUS",
+	/** A channel agent's second reply to one request: one result per request (REQ-77 BC-8). */
+	"SUPPORT_ONE_RESULT_PER_REQUEST",
+	/** The binding names no owner to ask (REQ-77 BC-12). */
+	"SUPPORT_OWNER_NOT_NAMED",
+	/** An owner question's `record` names no issue of this project (REQ-77 BC-12). */
+	"SUPPORT_OWNER_RECORD_UNKNOWN",
+	/** A git credential asked by a session that is no channel agent in owner mode (ISS-765). */
+	"SUPPORT_GIT_NOT_OWNER_MODE",
+	/** A git credential asked for a repository other than the project's own (ISS-765). */
+	"SUPPORT_GIT_NOT_OWN_REPO",
+	/** A check result names no scheduled check of this group (REQ-77 BC-13). */
+	"SUPPORT_CHECK_UNKNOWN",
+	/** A second result for one firing of a scheduled check (REQ-77 BC-13). */
+	"SUPPORT_CHECK_ANSWERED",
+	/** No switch is planned for the group (REQ-77 BC-16). */
+	"AGENT_SWITCH_UNKNOWN",
+	/** A duty, the earlier switch or the owner's word still stands between the group and its switch (BC-16..BC-19). */
+	"AGENT_SWITCH_NOT_READY",
+	/** The group already switched: its plan no longer changes. */
+	"AGENT_SWITCH_DONE",
+	/** The group has not switched yet, so it cannot be proven. */
+	"AGENT_SWITCH_NOT_SWITCHED",
+	/** A plan names no such duty, or an earlier switch that is not one. */
+	"AGENT_SWITCH_PLAN_REFUSED",
+	/** The chat server did not remove the outside bot from the group, so nothing switched. */
+	"AGENT_SWITCH_BOT_NOT_REMOVED",
+	/** No binding of the project carries a channel agent to switch the group to. */
+	"AGENT_SWITCH_NO_AGENT",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -723,4 +801,18 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_RULE_UNKNOWN: 404,
 	SUPPORT_CHANNEL_NOT_OUTSIDE: 409,
 	SUPPORT_ROOM_AMBIGUOUS: 400,
+	SUPPORT_ONE_RESULT_PER_REQUEST: 409,
+	SUPPORT_OWNER_NOT_NAMED: 409,
+	SUPPORT_OWNER_RECORD_UNKNOWN: 404,
+	SUPPORT_GIT_NOT_OWNER_MODE: 403,
+	SUPPORT_GIT_NOT_OWN_REPO: 403,
+	SUPPORT_CHECK_UNKNOWN: 404,
+	SUPPORT_CHECK_ANSWERED: 409,
+	AGENT_SWITCH_UNKNOWN: 404,
+	AGENT_SWITCH_NOT_READY: 409,
+	AGENT_SWITCH_DONE: 409,
+	AGENT_SWITCH_NOT_SWITCHED: 409,
+	AGENT_SWITCH_PLAN_REFUSED: 400,
+	AGENT_SWITCH_BOT_NOT_REMOVED: 503,
+	AGENT_SWITCH_NO_AGENT: 409,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

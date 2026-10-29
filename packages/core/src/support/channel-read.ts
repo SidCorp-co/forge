@@ -132,7 +132,7 @@ async function recordOf(projectId: string, channel: ChannelRow): Promise<Record_
   return { memberRows, ruleRows, commonIssueRows, routes: routesOf(members) };
 }
 
-/** The record as the session reads it with `forge_support channel`. */
+/** The record as the session reads it with `support.channel`. */
 export async function sessionChannelView(projectId: string, rid: string): Promise<Record_> {
   const channel = await channelOf(projectId, rid);
   return channel ? recordOf(projectId, channel) : EMPTY;
@@ -146,7 +146,7 @@ const roleWords = (roles: readonly string[]) =>
  * each, the rules its team gave, the questions it keeps asking, and the three routes. A rule is a
  * team member's words and is framed as such; it never outranks the brief's own rules.
  */
-export function channelBlock(record: Record_): string {
+export function channelBlock(record: Record_, group?: string): string {
   const members = record.memberRows.length
     ? record.memberRows
         .map(
@@ -154,7 +154,7 @@ export function channelBlock(record: Record_): string {
             `- @${m.username}: ${roleWords(m.roles)} (${m.state})${m.askFor ? ` — ask for: ${m.askFor}` : ''}`,
         )
         .join('\n')
-    : '- none recorded yet: infer each writer with forge_support member';
+    : '- none recorded yet: infer each writer with support.member';
   const rules = record.ruleRows.length
     ? record.ruleRows
         .map((r) =>
@@ -174,10 +174,12 @@ export function channelBlock(record: Record_): string {
     : '- none';
   const route = (r: ChannelRouteView) =>
     r.route === 'forge'
-      ? '- Forge: a problem with Forge itself (a door, tool, record or release refusing or misbehaving) — forge_support route to forge; never posted in the channel.'
-      : `- ${CHANNEL_ROLE_LABEL[r.route as ChannelRole]}: ${r.route === 'technical' ? 'what only a technical person can do or decide (a credential, a host change, access)' : 'business rules, what a user needs, what a request means'} — forge_support route to ${r.route}, member ${r.members.length ? r.members.map((u) => `@${u}`).join(' or ') : '(none recorded yet)'}, in the asker's thread.`;
+      ? '- Forge: a problem with Forge itself (a door, tool, record or release refusing or misbehaving) — support.route to forge; never posted in the channel.'
+      : `- ${CHANNEL_ROLE_LABEL[r.route as ChannelRole]}: ${r.route === 'technical' ? 'what only a technical person can do or decide (a credential, a host change, access)' : 'business rules, what a user needs, what a request means'} — support.route to ${r.route}, member ${r.members.length ? r.members.map((u) => `@${u}`).join(' or ') : '(none recorded yet)'}, in the asker's thread.`;
   return [
-    'This channel, as Forge records it (every bot of this group reads the same record):',
+    group
+      ? `The channel record of group ${group}, as Forge holds it (every bot of this group reads the same record; it is this group's alone, and the other groups you answer have theirs):`
+      : 'This channel, as Forge records it (every bot of this group reads the same record):',
     `Members:\n${members}`,
     `Channel rules:\n${rules}`,
     `Common issues:\n${issues}`,
@@ -202,17 +204,36 @@ export async function writerRoles(
  */
 const toldRecord = new Map<string, string>();
 
-/** The record's block, to brief a cold session with: noted as told. */
-export async function briefChannel(room: { id: string; projectId: string; rid: string }) {
-  const block = channelBlock(await sessionChannelView(room.projectId, room.rid));
+/**
+ * The record's block, to brief a cold session with: noted as told. A channel agent answers several
+ * groups, so each block names its group: a rule or a member belongs to one of them (REQ-77 BC-5).
+ */
+export async function briefChannel(room: {
+  id: string;
+  projectId: string;
+  rid: string;
+  kind?: string;
+}) {
+  const block = channelBlock(
+    await sessionChannelView(room.projectId, room.rid),
+    room.kind === 'agent' ? room.rid : undefined,
+  );
   toldRecord.set(room.id, block);
   return block;
 }
 
 /** The record's block when it changed since this room's session was last told it; else null. */
-export async function channelNews(room: { id: string; projectId: string; rid: string }) {
-  const block = channelBlock(await sessionChannelView(room.projectId, room.rid));
+export async function channelNews(room: {
+  id: string;
+  projectId: string;
+  rid: string;
+  kind?: string;
+}) {
+  const block = channelBlock(
+    await sessionChannelView(room.projectId, room.rid),
+    room.kind === 'agent' ? room.rid : undefined,
+  );
   if (toldRecord.get(room.id) === block) return null;
   toldRecord.set(room.id, block);
-  return `The channel record changed; it now reads:\n\n${block}`;
+  return `The channel record${room.kind === 'agent' ? ` of group ${room.rid}` : ''} changed; it now reads:\n\n${block}`;
 }

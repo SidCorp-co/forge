@@ -44,7 +44,7 @@ export type RecordedVerdict =
   | { ok: true; verdictId: string; coverage: RequirementCoverage; routed: FailRouted[] }
   | { ok: false; refusals: RequirementRefusal[] };
 
-interface Tracing {
+export interface Tracing {
   id: string;
   status: string;
 }
@@ -52,10 +52,20 @@ interface Tracing {
 /**
  * Every issue but a dropped one whose criteria trace `code` of the requirement, on any wording, newest
  * landing first: landed (`awaiting_release`, `closed`) before not, then by merge, then by number.
+ * `as` reads one issue at another status, where the way back from a reopen asks how the fail would
+ * route it once back (ISS-760).
  */
-async function tracingIssuesOf(tx: Tx, requirementId: string, code: string): Promise<Tracing[]> {
+export async function tracingIssuesOf(
+  tx: Pick<Tx, 'execute'>,
+  requirementId: string,
+  code: string,
+  as?: { issueId: string; status: string },
+): Promise<Tracing[]> {
+  const status = as
+    ? sql`(CASE WHEN i.id = ${as.issueId}::uuid THEN ${as.status} ELSE i.status END)`
+    : sql`i.status`;
   return (await tx.execute(sql`
-    SELECT i.id, i.status
+    SELECT i.id, ${status} AS status
       FROM issues i
      WHERE i.status <> 'dropped'
        AND EXISTS (
@@ -63,12 +73,15 @@ async function tracingIssuesOf(tx: Tx, requirementId: string, code: string): Pro
            JOIN requirement_criteria rc ON rc.id = ic.requirement_criterion_id
           WHERE ic.issue_id = i.id AND ic.retired_at IS NULL
             AND rc.requirement_id = ${requirementId} AND rc.code = ${code})
-     ORDER BY (i.status IN ('awaiting_release', 'closed')) DESC, i.merged_at DESC NULLS LAST,
+     ORDER BY (${status} IN ('awaiting_release', 'closed')) DESC, i.merged_at DESC NULLS LAST,
               i.iss_seq DESC`)) as unknown as Tracing[];
 }
 
 /** Whether every criterion of `issueId` tracing the BC counts as a pass in its coverage: at its landing, on the current wording. */
-function deliversItsHalf(issueId: string, coverage: RequirementCoverage | undefined): boolean {
+export function deliversItsHalf(
+  issueId: string,
+  coverage: RequirementCoverage | undefined,
+): boolean {
   const links = coverage?.issues.filter((l) => l.issueId === issueId) ?? [];
   return (
     links.length > 0 &&

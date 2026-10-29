@@ -49,3 +49,43 @@ pub async fn ask(client: &CoreClient, host: &str, path: &str) -> Result<GitCrede
     }
     status::decode(resp, "git-credential").await
 }
+
+/// Ask core for a git credential as an owner-mode channel agent's session (ISS-765) —
+/// `POST /api/projects/:id/support/session/git-credential` under the session's own turn token, not
+/// this box's device token: core mints for the project's own bound repository alone, and refuses
+/// any other by name, which is passed through verbatim.
+pub async fn ask_session(
+    client: &CoreClient,
+    project_id: &str,
+    host: &str,
+    path: &str,
+) -> Result<GitCredentialGrant> {
+    let req = client
+        .post(&format!(
+            "/api/projects/{project_id}/support/session/git-credential"
+        ))
+        .json(&serde_json::json!({ "host": host, "path": path }));
+    let resp = status::sent(req, "session git-credential request").await?;
+    if resp.status().as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if !resp.status().is_success() {
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| {
+                v.get("detail")
+                    .or_else(|| v.get("message"))
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or(text);
+        return Err(Error::Other(status::refused(
+            "core refused the session's git-credential",
+            code,
+            &message,
+        )));
+    }
+    status::decode(resp, "session git-credential").await
+}

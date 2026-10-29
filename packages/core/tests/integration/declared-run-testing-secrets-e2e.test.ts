@@ -6,7 +6,10 @@
  * token cannot say which run calls; the call names it, as a verdict's `run` does. Core admitted that
  * run on that box for that project, which is what binds the read to both. Still refused by name: a
  * box credential naming no run, a run of another project, a run that ended, and one not admitted.
- * Against real Postgres.
+ * A run read in the seconds between its declaration and the box's sweep that records it at core
+ * (catalog-fe ISS-39, run ff22a502, 2026-10-30: read 0-27 s after declaring, refused
+ * `TESTING_SECRETS_NOT_A_JOB_CREDENTIAL`, closed as never started) is refused as not recorded yet,
+ * naming the sweep and the same id to read again with. Against real Postgres.
  *
  * @direct-test-of packages/core/src/project-config/testing-secrets.ts
  * @direct-test-of packages/core/src/devices/declared-run-of-call.ts
@@ -101,9 +104,9 @@ async function landedIssue(projectId: string, seq: number): Promise<string> {
 async function declaredRun(
   projectId: string,
   seq: number,
-  over: { box?: string; status?: string; openedAt?: string } = {},
+  over: { box?: string; status?: string; openedAt?: string; boxRunId?: string } = {},
 ): Promise<{ boxRunId: string; runId: string; session: string }> {
-  const boxRunId = randomUUID();
+  const boxRunId = over.boxRunId ?? randomUUID();
   const runId = randomUUID();
   const key = `ISS-${seq}`;
   const metadata = {
@@ -200,11 +203,28 @@ describe('a run a master declared reads the testing secrets of the environment i
 });
 
 describe('everything else stays refused by name', () => {
-  it('refuses a box credential naming no run this box declared', async () => {
+  it('refuses a run declared and not yet recorded at core as not recorded, and answers the same id once it is', async () => {
     await landedIssue(world.projectId, 68);
-    const res = await secrets(world.boxToken, randomUUID());
+    const declared = randomUUID();
+    const early = await secrets(world.boxToken, declared);
+    expect(early.status, JSON.stringify(early.body)).toBe(409);
+    expect(codeOf(early.body)).toBe('TESTING_SECRETS_RUN_NOT_RECORDED');
+    const said = JSON.stringify(early.body);
+    expect(said).toContain(declared);
+    expect(said).toContain('sweep');
+    expect(said).toContain('is now core session');
+    // the box's next sweep opens the run's session: the same id now reads
+    const run = await declaredRun(world.projectId, 68, { boxRunId: declared });
+    const later = await secrets(world.boxToken, declared);
+    expect(later.status, JSON.stringify(later.body)).toBe(200);
+    expect(later.body).toMatchObject({ run: { session: run.session, id: run.runId } });
+  });
+
+  it('refuses `self` under a box credential, naming the run id to call with instead', async () => {
+    const res = await secrets(world.boxToken, 'self');
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_A_JOB_CREDENTIAL');
+    expect(JSON.stringify(res.body)).toContain('in place of `self`');
   });
 
   it('refuses a run another box declared', async () => {
@@ -212,8 +232,9 @@ describe('everything else stays refused by name', () => {
     const elsewhere = await createTestDevice(world.ownerId);
     const run = await declaredRun(world.projectId, 68, { box: elsewhere });
     const res = await secrets(world.boxToken, run.boxRunId);
-    expect(res.status, JSON.stringify(res.body)).toBe(403);
-    expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_A_JOB_CREDENTIAL');
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(codeOf(res.body)).toBe('TESTING_SECRETS_RUN_NOT_RECORDED');
+    expect(JSON.stringify(res.body)).toContain('declared on another box');
   });
 
   it("refuses a run of another project than the one the caller's credential is bound to", async () => {

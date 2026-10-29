@@ -11,6 +11,8 @@ import { ECOSYSTEM_READS } from '../ecosystem/index.js';
 import { FORGE_FEEDBACK_READ_ACTIONS } from '../forge-door/index.js';
 import type { PatRequestClass } from '../lib/rate-limits.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
+import { BINDINGS_TOOL_READS, CONFIG_TOOL_READS } from '../project-config/index.js';
+import { PROJECTS_TOOL_READS } from '../projects/index.js';
 import { SUPPORT_TOOL_READS } from '../support/index.js';
 import { PROJECT_FEEDBACK_READ_ACTIONS } from './feedback-tool.js';
 import { REQUIREMENT_READ_ACTIONS } from './requirements-tool.js';
@@ -53,12 +55,44 @@ const READ_ACTIONS = {
   forge_questions: new Set<string>(QUESTIONS_TOOL_READS),
   forge_issues: new Set<string>(ISSUES_TOOL_READS),
   forge_support: new Set<string>(SUPPORT_TOOL_READS),
+  forge_projects: new Set<string>(PROJECTS_TOOL_READS),
+  forge_config: new Set<string>(CONFIG_TOOL_READS),
+  forge_bindings: new Set<string>(BINDINGS_TOOL_READS),
 } satisfies Record<McpToolName, ReadonlySet<string>>;
 
 /** The action a tool takes when the call names none — its schema's own default. */
 const DEFAULT_ACTION: Partial<Record<McpToolName, string>> = { forge_uploads: 'fetch' };
 
 const isServed = (name: string): name is McpToolName => Object.hasOwn(READ_ACTIONS, name);
+
+/** The surface tools that only read: finding, describing, searching and fetching (ISS-773). */
+const READ_SURFACE: ReadonlySet<string> = new Set([
+  'forge_find',
+  'forge_describe',
+  'search',
+  'fetch',
+]);
+
+/**
+ * The door tool and arguments a call names: a `forge_call { action: "<door>.<action>", args }` is the
+ * call of its door's tool with that action, classed as that call is; any other names itself.
+ */
+function doorCallOf(call: { name?: unknown; arguments?: unknown }): {
+  name: unknown;
+  args: Record<string, unknown>;
+} {
+  const args = (call.arguments ?? {}) as Record<string, unknown>;
+  if (call.name !== 'forge_call') return { name: call.name, args };
+  const id = typeof args.action === 'string' ? args.action : '';
+  const dot = id.indexOf('.');
+  if (dot <= 0) return { name: null, args: {} };
+  const door = id.slice(0, dot);
+  const inner = (args.args ?? {}) as Record<string, unknown>;
+  return {
+    name: isServed(door) ? door : `forge_${door}`,
+    args: { ...inner, action: id.slice(dot + 1) },
+  };
+}
 
 /** The class of one JSON-RPC envelope, whatever shape it turned out to be. */
 function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
@@ -73,12 +107,13 @@ function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
   if (READ_METHODS.has(method)) return 'read';
   if (method !== 'tools/call') return 'write';
 
-  const call = (params ?? {}) as { name?: unknown; arguments?: unknown };
-  if (typeof call.name !== 'string') return 'write';
-  if (!isServed(call.name)) return 'write';
-  const args = (call.arguments ?? {}) as Record<string, unknown>;
-  const action = args.action ?? DEFAULT_ACTION[call.name];
-  return typeof action === 'string' && READ_ACTIONS[call.name].has(action) ? 'read' : 'write';
+  const asked = (params ?? {}) as { name?: unknown; arguments?: unknown };
+  if (typeof asked.name === 'string' && READ_SURFACE.has(asked.name)) return 'read';
+  const { name, args } = doorCallOf(asked);
+  if (typeof name !== 'string') return 'write';
+  if (!isServed(name)) return 'write';
+  const action = args.action ?? DEFAULT_ACTION[name];
+  return typeof action === 'string' && READ_ACTIONS[name].has(action) ? 'read' : 'write';
 }
 
 /**
@@ -93,10 +128,12 @@ function writeCallsOf(envelope: unknown): string[] {
   const { method, params } = envelope as { method?: unknown; params?: unknown };
   if (typeof method !== 'string') return ['a request with no method'];
   if (method !== 'tools/call') return [method];
-  const call = (params ?? {}) as { name?: unknown; arguments?: unknown };
-  if (typeof call.name !== 'string') return ['tools/call with no tool name'];
-  const action = ((call.arguments ?? {}) as { action?: unknown }).action;
-  return [typeof action === 'string' ? `${call.name} action=${action}` : call.name];
+  const asked = (params ?? {}) as { name?: unknown; arguments?: unknown };
+  if (typeof asked.name !== 'string') return ['tools/call with no tool name'];
+  const { name, args } = doorCallOf(asked);
+  if (typeof name !== 'string') return [`${asked.name} with no <door>.<action>`];
+  const action = args.action;
+  return [typeof action === 'string' ? `${name} action=${action}` : name];
 }
 
 /**

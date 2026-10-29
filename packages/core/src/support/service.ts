@@ -18,7 +18,7 @@ import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { Refusal } from './refusals.js';
 import { checkLine, limitsOf } from './rules.js';
 import { type SessionDoor, screenForThread } from './screen.js';
-import { insertAction, type RoomRow } from './store.js';
+import { insertAction, type RoomRow, unansweredInThread } from './store.js';
 import { noteInThread, postInThread, scrubbedForRoom } from './thread.js';
 
 export type { Outcome } from './outcome.js';
@@ -137,6 +137,26 @@ export async function reply(
 ): Promise<Outcome<{ messageId: string | null }>> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
+  // a channel agent posts results only, one per request (REQ-77 BC-8): a second post with nothing
+  // new to answer is an acknowledgement or progress, and is refused by name
+  if (room.kind === 'agent' && !(await unansweredInThread(room.id, input.thread))) {
+    await insertAction({
+      roomId: room.id,
+      projectId: room.projectId,
+      conversationId,
+      thread: input.thread,
+      kind: 'refused',
+      actorKind: 'session',
+      tool: 'reply',
+      input: { text: input.text },
+      output: { code: 'SUPPORT_ONE_RESULT_PER_REQUEST' },
+    });
+    return no(
+      'SUPPORT_ONE_RESULT_PER_REQUEST',
+      '/thread',
+      'your last post in this thread is its result, and no message has arrived there since: one result per request, never an acknowledgement or progress. Nothing was posted. Keep what you have until the next message in this thread, and answer all of it in that one post.',
+    );
+  }
   const text = await scrubbedForRoom(room, input.text);
   const asker = await askerOf(room, input.thread);
   const mentions = await mentionRefusal<{ messageId: string | null }>(room, text, asker.username);

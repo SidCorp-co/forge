@@ -90,6 +90,11 @@ export { issueDisplayIds, issueKeysAndTitles } from './display-ids.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';
 export { registerFailReopen } from './fail-reopen.js';
 export {
+  type FailReturnAsk,
+  provideFailReturnPort,
+  type RequirementFailReturn,
+} from './fail-return.js';
+export {
   fileDetectedIssue,
   rewriteIssueMetadata,
   setIssueTriage,
@@ -120,6 +125,7 @@ export {
   heldIssuePrefixes,
 } from './issue-prefix-read.js';
 export { claimIssuePrefix } from './issue-prefix-service.js';
+export { JUDGING_RUN_ROLES, judgesOnly } from './issue-resting.js';
 export {
   issueIdOfKey,
   issueRouteIdParamSchema,

@@ -36,22 +36,30 @@ whose latest pass, short or fail sits on a commit the base already contains stan
 fail standing so is named a standing fail and stays a fail — as does a skipped one) and `pnpm verify` — the conformance entrypoint — and refuses a branch behind its base
 (`MERGE_BEHIND_BASE`) and a claimed criterion's probe missing or red (`MERGE_PROBE_MISSING`,
 `MERGE_PROBE_RED`); record the
-report it writes with `POST /api/issues/:id/merge-check`. The whole suite runs nightly and on each
-release cut's commit. A red there that the merge check missed widens the selection — a
+report it writes with `POST /api/issues/:id/merge-check`. The whole suite runs on `dev` once a day
+and on each `main` release cut's commit. A red there that the merge check missed widens the selection — a
 `@direct-test-of` line on the test that caught it — never the suite.
 
-**A release is cut only on a commit whose whole suite is green.** `scripts/cut-release.sh` reads the
-`whole-suite` check on its commit and refuses `RELEASE_SUITE_NOT_GREEN` otherwise; with none there
-it starts one (`-f suite=whole`, about fifteen minutes) and waits for it, so a cut ends green or red.
-A `whole-suite` check concluded `skipped`, which every other run leaves, is no record. A red one
-names the merge that broke it in its `suite-bisect` job (ISS-471).
+**A push to `dev` deploys forge-dev** (owner, 2026-10-29): `.github/workflows/deploy-dev.yml` asks
+Coolify to deploy and is green only once `/api/version` reports the pushed commit as `sourceCommit`.
+No release cut stands between a landing and forge-dev, and nothing waits on a whole suite. The same
+workflow starts the whole suite on `dev` once a day (`daily-suite`); it gates no merge and no
+deploy, and a red one names the merge that broke it in its `suite-bisect` job (ISS-471).
+
+**A `main` release is cut only on a commit whose whole suite is green.** For X.Y.Z and X.Y.Z-rc.N,
+`scripts/cut-release.sh` reads the `whole-suite` check on its commit and refuses
+`RELEASE_SUITE_NOT_GREEN` otherwise; with none there it starts one (`-f suite=whole`, about fifteen
+minutes) and waits for it, so a cut ends green or red. A `whole-suite` check concluded `skipped`,
+which every other run leaves, is no record. `X.Y.Z-dev.N` is a daily snapshot of what forge-dev
+served: it folds the fragments and records the version, and reads no suite.
 
 **The gate is CI, not your laptop.** `verify` declares the test suites and the build rather than
 running them; CI runs them, and `main` takes no merge whose **`ci-passed`** is red — the one
 required check.
 
-**Four jobs run after the merge, not before it** — `core-integration`, `whole-tree`, `images` and
-the runner's macOS and Windows legs run on every push to `main` and nightly, and `ci-passed` does
+**Four jobs run after the merge, not before it** — `core-integration` (four vitest workers),
+`whole-tree`, `images` and the runner's macOS and Windows legs run on every push to `main` and
+nightly, and `ci-passed` does
 not need them (ISS-1370, priced in `.forge/conformance.json` `$postMerge`). A red there is fixed forward
 by the next run to land: read `main`'s latest run before you push. To run them on a branch before it lands:
 `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`.
@@ -59,9 +67,8 @@ by the next run to land: read `main`'s latest run before you push. To run them o
 **On `dev`, a push and a pull request run the merge check and nothing else** — the `merge-check`
 job (ISS-472, replacing ISS-118's skip): `pnpm merge-check` on a pull request's head against the
 latest `dev`, or on a push over what it landed, and `ci-passed` is red there unless it succeeded,
-a skip included. Every other job skips there. GitHub runs a schedule on the default branch alone, which is `main`, so no nightly run has
-ever reached dev. `ci.yml`'s `nightly-fanout` starts dev's from `main`'s nightly run once this
-file is on `main`; until then dev's whole suite runs when a release cut starts it.
+a skip included. Every other job skips there. GitHub runs a schedule on the default branch alone, which is `main`, and `main`'s
+`ci.yml` has no `nightly-fanout` yet, so dev's whole suite comes from `deploy-dev.yml`'s `daily-suite`.
 
 **Green covers the jobs that RAN.** A skipped job passes `ci-passed` (but `merge-check` on `dev`), and `changes` decides which
 run: read which ran, not the aggregate alone. A suite the filter should have selected and did not
@@ -74,7 +81,7 @@ is the defect.
 **What makes a run proof is where it ran.** On `dev` the core unit and integration suites and the
 web suite are tracked again (ISS-172's QA phase; `pnpm --filter @forge/core test:integration` runs
 every migration on a throwaway Postgres, `pnpm --filter web-v2 test` runs the web suite under jsdom),
-nightly and before a release cut — not in each run, and not at a merge, where only the direct tests
+once a day in the whole suite — not in each run, and not at a merge, where only the direct tests
 run. The Rust tests remain.
 
 **The builds do not typecheck** — `@forge/contracts` and `@forge/core` build with `--noCheck`.

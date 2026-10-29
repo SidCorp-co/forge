@@ -251,6 +251,12 @@ call is refused before it runs, in these words:
 
 > Refused: nothing on this box has been told about the work you are handing out.
 
+Name the role you will dispatch it as with `--role` (`qa`, `runner`, ...): the box refuses a
+dispatch of another role onto that run. A `qa` run judges, so it may name `closed` and `dropped`
+issues, alone or beside work: it takes nothing on them, writes verdicts and moves no status, and a
+fail reopens the issue through the finding path. Any other role is refused a closed issue by name.
+Never reopen an issue so it can be judged.
+
 The tree you declare is a worktree that exists. A path that is gone — the one a run you just closed
 gave back — or one that is no worktree is refused by name, and nothing is recorded; so is a worktree
 of another repository than the checkout you work in, where the box can read which that is.

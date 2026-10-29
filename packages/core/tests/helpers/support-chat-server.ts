@@ -45,6 +45,13 @@ export class StandInRocketChat implements ChatServer {
   readonly rid = `GRP${randomUUID().slice(0, 8)}`;
   /** A second group the bot is a member of, which a channel agent's binding names beside the first (REQ-77). */
   readonly rid2 = `GRP${randomUUID().slice(0, 8)}`;
+  /** Two more groups, answered by bots outside Forge until each one's switch (REQ-77 BC-16..BC-19). */
+  readonly rid3 = `GRP${randomUUID().slice(0, 8)}`;
+  readonly rid4 = `GRP${randomUUID().slice(0, 8)}`;
+  /** Every account `groups.kick` removed, and from which group. */
+  readonly kicked: { rid: string; userId: string }[] = [];
+  /** Whether the server refuses the bot's `groups.kick`, as one without the right to remove members does. */
+  kickRefused = false;
   readonly bot = { userId: 'bot-support', authToken: `rc-bot-${randomUUID()}` };
   readonly alice: Member = { userId: 'u-alice', username: 'alice' };
   readonly bob: Member = { userId: 'u-bob', username: 'bob' };
@@ -55,6 +62,8 @@ export class StandInRocketChat implements ChatServer {
   private server!: Server;
   private wss!: WebSocketServer;
   private subs = new Set<{ ws: WebSocket; id: string }>();
+  /** Every subscription core has made to the message stream: one more each time it redials. */
+  subscriptions = 0;
   private seq = 0;
 
   async start(): Promise<void> {
@@ -110,6 +119,16 @@ export class StandInRocketChat implements ChatServer {
                 }
               : null,
         });
+      case '/api/v1/groups.kick':
+        if (this.kickRefused) {
+          return json(403, {
+            success: false,
+            error: 'Not allowed',
+            errorType: 'error-not-allowed',
+          });
+        }
+        this.kicked.push({ rid: String(body.roomId), userId: String(body.userId) });
+        return json(200, { success: true });
       case '/api/v1/chat.react':
         this.reactions.push({ messageId: body.messageId, emoji: body.emoji });
         return json(200, { success: true });
@@ -159,6 +178,7 @@ export class StandInRocketChat implements ChatServer {
         );
       }
       if (f.msg === 'sub' && f.id) {
+        this.subscriptions += 1;
         this.subs.add({ ws, id: f.id });
         ws.send(JSON.stringify({ msg: 'ready', subs: [f.id] }));
       }
@@ -192,7 +212,7 @@ export class StandInRocketChat implements ChatServer {
   }
 
   private rooms(): string[] {
-    return [this.rid, this.rid2];
+    return [this.rid, this.rid2, this.rid3, this.rid4];
   }
 
   private nameOf(rid: string): string {

@@ -8,22 +8,44 @@ import type { Tx } from '../db/client.js';
  * When each issue last entered `reopen`, read from the move history (`kernel_transitions`); an
  * issue never reopened is absent. A verdict at or before that instant is not current evidence:
  * the release hold and every coverage reader read it as not judged.
+ *
+ * A reopen undone is none (ISS-760): one whose first arrival at `awaiting_release` or `closed` after
+ * it came straight from `reopen` — the way back a requirement-level fail's reopen takes once the
+ * fail is routed past the issue, or a design-only close — rejected no build, since nothing landed
+ * between, so the verdicts before it count again. `asReturned` names issues read as if that return
+ * happened now: their reopens with no landed arrival since are undone too (the return's own guard,
+ * `fail-return.ts`, which asks how the issue would stand once back).
  */
 export async function reopenedAtOf(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
+  asReturned: readonly string[] = [],
 ): Promise<Map<string, Date>> {
   if (issueIds.length === 0) return new Map();
+  const returned =
+    asReturned.length === 0
+      ? sql`false`
+      : sql`t.entity_id IN (${sql.join(
+          asReturned.map((id) => sql`${id}::uuid`),
+          sql`, `,
+        )})`;
   const rows = (await executor.execute(sql`
-    SELECT entity_id, max(created_at) AS at
-      FROM kernel_transitions
-     WHERE entity = 'issue'
-       AND to_status = 'reopen'
-       AND entity_id IN (${sql.join(
+    SELECT t.entity_id, max(t.created_at) AS at
+      FROM kernel_transitions t
+     WHERE t.entity = 'issue'
+       AND t.to_status = 'reopen'
+       AND t.entity_id IN (${sql.join(
          issueIds.map((id) => sql`${id}::uuid`),
          sql`, `,
        )})
-     GROUP BY entity_id`)) as unknown as Array<{ entity_id: string; at: Date | string }>;
+       AND NOT COALESCE((
+             SELECT u.from_status = 'reopen' FROM kernel_transitions u
+              WHERE u.entity = 'issue' AND u.entity_id = t.entity_id
+                AND u.to_status IN ('awaiting_release', 'closed')
+                AND u.created_at > t.created_at
+              ORDER BY u.created_at, u.id LIMIT 1),
+           ${returned})
+     GROUP BY t.entity_id`)) as unknown as Array<{ entity_id: string; at: Date | string }>;
   return new Map([...rows].map((r) => [r.entity_id, new Date(r.at)]));
 }
 

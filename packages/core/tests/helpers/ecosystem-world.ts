@@ -66,13 +66,13 @@ export function testEnv(): void {
  * pg-boss over the test database with every outbox consumer working, as the server boots it: a
  * route that enqueues reaches a started queue, and an emitted event reaches its bell and its wake.
  */
-export async function startQueue(): Promise<void> {
+export async function startQueue(options: { pollSeconds?: number } = {}): Promise<void> {
   const { startBoss } = await import('../../src/queue/boss.js');
   await startBoss();
   const { declareOutboxQueues, startOutboxWorker } = await import('../../src/outbox/index.js');
   await declareOutboxQueues();
   (await import('../../src/outbox-consumers.js')).registerOutboxConsumers();
-  await startOutboxWorker();
+  await startOutboxWorker(options);
 }
 
 /**

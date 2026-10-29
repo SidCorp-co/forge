@@ -25,6 +25,10 @@ unused import behind `cfg(windows)`. Only runtime differences — CRLF, path sep
 symlinks, the class of #811 and #813 — wait for `runner-platforms` after the merge. The ending
 condition is the same.
 
+`core-integration` runs four vitest workers (`VITEST_MAX_WORKERS: '4'` on the job): on GitHub's
+4-CPU runner `packages/core/vitest.integration.config.ts`'s own count reads one, and each file works
+in its own database cloned from the migrated template, so four share the run's one Postgres.
+
 **The four run on a branch before it lands when somebody asks**:
 `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`. A dispatched run takes all four
 — `core-integration`, `whole-tree`, `images` and both `runner-platforms` legs — with no path filter
@@ -872,7 +876,7 @@ The record is two places: `CHANGELOG.md`, which holds released version sections 
 `changelog.d/<name>.<section>.md` — the name the branch or issue that writes it, the section one of
 `added`, `changed`, `fixed`, `removed`, `security`. `scripts/cut-release.sh` folds the fragments into
 the new version section through `lib/assemble-release.mjs` and deletes them in the commit that ships:
-the release commit, or, where the branch moved while the whole suite ran, the merge onto it, which
+the release commit, or, where the branch moved while the cut ran, the merge onto it, which
 folds every fragment the moved head carries — landed meanwhile, edited or deleted since the cut —
 into the same version. A commit about to ship that still carries a path under `changelog.d/` but its
 README, or a fragment the fold refuses, stops the cut `RELEASE_FRAGMENT_UNFOLDED`, naming each, with
@@ -1159,11 +1163,20 @@ last green run (ISS-471's independent judge, comment 9da9b859).
 
 | Act | Where it runs | What it reads | What it answers |
 |---|---|---|---|
-| `gate --commit <sha> --branch <b> [--dispatch [--wait <min> --poll <s>]]` | `cut-release.sh` step 1b, on the box cutting | the `whole-suite` check on the commit; the CI runs in flight on it; a red run's jobs | 0 green · 1 `RELEASE_SUITE_NOT_GREEN` · 2 could not read |
+| `gate --commit <sha> --branch <b> [--dispatch [--wait <min> --poll <s>]]` | `cut-release.sh` step 1b for `main`'s X.Y.Z and -rc.N, on the box cutting | the `whole-suite` check on the commit; the CI runs in flight on it; a red run's jobs | 0 green · 1 `RELEASE_SUITE_NOT_GREEN` · 2 could not read |
 | `bisect --commit <sha> --run <id>` | `suite-bisect`, on a red whole-suite run | the run's jobs that failed on their own steps; the last green whole-suite run on any commit the branch's last first-parent landings brought in; the check runs recorded on each landing since | the merge that broke it and the issue it names, or the range and every merge in it |
 | `fanout --ran-on <branch>` | `nightly-fanout`, on a schedule | `on.push.branches` of `ci.yml` | a whole-suite dispatch onto every other gated branch |
 
-**A cut ends green or red, not "come back later".** `cut-release.sh` runs the gate with
+**A dev cut reads no suite (owner, 2026-10-29).** `X.Y.Z-dev.N` is a snapshot of what forge-dev
+served, cut once a day: it folds the fragments and records the version, and reads, starts and waits
+on no whole-suite run, so a red suite on dev stops neither a cut nor a deploy. Every push to `dev`
+deploys forge-dev (`.github/workflows/deploy-dev.yml`, which waits until `/api/version` reports the
+pushed commit as `sourceCommit`), and the same workflow's `daily-suite` job starts the whole suite on
+dev's head when no whole-suite run (titled `CI (whole suite)` by `ci.yml`'s `run-name`) started on
+dev in the last 22 hours. A red one is named by its `suite-bisect` and fixed forward. The tag
+`dev-vX.Y.Z-dev.N` stays the dispatcher's, cut once forge-dev serves the release (docs/adr/0002).
+
+**A main cut ends green or red, not "come back later".** For `main`'s lines `cut-release.sh` runs the gate with
 `--dispatch --wait`: with no whole-suite run on the commit it starts one on the branch head (which
 is the commit), and waits for it (`CUT_SUITE_WAIT_MINUTES`, 40 by default, read every
 `CUT_SUITE_POLL_SECONDS`, 30). A run already in flight is waited on, never doubled. A red run where
@@ -1216,15 +1229,17 @@ for a cancelled leg, so its jobs' own checks on the commit are read as on any ot
 another name is not read, since a merge check runs a selection and may not have run the test now
 failing. The broken merge lies after the last good landing and at or before the first bad one after
 it; where no record separates the landings between, the range is named whole. On dev, where a push
-runs only the merge check, whose check run has a name of its own, the records are the whole-suite
-runs each cut starts, so the range is the landings between two cuts.
+runs only the merge check, whose check run has a name of its own, the records are the daily
+whole-suite runs, so the range is the landings between two of them.
 
-**GitHub runs a schedule on the default branch only.** The nightly run is `main`'s, and dev's comes
-from `main`'s `nightly-fanout` — so it starts once this `ci.yml` is on `main`. A dispatch made with
-`GITHUB_TOKEN` is the one event that token may start a run with, which is why the fan-out needs no
-other credential. Once this `ci.yml` is on `main`, `main`'s cuts are gated the same way: a pushed
-commit there carries a skipped `whole-suite` check, which is no record, so its first cut starts the
-whole suite and waits for it.
+**GitHub runs a schedule on the default branch only.** The nightly run is `main`'s; `main`'s
+`nightly-fanout` would start dev's, but `main`'s `ci.yml` does not carry it yet, so dev's whole suite
+comes from `deploy-dev.yml`'s `daily-suite` on the first push of the day. Once `main` carries the
+fan-out, its dispatch is a whole-suite run that job reads, so dev still gets one a day. A dispatch
+made with `GITHUB_TOKEN` is the one event that token may start a run with, which is why neither needs
+another credential. `main`'s cuts are gated as the table says: a pushed commit there carries a
+skipped `whole-suite` check, which is no record, so its first cut starts the whole suite and waits
+for it.
 
 ## check-source-language.mjs — English-only source policy
 

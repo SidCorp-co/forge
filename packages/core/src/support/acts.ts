@@ -12,10 +12,12 @@ import { moveIssue, proposeBuild, proposeDeploy, runCommand } from './ability-ac
 import { type RoomHint, sessionCaller } from './access.js';
 import { announce, inferMember, noteCommonIssue, routeNeed, ruleFromMessage } from './channel.js';
 import { sessionChannelView } from './channel-read.js';
+import { checkResult } from './checks.js';
 import { settleLatency } from './delivery.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { no } from './outcome.js';
+import { askOwner } from './owner-ask.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose } from './service.js';
@@ -81,7 +83,9 @@ export type SupportActInput =
       title?: string | undefined;
       text: string;
     }
-  | { action: 'announce'; text: string };
+  | { action: 'announce'; text: string }
+  | { action: 'ask_owner'; thread: string; question: string; record?: string | undefined }
+  | { action: 'check_result'; check: string; finding: string | null };
 
 /**
  * One act of a room's session. `rid` names the group a channel agent acts in where the act names no
@@ -116,13 +120,20 @@ const ANY_ROOM = new Set<SupportActInput['action']>(['search', 'tools']);
 
 /** What an act names that places it in one group of a channel agent's (REQ-77). */
 function hintOf(input: SupportActInput, rid: string | undefined): RoomHint {
-  const named = input as { thread?: unknown; threads?: unknown; message?: unknown };
+  const named = input as {
+    thread?: unknown;
+    threads?: unknown;
+    message?: unknown;
+    check?: unknown;
+  };
   const thread =
     typeof named.thread === 'string'
       ? named.thread
-      : Array.isArray(named.threads) && typeof named.threads[0] === 'string'
-        ? named.threads[0]
-        : undefined;
+      : typeof named.check === 'string'
+        ? named.check
+        : Array.isArray(named.threads) && typeof named.threads[0] === 'string'
+          ? named.threads[0]
+          : undefined;
   return {
     rid,
     thread,
@@ -141,6 +152,7 @@ const POSTS = new Set<SupportActInput['action']>([
   'deploy',
   'build',
   'route',
+  'ask_owner',
 ]);
 
 /**
@@ -179,6 +191,7 @@ const SHARED = new Set<SupportActInput['action']>([
   'common_issue',
   'route',
   'announce',
+  'ask_owner',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -257,5 +270,11 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     }
     case 'announce':
       return announce(room, { text: input.text });
+    case 'ask_owner': {
+      const { action: _, ...request } = input;
+      return askOwner(room, request);
+    }
+    case 'check_result':
+      return checkResult(room, { check: input.check, finding: input.finding });
   }
 }

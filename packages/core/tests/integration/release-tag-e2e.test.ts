@@ -77,7 +77,7 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
 
 beforeAll(async () => {
   testEnv();
-  await startQueue();
+  await startQueue({ pollSeconds: 0.5 });
 }, 120_000);
 
 afterAll(async () => {

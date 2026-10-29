@@ -1,7 +1,7 @@
 import type { MintedGitCredential } from '../index.js';
 import { mintInstallationToken } from './octokit.js';
 import { githubHostOf } from './source-host.js';
-import type { GitHubConfig, GitHubSecrets } from './types.js';
+import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 /** `owner/repo` out of git's helper path, or null for anything that is not exactly two segments. */
 function parseRepoPath(raw: string): { owner: string; repo: string } | null {
@@ -40,6 +40,10 @@ export const githubGitCredential: MintedGitCredential = {
     const { owner, repo } = config as GitHubConfig;
     return `${owner ?? '?'}/${repo ?? '?'}`;
   },
+  hostsOf(config) {
+    const api = typeof config.apiBaseUrl === 'string' ? config.apiBaseUrl : GITHUB_API_BASE;
+    return [githubHostOf(config), new URL(api).host.toLowerCase()];
+  },
   async mint({ config, secrets }) {
     const c = config as GitHubConfig;
     const s = secrets as GitHubSecrets;
@@ -51,12 +55,22 @@ export const githubGitCredential: MintedGitCredential = {
     if (!s.appId || !s.privateKey) {
       throw new Error(`the connection behind ${c.owner}/${c.repo} holds no GitHub App credential`);
     }
-    const { token, expiresAt } = await mintInstallationToken({
-      appId: s.appId,
-      privateKey: s.privateKey,
-      installationId: c.installationId,
-      ...(c.apiBaseUrl ? { apiBaseUrl: c.apiBaseUrl } : {}),
-    });
+    if (!c.owner || !c.repo) {
+      throw new Error(
+        `this GitHub binding names no repository (owner ${c.owner ?? 'none'}, repo ${c.repo ?? 'none'}), and a git credential is minted for one repository only, never installation-wide — pick the repository on the project's Integrations page`,
+      );
+    }
+    // narrowed to the binding's one repository: the installation may reach others, and a box holds
+    // this token while git runs (ISS-765)
+    const { token, expiresAt } = await mintInstallationToken(
+      {
+        appId: s.appId,
+        privateKey: s.privateKey,
+        installationId: c.installationId,
+        ...(c.apiBaseUrl ? { apiBaseUrl: c.apiBaseUrl } : {}),
+      },
+      [c.repo],
+    );
     return {
       username: 'x-access-token',
       password: token,

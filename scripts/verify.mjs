@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { baseRef } from './lib/base-branch.mjs';
 import { ROOT } from './lib/gate.mjs';
@@ -187,7 +188,7 @@ function verdict(check, status, out) {
   return { ...check, code: status ?? 1, out };
 }
 
-function runCheck(check, base) {
+function runCheck(check, base, env = process.env) {
   const missing = absentPrerequisites(ROOT, check.needs);
   if (missing.length > 0) {
     return Promise.resolve({
@@ -210,7 +211,7 @@ function runCheck(check, base) {
   }
   const argv = check.json ? [...cmd, '--json'] : cmd;
   return new Promise((done) => {
-    const child = spawn(argv[0], argv.slice(1), { cwd: ROOT });
+    const child = spawn(argv[0], argv.slice(1), { cwd: ROOT, env });
     let out = '';
     child.stdout.on('data', (d) => {
       out += d;
@@ -227,7 +228,7 @@ function runCheck(check, base) {
         why: `could not spawn: ${err.message}`,
       }),
     );
-    child.on('close', (status) => done(verdict(check, status, out)));
+    child.on('close', (status) => done({ ...verdict(check, status, out), status }));
   });
 }
 
@@ -255,7 +256,7 @@ function groupGate() {
   };
 }
 
-async function runAll(checks, base, width) {
+async function runAll(checks, base, width, env = process.env) {
   const results = new Array(checks.length);
   const tty = process.stdout.isTTY;
   const inGroup = groupGate();
@@ -263,7 +264,7 @@ async function runAll(checks, base, width) {
   let landed = 0;
   const worker = async () => {
     for (let i = next++; i < checks.length; i = next++) {
-      results[i] = await inGroup(checks[i].exclusive, () => runCheck(checks[i], base));
+      results[i] = await inGroup(checks[i].exclusive, () => runCheck(checks[i], base, env));
       landed += 1;
       if (tty) process.stdout.write(`  … ${landed}/${checks.length} checks${' '.repeat(20)}\r`);
     }
@@ -547,7 +548,32 @@ console.log(
   `verify: ${CHECKS.length} checks against ${base.slice(0, 8)} on ${BASE_REF} — every check, in the form the whole gate has always run it`,
 );
 const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
-const results = await runAll(CHECKS, base, WIDTH);
+// A check that reads the others' results (conformance-status, which measures each axis by the same
+// probes) runs once they have exited, handed each exit status by its command line.
+const first = CHECKS.filter((c) => !c.readsResults);
+const last = CHECKS.filter((c) => c.readsResults);
+const ran = await runAll(first, base, WIDTH);
+const handOff = mkdtempSync(join(tmpdir(), 'verify-results-'));
+const resultsFile = join(handOff, 'results.json');
+writeFileSync(
+  resultsFile,
+  JSON.stringify(
+    Object.fromEntries(
+      ran.filter((r) => typeof r.status === 'number').map((r) => [r.cmd.join(' '), r.status]),
+    ),
+  ),
+);
+let after;
+try {
+  after = await runAll(last, base, WIDTH, { ...process.env, FORGE_VERIFY_RESULTS: resultsFile });
+} finally {
+  rmSync(handOff, { recursive: true, force: true });
+}
+const byCheck = new Map([
+  ...first.map((c, i) => [c, ran[i]]),
+  ...last.map((c, i) => [c, after[i]]),
+]);
+const results = CHECKS.map((c) => byCheck.get(c));
 
 const said = [];
 process.exit(report(results, { code: ciParity(true, said), said }));

@@ -81,6 +81,12 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"SUPPORT_GRANT_TARGET_UNKNOWN",
 	/** `owner_mode` granted on a block other than a channel agent's (REQ-77 BC-20). */
 	"SUPPORT_OWNER_MODE_NOT_AGENT",
+	/** Scheduled checks on a block other than a channel agent's (REQ-77 BC-13). */
+	"SUPPORT_CHECK_NOT_AGENT",
+	/** A scheduled check names a group the binding does not answer (REQ-77 BC-13). */
+	"SUPPORT_CHECK_ROOM_UNKNOWN",
+	/** A group an outside bot answers joins the channel agent before its switch may run (REQ-77 BC-16). */
+	"AGENT_SWITCH_NOT_READY",
 ] as const;
 
 /** Every code a project-config document write answers with. */
@@ -136,6 +142,8 @@ export const TESTING_SECRETS_REFUSAL_CODES = [
 	"TESTING_SECRETS_RUN_ENDED",
 	/** The run named is one this box declared, and core has not admitted it (its declaration is queued). */
 	"TESTING_SECRETS_RUN_NOT_ADMITTED",
+	/** A box credential names an id core holds no run of: a run declared moments ago that the box's sweep has not recorded at core yet, or no run of this box at all. */
+	"TESTING_SECRETS_RUN_NOT_RECORDED",
 	/** The run named works another project than the one the credential is bound to. */
 	"TESTING_SECRETS_FOREIGN_RUN",
 	"TESTING_SECRETS_JOB_AMBIGUOUS",

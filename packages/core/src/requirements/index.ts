@@ -20,6 +20,7 @@ export {
 export { draftRequirement } from './draft-linked.js';
 export { draftPictureRefusals, type Landing, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
+export { requirementFailReturn } from './fail-return.js';
 export { feedbackLinksOf } from './feedback-links.js';
 export { nodesOfDesign } from './follow-reads.js';
 export { linkRefusalOn, plannedRevisionFor, requirementOfIssue } from './issue-links.js';

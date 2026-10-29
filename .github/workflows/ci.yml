@@ -1,4 +1,7 @@
 name: CI
+# A whole-suite run says so in its title, which `.github/workflows/deploy-dev.yml` reads to start at
+# most one a day on dev; every other run keeps the plain name.
+run-name: ${{ (github.event_name == 'schedule' || inputs.suite == 'whole') && 'CI (whole suite)' || 'CI' }}
 
 # This repo is a pnpm workspace. CI contract:
 #   1. ALL jobs that touch a workspace package call the composite action
@@ -554,10 +557,16 @@ jobs:
   # no production, ships fast. This suite asserts real-Postgres behavior and
   # applies every migration on a fresh DB, so a red here is fixed forward by
   # whichever run lands next, before anything else.
+  # Four workers (2026-10-29): on the 4-CPU runner vitest.integration.config.ts's `workers()` reads
+  # one, so the 404 files ran one at a time, 46.5 minutes of which 17.5 were per-file setup. Each file
+  # works in its own database cloned from the migrated template (tests/helpers/file-database.ts), so
+  # four run at once against the run's one Postgres.
   core-integration:
     needs: changes
     if: needs.changes.outputs.scoped != 'true' && github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.core == 'true')
     runs-on: ubuntu-latest
+    env:
+      VITEST_MAX_WORKERS: '4'
     steps:
       # fetch-depth: 0 — the template seeds rows before the migrations this tree adds to its merge
       # target, and a dispatched branch's checkout holds no ref for that target without it.

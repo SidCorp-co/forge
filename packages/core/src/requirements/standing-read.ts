@@ -295,8 +295,11 @@ export async function standingsOf(
   rows: readonly StandingRow[],
   viewer: StandingViewer | null,
   held?: StandingPreload,
-  /** Facts about the project the caller read in a statement it sends anyway; absent, read here. */
-  known: { runnerBound?: boolean } = {},
+  /**
+   * Facts about the project the caller read in a statement it sends anyway; absent, read here.
+   * `asReturned`: issues read as if back from their reopen now, the way back's guard (ISS-760).
+   */
+  known: { runnerBound?: boolean; asReturned?: readonly string[] } = {},
 ): Promise<Map<string, RequirementStanding>> {
   if (rows.length === 0) return new Map();
   const now = new Date();
@@ -386,7 +389,7 @@ export async function standingsOf(
   const [people, issueCriteria, feedbackLinks, times, changedTraced, work, own] = await Promise.all(
     [
       peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
-      issueCriteriaOf(linkedIds),
+      issueCriteriaOf(linkedIds, db, known.asReturned),
       feedbackLinksOf(projectId, ids),
       issueTimesOf(linked),
       changedTracedOf(db, linkedIds),

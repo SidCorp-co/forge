@@ -50,3 +50,22 @@ interface SupportRoomHandler {
 const supportSlot = portSlot<SupportRoomHandler>('rocketchat', 'provideSupportRoomHandler');
 export const provideSupportRoomHandler = supportSlot.provide;
 export const supportRoomHandler = supportSlot.get;
+
+/**
+ * What the support domain answers the binding door with when a group an outside bot answers is to
+ * join a channel agent (REQ-77 BC-16): the refusals naming what still stands before its switch, or
+ * none once the switch is running. Handed in at boot, so this directory reads no support table.
+ */
+export interface AgentSwitchGate {
+  refusals(args: {
+    projectId: string;
+    /** The groups the write adds to the channel agent, with their index in `rids`. */
+    joining: { rid: string; i: number }[];
+    /** The groups the binding held in `outsideRids` before this write. */
+    heldOutside: readonly string[];
+  }): Promise<{ path: string; detail: string }[]>;
+}
+
+const switchGateSlot = portSlot<AgentSwitchGate>('rocketchat', 'provideAgentSwitchGate');
+export const provideAgentSwitchGate = switchGateSlot.provide;
+export const agentSwitchGate = switchGateSlot.get;

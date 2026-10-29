@@ -202,6 +202,8 @@ failed deploy or a rollback raises a yolo project to standard, and only a person
 
 **A failed check goes to \`reopen\`, from \`awaiting_release\` or \`closed\`.** Inside \`in_progress\` a failed test is not a status at all: the run goes back to its build step.
 
+**A requirement-level fail's reopen goes back the way it came.** An issue a fail recorded at the requirement sent to \`reopen\` moves straight back to the status it was reopened from, \`awaiting_release\` or \`closed\`, with \`POST /api/issues/:id/transition\`, once that fail is routed past it: its own criteria tracing the BC all pass, read as they stood at its landing, and another issue owns what the BC lacks. The move posts the note an issue the fail stays on gets, and the verdicts the reopen voided count again. Any other reopen is refused \`REOPEN_NOT_BY_REQUIREMENT_FAIL\`, the other landed status \`ILLEGAL_TRANSITION\` naming the one it came from, a criterion of its own that does not pass \`REOPEN_CRITERIA_NOT_PASSING\` naming it, and a fail no other issue owns \`REOPEN_FAIL_UNOWNED\`: each of those is worked from \`reopen\`.
+
 **The legacy statuses.** \`confirmed\`, \`clarified\`, \`developed\`, \`testing\`, \`tested\`, \`releasing\` and \`waiting\` are not statuses: the first six were steps of a run written as statuses, which is how an issue came to rest at \`developed\` with no owner of the next move, and \`waiting\` folded into \`needs_info\` with its kind kept. Every door refuses each by name and maps none: a move, a list filter or a search filter naming one answers 422 \`ISSUE_STATUS_LEGACY\`, each refusal carrying \`received\` and \`validStatuses\`. A run's progress inside a status is \`workState.step\`.
 
 ### What is enforced

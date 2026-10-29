@@ -244,10 +244,25 @@ function mintRefusal(status: number, installationId: number): string {
  */
 export async function mintInstallationToken(
   cred: AppCredential & { installationId: number },
+  /**
+   * The repositories (names under the installation's account) the token reaches; absent, every
+   * repository the installation was granted, which only core's own server-side clients ask for. An
+   * empty list names no repository and is refused: GitHub reads it as all of them (ISS-765).
+   */
+  repositoryNames?: readonly string[],
 ): Promise<{ token: string; expiresAt: number }> {
+  if (repositoryNames !== undefined && repositoryNames.filter((n) => n.trim()).length === 0) {
+    throw new GitHubAuthError(
+      400,
+      `a token narrowed to repositories names no repository, so installation ${cred.installationId} would mint one reaching every repository it was granted; nothing was minted`,
+    );
+  }
   let auth: { token: string; expiresAt?: string };
   try {
-    auth = (await installationOctokit(cred).auth({ type: 'installation' })) as {
+    auth = (await installationOctokit(cred).auth({
+      type: 'installation',
+      ...(repositoryNames ? { repositoryNames: [...repositoryNames] } : {}),
+    })) as {
       token: string;
       expiresAt?: string;
     };

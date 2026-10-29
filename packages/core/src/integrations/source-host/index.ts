@@ -12,6 +12,7 @@ export {
   readGitRelayTicket,
 } from './git-relay.js';
 export {
+  gitHostsOfProject,
   gitRemoteThroughForge,
   isHttpsGitUrl,
   mintGitCredentialForDevice,

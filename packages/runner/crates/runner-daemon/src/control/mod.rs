@@ -96,6 +96,9 @@ enum Request {
         project_id: String,
         issue_keys: Vec<String>,
         worktree_path: String,
+        /// The shipped role the master will dispatch for this run. Absent from an older client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        role: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     RunChoice {
@@ -497,14 +500,18 @@ async fn serve_request(
             project_id,
             issue_keys,
             worktree_path,
+            role,
             ..
         } => {
             run_declare_as(
                 ctl,
                 holder,
-                &project_id,
-                &issue_keys,
-                &worktree_path,
+                runs::Declaration {
+                    project_id: &project_id,
+                    issue_keys: &issue_keys,
+                    worktree_path: &worktree_path,
+                    role: role.as_deref(),
+                },
                 session_id,
                 peer,
             )

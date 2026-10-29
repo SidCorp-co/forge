@@ -11,6 +11,7 @@ import { runHostCommand } from '../runners/index.js';
 import { boxOfRoom } from './box.js';
 import { buildBaseOf } from './build.js';
 import { classifyCommand } from './command-class.js';
+import { whoConfirms } from './confirm-role.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import type { OpsOutcome } from './ops-types.js';
 import { move } from './ops-writes.js';
@@ -23,11 +24,9 @@ async function grantOf(room: RoomRow): Promise<SupportGrants> {
   return grantsOf(await supportConfigOf(room));
 }
 
-const confirmersOf = (g: SupportGrants) => (g.confirmers ?? []).map((c) => `@${c}`).join(', ');
-
 /** What every confirmer-gated prompt ends with: who confirms, how, and for how long. */
-const confirmTail = (g: SupportGrants, code: string) =>
-  `${confirmersOf(g)} can confirm it: reply \`confirm ${code}\` to go ahead, or \`cancel ${code}\`. It expires in 15 minutes.`;
+const confirmTail = (room: RoomRow, g: SupportGrants, code: string) =>
+  `${whoConfirms(room, g)} can confirm it: reply \`confirm ${code}\` to go ahead, or \`cancel ${code}\`. It expires in 15 minutes.`;
 
 /** The member a confirmer-gated change is offered for: the thread's latest writer. */
 async function askingMember(room: RoomRow, thread: string) {
@@ -101,10 +100,10 @@ export async function runCommand(
       thread: input.thread,
       asker,
       change: { kind: 'command' },
-      waitsOn: confirmersOf(grants),
+      waitsOn: whoConfirms(room, grants),
       args: { host: input.host, command: input.command, why: cls.why },
       prompt: (code) =>
-        `I would run on ${input.host}: \`${input.command}\`. It can change the host (${cls.why}), so it waits for a confirmer. ${confirmTail(grants, code)}`,
+        `I would run on ${input.host}: \`${input.command}\`. It can change the host (${cls.why}), so it waits for a confirmer. ${confirmTail(room, grants, code)}`,
     });
     return out.ok
       ? { ok: true, value: { pending: true, code: out.code, waitsOn: grants.confirmers } }
@@ -180,10 +179,10 @@ export async function proposeDeploy(
     thread: input.thread,
     asker,
     change: { kind: 'deploy' },
-    waitsOn: confirmersOf(grants),
+    waitsOn: whoConfirms(room, grants),
     args: { target: input.target, label },
     prompt: (code) =>
-      `I would deploy ${label} now. A production target still waits for its approver after this. ${confirmTail(grants, code)}`,
+      `I would deploy ${label} now. A production target still waits for its approver after this. ${confirmTail(room, grants, code)}`,
   });
   return out.ok ? { ok: true, value: { pending: true, code: out.code } } : out;
 }
@@ -206,10 +205,10 @@ export async function proposeBuild(
     thread: input.thread,
     asker,
     change: { kind: 'build' },
-    waitsOn: confirmersOf(grants),
+    waitsOn: whoConfirms(room, grants),
     args: { ...input, base: base.value.base },
     prompt: (code) =>
-      `I would commit my changes on ${input.branch}, push it and open a change request into ${base.value.base}: "${input.title}". Nothing merges into production from here. ${confirmTail(grants, code)}`,
+      `I would commit my changes on ${input.branch}, push it and open a change request into ${base.value.base}: "${input.title}". Nothing merges into production from here. ${confirmTail(room, grants, code)}`,
   });
   return out.ok ? { ok: true, value: { pending: true, code: out.code } } : out;
 }

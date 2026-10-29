@@ -50,6 +50,25 @@ export interface LiveBuildHolds {
    * names no landed commit.
    */
   judgedOn?: string | null;
+  /**
+   * Beside `landed`, the landings Forge recorded at the commits the requirement's own verdicts name
+   * and of its issues (`recorded-landings.ts:recordedLandingsOf`); absent where none was read.
+   */
+  recordedLandings?: RecordedLandings;
+}
+
+/** A landing Forge recorded: the issue whose merge mark names it, its commit, time and target branch. */
+export interface RecordedLanding {
+  issueKey: string;
+  sha: string;
+  at: Date;
+  target: string | null;
+}
+
+/** Per commit (lower case) the latest landing recorded at it, and per issue id (lower case) its own or null. */
+export interface RecordedLandings {
+  named: ReadonlyMap<string, RecordedLanding>;
+  issues: ReadonlyMap<string, RecordedLanding | null>;
 }
 
 /** One issue's landed build, or why it has none. */
@@ -275,4 +294,46 @@ function atLanding(commit: string, landed: LandedHolds | null): Resolved {
     inLiveBuild: false,
     notCounted: `${away}: judge it again at ${short(landed.sha)}`,
   };
+}
+
+/**
+ * A verdict recorded at a requirement on a project with no production environment, at `commit`
+ * (catalog-fe REQ-7 BC-2, 2026-10-30: a pass at the served dev build read not judged for ever). It
+ * counts where the commit is a landing Forge recorded, on the branch every traced issue landed on, at
+ * or after each of their landings: a build Forge itself recorded reaching the judged environment
+ * with all of that work behind it. Nothing is inferred from a host; where a record is missing, the
+ * reason names it.
+ */
+export function atRecordedLanding(
+  commit: string,
+  traced: readonly string[],
+  recorded: RecordedLandings | undefined,
+): Resolved {
+  const judged = `judged at commit ${short(commit)}`;
+  const refused = (why: string): Resolved => ({
+    commit,
+    inLiveBuild: null,
+    notCounted: `${judged}, ${why}`,
+  });
+  if (!recorded) return refused('and no landing Forge recorded was read to place it');
+  const at = recorded.named.get(commit.toLowerCase());
+  if (!at) {
+    return refused(
+      "which no landing Forge recorded on this project names (no issue's merge mark is at it), so no record says the judged environment served it",
+    );
+  }
+  const where = `${at.issueKey}'s landing on \`${at.target ?? 'no recorded branch'}\` at ${at.at.toISOString()}`;
+  for (const id of traced) {
+    const own = recorded.issues.get(id.toLowerCase()) ?? null;
+    if (!own) return refused(`${where}, and a traced issue records no landing of its own`);
+    if (own.target !== at.target) {
+      return refused(
+        `${where}, and ${own.issueKey} landed on \`${own.target ?? 'no recorded branch'}\`, another branch`,
+      );
+    }
+    if (own.at > at.at) {
+      return refused(`${where}, before ${own.issueKey}'s landing at ${own.at.toISOString()}`);
+    }
+  }
+  return { commit, inLiveBuild: null, notCounted: null };
 }

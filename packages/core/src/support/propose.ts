@@ -9,6 +9,8 @@ import {
   planCall,
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
+import { changeWaitsOnRole, whoConfirms } from './confirm-role.js';
+import { grantsOf, supportConfigOf } from './grants.js';
 import { type RecordRequest, threadLink } from './record.js';
 import { type Refusal, refusalOf } from './refusals.js';
 import { confirmPrompt, mintConfirmCode, recordPrompt } from './rules.js';
@@ -186,11 +188,16 @@ export async function proposeFix(input: {
       refusals: [refusalOf(planned.refusal.code, '/tool', planned.refusal.detail)],
     };
   }
+  // in a channel agent's group a fix waits on a member whose role allows it, not on its asker (BC-10)
+  const confirmers = changeWaitsOnRole(room)
+    ? whoConfirms(room, grantsOf(await supportConfigOf(room)))
+    : undefined;
   return offerChange({
     room,
     thread: input.thread,
     asker: asked.asker,
     change: { kind: 'fix', tool: planned.plan.tool.name },
+    ...(confirmers ? { waitsOn: confirmers } : {}),
     args: input.args,
     prompt: (code) =>
       confirmPrompt({
@@ -198,6 +205,7 @@ export async function proposeFix(input: {
         summary: planned.plan.tool.summary,
         args: input.args,
         code,
+        ...(confirmers ? { confirmers } : {}),
       }),
   });
 }

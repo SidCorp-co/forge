@@ -47,7 +47,7 @@ const SETTINGS_KNOWLEDGE_MERGE = `- **project settings** — \`projects/<project
 const REPORTS_AND_ECOSYSTEM = `- **feedback about Forge** — \`forge/feedback -X POST -d '{"kind":"change_request","title":"...","whereSeen":"forge claim --next"}'\` files friction with Forge itself (its CLI, routes, guides, skills) into Forge's own home project as you, with your live job as where it came from (\`body\`, \`severity\`, \`signalKey\` and \`clientVersion\` are optional; a report whose \`signalKey\` an open item holds joins it); \`forge/feedback\` lists yours and how each is going. A problem with this project's own product is its feedback, \`projects/<projectId>/feedback\`.
 - **the ecosystem channel and builder runs** — \`projects/<projectId>/channel/…\`, \`projects/<projectId>/links\`, \`projects/<projectId>/builder-runs\` and \`projects/<projectId>/interface\`; \`guides/ecosystem-inbox.md\` is the order of the work.`;
 
-const MCP_TAIL = `Of the Forge MCP server's tools, a run needs only what no shell command can do: \`forge_uploads\` reads an attachment as a viewable image block, and a connected integration's block below names the tools it needs — those are correct as written.`;
+const MCP_TAIL = `Of the Forge MCP server's tools, a run needs only what no shell command can do: \`forge_call { action: "uploads.fetch", args }\` reads an attachment as a viewable image block, and a connected integration's block below names the tools it needs — those are correct as written.`;
 
 export const DRIVE_TOOL_REFERENCE_TEXT = `${REACHING_FORGE_HEAD}
 

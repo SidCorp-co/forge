@@ -124,6 +124,7 @@ fn declare(led: &mut Ledger, run_id: &str, wt: &Path) {
         worktree_path: wt.to_path_buf(),
         boot_id: "boot-1".into(),
         issue_keys: vec!["ISS-23".into()],
+        role: None,
     })
     .unwrap();
 }

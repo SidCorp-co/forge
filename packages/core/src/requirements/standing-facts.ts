@@ -14,6 +14,7 @@ import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.
 import { reopenedAtOf, verdictByBuilderSql } from '../issues/index.js';
 import { waivedOf } from './acceptance-waived.js';
 import { requirementDependents } from './dependents.js';
+import { recordedLandingsOf } from './recorded-landings.js';
 import type { LiveBuildHolds, StandingIssueCriterion, StandingVerdict } from './standing.js';
 import type { CoverageIdentity, StandingRequirementVerdict } from './standing-coverage.js';
 
@@ -110,6 +111,8 @@ async function filesOf(issueIds: readonly string[]): Promise<Map<string, Coverag
 export async function issueCriteriaOf(
   issueIds: readonly string[],
   ex: Pick<Tx, 'execute'> = db,
+  /** Issues read as if back from their reopen now (`issues/release-evidence.ts:reopenedAtOf`). */
+  asReturned: readonly string[] = [],
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
   const rows = (await ex.execute(sql`
@@ -166,7 +169,7 @@ export async function issueCriteriaOf(
      ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[];
   // A verdict recorded at or before the issue's latest reopen is evidence about a build the
   // reopen rejected (`issues/release-evidence.ts:reopenedAtOf`), so coverage reads it as not judged
-  const reopened = await reopenedAtOf(ex, issueIds);
+  const reopened = await reopenedAtOf(ex, issueIds, asReturned);
   const files = await filesOf(
     rows.flatMap((r) => ((r.evidence ?? []).length > 0 ? [r.issue_id] : [])),
   );
@@ -232,7 +235,15 @@ export async function liveBuildOf(
     [...new Set(rows.map((r) => r.issueId))],
     judgedAgainstOf(rows),
   );
-  if (landed) return landed;
+  if (landed) {
+    // a verdict at the requirement itself is weighed on a landing Forge recorded (`standing-identity.ts:atRecordedLanding`)
+    const asked = own.flatMap((v) => (v.commit ? [v.commit] : []));
+    if (asked.length === 0) return landed;
+    const recordedLandings = await recordedLandingsOf(projectId, asked, [
+      ...new Set(rows.map((r) => r.issueId)),
+    ]);
+    return { ...landed, recordedLandings };
+  }
   if (commits.length === 0 && runtimes.length === 0) return null;
   return requirementDependents().liveBuildHolds(projectId, { commits, runtimes });
 }
