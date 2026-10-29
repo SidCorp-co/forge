@@ -422,6 +422,32 @@ async fn boot(cfg: &Config, client: &CoreClient) -> bool {
     server.is_some()
 }
 
+/// Re-arm the releases an older build gave up on under a rule this one no
+/// longer has (`terminate::rearm_at_start`), before any sweep runs, so the
+/// first sweep releases them.
+fn rearm_given_up_releases() {
+    let rearmed = runner_core::ledger::Ledger::default_path()
+        .and_then(|p| runner_core::ledger::Ledger::open(&p))
+        .and_then(|mut led| {
+            runner_workspace::terminate::rearm_at_start(
+                &mut led,
+                runner_platform::clock::now_secs(),
+            )
+        });
+    match rearmed {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(
+            "[release] {n} release(s) given up on under the retired shared-checkout rule were \
+             re-armed at this start; the next sweep releases them"
+        ),
+        Err(e) => tracing::warn!(
+            "[release] the ledger could not be read for releases given up on under a retired \
+             rule ({e}), so none was re-armed at this start; `forge-runner run release <id>` \
+             re-arms one by hand"
+        ),
+    }
+}
+
 /// What every start writes into every bound checkout, whatever the daemon it
 /// replaced left there: the running build's forge-master skill and its
 /// orientation. `record_dir` is where `forge-runner status` reads each outcome
@@ -624,6 +650,7 @@ pub async fn run(
     ));
 
     let answered = boot(&cfg, &client).await;
+    rearm_given_up_releases();
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
     checkout_passes::spawn_checkout_passes(answered, &client, &cfg, &cancel_rx);

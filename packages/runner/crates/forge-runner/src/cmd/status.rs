@@ -46,6 +46,9 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
             for line in unanswered_runs(&path, &cfg) {
                 println!("{line}");
             }
+            if let Some(line) = rearmed_line(&path) {
+                println!("{line}");
+            }
         }
         Err(e) => println!("runs       no ledger path resolves on this box: {e}"),
     }
@@ -176,6 +179,28 @@ fn unanswered_runs(path: &std::path::Path, cfg: &Config) -> Vec<String> {
             path.display()
         )],
     }
+}
+
+/// How many releases given up on under the retired shared-checkout rule a
+/// daemon start re-armed, which the journal names one by one. Nothing where
+/// there is no ledger: `unanswered_runs` already says so.
+fn rearmed_line(path: &std::path::Path) -> Option<String> {
+    if !path.exists() {
+        return None;
+    }
+    Some(
+        match Ledger::open_read_only(path).and_then(|led| led.rearmed_release_refusals()) {
+            Ok(0) => "releases   none re-armed at a daemon start".to_string(),
+            Ok(n) => format!(
+                "releases   {n} given up on under the retired shared-checkout rule, re-armed once \
+                 at a daemon start — the journal's [release] lines name each"
+            ),
+            Err(e) => format!(
+                "releases   how many were re-armed at a start cannot be read ({e}); a daemon on \
+                 this build records it at its first start"
+            ),
+        },
+    )
 }
 
 fn unanswered_lines(runs: &[Unanswered], cfg: &Config) -> Vec<String> {
@@ -542,6 +567,44 @@ fn span(ms: i64) -> String {
 
 #[cfg(test)]
 mod orientation_tests {
+    /// The count a start's re-arm leaves in the ledger is what `status` says,
+    /// and a ledger with none says none rather than nothing.
+    #[test]
+    fn status_counts_the_releases_a_start_re_armed() {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-status-rearm-{}-{}",
+            std::process::id(),
+            runner_core::agent_activity::now_ms()
+        ));
+        let path = dir.join("ledger.sqlite");
+        let mut led = Ledger::open(&path).unwrap();
+        assert_eq!(
+            rearmed_line(&path).as_deref(),
+            Some("releases   none re-armed at a daemon start")
+        );
+        led.create_run_group(runner_core::ledger::NewRun {
+            run_id: "r1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: "/w/iss-71".into(),
+            boot_id: "b".into(),
+            issue_keys: vec!["ISS-71".into()],
+        })
+        .unwrap();
+        let why = format!(
+            "refusing to Abandon run r1: run r2 still holds /w/iss-71 {}",
+            runner_core::ledger::RETIRED_HOLDER_REFUSAL
+        );
+        led.note_release_refusal("r1", &why, 1).unwrap();
+        led.conclude_release_refusal("r1", 2, "recovery", &why)
+            .unwrap();
+        assert_eq!(led.rearm_retired_holder_refusals(3).unwrap().len(), 1);
+        let line = rearmed_line(&path).unwrap();
+        assert!(line.starts_with("releases   1 given up on"), "{line}");
+        assert!(rearmed_line(&dir.join("absent.sqlite")).is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     use super::*;
     use runner_workspace::orientation_record::{record, Entry, Merge, Outcome, Point};
     use std::path::Path;

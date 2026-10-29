@@ -661,6 +661,39 @@ fn decided(refused: &Error, standing_secs: i64, attempts: i64) -> Option<Decided
     }
 }
 
+/// Re-arm, once, every release a build before this one gave up on under a rule
+/// this one no longer has, and answer how many. Called at a daemon start: an
+/// update is a start, and a release given up on is one no sweep selects, so
+/// nothing else would ever read these rows under today's rule
+/// (`Ledger::rearm_retired_holder_refusals`). Each is named, with the run its
+/// refusal said held the checkout and what that run is now.
+pub fn rearm_at_start(ledger: &mut Ledger, now_secs: i64) -> Result<usize> {
+    let rearmed = ledger.rearm_retired_holder_refusals(now_secs)?;
+    for r in &rearmed {
+        let holder = match r.holder.as_deref() {
+            Some(holder) => {
+                let now = match ledger.run(holder)? {
+                    None => "is no longer in this ledger",
+                    Some(h) if h.ended_by.is_some() || h.session_terminal_at.is_some() => {
+                        "has ended"
+                    }
+                    Some(_) => "is still open, so the release will leave the checkout to it",
+                };
+                format!("run {holder}, which {now}")
+            }
+            None => "a run its words do not name".to_string(),
+        };
+        tracing::info!(
+            "[release] run={}: its release was given up on because {holder} held the same \
+             checkout, a rule this build no longer has — re-armed once, so the next sweep \
+             releases it under the current rule. It was refused with: {}",
+            r.run_id,
+            r.refusal
+        );
+    }
+    Ok(rearmed.len())
+}
+
 /// What is being forced, and by whom.
 #[derive(Clone, Copy)]
 pub struct Forcing<'a> {
@@ -917,6 +950,61 @@ mod holder_tests {
             .await
             .expect("the tree is gone, so there is nothing left to wait on");
         assert_eq!(format!("{:?}", forced.worktree), "NothingRegistered");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Give `run_id` up on the refusal a build before 8b3c69ff0 wrote when
+    /// `holder` was on the same tree, as that build decided it.
+    fn refused_under_the_old_rule(led: &mut Ledger, run_id: &str, holder: &str, wt: &Path) {
+        let why = format!(
+            "refusing to Abandon run {run_id}: run {holder} still holds {} in the ledger, so the \
+             checkout stays for it, as the sweep keeps it — nothing was preserved, pushed or removed",
+            wt.display()
+        );
+        led.note_release_refusal(run_id, &why, 100).unwrap();
+        led.conclude_release_refusal(run_id, 400, "recovery", &why)
+            .unwrap();
+        led.mark_session_terminal_observed(run_id).unwrap();
+        led.mark_lease_returned_observed(run_id, "ISS-71").unwrap();
+    }
+
+    /// adminhub-fe and four more projects, 2026-10-29: 25 ended runs stayed
+    /// given up on under the rule 8b3c69ff0 retired, because no sweep retries a
+    /// release given up on and nothing re-read them once the build changed. A
+    /// daemon start re-arms each once, and the sweep then releases both.
+    #[tokio::test]
+    async fn a_start_re_arms_releases_given_up_on_under_the_old_holder_rule_once() {
+        let (root, wt, mut led) = a_repo("rearm-at-start").await;
+        declare(&mut led, "run-1", "master-1", "ISS-71", &wt);
+        led.end_run("run-1", "master", "done").unwrap();
+        declare(&mut led, "run-2", "master-1", "ISS-71", &wt);
+        led.end_run("run-2", "master", "done").unwrap();
+        refused_under_the_old_rule(&mut led, "run-1", "run-2", &wt);
+        refused_under_the_old_rule(&mut led, "run-2", "run-1", &wt);
+        let swept = |led: &Ledger| {
+            led.unclosed_runs()
+                .unwrap()
+                .into_iter()
+                .map(|r| r.run_id)
+                .collect::<Vec<_>>()
+        };
+        assert!(swept(&led).is_empty(), "the sweep already retries them");
+
+        assert_eq!(rearm_at_start(&mut led, 500).unwrap(), 2);
+        assert_eq!(swept(&led), ["run-1", "run-2"], "re-armed, not retried");
+        assert_eq!(rearm_at_start(&mut led, 600).unwrap(), 0, "re-armed twice");
+        assert_eq!(led.rearmed_release_refusals().unwrap(), 2);
+
+        let hosts = runner_platform::subagent_host::ProcHosts::system();
+        for run in ["run-1", "run-2"] {
+            let done = release(&mut led, run, forcing(&root), ports(&hosts), 700)
+                .await
+                .unwrap();
+            assert!(matches!(done, Release::Done(_)), "{run}: {done:?}");
+        }
+        assert!(!wt.exists(), "the tree nobody holds is still on disk");
+        assert!(swept(&led).is_empty(), "the sweep still owes them");
+        assert_eq!(led.rearmed_release_refusals().unwrap(), 2);
         let _ = std::fs::remove_dir_all(&root);
     }
 }
