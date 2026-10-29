@@ -21,6 +21,7 @@ import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { gatedMovesOf } from '../lifecycle/index.js';
+import { noQuery } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { deliveryIn, liveBuildOfRequirement } from './acceptance.js';
 import {
@@ -53,7 +54,7 @@ async function acceptanceRecord(projectId: string, row: Row): Promise<RecordAnsw
  * words), and its moves, a move recorded before the checklist reading `no_checklist` (BC-9). `now`
  * is null for a checklist the requirement has not reached: acceptance on a draft.
  */
-requirementChecklistRoutes.get('/:id/requirements/:req/checklist', reqParam, async (c) => {
+requirementChecklistRoutes.get('/:id/requirements/:req/checklist', reqParam, noQuery, async (c) => {
   const { id, req } = c.req.valid('param');
   await requireCan(actorFor(actorOf(c).userId), 'project.read', projectResource(id));
   const row = await rowIn(db, id, req);

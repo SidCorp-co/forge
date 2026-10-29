@@ -15,7 +15,7 @@ import {
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import type { PreviewActor } from './access.js';
 import { settleRoom } from './room-settle.js';
 import {
@@ -59,6 +59,7 @@ projectRoomRoutes.post(
 projectRoomRoutes.get(
   '/:id/rooms',
   zValidator('param', roomParam, invalid('invalid path: /api/projects/<project id>/rooms')),
+  noQuery,
   async (c) =>
     c.json(roomListSchema.parse({ rooms: await listRooms(c.req.valid('param').id, actorOf(c)) })),
 );
@@ -77,7 +78,7 @@ for (const at of [
   roomRoutes.use(at, requireAuth(), assertEmailVerified());
 }
 
-roomRoutes.get('/:id', zValidator('param', roomParam, PATH), async (c) =>
+roomRoutes.get('/:id', zValidator('param', roomParam, PATH), noQuery, async (c) =>
   c.json(envelope(await readRoom(c.req.valid('param').id, actorOf(c)))),
 );
 

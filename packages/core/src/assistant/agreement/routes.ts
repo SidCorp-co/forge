@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { readableConversation } from '../../conversations/index.js';
 import { refuser } from '../../lib/refusal.js';
 import type { AuthVars } from '../../middleware/auth.js';
-import { strictBody, zValidator } from '../../middleware/zod-validator.js';
+import { noQuery, strictBody, zValidator } from '../../middleware/zod-validator.js';
 import { postServiceAnswer } from '../conversation-adapter.js';
 import { agreeProposal, declineAs } from './agree.js';
 import { agreementOf, refuseChatDecline } from './agreement-door.js';
@@ -37,7 +37,7 @@ function toldInThread(row: ChatProposalRow, outcome: WriteOutcome): string {
   return ref ? `Recorded as ${ref}: ${title}.` : `Recorded: ${title}.`;
 }
 
-conversationProposalRoutes.get('/:id/proposals', roomParam, async (c) => {
+conversationProposalRoutes.get('/:id/proposals', roomParam, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   await readableConversation(id, userId);

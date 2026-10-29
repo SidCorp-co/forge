@@ -10,7 +10,7 @@
  */
 
 import { SourceHostInputRefusal } from '../integrations/source-host/index.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { can, onHost, type Routes } from './source-door.js';
 import { checksAt, project, projectAfterWrite } from './source-projection.js';
 import {
@@ -25,6 +25,7 @@ export function registerSourceProjectionRoutes(routes: Routes): void {
     '/:projectId/integrations/source/commits/:sha/checks',
     can('project.read'),
     zValidator('param', shaParamSchema),
+    noQuery,
     async (c) => {
       const { sha } = c.req.valid('param');
       return c.json(
@@ -46,6 +47,7 @@ export function registerSourceProjectionRoutes(routes: Routes): void {
     '/:projectId/integrations/source/branches/:ref/checks',
     can('project.read'),
     zValidator('param', refParamSchema),
+    noQuery,
     async (c) => {
       const { ref } = c.req.valid('param');
       return c.json(
@@ -62,6 +64,7 @@ export function registerSourceProjectionRoutes(routes: Routes): void {
     '/:projectId/integrations/source/change-requests/:number',
     can('project.read'),
     zValidator('param', numberParamSchema),
+    noQuery,
     async (c) => {
       const { number } = c.req.valid('param');
       return c.json(

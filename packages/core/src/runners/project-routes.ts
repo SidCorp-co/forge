@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { clearRunnerFaultFlags } from './clear-fault-flags.js';
 import { runnersPorts } from './ports.js';
@@ -39,7 +39,7 @@ projectRunnerRoutes.use('*', requireAuth(), assertEmailVerified());
 // Project-centric runner list — the device pools serving THIS project, with
 // device identity + live provision status. Powers the project Runners screen
 // (the inverse of the device-centric GET /api/devices/:id/runners). Any member.
-projectRunnerRoutes.get('/:id/runners', zValidator('param', idParamSchema), async (c) => {
+projectRunnerRoutes.get('/:id/runners', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   const access = await loadProjectAccess(id, userId);

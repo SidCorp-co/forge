@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import {
@@ -40,6 +41,12 @@ const malformedRefMessage = (parsed: { code: string; message: string }): string 
 export const issueRouteIdParamSchema = z.object({ id: z.string().trim().min(1).max(200) });
 
 export const projectScopeQuerySchema = z.object({ projectId: z.uuid().optional() });
+
+/**
+ * The query of an issue read that takes no filter: only the project a display key in its path is
+ * resolved in. Any other key is refused by name.
+ */
+export const projectScopeQuery = zValidator('query', projectScopeQuerySchema);
 
 /** The issue an id names, once the caller is shown to hold `permission` on its project. */
 export async function heldIssue(

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { attachVisualBlock } from './blocks.js';
 import { computeExecution } from './compute.js';
 import { readExecution } from './executions.js';
@@ -49,6 +49,7 @@ function gated<T>(agency: T | undefined): T {
 reportRoutes.get(
   '/projects/:id/report-runs/:runId',
   zValidator('param', runParam, invalid('invalid path: /api/projects/<project>/report-runs/<run>')),
+  noQuery,
   async (c) => {
     const { id: projectId, runId } = c.req.valid('param');
     const agency = gated(c.get('agency'));
@@ -99,6 +100,7 @@ reportRoutes.post(
 reportRoutes.get(
   '/projects/:id/report-templates',
   zValidator('param', listParam, invalid('invalid path: /api/projects/<project>/report-templates')),
+  noQuery,
   async (c) => {
     // a member's list: the project is read through its access, so a token fenced off it is refused
     await loadProjectAccess(c.req.valid('param').id, c.get('userId'));
@@ -204,6 +206,7 @@ reportRoutes.get(
     executionParam,
     invalid('invalid path: /api/projects/<project>/executions/<execution>'),
   ),
+  noQuery,
   async (c) => {
     const { id: projectId, executionId } = c.req.valid('param');
     const agency = gated(c.get('agency'));

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readEnvironmentState } from './environment-state.js';
 import { readProjectDocument } from './service.js';
@@ -34,6 +34,7 @@ environmentStateRoutes.use('/:id/environments/*', requireAuth(), assertEmailVeri
 environmentStateRoutes.get(
   '/:id/environments/state',
   zValidator('param', projectParam, refuseParam),
+  noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
     await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
@@ -50,6 +51,7 @@ environmentStateRoutes.get(
 environmentStateRoutes.get(
   '/:id/environments/:name/state',
   zValidator('param', environmentParam, refuseParam),
+  noQuery,
   async (c) => {
     const { id, name } = c.req.valid('param');
     await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));

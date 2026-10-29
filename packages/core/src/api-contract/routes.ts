@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Context, Hono } from 'hono';
+import { noQuery } from '../middleware/zod-validator.js';
 
 /**
  * The directory the generator writes and the image ships: `packages/core/contracts` from `src/`,
@@ -58,6 +59,6 @@ export function publishedContractRoutes(dir: string = CONTRACTS_DIR): Hono {
     return c.body(new Uint8Array(bytes), 200, { ...headers, 'content-type': type });
   };
   return new Hono()
-    .get('/openapi.json', answer(openapi, OPENAPI_MEDIA_TYPE))
-    .get('/mcp-tools.json', answer(mcpTools, 'application/json; charset=utf-8'));
+    .get('/openapi.json', noQuery, answer(openapi, OPENAPI_MEDIA_TYPE))
+    .get('/mcp-tools.json', noQuery, answer(mcpTools, 'application/json; charset=utf-8'));
 }

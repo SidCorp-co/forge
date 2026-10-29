@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { supersedeBuilderRun } from './builder-supersede.js';
 import {
   listBuilderRunsAs,
@@ -72,12 +72,12 @@ linkProjectRoutes.post('/:id/links', idParam, envelope, async (c) => {
   );
 });
 
-linkProjectRoutes.get('/:id/links', idParam, async (c) => {
+linkProjectRoutes.get('/:id/links', idParam, noQuery, async (c) => {
   const links = await listLinksAs(c.get('userId'), c.req.valid('param').id);
   return c.json({ links, returned: links.length });
 });
 
-linkProjectRoutes.get('/:id/links/:link', linkParam, async (c) => {
+linkProjectRoutes.get('/:id/links/:link', linkParam, noQuery, async (c) => {
   const { id, link } = c.req.valid('param');
   return c.json(await readLinkAs(c.get('userId'), id, link));
 });
@@ -100,12 +100,12 @@ linkProjectRoutes.post('/:id/builder-runs', idParam, envelope, async (c) => {
   );
 });
 
-linkProjectRoutes.get('/:id/builder-runs', idParam, async (c) => {
+linkProjectRoutes.get('/:id/builder-runs', idParam, noQuery, async (c) => {
   const runs = await listBuilderRunsAs(c.get('userId'), c.req.valid('param').id);
   return c.json({ runs, returned: runs.length });
 });
 
-linkProjectRoutes.get('/:id/builder-runs/:run', runParam, async (c) => {
+linkProjectRoutes.get('/:id/builder-runs/:run', runParam, noQuery, async (c) => {
   const { id, run } = c.req.valid('param');
   return c.json(await readBuilderRunAs(c.get('userId'), id, run));
 });
@@ -125,7 +125,7 @@ linkProjectRoutes.put('/:id/builder-runs/:run', runParam, envelope, async (c) =>
   );
 });
 
-busRoutes.get('/:id/bus', idParam, async (c) =>
+busRoutes.get('/:id/bus', idParam, noQuery, async (c) =>
   c.json(await readBus(c.get('userId'), c.req.valid('param').id)),
 );
 

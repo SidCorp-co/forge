@@ -521,6 +521,14 @@ for a part nothing validates. A read inside a helper is not in the handler's tex
 refuses, by file and line, any `c.req.json()` or `c.req.query()` anywhere under
 `packages/core/src` outside a test.
 
+**A read closes its query, or is a priced amnesty** (ISS-753). `x-forge-query-closed` marks an
+operation whose query validator refuses a key it does not take; a read that takes none holds
+`noQuery` (`packages/core/src/middleware/zod-validator.ts`). The generator refuses `GET /path` when
+its operation is not closed, unless `packages/core/src/api-contract/open-queries.ts:OPEN_QUERY_READS`
+names it with its reason, what it trades and the condition that ends it; such an operation carries
+the reason as `x-forge-query-open`. An entry naming a read that is closed or not mounted is refused
+too, so the list cannot outlive its routes.
+
 **A route the generator cannot describe is refused by name**: a wildcard or optional path segment,
 two routes reaching one OpenAPI path, a `use()`/`all()` entry covering no route, a query validator
 that is not an object, a param validator naming a param the path lacks, and any schema holding a

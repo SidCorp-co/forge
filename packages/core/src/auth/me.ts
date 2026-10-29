@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, requireAuth, sessionEnded } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { profileOf } from './read.js';
 import { setOwnDisplayName } from './service.js';
 
@@ -10,7 +10,7 @@ export const meRoutes = new Hono<{ Variables: AuthVars }>();
 
 meRoutes.use('/me', requireAuth());
 
-meRoutes.get('/me', async (c) => {
+meRoutes.get('/me', noQuery, async (c) => {
   const userId = c.get('userId');
   const profile = await profileOf(userId);
   if (!profile) {

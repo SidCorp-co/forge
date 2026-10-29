@@ -20,7 +20,7 @@ import { contentDisposition } from '../lib/attachment-headers.js';
 import type { RefusalError } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { createUploadTicket, UPLOAD_TICKET_TTL_MS } from '../uploads/index.js';
 import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
 
@@ -114,6 +114,7 @@ conversationAttachmentRoutes.post(
 conversationAttachmentRoutes.get(
   '/:id/attachments/:attachmentId/download',
   zValidator('param', idParamSchema.extend({ attachmentId: z.uuid() })),
+  noQuery,
   async (c) => {
     const { id, attachmentId } = c.req.valid('param');
     await readableConversation(id, c.get('userId'));

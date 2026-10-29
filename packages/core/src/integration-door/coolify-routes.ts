@@ -34,7 +34,7 @@ import {
 } from '../integrations/index.js';
 import { providerRefused } from '../lib/provider-refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { announceIntegrationChanged } from '../project-config/index.js';
 import {
@@ -234,7 +234,7 @@ function registerLogRoutes(routes: Routes): void {
 
 /** What a binding is set up with: its integrations, the applications to pick, the bound targets. */
 function registerSetupRoutes(routes: Routes): void {
-  routes.get('/:projectId/integrations/coolify', async (c) => {
+  routes.get('/:projectId/integrations/coolify', noQuery, async (c) => {
     const projectId = c.req.param('projectId');
     await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(projectId));
     return c.json(await listCoolifyIntegrations(projectId));

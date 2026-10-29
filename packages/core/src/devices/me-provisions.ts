@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { logger } from '../lib/logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { noQuery } from '../middleware/zod-validator.js';
 import { devicesPorts } from './ports.js';
 import { recordProvisionReports } from './provision-reports.js';
 import {
@@ -15,7 +16,7 @@ import { deviceHolderUserId, issueCheckoutCredential } from './workspace-credent
 
 export const deviceProvisionRoutes = new Hono<{ Variables: DeviceVars }>();
 
-deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
+deviceProvisionRoutes.get('/me/provisions', requireDevice(), noQuery, async (c) => {
   const device = c.get('device');
 
   const rows = await queuedProvisionRows(device.id);

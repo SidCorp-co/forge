@@ -11,7 +11,7 @@ import { pluginDesignationsPatchSchema } from '../lib/plugin-designation.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { findPersonalOrgId } from '../orgs/index.js';
 import {
   actorFor,
@@ -93,7 +93,7 @@ projectRoutes.get('/', listQuery, async (c) => {
   );
 });
 
-projectRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => {
+projectRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 

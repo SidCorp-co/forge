@@ -6,7 +6,7 @@ import { readBoxDesignations, unionPluginDesignations } from '../lib/plugin-desi
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import {
   ANCESTRY_PAIRS_MAX,
@@ -187,6 +187,7 @@ deviceOwnerRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', deviceIdParamSchema),
+  noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
@@ -252,12 +253,12 @@ deviceAuthRoutes.post(
 // which projects this device is bound to and the server-side repo path/branch,
 // so the path no longer has to be hand-typed into config.toml. `requireDevice`
 // already 401s on a missing/invalid/revoked token, so no extra auth handling.
-deviceAuthRoutes.get('/me/runners', requireDevice(), async (c) => {
+deviceAuthRoutes.get('/me/runners', requireDevice(), noQuery, async (c) => {
   const device = c.get('device');
   return c.json(await listDeviceAssignments(device.id));
 });
 
-deviceAuthRoutes.get('/me/plugins', requireDevice(), async (c) => {
+deviceAuthRoutes.get('/me/plugins', requireDevice(), noQuery, async (c) => {
   const device = c.get('device');
 
   const rows = await deviceProjectAgentConfigs(device.id);

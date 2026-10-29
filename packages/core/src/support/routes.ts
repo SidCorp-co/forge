@@ -33,7 +33,7 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import { mountChannelRoutes } from './channel-routes.js';
 import { ownerGitCredential } from './owner-git.js';
@@ -65,8 +65,7 @@ const roomParam = zValidator(
  */
 const ridQuery = zValidator(
   'query',
-  // open, as these routes' query was before `rid`: a caller sending another key is not broken
-  z.looseObject({ rid: z.string().min(1).max(200).optional() }),
+  z.object({ rid: z.string().min(1).max(200).optional() }),
   invalid('invalid query: rid is a Rocket.Chat group id'),
 );
 
@@ -127,7 +126,7 @@ supportRoutes.post(
   strictBody(supportThreadRequestSchema, SHAPES.thread),
   (c) => act(c, c.req.valid('param').id, { action: 'thread', ...c.req.valid('json') }),
 );
-supportRoutes.get('/:id/support/session/tools', projectParam, (c) =>
+supportRoutes.get('/:id/support/session/tools', projectParam, noQuery, (c) =>
   act(c, c.req.valid('param').id, { action: 'tools' }),
 );
 supportRoutes.post(
@@ -200,7 +199,7 @@ supportRoutes.post(
 supportRoutes.get('/:id/support/session/project', projectParam, ridQuery, (c) =>
   act(c, c.req.valid('param').id, { action: 'project' }, c.req.valid('query').rid),
 );
-supportRoutes.get('/:id/support/session/projects', projectParam, (c) =>
+supportRoutes.get('/:id/support/session/projects', projectParam, noQuery, (c) =>
   act(c, c.req.valid('param').id, { action: 'projects' }),
 );
 supportRoutes.post(
@@ -317,12 +316,12 @@ supportRoutes.post(
 
 mountChannelRoutes(supportRoutes);
 
-supportRoutes.get('/:id/support/rooms', projectParam, async (c) => {
+supportRoutes.get('/:id/support/rooms', projectParam, noQuery, async (c) => {
   const rooms = await supportRoomsOf(c.get('userId'), c.req.valid('param').id);
   return c.json({ rooms });
 });
 
-supportRoutes.get('/:id/support/rooms/:roomId/actions', roomParam, async (c) => {
+supportRoutes.get('/:id/support/rooms/:roomId/actions', roomParam, noQuery, async (c) => {
   const { id, roomId } = c.req.valid('param');
   const actions = await supportActionsOf(c.get('userId'), id, roomId);
   if (!actions) {

@@ -10,7 +10,7 @@ import {
   restActor,
 } from '../../middleware/auth.js';
 import { notFound } from '../../middleware/route-errors.js';
-import { invalid, zValidator } from '../../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../../middleware/zod-validator.js';
 import { slug } from '../../project-config/index.js';
 import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
 import { decideContractVersion, decidedView } from './decide.js';
@@ -86,7 +86,7 @@ const unrecorded = (reader: ContractReader, contract: string, id: string, versio
     `${contract} of project ${id} has no ${reader.access === 'party' ? 'approved' : 'recorded'} version "${version}"`,
   );
 
-contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c) => {
+contractRoutes.get('/:id/contracts/:contract/versions', contractParam, noQuery, async (c) => {
   const { id, contract } = c.req.valid('param');
   const { reader, versions } = await versionsShown(c.get('userId'), id, contract);
   const current = currentOf(versions)?.version ?? null;
@@ -101,22 +101,27 @@ contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c)
   });
 });
 
-contractRoutes.get('/:id/contracts/:contract/versions/:version', versionParam, async (c) => {
-  const { id, contract, version } = c.req.valid('param');
-  const { reader, versions } = await versionsShown(c.get('userId'), id, contract);
-  const hit = versions.find((v) => v.version === version);
-  if (!hit) throw unrecorded(reader, contract, id, version);
-  const current = currentOf(versions)?.version ?? null;
-  if (reader.access === 'party') {
-    return c.json({ reader, version: versionForParty(hit), elements: hit.elements, current });
-  }
-  return c.json({
-    version: hit.document,
-    elements: hit.elements,
-    approval: approvalView(hit),
-    current,
-  });
-});
+contractRoutes.get(
+  '/:id/contracts/:contract/versions/:version',
+  versionParam,
+  noQuery,
+  async (c) => {
+    const { id, contract, version } = c.req.valid('param');
+    const { reader, versions } = await versionsShown(c.get('userId'), id, contract);
+    const hit = versions.find((v) => v.version === version);
+    if (!hit) throw unrecorded(reader, contract, id, version);
+    const current = currentOf(versions)?.version ?? null;
+    if (reader.access === 'party') {
+      return c.json({ reader, version: versionForParty(hit), elements: hit.elements, current });
+    }
+    return c.json({
+      version: hit.document,
+      elements: hit.elements,
+      approval: approvalView(hit),
+      current,
+    });
+  },
+);
 
 const ARTIFACT_MEDIA: Record<string, string> = {
   openapi: 'application/json',
@@ -129,6 +134,7 @@ const ARTIFACT_MEDIA: Record<string, string> = {
 contractRoutes.get(
   '/:id/contracts/:contract/versions/:version/artifact',
   versionParam,
+  noQuery,
   async (c) => {
     const { id, contract, version } = c.req.valid('param');
     const { reader, versions } = await versionsShown(c.get('userId'), id, contract);
@@ -189,21 +195,26 @@ contractRoutes.post(
   },
 );
 
-contractRoutes.get('/:id/consumes/:provider/:contract/versions', consumedParam, async (c) => {
-  const { id, provider, contract } = c.req.valid('param');
-  const party = await consumedContract({
-    userId: c.get('userId'),
-    consumerId: id,
-    providerId: provider,
-    contract,
-  });
-  return c.json({
-    provider: party.provider,
-    contract: `${party.provider.slug}/${contract}`,
-    ecosystems: party.ecosystems,
-    versions: await consumedVersions(provider, contract),
-  });
-});
+contractRoutes.get(
+  '/:id/consumes/:provider/:contract/versions',
+  consumedParam,
+  noQuery,
+  async (c) => {
+    const { id, provider, contract } = c.req.valid('param');
+    const party = await consumedContract({
+      userId: c.get('userId'),
+      consumerId: id,
+      providerId: provider,
+      contract,
+    });
+    return c.json({
+      provider: party.provider,
+      contract: `${party.provider.slug}/${contract}`,
+      ecosystems: party.ecosystems,
+      versions: await consumedVersions(provider, contract),
+    });
+  },
+);
 
 contractRoutes.post('/:id/contracts/:contract/versions', contractParam, uploadBody, async (c) => {
   const { id, contract } = c.req.valid('param');

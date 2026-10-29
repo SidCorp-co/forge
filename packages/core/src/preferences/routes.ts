@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { answerStyles } from '../db/schema.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { listProductState, readMePreferences, readPreferences, readProductState } from './read.js';
 import {
@@ -45,9 +45,11 @@ preferenceRoutes.use('/preferences', requireAuth());
 preferenceRoutes.use('/preferences/*', requireAuth());
 preferenceRoutes.use('/me/preferences', requireAuth());
 
-preferenceRoutes.get('/preferences', async (c) => c.json(await readPreferences(c.get('userId'))));
+preferenceRoutes.get('/preferences', noQuery, async (c) =>
+  c.json(await readPreferences(c.get('userId'))),
+);
 
-preferenceRoutes.get('/preferences/changes', async (c) =>
+preferenceRoutes.get('/preferences/changes', noQuery, async (c) =>
   c.json({ items: await listPreferenceChanges(c.get('userId')) }),
 );
 
@@ -95,7 +97,7 @@ const preferencesSchema = z
   })
   .strict();
 
-preferenceRoutes.get('/me/preferences', async (c) => {
+preferenceRoutes.get('/me/preferences', noQuery, async (c) => {
   const userId = c.get('userId');
   return c.json(await readMePreferences(userId));
 });
@@ -132,11 +134,11 @@ export const productStateRoutes = new Hono<{ Variables: AuthVars }>();
 productStateRoutes.use('/product-state', requireAuth());
 productStateRoutes.use('/product-state/*', requireAuth());
 
-productStateRoutes.get('/product-state', async (c) =>
+productStateRoutes.get('/product-state', noQuery, async (c) =>
   c.json({ items: await listProductState(c.get('userId')) }),
 );
 
-productStateRoutes.get('/product-state/:key', productStateKeyParam, async (c) =>
+productStateRoutes.get('/product-state/:key', productStateKeyParam, noQuery, async (c) =>
   c.json(await readProductState(c.get('userId'), c.req.valid('param').key as ProductStateKey)),
 );
 

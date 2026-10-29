@@ -331,8 +331,6 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     credentials/cookie.ts Context handed to hono:deleteCookie in clearSessionCookie
     credentials/cookie.ts Context handed to hono:deleteCookie in writeSessionCookie
     credentials/cookie.ts Context handed to hono:setCookie in writeSessionCookie`,
-  'a channel agent’s group id; the query stays open, as it was before `rid` (REQ-77), and nothing else in it is read': lines`
-    support/routes.ts HonoRequest.valid(query) in module code`,
   'frames on a socket core opened to Rocket.Chat': lines`
     integrations/rocketchat/ddp-client.ts WebSocket.on cast to WsLike in RocketChatDdpClient`,
   'a file’s bytes, stored as an attachment or upload': lines`

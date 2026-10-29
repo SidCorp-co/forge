@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { readStewardNote, writeStewardNote } from './service.js';
 
@@ -27,7 +27,7 @@ const paramCheck = zValidator(
   ),
 );
 
-stewardNoteRoutes.get('/:id/steward-notes/:subjectKind/:key', paramCheck, async (c) => {
+stewardNoteRoutes.get('/:id/steward-notes/:subjectKind/:key', paramCheck, noQuery, async (c) => {
   const { id, subjectKind, key } = c.req.valid('param');
   requireHeld(await loadProjectAccess(id, c.get('userId')), 'project.read');
   const { note } = await readStewardNote(id, subjectKind, key);

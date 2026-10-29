@@ -3,7 +3,7 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { uuid } from '../project-config/index.js';
 import { openGateQuestionsOf } from '../questions/index.js';
 import { forbidden, refusedBy } from './access.js';
@@ -184,7 +184,7 @@ channelProjectRoutes.post(
   },
 );
 
-channelProjectRoutes.get('/:id/channel/documents/:ref', refParam, async (c) => {
+channelProjectRoutes.get('/:id/channel/documents/:ref', refParam, noQuery, async (c) => {
   const { id, ref } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const view = await readAs(id, ref);
@@ -209,7 +209,7 @@ channelProjectRoutes.get('/:id/channel/documents/:ref', refParam, async (c) => {
   });
 });
 
-channelProjectRoutes.get('/:id/channel/inbox', projectParam, async (c) => {
+channelProjectRoutes.get('/:id/channel/inbox', projectParam, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const entries = await inbox(id);
@@ -218,21 +218,21 @@ channelProjectRoutes.get('/:id/channel/inbox', projectParam, async (c) => {
 
 // What this side owes a reply to, the read its master's verdict counts (`masters/owed.ts`),
 // reachable by a person's session or token holding the channel read.
-channelProjectRoutes.get('/:id/channel/unanswered', projectParam, async (c) => {
+channelProjectRoutes.get('/:id/channel/unanswered', projectParam, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const documents = unansweredView(await unanswered(id));
   return c.json({ project: id, documents, returned: documents.length });
 });
 
-channelProjectRoutes.get('/:id/channel/outbox', projectParam, async (c) => {
+channelProjectRoutes.get('/:id/channel/outbox', projectParam, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const sent = await outbox(id);
   return c.json({ documents: outboxView(sent), returned: sent.length });
 });
 
-channelProjectRoutes.get('/:id/channel/threads/:number', threadParam, async (c) => {
+channelProjectRoutes.get('/:id/channel/threads/:number', threadParam, noQuery, async (c) => {
   const { id, number } = c.req.valid('param');
   await mayAct(c, id, 'read');
   return c.json(threadView(await threadAs(id, number)));

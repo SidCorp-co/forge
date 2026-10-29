@@ -5,7 +5,7 @@ import { fromPage, listResponse } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { listDeliveries } from './deliveries-read.js';
 import { deliveryMembers, openNotificationCount } from './read.js';
 import { deleteDelivery, markAllDeliveriesRead, setDeliveryRead } from './service.js';
@@ -90,7 +90,7 @@ notificationRoutes.patch(
  * of them. The list route answers the counts; this answers the members, newest first,
  * still-open ones first.
  */
-notificationRoutes.get('/:id/members', zValidator('param', idParamSchema), async (c) => {
+notificationRoutes.get('/:id/members', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 

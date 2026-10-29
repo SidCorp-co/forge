@@ -1,7 +1,7 @@
 import { zValidator as honoZodValidator } from '@hono/zod-validator';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { jsonPointer, type Refusal, RefusalError } from '../lib/refusal.js';
 
 type Args = Parameters<typeof honoZodValidator>;
@@ -201,6 +201,12 @@ export const zValidator = ((...args: Args) => {
   declared.set(guarded, { target, schema });
   return guarded;
 }) as typeof honoZodValidator;
+
+/**
+ * The query of a read that takes none. A key sent to it is refused by name, saying the route takes
+ * no query parameters, rather than dropped, and the contract marks the operation's query closed.
+ */
+export const noQuery = zValidator('query', z.strictObject({}));
 
 const JSON_TYPE = /^application\/([a-z0-9.+-]*\+)?json(\s*;|$)/i;
 

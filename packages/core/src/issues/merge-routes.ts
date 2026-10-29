@@ -29,7 +29,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { heldIssue } from './issue-route-ref.js';
+import { heldIssue, projectScopeQuery } from './issue-route-ref.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { recordMergeCheck } from './merge-check.js';
 import { warningsOf } from './merge-check-rules.js';
@@ -142,11 +142,16 @@ issueMergeRoutes.post(
 
 // The review (Issue to release r20 `rule-merge`, REQ-36 BC-8, ISS-473): what a review of the issue
 // owes and those recorded, and the record of one, refused by name or kept for the mark to ask for.
-issueMergeRoutes.get('/:id/review', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const scope = await heldIssue(id, c.get('userId'), 'project.read');
-  return c.json(await issueReviewOf({ id: scope.id, projectId: scope.projectId }));
-});
+issueMergeRoutes.get(
+  '/:id/review',
+  zValidator('param', idParamSchema),
+  projectScopeQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const scope = await heldIssue(id, c.get('userId'), 'project.read');
+    return c.json(await issueReviewOf({ id: scope.id, projectId: scope.projectId }));
+  },
+);
 
 issueMergeRoutes.post(
   '/:id/review',

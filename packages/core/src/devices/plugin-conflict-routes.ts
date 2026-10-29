@@ -5,7 +5,7 @@ import { Hono } from 'hono';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { readPluginConflicts } from './plugin-conflicts.js';
 
@@ -16,6 +16,7 @@ projectPluginConflictRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema),
+  noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
     requireHeld(await loadProjectAccess(id, c.get('userId')), 'project.read');

@@ -14,7 +14,7 @@ import {
   relayUpstreamOf,
 } from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
-import { rawBody } from '../middleware/zod-validator.js';
+import { noQuery, rawBody } from '../middleware/zod-validator.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
@@ -27,7 +27,7 @@ const relayedMessage = rawBody(
   { required: false },
 );
 
-mcpRelayRoutes.on(['GET', 'POST', 'DELETE'], '/:bindingId', relayedMessage, async (c) => {
+mcpRelayRoutes.on(['GET', 'POST', 'DELETE'], '/:bindingId', relayedMessage, noQuery, async (c) => {
   const bearer = /^Bearer\s+(.+)$/i.exec(c.req.header('authorization') ?? '')?.[1];
   const grant = bearer ? await readRelayTicket(bearer) : null;
   if (!grant || grant.bindingId !== c.req.param('bindingId')) {

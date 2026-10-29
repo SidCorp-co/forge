@@ -2,6 +2,7 @@ import { MCP_OAUTH_CONSENT_PATH, MCP_OAUTH_SCOPES } from '@forge/contracts/mcp-a
 import { type Context, Hono } from 'hono';
 import { env } from '../lib/env.js';
 import { reachedOrigin } from '../lib/reached-origin.js';
+import { noQuery } from '../middleware/zod-validator.js';
 
 /**
  * What an MCP client reads to find where to sign in. A 401 from `/mcp` names the protected-resource
@@ -59,6 +60,6 @@ export const mcpOauthMetadataRoutes = new Hono();
 
 // RFC 9728 §3.1 inserts the resource's path after the well-known name; a client that does not
 // knows only the bare name, so both answer
-mcpOauthMetadataRoutes.get(PROTECTED_RESOURCE_PATH, protectedResource);
-mcpOauthMetadataRoutes.get(`${PROTECTED_RESOURCE_PATH}/mcp`, protectedResource);
-mcpOauthMetadataRoutes.get(AUTHORIZATION_SERVER_PATH, authorizationServer);
+mcpOauthMetadataRoutes.get(PROTECTED_RESOURCE_PATH, noQuery, protectedResource);
+mcpOauthMetadataRoutes.get(`${PROTECTED_RESOURCE_PATH}/mcp`, noQuery, protectedResource);
+mcpOauthMetadataRoutes.get(AUTHORIZATION_SERVER_PATH, noQuery, authorizationServer);

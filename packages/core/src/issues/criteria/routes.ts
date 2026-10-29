@@ -25,7 +25,7 @@ import {
 } from '../../middleware/auth.js';
 import { idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { nestedFieldShape, zValidator } from '../../middleware/zod-validator.js';
-import { heldIssue } from '../issue-route-ref.js';
+import { heldIssue, projectScopeQuery } from '../issue-route-ref.js';
 import { judgedBuildOf } from '../ports.js';
 import { findIssueById } from '../read-service.js';
 import {
@@ -67,11 +67,16 @@ async function criteriaShown(
   );
 }
 
-issueCriteriaRoutes.get('/:id/criteria', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const issue = await heldIssue(id, c.get('userId'), 'project.read');
-  return c.json(await criteriaShown(c.get('agency'), issue));
-});
+issueCriteriaRoutes.get(
+  '/:id/criteria',
+  zValidator('param', idParamSchema),
+  projectScopeQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const issue = await heldIssue(id, c.get('userId'), 'project.read');
+    return c.json(await criteriaShown(c.get('agency'), issue));
+  },
+);
 
 issueCriteriaRoutes.put(
   '/:id/criteria',
@@ -90,6 +95,7 @@ issueCriteriaRoutes.put(
 issueCriteriaRoutes.get(
   '/:id/criteria/:ref',
   zValidator('param', criterionParamSchema),
+  projectScopeQuery,
   async (c) => {
     const { id, ref } = c.req.valid('param');
     const issue = await heldIssue(id, c.get('userId'), 'project.read');
@@ -188,17 +194,22 @@ issueCriteriaRoutes.post(
   },
 );
 
-issueCriteriaRoutes.get('/:id/judged-build', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  await heldIssue(id, c.get('userId'), 'project.read');
-  const issue = await findIssueById(id);
-  if (!issue) throw notFound('issue not found');
-  return c.json(
-    await judgedBuildOf({
-      id: issue.id,
-      projectId: issue.projectId,
-      mergedAt: issue.mergedAt,
-      mergedCommitSha: issue.mergedCommitSha,
-    }),
-  );
-});
+issueCriteriaRoutes.get(
+  '/:id/judged-build',
+  zValidator('param', idParamSchema),
+  projectScopeQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await heldIssue(id, c.get('userId'), 'project.read');
+    const issue = await findIssueById(id);
+    if (!issue) throw notFound('issue not found');
+    return c.json(
+      await judgedBuildOf({
+        id: issue.id,
+        projectId: issue.projectId,
+        mergedAt: issue.mergedAt,
+        mergedCommitSha: issue.mergedCommitSha,
+      }),
+    );
+  },
+);

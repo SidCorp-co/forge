@@ -21,7 +21,7 @@ import {
 import { isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { fieldShape, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { fieldShape, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { assertTokenMayAnswer } from './answer-door.js';
 import { ANSWER_SHAPE, answerBody, givenAnswerOf } from './answer-input.js';
 import { askAs } from './ask.js';
@@ -188,7 +188,7 @@ questionRoutes.post(
   },
 );
 
-questionRoutes.get('/:id', async (c) => {
+questionRoutes.get('/:id', noQuery, async (c) => {
   const seen = await readQuestionFor(questionId(c), c.get('userId'));
   if (!seen) throw notFound();
   return c.json(await shown(readerOf(c.get('agency')), seen));

@@ -3,7 +3,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { openStandings } from './read.js';
 
@@ -14,6 +14,7 @@ standingRoutes.use('/:id/standings', requireAuth(), assertEmailVerified());
 standingRoutes.get(
   '/:id/standings',
   zValidator('param', idParamSchema, invalid('invalid path: /api/projects/<project>/standings')),
+  noQuery,
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const agency = c.get('agency');

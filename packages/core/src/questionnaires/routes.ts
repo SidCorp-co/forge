@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { afterSubmit, onSubmittedIn } from './ports.js';
 import { batchIn, batchView, questionnairesAs } from './read.js';
@@ -36,7 +36,7 @@ const batchParam = zValidator(
   invalid('invalid path: a project uuid and a questionnaire uuid'),
 );
 
-questionnaireRoutes.get('/:id/questionnaires/:bid', batchParam, async (c) => {
+questionnaireRoutes.get('/:id/questionnaires/:bid', batchParam, noQuery, async (c) => {
   const { id, bid } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const out = await questionnairesAs(actorOf(c), id, [await batchView(db, id, bid)]);

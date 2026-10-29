@@ -4,7 +4,7 @@ import {
 } from '@forge/contracts/requirements';
 import { Hono } from 'hono';
 import { refused } from '../lib/refusal.js';
-import { strictBody } from '../middleware/zod-validator.js';
+import { noQuery, strictBody } from '../middleware/zod-validator.js';
 import { actorOf, type RequirementEnv, reqParam } from './route-kit.js';
 import { listRequirementVerdicts, recordRequirementVerdict } from './verdicts.js';
 
@@ -33,7 +33,7 @@ requirementVerdictRoutes.post(
   },
 );
 
-requirementVerdictRoutes.get('/:id/requirements/:req/verdicts', reqParam, async (c) => {
+requirementVerdictRoutes.get('/:id/requirements/:req/verdicts', reqParam, noQuery, async (c) => {
   const { id, req } = c.req.valid('param');
   return c.json({
     verdicts: await listRequirementVerdicts({ projectId: id, ref: req, actor: actorOf(c) }),

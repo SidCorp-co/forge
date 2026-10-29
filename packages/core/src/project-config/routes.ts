@@ -7,7 +7,7 @@ import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { parseBearerHeader } from '../middleware/bearer.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
@@ -88,7 +88,7 @@ function answer<T>(c: Context, outcome: WriteOutcome<T>) {
   return c.json({ ...serialise(outcome.held), created: outcome.created });
 }
 
-projectConfigRoutes.get('/:id/config', paramOf(idParam), async (c) => {
+projectConfigRoutes.get('/:id/config', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const held = await readProjectConfig(id);
@@ -118,7 +118,7 @@ const gatesBody = z.strictObject({
   reason: z.string(),
 });
 
-projectConfigRoutes.get('/:id/gates', paramOf(idParam), async (c) => {
+projectConfigRoutes.get('/:id/gates', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const [gates, changes] = await Promise.all([readProjectGates(id), readGateChanges(id, 20)]);
@@ -146,7 +146,7 @@ projectConfigRoutes.put(
   },
 );
 
-projectConfigRoutes.get('/:id/gates/changes', paramOf(idParam), async (c) => {
+projectConfigRoutes.get('/:id/gates/changes', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const changes = await readGateChanges(id, 200);
@@ -160,13 +160,13 @@ async function callingDevice(c: Context<{ Variables: AuthVars }>): Promise<strin
   return device?.id ?? null;
 }
 
-projectConfigRoutes.get('/:id/config/effective', paramOf(idParam), async (c) => {
+projectConfigRoutes.get('/:id/config/effective', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   return c.json(await buildEffectiveConfig({ projectId: id, deviceId: await callingDevice(c) }));
 });
 
-projectConfigRoutes.get('/:id/policy', paramOf(idParam), async (c) => {
+projectConfigRoutes.get('/:id/policy', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const held = await readPolicy(id);
@@ -186,7 +186,7 @@ projectConfigRoutes.put(
   },
 );
 
-projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), async (c) => {
+projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const profiles = await listTestingProfiles(id);
@@ -196,12 +196,17 @@ projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), async (c) => 
   });
 });
 
-projectConfigRoutes.get('/:id/testing-profiles/:profileId', paramOf(profileParam), async (c) => {
-  const { id, profileId } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const held = await readTestingProfile(id, profileId);
-  return c.json(held ? serialise(held) : UNDECLARED);
-});
+projectConfigRoutes.get(
+  '/:id/testing-profiles/:profileId',
+  paramOf(profileParam),
+  noQuery,
+  async (c) => {
+    const { id, profileId } = c.req.valid('param');
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
+    const held = await readTestingProfile(id, profileId);
+    return c.json(held ? serialise(held) : UNDECLARED);
+  },
+);
 
 projectConfigRoutes.put(
   '/:id/testing-profiles/:profileId',
@@ -233,7 +238,7 @@ projectConfigRoutes.delete('/:id/testing-profiles/:profileId', paramOf(profilePa
   return refused(c, outcome.refusals, 'CONFIG_REFUSED');
 });
 
-projectConfigRoutes.get('/:id/secrets', paramOf(idParam), async (c) => {
+projectConfigRoutes.get('/:id/secrets', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const secrets = await listSecretNames(id);
@@ -274,7 +279,7 @@ projectConfigRoutes.put(
   },
 );
 
-projectConfigRoutes.get('/:id/bindings', paramOf(idParam), async (c) => {
+projectConfigRoutes.get('/:id/bindings', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const { held, unrepresentable } = await listBindings(id);
@@ -285,7 +290,7 @@ projectConfigRoutes.get('/:id/bindings', paramOf(idParam), async (c) => {
   });
 });
 
-projectConfigRoutes.get('/:id/bindings/:bindingId', paramOf(bindingParam), async (c) => {
+projectConfigRoutes.get('/:id/bindings/:bindingId', paramOf(bindingParam), noQuery, async (c) => {
   const { id, bindingId } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const read = await readBinding(id, bindingId);

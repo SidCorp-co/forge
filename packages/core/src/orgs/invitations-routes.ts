@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { badRequest, gone, invitationKeyOf, notFound } from '../lib/invitation.js';
 import { type AuthVars, readAuthUser, requireAuth } from '../middleware/auth.js';
+import { noQuery } from '../middleware/zod-validator.js';
 import { consumeOrgInvitationToken } from './invitations.js';
 import { orgInvitationByToken } from './read.js';
 import { refuse } from './refuse.js';
@@ -13,7 +14,7 @@ import { declineOrgInvitation } from './service.js';
 
 export const orgInvitationRoutes = new Hono<{ Variables: AuthVars }>();
 
-orgInvitationRoutes.get('/:token', async (c) => {
+orgInvitationRoutes.get('/:token', noQuery, async (c) => {
   const token = c.req.param('token');
   if (!token || token.length === 0) {
     throw badRequest('INVALID_TOKEN', 'invalid invitation token');

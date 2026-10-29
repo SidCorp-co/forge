@@ -7,7 +7,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { declareGate } from '../middleware/declared-gate.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { hasLivePatNamed, listPatsOf, mintPat, revokePat, setPatFence } from './pat.js';
 import { coreTokenNamePrefixOf } from './pat-format.js';
 import {
@@ -119,7 +119,7 @@ export const patRoutes = new Hono<{ Variables: AuthVars }>();
 patRoutes.use('/pat', requireAuth(), assertEmailVerified());
 patRoutes.use('/pat/*', requireAuth(), assertEmailVerified());
 
-patRoutes.get('/pat', async (c) => {
+patRoutes.get('/pat', noQuery, async (c) => {
   const userId = c.get('userId');
   const rows = await listPatsOf(userId);
   return c.json({

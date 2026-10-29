@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { sendStoredAttachment } from '../lib/attachment-headers.js';
 import { refuser } from '../lib/refusal.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
-import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { loadAttachment, readAttachmentBytes } from './attachment-lookup.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
 import { persistUpload } from './persist-upload.js';
@@ -80,6 +80,7 @@ uploadRoutes.put(
 uploadRoutes.get(
   '/download/:ticketId',
   zValidator('param', z.object({ ticketId: z.uuid() }), invalid('invalid ticketId')),
+  noQuery,
   async (c) => {
     const { ticketId } = c.req.valid('param');
     const ticket = await resolveDownloadTicket(ticketId);

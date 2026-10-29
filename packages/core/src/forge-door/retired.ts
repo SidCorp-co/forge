@@ -8,6 +8,7 @@ import {
 } from '@forge/contracts/mcp-tools';
 import { Hono } from 'hono';
 import { type Refusal, refused } from '../lib/refusal.js';
+import { noQuery } from '../middleware/zod-validator.js';
 
 const NEW_DOOR = {
   rest: 'POST /api/forge/feedback { kind, title, whereSeen, body?, signalKey?, clientVersion? }',
@@ -68,7 +69,7 @@ const answer = (c: Parameters<typeof refused>[0]) =>
 
 /** `/api/agent-reports`: every route it served, answering where reports about Forge go now. */
 export const agentReportsRetiredRoutes = new Hono();
-agentReportsRetiredRoutes.get('/', answer);
+agentReportsRetiredRoutes.get('/', noQuery, answer);
 agentReportsRetiredRoutes.post('/', answer);
 agentReportsRetiredRoutes.post('/triage', answer);
 agentReportsRetiredRoutes.post('/:id/triage', answer);

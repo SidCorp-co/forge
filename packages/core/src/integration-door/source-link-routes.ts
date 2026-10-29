@@ -14,7 +14,7 @@ import {
 } from '../integrations/source-host/index.js';
 import { issueKeysAndTitles } from '../issues/index.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { changeRequestIssueOf } from './change-request-issue.js';
 import { can, onHost, type Routes, refuse } from './source-door.js';
 import { linkParamSchema, numberParamSchema } from './source-schemas.js';
@@ -80,6 +80,7 @@ export function registerChangeRequestLinks(routes: Routes): void {
     '/:projectId/integrations/source/change-requests/:number/issues',
     can('project.read'),
     zValidator('param', numberParamSchema),
+    noQuery,
     async (c) => {
       const projectId = c.req.param('projectId');
       const { number } = c.req.valid('param');

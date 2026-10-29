@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { sendBytes, setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { commentOnMockup, mockupCommentsAs } from './comments.js';
 import { getMockupAs, listMockupsAs, mockupBytes } from './list.js';
 import type { MockupActor } from './read.js';
@@ -78,12 +78,12 @@ mockupRoutes.post(
   },
 );
 
-mockupRoutes.get('/:id/mockups/:mk', mockupParam, async (c) => {
+mockupRoutes.get('/:id/mockups/:mk', mockupParam, noQuery, async (c) => {
   const { id, mk } = c.req.valid('param');
   return c.json({ mockup: await getMockupAs(actorOf(c), id, mk) });
 });
 
-mockupRoutes.get('/:id/mockups/:mk/content', mockupParam, async (c) => {
+mockupRoutes.get('/:id/mockups/:mk/content', mockupParam, noQuery, async (c) => {
   const { id, mk } = c.req.valid('param');
   const file = await mockupBytes(actorOf(c), id, mk);
   if (!file.ok) return refused(c, [file.refusal], 'MOCKUP_REFUSED');
@@ -130,7 +130,7 @@ mockupRoutes.post(
   },
 );
 
-mockupRoutes.get('/:id/mockups/:mk/comments', mockupParam, async (c) => {
+mockupRoutes.get('/:id/mockups/:mk/comments', mockupParam, noQuery, async (c) => {
   const { id, mk } = c.req.valid('param');
   return c.json(await mockupCommentsAs(actorOf(c), id, mk));
 });

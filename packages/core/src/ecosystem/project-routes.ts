@@ -5,7 +5,7 @@ import { db } from '../db/client.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { adoptVersion } from './adopt-service.js';
 import { readApiPage } from './api-page.js';
@@ -39,7 +39,7 @@ const idParam = zValidator(
   invalid('invalid path: the project id is a uuid'),
 );
 
-ecosystemProjectRoutes.get('/:id/interface', idParam, async (c) => {
+ecosystemProjectRoutes.get('/:id/interface', idParam, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   return c.json(await interfaceView(id, await loadInterface(id)));
@@ -111,7 +111,7 @@ ecosystemProjectRoutes.post(
   },
 );
 
-ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, async (c) => {
+ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const revisions = await listInterfaceRevisions(id);
@@ -146,11 +146,11 @@ ecosystemProjectRoutes.post(
   },
 );
 
-ecosystemProjectRoutes.get('/:id/api-page', idParam, async (c) =>
+ecosystemProjectRoutes.get('/:id/api-page', idParam, noQuery, async (c) =>
   c.json(await readApiPage(c.get('userId'), c.req.valid('param').id)),
 );
 
-ecosystemProjectRoutes.get('/:id/ecosystems', idParam, async (c) => {
+ecosystemProjectRoutes.get('/:id/ecosystems', idParam, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const memberships = await membershipsWhere({ projectIds: [id] });

@@ -7,7 +7,7 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { undoAct } from './acts-store.js';
 import { askStewardDecision } from './decision-ask.js';
 import { finishStewardJob } from './job.js';
@@ -107,7 +107,7 @@ stewardRoutes.get('/:id/steward-acts', projectParam, runsQuery, async (c) =>
   ),
 );
 
-stewardRoutes.get('/:id/steward-budget', projectParam, async (c) =>
+stewardRoutes.get('/:id/steward-budget', projectParam, noQuery, async (c) =>
   c.json(await readStewardBudget({ projectId: c.req.valid('param').id, userId: c.get('userId') })),
 );
 

@@ -11,7 +11,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import {
   createShare,
@@ -45,6 +45,7 @@ projectShareRoutes.use('/:id/shares/*', requireAuth(), assertEmailVerified());
 projectShareRoutes.get(
   '/:id/shares',
   zValidator('param', projectParam, invalid('invalid path: /api/projects/<project>/shares')),
+  noQuery,
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
@@ -59,6 +60,7 @@ projectShareRoutes.get(
     projectParam,
     invalid('invalid path: /api/projects/<project>/shares/audiences'),
   ),
+  noQuery,
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));

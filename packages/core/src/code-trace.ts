@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { THIS_REPOSITORY } from './lib/this-repository.js';
 import { type AuthVars, requireAuth } from './middleware/auth.js';
+import { noQuery } from './middleware/zod-validator.js';
 import declaration from './modules.json' with { type: 'json' };
 import { actorFor, projectResource, requireCan } from './permissions/index.js';
 import { readDeclaredSource } from './project-config/index.js';
@@ -34,7 +35,7 @@ const NONE: CodeTraceResponse = { units: [], total: 0, untraced: 0 };
 
 /** A project reads this trace only when its declared repository is the one the trace describes. */
 export const codeTraceRoutes = new Hono<{ Variables: AuthVars }>();
-codeTraceRoutes.get('/projects/:id/code-trace', requireAuth(), async (c) => {
+codeTraceRoutes.get('/projects/:id/code-trace', requireAuth(), noQuery, async (c) => {
   const id = c.req.param('id');
   if (!/^[0-9a-f-]{36}$/i.test(id)) {
     throw new HTTPException(400, {

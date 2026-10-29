@@ -16,7 +16,7 @@ lives in that module's **rules.ts** and **service.ts**.
 - `packages/contracts/src/suggestions.ts` — the request schema (`createSuggestionRequestSchema`), its SHAPE string (`CREATE_SUGGESTION_SHAPE`) and the refusal codes, declared once for core and web
 - `packages/core/src/suggestions/service.ts` — the write the route calls, answering `{ ok: true, … } | { ok: false, refusals }`
 - `packages/core/src/suggestions/rules.ts` — the pure guards the service applies
-- `packages/core/src/middleware/zod-validator.ts` — `strictBody` and `zValidator`, the 400 every bad body or path gets
+- `packages/core/src/middleware/zod-validator.ts` — `strictBody`, `zValidator` and `noQuery`, the 400 every bad body, path or query key gets
 - `packages/core/src/lib/refusal.ts` — `refused`, the one refusal envelope
 - `packages/core/src/route-registry.ts` — the one place a module's router is mounted
 - `packages/core/src/credentials/pat-permissions.ts` — `PAT_PERMISSION_RESOURCES`, where a new prefix is made grantable to a token
@@ -38,7 +38,7 @@ to the code, so a route whose contract file was not regenerated fails `pnpm veri
 ## Review checklist
 
 1. The route file holds no database call and no rule: it validates, calls one service or read function, and answers.
-2. The body is a `z.strictObject` from contracts read through `strictBody` with its SHAPE string; path and query go through `zValidator` with a message naming what is valid.
+2. The body is a `z.strictObject` from contracts read through `strictBody` with its SHAPE string; path and query go through `zValidator` with a message naming what is valid. A read that takes no query holds `noQuery`, so every GET closes its query; `check-api-contracts` refuses one that does not (ISS-753).
 3. Every refusal is a code declared in contracts, answered in the envelope through `refused`, with a status that says what the client should do.
 4. The service asks `can()` for the permission the act needs; the route reads no role, grant or token itself.
 5. A new prefix is listed in `PAT_PERMISSION_RESOURCES`, and the router is mounted only in **route-registry.ts**.

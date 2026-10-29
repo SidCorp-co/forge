@@ -11,7 +11,7 @@ import {
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { getClientIp } from '../middleware/rate-limit.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { confirmDraft, discardDraft } from './drafts.js';
 import {
   assertOrigin,
@@ -46,6 +46,7 @@ widgetRoutes.use('*', async (c, next) => {
 widgetRoutes.get(
   '/status/:token',
   zValidator('param', statusParam, invalid('invalid path: /api/widget/status/<status token>')),
+  noQuery,
   async (c) => {
     return c.json(await statusOfLink(c.req.valid('param').token));
   },
@@ -54,6 +55,7 @@ widgetRoutes.get(
 widgetRoutes.get(
   '/:siteKey/config',
   zValidator('param', siteParam, invalid('invalid path: /api/widget/<site key>/config')),
+  noQuery,
   async (c) => {
     const binding = await siteOf(c.req.valid('param').siteKey);
     assertOrigin(binding, c.req.header('origin'), false);
@@ -86,12 +88,12 @@ widgetRoutes.post(
   },
 );
 
-widgetRoutes.get('/session/messages', async (c) => {
+widgetRoutes.get('/session/messages', noQuery, async (c) => {
   const { session, binding } = await sessionOf(c.req.header('authorization'));
   return c.json(await historyOf(session, binding));
 });
 
-widgetRoutes.get('/session/stream', async (c) => {
+widgetRoutes.get('/session/stream', noQuery, async (c) => {
   const { session } = await sessionOf(c.req.header('authorization'));
   return widgetStream(c, session);
 });

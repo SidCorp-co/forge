@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { carriedSchema, declareCarried } from './carried.js';
 import { createReleaseBatch } from './create.js';
@@ -110,6 +110,7 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.get(
   '/:projectId/release-batches/active',
   zValidator('param', projectParamSchema),
+  noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -125,6 +126,7 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.get(
   '/:projectId/release-batches/roster',
   zValidator('param', projectParamSchema),
+  noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -139,6 +141,7 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.get(
   '/:projectId/release-readiness',
   zValidator('param', projectParamSchema),
+  noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
@@ -221,6 +224,7 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId',
   zValidator('param', runParamSchema),
+  noQuery,
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
@@ -296,6 +300,7 @@ const methodBodySchema = z
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId/state',
   zValidator('param', runParamSchema),
+  noQuery,
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
@@ -321,6 +326,7 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId/range',
   zValidator('param', runParamSchema),
+  noQuery,
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const run = await loadRunForProject(runId, projectId, c.get('userId'));
@@ -417,6 +423,7 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.get(
   '/:projectId/release-records/:runId',
   zValidator('param', runParamSchema),
+  noQuery,
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));

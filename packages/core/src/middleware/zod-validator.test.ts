@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { invalid, readElsewhere, zValidator } from './zod-validator.js';
+import { invalid, noQuery, readElsewhere, zValidator } from './zod-validator.js';
 
 function appWith(schema: z.ZodType, hook?: ReturnType<typeof readElsewhere>) {
   const app = new Hono();
@@ -149,5 +149,22 @@ describe('zValidator json, a request with no body', () => {
       '{"baseRevision":3}',
     );
     expect(await res.json()).toEqual({ read: { baseRevision: 3 } });
+  });
+});
+
+// ISS-753: the one validator every read that takes no query holds
+describe('noQuery', () => {
+  const app = new Hono().get('/read', noQuery, (c) => c.json({ ok: true }));
+
+  it('answers a read sent no query', async () => {
+    expect((await app.request('/read')).status).toBe(200);
+  });
+
+  it('refuses every key, by name, saying the route takes none', async () => {
+    const res = await app.request('/read?revision=3&verbose');
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe(
+      'Unknown query parameters: `revision`, `verbose`. This route takes no query parameters.',
+    );
   });
 });

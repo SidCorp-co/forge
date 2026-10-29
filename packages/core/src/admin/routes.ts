@@ -10,7 +10,7 @@ import {
   requireAuth,
 } from '../middleware/auth.js';
 import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { computeAlerts } from './alert-queries.js';
 import { listAdminDevices, listAdminProjects } from './read.js';
 
@@ -40,7 +40,7 @@ adminProtected.get('/devices', zValidator('query', devicesQuerySchema), async (c
 
 const whoamiRoutes = new Hono<{ Variables: AuthVars }>();
 whoamiRoutes.use('*', requireAuth(), assertEmailVerified());
-whoamiRoutes.get('/whoami', async (c) => {
+whoamiRoutes.get('/whoami', noQuery, async (c) => {
   const row = await authUserRow(c, c.get('userId'));
   if (!row) {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });

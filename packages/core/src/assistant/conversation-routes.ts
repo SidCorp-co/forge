@@ -34,7 +34,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, can, projectResource, requireHeld } from '../permissions/index.js';
 import { batchesOfConversation } from '../questionnaires/index.js';
 import { conversationProposalRoutes } from './agreement/routes.js';
@@ -203,7 +203,7 @@ conversationRoutes.post('/', zValidator('json', createSchema), async (c) => {
   return c.json(conversation, 201);
 });
 
-conversationRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => {
+conversationRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   const conversation = await readableConversation(id, userId);

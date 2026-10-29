@@ -16,7 +16,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { persistCommentAttachment } from './attachment-service.js';
 import { commentAttachmentFile, issueCommentForAttachment } from './read.js';
@@ -80,6 +80,7 @@ commentAttachmentRoutes.get(
   '/attachments/:id',
   requireAuth(),
   zValidator('param', idParamSchema, invalid('invalid id')),
+  noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');

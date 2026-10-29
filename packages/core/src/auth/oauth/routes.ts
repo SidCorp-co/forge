@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { ProviderId } from '../../integrations/identity/index.js';
 import { env } from '../../lib/env.js';
 import { type AuthVars, requireAuth } from '../../middleware/auth.js';
-import { zValidator } from '../../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../../middleware/zod-validator.js';
 import { hasOauthLink } from '../read.js';
 import {
   callbackQuery,
@@ -40,7 +40,7 @@ function gate() {
  * button per row. The flag also gates this — when off, the endpoint 404s
  * so a probe can't enumerate which providers are configured.
  */
-oauthRoutes.get('/oauth/providers', (c) => {
+oauthRoutes.get('/oauth/providers', noQuery, (c) => {
   gate();
   const enabled = getEnabledProviders().map(toPublic);
   return c.json({ providers: enabled });

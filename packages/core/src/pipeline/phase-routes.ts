@@ -5,7 +5,7 @@ import { phaseJournalOutcomes } from '../db/schema-journal.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
 import { refusePipeline } from './refuse.js';
@@ -90,7 +90,7 @@ phaseRoutes.post(
   },
 );
 
-phaseRoutes.get('/:id/resume-point', zValidator('param', idParamSchema), async (c) => {
+phaseRoutes.get('/:id/resume-point', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await runProjectFor(id, c.get('userId'), 'project.read');
   const row = await resumePoint(id);
@@ -99,7 +99,7 @@ phaseRoutes.get('/:id/resume-point', zValidator('param', idParamSchema), async (
   });
 });
 
-phaseRoutes.get('/:id/phases', zValidator('param', idParamSchema), async (c) => {
+phaseRoutes.get('/:id/phases', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await runProjectFor(id, c.get('userId'), 'project.read');
   const rows = await listPhases(id);

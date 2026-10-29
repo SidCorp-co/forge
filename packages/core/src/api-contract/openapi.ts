@@ -8,6 +8,12 @@ import {
   declaredInputs,
   declaredRawBodies,
 } from '../middleware/zod-validator.js';
+import {
+  OPEN_QUERY_READS,
+  type OpenQuery,
+  queryClosure,
+  unmountedAmnesties,
+} from './open-queries.js';
 import { type RequestRead, readsOf } from './request-reads.js';
 
 type MountedRoute = { method: string; path: string; handler: unknown };
@@ -429,8 +435,13 @@ function byMethodOrder(a: string, b: string): number {
   return METHOD_ORDER.indexOf(a) - METHOD_ORDER.indexOf(b);
 }
 
-export function buildApiContract(routes: MountedRoute[], info: JsonSchema): ApiContract {
+export function buildApiContract(
+  routes: MountedRoute[],
+  info: JsonSchema,
+  openQueries: Readonly<Record<string, OpenQuery>> = OPEN_QUERY_READS,
+): ApiContract {
   const refusals: string[] = [];
+  const reads = new Set<string>();
   const paths: Record<string, Record<string, Operation>> = {};
   let operations = 0;
   const endpoints = endpointsOf(routes, refusals).sort((a, b) =>
@@ -449,6 +460,11 @@ export function buildApiContract(routes: MountedRoute[], info: JsonSchema): ApiC
     }
     const described = describe(shape, endpoint);
     for (const why of described.refusals) refusals.push(`${name}: ${why}`);
+    if (endpoint.method === 'GET') {
+      reads.add(name);
+      const closure = queryClosure(described.operation, openQueries[name]);
+      if (closure !== null) refusals.push(`${name}: ${closure}`);
+    }
     const item = paths[shape.template] ?? {};
     const method = endpoint.method.toLowerCase();
     if (item[method] !== undefined) {
@@ -461,6 +477,7 @@ export function buildApiContract(routes: MountedRoute[], info: JsonSchema): ApiC
     paths[shape.template] = item;
     operations += 1;
   }
+  refusals.push(...unmountedAmnesties(openQueries, reads));
   const document = {
     openapi: '3.1.0',
     info,

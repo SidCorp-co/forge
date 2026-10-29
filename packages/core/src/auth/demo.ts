@@ -3,6 +3,7 @@ import { setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
 import { signUserToken } from '../credentials/jwt.js';
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
+import { noQuery } from '../middleware/zod-validator.js';
 import { DEMO_MEMBER_EMAIL } from './demo-member.js';
 import { userByEmail } from './read.js';
 import { openRefreshToken } from './service.js';
@@ -18,7 +19,7 @@ export const demoRoutes = new Hono();
  * DEMO_MODE_OFF and sets nothing. A demo core also signs in every request that carries no
  * credential (web-host/demo-credential.ts), so a browser needs no call here to be signed in.
  */
-demoRoutes.get('/demo', async (c) => {
+demoRoutes.get('/demo', noQuery, async (c) => {
   if (!env.FORGE_DEMO_MODE) {
     throw refuse(
       'DEMO_MODE_OFF',

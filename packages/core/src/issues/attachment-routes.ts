@@ -7,7 +7,7 @@ import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, requireAuth, restActor } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
-import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { deleteIssueAttachment, persistIssueAttachment } from './attachment-service.js';
 import {
@@ -98,18 +98,23 @@ issueAttachmentRoutes.get(
 export const attachmentRoutes = new Hono<{ Variables: AuthVars }>();
 attachmentRoutes.use('*', requireAuth());
 
-attachmentRoutes.get('/:id/download', zValidator('param', attachmentIdParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+attachmentRoutes.get(
+  '/:id/download',
+  zValidator('param', attachmentIdParamSchema),
+  noQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const row = await attachmentWithProject(id);
-  if (!row) throw notFound('attachment not found');
+    const row = await attachmentWithProject(id);
+    if (!row) throw notFound('attachment not found');
 
-  const access = await loadProjectAccess(row.projectId, userId);
-  requireHeld(access, 'project.read');
+    const access = await loadProjectAccess(row.projectId, userId);
+    requireHeld(access, 'project.read');
 
-  return sendStoredAttachment(c, row, (path) => getStorage().get(path));
-});
+    return sendStoredAttachment(c, row, (path) => getStorage().get(path));
+  },
+);
 
 attachmentRoutes.delete('/:id', zValidator('param', attachmentIdParamSchema), async (c) => {
   const { id } = c.req.valid('param');

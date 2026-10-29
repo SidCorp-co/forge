@@ -5,7 +5,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { listProjectPipelineRuns, pipelineRunProjectId } from './read.js';
 import { loadPipelineRunSummary } from './runs-rollup.js';
@@ -19,7 +19,7 @@ const listFiltersSchema = paginationSchema.extend({
 export const pipelineRunReadRoutes = new Hono<{ Variables: AuthVars }>();
 pipelineRunReadRoutes.use('*', requireAuth(), assertEmailVerified());
 
-pipelineRunReadRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => {
+pipelineRunReadRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 

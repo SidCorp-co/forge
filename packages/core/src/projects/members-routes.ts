@@ -15,7 +15,7 @@ import {
   requireAuth,
 } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
@@ -90,23 +90,29 @@ export const memberRoutes = new Hono<{ Variables: AuthVars }>();
 
 memberRoutes.use('*', requireAuth(), assertEmailVerified());
 
-memberRoutes.get('/:projectId/members', zValidator('param', projectParamSchema), async (c) => {
-  const { projectId } = c.req.valid('param');
-  const userId = c.get('userId');
+memberRoutes.get(
+  '/:projectId/members',
+  zValidator('param', projectParamSchema),
+  noQuery,
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
+    const access = await loadProjectAccess(projectId, userId);
+    requireHeld(access, 'project.read');
 
-  // `kind` and `displayName` are here because an agent account IS a project
-  // member (ISS-932) and a reader that is only told its synthesized address
-  // cannot name it (ISS-1137) — which is why the issue list's creator filter
-  // offered every agent as a fake person for as long as it did.
-  return c.json(await listProjectMembers(projectId));
-});
+    // `kind` and `displayName` are here because an agent account IS a project
+    // member (ISS-932) and a reader that is only told its synthesized address
+    // cannot name it (ISS-1137) — which is why the issue list's creator filter
+    // offered every agent as a fake person for as long as it did.
+    return c.json(await listProjectMembers(projectId));
+  },
+);
 
 memberRoutes.get(
   '/:projectId/members/invitations',
   zValidator('param', projectParamSchema),
+  noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');

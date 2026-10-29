@@ -43,7 +43,7 @@ import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
 import { announceIntegrationChanged, setBindingInboundSecret } from '../project-config/index.js';
 import { summarizeBindings, summarizeOneBinding } from './binding-standing.js';
@@ -87,7 +87,7 @@ async function projectBinding(
   return existing;
 }
 
-integrationsRoutes.get('/:projectId/integrations', async (c) => {
+integrationsRoutes.get('/:projectId/integrations', noQuery, async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
@@ -317,7 +317,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   });
 });
 
-integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
+integrationsRoutes.get('/:projectId/integrations/:id/deliveries', noQuery, async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   await projectBinding(projectId, id, c.get('userId'));
@@ -326,7 +326,7 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
 
 // ISS-305 — composed read-only integrations status for the web hub; the
 // aggregation lives in status-service.ts.
-integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
+integrationsRoutes.get('/:projectId/integrations/status', noQuery, async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
@@ -336,7 +336,7 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
 
 // MCP preview (ISS-429, ISS-1191) — every server a project-wide agent session receives, composed
 // in mcp-preview-service.ts from resolveSessionMcpServers, so nothing here resolves a second time.
-integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
+integrationsRoutes.get('/:projectId/integrations/mcp-preview', noQuery, async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));

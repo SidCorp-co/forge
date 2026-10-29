@@ -11,7 +11,7 @@ import { carryAgentReports } from '../feedback/index.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import {
   type Answer,
   claimForgeAnswers,
@@ -75,6 +75,7 @@ const keyParam = z.object({
 forgeFeedbackRoutes.get(
   '/:key',
   zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>')),
+  noQuery,
   async (c) => answer(c, await getForgeFeedback(callerOf(c), c.req.valid('param').key, REST_DOOR)),
 );
 

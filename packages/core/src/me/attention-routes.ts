@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { readNeedsYouAcross } from '../development/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { noQuery } from '../middleware/zod-validator.js';
 import {
   type AttentionFailedJobRow,
   type AttentionMentionRow,
@@ -105,7 +106,7 @@ function statusReportItem(r: AttentionStatusReportRow): AttentionItem {
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
-meAttentionRoutes.get('/attention', async (c) => {
+meAttentionRoutes.get('/attention', noQuery, async (c) => {
   const userId = c.get('userId');
   const agency = c.get('agency');
   if (!agency) throw new Error('me/attention: a request reached its handler without an auth gate');

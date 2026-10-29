@@ -17,7 +17,7 @@ import {
   restActor,
 } from '../middleware/auth.js';
 import { badRequest, forbidden } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnSync } from './broadcast.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
@@ -146,7 +146,7 @@ agentSessionRoutes.post('/:id/retry', zValidator('param', idParamSchema), async 
   return c.json({ ok: true, issueId: issue.id, ...offered });
 });
 
-agentSessionRoutes.get('/:id/cost', zValidator('param', idParamSchema), async (c) => {
+agentSessionRoutes.get('/:id/cost', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 
@@ -194,7 +194,7 @@ agentSessionRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
   return c.json(listResponse(c, items, total, fromPage(page, pageSize)));
 });
 
-agentSessionRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => {
+agentSessionRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 

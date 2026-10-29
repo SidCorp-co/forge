@@ -37,7 +37,7 @@ import { sendBytes, setInertAttachmentHeaders } from '../lib/attachment-headers.
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs, similarToDraftAs } from './embeddings.js';
 import { servedEndpointsAs } from './endpoints.js';
@@ -163,20 +163,20 @@ feedbackRoutes.post(
 );
 
 // before `/:fb`, which would read `endpoints` as an item key
-feedbackRoutes.get('/:id/feedback/endpoints', projectParam, async (c) => {
+feedbackRoutes.get('/:id/feedback/endpoints', projectParam, noQuery, async (c) => {
   const body: FeedbackEndpointsResponse = {
     endpoints: await servedEndpointsAs(actorOf(c), c.req.valid('param').id),
   };
   return c.json(body);
 });
 
-feedbackRoutes.get('/:id/feedback/:fb', itemParam, async (c) => {
+feedbackRoutes.get('/:id/feedback/:fb', itemParam, noQuery, async (c) => {
   const { id, fb } = c.req.valid('param');
   const body: FeedbackResponse = { feedback: await detailAs(actorOf(c), id, fb) };
   return c.json(body);
 });
 
-feedbackRoutes.get('/:id/feedback/:fb/similar', itemParam, async (c) => {
+feedbackRoutes.get('/:id/feedback/:fb/similar', itemParam, noQuery, async (c) => {
   const { id, fb } = c.req.valid('param');
   return c.json(await similarFeedbackAs(actorOf(c), id, fb));
 });
@@ -399,7 +399,7 @@ feedbackRoutes.post(
   },
 );
 
-feedbackRoutes.get('/:id/feedback/:fb/attachments/:aid', attachmentParam, async (c) => {
+feedbackRoutes.get('/:id/feedback/:fb/attachments/:aid', attachmentParam, noQuery, async (c) => {
   const { id, fb, aid } = c.req.valid('param');
   const actor = actorOf(c);
   const file = await attachmentBytes({

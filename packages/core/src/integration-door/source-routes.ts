@@ -30,7 +30,7 @@ import {
   type SourceHost,
 } from '../integrations/source-host/index.js';
 import { logger } from '../lib/logger.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { can, onHost, type Routes } from './source-door.js';
 import { registerChangeRequestLinks } from './source-link-routes.js';
 import { registerSourceProjectionRoutes } from './source-projection-routes.js';
@@ -54,13 +54,14 @@ export function registerSourceRoutes(routes: Routes): void {
 function registerSourceReads(routes: Routes): void {
   // The bindings with their health and inbound door. It contacts no host and answers the same
   // whether or not agents are granted, so it is where a caller finds out WHY another route refused.
-  routes.get('/:projectId/integrations/source', can('project.read'), async (c) =>
+  routes.get('/:projectId/integrations/source', can('project.read'), noQuery, async (c) =>
     c.json({ bindings: await listSourceBindings(c.req.param('projectId')) }),
   );
   routes.get(
     '/:projectId/integrations/source/change-requests/:number/diff',
     can('project.read'),
     zValidator('param', numberParamSchema),
+    noQuery,
     async (c) => {
       const { number } = c.req.valid('param');
       return c.json(await onHost(c.req.param('projectId'), (host) => host.diff({ number })));

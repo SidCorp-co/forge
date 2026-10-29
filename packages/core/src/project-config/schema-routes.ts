@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { noQuery } from '../middleware/zod-validator.js';
 import { gateCatalog } from './gates.js';
 import { type ProjectConfigSchemaName, projectConfigJsonSchemas, schemaId } from './json-schema.js';
 
@@ -17,12 +18,12 @@ export function projectConfigSchemaRoutes(...others: Readonly<Record<string, obj
     ...others.flatMap((schemas) => Object.entries(schemas)),
   ]);
   return new Hono()
-    .get('/gates', (c) => {
+    .get('/gates', noQuery, (c) => {
       // every policy gate, what it refuses and its default per profile, and the kernel no profile relaxes (REQ-76 BC-1)
       c.header('Cache-Control', 'public, max-age=300');
       return c.json(gateCatalog());
     })
-    .get('/schemas/:file', (c) => {
+    .get('/schemas/:file', noQuery, (c) => {
       const file = c.req.param('file');
       const schema = served.get(file);
       if (!schema) {

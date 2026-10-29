@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { projectMemberRoles } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import {
   createAgentAccount,
@@ -45,11 +45,16 @@ const createAgentSchema = z
     projectRole: z.enum(projectMemberRoles).optional(),
   })
   .strict();
-agentAccountRoutes.get('/:orgId/agents', zValidator('param', orgParamSchema), async (c) => {
-  const { orgId } = c.req.valid('param');
-  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
-  return c.json({ agents: await listAgentAccounts(orgId) });
-});
+agentAccountRoutes.get(
+  '/:orgId/agents',
+  zValidator('param', orgParamSchema),
+  noQuery,
+  async (c) => {
+    const { orgId } = c.req.valid('param');
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
+    return c.json({ agents: await listAgentAccounts(orgId) });
+  },
+);
 
 agentAccountRoutes.post(
   '/:orgId/agents',
@@ -121,6 +126,7 @@ agentAccountRoutes.patch(
 agentAccountRoutes.get(
   '/:orgId/agents/:agentUserId/self',
   zValidator('param', agentParamSchema),
+  noQuery,
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));

@@ -8,13 +8,19 @@
  */
 
 import { Hono } from 'hono';
+import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
 import { sourceCommit } from '../lib/source-commit.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { bossErrorTally } from '../queue/boss-errors.js';
 import { readLiveness } from './service.js';
 export const publicHealthRoutes = new Hono();
 
-publicHealthRoutes.get('/health', async (c) => {
+// a deploy probe reads these with a cache-buster appended (integrations/deploy/runtime-probe.ts,
+// integrations/deploy/coolify/health-probe.ts), so it is the one key they take
+const probeQuery = zValidator('query', z.object({ _forge_cb: z.string().max(64).optional() }));
+
+publicHealthRoutes.get('/health', probeQuery, async (c) => {
   const live = await readLiveness();
   return c.json(
     {
@@ -31,7 +37,7 @@ publicHealthRoutes.get('/health', async (c) => {
 // Mounted at `/` and at `/api` both. Only the second carries CORS — `app.use('/api/*',
 // corsMiddleware)` covers that prefix and nothing else — and only the second is where the
 // web app's client points, so the root copy alone left the page unable to read this.
-publicHealthRoutes.get('/version', (c) =>
+publicHealthRoutes.get('/version', probeQuery, (c) =>
   c.json({
     version: pkg.version,
     sourceCommit,

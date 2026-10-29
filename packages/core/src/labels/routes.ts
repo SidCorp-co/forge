@@ -6,7 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { moduleDetailOf } from './module-detail-read.js';
 import { DEFAULT_ACTIVE_WITHIN_DAYS } from './module-rollup.js';
@@ -114,7 +114,7 @@ labelProjectRoutes.post(
   },
 );
 
-labelProjectRoutes.get('/:id/labels', zValidator('param', idParamSchema), async (c) => {
+labelProjectRoutes.get('/:id/labels', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id: projectId } = c.req.valid('param');
   const userId = c.get('userId');
 
@@ -149,6 +149,7 @@ labelProjectRoutes.get(
 labelProjectRoutes.get(
   '/:id/modules/:module/detail',
   zValidator('param', moduleDetailParamSchema),
+  noQuery,
   async (c) => {
     const { id: projectId, module } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));

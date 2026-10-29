@@ -9,6 +9,7 @@ import {
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { noQuery } from '../middleware/zod-validator.js';
 import { listProjectHeads } from '../projects/index.js';
 import { type BlockerRow, readHealthAggregates } from './project-health.js';
 
@@ -69,7 +70,7 @@ function groupBlockers(rows: BlockerRow[]): Map<string, ProjectHealthRow['blocke
   return byProject;
 }
 
-projectHealthRoutes.get('/health', async (c) => {
+projectHealthRoutes.get('/health', noQuery, async (c) => {
   const userId = c.get('userId');
 
   const visibleIds = await loadVisibleProjectIds(userId);

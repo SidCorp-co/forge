@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { REGISTER_STATUSES, readRegister } from './channel-register.js';
 import {
   createEcosystem,
@@ -91,9 +91,9 @@ ecosystemRoutes.post('/', zValidator('json', z.unknown()), async (c) => {
 });
 
 // the person's ecosystems, the invitations to their projects and every thread one of their projects sent or received, across ecosystems, in one read: the Ecosystem menu, the Threads inbox and the empty state all stand on it
-ecosystemRoutes.get('/mine', async (c) => c.json(await readWorkspace(c.get('userId'))));
+ecosystemRoutes.get('/mine', noQuery, async (c) => c.json(await readWorkspace(c.get('userId'))));
 
-ecosystemRoutes.get('/:id', idParam, async (c) => {
+ecosystemRoutes.get('/:id', idParam, noQuery, async (c) => {
   const { eco } = await readableEcosystem(c.get('userId'), c.req.valid('param').id);
   return c.json(serialiseEcosystem(eco));
 });
@@ -111,12 +111,12 @@ ecosystemRoutes.put('/:id', idParam, zValidator('json', z.unknown()), async (c) 
   );
 });
 
-ecosystemRoutes.get('/:id/revisions', idParam, async (c) => {
+ecosystemRoutes.get('/:id/revisions', idParam, noQuery, async (c) => {
   const { eco } = await readableEcosystem(c.get('userId'), c.req.valid('param').id);
   return c.json(serialiseRevisions(await listEcosystemRevisions(eco.id)));
 });
 
-ecosystemRoutes.get('/:id/members', idParam, async (c) => {
+ecosystemRoutes.get('/:id/members', idParam, noQuery, async (c) => {
   const { memberships } = await visibleMemberships(c.get('userId'), c.req.valid('param').id);
   return c.json({
     memberships: memberships.map(serialiseMembership),
@@ -143,7 +143,7 @@ ecosystemRoutes.post(
     ),
 );
 
-membershipRoutes.get('/:id', idParam, async (c) => {
+membershipRoutes.get('/:id', idParam, noQuery, async (c) => {
   const row = await readableMembership(c.get('userId'), c.req.valid('param').id);
   return c.json({ ...serialiseMembership(row), history: await membershipHistory(row.id) });
 });

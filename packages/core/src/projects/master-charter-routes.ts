@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { parseMasterCharterWrite } from './master-charter.js';
 import {
@@ -44,6 +44,7 @@ const UNDECLARED = {
 masterCharterRoutes.get(
   '/:id/master-charter',
   zValidator('param', idParamSchema, invalid('invalid project id')),
+  noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
     await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));

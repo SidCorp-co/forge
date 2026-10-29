@@ -9,7 +9,7 @@ import { buildInvitationLink, escapeInvitationHtml } from '../lib/invitation.js'
 import { mailInvitation, refuseUnmailable } from '../lib/invitation-mail.js';
 import { logger } from '../lib/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
@@ -79,7 +79,7 @@ orgRoutes.use('*', requireAuth(), assertEmailVerified());
 
 // My orgs + my role. The personal org is included (isPersonal flag lets the
 // UI pin/sort it).
-orgRoutes.get('/', async (c) => {
+orgRoutes.get('/', noQuery, async (c) => {
   const userId = c.get('userId');
   return c.json(await listOrgsForUser(userId));
 });
@@ -136,7 +136,7 @@ orgRoutes.delete('/:orgId', zValidator('param', orgParamSchema), async (c) => {
 // In-org transparency: any org member can SEE which projects the org holds
 // (name+slug only) — access to a project's content still requires an
 // effective role on it.
-orgRoutes.get('/:orgId/projects', zValidator('param', orgParamSchema), async (c) => {
+orgRoutes.get('/:orgId/projects', zValidator('param', orgParamSchema), noQuery, async (c) => {
   const { orgId } = c.req.valid('param');
   const userId = c.get('userId');
 
@@ -145,7 +145,7 @@ orgRoutes.get('/:orgId/projects', zValidator('param', orgParamSchema), async (c)
   return c.json(await listOrgProjects(orgId));
 });
 
-orgRoutes.get('/:orgId/members', zValidator('param', orgParamSchema), async (c) => {
+orgRoutes.get('/:orgId/members', zValidator('param', orgParamSchema), noQuery, async (c) => {
   const { orgId } = c.req.valid('param');
   const userId = c.get('userId');
 
@@ -216,7 +216,7 @@ orgRoutes.post(
   },
 );
 
-orgRoutes.get('/:orgId/invitations', zValidator('param', orgParamSchema), async (c) => {
+orgRoutes.get('/:orgId/invitations', zValidator('param', orgParamSchema), noQuery, async (c) => {
   const { orgId } = c.req.valid('param');
   const userId = c.get('userId');
   await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));

@@ -40,7 +40,7 @@ import { providerRefused } from '../lib/provider-refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { listOrgsForUser } from '../orgs/index.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { loadConnection } from './connection-routes.js';
@@ -270,7 +270,7 @@ githubAppRoutes.post(
  * it, the installations recorded for the caller's orgs with whether any project uses each, and what
  * an operator still has to do before it serves the instance.
  */
-githubAppRoutes.get('/:id/github-app', async (c) => {
+githubAppRoutes.get('/:id/github-app', noQuery, async (c) => {
   const userId = c.get('userId');
   const connection = await loadConnection(c.req.param('id'), userId, 'read');
   if (connection.provider !== 'github') {

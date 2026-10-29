@@ -26,3 +26,20 @@ describe('/health', () => {
     expect(JSON.stringify(after)).not.toContain('secret-looking');
   });
 });
+
+// ISS-753: the deploy probes append `_forge_cb` (integrations/deploy/runtime-probe.ts), and
+// forge-dev's own runtime probe reads /version, so that key is taken and every other is refused
+describe('the probe reads take the cache-buster and nothing else', () => {
+  for (const path of ['/health', '/version']) {
+    it(`${path} answers with _forge_cb and refuses another key by name`, async () => {
+      expect((await publicHealthRoutes.request(`${path}?_forge_cb=1761777600000`)).status).toBe(
+        200,
+      );
+      const refused = await publicHealthRoutes.request(`${path}?_forge_cb=1&verbose=1`);
+      expect(refused.status).toBe(400);
+      expect(await refused.text()).toBe(
+        'Unknown query parameter: `verbose`. This route takes: _forge_cb.',
+      );
+    });
+  }
+});

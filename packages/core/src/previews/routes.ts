@@ -24,9 +24,10 @@ import {
 } from '@forge/contracts/reproduce';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { projectScopeQuery } from '../issues/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { confirmFix } from './confirm.js';
 import { keepIdea } from './keep.js';
 import {
@@ -67,6 +68,7 @@ issuePreviewRoutes.use('/:issueId/preview', requireAuth(), assertEmailVerified()
 issuePreviewRoutes.get(
   '/:issueId/preview',
   zValidator('param', issueParam, invalid('invalid path: /api/issues/<issue id>/preview')),
+  projectScopeQuery,
   async (c) =>
     c.json(
       issuePreviewResponseSchema.parse({
@@ -128,7 +130,7 @@ for (const at of [
   previewRoutes.use(at, requireAuth(), assertEmailVerified());
 }
 
-previewRoutes.get('/:id', zValidator('param', previewParam, PATH), async (c) =>
+previewRoutes.get('/:id', zValidator('param', previewParam, PATH), noQuery, async (c) =>
   c.json(
     previewEnvelopeSchema.parse({
       preview: await readPreview(c.req.valid('param').id, actorOf(c)),
@@ -256,6 +258,7 @@ projectPreviewRoutes.get(
     z.strictObject({ id: z.uuid(), fb: z.string().regex(/^FB-\d{1,9}$/) }),
     invalid('invalid path: /api/projects/<project id>/feedback/FB-<n>/recordings'),
   ),
+  noQuery,
   async (c) => {
     const { id, fb } = c.req.valid('param');
     return c.json(
@@ -273,7 +276,7 @@ for (const at of ['/:id', '/:id/events', '/:id/stop']) {
   recordingRoutes.use(at, requireAuth(), assertEmailVerified());
 }
 
-recordingRoutes.get('/:id', zValidator('param', previewParam, RECORDING_PATH), async (c) =>
+recordingRoutes.get('/:id', zValidator('param', previewParam, RECORDING_PATH), noQuery, async (c) =>
   c.json(
     recordingEnvelopeSchema.parse({
       recording: await readRecording(c.req.valid('param').id, actorOf(c)),
@@ -281,12 +284,16 @@ recordingRoutes.get('/:id', zValidator('param', previewParam, RECORDING_PATH), a
   ),
 );
 
-recordingRoutes.get('/:id/events', zValidator('param', previewParam, RECORDING_PATH), async (c) =>
-  c.json(
-    recordingEventsResponseSchema.parse({
-      events: await recordingEvents(c.req.valid('param').id, actorOf(c)),
-    }),
-  ),
+recordingRoutes.get(
+  '/:id/events',
+  zValidator('param', previewParam, RECORDING_PATH),
+  noQuery,
+  async (c) =>
+    c.json(
+      recordingEventsResponseSchema.parse({
+        events: await recordingEvents(c.req.valid('param').id, actorOf(c)),
+      }),
+    ),
 );
 
 recordingRoutes.post('/:id/stop', zValidator('param', previewParam, RECORDING_PATH), async (c) =>

@@ -18,7 +18,7 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { agentRolesOf, declareOutsideAgent } from './agent-roles.js';
 import { privateRefusal } from './channel.js';
@@ -135,7 +135,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   );
 
   // a group's switch from its outside bot to the channel agent (REQ-77 BC-16..BC-19)
-  routes.get('/:id/support/channels/:rid/switch', channelParam, async (c) => {
+  routes.get('/:id/support/channels/:rid/switch', channelParam, noQuery, async (c) => {
     const { id, rid } = c.req.valid('param');
     const out = await readSwitch(c.get('userId'), id, rid);
     if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
@@ -213,12 +213,12 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
     },
   );
 
-  routes.get('/:id/support/channels', projectParam, async (c) => {
+  routes.get('/:id/support/channels', projectParam, noQuery, async (c) => {
     const channels = await channelsOf(c.get('userId'), c.req.valid('param').id);
     return c.json({ channels });
   });
 
-  routes.get('/:id/support/channels/:rid', channelParam, async (c) => {
+  routes.get('/:id/support/channels/:rid', channelParam, noQuery, async (c) => {
     const { id, rid } = c.req.valid('param');
     const channel = await channelViewOf(c.get('userId'), id, rid);
     if (!channel) {

@@ -29,7 +29,7 @@ export const PATTERN_CATALOG: readonly PatternEntry[] = [
 		],
 		checklist: [
 			"The route file holds no database call and no rule: it validates, calls one service or read function, and answers.",
-			"The body is a `z.strictObject` from contracts read through `strictBody` with its SHAPE string; path and query go through `zValidator` with a message naming what is valid.",
+			"The body is a `z.strictObject` from contracts read through `strictBody` with its SHAPE string; path and query go through `zValidator` with a message naming what is valid. A read that takes no query holds `noQuery`, so every GET closes its query; `check-api-contracts` refuses one that does not (ISS-753).",
 			"Every refusal is a code declared in contracts, answered in the envelope through `refused`, with a status that says what the client should do.",
 			"The service asks `can()` for the permission the act needs; the route reads no role, grant or token itself.",
 			"A new prefix is listed in `PAT_PERMISSION_RESOURCES`, and the router is mounted only in **route-registry.ts**.",

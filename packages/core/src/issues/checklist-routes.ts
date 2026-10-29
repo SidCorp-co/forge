@@ -9,7 +9,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { issueChecklistRecord } from './checklist-record.js';
-import { heldIssue } from './issue-route-ref.js';
+import { heldIssue, projectScopeQuery } from './issue-route-ref.js';
 
 export const issueChecklistRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -21,25 +21,30 @@ issueChecklistRoutes.use('*', requireAuth(), assertEmailVerified());
  * stands against it now (what its record answers, what would be assumed, each gap in plain words),
  * and its gated moves, a move recorded before the checklist reading `no_checklist`.
  */
-issueChecklistRoutes.get('/:id/checklist', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  await heldIssue(id, c.get('userId'), 'project.read');
-  const moves = await gatedMovesOf(db, ISSUE_MACHINE, id);
-  const checklists = await Promise.all(
-    checklistsOn(ISSUE_MACHINE).map(async (checklist) => {
-      const record = await issueChecklistRecord(db, checklist.id, id);
-      const onEdge = moves.filter((m) => m.gate === checklist.id);
-      return {
-        id: checklist.id,
-        version: checklist.version,
-        gates: checklist.gates,
-        design: checklist.design,
-        form: checklistFormOf(checklist),
-        input: checklistInputOf(checklist),
-        now: evaluateChecklist(checklist, { given: {}, record }),
-        moves: onEdge.map((m) => ({ ...m, countsAsPassed: countsAsPassed(m.standing) })),
-      };
-    }),
-  );
-  return c.json({ issueId: id, checklists });
-});
+issueChecklistRoutes.get(
+  '/:id/checklist',
+  zValidator('param', idParamSchema),
+  projectScopeQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await heldIssue(id, c.get('userId'), 'project.read');
+    const moves = await gatedMovesOf(db, ISSUE_MACHINE, id);
+    const checklists = await Promise.all(
+      checklistsOn(ISSUE_MACHINE).map(async (checklist) => {
+        const record = await issueChecklistRecord(db, checklist.id, id);
+        const onEdge = moves.filter((m) => m.gate === checklist.id);
+        return {
+          id: checklist.id,
+          version: checklist.version,
+          gates: checklist.gates,
+          design: checklist.design,
+          form: checklistFormOf(checklist),
+          input: checklistInputOf(checklist),
+          now: evaluateChecklist(checklist, { given: {}, record }),
+          moves: onEdge.map((m) => ({ ...m, countsAsPassed: countsAsPassed(m.standing) })),
+        };
+      }),
+    );
+    return c.json({ issueId: id, checklists });
+  },
+);

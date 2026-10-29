@@ -2,7 +2,7 @@ import { BUILTIN_WORKFLOW_TEMPLATES, findTemplate } from '@forge/contracts/workf
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { templateNotFound, templateSummary, templateView } from './template-service.js';
 
 /**
@@ -33,7 +33,7 @@ workflowTemplateCatalogueRoutes.get('/', catalogueQuery, (c) => {
   });
 });
 
-workflowTemplateCatalogueRoutes.get('/:templateId/:version', (c) => {
+workflowTemplateCatalogueRoutes.get('/:templateId/:version', noQuery, (c) => {
   const { templateId, version } = c.req.param();
   const found = /^[1-9][0-9]*$/.test(version)
     ? findTemplate(BUILTIN_WORKFLOW_TEMPLATES, { id: templateId, version: Number(version) })

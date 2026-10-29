@@ -29,7 +29,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { refused } from '../lib/refusal.js';
 import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
-import { strictBody } from '../middleware/zod-validator.js';
+import { noQuery, strictBody } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { acceptDelivery, dropRequirement, moveDelivery } from './acceptance.js';
 import { agreeRequirement } from './agree.js';
@@ -150,7 +150,7 @@ requirementRoutes.post(
   },
 );
 
-requirementRoutes.get('/:id/requirements/:req', reqParam, async (c) => {
+requirementRoutes.get('/:id/requirements/:req', reqParam, noQuery, async (c) => {
   const { id, req } = c.req.valid('param');
   return c.json(
     await egressForRequest(
@@ -163,7 +163,7 @@ requirementRoutes.get('/:id/requirements/:req', reqParam, async (c) => {
   );
 });
 
-requirementRoutes.get('/:id/requirement-areas', projectParam, async (c) => {
+requirementRoutes.get('/:id/requirement-areas', projectParam, noQuery, async (c) => {
   const projectId = c.req.valid('param').id;
   await requireCan(actorFor(actorOf(c).userId), 'project.read', projectResource(projectId));
   return c.json({ areas: await areasOf(projectId) });

@@ -4,7 +4,7 @@ import { skillTargets } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { MANAGED_META_SKILLS } from './effective.js';
 import { listSkills, skillById, skillScopeById } from './read.js';
@@ -104,7 +104,7 @@ skillCrudRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
   const metaNames = new Set<string>(MANAGED_META_SKILLS);
   return c.json(rows.map((r) => ({ ...r, managedMeta: metaNames.has(r.name) })));
 });
-skillCrudRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => {
+skillCrudRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 

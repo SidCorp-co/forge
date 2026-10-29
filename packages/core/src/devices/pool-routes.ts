@@ -25,7 +25,7 @@ import {
 } from '../db/schema-questions.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { fieldShape, zValidator } from '../middleware/zod-validator.js';
+import { fieldShape, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 import { refuseDevice } from './refusals.js';
 import { notFound, sessionParamsSchema } from './route-errors.js';
@@ -132,6 +132,7 @@ devicePoolRoutes.get(
   '/me/run-sessions/:sessionId',
   requireDevice(),
   zValidator('param', sessionParamsSchema),
+  noQuery,
   async (c) => {
     const { sessionId } = c.req.valid('param');
     const terminal = await readRunSessionTerminal({ deviceId: c.get('device').id, sessionId });

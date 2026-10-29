@@ -130,6 +130,7 @@ export {
   issueIdOfKey,
   issueRouteIdParamSchema,
   isUuid,
+  projectScopeQuery,
   projectScopeQuerySchema,
   refuseUnresolvedIssueKey,
   resolveIssueKeyInProject,

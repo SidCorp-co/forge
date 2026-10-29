@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { badRequest, gone, invitationKeyOf, notFound } from '../lib/invitation.js';
 import { type AuthVars, readAuthUser, requireAuth } from '../middleware/auth.js';
+import { noQuery } from '../middleware/zod-validator.js';
 import { consumeInvitationToken } from './invitation-token.js';
 import { listPendingInvitationsFor, projectInvitationByToken } from './read.js';
 import { refuse } from './refuse.js';
@@ -12,7 +13,7 @@ export const invitationRoutes = new Hono<{ Variables: AuthVars }>();
 // GET /api/invitations/pending — ISS-597.
 // Unified list of pending project + org invitations for the authed user.
 // MUST be registered BEFORE /:token or Hono will match token='pending'.
-invitationRoutes.get('/pending', requireAuth(), async (c) => {
+invitationRoutes.get('/pending', requireAuth(), noQuery, async (c) => {
   const userId = c.get('userId');
   const user = await readAuthUser(userId);
   if (!user) {
@@ -22,7 +23,7 @@ invitationRoutes.get('/pending', requireAuth(), async (c) => {
   return c.json(await listPendingInvitationsFor(user.email));
 });
 
-invitationRoutes.get('/:token', async (c) => {
+invitationRoutes.get('/:token', noQuery, async (c) => {
   const token = c.req.param('token');
   if (!token || token.length === 0) {
     throw badRequest('INVALID_TOKEN', 'invalid invitation token');

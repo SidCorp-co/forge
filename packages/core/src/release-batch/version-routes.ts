@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import {
   approvalRequestSchema,
@@ -71,14 +71,14 @@ function viewerOf(
   };
 }
 
-releaseVersionRoutes.get('/:projectId/releases', projectParam, async (c) => {
+releaseVersionRoutes.get('/:projectId/releases', projectParam, noQuery, async (c) => {
   const { projectId } = c.req.valid('param');
   const access = await loadProjectAccess(projectId, c.get('userId'));
   requireHeld(access, 'project.read');
   return c.json(await listReleases(projectId, viewerOf(c, access)));
 });
 
-releaseVersionRoutes.get('/:projectId/releases/:version', versionParam, async (c) => {
+releaseVersionRoutes.get('/:projectId/releases/:version', versionParam, noQuery, async (c) => {
   const { projectId, version } = c.req.valid('param');
   const access = await loadProjectAccess(projectId, c.get('userId'));
   requireHeld(access, 'project.read');

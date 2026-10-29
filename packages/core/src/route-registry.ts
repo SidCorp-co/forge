@@ -118,6 +118,7 @@ import { memoryListRoutes, memorySearchRoutes, memoryWriteRoutes } from './memor
 import { projectMetricsRoutes } from './metrics/routes.js';
 import type { RequestIdVars } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
+import { noQuery } from './middleware/zod-validator.js';
 import { mockupRoutes } from './mockups/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
@@ -209,6 +210,13 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   app.post('/mcp', mcpMessageBody, mcpHandler);
   app.on(['GET', 'DELETE'], '/mcp', mcpNoBody, mcpMethodNotAllowed);
 
+  // the install routes reach nothing outside themselves (.arch.json install-is-pure), so the
+  // validator closing their query is held where they are mounted
+  for (const at of ['', '/api']) {
+    for (const path of ['/install.sh', '/install/latest.json', '/install/bin/:target']) {
+      app.use(`${at}${path}`, noQuery);
+    }
+  }
   for (const at of ['/', '/api']) app.route(at, installRoutes);
   for (const at of ['/', '/api']) app.route(at, guideRoutes);
   app.route('/api', publishedContractRoutes());

@@ -6,7 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
-import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { loadSessionAttachment, persistSessionAttachment } from './attachment-service.js';
 import { agentSessionsPorts } from './ports.js';
@@ -85,6 +85,7 @@ agentSessionAttachmentRoutes.post(
 agentSessionAttachmentRoutes.get(
   '/:sessionId/attachments/:id/download',
   zValidator('param', downloadParamSchema, invalid('invalid params')),
+  noQuery,
   async (c) => {
     const { sessionId, id } = c.req.valid('param');
     await authorizeSession(c, sessionId);

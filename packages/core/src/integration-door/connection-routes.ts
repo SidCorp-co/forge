@@ -43,7 +43,7 @@ import { refused, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireOrgHeld } from '../permissions/index.js';
 import { readDeployMap } from '../project-config/index.js';
 import { summarizeBindings } from './binding-standing.js';
@@ -109,7 +109,7 @@ const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 export const integrationConnectionsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
 
-integrationConnectionsRoutes.get('/', async (c) => {
+integrationConnectionsRoutes.get('/', noQuery, async (c) => {
   const userId = c.get('userId');
   const rows = await listConnectionsForPrincipalUser(userId);
   const bindings = await usageVisibleTo(
@@ -198,7 +198,7 @@ integrationConnectionsRoutes.post(
  * caller administers is offered pre-ticked (`suggestedFor`). A provider whose target is typed rather
  * than listed is refused by name, with the fields its target takes.
  */
-integrationConnectionsRoutes.get('/:id/targets', async (c) => {
+integrationConnectionsRoutes.get('/:id/targets', noQuery, async (c) => {
   const connection = await loadConnection(c.req.param('id'), c.get('userId'), 'read');
   if (connection.provider !== 'github') {
     return refused(
@@ -247,7 +247,7 @@ integrationConnectionsRoutes.get('/:id/targets', async (c) => {
   }
 });
 
-integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
+integrationConnectionsRoutes.get('/:id/bindings', noQuery, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
   const connection = await loadConnection(id, userId, 'read');

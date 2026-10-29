@@ -96,9 +96,9 @@
     }
   },
   "info": {
-    "description": "Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Every 4XX and 5XX answers `application/problem+json` (`components.responses.Problem`); a success response is undeclared: Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.",
+    "description": "Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-query-closed` marks a read whose query refuses a key it does not take; every GET carries it, or carries `x-forge-query-open` naming why a third party chooses its keys. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Every 4XX and 5XX answers `application/problem+json` (`components.responses.Problem`); a success response is undeclared: Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.",
     "title": "forge-api",
-    "version": "3.6.0",
+    "version": "4.0.0",
     "x-forge-generator": "packages/core/src/contracts-generate.ts"
   },
   "openapi": "3.1.0",
@@ -118,7 +118,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/.well-known/oauth-protected-resource": {
@@ -136,7 +139,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/.well-known/oauth-protected-resource/mcp": {
@@ -154,7 +160,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/admin/adoption": {
@@ -362,7 +371,10 @@
           "requireAdmin"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "patch": {
         "requestBody": {
@@ -641,7 +653,10 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/admin/workspaces": {
@@ -724,7 +739,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "post": {
         "responses": {
@@ -1264,8 +1282,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "patch": {
@@ -1494,8 +1514,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -2108,8 +2130,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -2174,8 +2198,10 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -2194,7 +2220,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/auth/local": {
@@ -2277,7 +2306,10 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "patch": {
         "requestBody": {
@@ -2344,7 +2376,10 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "patch": {
         "requestBody": {
@@ -2431,7 +2466,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/auth/oauth/{provider}/callback": {
@@ -2482,6 +2520,7 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-query-open": "the OAuth provider redirects here and chooses the keys it appends (scope, authuser, prompt, hd, …) beside code, state and error",
         "x-forge-validated": [
           "query"
         ]
@@ -2582,7 +2621,10 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "patch": {
         "requestBody": {
@@ -2657,7 +2699,10 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/auth/preferences/changes/{id}/restore": {
@@ -2902,8 +2947,10 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -3448,8 +3495,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "patch": {
@@ -3638,8 +3687,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -3736,8 +3787,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -5131,8 +5184,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -7201,7 +7256,10 @@
           "requireDevice"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/devices/me/pool": {
@@ -7406,7 +7464,10 @@
           "requireDevice"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/devices/me/questions": {
@@ -8312,8 +8373,10 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -8687,7 +8750,10 @@
           "requireDevice"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/devices/me/runners/{runnerId}": {
@@ -9154,8 +9220,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -9207,7 +9275,10 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/ecosystems/{id}": {
@@ -9239,8 +9310,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -9367,8 +9440,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -9457,8 +9532,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -9578,8 +9655,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -9780,8 +9859,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -9953,7 +10034,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/git/{host}/{rest}": {
@@ -10083,7 +10167,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/guides/{slug}": {
@@ -10110,11 +10197,25 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/health": {
       "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "_forge_cb",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "4XX": {
             "$ref": "#/components/responses/Problem"
@@ -10127,8 +10228,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/install.sh": {
@@ -10146,7 +10249,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/install/bin/{target}": {
@@ -10173,7 +10279,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/install/latest.json": {
@@ -10191,7 +10300,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/integration-connections": {
@@ -10212,7 +10324,10 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "post": {
         "requestBody": {
@@ -10497,7 +10612,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "post": {
         "parameters": [
@@ -10621,7 +10739,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/integration-connections/{id}/github-app/complete": {
@@ -10704,7 +10825,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/integration-connections/{id}/test": {
@@ -10779,6 +10903,7 @@
         "x-forge-auth": [
           "requireAuthOrLand"
         ],
+        "x-forge-query-open": "GitHub redirects here after an app install and chooses the keys it appends (setup_action, …) beside installation_id, code and state",
         "x-forge-validated": [
           "query"
         ]
@@ -10818,6 +10943,7 @@
         "x-forge-auth": [
           "requireAuthOrLand"
         ],
+        "x-forge-query-open": "GitHub redirects here after an app manifest is created and chooses the keys it appends beside code and state",
         "x-forge-validated": [
           "query"
         ]
@@ -10840,7 +10966,10 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/invitations/ref/{ref}/accept": {
@@ -10925,7 +11054,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/invitations/{token}/accept": {
@@ -12362,6 +12494,16 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -12379,8 +12521,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -13176,6 +13320,16 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -13193,8 +13347,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -13373,6 +13529,16 @@
                 }
               ]
             }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -13390,8 +13556,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "patch": {
@@ -14032,6 +14200,16 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -14049,8 +14227,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -14800,6 +14980,16 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -14817,8 +15007,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -15120,6 +15312,16 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -15137,8 +15339,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -15964,6 +16168,16 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -15981,8 +16195,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -16047,8 +16263,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "patch": {
@@ -16798,7 +17016,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/mcp-auth/authorize": {
@@ -17175,7 +17396,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "get": {
         "parameters": [
@@ -17209,7 +17433,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "post": {
         "parameters": [
@@ -17243,7 +17470,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/mcp-tools.json": {
@@ -17261,7 +17491,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/me/attention": {
@@ -17282,7 +17515,10 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/me/devices": {
@@ -17337,7 +17573,10 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/me/product-state/{key}": {
@@ -17369,8 +17608,10 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -17602,8 +17843,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -18769,8 +19012,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -18789,7 +19034,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/org-invitations/ref/{ref}/accept": {
@@ -18874,7 +19122,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/org-invitations/{token}/accept": {
@@ -18953,7 +19204,10 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "post": {
         "requestBody": {
@@ -19119,8 +19373,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -19307,8 +19563,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "patch": {
@@ -19537,8 +19795,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -19613,8 +19873,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -19647,8 +19909,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -19862,8 +20126,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -19885,7 +20151,10 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "post": {
         "requestBody": {
@@ -20177,8 +20446,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -20295,8 +20566,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -20507,8 +20780,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -20658,8 +20933,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -21277,7 +21554,10 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/projects/{id}": {
@@ -21341,8 +21621,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "patch": {
@@ -21620,8 +21902,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -21654,8 +21938,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -21872,8 +22158,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -21967,8 +22255,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -22052,8 +22342,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -22137,8 +22429,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -22544,8 +22838,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -22643,8 +22939,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -22677,8 +22975,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -22720,8 +23020,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -22874,8 +23176,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -22905,7 +23209,10 @@
         "x-forge-auth": [
           "requireAuth"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/projects/{id}/config": {
@@ -22937,8 +23244,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -23012,8 +23321,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -23065,8 +23376,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -23099,8 +23412,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -23877,8 +24192,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -24038,8 +24355,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -24091,8 +24410,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -24242,8 +24563,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -24276,8 +24599,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -24319,8 +24644,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -24461,8 +24788,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -24731,8 +25060,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -24942,8 +25273,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -25076,8 +25409,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -25120,8 +25455,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -25940,8 +26277,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -26239,8 +26578,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -27062,8 +27403,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -27178,8 +27521,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -27217,7 +27562,10 @@
         "x-forge-auth": [
           "requireAuth"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/projects/{id}/intake-drafts/{ref}": {
@@ -27259,8 +27607,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -27431,8 +27781,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -27581,8 +27933,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -28773,8 +29127,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -29290,8 +29646,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -29455,8 +29813,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -29808,8 +30168,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -29893,8 +30255,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -29978,8 +30342,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -30574,8 +30940,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -30680,8 +31048,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -30822,8 +31192,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -31031,8 +31403,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -31137,8 +31511,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -31171,8 +31547,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -31795,8 +32173,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -31979,8 +32359,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -32013,8 +32395,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -32047,8 +32431,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -32268,8 +32654,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -32408,8 +32796,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -32517,8 +32907,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -32551,8 +32943,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -32744,8 +33138,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -33508,8 +33904,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "patch": {
@@ -33824,8 +34222,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -37437,8 +37837,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -37707,8 +38109,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -37800,8 +38204,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -38217,8 +38623,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -38325,8 +38733,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -38436,8 +38846,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -38514,8 +38926,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -38594,8 +39008,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -38783,8 +39199,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -39018,8 +39436,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -39075,8 +39495,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -40047,8 +40469,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -40092,8 +40516,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -40439,8 +40865,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -40910,8 +41338,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -40954,8 +41384,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -41019,6 +41451,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
           "param",
@@ -41140,6 +41573,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -41499,6 +41933,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
           "param",
@@ -42264,6 +42699,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -42299,8 +42735,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -42955,8 +43393,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -42989,8 +43429,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -43073,8 +43515,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -45460,7 +45904,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/projects/{projectId}/integrations/coolify": {
@@ -45490,7 +45937,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/projects/{projectId}/integrations/coolify/applications": {
@@ -46167,7 +46617,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/projects/{projectId}/integrations/rocketchat/connection-rooms": {
@@ -46508,7 +46961,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/projects/{projectId}/integrations/source/branches/{ref}/checks": {
@@ -46548,8 +47004,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -46663,8 +47121,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "patch": {
@@ -46877,8 +47337,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -46919,8 +47381,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -47310,8 +47774,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -47342,7 +47808,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/projects/{projectId}/integrations/storefront/target": {
@@ -47557,7 +48026,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/projects/{projectId}/integrations/{id}/rotate-secret": {
@@ -47665,8 +48137,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -47803,8 +48277,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -48110,8 +48586,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -48144,8 +48622,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -48188,8 +48668,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -48731,8 +49213,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -48992,8 +49476,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -49026,8 +49512,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -49154,8 +49642,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -49188,8 +49678,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -49232,8 +49724,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -49471,8 +49965,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -49926,7 +50422,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/questions/{id}/answer": {
@@ -50095,8 +50594,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -50129,8 +50630,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -50197,8 +50700,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -50773,8 +51278,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "patch": {
@@ -51282,7 +51789,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/shares/open": {
@@ -51638,8 +52148,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "put": {
@@ -51782,8 +52294,10 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -51829,6 +52343,17 @@
     },
     "/api/version": {
       "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "_forge_cb",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "4XX": {
             "$ref": "#/components/responses/Problem"
@@ -51841,8 +52366,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/webhooks/github/app": {
@@ -51984,7 +52511,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       },
       "post": {
         "requestBody": {
@@ -52085,7 +52615,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/api/widget/status/{token}": {
@@ -52114,8 +52647,10 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -52145,8 +52680,10 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },
@@ -52365,7 +52902,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/guides": {
@@ -52383,7 +52923,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/guides/{slug}": {
@@ -52410,11 +52953,25 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/health": {
       "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "_forge_cb",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "4XX": {
             "$ref": "#/components/responses/Problem"
@@ -52427,8 +52984,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/install.sh": {
@@ -52446,7 +53005,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/install/bin/{target}": {
@@ -52473,7 +53035,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/install/latest.json": {
@@ -52491,7 +53056,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/llms.txt": {
@@ -52509,7 +53077,10 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/mcp": {
@@ -52563,6 +53134,7 @@
         "x-forge-auth": [
           "requirePat"
         ],
+        "x-forge-query-open": "the MCP transport answers 405 to every GET, telling an MCP client this server opens no stream; a client's configured server URL may carry a query, and a 400 there reads as a broken server rather than as no stream",
         "x-forge-validated": []
       },
       "post": {
@@ -52656,11 +53228,25 @@
         "x-forge-auth": [
           "requireAuth"
         ],
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     },
     "/version": {
       "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "_forge_cb",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "4XX": {
             "$ref": "#/components/responses/Problem"
@@ -52673,8 +53259,10 @@
           }
         },
         "x-forge-auth": [],
-        "x-forge-input": "none",
-        "x-forge-validated": []
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
       }
     }
   },

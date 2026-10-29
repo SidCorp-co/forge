@@ -15,7 +15,7 @@ import { agentSessionStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { listAgentSessionsForMcp, readAgentSession } from './read.js';
 import { assertAgentChatOwner } from './session-access.js';
@@ -76,6 +76,7 @@ agentSessionProjectReadRoutes.get(
 agentSessionProjectReadRoutes.get(
   '/:id/agent-sessions/:sessionId',
   zValidator('param', sessionParamSchema),
+  noQuery,
   async (c) => {
     const { id, sessionId } = c.req.valid('param');
     const userId = c.get('userId');

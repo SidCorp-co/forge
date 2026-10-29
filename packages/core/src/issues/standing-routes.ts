@@ -9,7 +9,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { listIssueStanding, readIssueStanding } from './standing-read.js';
@@ -41,17 +41,22 @@ issueStandingRoutes.get(
   },
 );
 
-issueStandingRoutes.get('/:id/issues/standing/:key', zValidator('param', keyParam), async (c) => {
-  const { id: projectId, key } = c.req.valid('param');
-  const userId = c.get('userId');
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
-  const parsed = parseIssueRef(
-    key,
-    issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],
-  );
-  if (!parsed.ok) throw badRequest(parsed.message);
-  const row = await readIssueStanding(projectId, parsed.issSeq, userId ? { userId } : null);
-  if (!row) throw notFound(`issue ${key} not found in this project`);
-  return c.json(await egressForRequest(restActor(c).agency, projectId, 'issue', row, key));
-});
+issueStandingRoutes.get(
+  '/:id/issues/standing/:key',
+  zValidator('param', keyParam),
+  noQuery,
+  async (c) => {
+    const { id: projectId, key } = c.req.valid('param');
+    const userId = c.get('userId');
+    const access = await loadProjectAccess(projectId, userId);
+    requireHeld(access, 'project.read');
+    const parsed = parseIssueRef(
+      key,
+      issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],
+    );
+    if (!parsed.ok) throw badRequest(parsed.message);
+    const row = await readIssueStanding(projectId, parsed.issSeq, userId ? { userId } : null);
+    if (!row) throw notFound(`issue ${key} not found in this project`);
+    return c.json(await egressForRequest(restActor(c).agency, projectId, 'issue', row, key));
+  },
+);

@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { answerIntakeQuestion, keepRefusedRequest } from './acts.js';
 import { readIntakeDraft } from './read.js';
 
@@ -34,7 +34,7 @@ function actorOf(c: { get(key: 'userId'): string; get(key: 'agency'): AuthVars['
   return { userId: c.get('userId'), agency };
 }
 
-intakeRoutes.get('/:id/intake-drafts/:ref', param, async (c) => {
+intakeRoutes.get('/:id/intake-drafts/:ref', param, noQuery, async (c) => {
   const { id: projectId, ref } = c.req.valid('param');
   const out = await readIntakeDraft({ projectId, ref, viewer: actorOf(c) });
   if (!out.ok) return refused(c, out.refusals, 'INTAKE_REF_INVALID');

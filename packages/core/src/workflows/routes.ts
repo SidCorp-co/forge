@@ -9,7 +9,13 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, readElsewhere, strictBody, zValidator } from '../middleware/zod-validator.js';
+import {
+  invalid,
+  noQuery,
+  readElsewhere,
+  strictBody,
+  zValidator,
+} from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { DESIGN_DECISIONS } from './design.js';
 import { readRepinPlanAs, repinAs } from './design-repin-service.js';
@@ -65,10 +71,6 @@ const workflowParam = zValidator(
 );
 
 const envelope = zValidator('json', z.unknown());
-
-// a read that takes no query refuses each key by name, so a filter it does not read never answers
-// as if it had been applied
-const noQuery = zValidator('query', z.strictObject({}));
 
 // the workflow row holds its head alone; the revisions a workflow keeps are its proposed designs,
 // read on the two routes that take `revision`

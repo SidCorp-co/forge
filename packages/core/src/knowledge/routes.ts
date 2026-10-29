@@ -8,7 +8,7 @@ import { requestReader } from '../lib/authz.js';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   knowledgeInjectionEnum,
@@ -122,6 +122,7 @@ knowledgeRoutes.get(
   zValidator('param', slugParamSchema, (r, c) => {
     if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
+  noQuery,
   async (c) => {
     const { id, slug } = c.req.valid('param');
     const userId = c.get('userId');

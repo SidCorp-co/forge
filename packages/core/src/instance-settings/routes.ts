@@ -5,7 +5,7 @@ import {
 import { Hono } from 'hono';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
-import { strictBody } from '../middleware/zod-validator.js';
+import { noQuery, strictBody } from '../middleware/zod-validator.js';
 import { readInstanceSettings, writeInstanceSettings } from './service.js';
 
 /** `/api/admin/instance-settings`: an instance admin reads and sets what the instance says of itself. */
@@ -17,7 +17,9 @@ instanceSettingsRoutes.use(
   requireAdmin(),
 );
 
-instanceSettingsRoutes.get('/instance-settings', async (c) => c.json(await readInstanceSettings()));
+instanceSettingsRoutes.get('/instance-settings', noQuery, async (c) =>
+  c.json(await readInstanceSettings()),
+);
 
 instanceSettingsRoutes.patch(
   '/instance-settings',

@@ -8,7 +8,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { listOrgDevices } from './read.js';
@@ -19,18 +19,23 @@ export const deviceOrgRoutes = new Hono<{ Variables: AuthVars }>();
 
 deviceOrgRoutes.use('*', requireAuth(), assertEmailVerified());
 
-deviceOrgRoutes.get('/:orgId/devices', zValidator('param', orgIdParamSchema), async (c) => {
-  const { orgId } = c.req.valid('param');
-  const userId = c.get('userId');
-  await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
+deviceOrgRoutes.get(
+  '/:orgId/devices',
+  zValidator('param', orgIdParamSchema),
+  noQuery,
+  async (c) => {
+    const { orgId } = c.req.valid('param');
+    const userId = c.get('userId');
+    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
-  const visibleIds = await loadVisibleProjectIds(userId);
-  if (visibleIds.length === 0) return c.json([]);
+    const visibleIds = await loadVisibleProjectIds(userId);
+    if (visibleIds.length === 0) return c.json([]);
 
-  const rows = await listOrgDevices(orgId, visibleIds);
+    const rows = await listOrgDevices(orgId, visibleIds);
 
-  const annotated = await annotateDeviceBuilds(rows);
-  return c.json(
-    annotated.map(({ ownerId, ...device }) => ({ ...device, ownedByMe: ownerId === userId })),
-  );
-});
+    const annotated = await annotateDeviceBuilds(rows);
+    return c.json(
+      annotated.map(({ ownerId, ...device }) => ({ ...device, ownedByMe: ownerId === userId })),
+    );
+  },
+);

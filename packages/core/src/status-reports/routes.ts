@@ -15,7 +15,7 @@ import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { notFound } from '../middleware/route-errors.js';
-import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { markStatusReportRead } from '../notifications/index.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { saveTemplateReport } from './save.js';
@@ -97,6 +97,7 @@ statusReportRoutes.get(
     projectParam,
     invalid('invalid path: /api/projects/<project>/status/reports'),
   ),
+  noQuery,
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
@@ -151,6 +152,7 @@ statusReportRoutes.get(
     reportParam,
     invalid('invalid path: /api/projects/<project>/status/reports/<report id>'),
   ),
+  noQuery,
   async (c) => {
     const { id: projectId, reportId } = c.req.valid('param');
     requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');

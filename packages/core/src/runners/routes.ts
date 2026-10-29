@@ -6,7 +6,7 @@ import { type RunnerStatus, type RunnerType, runnerStatuses, runnerTypes } from 
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { resolvedWindowDaysFor } from '../pipeline/index.js';
@@ -114,7 +114,7 @@ runnerRoutes.get('/active', zValidator('query', activeQuery), async (c) => {
   return c.json(await activeRunnersOf(projectId));
 });
 
-runnerRoutes.get('/:id', zValidator('param', idParam), async (c) => {
+runnerRoutes.get('/:id', zValidator('param', idParam), noQuery, async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.valid('param');
   const row = await runnerRow(id);

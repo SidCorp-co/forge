@@ -17,7 +17,7 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import type { OnboardingActor, OnboardingOutcome } from './act.js';
 import {
   markOnboardingDone,
@@ -59,7 +59,7 @@ function answer(c: Context, outcome: OnboardingOutcome) {
 
 const emptyBody = strictBody(z.strictObject({}), 'this action takes an empty object');
 
-onboardingRoutes.get('/:id/onboarding', projectParam, async (c) => {
+onboardingRoutes.get('/:id/onboarding', projectParam, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const state = await readOnboardingState(id, actorOf(c));
   const body: OnboardingStateResponse = {
@@ -149,7 +149,7 @@ onboardingRoutes.post(
     ),
 );
 
-onboardingRoutes.get('/:id/onboarding/answers', projectParam, async (c) => {
+onboardingRoutes.get('/:id/onboarding/answers', projectParam, noQuery, async (c) => {
   const outcome = await readAnswers(c.req.valid('param').id, actorOf(c));
   if (!outcome.ok) return refusedOnboarding(c, outcome.refusals);
   return c.json({

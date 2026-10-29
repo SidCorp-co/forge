@@ -26,7 +26,7 @@ import {
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
 import { addRoomHandle, addRoomPerson, removeRoomParticipant } from './service.js';
@@ -85,17 +85,22 @@ conversationMemberRoutes.get('/candidates', zValidator('query', projectQuerySche
 /**
  * Who this caller could still put in this room.
  */
-conversationMemberRoutes.get('/:id/candidates', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
-  await readableConversation(id, userId);
-  const scope = await derivedScope(id);
-  const [people, handles] = await Promise.all([
-    addablePeople(id, scope),
-    addableHandles(id, userId, scope),
-  ]);
-  return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
-});
+conversationMemberRoutes.get(
+  '/:id/candidates',
+  zValidator('param', idParamSchema),
+  noQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+    await readableConversation(id, userId);
+    const scope = await derivedScope(id);
+    const [people, handles] = await Promise.all([
+      addablePeople(id, scope),
+      addableHandles(id, userId, scope),
+    ]);
+    return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
+  },
+);
 
 /**
  * Add a person: who reads the room changes, and nothing about what it can see does.
