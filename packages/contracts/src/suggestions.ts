@@ -30,7 +30,7 @@ import {
 	WORKFLOW_STEP_ID,
 } from "./workflow-health.js";
 
-/** The six kinds rev 2 names, feedback_triage (workflow feedback-triage, ISS-59) and design_change (workflow step-health, REQ-17 BC-12); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
+/** Every kind a stored row may hold: the six kinds rev 2 names, feedback_triage (workflow feedback-triage, ISS-59) and design_change (workflow step-health, REQ-17 BC-12); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. A retired kind stays here so its rows remain history. */
 export const SUGGESTION_KINDS = [
 	"requirement_draft",
 	"revision_diff",
@@ -42,6 +42,21 @@ export const SUGGESTION_KINDS = [
 	"design_change",
 ] as const;
 export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
+
+/**
+ * Kinds no door proposes or accepts any more, refused SUGGESTION_KIND_RETIRED. `readiness`: the
+ * requirement's ready checklist decides readiness (REQ-34 BC-3; requirement-to-delivery r19, step
+ * `ready`, which replaces the readiness suggestion and its gate).
+ */
+export const RETIRED_SUGGESTION_KINDS = ["readiness"] as const satisfies readonly SuggestionKind[];
+export type RetiredSuggestionKind = (typeof RETIRED_SUGGESTION_KINDS)[number];
+export type ProposableSuggestionKind = Exclude<SuggestionKind, RetiredSuggestionKind>;
+export const isRetiredSuggestionKind = (kind: string): kind is RetiredSuggestionKind =>
+	(RETIRED_SUGGESTION_KINDS as readonly string[]).includes(kind);
+/** The kinds a producer may propose: every stored kind but the retired ones. */
+export const PROPOSABLE_SUGGESTION_KINDS = SUGGESTION_KINDS.filter(
+	(k): k is ProposableSuggestionKind => !isRetiredSuggestionKind(k),
+) as readonly ProposableSuggestionKind[] as [ProposableSuggestionKind, ...ProposableSuggestionKind[]];
 
 /** proposed → accepted | rejected | stale | withdrawn (rev 3; only the producer withdraws). */
 export const SUGGESTION_STATUSES = [
@@ -118,6 +133,7 @@ export const SUGGESTION_PURGE_PAYLOAD_AFTER_DAYS = 90;
 const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_PAYLOAD_INVALID",
 	"SUGGESTION_TARGET_INVALID",
+	"SUGGESTION_KIND_RETIRED",
 	"SUGGESTION_BASE_STALE",
 	"SUGGESTION_BASE_REQUIRED",
 	"SUGGESTION_DUPLICATE",
@@ -249,20 +265,10 @@ export const SUGGESTION_PAYLOADS = {
 		targets: ["requirement"],
 		schema: z.strictObject(revisionWrite),
 	},
+	// retired (RETIRED_SUGGESTION_KINDS): no target takes it and no payload parses for it
 	readiness: {
-		targets: ["requirement"],
-		schema: z.strictObject({
-			checks: z
-				.array(
-					z.strictObject({
-						check: z.string().trim().min(1).max(200),
-						passed: z.boolean(),
-						detail: z.string().max(2_000).optional(),
-					}),
-				)
-				.min(1)
-				.max(20),
-		}),
+		targets: [],
+		schema: z.never(),
 	},
 	breakdown: {
 		targets: ["requirement"],
@@ -363,6 +369,7 @@ const BASE_REVISION_BELOW_ONE =
 
 /** `POST /api/projects/:id/suggestions` — one of `requirement`, `issue`, `feedback` or `workflow`. */
 export const createSuggestionRequestSchema = z.strictObject({
+	// every stored kind, so a retired one reaches core and is refused SUGGESTION_KIND_RETIRED by name
 	kind: z.enum(SUGGESTION_KINDS),
 	...targetFields,
 	baseRevision: z
@@ -379,7 +386,7 @@ export const createSuggestionRequestSchema = z.strictObject({
 	/** The earlier suggestion of this project this one answers or replaces, by id. */
 	supersedes: z.uuid().optional(),
 });
-export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback | workflow, baseRevision: number | null, payload, model?, rationale?, supersedes? } — baseRevision is ${BASE_REVISION_MEANING}; rationale (at most ${REASON_TEXT_MAX} characters) and supersedes (an earlier suggestion's id in this project) stay on the suggestion and are never copied into what its accept writes`;
+export const CREATE_SUGGESTION_SHAPE = `{ kind: ${PROPOSABLE_SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback | workflow, baseRevision: number | null, payload, model?, rationale?, supersedes? } — baseRevision is ${BASE_REVISION_MEANING}; rationale (at most ${REASON_TEXT_MAX} characters) and supersedes (an earlier suggestion's id in this project) stay on the suggestion and are never copied into what its accept writes`;
 
 /** `POST /api/projects/:id/suggestions/:sid/accept` — the person's reason, kept on the row. */
 export const acceptSuggestionRequestSchema = z.strictObject({
@@ -523,15 +530,6 @@ export interface SuggestionBreakdownEffect {
 	issues: SuggestionBreakdownIssue[];
 }
 
-/** A readiness accept: the accepted row is the readiness result at `revision` (no readiness table). */
-export interface SuggestionReadinessEffect {
-	requirementId: string;
-	requirement: string;
-	revision: number | null;
-	ready: boolean;
-	failed: string[];
-}
-
 export interface SuggestionIssueTriageEffect {
 	issueId: string;
 	issue: string;
@@ -561,7 +559,6 @@ export interface SuggestionRequirementDuplicateEffect {
 export type SuggestionEffect =
 	| SuggestionRevisionEffect
 	| SuggestionBreakdownEffect
-	| SuggestionReadinessEffect
 	| SuggestionIssueTriageEffect
 	| SuggestionDuplicateEffect
 	| SuggestionRequirementDuplicateEffect;

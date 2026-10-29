@@ -33,14 +33,13 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { MockupList, RequirementMockups } from "@/features/mockups";
 import { useMockups } from "@/features/mockups";
 import { PendingBadge } from "@/features/suggestions";
-import { useWaitingSuggestions } from "@/features/suggestions";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRequirement } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
 import { CriteriaTrace } from "./criteria-trace";
 import { RequirementProperties } from "./requirement-facts";
-import { CriteriaChanges, CriteriaChecklist, Readiness, RevisionDiff } from "./requirement-proof";
+import { CriteriaChanges, CriteriaChecklist, RevisionDiff } from "./requirement-proof";
 import { RequirementActivity } from "./requirement-activity";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
 import { RequirementOverview } from "./requirement-overview";
@@ -56,20 +55,17 @@ export const useRequirementTab = () => useUrlTab(REQUIREMENT_TABS);
 
 /**
  * The criteria as a checklist under their verdict pills. "k/n verified" is the strip's, above the tabs,
- * so the view does not say it again; the developer view adds the assistant's readiness advice and the
- * revision the wording is read at. Under it, while the requirement is not done, the steps of each
+ * so the view does not say it again; the developer view adds the revision the wording is read at. Under it, while the requirement is not done, the steps of each
  * linked design that serve each criterion, traced by hand.
  */
 function Criteria({ d, projectId, slug, developer }: { d: RequirementDetail; projectId: string; slug: string; developer: boolean }) {
   const t = useCopy();
-  const sug = useWaitingSuggestions(developer ? projectId : undefined, { requirement: d.key });
   return (
     <section data-testid="view-criteria">
       <ViewHeading>{t("requirements.criteria.heading")}</ViewHeading>
       {developer ? (
         <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-13 text-muted" data-testid="criteria-developer">
           {d.standing.shownRevision !== null ? <span>{t("requirements.criteria.wordingOf", { r: d.standing.shownRevision })}</span> : null}
-          <Readiness suggestions={sug.data?.suggestions ?? []} />
         </div>
       ) : null}
       <CriteriaChecklist d={d} slug={slug} developer={developer} />

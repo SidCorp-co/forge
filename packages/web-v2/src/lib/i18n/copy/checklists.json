@@ -12,7 +12,6 @@
     "checklist.source.recommended": "Recommended answer",
     "checklist.source.open": "Waits on an owner question",
     "checklist.nowIn": "Now, from r{r}",
-    "checklist.answer": "Answer",
-    "checklist.readinessAdvice": "Readiness advice"
+    "checklist.answer": "Answer"
   }
 }

@@ -6,12 +6,11 @@ import { Written } from "@/lib/i18n/written";
 import { BC_VERDICTS, type BcVerdict, type CoverageIssue, type HistorySource, type RequirementCriteriaChanges, type RequirementHistoryEntry } from "@forge/contracts/requirements";
 import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useState } from "react";
-import { ActorChip, FilterChip, LEGEND, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
+import { ActorChip, FilterChip, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
-import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
 import { OwnVerdictRows } from "./requirement-own-verdicts";
@@ -305,47 +304,6 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
         );
       })}
     </ul>
-    </>
-  );
-}
-
-type Check = { check?: unknown; passed?: unknown; detail?: unknown };
-
-/**
- * The newest readiness check the BA assistant proposed, as one line of advice: met of total, one mark
- * per check, led by its own separator. It gates nothing: the agree is judged by the ready checklist
- * (ISS-453). Nothing schedules a check, so a requirement it was never run on says nothing rather than
- * a line that reads as work somebody owes.
- */
-/** A payload cell read as words: the assistant writes strings, and anything else reads as none. */
-const wordsOf = (v: unknown) => (typeof v === "string" ? v : "");
-
-export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
-  const t = useCopy();
-  const r = suggestions.find((s) => s.kind === "readiness");
-  const raw = (r?.payload as { checks?: unknown } | null | undefined)?.checks;
-  const checks = (Array.isArray(raw) ? raw : []) as Check[];
-  if (!r || checks.length === 0) return null;
-  const met = checks.filter((c) => c.passed === true).length;
-  return (
-    <>
-    <span aria-hidden>·</span>
-    <span className="inline-flex flex-wrap items-center gap-2" data-testid="readiness">
-      <span title={checks.map((c) => t(c.passed === true ? "requirements.readiness.checkMet" : "requirements.readiness.checkNotMet", { check: wordsOf(c.check) })).join("\n")}>
-        {t("checklist.readinessAdvice")} <b className="font-semibold text-fg">{t("requirements.criteria.nOfM", { a: met, b: checks.length })}</b> {t("requirements.readiness.met")}
-      </span>
-      <span className="inline-flex gap-0.5">
-        {checks.map((c) => (
-          <span
-            key={`${wordsOf(c.check)}-${wordsOf(c.detail)}`}
-            title={`${wordsOf(c.check)}${typeof c.detail === "string" ? ` — ${c.detail}` : ""}`}
-            className="block h-2.5 w-4 rounded-2"
-            style={{ background: c.passed === true ? LEGEND.ready.dot : LEGEND.you.dot }}
-          />
-        ))}
-      </span>
-      {r.baseRevision !== null ? <span className="text-subtle">{t("requirements.readiness.onR", { r: r.baseRevision })}</span> : null}
-    </span>
     </>
   );
 }

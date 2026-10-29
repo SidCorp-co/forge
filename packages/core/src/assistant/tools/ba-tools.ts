@@ -5,7 +5,7 @@
  * what its prompt asks of it. The requirement is bound when the toolset is built, from the room.
  */
 
-import { SUGGESTION_KINDS } from '@forge/contracts/suggestions';
+import { PROPOSABLE_SUGGESTION_KINDS, SUGGESTION_KINDS } from '@forge/contracts/suggestions';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
@@ -173,8 +173,7 @@ const findSimilar =
     },
   });
 
-const suggestInput = z.strictObject({
-  kind: z.enum(SUGGESTION_KINDS),
+const suggestFields = {
   payload: z.record(z.string(), z.unknown()),
   issue: z
     .string()
@@ -184,7 +183,11 @@ const suggestInput = z.strictObject({
     .describe(
       'Only for a kind that targets an issue (requirement_draft, triage, duplicate of an issue).',
     ),
-});
+};
+// the model is shown the kinds it may propose; a retired one it names anyway is parsed and reaches
+// core, which refuses it SUGGESTION_KIND_RETIRED by name rather than as an unknown enum value
+const suggestShown = z.strictObject({ kind: z.enum(PROPOSABLE_SUGGESTION_KINDS), ...suggestFields });
+const suggestInput = z.strictObject({ kind: z.enum(SUGGESTION_KINDS), ...suggestFields });
 
 async function latestMessageId(conversationId: string | null | undefined): Promise<string | null> {
   if (!conversationId) return null;
@@ -213,8 +216,8 @@ const suggest =
     route: '/api/projects',
     grant: 'projects:write',
     description:
-      'Propose a change for a person to accept or reject; its base is the requirement as you read it this turn. Each kind takes its own payload. revision_diff: { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] }, the WHOLE criteria list: a kept or reworded criterion names its live code, a new one carries no code (Forge numbers it), an unknown code is refused (CRITERION_CODE_UNKNOWN), a live one left out is retired; spec.openQuestions [{ question, whoAnswers, blocking }] and spec.assumptions [{ text, owner, confirmBy }] hold what is unsettled or unproven. On a requirement with an open draft or proposed revision it rewrites that revision. readiness: { checks: [{ check, passed, detail? }] }, a kind of its own, never a key of revision_diff. duplicate: { duplicateOf, similarity?, note? }. breakdown needs suggestions.write. revision_diff and requirement_draft take kind and picture { kind, content }, a rough sketch of it. requirement_draft and triage target an issue: pass `issue`.',
-    inputSchema: schema(suggestInput),
+      'Propose a change for a person to accept or reject; its base is the requirement as you read it this turn. Each kind takes its own payload. revision_diff: { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] }, the WHOLE criteria list: a kept or reworded criterion names its live code, a new one carries no code (Forge numbers it), an unknown code is refused (CRITERION_CODE_UNKNOWN), a live one left out is retired; spec.openQuestions [{ question, whoAnswers, blocking }] and spec.assumptions [{ text, owner, confirmBy }] hold what is unsettled or unproven. On a requirement with an open draft or proposed revision it rewrites that revision. duplicate: { duplicateOf, similarity?, note? }. breakdown needs suggestions.write. revision_diff and requirement_draft take kind and picture { kind, content }, a rough sketch of it. requirement_draft and triage target an issue: pass `issue`.',
+    inputSchema: schema(suggestShown),
     handler: async (args) => {
       const input = suggestInput.parse(args);
       const read = seen.read;

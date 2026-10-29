@@ -3522,6 +3522,13 @@
       "when": 1830470400000,
       "tag": "0550_a_channel_knows_its_people",
       "breakpoints": true
+    },
+    {
+      "idx": 551,
+      "version": "7",
+      "when": 1830556800000,
+      "tag": "0551_a_readiness_suggestion_is_retired",
+      "breakpoints": true
     }
   ]
 }

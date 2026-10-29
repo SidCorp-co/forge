@@ -1,3 +1,4 @@
+import { PROPOSABLE_SUGGESTION_KINDS } from '@forge/contracts/suggestions';
 import { describe, expect, it } from 'vitest';
 import type { McpContext } from '../../lib/tool.js';
 import { buildBaFirstRequirementsToolset } from './ba-first-tools.js';
@@ -6,7 +7,7 @@ import { buildBaToolset } from './ba-tools.js';
 // REQ-30 BC-3. forge-dev 0.4.0-dev.193: ba_suggest's description ran 1181 characters, past the
 // adapter's 1024 cap, so its last sentence ("baseRevision is the currentRevision you read, null
 // when there is none") never reached the model, which sent the draft it read (1) and was refused
-// SUGGESTION_BASE_STALE on REQ-31 and REQ-36; and read `readiness` as a key of a revision_diff.
+// SUGGESTION_BASE_STALE on REQ-31 and REQ-36.
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 const ctx = {
   principal: {
@@ -43,8 +44,15 @@ describe('the BA door as the model is shown it', () => {
     expect(Object.keys(params?.properties ?? {}).sort()).toEqual(['issue', 'kind', 'payload']);
   });
 
-  it('says readiness is a kind of its own, never a key of revision_diff', () => {
-    expect(byName('ba_suggest')?.description).toContain('never a key of revision_diff');
+  // ISS-641 (REQ-34 BC-3): the ready checklist replaced the readiness suggestion, so the door no
+  // longer offers the kind at all
+  it('offers the proposable kinds only: no readiness in its kinds or its description', () => {
+    const tool = byName('ba_suggest');
+    const kinds = (tool?.parameters as { properties?: { kind?: { enum?: string[] } } } | undefined)
+      ?.properties?.kind?.enum;
+    expect(kinds).toEqual([...PROPOSABLE_SUGGESTION_KINDS]);
+    expect(kinds).not.toContain('readiness');
+    expect(tool?.description).not.toContain('readiness');
   });
 
   // REQ-49 BC-5 reverses REQ-35's removal of ba_draw_mockup: the door proposes a wireframe or an

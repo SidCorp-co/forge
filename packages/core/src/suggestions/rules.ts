@@ -12,6 +12,7 @@ import type {
 } from '@forge/contracts/contract-waits';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import {
+  isRetiredSuggestionKind,
   SUGGESTION_MAX_OPEN_PER_TARGET,
   SUGGESTION_PAYLOADS,
   type SuggestionKind,
@@ -22,13 +23,25 @@ import {
 import { stableStringify } from '../lib/canonical-json.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
-// Kind is one of the 6 and the payload parses for it (SUGGESTION_PAYLOAD_INVALID), on a target
-// the kind takes (SUGGESTION_TARGET_INVALID)
+/** A retired kind, refused by name at every propose and accept (RETIRED_SUGGESTION_KINDS). */
+export function retiredKindRefusal(kind: string): SuggestionRefusal | null {
+  if (!isRetiredSuggestionKind(kind)) return null;
+  return {
+    code: 'SUGGESTION_KIND_RETIRED',
+    path: '/kind',
+    detail: `${kind} is retired: the requirement's ready checklist decides readiness (REQ-34 BC-3), so no ${kind} suggestion is proposed or accepted. Answer the ready checklist on the requirement instead.`,
+  };
+}
+
+// Kind is not retired (SUGGESTION_KIND_RETIRED), the payload parses for it
+// (SUGGESTION_PAYLOAD_INVALID), on a target the kind takes (SUGGESTION_TARGET_INVALID)
 export function payloadRefusal(
   kind: SuggestionKind,
   target: SuggestionTargetType,
   payload: unknown,
 ): SuggestionRefusal | null {
+  const retired = retiredKindRefusal(kind);
+  if (retired) return retired;
   const spec = SUGGESTION_PAYLOADS[kind];
   if (!(spec.targets as readonly string[]).includes(target)) {
     return {

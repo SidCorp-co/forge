@@ -15,7 +15,7 @@ export const SUGGESTIONS_GUIDE: CoreGuide = {
   title: 'Suggestions: propose, and let an approver decide',
   summary:
     'What an agent writes instead of changing a requirement, an issue or a feedback item it may not decide: the seven kinds and their targets, the base revision a suggestion is checked against twice, the open-queue cap, who accepts, and what accepting each kind writes.',
-  version: 2,
+  version: 3,
   body: `## Suggestions: propose, and let an approver decide
 
 A suggestion is a proposed change that waits on a decision instead of changing anything. An agent, the
@@ -29,11 +29,11 @@ effect is written in the accept's own transaction and points back at it. The doo
 |---|---|---|
 | \`revision_diff\` | a requirement | a new revision on that requirement (or, built on its open draft or proposed revision, that revision rewritten), authored by the producer and **proposed** by whoever accepts the suggestion (the accept is its propose); never a current one, so the requirement's own accept, which re-baselines it, still follows |
 | \`requirement_draft\` | an issue, or an approved journey design (a first requirement) | a new requirement at revision 1, a draft; on a journey it is linked to that design and the approved \`designs\` it names. A design not approved is \`SUGGESTION_DESIGN_NOT_APPROVED\`, one the project lacks \`SUGGESTION_DESIGN_UNKNOWN\`, and a second on a journey \`SUGGESTION_JOURNEY_SUGGESTED\` |
-| \`readiness\` | a requirement | the readiness result at its base revision, shown as advice: the agree is judged by its ready checklist, never by it |
 | \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\`, linked as the build of the pinned design it builds and waiting on each provider version its \`contractWaits\` names, in one transaction; each is then admitted to \`open\` where its issue-ready checklist is complete and stays at draft where not, the build gate holds each until its design is approved, and a wait holds it until a version at or above it is approved |
 | \`triage\` | an issue | the issue's priority, category and complexity; a free-text \`route\` is kept as a note comment on the issue |
 | \`duplicate\` | an issue or a requirement | on an issue, drops it naming the root, with a relates edge to it; on a requirement, drops it naming the requirement it repeats (\`REQUIREMENT_DUPLICATE_TARGET_INVALID\` for itself, an unknown or a dropped one; \`REQUIREMENT_HAS_LIVE_ISSUES\` while live issues link to it) |
 | \`feedback_triage\` | a feedback item | the route on the item (${guideRef('feedback-triage')}) |
+| \`design_change\` | a workflow design | nothing in the design: the accepted suggestion records that the design owes a revision touching the steps and edges it names |
 
 A payload that does not parse for its kind is \`SUGGESTION_PAYLOAD_INVALID\`, naming the path; a target
 the kind does not take is \`SUGGESTION_TARGET_INVALID\`.

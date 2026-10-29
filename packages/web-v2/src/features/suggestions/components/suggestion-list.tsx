@@ -26,10 +26,9 @@ export function summaryOf(s: Suggestion, language: string): string {
       return str(p.changeSummary) ?? str(p.reason) ?? t("requirements.suggestion.newRevision");
     case "requirement_draft":
       return str(p.title) ?? t("requirements.suggestion.newRequirement");
-    case "readiness": {
-      const checks = list(p.checks);
-      return t("requirements.suggestion.checksPass", { a: checks.filter((c) => c.passed === true).length, b: checks.length });
-    }
+    // retired (REQ-34 BC-3): core refuses its propose and its accept, so a stored one reads by its kind alone
+    case "readiness":
+      return kindLabel(t, s.kind);
     case "breakdown":
       return t("requirements.suggestion.issuesN", { n: list(p.issues).length });
     case "duplicate":
@@ -54,7 +53,7 @@ export function acceptConsequence(s: Suggestion, language: string): string {
     case "requirement_draft":
       return t("requirements.suggestion.acceptDraft");
     case "readiness":
-      return r !== null ? t("requirements.suggestion.acceptReadinessOf", { r }) : t("requirements.suggestion.acceptReadiness");
+      return t("requirements.suggestion.acceptRetired");
     case "breakdown": {
       const n = list(p.issues).length;
       if (n === 1) return r !== null ? t("requirements.suggestion.acceptBreakdownOnOne", { r }) : t("requirements.suggestion.acceptBreakdownOne");
@@ -82,11 +81,6 @@ function detailLines(s: Suggestion, t: Copy): string[] {
   const p = (s.payload ?? {}) as Payload;
   if (s.kind === "revision_diff" || s.kind === "requirement_draft") {
     return [...pictureLine(p, t), ...list(p.criteria).map((c) => `${str(c.code) ?? t("requirements.suggestion.newCode")} · ${str(c.body) ?? ""}`)];
-  }
-  if (s.kind === "readiness") {
-    return list(p.checks).map(
-      (c) => `${t(c.passed === true ? "requirements.suggestion.pass" : "requirements.suggestion.fail")} · ${str(c.check) ?? ""}${str(c.detail) ? ` — ${str(c.detail)}` : ""}`,
-    );
   }
   return [];
 }
