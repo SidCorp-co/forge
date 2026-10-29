@@ -9,12 +9,19 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { shippedReleasesOf } from '../../src/pipeline/index.js';
 import { SourceHostUnavailable } from '../../src/integrations/source-host/index.js';
 import { createReleaseBatch } from '../../src/release-batch/create.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
 import { closeShippedEarlier } from '../../src/release-batch/shipped-earlier.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
-import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
+import {
+  createTestProject,
+  createTestUser,
+  rows,
+  seedIssueStatus,
+  truncateAll,
+} from '../helpers/factories.js';
 import { releaseWorld, seedProductionDeployTrigger, stubProbe } from '../helpers/release-world.js';
 import {
   A,
@@ -30,7 +37,7 @@ import {
 let projectId: string;
 let ownerId: string;
 const fx = releaseWorld(() => ({ projectId, ownerId }));
-const { shipped, marked, asserted, claim, runOf, abortHold } = shippedEarlierWorld(
+const { shipped, marked, asserted, claim, unmark, runOf, abortHold } = shippedEarlierWorld(
   () => ({ projectId }),
   fx,
 );
@@ -387,5 +394,64 @@ describe('an asserted mark that claimed a commit', () => {
     await claim(unstamped, A, '\nNOT stamped by this call: merged_at was already set');
 
     expect(await close([prose, unstamped])).toEqual({ closed: [], unresolved: [] });
+  });
+});
+
+describe('a fix round landing after the release that shipped the round before it (ISS-759)', () => {
+  // ISS-642 on forge-dev: round 2's commit, in no release yet, was closed against 0.4.0-dev.349 by
+  // the older commits declaring the issue, so its shipped-in named a release without round 2.
+  const fresh = () => randomUUID().replaceAll('-', '').padEnd(40, '0');
+
+  async function landedReleasedAndFixedAgain() {
+    const [c0, c1, c2, round1, round2, solo] = [fresh(), fresh(), fresh(), fresh(), fresh(), fresh()];
+    const history = {
+      [c0]: [c0],
+      [c1]: [c0, c1, round1, solo],
+      [c2]: [c0, c1, c2, round1, solo, round2],
+    };
+    await shipped('0.4.0-dev.0', c0, '2026-10-06T09:00:00Z');
+    const first = await shipped('0.4.0-dev.1', c1, '2026-10-06T10:00:00Z');
+    const id = await asserted();
+    const only = await asserted();
+    await claim(id, round1);
+    await claim(only, solo);
+    // the round-1 commits declare the issue; round 2's do not (`... the ISS-642 r2 cases ...`)
+    const ranges = { [`${c0}..${c1}`]: [await subjectFor(id, 'round 1')], [`${c1}..${c1}`]: [] };
+    const before = host(history, { head: c1, ranges });
+    expect((await close([id, only], before)).closed.map((c) => c.version)).toEqual([
+      '0.4.0-dev.1',
+      '0.4.0-dev.1',
+    ]);
+
+    // reopened, fixed again at `round2`, landed and marked: waiting for its release
+    await seedIssueStatus(id, 'reopen');
+    await seedIssueStatus(id, 'in_progress');
+    await seedIssueStatus(id, 'awaiting_release');
+    await unmark(id, 'round 2');
+    await claim(id, round2);
+    return { id, only, first, history, c1, c2, ranges, before };
+  }
+
+  it('leaves the fix round waiting while no shipped release holds its commit', async () => {
+    const { id, before } = await landedReleasedAndFixedAgain();
+
+    const result = await close([id], before);
+
+    expect(result).toEqual({ closed: [], unresolved: [] });
+    expect((await runOf(id))?.status).toBe('awaiting_release');
+  });
+
+  it('closes it against the next release holding the fix round, which its shipped-in names', async () => {
+    const { id, only, history, c1, c2, ranges } = await landedReleasedAndFixedAgain();
+    await close([id], host(history, { head: c1, ranges }));
+    const second = await shipped('0.4.0-dev.2', c2, '2026-10-06T11:00:00Z');
+
+    const result = await close([id], host(history, { head: c2, ranges }));
+
+    expect(result.closed.map((c) => [c.issueId, c.version])).toEqual([[id, '0.4.0-dev.2']]);
+    expect(await rosterClosedOf(second)).toEqual([id]);
+    const read = await shippedReleasesOf(projectId, [id, only]);
+    expect(read.get(id)?.version).toBe('0.4.0-dev.2');
+    expect(read.get(only)?.version).toBe('0.4.0-dev.1');
   });
 });

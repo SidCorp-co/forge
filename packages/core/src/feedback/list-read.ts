@@ -25,6 +25,7 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { holderNames, holds } from '../permissions/index.js';
+import { shippedReleasesOf } from '../pipeline/index.js';
 import { readReleaseMode } from '../project-config/index.js';
 import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
@@ -230,7 +231,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   // an original read only as a root has its own standing read too: its duplicate reads it
   const carrying = new Set([...routeIssues.values()].flat());
   const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
-  const [owed, release, windowDays, origins, standing] = await Promise.all([
+  const [owed, release, windowDays, origins, standing, shipped] = await Promise.all([
     allRows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
       : [],
@@ -238,6 +239,11 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
     forgeOriginsOf(rows.map((r) => r.id)),
     standingFactsOf(projectId, allRows, issueRows, carrying),
+    // a finished release lets its claim go, so a carrier it shipped is read where the issue reads it
+    shippedReleasesOf(
+      projectId,
+      issueRows.filter((i) => carrying.has(i.id) && !i.releaseVersion).map((i) => i.id),
+    ),
   ]);
   const releaseHolders =
     release && release !== 'automatic'
@@ -261,7 +267,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
           key: formatIssueRef(prefix, i.seq),
           title: i.title,
           status: i.status,
-          releaseVersion: i.releaseVersion ?? null,
+          releaseVersion: i.releaseVersion ?? shipped.get(i.id)?.version ?? null,
         },
       ]),
     ),

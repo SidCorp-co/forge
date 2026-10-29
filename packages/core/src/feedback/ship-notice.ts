@@ -17,6 +17,7 @@ import { issues, notificationDeliveryMembers, notifications, pipelineRuns } from
 import { feedbackMessages, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { pipelineOutbox } from '../db/schema-outbox.js';
 import { userNames } from '../lib/people.js';
+import { type ShippedRelease, shippedReleasesOf } from '../pipeline/index.js';
 import { holderNames } from '../permissions/index.js';
 
 const SHIPPED_PHASES: readonly FeedbackPhase[] = ['resolved', 'verified'];
@@ -35,29 +36,37 @@ export interface ShipNoticeItem {
 
 /**
  * When and in which release each item's work shipped, off its carriers: the latest release one of them
- * was cut into, else the latest moment one was merged (a carrier closed by hand has no release).
+ * shipped in, read as the issue's own `shippedIn` and its progress read it
+ * (`pipeline/release-runs.ts:shippedReleasesOf`), else the latest moment one was merged (a carrier
+ * closed by hand has no release).
  */
 async function shippedOf(feedbackIds: readonly string[]): Promise<Map<string, Shipped>> {
   const carriers = await db
     .select({
       feedbackId: feedbackRouteIssues.feedbackId,
+      issueId: issues.id,
+      projectId: issues.projectId,
       mergedAt: issues.mergedAt,
       closedAt: issues.updatedAt,
-      version: pipelineRuns.releaseVersion,
-      releasedAt: pipelineRuns.releaseReleasedAt,
     })
     .from(feedbackRouteIssues)
     .innerJoin(issues, eq(issues.id, feedbackRouteIssues.issueId))
-    .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
     .where(
       and(inArray(feedbackRouteIssues.feedbackId, [...feedbackIds]), ne(issues.status, 'dropped')),
     );
+  const byProject = new Map<string, string[]>();
+  for (const c of carriers) byProject.set(c.projectId, [...(byProject.get(c.projectId) ?? []), c.issueId]);
+  const releases = new Map<string, ShippedRelease>();
+  for (const [projectId, ids] of byProject) {
+    for (const [id, r] of await shippedReleasesOf(projectId, ids)) releases.set(id, r);
+  }
   const out = new Map<string, Shipped>();
   for (const c of carriers) {
     const latest = out.get(c.feedbackId) ?? { at: null, release: null };
-    const at = c.releasedAt ?? c.mergedAt ?? c.closedAt;
+    const release = releases.get(c.issueId);
+    const at = release ? new Date(release.at) : (c.mergedAt ?? c.closedAt);
     if (latest.at === null || at > latest.at) {
-      out.set(c.feedbackId, { at, release: c.releasedAt ? c.version : null });
+      out.set(c.feedbackId, { at, release: release?.version ?? null });
     }
   }
   return out;

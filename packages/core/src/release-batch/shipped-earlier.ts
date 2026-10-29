@@ -14,11 +14,15 @@
  * issue in one:
  *
  * - an `observed` mark names a commit; the release is the earliest whose commit holds it.
- * - an `asserted` mark names none (it is somebody's word that the work shipped), so the repository
- *   is asked instead which commits declare the issue (`commitOwners`, the rule the live reading
- *   places commits with) in each recent release's own range. The issue is placed in the release
- *   whose range holds its last declaring commit, and only where the range between the newest
- *   shipped release and the branch head holds none: work still unreleased is not shipped.
+ * - an `asserted` mark names none (it is somebody's word that the work shipped). Where the
+ *   marker's record holds the commit it claimed (below), that commit places it exactly as an
+ *   observed one, and a claimed commit no shipped release holds leaves it waiting: a fix round that
+ *   landed after the release shipping the round before it is not shipped by that release (ISS-759).
+ *   Only where it claimed none is the repository asked which commits declare the issue
+ *   (`commitOwners`, the rule the live reading places commits with) in each recent release's own
+ *   range. The issue is placed in the release whose range holds its last declaring commit, and only
+ *   where the range between the newest shipped release and the branch head holds none: work still
+ *   unreleased is not shipped.
  *
  * Where the project has no source host binding (or declares a local repository no host serves), the
  * commit a mark names (observed, or the claim the marker's record of the current asserted mark
@@ -346,10 +350,12 @@ export async function closeShippedEarlier(
     logger.warn({ projectId, issueId: row.id }, `release-shipped-earlier: ${detail}`);
     unresolved.push({ issueId: row.id, code: 'SHIPPED_EARLIER_UNREAD', detail });
   }
-  const keyed = waiting.filter((w) => w.sha === null && !placement.has(w.id));
+  // Only a row whose mark claims no commit is placed by the commits declaring it. A claimed commit
+  // no shipped release holds is a landing still unreleased (a fix round after the release that
+  // shipped the round before it): the older declaring commits are not where that work shipped.
+  const keyed = waiting.filter((w) => w.sha === null && !leads.has(w.id));
   if (source.kind === 'box') {
-    const unkeyed = keyed.filter((w) => !leads.has(w.id));
-    unresolved.push(...noCommit(unkeyed, hostOnly(source.why)));
+    unresolved.push(...noCommit(keyed, hostOnly(source.why)));
   } else {
     try {
       for (const [id, release] of await placeByKey(source.host, projectId, releases, keyed)) {
