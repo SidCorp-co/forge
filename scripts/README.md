@@ -1059,9 +1059,10 @@ compiled with `m`; a line that is no regex, or one on a test declaring nothing, 
 test and line). A file declared by its exact path, a file the test imports, and a file that cannot be
 read select as before, and the run prints each test it left out. `pnpm merge-check` passes no
 reader, so before a merge every declaration selects as written; core's `core` job runs the whole unit
-collection on `main`, and the whole suite runs nightly and on a release cut. `credential-doors.test.ts`
-(a TypeScript program over all of core's src, two minutes) and `reason-caps.test.ts` carry the lines
-(ISS-769); `lib/direct-test-when.test.mjs` runs their own lines over planted files.
+collection on `main`, and the whole suite runs nightly and on a release cut.
+`packages/core/src/middleware/credential-doors.test.ts` (a TypeScript program over all of core's src,
+two minutes) and `packages/core/src/lib/reason-caps.test.ts` carry the lines (ISS-769);
+`lib/direct-test-when.test.mjs` runs their own lines over planted files.
 
 **What was selected is what ran.** `lib/direct-test-run.mjs:runDirectTests` runs each collection's
 selected files and each crate's selected tests, and then holds the selection against the checks it
