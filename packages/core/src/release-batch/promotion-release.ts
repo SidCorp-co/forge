@@ -159,7 +159,8 @@ export async function promotionViewOf(
     title: request.title,
     url: request.htmlUrl,
     state: request.state === 'merged' ? 'merged' : request.state === 'open' ? 'open' : 'closed',
-    from: p.from,
+    // the branch the request merges from, which may be one cut from the promotion's source to pin a head
+    from: request.headRef,
     to: p.to,
     headSha: request.headSha,
     mergeCommitSha: request.mergeCommitSha,

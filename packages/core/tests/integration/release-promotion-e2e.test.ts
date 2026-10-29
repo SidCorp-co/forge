@@ -112,7 +112,7 @@ async function landedIssues(): Promise<string[]> {
 }
 
 /** The promotion merge request as GitLab's hook writes it into the projection. */
-async function promotionRequest(number: number, head: string) {
+async function promotionRequest(number: number, head: string, from = STG) {
   await applyPullRequestEvent(
     { projectId: world.projectId, bindingId: world.bindingId, host: 'gitlab' },
     {
@@ -123,7 +123,7 @@ async function promotionRequest(number: number, head: string) {
         body: null,
         html_url: `https://gitlab.com/acme/adminhub-api/-/merge_requests/${number}`,
         state: 'open',
-        head: { ref: STG, sha: head },
+        head: { ref: from, sha: head },
         base: { ref: PROD, sha: 'f'.repeat(40) },
         updated_at: new Date().toISOString(),
       },
@@ -173,6 +173,16 @@ describe('BC-9: an external production with one declared promotion is a release 
       verification: 'deployment',
       changeRequests: [{ number: 5053, label: '!5053', headSha: HEAD }],
     });
+  });
+
+  // adminhub-fe !2055: the promotion is cut from a branch pinning a judged head, not from release/stg itself
+  it('takes a request into release/production from a branch cut to pin the head', async () => {
+    const ids = await landedIssues();
+    await promotionRequest(2055, HEAD, 'promote/prod-2026-10-29');
+    for (const sha of LANDED) planted.carried.add(`${sha}>${HEAD}`);
+    const cut = await call('POST', '/release-batches', { issueIds: ids });
+    expect(cut.status, JSON.stringify(cut.body)).toBe(201);
+    expect(cut.body).toMatchObject({ changeRequests: [{ number: 2055, headSha: HEAD }] });
   });
 
   it('refuses the cut by name where no promotion request carries the roster', async () => {

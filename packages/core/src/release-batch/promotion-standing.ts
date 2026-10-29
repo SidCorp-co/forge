@@ -13,7 +13,12 @@ import type { ReleaseDeclaration } from './gate.js';
 export type PromotionDeclaration = Extract<ReleaseDeclaration, { kind: 'promotion' }>;
 export type Across = PromotionDeclaration['promotion'];
 
-/** The newest open request across the promotion, else the newest merged one, as the projection holds them. */
+/**
+ * The newest open request into the branch production deploys from, else the newest merged one, as the
+ * projection holds them. Its head may be the promotion's source branch or one cut from it to pin a
+ * judged head (adminhub-fe !2055, `promote/prod-2026-10-29`): whether that head carries the roster is
+ * read on the host at the cut, never assumed from the branch's name.
+ */
 export async function requestsAcross(projectId: string, across: Across) {
   return db
     .select()
@@ -21,7 +26,6 @@ export async function requestsAcross(projectId: string, across: Across) {
     .where(
       and(
         eq(repoPullRequests.projectId, projectId),
-        eq(repoPullRequests.headRef, across.from),
         eq(repoPullRequests.baseRef, across.to),
         inArray(repoPullRequests.state, ['open', 'merged']),
       ),
