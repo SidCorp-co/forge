@@ -90,23 +90,12 @@ export function ReleaseMerges({ issues, slug }: { issues: readonly Pick<ReleaseI
 
 /**
  * The change request a promotion release is (REQ-63 BC-10): its link and state, the branches it
- * crosses, the head it was cut at and, once merged, its merge, and the roster issues that head
- * carries. Flat, as the merge list is.
+ * crosses, the head it was cut at and, once merged, its merge, and the roster the agent
+ * stated for it. Flat, as the merge list is.
  */
 export function ReleasePromotionBlock({ promotion, slug }: { promotion: ReleasePromotion | null; slug: string }) {
   const t = useCopy();
   if (!promotion) return null;
-  const keys = (list: readonly string[], label: "releases.promotion.carries" | "releases.promotion.notCarried") =>
-    list.length === 0 ? null : (
-      <span className="flex flex-wrap items-baseline gap-x-2 font-mono text-12">
-        <span className="font-sans text-subtle">{t(label)}</span>
-        {list.map((key) => (
-          <Link key={key} href={issueHref(slug, key)} className="text-link hover:underline">
-            {key}
-          </Link>
-        ))}
-      </span>
-    );
   return (
     <section className="border-b border-line-subtle px-8 py-3 max-md:px-4" data-testid="release-promotion" data-state={promotion.state}>
       <h2 className="mb-1.5 text-11-5 font-semibold uppercase tracking-wide text-subtle">{t("releases.promotion.title")}</h2>
@@ -128,10 +117,16 @@ export function ReleasePromotionBlock({ promotion, slug }: { promotion: ReleaseP
         ) : null}
         <span className="min-w-0 flex-1 truncate text-muted max-md:basis-full">{promotion.title}</span>
       </div>
-      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-        {keys(promotion.carries, "releases.promotion.carries")}
-        {keys(promotion.notCarried, "releases.promotion.notCarried")}
-      </div>
+      {promotion.roster.length === 0 ? null : (
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 font-mono text-12">
+          <span className="font-sans text-subtle">{t("releases.promotion.roster")}</span>
+          {promotion.roster.map((key) => (
+            <Link key={key} href={issueHref(slug, key)} className="text-link hover:underline">
+              {key}
+            </Link>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

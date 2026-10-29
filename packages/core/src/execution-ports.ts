@@ -38,6 +38,8 @@ import {
 } from './integrations/source-host/index.js';
 import {
   draftIssuesPeopleFiled,
+  owedFilings,
+  owedMarks,
   recordRunSecretResolve,
   runSecretRefsOfSession,
 } from './issues/index.js';
@@ -276,6 +278,20 @@ export function provideExecutionPorts(): void {
     stewardAsks: openStewardAsks,
     breakdownsHeldBySteward,
     landedWorkOwed,
+    mergesOwed: async (projectId) => ({
+      marks: (await owedMarks(projectId)).map((m) => ({
+        issueId: m.issueId,
+        key: m.key,
+        number: m.number,
+        commit: m.commit,
+      })),
+      filings: (await owedFilings(projectId)).map((f) => ({
+        number: f.number,
+        commit: f.commit,
+        title: f.title,
+        url: f.url,
+      })),
+    }),
     masterGate: (projectId) => gateOf(projectId, 'master_admitted_only'),
     requestsWaiting: async (projectId) => [
       ...(await draftIssuesPeopleFiled(projectId)).map((r) => ({

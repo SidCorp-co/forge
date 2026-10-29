@@ -100,6 +100,8 @@ export interface IssueStandingInput {
   releaseApproval: boolean;
   /** It carries a release note; at the gate, one without is refused `RELEASE_RECORD_MISSING`. */
   releaseNoted: boolean;
+  /** A merged change request delivering it that no merged mark records (ISS-774), else null. */
+  owedMark?: { number: number; commit: string } | null;
   /** The automatic release's standing hold on it (`release-batch/hold.ts:releaseHoldsOf`), else null. */
   releaseHold: ReleaseHoldView | null;
   /** Null for a reader with no person behind it; nothing then reads as theirs. */
@@ -287,6 +289,7 @@ function releaseHeldTurn(hold: ReleaseHoldView, people: People): Turn {
     return { group, waitingOn: wait('person', say('standing.who.runnerOwner'), act, rule) };
   if (actor === 'admin')
     return { group, waitingOn: wait('person', say('standing.who.projectAdmin'), act, rule) };
+  if (actor === 'agent') return { group: 'queued', waitingOn: wait('master', MASTER, act, rule) };
   return { group, waitingOn: forPerson(people, act, rule).waitingOn };
 }
 
@@ -351,10 +354,27 @@ function idleTurn(status: IssueStatus): Turn {
   };
 }
 
+/**
+ * A change request delivering it merged and no mark records it (ISS-774): Forge does not write the
+ * mark from the host's report, so the act is owed to whoever works it, its run where one holds it,
+ * else the master.
+ */
+function owedMarkTurn(owed: { number: number; commit: string }, running: boolean): Turn {
+  const act = say('issues.standing.act.markMerged', {
+    n: owed.number,
+    sha: owed.commit.slice(0, 9),
+  });
+  const rule = say('issues.rule.markOwed', { n: owed.number, sha: owed.commit });
+  return running
+    ? { group: 'moving', waitingOn: wait('run', say('issues.standing.who.run'), act, rule) }
+    : { group: 'queued', waitingOn: wait('master', MASTER, act, rule) };
+}
+
 function turnOf(input: IssueStandingInput): Turn {
   const person = personTurn(input);
   if (person) return person;
   const running = held(input.lease) || input.inFlight;
+  if (input.owedMark) return owedMarkTurn(input.owedMark, running);
   if (input.status === 'awaiting_release') {
     const hold = releaseHoldOf(input);
     return hold ? releaseHeldTurn(hold, input) : releaseTurn(input, running);

@@ -1,16 +1,16 @@
 // REQ-63: the close of a release that went out through change requests. Once its last request merged
 // and every issue it carries holds its merge stamp, the roster closes, the ship is stamped and the run
-// completes — on the merge route's own call, or on the host's report of the merge.
+// completes — on the merge route's own call, or on the approval wake. A host's report of a merge
+// settles nothing (ISS-774, owner 2026-10-29: Forge tells the agent what is owed and writes nothing
+// from a webhook).
 
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
-import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
+import { repoPullRequests } from '../db/schema-repo-projection.js';
 import type { TransitionActor } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { consume } from '../outbox/index.js';
 import { closeRunIfOneShot, stampReleaseShipped, writeRunMetadata } from '../pipeline/index.js';
-import { projectCreatorOf } from '../projects/index.js';
 import { mergeStepsOf } from './change-request-roster.js';
 import { closeRoster } from './finish.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
@@ -83,7 +83,7 @@ export async function settleChangeRequestRelease(
     })
     .from(issues)
     .where(eq(issues.releaseBatchRunId, runId));
-  // a host's report of the last merge can arrive before its stamp is written
+  // a roster issue with no mark is not landed yet: its agent owes the mark first
   if (claimed.some((c) => c.mergedAt === null)) return { settled: false, pending: 'stamps' };
   if (!(await takeSettleLease(runId))) return { settled: false, pending: 'settling' };
   const { failed } = await closeRoster(claimed, runId, actor, undefined);
@@ -96,51 +96,4 @@ export async function settleChangeRequestRelease(
   await closeRunIfOneShot(runId, 'completed');
   if (failed.length > 0) logger.warn({ runId, failed }, 'change-request release: issues left open');
   return { settled: true, pending: null };
-}
-
-/**
- * The release's own reaction to a merge its host reported: every running change-request release
- * holding an issue the merged request delivers is settled. A settle that has to wait on a stamp not
- * yet written, or on another settle, throws, so the delivery is retried rather than forgotten.
- */
-export function registerChangeRequestSettle(): void {
-  consume('source.merged', {
-    name: 'release-merge-settle',
-    handle: async (p) => {
-      const delivered = await db
-        .selectDistinct({ issueId: repoPullRequestIssues.issueId })
-        .from(repoPullRequestIssues)
-        .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
-        .where(
-          and(eq(repoPullRequests.projectId, p.projectId), eq(repoPullRequests.headRef, p.headRef)),
-        );
-      const owner = await projectCreatorOf(p.projectId);
-      if (!owner || delivered.length === 0) return;
-      const runs = await db
-        .selectDistinct({ runId: issues.releaseBatchRunId })
-        .from(issues)
-        .where(
-          and(
-            inArray(
-              issues.id,
-              delivered.map((d) => d.issueId),
-            ),
-            isNotNull(issues.releaseBatchRunId),
-          ),
-        );
-      for (const r of runs) {
-        if (!r.runId) continue;
-        const out = await settleChangeRequestRelease(r.runId, {
-          type: 'user',
-          id: owner,
-          agency: 'agent',
-        });
-        if (out.pending === 'stamps' || out.pending === 'settling') {
-          throw new Error(
-            `release run ${r.runId}: every change request merged, and the release waits on ${out.pending === 'stamps' ? 'a merge stamp not yet written' : 'another settle'}; retried`,
-          );
-        }
-      }
-    },
-  });
 }

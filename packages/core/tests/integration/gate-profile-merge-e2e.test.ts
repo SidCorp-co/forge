@@ -1,23 +1,23 @@
 /**
- * REQ-76 BC-8: on a yolo project an agent may change code first, and Forge records the issue and its
- * landing from the merge. A merge onto the project's base branch that delivers no issue files one
- * at `open`, titled from the change request and linked to it, its landing recorded from the merge
- * itself; a redelivery of the same merge files nothing more; and the master is owed its claim and
- * move to awaiting_release (`pipeline/wedge-landed.ts:landedWorkOwed`). Under standard
- * (`issue_before_code` enforced) the same merge records nothing, as before.
+ * REQ-76 BC-8 as ISS-774 revises it (owner, 2026-10-29: Forge tells the agent and the agent records):
+ * on a yolo project an agent may change code first, and a merge onto the project's base branch that
+ * delivers no issue is owed to the master as "file the issue for merge !N at <sha>". Forge files
+ * nothing from the host's report; the master's filing, marked merged at that commit, answers it.
+ * Under standard (`issue_before_code` enforced) nothing is owed.
  *
- * @direct-test-of packages/core/src/issues/host-merge.ts
- * @direct-test-of packages/core/src/pipeline/wedge-landed.ts
+ * @direct-test-of packages/core/src/issues/owed-merges.ts
  */
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { mastersPorts } from '../../src/masters/ports.js';
 import { api } from '../helpers/api.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   BRANCH,
   hostMerged,
+  issue,
   mergeRequest,
   rows,
   seedWorld,
@@ -66,19 +66,6 @@ async function profile(name: 'standard' | 'yolo'): Promise<void> {
   expect(put.status, JSON.stringify(put.body)).toBe(200);
 }
 
-const filed = () =>
-  rows<{
-    id: string;
-    title: string;
-    status: string;
-    merged_commit_sha: string | null;
-    merged_target: string | null;
-    merged_at: Date | null;
-    created_via: string;
-  }>(sql`
-    SELECT id, title, status, merged_commit_sha, merged_target, merged_at, created_via
-      FROM issues WHERE project_id = ${world.projectId} AND detector_key = ${`merged/${LANDING}`}`);
-
 const issueCount = async () =>
   (
     await rows<{ n: number }>(
@@ -86,69 +73,37 @@ const issueCount = async () =>
     )
   )[0]?.n;
 
-describe('REQ-76 BC-8: a merge naming no issue', () => {
-  it('standard (issue_before_code enforced) records nothing', async () => {
+const owedToMaster = async () => (await mastersPorts().mergesOwed(world.projectId)).filings;
+
+describe('REQ-76 BC-8 under ISS-774: a merge naming no issue is owed a filing, never filed by Forge', () => {
+  it('standard (issue_before_code enforced) owes nothing and files nothing', async () => {
     await seedWorld(null);
     await profile('standard');
     await mergeRequest(42, UNNAMED, HEAD, null);
     await hostMerged(42, UNNAMED, LANDING);
     expect(await issueCount()).toBe(0);
+    expect(await owedToMaster()).toEqual([]);
   });
 
-  it('yolo files one issue at open, linked to the change request, its landing recorded from the merge', async () => {
+  it('yolo files no issue, and owes the master the filing for !42 at its commit, until a mark names it', async () => {
     await seedWorld(null);
     await profile('yolo');
     await mergeRequest(42, UNNAMED, HEAD, null);
     await hostMerged(42, UNNAMED, LANDING);
 
-    const born = await filed();
-    expect(born).toHaveLength(1);
-    const [issue] = born;
-    expect(issue).toMatchObject({
-      title: 'MR 42',
-      status: 'open',
-      merged_commit_sha: LANDING,
-      merged_target: BRANCH,
-      created_via: 'system',
-    });
-    expect(issue?.merged_at).not.toBeNull();
-    const links = await rows<{ number: number }>(sql`
-      SELECT p.number FROM repo_pull_request_issues l
-        JOIN repo_pull_requests p ON p.id = l.pull_request_id
-       WHERE l.issue_id = ${issue?.id}`);
-    expect(links).toEqual([{ number: 42 }]);
-
-    // the same merge delivered again files nothing more
-    await hostMerged(42, UNNAMED, LANDING);
-    expect(await filed()).toHaveLength(1);
-    expect(await issueCount()).toBe(1);
-
-    // its master is owed the claim and the move to awaiting_release
-    const { landedWorkOwed } = await import('../../src/pipeline/index.js');
-    const owed = await landedWorkOwed(world.projectId);
+    expect(await issueCount()).toBe(0);
+    const owed = await owedToMaster();
     expect(owed).toEqual([
-      expect.objectContaining({ issueId: issue?.id, status: 'open', commit: LANDING }),
+      expect.objectContaining({ number: 42, commit: LANDING, title: 'MR 42' }),
     ]);
-  });
 
-  it('yolo files one for a merge the projection holds no request for, titled from the branch, once per landing commit', async () => {
-    await seedWorld(null);
-    await profile('yolo');
-    await hostMerged(77, UNNAMED, LANDING);
-    expect(await filed()).toEqual([
-      expect.objectContaining({
-        title: `Merge of ${UNNAMED} into ${BRANCH}`,
-        status: 'open',
-        merged_commit_sha: LANDING,
-      }),
-    ]);
-    // nothing links it to a request, so only its landing commit says it was filed already: the
-    // redelivery is answered as done, never left failing on the live detector key's unique index
-    await hostMerged(77, UNNAMED, LANDING);
-    expect(await issueCount()).toBe(1);
-    const failing = await rows<{ state: string; output: unknown }>(sql`
-      SELECT state, output FROM pgboss_v12.job
-       WHERE name = 'outbox.issue-merge-stamp' AND state IN ('retry', 'failed')`);
-    expect(failing).toEqual([]);
+    // the master files it and marks it merged at that commit: the mark answers the filing
+    const id = await issue(1, 'in_progress');
+    const mark = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: BRANCH,
+      commit: LANDING,
+    });
+    expect(mark.status, JSON.stringify(mark.body)).toBe(200);
+    expect(await owedToMaster()).toEqual([]);
   });
 });

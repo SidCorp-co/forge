@@ -1,25 +1,35 @@
 // REQ-63 BC-9: what a promotion release waits on before its cut — a change request across the
-// promotion, open, or merged at a commit holding the roster's landings — and which roster issues an open
-// one's head carries, read on the host, so a draft pairs with the request under review.
+// promotion, open or merged and not yet released — read off the projection, so a draft pairs with the
+// request under review. No read here reaches the host.
 
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
-import { resolveSourceHost } from '../integrations/source-host/index.js';
 import { blocker } from './blocker-kit.js';
 import type { ReleaseBlocker } from './blocker-sentences.js';
-import { label, shown } from './change-request-roster.js';
+import { shown } from './change-request-roster.js';
 import type { ReleaseDeclaration } from './gate.js';
 
 export type PromotionDeclaration = Extract<ReleaseDeclaration, { kind: 'promotion' }>;
 export type Across = PromotionDeclaration['promotion'];
 
 /**
- * The newest open request into the branch production deploys from, else the newest merged one, as the
- * projection holds them. Its head may be the promotion's source branch or one cut from it to pin a
- * judged head (adminhub-fe !2055, `promote/prod-2026-10-29`): whether that head carries the roster is
- * read on the host at the cut, never assumed from the branch's name.
+ * A promotion request merged into `to` that no release run has taken: one a finished release pinned
+ * is spent, so nothing asks to promote it again (ISS-762, catalog-api 0.3.0: !1023 was already on
+ * release/production and the release still asked to promote its commit).
+ */
+const unreleased = sql`not exists (
+  select 1 from ${pipelineRuns}
+   where ${pipelineRuns.metadata} -> 'promotion' ->> 'pullRequestId' = ${repoPullRequests.id}::text
+     and ${pipelineRuns.status} in ('completed', 'failed'))`;
+
+/**
+ * The requests into the branch production deploys from that a release may be: open ones, and merged
+ * ones no release has taken, as the projection holds them, open first then newest. A request's head may
+ * be the promotion's source branch or one cut from it to pin a judged head (adminhub-fe !2055,
+ * `promote/prod-2026-10-29`). Which roster issues it carries is the agent's statement at the cut, never
+ * read here: nothing in this module asks the host (VISION: state-never-lies, owner ruling 2026-10-29).
  */
 export async function requestsAcross(projectId: string, across: Across) {
   return db
@@ -29,59 +39,19 @@ export async function requestsAcross(projectId: string, across: Across) {
       and(
         eq(repoPullRequests.projectId, projectId),
         eq(repoPullRequests.baseRef, across.to),
-        inArray(repoPullRequests.state, ['open', 'merged']),
+        or(
+          eq(repoPullRequests.state, 'open'),
+          and(eq(repoPullRequests.state, 'merged'), unreleased),
+        ),
       ),
     )
     .orderBy(sql`${repoPullRequests.state} = 'open' DESC`, desc(repoPullRequests.number))
-    .limit(1);
-}
-
-/** Whether one commit holds another, as the host answered: ancestry of two fixed commits never changes. */
-const held = new Map<string, boolean>();
-const HELD_KEPT = 5000;
-
-async function holds(projectId: string, sha: string, head: string): Promise<boolean> {
-  const key = `${projectId}:${sha}>${head}`;
-  const known = held.get(key);
-  if (known !== undefined) return known;
-  const where = await resolveSourceHost(projectId, 'agent').then((h) => h.compare(sha, head));
-  const answer = where === 'ahead' || where === 'identical';
-  if (held.size >= HELD_KEPT) held.clear();
-  held.set(key, answer);
-  return answer;
-}
-
-/** Of the roster, the issues whose host merge `head` holds, in the roster's order. */
-export async function carriedBy(projectId: string, head: string, roster: readonly string[]) {
-  const rows = await db
-    .select({ id: issues.id, sha: issues.mergedCommitSha })
-    .from(issues)
-    .where(inArray(issues.id, [...roster]));
-  const shaOf = new Map(rows.map((r) => [r.id, r.sha]));
-  const carries: string[] = [];
-  const notCarried: string[] = [];
-  for (const id of roster) {
-    const sha = shaOf.get(id);
-    (sha && (await holds(projectId, sha, head)) ? carries : notCarried).push(id);
-  }
-  return { carries, notCarried };
-}
-
-/** The open promotion request and which of the roster its head carries; null where none is open. */
-export async function openPromotionFor(
-  projectId: string,
-  across: Across,
-  roster: readonly string[],
-) {
-  const [request] = await requestsAcross(projectId, across);
-  if (request?.state !== 'open') return null;
-  return { request, ...(await carriedBy(projectId, request.headSha, roster)) };
+    .limit(20);
 }
 
 /**
- * The readiness reason of a promotion release: no request across the promotion is open, and the
- * newest merged one does not hold every roster issue's landing; or the open one's head carries only part of the
- * roster, and the release is cut with that part (adminhub-fe 0.54.0: work landed past !2055's head).
+ * The readiness reason of a promotion release: no request across the promotion is open, or merged and
+ * not yet released. A projection read; the roster the request carries is the agent's to state.
  */
 export async function promotionBlockers(
   projectId: string,
@@ -90,32 +60,12 @@ export async function promotionBlockers(
   out: ReleaseBlocker[],
 ): Promise<void> {
   if (roster.length === 0) return;
-  const open = await openPromotionFor(projectId, decl.promotion, roster);
-  if (open && open.notCarried.length === 0) return;
-  if (open && open.carries.length > 0) {
-    out.push(
-      blocker('RELEASE_PROMOTION_PARTIAL', {
-        issueIds: open.notCarried,
-        displayIds: await shown(open.notCarried),
-        carried: open.carries,
-        roster: roster.length,
-        request: label(open.request),
-        head: open.request.headSha,
-        ...decl.promotion,
-      }),
-    );
-    return;
-  }
-  // none open: the newest merged request already carried across what its merge holds
-  const [merged] = open ? [] : await requestsAcross(projectId, decl.promotion);
-  const missing = merged?.mergeCommitSha
-    ? (await carriedBy(projectId, merged.mergeCommitSha, roster)).notCarried
-    : [...roster];
-  if (missing.length === 0) return;
+  const [request] = await requestsAcross(projectId, decl.promotion);
+  if (request) return;
   out.push(
     blocker('RELEASE_PROMOTION_MISSING', {
-      issueIds: missing,
-      displayIds: await shown(missing),
+      issueIds: [...roster],
+      displayIds: await shown([...roster]),
       ...decl.promotion,
     }),
   );

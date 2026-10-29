@@ -18,6 +18,7 @@ import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { closeRunIfOneShot, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
 import { pairKey } from '../runners/index.js';
+import { ancestrySourceFor } from './ancestry-source.js';
 import { admitRoster } from './blockers.js';
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
@@ -39,7 +40,6 @@ import {
   writeLedger,
 } from './recorded.js';
 import { refuseRelease } from './refuse.js';
-import { ancestrySourceFor } from './shipped-earlier.js';
 import { cutReleaseVersion } from './version-store.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;

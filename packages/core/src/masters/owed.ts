@@ -12,6 +12,8 @@ import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
 import {
   type AgentConfirmOwed,
+  type FilingOwed,
+  type MarkOwed,
   mastersPorts,
   type ReleaseMergeOwed,
   type StewardAsk,
@@ -58,6 +60,10 @@ interface Owed {
     mergedAt: string;
     status: 'in_progress' | 'open';
   }[];
+  /** Issues a merged change request delivered that hold no merged mark, owed the mark (ISS-774). */
+  marks: MarkOwed[];
+  /** Merges into the default branch delivering no issue, owed an issue (REQ-76 BC-8, ISS-774). */
+  filings: FilingOwed[];
   /**
    * Requests a person left waiting — a draft issue they filed, a draft requirement proposed from a
    * chat — owed to the master only where the project's gate `master_admitted_only` is off (REQ-76 BC-9).
@@ -166,6 +172,20 @@ function landedWorkLine(all: Owed['landedWork']): string {
   return wedgeLandedLine(landed) + mergeFiledLine(filed);
 }
 
+/** ISS-774: what the host reported merged and no Forge record carries; Forge writes neither, the master does. */
+function mergesLine(marks: MarkOwed[], filings: FilingOwed[]): string {
+  let line = '';
+  if (marks.length > 0) {
+    const keys = marks.map((m) => `${m.key} ${m.issueId}: !${m.number} at ${m.commit}`);
+    line += ` ${marks.length} issue${plural(marks.length, '', 's')} ${plural(marks.length, 'was', 'were')} delivered by a change request the host reports merged, and no merged mark records ${plural(marks.length, 'it', 'them')} (${keys.join('; ')}): Forge does not write a mark from the host's report. Check the merge is this issue's work, then mark it (\`forge-runner api issues/<id>/merge -X POST -d '{"commit":"<sha>","target":"<branch>"}'\`), as ${method('issue-flow')} (Land, mark, move) says; where its run still holds it, the run marks it.`;
+  }
+  if (filings.length > 0) {
+    const merges = filings.map((f) => `!${f.number} at ${f.commit} "${f.title}"`);
+    line += ` ${filings.length} merge${plural(filings.length, '', 's')} into the default branch name${plural(filings.length, 's', '')} no issue (${merges.join('; ')}), and this project's gate profile lets code come first (gate issue_before_code off): file the issue for each merge (\`forge-runner api issues -X POST\`) with the title and release note it ships under, then mark it merged at that commit, as ${method('issue-flow')} (Land, mark, move) says; the mark answers this.`;
+  }
+  return line;
+}
+
 /** REQ-76 BC-8: an issue a merge filed under a profile that lets code come first, owed its claim and move. */
 function mergeFiledLine(filed: Owed['landedWork']): string {
   if (filed.length === 0) return '';
@@ -204,6 +224,7 @@ export function owedLine(owed: Owed): string {
     answersLine(owed.answers) +
     stewardAsksLine(owed.stewardAsks) +
     landedWorkLine(owed.landedWork) +
+    mergesLine(owed.marks, owed.filings) +
     confirmsLine(owed.confirms) +
     requestsLine(owed.requests);
   const {
@@ -298,6 +319,8 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.answers.map((a) => `answer:${a.questionId}|${a.outcome?.kind ?? ''}`),
     ...owed.stewardAsks.map((a) => `steward-ask:${a.actId}`),
     ...owed.landedWork.map((l) => `landed-work:${l.issueId}|${l.mergedAt}`),
+    ...owed.marks.map((m) => `mark:${m.issueId}|${m.commit}`),
+    ...owed.filings.map((f) => `filing:${f.commit}`),
     ...owed.requests.map((r) => `request:${r.kind}:${r.key}`),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
@@ -367,6 +390,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     releaseMerges,
     releaseApprovals,
     landedWork,
+    merges,
   ] = await Promise.all([
     readAdmissibleIssues({ deviceId, projectId }),
     readOwedComments(projectId),
@@ -383,6 +407,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.releaseMergesOwed(projectId),
     ports.releaseApprovalsOwed(projectId),
     ports.landedWorkOwed(projectId),
+    ports.mergesOwed(projectId),
   ]);
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
   const requests =
@@ -410,6 +435,8 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     answers,
     stewardAsks,
     landedWork,
+    marks: merges.marks,
+    filings: merges.filings,
     requests,
     contentLanguage,
   });

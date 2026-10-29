@@ -34,8 +34,8 @@ const H = vi.hoisted(() => {
   return { landed, later, aside, holds };
 });
 
-vi.mock('../../src/release-batch/shipped-earlier.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/release-batch/shipped-earlier.js')>()),
+vi.mock('../../src/release-batch/ancestry-source.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/release-batch/ancestry-source.js')>()),
   ancestrySourceFor: async () => ({
     kind: 'box',
     why: 'the planted box',

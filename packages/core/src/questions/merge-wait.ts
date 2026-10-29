@@ -132,7 +132,7 @@ export async function answerMergeQuestions(
   if (!issue) throw new Error(`questions: issue ${args.issueId} vanished under its own stamp`);
   const body = markAnswer(formatIssueRef(issue.issue_prefix, Number(issue.iss_seq)), args.mark);
   // an answer is an account's: a stamp a device or core wrote answers on the project owner's
-  // behalf, as a host-reported merge is recorded (`issues/host-merge.ts`)
+  // behalf
   const answerer =
     args.actor?.type === 'user'
       ? { id: args.actor.id, agency: args.actor.agency }

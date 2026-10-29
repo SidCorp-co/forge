@@ -5,7 +5,6 @@ import {
   registerActivitySubscribers,
   registerDependencyHealth,
   registerFailReopen,
-  registerHostMergeStamp,
   registerIssueMoveReactions,
 } from './issues/index.js';
 import { registerLessonCorrections } from './lessons/index.js';
@@ -30,7 +29,6 @@ import {
 import { registerLiveReadingInvalidation } from './projects/index.js';
 import { registerQuestionSuggest } from './questions/index.js';
 import {
-  registerChangeRequestSettle,
   registerLandingDeploy,
   registerReleaseApprovalWake,
   registerReleaseBatchClaimSubscriber,
@@ -59,14 +57,12 @@ export function registerOutboxConsumers(): void {
   registerPausedRunWedgeResolve();
   registerReleaseBatchClaimSubscriber();
   registerReleaseApprovalWake();
-  registerChangeRequestSettle();
   registerReleaseTag();
   registerReleaseHighlightsRefresh();
   registerReleaseNaming();
   registerMemoryIndexer();
   registerMemoryReconcileTrigger();
   registerMemoryExtraction();
-  registerHostMergeStamp();
   registerFailReopen();
   registerIssueMoveReactions();
   registerDependencyHealth();

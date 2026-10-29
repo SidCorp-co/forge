@@ -1,7 +1,8 @@
 /**
  * A request the host marks merged because its commits landed through another one stamps nothing
- * that is not its commit (adminhub-fe !1979 and !1982, 2026-10-26): every stamp a change request's
- * merge would write passes `issues/merge-identity.ts`, and each refusal is written on the issue.
+ * that is not its commit (adminhub-fe !1979 and !1982, 2026-10-26): every stamp Forge's merge or an
+ * agent's mark would write passes `issues/merge-identity.ts`, and each refusal is written on the
+ * issue. The host's own report stamps nothing (ISS-774).
  */
 
 import { sql } from 'drizzle-orm';
@@ -17,6 +18,7 @@ import {
   mergeRequest,
   rows,
   seedWorld,
+  stampObserved,
   world,
 } from '../helpers/host-merge-world.js';
 import { alreadyMerged, merged, mergeMessage, messages } from '../helpers/planted-gitlab-merges.js';
@@ -64,7 +66,8 @@ describe('a sibling request the host marks merged stamps nothing that is not its
     return { five, stale, draft };
   }
 
-  it('stamps the merged request’s issue and refuses the sibling’s, on the record', async () => {
+  // ISS-774: the host's report of the sibling writes nothing at all, so nothing is stamped or refused
+  it('stamps the issue Forge merged, and the sibling’s report stamps nobody', async () => {
     await settleOutbox();
     await seedWorld({ approval: { required: true } });
     const { five, stale, draft } = await siblings();
@@ -81,11 +84,7 @@ describe('a sibling request the host marks merged stamps nothing that is not its
     expect(stampedRows.some((r) => r.fields.includes('mergedCommitSha'))).toBe(true);
     expect((await issueRow(stale))?.merged_commit_sha).toBeNull();
     expect((await issueRow(draft))?.merged_at).toBeNull();
-    for (const id of [stale, draft]) {
-      expect(await refusals(id)).toMatchObject([
-        { payload: { commitSha: landing, code: 'COMMIT_NOT_THIS_ISSUE', via: 'event' } },
-      ]);
-    }
+    for (const id of [stale, draft]) expect(await refusals(id)).toEqual([]);
   });
 
   it('never supersedes the mark an issue holds from its own merge with a sibling’s commit', async () => {
@@ -94,6 +93,7 @@ describe('a sibling request the host marks merged stamps nothing that is not its
     const { five, stale } = await siblings();
     await mergeRequest(1981, 'iss-37-session', HEAD_OWN, null);
     await hostMerged(1981, 'iss-37-session', OWN_SHA);
+    await stampObserved(stale, OWN_SHA, '2026-10-23T10:00:00.000Z');
     expect((await issueRow(stale))?.merged_commit_sha).toBe(OWN_SHA);
 
     expect((await mergeOf(five, 1982)).status).toBe(200);
@@ -109,6 +109,7 @@ describe('a sibling request the host marks merged stamps nothing that is not its
     const { stale } = await siblings();
     await mergeRequest(1981, 'iss-37-session', HEAD_OWN, null);
     await hostMerged(1981, 'iss-37-session', OWN_SHA);
+    await stampObserved(stale, OWN_SHA, '2026-10-23T10:00:00.000Z');
     // a merge outside a release is the release door's to refuse here, so GitLab merges !1982
     const landing = 'a7'.repeat(20);
     messages.set(landing, mergeMessage(1982, 'fix/login-iss-5'));
@@ -152,6 +153,7 @@ describe('a sibling request the host marks merged stamps nothing that is not its
     const { five, stale, draft } = await siblings();
     await mergeRequest(1981, 'iss-37-session', HEAD_OWN, null);
     await hostMerged(1981, 'iss-37-session', OWN_SHA);
+    await stampObserved(stale, OWN_SHA, '2026-10-23T10:00:00.000Z');
     expect((await mergeOf(five, 1982)).status).toBe(200);
     const landing = merged.get(1982) as string;
     alreadyMerged.set(1979, landing);

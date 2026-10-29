@@ -34,6 +34,7 @@ import { mergedLandingSchema } from './landing-evidence.js';
 import { recordMergeCheck } from './merge-check.js';
 import { warningsOf } from './merge-check-rules.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
+import { settleReleaseOnMark } from './owed-merges.js';
 import { issueReviewOf, recordReview } from './review.js';
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
@@ -95,6 +96,11 @@ async function runMergeMarker(
       hookActor: { type: actor.type, id: actor.id, agency: actor.agency },
     },
   });
+  // ISS-774: the agent's mark is one of the two writes that may close a change-request release whose
+  // last request merged on the host, Forge's own merge route being the other; the host's report is not
+  if (op === 'mark') {
+    await settleReleaseOnMark(issueId, { type: actor.type, id: actor.id, agency: actor.agency });
+  }
   // ISS-1126 — `mark` and `detail` say which kind of record this call left. Without them a
   // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
   // Forge did not observe; the sentence has been composed for the audit trail since ISS-959

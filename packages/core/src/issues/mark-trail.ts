@@ -18,7 +18,7 @@
  * An unmark made before the record existed is read from the activity feed's own row for it: the
  * `issue.updated` row the unmark's event wrote, setting `mergedAt` to null, which only an unmark does
  * (`merge-record.ts` `clearIssueMerge`). A claim from then has no record and counts as none: the
- * issue is held `SHIPPED_EARLIER_NO_COMMIT` until it is marked again, never closed by it.
+ * issue reads as marked with no claim until it is marked again.
  */
 
 import { sql } from 'drizzle-orm';
@@ -103,6 +103,65 @@ export async function currentMarkClaims(
     const sha = r.sha?.toLowerCase() ?? null;
     if (sha && CLAIMABLE_COMMIT.test(sha)) out.set(r.issue_id, sha);
   }
+  return out;
+}
+
+/**
+ * When each issue's current mark was recorded, by issue id: the newest stamped mark, where no unmark
+ * came after it. An issue whose newest trail record is an unmark, or that has none, is absent.
+ */
+export async function currentMarkTimes(
+  issueIds: readonly string[],
+  executor: Pick<Tx, 'execute'> = db,
+): Promise<Map<string, Date>> {
+  const out = new Map<string, Date>();
+  if (issueIds.length === 0) return out;
+  const found = (await executor.execute(sql`
+    SELECT DISTINCT ON (a.issue_id) a.issue_id, a.created_at AS at,
+           (a.action = ${MARK_RECORD}) AS marked
+      FROM activity_log a
+     WHERE a.issue_id IN (${sql.join(
+       issueIds.map((id) => sql`${id}::uuid`),
+       sql`, `,
+     )})
+       AND (${IS_STAMPED_MARK} OR ${IS_UNMARK})
+     ORDER BY a.issue_id, a.created_at DESC, (a.action = ${MARK_RECORD}) ASC
+  `)) as unknown as Array<{ issue_id: string; at: Date | string; marked: boolean }>;
+  for (const r of found) if (r.marked) out.set(r.issue_id, new Date(r.at));
+  return out;
+}
+
+/** The commit an issue's mark names, and how Forge holds it: watched land, or the marker's own word. */
+export interface MarkedCommit {
+  sha: string;
+  provenance: 'observed' | 'asserted';
+}
+
+/**
+ * The commit each issue's mark names, by issue id (ISS-774: the agent's mark is the record, so the
+ * commit it states is read back as stated, never only from the audit comment's prose): an observed
+ * merge's `merged_commit_sha`, else the current asserted mark's recorded claim. Absent where neither.
+ */
+export async function markedCommitsOf(
+  issueIds: readonly string[],
+  executor: Pick<Tx, 'execute'> = db,
+): Promise<Map<string, MarkedCommit>> {
+  const out = new Map<string, MarkedCommit>();
+  if (issueIds.length === 0) return out;
+  const rows = (await executor.execute(sql`
+    SELECT id, merged_commit_sha AS sha FROM issues
+     WHERE id IN (${sql.join(
+       issueIds.map((id) => sql`${id}::uuid`),
+       sql`, `,
+     )})
+  `)) as unknown as Array<{ id: string; sha: string | null }>;
+  for (const r of rows)
+    if (r.sha) out.set(r.id, { sha: r.sha.toLowerCase(), provenance: 'observed' });
+  const claims = await currentMarkClaims(
+    rows.filter((r) => !r.sha).map((r) => r.id),
+    executor,
+  );
+  for (const [id, sha] of claims) out.set(id, { sha, provenance: 'asserted' });
   return out;
 }
 

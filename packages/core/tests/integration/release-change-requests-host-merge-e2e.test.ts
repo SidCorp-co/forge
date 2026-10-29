@@ -1,14 +1,16 @@
 /**
- * REQ-63 BC-4 through the host's own report: a merge GitLab reports (`source.merged`, from its merge
- * request hook) stamps every issue the request delivers, not only the one its branch leads with, and
- * the report of a change-request release's last merge closes that release. The outbox runs as the
- * server boots it, so the stamp and the settle are the consumer's own.
+ * REQ-63 BC-4 under ISS-774: a merge GitLab reports (`source.merged`, from its merge request hook) is
+ * information. It stamps no issue and closes no release; every issue the request delivers reads the
+ * mark it owes, and a change-request release closes on Forge's own merge or the agent's mark. The
+ * outbox runs as the server boots it, so a consumer that still wrote would show here.
  */
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { unlinkChangeRequestIssue } from '../../src/integrations/source-host/change-request-links.js';
+import { owedMarks } from '../../src/issues/owed-merges.js';
+import { issueWaitsOf } from '../../src/issues/standing-read.js';
 import { emitEvent } from '../../src/outbox/index.js';
 import { api } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
@@ -97,20 +99,31 @@ afterAll(async () => {
 
 const HOST_SHA = 'd4'.repeat(20);
 
-describe('BC-4: a merge the host reports stamps every issue its request delivers', () => {
-  it('stamps ISS-1, ISS-2 and ISS-3 from one report of !10', async () => {
+// ISS-774 (owner ruling, 2026-10-29: Forge tells the agent, the agent records the merge): the host's
+// report is information. It writes no mark and closes no release; each issue its request
+// delivers reads the mark it owes, and the agent's mark is what closes the release.
+describe('a merge the host reports writes nothing, and names the mark each delivered issue owes', () => {
+  it('leaves ISS-1, ISS-2 and ISS-3 unmarked after !10 merges, each owing "mark merged !10"', async () => {
     await settleOutbox();
     await seedWorld({ approval: { required: true } });
     const { one, two, three, four } = await stack();
     await hostMerged(10, 'feat/req3-site-write-iss-1-2', HOST_SHA);
-    for (const id of [one, two, three]) {
-      expect((await issueRow(id))?.merged_commit_sha).toBe(HOST_SHA);
+    for (const id of [one, two, three, four]) {
+      expect((await issueRow(id))?.merged_at).toBeNull();
+      expect((await issueRow(id))?.merged_commit_sha).toBeNull();
     }
-    expect((await issueRow(four))?.merged_commit_sha).toBeNull();
+    const waits = await issueWaitsOf(world.projectId, [one, two, three, four], null);
+    for (const id of [one, two, three]) {
+      const said = JSON.stringify(waits.get(id)?.standing.waitingOn);
+      expect(said).toContain('issues.standing.act.markMerged');
+      expect(said).toContain(HOST_SHA);
+    }
+    expect(JSON.stringify(waits.get(four)?.standing.waitingOn)).not.toContain('markMerged');
+    expect((await owedMarks(world.projectId)).map((m) => m.number)).toEqual([10, 10, 10]);
   });
 
-  // ISS-705: an issue a person unlinked is not stamped, though the branch itself names it
-  it('leaves ISS-2 unstamped once it is unlinked from !10', async () => {
+  // ISS-705: an issue a person unlinked is not delivered, though the branch itself names it
+  it('owes no mark on ISS-2 once it is unlinked from !10', async () => {
     await settleOutbox();
     await seedWorld({ approval: { required: true } });
     const { one, two, three } = await stack();
@@ -124,13 +137,11 @@ describe('BC-4: a merge the host reports stamps every issue its request delivers
     });
     expect(off.ok).toBe(true);
     await hostMerged(10, 'feat/req3-site-write-iss-1-2', HOST_SHA);
-    for (const id of [one, three]) {
-      expect((await issueRow(id))?.merged_commit_sha).toBe(HOST_SHA);
-    }
-    expect((await issueRow(two))?.merged_commit_sha).toBeNull();
+    const owed = (await owedMarks(world.projectId)).map((m) => m.issueId).sort();
+    expect(owed).toEqual([one, three].sort());
   });
 
-  it('closes a change-request release when the host reports its last merge', async () => {
+  it("closes a change-request release on the agent's mark, never on the host's report of its last merge", async () => {
     await settleOutbox();
     await seedWorld(THROUGH_CHANGE_REQUESTS);
     const { one, two, three, four } = await stack();
@@ -141,11 +152,21 @@ describe('BC-4: a merge the host reports stamps every issue its request delivers
 
     await hostMerged(11, 'fix/req4-token-iss-4', HOST_SHA);
 
-    expect(await issueRow(four)).toMatchObject({ status: 'closed', merged_commit_sha: HOST_SHA });
-    for (const id of [one, two, three]) expect((await issueRow(id))?.status).toBe('closed');
-    const [run] = await rows<{ status: string }>(sql`
-      SELECT status FROM pipeline_runs WHERE id = ${runId}`);
-    expect(run?.status).toBe('completed');
+    expect(await issueRow(four)).toMatchObject({ status: 'awaiting_release', merged_at: null });
+    const runStatus = async () =>
+      (await rows<{ status: string }>(sql`SELECT status FROM pipeline_runs WHERE id = ${runId}`))[0]
+        ?.status;
+    expect(await runStatus()).toBe('running');
+
+    const mark = await api(world.token, 'POST', `/api/issues/${four}/merge`, {
+      target: BRANCH,
+      commit: HOST_SHA,
+      note: 'GitLab merged !11 into release/stg; marked by its agent',
+    });
+    expect(mark.status, JSON.stringify(mark.body)).toBe(200);
+
+    for (const id of [one, two, three, four]) expect((await issueRow(id))?.status).toBe('closed');
+    expect(await runStatus()).toBe('completed');
   });
 });
 
@@ -251,18 +272,5 @@ describe('a merge through Forge records the target and the head on every issue i
     expect(row?.merged_commit_sha).toBe(merged.get(12));
     expect(new Date(String(row?.merged_at)).toISOString()).toBe('2026-10-23T09:12:00.000Z');
     expect(row?.merged_head?.sha).toBe(`0012${'a'.repeat(36)}`);
-  });
-
-  it('records the base branch a merge the host reports names', async () => {
-    await settleOutbox();
-    await seedWorld({ approval: { required: true } });
-    const { one } = await stack();
-
-    await hostMerged(10, 'feat/req3-site-write-iss-1-2', HOST_SHA);
-
-    expect(await issueRow(one)).toMatchObject({
-      merged_commit_sha: HOST_SHA,
-      merged_target: BRANCH,
-    });
   });
 });

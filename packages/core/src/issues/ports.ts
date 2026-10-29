@@ -28,6 +28,7 @@ import { portSlot } from '../lib/port-slot.js';
 import type { Refusal } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import type { Actor } from './activity.js';
+import type { TransitionActor } from './actor-agency.js';
 
 /** The project document as the issue kernel reads it. */
 export interface IssueProjectDocument {
@@ -237,11 +238,8 @@ interface IssuePorts {
   readLandingBranches: (
     projectId: string,
   ) => Promise<{ defaultBranch: string | null; promoted: string | null; promotes: string[] }>;
-  /** Links an issue filed from a change request's merge to that request, in the caller's transaction (REQ-76 BC-8). */
-  linkFiledIssueToChangeRequest: (
-    tx: Tx,
-    link: { pullRequestId: string; issueId: string },
-  ) => Promise<void>;
+  /** Settles a change-request release whose merges and marks are all in (`change-request-settle.ts`). */
+  settleChangeRequestRelease: (runId: string, by: TransitionActor) => Promise<{ settled: boolean }>;
   issueRefPattern: (prefixes: readonly string[]) => RegExp;
   declaredIssueSeqs: (message: string, pattern: RegExp, baseBranch: string) => number[];
   subjectOf: (message: string) => string;
@@ -452,7 +450,7 @@ export const readProjectDocument = port('readProjectDocument');
 export const readJudge = port('readJudge');
 export const changedTracedOf = port('changedTracedOf');
 export const readLandingBranches = port('readLandingBranches');
-export const linkFiledIssueToChangeRequest = port('linkFiledIssueToChangeRequest');
+export const settleChangeRequestRelease = port('settleChangeRequestRelease');
 export const issueRefPattern = port('issueRefPattern');
 export const declaredIssueSeqs = port('declaredIssueSeqs');
 export const subjectOf = port('subjectOf');

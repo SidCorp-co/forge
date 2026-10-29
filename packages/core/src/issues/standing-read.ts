@@ -39,6 +39,7 @@ import { designHoldPhrase, designOnlyMarkSql } from './design-delivery.js';
 import { landedSql } from './host-landing.js';
 import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
+import { owedMarkSql } from './owed-merges.js';
 import { parkSinceSql } from './park-since.js';
 import { loadIssuePark } from './park-view.js';
 import { patternReviewPendingSql } from './patterns.js';
@@ -116,6 +117,7 @@ interface IssueRowRaw {
   contract_unsettled: boolean;
   pattern_pending: boolean;
   scope_held: boolean;
+  owed_mark: { number: number; commit: string } | null;
   status_since: string;
 }
 
@@ -166,6 +168,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
              ${patternReviewPendingSql(sql`i.id`)} AS pattern_pending,
              ${scopeHeldSql(sql`i.id`)} AS scope_held,
+             ${owedMarkSql(sql`i`)} AS owed_mark,
              ${issueWorkMovingSql({
                issueId: sql`i.id`,
                projectId: sql`i.project_id`,
@@ -322,6 +325,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     releaseApproval: f.releaseApproval,
     releaseNoted: r.release_noted,
     releaseHold: f.releaseHolds.get(r.id) ?? null,
+    owedMark: r.owed_mark,
     viewer: f.viewer,
     writers: f.writers,
     admins: f.admins,

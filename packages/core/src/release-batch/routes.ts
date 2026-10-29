@@ -13,7 +13,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { carriedSchema, declareCarried } from './carried.js';
-import { createReleaseBatch, cutMergedPromotion } from './create.js';
+import { createReleaseBatch } from './create.js';
 import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import { resolveReleaseDeclaration } from './gate.js';
@@ -29,6 +29,7 @@ import { loadReleaseReadiness } from './readiness.js';
 import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
 import { recordLanding } from './recorded-landing.js';
 import { refuseRelease } from './refuse.js';
+import { recordShippedIn } from './shipped-in.js';
 import { rangeBaseOf, rangeReads, recordRange } from './shipped-range.js';
 import { readReleaseRunState } from './state.js';
 import { releaseVersionRoutes } from './version-routes.js';
@@ -67,6 +68,8 @@ const createBodySchema = z
       .min(1)
       .max(RELEASE_ROSTER_LIMIT)
       .optional(),
+    /** A promotion project's cut names the change request that carries the roster the agent states. */
+    promotion: z.object({ request: z.number().int().positive() }).strict().optional(),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -85,7 +88,7 @@ releaseBatchRoutes.post(
   zValidator('json', createBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const { issueIds, name, summary, changeRequests } = c.req.valid('json');
+    const { issueIds, name, summary, changeRequests, promotion } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
@@ -98,6 +101,7 @@ releaseBatchRoutes.post(
       userId,
       naming,
       changeRequests,
+      promotion,
     });
     return c.json(result, 201);
   },
@@ -378,10 +382,34 @@ releaseBatchRoutes.post(
       declared?.kind === 'no-release'
         ? await recordLanding(sent, declared.defaultBranch)
         : declared?.kind === 'promotion'
-          ? await recordPromotionRelease(sent, declared, (issueIds, merged) =>
-              cutMergedPromotion({ projectId, userId, issueIds }, declared, merged),
-            )
+          ? await recordPromotionRelease(sent, declared)
           : await recordPerformedRelease(sent);
+    return c.json(result, 201);
+  },
+);
+
+const shippedInBodySchema = z
+  .object({
+    issueId: z.uuid(),
+    /** The shipped release that holds the issue's landing; null where none does (ISS-774). */
+    version: z.string().trim().min(1).max(100).nullable(),
+    /** What the agent read to say so: the git command and its answer. */
+    evidence: z.string().trim().min(10).max(2_000),
+  })
+  .strict();
+
+// ISS-774 — which earlier release shipped an issue marked merged after that release was cut, as its
+// agent read it with git. Forge infers none of it; it refuses only what its own rows contradict.
+releaseBatchRoutes.post(
+  '/:projectId/shipped-in-records',
+  zValidator('param', projectParamSchema),
+  zValidator('json', shippedInBodySchema),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+    const access = await loadProjectAccess(projectId, userId);
+    requireHeld(access, 'project.write');
+    const result = await recordShippedIn({ projectId, userId, ...c.req.valid('json') });
     return c.json(result, 201);
   },
 );

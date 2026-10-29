@@ -25,10 +25,10 @@ import {
   world,
 } from '../helpers/landed-world.js';
 
-vi.mock('../../src/release-batch/shipped-earlier.js', async (importOriginal) => {
+vi.mock('../../src/release-batch/ancestry-source.js', async (importOriginal) => {
   const { reader } = await import('../helpers/landed-history.js');
   return {
-    ...(await importOriginal<typeof import('../../src/release-batch/shipped-earlier.js')>()),
+    ...(await importOriginal<typeof import('../../src/release-batch/ancestry-source.js')>()),
     ancestrySourceFor: async () => ({ kind: 'box', why: 'the planted box', reader }),
   };
 });

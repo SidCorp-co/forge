@@ -112,7 +112,6 @@ function ruleOf(metadata: Record<string, unknown>): ReleaseVersionRule {
 const REFUSAL_SAYS: Readonly<Record<string, Said>> = {
   RELEASE_NOT_VERIFIED: say('releases.refused.notVerified'),
   RELEASE_NOTHING_RECORDED: say('releases.refused.nothingRecorded'),
-  RELEASE_ALL_SHIPPED_EARLIER: say('releases.refused.allShippedEarlier'),
   RELEASE_FINISHED_FOR_OTHER_COMMIT: say('releases.refused.otherCommit'),
   CONTRACT_PROVIDER_NOT_LIVE: say('releases.refused.providerNotLive'),
   RELEASE_CRITERIA_UNEARNED: say('releases.refused.criteriaUnearned'),

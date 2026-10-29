@@ -6,8 +6,8 @@
 import type { ReleaseHoldOwer } from '@forge/contracts/releases';
 import { type Said, type SaidPlainKey, say } from '@forge/contracts/said';
 
-/** Who clears a hold: a person who can write, the owner of a runner, a project admin, or the release itself. */
-export type ReleaseHoldActor = 'person' | 'runnerOwner' | 'admin' | 'release';
+/** Who clears a hold: a person who can write, the owner of a runner, a project admin, the issue's agent, or the release itself. */
+export type ReleaseHoldActor = 'person' | 'runnerOwner' | 'admin' | 'agent' | 'release';
 
 interface Words {
   cause: SaidPlainKey;
@@ -145,6 +145,11 @@ const WORDS: Readonly<Record<string, Words>> = {
     cause: 'issues.releaseHold.cause.releaseWorkUnmerged',
     act: 'issues.releaseHold.act.releaseWorkUnmerged',
     actor: 'person',
+  },
+  RELEASE_SHIPPED_IN_OWED: {
+    cause: 'issues.releaseHold.cause.releaseShippedInOwed',
+    act: 'issues.releaseHold.act.releaseShippedInOwed',
+    actor: 'agent',
   },
 };
 

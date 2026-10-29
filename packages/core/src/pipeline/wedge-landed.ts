@@ -71,9 +71,9 @@ export type LandedWorkOwed = {
  * has taken up since: each carries the pass's notice for the mark that stands now, and no job, run
  * or live lease holds it. Its master owes each the move to `awaiting_release` (ISS-564 round 2), and
  * one leaves this list by that move, by a run taking it, or by its mark being cleared or replaced.
- * An `open` issue a merge filed under a profile with `issue_before_code` off (REQ-76 BC-8,
- * `issues/host-merge.ts`) is listed beside them: its work landed before it was filed, so it is owed
- * the same move, after the claim that makes the master its holder.
+ * An `open` issue filed for a merge that landed before it (REQ-76 BC-8) is listed beside them: its
+ * work landed before it was filed, so it is owed the same move, after the claim that makes the master
+ * its holder.
  */
 export async function landedWorkOwed(projectId: string): Promise<LandedWorkOwed[]> {
   const rows = (await db.execute(sql`

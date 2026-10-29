@@ -75,8 +75,6 @@ export interface Part {
   landedOn: string | null;
   /** What a recorded landing shipped failing (`metadata.shippedFailing`); null elsewhere. */
   shippedFailing: ReleaseShippedFailing | null;
-  /** On a draft, the roster issues the open promotion's head carries, and that request's label (REQ-63 BC-9). */
-  promotionSplit?: { issueIds: string[]; request: string } | null;
   /** Its tag on the source host (`release-tag.ts`); null on a draft and before it shipped. */
   tag: ReleaseTag | null;
 }
@@ -252,23 +250,11 @@ const mergedTime = (at: Date | null | undefined) => at?.getTime() ?? Number.POSI
 /**
  * The act RELEASE_ROSTER_OVERSIZE names (`release-gates.ts` OWED): the oldest merged issues, as many
  * as one release carries, cut as this release — offered only where that is the draft's one blocker,
- * since a split leaves every other reason standing on the part it cuts. RELEASE_PROMOTION_PARTIAL's
- * is the issues the open promotion's head carries, the rest waiting for the next promotion.
+ * since a split leaves every other reason standing on the part it cuts.
  */
 function splitOf(p: Part, s: Shared): ReleaseSplit | null {
   const blockers = p.gates.filter((g) => g.kind === 'blocker');
   if (p.state !== 'draft' || s.viewer?.isAdmin !== true) return null;
-  const carried = p.promotionSplit;
-  if (
-    carried &&
-    blockers.length > 0 &&
-    blockers.every((g) => g.code === 'RELEASE_PROMOTION_PARTIAL')
-  )
-    return {
-      issueIds: carried.issueIds,
-      rest: p.issueIds.length - carried.issueIds.length,
-      promotion: carried.request,
-    };
   if (blockers.length === 0 || blockers.some((g) => g.code !== 'RELEASE_ROSTER_OVERSIZE'))
     return null;
   const oldest = p.issueIds

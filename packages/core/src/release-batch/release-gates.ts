@@ -88,7 +88,8 @@ const withSubject = (
     | 'standing.gate.claimed'
     | 'standing.gate.noteMissing'
     | 'standing.gate.unmerged'
-    | 'standing.gate.changeRequestMissing',
+    | 'standing.gate.changeRequestMissing'
+    | 'standing.gate.shippedInOwed',
   d: Details,
   verb: [string, string],
 ): Said => {
@@ -179,9 +180,9 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
     title: 'standing.gate.title.promotionMissing',
     plain: plain('standing.gate.promotionMissing'),
   },
-  RELEASE_PROMOTION_PARTIAL: {
-    title: 'standing.gate.title.promotionPartial',
-    plain: plain('standing.gate.promotionPartial'),
+  RELEASE_SHIPPED_IN_OWED: {
+    title: 'standing.gate.title.shippedInOwed',
+    plain: (d) => withSubject('standing.gate.shippedInOwed', d, ['was', 'were']),
   },
   RELEASE_PROBES_UNREADABLE: {
     title: 'standing.gate.title.unprovable',
@@ -250,6 +251,7 @@ const onThem =
     key:
       | 'standing.act.writeReleaseNote'
       | 'standing.act.markMerge'
+      | 'standing.act.recordShippedIn'
       | 'standing.act.openChangeRequest',
   ) =>
   (d: Details): Said => {
@@ -299,7 +301,7 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   },
   RELEASE_THROUGH_CHANGE_REQUESTS: { by: 'admin', act: act('standing.act.cutAndApprove') },
   RELEASE_PROMOTION_MISSING: { by: 'master', act: act('standing.act.openPromotion') },
-  RELEASE_PROMOTION_PARTIAL: { by: 'admin', act: act('standing.act.cutCarried') },
+  RELEASE_SHIPPED_IN_OWED: { by: 'master', act: onThem('standing.act.recordShippedIn') },
   RELEASE_PROBES_UNREADABLE: { by: 'admin', act: act('standing.act.declareProbe') },
   RELEASE_POOL_EMPTY: { by: 'admin', act: act('standing.act.pairRunner') },
   NO_RUNNER_ONLINE: { by: 'admin', act: act('standing.act.runnerOnline') },

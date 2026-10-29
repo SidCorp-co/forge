@@ -1,10 +1,11 @@
 /**
  * REQ-63 BC-9..12, the promotion release (adminhub-api, 2026-10-29): production is deployed outside
  * Forge from `release/production`, and one promotion crosses into it from `release/stg`, where the
- * issue merge requests land. A release is that promotion's merge request: the target resolves, the
- * release shows the request and the roster issues its head carries, a merge done on GitLab is seen
- * in the projection, and the operator's record of the deploy closes the roster. Against real
- * Postgres, the host planted at the source-host resolver.
+ * issue merge requests land. A release is that promotion's merge request: the agent cuts it naming the
+ * request (`promotion.request`) and the roster it states, a merge done on GitLab is seen in the
+ * projection, and the operator's record of the deploy closes the roster. ISS-774 owner ruling
+ * (2026-10-29): Forge never asks the host which issues a request carries, so no read or record
+ * compares: the planted host counts every compare it is asked. Against real Postgres.
  *
  * @direct-test-of packages/core/src/release-batch/promotion-release.ts
  * @direct-test-of packages/core/src/release-batch/promotion-standing.ts
@@ -27,21 +28,17 @@ import {
 } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
-const planted = vi.hoisted(() => ({ carried: new Set<string>() }));
+const planted = vi.hoisted(() => ({ compares: 0 }));
 
 vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/integrations/source-host/resolve.js')>()),
   resolveSourceHost: async () => ({
     provider: 'gitlab',
     fullName: 'acme/adminhub-api',
-    // a commit is in another where the planted history leads from one to the other: `${base}>${head}`
-    compare: async (base: string, head: string) => {
-      if (base === head) return 'identical';
-      const seen = new Set([base]);
-      for (const at of seen)
-        for (const edge of planted.carried)
-          if (edge.startsWith(`${at}>`)) seen.add(edge.slice(at.length + 1));
-      return seen.has(head) ? 'ahead' : 'diverged';
+    // every ancestry question is counted, and answered "diverged": nothing here may depend on it
+    compare: async () => {
+      planted.compares += 1;
+      return 'diverged';
     },
   }),
 }));
@@ -65,7 +62,7 @@ const codeOf = (body: unknown) => {
 
 async function seed(environment: Record<string, unknown>) {
   await truncateAll();
-  planted.carried.clear();
+  planted.compares = 0;
   world.ownerId = (await createTestUser({ verified: true })).id;
   world.projectId = (await createTestProject(world.ownerId)).id;
   await addProjectMember(world.projectId, world.ownerId, 'admin');
@@ -103,14 +100,14 @@ const EXTERNAL = {
 };
 
 /** Issues whose merge requests already merged into release/stg, waiting at the release gate. */
-async function landedIssues(shas: readonly string[] = LANDED): Promise<string[]> {
+async function landedIssues(shas: readonly string[] = LANDED, after = 0): Promise<string[]> {
   const ids: string[] = [];
   for (const [n, sha] of shas.entries()) {
     const id = randomUUID();
     await db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes,
                           merged_at, merged_commit_sha, merged_target)
-      VALUES (${id}, ${world.projectId}, ${n + 1}, ${`issue ${n + 1}`}, 'in_progress', ${world.ownerId},
+      VALUES (${id}, ${world.projectId}, ${after + n + 1}, ${`issue ${after + n + 1}`}, 'in_progress', ${world.ownerId},
               ${JSON.stringify(NOTE)}::jsonb, now() - interval '1 hour', ${sha}, ${STG})`);
     await seedIssueStatus(id, 'awaiting_release');
     ids.push(id);
@@ -145,11 +142,12 @@ const mergedOnHost = (number: number, merge = MERGE) =>
     UPDATE repo_pull_requests SET state = 'merged', merge_commit_sha = ${merge}, merged_at = now()
      WHERE project_id = ${world.projectId} AND number = ${number}`);
 
-/** The promotion's head force-pushed on the host after the cut, as GitLab's hook writes it. */
-const headRewritten = (number: number, head: string) =>
-  db.execute(sql`
-    UPDATE repo_pull_requests SET head_sha = ${head}
-     WHERE project_id = ${world.projectId} AND number = ${number}`);
+/** The agent's cut: the roster it states, and the request it says carries it. */
+const cutNaming = (issueIds: string[], request?: number) =>
+  call('POST', '/release-batches', {
+    issueIds,
+    ...(request === undefined ? {} : { promotion: { request } }),
+  });
 
 const record = (issueIds: string[], commit = DEPLOYED) =>
   call('POST', '/release-records', {
@@ -173,58 +171,68 @@ beforeEach(async () => {
 });
 
 describe('BC-9: an external production with one declared promotion is a release target', () => {
-  it('cuts the release as the promotion request, never RELEASE_TARGET_UNDECLARED', async () => {
+  it('cuts the release as the request the agent names, never RELEASE_TARGET_UNDECLARED', async () => {
     const ids = await landedIssues();
     await promotionRequest(5053, HEAD);
-    for (const sha of LANDED) planted.carried.add(`${sha}>${HEAD}`);
     const roster = await call('GET', '/release-batches/roster');
     expect(JSON.stringify(roster.body)).not.toContain('RELEASE_TARGET_UNDECLARED');
-    const cut = await call('POST', '/release-batches', { issueIds: ids });
+    const cut = await cutNaming(ids, 5053);
     expect(cut.status, JSON.stringify(cut.body)).toBe(201);
     expect(cut.body).toMatchObject({
       jobId: null,
       verification: 'deployment',
       changeRequests: [{ number: 5053, label: '!5053', headSha: HEAD }],
     });
+    expect(planted.compares).toBe(0);
   });
 
   // adminhub-fe !2055: the promotion is cut from a branch pinning a judged head, not from release/stg itself
   it('takes a request into release/production from a branch cut to pin the head', async () => {
     const ids = await landedIssues();
     await promotionRequest(2055, HEAD, 'promote/prod-2026-10-29');
-    for (const sha of LANDED) planted.carried.add(`${sha}>${HEAD}`);
-    const cut = await call('POST', '/release-batches', { issueIds: ids });
+    const cut = await cutNaming(ids, 2055);
     expect(cut.status, JSON.stringify(cut.body)).toBe(201);
     expect(cut.body).toMatchObject({ changeRequests: [{ number: 2055, headSha: HEAD }] });
   });
 
-  it('refuses the cut by name where no promotion request carries the roster', async () => {
+  it('refuses the cut by name where no promotion request is open or merged and unreleased', async () => {
     const ids = await landedIssues();
     const roster = await call('GET', '/release-readiness');
     // the readiness names which issues wait on the promotion, not only how many
     expect(JSON.stringify(roster.body)).toContain(
-      'None is open whose head carries 2 issues named here (`ISS-1`, `ISS-2`), so nothing would ship them.',
+      'None is open, or merged and not yet released, so nothing would ship 2 issues named here (`ISS-1`, `ISS-2`).',
     );
-    const none = await call('POST', '/release-batches', { issueIds: ids });
+    const none = await cutNaming(ids, 5053);
     expect(codeOf(none.body), JSON.stringify(none.body)).toBe('RELEASE_PROMOTION_MISSING');
+  });
+
+  // (c) the agent says which request carries its roster; Forge does not guess it from the host
+  it('refuses a cut that names no promotion request, and one naming a request the projection lacks', async () => {
+    const ids = await landedIssues();
     await promotionRequest(5053, HEAD);
-    planted.carried.add(`${LANDED[0]}>${HEAD}`);
-    const short = await call('POST', '/release-batches', { issueIds: ids });
-    expect(codeOf(short.body)).toBe('RELEASE_PROMOTION_PARTIAL');
-    expect(JSON.stringify(short.body)).toContain('`release/stg` into `release/production`');
-    // ISS-747 c1: the cut names the issue the head does not carry
-    expect(JSON.stringify(short.body)).toContain(
-      'carries 1 of the 2 issues waiting, and 1 issue named here (`ISS-2`) is past its head.',
+    const unnamed = await cutNaming(ids);
+    expect(codeOf(unnamed.body), JSON.stringify(unnamed.body)).toBe(
+      'RELEASE_PROMOTION_REQUEST_UNNAMED',
     );
+    expect(JSON.stringify(unnamed.body)).toContain('!5053');
+    const unknown = await cutNaming(ids, 9999);
+    expect(codeOf(unknown.body), JSON.stringify(unknown.body)).toBe(
+      'RELEASE_PROMOTION_REQUEST_UNKNOWN',
+    );
+    const empty = await cutNaming([], 5053);
+    expect(codeOf(empty.body), JSON.stringify(empty.body)).toBe('RELEASE_ISSUES_UNNAMED');
+    const runs = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM pipeline_runs WHERE project_id = ${world.projectId}`,
+    );
+    expect(runs[0]?.n).toBe(0);
   });
 });
 
 describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, and closes on the record', () => {
-  it('shows the request, refuses the record until it merged, and closes the roster on it', async () => {
+  it('shows the request and the stated roster, refuses the record until merged, and closes on it', async () => {
     const ids = await landedIssues();
     await promotionRequest(5053, HEAD);
-    for (const sha of LANDED) planted.carried.add(`${sha}>${HEAD}`);
-    const cut = await call('POST', '/release-batches', { issueIds: ids });
+    const cut = await cutNaming(ids, 5053);
     expect(cut.status, JSON.stringify(cut.body)).toBe(201);
     const version = String(cut.body.version);
 
@@ -240,8 +248,7 @@ describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, 
       to: PROD,
       headSha: HEAD,
       mergeCommitSha: null,
-      carries: ['ISS-1', 'ISS-2'],
-      notCarried: [],
+      roster: ['ISS-1', 'ISS-2'],
     });
 
     // Forge merges the promotion only on the owner's go: named through a roster issue, it is refused before approval
@@ -257,19 +264,11 @@ describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, 
     const seen = await call('GET', `/releases/${version}`);
     expect(
       (seen.body.release as { promotion: { state: string; mergeCommitSha: string } }).promotion,
-    ).toMatchObject({
-      state: 'merged',
-      mergeCommitSha: MERGE,
-    });
+    ).toMatchObject({ state: 'merged', mergeCommitSha: MERGE });
 
     const partial = await record([ids[0] as string]);
     expect(codeOf(partial.body)).toBe('RELEASE_PROMOTION_ROSTER');
-    // production serving a commit that does not hold the merge is not this release
-    const stray = await record(ids);
-    expect(codeOf(stray.body), JSON.stringify(stray.body)).toBe('RELEASE_NOT_VERIFIED');
 
-    planted.carried.add(`${MERGE}>${DEPLOYED}`);
-    planted.carried.add(`${HEAD}>${MERGE}`);
     const closed = await record(ids);
     expect(closed.status, JSON.stringify(closed.body)).toBe(201);
     expect(closed.body).toMatchObject({ version, verification: 'deployment', failed: [] });
@@ -282,41 +281,105 @@ describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, 
     );
     expect(run?.status).toBe('completed');
     expect(run?.released).not.toBeNull();
+    expect(planted.compares).toBe(0);
+  });
+
+  it('refuses a record with no release running, naming the cut that comes first', async () => {
+    const ids = await landedIssues();
+    await promotionRequest(5053, HEAD);
+    await mergedOnHost(5053);
+    const refused = await record(ids);
+    expect(codeOf(refused.body), JSON.stringify(refused.body)).toBe('RELEASE_PROMOTION_MISSING');
+    expect(JSON.stringify(refused.body)).toContain('promotion: { request: <number> }');
   });
 });
 
-describe('BC-12: the record closes only the issues the merged promotion holds', () => {
-  // ISS-747: the head was rewritten on the host after the cut, dropping an issue, and merged there
-  it('refuses the record naming the issue a rewritten head dropped, and closes nothing', async () => {
-    const ids = await landedIssues();
+// (a) the read paths: GET /releases, /release-readiness and a draft once asked GitLab, per read, which
+// roster issues the promotion head carries, and a burst of them was a GitLab 429 storm (ISS-774).
+describe('the reads of a pending promotion compare nothing on the host', () => {
+  it('makes 0 host compares across 3 reads each of the list, the readiness and the draft', async () => {
+    await landedIssues();
     await promotionRequest(5053, HEAD);
-    for (const sha of LANDED) planted.carried.add(`${sha}>${HEAD}`);
-    const cut = await call('POST', '/release-batches', { issueIds: ids });
+    for (let n = 0; n < 3; n += 1) {
+      for (const path of ['/releases', '/release-readiness', '/releases/0.1.0']) {
+        const read = await call('GET', path);
+        expect(read.status, `${path} ${JSON.stringify(read.body)}`).toBe(200);
+      }
+    }
+    expect(planted.compares).toBe(0);
+  });
+
+  it('shows the open request and every waiting issue on the draft, with no split or partial gate', async () => {
+    const shas = Array.from({ length: 9 }, (_, n) => (n + 0x31).toString(16).repeat(20));
+    await landedIssues(shas);
+    const head = '73b2be31'.repeat(5);
+    await promotionRequest(2055, head, 'promote/prod-2026-10-29');
+    const draft = await call('GET', '/releases/0.1.0');
+    expect(draft.status, JSON.stringify(draft.body)).toBe(200);
+    const release = draft.body.release as {
+      state: string;
+      promotion: unknown;
+      split: unknown;
+      gates: Array<{ code: string }>;
+    };
+    expect(release.state).toBe('draft');
+    expect(release.promotion).toMatchObject({
+      label: '!2055',
+      state: 'open',
+      from: 'promote/prod-2026-10-29',
+      to: PROD,
+      headSha: head,
+      roster: Array.from({ length: 9 }, (_, n) => `ISS-${n + 1}`),
+    });
+    expect(release.gates.map((g) => g.code)).toEqual([]);
+    expect(release.split).toBeNull();
+    expect(planted.compares).toBe(0);
+  });
+});
+
+// (b) catalog-api 0.3.0, ISS-762: commit 307f35d8 was already on release/production through !1023 and the
+// release still asked to promote it. The agent names the merged request at the cut; the merge was the go.
+describe('ISS-762: a promotion already merged is cut as merged and asks nothing to promote', () => {
+  it('cuts naming !1023 with no approval, records the deploy, and closes', async () => {
+    const ids = await landedIssues();
+    const merge = '307f35d8'.repeat(5);
+    await promotionRequest(1023, HEAD);
+    await mergedOnHost(1023, merge);
+
+    const readiness = await call('GET', '/release-readiness');
+    expect(JSON.stringify(readiness.body)).not.toContain('RELEASE_PROMOTION_MISSING');
+
+    const cut = await cutNaming(ids, 1023);
     expect(cut.status, JSON.stringify(cut.body)).toBe(201);
+    expect(cut.body).toMatchObject({ jobId: null, changeRequests: [{ number: 1023 }] });
+    const approvals = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM release_approvals WHERE run_id = ${String(cut.body.runId)}`,
+    );
+    expect(approvals[0]?.n).toBe(0);
 
-    const rewritten = 'f6'.repeat(20);
-    const merge = '17'.repeat(20);
-    await headRewritten(5053, rewritten);
-    await mergedOnHost(5053, merge);
-    planted.carried.add(`${LANDED[0]}>${rewritten}`);
-    planted.carried.add(`${rewritten}>${merge}`);
-    planted.carried.add(`${merge}>${DEPLOYED}`);
-
-    const dropped = await record(ids);
-    expect(codeOf(dropped.body), JSON.stringify(dropped.body)).toBe('RELEASE_PROMOTION_DROPPED');
-    expect(JSON.stringify(dropped.body)).toContain('`ISS-2`');
-    expect(JSON.stringify(dropped.body)).toContain(merge);
+    const closed = await record(ids, merge);
+    expect(closed.status, JSON.stringify(closed.body)).toBe(201);
+    expect(closed.body).toMatchObject({ failed: [] });
     const statuses = await rows<{ status: string }>(
       sql`SELECT status FROM issues WHERE project_id = ${world.projectId} ORDER BY iss_seq`,
     );
-    expect(statuses.map((s) => s.status)).toEqual(['awaiting_release', 'awaiting_release']);
+    expect(statuses.map((s) => s.status)).toEqual(['closed', 'closed']);
+    expect(planted.compares).toBe(0);
+  });
 
-    // the way out it names: the dropped issue promoted after, deployed, and that commit recorded
-    const after = '28'.repeat(20);
-    planted.carried.add(`${DEPLOYED}>${after}`);
-    planted.carried.add(`${LANDED[1]}>${after}`);
-    const closed = await record(ids, after);
-    expect(closed.status, JSON.stringify(closed.body)).toBe(201);
+  it('never asks to promote that merged request again once a release took it', async () => {
+    const ids = await landedIssues();
+    await promotionRequest(1023, HEAD);
+    await mergedOnHost(1023, MERGE);
+    expect((await cutNaming(ids, 1023)).status).toBe(201);
+    expect((await record(ids, MERGE)).status).toBe(201);
+
+    const later = (await landedIssues(['f7'.repeat(20)], 2)).at(0) as string;
+    const readiness = await call('GET', '/release-readiness');
+    expect(JSON.stringify(readiness.body)).toContain('RELEASE_PROMOTION_MISSING');
+    // the spent !1023 is not a request to promote: the cut is refused for the want of a new one
+    const again = await cutNaming([later], 1023);
+    expect(codeOf(again.body), JSON.stringify(again.body)).toBe('RELEASE_PROMOTION_MISSING');
   });
 });
 
@@ -349,111 +412,5 @@ describe('a promotion gates only the requests into the branch production deploys
     await expect(
       admitChangeRequestMerge({ projectId: world.projectId, pullRequestId: randomUUID() }),
     ).rejects.toMatchObject({ refusals: [{ code: 'RELEASE_MERGE_TARGET_UNREAD' }] });
-  });
-});
-
-// adminhub-fe 0.54.0, 2026-10-29: nine issues wait, and the open promotion !2055 was pinned at a head
-// carrying seven; ISS-8 and ISS-9 reached the gate after it. Work keeps landing while a promotion is
-// in review, so the draft pairs the open request with the roster and cuts what its head carries.
-describe('BC-9, BC-10: a draft pairs with the open promotion, and cuts what its head carries', () => {
-  it('shows !2055 on the draft, names the issues past its head, and cuts the carried seven', async () => {
-    const shas = Array.from({ length: 9 }, (_, n) => (n + 0x31).toString(16).repeat(20));
-    const ids = await landedIssues(shas);
-    const head = '73b2be31'.repeat(5);
-    await promotionRequest(2055, head, 'promote/prod-2026-10-29');
-    for (const sha of shas.slice(0, 7)) planted.carried.add(`${sha}>${head}`);
-
-    const draft = await call('GET', '/releases/0.1.0');
-    expect(draft.status, JSON.stringify(draft.body)).toBe(200);
-    const release = draft.body.release as {
-      state: string;
-      promotion: unknown;
-      can: { cut: boolean; split: boolean };
-      split: unknown;
-      gates: Array<{ code: string; detail: string }>;
-    };
-    expect(release.state).toBe('draft');
-    expect(release.promotion).toMatchObject({
-      label: '!2055',
-      number: 2055,
-      state: 'open',
-      from: 'promote/prod-2026-10-29',
-      to: PROD,
-      headSha: head,
-      carries: ['ISS-1', 'ISS-2', 'ISS-3', 'ISS-4', 'ISS-5', 'ISS-6', 'ISS-7'],
-      notCarried: ['ISS-8', 'ISS-9'],
-    });
-    expect(release.gates.map((g) => g.code)).toEqual(['RELEASE_PROMOTION_PARTIAL']);
-    expect(release.gates[0]?.detail).toContain(
-      '!2055 at `73b2be3173b2` carries 7 of the 9 issues waiting, and 2 issues named here (`ISS-8`, `ISS-9`) are past its head.',
-    );
-    expect(release.can).toMatchObject({ cut: false, split: true });
-    expect(release.split).toEqual({ issueIds: ids.slice(0, 7), rest: 2, promotion: '!2055' });
-
-    const cut = await call('POST', '/release-batches', { issueIds: ids.slice(0, 7) });
-    expect(cut.status, JSON.stringify(cut.body)).toBe(201);
-    expect(cut.body).toMatchObject({ changeRequests: [{ number: 2055, headSha: head }] });
-    const waiting = await rows<{ seq: number }>(
-      sql`SELECT iss_seq AS seq FROM issues WHERE project_id = ${world.projectId}
-           AND release_batch_run_id IS NULL ORDER BY iss_seq`,
-    );
-    expect(waiting.map((w) => w.seq)).toEqual([8, 9]);
-  });
-});
-
-// adminhub-fe 0.54.0, 2026-10-29: the owner approved !2055 on GitLab and it merged into
-// release/production at 637ddd1c, carrying 7 of the 9 waiting, with no release cut in Forge. The
-// operator's record of that deploy is the release: it cuts the seven and closes them, the rest wait.
-describe('BC-12: the record of a promotion merged on the host with no release running', () => {
-  it('cuts and closes the issues the merge carries, and leaves the rest named at the gate', async () => {
-    const shas = Array.from({ length: 9 }, (_, n) => (n + 0x31).toString(16).repeat(20));
-    const ids = await landedIssues(shas);
-    const head = '73b2be31'.repeat(5);
-    const merge = '637ddd1c'.repeat(5);
-    await promotionRequest(2055, head, 'promote/prod-2026-10-29');
-    for (const sha of shas.slice(0, 7)) planted.carried.add(`${sha}>${head}`);
-    planted.carried.add(`${head}>${merge}`);
-    await mergedOnHost(2055, merge);
-
-    const recorded = await record(ids.slice(0, 7), merge);
-    expect(recorded.status, JSON.stringify(recorded.body)).toBe(201);
-    expect(recorded.body).toMatchObject({ verification: 'deployment', failed: [] });
-    const statuses = await rows<{ status: string }>(
-      sql`SELECT status FROM issues WHERE project_id = ${world.projectId} ORDER BY iss_seq`,
-    );
-    expect(statuses.map((s) => s.status)).toEqual([
-      ...Array(7).fill('closed'),
-      'awaiting_release',
-      'awaiting_release',
-    ]);
-    const shown = await call('GET', `/releases/${String(recorded.body.version)}`);
-    expect((shown.body.release as { promotion: unknown }).promotion).toMatchObject({
-      number: 2055,
-      state: 'merged',
-      mergeCommitSha: merge,
-      notCarried: [],
-    });
-
-    // the two past its head are not carried by the merged promotion, and the draft says which
-    const rest = await call('GET', '/release-readiness');
-    expect(JSON.stringify(rest.body)).toContain('2 issues named here (`ISS-8`, `ISS-9`)');
-  });
-
-  it('refuses a record naming an issue the merge does not carry, cutting nothing', async () => {
-    const shas = Array.from({ length: 3 }, (_, n) => (n + 0x31).toString(16).repeat(20));
-    const ids = await landedIssues(shas);
-    const merge = '637ddd1c'.repeat(5);
-    await promotionRequest(2055, HEAD, 'promote/prod-2026-10-29');
-    for (const sha of shas.slice(0, 2)) planted.carried.add(`${sha}>${HEAD}`);
-    planted.carried.add(`${HEAD}>${merge}`);
-    await mergedOnHost(2055, merge);
-
-    const refused = await record(ids, merge);
-    expect(codeOf(refused.body), JSON.stringify(refused.body)).toBe('RELEASE_PROMOTION_MISSING');
-    expect(JSON.stringify(refused.body)).toContain('`ISS-3`');
-    const runs = await rows<{ n: number }>(
-      sql`SELECT count(*)::int AS n FROM pipeline_runs WHERE project_id = ${world.projectId}`,
-    );
-    expect(runs[0]?.n).toBe(0);
   });
 });

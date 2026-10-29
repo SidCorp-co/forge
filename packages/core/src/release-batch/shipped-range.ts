@@ -30,7 +30,7 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { refuseRelease } from './refuse.js';
-import { shippedReleaseRuns } from './shipped-earlier.js';
+import { shippedReleaseRuns } from './shipped-releases.js';
 
 /** One file a range changed; a rename is its old path removed and its new one added. */
 export interface RangeChange {
