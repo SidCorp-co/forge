@@ -153,6 +153,25 @@ describe('REQ-75 r5: a room that cannot answer says why (BC-26)', () => {
 });
 
 describe('REQ-75 r5: a room answering only mentions hands the session only those', () => {
+  it('reads the saved binding for each message, and keeps the socket open across the save', async () => {
+    const { rocketChatManager } = await import(
+      '../../src/integrations/rocketchat/connection-manager.js'
+    );
+    const subscribed = w.chat.subscriptions;
+    const held = await w.regrant({ ...BASE, answers: 'mentions', grants: { abilities: [] } });
+    expect(held.status, JSON.stringify(held.body)).toBe(200);
+    // the save's reload has reached the connection this process holds
+    await expect
+      .poll(
+        () =>
+          rocketChatManager.connections().get(w.rcConnectionId)?.routes.get(w.chat.rid)?.support
+            ?.answers,
+        { timeout: 15_000 },
+      )
+      .toBe('mentions');
+    expect(w.chat.subscriptions, 'a binding save redialled the chat server').toBe(subscribed);
+  });
+
   it('records every message and hands the session only one that names the bot', async () => {
     const held = await w.regrant({
       ...BASE,
