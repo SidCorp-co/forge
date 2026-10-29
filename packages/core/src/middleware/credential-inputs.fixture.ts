@@ -265,6 +265,8 @@ export const CREDENTIAL_READS: Readonly<Record<string, string>> = {
     'the callback URL, its code exchanged with GitHub',
   'integrations/identity/oidc.ts URL handed to openid-client:authorizationCodeGrant in finish':
     'the callback URL, its code exchanged with the provider',
+  'integration-door/mcp-relay-routes.ts Headers.entries in module code':
+    'an agent’s relayed MCP request headers, its relay ticket among them; only Mcp-Param-* go upstream',
   'integration-door/webhook-inbound-routes.ts HonoRequest.header(map.signatureHeader) in module code':
     'a provider’s body signature or shared token',
   'orgs/invitations-routes.ts HonoRequest.param() in module code':

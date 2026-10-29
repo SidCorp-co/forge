@@ -55,6 +55,9 @@ mcpRelayRoutes.on(['GET', 'POST', 'DELETE'], '/:bindingId', relayedMessage, asyn
   return relayToUpstream(upstream, {
     method,
     header: (name) => c.req.header(name),
+    paramHeaders: Array.from(c.req.raw.headers.entries()).filter(([name]) =>
+      name.startsWith('mcp-param-'),
+    ),
     ...(method === 'POST' ? { body: await c.req.arrayBuffer() } : {}),
     signal: c.req.raw.signal,
   });
