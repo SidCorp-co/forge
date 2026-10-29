@@ -8,7 +8,8 @@
 
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { feedback, feedbackAnswerDeliveries, feedbackDecisions } from '../db/schema-feedback.js';
+import { feedback, feedbackDecisions } from '../db/schema-feedback.js';
+import { feedbackAnswerDeliveries } from '../db/schema-feedback-told.js';
 
 export interface UntoldAnswer {
   feedbackId: string;
