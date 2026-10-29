@@ -1,5 +1,5 @@
 // REQ-63 BC-9: what a promotion release waits on before its cut — a change request across the
-// promotion, open, or merged since the newest roster issue landed — and which roster issues an open
+// promotion, open, or merged at a commit holding the roster's landings — and which roster issues an open
 // one's head carries, read on the host, so a draft pairs with the request under review.
 
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -79,8 +79,8 @@ export async function openPromotionFor(
 }
 
 /**
- * The readiness reason of a promotion release: no request across the promotion is open, and none
- * merged since the newest roster issue landed; or the open one's head carries only part of the
+ * The readiness reason of a promotion release: no request across the promotion is open, and the
+ * newest merged one does not hold every roster issue's landing; or the open one's head carries only part of the
  * roster, and the release is cut with that part (adminhub-fe 0.54.0: work landed past !2055's head).
  */
 export async function promotionBlockers(
@@ -106,20 +106,16 @@ export async function promotionBlockers(
     );
     return;
   }
-  if (!open) {
-    // none open: a request merged since the newest roster issue landed already carried it across
-    const [merged] = await requestsAcross(projectId, decl.promotion);
-    const [newest] = await db
-      .select({ at: sql<Date | null>`max(${issues.mergedAt})` })
-      .from(issues)
-      .where(inArray(issues.id, [...roster]));
-    const landed = newest?.at ? new Date(newest.at) : null;
-    if (merged?.mergedAt && landed && merged.mergedAt >= landed) return;
-  }
+  // none open: the newest merged request already carried across what its merge holds
+  const [merged] = open ? [] : await requestsAcross(projectId, decl.promotion);
+  const missing = merged?.mergeCommitSha
+    ? (await carriedBy(projectId, merged.mergeCommitSha, roster)).notCarried
+    : [...roster];
+  if (missing.length === 0) return;
   out.push(
     blocker('RELEASE_PROMOTION_MISSING', {
-      issueIds: [...roster],
-      displayIds: await shown([...roster]),
+      issueIds: missing,
+      displayIds: await shown(missing),
       ...decl.promotion,
     }),
   );

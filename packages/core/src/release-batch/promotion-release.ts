@@ -5,7 +5,7 @@
 
 import type { ReleaseNaming } from '@forge/contracts/release-notes';
 import type { ReleasePromotion } from '@forge/contracts/releases';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
@@ -45,14 +45,22 @@ interface PromotionMetadata extends Across {
 
 const WHOLE = /^[0-9a-f]{40}$/i;
 
-/** Cuts the release as its promotion request: the run pins it, and the owner is asked for the go. */
+/** A promotion request the host merged, as the projection holds it. */
+export type MergedPromotion = typeof repoPullRequests.$inferSelect & { mergeCommitSha: string };
+
+/**
+ * Cuts the release as its promotion request: the run pins it, and the owner is asked for the go.
+ * Handed a request already `merged` on the host, the release is that merge, read against its merge
+ * commit, and asks no go: the merge was it (`recordPromotionRelease`).
+ */
 export async function cutPromotionRelease(
   args: { projectId: string; issueIds: string[]; userId: string; naming?: ReleaseNaming | null },
   decl: PromotionDeclaration,
   openClaimedRun: OpenRun,
+  merged?: MergedPromotion,
 ) {
   const { projectId, issueIds, userId } = args;
-  const [request] = await requestsAcross(projectId, decl.promotion);
+  const [request] = merged ? [merged] : await requestsAcross(projectId, decl.promotion);
   if (!request) {
     throw blockerRefusal('RELEASE_PROMOTION_MISSING', {
       issueIds,
@@ -60,7 +68,19 @@ export async function cutPromotionRelease(
       ...decl.promotion,
     });
   }
-  const { carries, notCarried } = await carriedBy(projectId, request.headSha, issueIds);
+  const { carries, notCarried } = await carriedBy(
+    projectId,
+    merged ? merged.mergeCommitSha : request.headSha,
+    issueIds,
+  );
+  if (merged && notCarried.length > 0) {
+    const named = (await shown(notCarried)).map((id) => `\`${id}\``).join(', ');
+    throw refuseRelease(
+      'RELEASE_PROMOTION_MISSING',
+      `${label(merged)} merged into \`${decl.promotion.to}\` at ${merged.mergeCommitSha}, which does not hold the landing of ${named}: production does not carry ${notCarried.length === 1 ? 'it' : 'them'}, so this record cannot close ${notCarried.length === 1 ? 'it' : 'them'}. Record only the issues the merge carries; the rest wait for the next promotion.`,
+      '/issueIds',
+    );
+  }
   if (notCarried.length > 0) {
     throw blockerRefusal('RELEASE_PROMOTION_MISSING', {
       issueIds: notCarried,
@@ -104,12 +124,13 @@ export async function cutPromotionRelease(
     request.state === 'merged'
       ? `${me} (${across}) merged at ${request.mergeCommitSha ?? 'a commit the host has not reported'}; the operator deploys production and records it.`
       : `Merges ${me} (${across}) at ${request.headSha.slice(0, 12)} once approved; the operator then deploys production and records it.`;
-  await requestApproval({
-    projectId,
-    runId: run.id,
-    userId,
-    body: { evidence: { commit: request.headSha, reading: reading.slice(0, 500) } },
-  });
+  if (!merged)
+    await requestApproval({
+      projectId,
+      runId: run.id,
+      userId,
+      body: { evidence: { commit: request.headSha, reading: reading.slice(0, 500) } },
+    });
   return {
     runId: run.id,
     jobId: null,
@@ -211,6 +232,31 @@ async function runningPromotion(projectId: string) {
   return run ?? null;
 }
 
+/** The newest promotion request merged into `to` whose merge production serving `commit` holds. */
+async function mergedPromotionServed(
+  projectId: string,
+  across: Across,
+  commit: string,
+): Promise<MergedPromotion | null> {
+  const rows = await db
+    .select()
+    .from(repoPullRequests)
+    .where(
+      and(
+        eq(repoPullRequests.projectId, projectId),
+        eq(repoPullRequests.baseRef, across.to),
+        eq(repoPullRequests.state, 'merged'),
+      ),
+    )
+    .orderBy(desc(repoPullRequests.mergedAt))
+    .limit(5);
+  for (const r of rows) {
+    if (r.mergeCommitSha && !(await servesTheMerge(projectId, r.mergeCommitSha, commit)))
+      return { ...r, mergeCommitSha: r.mergeCommitSha };
+  }
+  return null;
+}
+
 /** Whether production serving `commit` holds the promotion's merge, read on the host; why not, else. */
 async function servesTheMerge(
   projectId: string,
@@ -238,14 +284,23 @@ export async function recordPromotionRelease(
     providerRef?: string | undefined;
   },
   decl: PromotionDeclaration,
+  cutMerged?: (issueIds: string[], merged: MergedPromotion) => Promise<unknown>,
 ) {
   const { projectId, userId, commit, account } = sent;
-  const run = await runningPromotion(projectId);
+  let run = await runningPromotion(projectId);
+  if (!run && cutMerged && WHOLE.test(commit)) {
+    // merged on the host with no release cut: the record of its deploy is the release (adminhub-fe !2055)
+    const merged = await mergedPromotionServed(projectId, decl.promotion, commit);
+    if (merged) {
+      await cutMerged(sent.issueIds, merged);
+      run = await runningPromotion(projectId);
+    }
+  }
   const p = run ? promotionOf(run.metadata) : null;
   if (!run || !p) {
     throw refuseRelease(
       'RELEASE_PROMOTION_MISSING',
-      `No promotion release is running on this project, and production is deployed outside Forge through the promotion from \`${decl.promotion.from}\` into \`${decl.promotion.to}\`: cut the release first (\`POST /api/projects/${projectId}/release-batches\`), and record its deploy once its request merged.`,
+      `No promotion release is running on this project, and no request merged into \`${decl.promotion.to}\` is held by \`${commit}\`; production is deployed outside Forge through the promotion from \`${decl.promotion.from}\` into \`${decl.promotion.to}\`. Cut the release first (\`POST /api/projects/${projectId}/release-batches\`) and record its deploy once its request merged, or record the commit production serves from a merged promotion.`,
       '/issueIds',
     );
   }

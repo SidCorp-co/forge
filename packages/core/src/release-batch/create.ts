@@ -29,7 +29,8 @@ import { RELEASE_GATE_STATUS } from './gate.js';
 import { landedOnTargetOf } from './landed-on-target.js';
 import { carryNaming } from './naming.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
-import { cutPromotionRelease } from './promotion-release.js';
+import { cutPromotionRelease, type MergedPromotion } from './promotion-release.js';
+import type { PromotionDeclaration } from './promotion-standing.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { askProviderLiveGate } from './provider-live.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
@@ -248,6 +249,21 @@ async function withoutDesignOnly(projectId: string, named: string[]): Promise<st
     `Every issue this call names is design-only (${keys}): its landing is an approved design revision, which a release does not carry, so there is nothing to release. Close each through its \`design_delivered\` edge (move it to \`closed\`) once its revisions are approved; no release was cut.`,
     '/issueIds',
   );
+}
+
+/**
+ * The cut a promotion's deploy record makes where the promotion merged on the host with no release
+ * running (adminhub-fe !2055, 2026-10-29): the merge was the owner's go, so the release pins that
+ * request and asks for no approval; every other reason a roster may not be cut still stands.
+ */
+export async function cutMergedPromotion(
+  args: { projectId: string; issueIds: string[]; userId: string },
+  decl: PromotionDeclaration,
+  merged: MergedPromotion,
+) {
+  const code = await withoutDesignOnly(args.projectId, args.issueIds);
+  const { issueIds } = await admitRoster(args.projectId, code, 'batch', { promotionMerged: true });
+  return cutPromotionRelease({ ...args, issueIds }, decl, openClaimedRun, merged);
 }
 
 export async function createReleaseBatch(

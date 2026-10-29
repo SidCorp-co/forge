@@ -449,8 +449,8 @@ async function changeRequestReleaseBlockers(
   }
   const roster = issueIds && issueIds.length > 0 ? (found?.ids ?? []) : (found?.unclaimed ?? []);
   await rosterBlockers('batch', roster, out);
-  if (read.kind === 'promotion') await promotionBlockers(projectId, read, roster, out);
-  else await changeRequestBlockers(projectId, roster, out);
+  if (read.kind === 'change-requests') await changeRequestBlockers(projectId, roster, out);
+  else if (!options.promotionMerged) await promotionBlockers(projectId, read, roster, out);
   const active = await evaluate(
     'in-flight',
     async () => await getActiveReleaseBatch(projectId),
@@ -504,8 +504,13 @@ export * from './blocker-kit.js';
  * A door's one blocker pass, refusing with every reason it found, the first first (ISS-1127). Every
  * id is then an issue at this project's gate, so its lower-case spelling is the row's own.
  */
-export async function admitRoster(projectId: string, named: string[], door: ReleaseDoor) {
-  const report = await collectReleaseBlockers(projectId, { issueIds: named, door });
+export async function admitRoster(
+  projectId: string,
+  named: string[],
+  door: ReleaseDoor,
+  extra: Pick<CollectReleaseBlockersOptions, 'promotionMerged'> = {},
+) {
+  const report = await collectReleaseBlockers(projectId, { issueIds: named, door, ...extra });
   if (!report.projectExists) throw blockerRefusal('NO_RELEASE_GATE');
   const refusal = releaseBlockedRefusal(report);
   if (refusal) throw refusal;
