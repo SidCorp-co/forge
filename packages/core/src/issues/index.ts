@@ -90,6 +90,11 @@ export { issueDisplayIds, issueKeysAndTitles } from './display-ids.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';
 export { registerFailReopen } from './fail-reopen.js';
 export {
+  type FailReturnAsk,
+  provideFailReturnPort,
+  type RequirementFailReturn,
+} from './fail-return.js';
+export {
   fileDetectedIssue,
   rewriteIssueMetadata,
   setIssueTriage,
@@ -158,7 +163,6 @@ export {
   type DispatchGateCode,
   designUnapprovedSql,
   provideIssuePorts,
-  type RequirementFailReturn,
 } from './ports.js';
 export {
   buildProgressFactsBlock,

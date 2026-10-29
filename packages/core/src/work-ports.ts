@@ -51,7 +51,7 @@ import {
   resolveSourceHost,
   SourceHostUnavailable,
 } from './integrations/source-host/index.js';
-import { provideIssuePorts } from './issues/index.js';
+import { provideFailReturnPort, provideIssuePorts } from './issues/index.js';
 import {
   broadcastSessionEvent,
   extractStageStatus,
@@ -305,8 +305,8 @@ export function provideWorkPorts(): void {
     closeOpenRunForIssue,
     triggerPipelineStepManual,
     fastLaneMergeRefusal,
-    requirementFailReturn,
   });
+  provideFailReturnPort({ requirementFailReturn });
 
   provideAutomationPorts({
     lastFires,

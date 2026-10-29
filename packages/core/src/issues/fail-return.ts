@@ -16,13 +16,51 @@
  *   they pass, and no other issue owns what the BC lacks             REOPEN_FAIL_UNOWNED
  */
 
+import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
+import { portSlot } from '../lib/port-slot.js';
 import { failedWhat, requirementFailCited, staysNote } from './fail-wording.js';
-import { type RequirementFailReturn, requirementFailReturn } from './ports.js';
 import { quote } from './transition-faults.js';
 import type { GuardFault } from './transition-guards.js';
+
+/** What the way back asks the requirements context: the fail, and the status the issue would be back at. */
+export interface FailReturnAsk {
+  projectId: string;
+  issueId: string;
+  verdictId: string;
+  status: IssueStatus;
+}
+
+/**
+ * What the way back from a requirement-level fail's reopen reads of that fail (ISS-760): none where
+ * the verdict is not a fail at a requirement of the issue's project, else the BC it judged, the
+ * fail's own reason, what `routeFail` makes of the issue at the status it returns to, and each of its
+ * own criteria tracing the BC that does not count as a pass.
+ */
+export type RequirementFailReturn =
+  | { kind: 'none' }
+  | {
+      kind: 'read';
+      bc: string;
+      reason: string | null;
+      /** Every one of its own criteria tracing the BC counts as a pass, and it has one. */
+      delivers: boolean;
+      outcome: 'reopen' | 'building' | 'stays';
+      why: string;
+      notPassing: { criterion: number; verdict: string | null; why: string | null }[];
+    };
+
+/**
+ * How a requirement fail routes an issue were it back now, from the requirements context the issue
+ * kernel may not import (`requirements/fail-return.ts`); the composition root provides it at boot.
+ */
+const slot = portSlot<{
+  requirementFailReturn: (args: FailReturnAsk) => Promise<RequirementFailReturn>;
+}>('issues fail-return', 'provideFailReturnPort');
+export const provideFailReturnPort = slot.provide;
+const requirementFailReturn = slot.port('requirementFailReturn');
 
 /** What the guard reads of the reopen it would undo. */
 export interface FailReturnFacts {
@@ -35,9 +73,6 @@ export interface FailReturnFacts {
   /** How that fail routes the issue were it back now; null where nothing was cited. */
   routed: RequirementFailReturn | null;
 }
-
-/** The statuses a reopen may be undone to. */
-const RETURNS_TO: readonly IssueStatus[] = ['awaiting_release', 'closed'];
 
 export async function readFailReturn(
   executor: Pick<Tx, 'execute'>,
@@ -64,7 +99,7 @@ export async function readFailReturn(
 
 /** Whether a move is the way back this guard judges: from `reopen` to a landed status. */
 export const asksFailReturn = (from: IssueStatus, to: IssueStatus): boolean =>
-  from === 'reopen' && RETURNS_TO.includes(to);
+  from === 'reopen' && ISSUE_RESOLVED_STATUSES.includes(to);
 
 const excerpt = (reason: string | null) => {
   if (!reason?.trim()) return 'with no reason';
