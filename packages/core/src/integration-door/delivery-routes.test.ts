@@ -129,6 +129,7 @@ const host = {
   ),
   branchHead: vi.fn(async () => FULL),
   readChecks: vi.fn(async (): Promise<unknown[]> => []),
+  readChangeRequestChecks: vi.fn(async (): Promise<unknown[]> => []),
   readChangeRequest: vi.fn(async (number: number) => ({ number, state: 'open' })),
   updateChangeRequest: vi.fn(async (input: { number: number }) => ({ ...input, state: 'open' })),
   closeChangeRequest: vi.fn(async ({ number }: { number: number }) => ({

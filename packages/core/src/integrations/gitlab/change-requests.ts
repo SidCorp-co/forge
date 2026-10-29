@@ -69,7 +69,11 @@ export function readOfMergeRequest(mr: MergeRequestBody, iid: number): ReadChang
 
 type ChangeRequestVerbs = Pick<
   SourceHost,
-  'readChecks' | 'readChangeRequest' | 'updateChangeRequest' | 'closeChangeRequest'
+  | 'readChecks'
+  | 'readChangeRequestChecks'
+  | 'readChangeRequest'
+  | 'updateChangeRequest'
+  | 'closeChangeRequest'
 >;
 
 /**
@@ -82,15 +86,31 @@ export function gitlabChangeRequestVerbs(client: GitLabClient): ChangeRequestVer
   const read = async (iid: number) =>
     readOfMergeRequest(await client.json<MergeRequestBody>('GET', mrPath(iid)), iid);
 
+  const readChecks = async (sha: string): Promise<HostCheck[]> => {
+    const pipelines = await client.pages<PipelineBody>(
+      client.project(`/pipelines?sha=${encodeURIComponent(sha)}`),
+      PIPELINE_MAX_PAGES,
+    );
+    return pipelines.flatMap((p) =>
+      typeof p.id === 'number' ? [checkOf(client, sha, { ...p, id: p.id })] : [],
+    );
+  };
+
   return {
-    async readChecks(sha) {
-      const pipelines = await client.pages<PipelineBody>(
-        client.project(`/pipelines?sha=${encodeURIComponent(sha)}`),
-        PIPELINE_MAX_PAGES,
-      );
-      return pipelines.flatMap((p) =>
-        typeof p.id === 'number' ? [checkOf(client, sha, { ...p, id: p.id })] : [],
-      );
+    readChecks,
+
+    // a merge request pipeline runs at a merge ref, which no `sha` filter on the head finds: the
+    // request's own `head_pipeline` is the one GitLab ran for its head, so it is kept at that head
+    async readChangeRequestChecks({ number, headSha }) {
+      const [atHead, mr] = await Promise.all([
+        readChecks(headSha),
+        client.json<MergeRequestBody>('GET', mrPath(number)),
+      ]);
+      const own = mr.head_pipeline;
+      if (!own || typeof own.id !== 'number' || atHead.some((c) => c.id === String(own.id))) {
+        return atHead;
+      }
+      return [...atHead, checkOf(client, headSha, { ...own, id: own.id, sha: headSha })];
     },
 
     readChangeRequest: read,

@@ -1,6 +1,6 @@
 /**
  * The source door for a binding no webhook reaches: what a commit's or a branch's checks say, and a
- * change request edited, closed or re-read by its number — each written onto Forge's projection by
+ * change request read, edited, closed or re-read by its number — each written onto Forge's projection by
  * the writers a delivery reaches (`integrations/source-host/read-projection.ts`), so the links a
  * description carries are derived by one rule and the checks are stored in the shape a hook stores.
  *
@@ -53,6 +53,19 @@ export function registerSourceProjectionRoutes(routes: Routes): void {
           const sha = await host.branchHead(ref);
           return { ref, ...checksAt(sha, await host.readChecks(sha)) };
         }),
+      );
+    },
+  );
+  // a read of the request as the host holds it now, its description included (REQ-63 BC-8); it
+  // writes nothing, so a reader asks membership and the refresh below stays the writer's
+  routes.get(
+    '/:projectId/integrations/source/change-requests/:number',
+    can('project.read'),
+    zValidator('param', numberParamSchema),
+    async (c) => {
+      const { number } = c.req.valid('param');
+      return c.json(
+        await onHost(c.req.param('projectId'), (host) => host.readChangeRequest(number)),
       );
     },
   );
