@@ -14,6 +14,7 @@ import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import {
   approvalRequired,
+  bindingOf,
   environmentsOf,
   gateOf,
   readReleasePath,
@@ -146,6 +147,12 @@ async function evidenceEnvironment(
       '/evidence/environment',
     );
   }
+  // a promotion release (REQ-63 BC-11) rests on its request's head, judged where work lands
+  const promotion =
+    read.path.production !== null &&
+    bindingOf(read.path.production) === null &&
+    read.path.crossing !== null;
+  if (name === undefined && promotion) return null;
   if (name === undefined) {
     throw refuseRelease(
       'RELEASE_APPROVAL_EVIDENCE_ENVIRONMENT',

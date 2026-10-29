@@ -175,6 +175,10 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
     title: 'standing.gate.title.throughChangeRequests',
     plain: plain('standing.gate.throughChangeRequests'),
   },
+  RELEASE_PROMOTION_MISSING: {
+    title: 'standing.gate.title.promotionMissing',
+    plain: plain('standing.gate.promotionMissing'),
+  },
   RELEASE_PROBES_UNREADABLE: {
     title: 'standing.gate.title.unprovable',
     plain: plain('standing.gate.unprovable'),
@@ -290,6 +294,7 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
     act: act('standing.act.carryOrUnlink'),
   },
   RELEASE_THROUGH_CHANGE_REQUESTS: { by: 'admin', act: act('standing.act.cutAndApprove') },
+  RELEASE_PROMOTION_MISSING: { by: 'master', act: act('standing.act.openPromotion') },
   RELEASE_PROBES_UNREADABLE: { by: 'admin', act: act('standing.act.declareProbe') },
   RELEASE_POOL_EMPTY: { by: 'admin', act: act('standing.act.pairRunner') },
   NO_RUNNER_ONLINE: { by: 'admin', act: act('standing.act.runnerOnline') },

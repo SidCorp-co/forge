@@ -29,6 +29,7 @@ import { RELEASE_GATE_STATUS } from './gate.js';
 import { landedOnTargetOf } from './landed-on-target.js';
 import { carryNaming } from './naming.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
+import { cutPromotionRelease } from './promotion-release.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { askProviderLiveGate } from './provider-live.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
@@ -142,7 +143,7 @@ async function enqueueReleaseJob(args: {
  * number after the row committed would leave a window in which a release row has no identity; a
  * roster another caller claimed first cancels the row and refuses by name.
  */
-async function openClaimedRun(args: {
+export async function openClaimedRun(args: {
   projectId: string;
   issueIds: string[];
   metadata: Record<string, unknown>;
@@ -260,6 +261,9 @@ export async function createReleaseBatch(
   const { report, issueIds } = await admitBatch(projectId, named);
   if (report.declaration?.kind === 'change-requests') {
     return cutChangeRequestRelease({ ...args, issueIds }, report.declaration.defaultBranch);
+  }
+  if (report.declaration?.kind === 'promotion') {
+    return cutPromotionRelease({ ...args, issueIds }, report.declaration, openClaimedRun);
   }
   if (args.changeRequests) {
     throw refuseRelease(

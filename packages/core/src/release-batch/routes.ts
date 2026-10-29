@@ -18,6 +18,7 @@ import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { announceMethod } from './method.js';
+import { recordPromotionRelease } from './promotion-release.js';
 import {
   findReleaseBatchRun,
   getActiveReleaseBatch,
@@ -376,7 +377,9 @@ releaseBatchRoutes.post(
     const result =
       declared?.kind === 'no-release'
         ? await recordLanding(sent, declared.defaultBranch)
-        : await recordPerformedRelease(sent);
+        : declared?.kind === 'promotion'
+          ? await recordPromotionRelease(sent, declared)
+          : await recordPerformedRelease(sent);
     return c.json(result, 201);
   },
 );

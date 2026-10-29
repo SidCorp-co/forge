@@ -285,7 +285,12 @@
     "releases.whyBackPlaceholder": "What the master should answer before it asks again",
     "releases.whyNotCut": "Why it cannot be cut",
     "releases.whyShip": "Why it may ship",
-    "releases.worthKnowing": "Worth knowing"
+    "releases.worthKnowing": "Worth knowing",
+    "releases.promotion.title": "Promotion",
+    "releases.promotion.carries": "Carries",
+    "releases.promotion.notCarried": "Not carried",
+    "releases.promotion.head": "head {sha}",
+    "releases.promotion.merge": "merged as {sha}"
   },
   "vi": {
     "releases.approval": "Duyệt",

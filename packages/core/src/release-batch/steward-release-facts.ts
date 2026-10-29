@@ -37,9 +37,11 @@ export async function stewardReleaseFacts(
       ? `This project has a production environment, \`${declared.production.name}\`: its running build is what production serves, and a release batch deploys there and runs the release's checks.`
       : declared?.kind === 'change-requests'
         ? `This project deploys nothing and releases by merging its change requests${declared.defaultBranch ? ` into \`${declared.defaultBranch}\`` : ''}: a release is cut naming the issues, the owner approves it, and the master merges each request in the declared order; nothing merges before the approval. Until its request merges, an issue's running build is that request's head: a pass judged there counts while the head is unchanged, and no landing is owed. Work the host already holds on that branch with no request is landed there and needs no request.`
-        : declared?.kind === 'no-release'
-          ? `This project declares no production environment: its running build is each issue's landing${declared.defaultBranch ? ` on \`${declared.defaultBranch}\`` : ''}.`
-          : `This project's release target is not declared${declared ? `: ${declared.reason}` : ''}.`;
+        : declared?.kind === 'promotion'
+          ? `This project's production, \`${declared.production.name}\`, is deployed outside Forge: a release is the change request from \`${declared.promotion.from}\` into \`${declared.promotion.to}\`, cut and approved, merged through Forge or on the host, and closed once the operator records the production deploy (\`POST /api/projects/:id/release-records\`). Until that record, nothing says what production serves.`
+          : declared?.kind === 'no-release'
+            ? `This project declares no production environment: its running build is each issue's landing${declared.defaultBranch ? ` on \`${declared.defaultBranch}\`` : ''}.`
+            : `This project's release target is not declared${declared ? `: ${declared.reason}` : ''}.`;
   const criteriaGate = projectGate(document?.document, null, 'release_criteria');
   const owes =
     criteriaGate.mode === 'enforce'

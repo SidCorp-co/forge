@@ -40,7 +40,8 @@ import {
 } from './channel.js';
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
-import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
+import { RELEASE_GATE_STATUS, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
+import { promotionBlockers } from './promotion-standing.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { blockerRefusal, releaseBlockedRefusal } from './refuse.js';
 import { decideVersion, lineageOf } from './version-rule.js';
@@ -322,9 +323,11 @@ export async function collectReleaseBlockers(
         warnings,
       };
     }
-    if (read.kind === 'change-requests') {
-      if (door === 'record') blockers.push(blocker('RELEASE_THROUGH_CHANGE_REQUESTS'));
-      else await changeRequestReleaseBlockers(projectId, options, blockers, warnings);
+    if (read.kind === 'change-requests' || read.kind === 'promotion') {
+      if (door === 'record' && read.kind === 'change-requests')
+        blockers.push(blocker('RELEASE_THROUGH_CHANGE_REQUESTS'));
+      else if (door !== 'record')
+        await changeRequestReleaseBlockers(projectId, options, blockers, warnings, read);
       return {
         projectId,
         projectExists: true,
@@ -437,6 +440,7 @@ async function changeRequestReleaseBlockers(
   options: CollectReleaseBlockersOptions,
   out: ReleaseBlocker[],
   warnings: ReleaseWarning[],
+  read: Extract<ReleaseDeclaration, { kind: 'change-requests' | 'promotion' }>,
 ): Promise<void> {
   const { issueIds } = options;
   const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, out);
@@ -445,7 +449,8 @@ async function changeRequestReleaseBlockers(
   }
   const roster = issueIds && issueIds.length > 0 ? (found?.ids ?? []) : (found?.unclaimed ?? []);
   await rosterBlockers('batch', roster, out);
-  await changeRequestBlockers(projectId, roster, out);
+  if (read.kind === 'promotion') await promotionBlockers(projectId, read, roster, out);
+  else await changeRequestBlockers(projectId, roster, out);
   const active = await evaluate(
     'in-flight',
     async () => await getActiveReleaseBatch(projectId),

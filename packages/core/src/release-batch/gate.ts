@@ -23,6 +23,18 @@ export type ReleaseDeclaration =
   /** No deploy: a release is its change requests merged into `defaultBranch` in order (REQ-63). */
   | { kind: 'change-requests'; path: ReleasePath; defaultBranch: string | null }
   | { kind: 'undeclared-target'; reason: string }
+  /**
+   * Production is deployed outside Forge and one promotion crosses into the branch it deploys from
+   * (REQ-63 BC-9): a release is that promotion's change request, merged once approved, and closed by
+   * the operator's record of the deploy.
+   */
+  | {
+      kind: 'promotion';
+      path: ReleasePath;
+      defaultBranch: string | null;
+      production: NamedEnvironment;
+      promotion: { from: string; to: string };
+    }
   | {
       kind: 'gated';
       path: ReleasePath;
@@ -41,7 +53,7 @@ async function productionBinding(
   if (id === null) {
     return {
       ok: false,
-      reason: `production environment \`${production.name}\` is deployed outside Forge (deployment mode external), so there is nowhere Forge can land a release — give it a deploy binding, or declare no production environment if Forge ships nothing`,
+      reason: `production environment \`${production.name}\` is deployed outside Forge (deployment mode external) and no promotion crosses into the branch it deploys from, so there is nowhere Forge can land a release — declare that promotion (a release is then its change request), give it a deploy binding, or declare no production environment if Forge ships nothing`,
     };
   }
   const pair = await findBindingWithConnectionById(id);
@@ -73,6 +85,15 @@ export async function resolveReleaseDeclaration(
     return releaseThroughChangeRequests(path.document)
       ? { kind: 'change-requests', path, defaultBranch: path.defaultBranch }
       : { kind: 'no-release', defaultBranch: path.defaultBranch };
+  }
+  if (bindingOf(path.production) === null && path.crossing) {
+    return {
+      kind: 'promotion',
+      path,
+      defaultBranch: path.defaultBranch,
+      production: path.production,
+      promotion: { from: path.crossing.from, to: path.crossing.to },
+    };
   }
   const bound = await productionBinding(projectId, path.production);
   if (!bound.ok) return { kind: 'undeclared-target', reason: bound.reason };
@@ -109,5 +130,7 @@ export async function resolveReleaseGate(projectId: string): Promise<IssueStatus
   if (decl.kind === 'undeclared-target') {
     throw blockerRefusal('RELEASE_TARGET_UNDECLARED', { reason: decl.reason });
   }
-  return decl.kind === 'gated' || decl.kind === 'change-requests' ? RELEASE_GATE_STATUS : null;
+  return decl.kind === 'gated' || decl.kind === 'change-requests' || decl.kind === 'promotion'
+    ? RELEASE_GATE_STATUS
+    : null;
 }

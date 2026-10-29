@@ -32,7 +32,11 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { admitChangeRequestMerge, settleChangeRequestRelease } from '../release-batch/index.js';
+import {
+  admitChangeRequestMerge,
+  promotionPinnedFor,
+  settleChangeRequestRelease,
+} from '../release-batch/index.js';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
@@ -125,7 +129,8 @@ async function resolveStoredPullRequest(
   number: number | undefined,
 ): Promise<{ id: string } | { refusal: string; code: 'NO_PULL_REQUEST' | 'PROJECTION_EMPTY' }> {
   if (number !== undefined) {
-    const id = await pullRequestNumbered(issueId, number);
+    const id =
+      (await pullRequestNumbered(issueId, number)) ?? (await promotionPinnedFor(issueId, number));
     return id
       ? { id }
       : noRowRefusal(
