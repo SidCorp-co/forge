@@ -41,6 +41,7 @@ export {
   detectOrphanedRunAssertions,
   type IssueRunInvariantResult,
 } from './issue-run-invariant.js';
+export { type LiveReach, type LiveReachIssue, liveReachOfIssues } from './live-reach.js';
 export { type OneShotRunReapResult, reapOrphanedOneShotRuns } from './one-shot-reap.js';
 export { retryIssueDispatch, triggerPipelineStepManual } from './orchestrator.js';
 export { registerPausedRunWedgeResolve } from './paused-run-wedge-resolve.js';

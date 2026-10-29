@@ -5,7 +5,7 @@
  * the one seam replaced: it counts every time it is resolved, and a GET of either view resolves it
  * never. The sid-desk shape of ISS-1217: work lands on `staging`, production deploys from `master`.
  *
- * @direct-test-of packages/core/src/release-batch/live-reach.ts
+ * @direct-test-of packages/core/src/pipeline/live-reach.ts
  * @direct-test-of packages/core/src/me/pulse-live.ts
  */
 
@@ -148,7 +148,7 @@ describe('live reach is read from the releases Forge recorded, and asks no host'
 
     expect(await reachOf(shipped)).toMatchObject({
       state: 'on_live',
-      release: { version: '1.4.0', commit: SHIPPED_AT },
+      release: { version: '1.4.0' },
     });
     const off = await reachOf(late);
     expect(off).toMatchObject({ state: 'not_on_live' });

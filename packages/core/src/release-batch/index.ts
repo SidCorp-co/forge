@@ -48,13 +48,6 @@ export {
   readSurfaceMap,
   type SurfaceMap,
 } from './landing-surfaces.js';
-export {
-  deploysFromOf,
-  type LiveReach,
-  type LiveReachIssue,
-  liveReachForIssue,
-  liveReachOfIssues,
-} from './live-reach.js';
 export { releaseApprovalsOwed, releaseMergesOwed } from './merges-owed.js';
 export {
   draftNaming,

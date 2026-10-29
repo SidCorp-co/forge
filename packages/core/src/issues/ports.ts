@@ -243,7 +243,7 @@ interface IssuePorts {
   issueRefPattern: (prefixes: readonly string[]) => RegExp;
   declaredIssueSeqs: (message: string, pattern: RegExp, baseBranch: string) => number[];
   subjectOf: (message: string) => string;
-  /** Whether a merged issue's work is on production, from Forge's release records (`release-batch/live-reach.ts`). */
+  /** Whether a merged issue's work is on production, from Forge's release records (`pipeline/live-reach.ts`). */
   liveReachForIssue: (issue: {
     id: string;
     projectId: string;

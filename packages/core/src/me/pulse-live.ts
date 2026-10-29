@@ -3,7 +3,8 @@ import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { deploysFromOf, liveReachOfIssues } from '../release-batch/index.js';
+import { liveReachOfIssues } from '../pipeline/index.js';
+import { readLandingBranches } from '../project-config/index.js';
 import { ageSeconds } from './pulse-folds.js';
 import type {
   PulseCapped,
@@ -27,7 +28,7 @@ interface PromoteProject {
 
 /**
  * One project's closed issues that a record places off production, and how many no record places:
- * read from the releases Forge recorded shipping (`release-batch/live-reach.ts`), never the branches.
+ * read from the releases Forge recorded shipping (`pipeline/live-reach.ts`), never the branches.
  */
 async function projectLive(
   project: PromoteProject,
@@ -114,7 +115,9 @@ export async function readPulseLive(
     .from(projects)
     .where(inArray(projects.id, projectIds));
   const promote = (
-    await Promise.all(named.map(async (p) => ({ ...p, deploysFrom: await deploysFromOf(p.id) })))
+    await Promise.all(
+      named.map(async (p) => ({ ...p, deploysFrom: (await readLandingBranches(p.id)).promoted })),
+    )
   ).filter((p): p is PromoteProject => p.deploysFrom !== null);
   if (promote.length === 0) return empty;
 

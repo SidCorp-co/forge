@@ -2,10 +2,6 @@ import { Badge } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { LiveReach } from "../types";
 
-function short(sha: string): string {
-  return sha.slice(0, 8);
-}
-
 /**
  * Whether a merged issue's work is on production, as Forge's release records say it. Where no
  * record says either way, that is shown with what is missing and who owes it, never as live.
@@ -16,9 +12,7 @@ export function LiveReachValue({ reach }: { reach: LiveReach }) {
     return (
       <div className="flex flex-col items-end gap-1">
         <Badge tone="green">{t("issues.reach.onLive")}</Badge>
-        <span className="fg-caption font-mono">
-          {t("issues.reach.shippedIn", { version: reach.release.version, sha: short(reach.release.commit) })}
-        </span>
+        <span className="fg-caption">{t("issues.reach.shippedIn", { version: reach.release.version })}</span>
       </div>
     );
   }

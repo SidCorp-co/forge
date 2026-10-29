@@ -80,6 +80,8 @@ import {
 import {
   closeOpenRunForIssue,
   getIssueContexts,
+  type LiveReachIssue,
+  liveReachOfIssues,
   providePipelinePorts,
   shippedReleasesOf,
   triggerPipelineStepManual,
@@ -126,7 +128,6 @@ import {
   deliveryHeadsOf,
   judgedBuildOf,
   landedRecordOf,
-  liveReachForIssue,
   nextDraftVersion,
   releaseEndsRun,
   releaseHoldsOf,
@@ -224,6 +225,12 @@ async function deliveryRunsOf(projectId: string, viewer: { userId: string } | nu
     nextDraftVersion(projectId),
   ]);
   return { live: live.items, finished: finished.items, drafted };
+}
+
+/** One merged issue's live reach from Forge's release records, on its project's promoted branch. */
+async function liveReachForIssue(issue: LiveReachIssue & { projectId: string }) {
+  const promoted = (await readLandingBranches(issue.projectId)).promoted;
+  return (await liveReachOfIssues(issue.projectId, [issue], promoted)).get(issue.id) ?? null;
 }
 
 export function provideWorkPorts(): void {

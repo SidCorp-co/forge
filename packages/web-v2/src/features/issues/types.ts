@@ -450,7 +450,7 @@ interface LiveReachPlaced {
 export type LiveReach =
   | (LiveReachPlaced & {
       state: "on_live";
-      release: { version: string; commit: string; runId: string; cutAt: string };
+      release: { version: string; shippedAt: string };
     })
   | (LiveReachPlaced & { state: "not_on_live"; why: string; owes: string })
   | (LiveReachPlaced & {

@@ -2965,15 +2965,15 @@ export const SAID = {
 		vars: { flow: "name" },
 	},
 	"pulse.gap.noRelease": {
-		en: "No release has shipped through Forge here, so no record places its {n} closed issues on {live}",
+		en: "{n} closed issues: no release shipped through Forge places them on {live}",
 		vars: { n: "count", live: "name" },
 	},
 	"pulse.gap.unrecordedOne": {
-		en: "1 closed issue landed before a shipped release that does not name it, so no record says whether it reached {live}",
+		en: "1 closed issue no shipped release names: unknown whether it reached {live}",
 		vars: { live: "name" },
 	},
 	"pulse.gap.unrecordedMany": {
-		en: "{n} closed issues landed before a shipped release that does not name them, so no record says whether they reached {live}",
+		en: "{n} closed issues no shipped release names: unknown whether they reached {live}",
 		vars: { n: "count", live: "name" },
 	},
 	"designs.reason.repinOnly": {
