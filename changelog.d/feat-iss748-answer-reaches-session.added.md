@@ -1,1 +1,0 @@
-**An answer to your Forge feedback reaches your session.** On your next prompt, a session in a checkout carrying the forge-runner hook is told "FB-n answered: <text>", once per answer, and told not to post it in the project channel.

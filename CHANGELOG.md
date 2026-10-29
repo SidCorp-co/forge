@@ -9,6 +9,32 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.356] - 2026-10-29
+
+A reporter can reply once to an answer about Forge
+
+### Added
+
+- **An answer to your Forge feedback reaches your session.** On your next prompt, a session in a checkout carrying the forge-runner hook is told "FB-n answered: <text>", once per answer, and told not to post it in the project channel.
+- **Feedback to Forge shows what triage told you.** An item read through the Forge door, over REST, forge_feedback or Your feedback to Forge, now carries its answer, decline note, clarification asked and the release its fix shipped in.
+- **A reporter replies to an answer about Forge, and the next answer names the reply.** One reply per answer sends the item back to triage; an answer to a reopened item that ignores its reopen or reply is refused.
+
+### Fixed
+
+- **A change to a file a test reads by path now runs that test.** Such a test declares the file, its CI job's filter matches it, and a check refuses one that does not.
+- **Core and its shared contracts now build in a declared order.** The contracts package no longer names core as a dependency, so pnpm and turbo build contracts before core without hand-written ordering.
+- **Repository scripts can no longer use a package nobody declared.** A new verify check names any package or tool a root script reaches that the root manifest does not list; the one remaining exception carries its price.
+- **A count or word that ends a sentence after a credential label is no longer refused as a secret.** "no token: 4." and "(password: required)" are prose; a credential-shaped value is still refused, and scrubbing keeps its closing bracket.
+- **Workflow reads and writes no longer pass silently over what they do not use.** A workflow read refuses a query it does not take, naming where a past revision is read, and a write lists an unused issue under ignored.
+- **Only the run holding an issue claims it.** Moving an issue into in_progress while another run holds it is now refused naming that run, as the move to awaiting_release already was; an ended run no longer slips through.
+- **Required plan approval counts old approvals and says what it waits for.** An issue approved before status moves were audited resumes at build; the refusal names the waiting step, the setting that relaxes it, and a missing plan.
+- **An issue waiting on another run's overlapping work now says so.** Its page and the issue list name the holding issue and run until that run ends. A gate the project turns off no longer marks issues withheld.
+- **A one-press accept records the revision's own words, shown first.** Approvals sends what the revision changes and why, never a stock sentence, and shows it on the row; a reason of only invisible characters is refused.
+- **Waiting on another issue is a blocks edge, not a park.** A park naming another issue's merge mark is refused `QUESTION_MERGE_IS_ORDERING`, and the master skill and guides teach ordering as a `blocks` edge with the row left open.
+- **The steward stops re-asking the master about answered items.** A dated decision on the item asked about, or on the stuck item whose run asked, clears the ask at once, and a person's act is never asked of the master.
+- **A run's close gives back only its own leases.** Two runs on one box over one issue no longer collide: closing the older run leaves the newer run's hold, so its next status move is not refused NO_HOLDER.
+- **A pane whose own project fences its credential now tells its daemon.** `forge-runner api` keeps a refused call's body for that check, so the job ends on the 403 by name instead of re-queuing on silence (ISS-740).
+
 ## [0.4.0-dev.355] - 2026-10-29
 
 Production deployed outside Forge releases through its promotion merge request
